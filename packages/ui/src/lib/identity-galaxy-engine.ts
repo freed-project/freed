@@ -3,6 +3,9 @@ import { drawGalaxyIcon, drawGalaxyLabel, isGalaxyIconGlyph } from "./galaxy-lab
 import { truncateGalaxyNodeLabel } from "./identity-graph-atlas.js";
 import { friendsGalaxyDecorativeStarScale } from "./friends-galaxy-decorative-star-scale.js";
 import { friendsGalaxyAmbientMotionTimeSeconds } from "./friends-galaxy-ambient-motion.js";
+import { FriendsGalaxyLabelFade } from "./friends-galaxy-label-fade.js";
+import { createFriendsGalaxyAvatarAtlas, type FriendsGalaxyAvatarAtlas, type FriendsGalaxyAvatarSeed } from "./friends-galaxy-avatar-atlas.js";
+import { FriendsGalaxyIdentityDetailFade } from "./friends-galaxy-identity-detail-fade.js";
 import type {
   IdentityGraphAtlas,
   IdentityGraphAtlasQuality,
@@ -61,6 +64,7 @@ interface GraphPalette {
 
 interface GalaxyLabelRecord {
   id: string;
+  priority: number;
   color: THREE.Color;
   text: string;
   fontSize: number;
@@ -619,6 +623,8 @@ function makeGalaxyLabelMaterial(texture: THREE.Texture): THREE.ShaderMaterial {
       attribute vec2 glyphUv;
       attribute vec3 instanceAnchor;
       attribute vec3 instanceLabelColor;
+      attribute float instanceLabelOpacity;
+      varying float vLabelOpacity;
       varying vec3 vLabelColor;
       attribute vec2 instanceOffset;
       attribute vec2 instanceGlyphSize;
@@ -632,12 +638,14 @@ function makeGalaxyLabelMaterial(texture: THREE.Texture): THREE.ShaderMaterial {
         gl_Position = centerClip;
         vGlyphUv = mix(instanceUvRect.xy, instanceUvRect.zw, glyphUv);
         vLabelColor = instanceLabelColor;
+        vLabelOpacity = instanceLabelOpacity;
       }
     `,
     fragmentShader: `
       uniform sampler2D atlas;
       uniform vec2 atlasTexel;
       varying vec3 vLabelColor;
+      varying float vLabelOpacity;
       uniform vec3 outlineColor;
       varying vec2 vGlyphUv;
 
@@ -655,10 +663,41 @@ function makeGalaxyLabelMaterial(texture: THREE.Texture): THREE.ShaderMaterial {
         outline = max(outline, texture2D(atlas, vGlyphUv + vec2(-spread.x, spread.y)).a);
         float fillAlpha = smoothstep(0.14, 0.72, fill);
         float outlineAlpha = smoothstep(0.04, 0.46, outline) * 0.92;
-        float alpha = max(fillAlpha, outlineAlpha);
+        float alpha = max(fillAlpha, outlineAlpha) * vLabelOpacity;
         if (alpha < 0.02) discard;
         vec3 color = mix(outlineColor, vLabelColor, fillAlpha);
         gl_FragColor = vec4(color, alpha);
+      }
+    `,
+  });
+}
+
+function makeAvatarMaterial(): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, depthTest: false, blending: THREE.NormalBlending,
+    uniforms: { atlas: { value: null }, resolution: { value: new THREE.Vector2(1, 1) }, opacity: { value: 0 } },
+    vertexShader: `
+      uniform vec2 resolution;
+      attribute vec2 glyphUv;
+      attribute vec3 instanceAnchor;
+      attribute vec2 instanceGlyphSize;
+      attribute vec4 instanceUvRect;
+      varying vec2 vUv;
+      void main() {
+        vec4 center = projectionMatrix * modelViewMatrix * vec4(instanceAnchor, 1.0);
+        center.xy += position.xy * instanceGlyphSize * (2.0 / resolution) * center.w;
+        gl_Position = center;
+        vUv = mix(instanceUvRect.xy, instanceUvRect.zw, vec2(glyphUv.x, 1.0 - glyphUv.y));
+      }
+    `,
+    fragmentShader: `
+      uniform sampler2D atlas;
+      uniform float opacity;
+      varying vec2 vUv;
+      void main() {
+        vec4 pixel = texture2D(atlas, vUv);
+        if (pixel.a * opacity < 0.002) discard;
+        gl_FragColor = vec4(pixel.rgb, pixel.a * opacity);
       }
     `,
   });
@@ -847,17 +886,38 @@ function drawFallbackLabels(
   width: number,
   height: number,
   residentLabelIds: ReadonlySet<string> | null,
+  fade: FriendsGalaxyLabelFade<IdentityGraphAtlas["labels"][number]>,
+  labelPool: readonly IdentityGraphAtlas["labels"][number][],
+  timeMs: number,
+  motionEnabled: boolean,
+  avatarAtlas: FriendsGalaxyAvatarAtlas | null,
+  avatarOpacity: number,
 ): Set<string> | null {
+  if (avatarAtlas && avatarOpacity > 0) {
+    context.save();
+    context.globalAlpha = avatarOpacity;
+    for (let index = 0; index < avatarAtlas.itemCount; index += 1) {
+      const row = avatarAtlas.instanceData.subarray(index * 11, index * 11 + 11);
+      const size = row[5]!;
+      const x = transform.x + row[0]! * transform.scale;
+      const y = transform.y - row[1]! * transform.scale;
+      context.drawImage(avatarAtlas.canvas, row[7]! * avatarAtlas.canvas.width, row[8]! * avatarAtlas.canvas.height,
+        (row[9]! - row[7]!) * avatarAtlas.canvas.width, (row[10]! - row[8]!) * avatarAtlas.canvas.height,
+        x - size / 2, y - size / 2, size, size);
+    }
+    context.restore();
+  }
   const smallViewport = width < 720;
-  const { cap, suppressOverlaps } = galaxyLabelVisibilityPolicy(atlas.metrics.lod, width, "canvas-starfield-fallback");
-  const occupied: Array<{ left: number; right: number; top: number; bottom: number }> = [];
+  const { suppressOverlaps } = galaxyLabelVisibilityPolicy(atlas.metrics.lod, width, "canvas-starfield-fallback");
+  const occupied: Array<{ left: number; right: number; top: number; bottom: number; hovered: boolean }> = [];
   const nodeById = new Map(atlas.nodes.map((node) => [node.id, node]));
   const nextResidentLabelIds = residentLabelIds === null ? new Set<string>() : null;
   context.textAlign = "center";
   context.textBaseline = "middle";
   context.lineJoin = "round";
-  for (const label of atlas.labels.slice(0, cap)) {
-    if (residentLabelIds !== null && !residentLabelIds.has(label.id)) continue;
+  const eligible = new Set(fade.eligible(labelPool).map((label) => label.id));
+  const placements = new Map<string, { text: string; screenX: number; screenY: number; fontSize: number }>();
+  for (const label of labelPool) {
     const fontSize = label.kind === "provider_cluster"
       ? smallViewport ? 16 : 19
       : label.kind === "friend_person"
@@ -875,25 +935,34 @@ function drawFallbackLabels(
       label.kind === "account" || label.kind === "feed" ? fontSize * 0.5 + 5 : starRadius + fontSize * 0.68 + 3;
     const screenY = transform.y + label.y * transform.scale - labelOffset;
     context.font = `600 ${String(fontSize)}px ${palette.fontFamily}`;
-    if (nextResidentLabelIds) {
+    placements.set(label.id, { text, screenX, screenY, fontSize });
+    if (nextResidentLabelIds && eligible.has(label.id)) {
       const textWidth = context.measureText(text).width;
       const bounds = {
         left: screenX - textWidth / 2 - 6,
         right: screenX + textWidth / 2 + 6,
         top: screenY - fontSize * 0.75,
         bottom: screenY + fontSize * 0.75,
+        hovered: label.priority >= 2_000_000,
       };
       const outside = bounds.left < 8 || bounds.right > width - 8 || bounds.top < 8 || bounds.bottom > height - 8;
-      const collides = suppressOverlaps && occupied.some((entry) =>
+      const collides = occupied.some((entry) => (suppressOverlaps || entry.hovered) &&
         bounds.left < entry.right &&
         bounds.right > entry.left &&
         bounds.top < entry.bottom &&
         bounds.bottom > entry.top,
       );
       if (outside || collides) continue;
-      if (suppressOverlaps) occupied.push(bounds);
+      if (suppressOverlaps || bounds.hovered) occupied.push(bounds);
       nextResidentLabelIds.add(label.id);
     }
+  }
+  for (const { label, opacity } of fade.step(labelPool, nextResidentLabelIds ?? residentLabelIds ?? new Set(), timeMs, motionEnabled)) {
+    const placement = placements.get(label.id);
+    if (!placement || opacity <= 0) continue;
+    const { text, screenX, screenY, fontSize } = placement;
+    context.globalAlpha = opacity;
+    context.font = `600 ${String(fontSize)}px ${palette.fontFamily}`;
     context.lineWidth = label.kind === "provider_cluster" ? 5.5 : 4.5;
     context.strokeStyle = palette.labelFill;
     context.fillStyle = label.kind === "provider_cluster"
@@ -901,6 +970,7 @@ function drawFallbackLabels(
       : palette.text;
     drawGalaxyLabel(context, text, screenX, screenY, fontSize);
   }
+  context.globalAlpha = 1;
   return nextResidentLabelIds;
 }
 
@@ -915,6 +985,12 @@ function drawFallbackStarfield(
   variation: IdentityGalaxyVariation,
   decorativeStarsEnabled: boolean,
   residentLabelIds: ReadonlySet<string> | null,
+  fade: FriendsGalaxyLabelFade<IdentityGraphAtlas["labels"][number]>,
+  labelPool: readonly IdentityGraphAtlas["labels"][number][],
+  timeMs: number,
+  motionEnabled: boolean,
+  avatarAtlas: FriendsGalaxyAvatarAtlas | null,
+  avatarOpacity: number,
 ): Set<string> | null {
   const context = canvas.getContext("2d");
   if (!context) return null;
@@ -1021,10 +1097,41 @@ function drawFallbackStarfield(
     width,
     height,
     residentLabelIds,
+    fade,
+    labelPool,
+    timeMs,
+    motionEnabled,
+    avatarAtlas,
+    avatarOpacity,
   );
 }
 
 class StarfieldGraphRenderer {
+  private readonly avatarGeometry = makeGalaxyLabelGeometry();
+  private readonly avatarMaterial = makeAvatarMaterial();
+  private readonly avatarMesh = new THREE.Mesh(this.avatarGeometry, this.avatarMaterial);
+  private avatarTexture: THREE.CanvasTexture | null = null;
+  setAvatarAtlas(atlas: FriendsGalaxyAvatarAtlas | null): void {
+    this.avatarTexture?.dispose();
+    this.avatarTexture = atlas ? new THREE.CanvasTexture(atlas.canvas) : null;
+    if (this.avatarTexture) this.avatarTexture.flipY = false;
+    this.avatarMaterial.uniforms.atlas.value = this.avatarTexture;
+    const count = atlas?.itemCount ?? 0;
+    const anchors = new Float32Array(count * 3);
+    const sizes = new Float32Array(count * 2);
+    const uv = new Float32Array(count * 4);
+    for (let index = 0; index < count; index += 1) {
+      const row = atlas!.instanceData.subarray(index * 11, index * 11 + 11);
+      anchors.set(row.subarray(0, 3), index * 3);
+      sizes.set(row.subarray(5, 7), index * 2);
+      uv.set(row.subarray(7, 11), index * 4);
+    }
+    this.avatarGeometry.setAttribute("instanceAnchor", new THREE.InstancedBufferAttribute(anchors, 3));
+    this.avatarGeometry.setAttribute("instanceGlyphSize", new THREE.InstancedBufferAttribute(sizes, 2));
+    this.avatarGeometry.setAttribute("instanceUvRect", new THREE.InstancedBufferAttribute(uv, 4));
+    this.avatarGeometry.instanceCount = count;
+  }
+  get hasActiveLabelTransition(): boolean { return this.labelLayoutDirty || this.labelFade.isActive; }
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(IDENTITY_GALAXY_CAMERA_FOV, 1, 1, 20_000);
@@ -1045,6 +1152,13 @@ class StarfieldGraphRenderer {
   private labelTexture: THREE.Texture;
   private starPoints: THREE.Points | null = null;
   private labelRecords: GalaxyLabelRecord[] = [];
+  private readonly labelFade = new FriendsGalaxyLabelFade<GalaxyLabelRecord>();
+  private desiredLabelIds = new Set<string>();
+  private labelGlyphRanges = new Map<string, { start: number; end: number }>();
+  private labelOpacityDirty = true;
+  private labelMotionEnabled = true;
+  private readonly reducedMotion = typeof window !== "undefined" && typeof window.matchMedia === "function"
+    ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
   private suppressLabelOverlaps = true;
   private glyphAtlas: GlyphAtlas | null = null;
   private labelSignature = "";
@@ -1086,6 +1200,9 @@ class StarfieldGraphRenderer {
     this.renderer.sortObjects = false;
     this.scene.add(this.graphGroup);
     this.scene.add(this.labelGroup);
+    this.avatarMesh.frustumCulled = false;
+    this.avatarMesh.renderOrder = 9;
+    this.scene.add(this.avatarMesh);
     this.graphGroup.add(this.regionGroup);
     this.edgeLines = new THREE.Mesh(this.edgeGeometry, this.edgeMaterial);
     this.edgeLines.frustumCulled = false;
@@ -1197,6 +1314,7 @@ class StarfieldGraphRenderer {
     timeMs: number,
     ambientMotionEnabled: boolean,
     cameraInMotion: boolean,
+    avatarOpacity: number,
   ): void {
     if (this.disposed) return;
     this.ambientTimeUniform.value = friendsGalaxyAmbientMotionTimeSeconds(
@@ -1205,6 +1323,10 @@ class StarfieldGraphRenderer {
       cameraInMotion,
     );
     this.applyCamera(transform);
+    this.avatarMaterial.uniforms.opacity.value = avatarOpacity;
+    this.avatarMaterial.uniforms.resolution.value.set(this.width, this.height);
+    this.avatarMesh.visible = this.avatarGeometry.instanceCount > 0 && avatarOpacity > 0;
+    this.updateLabelOpacity(timeMs);
     this.starMaterial.uniforms.decorativeScale.value =
       friendsGalaxyDecorativeStarScale(transform.scale);
     if (this.starPoints) {
@@ -1270,6 +1392,9 @@ class StarfieldGraphRenderer {
 
   dispose(): void {
     this.disposed = true;
+    this.avatarTexture?.dispose();
+    this.avatarGeometry.dispose();
+    this.avatarMaterial.dispose();
     this.clearRegions();
     this.clearLabels();
     this.nodeGeometry.dispose();
@@ -1311,16 +1436,18 @@ class StarfieldGraphRenderer {
 
   private layoutLabels(): void {
     this.labelLayoutCountValue += 1;
+    this.labelOpacityDirty = true;
     const glyphAtlas = this.glyphAtlas;
     if (!glyphAtlas || this.labelRecords.length === 0) {
       this.labelGeometry.instanceCount = 0;
       this.renderedLabelCount = 0;
       return;
     }
-    const occupied: Array<{ left: number; right: number; top: number; bottom: number }> = [];
+    const occupied: Array<{ left: number; right: number; top: number; bottom: number; hovered: boolean }> = [];
     const visibleLabels: GalaxyLabelRecord[] = [];
+    this.desiredLabelIds.clear();
     const labelWidths = new Map<string, number>();
-    for (const label of this.labelRecords) {
+    for (const label of this.labelFade.eligible(this.labelRecords)) {
       this.projectedNode.copy(label.position).project(this.camera);
       if (this.projectedNode.z < -1 || this.projectedNode.z > 1) continue;
       const screenX = (this.projectedNode.x + 1) * this.width * 0.5;
@@ -1337,34 +1464,51 @@ class StarfieldGraphRenderer {
         right: screenX + width / 2 + 6,
         top: screenY - height / 2 - 4,
         bottom: screenY + height / 2 + 4,
+        hovered: label.priority >= 2_000_000,
       };
       const outside = bounds.left < 8 ||
         bounds.right > this.width - 8 ||
         bounds.top < 8 ||
         bounds.bottom > this.height - 8;
-      const collides = this.suppressLabelOverlaps && occupied.some((entry) =>
+      const collides = occupied.some((entry) => (this.suppressLabelOverlaps || entry.hovered) &&
         bounds.left < entry.right &&
         bounds.right > entry.left &&
         bounds.top < entry.bottom &&
         bounds.bottom > entry.top,
       );
       if (outside || collides) continue;
-      if (this.suppressLabelOverlaps) occupied.push(bounds);
+      if (this.suppressLabelOverlaps || bounds.hovered) occupied.push(bounds);
       visibleLabels.push(label);
+      this.desiredLabelIds.add(label.id);
+    }
+
+    // Keep outgoing labels resident while fading. Opacity frames only update a
+    // scalar attribute; they never repeat collision layout or rebuild the atlas.
+    const residentLabels = this.labelRecords;
+    for (const label of residentLabels) {
+      if (labelWidths.has(label.id)) continue;
+      let width = 0;
+      for (const character of Array.from(label.text)) {
+        width += (glyphAtlas.entries.get(character) ?? glyphAtlas.fallback).advance * label.fontSize;
+      }
+      labelWidths.set(label.id, width);
     }
 
     let glyphCount = 0;
-    for (const label of visibleLabels) {
+    for (const label of residentLabels) {
       glyphCount += Array.from(label.text).filter((character) => character.trim()).length;
     }
     const anchors = new Float32Array(glyphCount * 3);
     const labelColors = new Float32Array(glyphCount * 3);
+    const opacities = new Float32Array(glyphCount);
     const offsets = new Float32Array(glyphCount * 2);
     const sizes = new Float32Array(glyphCount * 2);
     const uvRects = new Float32Array(glyphCount * 4);
     const glyphScale = glyphAtlas.cellSize / glyphAtlas.fontSize;
     let glyphIndex = 0;
-    for (const label of visibleLabels) {
+    this.labelGlyphRanges.clear();
+    for (const label of residentLabels) {
+      const start = glyphIndex;
       let cursor = -(labelWidths.get(label.id) ?? 0) / 2;
       for (const character of Array.from(label.text)) {
         const glyph = glyphAtlas.entries.get(character) ?? glyphAtlas.fallback;
@@ -1383,14 +1527,35 @@ class StarfieldGraphRenderer {
         }
         cursor += advance;
       }
+      this.labelGlyphRanges.set(label.id, { start, end: glyphIndex });
     }
     this.labelGeometry.setAttribute("instanceAnchor", new THREE.InstancedBufferAttribute(anchors, 3));
     this.labelGeometry.setAttribute("instanceLabelColor", new THREE.InstancedBufferAttribute(labelColors, 3));
+    this.labelGeometry.setAttribute("instanceLabelOpacity", new THREE.InstancedBufferAttribute(opacities, 1).setUsage(THREE.DynamicDrawUsage));
     this.labelGeometry.setAttribute("instanceOffset", new THREE.InstancedBufferAttribute(offsets, 2));
     this.labelGeometry.setAttribute("instanceGlyphSize", new THREE.InstancedBufferAttribute(sizes, 2));
     this.labelGeometry.setAttribute("instanceUvRect", new THREE.InstancedBufferAttribute(uvRects, 4));
     this.labelGeometry.instanceCount = glyphIndex;
     this.renderedLabelCount = visibleLabels.length;
+  }
+
+  private updateLabelOpacity(timeMs: number): void {
+    const motionEnabled = !this.reducedMotion?.matches;
+    const needsUpload = this.labelOpacityDirty || this.labelFade.isActive || motionEnabled !== this.labelMotionEnabled;
+    const visible = this.labelFade.step(this.labelRecords, this.desiredLabelIds, timeMs, motionEnabled);
+    if (!needsUpload && !this.labelFade.isActive) return;
+    this.labelOpacityDirty = false;
+    this.labelMotionEnabled = motionEnabled;
+    const opacity = this.labelGeometry.getAttribute("instanceLabelOpacity") as THREE.InstancedBufferAttribute | undefined;
+    if (!opacity) return;
+    const values = opacity.array as Float32Array;
+    values.fill(0);
+    for (const { label, opacity: alpha } of visible) {
+      const range = this.labelGlyphRanges.get(label.id);
+      if (range) values.fill(alpha, range.start, range.end);
+    }
+    opacity.needsUpdate = true;
+    this.renderedLabelCount = visible.length;
   }
 
   private clearRegions(): void {
@@ -1521,6 +1686,9 @@ class StarfieldGraphRenderer {
 
   private clearLabels(): void {
     this.labelRecords = [];
+    this.labelFade.clear();
+    this.desiredLabelIds.clear();
+    this.labelGlyphRanges.clear();
     this.labelSignature = "";
     this.renderedLabelCount = 0;
     this.labelGeometry.instanceCount = 0;
@@ -1561,6 +1729,7 @@ class StarfieldGraphRenderer {
         : galaxyScene.positions[nodeIndex * 3 + 1]!;
       return {
         id: label.id,
+        priority: label.priority,
         color: colorFromCss(label.kind === "provider_cluster"
           ? providerColor(label.nodeId.replace(/^provider:/, ""), palette)
           : palette.text, "#f8fafc"),
@@ -1575,6 +1744,7 @@ class StarfieldGraphRenderer {
       palette.fontFamily,
       ...records.map((label) => [
         label.id,
+        label.priority,
         label.text,
         label.fontSize,
         label.color.getHexString(),
@@ -1584,13 +1754,14 @@ class StarfieldGraphRenderer {
       ].join(":")),
     ].join("|");
     if (signature !== this.labelSignature) {
-      const nextGlyphAtlas = buildGlyphAtlas(records, palette.fontFamily);
+      const residentRecords = this.labelFade.mergePool(records);
+      const nextGlyphAtlas = buildGlyphAtlas(residentRecords, palette.fontFamily);
       this.labelTexture.dispose();
       this.labelTexture = nextGlyphAtlas.texture;
       this.glyphAtlas = nextGlyphAtlas;
       this.labelMaterial.uniforms.atlas.value = this.labelTexture;
       this.labelMaterial.uniforms.atlasTexel.value.copy(nextGlyphAtlas.texelSize);
-      this.labelRecords = records;
+      this.labelRecords = [...residentRecords];
       this.labelSignature = signature;
     }
     this.labelLayoutDirty = true;
@@ -1598,6 +1769,46 @@ class StarfieldGraphRenderer {
 }
 
 export class IdentityGalaxyEngine {
+  private avatarImages: ReadonlyMap<string, CanvasImageSource> = new Map();
+  private avatarAtlas: FriendsGalaxyAvatarAtlas | null = null;
+  private avatarAtlasDirty = false;
+  private readonly avatarFade = new FriendsGalaxyIdentityDetailFade();
+  setAvatarImages(images: ReadonlyMap<string, CanvasImageSource>): void {
+    this.avatarImages = images;
+    this.avatarAtlasDirty = true;
+  }
+  get avatarCount(): number { return this.avatarAtlas?.itemCount ?? 0; }
+  private prepareAvatarAtlas(): void {
+    if (!this.avatarAtlasDirty || !this.scene || !this.palette) return;
+    this.avatarAtlasDirty = false;
+    const scene = this.scene;
+    const compact = this.canvas.clientWidth < 720;
+    const seeds: FriendsGalaxyAvatarSeed[] = [];
+    // The caller has already admitted a bounded visible roster. This pass only
+    // binds its decoded images to the current semantic scene, never loads URLs.
+    for (const nodeId of this.avatarImages.keys()) {
+      if (seeds.length >= (compact ? 6 : 12)) break;
+      const index = scene.nodeIds.indexOf(nodeId);
+      if (index < 0 || !scene.personIds[index]) continue;
+      const selected = scene.personIds[index] === this.selectedPersonId;
+      seeds.push({ nodeId, initials: "", anchorX: scene.positions[index * 3]!,
+        anchorY: scene.positions[index * 3 + 1]!, anchorZ: scene.positions[index * 3 + 2]! + 7,
+        size: (compact ? 24 : 28) + Math.max(0, Math.min(4, (scene.radii[index]! - 48) / 8)) * 6 + (selected ? 6 : 0),
+        priority: scene.prominence[index]!, selected, color: this.palette.friendFill });
+    }
+    this.avatarAtlas = createFriendsGalaxyAvatarAtlas(seeds,
+      { background: this.palette.surface, selection: this.palette.selection }, this.avatarImages);
+    if (seeds.length === 0) this.avatarFade.restartFromHidden();
+    this.renderer?.setAvatarAtlas(this.avatarAtlas);
+  }
+  private readonly fallbackLabelFade = new FriendsGalaxyLabelFade<IdentityGraphAtlas["labels"][number]>();
+  private fallbackLabelPool: readonly IdentityGraphAtlas["labels"][number][] = [];
+  private readonly fallbackReducedMotion = typeof window !== "undefined" && typeof window.matchMedia === "function"
+    ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
+  get hasActivePresentationTransition(): boolean {
+    return this.avatarAtlasDirty || this.avatarFade.isActive ||
+      (this.renderer?.hasActiveLabelTransition ?? (this.fallbackLabelLayoutDirty || this.fallbackLabelFade.isActive));
+  }
   private readonly canvas: HTMLCanvasElement;
   private readonly paletteElement: HTMLElement | null;
   private renderer: StarfieldGraphRenderer | null = null;
@@ -1652,6 +1863,7 @@ export class IdentityGalaxyEngine {
 
   resize(width: number, height: number): void {
     this.renderer?.resize(width, height);
+    if (this.avatarImages.size) this.avatarAtlasDirty = true;
   }
 
   setAmbientMotionEnabled(enabled: boolean): void {
@@ -1671,12 +1883,14 @@ export class IdentityGalaxyEngine {
     this.atlas = atlas;
     this.scene = scene;
     this.palette = palette;
+    if (this.avatarImages.size) this.avatarAtlasDirty = true;
     this.selectedPersonId = options.selectedPersonId;
     this.selectedAccountId = options.selectedAccountId;
     this.variation = options.variation;
     this.decorativeStarsEnabled = options.decorativeStarCount !== 0;
     if (!this.renderer && options.quality === "settled") {
       this.fallbackLabelCount = Math.min(atlas.labels.length, galaxyLabelVisibilityPolicy(atlas.metrics.lod, this.canvas.clientWidth, "canvas-starfield-fallback").cap);
+      this.fallbackLabelPool = this.fallbackLabelFade.mergePool(atlas.labels.slice(0, this.fallbackLabelCount));
       this.fallbackLabelLayoutDirty = true;
     }
     this.renderer?.syncScene(
@@ -1699,6 +1913,7 @@ export class IdentityGalaxyEngine {
       atlas.labels.length,
       galaxyLabelVisibilityPolicy(atlas.metrics.lod, this.canvas.clientWidth, "canvas-starfield-fallback").cap,
     );
+    this.fallbackLabelPool = this.fallbackLabelFade.mergePool(atlas.labels.slice(0, this.fallbackLabelCount));
     this.fallbackLabelLayoutDirty = true;
   }
 
@@ -1710,18 +1925,23 @@ export class IdentityGalaxyEngine {
     this.scene = scene;
     this.selectedPersonId = selectedPersonId;
     this.selectedAccountId = selectedAccountId;
+    if (this.avatarImages.size) this.avatarAtlasDirty = true;
     if (this.renderer && this.palette) {
       this.renderer.updateInteraction(scene, this.palette);
     }
   }
 
   render(transform: ViewTransform, timeMs = performance.now()): void {
+    this.prepareAvatarAtlas();
+    const avatarOpacity = this.avatarAtlas?.itemCount
+      ? this.avatarFade.step(transform.scale, timeMs, !this.fallbackReducedMotion?.matches).opacity : 0;
     if (this.renderer) {
       this.renderer.render(
         transform,
         timeMs,
         this.ambientMotionEnabled,
         this.cameraInMotion,
+        avatarOpacity,
       );
       return;
     }
@@ -1746,6 +1966,12 @@ export class IdentityGalaxyEngine {
       this.fallbackLabelLayoutDirty || transformChanged
         ? null
         : this.fallbackResidentLabelIds,
+      this.fallbackLabelFade,
+      this.fallbackLabelPool,
+      timeMs,
+      !this.fallbackReducedMotion?.matches,
+      this.avatarAtlas,
+      avatarOpacity,
     );
     if (nextResidentLabelIds) {
       this.fallbackResidentLabelIds = nextResidentLabelIds;
@@ -1775,6 +2001,12 @@ export class IdentityGalaxyEngine {
     this.fallbackLabelLayoutCount = 0;
     this.fallbackLabelLayoutDirty = true;
     this.fallbackResidentLabelIds = new Set();
+    this.fallbackLabelFade.clear();
+    this.avatarImages = new Map();
+    this.avatarAtlas = null;
+    this.avatarAtlasDirty = false;
+    this.avatarFade.restartFromHidden();
+    this.fallbackLabelPool = [];
     this.fallbackLabelTransformX = Number.NaN;
     this.fallbackLabelTransformY = Number.NaN;
     this.fallbackLabelTransformScale = Number.NaN;

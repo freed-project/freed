@@ -6,8 +6,9 @@ describe("Friends Galaxy ambient motion", () => {
     expect(friendsGalaxyAmbientMotionTimeSeconds(4_250, true, false)).toBe(4.25);
   });
 
-  it("freezes shader motion while the camera is moving", () => {
-    expect(friendsGalaxyAmbientMotionTimeSeconds(4_250, true, true)).toBe(-1);
+  it("preserves shader phase when camera movement starts and stops", () => {
+    expect(friendsGalaxyAmbientMotionTimeSeconds(4_250, true, true)).toBe(4.25);
+    expect(friendsGalaxyAmbientMotionTimeSeconds(4_500, true, false)).toBe(4.5);
   });
 
   it("freezes shader motion when the preference is disabled or time is invalid", () => {

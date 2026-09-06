@@ -782,6 +782,7 @@ export async function captureDomFeed(
 ### Desktop
 
 - [x] Desktop app launches with native vibrancy on macOS
+- [ ] Verify installed avatar-cache delivery across reader, profile, Map, and Galaxy surfaces. Native disk caching and bounded identity backfill are implemented with offline restart, corruption, failure-cooldown, pagination, and cancellation coverage; packaged WebView delivery remains to be verified.
 - [x] Captures from X, RSS in background (refreshAllFeeds covers both)
 - [x] Local WebSocket relay enables instant phone sync (binary protocol)
 - [x] Local sync relay retries `AddrInUse` startup races so overlapping restarts can recover the port without needing another relaunch

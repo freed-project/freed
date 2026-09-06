@@ -1,0 +1,1340 @@
+{
+  "status": "Candidate batch, pending parent review",
+  "candidateCount": 12,
+  "longStoryCount": 4,
+  "characterCount": 3,
+  "entries": [
+    {
+      "id": "strange-05-01",
+      "characterId": "vesta-prickle",
+      "platform": "rss",
+      "title": "Where are you taking her",
+      "body": "The ant picked up my egg and began walking away with it.\n\nI raised my front legs. Curled my abdomen. Did everything that had worked on the beetles. The ant walked under me.\n\n\"Where are you taking her?\"\n\n\"Down.\"\n\n\"How far down?\"\n\nShe kept walking. I followed along the branch until there was no branch left. My egg looked very small in her jaws. So did she, suddenly.\n\nI told her to be careful with the little brown one, which was an idiotic thing to say. It was the only one she was carrying.\n\nShe disappeared into the ground.\n\nI stayed above the entrance until another ant came out. Asked whether the first had arrived.\n\n\"Yes.\"\n\nI asked if she could tell her thank you.\n\n\"Which one?\"\n\nI hadn't asked her name.",
+      "theme": "parental fear and reliance on another species",
+      "payoff": "Her intimidating display gives way to anxious gratitude toward someone whose name she never asked.",
+      "subject": "Extatosoma tiaratum",
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/75/Extatosoma_tiaratum_eggs.jpg/960px-Extatosoma_tiaratum_eggs.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "alt": "Rounded brown spiny leaf insect eggs with pale bands and small cap-like structures on a pale surface.",
+        "sceneMatch": "The seed-like eggs are the central subject. Ant transport and branch setting are imagined, not depicted; no wild-ground claim is made about the photographed pale surface.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05"
+      },
+      "provenance": {
+        "title": "File:Extatosoma tiaratum eggs.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Extatosoma_tiaratum_eggs.jpg",
+        "originalUrl": "https://upload.wikimedia.org/wikipedia/commons/7/75/Extatosoma_tiaratum_eggs.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+        "creator": "Ilse Boekhoven",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "width": 2615,
+        "height": 1439,
+        "sha1": "568339d73d11b4994ee0fb61e1eb7aaadc58b705",
+        "rawSourceMetadata": {
+          "DateTime": {
+            "value": "2023-12-09 16:11:52",
+            "source": "mediawiki-metadata",
+            "hidden": ""
+          },
+          "ObjectName": {
+            "value": "Extatosoma tiaratum eggs",
+            "source": "mediawiki-metadata"
+          },
+          "CommonsMetadataExtension": {
+            "value": 1.2,
+            "source": "extension",
+            "hidden": ""
+          },
+          "Categories": {
+            "value": "Extatosoma tiaratum|Self-published work|Extracted images",
+            "source": "commons-categories",
+            "hidden": ""
+          },
+          "Assessments": {
+            "value": "",
+            "source": "commons-categories",
+            "hidden": ""
+          },
+          "ImageDescription": {
+            "value": "Eitjes van de Australische Flappentak.",
+            "source": "commons-desc-page"
+          },
+          "DateTimeOriginal": {
+            "value": "2017-12-12",
+            "source": "commons-desc-page"
+          },
+          "Credit": {
+            "value": "<span class=\"int-own-work\" lang=\"en\">Own work</span>",
+            "source": "commons-desc-page"
+          },
+          "Artist": {
+            "value": "<a href=\"//commons.wikimedia.org/w/index.php?title=User:Ilse_Boekhoven&amp;action=edit&amp;redlink=1\" class=\"new\" title=\"User:Ilse Boekhoven (page does not exist)\">Ilse Boekhoven</a>",
+            "source": "commons-desc-page"
+          },
+          "LicenseShortName": {
+            "value": "CC BY-SA 4.0",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "UsageTerms": {
+            "value": "Creative Commons Attribution-Share Alike 4.0",
+            "source": "commons-desc-page"
+          },
+          "AttributionRequired": {
+            "value": "true",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "LicenseUrl": {
+            "value": "https://creativecommons.org/licenses/by-sa/4.0",
+            "source": "commons-desc-page"
+          },
+          "Copyrighted": {
+            "value": "True",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "Restrictions": {
+            "value": "",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "License": {
+            "value": "cc-by-sa-4.0",
+            "source": "commons-templates",
+            "hidden": ""
+          }
+        }
+      },
+      "editorialStatus": "Unreviewed candidate; no runtime admission"
+    },
+    {
+      "id": "strange-05-02",
+      "characterId": "vesta-prickle",
+      "platform": "x",
+      "title": "Good advice",
+      "body": "He said I should learn to let go. He was holding on to me with all six feet.",
+      "theme": "relationship hypocrisy",
+      "payoff": "His advice contradicts his grip.",
+      "subject": "Extatosoma tiaratum",
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d6/Phasmatidae_Extatosoma_tiaratum_2.jpg/960px-Phasmatidae_Extatosoma_tiaratum_2.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "alt": "Large pale spiny leaf insect feeding beside a green leaf with a smaller narrow-bodied insect attached beneath her.",
+        "sceneMatch": "The male's attachment to the larger female supplies the joke; speech is fictional.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05"
+      },
+      "provenance": {
+        "title": "File:Phasmatidae Extatosoma tiaratum 2.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Phasmatidae_Extatosoma_tiaratum_2.jpg",
+        "originalUrl": "https://upload.wikimedia.org/wikipedia/commons/d/d6/Phasmatidae_Extatosoma_tiaratum_2.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+        "creator": "NasserHalaweh",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "width": 3327,
+        "height": 2496,
+        "sha1": "23a201fdf77d9cb25c842e7243723ef5ad3d4d12",
+        "rawSourceMetadata": {
+          "DateTime": {
+            "value": "2021-05-16 12:14:48",
+            "source": "mediawiki-metadata",
+            "hidden": ""
+          },
+          "ObjectName": {
+            "value": "Phasmatidae Extatosoma tiaratum 2",
+            "source": "mediawiki-metadata"
+          },
+          "CommonsMetadataExtension": {
+            "value": 1.2,
+            "source": "extension",
+            "hidden": ""
+          },
+          "Categories": {
+            "value": "Self-published work|Insects in Wilhelma Zoo|Extatosoma tiaratum in zoos",
+            "source": "commons-categories",
+            "hidden": ""
+          },
+          "Assessments": {
+            "value": "",
+            "source": "commons-categories",
+            "hidden": ""
+          },
+          "ImageDescription": {
+            "value": "Extatosoma tiaratum GIANT PRICKLY STICK INSECT. Wilhelma Zoo.",
+            "source": "commons-desc-page"
+          },
+          "DateTimeOriginal": {
+            "value": "2010-07-09 11:06:35",
+            "source": "commons-desc-page"
+          },
+          "Credit": {
+            "value": "<span class=\"int-own-work\" lang=\"en\">Own work</span>",
+            "source": "commons-desc-page"
+          },
+          "Artist": {
+            "value": "<a href=\"//commons.wikimedia.org/wiki/User:NasserHalaweh\" title=\"User:NasserHalaweh\">NasserHalaweh</a>",
+            "source": "commons-desc-page"
+          },
+          "LicenseShortName": {
+            "value": "CC BY-SA 4.0",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "UsageTerms": {
+            "value": "Creative Commons Attribution-Share Alike 4.0",
+            "source": "commons-desc-page"
+          },
+          "AttributionRequired": {
+            "value": "true",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "LicenseUrl": {
+            "value": "https://creativecommons.org/licenses/by-sa/4.0",
+            "source": "commons-desc-page"
+          },
+          "Copyrighted": {
+            "value": "True",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "Restrictions": {
+            "value": "",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "License": {
+            "value": "cc-by-sa-4.0",
+            "source": "commons-templates",
+            "hidden": ""
+          }
+        }
+      },
+      "editorialStatus": "Unreviewed candidate; no runtime admission"
+    },
+    {
+      "id": "strange-05-03",
+      "characterId": "vesta-prickle",
+      "platform": "instagram",
+      "title": "On your side",
+      "body": "A bramble thorn caught me between two spines. I explained that I was on its side. It didn't let go. I'm beginning to understand what the beetles were complaining about.",
+      "theme": "empathy through an inconvenient resemblance",
+      "payoff": "A bodily inconvenience exposes the flaw in her own intimidating behavior.",
+      "subject": "Extatosoma tiaratum",
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/5/5c/Phasmatidae_Extatosoma_tiaratum_3.1.jpg/960px-Phasmatidae_Extatosoma_tiaratum_3.1.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "alt": "Spiny leaf insect hanging among green leaves beside a thorny reddish stem.",
+        "sceneMatch": "Both the insect's spines and the plant's thorns are visible. Temporary snagging is invented, not asserted to be happening in this frame.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05"
+      },
+      "provenance": {
+        "title": "File:Phasmatidae Extatosoma tiaratum 3.1.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Phasmatidae_Extatosoma_tiaratum_3.1.jpg",
+        "originalUrl": "https://upload.wikimedia.org/wikipedia/commons/5/5c/Phasmatidae_Extatosoma_tiaratum_3.1.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+        "creator": "NasserHalaweh",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "width": 2158,
+        "height": 2879,
+        "sha1": "9542f5e8bbb2c77c1152dcb66712f0e350e40bff",
+        "rawSourceMetadata": {
+          "DateTime": {
+            "value": "2021-05-14 06:14:11",
+            "source": "mediawiki-metadata",
+            "hidden": ""
+          },
+          "ObjectName": {
+            "value": "Phasmatidae Extatosoma tiaratum 3.1",
+            "source": "mediawiki-metadata"
+          },
+          "CommonsMetadataExtension": {
+            "value": 1.2,
+            "source": "extension",
+            "hidden": ""
+          },
+          "Categories": {
+            "value": "Self-published work|Insects at Zoo Frankfurt|Extatosoma tiaratum in zoos",
+            "source": "commons-categories",
+            "hidden": ""
+          },
+          "Assessments": {
+            "value": "",
+            "source": "commons-categories",
+            "hidden": ""
+          },
+          "ImageDescription": {
+            "value": "Extatosoma tiaratum GIANT PRICKLY STICK INSECT. Zoo Frankfurt.",
+            "source": "commons-desc-page"
+          },
+          "DateTimeOriginal": {
+            "value": "2017-11-11 15:07:56",
+            "source": "commons-desc-page"
+          },
+          "Credit": {
+            "value": "<span class=\"int-own-work\" lang=\"en\">Own work</span>",
+            "source": "commons-desc-page"
+          },
+          "Artist": {
+            "value": "<a href=\"//commons.wikimedia.org/wiki/User:NasserHalaweh\" title=\"User:NasserHalaweh\">NasserHalaweh</a>",
+            "source": "commons-desc-page"
+          },
+          "LicenseShortName": {
+            "value": "CC BY-SA 4.0",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "UsageTerms": {
+            "value": "Creative Commons Attribution-Share Alike 4.0",
+            "source": "commons-desc-page"
+          },
+          "AttributionRequired": {
+            "value": "true",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "LicenseUrl": {
+            "value": "https://creativecommons.org/licenses/by-sa/4.0",
+            "source": "commons-desc-page"
+          },
+          "Copyrighted": {
+            "value": "True",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "Restrictions": {
+            "value": "",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "License": {
+            "value": "cc-by-sa-4.0",
+            "source": "commons-templates",
+            "hidden": ""
+          }
+        }
+      },
+      "editorialStatus": "Unreviewed candidate; no runtime admission"
+    },
+    {
+      "id": "strange-05-04",
+      "characterId": "vesta-prickle",
+      "platform": "facebook",
+      "title": "How's that going",
+      "body": "A mantis called me a coward for eating things that don't run. I asked how his morning was going.",
+      "theme": "predatory swagger challenged by a herbivore",
+      "payoff": "She declines his definition of courage and asks about results.",
+      "subject": "Extatosoma tiaratum",
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/5/5d/Extatosoma_tiaratum_-_Karlsruhe_Zoo_02.jpg/960px-Extatosoma_tiaratum_-_Karlsruhe_Zoo_02.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "alt": "Pale spiny leaf insect hanging from a horizontal branch with a green leaf above her head.",
+        "sceneMatch": "Her leaf-like herbivorous body and nearby foliage ground the retort. The mantis is an imagined visitor, not in the photo.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05"
+      },
+      "provenance": {
+        "title": "File:Extatosoma tiaratum - Karlsruhe Zoo 02.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Extatosoma_tiaratum_-_Karlsruhe_Zoo_02.jpg",
+        "originalUrl": "https://upload.wikimedia.org/wikipedia/commons/5/5d/Extatosoma_tiaratum_-_Karlsruhe_Zoo_02.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+        "creator": "H. Zell",
+        "license": "CC BY-SA 3.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+        "width": 4000,
+        "height": 6000,
+        "sha1": "897445d06cbc7a26ffb2155772110de4dfdf7406",
+        "rawSourceMetadata": {
+          "DateTime": {
+            "value": "2020-01-18 14:10:09",
+            "source": "mediawiki-metadata",
+            "hidden": ""
+          },
+          "ObjectName": {
+            "value": "Extatosoma tiaratum - Karlsruhe Zoo 02",
+            "source": "mediawiki-metadata"
+          },
+          "CommonsMetadataExtension": {
+            "value": 1.2,
+            "source": "extension",
+            "hidden": ""
+          },
+          "Categories": {
+            "value": "GFDL|License migration redundant|Self-published work|Files with coordinates missing SDC location of creation (48° N, 8° E)|Extatosoma tiaratum in zoos|Insects in Zoo Karlsruhe",
+            "source": "commons-categories",
+            "hidden": ""
+          },
+          "Assessments": {
+            "value": "quality",
+            "source": "commons-categories",
+            "hidden": ""
+          },
+          "GPSLatitude": {
+            "value": "48.998719",
+            "source": "commons-desc-page"
+          },
+          "GPSLongitude": {
+            "value": "8.402611",
+            "source": "commons-desc-page"
+          },
+          "GPSMapDatum": {
+            "value": "WGS-84",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "ImageDescription": {
+            "value": "<i><a href=\"https://en.wikipedia.org/wiki/Extatosoma_tiaratum\" class=\"extiw\" title=\"en:Extatosoma tiaratum\">Extatosoma tiaratum</a></i> <small>(Macleay, 1826)</small>, Giant prickly stick insect; <a href=\"https://en.wikipedia.org/wiki/Karlsruhe_Zoo\" class=\"extiw\" title=\"en:Karlsruhe Zoo\">Karlsruhe Zoo</a>, <a href=\"https://en.wikipedia.org/wiki/Karlsruhe\" class=\"extiw\" title=\"en:Karlsruhe\">Karlsruhe</a>, <a href=\"https://en.wikipedia.org/wiki/Germany\" class=\"extiw\" title=\"en:Germany\">Germany</a>.",
+            "source": "commons-desc-page"
+          },
+          "DateTimeOriginal": {
+            "value": "2020-01-15",
+            "source": "commons-desc-page"
+          },
+          "Credit": {
+            "value": "<span class=\"int-own-work\" lang=\"en\">Own work</span>",
+            "source": "commons-desc-page"
+          },
+          "Artist": {
+            "value": "<a href=\"//commons.wikimedia.org/wiki/User:Llez\" title=\"User:Llez\">H. Zell</a>",
+            "source": "commons-desc-page"
+          },
+          "LicenseShortName": {
+            "value": "CC BY-SA 3.0",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "UsageTerms": {
+            "value": "Creative Commons Attribution-Share Alike 3.0",
+            "source": "commons-desc-page"
+          },
+          "AttributionRequired": {
+            "value": "true",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "LicenseUrl": {
+            "value": "https://creativecommons.org/licenses/by-sa/3.0",
+            "source": "commons-desc-page"
+          },
+          "Copyrighted": {
+            "value": "True",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "Restrictions": {
+            "value": "",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "License": {
+            "value": "cc-by-sa-3.0",
+            "source": "commons-templates",
+            "hidden": ""
+          }
+        }
+      },
+      "editorialStatus": "Unreviewed candidate; no runtime admission"
+    },
+    {
+      "id": "strange-05-05",
+      "characterId": "ottilie-hook",
+      "platform": "rss",
+      "title": "Outside lunch",
+      "body": "When I was little, everything I touched was edible. It curved around me in every direction. I assumed this was how things were.\n\nThen I chewed a hole through the world.\n\nI pushed my head through. Nothing to bite. Cool air moved over me. I reached farther. Still nothing. There was an unreasonable amount of elsewhere.\n\nI backed in.\n\nI had no legs. No idea what would hold me up outside. All my experience concerned being inside lunch, and I had just given lunch a draft.\n\nI ate a little around the edge of the hole. Made it wider. Tried again.\n\nEventually I went through.\n\nNow I stand on acorns with six feet and a long face, pretending I have always known about trees.",
+      "theme": "a limited world opening into a larger life",
+      "payoff": "An overwhelming first discovery of the outside becomes the adult's concealed history of uncertainty.",
+      "subject": "Curculio glandium",
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c8/Curculio_glandium_151984588.jpg/960px-Curculio_glandium_151984588.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "alt": "Adult acorn weevil standing on a green acorn beside its textured cup.",
+        "sceneMatch": "This is an adult on an acorn remembering a fictional larval experience. The adult is not portrayed as legless, and its remembered exit is not claimed visible.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05"
+      },
+      "provenance": {
+        "title": "File:Curculio glandium 151984588.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Curculio_glandium_151984588.jpg",
+        "originalUrl": "https://upload.wikimedia.org/wikipedia/commons/c/c8/Curculio_glandium_151984588.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+        "creator": "Dorte Stokholm",
+        "license": "CC BY 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0",
+        "width": 1255,
+        "height": 1255,
+        "sha1": "26c60e7b308fe6997dcf3e357496698e620f29d9",
+        "rawSourceMetadata": {
+          "DateTime": {
+            "value": "2022-04-22 21:05:54",
+            "source": "mediawiki-metadata",
+            "hidden": ""
+          },
+          "ObjectName": {
+            "value": "Curculio glandium 151984588",
+            "source": "mediawiki-metadata"
+          },
+          "CommonsMetadataExtension": {
+            "value": 1.2,
+            "source": "extension",
+            "hidden": ""
+          },
+          "Categories": {
+            "value": "Curculio glandium|Media from iNaturalist|INaturalist images reviewed by iNaturalistReviewBot|Files with coordinates missing SDC location of creation|Curculionidae of Denmark|Uploaded with iNaturalist2Commons|Denmark photographs taken on 2021-08-19",
+            "source": "commons-categories",
+            "hidden": ""
+          },
+          "Assessments": {
+            "value": "",
+            "source": "commons-categories",
+            "hidden": ""
+          },
+          "GPSLatitude": {
+            "value": "55.571137",
+            "source": "commons-desc-page"
+          },
+          "GPSLongitude": {
+            "value": "8.306783",
+            "source": "commons-desc-page"
+          },
+          "GPSMapDatum": {
+            "value": "WGS-84",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "ImageDescription": {
+            "value": "<i>Curculio glandium</i>",
+            "source": "commons-desc-page"
+          },
+          "DateTimeOriginal": {
+            "value": "2021-08-19",
+            "source": "commons-desc-page"
+          },
+          "Credit": {
+            "value": "<a rel=\"nofollow\" class=\"external free\" href=\"https://www.inaturalist.org/photos/151984588\">https://www.inaturalist.org/photos/151984588</a>",
+            "source": "commons-desc-page"
+          },
+          "Artist": {
+            "value": "<a rel=\"nofollow\" class=\"external text\" href=\"https://www.inaturalist.org/users/1750834\">Dorte Stokholm</a>",
+            "source": "commons-desc-page"
+          },
+          "LicenseShortName": {
+            "value": "CC BY 4.0",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "UsageTerms": {
+            "value": "Creative Commons Attribution 4.0",
+            "source": "commons-desc-page"
+          },
+          "AttributionRequired": {
+            "value": "true",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "LicenseUrl": {
+            "value": "https://creativecommons.org/licenses/by/4.0",
+            "source": "commons-desc-page"
+          },
+          "Copyrighted": {
+            "value": "True",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "Restrictions": {
+            "value": "",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "License": {
+            "value": "cc-by-4.0",
+            "source": "commons-templates",
+            "hidden": ""
+          }
+        }
+      },
+      "editorialStatus": "Admitted, integrated in strange-next"
+    },
+    {
+      "id": "strange-05-06",
+      "characterId": "ottilie-hook",
+      "platform": "instagram",
+      "title": "After you",
+      "body": "We tried to kiss goodbye and crossed noses. I backed up. She followed. We tried again.\n\n\"You first,\" she said.\n\n\"That's what I'm trying to do.\"",
+      "theme": "affection with awkward geometry",
+      "payoff": "Their efforts to be considerate keep colliding.",
+      "subject": "Curculio glandium",
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/09/Curculio_glandium_TP03.jpg/960px-Curculio_glandium_TP03.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "alt": "Two female acorn weevils facing each other with their long rostra crossed on a pale blue surface.",
+        "sceneMatch": "Source describes two females; the image clearly shows crossed rostra. The attempted kiss is fictional. The pale blue surface is not mislabeled as a leaf or wild habitat.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05"
+      },
+      "provenance": {
+        "title": "File:Curculio glandium TP03.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Curculio_glandium_TP03.jpg",
+        "originalUrl": "https://upload.wikimedia.org/wikipedia/commons/0/09/Curculio_glandium_TP03.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+        "creator": "Tobias 67",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "width": 1500,
+        "height": 932,
+        "sha1": "69926205f23b654c33b99b2351ea48431920e771",
+        "rawSourceMetadata": {
+          "DateTime": {
+            "value": "2022-04-18 20:18:13",
+            "source": "mediawiki-metadata",
+            "hidden": ""
+          },
+          "ObjectName": {
+            "value": "Curculio glandium TP03",
+            "source": "mediawiki-metadata"
+          },
+          "CommonsMetadataExtension": {
+            "value": 1.2,
+            "source": "extension",
+            "hidden": ""
+          },
+          "Categories": {
+            "value": "Curculio glandium|Self-published work",
+            "source": "commons-categories",
+            "hidden": ""
+          },
+          "Assessments": {
+            "value": "",
+            "source": "commons-categories",
+            "hidden": ""
+          },
+          "ImageDescription": {
+            "value": "Curculio glandium, two females",
+            "source": "commons-desc-page"
+          },
+          "DateTimeOriginal": {
+            "value": "2022-04-18",
+            "source": "commons-desc-page"
+          },
+          "Credit": {
+            "value": "<span class=\"int-own-work\" lang=\"en\">Own work</span>",
+            "source": "commons-desc-page"
+          },
+          "Artist": {
+            "value": "<a href=\"//commons.wikimedia.org/wiki/User:Tobias_67\" title=\"User:Tobias 67\">Tobias 67</a>",
+            "source": "commons-desc-page"
+          },
+          "LicenseShortName": {
+            "value": "CC BY-SA 4.0",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "UsageTerms": {
+            "value": "Creative Commons Attribution-Share Alike 4.0",
+            "source": "commons-desc-page"
+          },
+          "AttributionRequired": {
+            "value": "true",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "LicenseUrl": {
+            "value": "https://creativecommons.org/licenses/by-sa/4.0",
+            "source": "commons-desc-page"
+          },
+          "Copyrighted": {
+            "value": "True",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "Restrictions": {
+            "value": "",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "License": {
+            "value": "cc-by-sa-4.0",
+            "source": "commons-templates",
+            "hidden": ""
+          }
+        }
+      },
+      "editorialStatus": "Admitted, integrated in strange-next"
+    },
+    {
+      "id": "strange-05-07",
+      "characterId": "ottilie-hook",
+      "platform": "x",
+      "title": "Don't tell the ants",
+      "body": "I spent half the morning looking for a way across that crack. I have wings. Please don't tell the ants.",
+      "theme": "habit overpowering a useful ability",
+      "payoff": "The obstacle was mostly her failure to remember what she can do.",
+      "subject": "Curculio glandium",
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/69/Curculio_glandium_36170950.jpg/960px-Curculio_glandium_36170950.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "alt": "Long-rostrumed acorn weevil on pale cracked bark.",
+        "sceneMatch": "The bark fissure and adult body are visible. The forgotten flight option and witnesses are fictional.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05"
+      },
+      "provenance": {
+        "title": "File:Curculio glandium 36170950.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Curculio_glandium_36170950.jpg",
+        "originalUrl": "https://upload.wikimedia.org/wikipedia/commons/6/69/Curculio_glandium_36170950.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+        "creator": "Barry Walter",
+        "license": "CC BY 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0",
+        "width": 1578,
+        "height": 1579,
+        "sha1": "a2e52494b406f3ad2cd1c4a2e5a7ae595483d3d1",
+        "rawSourceMetadata": {
+          "DateTime": {
+            "value": "2022-04-22 21:05:25",
+            "source": "mediawiki-metadata",
+            "hidden": ""
+          },
+          "ObjectName": {
+            "value": "Curculio glandium 36170950",
+            "source": "mediawiki-metadata"
+          },
+          "CommonsMetadataExtension": {
+            "value": 1.2,
+            "source": "extension",
+            "hidden": ""
+          },
+          "Categories": {
+            "value": "Curculio glandium|Media from iNaturalist|United Kingdom photographs taken on 2019-04-17|INaturalist images reviewed by iNaturalistReviewBot|Curculionidae of the United Kingdom|Uploaded with iNaturalist2Commons|Files with coordinates missing SDC location of creation (51° N, 0° E)",
+            "source": "commons-categories",
+            "hidden": ""
+          },
+          "Assessments": {
+            "value": "",
+            "source": "commons-categories",
+            "hidden": ""
+          },
+          "GPSLatitude": {
+            "value": "51.160699",
+            "source": "commons-desc-page"
+          },
+          "GPSLongitude": {
+            "value": "0.252852",
+            "source": "commons-desc-page"
+          },
+          "GPSMapDatum": {
+            "value": "WGS-84",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "ImageDescription": {
+            "value": "<i>Curculio glandium</i>",
+            "source": "commons-desc-page"
+          },
+          "DateTimeOriginal": {
+            "value": "2019-04-17",
+            "source": "commons-desc-page"
+          },
+          "Credit": {
+            "value": "<a rel=\"nofollow\" class=\"external free\" href=\"https://www.inaturalist.org/photos/36170950\">https://www.inaturalist.org/photos/36170950</a>",
+            "source": "commons-desc-page"
+          },
+          "Artist": {
+            "value": "<a rel=\"nofollow\" class=\"external text\" href=\"https://www.inaturalist.org/users/1006407\">Barry Walter</a>",
+            "source": "commons-desc-page"
+          },
+          "LicenseShortName": {
+            "value": "CC BY 4.0",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "UsageTerms": {
+            "value": "Creative Commons Attribution 4.0",
+            "source": "commons-desc-page"
+          },
+          "AttributionRequired": {
+            "value": "true",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "LicenseUrl": {
+            "value": "https://creativecommons.org/licenses/by/4.0",
+            "source": "commons-desc-page"
+          },
+          "Copyrighted": {
+            "value": "True",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "Restrictions": {
+            "value": "",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "License": {
+            "value": "cc-by-4.0",
+            "source": "commons-templates",
+            "hidden": ""
+          }
+        }
+      },
+      "editorialStatus": "Admitted, integrated in strange-next"
+    },
+    {
+      "id": "strange-05-08",
+      "characterId": "ottilie-hook",
+      "platform": "facebook",
+      "title": "Off duty",
+      "body": "I spent the afternoon doing nothing on a leaf. A male asked if he could join me. I said that sounded like work.",
+      "theme": "rest and a blunt boundary",
+      "payoff": "An invitation fails the test of whether it improves doing nothing.",
+      "subject": "Curculio glandium",
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/02/Curculio_glandium_38322585.jpg/960px-Curculio_glandium_38322585.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "alt": "Acorn weevil resting on a vivid green leaf.",
+        "sceneMatch": "A solitary beetle on a leaf supports the rest scene; the declined visitor is not claimed visible.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05"
+      },
+      "provenance": {
+        "title": "File:Curculio glandium 38322585.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Curculio_glandium_38322585.jpg",
+        "originalUrl": "https://upload.wikimedia.org/wikipedia/commons/0/02/Curculio_glandium_38322585.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+        "creator": "Barry Walter",
+        "license": "CC BY 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0",
+        "width": 1629,
+        "height": 1629,
+        "sha1": "33e602914896bde7c9db4d64315e428d754b8281",
+        "rawSourceMetadata": {
+          "DateTime": {
+            "value": "2022-04-22 21:03:45",
+            "source": "mediawiki-metadata",
+            "hidden": ""
+          },
+          "ObjectName": {
+            "value": "Curculio glandium 38322585",
+            "source": "mediawiki-metadata"
+          },
+          "CommonsMetadataExtension": {
+            "value": 1.2,
+            "source": "extension",
+            "hidden": ""
+          },
+          "Categories": {
+            "value": "Curculio glandium|Media from iNaturalist|INaturalist images reviewed by iNaturalistReviewBot|Curculionidae of the United Kingdom|United Kingdom photographs taken on 2019-04-29|Uploaded with iNaturalist2Commons|Files with coordinates missing SDC location of creation (51° N, 0° E)",
+            "source": "commons-categories",
+            "hidden": ""
+          },
+          "Assessments": {
+            "value": "",
+            "source": "commons-categories",
+            "hidden": ""
+          },
+          "GPSLatitude": {
+            "value": "51.125458",
+            "source": "commons-desc-page"
+          },
+          "GPSLongitude": {
+            "value": "0.249189",
+            "source": "commons-desc-page"
+          },
+          "GPSMapDatum": {
+            "value": "WGS-84",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "ImageDescription": {
+            "value": "<i>Curculio glandium</i>",
+            "source": "commons-desc-page"
+          },
+          "DateTimeOriginal": {
+            "value": "2019-04-29",
+            "source": "commons-desc-page"
+          },
+          "Credit": {
+            "value": "<a rel=\"nofollow\" class=\"external free\" href=\"https://www.inaturalist.org/photos/38322585\">https://www.inaturalist.org/photos/38322585</a>",
+            "source": "commons-desc-page"
+          },
+          "Artist": {
+            "value": "<a rel=\"nofollow\" class=\"external text\" href=\"https://www.inaturalist.org/users/1006407\">Barry Walter</a>",
+            "source": "commons-desc-page"
+          },
+          "LicenseShortName": {
+            "value": "CC BY 4.0",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "UsageTerms": {
+            "value": "Creative Commons Attribution 4.0",
+            "source": "commons-desc-page"
+          },
+          "AttributionRequired": {
+            "value": "true",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "LicenseUrl": {
+            "value": "https://creativecommons.org/licenses/by/4.0",
+            "source": "commons-desc-page"
+          },
+          "Copyrighted": {
+            "value": "True",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "Restrictions": {
+            "value": "",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "License": {
+            "value": "cc-by-4.0",
+            "source": "commons-templates",
+            "hidden": ""
+          }
+        }
+      },
+      "editorialStatus": "Admitted, integrated in strange-next"
+    },
+    {
+      "id": "strange-05-09",
+      "characterId": "dora-dew",
+      "platform": "rss",
+      "title": "Expansion plans",
+      "body": "My leaves went brown one at a time. I kept expecting somebody to say whether I was doing this correctly.\n\nThe moss said it happened every year.\n\nThat was easy for him to say. He was still green.\n\nI folded into the small tight part of myself and tried to remember what spring felt like. All I could remember was wanting summer. It seemed I had used the whole season waiting for a better one.\n\n\"What if I don't wake up?\"\n\nThe moss considered this.\n\n\"I'll grow around you.\"\n\nI told him I had asked for reassurance, not expansion plans.\n\nHe said he would grow around me if I did wake up, too.\n\nI thought about that for a while. Then asked him to leave room for the leaves.",
+      "theme": "mortality, dormancy and unsentimental companionship",
+      "payoff": "The moss's apparently alarming answer turns out to include both possible futures.",
+      "subject": "Drosera rotundifolia",
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/00/Drosera_rotundifolia_hibernaculum_kz03.jpg/960px-Drosera_rotundifolia_hibernaculum_kz03.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "alt": "Compact reddish sundew winter bud surrounded by old brown leaves and living green moss.",
+        "sceneMatch": "The winter bud, senesced leaves and green moss are directly visible. Fear and dialogue are imagined, not biological claims about conscious dormancy.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05"
+      },
+      "provenance": {
+        "title": "File:Drosera rotundifolia hibernaculum kz03.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Drosera_rotundifolia_hibernaculum_kz03.jpg",
+        "originalUrl": "https://upload.wikimedia.org/wikipedia/commons/0/00/Drosera_rotundifolia_hibernaculum_kz03.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+        "creator": "Krzysztof Ziarnek, Kenraiz",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "width": 2829,
+        "height": 1886,
+        "sha1": "db71996f60b3841bd00ca9c0af433a048d7fff92",
+        "rawSourceMetadata": {
+          "DateTime": {
+            "value": "2021-09-25 19:14:39",
+            "source": "mediawiki-metadata",
+            "hidden": ""
+          },
+          "ObjectName": {
+            "value": "Drosera rotundifolia hibernaculum kz03",
+            "source": "mediawiki-metadata"
+          },
+          "CommonsMetadataExtension": {
+            "value": 1.2,
+            "source": "extension",
+            "hidden": ""
+          },
+          "Categories": {
+            "value": "Drosera rotundifolia|Self-published work|Files with coordinates missing SDC location of creation|Drosera rotundifolia in Poland",
+            "source": "commons-categories",
+            "hidden": ""
+          },
+          "Assessments": {
+            "value": "",
+            "source": "commons-categories",
+            "hidden": ""
+          },
+          "GPSLatitude": {
+            "value": "52.945150",
+            "source": "commons-desc-page"
+          },
+          "GPSLongitude": {
+            "value": "15.256112",
+            "source": "commons-desc-page"
+          },
+          "GPSMapDatum": {
+            "value": "WGS-84",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "ImageDescription": {
+            "value": "Drosera rotundifolia hibernaculum. Okno near Barlinek, NW Poland",
+            "source": "commons-desc-page"
+          },
+          "DateTimeOriginal": {
+            "value": "2021-09-25 11:26:08",
+            "source": "commons-desc-page"
+          },
+          "Credit": {
+            "value": "<span class=\"int-own-work\" lang=\"en\">Own work</span>",
+            "source": "commons-desc-page"
+          },
+          "Artist": {
+            "value": "<a href=\"//commons.wikimedia.org/wiki/User:Kenraiz\" title=\"User:Kenraiz\">Krzysztof Ziarnek, Kenraiz</a>",
+            "source": "commons-desc-page"
+          },
+          "LicenseShortName": {
+            "value": "CC BY-SA 4.0",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "UsageTerms": {
+            "value": "Creative Commons Attribution-Share Alike 4.0",
+            "source": "commons-desc-page"
+          },
+          "AttributionRequired": {
+            "value": "true",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "LicenseUrl": {
+            "value": "https://creativecommons.org/licenses/by-sa/4.0",
+            "source": "commons-desc-page"
+          },
+          "Copyrighted": {
+            "value": "True",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "Restrictions": {
+            "value": "",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "License": {
+            "value": "cc-by-sa-4.0",
+            "source": "commons-templates",
+            "hidden": ""
+          }
+        }
+      },
+      "editorialStatus": "Unreviewed candidate; no runtime admission"
+    },
+    {
+      "id": "strange-05-10",
+      "characterId": "dora-dew",
+      "platform": "rss",
+      "title": "What else is there",
+      "body": "Bea told me about the lake. I asked how much water.\n\nShe said I wouldn't believe her.\n\nI asked what was past the lake. Trees. Past the trees, more flowers. Past those, she didn't know. She had turned back because it was getting cold.\n\nI had a great many questions about turning back. About choosing a direction. About having the air underneath you instead of above you.\n\nShe settled on my flower and said she was tired.\n\nI stopped asking.\n\nAfter a while I asked whether I was missing much.\n\n\"Yes,\" she said.\n\nI wished she had lied.\n\nThen she put her face into the flower and stayed there so long I wondered if she had fallen asleep.\n\n\"You do have this, though,\" she said.",
+      "theme": "curiosity, limitation and another creature's pleasure",
+      "payoff": "Her envy of travel encounters the traveler's pleasure in something she already possesses.",
+      "subject": "Drosera rotundifolia",
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/eb/Drosera_rotundifolia_TK_2023-07-08_10.jpg/960px-Drosera_rotundifolia_TK_2023-07-08_10.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "alt": "Open white sundew flower with a green center and unopened buds behind it.",
+        "sceneMatch": "The flower is the sensory place the visitor values. The bee, lake and journey are fictional and are not claimed photographed.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05"
+      },
+      "provenance": {
+        "title": "File:Drosera rotundifolia TK 2023-07-08 10.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Drosera_rotundifolia_TK_2023-07-08_10.jpg",
+        "originalUrl": "https://upload.wikimedia.org/wikipedia/commons/e/eb/Drosera_rotundifolia_TK_2023-07-08_10.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+        "creator": "T. Kebert",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "width": 5929,
+        "height": 3953,
+        "sha1": "484f8d627ef4f9951223424a2cb7a9dd2d4662d0",
+        "rawSourceMetadata": {
+          "DateTime": {
+            "value": "2023-07-08 17:43:42",
+            "source": "mediawiki-metadata",
+            "hidden": ""
+          },
+          "ObjectName": {
+            "value": "Drosera rotundifolia TK 2023-07-08 10",
+            "source": "mediawiki-metadata"
+          },
+          "CommonsMetadataExtension": {
+            "value": 1.2,
+            "source": "extension",
+            "hidden": ""
+          },
+          "Categories": {
+            "value": "Self-published work|Photos by Nefronus|Drosera rotundifolia (flowers)|Drosera rotundifolia in Czechia",
+            "source": "commons-categories",
+            "hidden": ""
+          },
+          "Assessments": {
+            "value": "quality",
+            "source": "commons-categories",
+            "hidden": ""
+          },
+          "ImageDescription": {
+            "value": "Flower of <i>Drosera rotundifolia</i>, CHKO Brdy, Czechia. Note the 5 stamens and 3 bilobed styles. The diameter of the flower is about 5 mm.",
+            "source": "commons-desc-page"
+          },
+          "DateTimeOriginal": {
+            "value": "2023-07-08 11:36:50",
+            "source": "commons-desc-page"
+          },
+          "Credit": {
+            "value": "<span class=\"int-own-work\" lang=\"en\">Own work</span>",
+            "source": "commons-desc-page"
+          },
+          "Artist": {
+            "value": "<a href=\"//commons.wikimedia.org/wiki/User:Nefronus\" title=\"User:Nefronus\">T. Kebert</a>",
+            "source": "commons-desc-page"
+          },
+          "LicenseShortName": {
+            "value": "CC BY-SA 4.0",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "UsageTerms": {
+            "value": "Creative Commons Attribution-Share Alike 4.0",
+            "source": "commons-desc-page"
+          },
+          "AttributionRequired": {
+            "value": "true",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "LicenseUrl": {
+            "value": "https://creativecommons.org/licenses/by-sa/4.0",
+            "source": "commons-desc-page"
+          },
+          "Copyrighted": {
+            "value": "True",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "Restrictions": {
+            "value": "",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "License": {
+            "value": "cc-by-sa-4.0",
+            "source": "commons-templates",
+            "hidden": ""
+          }
+        }
+      },
+      "editorialStatus": "Unreviewed candidate; no runtime admission"
+    },
+    {
+      "id": "strange-05-11",
+      "characterId": "dora-dew",
+      "platform": "linkedin",
+      "title": "Further research",
+      "body": "Darwin put meat, cheese and bits of glass on my relatives, then wrote a book about what happened. I've read it. I would like to put a few things on Darwin.",
+      "theme": "the observed organism questions the observer",
+      "payoff": "The scientific subject proposes reversing the experiment.",
+      "references": [
+        {
+          "url": "https://darwin-online.org.uk/converted/published/1875_Insectivorous_F1217/1875_Insect_F1217.html",
+          "note": "Charles Darwin, Insectivorous Plants,1875, original primary text. Chapters on Drosera include meat, cheese and glass experiments. The narrator's proposed response is invented, not a Darwin quotation."
+        }
+      ],
+      "subject": "Drosera rotundifolia",
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/15/Drosera_rotundifolia_-_%D0%A0%D0%BE%D1%81%D1%8F%D0%BD%D0%BA%D0%B0_%D0%B2_%D0%9D%D0%9F%D0%9F_%22%D0%A1%D0%BB%D0%BE%D0%B1%D0%BE%D0%B6%D0%B0%D0%BD%D1%81%D0%BA%D0%B8%D0%B9%22.jpg/960px-Drosera_rotundifolia_-_%D0%A0%D0%BE%D1%81%D1%8F%D0%BD%D0%BA%D0%B0_%D0%B2_%D0%9D%D0%9F%D0%9F_%22%D0%A1%D0%BB%D0%BE%D0%B1%D0%BE%D0%B6%D0%B0%D0%BD%D1%81%D0%BA%D0%B8%D0%B9%22.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "alt": "Close view of round sundew leaves bearing red glandular tentacles and clear adhesive droplets.",
+        "sceneMatch": "The responsive glandular leaves are the structures discussed in Darwin's experiments. No glass, historical experiment or researcher is claimed visible.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05"
+      },
+      "provenance": {
+        "title": "File:Drosera rotundifolia - Росянка в НПП \"Слобожанский\".jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Drosera_rotundifolia_-_%D0%A0%D0%BE%D1%81%D1%8F%D0%BD%D0%BA%D0%B0_%D0%B2_%D0%9D%D0%9F%D0%9F_%22%D0%A1%D0%BB%D0%BE%D0%B1%D0%BE%D0%B6%D0%B0%D0%BD%D1%81%D0%BA%D0%B8%D0%B9%22.jpg",
+        "originalUrl": "https://upload.wikimedia.org/wikipedia/commons/1/15/Drosera_rotundifolia_-_%D0%A0%D0%BE%D1%81%D1%8F%D0%BD%D0%BA%D0%B0_%D0%B2_%D0%9D%D0%9F%D0%9F_%22%D0%A1%D0%BB%D0%BE%D0%B1%D0%BE%D0%B6%D0%B0%D0%BD%D1%81%D0%BA%D0%B8%D0%B9%22.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+        "creator": "Ryzhkov Sergey",
+        "license": "CC BY-SA 3.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+        "width": 3000,
+        "height": 2296,
+        "sha1": "1635820ef6ab5f2e3ac4cb221100a842583312f1",
+        "rawSourceMetadata": {
+          "DateTime": {
+            "value": "2014-11-28 17:36:32",
+            "source": "mediawiki-metadata",
+            "hidden": ""
+          },
+          "ObjectName": {
+            "value": "Drosera rotundifolia - Росянка в НПП \"Слобожанский\"",
+            "source": "mediawiki-metadata"
+          },
+          "CommonsMetadataExtension": {
+            "value": 1.2,
+            "source": "extension",
+            "hidden": ""
+          },
+          "Categories": {
+            "value": "Taken with Nikon D5100|National Park Slobozhanskyi|Sergiy Ryzhkov|Self-published work|Natural heritage sites in Ukraine with known IDs|Images from Wiki Loves Earth 2014 in Ukraine|WLE 2014 in Ukraine Round Zero|Images from Wiki Loves Earth 2014|Droseraceae in Ukraine|Uploaded via Campaign:wle-ua|Images from Wiki Loves Earth missing SDC depicts|Drosera rotundifolia (leaves)|Images from Wiki Loves Earth missing SDC location of creation|Droseraceae in the Northern Hemisphere in July 2013|WLE 2014 in Ukraine Round Zero - Category 10",
+            "source": "commons-categories",
+            "hidden": ""
+          },
+          "Assessments": {
+            "value": "quality",
+            "source": "commons-categories",
+            "hidden": ""
+          },
+          "ImageDescription": {
+            "value": "Drosera rotundifolia in National Park Slobozhanskyi",
+            "source": "commons-desc-page"
+          },
+          "DateTimeOriginal": {
+            "value": "2013-07-31 16:31:49",
+            "source": "commons-desc-page"
+          },
+          "Credit": {
+            "value": "<span class=\"int-own-work\" lang=\"en\">Own work</span>",
+            "source": "commons-desc-page"
+          },
+          "Artist": {
+            "value": "<a href=\"//commons.wikimedia.org/wiki/User:Ryzhkov_Sergey\" title=\"User:Ryzhkov Sergey\">Ryzhkov Sergey</a>",
+            "source": "commons-desc-page"
+          },
+          "LicenseShortName": {
+            "value": "CC BY-SA 3.0",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "UsageTerms": {
+            "value": "Creative Commons Attribution-Share Alike 3.0",
+            "source": "commons-desc-page"
+          },
+          "AttributionRequired": {
+            "value": "true",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "LicenseUrl": {
+            "value": "https://creativecommons.org/licenses/by-sa/3.0",
+            "source": "commons-desc-page"
+          },
+          "Copyrighted": {
+            "value": "True",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "Restrictions": {
+            "value": "",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "License": {
+            "value": "cc-by-sa-3.0",
+            "source": "commons-templates",
+            "hidden": ""
+          }
+        }
+      },
+      "editorialStatus": "Unreviewed candidate; no runtime admission"
+    },
+    {
+      "id": "strange-05-12",
+      "characterId": "dora-dew",
+      "platform": "x",
+      "title": "You come here",
+      "body": "My neighbor says I never come over. I asked her to demonstrate.",
+      "theme": "friendship expectations between rooted organisms",
+      "payoff": "The same physical limitation applies to the accuser.",
+      "subject": "Drosera rotundifolia",
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/06/Ronde_zonnedauw_-_round-leaved_sundew_-_Drosera_rotundifolia_2.jpg/960px-Ronde_zonnedauw_-_round-leaved_sundew_-_Drosera_rotundifolia_2.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "alt": "Two round-leaved sundew rosettes growing beside each other on damp open ground.",
+        "sceneMatch": "Two rooted plants visibly share a small patch. The complaint and retort are imaginary.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05"
+      },
+      "provenance": {
+        "title": "File:Ronde zonnedauw - round-leaved sundew - Drosera rotundifolia 2.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Ronde_zonnedauw_-_round-leaved_sundew_-_Drosera_rotundifolia_2.jpg",
+        "originalUrl": "https://upload.wikimedia.org/wikipedia/commons/0/06/Ronde_zonnedauw_-_round-leaved_sundew_-_Drosera_rotundifolia_2.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+        "creator": "Bouke ten Cate",
+        "license": "CC BY 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0",
+        "width": 2863,
+        "height": 1909,
+        "sha1": "d5e11d663090853daf19ecb79b4c5b80bbab69bb",
+        "rawSourceMetadata": {
+          "DateTime": {
+            "value": "2025-07-17 17:04:04",
+            "source": "mediawiki-metadata",
+            "hidden": ""
+          },
+          "ObjectName": {
+            "value": "Ronde zonnedauw - round-leaved sundew - Drosera rotundifolia 2",
+            "source": "mediawiki-metadata"
+          },
+          "CommonsMetadataExtension": {
+            "value": 1.2,
+            "source": "extension",
+            "hidden": ""
+          },
+          "Categories": {
+            "value": "Drosera rotundifolia|Carnivorous plants|Schoorlse Duinen|Self-published work|Files with coordinates missing SDC location of creation (52° N, 4° E)",
+            "source": "commons-categories",
+            "hidden": ""
+          },
+          "Assessments": {
+            "value": "",
+            "source": "commons-categories",
+            "hidden": ""
+          },
+          "GPSLatitude": {
+            "value": "52.719794",
+            "source": "commons-desc-page"
+          },
+          "GPSLongitude": {
+            "value": "4.654697",
+            "source": "commons-desc-page"
+          },
+          "GPSMapDatum": {
+            "value": "WGS-84",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "ImageDescription": {
+            "value": "Round-leaved Sundew (Drosera rotundifolia) in an oligotrophic dune slack in De Schoorlse Duinen - the Netherlands",
+            "source": "commons-desc-page"
+          },
+          "DateTimeOriginal": {
+            "value": "2016-05-28 16:20:23",
+            "source": "commons-desc-page"
+          },
+          "Credit": {
+            "value": "<span class=\"int-own-work\" lang=\"en\">Own work</span>",
+            "source": "commons-desc-page"
+          },
+          "Artist": {
+            "value": "<a href=\"//commons.wikimedia.org/wiki/User:BouketenCate\" title=\"User:BouketenCate\">Bouke ten Cate</a>",
+            "source": "commons-desc-page"
+          },
+          "LicenseShortName": {
+            "value": "CC BY 4.0",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "UsageTerms": {
+            "value": "Creative Commons Attribution 4.0",
+            "source": "commons-desc-page"
+          },
+          "AttributionRequired": {
+            "value": "true",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "LicenseUrl": {
+            "value": "https://creativecommons.org/licenses/by/4.0",
+            "source": "commons-desc-page"
+          },
+          "Copyrighted": {
+            "value": "True",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "Restrictions": {
+            "value": "",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "License": {
+            "value": "cc-by-4.0",
+            "source": "commons-templates",
+            "hidden": ""
+          }
+        }
+      },
+      "editorialStatus": "Unreviewed candidate; no runtime admission"
+    }
+  ]
+}

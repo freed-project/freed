@@ -1,0 +1,502 @@
+{
+  "status": "draft_not_admitted",
+  "canon": "OCEAN-REGULAR-21-CANON.md",
+  "network": "Independent NOAA discovery only; no Commons retries or routing around blocked Commons assets.",
+  "sourcesReviewed": 16,
+  "proposals": [
+    {
+      "id": "ocean-21-01",
+      "characterId": "tobin-sound",
+      "sequence": 1,
+      "kind": "regular",
+      "title": "At the top",
+      "body": "I had meant to come down neatly. There was a moment at the top when I still thought I might. I spread both flippers. That made the splash wider.",
+      "decision": "propose_for_independent_review",
+      "review": "Strong. Breach and long flippers drive the imagined sequence; splash size and intent are fiction, not a biological explanation of breaching.",
+      "visibleScene": "A humpback is mostly out of the water at an angle, with its pleated underside, both long flippers and falling spray visible.",
+      "sourceIndex": 1,
+      "media": {
+        "index": 1,
+        "characterSpecies": "humpback",
+        "sourcePage": "https://www.fisheries.noaa.gov/species/humpback-whale",
+        "imageUrl": "https://www.fisheries.noaa.gov/s3/dam-migration/2160x1440_humpbackwhale_noaa.jpg",
+        "originalDimensions": [
+          1280,
+          853
+        ],
+        "sha1": "0b5bf9a7fde26b7e4a50b9fa51b60057dd887a54",
+        "sha256": "35ec5a27b9de2a044cd9e3b7d78276e4cd292166d4413427d3094928501a14be",
+        "localPath": "/tmp/freed-ocean-21/source-01.jpg",
+        "sourceAlt": "Humpback whale breaching. Credit: NOAA Fisheries.",
+        "sourceContext": " \n\n\n                  \n       Humpback whale breaching. Credit: NOAA Fisheries \n    \n      \n\n       \n     \n  \n               Humpback whale breaching. Credit: NOAA Fisheries \n                       \n\n          \n                                     About the Species \n                      \n           \n                                 \n       \n        \n\n\n  \n      \n  \n  \n\n\n \n\n\n                  \n       Humpback whale breaching. Credit: NOAA Fisheries \n    \n      \n\n       \n     \n ",
+        "attribution": "NOAA Fisheries",
+        "license": "Public domain, NOAA-authored United States government image",
+        "licenseUrl": "https://sanctuaries.noaa.gov/news/media/",
+        "width": 1280,
+        "height": 853,
+        "alt": "A humpback is mostly out of the water at an angle, with its pleated underside, both long flippers and falling spray visible.",
+        "individuallyOpened": true
+      }
+    },
+    {
+      "id": "ocean-21-03",
+      "characterId": "tobin-sound",
+      "sequence": 2,
+      "kind": "regular",
+      "title": "Through the middle",
+      "body": "Went round underneath them blowing bubbles. They drew together; I came up through the middle. The circle looked so tidy before I put my head through it.",
+      "decision": "propose_for_independent_review",
+      "review": "Strong. The visible bubble ring and NOAA-identified feeding tactic supply the event. Competent feeding, no meal frustration or unseen whale partner.",
+      "visibleScene": "Aerial view of a humpback rising mouth-first within a curved ring of foam and bubbles. The caption explicitly identifies bubble-net feeding. No second whale is resolved.",
+      "sourceIndex": 3,
+      "media": {
+        "index": 3,
+        "characterSpecies": "humpback",
+        "sourcePage": "https://www.fisheries.noaa.gov/species/humpback-whale",
+        "imageUrl": "https://www.fisheries.noaa.gov/s3/dam-migration-miss/1280_Rk8sd0CKh8ls_0.jpg",
+        "originalDimensions": [
+          1280,
+          853
+        ],
+        "sha1": "561f426fd24dd73aa7b7040c3e3059c5dc9e80c7",
+        "sha256": "c99501f4461af9934d156b467486dfe4584aec26223fd72c902e81a02e404bde",
+        "localPath": "/tmp/freed-ocean-21/source-03.jpg",
+        "sourceAlt": "Humpback whale feeding at water",
+        "sourceContext": " \n\n \n           \n\n \n \n\n One of the humpback's most interesting behaviors is bubble-net feeding, a complex and coordinated tactic for capturing many fish at once. Credit: NOAA Northeast Fisheries Science Center/Christin Khan \n \n   Acoustic Science    Other research is focused on the acoustic environment of cetaceans, including humpback whales. Acoustics is the science of how sound is transmitted. This research involves increasing our understanding of the basic acoustic behavior of whales, dolphins, and fish; mapping the acoustic environment; and",
+        "attribution": "NOAA Northeast Fisheries Science Center/Christin Khan",
+        "license": "Public domain, NOAA-authored United States government image",
+        "licenseUrl": "https://sanctuaries.noaa.gov/news/media/",
+        "width": 1280,
+        "height": 853,
+        "alt": "Aerial view of a humpback rising mouth-first within a curved ring of foam and bubbles. The caption explicitly identifies bubble-net feeding. No second whale is resolved.",
+        "individuallyOpened": true
+      }
+    },
+    {
+      "id": "ocean-21-02",
+      "characterId": "tobin-sound",
+      "sequence": 3,
+      "kind": "regular",
+      "title": "Letting the water out",
+      "body": "Came up with my mouth full. Kept the fish behind my baleen and let the water run out. For a little while I was mostly waterfall.",
+      "decision": "propose_for_independent_review",
+      "review": "Review. A separate filtering stage with a strong physical image, but the second feeding post may feel less novel after the bubble net. Prey retention is biological context, not prey visibly counted in frame.",
+      "visibleScene": "Close side view of a humpback head at the surface, with water streaming from the partly open mouth. Individual prey are not resolved.",
+      "sourceIndex": 2,
+      "media": {
+        "index": 2,
+        "characterSpecies": "humpback",
+        "sourcePage": "https://www.fisheries.noaa.gov/species/humpback-whale",
+        "imageUrl": "https://www.fisheries.noaa.gov/s3/dam-migration-miss/1280_0dtiifyczcEg_0.jpg",
+        "originalDimensions": [
+          1280,
+          853
+        ],
+        "sha1": "a13b2a8472e42f5467c68560a2cd281f450a9ae2",
+        "sha256": "a07d923fd1c110ddec1f262fa2f0d39c273b99b83ac051bfad86a62712bcbd58",
+        "localPath": "/tmp/freed-ocean-21/source-02.jpg",
+        "sourceAlt": "Humpback whale at water",
+        "sourceContext": " \n\n \n           \n\n \n \n\n Humpback whale at water's surface. Credit: NOAA Southwest Fisheries Science Center/Robert Pitman \n \n \n      \n                                                                                                                                                                                              Conservation Efforts \n                                                            \n              Designating Marine Protected Areas for Humpback Whales   In 1992, the U.S. Congress created the\u00a0   Hawaiian Islands Humpback Whale",
+        "attribution": "NOAA Southwest Fisheries Science Center/Robert Pitman",
+        "license": "Public domain, NOAA-authored United States government image",
+        "licenseUrl": "https://sanctuaries.noaa.gov/news/media/",
+        "width": 1280,
+        "height": 853,
+        "alt": "Close side view of a humpback head at the surface, with water streaming from the partly open mouth. Individual prey are not resolved.",
+        "individuallyOpened": true
+      }
+    },
+    {
+      "id": "ocean-21-05",
+      "characterId": "fenn-lowtide",
+      "sequence": 1,
+      "kind": "regular",
+      "title": "Keeping dry",
+      "body": "Raised my tail to keep it off the wet sand. Then my head. The middle of me was still cold. I looked over at the others to see whether they had solved this.",
+      "decision": "propose_for_independent_review",
+      "review": "Review. Banana posture is visible and species-typical. Cold sensation and consultation are fiction; do not present the joke as the physiological purpose of the posture. Chatham source must be accepted as species-level illustration before admission.",
+      "visibleScene": "Several harbor seals rest on sand. Heads are raised in the front row; seals behind hold both heads and rear flippers up. Caption location is Chatham, Massachusetts.",
+      "sourceIndex": 5,
+      "media": {
+        "index": 5,
+        "characterSpecies": "harbor",
+        "sourcePage": "https://www.fisheries.noaa.gov/species/harbor-seal",
+        "imageUrl": "https://www.fisheries.noaa.gov/s3/dam-migration/750x500-harbor-seal.jpg",
+        "originalDimensions": [
+          750,
+          500
+        ],
+        "sha1": "97727d002e56b437ee97b4a8a7e0fcaa6c281aae",
+        "sha256": "7011d824f0415b9aa8f2967578d7f212bd264ca27b00f21f91aed9f9c0a1305a",
+        "localPath": "/tmp/freed-ocean-21/source-05.jpg",
+        "sourceAlt": "750x500-harbor-seal.jpg",
+        "sourceContext": " \n\n\n                  \n       Harbor seals in Chatham MA - Photo: NOAA Fisheries \n    \n      \n\n       \n     \n  \n               Harbor seals in Chatham MA - Photo: NOAA Fisheries \n                       \n\n          \n                                     About the Species \n                      \n           \n                                 \n       \n        \n\n\n  \n      \n  \n  \n\n\n \n\n\n                  \n       Harbor seals in Chatham MA - Photo: NOAA Fisheries \n    \n      \n\n       \n     \n  \n              <p class=\"fea",
+        "attribution": "NOAA Fisheries",
+        "license": "Public domain, NOAA-authored United States government image",
+        "licenseUrl": "https://sanctuaries.noaa.gov/news/media/",
+        "width": 750,
+        "height": 500,
+        "alt": "Several harbor seals rest on sand. Heads are raised in the front row; seals behind hold both heads and rear flippers up. Caption location is Chatham, Massachusetts.",
+        "individuallyOpened": true
+      }
+    },
+    {
+      "id": "ocean-21-06",
+      "characterId": "fenn-lowtide",
+      "sequence": 2,
+      "kind": "regular",
+      "title": "The other view",
+      "body": "I woke up looking out to sea. I had gone to sleep facing the glacier. Everyone was still beside me, so I lay my head down again. We could finish turning without my help.",
+      "decision": "propose_for_independent_review",
+      "review": "Strong subject to geography review. A drifting ice platform supports the invented rotation; no measured turn or observed sleep sequence is asserted. No pup is assigned to Fenn.",
+      "visibleScene": "Harbor seals, including small pups, lie on a blue-white ice floe in gray glacial water. An adult near the right edge faces the camera. The floe is visibly surrounded by water; rotation is imagined.",
+      "sourceIndex": 6,
+      "media": {
+        "index": 6,
+        "characterSpecies": "harbor",
+        "sourcePage": "https://www.fisheries.noaa.gov/species/harbor-seal",
+        "imageUrl": "https://www.fisheries.noaa.gov/s3/2025-07/Harbor-seals-on-ice.-Photo-by-NOAAs-Alaska-Fisheries-Science-Center.jpg",
+        "originalDimensions": [
+          2160,
+          1446
+        ],
+        "sha1": "b19af9a0c7c4a08030747d26dec40005fe06007b",
+        "sha256": "bd721f5477c7a61cfa7c909a0a9e78d712653516aa81c87bd1ff6c407af8dacd",
+        "localPath": "/tmp/freed-ocean-21/source-06.jpg",
+        "sourceAlt": "Alaska harbor seals and their pups rest on ice",
+        "sourceContext": " \n\n\n    \n\n       \n     \n  \n    \n   \n   \n     Feature Story \n     \n       \n Late Spring Brings Sun, Flowers\u2014and Harbor Seal Pups to Alaska\u2019s Glacial Fjords \n \n     \n     \n      \n   \n                  \n         Alaska \n       \n       \n     \n   \n \n\n\n               \n           \n                  \n        \n\n\n\n\n \n   \n\n                 \n       \n        \n\n\n  \n      \n  \n  \n\n\n<img class=\"dam-image img-responsive\" src=\"/s3//styles/in",
+        "attribution": "NOAA Alaska Fisheries Science Center",
+        "license": "Public domain, NOAA-authored United States government image",
+        "licenseUrl": "https://sanctuaries.noaa.gov/news/media/",
+        "width": 2160,
+        "height": 1446,
+        "alt": "Harbor seals, including small pups, lie on a blue-white ice floe in gray glacial water. An adult near the right edge faces the camera. The floe is visibly surrounded by water; rotation is imagined.",
+        "individuallyOpened": true
+      }
+    },
+    {
+      "id": "ocean-21-15",
+      "characterId": "selma-shore",
+      "sequence": 1,
+      "kind": "regular",
+      "title": "Behind my ear",
+      "body": "When I was a pup, I found I could get a hind flipper behind my ear. Reaching it was easy. Staying up on the other flippers took more attention. The itch kept winning.",
+      "decision": "propose_for_independent_review",
+      "review": "Strong. Explicit childhood memory and visible self-scratch. Does not imply another pup is scratching her. The image supports the body mechanics; difficulty balancing is imagined.",
+      "visibleScene": "Three California sea lion pups rest together. The left pup bends a hind flipper up beside its own head while supported on a foreflipper. The source alt describes scratching. This is not another animal giving a massage.",
+      "sourceIndex": 15,
+      "media": {
+        "index": 15,
+        "characterSpecies": "sea-lion",
+        "sourcePage": "https://www.fisheries.noaa.gov/feature-story/50-years-environmental-data-can-predict-health-and-strandings-sea-lions-pups",
+        "imageUrl": "https://www.fisheries.noaa.gov/s3/2026-03/6_ca-sealionpups_sanmiguel2014-277_noaa-nmfs_phillman.jpg",
+        "originalDimensions": [
+          1500,
+          1000
+        ],
+        "sha1": "365cd52e3083c6773293658264d0e874e6e1144b",
+        "sha256": "a5ba018727e091c709f7245b86903c9447dcd337db2d4e68f87f4e8b3ea7f790",
+        "localPath": "/tmp/freed-ocean-21/source-15.jpg",
+        "sourceAlt": "Three California sea lion pups lie together on a sandy beach. One is propped up by one flipper while another flipper scratches it",
+        "sourceContext": " \n \n      \n \n \n\n California sea lion pups rest on the beach at Point Bennett on San Miguel Island. Photo taken under NOAA Fisheries Research Permits #16087-01 and #14327. Credit: NOAA Fisheries/Paul Hillman \n \n  Having this information months ahead of time allows state and federal managers and stranding network partners to anticipate and coordinate responses to large stranding events of emaciated sea lion pups. Existing regional ocean models that simulate ocean temperatures and other physical and biogeochemical conditions allow us to forecast t",
+        "attribution": "NOAA Fisheries/Paul Hillman; Research Permits #16087-01 and #14327",
+        "license": "Public domain, NOAA-authored United States government image",
+        "licenseUrl": "https://sanctuaries.noaa.gov/news/media/",
+        "width": 1500,
+        "height": 1000,
+        "alt": "Three California sea lion pups rest together. The left pup bends a hind flipper up beside its own head while supported on a foreflipper. The source alt describes scratching. This is not another animal giving a massage.",
+        "individuallyOpened": true
+      }
+    },
+    {
+      "id": "ocean-21-14",
+      "characterId": "selma-shore",
+      "sequence": 2,
+      "kind": "regular",
+      "title": "Who was that for",
+      "body": "Someone called from behind me. I lifted my head and answered. So did half the beach. I am fairly sure none of us was the one she wanted.",
+      "decision": "propose_for_independent_review",
+      "review": "Review. Raised heads and open mouths support a social calling scene; the actual call and exchange are fiction. Distinct from Fenn posture, but hold if the collective-response joke repeats an admitted episode.",
+      "visibleScene": "Many adult female and juvenile California sea lions hold their heads up in different directions, with some mouths open, in warm light. No named caller or reply is documented.",
+      "sourceIndex": 14,
+      "media": {
+        "index": 14,
+        "characterSpecies": "sea-lion",
+        "sourcePage": "https://www.fisheries.noaa.gov/feature-story/50-years-environmental-data-can-predict-health-and-strandings-sea-lions-pups",
+        "imageUrl": "https://www.fisheries.noaa.gov/s3/2026-03/5_california-sea-lion-group.JPG",
+        "originalDimensions": [
+          1500,
+          1000
+        ],
+        "sha1": "519e7f5271e16cd05b3ff863aea36ed73e95fe50",
+        "sha256": "3c71db63613755fe39116113246f5cad40a2bdec8c18b2a15c10328eacef7eed",
+        "localPath": "/tmp/freed-ocean-21/source-14.jpg",
+        "sourceAlt": "A group of adult female and juvenile sea lions in warm evening light alertly look at the camera.",
+        "sourceContext": " \n \n      \n \n \n\n Adult female and juvenile California sea lions at San Miguel Island, CA. Photo taken under NOAA Fisheries Permit #16078. Credit: NOAA Fisheries/Jeff Harris \n \n  Stranding events are often associated with ocean-warming events, like\u00a0   marine heatwaves   , that reduce the amount of prey available for sea lions. Today, scientists study these links to help understand, predict, and prepare for large stranding events on the California coast.    In late 2025, a team from NOAA Fisheries and the University of Washington used more than 5",
+        "attribution": "NOAA Fisheries/Jeff Harris; Permit #16078",
+        "license": "Public domain, NOAA-authored United States government image",
+        "licenseUrl": "https://sanctuaries.noaa.gov/news/media/",
+        "width": 1500,
+        "height": 1000,
+        "alt": "Many adult female and juvenile California sea lions hold their heads up in different directions, with some mouths open, in warm light. No named caller or reply is documented.",
+        "individuallyOpened": true
+      }
+    },
+    {
+      "id": "ocean-21-16",
+      "characterId": "selma-shore",
+      "sequence": 3,
+      "kind": "regular",
+      "title": "Still going",
+      "body": "Caught the wave with the others. It folded under me and I kept going. For a moment my tail was higher than my head. I had not planned a second way of being upside down today.",
+      "decision": "propose_for_independent_review",
+      "review": "Strong. Actual airborne arched body, crest and nearby heads support play. Fiction supplies sequence and prior awkwardness; no specific photographed motive is claimed.",
+      "visibleScene": "A California sea lion arches clear of the crest of a breaking wave, head lower than the raised rear of its body. More heads appear in the water behind.",
+      "sourceIndex": 16,
+      "media": {
+        "index": 16,
+        "characterSpecies": "sea-lion",
+        "sourcePage": "https://www.fisheries.noaa.gov/species/harbor-seal",
+        "imageUrl": "https://www.fisheries.noaa.gov/s3/2024-08/750x500-surfing-lions-afsc.jpg",
+        "originalDimensions": [
+          750,
+          500
+        ],
+        "sha1": "a7d9cd4d9f7fcd06ab40b65ac5b22eae07430fa1",
+        "sha256": "51b68bd8c431af7262a75791377d6d80f063f7aa3674300ecdd0899975ae8712",
+        "localPath": "/tmp/freed-ocean-21/source-16.jpg",
+        "sourceAlt": "California sea lion jumping while riding a wave.",
+        "sourceContext": "Surfing California sea lions. Credit: NOAA Fisheries/Tony Orr under NMFS Research Permits #22678 and #23283.",
+        "attribution": "NOAA Fisheries/Tony Orr; NMFS Research Permits #22678 and #23283",
+        "license": "Public domain, NOAA-authored United States government image",
+        "licenseUrl": "https://sanctuaries.noaa.gov/news/media/",
+        "width": 750,
+        "height": 500,
+        "alt": "A California sea lion arches clear of the crest of a breaking wave, head lower than the raised rear of its body. More heads appear in the water behind.",
+        "individuallyOpened": true
+      }
+    },
+    {
+      "id": "ocean-21-08",
+      "characterId": "selma-shore",
+      "sequence": 4,
+      "kind": "regular",
+      "title": "One more breath",
+      "body": "Lifted my chest to turn over. The pup pressed in underneath me. I stayed up for one more breath, then another. My flippers were beginning to shake before I admitted I was not going anywhere.",
+      "decision": "propose_for_independent_review",
+      "review": "Strong. The source explicitly identifies mother and pup, with chest supported and pup pressed against belly. Affection has a concrete bodily cost. Shaking and intention are imagined, not claimed seen.",
+      "visibleScene": "A known California sea lion mother holds her chest up with her foreflippers and closes her eyes while her pup lies against and across her belly. Other animals rest behind.",
+      "sourceIndex": 8,
+      "media": {
+        "index": 8,
+        "characterSpecies": "sea-lion",
+        "sourcePage": "https://www.fisheries.noaa.gov/species/california-sea-lion",
+        "imageUrl": "https://www.fisheries.noaa.gov/s3/2026-03/1_ca-sea-lion-mom-and-pup-on-beach_0.JPG",
+        "originalDimensions": [
+          1500,
+          1000
+        ],
+        "sha1": "4913b56ef11f8541fbdc393c70ec0761d623a28c",
+        "sha256": "e70613afeac8b5c182177ac2fe2c924a4c18afbabc6ca0a27bbb3d355c6fe0e8",
+        "localPath": "/tmp/freed-ocean-21/source-08.jpg",
+        "sourceAlt": "A California sea lion mother rests on a sandy beach with her head up, eyes closed, and standing on her flippers, while her pup lies across her belly. Behind her are more sea lions and the water's edge.",
+        "sourceContext": " \n\n\n                  \n       A California sea lion with her pup on the beach at San Miguel Island. Photo taken under NOAA Fisheries Permit #16087. Credit: NOAA Fisheries \n    \n      \n\n       \n     \n  \n    \n   \n   \n     Feature Story \n     \n       \n 50 Years of Environmental Data Can Predict Health and Strandings of Sea Lions Pups in California \n \n     \n     \n      \n   \n                  \n         West Coast \n       \n       \n     \n   \n \n\n\n               \n           \n                  \n        \n\n\n\n\n<div class=\"ne",
+        "attribution": "NOAA Fisheries; Permit #16087",
+        "license": "Public domain, NOAA-authored United States government image",
+        "licenseUrl": "https://sanctuaries.noaa.gov/news/media/",
+        "width": 1500,
+        "height": 1000,
+        "alt": "A known California sea lion mother holds her chest up with her foreflippers and closes her eyes while her pup lies against and across her belly. Other animals rest behind.",
+        "individuallyOpened": true
+      }
+    },
+    {
+      "id": "ocean-21-10",
+      "characterId": "della-crosswake",
+      "sequence": 1,
+      "kind": "regular",
+      "title": "Across the crest",
+      "body": "I took the wave first. She came up beside me before I had cleared it. I stretched out a little farther in the air, which was too late to help but felt necessary.",
+      "decision": "propose_for_independent_review",
+      "review": "Strong. Two actual dolphins and an airborne stretched body give the small competition a visible basis. No aerodynamic gain or documented contest is asserted.",
+      "visibleScene": "A common bottlenose dolphin clears a breaking wave beside a rocky shore. A second dolphin is partly visible at the right.",
+      "sourceIndex": 10,
+      "media": {
+        "index": 10,
+        "characterSpecies": "dolphin",
+        "sourcePage": "https://www.fisheries.noaa.gov/species/common-bottlenose-dolphin",
+        "imageUrl": "https://www.fisheries.noaa.gov/s3/dam-migration/common-bottlenose-dolphin.jpg",
+        "originalDimensions": [
+          750,
+          500
+        ],
+        "sha1": "898e6bdc409a92e140c1ab1f097238579ddddbb2",
+        "sha256": "ec5f75de9bd53941544b2ec1d7443ad52c23ea331376b80d32d167bafeac742e",
+        "localPath": "/tmp/freed-ocean-21/source-10.jpg",
+        "sourceAlt": "Bottlenose dolphin leaping mid-air out of choppy water near a rocky coastal cliff.",
+        "sourceContext": " \n\n\n                  \n       Common Bottlenose Dolphin. Credit: NOAA Fisheries \n    \n      \n\n       \n     \n  \n               Common Bottlenose Dolphin. Credit: NOAA Fisheries \n                       \n\n          \n                                     About the Species \n                      \n           \n                                 \n       \n        \n\n\n  \n      \n  \n  \n\n\n \n\n\n                  \n       Common Bottlenose Dolphin. Credit: NOAA Fisheries \n    \n",
+        "attribution": "NOAA Fisheries",
+        "license": "Public domain, NOAA-authored United States government image",
+        "licenseUrl": "https://sanctuaries.noaa.gov/news/media/",
+        "width": 750,
+        "height": 500,
+        "alt": "A common bottlenose dolphin clears a breaking wave beside a rocky shore. A second dolphin is partly visible at the right.",
+        "individuallyOpened": true
+      }
+    },
+    {
+      "id": "ocean-21-11",
+      "characterId": "della-crosswake",
+      "sequence": 2,
+      "kind": "regular",
+      "title": "Beside me",
+      "body": "She came up for air and I came up beside her. On the next breath I was a little ahead. I eased back until I could see her again. Then she went a little faster.",
+      "decision": "propose_for_independent_review",
+      "review": "Strong prose, modest image resolution. Close paired surfacing supplies an affectionate race; the second breath and adjustments are fictional sequence. The original published asset is only 549 by 366, not a larger file inferred from a thumbnail.",
+      "visibleScene": "Two common bottlenose dolphins pass close and roughly parallel at the surface, their backs and rostra visible through white water.",
+      "sourceIndex": 11,
+      "media": {
+        "index": 11,
+        "characterSpecies": "dolphin",
+        "sourcePage": "https://www.fisheries.noaa.gov/species/common-bottlenose-dolphin",
+        "imageUrl": "https://www.fisheries.noaa.gov/s3/dam-migration-miss/md_1AbJGQ41h7xv_0.jpg",
+        "originalDimensions": [
+          549,
+          366
+        ],
+        "sha1": "dc55253d1dc5d5c292431317b55d38ca3ae8477d",
+        "sha256": "7b5d01100b3e831af83a59d12f660b5a8f04b254fbfa9153b8fcde80e42ead61",
+        "localPath": "/tmp/freed-ocean-21/source-11.jpg",
+        "sourceAlt": "Two bottlenose dolphins swimming and jumping through the air.",
+        "sourceContext": " \n\n \n           \n\n \n \n\n Pair of common bottlenose dolphins. Credit: NOAA Pacific Islands Fisheries Science Center/Lisa Morse \n \n \n      \n                                                                                                                                                                                                                        Conservation Efforts \n                                                            \n              Reducing Interactions with Fishing Gear  Bycatch in fishing gear is a leading cause of common bottle",
+        "attribution": "NOAA Pacific Islands Fisheries Science Center/Lisa Morse",
+        "license": "Public domain, NOAA-authored United States government image",
+        "licenseUrl": "https://sanctuaries.noaa.gov/news/media/",
+        "width": 549,
+        "height": 366,
+        "alt": "Two common bottlenose dolphins pass close and roughly parallel at the surface, their backs and rostra visible through white water.",
+        "individuallyOpened": true
+      }
+    },
+    {
+      "id": "ocean-21-12",
+      "characterId": "della-crosswake",
+      "sequence": 3,
+      "kind": "regular",
+      "title": "The inside turn",
+      "body": "I let the calf take the inside of the turn. Then I had to swim the long way round to stay beside him. He came out ahead and immediately began another turn.",
+      "decision": "propose_for_independent_review",
+      "review": "Review. Adult-and-calf proximity is real; the playful turns are imagined. No motherhood, formal teaching or observed competitive behavior is assigned. Softer 549 by 383 asset requires lead quality approval.",
+      "visibleScene": "An aerial photograph shows a loose group of common bottlenose dolphins, including two calves. A lower adult and calf travel close together; other animals form an upper cluster.",
+      "sourceIndex": 12,
+      "media": {
+        "index": 12,
+        "characterSpecies": "dolphin",
+        "sourcePage": "https://www.fisheries.noaa.gov/species/common-bottlenose-dolphin",
+        "imageUrl": "https://www.fisheries.noaa.gov/s3/dam-migration-miss/md_VwsE09lpevAJ_0.jpg",
+        "originalDimensions": [
+          549,
+          383
+        ],
+        "sha1": "662402c5ea3f968d2c5e9083a53183ba993b7a4b",
+        "sha256": "461d48c5466d4ff5aef8fbe125d2b430867f798e231901aebf41b2dad9283702",
+        "localPath": "/tmp/freed-ocean-21/source-12.jpg",
+        "sourceAlt": "Aerial view of a group of bottlenose dolphins swimming.",
+        "sourceContext": " \n\n \n           \n\n \n \n\n Bottlenose dolphin group with two calves. Credit: NOAA Northeast Fisheries Science Center/Allison Henry \n \n Long-Term Studies of Estuarine Dolphins  Observational studies using  photo-identification  and other techniques play a key role in helping NOAA Fisheries understand the behavior and population dynamics of estuarine bottlenose dolphins and the threats they face. For example,  The Sarasota Dolphin Research Program  is the longest-running observational study of wild marine mammals in the world. Scientists have been c",
+        "attribution": "NOAA Northeast Fisheries Science Center/Allison Henry",
+        "license": "Public domain, NOAA-authored United States government image",
+        "licenseUrl": "https://sanctuaries.noaa.gov/news/media/",
+        "width": 549,
+        "height": 383,
+        "alt": "An aerial photograph shows a loose group of common bottlenose dolphins, including two calves. A lower adult and calf travel close together; other animals form an upper cluster.",
+        "individuallyOpened": true
+      }
+    }
+  ],
+  "holds": [
+    {
+      "sourceIndex": 4,
+      "reason": "Hold. Distant flukes do not yet supply a sufficiently fresh event beside the stronger breach and feeding pictures.",
+      "visibleScene": "Distant raised flukes drip above calm sea beneath a pale sky. The caption locates the dive at Stellwagen Bank.",
+      "media": {
+        "index": 4,
+        "characterSpecies": "humpback",
+        "sourcePage": "https://www.fisheries.noaa.gov/species/humpback-whale",
+        "imageUrl": "https://www.fisheries.noaa.gov/s3/2023-06/750x500-blls-whale-tail-nefsc.jpg",
+        "originalDimensions": [
+          750,
+          500
+        ],
+        "sha1": "0bccb190d0965ae17878698955fe2102415de160",
+        "sha256": "52c8ecd998bebb66f3bbb38aca47ab719dfce3392c743cf2b4cf519ae787862d",
+        "localPath": "/tmp/freed-ocean-21/source-04.jpg",
+        "sourceAlt": "A whale tail drips with water above the ocean surface as the whale dove below the surface. The water is calm and the sky is slightly overcast.",
+        "sourceContext": " \n\n\n                  \n       A humpback whale dives below the ocean surface at Stellwagen Bank National Marine Sanctuary. Credit: NOAA Fisheries/Emma Fowler\r\n \n    \n      \n\n       \n     \n  \n           \n         \n\n \n\n       \n         \n\n \n \n\n             \n               More Blog Posts \n             \n                   \n       \n       \n       \n       Last updated by NOAA Fisheries  on 04/09/2026 \n     \n   \n     \n  \n         \n\n       \n          \n         <",
+        "attribution": "NOAA Fisheries/Emma Fowler"
+      }
+    },
+    {
+      "sourceIndex": 7,
+      "reason": "Hold regular use. Attractive portrait without a distinct event; known female mother source08 is better for Selma avatar identity.",
+      "visibleScene": "Close side portrait of an adult California sea lion with lifted muzzle and visible external ear. No distinctive event beyond posture.",
+      "media": {
+        "index": 7,
+        "characterSpecies": "sea-lion",
+        "sourcePage": "https://www.fisheries.noaa.gov/species/california-sea-lion",
+        "imageUrl": "https://www.fisheries.noaa.gov/s3/dam-migration/california_sea_lion.jpg",
+        "originalDimensions": [
+          750,
+          500
+        ],
+        "sha1": "3f80c3d57823b40899444a38239bd101a7c3b989",
+        "sha256": "aa2921ba3557fad58bd3099843c5cbe1135538ff0c2274a5b90fbf40eb6c3b2c",
+        "localPath": "/tmp/freed-ocean-21/source-07.jpg",
+        "sourceAlt": "Medium close up of California sea lion side profile. Brown seal with dark brown or black whiskers and eyes looking up. ",
+        "sourceContext": " \n\n\n                  \n       Adult California sea lion. Credit: NOAA Fisheries \n    \n      \n\n       \n     \n  \n               Adult California sea lion. Credit: NOAA Fisheries \n                       \n\n          \n                                     About the Species \n                      \n           \n                                 \n       \n        \n\n\n  \n      \n  \n  \n\n\n \n\n\n                  \n       Adult California sea lion. Cred",
+        "attribution": "NOAA Fisheries"
+      }
+    },
+    {
+      "sourceIndex": 9,
+      "reason": "Hold. Sand-covered pup could support a childhood anecdote, but no strong original event emerged without inventing the entire setup.",
+      "visibleScene": "A California sea lion pup has sand across its face and fur. The mechanism that deposited the sand is not pictured.",
+      "media": {
+        "index": 9,
+        "characterSpecies": "sea-lion",
+        "sourcePage": "https://www.fisheries.noaa.gov/species/california-sea-lion",
+        "imageUrl": "https://www.fisheries.noaa.gov/s3/2024-07/750x563-california-sea-lion-pup.jpg",
+        "originalDimensions": [
+          750,
+          563
+        ],
+        "sha1": "0622b0be79611a2a694759880257055f36caa851",
+        "sha256": "ee6cdaa59f1f2451e6d43c3fe2e847cf6ade4a48e3c9d12606c8c27afef296b4",
+        "localPath": "/tmp/freed-ocean-21/source-09.jpg",
+        "sourceAlt": "Seal pup on the beach with sand on its face and body with rookery in background",
+        "sourceContext": " \n\n\n                  \n       California sea lion pup. Credit: NOAA Fisheries / Tony Orr UAS under NMFS Research Permits #22678 and #23283. \n    \n      \n\n       \n     \n  \n           \n         \n\n \n\n       \n           \n            \n\n \n  \n  \n  \n\n   \n          \n                       \n             Research \n           \n                  \n Studying Fur Seal and Sea Lion Populations in Sunny Southern California - ",
+        "attribution": "NOAA Fisheries/Tony Orr; NMFS Research Permits #22678 and #23283"
+      }
+    },
+    {
+      "sourceIndex": 13,
+      "reason": "Hold. Mixed-species wide rookery is valid place evidence but weak as an individual episode; do not label all pictured animals California sea lions.",
+      "visibleScene": "Wide view of a densely occupied beach at San Miguel Island. The source explicitly describes a mixed sea-lion and fur-seal rookery; individuals are tiny.",
+      "media": {
+        "index": 13,
+        "characterSpecies": "sea-lion",
+        "sourcePage": "https://www.fisheries.noaa.gov/feature-story/50-years-environmental-data-can-predict-health-and-strandings-sea-lions-pups",
+        "imageUrl": "https://www.fisheries.noaa.gov/s3/2026-03/3_point-bennett-san-miguel-island_dscn3697.JPG",
+        "originalDimensions": [
+          1500,
+          1000
+        ],
+        "sha1": "af5cbc17396d005d29aa5b0ec8c16245e31ac506",
+        "sha256": "4affad9c9cae56a7f49c3be544adb79fd1c9e72669cc9055ab390df58fe6d1e5",
+        "localPath": "/tmp/freed-ocean-21/source-13.jpg",
+        "sourceAlt": "View across Point Bennett on San Miguel Island. A sandy beach is filled with sea lions and fur seal while waves break along the shoreline",
+        "sourceContext": " \n \n      \n \n \n\n Summer breeding season at Adams Cove, part of the Pt. Bennett pinniped colony on San Miguel Island. Photo taken under NOAA Fisheries Permit #22678. Credit: NOAA Fisheries \n \n  We conduct long-term studies on abundance, distribution, survival, reproduction, foraging ecology, health, and disease of northern fur seals and California sea lions. Our research led to California sea lions being designated a top-level predator and a sentinel species of ocean health. Scientists use this long time series to understand how species respond ",
+        "attribution": "NOAA Fisheries; Permit #22678"
+      }
+    }
+  ]
+}

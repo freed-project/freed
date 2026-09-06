@@ -38,8 +38,6 @@ import {
 } from "./friends-galaxy-palette.js";
 import {
   createFriendsGalaxyStarGeometry,
-  friendsGalaxyMotionBackgroundStarCount,
-  FRIENDS_GALAXY_MOTION_STAR_VERTEX_COUNT,
   FRIENDS_GALAXY_SETTLED_STAR_VERTEX_COUNT,
 } from "./friends-galaxy-star-geometry.js";
 import {
@@ -54,13 +52,14 @@ import { writeFriendsGalaxyInteractionInstances } from "./friends-galaxy-interac
 import {
   createFriendsGalaxyRendererAvatarAtlas,
   createFriendsGalaxyRendererLabelPoolAtlas,
-  friendsGalaxyAvatarAtlasRosterKey,
   friendsGalaxyLabelSourceKey,
   selectFriendsGalaxyVisibleLabelSeeds,
   type FriendsGalaxyAvatarCandidateSource,
   type FriendsGalaxyNodePresentationResolver,
 } from "./friends-galaxy-presentation.js";
 import { FriendsGalaxyIdentityDetailFade } from "./friends-galaxy-identity-detail-fade.js";
+import { FriendsGalaxyLabelFade } from "./friends-galaxy-label-fade.js";
+import type { FriendsGalaxyLabelSeed } from "./friends-galaxy-billboard-atlas.js";
 import {
   FRIENDS_GALAXY_DECORATIVE_STAR_MAX_SCALE,
   FRIENDS_GALAXY_DECORATIVE_STAR_MIN_SCALE,
@@ -139,18 +138,6 @@ fn noise(point: vec2<f32>) -> f32 {
   );
 }
 
-fn fbm(pointInput: vec2<f32>, octaveCount: u32) -> f32 {
-  var point = pointInput;
-  var value = 0.0;
-  var amplitude = 0.54;
-  for (var octave = 0u; octave < octaveCount; octave += 1u) {
-    value += noise(point) * amplitude;
-    point = point * 2.03 + vec2<f32>(11.7, 7.9);
-    amplitude *= 0.48;
-  }
-  return value;
-}
-
 @fragment
 fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
   let seed = input.parameters.x;
@@ -158,114 +145,30 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
   let style = input.parameters.z;
   let point = input.local;
   let cameraScale = abs(uniforms.cameraScale);
-  let cameraMoving = uniforms.cameraScale < 0.0;
-  if (cameraMoving) {
-    let radius = length(point);
-    let coarseNoise = noise(
-      point * 2.36 + vec2<f32>(seed * 17.0, seed * 7.0),
-    );
-    let edgeRadius = radius + (coarseNoise - 0.5) * 0.26;
-    let envelope = 1.0 - smoothstep(0.48, 1.07, edgeRadius);
-    let core = 1.0 - smoothstep(0.02, 0.52, radius);
-    let cloud = smoothstep(0.28, 0.78, coarseNoise);
-    var density = envelope * (0.52 + cloud * 0.38 + core * 0.1);
-    if (style > 0.5) {
-      let angle = atan2(point.y, point.x);
-      let armFade = smoothstep(0.18, 0.48, radius) *
-        (1.0 - smoothstep(0.82, 1.08, radius));
-      let armPhase = angle * arms - radius * 9.2 + seed * 6.28318;
-      let streams = envelope * armFade *
-        smoothstep(0.62, 0.94, 0.5 + 0.5 * cos(armPhase)) *
-        (0.3 + coarseNoise * 0.7);
-      density = select(
-        streams * 0.72 + density * 0.1,
-        density * 0.52 + streams * 0.4,
-        style > 1.5,
-      );
-    }
-    let detailFade = mix(1.0, 0.22, smoothstep(0.24, 1.2, cameraScale));
-    let alpha = clamp(
-      density * input.color.a * 0.82 * detailFade,
-      0.0,
-      0.28,
-    );
-    if (alpha < 0.004) {
-      discard;
-    }
-    let darkTheme = step(0.24, input.color.a);
-    var fieldColor = mix(
-      input.color.rgb * 0.7,
-      input.color.rgb,
-      cloud * 0.58 + core * 0.12,
-    );
-    fieldColor = mix(
-      fieldColor,
-      vec3<f32>(1.0),
-      cloud * mix(0.025, 0.11, darkTheme),
-    );
-    return vec4<f32>(fieldColor, alpha);
-  }
-  let octaveCount = 4u;
-  let fieldTime = max(uniforms.time, 0.0);
-  let drift = vec2<f32>(fieldTime * 0.0075, -fieldTime * 0.0054);
-  let warp = vec2<f32>(
-    fbm(point * 1.72 + vec2<f32>(seed * 9.1, seed * 4.3) + drift, octaveCount),
-    fbm(point * 1.72 + vec2<f32>(seed * 5.7 + 19.4, seed * 11.3) - drift, octaveCount),
-  ) - 0.5;
-  let warpedPoint = point + warp * 0.36;
-  let radius = length(warpedPoint);
-  let angle = atan2(warpedPoint.y, warpedPoint.x);
-  let boundaryNoise = fbm(
-    warpedPoint * 2.08 + vec2<f32>(seed * 17.0, seed * 7.0),
-    octaveCount,
+  // Keep the same visible field while dragging and while settled.
+  let radius = length(point);
+  let coarseNoise = noise(
+    point * 2.36 + vec2<f32>(seed * 17.0, seed * 7.0),
   );
-  let edgeRadius = radius + (boundaryNoise - 0.5) * 0.3 +
-    sin(angle * 3.0 + seed * 19.0) * 0.035;
+  let edgeRadius = radius + (coarseNoise - 0.5) * 0.26;
   let envelope = 1.0 - smoothstep(0.48, 1.07, edgeRadius);
-
-  let cloudLow = fbm(
-    warpedPoint * 2.52 + vec2<f32>(seed * 23.0, seed * 31.0),
-    octaveCount,
-  );
-  let cloudHigh = fbm(
-    (warpedPoint + warp * 0.18) * 5.1 + vec2<f32>(seed * 37.0, seed * 13.0),
-    octaveCount,
-  );
-  let cloud = smoothstep(0.32, 0.82, cloudLow * 0.7 + cloudHigh * 0.3);
-  let wisps = smoothstep(
-    0.52,
-    0.84,
-    fbm(warpedPoint * 6.3 + vec2<f32>(seed * 43.0, seed * 29.0), octaveCount),
-  );
   let core = 1.0 - smoothstep(0.02, 0.52, radius);
-  let nebula = envelope *
-    (pow(cloud, 1.28) * 0.74 + wisps * 0.13 + core * 0.13) *
-    (0.64 + boundaryNoise * 0.36);
-
-  let armFade = smoothstep(0.18, 0.48, radius) *
-    (1.0 - smoothstep(0.82, 1.08, radius));
-  let armPhase = angle * arms - radius * 9.2 + seed * 6.28318 +
-    warp.x * 3.2 + fieldTime * 0.018;
-  let secondaryPhase = angle * (arms + 1.0) - radius * 12.8 + seed * 11.0 -
-    warp.y * 2.4 - fieldTime * 0.013;
-  let primaryArm = smoothstep(0.63, 0.94, 0.5 + 0.5 * cos(armPhase));
-  let secondaryArm = smoothstep(0.76, 0.97, 0.5 + 0.5 * cos(secondaryPhase));
-  let streamBreakup = smoothstep(
-    0.34,
-    0.82,
-    fbm(warpedPoint * 3.8 + vec2<f32>(seed * 53.0, seed * 41.0), octaveCount),
-  );
-  let streams = envelope * armFade *
-    (primaryArm * 0.76 + secondaryArm * 0.24) *
-    (0.24 + streamBreakup * 0.76);
-
-  var density = nebula * 0.62;
-  if (style > 1.5) {
-    density = nebula * 0.52 + streams * 0.42;
-  } else if (style > 0.5) {
-    density = streams * 0.7 + nebula * 0.1;
+  let cloud = smoothstep(0.28, 0.78, coarseNoise);
+  var density = envelope * (0.52 + cloud * 0.38 + core * 0.1);
+  if (style > 0.5) {
+    let angle = atan2(point.y, point.x);
+    let armFade = smoothstep(0.18, 0.48, radius) *
+      (1.0 - smoothstep(0.82, 1.08, radius));
+    let armPhase = angle * arms - radius * 9.2 + seed * 6.28318;
+    let streams = envelope * armFade *
+      smoothstep(0.62, 0.94, 0.5 + 0.5 * cos(armPhase)) *
+      (0.3 + coarseNoise * 0.7);
+    density = select(
+      streams * 0.72 + density * 0.1,
+      density * 0.52 + streams * 0.4,
+      style > 1.5,
+    );
   }
-
   let detailFade = mix(1.0, 0.22, smoothstep(0.24, 1.2, cameraScale));
   let alpha = clamp(
     density * input.color.a * 0.82 * detailFade,
@@ -276,11 +179,15 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
     discard;
   }
   let darkTheme = step(0.24, input.color.a);
-  var fieldColor = mix(input.color.rgb * 0.68, input.color.rgb, cloud * 0.62 + core * 0.12);
+  var fieldColor = mix(
+    input.color.rgb * 0.7,
+    input.color.rgb,
+    cloud * 0.58 + core * 0.12,
+  );
   fieldColor = mix(
     fieldColor,
     vec3<f32>(1.0),
-    cloudHigh * mix(0.035, 0.16, darkTheme),
+    cloud * mix(0.025, 0.11, darkTheme),
   );
   return vec4<f32>(fieldColor, alpha);
 }
@@ -490,11 +397,13 @@ struct VertexInput {
   @location(2) offset: vec2<f32>,
   @location(3) size: vec2<f32>,
   @location(4) uvRect: vec4<f32>,
+  @location(5) opacity: f32,
 };
 
 struct VertexOutput {
   @builtin(position) position: vec4<f32>,
   @location(0) uv: vec2<f32>,
+  @location(1) opacity: f32,
 };
 
 @vertex
@@ -506,13 +415,14 @@ fn vertexMain(input: VertexInput) -> VertexOutput {
   let localUv = vec2<f32>(input.corner.x * 0.5 + 0.5, 0.5 - input.corner.y * 0.5);
   output.position = clip;
   output.uv = mix(input.uvRect.xy, input.uvRect.zw, localUv);
+  output.opacity = input.opacity;
   return output;
 }
 
 @fragment
 fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
   let sample = textureSample(labelAtlas, labelSampler, input.uv);
-  let alpha = sample.a * billboardOpacity;
+  let alpha = sample.a * billboardOpacity * input.opacity;
   if (alpha < 0.015) {
     discard;
   }
@@ -570,7 +480,6 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
   private avatarBindGroup: GPUBindGroup | null = null;
   private quadBuffer: GPUBuffer | null = null;
   private settledStarBuffer: GPUBuffer | null = null;
-  private motionStarBuffer: GPUBuffer | null = null;
   private semanticBuffer: GPUBuffer | null = null;
   private interactionBuffer: GPUBuffer | null = null;
   private backgroundBuffer: GPUBuffer | null = null;
@@ -578,6 +487,12 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
   private providerFieldBuffer: GPUBuffer | null = null;
   private edgeBuffer: GPUBuffer | null = null;
   private labelBuffer: GPUBuffer | null = null;
+  private labelAlphaBuffer: GPUBuffer | null = null;
+  private avatarAlphaBuffer: GPUBuffer | null = null;
+  private labelAlphaData = new Float32Array(0);
+  private readonly labelFade = new FriendsGalaxyLabelFade<FriendsGalaxyLabelSeed>();
+  private desiredLabels = new Set<string>();
+  private readonly reducedMotion = typeof matchMedia === "function" ? matchMedia("(prefers-reduced-motion: reduce)") : null;
   private labelTexture: GPUTexture | null = null;
   private avatarBuffer: GPUBuffer | null = null;
   private avatarTexture: GPUTexture | null = null;
@@ -605,6 +520,7 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
   private lastLabelTransformScale = Number.NaN;
   private avatarAtlas: FriendsGalaxyAvatarAtlas | null = null;
   private avatarImages: ReadonlyMap<string, CanvasImageSource> = new Map();
+  private loadedAvatarImagesOnly = false;
   private palette: FriendsGalaxyRendererPalette | null = null;
   private interaction: FriendsGalaxyInteraction = { selectedNodeId: null, hoveredNodeId: null };
   private interactionRoles: ReadonlyMap<number, FriendsGalaxyInteractionRole> = new Map();
@@ -644,7 +560,6 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
   private labelAtlasBuildCount = 0;
   private avatarAtlasBuildCount = 0;
   private avatarCandidateSource: FriendsGalaxyAvatarCandidateSource = "atlas";
-  private avatarRosterKey = "";
   private avatarBundleVisible = false;
   private fallbackReason: string | null = null;
   private adapterDescription: string | null = null;
@@ -695,7 +610,6 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
     const starGeometry = createFriendsGalaxyStarGeometry();
     this.quadBuffer = createBuffer(device, quadData, GPUBufferUsage.VERTEX);
     this.settledStarBuffer = createBuffer(device, starGeometry.settled, GPUBufferUsage.VERTEX);
-    this.motionStarBuffer = createBuffer(device, starGeometry.motion, GPUBufferUsage.VERTEX);
     this.semanticBuffer = createBuffer(
       device,
       this.semanticData,
@@ -936,6 +850,11 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
               { shaderLocation: 4, offset: 28, format: "float32x4" },
             ],
           },
+          {
+            arrayStride: 4,
+            stepMode: "instance",
+            attributes: [{ shaderLocation: 5, offset: 0, format: "float32" }],
+          },
         ],
       },
       fragment: {
@@ -986,7 +905,7 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
       this.disposed || !device || !palette || !this.fixture ||
       !this.pipeline || !this.bindGroup || !this.providerFieldPipeline ||
       !this.providerFieldBindGroup || !this.quadBuffer || !this.settledStarBuffer ||
-      !this.motionStarBuffer || !this.edgeBuffer || !this.uniformBuffer ||
+      !this.edgeBuffer || !this.uniformBuffer ||
       !this.labelOpacityBuffer || !this.avatarOpacityBuffer || !this.labelSampler
     ) return false;
 
@@ -1160,7 +1079,8 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
     if (this.interactionRoles.size > 0) this.writeInteractionOverlay(this.interactionRoles);
   }
 
-  setAvatarImages(images: ReadonlyMap<string, CanvasImageSource>): void {
+  setAvatarImages(images: ReadonlyMap<string, CanvasImageSource>, loadedImagesOnly = false): void {
+    this.loadedAvatarImagesOnly = loadedImagesOnly;
     this.avatarImages = images;
     if (this.viewDetail === "close") {
       this.rebuildAvatars(
@@ -1224,7 +1144,7 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
   }
 
   hasActivePresentationTransition(): boolean {
-    return this.identityDetailFade.isActive;
+    return this.identityDetailFade.isActive || this.labelFade.isActive;
   }
 
   pickNode(viewportX: number, viewportY: number): string | null {
@@ -1240,7 +1160,9 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
   }
 
   setInteraction(interaction: FriendsGalaxyInteraction): void {
+    const hoverChanged = this.interaction.hoveredNodeId !== interaction.hoveredNodeId;
     this.interaction = interaction;
+    if (hoverChanged) this.rebuildLabels(this.compactLabels ?? this.width < 720);
     if (!this.sceneIndex) return;
     this.writeInteraction(this.sceneIndex.interactionState(interaction));
   }
@@ -1261,8 +1183,12 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
     if (liveDetail !== this.viewDetail) {
       this.viewDetail = liveDetail;
       this.rebuildLabels(this.compactLabels ?? this.width < 720);
+      if (liveDetail === "close") this.rebuildAvatars(
+        this.compactLabels ?? this.width < 720,
+        this.fixture.presentationCandidateSource ?? "scene",
+      );
     }
-    this.updateVisibleLabels(transform);
+    this.updateVisibleLabels(transform, timeMs);
     this.uniformData.set(this.viewProjection, 0);
     this.uniformData[16] = this.width;
     this.uniformData[17] = this.height;
@@ -1318,9 +1244,7 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
       api: "WebGPU WGSL",
       semanticStarCount: this.fixture?.scene.nodeIds.length ?? 0,
       decorativeStarCount,
-      motionDecorativeStarCount: friendsGalaxyMotionBackgroundStarCount(
-        decorativeStarCount,
-      ),
+      motionDecorativeStarCount: decorativeStarCount,
       ambientMotionEnabled: this.ambientMotionEnabled,
       ambientMotionProfile: FRIENDS_GALAXY_FIELD_AMBIENT_MOTION_PROFILE,
       drawCalls: 2 + (this.providerFields && this.providerFields.count > 0 ? 1 : 0) +
@@ -1355,7 +1279,6 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
     this.backendHealth.clear();
     this.quadBuffer?.destroy();
     this.settledStarBuffer?.destroy();
-    this.motionStarBuffer?.destroy();
     this.semanticBuffer?.destroy();
     this.interactionBuffer?.destroy();
     this.backgroundBuffer?.destroy();
@@ -1368,6 +1291,9 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
     this.avatarTexture?.destroy();
     this.uniformBuffer?.destroy();
     this.labelOpacityBuffer?.destroy();
+    this.labelAlphaBuffer?.destroy();
+    this.avatarAlphaBuffer?.destroy();
+    this.labelFade.clear();
     this.avatarOpacityBuffer?.destroy();
     this.device?.destroy();
     this.canvas = null;
@@ -1394,7 +1320,6 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
     this.avatarBindGroup = null;
     this.quadBuffer = null;
     this.settledStarBuffer = null;
-    this.motionStarBuffer = null;
     this.semanticBuffer = null;
     this.interactionBuffer = null;
     this.backgroundBuffer = null;
@@ -1402,6 +1327,10 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
     this.providerFieldBuffer = null;
     this.edgeBuffer = null;
     this.labelBuffer = null;
+    this.labelAlphaBuffer = null;
+    this.avatarAlphaBuffer = null;
+    this.labelAlphaData = new Float32Array(0);
+    this.desiredLabels.clear();
     this.labelTexture = null;
     this.avatarBuffer = null;
     this.avatarTexture = null;
@@ -1430,6 +1359,7 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
     this.lastLabelTransformScale = Number.NaN;
     this.avatarAtlas = null;
     this.avatarImages = new Map();
+    this.loadedAvatarImagesOnly = false;
     this.palette = null;
     this.interactionRoles = new Map();
     this.interactionInstanceCount = 0;
@@ -1443,7 +1373,6 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
     this.labelLayoutCount = 0;
     this.avatarAtlasBuildCount = 0;
     this.avatarCandidateSource = "atlas";
-    this.avatarRosterKey = "";
     this.avatarBundleVisible = false;
     this.avatarOpacityData.fill(0);
     this.identityDetailFade.restartFromHidden();
@@ -1464,6 +1393,9 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
       compact,
       this.viewDetail,
       this.interaction.selectedNodeId,
+      undefined,
+      (labels) => this.labelFade.mergePool(labels),
+      this.interaction.hoveredNodeId,
     );
     this.labelSourceKey = friendsGalaxyLabelSourceKey(
       this.fixture,
@@ -1473,6 +1405,9 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
     );
     this.labelAtlasBuildCount += 1;
     this.labelBuffer?.destroy();
+    this.labelAlphaBuffer?.destroy();
+    this.labelAlphaData = new Float32Array(Math.max(1, atlas.labels.length));
+    this.labelAlphaBuffer = createBuffer(this.device, this.labelAlphaData, GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST);
     this.labelTexture?.destroy();
     this.labelInstanceData = new Float32Array(Math.max(
       FRIENDS_GALAXY_BILLBOARD_INSTANCE_STRIDE / Float32Array.BYTES_PER_ELEMENT,
@@ -1515,24 +1450,27 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
       this.labelBindGroup,
       this.labelBuffer,
       atlas.labels.length,
+      this.labelAlphaBuffer,
     );
     this.rebuildFrameRenderBundles();
     this.bufferUploadCount += 2;
   }
 
-  private updateVisibleLabels(transform: FriendsGalaxyTransform): void {
-    if (!this.device || !this.labelBuffer || !this.labelAtlas) return;
-    if (
+  private updateVisibleLabels(transform: FriendsGalaxyTransform, timeMs: number): void {
+    if (!this.device || !this.labelBuffer || !this.labelAtlas || !this.labelAlphaBuffer) return;
+    const cameraChanged = !(
       transform.x === this.lastLabelTransformX &&
       transform.y === this.lastLabelTransformY &&
       transform.scale === this.lastLabelTransformScale
-    ) return;
+    );
+    if (!cameraChanged && !this.labelFade.isActive) return;
+    if (cameraChanged) {
     this.lastLabelTransformX = transform.x;
     this.lastLabelTransformY = transform.y;
     this.lastLabelTransformScale = transform.scale;
     this.labelLayoutCount += 1;
     const labels = selectFriendsGalaxyVisibleLabelSeeds(
-      this.labelAtlas.labels,
+      this.labelFade.eligible(this.labelAtlas.labels),
       this.compactLabels ?? this.width < 720,
       this.viewDetail,
       {
@@ -1541,6 +1479,14 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
         height: this.height,
       },
     );
+    this.desiredLabels = new Set(labels.map((label) => label.id));
+    }
+    const fading = this.labelFade.step(this.labelAtlas.labels, this.desiredLabels, timeMs, !this.reducedMotion?.matches);
+    const labels = fading.map((entry) => entry.label);
+    this.labelAlphaData.fill(0);
+    fading.forEach((entry, index) => { this.labelAlphaData[index] = entry.opacity; });
+    this.device.queue.writeBuffer(this.labelAlphaBuffer, 0, this.labelAlphaData);
+    this.bufferUploadCount += 1;
     const rosterKey = labels.map((label) => label.id).join("\u0000");
     if (rosterKey === this.labelRosterKey) return;
     this.labelRosterKey = rosterKey;
@@ -1562,6 +1508,7 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
     let bytes = 36 * Float32Array.BYTES_PER_ELEMENT;
     bytes += this.uniformData.byteLength;
     bytes += this.labelOpacityData.byteLength + this.avatarOpacityData.byteLength;
+    bytes += this.labelAlphaData.byteLength + (this.avatarAlphaBuffer?.size ?? 0);
     bytes += this.edgeData.byteLength;
     bytes += this.semanticData?.byteLength ?? 0;
     bytes += this.interactionData.byteLength;
@@ -1607,19 +1554,11 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
       undefined,
       this.settledProjectionValid ? this.settledProjection : undefined,
       candidateSource,
+      this.loadedAvatarImagesOnly,
     );
     this.avatarAtlasBuildCount += 1;
-    const nextRosterKey = friendsGalaxyAvatarAtlasRosterKey(atlas);
-    const rosterChanged = nextRosterKey !== this.avatarRosterKey;
     this.avatarCandidateSource = candidateSource;
-    this.avatarRosterKey = nextRosterKey;
     this.avatarAtlas = atlas;
-    if (rosterChanged) {
-      this.identityDetailFade.restartFromHidden();
-      this.avatarOpacityData.fill(0);
-      this.device.queue.writeBuffer(this.avatarOpacityBuffer, 0, this.avatarOpacityData);
-      this.avatarBundleVisible = false;
-    }
     if (atlas.itemCount === 0) {
       this.rebuildFrameRenderBundles();
       return;
@@ -1650,11 +1589,18 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
         { binding: 3, resource: { buffer: this.avatarOpacityBuffer } },
       ],
     });
+    this.avatarAlphaBuffer?.destroy();
+    this.avatarAlphaBuffer = createBuffer(
+      this.device,
+      new Float32Array(Math.max(1, atlas.itemCount)).fill(1),
+      GPUBufferUsage.VERTEX,
+    );
     this.avatarRenderBundle = this.recordBillboardRenderBundle(
       "Friends Galaxy avatar bundle",
       this.avatarBindGroup,
       this.avatarBuffer,
       atlas.itemCount,
+      this.avatarAlphaBuffer,
     );
     this.avatarBundleVisible = this.identityDetailFade.currentOpacity >
       IDENTITY_DETAIL_VISIBLE_EPSILON;
@@ -1801,7 +1747,7 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
       !this.device || !this.format || !this.providerFieldPipeline ||
       !this.providerFieldBindGroup || !this.providerFieldBuffer || !this.providerFields ||
       !this.pipeline || !this.bindGroup || !this.quadBuffer || !this.backgroundBuffer ||
-      !this.settledStarBuffer || !this.motionStarBuffer || !this.semanticBuffer ||
+      !this.settledStarBuffer || !this.semanticBuffer ||
       !this.interactionBuffer || !this.fixture
     ) return;
     const device = this.device;
@@ -1814,7 +1760,6 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
     const bindGroup = this.bindGroup;
     const quadBuffer = this.quadBuffer;
     const settledStarBuffer = this.settledStarBuffer;
-    const motionStarBuffer = this.motionStarBuffer;
     const backgroundBuffer = this.backgroundBuffer;
     const backgroundStarCount = this.fixture.backgroundStarCount;
     const proceduralBackgroundBuffer = this.proceduralBackgroundBuffer;
@@ -1825,12 +1770,6 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
     ) return;
     const proceduralPipeline = this.proceduralPipeline;
     const proceduralBindGroup = this.proceduralBindGroup;
-    const motionBackgroundStarCount = friendsGalaxyMotionBackgroundStarCount(
-      backgroundStarCount,
-    );
-    const motionProceduralBackgroundStarCount = friendsGalaxyMotionBackgroundStarCount(
-      proceduralBackgroundStarCount,
-    );
     const semanticBuffer = this.semanticBuffer;
     const semanticStarCount = this.fixture.scene.nodeIds.length;
     const interactionBuffer = this.interactionBuffer;
@@ -1850,10 +1789,9 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
       encoder.setVertexBuffer(0, quadBuffer);
       encoder.setVertexBuffer(1, providerFieldBuffer);
       encoder.draw(6, providerFieldCount);
-      const starBuffer = cameraMoving ? motionStarBuffer : settledStarBuffer;
-      const starVertexCount = cameraMoving
-        ? FRIENDS_GALAXY_MOTION_STAR_VERTEX_COUNT
-        : FRIENDS_GALAXY_SETTLED_STAR_VERTEX_COUNT;
+      // A camera gesture changes the view, never the resident star population.
+      const starBuffer = settledStarBuffer;
+      const starVertexCount = FRIENDS_GALAXY_SETTLED_STAR_VERTEX_COUNT;
       if (proceduralBackgroundStarCount > 0) {
         encoder.setPipeline(proceduralPipeline!);
         encoder.setBindGroup(0, proceduralBindGroup!);
@@ -1861,9 +1799,7 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
         encoder.setVertexBuffer(1, proceduralBackgroundBuffer!);
         encoder.draw(
           starVertexCount,
-          cameraMoving
-            ? motionProceduralBackgroundStarCount
-            : proceduralBackgroundStarCount,
+          proceduralBackgroundStarCount,
         );
       } else if (backgroundStarCount > 0) {
         encoder.setPipeline(pipeline);
@@ -1872,7 +1808,7 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
         encoder.setVertexBuffer(1, backgroundBuffer);
         encoder.draw(
           starVertexCount,
-          cameraMoving ? motionBackgroundStarCount : backgroundStarCount,
+          backgroundStarCount,
         );
       }
       encoder.setPipeline(pipeline);
@@ -1914,6 +1850,7 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
     bindGroup: GPUBindGroup,
     instanceBuffer: GPUBuffer,
     instanceCount: number,
+    alphaBuffer: GPUBuffer,
   ): GPURenderBundle | null {
     if (
       !this.device || !this.format || !this.labelPipeline || !this.quadBuffer ||
@@ -1927,6 +1864,7 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
     encoder.setBindGroup(0, bindGroup);
     encoder.setVertexBuffer(0, this.quadBuffer);
     encoder.setVertexBuffer(1, instanceBuffer);
+    encoder.setVertexBuffer(2, alphaBuffer);
     encoder.draw(6, instanceCount);
     return encoder.finish();
   }

@@ -1,0 +1,52 @@
+{
+  "original": {
+    "localPath": "/tmp/freed-aquatic-26/source-09.jpg",
+    "imageUrl": "https://oceanexplorer.noaa.gov/wp-content/uploads/2023/10/dive08-crabs-hires.jpg",
+    "width": 1920,
+    "height": 1080,
+    "byteLength": 1157248,
+    "sha1": "70f1d24b8f2edc6f34b9b4c8a44f79bef80a0f0b",
+    "sha256": "27c25353cb58fdc964c3161ad601b1f26fd881c2767ad681ec670aac7a340480"
+  },
+  "variant": {
+    "localPath": "/tmp/freed-nestor-52/variant.jpg",
+    "imageUrl": "https://oceanexplorer.noaa.gov/wp-content/uploads/2023/10/dive08-crabs-hires-1024x576.jpg",
+    "width": 1024,
+    "height": 576,
+    "byteLength": 148225,
+    "sha1": "49106f4e4f269ddf47dd35e521a5a45eef8728a5",
+    "sha256": "d5ad1e59ee69356257197cabf44e4553784c7bdf7d064e945ea7c00d865b40d7"
+  },
+  "directFetchSeconds": 0.7416217080026399,
+  "sourcePage": "https://oceanexplorer.noaa.gov/multimedia/okeanos-explorations-seascape-alaska-ex2306-gallery-media-dive08-crabs/",
+  "sourceTitle": "Mating Crabs",
+  "attribution": "NOAA Ocean Exploration, Seascape Alaska",
+  "license": "Public domain",
+  "licenseUrl": "https://oceanexplorer.noaa.gov/faqs/",
+  "rightsEvidence": "Exact primary page credits NOAA Ocean Exploration, Seascape Alaska; same photograph and attribution as the admitted original.",
+  "publishedVariantEvidence": "Primary page img src and srcset explicitly list the 1024x576 URL; URL was extracted from cached HTML, not constructed.",
+  "sourceHtmlLocalPath": "/tmp/freed-nestor-52/source-page.html",
+  "characterId": "nestor-clasp",
+  "avatarCrop": {
+    "x": 0.34,
+    "y": 0.55,
+    "zoom": 1.3
+  },
+  "avatarReviewPath": "/tmp/freed-nestor-52/avatar-circles.png",
+  "review": "Cached original and exact published variant individually opened; same full composition. Both original and variant were passed through current runtime cropDecodedGalaxyAvatar with unchanged focal and zoom, displayed at actual220/48, and individually reviewed. Foreground left crab head, eye, spines and carapace remain distinct.",
+  "status": "proposed_delivery_repair_no_runtime_edits",
+  "relayTest": "Not run by this editorial subtask. Direct variant GET succeeded under a 5-second urllib timeout; this is not proof of actual relay success.",
+  "alt": "Two red spiny lithodid crabs clasp on a rocky outcrop, with a pink anemone at left and white sponge at right.",
+  "unchanged": [
+    "identity",
+    "species uncertainty",
+    "prose",
+    "crop focal and zoom",
+    "source attribution"
+  ],
+  "comparisonMeanAbsoluteChannelDifference": [
+    2.7209947374131946,
+    2.4424862331814237,
+    2.9951883951822915
+  ]
+}

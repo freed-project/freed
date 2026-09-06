@@ -25,6 +25,40 @@ html[data-theme="neon"] .demo-freed-logo {
   background-image: var(--theme-button-primary-background);
 }
 
+/* Marketing-style interaction, scoped to the demo's primary calls to action. */
+.btn-primary.demo-primary-action {
+  transition: transform 200ms ease, box-shadow 200ms ease, filter 200ms ease;
+}
+.demo-primary-action::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(110deg, transparent 20%, rgb(255 255 255 / 0.3) 50%, transparent 80%);
+  transform: translateX(-150%);
+}
+.demo-banner-control { transition: background-color 180ms ease; }
+.demo-banner-control svg { transition: transform 180ms ease; }
+.demo-banner-control:hover svg,
+.demo-banner-control:focus-visible svg,
+.demo-tab-restore:hover .demo-banner-control svg,
+.demo-tab-restore:focus-visible .demo-banner-control svg { transform: scale(1.18); }
+.demo-tab-restore:hover .demo-banner-control { background: var(--theme-accent-glow); }
+@keyframes demo-primary-shine {
+  to { transform: translateX(150%); }
+}
+@media (hover: hover) and (pointer: fine) {
+  .btn-primary.demo-primary-action:hover { transform: scale(1.05); }
+  .demo-primary-action:hover::after { animation: demo-primary-shine 700ms ease-out; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .demo-banner-morph { transition: none !important; }
+  .btn-primary.demo-primary-action { transition: none; }
+  .btn-primary.demo-primary-action:hover { transform: none; }
+  .demo-primary-action::after { display: none; }
+  .demo-banner-control svg { transition: none; transform: none !important; }
+}
+
 @media (max-width: 640px) {
   .demo-banner-actions {
     --demo-button-radius: 1rem;

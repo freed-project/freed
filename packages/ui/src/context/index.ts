@@ -7,6 +7,7 @@ export {
   type BugReportingConfig,
   type AvailableUpdateInfo,
   type BoundedFeedReader,
+  type LibraryFacetSummary,
   type ChangelogPreviewRelease,
   type LocalAIModelDownloadProgress,
   type LocalAIModelViewState,

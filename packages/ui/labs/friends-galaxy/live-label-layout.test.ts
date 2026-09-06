@@ -6,6 +6,7 @@ import {
   selectFriendsGalaxyVisibleLabelSeeds,
 } from "../../src/lib/friends-galaxy-presentation.js";
 import type { FriendsGalaxyLabelSeed } from "../../src/lib/friends-galaxy-billboard-atlas.js";
+import { friendsGalaxyLabelVerticalOffset, writeFriendsGalaxyLabelInstances } from "../../src/lib/friends-galaxy-billboard-atlas.js";
 import { createGalaxyLabFixture } from "./scene-fixture.js";
 
 function label(id: string, anchorX: number, priority = 1): FriendsGalaxyLabelSeed {
@@ -42,6 +43,30 @@ function projection(x: number) {
 }
 
 describe("Friends Galaxy live label layout", () => {
+  it("prioritizes a hovered node over overlapping labels at every zoom detail", () => {
+    const hovered = label("hovered-planet", 0, 2_000_000);
+    const nearby = label("nearby-star", 1, 3_000);
+    const distant = label("distant-star", 180, 2_000);
+    for (const detail of ["overview", "middle", "close"] as const) {
+      const selected = selectFriendsGalaxyVisibleLabelSeeds(
+        [nearby, hovered, distant], false, detail, projection(320),
+      );
+      expect(selected.map(row => row.id)).toContain("hovered-planet");
+      expect(selected.map(row => row.id)).not.toContain("nearby-star");
+      expect(selected.map(row => row.id)).toContain("distant-star");
+    }
+    expect(selectFriendsGalaxyVisibleLabelSeeds([nearby, { ...hovered, priority: 1 }], false, "close", projection(320))).toHaveLength(2);
+  });
+  it("uses the same centered and raised anchors in both GPU buffer layouts", () => {
+    const centered = { ...providerLabel("empty-provider"), centered: true, width: 80, height: 24, uv: [0, 0, 1, 1] as const };
+    const raised = { ...centered, id: "populated-provider", centered: false };
+    const buffer = new Float32Array(22);
+    writeFriendsGalaxyLabelInstances(buffer, [centered, raised]);
+    expect(buffer[4]).toBe(0);
+    expect(buffer[15]).toBe(22);
+    expect(friendsGalaxyLabelVerticalOffset(centered)).toBe(buffer[4]);
+    expect(friendsGalaxyLabelVerticalOffset(raised)).toBe(buffer[15]);
+  });
   it("changes the visible roster with the current camera frame", () => {
     const seeds = [
       label("near-origin", 0, 3),

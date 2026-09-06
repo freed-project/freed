@@ -1,0 +1,177 @@
+[
+  {
+    "id": "commons-visual-land-three-tully-7431bccd",
+    "subject": "rock hyrax",
+    "category": "wildlife",
+    "identityNameBase": "Tully Tumble",
+    "detail": "One rock hyrax crouches on a branch with its head lowered and dark eye visible.",
+    "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/02/189_Rock_hyrax_climbing_a_tree_in_Damaraland_Photo_by_Giles_Laurent.jpg/960px-189_Rock_hyrax_climbing_a_tree_in_Damaraland_Photo_by_Giles_Laurent.jpg",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:189_Rock_hyrax_climbing_a_tree_in_Damaraland_Photo_by_Giles_Laurent.jpg",
+    "creator": "Giles Laurent",
+    "license": "CC BY-SA 4.0",
+    "width": 6020,
+    "height": 4013,
+    "sha1": "7431bccd9df168ce5b8ff6c8ef62567641653166",
+    "focal": {
+      "x": 0.61,
+      "y": 0.53,
+      "zoom": 2.8
+    },
+    "characterId": "tully-tumble",
+    "alt": "One rock hyrax crouches on a branch with its head lowered and dark eye visible.",
+    "decision": "recommend",
+    "alreadyAggregated": true,
+    "review": "AVATAR-REVIEW-08.md"
+  },
+  {
+    "id": "commons-land-regular-four-fern-f3ae7a54",
+    "subject": "white-nosed coati",
+    "category": "wildlife",
+    "identityNameBase": "Fern Longnose",
+    "detail": "White-nosed coati rests its head against a tree branch, facing the camera.",
+    "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/08/White-nosed_coati_%28Nasua_narica%29_relaxing_in_a_tree_in_Tulum%2C_Quintana_Roo%2C_Mexico.png/960px-White-nosed_coati_%28Nasua_narica%29_relaxing_in_a_tree_in_Tulum%2C_Quintana_Roo%2C_Mexico.png",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:White-nosed_coati_(Nasua_narica)_relaxing_in_a_tree_in_Tulum,_Quintana_Roo,_Mexico.png",
+    "creator": "Chuck Homler, Focus On Wildlife",
+    "license": "CC BY-SA 4.0",
+    "width": 4371,
+    "height": 5464,
+    "sha1": "f3ae7a54e302fadd0331daabe2f8be0000cceac7",
+    "focal": {
+      "x": 0.56,
+      "y": 0.38,
+      "zoom": 2.5
+    },
+    "characterId": "fern-longnose",
+    "alt": "White-nosed coati rests its head against a tree branch, facing the camera.",
+    "decision": "recommend",
+    "alreadyAggregated": true,
+    "review": "AVATAR-REVIEW-08.md"
+  },
+  {
+    "characterId": "wren-boulder",
+    "subject": "klipspringer",
+    "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c2/Klipspringer_%28Oreotragus_oreotragus%29_female_..._%2851897521620%29.jpg/960px-Klipspringer_%28Oreotragus_oreotragus%29_female_..._%2851897521620%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Klipspringer_(Oreotragus_oreotragus)_female_..._(51897521620).jpg",
+    "sha1": "0c520c2851a3b045bc5fa2bd449b990fbd1038f1",
+    "width": 3648,
+    "height": 4440,
+    "creator": "Bernard DUPONT from FRANCE",
+    "license": "CC BY-SA 2.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/2.0",
+    "description": "Nkumbe, H10 Road South of Tshokwane, Kruger NP, Mpumalanga, SOUTH AFRICA",
+    "categories": [
+      "Category:CC-BY-SA-2.0",
+      "Category:Flickr images reviewed by FlickreviewR 2",
+      "Category:Oreotragus oreotragus"
+    ],
+    "focal": {
+      "x": 0.4,
+      "y": 0.22,
+      "zoom": 2.4
+    },
+    "identityNameBase": "Wren Boulder",
+    "id": "commons-avatar-eight-wren-boulder-0c520c28",
+    "category": "wildlife",
+    "alt": "Female klipspringer faces the camera with large ears and no visible horns.",
+    "detail": "Female klipspringer faces the camera with large ears and no visible horns.",
+    "decision": "recommend",
+    "alreadyAggregated": false,
+    "review": "AVATAR-REVIEW-08.md"
+  },
+  {
+    "characterId": "mallow-fold",
+    "subject": "ground pangolin",
+    "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/b9/Manis_temminckii_%2829681414615%29.jpg/960px-Manis_temminckii_%2829681414615%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Manis_temminckii_(29681414615).jpg",
+    "sha1": "ee256a5a0db7c007464a9b6311db5392ca8e3d53",
+    "width": 1024,
+    "height": 660,
+    "creator": "Tikki Hywood Trust, via U.S. Fish and Wildlife Service",
+    "license": "CC BY 2.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
+    "description": "Photo credit to Tikki Hywood Trust\n\nThe United States is co-sponsoring four separate proposals to increase CITES protections for pangolins from Appendix II to Appendix I",
+    "categories": [
+      "Category:CC-BY-2.0",
+      "Category:Files from the United States Fish and Wildlife Service Headquarters Flickr stream",
+      "Category:Files uploaded by Rhododendrites (all)",
+      "Category:Flickr images reviewed by FlickreviewR",
+      "Category:Other photographs uploaded by Rhododendrites - USFWS",
+      "Category:Smutsia temminckii"
+    ],
+    "focal": {
+      "x": 0.32,
+      "y": 0.6,
+      "zoom": 1.5
+    },
+    "identityNameBase": "Mallow Fold",
+    "id": "commons-avatar-eight-mallow-fold-ee256a5a",
+    "category": "wildlife",
+    "alt": "Ground pangolin lowers its long snout toward shallow water, with overlapping scales visible.",
+    "detail": "Ground pangolin lowers its long snout toward shallow water, with overlapping scales visible.",
+    "decision": "recommend",
+    "alreadyAggregated": false,
+    "review": "AVATAR-REVIEW-08.md"
+  },
+  {
+    "characterId": "sumi-smallhours",
+    "subject": "pygmy slow loris",
+    "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/2e/Nycticebus_pygmaeus_010.jpg/960px-Nycticebus_pygmaeus_010.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Nycticebus_pygmaeus_010.jpg",
+    "sha1": "7cc2e536b2f9307a72d9a0799bf3cd2f0a3918d8",
+    "width": 1300,
+    "height": 1733,
+    "creator": "Dr. K.A.I. Nekaris",
+    "license": "CC BY-SA 3.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+    "description": "Pygmy slow loris (Nycticebus pygmaeus) from Seima Biodiversity Conservation Area, Mondulkiri Province Cambodia",
+    "categories": [
+      "Category:CC-BY-SA-3.0",
+      "Category:Items with VRTS permission confirmed",
+      "Category:Nycticebus pygmaeus",
+      "Category:Primates of Cambodia"
+    ],
+    "focal": {
+      "x": 0.52,
+      "y": 0.3,
+      "zoom": 2
+    },
+    "identityNameBase": "Sumi Smallhours",
+    "id": "commons-avatar-eight-sumi-smallhours-7cc2e536",
+    "category": "wildlife",
+    "alt": "Pygmy slow loris grips branches with its round eyes and small dark nose facing the camera.",
+    "detail": "Pygmy slow loris grips branches with its round eyes and small dark nose facing the camera.",
+    "decision": "recommend",
+    "alreadyAggregated": false,
+    "review": "AVATAR-REVIEW-08.md"
+  },
+  {
+    "characterId": "pip-pocket",
+    "subject": "Hawaiian bobtail squid",
+    "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/8/83/Hawaiian_bobtail_squid_2.png?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Hawaiian_bobtail_squid_2.png",
+    "sha1": "8ee3a18f67319c6dd45c4faa2b468b976686a1df",
+    "width": 800,
+    "height": 800,
+    "creator": "Margaret McFall-Ngai",
+    "license": "CC BY-SA 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+    "description": "Adult Hawaiian bobtail squid, Euprymna scolopes. Extracted from Hawaiian Bobtail squid.tiff, originating in the PLOS Biology article Divining the Essence of Symbiosis: Insights from the Squid-Vibrio Model.",
+    "categories": [
+      "Category:Euprymna scolopes"
+    ],
+    "focal": {
+      "x": 0.49,
+      "y": 0.45,
+      "zoom": 1.45
+    },
+    "identityNameBase": "Pip Pocket",
+    "id": "commons-avatar-eight-pip-pocket-8ee3a18f",
+    "category": "undersea",
+    "alt": "Adult Hawaiian bobtail squid with spotted mantle and prominent eye against black; the source includes a scientific scale below.",
+    "detail": "Adult Hawaiian bobtail squid with spotted mantle and prominent eye against black; the source includes a scientific scale below.",
+    "decision": "recommend",
+    "alreadyAggregated": false,
+    "review": "AVATAR-REVIEW-08.md",
+    "primarySourceUrl": "https://journals.plos.org/plosbiology/article?id=10.1371/journal.pbio.1001783"
+  }
+]

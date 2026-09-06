@@ -1,10 +1,12 @@
 import {
   generateSampleLibraryData,
   SAMPLE_CHARACTER_ARCS,
+  SAMPLE_CHARACTER_AVATAR_MEDIA,
   SAMPLE_CURATED_DEMO_MEDIA,
   sampleCorpusAttribution,
   sampleCorpusMediaUrl,
   sampleCorpusSourceUrl,
+  projectSampleYouTubeVideo,
   type Account,
   type FeedItem,
   type Person,
@@ -23,6 +25,7 @@ import {
   beginPwaNormalizedCheckpointStage,
   queryPwaNormalizedLibrary,
 } from "./library-core-sqlite-runtime";
+import { isFreedDemoMode } from "./demo-mode";
 
 const DEMO_CREATED_AT = Date.UTC(2026, 7, 31, 12);
 const DEMO_BATCH_ID = "freed-demo-showcase-v11";
@@ -33,7 +36,6 @@ const DEMO_CAPABILITY_ID = "3".repeat(64);
 const DEMO_PUBLIC_KEY = "4".repeat(64);
 const DEMO_CHAIN_DIGEST = "5".repeat(64);
 const DEMO_PAGE_RECORDS = 512;
-const DEMO_LAST_TOP_ITEM_KEY = "freed.demo.last-top-item.v1";
 export type FreedDemoCheckpointProgressListener = (percent: number) => void;
 const DEMO_CHARACTER_CARE_LEVELS = {
   "manny-tis": 5,
@@ -51,28 +53,13 @@ interface FreedDemoCheckpointOptions {
   generatedAt?: number;
   presentationSeed?: number;
   previousTopItemId?: string | null;
+  careLevels?: ReadonlyMap<string, Person["careLevel"]>;
 }
 
 function demoPresentationSeed(): number {
   const values = new Uint32Array(1);
   crypto.getRandomValues(values);
   return values[0]!;
-}
-
-function readPreviousDemoTopItemId(): string | null {
-  try {
-    return sessionStorage.getItem(DEMO_LAST_TOP_ITEM_KEY);
-  } catch {
-    return null;
-  }
-}
-
-function writePreviousDemoTopItemId(globalId: string): void {
-  try {
-    sessionStorage.setItem(DEMO_LAST_TOP_ITEM_KEY, globalId);
-  } catch {
-    // A fresh randomized seed still provides variety when storage is unavailable.
-  }
 }
 
 function stablePresentationNumber(value: string, seed: number): number {
@@ -89,6 +76,9 @@ function curatedDemoSample(
   presentationSeed: number,
   previousTopItemId: string | null | undefined,
 ) {
+  if (!sample.items.length || !sample.persons.length || !sample.accounts.length || !sample.feeds.length) {
+    throw new Error("The demo requires nonempty record templates.");
+  }
   const mediaBySha = new Map(SAMPLE_CURATED_DEMO_MEDIA.map((asset) => [asset.sha1, asset]));
   const mediaByCharacter = new Map<string, typeof SAMPLE_CURATED_DEMO_MEDIA>();
   for (const arc of SAMPLE_CHARACTER_ARCS) {
@@ -104,40 +94,64 @@ function curatedDemoSample(
   let templateIndex = 0;
   for (const arc of SAMPLE_CHARACTER_ARCS) {
     const assets = mediaByCharacter.get(arc.characterId) ?? [];
+    const avatar = SAMPLE_CHARACTER_AVATAR_MEDIA.get(arc.characterId) ?? assets[0];
     const externalId = `${DEMO_BATCH_ID}:sample-character-${arc.characterId}`;
-    const items = arc.episodes.map((episode, sequence) => {
+    const items = arc.episodes.flatMap((episode, sequence) => {
+      // Keep sequence IDs from the authored timeline, including unpublished gaps.
+      if (!episode.mediaSha1) return [];
+      const platform = episode.platform ?? arc.platform;
+      const contentType = episode.contentType ?? (
+        platform === "rss" || platform === "medium" || platform === "substack"
+          ? "article" : platform === "youtube" ? "video" : "post"
+      );
       const asset = episode.mediaSha1 ? mediaBySha.get(episode.mediaSha1) : undefined;
       if (episode.mediaSha1 && !asset) {
         throw new Error(`Missing reviewed demo media for ${arc.characterId}:${sequence}`);
       }
-      const template = sample.items[templateIndex++]!;
+      if ((platform === "youtube") !== (contentType === "video") ||
+          (episode.video && platform !== "youtube")) {
+        throw new Error("Demo video metadata requires the YouTube video format.");
+      }
+      const video = platform === "youtube"
+        ? projectSampleYouTubeVideo(episode.video, sampleCorpusMediaUrl(asset!), episode.body)
+        : undefined;
+      // The reader displays content text, not link descriptions. Preserve both
+      // independent creators' credits there, including the thumbnail's license.
+      const thumbnailCredit = video && asset
+        ? `Thumbnail by ${asset.creator}, ${asset.license}. Source: ${sampleCorpusSourceUrl(asset)}`
+        : undefined;
+      // Templates supply record defaults, not a ceiling on authored content.
+      // Every public identity and content field is replaced below.
+      const template = sample.items[templateIndex++ % sample.items.length]!;
       const globalId = `${DEMO_BATCH_ID}:sample-character:${arc.characterId}:${sequence}`;
-      const sourceUrl = asset
+      const sourceUrl = video?.sourceUrl ?? (asset
         ? sampleCorpusSourceUrl(asset)
-        : `https://demo.freed.wtf/?item=${encodeURIComponent(globalId)}`;
-      return {
+        : `https://demo.freed.wtf/?item=${encodeURIComponent(globalId)}`);
+      return [{
         ...template,
         globalId,
-        platform: arc.platform,
-        contentType: arc.platform === "rss" ? "article" as const : "post" as const,
+        platform,
+        contentType,
         sourceUrl,
         author: {
           id: externalId,
           displayName: arc.identityNameBase,
           handle: arc.characterId,
-          avatarUrl: assets[0] ? sampleCorpusMediaUrl(assets[0]) : undefined,
+          avatarUrl: avatar ? sampleCorpusMediaUrl(avatar) : undefined,
         },
         content: {
-          text: episode.body,
+          text: video ? `${video.text}\n\n${thumbnailCredit}` : episode.body,
           mediaUrls: asset ? [sampleCorpusMediaUrl(asset)] : [],
           mediaTypes: asset ? ["image" as const] : [],
           linkPreview: {
             url: sourceUrl,
             title: episode.title,
-            description: asset ? sampleCorpusAttribution(asset) : undefined,
+            description: video
+              ? `${video.attribution}\n${thumbnailCredit}`
+              : (asset ? sampleCorpusAttribution(asset) : undefined),
           },
         },
-        ...(arc.platform === "rss"
+        ...(platform === "rss"
           ? {
               rssSource: {
                 feedUrl: `https://sample.freed.wtf/${DEMO_BATCH_ID}/characters/${arc.characterId}`,
@@ -155,7 +169,7 @@ function curatedDemoSample(
               },
             }
           : { location: undefined }),
-        preservedContent: arc.platform === "rss"
+        preservedContent: contentType === "article"
           ? {
               preservedAt: generatedAt,
               publishedAt: generatedAt,
@@ -167,10 +181,13 @@ function curatedDemoSample(
           : undefined,
         userState: {
           ...template.userState,
+          // A replacement demo begins unread, regardless of sample-template history.
+          readAt: undefined,
+          seenSyncedAt: undefined,
           archived: false,
           hidden: false,
         },
-      } satisfies FeedItem;
+      } satisfies FeedItem];
     });
     characterItems.set(arc.characterId, items);
   }
@@ -200,7 +217,8 @@ function curatedDemoSample(
     .map((item) => item.publishedAt)
     .sort((left, right) => right - left);
   const items = newestFirst.map((item, index) => {
-    const publishedAt = timelineSlots[index] ?? generatedAt - index * 60_000;
+    const publishedAt = timelineSlots[index]
+      ?? (timelineSlots.at(-1) ?? generatedAt) - (index - timelineSlots.length + 1) * 60_000;
     const delta = publishedAt - item.publishedAt;
     return {
       ...item,
@@ -209,37 +227,61 @@ function curatedDemoSample(
     };
   });
 
-  const persons = SAMPLE_CHARACTER_ARCS.map((arc, index) => {
-    const template = sample.persons[index]!;
+  const admittedArcs = SAMPLE_CHARACTER_ARCS.filter((arc) => characterItems.get(arc.characterId)?.length);
+  // Stable membership makes the two feed scopes meaningfully different without
+  // changing who is a friend whenever the timeline is shuffled. Preserve curated
+  // close relationships first, then fill the remaining slots deterministically.
+  const curatedCare = (id: string) =>
+    DEMO_CHARACTER_CARE_LEVELS[id as keyof typeof DEMO_CHARACTER_CARE_LEVELS];
+  const membershipPriority = (id: string) => {
+    const level = curatedCare(id);
+    return level === undefined ? 1 : level >= 3 ? 0 : 2;
+  };
+  const friendIds = new Set([...admittedArcs]
+    .sort((left, right) =>
+      membershipPriority(left.characterId) - membershipPriority(right.characterId)
+      || stablePresentationNumber(left.characterId, 0) - stablePresentationNumber(right.characterId, 0)
+      || left.characterId.localeCompare(right.characterId))
+    .slice(0, Math.round(admittedArcs.length * 0.15))
+    .map((arc) => arc.characterId));
+  const persons = admittedArcs.map((arc, index) => {
+    const template = sample.persons[index % sample.persons.length]!;
     const assets = mediaByCharacter.get(arc.characterId) ?? [];
+    const isFriend = friendIds.has(arc.characterId);
+    const preferredCare = curatedCare(arc.characterId);
+    // Care level is relationship status, not a second independent rating.
+    const careLevel = (isFriend
+      ? preferredCare !== undefined && preferredCare >= 3 ? preferredCare : 3 + stablePresentationNumber(arc.characterId, 0) % 3
+      : preferredCare !== undefined && preferredCare <= 2 ? preferredCare : 1 + stablePresentationNumber(arc.characterId, 0) % 2
+    ) as Person["careLevel"];
     return {
       ...template,
       id: `${DEMO_BATCH_ID}:sample-person-${arc.characterId}`,
       name: arc.identityNameBase,
       bio: arc.bio,
-      avatarUrl: assets[0] ? sampleCorpusMediaUrl(assets[0]) : undefined,
-      careLevel: DEMO_CHARACTER_CARE_LEVELS[arc.characterId as keyof typeof DEMO_CHARACTER_CARE_LEVELS]
-        ?? (1 + stablePresentationNumber(arc.characterId, 0) % 5) as Person["careLevel"],
-      relationshipStatus: "friend",
+      avatarUrl: SAMPLE_CHARACTER_AVATAR_MEDIA.get(arc.characterId)?.baseUrl ?? (assets[0] ? sampleCorpusMediaUrl(assets[0]) : undefined),
+      careLevel,
+      relationshipStatus: isFriend ? "friend" : "connection",
     } satisfies Person;
   });
-  const accounts = SAMPLE_CHARACTER_ARCS.map((arc, index) => {
-    const template = sample.accounts[index]!;
+  const accounts = admittedArcs.flatMap((arc, index) => {
+    const template = sample.accounts[index % sample.accounts.length]!;
     const assets = mediaByCharacter.get(arc.characterId) ?? [];
     const externalId = `${DEMO_BATCH_ID}:sample-character-${arc.characterId}`;
-    return {
+    const platforms = [...new Set(characterItems.get(arc.characterId)!.map((item) => item.platform))];
+    return platforms.map((platform) => ({
       ...template,
-      id: `social:${arc.platform}:${externalId}`,
-      provider: arc.platform,
+      id: `social:${platform}:${externalId}`,
+      provider: platform,
       externalId,
       handle: arc.characterId,
       displayName: arc.identityNameBase,
-      avatarUrl: assets[0] ? sampleCorpusMediaUrl(assets[0]) : undefined,
+      avatarUrl: SAMPLE_CHARACTER_AVATAR_MEDIA.get(arc.characterId)?.baseUrl ?? (assets[0] ? sampleCorpusMediaUrl(assets[0]) : undefined),
       personId: persons[index]!.id,
-    } satisfies Account;
+    } satisfies Account));
   });
   const feedTemplate = sample.feeds[0]!;
-  const feeds: RssFeed[] = SAMPLE_CHARACTER_ARCS.filter((arc) => arc.platform === "rss").map((arc) => ({
+  const feeds: RssFeed[] = admittedArcs.filter((arc) => characterItems.get(arc.characterId)!.some((item) => item.platform === "rss")).map((arc) => ({
     ...feedTemplate,
     url: `https://sample.freed.wtf/${DEMO_BATCH_ID}/characters/${arc.characterId}`,
     title: `${arc.identityNameBase} Field Notes`,
@@ -247,23 +289,6 @@ function curatedDemoSample(
     imageUrl: undefined,
   }));
   return { accounts, feeds, items, persons };
-}
-
-function demoTopItemId(
-  records: readonly LibraryCoreNormalizedCheckpointRecordV2[],
-): string | null {
-  const visibleItems = records
-    .filter((candidate) =>
-      candidate.registryKey === "10_feed_item" &&
-      candidate.payload.contentType !== "story" &&
-      candidate.payload.archived === false &&
-      candidate.payload.hidden === false
-    )
-    .sort((left, right) =>
-      Number(right.payload.publishedAt) - Number(left.payload.publishedAt) ||
-      String(left.primaryKey).localeCompare(String(right.primaryKey))
-    );
-  return visibleItems[0] ? String(visibleItems[0].primaryKey) : null;
 }
 
 function record(
@@ -505,7 +530,14 @@ export function createFreedDemoCheckpointRecords(
     }),
     ...curated.items.flatMap(feedItemRecords),
     ...curated.feeds.flatMap(feedRecords),
-    ...curated.persons.flatMap(personRecords),
+    ...curated.persons.flatMap((person) => {
+      const level = options.careLevels?.get(person.id);
+      return personRecords(level === undefined ? person : {
+        ...person,
+        careLevel: level,
+        relationshipStatus: level >= 3 ? "friend" : "connection",
+      });
+    }),
     ...curated.accounts.flatMap(accountRecords),
     record("90_actor_state", DEMO_WRITER_ID, {
       acceptedChainDigest: DEMO_CHAIN_DIGEST,
@@ -541,6 +573,57 @@ export function createFreedDemoCheckpointRecords(
 }
 
 let demoInstallTask: Promise<void> | null = null;
+let demoPresentation: FreedDemoCheckpointOptions | null = null;
+let demoCareLevels = new Map<string, Person["careLevel"]>();
+let demoCareTask = Promise.resolve();
+let pendingCareChanges = 0;
+let demoCareUnavailable = false;
+
+/** Replace only the isolated demo fixture, never submit a durable Library edit. */
+export async function setFreedDemoPersonCare(
+  personId: string,
+  level: Person["careLevel"],
+): Promise<void> {
+  if (!isFreedDemoMode(location.hostname, undefined, location.search)) {
+    throw new Error("Demo care changes are unavailable outside the demo.");
+  }
+  if (!Number.isInteger(level) || level < 1 || level > 5 || personId.length > 512) {
+    throw new Error("Invalid demo care rating.");
+  }
+  if (pendingCareChanges >= 4) throw new Error("A demo care change is already pending.");
+  pendingCareChanges += 1;
+  const change = demoCareTask.then(async () => {
+    if (!demoInstallTask || demoCareUnavailable) throw new Error("Reload the demo before changing care ratings.");
+    await demoInstallTask;
+    if (!demoPresentation) throw new Error("The demo is not initialized.");
+    // Let the rating's pending state paint before constructing this bounded fixture.
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    const nextLevels = new Map(demoCareLevels).set(personId, level);
+    const records = createFreedDemoCheckpointRecords({ ...demoPresentation, careLevels: nextLevels });
+    const people = records.filter((entry) => entry.registryKey === "30_person");
+    if (people.length > 1_000 || records.filter(entry => entry.registryKey === "10_feed_item").length > 1_000
+      || !people.some((entry) => entry.primaryKey === personId)) {
+      throw new Error("That identity is not part of this demo.");
+    }
+    // Activation validates and atomically replaces the memory database. Its new
+    // checkpoint digest fences old cursors; no synthetic writer or SQL bypass.
+    try {
+      await activateDemoCheckpoint(records);
+    } catch (error) {
+      // A failed or ambiguous activation requires a fresh isolated document.
+      // Do not accumulate abandoned stages or replay a possibly accepted edit.
+      demoCareUnavailable = true;
+      throw error;
+    }
+    demoCareLevels = nextLevels;
+  });
+  demoCareTask = change.catch(() => undefined);
+  try {
+    await change;
+  } finally {
+    pendingCareChanges -= 1;
+  }
+}
 
 async function activateDemoCheckpoint(
   records: readonly LibraryCoreNormalizedCheckpointRecordV2[],
@@ -580,9 +663,8 @@ async function activateDemoCheckpoint(
 async function installFreedDemoCheckpointOnce(
   onProgress?: FreedDemoCheckpointProgressListener,
 ): Promise<void> {
-  const records = createFreedDemoCheckpointRecords({
-    previousTopItemId: readPreviousDemoTopItemId(),
-  });
+  demoPresentation = { generatedAt: Date.now(), presentationSeed: demoPresentationSeed() };
+  const records = createFreedDemoCheckpointRecords(demoPresentation);
   onProgress?.(0);
   await activateDemoCheckpoint(records, onProgress, [2, 88]);
   const firstSummary = await queryPwaNormalizedLibrary({
@@ -596,8 +678,6 @@ async function installFreedDemoCheckpointOnce(
   if (firstSummary.summary.totalCount !== expectedItems) {
     await activateDemoCheckpoint(records, onProgress, [92, 98]);
   }
-  const topItemId = demoTopItemId(records);
-  if (topItemId) writePreviousDemoTopItemId(topItemId);
   onProgress?.(98);
 }
 

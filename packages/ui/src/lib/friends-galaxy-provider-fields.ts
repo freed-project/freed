@@ -135,7 +135,7 @@ export function createFriendsGalaxyProviderFields(
     writeFieldGeometry(instanceData, index + 1, {
       x: region.x,
       y: -region.y,
-      z: -250,
+      z: -300,
       halfWidth: region.radiusX * 1.32,
       halfHeight: region.radiusY * 1.38,
       seed: providerGalaxySeed(region.provider),

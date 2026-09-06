@@ -21,7 +21,10 @@ class FakeWorker {
   postError: Error | null = null;
   terminateCount = 0;
 
-  constructor() {
+  readonly options?: WorkerOptions;
+
+  constructor(_url: URL, options?: WorkerOptions) {
+    this.options = options;
     FakeWorker.latest = this;
   }
 
@@ -84,8 +87,26 @@ describe("PWA SQLite worker response boundary", () => {
   });
 
   afterEach(() => {
+    vi.unstubAllEnvs();
     vi.useRealTimers();
     vi.unstubAllGlobals();
+  });
+
+  it("isolates demo workers without opting ordinary app tabs into disposable storage", () => {
+    vi.stubEnv("VITE_FREED_DEMO", "0");
+    for (const [hostname, search, expected] of [
+      ["demo.freed.wtf", "", "freed-library-core-sqlite-demo"],
+      ["preview.vercel.app", "?freed-demo=1", "freed-library-core-sqlite-demo"],
+      ["app.freed.wtf", "?freed-demo=1", "freed-library-core-sqlite"],
+      ["localhost", "", "freed-library-core-sqlite"],
+    ]) {
+      vi.stubGlobal("location", new URL(`https://${hostname}/${search}`));
+      new PwaLibraryCoreSqliteClient();
+      expect(activeWorker().options?.name).toBe(expected);
+    }
+    vi.stubEnv("VITE_FREED_DEMO", "1");
+    new PwaLibraryCoreSqliteClient();
+    expect(activeWorker().options?.name).toBe("freed-library-core-sqlite-demo");
   });
 
   it("terminally retires the client when its worker errors", async () => {

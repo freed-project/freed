@@ -14,6 +14,7 @@ import {
   type ReactNode,
 } from "react";
 import type {
+  SampleAvatarFocalPoint,
   Account,
   BaseAppState,
   ContentSignal,
@@ -495,6 +496,18 @@ export interface PlatformConfig {
 
   /** Removes durable editing and connection surfaces for a public showcase. */
   interactionMode?: "full" | "read-only";
+  /** Optional session-only read acknowledgement for a non-editable demo. */
+  onReadOnlyItemOpened?: (item: FeedItem) => void;
+  /** Session-only demo care simulation. Does not grant other Library mutations. */
+  onReadOnlyPersonCareChange?: (personId: string, level: Person["careLevel"]) => Promise<void>;
+
+  /** Exact reviewed demo-image allowlist. Absent for real libraries. */
+  approvedDemoAvatarUrls?: ReadonlySet<string>;
+  /** Platform-owned delivery routes for approved public images that lack CORS. */
+  approvedDemoAvatarDeliveryUrls?: ReadonlyMap<string, string>;
+  approvedDemoAvatarFocalPoints?: ReadonlyMap<string, SampleAvatarFocalPoint>;
+  /** Device-local image delivery only. Never write its result into canonical profile data. */
+  resolveAvatarUrl?: (sourceUrl: string) => string;
 
   /** Uses the bundled marker canvas without network map tiles. */
   geographicMapMode?: "online" | "local-showcase";
@@ -982,6 +995,12 @@ export function usePlatform(): PlatformConfig {
     throw new Error("usePlatform() requires a <PlatformProvider>");
   }
   return ctx;
+}
+
+/** Shared avatars remain usable outside the app shell, including preview cards. */
+export function useAvatarSource(sourceUrl: string | null | undefined): string | null {
+  const platform = useContext(PlatformCtx);
+  return sourceUrl ? platform?.resolveAvatarUrl?.(sourceUrl) ?? sourceUrl : null;
 }
 
 /**

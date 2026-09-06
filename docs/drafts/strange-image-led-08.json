@@ -1,0 +1,1066 @@
+{
+  "status": "Seventeen root-approved entries prepared in strange-eight runtime files; seven candidates remain unadmitted.",
+  "batchCount": 24,
+  "longStoryCount": 6,
+  "photoCount": 24,
+  "characters": [
+    {
+      "id": "akio-sheen",
+      "name": "Akio Sheen",
+      "species": "Chrysochroa fulgidissima",
+      "location": {
+        "name": "Woodland below Mount Takao, Japan",
+        "coordinates": {
+          "lat": 35.625,
+          "lng": 139.251
+        }
+      }
+    },
+    {
+      "id": "lucette-vein",
+      "name": "Lucette Vein",
+      "species": "Chrysoperla carnea group",
+      "location": {
+        "name": "Hedgerow near Roskilde, Denmark",
+        "coordinates": {
+          "lat": 55.638,
+          "lng": 12.053
+        }
+      }
+    },
+    {
+      "id": "greta-blade",
+      "name": "Greta Blade",
+      "species": "Tettigonia viridissima",
+      "location": {
+        "name": "Garden scrub at Bois de Vincennes, France",
+        "coordinates": {
+          "lat": 48.827,
+          "lng": 2.463
+        }
+      }
+    },
+    {
+      "id": "hugo-plush",
+      "name": "Hugo Plush",
+      "species": "Peripatoides novaezealandiae complex",
+      "location": {
+        "name": "Damp forest floor near Wellington, New Zealand",
+        "coordinates": {
+          "lat": -41.285,
+          "lng": 174.758
+        }
+      }
+    },
+    {
+      "id": "barnaby-many",
+      "name": "Barnaby Many",
+      "species": "Archispirostreptus gigas",
+      "location": {
+        "name": "Coastal forest near Diani, Kenya",
+        "coordinates": {
+          "lat": -4.336,
+          "lng": 39.556
+        }
+      }
+    },
+    {
+      "id": "penny-focus",
+      "name": "Penny Focus",
+      "species": "Phidippus regius",
+      "location": {
+        "name": "Palmetto scrub near Gainesville, Florida",
+        "coordinates": {
+          "lat": 29.68,
+          "lng": -82.29
+        }
+      }
+    }
+  ],
+  "entries": [
+    {
+      "id": "strange-08-01",
+      "characterId": "akio-sheen",
+      "characterName": "Akio Sheen",
+      "sequence": 1,
+      "platform": "instagram",
+      "subject": "Chrysochroa fulgidissima",
+      "title": "Handle with care",
+      "body": "The giant lifted me on one finger. I gripped it with all six feet. It stopped moving. I stopped moving. Apparently neither of us had done this before.",
+      "theme": "encounter",
+      "location": {
+        "name": "Woodland below Mount Takao, Japan",
+        "coordinates": {
+          "lat": 35.625,
+          "lng": 139.251
+        }
+      },
+      "image": {
+        "url": "https://upload.wikimedia.org/wikipedia/commons/c/cc/Chrysochroa_Fulgidissima_%28Tamamushi%29_In_Hand.PNG?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail_unscaled",
+        "localPath": "/tmp/freed-strange08-review.RUZPa1/1.png",
+        "downloadedSha256": "9774d2dd5dbc0a9a886d704576c7c797f17000d37a0d8190b08b3d134010fdd1",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Bright beetle stands on human fingers; the enormous gentle contact is the scene.",
+        "reviewDecision": "root_approved_for_runtime_integration"
+      },
+      "provenance": {
+        "title": "File:Chrysochroa Fulgidissima (Tamamushi) In Hand.PNG",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Chrysochroa_Fulgidissima_(Tamamushi)_In_Hand.PNG",
+        "creator": "Brian Adler (BrianAdler)",
+        "license": "Public domain",
+        "licenseUrl": null,
+        "width": 489,
+        "height": 587,
+        "sha1": "2e325a6591444fc75fc2b9373cde31e58ef17e93",
+        "sourceDescription": "A picture of <i>Chrysochroa fulgidissima</i>, or \"Tamamushi\" beetle. Photo taken in Iizaka, Japan with a Canon PowerShot SD450 Digital Elph camera. Image file extension was changed using a Paint Shop program on a laptop computer.",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "Mutual caution replaces the expected tiny animal's fear."
+    },
+    {
+      "id": "strange-08-02",
+      "characterId": "akio-sheen",
+      "characterName": "Akio Sheen",
+      "sequence": 2,
+      "platform": "x",
+      "subject": "Chrysochroa fulgidissima",
+      "title": "Summer menu",
+      "body": "I spent my youth eating the inside of wood. Now I eat leaves in the sunshine. Nobody mentioned there would be a second menu.",
+      "theme": "pleasure",
+      "location": {
+        "name": "Woodland below Mount Takao, Japan",
+        "coordinates": {
+          "lat": 35.625,
+          "lng": 139.251
+        }
+      },
+      "image": {
+        "url": "https://upload.wikimedia.org/wikipedia/commons/a/a5/Chrysochroa_fulgidissima_%28Tamamushi%29_In_Nature.PNG?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail_unscaled",
+        "localPath": "/tmp/freed-strange08-review.RUZPa1/2.png",
+        "downloadedSha256": "71901feeee80efdd70cc825b237e5e5f5b42e6f477e6da3a6a750e4299f2b00f",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Live beetle rests amid foliage and buds, supporting the adult plant-feeding body.",
+        "reviewDecision": "not_admitted"
+      },
+      "provenance": {
+        "title": "File:Chrysochroa fulgidissima (Tamamushi) In Nature.PNG",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Chrysochroa_fulgidissima_(Tamamushi)_In_Nature.PNG",
+        "creator": "Brian Adler (BrianAdler)",
+        "license": "Public domain",
+        "licenseUrl": null,
+        "width": 582,
+        "height": 573,
+        "sha1": "9ac3cea1e0d872682f782331735b6c74e749ab36",
+        "sourceDescription": "A picture of <i>Chrysochroa fulgidissima</i>, or \"Tamamushi\" beetle. Photo taken in Iizaka, Japan with a Canon PowerShot SD450 Digital Elph camera. Image file extension was changed using a Paint Shop program on a laptop computer.",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "Metamorphosis arrives as a pleasurable surprise rather than an improvement sermon."
+    },
+    {
+      "id": "strange-08-03",
+      "characterId": "akio-sheen",
+      "characterName": "Akio Sheen",
+      "sequence": 3,
+      "platform": "rss",
+      "subject": "Chrysochroa fulgidissima",
+      "title": "The hole I made",
+      "body": "I recognized the old trunk by a bend in the bark. Somewhere inside it was the tunnel I had eaten when I was small.\n\nI had meant to find the opening. Put my head in, perhaps. See whether it still felt enormous.\n\nThere were mushrooms all along that side now. Soft orange shelves, one above another. I climbed between them and found a crack just wide enough for my face. The wood crumbled when I touched it.\n\nFor a moment I resented them. I had worked very hard on that wood.\n\nThen I remembered what the work had been.\n\nI sat beside the largest mushroom. It had a very fine underside. We said nothing about the trunk.",
+      "theme": "memory",
+      "location": {
+        "name": "Woodland below Mount Takao, Japan",
+        "coordinates": {
+          "lat": 35.625,
+          "lng": 139.251
+        }
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/8/83/Chrysochroa_fulgidissima_01.jpg/960px-Chrysochroa_fulgidissima_01.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange08-review.RUZPa1/extra0.jpg",
+        "downloadedSha256": "bb871e7443cc09340eaddcf8fc94a6746f7e75e01860ac52f0808e48181065b0",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Beetle climbs an upright old trunk or stump beside large orange fungi. Remembered larval wood feeding, not a pictured larva.",
+        "reviewDecision": "root_approved_for_runtime_integration"
+      },
+      "provenance": {
+        "title": "File:Chrysochroa fulgidissima 01.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Chrysochroa_fulgidissima_01.jpg",
+        "creator": "Σ64",
+        "license": "CC BY 3.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by/3.0",
+        "width": 2587,
+        "height": 1725,
+        "sha1": "3460694d343233755283aeecba36a9ab2a4eda72",
+        "sourceDescription": "<a href=\"https://ja.wikipedia.org/wiki/%E3%82%BF%E3%83%9E%E3%83%A0%E3%82%B7\" class=\"extiw\" title=\"ja:タマムシ\">ヤマトタマムシ</a> (学名：<i><a href=\"//commons.wikimedia.org/wiki/Chrysochroa_fulgidissima\" title=\"Chrysochroa fulgidissima\">Chrysochroa fulgidissima</a></i>)",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "Possessiveness dissolves when the former wood-eater recognizes another wood user's work; the final shared silence keeps the feeling unstated."
+    },
+    {
+      "id": "strange-08-04",
+      "characterId": "akio-sheen",
+      "characterName": "Akio Sheen",
+      "sequence": 4,
+      "platform": "linkedin",
+      "subject": "Chrysochroa fulgidissima",
+      "title": "Depending on the light",
+      "body": "A person turned me sideways and said, 'Oh. You're blue.' Turned me back. 'No, green.'\n\nI had been quite certain who was confused until they picked me up.",
+      "theme": "identity",
+      "location": {
+        "name": "Woodland below Mount Takao, Japan",
+        "coordinates": {
+          "lat": 35.625,
+          "lng": 139.251
+        }
+      },
+      "image": {
+        "url": "https://upload.wikimedia.org/wikipedia/commons/5/54/W_tamamusi2081.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail_unscaled",
+        "localPath": "/tmp/freed-strange08-review.RUZPa1/extra1.jpg",
+        "downloadedSha256": "77a51256f72ab6490d980b5d125fa6a765eb24952b1bb9a93bf366f80fe9041e",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Beetle's iridescent green and red wing covers are clearly visible against a leaf.",
+        "reviewDecision": "root_approved_for_runtime_integration"
+      },
+      "provenance": {
+        "title": "File:W tamamusi2081.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:W_tamamusi2081.jpg",
+        "creator": "‘Uncle Carl’ (カールおじさん).",
+        "license": "CC BY-SA 3.0",
+        "licenseUrl": "http://creativecommons.org/licenses/by-sa/3.0/",
+        "width": 800,
+        "height": 600,
+        "sha1": "ee5b0a2346ffd42485ec7920fef7c8bd7c610040",
+        "sourceDescription": "タマムシ\n<p>撮影場所：広見町\n</p>\n撮影日：２００２年８月１１日",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "The observer's uncertain naming infects an animal that had been getting along without it."
+    },
+    {
+      "id": "strange-08-05",
+      "characterId": "lucette-vein",
+      "characterName": "Lucette Vein",
+      "sequence": 1,
+      "platform": "instagram",
+      "subject": "Chrysoperla carnea group",
+      "title": "A better person",
+      "body": "Everything tastes sweet now. I thought I'd become a better person. Then someone stood in front of my flower.",
+      "theme": "appetite",
+      "location": {
+        "name": "Hedgerow near Roskilde, Denmark",
+        "coordinates": {
+          "lat": 55.638,
+          "lng": 12.053
+        }
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a6/Chrysopidae_-_Chrysoperla_carnea_group.jpg/960px-Chrysopidae_-_Chrysoperla_carnea_group.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange08-review.RUZPa1/5.jpg",
+        "downloadedSha256": "2f96844dac969e2286fa7174a36b6a199c61d05b5955bf4034050d278d1f5ccc",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Adult lacewing on white flowers, transparent adult wings visible.",
+        "reviewDecision": "root_approved_for_runtime_integration"
+      },
+      "provenance": {
+        "title": "File:Chrysopidae - Chrysoperla carnea group.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Chrysopidae_-_Chrysoperla_carnea_group.jpg",
+        "creator": "Hectonichus",
+        "license": "CC BY-SA 3.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+        "width": 1024,
+        "height": 766,
+        "sha1": "35274dc188adf8c331cec1f1fa64f5a292cd081c",
+        "sourceDescription": "<i>Chrysoperla carnea</i>-group",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "Metamorphosis changes the diet, not the temper."
+    },
+    {
+      "id": "strange-08-06",
+      "characterId": "lucette-vein",
+      "characterName": "Lucette Vein",
+      "sequence": 2,
+      "platform": "rss",
+      "subject": "Chrysoperla carnea group",
+      "title": "The weather indoors",
+      "body": "Rain drove me onto the wall. I found a little dry patch and folded my wings.\n\nA drop slid down beside me. Inside it was a round, upside-down piece of the garden. I went closer. My antenna touched the edge and the entire garden fell apart.\n\nAnother drop was coming.\n\nI moved away from that one. Watched the hedge roll down the wall, gather the sky, grow too heavy and go.\n\nWhen the rain stopped, I stayed for the last few. A perfectly ordinary leaf was waiting outside. I had never been so glad to land on something that kept its shape.",
+      "theme": "curiosity",
+      "location": {
+        "name": "Hedgerow near Roskilde, Denmark",
+        "coordinates": {
+          "lat": 55.638,
+          "lng": 12.053
+        }
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/38/Chrysoperla_carnea-MF.jpg/960px-Chrysoperla_carnea-MF.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange08-review.RUZPa1/6.jpg",
+        "downloadedSha256": "2cb54e7666853bfd2d27e699b311eb30fd42f761ca442f1a6398afddf148e98b",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Lacewing stands on a pale wet wall with visible droplets. Reflected miniature garden is imagined within those actual drops, not literal optical acuity evidence.",
+        "reviewDecision": "root_approved_for_runtime_integration"
+      },
+      "provenance": {
+        "title": "File:Chrysoperla carnea-MF.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Chrysoperla_carnea-MF.jpg",
+        "creator": "Magne Flåten",
+        "license": "CC BY-SA 3.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+        "width": 3887,
+        "height": 1370,
+        "sha1": "2b896f6dc7d2c3d59b0213366eae85e301a8c9bd",
+        "sourceDescription": "<a href=\"//commons.wikimedia.org/w/index.php?title=Vintergull%C3%B8ye&amp;action=edit&amp;redlink=1\" class=\"new\" title=\"Vintergulløye (page does not exist)\">Vintergulløye</a>, <i>Chrysoperla carnea</i>",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "A small touch destroys an apparent whole world; relief returns through the solid leaf."
+    },
+    {
+      "id": "strange-08-07",
+      "characterId": "lucette-vein",
+      "characterName": "Lucette Vein",
+      "sequence": 3,
+      "platform": "x",
+      "subject": "Chrysoperla carnea group",
+      "title": "Adult supervision",
+      "body": "As a larva I had terrible jaws. Now I have four lovely wings and a taste for nectar. If you knew me then, please let me introduce myself again.",
+      "theme": "change",
+      "location": {
+        "name": "Hedgerow near Roskilde, Denmark",
+        "coordinates": {
+          "lat": 55.638,
+          "lng": 12.053
+        }
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/17/Common_green_lacewing_-_Chrysoperla_carnea_%2815120458194%29.jpg/960px-Common_green_lacewing_-_Chrysoperla_carnea_%2815120458194%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange08-review.RUZPa1/7.jpg",
+        "downloadedSha256": "87c8ae85023a99717653e1610004e7dcbf6b98c81423c90f7a968f4c69c1d727",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Lacewing feeds with head in a white flower; adult wings prominent.",
+        "reviewDecision": "root_approved_for_runtime_integration"
+      },
+      "provenance": {
+        "title": "File:Common green lacewing - Chrysoperla carnea (15120458194).jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Common_green_lacewing_-_Chrysoperla_carnea_(15120458194).jpg",
+        "creator": "Line Sabroe from Denmark",
+        "license": "CC BY 2.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
+        "width": 2876,
+        "height": 2764,
+        "sha1": "48d133c84ba8fa29892be77740fe9f5e442243b9",
+        "sourceDescription": "On Privet flowers.\nAlmindelig Guldøje på blomstrende Liguster",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "A changed animal requests a social reset without detailing victims."
+    },
+    {
+      "id": "strange-08-08",
+      "characterId": "lucette-vein",
+      "characterName": "Lucette Vein",
+      "sequence": 4,
+      "platform": "instagram",
+      "subject": "Chrysoperla carnea group",
+      "title": "Room",
+      "body": "I keep forgetting how far my antennae go. I turned to leave and touched him goodbye three times.",
+      "theme": "awkwardness",
+      "location": {
+        "name": "Hedgerow near Roskilde, Denmark",
+        "coordinates": {
+          "lat": 55.638,
+          "lng": 12.053
+        }
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/61/Common_Green_Lacewing_-_Chrysoperla_carnea_%2824643542710%29.jpg/960px-Common_Green_Lacewing_-_Chrysoperla_carnea_%2824643542710%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange08-review.RUZPa1/8.jpg",
+        "downloadedSha256": "546facbf1aec982b7d8a546aad67006b93d9d6dd9806dd130a3fc830fcd8d4a8",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Full lacewing portrait shows exceptionally long antennae.",
+        "reviewDecision": "not_admitted"
+      },
+      "provenance": {
+        "title": "File:Common Green Lacewing - Chrysoperla carnea (24643542710).jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Common_Green_Lacewing_-_Chrysoperla_carnea_(24643542710).jpg",
+        "creator": "Line Sabroe from Denmark",
+        "license": "CC BY 2.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
+        "width": 3344,
+        "height": 2868,
+        "sha1": "0b27b8ebd5a42ee882262cf50bb3c1b906855318",
+        "sourceDescription": "Chrysoperla carnea",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "The body prolongs an otherwise decisive departure."
+    },
+    {
+      "id": "strange-08-09",
+      "characterId": "greta-blade",
+      "characterName": "Greta Blade",
+      "sequence": 1,
+      "platform": "instagram",
+      "subject": "Tettigonia viridissima",
+      "title": "A bold entrance",
+      "body": "I put a foot on each stem. The wind chose that moment to disagree with itself.",
+      "theme": "danger",
+      "location": {
+        "name": "Garden scrub at Bois de Vincennes, France",
+        "coordinates": {
+          "lat": 48.827,
+          "lng": 2.463
+        }
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f2/Gr%C3%BCnes_Heupferd_%E2%99%80_Tettigonia_viridissima.JPG/960px-Gr%C3%BCnes_Heupferd_%E2%99%80_Tettigonia_viridissima.JPG?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange08-review.RUZPa1/9.jpg",
+        "downloadedSha256": "ee6983be19655dd228f9757e46dec7d90374f5f1c08c0a30cd33c60aaeef5be1",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Female cricket physically straddles two upright stems.",
+        "reviewDecision": "root_approved_for_runtime_integration"
+      },
+      "provenance": {
+        "title": "File:Grünes Heupferd ♀ Tettigonia viridissima.JPG",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Gr%C3%BCnes_Heupferd_%E2%99%80_Tettigonia_viridissima.JPG",
+        "creator": "böhringer friedrich",
+        "license": "CC BY-SA 2.5",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/2.5",
+        "width": 2546,
+        "height": 3819,
+        "sha1": "842d0e00e53b9e4f6f74cffdad0357f891e88038",
+        "sourceDescription": "<a href=\"https://en.wikipedia.org/wiki/Tettigonia_viridissima\" class=\"extiw\" title=\"en:Tettigonia viridissima\">Tettigonia viridissima</a>, the Great Green Bush-Cricket, is a species of 'katydids crickets' belonging to the family Tettigoniidae subfamily Tettigoniinae.",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "Confident pose becomes a precarious split."
+    },
+    {
+      "id": "strange-08-10",
+      "characterId": "greta-blade",
+      "characterName": "Greta Blade",
+      "sequence": 2,
+      "platform": "x",
+      "subject": "Tettigonia viridissima",
+      "title": "His entire argument",
+      "body": "He sang all evening. I went over to find out what he wanted. It was me. He could have started with that.",
+      "theme": "courtship",
+      "location": {
+        "name": "Garden scrub at Bois de Vincennes, France",
+        "coordinates": {
+          "lat": 48.827,
+          "lng": 2.463
+        }
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d2/Tettigonia_viridissima_female_-_Jardin_d%27Agronomie_Tropicale.jpg/960px-Tettigonia_viridissima_female_-_Jardin_d%27Agronomie_Tropicale.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange08-review.RUZPa1/10.jpg",
+        "downloadedSha256": "4d23dabe504740d5d54c54f057e4b554842f027f79128800bcde2b7536c2b92e",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Female cricket waits in flowering ground vegetation; unseen male's song is a fictional remembered encounter.",
+        "reviewDecision": "not_admitted"
+      },
+      "provenance": {
+        "title": "File:Tettigonia viridissima female - Jardin d'Agronomie Tropicale.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Tettigonia_viridissima_female_-_Jardin_d%27Agronomie_Tropicale.jpg",
+        "creator": "Dinkum",
+        "license": "CC BY-SA 3.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+        "width": 3649,
+        "height": 2915,
+        "sha1": "f590badef351713f1d8a5e9c610996b0810b0f0d",
+        "sourceDescription": "<i>Tettigonia viridissima</i> female - <i>Jardin d'Agronomie Tropicale</i> in Paris.\nThis Great Green Bush-Cricket  is almost invisible between the grass leaves. Photo taken after the yearly picnic of Wikipedia Paris in the former tropical agronomy garden.",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "Long advertisement resolves into a blunt proposition."
+    },
+    {
+      "id": "strange-08-11",
+      "characterId": "greta-blade",
+      "characterName": "Greta Blade",
+      "sequence": 3,
+      "platform": "instagram",
+      "subject": "Tettigonia viridissima",
+      "title": "For the children",
+      "body": "He asked if the long thing was a weapon. I said it was for putting my children underground. He put me down very gently.",
+      "theme": "misunderstanding",
+      "location": {
+        "name": "Garden scrub at Bois de Vincennes, France",
+        "coordinates": {
+          "lat": 48.827,
+          "lng": 2.463
+        }
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/4/48/Female_Tettigonia_viridissima_on_hand.jpg/960px-Female_Tettigonia_viridissima_on_hand.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange08-review.RUZPa1/11.jpg",
+        "downloadedSha256": "2fdf2c1d92209aa8aa49d098cbbe76b9b63dd59303fbc7f08107c8f0f0175244",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Female cricket sits on an actual human palm with long ovipositor plainly visible.",
+        "reviewDecision": "root_approved_for_runtime_integration"
+      },
+      "provenance": {
+        "title": "File:Female Tettigonia viridissima on hand.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Female_Tettigonia_viridissima_on_hand.jpg",
+        "creator": "I naturen",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "width": 2759,
+        "height": 2069,
+        "sha1": "61df0e82ddecdc3579fd1f2b4ac8098daafc1929",
+        "sourceDescription": "Picture showing the insects size.",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "Accurate egg-laying answer sounds considerably more alarming than the mistaken weapon."
+    },
+    {
+      "id": "strange-08-12",
+      "characterId": "greta-blade",
+      "characterName": "Greta Blade",
+      "sequence": 4,
+      "platform": "rss",
+      "subject": "Tettigonia viridissima",
+      "title": "One foot left",
+      "body": "Most of me was out. One back foot was still inside the old one.\n\nI hung there and tried patience. Then force. Then patience again, mainly because force had tired me out.\n\nThe empty face above me had its mouth open. It looked astonished. I told it this was hardly helping.\n\nAt last the foot slipped free. My new legs were soft. My new wings were crumpled. I held the stem and waited for all of it to become usable.\n\nI'd imagined leaving the old body would feel like making a grand entrance. Mostly I wanted nobody to touch me.\n\nThe breeze moved the empty foot. I caught myself worrying that it would lose its grip.",
+      "theme": "vulnerability",
+      "location": {
+        "name": "Garden scrub at Bois de Vincennes, France",
+        "coordinates": {
+          "lat": 48.827,
+          "lng": 2.463
+        }
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/17/Gr%C3%BCne_Heupferd_%28Tettigonia_viridissima%29_bei_der_H%C3%A4utung.jpg/960px-Gr%C3%BCne_Heupferd_%28Tettigonia_viridissima%29_bei_der_H%C3%A4utung.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange08-review.RUZPa1/12.jpg",
+        "downloadedSha256": "d9401731d51eafd5386215acd01a81abf086fd9853ac73a9fe5b34165a828b4a",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Actual cricket molting from an exuvia on a stem; soft emerging body, suspended old limbs and new folded wings visible.",
+        "reviewDecision": "root_approved_for_runtime_integration"
+      },
+      "provenance": {
+        "title": "File:Grüne Heupferd (Tettigonia viridissima) bei der Häutung.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Gr%C3%BCne_Heupferd_(Tettigonia_viridissima)_bei_der_H%C3%A4utung.jpg",
+        "creator": "Stephan Sprinz",
+        "license": "CC BY 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0",
+        "width": 3116,
+        "height": 4674,
+        "sha1": "bc67fd84f3b0575a6f00163b3681b0ff6f22cab2",
+        "sourceDescription": "Female great green bush-cricket (Tettigonia viridissima) during ecdysis",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "An impatient separation ends in involuntary concern for the discarded body."
+    },
+    {
+      "id": "strange-08-13",
+      "characterId": "hugo-plush",
+      "characterName": "Hugo Plush",
+      "sequence": 1,
+      "platform": "x",
+      "subject": "Peripatoides novaezealandiae complex",
+      "title": "Not that kind",
+      "body": "A beetle asked what I was going to turn into. I said I was finished. He looked at my feet for a long time.",
+      "theme": "identity",
+      "location": {
+        "name": "Damp forest floor near Wellington, New Zealand",
+        "coordinates": {
+          "lat": -41.285,
+          "lng": 174.758
+        }
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e2/Peripatoides_novaezealandiae_150609625.jpg/960px-Peripatoides_novaezealandiae_150609625.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange08-review.RUZPa1/13.jpg",
+        "downloadedSha256": "089c331b02e6e58dcca2150174be35d71ef5b99667f76f0f0cf859fbc03b20f6",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Velvet worm's soft tiny lobopods are visible on its curving body.",
+        "reviewDecision": "root_approved_for_runtime_integration"
+      },
+      "provenance": {
+        "title": "File:Peripatoides novaezealandiae 150609625.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Peripatoides_novaezealandiae_150609625.jpg",
+        "creator": "Uwe Schneehagen",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "width": 2048,
+        "height": 1365,
+        "sha1": "864a40391372478cb552c4611505c641284c098d",
+        "sourceDescription": "New Zealand Peripatus (<i>Peripatoides novaezealandiae</i>)",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "Adult velvet worm is mistaken for a larval interim form."
+    },
+    {
+      "id": "strange-08-14",
+      "characterId": "hugo-plush",
+      "characterName": "Hugo Plush",
+      "sequence": 2,
+      "platform": "rss",
+      "subject": "Peripatoides novaezealandiae complex",
+      "title": "The long dry bit",
+      "body": "There was a strip of bare ground between the moss and the log. It had not looked wide until I reached it.\n\nI put my front feet out. The air felt wrong against my skin. I backed up.\n\nA little beetle went across. Didn't even hurry. I disliked him for that, which was unfair.\n\nI waited under the moss until the light thinned. Then longer. A drop touched my back. Another. The smell of the ground changed.\n\nBy the time I crossed, the beetle had gone. I had prepared a remark about his hard coat. Quite a good one.\n\nI forgot it halfway. The rain was touching every part of me at once. I took the long way round the twig.",
+      "theme": "pleasure",
+      "location": {
+        "name": "Damp forest floor near Wellington, New Zealand",
+        "coordinates": {
+          "lat": -41.285,
+          "lng": 174.758
+        }
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/91/Peripatoides_novaezealandiae_103431101.jpg/960px-Peripatoides_novaezealandiae_103431101.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange08-review.RUZPa1/14.jpg",
+        "downloadedSha256": "28590f935af04a85ff26c9a592ad5103991deeed0adddd9d7c2a80f7720fa484",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Velvet worm among moist moss and liverworts. Wet skin and soft body ground the remembered wait; no photographed beetle claimed.",
+        "reviewDecision": "not_admitted"
+      },
+      "provenance": {
+        "title": "File:Peripatoides novaezealandiae 103431101.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Peripatoides_novaezealandiae_103431101.jpg",
+        "creator": "Uwe Schneehagen",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "width": 1366,
+        "height": 2048,
+        "sha1": "69b2b8c6963bd8437b3786c213f112e9f206b243",
+        "sourceDescription": "New Zealand Peripatus (<i>Peripatoides novaezealandiae</i>)",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "A grievance is displaced by bodily delight, expressed by choosing a longer wet route."
+    },
+    {
+      "id": "strange-08-15",
+      "characterId": "hugo-plush",
+      "characterName": "Hugo Plush",
+      "sequence": 3,
+      "platform": "instagram",
+      "subject": "Peripatoides novaezealandiae complex",
+      "title": "The visitor",
+      "body": "A leaf fell over me. I waited under it until the footsteps passed. Then I stayed a little longer. Whoever had frightened me had also made it very comfortable.",
+      "theme": "shelter",
+      "location": {
+        "name": "Damp forest floor near Wellington, New Zealand",
+        "coordinates": {
+          "lat": -41.285,
+          "lng": 174.758
+        }
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/00/Peripatoides_novaezealandiae_246191055.jpg/960px-Peripatoides_novaezealandiae_246191055.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange08-review.RUZPa1/15.jpg",
+        "downloadedSha256": "eefd20ae1261e864d63a8fe9ea213b8f65f09d8875c306fb62f8571c46f871e4",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Velvet worm among overlapping fallen leaves and twigs. The remembered cover uses the actual cool forest-floor setting.",
+        "reviewDecision": "not_admitted"
+      },
+      "provenance": {
+        "title": "File:Peripatoides novaezealandiae 246191055.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Peripatoides_novaezealandiae_246191055.jpg",
+        "creator": "Uwe Schneehagen",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "width": 2048,
+        "height": 1365,
+        "sha1": "9285264a60c60d7f649f878f77da75166c57b910",
+        "sourceDescription": "New Zealand Peripatus (<i>Peripatoides novaezealandiae</i>)",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "A frightening disturbance accidentally supplies a pleasant shelter, without praising the disturbance."
+    },
+    {
+      "id": "strange-08-16",
+      "characterId": "hugo-plush",
+      "characterName": "Hugo Plush",
+      "sequence": 4,
+      "platform": "instagram",
+      "subject": "Peripatoides novaezealandiae complex",
+      "title": "Velvet",
+      "body": "Someone called me velvet. I had been feeling damp and slightly full of dirt. I went on feeling that way, but luxuriously.",
+      "theme": "pleasure",
+      "location": {
+        "name": "Damp forest floor near Wellington, New Zealand",
+        "coordinates": {
+          "lat": -41.285,
+          "lng": 174.758
+        }
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e3/Peripatoides_novaezealandiae_272116402.jpg/960px-Peripatoides_novaezealandiae_272116402.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange08-review.RUZPa1/16.jpg",
+        "downloadedSha256": "20b4fa9de3aa42fcf6d76007564b6d68014603e3124987d74ff9b9dfa81bc8a7",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Velvet worm's textured soft body rests on damp organic litter.",
+        "reviewDecision": "root_approved_for_runtime_integration"
+      },
+      "provenance": {
+        "title": "File:Peripatoides novaezealandiae 272116402.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Peripatoides_novaezealandiae_272116402.jpg",
+        "creator": "Uwe Schneehagen",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "width": 2048,
+        "height": 1365,
+        "sha1": "69785ecdfada1db4664e0c9ae2afff80058fe750",
+        "sourceDescription": "New Zealand Peripatus (<i>Peripatoides novaezealandiae</i>)",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "An apt name makes no physical difference but changes how the mess feels."
+    },
+    {
+      "id": "strange-08-17",
+      "characterId": "barnaby-many",
+      "characterName": "Barnaby Many",
+      "sequence": 1,
+      "platform": "instagram",
+      "subject": "Archispirostreptus gigas",
+      "title": "Nothing to add",
+      "body": "I curled up to get a moment to myself. Unfortunately I was in there too, still thinking of what I should have said.",
+      "theme": "rumination",
+      "location": {
+        "name": "Coastal forest near Diani, Kenya",
+        "coordinates": {
+          "lat": -4.336,
+          "lng": 39.556
+        }
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d5/Archispirostreptus_gigas_2009_G1.jpg/960px-Archispirostreptus_gigas_2009_G1.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange08-review.RUZPa1/17.jpg",
+        "downloadedSha256": "17d388f32a215948223960f1e4f2c1de285c47e0c0885eab9b0418bf89cb20cf",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Millipede tightly coiled with head and legs protected inside.",
+        "reviewDecision": "root_approved_for_runtime_integration"
+      },
+      "provenance": {
+        "title": "File:Archispirostreptus gigas 2009 G1.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Archispirostreptus_gigas_2009_G1.jpg",
+        "creator": "George Chernilevsky",
+        "license": "Public domain",
+        "licenseUrl": null,
+        "width": 1700,
+        "height": 1500,
+        "sha1": "730c8b9acda2c3c1d833423c8014e7e0dd4cf08e",
+        "sourceDescription": "Chongololo or the giant African millipede. <i>Archispirostreptus gigas</i> (Peters, 1855)",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "Defensive withdrawal cannot exclude one's own argument."
+    },
+    {
+      "id": "strange-08-18",
+      "characterId": "barnaby-many",
+      "characterName": "Barnaby Many",
+      "sequence": 2,
+      "platform": "rss",
+      "subject": "Archispirostreptus gigas",
+      "title": "The foot that hurt",
+      "body": "One foot hurt. I could have carried on without it. There were plenty of others.\n\nBut whenever I started walking, I thought of that one little foot, arriving at the ground again.\n\nI stopped. Bent round. There was a bit of grit caught beside it. I worked it loose, then stayed curled while the place stopped aching.\n\nAn ant passed and asked what was wrong. I said, 'My foot.'\n\nHe looked along me. I knew what he was about to ask. I pointed before he could.\n\nWhen I started again, I paid attention to that step. It was almost nothing. I went back over the soft patch to feel it once more.",
+      "theme": "care",
+      "location": {
+        "name": "Coastal forest near Diani, Kenya",
+        "coordinates": {
+          "lat": -4.336,
+          "lng": 39.556
+        }
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f5/Archispirostreptus-Gigas-Amphitheatre.jpg/960px-Archispirostreptus-Gigas-Amphitheatre.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange08-review.RUZPa1/18.jpg",
+        "downloadedSha256": "de52d614f376801b985a63bd8cb6a790f60425bab926a13cbd1420aee179f69f",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Millipede walking across gritty ground, many legs clearly visible. Fictional minor grit discomfort, no pictured injury claimed.",
+        "reviewDecision": "root_approved_for_runtime_integration"
+      },
+      "provenance": {
+        "title": "File:Archispirostreptus-Gigas-Amphitheatre.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Archispirostreptus-Gigas-Amphitheatre.jpg",
+        "creator": "Bjørn Christian Tørrissen",
+        "license": "CC BY-SA 3.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+        "width": 1674,
+        "height": 1270,
+        "sha1": "1d6fc6065a586dd0b62cf2166c73623f9b5f775a",
+        "sourceDescription": "A giant African millipede photographed while ambling along in the Amphitheatre region in Drakensberg, South Africa.",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "The supposedly replaceable small part receives deliberate care and a second pleasant step."
+    },
+    {
+      "id": "strange-08-19",
+      "characterId": "barnaby-many",
+      "characterName": "Barnaby Many",
+      "sequence": 3,
+      "platform": "instagram",
+      "subject": "Archispirostreptus gigas",
+      "title": "Taking it slowly",
+      "body": "We agreed to take it slowly. That was four hundred legs ago.",
+      "theme": "intimacy",
+      "location": {
+        "name": "Coastal forest near Diani, Kenya",
+        "coordinates": {
+          "lat": -4.336,
+          "lng": 39.556
+        }
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e3/Millipede_mating.JPG/960px-Millipede_mating.JPG?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange08-review.RUZPa1/extra2.jpg",
+        "downloadedSha256": "4627cff2e55c968fbeec859a4b753eee742470e3e4ec22858a69e6b3e95128a6",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Two giant millipedes actually intertwined; Commons source identifies mating.",
+        "reviewDecision": "root_approved_for_runtime_integration"
+      },
+      "provenance": {
+        "title": "File:Millipede mating.JPG",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Millipede_mating.JPG",
+        "creator": "Muhammad Mahdi Karim",
+        "license": "CC BY-SA 3.0",
+        "licenseUrl": "http://creativecommons.org/licenses/by-sa/3.0/",
+        "width": 3072,
+        "height": 2304,
+        "sha1": "f3f1b8bdcfa0bb5d7f1e214cae6bd82ca00fc833",
+        "sourceDescription": "A picture of two <a href=\"https://en.wikipedia.org/wiki/millipedes\" class=\"extiw\" title=\"w:millipedes\">millipedes</a> (<i>Archispirostreptus gigas</i>) mating.",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "An unhurried embrace measured in an absurd abundance of limbs; approximate comic number, not anatomical count."
+    },
+    {
+      "id": "strange-08-20",
+      "characterId": "barnaby-many",
+      "characterName": "Barnaby Many",
+      "sequence": 4,
+      "platform": "x",
+      "subject": "Archispirostreptus gigas",
+      "title": "Almost across",
+      "body": "The front of me reached the other side. I felt brave for a moment. Then the rest of me arrived, still having the experience.",
+      "theme": "courage",
+      "location": {
+        "name": "Coastal forest near Diani, Kenya",
+        "coordinates": {
+          "lat": -4.336,
+          "lng": 39.556
+        }
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/7f/Day_30_Giant_African_Millipede_%28Archispirostreptus_gigas%29_%2853271842160%29.jpg/960px-Day_30_Giant_African_Millipede_%28Archispirostreptus_gigas%29_%2853271842160%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange08-review.RUZPa1/20.jpg",
+        "downloadedSha256": "6abae4c6e784dea5e392bc77cbb03281abab511bd3f3277af9a7636c176407eb",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Long millipede crosses a thin twig, successive legs gripping along it.",
+        "reviewDecision": "root_approved_for_runtime_integration"
+      },
+      "provenance": {
+        "title": "File:Day 30 Giant African Millipede (Archispirostreptus gigas) (53271842160).jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Day_30_Giant_African_Millipede_(Archispirostreptus_gigas)_(53271842160).jpg",
+        "creator": "Bernard DUPONT from FRANCE",
+        "license": "CC BY-SA 2.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/2.0",
+        "width": 4873,
+        "height": 3063,
+        "sha1": "1204b6cab19b96a1956f229ffc2c5b1b34448798",
+        "sourceDescription": "S82 Road South of Lower Sabie, Kruger NP, Mpumalanga, SOUTH AFRICA",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "One body is briefly both relieved and still exposed."
+    },
+    {
+      "id": "strange-08-21",
+      "characterId": "penny-focus",
+      "characterName": "Penny Focus",
+      "sequence": 1,
+      "platform": "instagram",
+      "subject": "Phidippus regius",
+      "title": "Which ones",
+      "body": "He said he liked my eyes. I asked which ones. He panicked and said all of them. I liked that he panicked.",
+      "theme": "courtship",
+      "location": {
+        "name": "Palmetto scrub near Gainesville, Florida",
+        "coordinates": {
+          "lat": 29.68,
+          "lng": -82.29
+        }
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e4/Eyes_of_a_Female_Jumping_Spider_-_Phidippus_regius_-_Florida_%288177287529%29.jpg/960px-Eyes_of_a_Female_Jumping_Spider_-_Phidippus_regius_-_Florida_%288177287529%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange08-review.RUZPa1/21.jpg",
+        "downloadedSha256": "e74140f6e1bc30693231063f3868b83cc19b00ec8af4116dbfac160213b53c74",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Close female jumping-spider portrait emphasizes large front eyes and additional smaller eyes.",
+        "reviewDecision": "root_approved_for_runtime_integration"
+      },
+      "provenance": {
+        "title": "File:Eyes of a Female Jumping Spider - Phidippus regius - Florida (8177287529).jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Eyes_of_a_Female_Jumping_Spider_-_Phidippus_regius_-_Florida_(8177287529).jpg",
+        "creator": "Thomas Shahan from USA",
+        "license": "CC BY 2.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
+        "width": 1171,
+        "height": 778,
+        "sha1": "1f0d53836e150a08fd44b1addb8a3d938a5b0759",
+        "sourceDescription": "<p><a rel=\"nofollow\" class=\"external text\" href=\"https://www.flickr.com/photos/opoterser/8177287529/sizes/o\"><b><i>Click here for a larger view as flickr tends to over-sharpen these smaller thumbnails!</i> </b></a>\n</p><p>Here's yet another image of that beautiful Phidippus regius found during the Florida <a rel=\"nofollow\" class=\"external text\" href=\"http://bugshot.net/\">Bugshot</a>  workshop back in August.\n</p><p>This wonderfully fluffy Phidippus regius female (found by a helpful Guillaume Dury) was more than willing to pose for photos from several attendees to the workshop. Given that one of my ultimate goals while in Florida was to find this exact species - I'm grateful that I finally got a chance to photograph one of North America's largest and most beautiful Phidippus species!\n</p><p>The image above is a focus stack of 5(!) shots taken with a 28mm prime reversed on a set of extension tubes. The stacking was done in Zerene Stacker.\n</p>\n<hr>\n<p>In other, non arthropod photography related news, the physics based puzzle platformer video game I've been working on for the past year with Colin and Sarah Northway, <a rel=\"nofollow\" class=\"external text\" href=\"http://www.incredipede.com\">Incredipede</a>, has been released! Check out the trailer, complete with all my weird woodcutty illustrations come to life here: <a rel=\"nofollow\" class=\"external text\" href=\"https://www.youtube.com/watch?v=TIxef7gelnI\">www.youtube.com/watch?v=TIxef7gelnI</a>\n</p>\n...also - for those of you with Steam accounts, vote for the game to be picked up by Steam here: <a rel=\"nofollow\" class=\"external text\" href=\"http://steamcommunity.com/sharedfiles/filedetails/?id=92701947&amp;searchtext=\">steamcommunity.com/sharedfiles/filedetails/?id=92701947&amp;a...</a>",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "The awkwardness, not the compliment, wins her over."
+    },
+    {
+      "id": "strange-08-22",
+      "characterId": "penny-focus",
+      "characterName": "Penny Focus",
+      "sequence": 2,
+      "platform": "rss",
+      "subject": "Phidippus regius",
+      "title": "When I was little",
+      "body": "I saw something enormous bend over my leaf. Two eyes. Only two. Both fixed on me.\n\nI raised my front legs. It moved back.\n\nI had never made anything that large move before. I took a step. It took another step. I was beginning to have an extraordinary opinion of myself.\n\nThen it bent down again and said, very softly, 'Hello.'\n\nThe sound went through the leaf and all my feet. I lowered one leg. Left the other up, in case.\n\nWe looked at each other for a while. When it went away, I tried the raised leg on a leafhopper.\n\nHe left too. But he was leaving already. I try to remember that part.",
+      "theme": "encounter",
+      "location": {
+        "name": "Palmetto scrub near Gainesville, Florida",
+        "coordinates": {
+          "lat": 29.68,
+          "lng": -82.29
+        }
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/9e/Phidippus_regius_female_01.jpg/960px-Phidippus_regius_female_01.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange08-review.RUZPa1/22.jpg",
+        "downloadedSha256": "3cd989669aeeae5141f8d1e08a1bc03e31ea4eec185bb49863bdf0d810b01206",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Immature female jumping spider photographed face-on on a leaf. Juvenile story uses visible stance and eyes, not a claim of adult sex or photographed human.",
+        "reviewDecision": "root_approved_for_runtime_integration"
+      },
+      "provenance": {
+        "title": "File:Phidippus regius female 01.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Phidippus_regius_female_01.jpg",
+        "creator": "Nosferattus",
+        "license": "CC0",
+        "licenseUrl": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+        "width": 2200,
+        "height": 1650,
+        "sha1": "8c1d61059bd9a7bf67ccac9a602d56e8ce4f7e1c",
+        "sourceDescription": "Immature female <i>Phidippus regius</i> jumping spider in Florida",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "A tiny animal briefly acquires imperial confidence, then preserves an inconvenient fact."
+    },
+    {
+      "id": "strange-08-23",
+      "characterId": "penny-focus",
+      "characterName": "Penny Focus",
+      "sequence": 3,
+      "platform": "instagram",
+      "subject": "Phidippus regius",
+      "title": "The difficult question",
+      "body": "I asked her what she saw when she looked at the sky. She asked whether I meant flies. I said no. We sat there for a bit. Then I did mean flies.",
+      "theme": "curiosity",
+      "location": {
+        "name": "Palmetto scrub near Gainesville, Florida",
+        "coordinates": {
+          "lat": 29.68,
+          "lng": -82.29
+        }
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c0/Female_Phidippus_regius_-_51695505792.jpg/960px-Female_Phidippus_regius_-_51695505792.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange08-review.RUZPa1/23.jpg",
+        "downloadedSha256": "240e403c17bee946ef9c38598a3abe64743081f40b3fa1dde35a36d39d5abc75",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Alert female jumping spider on a green leaf; eyes and poised body anchor visual attention.",
+        "reviewDecision": "not_admitted"
+      },
+      "provenance": {
+        "title": "File:Female Phidippus regius - 51695505792.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Female_Phidippus_regius_-_51695505792.jpg",
+        "creator": "spidereyes2020",
+        "license": "CC0",
+        "licenseUrl": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+        "width": 2000,
+        "height": 1500,
+        "sha1": "6d1fcc8d049f3bf112765f40dd8764edeb1d4e0c",
+        "sourceDescription": "Female <i>Phidippus regius</i> jumping spider in Florida",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "A genuine question about another mind is interrupted by shared appetite, without killing."
+    },
+    {
+      "id": "strange-08-24",
+      "characterId": "penny-focus",
+      "characterName": "Penny Focus",
+      "sequence": 4,
+      "platform": "instagram",
+      "subject": "Phidippus regius",
+      "title": "A small correction",
+      "body": "I raised one leg to make a point. Couldn't remember the point. Kept the leg up. She seemed interested, and I didn't want to spoil it.",
+      "theme": "awkwardness",
+      "location": {
+        "name": "Palmetto scrub near Gainesville, Florida",
+        "coordinates": {
+          "lat": 29.68,
+          "lng": -82.29
+        }
+      },
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/eb/Female_Phidippus_regius_-_51696617376.jpg/960px-Female_Phidippus_regius_-_51696617376.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange08-review.RUZPa1/extra3.jpg",
+        "downloadedSha256": "d5540cdd7fe37f14523c82ec70dd92c235be30d833982f907f98ae55b3d85469",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Female jumping spider visibly raises one front leg.",
+        "reviewDecision": "not_admitted"
+      },
+      "provenance": {
+        "title": "File:Female Phidippus regius - 51696617376.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Female_Phidippus_regius_-_51696617376.jpg",
+        "creator": "spidereyes2020",
+        "license": "CC0",
+        "licenseUrl": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+        "width": 3100,
+        "height": 2325,
+        "sha1": "68a48b9bed5ab12b9b757a087ae480a925e43613",
+        "sourceDescription": "Female <i>Phidippus regius</i> jumping spider in Florida",
+        "dimensionsReferTo": "original image",
+        "sameIndividualClaim": false
+      },
+      "payoff": "A lost thought becomes a sustained social performance."
+    }
+  ]
+}

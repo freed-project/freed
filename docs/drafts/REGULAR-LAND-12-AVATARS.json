@@ -1,0 +1,162 @@
+[
+  {
+    "characterId": "berta-bank",
+    "identityNameBase": "Berta Bank",
+    "subject": "North American beaver",
+    "sourceTitle": "File:American Beaver.jpg",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:American_Beaver.jpg",
+    "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/6/6b/American_Beaver.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail_unscaled",
+    "originalUrl": "https://upload.wikimedia.org/wikipedia/commons/6/6b/American_Beaver.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+    "sha1": "1adf095ae8d8804c517346f2f93854ab4cc51d75",
+    "width": 714,
+    "height": 715,
+    "creator": "Steve from Washington, DC, USA",
+    "license": "CC BY-SA 2.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/2.0",
+    "focal": {
+      "x": 0.4887955182072829,
+      "y": 0.32167832167832167,
+      "zoom": 2.1636363636363636
+    },
+    "reviewCropPixels": {
+      "x": 184,
+      "y": 65,
+      "width": 330,
+      "height": 330
+    },
+    "reviewSourceDimensions": {
+      "width": 714,
+      "height": 715
+    },
+    "fullSpecies": "Castor canadensis",
+    "age": "Adult-sized animal; exact age not documented.",
+    "decision": "recommend-avatar-only",
+    "independentLeadReview": "pending",
+    "cropMethod": "sips exact square crop and resize; AppKit circular clip, no generative alteration",
+    "review220": "/tmp/freed-regular-land12/berta-bank-220-circle.png",
+    "review48": "/tmp/freed-regular-land12/berta-bank-48-circle.png",
+    "reviewedAtBothSizes": true,
+    "review220Sha256": "5d72d0238512790b49dacf8dbb61ef94086bb980ee49d7e76561b35a1690a0ed",
+    "review48Sha256": "3d8c51e26fadb5ecaf9b0c87ba1f4a141730df2cf911d71b49e5c6aa678c1c2c"
+  },
+  {
+    "characterId": "euphemia-dust",
+    "identityNameBase": "Euphemia Dust",
+    "subject": "African savanna elephant",
+    "sourceTitle": "File:016a Desert-adapted elephant dust bathing in Damaraland Photo by Giles Laurent.jpg",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:016a_Desert-adapted_elephant_dust_bathing_in_Damaraland_Photo_by_Giles_Laurent.jpg",
+    "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/5/5d/016a_Desert-adapted_elephant_dust_bathing_in_Damaraland_Photo_by_Giles_Laurent.jpg/960px-016a_Desert-adapted_elephant_dust_bathing_in_Damaraland_Photo_by_Giles_Laurent.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "originalUrl": "https://upload.wikimedia.org/wikipedia/commons/5/5d/016a_Desert-adapted_elephant_dust_bathing_in_Damaraland_Photo_by_Giles_Laurent.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+    "sha1": "2a3106cc7373d45427dc7db28c943fca7bed059d",
+    "width": 4260,
+    "height": 2840,
+    "creator": "Giles Laurent",
+    "license": "CC BY-SA 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+    "focal": {
+      "x": 0.640625,
+      "y": 0.390625,
+      "zoom": 1.5238095238095237
+    },
+    "reviewCropPixels": {
+      "x": 405,
+      "y": 40,
+      "width": 420,
+      "height": 420
+    },
+    "reviewSourceDimensions": {
+      "width": 960,
+      "height": 640
+    },
+    "fullSpecies": "Loxodonta africana",
+    "age": "Adult; sex not explicitly given in this photo caption, visually compatible with female character.",
+    "decision": "recommend-avatar-only",
+    "independentLeadReview": "pending",
+    "cropMethod": "sips exact square crop and resize; AppKit circular clip, no generative alteration",
+    "review220": "/tmp/freed-regular-land12/euphemia-dust-220-circle.png",
+    "review48": "/tmp/freed-regular-land12/euphemia-dust-48-circle.png",
+    "reviewedAtBothSizes": true,
+    "review220Sha256": "d5b1cb43854f3049779fac6268b18ba145fd8a5ab708d53570017b294a6d1183",
+    "review48Sha256": "b6ca7e040f7df37e00a1b1c6f4a555863a0617d8aee139a09dc0d49c56b03347"
+  },
+  {
+    "characterId": "crispin-crag",
+    "identityNameBase": "Crispin Crag",
+    "subject": "Alpine ibex",
+    "sourceTitle": "File:God, how I love scratching! (9998072873).jpg",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:God,_how_I_love_scratching!_(9998072873).jpg",
+    "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/21/God%2C_how_I_love_scratching%21_%289998072873%29.jpg/960px-God%2C_how_I_love_scratching%21_%289998072873%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "originalUrl": "https://upload.wikimedia.org/wikipedia/commons/2/21/God%2C_how_I_love_scratching%21_%289998072873%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+    "sha1": "c6dbda1d7b68ef2fe7395ede38cd887ffecd7b75",
+    "width": 5184,
+    "height": 3456,
+    "creator": "Fulvio Spada from Torino, Italy",
+    "license": "CC BY-SA 2.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/2.0",
+    "focal": {
+      "x": 0.28125,
+      "y": 0.578125,
+      "zoom": 1.8285714285714285
+    },
+    "reviewCropPixels": {
+      "x": 95,
+      "y": 195,
+      "width": 350,
+      "height": 350
+    },
+    "reviewSourceDimensions": {
+      "width": 960,
+      "height": 640
+    },
+    "fullSpecies": "Capra ibex",
+    "age": "Adult male with large ridged horns.",
+    "decision": "recommend-avatar-only",
+    "independentLeadReview": "pending",
+    "cropMethod": "sips exact square crop and resize; AppKit circular clip, no generative alteration",
+    "review220": "/tmp/freed-regular-land12/crispin-crag-220-circle.png",
+    "review48": "/tmp/freed-regular-land12/crispin-crag-48-circle.png",
+    "reviewedAtBothSizes": true,
+    "review220Sha256": "de4ffb04a88da4580668db56289a910ac30ef62cd28daa9a7c4df71ae148398e",
+    "review48Sha256": "da2e3641caf3afbb9ed5f96f3a0606bf791bc33326609df8b52dbbc4eb26c81c"
+  },
+  {
+    "characterId": "rufus-russet",
+    "identityNameBase": "Rufus Russet",
+    "subject": "red fox",
+    "sourceTitle": "File:Fox sleeping (51900271802).jpg",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Fox_sleeping_(51900271802).jpg",
+    "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/b6/Fox_sleeping_%2851900271802%29.jpg/960px-Fox_sleeping_%2851900271802%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+    "originalUrl": "https://upload.wikimedia.org/wikipedia/commons/b/b6/Fox_sleeping_%2851900271802%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+    "sha1": "87ec0d9c8c2393ec98cd2bf7cc4dbfcb8a57118e",
+    "width": 5841,
+    "height": 3894,
+    "creator": "Raita Futo from Tokyo, Japan",
+    "license": "CC BY 2.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
+    "focal": {
+      "x": 0.53125,
+      "y": 0.59375,
+      "zoom": 1.28
+    },
+    "reviewCropPixels": {
+      "x": 260,
+      "y": 130,
+      "width": 500,
+      "height": 500
+    },
+    "reviewSourceDimensions": {
+      "width": 960,
+      "height": 640
+    },
+    "fullSpecies": "Vulpes vulpes",
+    "age": "Adult-sized winter coat; exact age and sex not documented. Captive Japanese source.",
+    "decision": "recommend-avatar-only",
+    "independentLeadReview": "pending",
+    "cropMethod": "sips exact square crop and resize; AppKit circular clip, no generative alteration",
+    "review220": "/tmp/freed-regular-land12/rufus-russet-220-circle.png",
+    "review48": "/tmp/freed-regular-land12/rufus-russet-48-circle.png",
+    "reviewedAtBothSizes": true,
+    "review220Sha256": "ffcf362ff1622f54d4ab1a5fafe8042ae9b2604d0e2849ceb3e8b19040b3c880",
+    "review48Sha256": "c664eb86f028ba383c2c253f9d84aed57f4460bf008a595a5c7b5d13cd4c7423"
+  }
+]

@@ -1,0 +1,122 @@
+{
+  "batch": "AQUATIC-REGULAR-48",
+  "status": "held_no_admissions",
+  "proposals": [],
+  "profiles": [],
+  "sourceReview": [
+    {
+      "index": 1,
+      "imageUrl": "https://media.fisheries.noaa.gov/dam-migration-miss/1280_FNnkUIpgL01.jpg?1527016238",
+      "localPath": "/tmp/freed-aquatic-48/source-01.jpg",
+      "width": 1280,
+      "height": 1260,
+      "byteLength": 795983,
+      "sha1": "fa7f0a798d7f325ade97e11055350899536ba5f4",
+      "sha256": "2141ed23b41606f6e435ea03400955ad9e9a016d7f07c4070fb6782de9e4ba77",
+      "sourcePage": "https://www.fisheries.noaa.gov/alaska/science-data/alaska-shellfish-growth-research",
+      "sourceTitle": "Alaska Shellfish Growth Research",
+      "sourceCaption": "A southern Tanner crab at mid-molt, backing out of its former shell.",
+      "visibleScene": "A brown-orange Tanner crab and its old shell overlap on a gray perforated plastic surface. Pale tissue and paired shell forms are exposed; multiple legs extend around them.",
+      "decision": "hold_avatar_and_orientation",
+      "review": "Scene is sharp and unusual, but a full new profile lacks an acceptable avatar. Exact source establishes one crab molting, not two crabs. It does not label which visible carapace and limbs belong to old versus new body. Do not assign those visually without evidence.",
+      "individuallyOpened": true,
+      "originalDimensions": [
+        1280,
+        1260
+      ],
+      "dimensionsMeaning": "Dimensions of the exact source-published delivery asset measured from bytes. Camera-original dimensions are unavailable. No local derivative supplied.",
+      "deliveryIsSourcePublished": true,
+      "attribution": "NOAA Fisheries",
+      "licenseUrl": "https://www.fisheries.noaa.gov/website-policies-and-disclaimers",
+      "rightsEvidence": "NOAA Fisheries policy permits distribution of public information unless otherwise noted and distinguishes external copyrighted photographs. Page has no separate photographer credit on this image. Do not upgrade this to a separately verified named government photographer.",
+      "license": "not_admitted",
+      "alt": "A brown-orange Tanner crab and its old shell overlap on a gray perforated plastic surface. Pale tissue and paired shell forms are exposed; multiple legs extend around them."
+    },
+    {
+      "index": 2,
+      "imageUrl": "https://oceanexplorer.noaa.gov/wp-content/uploads/2018/05/meal-poster.jpg",
+      "localPath": "/tmp/freed-aquatic-48/source-02.jpg",
+      "width": 640,
+      "height": 360,
+      "byteLength": 29520,
+      "sha1": "7221f6f105edffb3b6184b44a011c898d8aec15f",
+      "sha256": "14cf77de54aaa92fe9d20319427e124be9f0ecf50640ca38cd6185e8d60da40f",
+      "sourcePage": "https://oceanexplorer.noaa.gov/multimedia/edu-themes-deep-sea-corals-media-video-multimedia-meal/",
+      "sourceTitle": "A Year-long Meal",
+      "sourceCaption": "This sea star, likely Evoplosoma sp., was seen eating its way up a coral on a ridge at 2,006 meters depth during the 2017 Laulima O Ka Moana expedition.",
+      "visibleScene": "A black title card with the NOAA seal and expedition title; no sea star or coral is visible.",
+      "decision": "hold_image",
+      "review": "Published video poster is a title card. It cannot illustrate feeding. Video itself has not been downloaded or watched, and no footage claim is made.",
+      "individuallyOpened": true,
+      "originalDimensions": [
+        640,
+        360
+      ],
+      "dimensionsMeaning": "Dimensions of the exact source-published delivery asset measured from bytes. Camera-original dimensions are unavailable. No local derivative supplied.",
+      "deliveryIsSourcePublished": true,
+      "attribution": "NOAA Ocean Exploration, 2017 Laulima O Ka Moana",
+      "licenseUrl": "https://oceanexplorer.noaa.gov/faqs/",
+      "rightsEvidence": "NOAA expedition credit; title card includes protected agency seal and is not proposed for reuse.",
+      "license": "not_admitted",
+      "alt": "A black title card with the NOAA seal and expedition title; no sea star or coral is visible."
+    },
+    {
+      "index": 3,
+      "imageUrl": "https://media.fisheries.noaa.gov/dam-migration-miss/1280_EvN4ANCaZ2z3.jpg?1522044930",
+      "localPath": "/tmp/freed-aquatic-48/source-03.jpg",
+      "width": 600,
+      "height": 326,
+      "byteLength": 122136,
+      "sha1": "96e572599d8f8e07858c9976f52f079828f773ba",
+      "sha256": "2a79c30e0f9af0e7b3722c9092b92c32fff9d7f6f9b5ce90ba0d7c148f15ede7",
+      "sourcePage": "https://www.fisheries.noaa.gov/science-blog/dutch-harbor-snow-and-tanner-crab-growth-study-post-1",
+      "sourceTitle": "Dutch Harbor Snow and Tanner Crab Growth Study: Post 1",
+      "sourceCaption": "Tanner crab (Chionoecetes bairdi).",
+      "visibleScene": "A dorsal brown-orange crab with widely spread legs and raised curved claws lies on a black surface. Coarse detail and sharpened edges are visible.",
+      "decision": "hold_avatar",
+      "review": "Lead and author independently rejected its small, coarse reference-photo presentation. No claim that the photographed crab is alive or dead. Source filename begins 1280 but delivered pixels are only 600 x 326.",
+      "individuallyOpened": true,
+      "originalDimensions": [
+        600,
+        326
+      ],
+      "dimensionsMeaning": "Dimensions of the exact source-published delivery asset measured from bytes. Camera-original dimensions are unavailable. No local derivative supplied.",
+      "deliveryIsSourcePublished": true,
+      "attribution": "NOAA Fisheries",
+      "licenseUrl": "https://www.fisheries.noaa.gov/website-policies-and-disclaimers",
+      "rightsEvidence": "NOAA Fisheries policy permits distribution of public information unless otherwise noted and distinguishes external copyrighted photographs. Page has no separate photographer credit on this image. Do not upgrade this to a separately verified named government photographer.",
+      "license": "not_admitted",
+      "alt": "A dorsal brown-orange crab with widely spread legs and raised curved claws lies on a black surface. Coarse detail and sharpened edges are visible."
+    }
+  ],
+  "heldProse": [
+    {
+      "sourceIndex": 1,
+      "characterId": null,
+      "title": "With less of my weight",
+      "platform": "facebook",
+      "contentType": "post",
+      "theme": "transformation",
+      "content": "I pulled one claw free and put it down on the smooth floor to push.\n\nIt gave beneath me.\n\nFor a moment I stopped trying to get out. The shell I was leaving had never felt so dependable.\n\nMoved the claw back. Worked another leg loose, then waited, then another. Each new part of me had to be kept out of the way while I finished becoming it.\n\nWhen the last leg came free, I stayed beside the empty shell. Tried the floor again, with less of my weight.\n\nIt held.",
+      "decision": "hold",
+      "reason": "No acceptable independently reviewed avatar; source does not label old/new orientation. New claw bearing less weight and exact emergence sequence are fiction, not documented actions. A new lab-resident identity would require a proper reviewed portrait and full chronology before admission."
+    }
+  ],
+  "discoveryHolds": [
+    {
+      "sourcePage": "https://www.nps.gov/media/photo/gallery-item.htm?gid=C85BE3B6-B0D2-45E6-9F12-A5879595D848&id=7bf0d3ba-6483-4f5b-8a66-ad0d106d3a22",
+      "decision": "rights_conflict_before_download",
+      "reason": "Asset metadata Public domain / Full conflicts with named Micah Bochart credit Used with permission. No pixels downloaded or reviewed."
+    },
+    {
+      "sourcePage": "https://www.fws.gov/media/horseshoe-crab-flipped-mispillion-harbor",
+      "decision": "geography_hold_before_download",
+      "reason": "Explicit Delaware image cannot become a Jamaica Bay Hugo episode without a defensible continuity decision. No pixels downloaded or reviewed."
+    },
+    {
+      "sourcePage": "https://oceanexplorer.noaa.gov/multimedia/explorations-20cascadia-seeps-logs-sept30-media-crab/",
+      "decision": "taxon_home_hold_before_download",
+      "reason": "Tanner common name alone does not establish Chionoecetes bairdi. Cascadia seabed context also differs from the proposed Alaska laboratory body. No pixels downloaded or reviewed."
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+[
+  {
+    "id": "botanical46-01-display",
+    "subject": "eastern skunk cabbage",
+    "category": "wildlife",
+    "imageUrl": "https://d9-wret.s3.us-west-2.amazonaws.com/assets/palladium/production/s3fs-public/styles/full_width/public/Symplocarpus%20foetidus%2C%20skunk_cabbage_spadix_inforescence_Helen_Lowe_Metzman%202_2017-03-16-18.49.jpg?itok=UBtaitrF",
+    "sourceUrl": "https://www.usgs.gov/media/images/symplocarpus-foetidus-skunk",
+    "sha1": "8b100bb95d4f3791bd137a3c677c228a1dc67703",
+    "creator": "Helen Lowe Metzman / USGSBIML Team",
+    "license": "Public domain",
+    "licenseUrl": "https://www.usgs.gov/media/images/symplocarpus-foetidus-skunk",
+    "alt": "Extreme macro of small eastern-skunk-cabbage flowers on a spadix, with open yellow anthers and scattered pollen among maroon floral parts.",
+    "detail": "Magnified flowers, not a whole plant. Source records laboratory focus stacking and photographic treatment. The pollen and anthers remain sharp in the published full_width variant.",
+    "identityNameBase": "Sabine Warmfold",
+    "width": 1336,
+    "height": 1154
+  },
+  {
+    "id": "botanical46-sabine-avatar",
+    "subject": "eastern skunk cabbage",
+    "category": "wildlife",
+    "imageUrl": "https://npgallery.nps.gov/GetAsset/CA8559B0-1DD8-B71C-0706942B1B581459/proxyhires.jpg?",
+    "sourceUrl": "https://npgallery.nps.gov/AssetDetail/ca8559b0-1dd8-b71c-0706-942b1b581459",
+    "sha1": "291d8d5c9b72e6506e64f50e04d74fbcecaba518",
+    "creator": "National Park Service",
+    "license": "Public domain",
+    "licenseUrl": "https://npgallery.nps.gov/AssetDetail/ca8559b0-1dd8-b71c-0706-942b1b581459",
+    "alt": "Maroon and yellow-green skunk-cabbage spathe curves upward beside emerging green growth among brown woodland leaves.",
+    "detail": "Field portrait from Great Falls Park, showing the enclosing spathe at ordinary scale. Not an image of the laboratory specimen.",
+    "identityNameBase": "Sabine Warmfold",
+    "width": 1000,
+    "height": 750
+  }
+]

@@ -38,6 +38,9 @@ import {
 import { UpdateNotification, type UpdateState } from "./components/UpdateNotification";
 import { CloudSyncNudge } from "./components/CloudSyncNudge";
 import { useAppStore } from "./lib/store";
+import { resolveDesktopAvatarUrl } from "./lib/avatar-delivery";
+import { startAvatarBackfill } from "./lib/avatar-backfill";
+import { subscribeDesktopLibraryRuntime } from "./lib/library-client";
 import { addRssFeed, importOPMLFeeds, exportFeedsAsOPML, refreshRssFeeds } from "./lib/capture";
 import {
   startRssPoller,
@@ -678,6 +681,14 @@ function App() {
     if (!legalAccepted || lockedStartupState !== "ready") return;
     initialize();
   }, [initialize, legalAccepted, lockedStartupState]);
+
+  useEffect(() => {
+    if (!legalAccepted || !isInitialized || !tauriRuntimeAvailable) return;
+    return startAvatarBackfill(queryNormalizedLibrary,
+      invalidate => subscribeDesktopLibraryRuntime((_state, event) => {
+        if (event.requiresFullScan) invalidate();
+      }), message => { void log.info(message); });
+  }, [isInitialized, legalAccepted, tauriRuntimeAvailable]);
 
   useEffect(() => {
     if (!legalAccepted || !isInitialized || !tauriRuntimeAvailable) return;
@@ -1684,6 +1695,7 @@ function App() {
         tauriRuntimeAvailable && isInitialized
           ? queryNormalizedLibrary
           : undefined,
+      resolveAvatarUrl: tauriRuntimeAvailable ? resolveDesktopAvatarUrl : undefined,
       mutateDeviceGraphLayout:
         tauriRuntimeAvailable && isInitialized
           ? mutateNormalizedDeviceGraphLayout

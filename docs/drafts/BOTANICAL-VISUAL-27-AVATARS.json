@@ -1,0 +1,49 @@
+{
+  "status": "proposal only",
+  "crops": [
+    {
+      "characterId": "delphine-silkspill",
+      "asset": "1e8eabac-7c55-4d17-a650-a16238bc65f0",
+      "focal": {
+        "x": 0.51,
+        "y": 0.43,
+        "zoom": 1.65
+      },
+      "mediaSha1": "2aaec551ec0bad047ddee09f7526b3d441821b92",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/1e8eabac-7c55-4d17-a650-a16238bc65f0/original.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/1e8eabac-7c55-4d17-a650-a16238bc65f0",
+      "localFile": "/tmp/botanical27/1e8eabac-7c55-4d17-a650-a16238bc65f0.jpg",
+      "localBytes": 3180861,
+      "dimensions": [
+        4032,
+        3024
+      ],
+      "aggregated": false,
+      "admission": "proposal; lead review required",
+      "visibleReview": "Several pale green follicles share one visible connected milkweed stem. Enlarged central pod preserves ridges, bumps and leaf attachment at 220; its elongated pale silhouette remains distinct at 48. No insect becomes the avatar subject."
+    },
+    {
+      "characterId": "edmund-oldring",
+      "asset": "f40fb656-8d8a-4e91-a8d3-66c4d7fa2dd9",
+      "focal": {
+        "x": 0.525,
+        "y": 0.62,
+        "zoom": 4
+      },
+      "mediaSha1": "b30da34182a7ce8951b10db8fc3a5956361091d2",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/f40fb656-8d8a-4e91-a8d3-66c4d7fa2dd9/original.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/f40fb656-8d8a-4e91-a8d3-66c4d7fa2dd9",
+      "localFile": "/tmp/botanical27/f40fb656-8d8a-4e91-a8d3-66c4d7fa2dd9.jpg",
+      "localBytes": 7794393,
+      "dimensions": [
+        3315,
+        4973
+      ],
+      "aggregated": false,
+      "admission": "proposal; lead review required",
+      "visibleReview": "One broad orange giant-sequoia trunk dominates the crop, with a black old scar. At 48 the orange column and scar remain recognizable. The first wide crop was rejected for competing neighboring trunks; final focal .525,.62,zoom4 isolates the identified survivor. Background trees remain subordinate."
+    }
+  ],
+  "implementation": "Exact runtime source-square crop into a 256-pixel canvas, displayed with border-radius 50% at 220 and 48 pixels.",
+  "screenshot": "output/playwright/botanical27-avatars-final.png"
+}

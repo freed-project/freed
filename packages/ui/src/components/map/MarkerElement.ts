@@ -13,6 +13,7 @@ import type { FriendAvatarPalette } from "../../lib/friend-avatar-style.js";
 export type MarkerSize = "large" | "medium" | "small";
 
 interface MarkerElementOptions {
+  resolveAvatarUrl?: (sourceUrl: string) => string;
   showAvatar?: boolean;
   simplified?: boolean;
 }
@@ -129,7 +130,7 @@ export function createMarkerElement(
   if (avatarUrl) {
     const img = document.createElement("img");
     img.className = "freed-map-marker-image";
-    img.src = avatarUrl;
+    img.src = options.resolveAvatarUrl?.(avatarUrl) ?? avatarUrl;
     img.alt = "";
     img.style.cssText = "width:100%;height:100%;object-fit:cover;position:relative;z-index:1;opacity:0.94;filter:saturate(0.9) contrast(1.02) brightness(0.92);";
     img.onerror = () => {

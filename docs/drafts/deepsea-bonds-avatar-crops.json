@@ -1,0 +1,89 @@
+{
+  "status": "Proposed avatar crops pending root visual review. This file does not admit avatars or alter identity bindings.",
+  "sourceManifest": "packages/shared/src/sample-corpus-deepsea-bonds-media.json",
+  "contactSheetPath": "/Users/aubreyfalconer/dev/freed-demo-500-corpus/output/playwright/deepsea-bonds-avatar-crops.png",
+  "contactSheetDimensions": {
+    "width": 1200,
+    "height": 660
+  },
+  "cropMethod": "Faithful implementation of cropDecodedGalaxyAvatar: square side=min(width,height)/zoom; focal center clamped to source bounds; 256px circular mask for review presentation.",
+  "records": [
+    {
+      "id": "deepsea-08-01",
+      "sha1": "b71ee74565c3225a352dde7836f5ab0103455a49",
+      "imageUrl": "https://oceanexplorer.noaa.gov/wp-content/uploads/2025/08/dive11-commensal.jpg",
+      "downloadPath": "/tmp/deepsea-bonds-avatar.TUz1jW/deepsea-08-01-b71ee745.jpg",
+      "download": { "status": 200, "contentType": "image/jpeg", "byteLength": 793096, "actualSha1": "b71ee74565c3225a352dde7836f5ab0103455a49", "matchesCatalogSha1": true },
+      "actualDimensions": { "width": 1920, "height": 1080 },
+      "proposedFocalPoint": { "x": 0.37, "y": 0.42, "zoom": 1.5 },
+      "cropPixels": { "left": 350, "top": 94, "side": 720 },
+      "visibleFraming": "Crab face and foremost legs, with enough shell-bearing anemone to retain the visible relationship."
+    },
+    {
+      "id": "deepsea-08-03",
+      "sha1": "18761b3b2a4daea875bb7aa8928fad973df5f8d6",
+      "imageUrl": "https://oceanexplorer.noaa.gov/wp-content/uploads/2025/08/dive16-bolosoma.jpg",
+      "downloadPath": "/tmp/deepsea-bonds-avatar.TUz1jW/deepsea-08-03-18761b3b.jpg",
+      "download": { "status": 200, "contentType": "image/jpeg", "byteLength": 839443, "actualSha1": "18761b3b2a4daea875bb7aa8928fad973df5f8d6", "matchesCatalogSha1": true },
+      "actualDimensions": { "width": 1920, "height": 1080 },
+      "proposedFocalPoint": { "x": 0.52, "y": 0.38, "zoom": 1.2 },
+      "cropPixels": { "left": 548, "top": 0, "side": 900 },
+      "visibleFraming": "Bolosoma lattice and upper stalk, retaining its visibly attached structure."
+    },
+    {
+      "id": "deepsea-08-04",
+      "sha1": "4c12fb7bd84991f61a9a96780c86f3e11dae1e47",
+      "imageUrl": "https://oceanexplorer.noaa.gov/wp-content/uploads/2025/08/dive16-brittlestar.jpg",
+      "downloadPath": "/tmp/deepsea-bonds-avatar.TUz1jW/deepsea-08-04-4c12fb7b.jpg",
+      "download": { "status": 200, "contentType": "image/jpeg", "byteLength": 1435055, "actualSha1": "4c12fb7bd84991f61a9a96780c86f3e11dae1e47", "matchesCatalogSha1": true },
+      "actualDimensions": { "width": 1920, "height": 1080 },
+      "proposedFocalPoint": { "x": 0.5, "y": 0.49, "zoom": 1.2 },
+      "cropPixels": { "left": 510, "top": 79, "side": 900 },
+      "visibleFraming": "Brittle-star disc and radiating arms against the coral branches."
+    },
+    {
+      "id": "deepsea-08-06",
+      "sha1": "7a612bcaa1f78609cc63de844a170a33767be7a9",
+      "imageUrl": "https://oceanexplorer.noaa.gov/wp-content/uploads/2021/11/dive06-hermit-crab-hires.jpg",
+      "downloadPath": "/tmp/deepsea-bonds-avatar.TUz1jW/deepsea-08-06-7a612bca.jpg",
+      "download": { "status": 200, "contentType": "image/jpeg", "byteLength": 1212951, "actualSha1": "7a612bcaa1f78609cc63de844a170a33767be7a9", "matchesCatalogSha1": true },
+      "actualDimensions": { "width": 1920, "height": 1080 },
+      "proposedFocalPoint": { "x": 0.48, "y": 0.52, "zoom": 1.5 },
+      "cropPixels": { "left": 562, "top": 202, "side": 720 },
+      "visibleFraming": "Central Parapagurus crab and its attached anemone covering."
+    },
+    {
+      "id": "deepsea-08-08",
+      "sha1": "2c3064e735ea2e7b73e57776059b0e01bae4262d",
+      "imageUrl": "https://oceanexplorer.noaa.gov/wp-content/uploads/2026/02/large-solitary-hydroid-1024x791.jpg",
+      "downloadPath": "/tmp/deepsea-bonds-avatar.TUz1jW/deepsea-08-08-2c3064e7.jpg",
+      "download": { "status": 200, "contentType": "image/jpeg", "byteLength": 307625, "actualSha1": "2c3064e735ea2e7b73e57776059b0e01bae4262d", "matchesCatalogSha1": true },
+      "actualDimensions": { "width": 1024, "height": 791 },
+      "proposedFocalPoint": { "x": 0.54, "y": 0.48, "zoom": 1.1 },
+      "cropPixels": { "left": 193, "top": 20, "side": 719 },
+      "visibleFraming": "Hydroid body, attachment and dense tentacle field, with some streaming tentacles retained."
+    },
+    {
+      "id": "deepsea-08-09",
+      "sha1": "1158131494b68860738eb1df4c9bed8f4b9c671f",
+      "imageUrl": "https://oceanexplorer.noaa.gov/wp-content/uploads/2026/02/new-sponge.jpg",
+      "downloadPath": "/tmp/deepsea-bonds-avatar.TUz1jW/deepsea-08-09-11581314.jpg",
+      "download": { "status": 200, "contentType": "image/jpeg", "byteLength": 1226608, "actualSha1": "1158131494b68860738eb1df4c9bed8f4b9c671f", "matchesCatalogSha1": true },
+      "actualDimensions": { "width": 1920, "height": 1080 },
+      "proposedFocalPoint": { "x": 0.5, "y": 0.5, "zoom": 1.2 },
+      "cropPixels": { "left": 510, "top": 90, "side": 900 },
+      "visibleFraming": "Central sponge body and conspicuous openings."
+    },
+    {
+      "id": "deepsea-08-11",
+      "sha1": "2cfb1c2339098c2fe1bf38a227ed3703fdd44a6d",
+      "imageUrl": "https://oceanexplorer.noaa.gov/wp-content/uploads/2025/08/dive03-stalked-crinoid.jpg",
+      "downloadPath": "/tmp/deepsea-bonds-avatar.TUz1jW/deepsea-08-11-2cfb1c23.jpg",
+      "download": { "status": 200, "contentType": "image/jpeg", "byteLength": 1237064, "actualSha1": "2cfb1c2339098c2fe1bf38a227ed3703fdd44a6d", "matchesCatalogSha1": true },
+      "actualDimensions": { "width": 1920, "height": 1080 },
+      "proposedFocalPoint": { "x": 0.5, "y": 0.62, "zoom": 1.2 },
+      "cropPixels": { "left": 510, "top": 180, "side": 900 },
+      "visibleFraming": "Foreground and middle stalked crinoids as a visible group, not one selected individual."
+    }
+  ]
+}

@@ -132,6 +132,10 @@ Marketing is `https://freed.wtf`, the PWA is `https://app.freed.wtf`, and downlo
 
 ## Delivery kernel
 
+### Autonomous decision review
+
+For a complex task sequence, maintain a worktree-local, Git-ignored `TASK-DECISIONS.local.md` from the first judgment decision or unanswered question. Follow the [decision review contract](docs/AGENT-INSTRUCTIONS.md#local-decision-review). Update it as work proceeds, link it at handoff, and preserve it for owner review before worktree cleanup. Never commit or publish this log. Logging does not replace required clarification or authorization.
+
 ### Lanes and local proof
 
 - Product work targets `dev`. Public website work targets `www`. Production release preparation targets `main`. Dev release preparation targets `dev`.

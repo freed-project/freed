@@ -7,11 +7,76 @@
 
 ## Overview
 
+Care levels map to Connection at one or two, Friend at three or four, and Fam
+at five. Editable identity details, directory cards, collapsed selection cards,
+and the identity editor share a keyboard-accessible rating control with category
+tooltips. Changes save both care level and relationship status together. Failed
+saves retain the previous rating and offer retry. Demo-session rating edits are
+still pending; the demo does not receive the durable Person writer.
+
+Standalone feed and reader author names open their linked identity in Friends.
+Hover and keyboard focus show the shared directory-card presentation, loaded
+on intent rather than for every mounted post. Unlinked authors open an existing
+account without creating identity records. Compact reader thumbnails and story
+tiles retain their single post-opening target. Preview metadata includes only
+known identity fields; it does not infer latest identity activity from one post.
+
+Stars and planets are internal design shorthand only. Interface copy uses
+identity, profile, account, or feed, including tooltips and accessibility labels.
+
+Star and linked planet detail panels dock a non-interactive map preview at the
+bottom right when a known location exists. The entire preview opens Map with
+the parent identity selected. It uses the shared map surface and theme, retains
+the demo's local geographic mode, and does not invent locations for empty records.
+
+The Friends, Map, and feed audience controls share one device-local preference.
+All content is the default. Changes carry between views and ordinary app sessions.
+The demo resets this choice on reload. Theme and the demo welcome display state
+are the only presentation preferences retained between visits.
+
+Recent activity cards in identity and account sidebars open the selected post
+in the unified feed reader. Their separate provider buttons open the same post
+filtered to its provider and author, with RSS subscription scope retained.
+Both targets have theme-aware hover and keyboard-focus states.
+Star detail profile chips select their exact captured account inside Friends,
+using a Library scope lookup rather than opening an external profile. Planet
+details link back to their named parent star regardless of friendship status.
+Both detail types share the same individually spaced recent activity cards.
+
 A people CRM built on a force-directed social graph. Canonical same-human identity now lives in a `Person` record, while every attached social profile or imported contact lives in an `Account` record. Social capture can catalog followed accounts before they are confirmed as the same person, and Google Contacts imports create friend people by default.
 
 Confirmed friends stay at the center of the graph. Their linked social and contact accounts orbit as attached nodes. Unconfirmed followed accounts can stay separate until the operator confirms that they belong to the same person.
 
-Each Person's one-to-five care level is the Friends Galaxy importance scale. Higher-care people sit closer to the center and render as larger, nearer, brighter stars. The galaxy uses this single continuous visual hierarchy without a separate type legend.
+Identities are stars and provider channels are planets. Ratings still control size
+consistently for both friend and connection stars. Their star radii, avatar sizes,
+and prominence use the same care-level scale and identity tint; membership does
+not override those visual rules. Ratings also control brightness, but depth is
+stable random variation up to 65 scene units around a shared center plane,
+independent of rating. Linked planets occupy tight circular orbits at exactly their
+star's depth. Their labels show only the provider icon; star labels retain the name.
+Labels follow their node's tint and sit close to it. Provider labels occupy the center
+depth plane, with galactic dust behind the planets. RSS planets select their own
+feed details rather than a star. Friends and Map use icon-only Fit All controls with
+tooltips. The visible Galaxy build-time report is removed.
+
+Approved demo avatar admission and decoded-image delivery run during camera
+motion. Entering close zoom builds avatar billboards immediately in both WebGPU
+backends; opacity follows the live zoom timeline, not the gesture-settled event.
+Visibility targets are discrete at the close-detail threshold. Avatars reuse the
+label fade's reversible 240ms timeline and always settle to zero or one. Updating
+the image roster does not restart the layer fade; outgoing images remain mounted
+through the exit transition.
+The existing source allowlist, cache limit, concurrency limit, and stale-result
+rejection remain in force.
+The supercluster uses one equal-area spiral for all stars, without separate friend
+and connection rings. Four- and five-star friends occupy the innermost slots;
+manually pinned positions remain respected.
+
+### Local demo rendering revision, September 5
+
+Pending publication: labels share a 240ms visibility transition, and the decorative star field retains its geometry and ambient clock across idle and dragging frames. Provider clouds must remain visible when input stops. These corrections require exact-head validation before release.
+
+The demo's close-detail identity portrait uses the first successfully loaded, explicitly approved connected-profile avatar. Loading is limited to approved demo URLs, with bounded concurrency, timeout, failure caching and stale-result rejection. No new real-account image requests are enabled. Raw WebGPU, Three WebGPU and the legacy WebGL2/Canvas backend receive the same loaded-image policy. Local focused tests and browser proofs exist; complete cast avatar coverage remains part of the 1,000-entry rebuild, not a finished claim.
 
 The geo map from the original Phase 8 design is retained as sub-phase 8D. It now supports both Friend-linked pins and an `All content` fallback that shows the latest valid location per followed account when no Friend graph exists yet.
 
@@ -798,6 +863,9 @@ The product Friends view now fixes decorative dust to the 100,000-star Raw WebGP
 - [x] The detached laboratory and product engine share one renderer host that restores theme, dimensions, density, motion, provider fields, interaction, settled view, and activity patches before a backend becomes visible
 - [x] The detached laboratory and product engine share one fixed diagnostic sample ring, passive long-task monitor, and first-failure backend health latch
 - [x] The detached laboratory and product engine share one keyed avatar admission state and bounded source-deduplicating image decode queue with deterministic disposal
+- [ ] Verify production Galaxy avatars through the platform-owned persistent cache. Desktop supplies the same delivery route used by profile cards, reader authors, and map markers; demos retain their reviewed hotlinks.
+- [x] Demo identities derive care ratings and Friends membership together: one or two is Connection, three or four is Friend, and five is Fam. The stable initial Friends cohort remains 15% of admitted identities, with curated close relationships selected first.
+- [x] Demo directory and detail ratings support session-only edits through an isolated validated checkpoint replacement. Friends membership updates across database-backed views and resets on reload; general Library editing stays disabled.
 - [x] Every detached backend and the product engine share one worker-transferable stable-ID, adjacency, sparse-pick index and one allocation-bounded interaction scene state
 - [x] Labels, avatars, overlays, and the product engine share one allocation-free depth-aware world-to-screen projection and viewport-admission helper
 - [x] The detached backends and product engine share theme-aware label and avatar billboard compositors while product metadata retains settled-candidate ownership
@@ -830,6 +898,7 @@ The product Friends view now fixes decorative dust to the 100,000-star Raw WebGP
 - [x] Friends uses the same vertical sidebar inset as every other workspace while its pointer-free Galaxy background continues beneath the sidebar to the full content-frame bounds
 - [x] Provider sectors use deterministic spiral placement and theme-aware nebula fields, with Nebula as the default treatment and no idle identity-to-account links
 - [x] Identity labels remain close to their parent stars with a stronger outline, and shared utility button surfaces stay legible across active themes
+- [x] Automatic profile shells use half their previous XY distance from the parent, with pinned positions preserved. Worker metadata admission projects the same compiled XYZ as the renderer, preventing visible contracted profiles from losing labels because their old orbit coordinates were offscreen. A 620-node regression protects this contract. Hover requests prioritize missing label metadata within the existing caps without changing selection; clearing hover restores ordinary admission.
 - [x] Desktop browser tests cover mixed-tier graph load, context-menu link persistence, semantic zoom label growth, and a seeded dense-graph screenshot
 - [x] Generic Instagram story labels are recovered from preserved location URLs or excluded from the map
 - [ ] macOS native contact picker (CNContactStore)

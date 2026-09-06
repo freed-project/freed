@@ -1,0 +1,484 @@
+{
+  "status": "Partial image-led candidate batch, not runtime-admitted",
+  "targetCount": 12,
+  "candidateCount": 5,
+  "longStoryCount": 2,
+  "reviewNote": "Five candidates retained after inspecting 23 images across the existing catalog and fresh Commons discovery. Two longer stories, not the requested three. Quality shortfall is explicit rather than filled with rejected material. Luna prose approved at parent checkpoint; other prose and every runtime image binding still await parent admission. No runtime or production change.",
+  "entries": [
+    {
+      "id": "strange-04-01",
+      "characterId": "luna-after",
+      "platform": "x",
+      "subject": "Actias luna",
+      "title": "Caught up",
+      "body": "I spent my entire childhood eating. They said it would catch up with me. It caught up with me as wings.",
+      "theme": "pleasure and metamorphosis",
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/1a/Luna_moth_on_tree.jpg/1280px-Luna_moth_on_tree.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "alt": "Pale green luna moth with pink-edged wings and feathery antennae resting on lichen-covered bark.",
+        "sceneMatch": "Adult wings are the punchline's visible result. The photograph does not claim to show the same individual's larval stage.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05"
+      },
+      "provenance": {
+        "id": "commons-0027",
+        "subject": "moth macro",
+        "category": "insect",
+        "identityNameBase": "Mothilda Moonwing",
+        "detail": "Luna moth on tree",
+        "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/1a/Luna_moth_on_tree.jpg/1280px-Luna_moth_on_tree.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File%3ALuna_moth_on_tree.jpg",
+        "creator": "Jeremy Johnson",
+        "license": "CC BY-SA 4.0",
+        "width": 1280,
+        "height": 851,
+        "sha1": "087e61f22c2daaed6758efad158754137ec574e3"
+      },
+      "payoff": "The warning about childhood appetite becomes the spectacular adult body.",
+      "editorialStatus": "Parent approved prose checkpoint; image still needs parent admission"
+    },
+    {
+      "id": "strange-04-02",
+      "characterId": "dora-dew",
+      "platform": "instagram",
+      "subject": "Drosera rotundifolia",
+      "title": "Up here",
+      "body": "You may touch the flowers. The leaves are a separate arrangement.",
+      "theme": "boundaries and playful innuendo",
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/ce/Drosera_rotundifolia_TK_2023-07-08_9.jpg/960px-Drosera_rotundifolia_TK_2023-07-08_9.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "alt": "Round-leaved sundew with low red trapping leaves and a tall slender stalk bearing small white flowers.",
+        "sceneMatch": "The photograph visibly separates the flowers from the adhesive rosette. It does not assert why that spacing evolved.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05"
+      },
+      "provenance": {
+        "title": "File:Drosera rotundifolia TK 2023-07-08 9.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Drosera_rotundifolia_TK_2023-07-08_9.jpg",
+        "originalUrl": "https://upload.wikimedia.org/wikipedia/commons/c/ce/Drosera_rotundifolia_TK_2023-07-08_9.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+        "creator": "T. Kebert",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "width": 4066,
+        "height": 6099,
+        "sha1": null,
+        "rawSourceMetadata": {
+          "DateTime": {
+            "value": "2023-07-08 18:19:02",
+            "source": "mediawiki-metadata",
+            "hidden": ""
+          },
+          "ObjectName": {
+            "value": "Drosera rotundifolia TK 2023-07-08 9",
+            "source": "mediawiki-metadata"
+          },
+          "CommonsMetadataExtension": {
+            "value": 1.2,
+            "source": "extension",
+            "hidden": ""
+          },
+          "Categories": {
+            "value": "Self-published work|Photos by Nefronus|Drosera rotundifolia in Czechia|Drosera rotundifolia (whole plant)",
+            "source": "commons-categories",
+            "hidden": ""
+          },
+          "Assessments": {
+            "value": "quality",
+            "source": "commons-categories",
+            "hidden": ""
+          },
+          "ImageDescription": {
+            "value": "<i>Drosera rotundifolia</i>, CHKO Brdy, Czechia",
+            "source": "commons-desc-page"
+          },
+          "DateTimeOriginal": {
+            "value": "2023-07-08 11:30:57",
+            "source": "commons-desc-page"
+          },
+          "Credit": {
+            "value": "<span class=\"int-own-work\" lang=\"en\">Own work</span>",
+            "source": "commons-desc-page"
+          },
+          "Artist": {
+            "value": "<a href=\"//commons.wikimedia.org/wiki/User:Nefronus\" title=\"User:Nefronus\">T. Kebert</a>",
+            "source": "commons-desc-page"
+          },
+          "LicenseShortName": {
+            "value": "CC BY-SA 4.0",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "UsageTerms": {
+            "value": "Creative Commons Attribution-Share Alike 4.0",
+            "source": "commons-desc-page"
+          },
+          "AttributionRequired": {
+            "value": "true",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "LicenseUrl": {
+            "value": "https://creativecommons.org/licenses/by-sa/4.0",
+            "source": "commons-desc-page"
+          },
+          "Copyrighted": {
+            "value": "True",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "Restrictions": {
+            "value": "",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "License": {
+            "value": "cc-by-sa-4.0",
+            "source": "commons-templates",
+            "hidden": ""
+          }
+        }
+      },
+      "payoff": "An invitation immediately acquires a biologically specific boundary.",
+      "editorialStatus": "Unreviewed prose candidate"
+    },
+    {
+      "id": "strange-04-03",
+      "characterId": "dora-dew",
+      "platform": "rss",
+      "subject": "Drosera rotundifolia",
+      "title": "Start again",
+      "body": "I told the bee she looked delicious.\n\nI meant yellow. Warm. There was pollen all over her legs and she had arrived making that ridiculous, wonderful noise. I had been alone with the grasses all morning. The grasses never come over.\n\nShe stopped above my flower.\n\n\"Start again.\"\n\nI tried to think of something about her that I didn't want to put inside myself. This was an awful way to begin thinking.\n\n\"You look as though something good happened to a flower.\"\n\nShe came a little closer.\n\n\"Better.\"\n\nShe settled on the white petals. I stayed as still as a plant, which was finally useful. She worked for a while and then, before leaving, called me sweet.\n\n\"Start again,\" I said.",
+      "theme": "social repair and desire without possession",
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/3d/Rundbl%C3%A4ttriger_Sonnentau_%28Drosera_rotundifolia%29_Bl%C3%BCte.jpg/960px-Rundbl%C3%A4ttriger_Sonnentau_%28Drosera_rotundifolia%29_Bl%C3%BCte.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "alt": "Small white sundew flower and unopened buds on a slender green stalk.",
+        "sceneMatch": "The flower, rather than a trapping leaf, is the encounter's safe contact point. The visiting bee and dialogue are invented and are not claimed visible. No capture or prey suffering occurs.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05"
+      },
+      "provenance": {
+        "title": "File:Rundblättriger Sonnentau (Drosera rotundifolia) Blüte.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Rundbl%C3%A4ttriger_Sonnentau_(Drosera_rotundifolia)_Bl%C3%BCte.jpg",
+        "originalUrl": "https://upload.wikimedia.org/wikipedia/commons/3/3d/Rundbl%C3%A4ttriger_Sonnentau_%28Drosera_rotundifolia%29_Bl%C3%BCte.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+        "creator": "Stephan Sprinz",
+        "license": "CC BY 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0",
+        "width": 3037,
+        "height": 4555,
+        "sha1": null,
+        "rawSourceMetadata": {
+          "DateTime": {
+            "value": "2023-05-02 10:49:19",
+            "source": "mediawiki-metadata",
+            "hidden": ""
+          },
+          "ObjectName": {
+            "value": "Rundblättriger Sonnentau (Drosera rotundifolia) Blüte",
+            "source": "mediawiki-metadata"
+          },
+          "CommonsMetadataExtension": {
+            "value": 1.2,
+            "source": "extension",
+            "hidden": ""
+          },
+          "Categories": {
+            "value": "Schwarzes Moor|Naturschutzgebiet Lange Rhön|Images from Wiki Loves Earth 2023 in Germany|Self-published work|Uploaded via Campaign:wle-de|Photographs by Stephan Sprinz|Images from Wiki Loves Earth 2023|Images from Wiki Loves Earth 2023, DE detail|Files with coordinates missing SDC location of creation (50° N, 10° E)|Images from Wiki Loves Earth missing SDC location of creation|Drosera rotundifolia (inflorescence)",
+            "source": "commons-categories",
+            "hidden": ""
+          },
+          "Assessments": {
+            "value": "quality",
+            "source": "commons-categories",
+            "hidden": ""
+          },
+          "GPSLatitude": {
+            "value": "50.519275",
+            "source": "commons-desc-page"
+          },
+          "GPSLongitude": {
+            "value": "10.062458",
+            "source": "commons-desc-page"
+          },
+          "GPSMapDatum": {
+            "value": "WGS-84",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "ImageDescription": {
+            "value": "Nahaufnahme der Blüte des rundblättrigen Sonnentau (Drosera rotundifolia) im schwarzen Moor",
+            "source": "commons-desc-page"
+          },
+          "DateTimeOriginal": {
+            "value": "2022-06-25 16:25:35",
+            "source": "commons-desc-page"
+          },
+          "Credit": {
+            "value": "<span class=\"int-own-work\" lang=\"en\">Own work</span>",
+            "source": "commons-desc-page"
+          },
+          "Artist": {
+            "value": "<a href=\"//commons.wikimedia.org/wiki/User:Stephan_Sprinz\" title=\"User:Stephan Sprinz\">Stephan Sprinz</a>",
+            "source": "commons-desc-page"
+          },
+          "LicenseShortName": {
+            "value": "CC BY 4.0",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "UsageTerms": {
+            "value": "Creative Commons Attribution 4.0",
+            "source": "commons-desc-page"
+          },
+          "AttributionRequired": {
+            "value": "true",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "LicenseUrl": {
+            "value": "https://creativecommons.org/licenses/by/4.0",
+            "source": "commons-desc-page"
+          },
+          "Copyrighted": {
+            "value": "True",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "Restrictions": {
+            "value": "",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "License": {
+            "value": "cc-by-4.0",
+            "source": "commons-templates",
+            "hidden": ""
+          }
+        }
+      },
+      "payoff": "A sincere but disastrously worded compliment becomes a reciprocal joke after trust improves.",
+      "editorialStatus": "Unreviewed prose candidate; parent should assess bee encounter against image-led fit"
+    },
+    {
+      "id": "strange-04-04",
+      "characterId": "coral-clad",
+      "platform": "x",
+      "subject": "Cladonia cristatella",
+      "title": "Eyes up",
+      "body": "My reproductive organs have been mistaken for hats. I understand the desire to look people in the eye.",
+      "theme": "embodiment and social misidentification",
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/bc/Cladonia_cristatella_EPA.jpg/960px-Cladonia_cristatella_EPA.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "alt": "Branched green lichen stalks topped by vivid red fruiting bodies.",
+        "sceneMatch": "Visible red apothecia, not invented eyes or actual hats, supply the joke. The eye reference is an analogy used by the fictional narrator.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05"
+      },
+      "provenance": {
+        "title": "File:Cladonia cristatella EPA.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Cladonia_cristatella_EPA.jpg",
+        "originalUrl": "https://upload.wikimedia.org/wikipedia/commons/b/bc/Cladonia_cristatella_EPA.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+        "creator": "Louise K. Broman (courtesy Indiana Dunes National Lakeshore)",
+        "license": "Public domain",
+        "licenseUrl": null,
+        "width": 2958,
+        "height": 1960,
+        "sha1": "a29abff9df4aa3f1112d7e057af1be2d512c789d",
+        "rawSourceMetadata": {
+          "DateTime": {
+            "value": "2008-04-18 05:46:32",
+            "source": "mediawiki-metadata",
+            "hidden": ""
+          },
+          "ObjectName": {
+            "value": "Cladonia cristatella EPA",
+            "source": "mediawiki-metadata"
+          },
+          "CommonsMetadataExtension": {
+            "value": 1.2,
+            "source": "extension",
+            "hidden": ""
+          },
+          "Categories": {
+            "value": "Cladonia cristatella|PD US EPA",
+            "source": "commons-categories",
+            "hidden": ""
+          },
+          "Assessments": {
+            "value": "",
+            "source": "commons-categories",
+            "hidden": ""
+          },
+          "ImageDescription": {
+            "value": "<i>Cladonia cristatella</i> British Soldier, Unknown location",
+            "source": "commons-desc-page"
+          },
+          "DateTimeOriginal": {
+            "value": "2008-04-17",
+            "source": "commons-desc-page"
+          },
+          "Credit": {
+            "value": "<a rel=\"nofollow\" class=\"external free\" href=\"http://www.epa.gov/glnpo/image/viz_nat2.html\">http://www.epa.gov/glnpo/image/viz_nat2.html</a>",
+            "source": "commons-desc-page"
+          },
+          "Artist": {
+            "value": "Louise K. Broman (courtesy Indiana Dunes National Lakeshore)",
+            "source": "commons-desc-page"
+          },
+          "Permission": {
+            "value": "<i>This image (or other media) is a work of an <a href=\"https://en.wikipedia.org/wiki/Environmental_Protection_Agency\" class=\"extiw\" title=\"en:Environmental Protection Agency\">Environmental Protection Agency</a> employee, taken or made as part of that person's official duties. As <a href=\"https://en.wikipedia.org/wiki/Work_of_the_United_States_Government\" class=\"extiw\" title=\"en:Work of the United States Government\">works</a> of the <a href=\"https://en.wikipedia.org/wiki/Federal_Government_of_the_United_States\" class=\"extiw\" title=\"en:Federal Government of the United States\">U.S. federal government</a>, all EPA images are in the <b><a href=\"https://en.wikipedia.org/wiki/public_domain\" class=\"extiw\" title=\"w:public domain\">public domain</a></b>.</i>",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "LicenseShortName": {
+            "value": "Public domain",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "UsageTerms": {
+            "value": "Public domain",
+            "source": "commons-desc-page"
+          },
+          "AttributionRequired": {
+            "value": "false",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "Copyrighted": {
+            "value": "False",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "Restrictions": {
+            "value": "",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "License": {
+            "value": "pd",
+            "source": "commons-templates",
+            "hidden": ""
+          }
+        }
+      },
+      "payoff": "A familiar polite gaze becomes anatomically inappropriate.",
+      "editorialStatus": "Unreviewed prose candidate"
+    },
+    {
+      "id": "strange-04-05",
+      "characterId": "coral-clad",
+      "platform": "rss",
+      "subject": "Cladonia cristatella",
+      "title": "The first word",
+      "body": "I started an autobiography. My green partner objected to the first word.\n\nWe, then.\n\nHe wanted to know who was telling it. I said someone had to. He said that sounded very much like I again.\n\nWe have been together so long that I cannot remember what being alone felt like. I suspect it was peaceful. He suspects I would have starved.\n\nI have dedicated it to him. He says that is exactly the problem.",
+      "theme": "identity inside a mutually dependent partnership",
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/37/Cladonia_cristatella_109053267.jpg/960px-Cladonia_cristatella_109053267.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "alt": "Red-fruited green Cladonia lichen among fallen leaves and thin twigs in patchy sunlight.",
+        "sceneMatch": "The visibly composite lichen body is the subject of the identity dispute. The autobiography and internal dialogue are fictional; no written document is claimed visible. Source identifies Cladonia cristatella; this is not a field identification from the image alone.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05"
+      },
+      "provenance": {
+        "title": "File:Cladonia cristatella 109053267.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Cladonia_cristatella_109053267.jpg",
+        "originalUrl": "https://upload.wikimedia.org/wikipedia/commons/3/37/Cladonia_cristatella_109053267.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+        "creator": "Daniel Atha",
+        "license": "CC0",
+        "licenseUrl": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+        "width": 1536,
+        "height": 2048,
+        "sha1": "5a1c5c6f2bd3fe586f2a362f4e9a1b706552e3b0",
+        "rawSourceMetadata": {
+          "DateTime": {
+            "value": "2021-01-03 16:01:15",
+            "source": "mediawiki-metadata",
+            "hidden": ""
+          },
+          "ObjectName": {
+            "value": "Cladonia cristatella 109053267",
+            "source": "mediawiki-metadata"
+          },
+          "CommonsMetadataExtension": {
+            "value": 1.2,
+            "source": "extension",
+            "hidden": ""
+          },
+          "Categories": {
+            "value": "Cladonia cristatella|CC-Zero|Media from iNaturalist|INaturalist images reviewed by iNaturalistReviewBot|Files with coordinates missing SDC location of creation|Uploaded with iNaturalist2Commons|United States photographs taken on 2021-01-02|Fungi of New York (state) in January|Cladonia in New York (state)",
+            "source": "commons-categories",
+            "hidden": ""
+          },
+          "Assessments": {
+            "value": "",
+            "source": "commons-categories",
+            "hidden": ""
+          },
+          "GPSLatitude": {
+            "value": "40.582889",
+            "source": "commons-desc-page"
+          },
+          "GPSLongitude": {
+            "value": "-73.888297",
+            "source": "commons-desc-page"
+          },
+          "GPSMapDatum": {
+            "value": "WGS-84",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "ImageDescription": {
+            "value": "British soldier lichen (<i>Cladonia cristatella</i>)",
+            "source": "commons-desc-page"
+          },
+          "DateTimeOriginal": {
+            "value": "2021-01-02",
+            "source": "commons-desc-page"
+          },
+          "Credit": {
+            "value": "<a rel=\"nofollow\" class=\"external free\" href=\"https://www.inaturalist.org/photos/109053267\">https://www.inaturalist.org/photos/109053267</a>",
+            "source": "commons-desc-page"
+          },
+          "Artist": {
+            "value": "<a rel=\"nofollow\" class=\"external text\" href=\"https://www.inaturalist.org/users/20600\">Daniel Atha</a>",
+            "source": "commons-desc-page"
+          },
+          "LicenseShortName": {
+            "value": "CC0",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "UsageTerms": {
+            "value": "Creative Commons Zero, Public Domain Dedication",
+            "source": "commons-desc-page"
+          },
+          "AttributionRequired": {
+            "value": "false",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "LicenseUrl": {
+            "value": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+            "source": "commons-desc-page"
+          },
+          "Copyrighted": {
+            "value": "True",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "Restrictions": {
+            "value": "",
+            "source": "commons-desc-page",
+            "hidden": ""
+          },
+          "License": {
+            "value": "cc0",
+            "source": "commons-templates",
+            "hidden": ""
+          }
+        }
+      },
+      "payoff": "A dedication meant as reconciliation repeats the narrator's assumption that the shared life belongs to him.",
+      "editorialStatus": "Lead rewrite; exact image still awaits independent admission"
+    }
+  ]
+}

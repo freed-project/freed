@@ -1,5 +1,6 @@
 import { memo, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { formatDistanceToNow } from "date-fns";
+import { AuthorIdentityLink } from "../AuthorIdentityLink.js";
 import { PLATFORM_LABELS, type FeedItem as FeedItemType } from "@freed/shared";
 import { usePlatform } from "../../context/PlatformContext.js";
 import type { FeedCardDensity } from "../../lib/feed-card-density.js";
@@ -695,7 +696,7 @@ export const FeedItem = memo(function FeedItem({
                 />
                 <div className="min-w-0 flex-1">
                   <div className="flex min-w-0 items-center gap-2">
-                    <span className={`truncate font-medium ${fixedCardDensity.author}`}>{item.author.displayName}</span>
+                    <AuthorIdentityLink item={item} className={`truncate font-medium ${fixedCardDensity.author}`} />
                     <span className={`truncate text-[var(--theme-text-muted)] ${fixedCardDensity.handle}`}>@{item.author.handle}</span>
                   </div>
                   <div className={`flex min-w-0 items-center gap-2 ${fixedCardDensity.meta} text-[var(--theme-text-muted)]`}>
@@ -925,7 +926,7 @@ export const FeedItem = memo(function FeedItem({
           />
           <div className="flex-1 min-w-0">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <span className={`font-medium truncate ${fullCardDensity.author}`}>{item.author.displayName}</span>
+              <AuthorIdentityLink item={item} className={`font-medium truncate ${fullCardDensity.author}`} />
               <span className="min-w-0 truncate text-sm text-[var(--theme-text-muted)]">@{item.author.handle}</span>
             </div>
             <div className={`flex min-w-0 items-center gap-2 ${fullCardDensity.meta} text-[var(--theme-text-muted)]`}>

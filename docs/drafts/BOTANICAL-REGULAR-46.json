@@ -1,0 +1,238 @@
+{
+  "status": "one proposed regular post; independent lead admission required",
+  "counts": {
+    "exactOriginalsOpened": 7,
+    "publishedDeliveryVariantsOpened": 2,
+    "regularProposals": 1,
+    "newIdentities": 1
+  },
+  "characters": [
+    {
+      "characterId": "sabine-warmfold",
+      "identityNameBase": "Sabine Warmfold",
+      "species": "Symplocarpus foetidus",
+      "subject": "eastern skunk cabbage",
+      "platform": "facebook",
+      "bio": "The invitation has changed. The opening is the same.",
+      "location": {
+        "name": "Wet woodland beside the Potomac in northern Virginia",
+        "coordinates": {
+          "lat": 39.0,
+          "lng": -77.2
+        }
+      }
+    }
+  ],
+  "proposals": [
+    {
+      "candidateId": "46-01",
+      "characterId": "sabine-warmfold",
+      "identityNameBase": "Sabine Warmfold",
+      "episode": {
+        "subject": "eastern skunk cabbage",
+        "platform": "facebook",
+        "contentType": "post",
+        "mediaSha1": "8b100bb95d4f3791bd137a3c677c228a1dc67703",
+        "theme": "courtship",
+        "title": "A different touch",
+        "body": "I had been waiting for pollen. Warm inside my folded hood, I imagined it arriving on a visitor's legs. I knew what I wanted from a touch.\n\nThen my anthers began to open.\n\nYellow dust gathered between my little flowers. More anthers unfolded, and the creases filled with my own pollen.\n\nI was still in the same patch of cold ground, holding the same opening. But I had begun to want someone to leave it carrying a little of me.\n\nI had prepared so carefully to receive. I had not rehearsed this part."
+      },
+      "localFile": "/tmp/botanical46/skunk-display.jpg",
+      "localBytes": 624223,
+      "visualReview": "Original and published variant independently opened. Anthers are visibly open and abundant yellow pollen rests in creases among small maroon flowers. This is a laboratory extreme macro of part of a spadix. It supports pollen shedding, while remembered female phase and changed anticipation are fictional chronology. No pollinator arrival or successful fertilization is asserted.",
+      "status": "proposed; independent lead prose decision required"
+    }
+  ],
+  "media": [
+    {
+      "id": "botanical46-01-display",
+      "imageUrl": "https://d9-wret.s3.us-west-2.amazonaws.com/assets/palladium/production/s3fs-public/styles/full_width/public/Symplocarpus%20foetidus%2C%20skunk_cabbage_spadix_inforescence_Helen_Lowe_Metzman%202_2017-03-16-18.49.jpg?itok=UBtaitrF",
+      "localFile": "/tmp/botanical46/skunk-display.jpg",
+      "bytes": 624223,
+      "dimensions": [
+        1336,
+        1154
+      ],
+      "sha1": "8b100bb95d4f3791bd137a3c677c228a1dc67703",
+      "sha256": "a8881c843b00515b0b19ca51b1ad8e0dc7341bd6e343b84af745c8bfa7d73f2a",
+      "status": 200,
+      "seconds": 0.576,
+      "sourceUrl": "https://www.usgs.gov/media/images/symplocarpus-foetidus-skunk",
+      "creator": "Helen Lowe Metzman / USGSBIML Team",
+      "license": "Public domain",
+      "licenseUrl": "https://www.usgs.gov/media/images/symplocarpus-foetidus-skunk",
+      "rightsEvidence": "Sources/Usage: Public Domain; photographer USGSBIML Team; image filename credits Helen Lowe Metzman",
+      "sourceLocal": "/tmp/botanical46/usgs-skunk.html",
+      "category": "wildlife",
+      "aggregated": false,
+      "original": {
+        "imageUrl": "https://d9-wret.s3.us-west-2.amazonaws.com/assets/palladium/production/s3fs-public/Symplocarpus%20foetidus%2C%20skunk_cabbage_spadix_inforescence_Helen_Lowe_Metzman%202_2017-03-16-18.49.jpg",
+        "sha1": "e7c1ad808c4f1fbba53e161dd35cfc4f14d1c59e",
+        "bytes": 23734852,
+        "localFile": "/tmp/botanical46/usgs-skunk.jpg",
+        "id": "usgs-skunk-original",
+        "dimensions": [
+          4444,
+          3840
+        ],
+        "sha256": "2509f83472d1ee936bbb1035569980ca248794f51367bd26bc4043044753adb0",
+        "sourceUrl": "https://www.usgs.gov/media/images/symplocarpus-foetidus-skunk",
+        "creator": "Helen Lowe Metzman / USGSBIML Team",
+        "license": "Public domain",
+        "licenseUrl": "https://www.usgs.gov/media/images/symplocarpus-foetidus-skunk",
+        "rightsEvidence": "Sources/Usage: Public Domain; photographer USGSBIML Team; image filename credits Helen Lowe Metzman",
+        "sourceLocal": "/tmp/botanical46/usgs-skunk.html",
+        "category": "wildlife",
+        "aggregated": false
+      },
+      "subject": "eastern skunk cabbage",
+      "alt": "Extreme macro of small eastern-skunk-cabbage flowers on a spadix, with open yellow anthers and scattered pollen among maroon floral parts.",
+      "detail": "Magnified flowers, not a whole plant. Source records laboratory focus stacking and photographic treatment. The pollen and anthers remain sharp in the published full_width variant."
+    },
+    {
+      "id": "botanical46-sabine-avatar",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/CA8559B0-1DD8-B71C-0706942B1B581459/proxyhires.jpg?",
+      "localFile": "/tmp/botanical46/skunk-avatar-display.jpg",
+      "bytes": 312941,
+      "dimensions": [
+        1000,
+        750
+      ],
+      "sha1": "291d8d5c9b72e6506e64f50e04d74fbcecaba518",
+      "sha256": "322e49baf83271598dad7e3383e3e51e170b1eb0c3314d4c96c766c4e0a27467",
+      "status": 200,
+      "seconds": 1.317,
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/ca8559b0-1dd8-b71c-0706-942b1b581459",
+      "creator": "National Park Service",
+      "license": "Public domain",
+      "licenseUrl": "https://npgallery.nps.gov/AssetDetail/ca8559b0-1dd8-b71c-0706-942b1b581459",
+      "rightsEvidence": "Public domain:Full Granting Rights",
+      "sourceLocal": "/tmp/botanical46/skunk-avatar.html",
+      "category": "wildlife",
+      "aggregated": false,
+      "original": {
+        "id": "skunk-avatar-original",
+        "imageUrl": "https://npgallery.nps.gov/GetAsset/CA8559B0-1DD8-B71C-0706942B1B581459/original.jpg?",
+        "localFile": "/tmp/botanical46/skunk-avatar-original.jpg",
+        "bytes": 3769996,
+        "dimensions": [
+          3648,
+          2736
+        ],
+        "sha1": "5d5c311f807958de3f611789f2c67f2faa131651",
+        "sha256": "ec8ed64fc3465e528c1482986a2d79dd86dbceaf61aadb695945a95c218c51b0",
+        "status": 200,
+        "seconds": 5.903,
+        "sourceUrl": "https://npgallery.nps.gov/AssetDetail/ca8559b0-1dd8-b71c-0706-942b1b581459",
+        "creator": "National Park Service",
+        "license": "Public domain",
+        "licenseUrl": "https://npgallery.nps.gov/AssetDetail/ca8559b0-1dd8-b71c-0706-942b1b581459",
+        "rightsEvidence": "Public domain:Full Granting Rights",
+        "sourceLocal": "/tmp/botanical46/skunk-avatar.html",
+        "category": "wildlife",
+        "aggregated": false
+      },
+      "subject": "eastern skunk cabbage",
+      "alt": "Maroon and yellow-green skunk-cabbage spathe curves upward beside emerging green growth among brown woodland leaves.",
+      "detail": "Field portrait from Great Falls Park, showing the enclosing spathe at ordinary scale. Not an image of the laboratory specimen."
+    }
+  ],
+  "holds": [
+    {
+      "source": {
+        "id": "usgs-rust",
+        "imageUrl": "https://d9-wret.s3.us-west-2.amazonaws.com/assets/palladium/production/s3fs-public/Gymnosporangium%20juniperi-virginianae%2C%20Maryland%2C%20Upper%20Marlboro_2013-02-19-14.57.31%20ZS%20PMax.jpg",
+        "localFile": "/tmp/botanical46/usgs-rust.jpg",
+        "bytes": 11059097,
+        "dimensions": [
+          5244,
+          3408
+        ],
+        "sha1": "bec00d59310f6b63af2135bad0da30716b875329",
+        "sha256": "87fd42646b33705c24fb1ce74ab8f2de8f09a55d67e99f4f9e0f779fa0a04460",
+        "status": 200,
+        "seconds": 13.662,
+        "sourceUrl": "https://www.usgs.gov/media/images/gymnosporangium-juniperi-virginianae-maryland-upper-marlboro"
+      },
+      "reason": "Sharp early cedar-apple rust gall, but no rain-expanded horns or fresh event. No character or prose proposed."
+    },
+    {
+      "source": {
+        "id": "usgs-fig",
+        "imageUrl": "https://d9-wret.s3.us-west-2.amazonaws.com/assets/palladium/production/s3fs-public/DHA0003_0.JPG",
+        "localFile": "/tmp/botanical46/usgs-fig.jpg",
+        "bytes": 1569443,
+        "dimensions": [
+          1984,
+          1360
+        ],
+        "sha1": "6757e80af74a7f3ab64be0b3d8d49a6ccfc749ac",
+        "sha256": "3b8d9dd481fcfd843c4f1b2c4ca13784ce00d462678ee5c248c99f4574403bc5",
+        "status": 200,
+        "seconds": 0.863,
+        "sourceUrl": "https://www.usgs.gov/media/images/close-strangler-fig"
+      },
+      "reason": "Strangler-fig roots and bark are visible, but host identity and exact event remain insufficiently distinct from earlier plant intergrowth mechanisms."
+    },
+    {
+      "source": {
+        "id": "lobster",
+        "imageUrl": "https://www.nps.gov/mora/learn/nature/images/Lobster_web.jpeg",
+        "localFile": "/tmp/botanical46/lobster.jpg",
+        "bytes": 122266,
+        "dimensions": [
+          450,
+          395
+        ],
+        "sha1": "62cc710778967e1afda151c366b4e034d62dfe13",
+        "sha256": "19f4b20cad332da22289663a8c718a4f6ed7fa5a6779e5c447b76b6c879c425d",
+        "status": 200,
+        "seconds": 0.367,
+        "sourceUrl": "https://www.nps.gov/mora/learn/nature/parasitic-fungi.htm"
+      },
+      "reason": "Lead independently held: 450 x 395 grain and obstructing brown leaf fail the visual bar. No Hypomyces character or prose proposed."
+    },
+    {
+      "source": {
+        "id": "lobster2",
+        "imageUrl": "https://www.nps.gov/mora/learn/nature/images/Lobster2_web.jpeg",
+        "localFile": "/tmp/botanical46/lobster2.jpg",
+        "bytes": 91136,
+        "dimensions": [
+          450,
+          471
+        ],
+        "sha1": "7ba8a3a3fe26cd941e986326bee4cb9821ef980d",
+        "sha256": "d50db25f4c00fa5ca4e43c99c69246c9d2b4017f2a68a0c5000604f856167e25",
+        "status": 200,
+        "seconds": 0.259,
+        "sourceUrl": "https://www.nps.gov/mora/learn/nature/parasitic-fungi.htm"
+      },
+      "reason": "450 x 471 hand-held uprooted specimen; no strong scene or independent avatar. Do not infer the specimen continues rooted growth."
+    },
+    {
+      "source": {
+        "id": "skunk-portrait",
+        "imageUrl": "https://www.nps.gov/miss/learn/nature/images/skunkCabbage.jpg",
+        "localFile": "/tmp/botanical46/skunk-portrait.jpg",
+        "bytes": 27052,
+        "dimensions": [
+          250,
+          337
+        ],
+        "sha1": "5f4d027cbc3776993d5322eefb2ada201dcac560",
+        "sha256": "b42348b5efcb927ed4444b2c6d12c5738dd12df0ffe3dc081de19f685fb0299a",
+        "status": 200,
+        "seconds": 0.486,
+        "sourceUrl": "https://www.nps.gov/miss/learn/nature/skunkcabbage.htm"
+      },
+      "reason": "250 x 337 portrait opened. Too small and soft for a completed avatar; superseded by exact Great Falls field portrait."
+    }
+  ],
+  "metadataOnlyHold": {
+    "sourceUrl": "https://www.fs.usda.gov/wildflowers/plant-of-the-week/gymnosporangium_juniperi-virginianae.shtml",
+    "reason": "Five expanded-rust photos explicitly credited copyright 2012 David D. Taylor. No reuse license established, no original images downloaded. Do not assume public domain from agency hosting."
+  },
+  "canonFile": "BOTANICAL-REGULAR-46-CANON.md",
+  "avatarFile": "BOTANICAL-REGULAR-46-AVATARS.json"
+}

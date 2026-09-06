@@ -34,7 +34,7 @@ import { useLibraryFacetSummary } from "../../hooks/useLibraryFacetSummary.js";
 import { useLibraryItemDetail } from "../../hooks/useLibraryItemDetail.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
-import { discoveredSocialAccountFromItem, type FeedItem } from "@freed/shared";
+import { type FeedItem } from "@freed/shared";
 import { runFeedLayoutTransition } from "../../lib/view-transitions.js";
 import {
   animationAwareScrollBehavior,
@@ -387,7 +387,7 @@ export function FeedView() {
     openBoundedSavedFeedReader,
     openUrl,
     queryLibraryCore,
-    upsertLibraryAccount,
+    readLibraryAccountDetail,
   } = platform;
   const readOnly = platform.interactionMode === "read-only";
   const canAddFeeds = !!addRssFeed;
@@ -410,6 +410,7 @@ export function FeedView() {
   const selectedItemId = useAppStore((s) => s.selectedItemId);
   const setSelectedItem = useAppStore((s) => s.setSelectedItem);
   const setSelectedAccount = useAppStore((s) => s.setSelectedAccount);
+  const setSelectedPerson = useAppStore((s) => s.setSelectedPerson);
   const setActiveView = useAppStore((s) => s.setActiveView);
   const setVisibleFeedTotalCount = useAppStore(
     (s) => s.setVisibleFeedTotalCount,
@@ -447,19 +448,14 @@ export function FeedView() {
           queryId: "filter_scope_summary_v1",
           schemaVersion: 1,
         });
-        let accountId = scope.accountId;
+        const accountId = scope.accountId;
         if (!accountId) {
-          const draft = discoveredSocialAccountFromItem(item);
-          if (!draft) return;
-          if (!upsertLibraryAccount) {
-            throw new Error("SQLite Account mutation is unavailable");
-          }
-          await upsertLibraryAccount(draft);
-          accountId = draft.id;
+          throw new Error("No Library account is associated with this author");
         }
-
+        const account = await readLibraryAccountDetail?.(accountId);
         setSelectedItem(null);
-        setSelectedAccount(accountId);
+        setSelectedAccount(account?.personId ? null : accountId);
+        setSelectedPerson(account?.personId ?? null);
         setActiveView("friends");
       } catch {
         toast.error("Freed could not open this author from the Library.");
@@ -470,7 +466,8 @@ export function FeedView() {
       setActiveView,
       setSelectedAccount,
       setSelectedItem,
-      upsertLibraryAccount,
+      readLibraryAccountDetail,
+      setSelectedPerson,
     ],
   );
 
@@ -847,6 +844,7 @@ export function FeedView() {
           );
         }
         setSelectedItem(item.globalId);
+        if (readOnly) platform.onReadOnlyItemOpened?.(item);
         if (!readOnly) markAsRead(item.globalId);
       };
 
@@ -865,6 +863,7 @@ export function FeedView() {
     [
       markAsRead,
       patchBoundedItems,
+      platform.onReadOnlyItemOpened,
       readOnly,
       runFeedLayoutTransition,
       selectedItemId,

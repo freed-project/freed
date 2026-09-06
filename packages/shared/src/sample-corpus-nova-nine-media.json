@@ -1,0 +1,33 @@
+[
+  {
+    "id": "nova-iron-nine-casa",
+    "subject": "supernova remnant NASA",
+    "category": "astronomy",
+    "identityNameBase": "Nova Remains",
+    "detail": "Cassiopeia A element map; purple maps iron emission",
+    "imageUrl": "https://chandra.harvard.edu/photo/2017/casa_life/casa_life_lg.jpg",
+    "sourceUrl": "https://chandra.harvard.edu/photo/2017/casa_life/",
+    "creator": "NASA/CXC/SAO",
+    "license": "Public domain",
+    "licenseEvidence": "https://chandra.harvard.edu/photo/image_use.html",
+    "width": 3600,
+    "height": 3600,
+    "sha1": "c447255ad8fe6aab3c24c59dde232234cce6c490",
+    "alt": "Cassiopeia A in assigned X-ray colors: purple marks iron among red, yellow and green filaments, with a jagged blue blast-wave rim."
+  },
+  {
+    "id": "nova-avatar-nine-casa",
+    "subject": "supernova remnant NASA",
+    "category": "astronomy",
+    "identityNameBase": "Nova Remains",
+    "detail": "Cassiopeia A Chandra broadband X-ray shell",
+    "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/0/01/Chandra_Broadband_Image_of_Cassiopeia_A_%282004-casa-more-4%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Chandra_Broadband_Image_of_Cassiopeia_A_(2004-casa-more-4).jpg",
+    "creator": "NASA/CXC/GSFC/U.Hwang et al.",
+    "license": "Public domain",
+    "width": 576,
+    "height": 576,
+    "sha1": "9d5d5d332cb330e6582ed6cb4af44387a69f864e",
+    "alt": "Cassiopeia A in blue-assigned X-ray emission, showing a broken round shell and a jet extending toward the upper left."
+  }
+]

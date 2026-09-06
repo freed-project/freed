@@ -5,7 +5,7 @@ const LABEL_TEXTURE_WIDTH = 2_048;
 const LABEL_PADDING_X = 8;
 const LABEL_PADDING_Y = 5;
 const LABEL_OUTLINE_WIDTH = 3;
-const AVATAR_LABEL_GAP = 8;
+const AVATAR_LABEL_GAP = 2;
 const AVATAR_EXCLUSION_RADIUS_SCALE = 1.5;
 
 export const FRIENDS_GALAXY_BILLBOARD_INSTANCE_STRIDE =
@@ -23,6 +23,7 @@ export interface FriendsGalaxyLabelSeed {
   priority: number;
   provider: boolean;
   centered?: boolean;
+  color?: string;
 }
 
 export interface FriendsGalaxyBillboardLabel extends FriendsGalaxyLabelSeed {
@@ -54,6 +55,13 @@ export interface FriendsGalaxyAvatarExclusion {
   size: number;
 }
 
+/** Both GPU buffer layouts use the same screen-space label anchor. */
+export function friendsGalaxyLabelVerticalOffset(
+  label: Pick<FriendsGalaxyBillboardLabel, "centered" | "gapY" | "height">,
+): number {
+  return label.centered ? 0 : label.gapY + label.height * 0.5;
+}
+
 export function writeFriendsGalaxyLabelInstances(
   target: Float32Array,
   labels: readonly FriendsGalaxyBillboardLabel[],
@@ -70,7 +78,7 @@ export function writeFriendsGalaxyLabelInstances(
     target[offset + 1] = label.anchorY;
     target[offset + 2] = label.anchorZ;
     target[offset + 3] = 0;
-    target[offset + 4] = label.centered ? 0 : label.gapY + label.height * 0.5;
+    target[offset + 4] = friendsGalaxyLabelVerticalOffset(label);
     target[offset + 5] = label.width;
     target[offset + 6] = label.height;
     target.set(label.uv, offset + 7);
@@ -152,9 +160,9 @@ export function createFriendsGalaxyLabelAtlas(
   context.lineWidth = LABEL_OUTLINE_WIDTH * LABEL_PIXEL_SCALE;
   const labels = seeds.map((label, index): FriendsGalaxyBillboardLabel => {
     const placement = placements[index]!;
-    context.fillStyle = label.provider
+    context.fillStyle = label.color ?? (label.provider
       ? palette.providers?.[label.nodeId.replace(/^provider:/, "")] ?? palette.text
-      : palette.text;
+      : palette.text);
     context.font = `650 ${String(label.fontSize * LABEL_PIXEL_SCALE)}px ${fontFamily}`;
     const textX = placement.left + placement.width / 2;
     const textY = placement.top + placement.height / 2;

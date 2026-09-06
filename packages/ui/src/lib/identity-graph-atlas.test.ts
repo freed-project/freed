@@ -46,6 +46,50 @@ function account(index: number): Account {
 }
 
 describe("buildIdentityGraphAtlas", () => {
+  it("uses the same care-level radius and rendered size for friends and connections", () => {
+    for (const careLevel of [1, 2, 3, 4, 5] as const) {
+      const persons = [
+        { ...person(1), id: "friend", careLevel, relationshipStatus: "friend" as const },
+        { ...person(2), id: "connection", careLevel, relationshipStatus: "connection" as const },
+      ];
+      const model = buildIdentityGraphAtlasModel({ persons, accounts: {}, feeds: {},
+        activitySummaries: { social: {}, rss: {}, buildMs: 0, itemCount: 0 },
+        mode: "all_content", width: 1_000, height: 800 });
+      const scene = compileIdentityGalaxyScene(model, { quality: "settled", now: 1_000 });
+      expect(scene.radii[0]).toBe(40 + careLevel * 8);
+      expect(scene.radii[0]).toBe(scene.radii[1]);
+      expect(scene.pointSizes[0]).toBe(scene.pointSizes[1]);
+      expect(scene.prominence[0]).toBe(scene.prominence[1]);
+    }
+  });
+  it("fills one equal-area cluster with four- and five-star friends in the central slots", () => {
+    const persons = Array.from({ length: 40 }, (_, index) => person(index));
+    const model = buildIdentityGraphAtlasModel({ persons, accounts: {}, feeds: {},
+      activitySummaries: { social: {}, rss: {}, buildMs: 0, itemCount: 0 },
+      mode: "all_content", width: 1_000, height: 800 });
+    const ranked = model.nodes.filter(n => n.personId).map(n => ({
+      node: n, area: (n.x - 500) ** 2 + ((n.y - 400) / 0.74) ** 2,
+    })).sort((a, b) => a.area - b.area);
+    const step = ranked[1]!.area - ranked[0]!.area;
+    for (let i = 2; i < ranked.length; i++) expect(ranked[i]!.area - ranked[i - 1]!.area).toBeCloseTo(step, 6);
+    const central = persons.filter(p => p.relationshipStatus === "friend" && p.careLevel >= 4);
+    expect(new Set(ranked.slice(0, central.length).map(n => n.node.personId))).toEqual(new Set(central.map(p => p.id)));
+  });
+  it("uses only linked social profile portraits as identity avatar candidates", () => {
+    const identity = { ...person(1), avatarUrl: "https://example.test/unrelated.jpg" };
+    const first = { ...account(1), personId: identity.id, avatarUrl: "https://example.test/first.jpg" };
+    const second = { ...account(2), personId: identity.id, avatarUrl: "https://example.test/second.jpg" };
+    const unrelated = { ...account(3), personId: "someone-else", avatarUrl: "https://example.test/other.jpg" };
+    const model = buildIdentityGraphAtlasModel({
+      persons: [identity],
+      accounts: { [first.id]: first, [second.id]: second, [unrelated.id]: unrelated },
+      feeds: {}, activitySummaries: { social: {}, rss: {}, buildMs: 0, itemCount: 0 },
+      mode: "all_content", width: 1_000, height: 800,
+    });
+    const node = model.nodes.find((entry) => entry.id === `person:${identity.id}`)!;
+    expect(node.avatarUrlCandidates).toEqual([first.avatarUrl, second.avatarUrl]);
+    expect(node.avatarUrl).toBe(first.avatarUrl);
+  });
   it("places higher-care friends closer to the center with a larger radius", () => {
     const persons = Array.from({ length: 5 }, (_, index) => ({
       id: `care-${index + 1}`,

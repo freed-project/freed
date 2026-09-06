@@ -6,13 +6,54 @@ The demo is a recurring world of natural lives, told from the inside with precis
 
 ## Current state and next target
 
+### Latest owner revision: 900 regular entries plus 100 visual Stories
+
+The target is exactly 1,000 published items: 900 regular posts, articles, and
+videos, plus 100 visual Stories using the application's `story` content type.
+Long-form articles are not visual Stories and must not be counted as such.
+Distribute visual Stories across Instagram and Facebook. Include YouTube,
+Medium, and Substack in the regular corpus with formats appropriate to each.
+This supersedes all earlier total-entry counts below.
+
+The owner explicitly requires image-less entries to be matched, rewritten
+around suitable media, or deleted. Exclude unresolved drafts from the public
+checkpoint immediately; preserving them privately for revision must not make
+them visible or count toward delivery. Every visual Story also needs its own
+reviewed scene and an engaging event, not a duplicate of a regular post.
+Do not fabricate YouTube playback or attribute fictional narration to a real
+uploader. Preserve real video attribution separately from character commentary.
+
+### September 5 owner revision: 1,000 illustrated entries
+
+The delivery target is now exactly 1,000 individually authored, illustrated entries, published on the official demo, with a new production app release. This replaces the earlier 500-entry target and the permission for text-only entries. The existing 500 entries are a working draft, not an accepted quality baseline. Review every one again. Never count rejected drafts, media catalog rows, or duplicate platform copies toward the total.
+
+Every entry must pass two independent editorial decisions: its image is gorgeous and supports the central scene; its writing delivers a distinctive laugh, emotional turn, or genuinely surprising experience. Failure on either side disqualifies the pairing. Find the image first when it supplies a better premise. Rewrite even a previously strong joke if no honest image can support it. Never attach a generic species portrait merely to fill an image slot. No text-only fallback is accepted for this release.
+
+The owner rejected the visual monotony of text-only posts and the mundane house-moving incidents across frogs and eels. Shelter logistics, quiet observation, and ecological correctness are not payoffs. Do not replace those with a different animal performing the same trivial errand. Show conflicting desires, risky misunderstandings, surprising cooperation, embodied intelligence, attachment, sensuality, mortality, or a change in how a character understands its world.
+
+Build an intellectually adventurous cast. Existential nematodes, philosophical ferns, nihilistic crocodiles, grumpy catfish, optimistic butterflies, naive loving deer, and a gentle wise river are inspiration, not a required roster or reusable formulas. An unusual subject still needs a personality; a common animal can stay only if its individual life is compelling. Expand beyond vertebrates into plants, microscopic life, collective organisms, rivers, and other natural entities with strong visual material. Personification is fiction, not evidence of consciousness.
+
+Explore romance, casual sex, predation, cooperation, emergent intelligence, animism, and deep philosophy alongside other parts of life. Keep sex playful and tasteful, never a replacement for a joke or the majority of the feed. Preserve the prior rejection of suffering used as the punchline. Draw structural inspiration from Spinoza, Bach, Gödel, Alan Watts, the Tao Te Ching, the Bhagavad Gita, and Khalil Gibran: shared substance, counterpoint, the limits of self-knowledge, attachment, action, and non-striving can shape events without name-dropping. Named citations remain primarily on LinkedIn and secondarily X; ideas and emotional questions may shape every channel. Verify attributed claims and quotations from primary texts, identify translations, and label inventions as inventions. Never present a creature's interpretation as a thinker's actual words.
+
+Maintain each character's internal personality and continuity record in [the character canon](SAMPLE-CHARACTER-CANON.md). Record embodiment, voice, wants, flaws, private beliefs, relationships, history, spent jokes, and approved media constraints before writing its arc. Update that record when an accepted event changes the character. Shared incidents must respect habitat and chronology; a cross-ocean conversation cannot silently become a physical encounter.
+
+Every profile also needs a reviewed avatar. The Galaxy identity avatar is the first approved, high-quality image that successfully loads from a connected social profile. Failed loads must try another eligible profile image; initials are only a temporary or terminal fallback, not the completed demo experience. Keep remote imagery out of Git. Record source, creator, license, dimensions, alt text, and an image-fit rationale separately from the story.
+
+This section governs where older historical examples or numerical limits conflict. For the new release, all 1,000 entries require image bindings. Philosophy and relationship themes should enrich the whole without monopolizing it; report their actual distribution for editorial review rather than treating the old 500-entry caps as the new creative brief.
+
+The [lead review ledger](drafts/LEAD-REVIEW.md) records rejected mechanisms and promising drafts from this rebuild. Read the prose without its author's explanation of why it is funny. More paragraphs do not turn a trivial errand into a story. Fictional interior life does not license invented anatomy. Notice unusual objects in the image, including human debris, instead of reducing everything to a species portrait. An editor's suggested scene is a teaching example, not a template to reproduce across characters.
+
+Image review must distinguish visible evidence from fictional context. A source filename, curator caption, or contact-sheet position is not proof that two animals are mating, that a predator is present, or that a creature is molting. Open the exact admitted file. Record the visible posture or feature that supports the central premise; explicitly identify any remembered or offscreen event. Reject a pairing when nearly all of its appeal depends on a scene absent from the image. Recent lead review rejected a supposed mantis pair because the photograph contained one mantis on a stem.
+
+Do not make each new batch a new cast. Develop the consequences and relationships of accepted characters, replace their weak legacy scenes, and track spent comic mechanisms across batches. A sequence of different animals refusing advice, insulting lunch, or quietly making room for a visitor still repeats a premise even when every sentence is unique.
+
 ### Record owner feedback before continuing
 
 Every new piece of owner editorial feedback must be reflected in this guide during the same turn, before further writing, revision, or delegation. Record the example or episode, whether it was approved or rejected, the reason the owner gave, and the resulting instruction. If it reinforces an existing rule, add the example there instead of duplicating the rule. Keep editorial interpretation distinct from the owner's stated judgment; ask when the distinction would materially change the work.
 
 Preserve approved wording. Explicitly retire rejected wording, including proposed replacements that never entered the corpus. Acknowledging feedback in chat does not complete this step. Reconcile conflicting instructions rather than silently overwriting earlier decisions. Pass updated guidance to active authors and reviewers before they continue, and apply it to existing material as well as new drafts. Track corpus repairs separately: updating this guide does not mean the affected posts have been fixed.
 
-The local integration contains exactly 500 individually authored episodes from 52 recurring characters, including 145 RSS story entries. This is not a production or final-validation claim. The original 70 episodes below are joined by 430 new ocean, land, and air entries. Each episode explicitly chooses a reviewed photograph or text-only presentation. Catalog membership does not make an image or generated fallback copy part of the public demo. [The expansion ledger](SAMPLE-CORPUS-500-EXPANSION.md) records batch review and delivery status. [Batch 01](SAMPLE-CORPUS-BATCH-01.md) and the [Manny image audit](SAMPLE-CORPUS-MANNY-IMAGE-AUDIT.md) retain the earlier plans and image-repair history.
+The superseded 500-entry snapshot contained 52 recurring characters and 145 RSS entries. Its text-only entries and earlier acceptance decisions are not approved for the illustrated rebuild. Current admission counts belong in [the rebuild ledger](SAMPLE-CORPUS-1000-REBUILD.md), not this historical paragraph. Catalog membership never makes an image or generated fallback copy part of the public demo. [The earlier expansion ledger](SAMPLE-CORPUS-500-EXPANSION.md), [Batch 01](SAMPLE-CORPUS-BATCH-01.md), and the [Manny image audit](SAMPLE-CORPUS-MANNY-IMAGE-AUDIT.md) retain history only.
 
 | Character | Platform | Episodes |
 | --- | --- | ---: |
@@ -26,9 +67,9 @@ The local integration contains exactly 500 individually authored episodes from 5
 | Mora Grey | Facebook | 5 |
 | Colm Still | X | 3 |
 
-The delivery target remains exactly 500 authored episodes. The integrated expansion uses deliberate character stories rather than formulaic fallback copy. Revisions must preserve that total without counting catalog images or rejected drafts.
+The previous delivery target was 500 authored episodes. The current target is 1,000 accepted illustrated episodes. Catalog images and rejected drafts never count as entries.
 
-The integrated cast has 52 recurring characters: nine original characters and 43 additions. The earlier 24-to-36 planning range is superseded by this reviewed roster, not by a relaxed quality standard. Keep a character only when the subject has enough biological, geological, or cosmic substance to sustain a distinct interior life and a real sequence of events. Cast size follows story quality, not arithmetic convenience.
+The rebuild's current roster and admission counts live in SAMPLE-CORPUS-1000-REBUILD.md. Earlier cast-size targets are superseded. Keep a character only when the subject has enough biological, geological, or cosmic substance to sustain a distinct interior life and a real sequence of events. Cast size follows story quality, not arithmetic convenience. Extend accepted characters and replace weak legacy entries before adding another collection of single-post identities.
 
 ## The desired aftertaste
 
@@ -81,7 +122,7 @@ Human social behavior can provide comic recognition, but the natural fact suppli
 
 ## Writing one episode
 
-Start with one true natural fact and, for an illustrated entry, one exact reviewed image. Decide what physically happens, what the narrator wants, what interrupts it, and what changes afterward. Enter through action or sensation. Stop when the event and joke are complete. Text-only entries need the same physical specificity without pretending a photograph exists.
+Start with one true natural fact and one exact reviewed image. Decide what physically happens, what the narrator wants, what interrupts it, and what changes afterward. Enter through action or sensation. Stop when the event and joke are complete.
 
 Every episode is a first-person dispatch from its declared natural subject. The first-person presence can arrive after the opening, but the narrator must experience the event rather than describe itself from outside. Avoid repeated introductions such as `I am a` or `I am the`.
 
@@ -171,6 +212,10 @@ Reflective explanation shaped by one experience. A framework can emerge from the
 
 ### YouTube
 
+Write post titles from the character’s first-person perspective: "I can swim", never "He can swim". Open the description directly in the character’s voice. Never prefix it with "Fictional character commentary", physical-character commentary, or another explanatory label.
+
+Preserve narrative paragraph breaks in the rendered reader. Leave a full paragraph break before the credits. Put Original video, Uploaded by, Source, and thumbnail credits on separate lines or paragraphs. Keep the real uploaded video title and creator attribution accurate in those credits; the fictional post title is separate. Apply these rules to every current and future YouTube entry and verify the rendered result, not just newline characters in source data.
+
 Visual showmanship and embodied demonstration. The episode should reveal motion, scale, danger, transformation, or spectacle without manufactured outrage or creator catchphrases.
 
 ### RSS and saved reading
@@ -181,7 +226,7 @@ Quiet, attentive field reporting. Measurement and astonishment can coexist, but 
 
 Named philosophers, direct quotations, attributed paraphrases, and invented riffs may appear only on LinkedIn and X. They appear most often on LinkedIn and occasionally on X. They never appear on Instagram, Facebook, Substack, Medium, YouTube, RSS, or saved reading.
 
-Across the 500-post corpus, no more than 25 episodes may name a philosopher or use a philosophical quotation. At least three LinkedIn episodes must exist for each such X episode. This is a cap, not a quota. Most characters should never cite anybody.
+Named philosophers and philosophical quotations belong chiefly on LinkedIn, occasionally on X, and nowhere else. Report their distribution for review. The historical 25-entry cap and three-to-one ratio are not quotas for the illustrated rebuild. Most characters should never cite anybody. Intellectual depth belongs in the encounter, not a name appended to its conclusion.
 
 Arthur Young, Plato, Alan Watts, Ken Wilber, and similar thinkers can enter only when the idea changes the joke, exposes ego, sharpens a misunderstanding, or advances the character's story. Philosophy cannot arrive after the punch line carrying a moral.
 
@@ -189,7 +234,7 @@ A sentence in quotation marks attributed to a real thinker must be verified word
 
 If exact wording cannot be verified, paraphrase without quotation marks. An invented riff must be visibly and naturally identified as invented. A character can announce an unauthorized revision, imagine what a thinker might have said in its body, or quote itself. Never place invented words in quotation marks beside a real person's name as though that person wrote them. Never blend several thinkers and attribute the composite to one of them.
 
-The 500-post implementation should add machine-readable provenance for philosophical material. A suitable episode field records the thinker, one of `verified-quote`, `attributed-paraphrase`, or `invented-riff`, the source locator when applicable, and whether the invented nature is visible in rendered copy.
+Philosophical material needs machine-readable provenance. A suitable episode field records the thinker, one of `verified-quote`, `attributed-paraphrase`, or `invented-riff`, the source locator when applicable, and whether the invented nature is visible in rendered copy.
 
 Keep exact quotations short. Prefer original jokes built from the character's physical predicament over borrowed eloquence.
 
@@ -199,7 +244,7 @@ Use occasional playful innuendo in otherwise ordinary feeding, movement, and soc
 
 Courtship, mating, affection, family, and fluid animal relationship structures are part of planetary life. When illustrated, use photographs that clearly support the behavior. Let shy crushes, mutual display, changing roles, or biologically grounded polyamory be tender and funny without projecting human consent claims or identities onto animals.
 
-They remain a small strand of a much larger life. The original 70-episode batch contained seven courtship or family episodes, no more than two per character. Flora Mingo has four episodes, only one about courtship. The 500-episode corpus may contain no more than 50 combined courtship and family episodes. No character's dominant theme may be mate selection.
+They remain one strand of a much larger life. The owner welcomed romance and playful innuendo but rejected a feed dominated by mate selection, especially repetitive flamingo courtship. The earlier batch caps are historical, not the new brief. Report the actual theme distribution, keep each character's life broader than mating, and judge every relationship story on its particular emotional or comic payoff.
 
 Flora needs more migration, feeding, weather, crowd life, solitude, danger, and ordinary flamingo inconvenience before she receives another courtship or family episode. More broadly, do not add romance to an arc until the rest of that life feels abundant.
 
@@ -209,35 +254,57 @@ Across the corpus, hunger, danger, weather, movement, transformation, work, play
 
 Coordinates, source locations, and image details belong in structured metadata. Invented places do not belong in identities or titles.
 
+### Geographic variety without false movement
+
+Assign unrelated characters distinct, defensible home coordinates within their
+actual habitat and geographic range. Do not reuse a convenient ocean-center
+pin across a batch. Review the map alongside the canon before admitting new
+characters; check that seabed dwellers, reef animals, and open-water swimmers
+occupy appropriate settings. Record each fictional home in the character canon.
+
+Audit overlapping pins by distinct character identity, not post count. Multiple
+posts from a stationary coral, sponge, plant, or other rooted character should
+retain its home coordinates unless an explicit canonical event moves it.
+Never invent travel or random per-post coordinate jitter to improve the map.
+Use map clustering or expanded marker layouts for repeated posts at one place.
+Intentional shared homes are allowed for established neighbors and relationships;
+document why they share a location rather than silently cloning coordinates.
+
+Romy Helix is the concrete example: her five posts share her central North
+Atlantic coral home at 31, -43. Cato Many (31, -51) and Corin Overhead (30, -42)
+are separate nearby identities, not additional occupants of Romy's pin.
+
 A body may name a place only for a rare, explicit joke in which a creature tries to look important because its reef, meadow, crater, or other setting is impressive. Use one location mention at most in that episode. Fewer than one in 40 bodies may use this exception.
 
 Do not describe where a post came from merely because the metadata contains a location. It sounds like a database trying to socialize.
 
 ## Image and attribution policy
 
-The owner explicitly approved a mixed photo and text-only feed on September 4. Exactly 500 authored posts does not require 500 distinct photographs. Use an intentional text-only entry when no honest scene match is available. Do not invent an image binding, silently inherit a random portrait, or flatten good writing to fit an unrelated photograph. Mark the choice explicitly in episode data. A missing or broken declared photo remains an error; it must not silently become a text-only post. The binding requirements below apply to illustrated entries only. Character avatars may use reviewed portraits without pretending to illustrate every event.
+The September 4 permission for a mixed photo and text-only feed was revoked on September 5. Every published entry now requires a reviewed image. If no honest scene match exists, rewrite or replace the episode. Do not invent an image binding or silently inherit a random portrait. A missing or broken photo is an error. Character avatars may use reviewed portraits without pretending to illustrate every event.
 
-The public corpus hotlinks reviewed Wikimedia Commons thumbnails. Image binaries do not belong in the repository.
+The public corpus hotlinks reviewed Wikimedia Commons thumbnails and individually licensed NOAA Ocean Exploration images. Image binaries do not belong in the repository. NOAA hosting alone does not prove reuse permission: inspect the asset credit and the expedition's applicable reuse statement. Do not use an annotated identification-guide card as a gorgeous photograph.
 
-Every episode declares `mediaSha1`: either `null` for intentional text-only presentation or one nonempty SHA-1 for a reviewed photograph. A declared hash must resolve to exactly one row across `packages/shared/src/sample-corpus.generated.json` and the three `sample-corpus-ocean-media.json`, `sample-corpus-land-media.json`, and `sample-corpus-air-media.json` catalogs in that directory. The row's `subject` must equal the episode's `subject`. Empty strings are not valid published choices. Catalog order, generated IDs, filenames, and source URLs must never retarget an authored episode. If a declared hash disappears, the build fails until an editor deliberately reviews a replacement or explicitly converts the entry to text-only.
+Every accepted episode declares one nonempty `mediaSha1` for a reviewed photograph. The existing runtime still permits null in its unrevised draft; that is not an accepted choice for the new release. A declared hash must resolve to exactly one catalog row. The row's `subject` must equal the episode's `subject`. Catalog order, generated IDs, filenames, and source URLs must never retarget an authored episode. If a declared hash disappears, the build fails until an editor reviews a replacement.
 
 Each selected image must:
 
 - show the stated subject and the behavior on which the copy depends;
 - be visually strong enough for its intended placement, whether a feed card, story, avatar, or map marker;
-- preserve a stable Commons source page, creator, license, alt text, and source hash;
+- preserve a stable Commons or primary NOAA source page, creator, license, alt text, and source hash;
 - use trustworthy source coordinates when map placement is appropriate;
 - avoid duplicate files and duplicate underlying hashes;
-- avoid people, buildings, vehicles, diagrams, illustrations, specimens, labels, photographed pages, and obvious staging;
+- avoid images dominated by people, buildings, vehicles, diagrams, specimens, labels, photographed pages, or obvious staging; a human hand can belong in an animal-led photograph when the actual contact is central to the story;
 - present courtship or mating behavior tastefully, clearly, and without sensational framing.
 
 Review the photograph beside the finished post, at feed-card size. Species identity alone does not pass. Name the visible action, posture, other animal, or setting that supports this particular episode. A generic mantis portrait cannot stand in for molting, catching a moth, or surviving rain. A mating photograph contradicts a story about being too shy to approach.
 
-The photo need not capture every beat of a fictional anecdote. It must support its central scene and must not contradict its outcome. A whole moth being eaten does not illustrate dinner escaping and leaving only a wing. Keep strong copy while looking for a closer photograph; if no honest pairing is available, explicitly select text-only presentation or keep the proposed photo unresolved outside the published entry. Do not approve a species-only match or flatten a good joke into a description of an unrelated photo.
+The photo need not capture every beat of a fictional anecdote. It must support its central scene and must not contradict its outcome. A whole moth being eaten does not illustrate dinner escaping and leaving only a wing. Keep strong copy while looking for a closer photograph; if no honest pairing is available, rewrite it or retain it only as an unpublished draft. Do not approve a species-only match or flatten a good joke into a description of an unrelated photo.
 
 Check continuity across each character's photographs as well: conspicuous species, body form, life stage, habitat, and sex changes need review. An individually attractive photograph can still break the character. Record image-fit review separately from text review; neither implies the other has passed.
 
-Positive subject identity comes from the Commons file title and category titles. Description prose can reject a false positive, but it cannot prove the subject. This distinction prevents a nearby species, photographed book, concert image, dead specimen, or keyword list from impersonating the requested animal.
+For Commons, positive subject identity comes from the file title and category titles; incidental mentions in description prose are not identification. For NOAA, use an explicit identification in the matching expedition caption or specimen record, and check that the actual image agrees. Neither a keyword list nor a mismatched page caption proves identity. Keep genus-only or unidentified animals at that level instead of inventing a species to fit an existing character.
+
+Remembered events can extend beyond the photographed instant, but the photograph must carry the central visual premise. A river's visitors may be fictional; a photo dominated by a bridge is still a weak choice for a story about two people playing in the water. Reject borrowed stock jokes, too: replacing a husband with a crocodile does not turn the familiar "were you listening?" joke into character writing. Prefer a crocodile's mouth as a remembered place of maternal safety, a coral's many mouths as unexpected confidants, or a transparent animal trying to retain emotional privacy.
 
 The generator lives at `scripts/generate-sample-corpus.mjs`. The base catalog is `packages/shared/src/sample-corpus.generated.json`; individually reviewed additions live in the ocean, land, and air media catalogs named above. Preserve their provenance when regenerating the base catalog. The runtime projection omits unused source prose and original dimensions to keep the PWA fast.
 
@@ -249,7 +316,7 @@ Friends Galaxy people use importance levels 1 through 5. Importance controls onl
 
 ## Uniqueness and retired material
 
-Each episode needs a distinct event, title, body, comic turn or emotional consequence, and deliberate natural premise. Illustrated entries also need a distinct reviewed image; text-only entries have no image-uniqueness obligation. Recurring characters and remembered facts create continuity. Repeated prose creates a content factory.
+Each episode needs a distinct event, title, body, comic turn or emotional consequence, deliberate natural premise, and distinct reviewed image. Recurring characters and remembered facts create continuity. Repeated prose creates a content factory.
 
 Maintain a corpus-wide ledger of titles, openings, endings, conspicuous phrases, facts, image hashes, event summaries, and character consequences. Machine checks should catch literal and near-literal duplication. Human review must catch the more dangerous case where different words perform the same joke.
 
@@ -269,16 +336,16 @@ Nova Remains establishes the desired cosmic reach: deep time, matter changing id
 
 Manny's near-death episode works when the bird attack, fall, altered perception, impact, and blame unfold as firsthand physical experience. Future revelations should arise from events with consequences. Abstract declarations of doctrine are not events.
 
-## Expansion workflow to 500
+## Expansion workflow to 1,000
 
 1. Audit the current cast and preserve accepted continuity before adding material.
 2. Design the bounded roster and write a character bible for each addition.
 3. Outline each arc as a sequence of distinct events with remembered consequences.
-4. Select and visually review exact Commons images where honest scene matches exist; otherwise choose text-only deliberately.
-5. Write episodes individually from fact, body, character history, and the image when illustrated.
+4. Select and visually review licensed images with honest scene matches. Reject unresolved pairings rather than publishing text-only entries.
+5. Write episodes individually from fact, body, character history, and the selected image.
 6. Review one character's complete chronology before interleaving it with the feed.
 7. Review mixed batches for repeated structures, theme clustering, platform flattening, and emotional monotony.
-8. Give every accepted episode either its exact reviewed image hash and provenance or an explicit null text-only binding.
+8. Give every accepted episode its exact reviewed image hash, provenance, and separate editorial acceptance record.
 9. Run machine checks, then perform the editorial read. A passing test cannot certify humor, truth, image fit, or soul.
 
 Work in reviewable batches, but keep one corpus-wide ledger. A phrase retired in the first batch remains retired in the tenth. Do not let parallel authors invent isolated canons.
@@ -287,17 +354,16 @@ Static authored copy is the only public source. Platform wrappers, noun substitu
 
 ## Machine acceptance
 
-The 500-post expansion is not complete until automated checks prove:
+The 1,000-post expansion is not complete until automated checks prove:
 
-- exactly 500 authored episodes, each explicitly text-only or bound to a reviewed scene-fitting image;
+- exactly 1,000 authored episodes, each bound to a reviewed scene-fitting image;
 - unique episode IDs, titles, and normalized bodies, plus unique image hashes and image URLs among illustrated episodes;
 - no repeated opening sentence, closing sentence, or long normalized phrase across unrelated episodes;
-- every declared `mediaSha1` resolves once and matches the episode subject; text-only entries have no fabricated hash;
+- every `mediaSha1` is nonempty, resolves once, and matches the episode subject;
 - all source pages, creators, licenses, alt text, and required coordinates remain present;
 - no invented location appears in an identity or title, and the body exception remains below one in 40;
-- no more than 50 episodes carry `courtship` or `family` themes;
-- no more than 25 episodes contain declared philosophical material;
-- every philosophical episode is on LinkedIn or X, with at least a three-to-one LinkedIn ratio;
+- theme and philosophy distributions are reported for editorial review, with no single theme dominating the feed;
+- named philosophical citations appear only on LinkedIn or X, predominantly LinkedIn; philosophical experience without name-dropping may appear anywhere;
 - every verified quotation has source provenance and every invented riff is visibly identified as invented;
 - all X posts remain within 280 characters;
 - all LinkedIn astronomy titles remain within 58 characters;
@@ -317,7 +383,7 @@ Read every character timeline in order and a large randomized feed sample aloud.
 - Did something happen?
 - Is the natural fact defensible and essential to the joke?
 - Does the body feel specific to this creature's senses and history?
-- For an illustrated entry, does the image show what the prose needs? For a text-only entry, is that choice explicit rather than a broken-photo fallback?
+- Does the image support the central scene without merely matching the species?
 - Has this character changed, remembered, desired, feared, or misunderstood something?
 - Does the platform affect delivery without replacing the character?
 - Is the joke new across the entire corpus?

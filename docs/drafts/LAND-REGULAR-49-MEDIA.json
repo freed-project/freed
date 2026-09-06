@@ -1,0 +1,912 @@
+{
+  "batch": "land-regular-49",
+  "scope": "Proposal only; nine exact originals inspected individually before prose; selected5 delivery and actual avatar circles individually opened. No runtime edits.",
+  "candidates": [
+    {
+      "id": "land-regular-49-01",
+      "status": "candidate-pending-lead",
+      "characterName": "Eustace Peel",
+      "characterId": "eustace-peel",
+      "fullSpecies": "Erethizon dorsatum",
+      "platform": "facebook",
+      "format": "regular",
+      "title": "Something happened to the wood",
+      "prose": "The wall tasted so good that I went outside to see whether something had happened to the trees.\n\nBit a branch. Chewed well into it. Ordinary wood.\n\nBack inside, I put my teeth under the pale edge and pulled. A thin sheet came away. Another layer underneath, with that same extraordinary taste.\n\nI sat down in the shavings and started on the next layer.",
+      "mediaIndex": 5,
+      "source": {
+        "index": 5,
+        "query": "porcupine",
+        "item": 4,
+        "sourceUrl": "https://npgallery.nps.gov/AssetDetail/93548d8d-1dd8-b71c-07fb-c288ca2850c1",
+        "sourceCachePath": "/tmp/freed-land49/5.html",
+        "record": {
+          "AltText": "Porcupine chewing on wood inside an outhouse.",
+          "AssetBaseType": "File",
+          "AssetID": "93548d8d-1dd8-b71c-07fb-c288ca2850c1",
+          "AssetType": "Standard File",
+          "Brandings": [
+            {
+              "Name": "MAIN"
+            }
+          ],
+          "ConstraintsInformation": {
+            "Constraint": "Public domain",
+            "GrantingRights": "Full"
+          },
+          "Description": "Porcupines are great except when they take a liking to the glue used to make plywood. Backcountry outhouses frequently suffer from their affection for the construction materials. Porcupine chewing on wood inside an outhouse.",
+          "ImageCreateDate": {
+            "Text": "6/9/2007 10:40:55 AM"
+          },
+          "Keywords": [
+            "porcupine",
+            "giddings cabin",
+            "kova",
+            "wear"
+          ],
+          "NPSUnits": [
+            {
+              "Name": "Noatak National Preserve",
+              "Type": "National Preserve",
+              "Code": "NOAT"
+            }
+          ],
+          "PhotoCredit": "NPS Photo",
+          "PrimaryType": "image",
+          "Publisher": "U.S. National Park Service",
+          "Rating": 5,
+          "RelatedCollections": [
+            "NPS.gov Collection"
+          ],
+          "ResourceFormat": "jpg",
+          "ResourceType": "Image",
+          "Submitter": "alindeman",
+          "SubType": "jpeg",
+          "Title": "Critter Damage"
+        },
+        "original": {
+          "url": "https://npgallery.nps.gov/GetAsset/93548D8D-1DD8-B71C-07FBC288CA2850C1/original.jpg?",
+          "publishedLabel": "2.1 MB, 3072x2304",
+          "localPath": "/tmp/freed-land49/5-original.jpg",
+          "bytes": 2240998,
+          "width": 3072,
+          "height": 2304,
+          "sha1": "5cf5b6d7131260512a8aff26cb0c9dba4edb2b6e",
+          "sha256": "797409638abf903aeb703407a85b65842ba317c74d07270e281ee01120ee89d2"
+        },
+        "delivery": {
+          "url": "https://npgallery.nps.gov/GetAsset/93548D8D-1DD8-B71C-07FBC288CA2850C1/proxyhires.jpg?",
+          "publishedLabel": "219.3 KB, 1000x750",
+          "localPath": "/tmp/freed-land49/5-delivery.jpg",
+          "bytes": 224613,
+          "width": 1000,
+          "height": 750,
+          "sha1": "eed7d64fb2b438802020abcb800306e14c715ef8",
+          "sha256": "eb04196e9d44a7a6e80852a89ed29a8419d106ee5a7d5a743d7250feabef2951"
+        }
+      },
+      "alt": "A porcupine sits inside a wooden outhouse beside a toilet seat; broad pale gnawed patches expose the layered wood, and shavings cover the floor.",
+      "visibleScene": "Porcupine beside exposed and heavily gnawed plywood inside an outhouse; curled quilled body, face at pale edge, toilet seat and roll visible, chips on floor.",
+      "fictionBoundary": "The comparison with a branch outside, supposed change in trees, particular taste and sequence of pulling layers are invented. Actual plywood gnawing and attraction to its glue are explicit in NPS source. No human encounter, toilet use, urine consumption or claim this material is nutritious.",
+      "ageSex": "Adult-sized male in fiction; source does not record exact age or sex. No offspring or mating claim."
+    }
+  ],
+  "holds": [
+    {
+      "id": "land-regular-49-02",
+      "status": "hold",
+      "mediaIndices": [
+        1,
+        2
+      ],
+      "reason": "Two jump-yip photographs; source1 has a good visible social scene, source2 is softer. Current prose offers only contagious calling or interruption of grazing, too slight or repetitive to admit. No prairie dog profile proposed."
+    },
+    {
+      "id": "land-regular-49-03",
+      "status": "hold",
+      "mediaIndices": [
+        3,
+        4,
+        8,
+        9
+      ],
+      "reason": "Family gathering and greeting are small subjects with muted detail. Portraits8/9 are strong, but a good portrait does not earn a new character without a narrative. No offspring, partner or kiss misunderstanding invented."
+    },
+    {
+      "id": "land-regular-49-04",
+      "status": "hold",
+      "mediaIndices": [
+        6,
+        7
+      ],
+      "reason": "Porcupine archive tree portraits have softness/color cast and no distinct action; no second Eustace episode. Horse search album has unknown granting rights and selected two files partial rights; none downloaded or proposed."
+    }
+  ],
+  "discoveryLedger": [
+    {
+      "index": 1,
+      "query": "prairie dog",
+      "item": 2,
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/0f2e3900-dbdd-46a2-bd8c-90d2b98b6268",
+      "sourceCachePath": "/tmp/freed-land49/1.html",
+      "record": {
+        "AltText": "A prairie dog grazes on plants, while another jumps up and calls. ",
+        "AssetBaseType": "File",
+        "AssetID": "0f2e3900-dbdd-46a2-bd8c-90d2b98b6268",
+        "AssetType": "Standard File",
+        "Brandings": [
+          {
+            "Name": "MAIN"
+          }
+        ],
+        "ConstraintsInformation": {
+          "Constraint": "Public domain",
+          "GrantingRights": "Full"
+        },
+        "Contributors": [
+          {}
+        ],
+        "Description": "Prairie dogs in Theodore Roosevelt National Park.",
+        "ImageCreateDate": {
+          "Date": "08/19/2014"
+        },
+        "ImageCreateDateTime": "08/19/2014 10:13:39 AM",
+        "Keywords": [
+          "prairie dog",
+          "mammal",
+          "rodent"
+        ],
+        "NPSUnits": [
+          {
+            "Name": "Theodore Roosevelt National Park",
+            "Type": "National Park",
+            "Code": "THRO"
+          }
+        ],
+        "PhotoCredit": "NPS Photo/Jeff Zylland",
+        "PrimaryType": "image",
+        "Rating": 4,
+        "RelatedCollections": [
+          "NPS.gov Collection"
+        ],
+        "ResourceFormat": "jpg",
+        "ResourceType": "Image",
+        "Submitter": "leddy",
+        "SubType": "jpeg",
+        "Title": "Prairie Dog"
+      },
+      "original": {
+        "url": "https://npgallery.nps.gov/GetAsset/0f2e3900-dbdd-46a2-bd8c-90d2b98b6268/original.jpg?",
+        "publishedLabel": "2.2 MB, 3979x2660",
+        "localPath": "/tmp/freed-land49/1-original.jpg",
+        "bytes": 2239545,
+        "width": 3979,
+        "height": 2660,
+        "sha1": "32406ea1a459b66125edf5a81924d2a424ad07cb",
+        "sha256": "331f42c8f773ea68178c0808246ca629e1aaae6663b9c74dd92ac05e5792adfd"
+      },
+      "delivery": {
+        "url": "https://npgallery.nps.gov/GetAsset/0f2e3900-dbdd-46a2-bd8c-90d2b98b6268/proxyhires.jpg?",
+        "publishedLabel": "773.3 KB, 2000x1337",
+        "localPath": "/tmp/freed-land49/1-delivery.jpg",
+        "bytes": 791888,
+        "width": 2000,
+        "height": 1337,
+        "sha1": "037b11fdf540dca65eb83e3259f6a67f52b0b476",
+        "sha256": "0672fd0580946475fc60be4b61050c66fb28488437177a3d0962c0e5b9b0602a"
+      }
+    },
+    {
+      "index": 2,
+      "query": "prairie dog",
+      "item": 9,
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/aa5d21a5-71d1-4fa1-9ce5-366d23bd2e5a",
+      "sourceCachePath": "/tmp/freed-land49/2.html",
+      "record": {
+        "AltText": "a prairie dog throwing its front paws into the air with its head leaned back",
+        "AssetBaseType": "File",
+        "AssetID": "aa5d21a5-71d1-4fa1-9ce5-366d23bd2e5a",
+        "AssetType": "Standard File",
+        "Brandings": [
+          {
+            "Name": "MAIN"
+          }
+        ],
+        "ConstraintsInformation": {
+          "Constraint": "Public domain",
+          "GrantingRights": "Full"
+        },
+        "Description": "Prairie dogs will sometimes communicate by doing a \"jump yip.\" You will often see multiple prairie dogs in the same area jump yip at the same time. It's unclear why they do this, but it could be a territorial display, practice for real danger, or a response to human presence.",
+        "ImageCreateDate": {
+          "Date": "02/13/2014"
+        },
+        "ImageCreateDateTime": "02/13/2014 02:07:45 PM",
+        "Keywords": [
+          "prairie dog",
+          "jump yip",
+          "prairie dog communication",
+          "black tailed prairie dog"
+        ],
+        "NPSUnits": [
+          {
+            "Name": "Wind Cave National Park",
+            "Type": "National Park",
+            "Code": "WICA"
+          }
+        ],
+        "PhotoCredit": "NPS Photo / Kim Acker",
+        "PrimaryType": "image",
+        "Rating": 4,
+        "RelatedCollections": [
+          "NPS.gov Collection"
+        ],
+        "ResourceFormat": "jpg",
+        "ResourceType": "Image",
+        "Submitter": "lbreid",
+        "SubType": "jpeg",
+        "Title": "Jump Yip"
+      },
+      "original": {
+        "url": "https://npgallery.nps.gov/GetAsset/aa5d21a5-71d1-4fa1-9ce5-366d23bd2e5a/original.jpg?",
+        "publishedLabel": "4.6 MB, 4928x3264",
+        "localPath": "/tmp/freed-land49/2-original.jpg",
+        "bytes": 4888316,
+        "width": 4928,
+        "height": 3264,
+        "sha1": "7e46f870e8004c4200a48321bb5c6f94d45b4b2b",
+        "sha256": "ef79257a66a0f843ab5a5a8b358f6cc66653fcb70ba8fd1aaa943cf398295641"
+      },
+      "delivery": {
+        "url": "https://npgallery.nps.gov/GetAsset/aa5d21a5-71d1-4fa1-9ce5-366d23bd2e5a/proxyhires.jpg?",
+        "publishedLabel": "746.7 KB, 2000x1324",
+        "localPath": "/tmp/freed-land49/2-delivery.jpg",
+        "bytes": 764596,
+        "width": 1999,
+        "height": 1324,
+        "sha1": "cf486b4fdfa2b0835e512214c62aa1302f19584f",
+        "sha256": "c8f0d6bc59b1252403dbed81b23d00deb4d5802c7eefd580986c26fbb57594c8"
+      }
+    },
+    {
+      "index": 3,
+      "query": "prairie dog",
+      "item": 16,
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/c4603951-b25f-4b6f-8084-ed00616b6d7b",
+      "sourceCachePath": "/tmp/freed-land49/3.html",
+      "record": {
+        "AltText": "an adult prairie dog and four young prairie dogs peeking out of a burrow",
+        "AssetBaseType": "File",
+        "AssetID": "c4603951-b25f-4b6f-8084-ed00616b6d7b",
+        "AssetType": "Standard File",
+        "Brandings": [
+          {
+            "Name": "MAIN"
+          }
+        ],
+        "ConstraintsInformation": {
+          "Constraint": "Public domain",
+          "GrantingRights": "Full"
+        },
+        "Description": "Females within the same family or coterie will help each other raise their pups. Prairie dog pups are born underground and do not come up until they are at least six weeks old. If given the opportunity, neighboring coteries may attack young prairie dogs.",
+        "ImageCreateDate": {
+          "Date": "05/04/2016"
+        },
+        "ImageCreateDateTime": "05/04/2016 05:16:54 PM",
+        "Keywords": [
+          "prairie dog",
+          "black tailed prairie dog"
+        ],
+        "NPSUnits": [
+          {
+            "Name": "Wind Cave National Park",
+            "Type": "National Park",
+            "Code": "WICA"
+          }
+        ],
+        "PhotoCredit": "NPS Photo",
+        "PrimaryType": "image",
+        "Rating": 4,
+        "RelatedCollections": [
+          "NPS.gov Collection"
+        ],
+        "ResourceFormat": "jpg",
+        "ResourceType": "Image",
+        "Submitter": "lbreid",
+        "SubType": "jpeg",
+        "Title": "Family Gathering"
+      },
+      "original": {
+        "url": "https://npgallery.nps.gov/GetAsset/c4603951-b25f-4b6f-8084-ed00616b6d7b/original.jpg?",
+        "publishedLabel": "4.6 MB, 4928x3264",
+        "localPath": "/tmp/freed-land49/3-original.jpg",
+        "bytes": 4931378,
+        "width": 4928,
+        "height": 3264,
+        "sha1": "9cbed28b9992325ab5f23fb62513589decd696e0",
+        "sha256": "6192766f5c76e075b439f71af40c969720840c7b2a4b20e0ca60e7d72c7e5db5"
+      },
+      "delivery": {
+        "url": "https://npgallery.nps.gov/GetAsset/c4603951-b25f-4b6f-8084-ed00616b6d7b/proxyhires.jpg?",
+        "publishedLabel": "710.6 KB, 2000x1324",
+        "localPath": "/tmp/freed-land49/3-delivery.jpg",
+        "bytes": 727619,
+        "width": 1999,
+        "height": 1324,
+        "sha1": "1afd48786fd6023a6e77cc04b0429dc2fb36e94d",
+        "sha256": "bd183c8064caba5f38ca22df35a38be032b6cac8da93bdc70af8f5912f2333ef"
+      }
+    },
+    {
+      "index": 4,
+      "query": "prairie dog",
+      "item": 18,
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/5612d276-ff10-43d4-b45e-67ddc3075336",
+      "sourceCachePath": "/tmp/freed-land49/4.html",
+      "record": {
+        "AltText": "two prairie dogs touch noses on a mound",
+        "AssetBaseType": "File",
+        "AssetID": "5612d276-ff10-43d4-b45e-67ddc3075336",
+        "AssetType": "Standard File",
+        "Brandings": [
+          {
+            "Name": "MAIN"
+          }
+        ],
+        "ConstraintsInformation": {
+          "Constraint": "Public domain",
+          "GrantingRights": "Full"
+        },
+        "Description": "Prairie dogs are highly social and live in small family groups called coteries. Coterie members will forage together, play, and greet each other with a \"kiss.\"",
+        "ImageCreateDate": {
+          "Date": "12/14/2010"
+        },
+        "ImageCreateDateTime": "12/14/2010 03:14:39 AM",
+        "Keywords": [
+          "prairie dog"
+        ],
+        "NPSUnits": [
+          {
+            "Name": "Wind Cave National Park",
+            "Type": "National Park",
+            "Code": "WICA"
+          }
+        ],
+        "PhotoCredit": "NPS Photo / Kim Acker",
+        "PrimaryType": "image",
+        "Rating": 4,
+        "RelatedCollections": [
+          "NPS.gov Collection"
+        ],
+        "ResourceFormat": "jpg",
+        "ResourceType": "Image",
+        "Submitter": "lbreid",
+        "SubType": "jpeg",
+        "Title": "Prairie Dogs Kissing"
+      },
+      "original": {
+        "url": "https://npgallery.nps.gov/GetAsset/5612d276-ff10-43d4-b45e-67ddc3075336/original.jpg?",
+        "publishedLabel": "4.0 MB, 3872x2592",
+        "localPath": "/tmp/freed-land49/4-original.jpg",
+        "bytes": 4558662,
+        "width": 3872,
+        "height": 2592,
+        "sha1": "069c33ecec6f151d09da8bdf5c517ee0556216e6",
+        "sha256": "27cab6f0926dcbfea97d963f8ffc792a5c00f0e69e8153eadf61a82ca03b5602"
+      },
+      "delivery": {
+        "url": "https://npgallery.nps.gov/GetAsset/5612d276-ff10-43d4-b45e-67ddc3075336/proxyhires.jpg?",
+        "publishedLabel": "679.9 KB, 2000x1338",
+        "localPath": "/tmp/freed-land49/4-delivery.jpg",
+        "bytes": 696223,
+        "width": 1999,
+        "height": 1338,
+        "sha1": "dc8497a0a4999d615e2736934b84894cc32ecbb7",
+        "sha256": "138459c65e96989220aa06c72bd319a488ef4063dfe25bdf20e31a9df80163af"
+      }
+    },
+    {
+      "index": 5,
+      "query": "porcupine",
+      "item": 4,
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/93548d8d-1dd8-b71c-07fb-c288ca2850c1",
+      "sourceCachePath": "/tmp/freed-land49/5.html",
+      "record": {
+        "AltText": "Porcupine chewing on wood inside an outhouse.",
+        "AssetBaseType": "File",
+        "AssetID": "93548d8d-1dd8-b71c-07fb-c288ca2850c1",
+        "AssetType": "Standard File",
+        "Brandings": [
+          {
+            "Name": "MAIN"
+          }
+        ],
+        "ConstraintsInformation": {
+          "Constraint": "Public domain",
+          "GrantingRights": "Full"
+        },
+        "Description": "Porcupines are great except when they take a liking to the glue used to make plywood. Backcountry outhouses frequently suffer from their affection for the construction materials. Porcupine chewing on wood inside an outhouse.",
+        "ImageCreateDate": {
+          "Text": "6/9/2007 10:40:55 AM"
+        },
+        "Keywords": [
+          "porcupine",
+          "giddings cabin",
+          "kova",
+          "wear"
+        ],
+        "NPSUnits": [
+          {
+            "Name": "Noatak National Preserve",
+            "Type": "National Preserve",
+            "Code": "NOAT"
+          }
+        ],
+        "PhotoCredit": "NPS Photo",
+        "PrimaryType": "image",
+        "Publisher": "U.S. National Park Service",
+        "Rating": 5,
+        "RelatedCollections": [
+          "NPS.gov Collection"
+        ],
+        "ResourceFormat": "jpg",
+        "ResourceType": "Image",
+        "Submitter": "alindeman",
+        "SubType": "jpeg",
+        "Title": "Critter Damage"
+      },
+      "original": {
+        "url": "https://npgallery.nps.gov/GetAsset/93548D8D-1DD8-B71C-07FBC288CA2850C1/original.jpg?",
+        "publishedLabel": "2.1 MB, 3072x2304",
+        "localPath": "/tmp/freed-land49/5-original.jpg",
+        "bytes": 2240998,
+        "width": 3072,
+        "height": 2304,
+        "sha1": "5cf5b6d7131260512a8aff26cb0c9dba4edb2b6e",
+        "sha256": "797409638abf903aeb703407a85b65842ba317c74d07270e281ee01120ee89d2"
+      },
+      "delivery": {
+        "url": "https://npgallery.nps.gov/GetAsset/93548D8D-1DD8-B71C-07FBC288CA2850C1/proxyhires.jpg?",
+        "publishedLabel": "219.3 KB, 1000x750",
+        "localPath": "/tmp/freed-land49/5-delivery.jpg",
+        "bytes": 224613,
+        "width": 1000,
+        "height": 750,
+        "sha1": "eed7d64fb2b438802020abcb800306e14c715ef8",
+        "sha256": "eb04196e9d44a7a6e80852a89ed29a8419d106ee5a7d5a743d7250feabef2951"
+      }
+    },
+    {
+      "index": 6,
+      "query": "porcupine",
+      "item": 16,
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/713a9c7a-8785-4070-a28b-46fe380ce6f3",
+      "sourceCachePath": "/tmp/freed-land49/6.html",
+      "record": {
+        "AltText": "Porcupine hanging onto a limb of a tree.",
+        "AssetBaseType": "File",
+        "AssetID": "713a9c7a-8785-4070-a28b-46fe380ce6f3",
+        "AssetType": "Standard File",
+        "Brandings": [
+          {
+            "Name": "MAIN"
+          }
+        ],
+        "ConstraintsInformation": {
+          "Constraint": "Public domain",
+          "GrantingRights": "Full"
+        },
+        "CustomTextFields": [
+          {
+            "Name": "XmpMetadataDate",
+            "Value": "2019-11-19T09:39:52-07:00"
+          }
+        ],
+        "Description": "Porcupine",
+        "Keywords": [
+          "yellowstone national park",
+          "mammals",
+          "wildlife",
+          "porcupine",
+          "erethizon dorsatum",
+          "11747"
+        ],
+        "NPSUnits": [
+          {
+            "Name": "Yellowstone National Park",
+            "Type": "National Park",
+            "Code": "YELL"
+          }
+        ],
+        "PhotoCredit": "NPS/Photographer unknown",
+        "PrimaryType": "image",
+        "Rating": 4,
+        "RelatedCollections": [
+          "NPS.gov Collection"
+        ],
+        "ResourceFormat": "jpg",
+        "ResourceType": "Image",
+        "Submitter": "dianerenkin",
+        "SubType": "jpeg",
+        "Title": "Porcupine"
+      },
+      "original": {
+        "url": "https://npgallery.nps.gov/GetAsset/713a9c7a-8785-4070-a28b-46fe380ce6f3/original.jpg?",
+        "publishedLabel": "654.4 KB, 1345x1999",
+        "localPath": "/tmp/freed-land49/6-original.jpg",
+        "bytes": 670124,
+        "width": 1345,
+        "height": 1999,
+        "sha1": "21e74bd808bb4f73b6e20554db54d179e3b3d546",
+        "sha256": "2fa6fb284052fc3e4b14e820737d838d2de4828f938f309fce2f53649b7f9e7b"
+      },
+      "delivery": {
+        "url": "https://npgallery.nps.gov/GetAsset/713a9c7a-8785-4070-a28b-46fe380ce6f3/proxymdres.jpg?",
+        "publishedLabel": "237.1 KB, 672x1000",
+        "localPath": "/tmp/freed-land49/6-delivery.jpg",
+        "bytes": 242817,
+        "width": 672,
+        "height": 999,
+        "sha1": "1c62a1021a7d5b01807bc7e75746fd7b7ff8d3b2",
+        "sha256": "e9b51afb519692ac1ce3a93193ee6e20045cc88dae7973b91edadf506d641cef"
+      }
+    },
+    {
+      "index": 7,
+      "query": "porcupine",
+      "item": 20,
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/38a22ee9-67f4-45d1-8807-e1a14b577081",
+      "sourceCachePath": "/tmp/freed-land49/7.html",
+      "record": {
+        "AltText": "Closeup of a porcupine's face",
+        "AssetBaseType": "File",
+        "AssetID": "38a22ee9-67f4-45d1-8807-e1a14b577081",
+        "AssetType": "Standard File",
+        "Brandings": [
+          {
+            "Name": "MAIN"
+          }
+        ],
+        "ConstraintsInformation": {
+          "Constraint": "Public domain",
+          "GrantingRights": "Full"
+        },
+        "CustomTextFields": [
+          {
+            "Name": "XmpMetadataDate",
+            "Value": "2019-11-19T09:39:53-07:00"
+          }
+        ],
+        "Description": "Porcupine",
+        "ImageCreateDate": {
+          "Date": "01/01/1987"
+        },
+        "ImageCreateDateTime": "01/01/1987 12:00:00 AM",
+        "Keywords": [
+          "yellowstone national park",
+          "mammals",
+          "wildlife",
+          "porcupine",
+          "erethizon dorsatum",
+          "11952"
+        ],
+        "NPSUnits": [
+          {
+            "Name": "Yellowstone National Park",
+            "Type": "National Park",
+            "Code": "YELL"
+          }
+        ],
+        "PhotoCredit": "NPS/Ed Austin, Herb Jones",
+        "PrimaryType": "image",
+        "Rating": 4,
+        "RelatedCollections": [
+          "NPS.gov Collection"
+        ],
+        "ResourceFormat": "jpg",
+        "ResourceType": "Image",
+        "Submitter": "dianerenkin",
+        "SubType": "jpeg",
+        "Title": "Porcupine"
+      },
+      "original": {
+        "url": "https://npgallery.nps.gov/GetAsset/38a22ee9-67f4-45d1-8807-e1a14b577081/original.jpg?",
+        "publishedLabel": "837.4 KB, 1999x1355",
+        "localPath": "/tmp/freed-land49/7-original.jpg",
+        "bytes": 857518,
+        "width": 1999,
+        "height": 1355,
+        "sha1": "bb208e37aca77bb0f565352cf7277d58ed299f00",
+        "sha256": "7dafe022d7e65808056dc2f147ee94fe1da4b1270f129eb441367aa56cd1d8ec"
+      },
+      "delivery": {
+        "url": "https://npgallery.nps.gov/GetAsset/38a22ee9-67f4-45d1-8807-e1a14b577081/proxymdres.jpg?",
+        "publishedLabel": "301.5 KB, 1000x677",
+        "localPath": "/tmp/freed-land49/7-delivery.jpg",
+        "bytes": 308785,
+        "width": 999,
+        "height": 677,
+        "sha1": "c4f5f8814b1228cdac38c84ccdba207e144a833b",
+        "sha256": "542ab2c890ba7626a726c7799e7a365925ef38a93666fa1394715229e907828a"
+      }
+    },
+    {
+      "index": 8,
+      "query": "prairie dog",
+      "item": 12,
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/a7e82982-73cb-429b-a131-51fcd826f08f",
+      "sourceCachePath": "/tmp/freed-land49/8.html",
+      "record": {
+        "AltText": "a prairie dog with a dark tipped tail looking at the camera from a burrow entrance",
+        "AssetBaseType": "File",
+        "AssetID": "a7e82982-73cb-429b-a131-51fcd826f08f",
+        "AssetType": "Standard File",
+        "Brandings": [
+          {
+            "Name": "MAIN"
+          }
+        ],
+        "ConstraintsInformation": {
+          "Constraint": "Public domain",
+          "GrantingRights": "Full"
+        },
+        "Description": "Prairie dogs are members of the squirrel family and have small flat ears that are usually hard to see.",
+        "ImageCreateDate": {
+          "Date": "10/23/2010"
+        },
+        "ImageCreateDateTime": "10/23/2010 02:05:34 AM",
+        "Keywords": [
+          "prairie dog",
+          "black tailed prairie dog"
+        ],
+        "NPSUnits": [
+          {
+            "Name": "Wind Cave National Park",
+            "Type": "National Park",
+            "Code": "WICA"
+          }
+        ],
+        "PhotoCredit": "NPS Photo",
+        "PrimaryType": "image",
+        "Rating": 4,
+        "RelatedCollections": [
+          "NPS.gov Collection"
+        ],
+        "ResourceFormat": "jpg",
+        "ResourceType": "Image",
+        "Submitter": "lbreid",
+        "SubType": "jpeg",
+        "Title": "Watchful Prairie Dog"
+      },
+      "original": {
+        "url": "https://npgallery.nps.gov/GetAsset/a7e82982-73cb-429b-a131-51fcd826f08f/original.jpg?",
+        "publishedLabel": "1.5 MB, 3872x2592",
+        "localPath": "/tmp/freed-land49/8-original.jpg",
+        "bytes": 1690912,
+        "width": 3872,
+        "height": 2592,
+        "sha1": "d284acb28d1a28bfdb2a0e087e34572e4ebcd482",
+        "sha256": "f28e36d42dc8b76d3be0471721a49e79fbc5704504ee6275879e6751e606f2b8"
+      },
+      "delivery": {
+        "url": "https://npgallery.nps.gov/GetAsset/a7e82982-73cb-429b-a131-51fcd826f08f/proxyhires.jpg?",
+        "publishedLabel": "762.8 KB, 2000x1338",
+        "localPath": "/tmp/freed-land49/8-delivery.jpg",
+        "bytes": 781108,
+        "width": 1999,
+        "height": 1338,
+        "sha1": "82f216f5aad528f835b2e06c309c800495f5aee3",
+        "sha256": "fd2ea7d0ed453fe7974c5debdfdb12d3799ab388be0cd1abc6e1daee526dae65"
+      }
+    },
+    {
+      "index": 9,
+      "query": "prairie dog",
+      "item": 13,
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/a26836f0-0c77-4c47-98a4-589e63292231",
+      "sourceCachePath": "/tmp/freed-land49/9.html",
+      "record": {
+        "AltText": "a prairie dog with a dark tipped tail sitting next to a burrow",
+        "AssetBaseType": "File",
+        "AssetID": "a26836f0-0c77-4c47-98a4-589e63292231",
+        "AssetType": "Standard File",
+        "Brandings": [
+          {
+            "Name": "MAIN"
+          }
+        ],
+        "ConstraintsInformation": {
+          "Constraint": "Public domain",
+          "GrantingRights": "Full"
+        },
+        "Description": "Black-tailed prairie dogs are named for the black tip on the end of their tail and are the most common and widespread species of prairie dog.",
+        "ImageCreateDate": {
+          "Date": "10/16/2010"
+        },
+        "ImageCreateDateTime": "10/16/2010 10:19:31 PM",
+        "Keywords": [
+          "prairie dog",
+          "black tailed prairie dog"
+        ],
+        "NPSUnits": [
+          {
+            "Name": "Wind Cave National Park",
+            "Type": "National Park",
+            "Code": "WICA"
+          }
+        ],
+        "PhotoCredit": "NPS Photo",
+        "PrimaryType": "image",
+        "Rating": 4,
+        "RelatedCollections": [
+          "NPS.gov Collection"
+        ],
+        "ResourceFormat": "jpg",
+        "ResourceType": "Image",
+        "Submitter": "lbreid",
+        "SubType": "jpeg",
+        "Title": "Prairie Dog on Burrow"
+      },
+      "original": {
+        "url": "https://npgallery.nps.gov/GetAsset/a26836f0-0c77-4c47-98a4-589e63292231/original.jpg?",
+        "publishedLabel": "1.4 MB, 3872x2592",
+        "localPath": "/tmp/freed-land49/9-original.jpg",
+        "bytes": 1615174,
+        "width": 3872,
+        "height": 2592,
+        "sha1": "1f5a60b761468c3e59ed951710dce45a49a1975b",
+        "sha256": "6f5b4f8ea52c5cc1c1a421e5570b64eba9401d05e9d1802423db2dd0e8529c11"
+      },
+      "delivery": {
+        "url": "https://npgallery.nps.gov/GetAsset/a26836f0-0c77-4c47-98a4-589e63292231/proxyhires.jpg?",
+        "publishedLabel": "750.4 KB, 2000x1338",
+        "localPath": "/tmp/freed-land49/9-delivery.jpg",
+        "bytes": 768376,
+        "width": 1999,
+        "height": 1338,
+        "sha1": "fbe7cd71f901d7a30d85061f35accc712480289a",
+        "sha256": "160bd9a1e3c18c469b5e04cf1cffe1844912be573f57df74e82b46f1c37699ba"
+      }
+    }
+  ],
+  "rightsHolds": [
+    {
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/77d6cef4-ac65-4801-beea-bd048b58b5c7",
+      "record": {
+        "AssetCount": 8,
+        "AltText": "Three wild horses walk along a grassy field. One jumps forward playfully.",
+        "AssetBaseType": "Album",
+        "AssetID": "77d6cef4-ac65-4801-beea-bd048b58b5c7",
+        "AssetType": "Standard Album",
+        "Brandings": [
+          {
+            "Name": "MAIN"
+          }
+        ],
+        "ConstraintsInformation": {
+          "Constraint": "Public domain",
+          "GrantingRights": "Unknown"
+        },
+        "Description": "Wild horses within Ozark National Scenic Riverways.",
+        "Keywords": [
+          "horses",
+          "wild horses",
+          "OZAR",
+          "midwest",
+          "feral horses",
+          "landscape"
+        ],
+        "NPSUnits": [
+          {
+            "Name": "Ozark National Scenic Riverways",
+            "Type": "National Scenic Riverways",
+            "Code": "OZAR"
+          }
+        ],
+        "Rating": 2,
+        "ResourceType": "Album",
+        "Submitter": "wmarischen",
+        "Title": "Wild Horses at OZAR, Ozark NSR"
+      }
+    },
+    {
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/75e8146d-c45d-4d5a-b605-1f3d94c36db8",
+      "record": {
+        "AltText": "A young horse stands in front of the camera and looks into it.",
+        "AssetBaseType": "File",
+        "AssetID": "75e8146d-c45d-4d5a-b605-1f3d94c36db8",
+        "AssetType": "Standard File",
+        "Brandings": [
+          {
+            "Name": "MAIN"
+          }
+        ],
+        "ConstraintsInformation": {
+          "Constraint": "Public domain",
+          "GrantingRights": "Partial"
+        },
+        "Description": "Wild horses can be seen year-round, particularly in remote fields.",
+        "ImageCreateDate": {
+          "Date": "02/15/2024"
+        },
+        "ImageCreateDateTime": "02/15/2024 12:00:00 AM",
+        "Keywords": [
+          "wild horses",
+          "horses",
+          "Round Spring",
+          "OZAR",
+          "midwest",
+          "ozarks",
+          "landscape"
+        ],
+        "NPSUnits": [
+          {
+            "Name": "Ozark National Scenic Riverways",
+            "Type": "National Scenic Riverways",
+            "Code": "OZAR"
+          }
+        ],
+        "PhotoCredit": "Courtesy of Rob Barth",
+        "PrimaryType": "image",
+        "Rating": 1,
+        "RelatedCollections": [
+          "NPS.gov Collection"
+        ],
+        "ResourceFormat": "jpg",
+        "ResourceType": "Image",
+        "Submitter": "wmarischen",
+        "SubType": "jpeg",
+        "Title": "Young Wild Horse in Winter, Ozark NSR, 2024"
+      }
+    },
+    {
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/8a995ecf-b94d-4d3e-b74c-b1005c1f94ed",
+      "record": {
+        "AltText": "Three wild horses run across a field. Their manes and tails blow around from the speed.",
+        "AssetBaseType": "File",
+        "AssetID": "8a995ecf-b94d-4d3e-b74c-b1005c1f94ed",
+        "AssetType": "Standard File",
+        "Brandings": [
+          {
+            "Name": "MAIN"
+          }
+        ],
+        "ConstraintsInformation": {
+          "Constraint": "Public domain",
+          "GrantingRights": "Partial"
+        },
+        "Description": "Wild horses can be seen year-round, particularly in remote fields.",
+        "ImageCreateDate": {
+          "Date": "02/15/2024"
+        },
+        "ImageCreateDateTime": "02/15/2024 12:00:00 AM",
+        "Keywords": [
+          "wild horses",
+          "horses",
+          "Round Spring",
+          "OZAR",
+          "midwest",
+          "ozarks",
+          "landscape"
+        ],
+        "NPSUnits": [
+          {
+            "Name": "Ozark National Scenic Riverways",
+            "Type": "National Scenic Riverways",
+            "Code": "OZAR"
+          }
+        ],
+        "PhotoCredit": "Courtesy of Rob Barth",
+        "PrimaryType": "image",
+        "Rating": 1,
+        "RelatedCollections": [
+          "NPS.gov Collection"
+        ],
+        "ResourceFormat": "jpg",
+        "ResourceType": "Image",
+        "Submitter": "wmarischen",
+        "SubType": "jpeg",
+        "Title": "Wild Horses in Winter, Ozark NSR, 2024"
+      }
+    }
+  ],
+  "accessNotes": "Normal bounded NPS discovery/downloads only. No HTTP403/429 retries. Web source opener later returned a non-retryable internal error for source5; no retry was made. Exact detail page had already downloaded successfully through normal primary access and remains cached at /tmp/freed-land49/5.html. Measured byte counts and pixel dimensions take precedence over rounded NPS link labels."
+}

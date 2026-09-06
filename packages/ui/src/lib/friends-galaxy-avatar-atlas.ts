@@ -1,9 +1,10 @@
 import type { FriendsGalaxyBillboardAtlas } from "./friends-galaxy-billboard-atlas.js";
+import { createFriendAvatarPalette } from "./friend-avatar-style.js";
 
 const AVATAR_INSTANCE_FLOATS = 11;
 const AVATAR_PIXEL_SCALE = 2;
 const AVATAR_TEXTURE_WIDTH = 1_024;
-const AVATAR_PADDING = 4;
+const AVATAR_PADDING = 10;
 const AVATAR_BORDER_WIDTH = 3;
 
 export interface FriendsGalaxyAvatarSeed {
@@ -65,6 +66,7 @@ export function createFriendsGalaxyAvatarAtlas(
   if (!context) throw new Error("Canvas 2D is unavailable for the billboard avatar atlas.");
   context.textAlign = "center";
   context.textBaseline = "middle";
+  const avatarStyle = createFriendAvatarPalette();
   for (let index = 0; index < avatars.length; index += 1) {
     const avatar = avatars[index]!;
     const placement = placements[index]!;
@@ -73,6 +75,16 @@ export function createFriendsGalaxyAvatarAtlas(
     const centerX = placement.left + padding + diameter / 2;
     const centerY = placement.top + padding + diameter / 2;
     const radius = diameter / 2;
+    // Paint the halo before clipping the photo, and include it in the UVs.
+    // Otherwise the renderer silently crops off the same glow used on maps.
+    context.save();
+    context.beginPath();
+    context.arc(centerX, centerY, radius - 1, 0, Math.PI * 2);
+    context.fillStyle = avatarStyle.gradientMid;
+    context.shadowColor = avatarStyle.glow;
+    context.shadowBlur = padding * 0.7;
+    context.fill();
+    context.restore();
     context.save();
     context.beginPath();
     context.arc(centerX, centerY, radius, 0, Math.PI * 2);
@@ -96,7 +108,7 @@ export function createFriendsGalaxyAvatarAtlas(
       0,
       Math.PI * 2,
     );
-    context.strokeStyle = avatar.selected ? palette.selection : palette.background;
+    context.strokeStyle = avatar.selected ? palette.selection : avatarStyle.borderStrong;
     context.lineWidth = AVATAR_BORDER_WIDTH * AVATAR_PIXEL_SCALE;
     context.stroke();
   }
@@ -107,19 +119,19 @@ export function createFriendsGalaxyAvatarAtlas(
     const offset = index * AVATAR_INSTANCE_FLOATS;
     const padding = AVATAR_PADDING * AVATAR_PIXEL_SCALE;
     const diameter = avatar.size * AVATAR_PIXEL_SCALE;
-    const contentLeft = placement.left + padding;
-    const contentTop = placement.top + padding;
+    const contentLeft = placement.left;
+    const contentTop = placement.top;
     instanceData[offset] = avatar.anchorX;
     instanceData[offset + 1] = avatar.anchorY;
     instanceData[offset + 2] = avatar.anchorZ;
     instanceData[offset + 3] = 0;
     instanceData[offset + 4] = 0;
-    instanceData[offset + 5] = avatar.size;
-    instanceData[offset + 6] = avatar.size;
+    instanceData[offset + 5] = avatar.size + AVATAR_PADDING * 2;
+    instanceData[offset + 6] = avatar.size + AVATAR_PADDING * 2;
     instanceData[offset + 7] = contentLeft / canvas.width;
     instanceData[offset + 8] = contentTop / canvas.height;
-    instanceData[offset + 9] = (contentLeft + diameter) / canvas.width;
-    instanceData[offset + 10] = (contentTop + diameter) / canvas.height;
+    instanceData[offset + 9] = (contentLeft + diameter + padding * 2) / canvas.width;
+    instanceData[offset + 10] = (contentTop + diameter + padding * 2) / canvas.height;
   }
   return { canvas, avatars, itemCount: avatars.length, instanceData };
 }

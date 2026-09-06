@@ -84,7 +84,7 @@ export interface FriendsGalaxyRenderer<
   resize(width: number, height: number, pixelRatio: number): void;
   setPalette(palette: Palette): void;
   applyActivityPatches?(patches: FriendsGalaxyActivityScenePatchBatch): void;
-  setAvatarImages?(images: ReadonlyMap<string, CanvasImageSource>): void;
+  setAvatarImages?(images: ReadonlyMap<string, CanvasImageSource>, loadedImagesOnly?: boolean): void;
   setAmbientMotionEnabled?(enabled: boolean): void;
   setCameraMotion?(active: boolean): void;
   setFieldStyle?(style: FriendsGalaxyFieldStyle): void;

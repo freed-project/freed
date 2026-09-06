@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { useAvatarSource } from "../context/PlatformContext.js";
 import {
   channelInitialForName,
   createAvatarImageFailureStore,
@@ -23,7 +24,7 @@ export function ChannelAvatar({
 }: ChannelAvatarProps) {
   const [, setFailureVersion] = useState(0);
   const failureStoreRef = useRef(createAvatarImageFailureStore());
-  const resolvedUrl = avatarUrl || null;
+  const resolvedUrl = useAvatarSource(avatarUrl);
   const showImage = !!resolvedUrl && !failureStoreRef.current.has(resolvedUrl);
   const initial = channelInitialForName(name);
 

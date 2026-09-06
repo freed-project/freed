@@ -699,6 +699,8 @@ jobs:
       - name: Build exact release PWA
         working-directory: packages/pwa
         env:
+          FREED_BUILD_KIND: "release"
+          FREED_BUILD_CHANNEL: "production"
           VITE_FREED_DEMO: "1"
           VITE_FREED_PWA_SQLITE_MEMORY_E2E: "1"
         run: npm run build
@@ -729,6 +731,7 @@ jobs:
             -f concat -safe 0 -i release-showcase/gif-order.txt \
             -vf "fps=12,scale=960:-1:flags=lanczos,split[s0][s1];[s0]palettegen=max_colors=160[p];[s1][p]paletteuse=dither=bayer" \
             -loop 0 release-showcase/freed-showcase.gif
+          node scripts/lib/release-showcase-assets.mjs finalize --directory release-showcase
 
       - name: Upload immutable and stable showcase assets
         env:
@@ -750,6 +753,14 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout exact release verifier
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+
+      - name: Setup release verifier Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ".nvmrc"
+
       - name: Publish release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -763,6 +774,15 @@ jobs:
             -X PATCH \
             "repos/${{ github.repository }}/releases/${{ needs.create-release.outputs.release_id }}" \
             --input release-publish.json >/dev/null
+
+      - name: Verify public showcase downloads
+        if: needs.showcase-assets.result == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+            --pattern freed-showcase-manifest.json --dir release-showcase
+          node scripts/lib/release-showcase-assets.mjs verify-public --directory release-showcase
 
   # Redeploy the public marketing site after any GitHub release is public so
   # the checked-in changelog snapshot is rebuilt against the newly published

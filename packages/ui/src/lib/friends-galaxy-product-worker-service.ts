@@ -1,6 +1,7 @@
 import {
   buildIdentityGraphAtlasModel,
   fitTransformToAtlasBounds,
+  galaxyNodeLabel,
   sliceIdentityGraphAtlas,
   type BuildIdentityGraphAtlasModelInput,
   type IdentityGraphAtlasModel,
@@ -10,7 +11,7 @@ import {
   FriendsGalaxyActivityScenePatchEncoder,
   type FriendsGalaxyActivitySceneBinding,
 } from "./friends-galaxy-activity-patches.js";
-import { FRIENDS_GALAXY_PRESENTATION_NODE_CAP } from "./friends-galaxy-presentation-atlas.js";
+import { FRIENDS_GALAXY_PRESENTATION_NODE_CAP, FRIENDS_GALAXY_PRESENTATION_LABEL_CAP } from "./friends-galaxy-presentation-atlas.js";
 import { writeFriendsGalaxyWebGpuViewProjection } from "./friends-galaxy-camera.js";
 import { projectFriendsGalaxyWorldPoint } from "./friends-galaxy-projection.js";
 import { compileFriendsGalaxyProductRendererScene } from "./friends-galaxy-product-scene.js";
@@ -43,7 +44,7 @@ interface CachedFriendsGalaxyProductSource {
   sourceRevision: number;
   model: IdentityGraphAtlasModel;
   semanticNodeCount: number;
-  depthByNodeId: Map<string, number>;
+  positionByNodeId: Map<string, readonly [number, number, number]>;
   linkedPersonNodeIdByAccountId: Map<string, string>;
   metadataByNodeId: Map<string, IdentityGraphAtlasModel["nodes"][number]>;
   activityEncoder: FriendsGalaxyActivityScenePatchEncoder;
@@ -261,7 +262,11 @@ export class FriendsGalaxyProductWorkerService {
       sourceRevision: request.sourceRevision,
       model,
       semanticNodeCount: rendererScene.scene.nodeIds.length,
-      depthByNodeId: new Map(rendererScene.scene.nodeIds.map((id, index) => [id, rendererScene.scene.positions[index * 3 + 2]!])),
+      positionByNodeId: new Map(rendererScene.scene.nodeIds.map((id, index) => [id, [
+        rendererScene.scene.positions[index * 3]!,
+        rendererScene.scene.positions[index * 3 + 1]!,
+        rendererScene.scene.positions[index * 3 + 2]!,
+      ] as const])),
       ...sourceIndexes,
       activityEncoder,
     };
@@ -371,6 +376,10 @@ export class FriendsGalaxyProductWorkerService {
       request.viewport.selectedAccountId,
       cached.linkedPersonNodeIdByAccountId,
     );
+    const hovered = request.viewport.hoveredNodeId
+      ? cached.metadataByNodeId.get(request.viewport.hoveredNodeId)
+      : undefined;
+    if (hovered) priorityIds.unshift(hovered.id);
     const projectedIds: string[] = [];
     if (request.viewport.transform.scale >= 0.85) {
       const matrix = new Float32Array(16);
@@ -380,8 +389,10 @@ export class FriendsGalaxyProductWorkerService {
       const projection = { viewProjection: matrix, width, height };
       const scratch = new Float32Array(2);
       for (const node of cached.model.nodes) {
-        const depth = cached.depthByNodeId.get(node.id);
-        if (depth !== undefined && projectFriendsGalaxyWorldPoint(scratch, projection, node.x, -node.y, depth, 24)) {
+        // Admission must use the exact rendered position, including compact
+        // profile shells, rather than mixing atlas XY with compiled depth.
+        const position = cached.positionByNodeId.get(node.id);
+        if (position && projectFriendsGalaxyWorldPoint(scratch, projection, position[0], position[1], position[2], 24)) {
           projectedIds.push(node.id);
         }
       }
@@ -392,7 +403,7 @@ export class FriendsGalaxyProductWorkerService {
     if (cached.model.nodes.length <= FRIENDS_GALAXY_PRESENTATION_NODE_CAP) {
       admittedMetadataIds.push(...cached.model.nodes.map((node) => node.id));
     }
-    const atlas = compactFriendsGalaxyPresentationMetadata(
+    let atlas = compactFriendsGalaxyPresentationMetadata(
       includeFriendsGalaxyPriorityMetadata(
         sliceIdentityGraphAtlas({
           model: cached.model,
@@ -410,6 +421,21 @@ export class FriendsGalaxyProductWorkerService {
       FRIENDS_GALAXY_PRESENTATION_NODE_CAP,
       admittedMetadataIds,
     );
+    if (hovered) {
+      const position = cached.positionByNodeId.get(hovered.id);
+      atlas = {
+        ...atlas,
+        labels: [{
+          id: `label:${hovered.id}`,
+          nodeId: hovered.id,
+          text: galaxyNodeLabel(hovered.linkedPersonId ? "" : hovered.label, hovered.kind, hovered.provider).trim(),
+          x: position?.[0] ?? hovered.x,
+          y: position ? -position[1] : hovered.y,
+          priority: 2_000_000,
+          kind: hovered.kind,
+        }, ...atlas.labels.filter(label => label.nodeId !== hovered.id)].slice(0, FRIENDS_GALAXY_PRESENTATION_LABEL_CAP),
+      };
+    }
     return {
       kind: "presentation-ready",
       protocolVersion: FRIENDS_GALAXY_PRODUCT_WORKER_PROTOCOL_VERSION,

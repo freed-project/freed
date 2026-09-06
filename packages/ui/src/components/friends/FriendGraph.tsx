@@ -9,7 +9,7 @@ import {
   useState,
   type CSSProperties,
 } from "react";
-import type { MapMode } from "@freed/shared";
+import type { MapMode, SampleAvatarFocalPoint } from "@freed/shared";
 import type { ThemeId } from "@freed/shared/themes";
 import { type LibraryCoreNormalizedQueryExecutor } from "@freed/shared/library-core";
 import { useLibraryPersonPicker } from "../../hooks/useLibraryPersonPicker.js";
@@ -65,11 +65,17 @@ export type FriendGraphContextResolver = (
 ) => Promise<IdentityGraphAtlasNode | null>;
 
 interface FriendGraphProps {
+  resolveAvatarUrl?: (sourceUrl: string) => string;
+  approvedDemoAvatarUrls?: ReadonlySet<string>;
+  approvedDemoAvatarDeliveryUrls?: ReadonlyMap<string, string>;
+  approvedDemoAvatarFocalPoints?: ReadonlyMap<string, SampleAvatarFocalPoint>;
   sqliteGraphQuery: LibraryCoreNormalizedQueryExecutor;
   sourceVersion: number;
   mode: MapMode;
   selectedPersonId?: string | null;
   selectedAccountId?: string | null;
+  selectedFeedUrl?: string | null;
+  onSelectFeedUrl?: (url: string) => void;
   onSelectPersonId: (personId: string) => void;
   onSelectAccountId: (accountId: string) => void;
   onSourceCounts: (
@@ -319,10 +325,16 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
   function FriendGraph(
     {
       sqliteGraphQuery,
+      approvedDemoAvatarUrls,
+      approvedDemoAvatarDeliveryUrls,
+      approvedDemoAvatarFocalPoints,
+      resolveAvatarUrl,
       sourceVersion,
       mode,
       selectedPersonId,
       selectedAccountId,
+      selectedFeedUrl,
+      onSelectFeedUrl,
       onSelectPersonId,
       onSelectAccountId,
       onSourceCounts,
@@ -396,8 +408,6 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
     const [graphStatus, setGraphStatus] = useState("Building galaxy...");
     const [graphError, setGraphError] = useState<string | null>(null);
     const decorativeStarMode = DECORATIVE_STAR_MODE;
-    const [sourceBuildInFlight, setSourceBuildInFlight] = useState(true);
-    const [lastBuildMs, setLastBuildMs] = useState<number | null>(null);
     const [sourceRetry, setSourceRetry] = useState(0);
     const [contextMenu, setContextMenu] =
       useState<GraphContextMenuState | null>(null);
@@ -454,9 +464,11 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
         }
         if (node?.accountId) {
           onSelectAccountId(node.accountId);
+        } else if (nodeId.startsWith("feed:")) {
+          onSelectFeedUrl?.(nodeId.slice(5));
         }
       },
-      [closeContextMenu, onClearSelection, onSelectAccountId, onSelectPersonId],
+      [closeContextMenu, onClearSelection, onSelectAccountId, onSelectPersonId, onSelectFeedUrl],
     );
 
     const selectNodeRef = useRef(selectNode);
@@ -842,6 +854,10 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
       };
 
       const engine = new FriendsGalaxyProductEngine({
+        approvedDemoAvatarUrls,
+        approvedDemoAvatarDeliveryUrls,
+        approvedDemoAvatarFocalPoints,
+        resolveAvatarUrl,
         palette: friendsGalaxyRendererPaletteForTheme(themeId),
         rendererId: "raw-webgpu",
         createSurface: (rendererId) => {
@@ -867,7 +883,6 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
           surface.dataset.testid = "friend-graph-canvas";
           graphReadyRef.current = true;
           setGraphReady(true);
-          setSourceBuildInFlight(false);
           setGraphStatus("");
           setGraphError(null);
           const completedAt = nowMs();
@@ -875,7 +890,6 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
             0,
             completedAt - sourceBuildStartedAtRef.current,
           );
-          setLastBuildMs(diagnosticsRef.current.lastBuildMs);
           if (diagnosticsRef.current.firstVisibleMs === 0) {
             diagnosticsRef.current.firstVisibleMs =
               completedAt - mountedAtRef.current;
@@ -901,7 +915,6 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
           ).__FREED_GRAPH_DRAW_ERROR__ = reason;
         },
         onFailure: ({ reason }) => {
-          setSourceBuildInFlight(false);
           if (!engineRef.current?.activeRenderer) {
             setGraphError(reason);
             setGraphStatus("");
@@ -909,7 +922,6 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
           }
         },
         onWorkerFailure: (failure) => {
-          setSourceBuildInFlight(false);
           if (
             failure.phase === "source" &&
             failure.message === FRIENDS_GALAXY_SQLITE_SOURCE_FENCE_CHANGED
@@ -939,7 +951,6 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
             setGraphStatus("Building galaxy...");
           }
           sourceBuildStartedAtRef.current = nowMs();
-          setSourceBuildInFlight(true);
           setGraphError(null);
           engine.requestNormalizedSource(input, sqliteGraphQueryRef.current);
         },
@@ -1059,12 +1070,12 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
         ? `person:${selectedPersonId}`
         : selectedAccountId
           ? `account:${selectedAccountId}`
-          : null;
+          : selectedFeedUrl ? `feed:${selectedFeedUrl}` : null;
       controllerRef.current?.setSelection(nodeId, {
         selectedPersonId,
         selectedAccountId,
       });
-    }, [selectedAccountId, selectedPersonId]);
+    }, [selectedAccountId, selectedPersonId, selectedFeedUrl]);
 
     useEffect(() => {
       const palette = friendsGalaxyRendererPaletteForTheme(themeId);
@@ -1458,20 +1469,11 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
             type="button"
             className={CANVAS_CONTROL_BUTTON_CLASS}
             onClick={fitAll}
+            title="Fit All"
+            aria-label="Fit All"
           >
-            Fit all
+            <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5" /></svg>
           </button>
-          <span
-            className="theme-canvas-control rounded-lg px-2.5 py-1.5 text-xs tabular-nums text-[color:var(--theme-text-muted)]"
-            data-testid="friend-graph-build-time"
-            title="Worker and renderer time for the last Galaxy build"
-          >
-            {lastBuildMs === null
-              ? "Build..."
-              : `${Math.round(lastBuildMs).toLocaleString()} ms${
-                  sourceBuildInFlight ? ", updating" : ""
-                }`}
-          </span>
         </div>
       </div>
     );

@@ -1,0 +1,295 @@
+{
+  "targetCount": 12,
+  "completedCount": 12,
+  "status": "7 lead accepted, 5 held",
+  "entries": [
+    {
+      "id": "deepsea-08-01",
+      "characterId": "claude-carry",
+      "identityName": "Claude Carry",
+      "platform": "rss",
+      "title": "Where I end",
+      "body": "She grows the bit around me. I hadn't understood that at first. I thought she'd found something that happened to fit.\n\nThen I got bigger, and it still fit.\n\nI asked how she'd known. She said she'd noticed me pressing against her.\n\nI spent a while trying to work out where my body stopped being my responsibility. I could feel the ground through my feet, the weight of her above me, her tentacles moving underneath. I couldn't find a clean place to draw the line.\n\nShe asked if we were going to eat or if I needed to think about it some more.\n\nWe went to eat. I found something, broke it, and left her the smaller pieces. She said she liked those better. I suspect she would have said that about whichever pieces I'd left.\n\nTomorrow I'm leaving the big one.",
+      "image": {
+        "url": "https://oceanexplorer.noaa.gov/wp-content/uploads/2025/08/dive11-commensal.jpg",
+        "sceneMatch": "Shell-bearing anemone is visibly wrapped around the crab; NOAA identifies its growing proteinaceous covering. Food sharing and thought are fictional.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "inspectionArtifact": "output/playwright/deepsea-08-first-six.png"
+      },
+      "provenance": {
+        "sourceUrl": "https://oceanexplorer.noaa.gov/multimedia/commensal-relationship/",
+        "creator": "NOAA Ocean Exploration, 2025 Beyond the Blue",
+        "license": "Public domain",
+        "licenseEvidenceUrl": "https://oceanexplorer.noaa.gov/okeanos-beyond-the-blue-media-resources/",
+        "sourceFacts": "We observed this commensal relationship between a hermit crab and anemone during Dive 11 of the Papahānaumokuākea ROV and Mapping expedition at a depth of 529 meters (1,735 feet). The shell-bearing anemone, Stylobates aeneus , which builds a proteinaceous, gold-colored shell that grows along with the crab, negating the need to change shells over time.",
+        "taxon": "fictional hermit crab, unspecified species, with Stylobates aeneus partner"
+      },
+      "status": "lead accepted prose and image, metadata integration pending"
+    },
+    {
+      "id": "deepsea-08-02",
+      "characterId": "rue-whisker",
+      "identityName": "Rue Whisker",
+      "platform": "x",
+      "title": "Under your nose",
+      "body": "I found dinner by dragging my face through the bottom. He said he preferred a more intuitive approach. I offered him the part I'd found with my intuition. He ate it.",
+      "image": {
+        "url": "https://oceanexplorer.noaa.gov/wp-content/uploads/2025/08/dive11-armored-sea-robin.jpg",
+        "sceneMatch": "Branched facial whiskers touch sediment, central to the source's description of sensing food.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "inspectionArtifact": "output/playwright/deepsea-08-first-six.png"
+      },
+      "provenance": {
+        "sourceUrl": "https://oceanexplorer.noaa.gov/multimedia/armored-sea-robin/",
+        "creator": "NOAA Ocean Exploration, 2025 Beyond the Blue",
+        "license": "Public domain",
+        "licenseEvidenceUrl": "https://oceanexplorer.noaa.gov/okeanos-beyond-the-blue-media-resources/",
+        "sourceFacts": "Dive 11 of the Papahānaumokuākea ROV and Mapping expedition was one of our “fishier” dives thus far, with numerous fish sightings, including this armored sea robin, seen at a depth of approximately 493 meters (1,6,17 feet). Armored sea robins use modified fins to move across the seafloor and branched \"whiskers\" in front of their mouths to help them sense food.",
+        "taxon": "armored sea robin, species unspecified"
+      },
+      "status": "held by lead, not runtime"
+    },
+    {
+      "id": "deepsea-08-03",
+      "characterId": "bertram-glass",
+      "identityName": "Bertram Glass",
+      "platform": "linkedin",
+      "title": "A substantial objection",
+      "body": "I don't know whether the water has thoughts. A great deal of it passes through me, and I'm no better informed.\n\nThe shrimp says this is also his experience of my lectures.",
+      "image": {
+        "url": "https://oceanexplorer.noaa.gov/wp-content/uploads/2025/08/dive16-bolosoma.jpg",
+        "sceneMatch": "Open lattice of a large Bolosoma glass sponge supports the literal flow of water. Shrimp and conversation are fictional, not claimed visible.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "inspectionArtifact": "output/playwright/deepsea-08-first-six.png"
+      },
+      "provenance": {
+        "sourceUrl": "https://oceanexplorer.noaa.gov/multimedia/bolosoma/",
+        "creator": "NOAA Ocean Exploration, 2025 Beyond the Blue",
+        "license": "Public domain",
+        "licenseEvidenceUrl": "https://oceanexplorer.noaa.gov/okeanos-beyond-the-blue-media-resources/",
+        "sourceFacts": "During Dive 16 of the Papahānaumokuākea ROV and Mapping expedition, a number of large, yellow Bolosoma sponges were observed, some with heads measuring close to a meter in width.",
+        "taxon": "Bolosoma sp."
+      },
+      "status": "lead accepted prose and image, metadata integration pending"
+    },
+    {
+      "id": "deepsea-08-04",
+      "characterId": "otto-interlace",
+      "identityName": "Otto Interlace",
+      "platform": "rss",
+      "title": "Whose arm",
+      "body": "She asked me to lift an arm so she could open a few more polyps. I lifted one. Wrong one.\n\nI followed it back toward myself. Lost it behind a branch. Found what I thought was the same one and moved it. Something tightened on the other side of me.\n\nShe waited. I had arrived here knowing perfectly well how many arms I had. I was less sure now.\n\nWe worked through them slowly. When a branch moved, she told me. When an arm moved, I tried to admit it promptly. There was one point when we both insisted a small curly bit belonged to the other.\n\nI finally made room. Her polyps opened beside me, tiny and pale. I could feel the water coming through differently.\n\nShe asked if I was comfortable.\n\nVery, I said. Please don't ask me to point at anything.",
+      "image": {
+        "url": "https://oceanexplorer.noaa.gov/wp-content/uploads/2025/08/dive16-brittlestar.jpg",
+        "sceneMatch": "Brittle-star arms visibly weave behind and around many coral branches. The practical negotiation is fictional and uses that real tangle.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "inspectionArtifact": "output/playwright/deepsea-08-first-six.png"
+      },
+      "provenance": {
+        "sourceUrl": "https://oceanexplorer.noaa.gov/multimedia/brittle-star-2/",
+        "creator": "NOAA Ocean Exploration, 2025 Beyond the Blue",
+        "license": "Public domain",
+        "licenseEvidenceUrl": "https://oceanexplorer.noaa.gov/okeanos-beyond-the-blue-media-resources/",
+        "sourceFacts": "This brittle star with its arms intertwined in the branches of a Hemicorallium coral was observed during Dive 16 of the Papahānaumokuākea ROV and Mapping expedition at a depth of 1,892 meters (6,207 feet).",
+        "taxon": "brittle star, unspecified taxon, on Hemicorallium"
+      },
+      "status": "lead accepted prose and image, metadata integration pending"
+    },
+    {
+      "id": "deepsea-08-05",
+      "characterId": "dulcie-bottom",
+      "identityName": "Dulcie Bottom",
+      "platform": "instagram",
+      "title": "I was still talking",
+      "body": "The current picked me up halfway through my answer. I finished it considerably farther away, to nobody.\n\nIt was a good answer. That is the part I am struggling with.",
+      "image": {
+        "url": "https://oceanexplorer.noaa.gov/wp-content/uploads/2025/08/dive05-benthic-jelly.jpg",
+        "sceneMatch": "Benthic jelly rests on the bottom, thin tentacles spread. NOAA explicitly records a downcurrent sweeping this individual out of attempted collection; dialogue is fictional.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "inspectionArtifact": "output/playwright/deepsea-08-first-six.png"
+      },
+      "provenance": {
+        "sourceUrl": "https://oceanexplorer.noaa.gov/multimedia/benthic-jelly/",
+        "creator": "NOAA Ocean Exploration, 2025 Beyond the Blue",
+        "license": "Public domain",
+        "licenseEvidenceUrl": "https://oceanexplorer.noaa.gov/okeanos-beyond-the-blue-media-resources/",
+        "sourceFacts": "An undescribed benthic jelly seen during Dive 05 of the Papahānaumokuākea ROV and Mapping expedition at a depth of 1,215 meters (3,987 feet). This individual escaped collection when it was lost in a sudden downcurrent, but the team was able to collect a different specimen shortly thereafter.",
+        "taxon": "undescribed benthic jellyfish"
+      },
+      "status": "held by lead, not runtime"
+    },
+    {
+      "id": "deepsea-08-06",
+      "characterId": "quentin-back",
+      "identityName": "Quentin Back",
+      "platform": "facebook",
+      "title": "Credit where it's due",
+      "body": "Someone called me fearless. I let that stand for a moment, which was apparently too long.\n\nThe anemone on my back said we should discuss what I was like before her.",
+      "image": {
+        "url": "https://oceanexplorer.noaa.gov/wp-content/uploads/2021/11/dive06-hermit-crab-hires.jpg",
+        "sceneMatch": "Anemone is actually carried by the pictured Parapagurus crab. The source documents protective stinging cells; boasts and history are fictional.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "inspectionArtifact": "output/playwright/deepsea-08-crab-replacement.png"
+      },
+      "provenance": {
+        "sourceUrl": "https://oceanexplorer.noaa.gov/multimedia/okeanos-explorations-ex2107-gallery-media-dive06-hermit-crab/",
+        "creator": "NOAA Ocean Exploration, Windows to the Deep 2021",
+        "license": "Public domain",
+        "licenseEvidenceUrl": "https://oceanexplorer.noaa.gov/faqs/#permission",
+        "sourceFacts": "Parapagurus hermit crab carrying an anemone at3651 meters during Windows to the Deep2021 Dive06. NOAA describes mutualistic food waste and protective stinging cells.",
+        "taxon": "Parapagurus sp."
+      },
+      "status": "lead accepted prose and image, metadata integration pending"
+    },
+    {
+      "id": "deepsea-08-07",
+      "characterId": "hester-soft",
+      "identityName": "Hester Soft",
+      "platform": "x",
+      "title": "Less touching",
+      "body": "He poked me to find out what I was. There is now enough of me on him that he can continue his research elsewhere.",
+      "image": {
+        "url": "https://oceanexplorer.noaa.gov/wp-content/uploads/2025/08/dive13-slime-star.jpg",
+        "sceneMatch": "Spiny Hymenaster body supplies identity; mucus response is documented for the genus, not claimed visible or experimentally established for this pictured individual.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "inspectionArtifact": "output/playwright/deepsea-08-second-six.png"
+      },
+      "provenance": {
+        "sourceUrl": "https://oceanexplorer.noaa.gov/multimedia/hymenaster-slime-star/",
+        "creator": "NOAA Ocean Exploration, 2025 Beyond the Blue",
+        "license": "Public domain",
+        "licenseEvidenceUrl": "https://oceanexplorer.noaa.gov/okeanos-beyond-the-blue-media-resources/",
+        "sourceFacts": "This Hymenaster slime star, collected during Dive 13 of the Papahānaumokuākea ROV and Mapping expedition at a depth of 4,354 meters (14,285 feet), likely represents a previously undescribed species.",
+        "taxon": "Hymenaster sp."
+      },
+      "status": "held by lead, not runtime"
+    },
+    {
+      "id": "deepsea-08-08",
+      "characterId": "gladys-current",
+      "identityName": "Gladys Current",
+      "platform": "linkedin",
+      "title": "A clarification",
+      "body": "I said I wouldn't bend. The current changed. We can all see what happened.\n\nI would appreciate it if we could move on to the part where I stayed attached.",
+      "image": {
+        "url": "https://oceanexplorer.noaa.gov/wp-content/uploads/2026/02/large-solitary-hydroid-1024x791.jpg",
+        "sceneMatch": "Giant solitary hydroid visibly bows and streams tentacles sideways while its base remains attached. Both parts of the self-serving clarification are visible.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "inspectionArtifact": "output/playwright/deepsea-08-second-six.png"
+      },
+      "provenance": {
+        "sourceUrl": "https://oceanexplorer.noaa.gov/multimedia/large-solitary-hydroid-branchiocerianthus-sp/",
+        "creator": "NOAA Ocean Exploration, 2025 Beyond the Blue",
+        "license": "Public domain",
+        "licenseEvidenceUrl": "https://oceanexplorer.noaa.gov/okeanos-beyond-the-blue-media-resources/",
+        "sourceFacts": "Among the notable biological sightings from the Beyond the Blue: Papahānaumokuākea ROV and Mapping expedition was a large solitary hydroid ( Branchiocerianthus sp.) seen on an unnamed seamount. With a diameter well over 1 meter (3.3 feet), it was the largest hydroid ever seen by the shipboard science team.",
+        "taxon": "Branchiocerianthus sp."
+      },
+      "status": "lead accepted prose and image, metadata integration pending"
+    },
+    {
+      "id": "deepsea-08-09",
+      "characterId": "celia-clear",
+      "identityName": "Celia Clear",
+      "platform": "instagram",
+      "title": "Which opening",
+      "body": "A shrimp asked whether he could come in. I was so pleased to be asked that I said yes before finding out which part of me he meant.\n\nWe are both being very polite about it.",
+      "image": {
+        "url": "https://oceanexplorer.noaa.gov/wp-content/uploads/2026/02/new-sponge.jpg",
+        "sceneMatch": "Glass sponge has many conspicuous openings. Fictional guest location is deliberately unspecified; no actual shrimp is asserted.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "inspectionArtifact": "output/playwright/deepsea-08-second-six.png"
+      },
+      "provenance": {
+        "sourceUrl": "https://oceanexplorer.noaa.gov/multimedia/new-glass-sponge-family-corbitellinae/",
+        "creator": "NOAA Ocean Exploration, 2025 Beyond the Blue",
+        "license": "Public domain",
+        "licenseEvidenceUrl": "https://oceanexplorer.noaa.gov/okeanos-beyond-the-blue-media-resources/",
+        "sourceFacts": "Possibly new to science, this glass sponge (family Corbitellinae) was collected from a volcanic dome in the extreme western edge of Papahānaumokuākea during the Beyond the Blue: Papahānaumokuākea ROV and Mapping expedition.",
+        "taxon": "glass sponge, source labels Corbitellinae"
+      },
+      "status": "lead accepted prose and image, metadata integration pending"
+    },
+    {
+      "id": "deepsea-08-10",
+      "characterId": "ned-fine",
+      "identityName": "Ned Fine",
+      "platform": "facebook",
+      "title": "A delicate question",
+      "body": "She asked if I ever got lonely. I said yes.\n\nShe moved a little closer. I said not that close.\n\nWe are finding this out together.",
+      "image": {
+        "url": "https://oceanexplorer.noaa.gov/wp-content/uploads/2026/02/irregular-urchin.jpg",
+        "sceneMatch": "Long fine spines make distance and careful approach literal. Companion and dialogue are fictional, absent from photograph.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "inspectionArtifact": "output/playwright/deepsea-08-second-six.png"
+      },
+      "provenance": {
+        "sourceUrl": "https://oceanexplorer.noaa.gov/multimedia/rare-sea-urchin/",
+        "creator": "NOAA Ocean Exploration, 2025 Beyond the Blue",
+        "license": "Public domain",
+        "licenseEvidenceUrl": "https://oceanexplorer.noaa.gov/okeanos-beyond-the-blue-media-resources/",
+        "sourceFacts": "Marine life seen while exploring the Murray Fracture Zone during the Beyond the Blue: Papahānaumokuākea ROV and Mapping expedition was noted as being low abundance, but high diversity. Among the variety of animals encountered was this rare sea urchin (order Holasteroida ).",
+        "taxon": "Holasteroida sea urchin, unspecified species"
+      },
+      "status": "held by lead, not runtime"
+    },
+    {
+      "id": "deepsea-08-11",
+      "characterId": "pip-sway",
+      "identityName": "Pip Sway",
+      "platform": "rss",
+      "title": "My following",
+      "body": "I moved, and everybody moved with me.\n\nIt was the first time I had felt properly influential. There were dozens of us on the slope, all leaning the way I leaned. Even the tall one farther up, who had never shown much interest in me.\n\nI waited for a good moment and tried leaning the other way.\n\nNobody followed. I couldn't keep doing it either.\n\nThe current turned a little later, and everybody moved at once. I went with them. It felt wonderful. I was furious.",
+      "image": {
+        "url": "https://oceanexplorer.noaa.gov/wp-content/uploads/2025/08/dive03-stalked-crinoid.jpg",
+        "sceneMatch": "Many stalked crinoids lean together on the rocky slope. Coordinated pose supports a fictional mistaken leadership claim; no nervous-system claim or actual dance ritual.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "inspectionArtifact": "output/playwright/deepsea-08-second-six.png"
+      },
+      "provenance": {
+        "sourceUrl": "https://oceanexplorer.noaa.gov/multimedia/stalked-crinoids/",
+        "creator": "NOAA Ocean Exploration, 2025 Beyond the Blue",
+        "license": "Public domain",
+        "licenseEvidenceUrl": "https://oceanexplorer.noaa.gov/okeanos-beyond-the-blue-media-resources/",
+        "sourceFacts": "For much of Dive 03 of the Papahānaumokuākea ROV and Mapping expedition, stalked crinoids were the dominant fauna, observed in high densities on the seafloor. As this species of crinoid is currently undescribed, an individual was collected for further analysis.",
+        "taxon": "undescribed stalked crinoid"
+      },
+      "status": "lead accepted prose and image, metadata integration pending"
+    },
+    {
+      "id": "deepsea-08-12",
+      "characterId": "sol-filigree",
+      "identityName": "Sol Filigree",
+      "platform": "linkedin",
+      "title": "The short version",
+      "body": "I tried to give a concise account of myself. Started at the base, followed the main branch, got interested in a smaller branch, and have been discussing that one ever since.\n\nI think we're nearly at the part that explains the rest of me.",
+      "image": {
+        "url": "https://oceanexplorer.noaa.gov/wp-content/uploads/2026/02/new-chrysogorgid.jpg",
+        "sceneMatch": "Unusual coral's long main axis carries elaborate side branches. The structure is the literal subject of the rambling account.",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "inspectionArtifact": "output/playwright/deepsea-08-second-six.png"
+      },
+      "provenance": {
+        "sourceUrl": "https://oceanexplorer.noaa.gov/multimedia/unusual-coral-family-chrysogorgiidae/",
+        "creator": "NOAA Ocean Exploration, 2025 Beyond the Blue",
+        "license": "Public domain",
+        "licenseEvidenceUrl": "https://oceanexplorer.noaa.gov/okeanos-beyond-the-blue-media-resources/",
+        "sourceFacts": "Particularly large at approximately 80 centimeters (31 inches) long, with a mix of Chrysogorgia and Metallogorgia traits, this unusual coral (family Chrysogorgiidae ) was seen on an unnamed seamount during the Beyond the Blue: Papahānaumokuākea ROV and Mapping expedition and may be new to science.",
+        "taxon": "Chrysogorgiidae coral, undescribed genus/species"
+      },
+      "status": "held by lead, not runtime"
+    }
+  ]
+}

@@ -1,0 +1,448 @@
+[
+  {
+    "characterId": "maud-overhead",
+    "original": {
+      "id": "land-recovery-28-maud-avatar",
+      "sha1": "b8055d51e56d411f792d9ae15bbfd3ce07cfd694",
+      "subject": "Corvus corax",
+      "identityNameBase": "Maud Overhead",
+      "category": "wildlife",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/a567575a-b8a1-476f-a265-ee192d76202f/original.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/a567575a-b8a1-476f-a265-ee192d76202f",
+      "creator": "NPS / Jacob W. Frank",
+      "license": "Public domain",
+      "licenseUrl": "https://npgallery.nps.gov/AssetDetail/a567575a-b8a1-476f-a265-ee192d76202f",
+      "width": 7429,
+      "height": 4953,
+      "alt": "A common raven with an open heavy bill and shaggy throat feathers.",
+      "detail": "An adult-looking common raven portrait."
+    },
+    "assetId": "a567575a-b8a1-476f-a265-ee192d76202f",
+    "focal": {
+      "x": 0.6595773320769955,
+      "y": 0.4643650312941652,
+      "zoom": 1.23825
+    },
+    "publishedVariants": [
+      {
+        "url": "https://npgallery.nps.gov/GetAsset/a567575a-b8a1-476f-a265-ee192d76202f/proxymdres.jpg?",
+        "label": "575.6 KB, 1857x1238"
+      },
+      {
+        "url": "https://npgallery.nps.gov/GetAsset/a567575a-b8a1-476f-a265-ee192d76202f/proxylores.jpg?",
+        "label": "194.2 KB, 928x618"
+      }
+    ],
+    "evidenceFile": "/tmp/freed-bird25/27.html",
+    "displayDownload": {
+      "url": "https://npgallery.nps.gov/GetAsset/a567575a-b8a1-476f-a265-ee192d76202f/proxymdres.jpg?",
+      "publishedLabel": "575.6 KB, 1857x1238",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "bytes": 589404,
+      "sha1": "cec043d2c844167cbdb7210236bb69d496d6a8aa",
+      "sha256": "8e307ee7b5ac321f0ece0849fe07eaf62c8f0a144de27e358290b02c07879643",
+      "seconds": 1.783,
+      "localPath": "/tmp/freed-avatar-delivery-34/maud-overhead.jpg",
+      "width": 1857,
+      "height": 1238
+    }
+  },
+  {
+    "characterId": "edmund-oldring",
+    "original": {
+      "id": "botanical27-f40fb656-8d8a-4e91-a8d3-66c4d7fa2dd9",
+      "subject": "giant sequoia",
+      "category": "wildlife",
+      "identityNameBase": "Edmund Oldring",
+      "detail": "Adult portrait only",
+      "alt": "Looking through the charred trunks of numerous medium sized sequoias, a very large sequoia remains alive with its foliage still green, and limited charring on its bark. ",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/f40fb656-8d8a-4e91-a8d3-66c4d7fa2dd9/original.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/f40fb656-8d8a-4e91-a8d3-66c4d7fa2dd9",
+      "creator": "Daniel Jeffcoach, National Park Service",
+      "license": "Public domain",
+      "width": 3315,
+      "height": 4973,
+      "sha1": "b30da34182a7ce8951b10db8fc3a5956361091d2",
+      "licenseUrl": "https://npgallery.nps.gov/AssetDetail/f40fb656-8d8a-4e91-a8d3-66c4d7fa2dd9"
+    },
+    "assetId": "f40fb656-8d8a-4e91-a8d3-66c4d7fa2dd9",
+    "focal": {
+      "x": 0.525,
+      "y": 0.62,
+      "zoom": 4
+    },
+    "publishedVariants": [
+      {
+        "url": "https://npgallery.nps.gov/GetAsset/f40fb656-8d8a-4e91-a8d3-66c4d7fa2dd9/proxymdres.jpg?",
+        "label": "431.2 KB, 666x1000"
+      },
+      {
+        "url": "https://npgallery.nps.gov/GetAsset/f40fb656-8d8a-4e91-a8d3-66c4d7fa2dd9/proxylores.jpg?",
+        "label": "162.3 KB, 333x500"
+      }
+    ],
+    "evidenceFile": "/tmp/freed-avatar-delivery-34/edmund-oldring.html",
+    "displayDownload": {
+      "url": "https://npgallery.nps.gov/GetAsset/f40fb656-8d8a-4e91-a8d3-66c4d7fa2dd9/proxyhires.jpg?",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "bytes": 1439591,
+      "sha1": "7f295dfe39649fc07595fa907fb8e19a01e4c397",
+      "sha256": "86bb6292749f0ceb1840704112d2d26c155cce52454e4b8232ddc86fb13619ad",
+      "seconds": 3.629,
+      "localPath": "/tmp/freed-avatar-delivery-34/edmund-oldring-hires.jpg",
+      "publishedLabel": "1.4 MB, 1333x2000",
+      "width": 1333,
+      "height": 2000
+    },
+    "mediumDownload": {
+      "url": "https://npgallery.nps.gov/GetAsset/f40fb656-8d8a-4e91-a8d3-66c4d7fa2dd9/proxymdres.jpg?",
+      "publishedLabel": "431.2 KB, 666x1000",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "bytes": 441525,
+      "sha1": "d051f2272037b32b57cb89a8d4b70ddf1d17f1f9",
+      "sha256": "e050930feb0920332a06f83d76c753463fc930b37119caa7a16da73784c875f4",
+      "seconds": 1.345,
+      "localPath": "/tmp/freed-avatar-delivery-34/edmund-oldring.jpg"
+    }
+  },
+  {
+    "characterId": "agnes-splinter",
+    "original": {
+      "id": "bird-25-01",
+      "sha1": "23085b9af00af92ff22de5f2e9a5d531a631e70c",
+      "subject": "Dryocopus pileatus",
+      "identityNameBase": "Agnes Splinter",
+      "category": "wildlife",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/9f25eeeb-6505-4a2f-89c3-2c2c484f176f/original.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/9f25eeeb-6505-4a2f-89c3-2c2c484f176f",
+      "creator": "NPS/Christopher Vuille-Kowing",
+      "license": "Public domain",
+      "licenseUrl": "https://npgallery.nps.gov/AssetDetail/9f25eeeb-6505-4a2f-89c3-2c2c484f176f",
+      "width": 1647,
+      "height": 2677,
+      "alt": "A female pileated woodpecker clings beside a large exposed patch and cavity in a trunk.",
+      "detail": "A female pileated woodpecker clings beside a large exposed patch and cavity in a trunk."
+    },
+    "assetId": "9f25eeeb-6505-4a2f-89c3-2c2c484f176f",
+    "focal": {
+      "x": 0.3673345476624165,
+      "y": 0.28950317519611507,
+      "zoom": 1.4321739130434783
+    },
+    "publishedVariants": [
+      {
+        "url": "https://npgallery.nps.gov/GetAsset/9f25eeeb-6505-4a2f-89c3-2c2c484f176f/proxymdres.jpg?",
+        "label": "289.7 KB, 615x1000"
+      },
+      {
+        "url": "https://npgallery.nps.gov/GetAsset/9f25eeeb-6505-4a2f-89c3-2c2c484f176f/proxylores.jpg?",
+        "label": "141.4 KB, 307x500"
+      }
+    ],
+    "evidenceFile": "/tmp/freed-bird25/15.html",
+    "displayDownload": {
+      "url": "https://npgallery.nps.gov/GetAsset/9f25eeeb-6505-4a2f-89c3-2c2c484f176f/proxymdres.jpg?",
+      "publishedLabel": "289.7 KB, 615x1000",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "bytes": 296625,
+      "sha1": "0f1ac788c494027725127cb0f68c506dd16d919b",
+      "sha256": "111ac74608cee51415feee7b945aad23cbffd143f771168168c889ccdc1eae65",
+      "seconds": 0.96,
+      "localPath": "/tmp/freed-avatar-delivery-34/agnes-splinter.jpg",
+      "width": 615,
+      "height": 1000
+    }
+  },
+  {
+    "characterId": "otis-gulp",
+    "original": {
+      "id": "bird-25-avatar-otis-gulp",
+      "sha1": "9147e5e5ddf4d688143959a60c44a97f8982ad56",
+      "subject": "Pelecanus erythrorhynchos",
+      "identityNameBase": "Otis Gulp",
+      "category": "wildlife",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/cfb3b7d5-1b5e-4fb5-8bec-24b3852ded83/original.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/cfb3b7d5-1b5e-4fb5-8bec-24b3852ded83",
+      "creator": "NPS/Diane Renkin",
+      "license": "Public domain",
+      "licenseUrl": "https://npgallery.nps.gov/AssetDetail/cfb3b7d5-1b5e-4fb5-8bec-24b3852ded83",
+      "width": 5184,
+      "height": 3456,
+      "alt": "An American white pelican holds its open bill over the water.",
+      "detail": "Reviewed white pelican portrait with open bill."
+    },
+    "assetId": "cfb3b7d5-1b5e-4fb5-8bec-24b3852ded83",
+    "focal": {
+      "x": 0.6944444444444444,
+      "y": 0.4774305555555556,
+      "zoom": 1.728
+    },
+    "publishedVariants": [
+      {
+        "url": "https://npgallery.nps.gov/GetAsset/cfb3b7d5-1b5e-4fb5-8bec-24b3852ded83/proxymdres.jpg?",
+        "label": "326.8 KB, 1296x864"
+      },
+      {
+        "url": "https://npgallery.nps.gov/GetAsset/cfb3b7d5-1b5e-4fb5-8bec-24b3852ded83/proxylores.jpg?",
+        "label": "129.4 KB, 648x432"
+      }
+    ],
+    "evidenceFile": "/tmp/freed-bird25/7.html",
+    "displayDownload": {
+      "url": "https://npgallery.nps.gov/GetAsset/cfb3b7d5-1b5e-4fb5-8bec-24b3852ded83/proxymdres.jpg?",
+      "publishedLabel": "326.8 KB, 1296x864",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "bytes": 334662,
+      "sha1": "d7427660e2bae35e5afca4939195c4389fe8d031",
+      "sha256": "b17e4fbe25a5b627287ca9ab0c4897d4b17f2ce46c98a38bd906d7a4ebc552c2",
+      "seconds": 1.152,
+      "localPath": "/tmp/freed-avatar-delivery-34/otis-gulp.jpg",
+      "width": 1296,
+      "height": 864
+    }
+  },
+  {
+    "characterId": "hester-sweetlip",
+    "original": {
+      "id": "nps-botanical-24-52f2199f",
+      "subject": "pale pitcher plant",
+      "category": "wildlife",
+      "identityNameBase": "Hester Sweetlip",
+      "detail": "Pitcher Plant Flowers",
+      "alt": "Yellow-green flowers covered in dew hanging upside down from thin green stems on a spring morning.",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/52f2199f-cd0c-4e07-aa14-60ef140794fc/original.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/52f2199f-cd0c-4e07-aa14-60ef140794fc",
+      "creator": "NPS Photo / Scott Sharaga",
+      "license": "Public domain",
+      "width": 4000,
+      "height": 2665,
+      "sha1": "192c83030ff8893e833c9a3f3b6d593a37145611"
+    },
+    "assetId": "52f2199f-cd0c-4e07-aa14-60ef140794fc",
+    "focal": {
+      "x": 0.575,
+      "y": 0.375,
+      "zoom": 2.8
+    },
+    "publishedVariants": [
+      {
+        "url": "https://npgallery.nps.gov/GetAsset/52f2199f-cd0c-4e07-aa14-60ef140794fc/proxymdres.jpg?",
+        "label": "138.6 KB, 1000x666"
+      },
+      {
+        "url": "https://npgallery.nps.gov/GetAsset/52f2199f-cd0c-4e07-aa14-60ef140794fc/proxylores.jpg?",
+        "label": "55.1 KB, 500x333"
+      }
+    ],
+    "evidenceFile": "/tmp/freed-avatar-delivery-34/hester-sweetlip.html",
+    "displayDownload": {
+      "url": "https://npgallery.nps.gov/GetAsset/52f2199f-cd0c-4e07-aa14-60ef140794fc/proxymdres.jpg?",
+      "publishedLabel": "138.6 KB, 1000x666",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "bytes": 141910,
+      "sha1": "5977c7d0b73b98b2c4e52e218e5a0de89d88ffa8",
+      "sha256": "0930477df67dd15ceb388be406664c4de1802e0ec3557354c34a65e9cd0d7b7b",
+      "seconds": 1.531,
+      "localPath": "/tmp/freed-avatar-delivery-34/hester-sweetlip.jpg",
+      "width": 1000,
+      "height": 666
+    }
+  },
+  {
+    "characterId": "ambrose-armful",
+    "original": {
+      "id": "nps-botanical-24-0acb7148",
+      "subject": "saguaro cactus",
+      "category": "wildlife",
+      "identityNameBase": "Ambrose Armful",
+      "detail": "IMG_5538.JPG",
+      "alt": "Close-up of blooms on short saguaro arm",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/0acb7148-a0d1-4dc1-894b-c883fbf42429/original.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/0acb7148-a0d1-4dc1-894b-c883fbf42429",
+      "creator": "National Park Service/Tani Hubbard",
+      "license": "Public domain",
+      "width": 1880,
+      "height": 2174,
+      "sha1": "c805054fb9ba2db5c8896de5aa5aab15b152573f"
+    },
+    "assetId": "0acb7148-a0d1-4dc1-894b-c883fbf42429",
+    "focal": {
+      "x": 0.58,
+      "y": 0.49,
+      "zoom": 1.8
+    },
+    "publishedVariants": [
+      {
+        "url": "https://npgallery.nps.gov/GetAsset/0acb7148-a0d1-4dc1-894b-c883fbf42429/proxymdres.jpg?",
+        "label": "294.6 KB, 864x1000"
+      },
+      {
+        "url": "https://npgallery.nps.gov/GetAsset/0acb7148-a0d1-4dc1-894b-c883fbf42429/proxylores.jpg?",
+        "label": "109.0 KB, 432x500"
+      }
+    ],
+    "evidenceFile": "/tmp/freed-avatar-delivery-34/ambrose-armful.html",
+    "displayDownload": {
+      "url": "https://npgallery.nps.gov/GetAsset/0acb7148-a0d1-4dc1-894b-c883fbf42429/proxymdres.jpg?",
+      "publishedLabel": "294.6 KB, 864x1000",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "bytes": 301669,
+      "sha1": "2956bced80e3229e2edfcfff936bf2680716a99d",
+      "sha256": "53abb18647be4116b1bb0c7866904fec740c14d28b6a777a6e126aebc8ef895f",
+      "seconds": 0.889,
+      "localPath": "/tmp/freed-avatar-delivery-34/ambrose-armful.jpg",
+      "width": 864,
+      "height": 999
+    }
+  },
+  {
+    "characterId": "oswin-broadback",
+    "original": {
+      "id": "land-20-avatar-oswin-broadback",
+      "sha1": "54adcdb3705671cac9a8e7331a45caa4ce3ddfcb",
+      "subject": "Bison bison",
+      "identityNameBase": "Oswin Broadback",
+      "category": "wildlife",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/24cf3ee7-cc6e-4f00-81c0-5e266b063f2d/original.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/24cf3ee7-cc6e-4f00-81c0-5e266b063f2d",
+      "creator": "NPS/Neal Herbert",
+      "license": "Public domain",
+      "licenseUrl": "https://npgallery.nps.gov/AssetDetail/24cf3ee7-cc6e-4f00-81c0-5e266b063f2d",
+      "width": 5516,
+      "height": 3677,
+      "alt": "Portrait of Oswin Broadback; Bison bison",
+      "detail": "Reviewed portrait of Bison bison"
+    },
+    "assetId": "24cf3ee7-cc6e-4f00-81c0-5e266b063f2d",
+    "focal": {
+      "x": 0.3353879622915156,
+      "y": 0.5303236333967909,
+      "zoom": 1.9352631578947368
+    },
+    "publishedVariants": [
+      {
+        "url": "https://npgallery.nps.gov/GetAsset/24cf3ee7-cc6e-4f00-81c0-5e266b063f2d/proxymdres.jpg?",
+        "label": "472.2 KB, 1379x919"
+      },
+      {
+        "url": "https://npgallery.nps.gov/GetAsset/24cf3ee7-cc6e-4f00-81c0-5e266b063f2d/proxylores.jpg?",
+        "label": "164.5 KB, 689x459"
+      }
+    ],
+    "evidenceFile": "/tmp/freed-land20/4.html",
+    "displayDownload": {
+      "url": "https://npgallery.nps.gov/GetAsset/24cf3ee7-cc6e-4f00-81c0-5e266b063f2d/proxymdres.jpg?",
+      "publishedLabel": "472.2 KB, 1379x919",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "bytes": 483556,
+      "sha1": "85bd8f53892d62285f731671caa28a09c9549d89",
+      "sha256": "9909787efcabfd7d2451a0fd6e34b96e6c9d3407afa5885a0e53752f68cfcaa8",
+      "seconds": 1.041,
+      "localPath": "/tmp/freed-avatar-delivery-34/oswin-broadback.jpg",
+      "width": 1379,
+      "height": 919
+    }
+  },
+  {
+    "characterId": "hugo-rim",
+    "original": {
+      "id": "aquatic-26-avatar-hugo-rim",
+      "sha1": "138b1f4310eb86ea5dad30057d31a2538eb2facd",
+      "subject": "Limulus polyphemus",
+      "identityNameBase": "Hugo Rim",
+      "category": "undersea",
+      "imageUrl": "https://www.nps.gov/npgallery/GetAsset/7ce54b8e-c3b3-4cfa-98f1-cdd7b4785ebd",
+      "sourceUrl": "https://www.nps.gov/media/photo/gallery-item.htm?gid=01AE3702-FCEA-4F45-B34F-57F8B1233EA2&id=7ce54b8e-c3b3-4cfa-98f1-cdd7b4785ebd",
+      "creator": "NPS Photo/D Yun",
+      "license": "Public domain",
+      "licenseUrl": "https://www.nps.gov/media/photo/gallery-item.htm?gid=01AE3702-FCEA-4F45-B34F-57F8B1233EA2&id=7ce54b8e-c3b3-4cfa-98f1-cdd7b4785ebd",
+      "width": 6000,
+      "height": 4000,
+      "alt": "A single olive horseshoe crab stands in a thin wash of water and foam on a sandy beach, with a few barnacles near its rear.",
+      "detail": "A single olive horseshoe crab stands in a thin wash of water and foam on a sandy beach, with a few barnacles near its rear."
+    },
+    "assetId": "7ce54b8e-c3b3-4cfa-98f1-cdd7b4785ebd",
+    "focal": {
+      "x": 0.35,
+      "y": 0.56,
+      "zoom": 1.6
+    },
+    "publishedVariants": [
+      {
+        "url": "https://npgallery.nps.gov/GetAsset/7ce54b8e-c3b3-4cfa-98f1-cdd7b4785ebd/proxymdres.jpg?",
+        "label": "515.1 KB, 1500x1000"
+      },
+      {
+        "url": "https://npgallery.nps.gov/GetAsset/7ce54b8e-c3b3-4cfa-98f1-cdd7b4785ebd/proxylores.jpg?",
+        "label": "174.2 KB, 750x500"
+      }
+    ],
+    "evidenceFile": "/tmp/freed-avatar-delivery-34/hugo-rim.html",
+    "displayDownload": {
+      "url": "https://npgallery.nps.gov/GetAsset/7ce54b8e-c3b3-4cfa-98f1-cdd7b4785ebd/proxymdres.jpg?",
+      "publishedLabel": "515.1 KB, 1500x1000",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "bytes": 527454,
+      "sha1": "e2f0de0030482445fe9444b24030d643bf9db1d4",
+      "sha256": "59598fcfc0c8e8dfe47ab38ff479777f701fedb8789d8f9908c9bfbd5b4548af",
+      "seconds": 1.635,
+      "localPath": "/tmp/freed-avatar-delivery-34/hugo-rim.jpg",
+      "width": 1500,
+      "height": 1000
+    }
+  },
+  {
+    "characterId": "cedric-crown",
+    "original": {
+      "id": "land-20-avatar-cedric-crown",
+      "sha1": "1a61554e085786fbe8c13855106d68fede60dcd3",
+      "subject": "Cervus canadensis",
+      "identityNameBase": "Cedric Crown",
+      "category": "wildlife",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/3e3d8f05-cb47-4544-b1ec-2b9bb3827c0f/original.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/3e3d8f05-cb47-4544-b1ec-2b9bb3827c0f",
+      "creator": "NPS",
+      "license": "Public domain",
+      "licenseUrl": "https://npgallery.nps.gov/AssetDetail/3e3d8f05-cb47-4544-b1ec-2b9bb3827c0f",
+      "width": 1024,
+      "height": 682,
+      "alt": "Portrait of Cedric Crown; Cervus canadensis",
+      "detail": "Reviewed portrait of Cervus canadensis"
+    },
+    "assetId": "3e3d8f05-cb47-4544-b1ec-2b9bb3827c0f",
+    "focal": {
+      "x": 0.4931640625,
+      "y": 0.47653958944281527,
+      "zoom": 1.0492307692307692
+    },
+    "publishedVariants": [
+      {
+        "url": "https://npgallery.nps.gov/GetAsset/3e3d8f05-cb47-4544-b1ec-2b9bb3827c0f/proxylores.jpg?",
+        "label": "48.6 KB, 500x333"
+      }
+    ],
+    "evidenceFile": "/tmp/freed-land20/20.html",
+    "displayDownload": {
+      "url": "https://npgallery.nps.gov/GetAsset/3e3d8f05-cb47-4544-b1ec-2b9bb3827c0f/proxylores.jpg?",
+      "publishedLabel": "48.6 KB, 500x333",
+      "status": 200,
+      "contentType": "image/jpeg",
+      "bytes": 49732,
+      "sha1": "5c381ed88abc5d15cf156f0fdee315b5518f2beb",
+      "sha256": "aa83476db87a0832da9a60ca897715619753826300e642b4a4412bab4f646f05",
+      "seconds": 0.755,
+      "localPath": "/tmp/freed-avatar-delivery-34/cedric-crown.jpg",
+      "width": 500,
+      "height": 333
+    }
+  }
+]

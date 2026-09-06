@@ -1,0 +1,781 @@
+{
+  "batch": "LAND-REGULAR-36",
+  "summary": {
+    "requestedSlots": 6,
+    "candidates": 4,
+    "holds": 2,
+    "exactOriginalsIndividuallyReviewed": 17,
+    "runtimeChanges": false
+  },
+  "entries": [
+    {
+      "sourceTitle": "Raccoon Resting in Tree",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/ba2374c4-936a-440f-bb0f-39afead80f86",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/ba2374c4-936a-440f-bb0f-39afead80f86/original.jpg",
+      "originalUrl": "https://npgallery.nps.gov/GetAsset/ba2374c4-936a-440f-bb0f-39afead80f86/original.jpg",
+      "creator": "NPS/Christopher Vuille-Kowing",
+      "license": "Public domain",
+      "licenseUrl": "https://npgallery.nps.gov/AssetDetail/ba2374c4-936a-440f-bb0f-39afead80f86",
+      "rightsEvidence": "Exact NPS asset record: Constraint Public domain; GrantingRights Full. Detail page independently opened and cached.",
+      "originalWidth": 3494,
+      "originalHeight": 1837,
+      "originalSha1": "85e156d67ba7cade79aff6c1bbe07426753f768c",
+      "originalSha256": "5462d075b38bdf248918873f39e03504805d7fe1f3a16d6b064e0895eedafe63",
+      "localReviewPath": "/tmp/freed-land36/1.jpg",
+      "sourceCachePath": "/tmp/freed-land36/1.html",
+      "originalSourceRecord": {
+        "AltText": "A close-up shot shows a fluffy, light grey and brown raccoon resting on a tree branch, looking towards the right with its head slightly tilted. Its distinctive black mask around the eyes stands out against its lighter fur. The background is a soft blur of green leaves and brown tree trunks, suggesting it's high up in a forest setting.",
+        "AssetBaseType": "File",
+        "AssetID": "ba2374c4-936a-440f-bb0f-39afead80f86",
+        "AssetType": "Standard File",
+        "Brandings": [
+          {
+            "Name": "MAIN"
+          }
+        ],
+        "ConstraintsInformation": {
+          "Constraint": "Public domain",
+          "GrantingRights": "Full"
+        },
+        "CustomTextFields": [
+          {
+            "Name": "XmpMetadataDate",
+            "Value": "2025-07-18T16:18:01-04:00"
+          }
+        ],
+        "Description": "The Raccoon (Procyon lotor) is a native mammal found year-round, at times observed in tree branches during the summer months at Great Falls Park, Virginia. While predominantly nocturnal and most active from dusk to dawn, raccoons are occasionally seen during the day. These adaptable omnivores thrive throughout the park's deciduous hardwood forests and river floodplain habitats.",
+        "ImageCreateDate": {
+          "Date": "07/18/2025"
+        },
+        "ImageCreateDateTime": "07/18/2025 02:41:37 PM",
+        "Keywords": [
+          "Raccoon",
+          "Mammals",
+          "Great Falls Park",
+          "George Washington Memorial Parkway",
+          "Procyon lotor",
+          "Raccoons"
+        ],
+        "NPSUnits": [
+          {
+            "Name": "Great Falls Park",
+            "Type": "Park",
+            "Code": "GRFA"
+          }
+        ],
+        "PhotoCredit": "NPS/Christopher Vuille-Kowing",
+        "PrimaryType": "image",
+        "Rating": 5,
+        "RelatedCollections": [
+          "NPS.gov Collection"
+        ],
+        "ResourceFormat": "jpg",
+        "ResourceType": "Image",
+        "Submitter": "cvuille-kowing",
+        "SubType": "jpeg",
+        "Title": "Raccoon Resting in Tree",
+        "reviewIndex": 1,
+        "query": "raccoon",
+        "sourceUrl": "https://npgallery.nps.gov/AssetDetail/ba2374c4-936a-440f-bb0f-39afead80f86",
+        "imageUrl": "https://npgallery.nps.gov/GetAsset/ba2374c4-936a-440f-bb0f-39afead80f86/original.jpg",
+        "localPath": "/tmp/freed-land36/1.jpg",
+        "sourceCachePath": "/tmp/freed-land36/1.html",
+        "width": 3494,
+        "height": 1837,
+        "sha1": "85e156d67ba7cade79aff6c1bbe07426753f768c",
+        "reviewSha256": "5462d075b38bdf248918873f39e03504805d7fe1f3a16d6b064e0895eedafe63"
+      },
+      "originalBytes": 3933980,
+      "id": "land-regular-36-01",
+      "identityNameBase": "Mira Mask",
+      "characterId": "mira-mask",
+      "fullSpecies": "Procyon lotor",
+      "platform": "facebook",
+      "contentType": "post",
+      "title": "What my paws were doing",
+      "status": "candidate",
+      "independentLeadReview": "pending",
+      "prose": "Woke with claws pressing into my palm. Pulled away and the pressure followed. My other paw had hold of this one.\n\nI opened the first paw. The second tightened. Opened that one and nearly rolled off the branch trying to see what the first was doing.\n\nPut my cheek back on the bark. Set one paw down, then the other. Waited until both had stopped gripping.\n\nThey crept together again as I got sleepy. I let them, with the claws out of the way.",
+      "altText": "A raccoon lies sideways in a tree fork, cheek against bark and its forepaws gathered together in front of its face.",
+      "fictionBoundary": "Self-contact and branch support are visible. Sleep, pressure, sequential unclenching, a slight roll and gentler contact are invented. The paws are not identified as a caught hind foot. Source sex and precise age are unrecorded; female narrator is established fiction. No diagnostic confusion, injury or universal raccoon behavior claimed.",
+      "visualReview": "Exact original individually opened before prose; no crop, upscale or generated image.",
+      "sexAgeEvidence": "Self-contact and branch support are visible. Sleep, pressure, sequential unclenching, a slight roll and gentler contact are invented. The paws are not identified as a caught hind foot. Source sex and precise age are unrecorded; female narrator is established fiction. No diagnostic confusion, injury or universal raccoon behavior claimed."
+    },
+    {
+      "sourceTitle": "Bulls Fighting",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/b82dc1fa-8348-47e9-9807-b2fe3d406c10",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/b82dc1fa-8348-47e9-9807-b2fe3d406c10/original.jpg",
+      "originalUrl": "https://npgallery.nps.gov/GetAsset/b82dc1fa-8348-47e9-9807-b2fe3d406c10/original.jpg",
+      "creator": "NPS Photo",
+      "license": "Public domain",
+      "licenseUrl": "https://npgallery.nps.gov/AssetDetail/b82dc1fa-8348-47e9-9807-b2fe3d406c10",
+      "rightsEvidence": "Exact NPS asset record: Constraint Public domain; GrantingRights Full. Detail page independently opened and cached.",
+      "originalWidth": 2592,
+      "originalHeight": 1944,
+      "originalSha1": "5ab8b5fdd92d8cca93b3d561da37407641b854cb",
+      "originalSha256": "8fc1d53d59690c407833a5ec53e7548c7c6263c1b4d7929a1badf7d4e576cd41",
+      "localReviewPath": "/tmp/freed-land36/7.jpg",
+      "sourceCachePath": "/tmp/freed-land36/7.html",
+      "originalSourceRecord": {
+        "AltText": "two male bison clash horns",
+        "AssetBaseType": "File",
+        "AssetID": "b82dc1fa-8348-47e9-9807-b2fe3d406c10",
+        "AssetType": "Standard File",
+        "Brandings": [
+          {
+            "Name": "MAIN"
+          }
+        ],
+        "ConstraintsInformation": {
+          "Constraint": "Public domain",
+          "GrantingRights": "Full"
+        },
+        "Description": "July through August marks the bison breeding season or rut. Bulls challenge each other for breeding rights by fighting. This is an exhausting ordeal and bulls may be injured during fights. ",
+        "ImageCreateDate": {
+          "Date": "09/25/2010"
+        },
+        "ImageCreateDateTime": "09/25/2010 09:36:41 PM",
+        "Keywords": [
+          "bison",
+          "bison fighting",
+          "buffalo",
+          "bison rut"
+        ],
+        "NPSUnits": [
+          {
+            "Name": "Wind Cave National Park",
+            "Type": "National Park",
+            "Code": "WICA"
+          }
+        ],
+        "PhotoCredit": "NPS Photo",
+        "PrimaryType": "image",
+        "Rating": 1,
+        "RelatedCollections": [
+          "NPS.gov Collection"
+        ],
+        "ResourceFormat": "jpg",
+        "ResourceType": "Image",
+        "Submitter": "lbreid",
+        "SubType": "jpeg",
+        "Title": "Bulls Fighting",
+        "reviewIndex": 7,
+        "query": "bison fighting",
+        "sourceUrl": "https://npgallery.nps.gov/AssetDetail/b82dc1fa-8348-47e9-9807-b2fe3d406c10",
+        "imageUrl": "https://npgallery.nps.gov/GetAsset/b82dc1fa-8348-47e9-9807-b2fe3d406c10/original.jpg",
+        "localPath": "/tmp/freed-land36/7.jpg",
+        "sourceCachePath": "/tmp/freed-land36/7.html",
+        "width": 2592,
+        "height": 1944,
+        "sha1": "5ab8b5fdd92d8cca93b3d561da37407641b854cb",
+        "reviewSha256": "8fc1d53d59690c407833a5ec53e7548c7c6263c1b4d7929a1badf7d4e576cd41"
+      },
+      "originalBytes": 871346,
+      "id": "land-regular-36-02",
+      "identityNameBase": "Oswin Broadback",
+      "characterId": "oswin-broadback",
+      "fullSpecies": "Bison bison",
+      "platform": "facebook",
+      "contentType": "post",
+      "title": "Where I put my weight",
+      "status": "candidate",
+      "independentLeadReview": "pending",
+      "prose": "He pushed my head sideways until I could see grass with one eye and nothing but him with the other.\n\nI drove harder. My back feet dug in. My front feet slid.\n\nHad to stop trying to move him long enough to move one foot of my own. Set it farther out. Felt the ground hold. Brought my head back against his and pushed from there.\n\nWe turned a little. Neither of us went backward. I could feel him breathing through the hair against my forehead.\n\nWhen we parted, I stood with my feet still spread. He stood that way too.",
+      "altText": "Two adult bison bulls press lowered heads together in grass; the left bull has one eye visible, with other bison behind.",
+      "fictionBoundary": "Adult bulls and head contact are source-supported. Foot slipping, adjustment, mutual turning, breathing sensations and aftermath are invented. No winner, mating outcome, injury, trapped horns or audience reaction is asserted. Source location Wind Cave illustrates compatible grassland without relocating the fictional Yellowstone home.",
+      "visualReview": "Exact original individually opened before prose; no crop, upscale or generated image.",
+      "sexAgeEvidence": "Adult bulls and head contact are source-supported. Foot slipping, adjustment, mutual turning, breathing sensations and aftermath are invented. No winner, mating outcome, injury, trapped horns or audience reaction is asserted. Source location Wind Cave illustrates compatible grassland without relocating the fictional Yellowstone home."
+    },
+    {
+      "sourceTitle": "american-white-pelican-outstretched-wings",
+      "sourceUrl": "https://www.fws.gov/media/american-white-pelican-outstretched-wings",
+      "imageUrl": "https://www.fws.gov/sites/default/files/images/2024-03-6/28909.jpg",
+      "localReviewPath": "/tmp/freed-land36/fws-pelican.jpg",
+      "sourceCachePath": "/tmp/freed-land36/fws-pelican.html",
+      "creator": "Koerner, Tom/USFWS",
+      "license": "Public domain",
+      "rightsEvidence": "Exact FWS asset page: Media Usage Rights/License, Public Domain",
+      "rightsUrl": "https://www.fws.gov/media/american-white-pelican-outstretched-wings",
+      "originalWidth": 3450,
+      "originalHeight": 1970,
+      "originalSha1": "06cecdd57dd5ca7f04ebd6434ebd500ba2ba0c92",
+      "originalSha256": "54c82e52930e596b223ae78d3d941adb6250de8eaf87e973d2393cba3e6e458c",
+      "mimeType": "image/jpeg",
+      "originalUrl": "https://www.fws.gov/sites/default/files/images/2024-03-6/28909.jpg",
+      "licenseUrl": "https://www.fws.gov/media/american-white-pelican-outstretched-wings",
+      "originalBytes": 6832077,
+      "id": "land-regular-36-03",
+      "identityNameBase": "Otis Gulp",
+      "characterId": "otis-gulp",
+      "fullSpecies": "Pelecanus erythrorhynchos",
+      "platform": "facebook",
+      "contentType": "post",
+      "title": "All the way open",
+      "status": "candidate",
+      "independentLeadReview": "pending",
+      "prose": "Spread one wing over the water and began to open the other. A bill was in the way. Folded it again. Turned. Now the first wing brushed somebody else.\n\nI paddled out until I could open both all the way. The wet feathers pulled apart, and a gust caught underneath them. Had to paddle harder to keep from turning.\n\nStayed wide until I was ready to fold them. Then went back to the others and settled close enough to touch.",
+      "altText": "A white pelican stands or floats upright in shallow water with both wings extended, black flight feathers visible and several other white pelicans nearby.",
+      "fictionBoundary": "Wing spread, water and nearby conspecifics anchor the scene. Partial opening, brushing, displacement, gust, paddling and return are invented. No takeoff, plunge diving, invisible fish, mate, offspring or documented feather-drying purpose claimed. Source identifies Pelecanus erythrorhynchos; adult plumage is visible, sex unrecorded. Male narrator remains fiction.",
+      "visualReview": "Exact original individually opened before prose; no crop, upscale or generated image.",
+      "sexAgeEvidence": "Wing spread, water and nearby conspecifics anchor the scene. Partial opening, brushing, displacement, gust, paddling and return are invented. No takeoff, plunge diving, invisible fish, mate, offspring or documented feather-drying purpose claimed. Source identifies Pelecanus erythrorhynchos; adult plumage is visible, sex unrecorded. Male narrator remains fiction."
+    },
+    {
+      "sourceTitle": "Common raven wing prints in snow",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/19b6b04f-53f0-40a2-b370-39ea5799776a",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/19b6b04f-53f0-40a2-b370-39ea5799776a/original.jpg",
+      "originalUrl": "https://npgallery.nps.gov/GetAsset/19b6b04f-53f0-40a2-b370-39ea5799776a/original.jpg",
+      "creator": "NPS/Mark Marshall",
+      "license": "Public domain",
+      "licenseUrl": "https://npgallery.nps.gov/AssetDetail/19b6b04f-53f0-40a2-b370-39ea5799776a",
+      "rightsEvidence": "Exact NPS asset record: Constraint Public domain; GrantingRights Full. Detail page independently opened and cached.",
+      "originalWidth": 1999,
+      "originalHeight": 1277,
+      "originalSha1": "cd55957448aa58909b54339da17367cc300c6c6b",
+      "originalSha256": "55fd0345e22b1be42c9ed03626482430708dbdbf5b60a1d98dbe45080939c997",
+      "localReviewPath": "/tmp/freed-land36/17.jpg",
+      "sourceCachePath": "/tmp/freed-land36/17.html",
+      "originalSourceRecord": {
+        "AltText": "Wing prints of large bird is left in snow.",
+        "AssetBaseType": "File",
+        "AssetID": "19b6b04f-53f0-40a2-b370-39ea5799776a",
+        "AssetType": "Standard File",
+        "Brandings": [
+          {
+            "Name": "MAIN"
+          }
+        ],
+        "ConstraintsInformation": {
+          "Constraint": "Public domain",
+          "GrantingRights": "Full"
+        },
+        "CustomTextFields": [
+          {
+            "Name": "XmpMetadataDate",
+            "Value": "2019-03-26T16:57:47-06:00"
+          }
+        ],
+        "Description": "Raven wing prints in snow;\nMark Marschall;\n1979",
+        "ImageCreateDate": {
+          "Date": "01/01/1979"
+        },
+        "ImageCreateDateTime": "01/01/1979 12:00:00 AM",
+        "Keywords": [
+          "yellowstone national park",
+          "wildlife",
+          "birds",
+          "common raven",
+          "corvus corax",
+          "passeriformes",
+          "10249"
+        ],
+        "NPSUnits": [
+          {
+            "Name": "Yellowstone National Park",
+            "Type": "National Park",
+            "Code": "YELL"
+          }
+        ],
+        "PhotoCredit": "NPS/Mark Marshall",
+        "PrimaryType": "image",
+        "Rating": 4,
+        "RelatedCollections": [
+          "NPS.gov Collection"
+        ],
+        "ResourceFormat": "jpg",
+        "ResourceType": "Image",
+        "Submitter": "dianerenkin",
+        "SubType": "jpeg",
+        "Title": "Common raven wing prints in snow",
+        "reviewIndex": 17,
+        "query": "raven",
+        "sourceUrl": "https://npgallery.nps.gov/AssetDetail/19b6b04f-53f0-40a2-b370-39ea5799776a",
+        "imageUrl": "https://npgallery.nps.gov/GetAsset/19b6b04f-53f0-40a2-b370-39ea5799776a/original.jpg",
+        "localPath": "/tmp/freed-land36/17.jpg",
+        "sourceCachePath": "/tmp/freed-land36/17.html",
+        "width": 1999,
+        "height": 1277,
+        "sha1": "cd55957448aa58909b54339da17367cc300c6c6b",
+        "reviewSha256": "55fd0345e22b1be42c9ed03626482430708dbdbf5b60a1d98dbe45080939c997"
+      },
+      "originalBytes": 1318992,
+      "id": "land-regular-36-04",
+      "identityNameBase": "Maud Overhead",
+      "characterId": "maud-overhead",
+      "fullSpecies": "Corvus corax",
+      "platform": "facebook",
+      "contentType": "post",
+      "title": "The second set",
+      "status": "candidate",
+      "independentLeadReview": "pending",
+      "prose": "The snow gave way under my feet. I spread my wings, struck down and got back into the air with snow falling off me.\n\nFrom the branch I could see where I had been. A hollow for my body. Long separate grooves on either side.\n\nWent back and stood beside them. Lowered one wing into the untouched snow, lifted it, then lowered the other. Looked underneath. Every feather had made its own thin place.\n\nThis time I jumped toward the branch before opening my wings. Wanted to leave the second set sharp.",
+      "altText": "A deep bird-shaped depression and clearly separated wing-feather impressions mark snow, with other tracks along the right edge; no bird is present.",
+      "fictionBoundary": "The NPS record explicitly identifies common raven wing prints. The narrator making the print, failed footing, return and deliberate second impression are fiction. Only one large impression is photographed. This is an aftermath image of the central physical action, not a portrait or proof of an experiment. No universal self-recognition or cognition claim. Source sex and age are unknown; established adult female narrator remains fiction.",
+      "visualReview": "Exact original individually opened before prose; no crop, upscale or generated image.",
+      "sexAgeEvidence": "The NPS record explicitly identifies common raven wing prints. The narrator making the print, failed footing, return and deliberate second impression are fiction. Only one large impression is photographed. This is an aftermath image of the central physical action, not a portrait or proof of an experiment. No universal self-recognition or cognition claim. Source sex and age are unknown; established adult female narrator remains fiction."
+    },
+    {
+      "sourceTitle": "Two Common ravens interacting in flight.",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/f55bb945-e661-4220-a2b0-c4279ccd9b6a",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/f55bb945-e661-4220-a2b0-c4279ccd9b6a/original.jpg",
+      "originalUrl": "https://npgallery.nps.gov/GetAsset/f55bb945-e661-4220-a2b0-c4279ccd9b6a/original.jpg",
+      "creator": "NPS/J. Schmidt",
+      "license": "Public domain",
+      "licenseUrl": "https://npgallery.nps.gov/AssetDetail/f55bb945-e661-4220-a2b0-c4279ccd9b6a",
+      "rightsEvidence": "Exact NPS asset record: Constraint Public domain; GrantingRights Full. Detail page independently opened and cached.",
+      "originalWidth": 1999,
+      "originalHeight": 1326,
+      "originalSha1": "cc8b6f9e7eb647ea8c4bdc8e4fa543c9c25a6888",
+      "originalSha256": "856bbdafef891fb7c746770358a1f4e084194e22a35bf4506ab7d46f335346cb",
+      "localReviewPath": "/tmp/freed-land36/15.jpg",
+      "sourceCachePath": "/tmp/freed-land36/15.html",
+      "originalSourceRecord": {
+        "AltText": "Two Common ravens interacting in flight, one is upside down, the other upright and almost touching one another.",
+        "AssetBaseType": "File",
+        "AssetID": "f55bb945-e661-4220-a2b0-c4279ccd9b6a",
+        "AssetType": "Standard File",
+        "Brandings": [
+          {
+            "Name": "MAIN"
+          }
+        ],
+        "ConstraintsInformation": {
+          "Constraint": "Public domain",
+          "GrantingRights": "Full"
+        },
+        "CustomTextFields": [
+          {
+            "Name": "XmpMetadataDate",
+            "Value": "2019-03-26T16:57:45-06:00"
+          }
+        ],
+        "Description": "Two Common Ravens in flight;\nJ Schmidt;\n1977",
+        "ImageCreateDate": {
+          "Date": "01/01/1977"
+        },
+        "ImageCreateDateTime": "01/01/1977 12:00:00 AM",
+        "Keywords": [
+          "yellowstone national park",
+          "wildlife",
+          "birds",
+          "common raven",
+          "corvus corax",
+          "passeriformes",
+          "06290"
+        ],
+        "NPSUnits": [
+          {
+            "Name": "Yellowstone National Park",
+            "Type": "National Park",
+            "Code": "YELL"
+          }
+        ],
+        "PhotoCredit": "NPS/J. Schmidt",
+        "PrimaryType": "image",
+        "Rating": 4,
+        "RelatedCollections": [
+          "NPS.gov Collection"
+        ],
+        "ResourceFormat": "jpg",
+        "ResourceType": "Image",
+        "Submitter": "dianerenkin",
+        "SubType": "jpeg",
+        "Title": "Two Common ravens interacting in flight.",
+        "reviewIndex": 15,
+        "query": "raven",
+        "sourceUrl": "https://npgallery.nps.gov/AssetDetail/f55bb945-e661-4220-a2b0-c4279ccd9b6a",
+        "imageUrl": "https://npgallery.nps.gov/GetAsset/f55bb945-e661-4220-a2b0-c4279ccd9b6a/original.jpg",
+        "localPath": "/tmp/freed-land36/15.jpg",
+        "sourceCachePath": "/tmp/freed-land36/15.html",
+        "width": 1999,
+        "height": 1326,
+        "sha1": "cc8b6f9e7eb647ea8c4bdc8e4fa543c9c25a6888",
+        "reviewSha256": "856bbdafef891fb7c746770358a1f4e084194e22a35bf4506ab7d46f335346cb"
+      },
+      "originalBytes": 552454,
+      "id": "land-regular-36-05",
+      "identityNameBase": "Maud Overhead",
+      "characterId": "maud-overhead",
+      "fullSpecies": "Corvus corax",
+      "platform": "facebook",
+      "contentType": "post",
+      "title": "An aerial turn",
+      "status": "hold-image",
+      "independentLeadReview": "pending",
+      "prose": null,
+      "altText": "Two common ravens interact in flight against pale sky, one inverted and one upright.",
+      "fictionBoundary": "Central aerial interaction is documented, but small dark silhouettes and edge softness fail the desired image quality. No prose, mate or new encounter proposed.",
+      "visualReview": "Exact original individually opened before prose; no crop, upscale or generated image.",
+      "sexAgeEvidence": "Central aerial interaction is documented, but small dark silhouettes and edge softness fail the desired image quality. No prose, mate or new encounter proposed."
+    },
+    {
+      "sourceTitle": "Raccoon in a Swamp",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/8520034a-28a4-45e4-a751-d22d2c870ae4",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/8520034a-28a4-45e4-a751-d22d2c870ae4/original.jpg",
+      "originalUrl": "https://npgallery.nps.gov/GetAsset/8520034a-28a4-45e4-a751-d22d2c870ae4/original.jpg",
+      "creator": "NPS Photo",
+      "license": "Public domain",
+      "licenseUrl": "https://npgallery.nps.gov/AssetDetail/8520034a-28a4-45e4-a751-d22d2c870ae4",
+      "rightsEvidence": "Exact NPS asset record: Constraint Public domain; GrantingRights Full. Detail page independently opened and cached.",
+      "originalWidth": 3168,
+      "originalHeight": 4752,
+      "originalSha1": "35d26cf44666751e5d6115e6e92094850b3ce093",
+      "originalSha256": "4f627fb03169feb7cd6a07c3e20429ebc74e51e03c922dc77bcb30fa1823654c",
+      "localReviewPath": "/tmp/freed-land36/3.jpg",
+      "sourceCachePath": "/tmp/freed-land36/3.html",
+      "originalSourceRecord": {
+        "AltText": "raccoon at the base of two large cypress tree trunks in a green swamp with floating plants.",
+        "AssetBaseType": "File",
+        "AssetID": "8520034a-28a4-45e4-a751-d22d2c870ae4",
+        "AssetType": "Standard File",
+        "Brandings": [
+          {
+            "Name": "MAIN"
+          }
+        ],
+        "ConstraintsInformation": {
+          "Constraint": "Public domain",
+          "GrantingRights": "Full"
+        },
+        "Description": "This raccoon is resting between two cypress tree trunks in a swamp.",
+        "ImageCreateDate": {
+          "Date": "10/23/2015"
+        },
+        "ImageCreateDateTime": "10/23/2015 01:24:11 AM",
+        "Keywords": [
+          "big thicket",
+          "raccoon",
+          "mammal",
+          "fauna",
+          "wildlife"
+        ],
+        "NPSUnits": [
+          {
+            "Name": "Big Thicket National Preserve",
+            "Type": "National Preserve",
+            "Code": "BITH"
+          }
+        ],
+        "PhotoCredit": "NPS Photo",
+        "PrimaryType": "image",
+        "Rating": 4,
+        "RelatedCollections": [
+          "NPS.gov Collection"
+        ],
+        "ResourceFormat": "jpg",
+        "ResourceType": "Image",
+        "Submitter": "ssharaga",
+        "SubType": "jpeg",
+        "Title": "Raccoon in a Swamp",
+        "reviewIndex": 3,
+        "query": "raccoon",
+        "sourceUrl": "https://npgallery.nps.gov/AssetDetail/8520034a-28a4-45e4-a751-d22d2c870ae4",
+        "imageUrl": "https://npgallery.nps.gov/GetAsset/8520034a-28a4-45e4-a751-d22d2c870ae4/original.jpg",
+        "localPath": "/tmp/freed-land36/3.jpg",
+        "sourceCachePath": "/tmp/freed-land36/3.html",
+        "width": 3168,
+        "height": 4752,
+        "sha1": "35d26cf44666751e5d6115e6e92094850b3ce093",
+        "reviewSha256": "4f627fb03169feb7cd6a07c3e20429ebc74e51e03c922dc77bcb30fa1823654c"
+      },
+      "originalBytes": 8189178,
+      "id": "land-regular-36-06",
+      "identityNameBase": "Mira Mask",
+      "characterId": "mira-mask",
+      "fullSpecies": "Procyon lotor",
+      "platform": "facebook",
+      "contentType": "post",
+      "title": "The green surface",
+      "status": "hold-setting",
+      "independentLeadReview": "pending",
+      "prose": null,
+      "altText": "A raccoon rests low between large cypress trunks surrounded by green floating plants on swamp water.",
+      "fictionBoundary": "The source is a cypress swamp, not established Smokies stream forest. No clean new physical event emerged without inventing travel or repeating wet-crossing and grasping failures. No prose or relocation proposed.",
+      "visualReview": "Exact original individually opened before prose; no crop, upscale or generated image.",
+      "sexAgeEvidence": "The source is a cypress swamp, not established Smokies stream forest. No clean new physical event emerged without inventing travel or repeating wet-crossing and grasping failures. No prose or relocation proposed."
+    }
+  ],
+  "discoveryAudit": [
+    {
+      "localReviewPath": "/tmp/freed-land36/1.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/ba2374c4-936a-440f-bb0f-39afead80f86",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/ba2374c4-936a-440f-bb0f-39afead80f86/original.jpg",
+      "creator": "NPS/Christopher Vuille-Kowing",
+      "originalWidth": 3494,
+      "originalHeight": 1837,
+      "sha1": "85e156d67ba7cade79aff6c1bbe07426753f768c",
+      "sha256": "5462d075b38bdf248918873f39e03504805d7fe1f3a16d6b064e0895eedafe63",
+      "bytes": 3933980,
+      "rights": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      }
+    },
+    {
+      "localReviewPath": "/tmp/freed-land36/2.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/b1a4f5ee-4691-419c-8cd6-34c45451e255",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/b1a4f5ee-4691-419c-8cd6-34c45451e255/original.jpg",
+      "creator": "NPS Photo",
+      "originalWidth": 4000,
+      "originalHeight": 3000,
+      "sha1": "6bcd874382107b3fa9c8cecc538f6f1e719af44d",
+      "sha256": "b0b96d0977724d7b15bc80ae0aeecc01605db2ede6a97e440db47a8aa0b7633b",
+      "bytes": 2930590,
+      "rights": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      }
+    },
+    {
+      "localReviewPath": "/tmp/freed-land36/3.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/8520034a-28a4-45e4-a751-d22d2c870ae4",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/8520034a-28a4-45e4-a751-d22d2c870ae4/original.jpg",
+      "creator": "NPS Photo",
+      "originalWidth": 3168,
+      "originalHeight": 4752,
+      "sha1": "35d26cf44666751e5d6115e6e92094850b3ce093",
+      "sha256": "4f627fb03169feb7cd6a07c3e20429ebc74e51e03c922dc77bcb30fa1823654c",
+      "bytes": 8189178,
+      "rights": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      }
+    },
+    {
+      "localReviewPath": "/tmp/freed-land36/4.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/962396a6-0b65-4bb0-b80b-91a76ca0efbc",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/962396a6-0b65-4bb0-b80b-91a76ca0efbc/original.jpg",
+      "creator": null,
+      "originalWidth": 2592,
+      "originalHeight": 1944,
+      "sha1": "ce58ff5faf6359e16e2d8500363ffe8edf581755",
+      "sha256": "6b1ff887c80a23f42b6efdfc43080c4672f9f25c63e1779d5b3b538666a7ed60",
+      "bytes": 1409105,
+      "rights": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      }
+    },
+    {
+      "localReviewPath": "/tmp/freed-land36/5.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/6727ecce-155d-451f-6746-6153b6da1e9e",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/6727ecce-155d-451f-6746-6153b6da1e9e/original.jpg",
+      "creator": "NPS Photo",
+      "originalWidth": 640,
+      "originalHeight": 360,
+      "sha1": "2239b2e49be6c197652bab6ed31e32ac9d2c05f0",
+      "sha256": "8d94f936d35cc7f825986714efd1c085f852626a97e1736531cf4cf10b8a0c49",
+      "bytes": 77013,
+      "rights": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      }
+    },
+    {
+      "localReviewPath": "/tmp/freed-land36/6.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/ee373e4c-6e10-4a35-b2de-17a92035dc22",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/ee373e4c-6e10-4a35-b2de-17a92035dc22/original.jpg",
+      "creator": "NPS Photo",
+      "originalWidth": 3216,
+      "originalHeight": 2136,
+      "sha1": "9d6da3d8988a5eee0a68903aa829e572782e9c5c",
+      "sha256": "3b7d7ea30a928e15782e9f9d773a07c71d1be58e0de9ee27805dcc2b3e4dd55f",
+      "bytes": 1722047,
+      "rights": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      }
+    },
+    {
+      "localReviewPath": "/tmp/freed-land36/7.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/b82dc1fa-8348-47e9-9807-b2fe3d406c10",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/b82dc1fa-8348-47e9-9807-b2fe3d406c10/original.jpg",
+      "creator": "NPS Photo",
+      "originalWidth": 2592,
+      "originalHeight": 1944,
+      "sha1": "5ab8b5fdd92d8cca93b3d561da37407641b854cb",
+      "sha256": "8fc1d53d59690c407833a5ec53e7548c7c6263c1b4d7929a1badf7d4e576cd41",
+      "bytes": 871346,
+      "rights": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      }
+    },
+    {
+      "localReviewPath": "/tmp/freed-land36/12.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/4c4abe92-7ac0-44f5-a509-98c03ea32230",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/4c4abe92-7ac0-44f5-a509-98c03ea32230/original.jpg",
+      "creator": "NPS/R.G.Johnson",
+      "originalWidth": 1999,
+      "originalHeight": 1251,
+      "sha1": "9d4fb347715367b96380bde9515419fd2530bcdc",
+      "sha256": "9b8220b6a71915043709aa6060e3a570f62b157e0cb0e48a2d91981df81f974e",
+      "bytes": 949678,
+      "rights": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      }
+    },
+    {
+      "localReviewPath": "/tmp/freed-land36/13.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/460556e6-76df-46a3-baa8-3e8124ecda7a",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/460556e6-76df-46a3-baa8-3e8124ecda7a/original.jpg",
+      "creator": "NPS/Photographer unknown",
+      "originalWidth": 1999,
+      "originalHeight": 1331,
+      "sha1": "38a247e16a6207f2a67e2f16c0a0734476cf5138",
+      "sha256": "f601cad21ac1cbdc0b53a4cea4b4d2e641cf0641021b4c78bffe3a5cdee57af3",
+      "bytes": 965134,
+      "rights": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      }
+    },
+    {
+      "localReviewPath": "/tmp/freed-land36/14.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/38f15929-87d4-4c8b-8d2b-674b729883cc",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/38f15929-87d4-4c8b-8d2b-674b729883cc/original.jpg",
+      "creator": "NPS Photo",
+      "originalWidth": 2245,
+      "originalHeight": 1467,
+      "sha1": "b63e0e4ba3c17fa69eb5fee3af853980a9fc8806",
+      "sha256": "756585a77f3fc77dfc7f5ae5313cdf0214646dbdfbb7dd9d8f1875779c443c6c",
+      "bytes": 783487,
+      "rights": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      }
+    },
+    {
+      "localReviewPath": "/tmp/freed-land36/15.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/f55bb945-e661-4220-a2b0-c4279ccd9b6a",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/f55bb945-e661-4220-a2b0-c4279ccd9b6a/original.jpg",
+      "creator": "NPS/J. Schmidt",
+      "originalWidth": 1999,
+      "originalHeight": 1326,
+      "sha1": "cc8b6f9e7eb647ea8c4bdc8e4fa543c9c25a6888",
+      "sha256": "856bbdafef891fb7c746770358a1f4e084194e22a35bf4506ab7d46f335346cb",
+      "bytes": 552454,
+      "rights": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      }
+    },
+    {
+      "localReviewPath": "/tmp/freed-land36/16.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/cae25969-437f-44fc-b6ab-ef9ae7fc544c",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/cae25969-437f-44fc-b6ab-ef9ae7fc544c/original.jpg",
+      "creator": "NPS/Jim Peaco",
+      "originalWidth": 1999,
+      "originalHeight": 1335,
+      "sha1": "1e6bbee5e77fa16522be3506ecbdc26f87d666b6",
+      "sha256": "f7b220ed047ae8e79208c12ded8792b67f72192cc5d1a8b7be9746085344f652",
+      "bytes": 1131257,
+      "rights": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      }
+    },
+    {
+      "localReviewPath": "/tmp/freed-land36/17.jpg",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/19b6b04f-53f0-40a2-b370-39ea5799776a",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/19b6b04f-53f0-40a2-b370-39ea5799776a/original.jpg",
+      "creator": "NPS/Mark Marshall",
+      "originalWidth": 1999,
+      "originalHeight": 1277,
+      "sha1": "cd55957448aa58909b54339da17367cc300c6c6b",
+      "sha256": "55fd0345e22b1be42c9ed03626482430708dbdbf5b60a1d98dbe45080939c997",
+      "bytes": 1318992,
+      "rights": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      }
+    },
+    {
+      "sourceTitle": "american-white-pelican-outstretched-wings",
+      "sourceUrl": "https://www.fws.gov/media/american-white-pelican-outstretched-wings",
+      "imageUrl": "https://www.fws.gov/sites/default/files/images/2024-03-6/28909.jpg",
+      "localReviewPath": "/tmp/freed-land36/fws-pelican.jpg",
+      "sourceCachePath": "/tmp/freed-land36/fws-pelican.html",
+      "creator": "Koerner, Tom/USFWS",
+      "license": "Public domain",
+      "rightsEvidence": "Exact FWS asset page: Media Usage Rights/License, Public Domain",
+      "rightsUrl": "https://www.fws.gov/media/american-white-pelican-outstretched-wings",
+      "originalWidth": 3450,
+      "originalHeight": 1970,
+      "originalSha1": "06cecdd57dd5ca7f04ebd6434ebd500ba2ba0c92",
+      "originalSha256": "54c82e52930e596b223ae78d3d941adb6250de8eaf87e973d2393cba3e6e458c",
+      "mimeType": "image/jpeg",
+      "originalBytes": 6832077
+    },
+    {
+      "sourceTitle": "white-pelican",
+      "sourceUrl": "https://www.fws.gov/media/white-pelican",
+      "imageUrl": "https://www.fws.gov/sites/default/files/images/2024-03-3/5404.jpg",
+      "localReviewPath": "/tmp/freed-land36/fws-pelican2.jpg",
+      "sourceCachePath": "/tmp/freed-land36/fws-pelican2.html",
+      "creator": "Foster, John",
+      "license": "Public domain",
+      "rightsEvidence": "Exact FWS asset page: Media Usage Rights/License, Public Domain",
+      "rightsUrl": "https://www.fws.gov/media/white-pelican",
+      "originalWidth": 1694,
+      "originalHeight": 2500,
+      "originalSha1": "7aae28dd7183b1a640a65dbcecf36a8407baf844",
+      "originalSha256": "b3e79319694f53ff7701dc60dc0d4fd3df051c3976b8df527638151cc18da80b",
+      "mimeType": "image/jpeg",
+      "originalBytes": 563282
+    },
+    {
+      "sourceTitle": "fox-pups",
+      "sourceUrl": "https://www.fws.gov/media/fox-pups",
+      "imageUrl": "https://www.fws.gov/sites/default/files/images/2024-03-3/4845.jpg",
+      "localReviewPath": "/tmp/freed-land36/fws-pups.jpg",
+      "sourceCachePath": "/tmp/freed-land36/fws-pups.html",
+      "creator": "Boylan, Mike/USFWS",
+      "license": "Public domain",
+      "rightsEvidence": "Exact FWS asset page: Media Usage Rights/License, Public Domain",
+      "rightsUrl": "https://www.fws.gov/media/fox-pups",
+      "originalWidth": 1200,
+      "originalHeight": 801,
+      "originalSha1": "a9ce6452f2c0eca35f20179e586456ed85c3d09b",
+      "originalSha256": "e8973f27ca7f0b611ae2f80302c4eede2f49dcaeb913d9094e2aecc3f25c9cf8",
+      "mimeType": "image/jpeg",
+      "originalBytes": 247103
+    },
+    {
+      "sourceTitle": "arctic-fox-2",
+      "sourceUrl": "https://www.fws.gov/media/arctic-fox-2",
+      "imageUrl": "https://www.fws.gov/sites/default/files/images/2024-03-2/2518.jpg",
+      "localReviewPath": "/tmp/freed-land36/fws-arctic.jpg",
+      "sourceCachePath": "/tmp/freed-land36/fws-arctic.html",
+      "creator": "Sowls, Art/USFWS",
+      "license": "Public domain",
+      "rightsEvidence": "Exact FWS asset page: Media Usage Rights/License, Public Domain",
+      "rightsUrl": "https://www.fws.gov/media/arctic-fox-2",
+      "originalWidth": 2970,
+      "originalHeight": 2028,
+      "originalSha1": "88f1cc14813cbf1d8b60209b7c6bc31a5d507df7",
+      "originalSha256": "44356d49ad534daa816ee2fead9317ec2ec620af2715240d933bbaf0f700643f",
+      "mimeType": "image/jpeg",
+      "originalBytes": 523352
+    }
+  ],
+  "discoveryDispositions": {
+    "1.jpg": "candidate01",
+    "2.jpg": "hold trail-camera text overlay",
+    "3.jpg": "hold06 setting and premise",
+    "4.jpg": "hold softness",
+    "5.jpg": "hold infrared trail-camera overlay and low resolution",
+    "6.jpg": "hold distant central bulls and no distinct calf premise",
+    "7.jpg": "candidate02",
+    "fws-pelican.jpg": "candidate03",
+    "fws-pelican2.jpg": "hold soft portrait, no event",
+    "fws-pups.jpg": "hold taxon and morph not sufficiently established for Nessa",
+    "fws-arctic.jpg": "hold repeated yawn and juvenile chronology",
+    "12.jpg": "hold soft color-shifted archive scan",
+    "13.jpg": "hold distant subjects and color shift",
+    "14.jpg": "hold heavy noise on young ravens",
+    "15.jpg": "hold05 small dark subjects",
+    "16.jpg": "hold soft archive scan and no new event",
+    "17.jpg": "candidate04 aftermath scene"
+  }
+}

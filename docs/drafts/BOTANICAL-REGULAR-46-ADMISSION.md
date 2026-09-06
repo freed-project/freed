@@ -1,0 +1,9 @@
+# Botanical regular 46 admission
+
+Admit Sabine Warmfold's A different touch with proposed prose unchanged. Lead independently viewed the large laboratory original, selected published macro, field portrait and actual 220/48 circles. Open anthers and pollen are clear in the delivery variant. The profile shows a mottled spathe at ordinary scale, distinct from the enlarged flowers in the narrative image. Both sizes retain the curved hood and mottled pattern. No same-specimen claim links the two sources.
+
+Lead independently read the introduction of [Goodrich and Gibernau, 2024](https://www.sciencedirect.com/science/article/pii/S0031942224001481?dgcid=rss_sd_all). It describes protogynous flowers and the later pollen-shedding stage, supporting the biological sequence around which anticipation changes. No visitor, fertilization, scent change or precise temperature is claimed. Activate BOTANICAL-REGULAR-46-CANON.md; do not reverse these same flowers to their earlier receptive stage.
+
+Two public-domain delivery records registered before episode and avatar bindings. Macro hash 8b100bb95d4f3791bd137a3c677c228a1dc67703, 624,223 bytes; portrait hash 291d8d5c9b72e6506e64f50e04d74fbcecaba518, 312,941 bytes. Lead recomputed exact local hashes and byte lengths. Full source metadata remains in BOTANICAL-REGULAR-46.json. The 23.7 MB original is review evidence only, not the runtime image.
+
+Shared typecheck passed. Initial corpus test exposed the new USGS host; the editorial test now recognizes the exact reviewed image host and www.usgs.gov attribution host. All 15 shared tests then passed September 5 at 18:21. DEMO LAUNCH received the exact URL/hash/size for its separate scoped host policy and relay work. No product paths changed by editorial; live delivery remains pending that product verification. Nothing published or released.

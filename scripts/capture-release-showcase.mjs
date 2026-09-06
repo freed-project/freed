@@ -11,6 +11,20 @@ const releaseTag = process.env.GITHUB_REF_NAME ?? "local-preview";
 const releaseSha = process.env.GITHUB_SHA ?? "local-preview";
 const baseOrigin = new URL(baseUrl).origin;
 const useMemorySqlite = process.env.FREED_SHOWCASE_SQLITE_MEMORY === "1";
+const reviewedMediaHosts = new Set([
+  "thumb.wikimedia.org",
+  "upload.wikimedia.org",
+  "oceanexplorer.noaa.gov",
+  "archive.oceanexplorer.noaa.gov",
+  "www.fisheries.noaa.gov",
+  "media.fisheries.noaa.gov",
+  "npgallery.nps.gov",
+  "www.nps.gov",
+  "www.fws.gov",
+  "d9-wret.s3.us-west-2.amazonaws.com",
+  "chandra.harvard.edu",
+  "i.ytimg.com",
+]);
 
 const captures = [
   { file: "freed-showcase-unified-midas.png", theme: "midas", view: "unified" },
@@ -53,9 +67,54 @@ async function selectView(page, view) {
   await page.getByRole("button", { name: label, exact: true }).click();
 }
 
+async function selectTheme(page, theme) {
+  // Demo presentation storage is intentionally document-local. Select through
+  // the real UI after loading instead of writing a preference before reload.
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.locator(`button:has([data-theme-preview="${theme}"])`).filter({ visible: true }).click();
+  await page.mouse.move(0, 0);
+  await page.waitForFunction((expected) =>
+    document.documentElement.dataset.theme === expected, theme);
+  await page.locator(".theme-settings-overlay").click({ position: { x: 5, y: 5 } });
+  await page.locator(".theme-settings-overlay").waitFor({ state: "hidden" });
+}
+
+async function waitForVisibleImages(page) {
+  try {
+    await page.waitForFunction(() => [...document.images].every((image) => {
+      const rect = image.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0 || rect.bottom <= 0 ||
+          rect.right <= 0 || rect.top >= innerHeight || rect.left >= innerWidth) return true;
+      return image.complete && image.naturalWidth > 0;
+    }), undefined, { timeout: 30_000 });
+  } catch (cause) {
+    const media = await page.evaluate(() => ({
+      pending: [...document.images].filter((image) => {
+        const rect = image.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0 && rect.bottom > 0 &&
+          rect.right > 0 && rect.top < innerHeight && rect.left < innerWidth &&
+          (!image.complete || image.naturalWidth === 0);
+      }).slice(0, 10).map((image) => ({
+        url: (image.currentSrc || image.src).slice(0, 1_000),
+        complete: image.complete,
+        naturalWidth: image.naturalWidth,
+      })),
+      failures: (window.__freedShowcaseImageFailures ?? []).slice(0, 10),
+      policyViolations: (window.__freedShowcasePolicyViolations ?? []).slice(0, 10),
+    }));
+    throw new Error(`Visible showcase media did not settle: ${JSON.stringify(media)}`, { cause });
+  }
+  await page.evaluate(async () => {
+    await Promise.all([...document.images].filter((image) => image.complete && image.naturalWidth > 0)
+      .map((image) => image.decode()));
+    await document.fonts.ready;
+  });
+}
+
 await mkdir(outputDirectory, { recursive: true });
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({
+  locale: "en-US",
   reducedMotion: "reduce",
   viewport: { width: 1440, height: 960 },
 });
@@ -65,48 +124,112 @@ if (useMemorySqlite) {
   });
 }
 const page = await context.newPage();
+await page.addInitScript(() => {
+  window.__freedShowcasePolicyViolations = [];
+  window.__freedShowcaseImageFailures = [];
+  // React can remove failed images and leave a decorative fallback. Record
+  // failures before removal so a screenshot cannot silently accept that tile.
+  addEventListener("error", (event) => {
+    const image = event.target;
+    if (!(image instanceof HTMLImageElement)) return;
+    const rect = image.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.right > 0 &&
+        rect.top < innerHeight && rect.left < innerWidth) {
+      window.__freedShowcaseImageFailures.push(image.currentSrc || image.src);
+    }
+  }, true);
+  addEventListener("securitypolicyviolation", (event) => {
+    window.__freedShowcasePolicyViolations.push({
+      directive: event.effectiveDirective,
+      blocked: event.blockedURI,
+    });
+  });
+});
 const checkpointDurationsMs = [];
+const contentCounts = { total: null, regular: null, stories: null };
 const remoteRequestUrls = new Set();
+const unexpectedRequestUrls = new Set();
 page.on("request", (request) => {
   const url = new URL(request.url());
   if ((url.protocol === "http:" || url.protocol === "https:") && url.origin !== baseOrigin) {
     remoteRequestUrls.add(url.href);
+    // Observe the public media the demo already loads. This does not initiate
+    // requests, retries, authenticated provider navigation, or video playback.
+    const existingPublicMapAsset = url.protocol === "https:" && url.hostname === "tiles.openfreemap.org";
+    if (!existingPublicMapAsset && (url.protocol !== "https:" || !reviewedMediaHosts.has(url.hostname) ||
+        !["image", "fetch"].includes(request.resourceType()) ||
+        !/\.(?:jpe?g|png|webp|avif)(?:$|\/)/i.test(url.pathname))) {
+      unexpectedRequestUrls.add(url.href);
+    }
   }
 });
 
-for (const [index, capture] of captures.entries()) {
-  await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
-  await page.evaluate((theme) => localStorage.setItem("freed-theme", theme), capture.theme);
-  await page.reload({ waitUntil: "domcontentloaded" });
-  await waitForShowcase(page);
-  checkpointDurationsMs.push(
-    await page.evaluate(
-      () => performance.getEntriesByName("freed-demo-checkpoint").at(-1)?.duration ?? null,
-    ),
-  );
-  await selectView(page, capture.view);
-  await page.waitForTimeout(capture.view === "map" || capture.view === "friends" ? 1_000 : 250);
-  if (index > 0) {
-    await page.addStyleTag({
-      content: '[data-testid="demo-welcome-desktop"] { display: none !important; }',
+try {
+  for (const [index, capture] of captures.entries()) {
+    // Exercise the real production demo policy even on a loopback build server.
+    const captureUrl = new URL(baseUrl);
+    captureUrl.searchParams.set("freed-demo", "1");
+    await page.goto(captureUrl.href, { waitUntil: "domcontentloaded" });
+    await waitForShowcase(page);
+    await page.getByRole("button", { name: "Explore Freed Demo", exact: true }).click();
+    await selectTheme(page, capture.theme);
+    checkpointDurationsMs.push(
+      await page.evaluate(
+        () => performance.getEntriesByName("freed-demo-checkpoint").at(-1)?.duration ?? null,
+      ),
+    );
+    await selectView(page, capture.view);
+    if (capture.view === "unified" || capture.view === "stories") {
+      const countLabel = page.locator("header").getByText(
+        capture.view === "stories" ? /Stories.*[0-9,]+ items/ : /[0-9,]+ items/,
+      );
+      await countLabel.waitFor({ state: "visible" });
+      const match = (await countLabel.innerText()).match(/([0-9][0-9,]*) items/);
+      if (!match) throw new Error(`Missing ${capture.view} showcase item count`);
+      const count = Number(match[1].replaceAll(",", ""));
+      if (capture.view === "unified") contentCounts.total = count;
+      else contentCounts.stories = count;
+    }
+    if (capture.view === "map") {
+      await page.locator('[data-testid="map-surface"][data-map-ready="true"][data-map-tiles-ready="true"]').waitFor({ timeout: 30_000 });
+    } else if (capture.view === "friends") {
+      await page.locator('[data-testid="friend-graph-viewport"][data-graph-diagnostics="published"]').waitFor();
+      await page.waitForFunction(() => Number(document.querySelector(
+        '[data-testid="friend-graph-viewport"]',
+      )?.getAttribute("data-ready-renderer-label-count")) > 0);
+    }
+    if (index > 0) {
+      await page.addStyleTag({
+        content: '[data-testid="demo-welcome-desktop"] { display: none !important; }',
+      });
+    }
+    await waitForVisibleImages(page);
+    const policyViolations = await page.evaluate(() => window.__freedShowcasePolicyViolations);
+    if (policyViolations.length > 0) {
+      throw new Error(`Showcase policy blocked ${capture.view}: ${JSON.stringify(policyViolations)}`);
+    }
+    const imageFailures = await page.evaluate(() => window.__freedShowcaseImageFailures);
+    if (imageFailures.length > 0) {
+      throw new Error(`Showcase images failed in ${capture.view}: ${JSON.stringify(imageFailures)}`);
+    }
+    await page.screenshot({
+      animations: "disabled",
+      path: path.join(outputDirectory, capture.file),
+      type: "png",
     });
   }
-  await page.screenshot({
-    animations: "disabled",
-    path: path.join(outputDirectory, capture.file),
-    type: "png",
-  });
+} finally {
+  await browser.close();
 }
 
-await browser.close();
-
-if (remoteRequestUrls.size > 0) {
+if (unexpectedRequestUrls.size > 0) {
   throw new Error(
-    `Showcase made unexpected remote requests:\n${[...remoteRequestUrls].join("\n")}`,
+    `Showcase made unexpected remote requests:\n${[...unexpectedRequestUrls].join("\n")}`,
   );
 }
 
 const gifOrder = stableShuffle(captures, releaseSha).map(({ file }) => file);
+contentCounts.regular = contentCounts.total - contentCounts.stories;
 await writeFile(
   path.join(outputDirectory, "gif-order.txt"),
   `${gifOrder.map((file) => `file '${file}'\nduration 1.8`).join("\n")}\nfile '${gifOrder.at(-1)}'\n`,
@@ -122,6 +245,8 @@ await writeFile(
       captures,
       gifOrder,
       checkpointDurationsMs,
+      contentCounts,
+      remoteMediaUrls: [...remoteRequestUrls].sort(),
     },
     null,
     2,

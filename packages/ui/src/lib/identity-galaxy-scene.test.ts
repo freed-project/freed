@@ -54,7 +54,7 @@ function atlas(
 }
 
 describe("compileIdentityGalaxyScene", () => {
-  it("maps care levels to monotonically larger, nearer, brighter stars", () => {
+  it("keeps rating size and brightness while randomizing shallow depth independently", () => {
     const nodes = Array.from({ length: 5 }, (_, index) => {
       const careLevel = (index + 1) as 1 | 2 | 3 | 4 | 5;
       return node(`person:care-${careLevel}`, {
@@ -70,13 +70,12 @@ describe("compileIdentityGalaxyScene", () => {
 
     for (let index = 1; index < nodes.length; index += 1) {
       expect(scene.pointSizes[index]).toBeGreaterThan(scene.pointSizes[index - 1]!);
-      expect(depths[index]).toBeGreaterThan(depths[index - 1]!);
       expect(scene.brightness[index]).toBeGreaterThan(scene.brightness[index - 1]!);
     }
-    expect(depths[4]! - depths[0]!).toBeGreaterThan(300);
-    for (let index = 1; index < depths.length; index += 1) {
-      expect(depths[index]! - depths[index - 1]!).toBeGreaterThan(70);
-    }
+    expect(new Set(depths).size).toBe(5);
+    expect(depths.every(depth => depth >= -165 && depth <= -35)).toBe(true);
+    const changedRatings = compileIdentityGalaxyScene(atlas(nodes.map(n => ({ ...n, careLevel: 1, priority: 940 }))), { quality: "settled", now: 1_000 });
+    expect(nodes.map((_, index) => changedRatings.positions[index * 3 + 2])).toEqual(depths);
   });
 
   it("builds compact typed buffers with stable node and edge indices", () => {
@@ -115,7 +114,7 @@ describe("compileIdentityGalaxyScene", () => {
     expect(scene.edgeIndices).toEqual(new Uint32Array([0, 1]));
   });
 
-  it("keeps care dominant while placing linked accounts in their parent's depth shell", () => {
+  it("places linked planets at exactly their star's depth", () => {
     const input = atlas([
       node("person:fam", {
         personId: "fam",
@@ -150,9 +149,42 @@ describe("compileIdentityGalaxyScene", () => {
     const activeConnectionDepth = scene.positions[8]!;
     const linkedAccountDepth = scene.positions[11]!;
 
-    expect(famDepth).toBeGreaterThan(activeFriendDepth);
-    expect(activeFriendDepth).toBeGreaterThan(activeConnectionDepth);
-    expect(Math.abs(linkedAccountDepth - famDepth)).toBeLessThanOrEqual(3);
+    expect([famDepth, activeFriendDepth, activeConnectionDepth].every(z => z >= -165 && z <= -35)).toBe(true);
+    expect(linkedAccountDepth).toBe(famDepth);
+  });
+
+  it("tightens automatic planet shells while retaining slots, depth and explicit pins", () => {
+    const parent = node("person:shell", { personId: "shell", careLevel: 4 });
+    const profiles = Array.from({ length: 6 }, (_, index) => {
+      const angle = index * Math.PI / 3;
+      return node(`account:shell-${index}`, {
+        kind: "account", accountId: `shell-${index}`, linkedPersonId: "shell",
+        x: parent.x + Math.cos(angle) * 60,
+        y: parent.y + Math.sin(angle) * 54,
+      });
+    });
+    const pinned = node("account:pinned", {
+      kind: "account", accountId: "pinned", linkedPersonId: "shell",
+      graphPinned: true, x: 270, y: 310,
+    });
+    const orphan = node("account:orphan", {
+      kind: "account", accountId: "orphan", linkedPersonId: "missing", x: 420, y: 510,
+    });
+    const input = atlas([...profiles, parent, pinned, orphan]);
+    const scene = compileIdentityGalaxyScene(input, { quality: "settled", now: 1_000 });
+    const repeated = compileIdentityGalaxyScene(input, { quality: "settled", now: 1_000 });
+    expect(scene.positions).toEqual(repeated.positions);
+    profiles.forEach((profile, index) => {
+      expect(scene.positions[index * 3]).toBeCloseTo(parent.x + (profile.x - parent.x) * 0.3, 4);
+      expect(scene.positions[index * 3 + 1]).toBeCloseTo(-parent.y - (profile.y - parent.y) * 0.3, 4);
+      expect(Math.abs(scene.positions[index * 3 + 2]! - scene.positions[6 * 3 + 2]!))
+        .toBeLessThanOrEqual(3);
+    });
+    expect(new Set(profiles.map((_, index) =>
+      `${scene.positions[index * 3]},${scene.positions[index * 3 + 1]}`)).size).toBe(6);
+    expect([...scene.positions.slice(7 * 3, 7 * 3 + 2)]).toEqual([270, -310]);
+    expect([...scene.positions.slice(8 * 3, 8 * 3 + 2)]).toEqual([420, -510]);
+    expect(input.nodes[0]!.x).toBe(160);
   });
 
   it("encodes transient interaction state without changing stable positions", () => {

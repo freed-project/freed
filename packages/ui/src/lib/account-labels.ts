@@ -7,6 +7,10 @@ export type AccountLabelSource = Pick<
 
 export function providerLabel(provider: Account["provider"]): string {
   if (provider === "x") return "X";
+  if (provider === "rss") return "RSS";
+  if (provider === "linkedin") return "LinkedIn";
+  if (provider === "youtube") return "YouTube";
+  if (provider === "github") return "GitHub";
   if (provider === "google_contacts") return "Google Contacts";
   if (provider === "macos_contacts") return "Contacts";
   if (provider === "ios_contacts") return "Contacts";

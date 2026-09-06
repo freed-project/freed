@@ -1,10 +1,43 @@
+import { BOTANICAL_FIFTY_CHARACTER_ARCS } from "./sample-character-arcs-botanical-fifty.js";
+import { LAND_FORTY_NINE_CHARACTER_ARCS } from "./sample-character-arcs-land-forty-nine.js";
+import { BOTANICAL_FORTY_SIX_CHARACTER_ARCS } from "./sample-character-arcs-botanical-forty-six.js";
+import { LAND_FORTY_FIVE_CHARACTER_ARCS } from "./sample-character-arcs-land-forty-five.js";
+import { AQUATIC_FORTY_FOUR_CHARACTER_ARCS } from "./sample-character-arcs-aquatic-forty-four.js";
+import { EDITORIAL_FORTY_TWO_THREE_CHARACTER_ARCS } from "./sample-character-arcs-editorial-forty-two-three.js";
+import { AQUATIC_FORTY_ONE_CHARACTER_ARCS } from "./sample-character-arcs-aquatic-forty-one.js";
+import { BOTANICAL_FORTY_CHARACTER_ARCS } from "./sample-character-arcs-botanical-forty.js";
+import { BOTANICAL_THIRTY_TWO_CHARACTER_ARCS } from "./sample-character-arcs-botanical-thirty-two.js";
+import { BOTANICAL_TWENTY_SEVEN_CHARACTER_ARCS } from "./sample-character-arcs-botanical-twenty-seven.js";
+import { AQUATIC_TWENTY_SIX_CHARACTER_ARCS } from "./sample-character-arcs-aquatic-twenty-six.js";
+import { BIRD_TWENTY_FIVE_CHARACTER_ARCS } from "./sample-character-arcs-bird-twenty-five.js";
+import { BOTANICAL_TWENTY_FOUR_CHARACTER_ARCS } from "./sample-character-arcs-botanical-twenty-four.js";
+import { LAND_TWENTY_CHARACTER_ARCS } from "./sample-character-arcs-land-twenty.js";
+import { OCEAN_TWENTY_ONE_CHARACTER_ARCS } from "./sample-character-arcs-ocean-twenty-one.js";
+import { LAND_TWELVE_CHARACTER_ARCS } from "./sample-character-arcs-land-twelve.js";
+import { YOUTUBE_TEN_CHARACTER_ARCS } from "./sample-character-arcs-youtube-ten.js";
 import { AIR_CHARACTER_ARCS } from "./sample-character-arcs-air.js";
 import { LAND_CHARACTER_ARCS } from "./sample-character-arcs-land.js";
 import { OCEAN_CHARACTER_ARCS } from "./sample-character-arcs-ocean.js";
+import { STRANGE_CHARACTER_ARCS } from "./sample-character-arcs-strange.js";
+import { NEW_OCEAN_CHARACTER_ARCS } from "./sample-character-arcs-ocean-new.js";
+import { STRANGE_NEXT_CHARACTER_ARCS } from "./sample-character-arcs-strange-next.js";
+import { STRANGE_FOUNDATIONS_CHARACTER_ARCS } from "./sample-character-arcs-strange-foundations.js";
+import { DEEPSEA_NEXT_CHARACTER_ARCS } from "./sample-character-arcs-deepsea-next.js";
+import { DEEPSEA_BONDS_CHARACTER_ARCS } from "./sample-character-arcs-deepsea-bonds.js";
+import { STRANGE_WILD_CHARACTER_ARCS } from "./sample-character-arcs-strange-wild.js";
+import { STRANGE_EIGHT_CHARACTER_ARCS } from "./sample-character-arcs-strange-eight.js";
+import { DEEPSEA_NINE_CHARACTER_ARCS } from "./sample-character-arcs-deepsea-nine.js";
+import type { SampleYouTubeVideo } from "./sample-youtube.js";
 
 export interface SampleCharacterEpisode {
   subject: string;
-  /** Null is intentional text-only prose, not an unresolved image lookup. */
+  /** A character may use several platforms without becoming separate identities. */
+  platform?: SampleCharacterArc["platform"];
+  /** Visual Stories are distinct from long-form articles; absent preserves legacy defaults. */
+  contentType?: "post" | "story" | "article" | "video";
+  /** Independently reviewed footage and actual creator, separate from fictional narration. */
+  video?: SampleYouTubeVideo;
+  /** Null marks legacy draft prose awaiting image-led replacement, never final admission. */
   mediaSha1: string | null;
   theme: "transformation" | "feeding" | "weather" | "danger" | "wonder" | "social" | "courtship" | "family" | "movement" | "cosmic";
   title: string;
@@ -15,7 +48,7 @@ export interface SampleCharacterArc {
   characterId: string;
   identityNameBase: string;
   bio: string;
-  platform: "facebook" | "instagram" | "linkedin" | "rss" | "x";
+  platform: "facebook" | "instagram" | "linkedin" | "rss" | "x" | "youtube" | "medium" | "substack";
   /** Approximate fictional home, kept separate from photograph provenance. */
   location?: { name: string; coordinates: { lat: number; lng: number } };
   episodes: readonly SampleCharacterEpisode[];
@@ -38,7 +71,7 @@ export const SAMPLE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       },
       {
         subject: "praying mantis",
-        mediaSha1: "27b7ebe285129ff07853aa2d19185414fffd682c",
+        mediaSha1: null,
         theme: "feeding",
         title: "Violence, and better lighting.",
         body: "Caught a bee where the light was good. Then a bird landed above me. I carried breakfast under a leaf and ate in the dark, where I am considerably less impressive and still alive.",
@@ -66,10 +99,10 @@ export const SAMPLE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       },
       {
         subject: "praying mantis",
-        mediaSha1: null,
-        theme: "feeding",
-        title: "Moth at midnight",
-        body: "Caught a moth by the wing. It left me holding the wing and flew off. I ate what I had, but I could still hear the rest of dinner bumping into leaves.",
+        mediaSha1: "d67cc98af34b60d6e8b2e7aa586aa9e05de4d3fd",
+        theme: "social",
+        title: "Quite different",
+        body: "She called me a walking stick. I took three very deliberate steps. That settled absolutely nothing.",
       },
       {
         subject: "praying mantis",
@@ -103,28 +136,28 @@ export const SAMPLE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
     episodes: [
       {
         subject: "frogfish underwater",
-        mediaSha1: "ab98dabf54fe33be92581795707d73fd56b68176",
+        mediaSha1: null,
         theme: "feeding",
         title: "Furniture with intentions",
         body: "I spent the morning impersonating a sponge. A shrimp complimented the upholstery and vanished halfway through the sentence.",
       },
       {
         subject: "frogfish underwater",
-        mediaSha1: "d8db811f9a3957e75569f46ac91be3a8456373b0",
+        mediaSha1: "3c0d019158c7d78248e12b1151b0a462cea627b3",
         theme: "feeding",
         title: "Do the little dance",
         body: "Waggled my lure at a shrimp. Nothing. Waggled harder. It went around me and ate a real worm. I kept waggling for a moment after it left.",
       },
       {
         subject: "frogfish underwater",
-        mediaSha1: "28f071a8ba9eb3e27a92f099918b66dabe6f8662",
+        mediaSha1: null,
         theme: "movement",
         title: "Overtaken by debris",
         body: "Walked uphill against the current. A loose bit of sponge passed me, caught on a rock, came free, and passed me again. I bit it the second time.",
       },
       {
         subject: "frogfish underwater",
-        mediaSha1: "01e2e869995438145c0354c19e554df0a82dffd3",
+        mediaSha1: null,
         theme: "social",
         title: "Camouflage breach",
         body: "A cleaner wrasse picked something off my cheek. I stayed perfectly still. It came back for another bit. Somewhere behind it, a shrimp was watching my camouflage get eaten.",
@@ -138,91 +171,91 @@ export const SAMPLE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       },
       {
         subject: "frogfish underwater",
-        mediaSha1: "e710824197892596f5f929fb93529038436cc68d",
+        mediaSha1: "215028f2956ac61b9567ca0ac7d45450cf451bae",
         theme: "feeding",
         title: "A mouthful of consequences",
         body: "I lunged at a fish larger than prudence. For one bright second we were both certain this was the other's mistake.",
       },
       {
         subject: "frogfish underwater",
-        mediaSha1: "17fe76cd81e2688f0ba67e0de0b378e32bdd8d1c",
+        mediaSha1: null,
         theme: "danger",
         title: "Crossing open sand",
         body: "There was no coral for six body lengths. I walked the whole distance dressed as nothing. The grouper noticed at five.",
       },
       {
         subject: "frogfish underwater",
-        mediaSha1: "791547f8fd744ca2c6c6406b352b1c12282d63f0",
+        mediaSha1: null,
         theme: "social",
         title: "Back to being furniture",
         body: "The grouper passed. A shrimp settled on my head and began picking at me. I could have eaten it if it had been anywhere else on the entire reef.",
       },
       {
         subject: "frogfish underwater",
-        mediaSha1: "9663a30640ec7d977a6ce02a9a1b87b875f85365",
+        mediaSha1: null,
         theme: "feeding",
         title: "Hunting without the trick",
         body: "My lure snapped. I walked toward a fish with my mouth open. It moved one fin-length away. I walked again. It moved again. We are both still here.",
       },
       {
         subject: "frogfish underwater",
-        mediaSha1: "3624eaf19c3acf8fa1cca99db5e805484c19a308",
+        mediaSha1: "708922c5bacfa31a2ed33f2b068c1837fe027b8b",
         theme: "feeding",
         title: "grey.",
         body: "the wrasse was right there and i went for it the wrong way and now i have a square of the bottom in my cheek. grey. grainy. i keep pushing it around. it is the least dignified thing i have ever swallowed, and i have swallowed a lot.",
       },
       {
         subject: "frogfish underwater",
-        mediaSha1: "5ed8136cce82cbab004eae9e7a0862df6e5e96f8",
+        mediaSha1: null,
         theme: "social",
         title: "Not that side",
         body: "The wrasse came back. Looked at my mouth. Looked at the small hole I had made in the sand. I turned slowly away, which gave it plenty of time to understand everything.",
       },
       {
         subject: "frogfish underwater",
-        mediaSha1: "49519db6c9912690ba9207fa4598a50eef1db15d",
+        mediaSha1: null,
         theme: "feeding",
         title: "Sideways worked",
         body: "The gap was tight. I turned sideways and eased my face in. A shrimp shot straight into my mouth. I stayed in that position for another twenty minutes, just in case.",
       },
       {
         subject: "frogfish underwater",
-        mediaSha1: "263790270be285a77e106ff15a6aa54ce22babc7",
+        mediaSha1: null,
         theme: "weather",
         title: "The gap is gone",
         body: "Woke under a different arrangement of rubble. The current had moved my breakfast gap half a body length uphill. I can see through it. I cannot get my face there.",
       },
       {
         subject: "frogfish underwater",
-        mediaSha1: "02edfc1a3e7dfa7484ae030053c6cf6de2110be4",
+        mediaSha1: null,
         theme: "movement",
         title: "The last foot",
         body: "Got three fins onto the new rock. The fourth was still on the old rock. I spent a while like that, getting hungrier at both addresses.",
       },
       {
         subject: "frogfish underwater",
-        mediaSha1: "ca03f3c6dce3d3ac18871575bcab8eac4335c57b",
+        mediaSha1: null,
         theme: "wonder",
         title: "Something inside",
         body: "The sponge beside me eats things too small for me to see. I tried a mouthful of its water. No taste. Tried a larger mouthful. It carried on eating without once opening a face.",
       },
       {
         subject: "frogfish underwater",
-        mediaSha1: "55a4eef5f61d3304f1605aa15eaa3a683d913594",
+        mediaSha1: null,
         theme: "danger",
         title: "All the small fish left",
         body: "Every little fish disappeared into a hole. I tried to follow one. My face fitted. The rest of me was still outside when the shadow passed. I spent the whole time hoping it was a face-eating thing.",
       },
       {
         subject: "frogfish underwater",
-        mediaSha1: "b6112ff78acbbd8a7824285a820f2d205a56015a",
+        mediaSha1: null,
         theme: "social",
         title: "You can come out now",
         body: "Pulled my face out of the hole. The wrasse inside waited for me to move farther away. I had been protecting it with my entire mouth.",
       },
       {
         subject: "frogfish underwater",
-        mediaSha1: "63d3cd65c960859551065b660c587a04388d57a2",
+        mediaSha1: null,
         theme: "wonder",
         title: "Too far away to eat",
         body: "Silver fish crossed overhead until the light flickered on my feet. I opened my mouth once, out of habit. Then I watched the rest go by.",
@@ -234,35 +267,35 @@ export const SAMPLE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
     location: { name: "Anilao reef", coordinates: { lat: 13.76, lng: 120.9 } },
     identityNameBase: "Nudi Branch Manager",
     platform: "facebook",
-    bio: "A shell-free nudibranch carrying stolen stinging cells, impossible colors, and no patience for creatures impressed by shells.",
+    bio: "An Anilao nudibranch carrying borrowed chemical defenses, green stripes, and no patience for creatures impressed by shells.",
     episodes: [
       {
         subject: "nudibranch underwater",
-        mediaSha1: "132c45ae85dc04fbd3f381cd972135af36b1f7ea",
+        mediaSha1: null,
         theme: "social",
         title: "Already dressed",
         body: "A hermit crab dragged a shell toward me and waited. I crawled over it. He turned it around and tried showing me the opening.",
       },
       {
         subject: "nudibranch underwater",
-        mediaSha1: "999b6de9c270b6cf084e91d32519aab2f1b24366",
+        mediaSha1: "78cee6949fb8cd5308c53c9725de02cea1c64a62",
         theme: "feeding",
-        title: "Lunch bites back",
-        body: "I ate the hydroid. Its stinging cells came with me. Somewhere inside my back, breakfast is still trying to hurt somebody.",
+        title: "Breakfast is fastened down",
+        body: "Finished the blue clump and raised my head to leave. There was another blue clump underneath. I have been leaving for quite a while.",
       },
       {
         subject: "nudibranch underwater",
-        mediaSha1: "f78edbd368573323bec2926ac2459c1cc009a6f6",
+        mediaSha1: null,
         theme: "danger",
         title: "The fish came closer",
         body: "The fish circled me twice. I turned my brightest side toward it. It came closer for a better look. I am beginning to see a flaw in being spectacular.",
       },
       {
         subject: "nudibranch underwater",
-        mediaSha1: "a1bfc86887366dde276f85612da527a42f49d3a1",
+        mediaSha1: "3dbe7e0c03e5de95816b0cec07171d1915c27199",
         theme: "movement",
-        title: "Current events",
-        body: "The tide carried me backward past the same snail three times. On the third pass he pulled into his shell. I think he thinks I am following him.",
+        title: "All of me must turn",
+        body: "I took the corner headfirst. My gills are still on the old side of the rock. We are both insisting this is forward.",
       },
       {
         subject: "nudibranch mating",
@@ -273,31 +306,31 @@ export const SAMPLE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       },
       {
         subject: "nudibranch underwater",
-        mediaSha1: "6da2fa0f46144ea10d89649891e6e7aef2964355",
+        mediaSha1: null,
         theme: "danger",
         title: "Stolen fire",
         body: "The fish put me in its mouth and spat me straight back out. I landed facing the other way. After all that, I still had to turn around to see its expression.",
       },
       {
-        subject: "nudibranch eggs",
-        mediaSha1: "4e80c87a290b277ca8c9770557c51119552827c8",
-        theme: "family",
-        title: "One more turn",
-        body: "I laid a ribbon of eggs in a spiral. Reached the end, looked back, and crawled halfway around it before remembering I had already finished. I nearly signed it twice.",
+        subject: "nudibranch underwater",
+        mediaSha1: "d47c50dd9dc91166939340307b3560a3ea9d032e",
+        theme: "social",
+        title: "Separate mouths",
+        body: "We agreed to eat from different sides. Every mouthful brought us closer. I am trying to leave them a polite amount of dinner without having to stop eating mine.",
       },
       {
         subject: "nudibranch underwater",
-        mediaSha1: "09361b603602c7aa91cf31ea3236aa39d049a4f6",
+        mediaSha1: null,
         theme: "danger",
         title: "Already chewed",
         body: "A shadow passed. I flattened against the rock and tried to look unpleasant to swallow. Then I remembered the fish had already spat me out. I stayed flat, but less anxiously.",
       },
       {
         subject: "nudibranch underwater",
-        mediaSha1: "a86cab4596ddf0314085105b82709bbfd72017ca",
-        theme: "transformation",
-        title: "Leaving, apparently",
-        body: "I raised my head to leave. The current folded me back onto the rock. Tried the other direction. Same result. A snail crawled over me while I was deciding how to make this look voluntary.",
+        mediaSha1: "628d8aba303ab7799dd78292023cdddb8194baf7",
+        theme: "movement",
+        title: "One foot, several problems",
+        body: "I left my tail on one side of the lump and stretched my face toward the other. For a creature with one foot, I have made this unnecessarily complicated.",
       },
     ],
   },
@@ -331,21 +364,21 @@ export const SAMPLE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       },
       {
         subject: "swan",
-        mediaSha1: "eb7c447489d5ac7dc20d38c1a658b843f933102e",
+        mediaSha1: null,
         theme: "danger",
         title: "Possibly a stick",
         body: "Something long and brown drifted toward me. I bit it. It tasted of stick. I bit it again in case it was pretending.",
       },
       {
         subject: "swan",
-        mediaSha1: "c73bd0646805fbbb12ecd768c90d88ac07194f6d",
+        mediaSha1: null,
         theme: "feeding",
         title: "Get off",
         body: "Tipped up for pondweed. Came back to the surface with a duck standing on me. It had both feet settled. This had been a decision.",
       },
       {
         subject: "swan",
-        mediaSha1: "fd8a4385cec80d48c4d960c5c4e145b8ca5834ad",
+        mediaSha1: null,
         theme: "family",
         title: "The missing one",
         body: "Counted eight cygnets. Heard the ninth behind me. Turned around. Still behind me. I swam two circles before a small head came out from under my wing to complain about the ride.",
@@ -368,14 +401,14 @@ export const SAMPLE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
     episodes: [
       {
         subject: "flamingo",
-        mediaSha1: "edc8481461023dbcd11a9cdd43607db51b9a5e49",
+        mediaSha1: null,
         theme: "transformation",
         title: "Before the pink",
         body: "I began gray. The pink arrived one mouthful at a time. Adults kept checking as if I were late.",
       },
       {
         subject: "flamingo",
-        mediaSha1: "edb5d781162da4eb272fea42020ce8a14e36ef59",
+        mediaSha1: null,
         theme: "courtship",
         title: "One bird in thousands",
         body: "I found them in the pink confusion because their head turn was half a beat late.",
@@ -389,7 +422,7 @@ export const SAMPLE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       },
       {
         subject: "flamingo",
-        mediaSha1: "93e39136932440ef7d122a427808cf6d1b383dd1",
+        mediaSha1: null,
         theme: "weather",
         title: "Night on one leg",
         body: "Woke to a thousand neighbors facing the wrong direction. Turned around to correct the example I was setting. Everyone turned with me. We are back where we started.",
@@ -404,49 +437,49 @@ export const SAMPLE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
     episodes: [
       {
         subject: "supernova remnant NASA",
-        mediaSha1: "315078d06ac86e674de56d66f859d89bc516295e",
+        mediaSha1: null,
         theme: "cosmic",
         title: "The long before",
         body: "I spent millions of years making heavier elements. The iron stayed in my center, where no eye could reach it. You will see that part of me later. I will have to come apart first.",
       },
       {
         subject: "supernova remnant NASA",
-        mediaSha1: "308e74d35484433631fb5f786294a1ecb6d6ae36",
+        mediaSha1: null,
         theme: "cosmic",
         title: "Gravity wins inward",
         body: "My core collapsed in less time than this sentence. Every layer above it discovered the terrible efficiency of falling.",
       },
       {
         subject: "supernova remnant NASA",
-        mediaSha1: "69e0ef67759def985b27811707ef2b9baae03ce6",
+        mediaSha1: null,
         theme: "cosmic",
         title: "Then, everything outward",
         body: "I exploded once. The light crossed galaxies before I finished understanding what had happened.",
       },
       {
         subject: "supernova remnant NASA",
-        mediaSha1: "451c25be5d978d1393363812ca1ae2f31f2db618",
+        mediaSha1: null,
         theme: "cosmic",
         title: "What was in the dark",
         body: "I reached gas that had been cold and dark long before I exploded. It began to glow where I struck it. From far away, that bright edge is my shape. Much of what you see was never inside me.",
       },
       {
         subject: "supernova remnant NASA",
-        mediaSha1: "c03fc532fda31868f7f0269abd2fe2eaa4560fb9",
+        mediaSha1: "c447255ad8fe6aab3c24c59dde232234cce6c490",
         theme: "cosmic",
         title: "Iron leaves home",
         body: "I scattered iron into space. Somewhere ahead, a world will put it in blood and call the pulse its own.",
       },
       {
         subject: "supernova remnant NASA",
-        mediaSha1: "30d841ea8b83576cf6e622d4fd5f08987daf8807",
+        mediaSha1: null,
         theme: "cosmic",
         title: "No longer singular",
         body: "Part of me is still racing outward. Part has cooled into grains small enough to settle on your skin. Try drawing a line around what I am now.",
       },
       {
         subject: "supernova remnant NASA",
-        mediaSha1: "ba2a2537792822fe82dd11f8f9d8aab93e37f1e0",
+        mediaSha1: null,
         theme: "cosmic",
         title: "Dust crosses the front",
         body: "A grain of dust entered my shock wave cold and left stripped to atoms. It had been intact longer than your planet.",
@@ -462,56 +495,56 @@ export const SAMPLE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
     episodes: [
       {
         subject: "octopus underwater",
-        mediaSha1: "e3b02baa078bc64dd9c72ca6a799761a9fa4d0b8",
+        mediaSha1: null,
         theme: "movement",
         title: "The room behind the stone",
         body: "I found the entrance with an arm. Sand, a lip of rock, then space. I put another arm in. Those two began exploring while I was still outside deciding whether to live there.\n\nGetting my head through required a fold I had not tried before. For a moment one eye was outside and nearly everything else was inside. I had an excellent view of the thing I was stuck in.\n\nWhen I finally squeezed through, an arm brought me a smooth shell from under the lip. Empty, I thought. I settled into the back with it. Two arms were still outside. I pulled them in and discovered they had brought a stone. Apparently we were moving in whether I liked it or not.",
       },
       {
         subject: "octopus underwater",
-        mediaSha1: "d37b45d8da6d29de546005a5817439a76970e224",
+        mediaSha1: null,
         theme: "feeding",
         title: "It had hold of me too",
         body: "The crab was behind a stone with its back legs showing. I reached over it, reached under it, and got pinched in a place I had only just put there.\n\nI pulled. It held on. Another arm found its way around the stone and caught the crab from behind. That made it release the first arm and pinch the new one. We went through quite a few arms.\n\nAt last I lifted the stone enough to get underneath. I carried the crab home with it still holding on. At the entrance I had to turn us both sideways. The claw scraped the roof. I stopped to protect the roof. Even now I cannot explain why that was more important than the bit of me in the claw.",
       },
       {
         subject: "octopus underwater",
-        mediaSha1: "80b6a70616f9714429b2df7f2f72f57612c64430",
+        mediaSha1: null,
         theme: "social",
         title: "Not empty",
         body: "The smooth shell moved during the night. I returned it to its corner. Later it moved farther. I put a stone beside it so it would stop rolling.\n\nA hermit crab came out, climbed over the stone, and started dragging the shell toward the entrance. I had been moving him around my room for two days. He had waited until I was asleep to leave, and I had caught him twice.\n\nI moved the stone. He went out very slowly. I wanted to help him over the lip, but I could not think of a way to touch him that would not look like the beginning of a third day.",
       },
       {
         subject: "octopus underwater",
-        mediaSha1: "ff7652dda66a6db6ac59eaf12b315fe925d35b88",
+        mediaSha1: null,
         theme: "danger",
         title: "I kept the stone",
         body: "I wanted a stone for the entrance. This one was flat on one side and heavy enough that the current would have to mean it. I dragged it home in little lifts.\n\nHalfway across the sand, a fish turned toward me. I stopped. My skin roughened. I became a lump beside another lump, except that I was still holding the second lump with far too much enthusiasm.\n\nThe fish came closer. I could have dropped the stone. I knew exactly how to drop a stone. Instead I lowered myself around it until sand pressed against my eye.\n\nThe fish passed. I waited until I could no longer see its tail, then dragged the stone the remaining distance. It did not fit the entrance. I sat behind it anyway.",
       },
       {
         subject: "octopus underwater",
-        mediaSha1: "93a24cc4435adc73ecf8c680a36f5e785ed96ccc",
+        mediaSha1: null,
         theme: "weather",
         title: "The water came backward",
         body: "The water shoved into the den hard enough to roll my flat stone against the roof. I held the back wall and reached out to catch it. The next surge took the stone and nearly took the arm.\n\nI let go of the stone. It came back by itself and hit the entrance. I grabbed it again. The water pulled the other way. We repeated this until I understood that owning the stone was now a full-time activity.\n\nAt dawn it was gone. The den was full of weed. I found a crab tangled in the weed and ate it without getting out of bed. I am reluctant to say anything nice about the storm, but it did bring breakfast.",
       },
       {
         subject: "octopus underwater",
-        mediaSha1: "9cbc38f956e32fb306eef4b966f3720a59b81673",
+        mediaSha1: null,
         theme: "wonder",
         title: "Premature condolences",
         body: "I found his shell under the weed. The smooth edge, the chipped lip. I turned it over and waited for the small legs. Empty.\n\nI sat with it for a while. Remembered carrying him against my face. Remembered blocking his escape with a stone. I had not been an easy person to live with.\n\nI was arranging a few pebbles around the shell when he walked past in a larger one. Stopped. Picked something off one of the pebbles. Went on.\n\nI took the pebbles home. It seemed wasteful to have been that sad for nothing.",
       },
       {
         subject: "octopus underwater",
-        mediaSha1: "03eda8d06209532d34f3299c666b2ab3d006065b",
+        mediaSha1: null,
         theme: "movement",
         title: "A way out",
         body: "Cold water was coming through a crack beside my den. I put two arms through from outside and found the place where I sleep. I had been dragging everything through the narrow entrance when there was a second one beside it.\n\nI moved the loose stones. Twice I pulled rubble onto my own head. By afternoon I could squeeze through. I went out the old entrance and in the new one to be certain.\n\nOn the third circuit I found a shrimp and ate it. Went around again. No shrimp. Again, a little slower. Still none. I built an escape route and spent the evening checking whether it made shrimp.",
       },
       {
         subject: "octopus underwater",
-        mediaSha1: "2b6cceb9d37459e39fb0e1be6c7a9de565e2587e",
+        mediaSha1: null,
         theme: "wonder",
         title: "Nothing to carry",
         body: "Went over the ridge with every intention of leaving things where they were. Found a lovely shell. A foot withdrew inside it. I put it back.\n\nFarther down, a smooth stone fitted beautifully into the curl of an arm. I held it, turned it, put it down. Kept moving. I went all the way home without a shell, a stone, or anyone else's house.\n\nAt the entrance an arm uncurled and produced a second stone. I do not know when it picked that up. I moved aside to let it bring the stone in.",
@@ -527,44 +560,46 @@ export const SAMPLE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
     episodes: [
       {
         subject: "moray eel underwater",
-        mediaSha1: "69768a771ef6aa522927343b39e820d69f089e2d",
+        mediaSha1: "591383436276e3a2ce2539a8d71b2ed7bab14c6d",
         theme: "social",
         title: "I was breathing",
         body: "A little fish froze every time I opened my mouth. Swam when I closed it. Froze when I opened it. We made very slow progress through the morning.",
       },
       {
         subject: "moray eel underwater",
-        mediaSha1: "45bb50db85ebfb51c8f184a12cf8f09b599b734b",
+        mediaSha1: null,
         theme: "weather",
         title: "Grit at the back",
         body: "Sand came into my hole from somewhere behind me. I moved forward. More sand. I moved forward again. Eventually I was all outside, which was a great deal more outside than I had intended.",
       },
       {
         subject: "moray eel underwater",
-        mediaSha1: "82c7e06d9c1a1a5062b35af29764e100024bced0",
+        mediaSha1: null,
         theme: "movement",
         title: "Lovely from the front",
         body: "New hole. Good shade, clean water, room to turn my head. Unfortunately the back half of me was in somebody else's hole. I found this out from the back half.",
       },
       {
         subject: "moray eel underwater",
-        mediaSha1: "049d2dd8430d88fc72510d0f8815aaacf9659435",
+        mediaSha1: null,
         theme: "feeding",
         title: "The smell went left",
         body: "I followed supper through two cracks and under a ledge. Lost it. Found it again. By the time I caught the fish, my tail was still coming around the first corner.",
       },
       {
         subject: "moray eel underwater",
-        mediaSha1: "591383436276e3a2ce2539a8d71b2ed7bab14c6d",
+        mediaSha1: null,
         theme: "wonder",
         title: "Room for the rest of me",
         body: "My old hole cleared. I went in, came out, and went in again. A fish paused outside. I opened my mouth and it fled. At the new hole everyone had ignored me. It is good to be home.",
       },
+      {"platform": "facebook", "contentType": "post", "theme": "social", "title": "Still listening", "body": "I went round the corner before he had finished talking. He followed my tail. I stopped so he could finish. Neither of us has mentioned which end he is addressing.", "subject": "moray eel underwater", "mediaSha1": "07937bdc8f0afca1203c479dab4e63e15d21922f"},
+      {"platform": "facebook", "contentType": "post", "theme": "social", "title": "A better angle", "body": "The wrasse said he wanted to show me something. Then he stopped broadside in front of my face. I waited. He turned a little in the light. I said yes, very nice, and he turned the other way.", "subject": "moray eel underwater", "mediaSha1": "f153543d44150bd03fb04a49c9419ad6d02737c2"},
     ],
   },
   {
     characterId: "colm-still",
-    location: { name: "Basalt coast near the Giant's Causeway", coordinates: { lat: 55.24, lng: -6.51 } },
+    location: { name: "Meany Crest basalt columns, Mount Rainier", coordinates: { lat: 46.86, lng: -121.65 } },
     identityNameBase: "Colm Still",
     platform: "x",
     bio: "Columnar volcanic rock. Remembers being too hot for anything to touch. Has since become rather crowded.",
@@ -585,7 +620,7 @@ export const SAMPLE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       },
       {
         subject: "basalt columns geology",
-        mediaSha1: "b611390cec6348b9ee887a0ea3baae1bed485b7b",
+        mediaSha1: null,
         theme: "wonder",
         title: "Something with feet",
         body: "A beetle stopped in the gap where I broke. Cleaned one antenna. Cleaned the other. For a while I thought it was settling in. By the time I had got used to having it, it had gone and done the rest of its life.",
@@ -595,4 +630,30 @@ export const SAMPLE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
   ...AIR_CHARACTER_ARCS,
   ...LAND_CHARACTER_ARCS,
   ...OCEAN_CHARACTER_ARCS,
+  ...STRANGE_CHARACTER_ARCS,
+  ...NEW_OCEAN_CHARACTER_ARCS,
+  ...STRANGE_NEXT_CHARACTER_ARCS,
+  ...STRANGE_FOUNDATIONS_CHARACTER_ARCS,
+  ...DEEPSEA_NEXT_CHARACTER_ARCS,
+  ...DEEPSEA_BONDS_CHARACTER_ARCS,
+  ...STRANGE_WILD_CHARACTER_ARCS,
+  ...STRANGE_EIGHT_CHARACTER_ARCS,
+  ...DEEPSEA_NINE_CHARACTER_ARCS,
+  ...YOUTUBE_TEN_CHARACTER_ARCS,
+  ...LAND_TWELVE_CHARACTER_ARCS,
+  ...OCEAN_TWENTY_ONE_CHARACTER_ARCS,
+  ...LAND_TWENTY_CHARACTER_ARCS,
+  ...BOTANICAL_TWENTY_FOUR_CHARACTER_ARCS,
+  ...BIRD_TWENTY_FIVE_CHARACTER_ARCS,
+  ...AQUATIC_TWENTY_SIX_CHARACTER_ARCS,
+  ...BOTANICAL_TWENTY_SEVEN_CHARACTER_ARCS,
+  ...BOTANICAL_THIRTY_TWO_CHARACTER_ARCS,
+  ...BOTANICAL_FORTY_CHARACTER_ARCS,
+  ...AQUATIC_FORTY_ONE_CHARACTER_ARCS,
+  ...EDITORIAL_FORTY_TWO_THREE_CHARACTER_ARCS,
+  ...AQUATIC_FORTY_FOUR_CHARACTER_ARCS,
+  ...LAND_FORTY_FIVE_CHARACTER_ARCS,
+  ...BOTANICAL_FORTY_SIX_CHARACTER_ARCS,
+  ...LAND_FORTY_NINE_CHARACTER_ARCS,
+  ...BOTANICAL_FIFTY_CHARACTER_ARCS,
 ] as const;

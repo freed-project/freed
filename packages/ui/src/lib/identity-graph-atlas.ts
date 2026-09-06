@@ -36,6 +36,7 @@ export interface IdentityGraphAtlasNode {
   linkedPersonId?: string | null;
   initials?: string;
   avatarUrl?: string | null;
+  avatarUrlCandidates?: readonly string[];
   activityCount: number;
   latestActivityAt?: number;
   aggregateCount?: number;
@@ -284,10 +285,11 @@ function personActivity(
   personId: string,
   accounts: readonly IdentityGraphAccountSource[],
   summaries: Record<string, IdentityGraphActivitySummary>,
-): { count: number; latest: number; avatarUrl: string | null } {
+): { count: number; latest: number; avatarUrl: string | null; avatarUrlCandidates: string[] } {
   let count = 0;
   let latest = 0;
   let avatarUrl: string | null = null;
+  const avatarUrlCandidates: string[] = [];
   for (const account of accounts) {
     if (account.personId !== personId || account.kind !== "social") continue;
     const summary = summaries[socialActivitySummaryKey(normalizedProvider(account.provider), account.externalId)];
@@ -297,8 +299,11 @@ function personActivity(
       account.latestActivityAt ?? summary?.latestActivityAt ?? 0,
     );
     avatarUrl = avatarUrl ?? account.avatarUrl ?? summary?.avatarUrl ?? null;
+    for (const candidate of [account.avatarUrl, summary?.avatarUrl]) {
+      if (candidate && !avatarUrlCandidates.includes(candidate) && avatarUrlCandidates.length < 8) avatarUrlCandidates.push(candidate);
+    }
   }
-  return { count, latest, avatarUrl };
+  return { count, latest, avatarUrl, avatarUrlCandidates };
 }
 
 function nodeIsNearViewport(
@@ -415,6 +420,8 @@ export function buildIdentityGraphAtlasModel({
   const visiblePersons = persons
     .filter((person) => mode === "all_content" || person.relationshipStatus === "friend")
     .sort((left, right) =>
+      Number(right.relationshipStatus === "friend" && right.careLevel >= 4) -
+        Number(left.relationshipStatus === "friend" && left.careLevel >= 4) ||
       right.careLevel - left.careLevel ||
       safeText(left.relationshipStatus).localeCompare(safeText(right.relationshipStatus)) ||
       hashValue(left.id) - hashValue(right.id) ||
@@ -424,37 +431,25 @@ export function buildIdentityGraphAtlasModel({
   const centerX = width / 2;
   const centerY = height / 2;
   const minDimension = Math.min(width, height);
-  const friendCount = visiblePersons.filter((person) => person.relationshipStatus === "friend").length;
-  const connectionCount = visiblePersons.length - friendCount;
-  const friendFieldRadius = Math.max(360, minDimension * 0.5, Math.sqrt(Math.max(1, friendCount)) * 82);
-  const connectionInnerRadius = friendFieldRadius + 170;
-  const connectionFieldWidth = Math.max(220, Math.sqrt(Math.max(1, connectionCount)) * 48);
+  const clusterRadius = Math.max(360, minDimension * 0.5, Math.sqrt(Math.max(1, visiblePersons.length)) * 82);
   const allNodes: IdentityGraphAtlasNode[] = [];
   const edges: IdentityGraphAtlasEdge[] = [];
   const regions: IdentityGraphAtlasRegion[] = [];
   const providerBuckets = new Map<string, ProviderBucket>();
 
-  let friendIndex = 0;
-  let connectionIndex = 0;
   for (let index = 0; index < visiblePersons.length; index += 1) {
     const person = visiblePersons[index]!;
     const linkedAccounts = socialAccountsByPersonId.get(person.id) ?? [];
     const activity = personActivity(person.id, linkedAccounts, activitySummaries.social);
     const friend = person.relationshipStatus === "friend";
-    const angle = friend
-      ? -Math.PI / 2 + friendIndex * GOLDEN_ANGLE + (seededUnit(`person:${person.id}:angle`) - 0.5) * 0.16
-      : -Math.PI / 2 + connectionIndex * GOLDEN_ANGLE + (seededUnit(`connection:${person.id}:angle`) - 0.5) * 0.2;
-    const carePull = 1 - ((person.careLevel - 1) / 4) * 0.32;
-    const radius = friend
-      ? Math.sqrt((friendIndex + 0.55) / Math.max(1, friendCount)) * friendFieldRadius * carePull
-      : connectionInnerRadius +
-        Math.sqrt((connectionIndex + 0.5) / Math.max(1, connectionCount)) * connectionFieldWidth;
+    // One equal-area spiral, not separate friendship bands. Sorted high-care
+    // friends receive the central slots without creating an empty annulus.
+    const angle = -Math.PI / 2 + index * GOLDEN_ANGLE;
+    const radius = Math.sqrt((index + 0.5) / Math.max(1, visiblePersons.length)) * clusterRadius;
     const fallback = {
       x: centerX + Math.cos(angle) * radius,
       y: centerY + Math.sin(angle) * radius * 0.74,
     };
-    if (friend) friendIndex += 1;
-    else connectionIndex += 1;
     const position = applyPinnedPosition(person, fallback);
     allNodes.push({
       id: `person:${person.id}`,
@@ -462,13 +457,12 @@ export function buildIdentityGraphAtlasModel({
       label: safeText(person.name, "Unnamed friend"),
       x: position.x,
       y: position.y,
-      radius: friend
-        ? 40 + person.careLevel * 8
-        : Math.min(46, 28 + Math.min(12, linkedAccounts.length * 1.2)),
-      priority: friend ? 900 + person.careLevel * 40 : 560 + linkedAccounts.length * 10,
+      radius: 40 + person.careLevel * 8,
+      priority: 900 + person.careLevel * 40,
       personId: person.id,
       initials: initialsForLabel(person.name),
-      avatarUrl: person.avatarUrl ?? activity.avatarUrl,
+      avatarUrl: activity.avatarUrl,
+      avatarUrlCandidates: activity.avatarUrlCandidates,
       activityCount: activity.count,
       latestActivityAt: activity.latest > 0 ? activity.latest : undefined,
       graphPinned: person.graphPinned,
@@ -506,7 +500,7 @@ export function buildIdentityGraphAtlasModel({
       const angle = orbitRotation + (Math.PI * 2 * (indexInRing + ringIndex * 0.36)) / ringPopulation;
       fallback = {
         x: linkedPerson.x + Math.cos(angle) * orbit,
-        y: linkedPerson.y + Math.sin(angle) * orbit * 0.9,
+        y: linkedPerson.y + Math.sin(angle) * orbit,
       };
     } else {
       fallback = {
@@ -600,7 +594,7 @@ export function buildIdentityGraphAtlasModel({
   const providers = [...providerBuckets.values()].sort((left, right) =>
     safeText(left.provider, "other").localeCompare(safeText(right.provider, "other")),
   );
-  const outerRadius = Math.max(560, friendFieldRadius + connectionFieldWidth + 170);
+  const outerRadius = Math.max(560, clusterRadius + 170);
   for (let providerIndex = 0; providerIndex < providers.length; providerIndex += 1) {
     const bucket = providers[providerIndex]!;
     const unlinked = [...bucket.accounts, ...bucket.feeds].sort((left, right) =>

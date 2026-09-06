@@ -21,6 +21,7 @@ interface TooltipProps {
   className?: string;
   triggerStyle?: CSSProperties;
   badge?: ReactNode;
+  content?: ReactNode;
 }
 
 interface TooltipPosition {
@@ -49,6 +50,7 @@ export function Tooltip({
   className = "",
   triggerStyle,
   badge,
+  content,
 }: TooltipProps) {
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -208,7 +210,7 @@ export function Tooltip({
       window.removeEventListener("resize", refreshPosition);
       window.removeEventListener("blur", closeTooltip);
     };
-  }, [badge, description, label, open, shortcut, side]);
+  }, [badge, content, description, label, open, shortcut, side]);
 
   const openTooltip = () => {
     setPosition((current) => ({ ...current, placement: side, ready: false }));
@@ -257,6 +259,7 @@ export function Tooltip({
   };
 
   const tooltipStyle = {
+    ...(content ? { padding: 0, maxWidth: "calc(100vw - 1.5rem)", borderRadius: "1rem" } : {}),
     left: `${position.left}px`,
     top: `${position.top}px`,
     visibility: position.ready ? "visible" : "hidden",
@@ -289,7 +292,7 @@ export function Tooltip({
               style={tooltipStyle}
             >
               {badge ? <span className="theme-tooltip-badge">{badge}</span> : null}
-              <div className="theme-tooltip-body">
+              {content ?? <div className="theme-tooltip-body">
                 <span className="theme-tooltip-label">
                   {label}
                   {shortcut ? <kbd className="theme-tooltip-shortcut">{shortcut}</kbd> : null}
@@ -297,7 +300,7 @@ export function Tooltip({
                 {description ? (
                   <span className="theme-tooltip-description">{description}</span>
                 ) : null}
-              </div>
+              </div>}
               <span
                 className={`theme-tooltip-arrow ${
                   position.placement === "top"

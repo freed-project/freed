@@ -42,7 +42,7 @@ function WelcomeActions({
   return (
     <div className={`demo-banner-actions grid ${stacked ? "grid-cols-1" : "grid-cols-2"} gap-2`}>
       <a
-        className="btn-primary inline-flex min-w-0 items-center justify-center px-3 py-3 text-center text-sm"
+        className="btn-primary demo-primary-action inline-flex min-w-0 items-center justify-center px-3 py-3 text-center text-sm"
         href={downloadUrl}
         style={{ borderRadius: "var(--demo-button-radius, 1.5rem)" }}
       >
@@ -96,7 +96,8 @@ function FirstLookWelcome({
           </p>
           <button
             type="button"
-            className="btn-primary mt-8 inline-flex min-h-14 min-w-[15rem] items-center justify-center px-10 py-4 text-lg"
+            className="btn-primary demo-primary-action mt-8 inline-flex min-h-14 min-w-[15rem] items-center justify-center px-10 py-4 text-lg"
+            style={{ borderRadius: "2rem" }}
             onClick={onExplore}
           >
             Explore Freed Demo
@@ -110,10 +111,26 @@ function FirstLookWelcome({
 function FieldGuideWelcome({
   downloadUrl,
   arriving,
+  initialMinimized,
+  onMaximize,
 }: DemoWelcomeBannerProps & {
   arriving: boolean;
+  initialMinimized: boolean;
+  onMaximize: () => void;
 }) {
   const [newsletterOpen, setNewsletterOpen] = useState(false);
+  const [minimized, updateMinimized] = useState(initialMinimized);
+  const setMinimized = (value: boolean) => {
+    updateMinimized(value);
+    saveDemoWelcomeState(value ? "minimized" : "banner");
+  };
+  const minimizeRef = useRef<HTMLButtonElement>(null);
+  const restoreRef = useRef<HTMLButtonElement>(null);
+  const minimizationChanged = useRef(false);
+  useLayoutEffect(() => {
+    if (!minimizationChanged.current) return;
+    (minimized ? restoreRef : minimizeRef).current?.focus();
+  }, [minimized]);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [dragging, setDragging] = useState(false);
   const newsletterPreviewOnly =
@@ -134,7 +151,7 @@ function FieldGuideWelcome({
   }, []);
   useLayoutEffect(() => {
     const content = contentRef.current;
-    if (!content) return;
+    if (!content || minimized) return;
     // Layout height excludes the entrance animation's temporary scale.
     const measure = () => {
       const nextHeight = content.offsetHeight;
@@ -158,7 +175,7 @@ function FieldGuideWelcome({
     const observer = new ResizeObserver(measure);
     observer.observe(content);
     return () => observer.disconnect();
-  }, []);
+  }, [minimized]);
   const dragRef = useRef<{
     pointerId: number;
     startX: number;
@@ -219,13 +236,57 @@ function FieldGuideWelcome({
   };
 
   return (
+    <>
+      <button
+        data-testid="demo-welcome-tab"
+        ref={restoreRef}
+        type="button"
+        aria-label="Restore demo banner"
+        title="Restore demo banner"
+        onClick={() => setMinimized(false)}
+        inert={!minimized}
+        className="demo-banner-morph demo-tab-restore fixed bottom-0 left-1/2 z-[139] w-[min(18rem,calc(100vw-1rem))] cursor-pointer border-0 bg-transparent p-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--theme-accent-primary)]"
+        style={{
+          height: "calc(3rem + var(--safe-area-bottom, 0px))",
+          opacity: minimized ? 1 : 0,
+          visibility: minimized ? "visible" : "hidden",
+          transform: `translateX(-50%) translateY(${minimized ? "0" : "100%"}) scale(${minimized ? 1 : 0.85})`,
+          transformOrigin: "bottom center",
+          transition: `transform 600ms ease, opacity 600ms ease, visibility 0s ${minimized ? "0s" : "600ms"}`,
+          pointerEvents: minimized ? "auto" : "none",
+        }}
+      >
+        <svg aria-hidden="true" viewBox="0 0 352 72" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 h-full w-full overflow-visible"
+          style={{ filter: "drop-shadow(0 8px 20px rgb(0 0 0 / 0.25)) drop-shadow(0 24px 64px rgb(0 0 0 / 0.6))" }}>
+          <path d="M0 72 C30 72 30 58 36 36 C42 12 54 4 82 4 H270 C298 4 310 12 316 36 C322 58 322 72 352 72"
+            fill="var(--theme-bg-elevated)" stroke="var(--theme-border-strong)" strokeWidth="4" vectorEffect="non-scaling-stroke" />
+        </svg>
+        <span className="relative flex h-12 items-center justify-center gap-2 pt-1 text-[var(--theme-text-primary)]">
+          <FreedLogo className="h-6 w-6" />
+          <span className="text-base font-semibold">Freed Demo</span>
+          <span className="demo-banner-control absolute right-9 top-1 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[var(--theme-accent-primary)]">
+            <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M8 3H3v5m13 13h5v-5M3 3l7 7m11 11-7-7" />
+            </svg>
+          </span>
+        </span>
+      </button>
     <div
       data-testid="demo-welcome-desktop"
-      className="fixed bottom-[max(1rem,var(--safe-area-bottom))] left-1/2 z-[140] w-[min(32rem,calc(100vw-2rem))] -translate-x-1/2 max-[576px]:w-[calc(100vw-2rem)]"
+      inert={minimized}
+      className="demo-banner-morph fixed bottom-[max(1rem,var(--safe-area-bottom))] left-1/2 z-[140] w-[min(32rem,calc(100vw-2rem))] max-[576px]:w-[calc(100vw-2rem)]"
+      style={{
+        opacity: minimized ? 0 : 1,
+        visibility: minimized ? "hidden" : "visible",
+        transform: `translateX(-50%) translateY(${minimized ? "3rem" : "0"}) scale(${minimized ? 0.78 : 1})`,
+        transformOrigin: "bottom center",
+        transition: `transform 460ms ease, opacity 460ms ease, visibility 0s ${minimized ? "460ms" : "0s"}`,
+        pointerEvents: minimized ? "none" : "auto",
+      }}
     >
       <div
         ref={cardRef}
-        className={`theme-floating-panel max-h-[calc(100dvh-2rem)] touch-none overflow-y-auto rounded-[2rem] ${dragging ? "cursor-grabbing" : "cursor-grab"} ${arriving ? "demo-welcome-field-guide--arriving" : ""}`}
+        className={`theme-floating-panel relative max-h-[calc(100dvh-2rem)] touch-none overflow-y-auto rounded-[2rem] ${dragging ? "cursor-grabbing" : "cursor-grab"} ${arriving ? "demo-welcome-field-guide--arriving" : ""}`}
         style={{
           transform: `translate3d(${offset.x}px, ${offset.y}px, 0)`,
           transition: dragging ? "none" : "transform 300ms ease-in-out",
@@ -241,13 +302,29 @@ function FieldGuideWelcome({
       >
         <div
           data-testid="demo-welcome-drag-handle"
-          className="flex select-none items-center justify-between px-5 pt-4"
+          className="flex select-none items-center justify-between pl-5 pr-24 pt-5"
         >
           <div className="flex items-center gap-2">
             <FreedLogo className="h-7 w-7" />
             <span className="text-sm font-semibold text-[var(--theme-text-primary)]">
               {newsletterOpen ? "Freed Newsletter" : "Freed Demo"}
             </span>
+          </div>
+          <div className="absolute right-1 top-1 flex items-center">
+          <button ref={minimizeRef} type="button" aria-label="Minimize demo banner" title="Minimize demo banner"
+            className="demo-banner-control -mr-2 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[var(--theme-accent-primary)] hover:bg-[var(--theme-accent-glow)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+            onClick={() => { minimizationChanged.current = true; setMinimized(true); }}>
+            <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M5 12h14" />
+            </svg>
+          </button>
+          <button type="button" aria-label="Open demo welcome modal" title="Open demo welcome modal"
+            className="demo-banner-control inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[var(--theme-accent-primary)] hover:bg-[var(--theme-accent-glow)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+            onClick={onMaximize}>
+            <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M8 3H3v5m13 13h5v-5M3 3l7 7m11 11-7-7" />
+            </svg>
+          </button>
           </div>
         </div>
         <div className="overflow-hidden transition-[height] duration-300 ease-in-out motion-reduce:transition-none" style={{ height: contentHeight }}>
@@ -304,16 +381,33 @@ function FieldGuideWelcome({
         </div>
       </div>
     </div>
+    </>
   );
 }
 
+const DEMO_WELCOME_STATE_KEY = "freed.demo.welcome-state.v1";
+type DemoWelcomeState = "modal" | "banner" | "minimized";
+function readDemoWelcomeState(): DemoWelcomeState {
+  try {
+    const state = localStorage.getItem(DEMO_WELCOME_STATE_KEY);
+    return state === "banner" || state === "minimized" ? state : "modal";
+  } catch { return "modal"; }
+}
+function saveDemoWelcomeState(state: DemoWelcomeState) {
+  try { localStorage.setItem(DEMO_WELCOME_STATE_KEY, state); } catch { /* Storage may be disabled. */ }
+}
+
 export function DemoWelcomeBanner({ downloadUrl }: DemoWelcomeBannerProps) {
+  const [initialState] = useState(readDemoWelcomeState);
   const [transitioningToGuide, setTransitioningToGuide] = useState(false);
-  const [guideVisible, setGuideVisible] = useState(false);
+  const [guideVisible, setGuideVisible] = useState(initialState !== "modal");
+  const [initialMinimized, setInitialMinimized] = useState(initialState === "minimized");
   const [guideArriving, setGuideArriving] = useState(false);
 
   const exploreDemo = () => {
     if (transitioningToGuide || guideVisible) return;
+    saveDemoWelcomeState("banner");
+    setInitialMinimized(false);
     setTransitioningToGuide(true);
     setGuideVisible(true);
     setGuideArriving(true);
@@ -336,6 +430,13 @@ export function DemoWelcomeBanner({ downloadUrl }: DemoWelcomeBannerProps) {
         <FieldGuideWelcome
           downloadUrl={downloadUrl}
           arriving={guideArriving}
+          initialMinimized={initialMinimized}
+          onMaximize={() => {
+            saveDemoWelcomeState("modal");
+            setTransitioningToGuide(false);
+            setGuideArriving(false);
+            setGuideVisible(false);
+          }}
         />
       )}
     </>

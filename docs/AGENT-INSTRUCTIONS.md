@@ -87,6 +87,24 @@ personal instructions, root instructions, source code, or total model tokens.
 Over-budget cases must retain an explicit explanation of interacting rules;
 never omit a matching authority reference to improve the number.
 
+## Local decision review
+
+Complex, autonomous task sequences require `TASK-DECISIONS.local.md` at the task worktree root. The repository ignores this filename. Confirm it is ignored and absent from the index before publication; never force-add, commit, or copy its contents into a public issue or pull request. Keep secrets and personal data out of it.
+
+Create the log when the first judgment decision or unanswered question arises. Keep a short review-first summary of open questions, provisional decisions, and known gaps. For each entry record:
+
+- A stable entry number, date, affected surface, and status: open question, investigation, provisional decision, implemented, superseded, or owner-confirmed.
+- The request or observed problem, separating evidence from assumptions.
+- The chosen behavior, alternatives considered, and concrete reason for the choice.
+- Consequences, affected files, validation performed or still missing, and what the owner should inspect.
+- Any owner answer or later correction, retaining the earlier decision as superseded rather than silently rewriting history.
+
+Record decisions when made and update entries after validation or new owner feedback. Do not turn the log into a tool transcript or routine progress diary. Backfilled entries must say they are retrospective and must not invent earlier rationale or proof.
+
+Pause and ask about ambiguities that materially change scope, authority, safety, architecture, or user experience. A logged guess is not approval. Continue independent, authorized work while a separable question is pending.
+
+Before handoff or release, reconcile the log with the implementation, clearly identify unresolved items, and give the owner a clickable local link. Do not claim a clean review while a material question remains. Before deleting a worktree, preserve its log at an owner-accessible local path outside the worktree and provide that path, or retain the worktree until review. Never delete the only copy during cleanup. Only promote an approved durable decision into tracked product documentation; the review log itself remains local.
+
 ## Measure the result
 
 Review this architecture after a concrete routing error, missed safety stop, or repeated-context regression. Use that evidence to change the route or budget. Do not optimize for line count alone.

@@ -446,17 +446,35 @@ test("dev releases publish a signed isolated Apple Silicon verifier without upda
   );
 });
 
-test("production releases publish an exact-tag local-only PWA showcase", () => {
+test("production releases publish an exact-tag PWA showcase with reviewed media", () => {
   const showcaseJob = releaseWorkflow.slice(
     releaseWorkflow.indexOf("\n  showcase-assets:"),
     releaseWorkflow.indexOf("\n  # After all platform builds succeed"),
   );
 
   assert.match(showcaseJob, /release_channel == 'production'/);
+  assert.match(showcaseJob, /FREED_BUILD_KIND:\s*"release"/);
+  assert.match(showcaseJob, /FREED_BUILD_CHANNEL:\s*"production"/);
   assert.match(showcaseJob, /VITE_FREED_DEMO:\s*"1"/);
   assert.match(showcaseJob, /capture-release-showcase\.mjs/);
   assert.match(showcaseJob, /freed-showcase\.gif/);
   assert.match(showcaseJob, /gh release upload "\$TAG"/);
+  assert.match(showcaseJob, /release-showcase-assets\.mjs finalize --directory release-showcase/);
+  const publishJob = releaseWorkflow.slice(releaseWorkflow.indexOf("\n  publish:"), releaseWorkflow.indexOf("\n  publish-website:"));
+  assert.match(publishJob, /release-showcase-assets\.mjs verify-public --directory release-showcase/);
+  assert.match(publishJob, /needs\.showcase-assets\.result == 'success'/);
+  const capture = readFileSync(path.join(scriptsDir, "capture-release-showcase.mjs"), "utf8");
+  assert.match(capture, /Explore Freed Demo/);
+  assert.match(capture, /await selectTheme\(page, capture.theme\)/);
+  assert.doesNotMatch(capture, /page\.reload\(/);
+  assert.match(capture, /unexpectedRequestUrls\.size > 0/);
+  assert.match(capture, /remoteMediaUrls:/);
+  assert.match(capture, /captureUrl\.searchParams\.set\("freed-demo", "1"\)/);
+  assert.match(capture, /policyViolations\.length > 0/);
+  assert.match(capture, /imageFailures\.length > 0/);
+  assert.match(capture, /Visible showcase media did not settle/);
+  assert.match(capture, /data-map-tiles-ready="true"/);
+  assert.match(capture, /pending:[\s\S]*slice\(0, 10\)/);
 });
 
 test("release failure triage binds GitHub CLI to the triggering repository", () => {

@@ -1,0 +1,287 @@
+{
+  "batch": "botanical-regular-40",
+  "status": "two proposed posts, two new proposed identities; zero admission",
+  "entries": [
+    {
+      "id": "botanical40-01",
+      "characterId": "lionel-fringe",
+      "subject": "shaggy mane mushroom",
+      "species": "Coprinus comatus",
+      "platform": "facebook",
+      "contentType": "post",
+      "theme": "transformation",
+      "title": "Not quite finished",
+      "body": "The little white cap beside me is still keeping itself together. I was like that very recently.\n\nThen I grew taller and lifted my rim. The edge turned black. A bead hung where I had been expecting more neat white fringe.\n\nI thought I could finish opening before anything came off.\n\nNow there is a black string of me hanging toward the grass. The younger cap has barely begun to lift.\n\nI would like to appear reassuring. It is difficult to look experienced while visibly becoming a drip.",
+      "mediaSha1": "3af684f7eb63d02c01cc7672e84e40838756609b",
+      "media": {
+        "id": "botanical40-01-display",
+        "imageUrl": "https://npgallery.nps.gov/GetAsset/be83ef40-c506-4589-a8b6-a15bd30cb8a9/proxyhires.jpg?",
+        "localFile": "/tmp/botanical40/be83ef40-c506-4589-a8b6-a15bd30cb8a9-proxyhires.jpg",
+        "sha1": "3af684f7eb63d02c01cc7672e84e40838756609b",
+        "bytes": 1301972,
+        "dimensions": [
+          1500,
+          2000
+        ],
+        "sourceUrl": "https://npgallery.nps.gov/AssetDetail/be83ef40-c506-4589-a8b6-a15bd30cb8a9",
+        "sha256": "196a0e6904e029129cc594633e6b17d9d9844fed4bf32920138a860c28d73191",
+        "category": "wildlife",
+        "aggregated": false,
+        "rightsEvidence": "Public domain:Full Granting Rights",
+        "creator": "NPS",
+        "license": "Public domain",
+        "sourceLocal": "/tmp/botanical40/be83ef40-c506-4589-a8b6-a15bd30cb8a9.html",
+        "licenseUrl": "https://npgallery.nps.gov/AssetDetail/be83ef40-c506-4589-a8b6-a15bd30cb8a9",
+        "status": 200,
+        "seconds": 3.2616959999722894,
+        "original": {
+          "id": "be83ef40-c506-4589-a8b6-a15bd30cb8a9",
+          "imageUrl": "https://npgallery.nps.gov/GetAsset/be83ef40-c506-4589-a8b6-a15bd30cb8a9/original.jpg?",
+          "localFile": "/tmp/botanical40/be83ef40-c506-4589-a8b6-a15bd30cb8a9.jpg",
+          "sha1": "682157347d2d885dcb964393f000dd0fdd59e5fa",
+          "bytes": 4197767,
+          "dimensions": [
+            2448,
+            3264
+          ],
+          "sourceUrl": "https://npgallery.nps.gov/AssetDetail/be83ef40-c506-4589-a8b6-a15bd30cb8a9",
+          "sha256": "b602a1a60543fd5c50e59e336c6f75519bba0fc507b379704ecba335b8b04be5",
+          "category": "wildlife",
+          "aggregated": false,
+          "rightsEvidence": "Public domain:Full Granting Rights",
+          "creator": "NPS",
+          "license": "Public domain",
+          "sourceLocal": "/tmp/botanical40/be83ef40-c506-4589-a8b6-a15bd30cb8a9.html",
+          "licenseUrl": "https://npgallery.nps.gov/AssetDetail/be83ef40-c506-4589-a8b6-a15bd30cb8a9"
+        },
+        "alt": "An open shaggy mane cap has an inky black rim and hanging black strand, with a smaller white closed cap in front."
+      },
+      "visibleEvidence": "A mature open cap with a black rim, a long black strand descending from its margin, and a younger white cylindrical cap in front. The strand and age contrast remain legible in the published hires file.",
+      "fictionalContext": "Remembered opening sequence, expectation and desire to reassure are fiction. The younger cap is an anonymous neighbor, not proven offspring or the same mycelium. The body is maturing and deliquescing, not recovering from injury.",
+      "status": "proposed; independent lead review required"
+    },
+    {
+      "id": "botanical40-02",
+      "characterId": "sylvia-bead",
+      "subject": "wrinkled peach mushroom",
+      "species": "Rhodotus palmatus",
+      "platform": "instagram",
+      "contentType": "post",
+      "theme": "sensory",
+      "title": "A little overdressed",
+      "body": "I was pleased when the amber beads appeared on my stem. They went beautifully with the pink cap.\n\nThen more came. Several ran together, and the lowest began to stretch.\n\nFor a while I tried to think of myself as richly decorated. There is now a large drop preparing to fall off the bottom of me.\n\nI would have preferred to remain ornamental for a little longer.",
+      "mediaSha1": "ba9242211a68b65a99eb16f5559de43285d35161",
+      "media": {
+        "id": "botanical40-02",
+        "imageUrl": "https://www.nps.gov/articles/images/Rhodotus_palmatusE.jpg",
+        "sourceUrl": "https://www.nps.gov/articles/so-many-mushrooms.htm",
+        "localFile": "/tmp/botanical40/Rhodotus_palmatusE.jpg",
+        "bytes": 2379232,
+        "sha1": "ba9242211a68b65a99eb16f5559de43285d35161",
+        "dimensions": [
+          2313,
+          1735
+        ],
+        "creator": "NPS / Sarah Daugherty",
+        "license": "Public domain",
+        "sha256": "c3df84ffc577ccd7e4bbc2d3598cf23527fc26b2de5c8ba3e093c288733bff70",
+        "category": "wildlife",
+        "aggregated": false,
+        "rightsEvidence": "NPS/Sarah Daugherty staff credit and monitoring work identified in article; NPS ownership disclaimer",
+        "sourceLocal": "/tmp/botanical40/mushrooms.html",
+        "licenseUrl": "https://www.nps.gov/aboutus/disclaimer.htm",
+        "alt": "A pink wrinkled-peach mushroom grows from decaying wood, with large amber droplets along its pale stem."
+      },
+      "visibleEvidence": "Pink reticulated cap, pale stem with many rounded amber drops and a larger pendant drop low on the stem. The source specifically identifies guttation.",
+      "fictionalContext": "Earlier small beads, merging drops and preference for an ornamental appearance are fiction grounded in the visible secreting structure. No distress, rainstorm or insect visitor is invented.",
+      "status": "proposed; independent lead review required"
+    }
+  ],
+  "holds": [
+    {
+      "source": {
+        "id": "Dictyophora_duplicataE",
+        "imageUrl": "https://www.nps.gov/articles/images/Dictyophora_duplicataE.jpg",
+        "sourceUrl": "https://www.nps.gov/articles/so-many-mushrooms.htm",
+        "localFile": "/tmp/botanical40/Dictyophora_duplicataE.jpg",
+        "bytes": 5256522,
+        "sha1": "3d74f15d86ef318c1952e2fc5ad73e05d8b1ec40",
+        "dimensions": [
+          3264,
+          2448
+        ],
+        "creator": "NPS / Sarah Daugherty",
+        "license": "Public domain",
+        "sha256": "749e307f4d3bfa91b6efb19a6e0657a85e67fd3fcb919fa113fdabc050667ede",
+        "category": "wildlife",
+        "aggregated": false,
+        "rightsEvidence": "NPS/Sarah Daugherty staff credit and monitoring work identified in article; NPS ownership disclaimer",
+        "sourceLocal": "/tmp/botanical40/mushrooms.html",
+        "licenseUrl": "https://www.nps.gov/aboutus/disclaimer.htm"
+      },
+      "status": "hold",
+      "reason": "Beautiful netted stinkhorn but no independently certain fly contact. The small red object on the net cannot establish an insect encounter. Shape/smell alone has not yielded a distinct incident, so no new identity or avatar is proposed."
+    },
+    {
+      "source": {
+        "id": "01e972b8-155d-4519-3e3e-a168c26b152c",
+        "imageUrl": "https://npgallery.nps.gov/GetAsset/01E972B8-155D-4519-3E3EA168C26B152C/original.jpg?",
+        "sourceUrl": "https://npgallery.nps.gov/AssetDetail/01e972b8-155d-4519-3e3e-a168c26b152c",
+        "localFile": "/tmp/botanical40/01e972b8-155d-4519-3e3e-a168c26b152c.jpg",
+        "bytes": 2676883,
+        "sha1": "471c6384267d56cdce953e6203dba063b46e7d87",
+        "dimensions": [
+          2816,
+          2112
+        ],
+        "sha256": "aa35079cbcaaf3bfca165a12779502bc9d85483685c2837e592c05756847535b",
+        "category": "wildlife",
+        "aggregated": false,
+        "rightsEvidence": "Public domain:Full Granting Rights",
+        "creator": "NPS",
+        "license": "Public domain",
+        "sourceLocal": "/tmp/botanical40/01e972b8-155d-4519-3e3e-a168c26b152c.html",
+        "licenseUrl": "https://npgallery.nps.gov/AssetDetail/01e972b8-155d-4519-3e3e-a168c26b152c"
+      },
+      "status": "hold",
+      "reason": "Identified group of young shaggy-mane caps. A crowding or height-comparison episode would be generic and overlap the chosen younger-cap contrast. Exact photo was opened, but is not a second entry."
+    },
+    {
+      "source": {
+        "id": "7ee7c7a7-cf0d-4c1a-8357-f9a5071eae8a",
+        "imageUrl": "https://npgallery.nps.gov/GetAsset/7ee7c7a7-cf0d-4c1a-8357-f9a5071eae8a/original.jpg?",
+        "localFile": "/tmp/botanical40/7ee7c7a7-cf0d-4c1a-8357-f9a5071eae8a.jpg",
+        "sha1": "37a72e7bdc563d4eea79566ede347b6892bfead2",
+        "bytes": 2740734,
+        "dimensions": [
+          3024,
+          4032
+        ],
+        "sourceUrl": "https://npgallery.nps.gov/AssetDetail/7ee7c7a7-cf0d-4c1a-8357-f9a5071eae8a",
+        "sha256": "8ca716deb01eefd695ff36ce8d39230d09f132b0cae1a20c6e09e49bb516efae",
+        "category": "wildlife",
+        "aggregated": false,
+        "rightsEvidence": "Public domain:Full Granting Rights",
+        "creator": "NPS",
+        "license": "Public domain",
+        "sourceLocal": "/tmp/botanical40/7ee7c7a7-cf0d-4c1a-8357-f9a5071eae8a.html",
+        "licenseUrl": "https://npgallery.nps.gov/AssetDetail/7ee7c7a7-cf0d-4c1a-8357-f9a5071eae8a"
+      },
+      "status": "avatar only",
+      "reason": "Excellent single-body portrait; no independent incident beyond emergence. Not counted as a post."
+    }
+  ],
+  "sourceOriginalsOpened": 5,
+  "sourcePublishedDeliveryVariantsOpened": 2,
+  "media": [
+    {
+      "id": "botanical40-01-display",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/be83ef40-c506-4589-a8b6-a15bd30cb8a9/proxyhires.jpg?",
+      "localFile": "/tmp/botanical40/be83ef40-c506-4589-a8b6-a15bd30cb8a9-proxyhires.jpg",
+      "sha1": "3af684f7eb63d02c01cc7672e84e40838756609b",
+      "bytes": 1301972,
+      "dimensions": [
+        1500,
+        2000
+      ],
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/be83ef40-c506-4589-a8b6-a15bd30cb8a9",
+      "sha256": "196a0e6904e029129cc594633e6b17d9d9844fed4bf32920138a860c28d73191",
+      "category": "wildlife",
+      "aggregated": false,
+      "rightsEvidence": "Public domain:Full Granting Rights",
+      "creator": "NPS",
+      "license": "Public domain",
+      "sourceLocal": "/tmp/botanical40/be83ef40-c506-4589-a8b6-a15bd30cb8a9.html",
+      "licenseUrl": "https://npgallery.nps.gov/AssetDetail/be83ef40-c506-4589-a8b6-a15bd30cb8a9",
+      "status": 200,
+      "seconds": 3.2616959999722894,
+      "original": {
+        "id": "be83ef40-c506-4589-a8b6-a15bd30cb8a9",
+        "imageUrl": "https://npgallery.nps.gov/GetAsset/be83ef40-c506-4589-a8b6-a15bd30cb8a9/original.jpg?",
+        "localFile": "/tmp/botanical40/be83ef40-c506-4589-a8b6-a15bd30cb8a9.jpg",
+        "sha1": "682157347d2d885dcb964393f000dd0fdd59e5fa",
+        "bytes": 4197767,
+        "dimensions": [
+          2448,
+          3264
+        ],
+        "sourceUrl": "https://npgallery.nps.gov/AssetDetail/be83ef40-c506-4589-a8b6-a15bd30cb8a9",
+        "sha256": "b602a1a60543fd5c50e59e336c6f75519bba0fc507b379704ecba335b8b04be5",
+        "category": "wildlife",
+        "aggregated": false,
+        "rightsEvidence": "Public domain:Full Granting Rights",
+        "creator": "NPS",
+        "license": "Public domain",
+        "sourceLocal": "/tmp/botanical40/be83ef40-c506-4589-a8b6-a15bd30cb8a9.html",
+        "licenseUrl": "https://npgallery.nps.gov/AssetDetail/be83ef40-c506-4589-a8b6-a15bd30cb8a9"
+      },
+      "alt": "An open shaggy mane cap has an inky black rim and hanging black strand, with a smaller white closed cap in front."
+    },
+    {
+      "id": "botanical40-02",
+      "imageUrl": "https://www.nps.gov/articles/images/Rhodotus_palmatusE.jpg",
+      "sourceUrl": "https://www.nps.gov/articles/so-many-mushrooms.htm",
+      "localFile": "/tmp/botanical40/Rhodotus_palmatusE.jpg",
+      "bytes": 2379232,
+      "sha1": "ba9242211a68b65a99eb16f5559de43285d35161",
+      "dimensions": [
+        2313,
+        1735
+      ],
+      "creator": "NPS / Sarah Daugherty",
+      "license": "Public domain",
+      "sha256": "c3df84ffc577ccd7e4bbc2d3598cf23527fc26b2de5c8ba3e093c288733bff70",
+      "category": "wildlife",
+      "aggregated": false,
+      "rightsEvidence": "NPS/Sarah Daugherty staff credit and monitoring work identified in article; NPS ownership disclaimer",
+      "sourceLocal": "/tmp/botanical40/mushrooms.html",
+      "licenseUrl": "https://www.nps.gov/aboutus/disclaimer.htm",
+      "alt": "A pink wrinkled-peach mushroom grows from decaying wood, with large amber droplets along its pale stem."
+    },
+    {
+      "id": "botanical40-lionel-avatar",
+      "imageUrl": "https://npgallery.nps.gov/GetAsset/7ee7c7a7-cf0d-4c1a-8357-f9a5071eae8a/proxymdres.jpg?",
+      "localFile": "/tmp/botanical40/7ee7c7a7-cf0d-4c1a-8357-f9a5071eae8a-proxymdres.jpg",
+      "sha1": "b32628916e16633176a6b3e7fb25c00d2c65f8dd",
+      "bytes": 200590,
+      "dimensions": [
+        750,
+        1000
+      ],
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/7ee7c7a7-cf0d-4c1a-8357-f9a5071eae8a",
+      "sha256": "7dc5bd4e792e2229f0d30f9732928d4fa0cd83cbd719817c76f9ca40daeb71aa",
+      "category": "wildlife",
+      "aggregated": false,
+      "rightsEvidence": "Public domain:Full Granting Rights",
+      "creator": "NPS",
+      "license": "Public domain",
+      "sourceLocal": "/tmp/botanical40/7ee7c7a7-cf0d-4c1a-8357-f9a5071eae8a.html",
+      "licenseUrl": "https://npgallery.nps.gov/AssetDetail/7ee7c7a7-cf0d-4c1a-8357-f9a5071eae8a",
+      "status": 200,
+      "seconds": 1.1322026250127237,
+      "original": {
+        "id": "7ee7c7a7-cf0d-4c1a-8357-f9a5071eae8a",
+        "imageUrl": "https://npgallery.nps.gov/GetAsset/7ee7c7a7-cf0d-4c1a-8357-f9a5071eae8a/original.jpg?",
+        "localFile": "/tmp/botanical40/7ee7c7a7-cf0d-4c1a-8357-f9a5071eae8a.jpg",
+        "sha1": "37a72e7bdc563d4eea79566ede347b6892bfead2",
+        "bytes": 2740734,
+        "dimensions": [
+          3024,
+          4032
+        ],
+        "sourceUrl": "https://npgallery.nps.gov/AssetDetail/7ee7c7a7-cf0d-4c1a-8357-f9a5071eae8a",
+        "sha256": "8ca716deb01eefd695ff36ce8d39230d09f132b0cae1a20c6e09e49bb516efae",
+        "category": "wildlife",
+        "aggregated": false,
+        "rightsEvidence": "Public domain:Full Granting Rights",
+        "creator": "NPS",
+        "license": "Public domain",
+        "sourceLocal": "/tmp/botanical40/7ee7c7a7-cf0d-4c1a-8357-f9a5071eae8a.html",
+        "licenseUrl": "https://npgallery.nps.gov/AssetDetail/7ee7c7a7-cf0d-4c1a-8357-f9a5071eae8a"
+      },
+      "alt": "A single young white shaggy mane mushroom rises from moss and green grass."
+    }
+  ],
+  "avatarFile": "BOTANICAL-REGULAR-40-AVATARS.json",
+  "canonFile": "BOTANICAL-REGULAR-40-CANON.md"
+}

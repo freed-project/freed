@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useAvatarSource } from "../../context/PlatformContext.js";
 import { personInitialsForName } from "../../lib/friend-avatar.js";
 import { createFriendAvatarPalette } from "../../lib/friend-avatar-style.js";
 import { useAppliedThemeId } from "../../lib/theme.js";
@@ -20,7 +21,7 @@ export function FriendAvatar({
   const palette = createFriendAvatarPalette(themeId);
   const initials = personInitialsForName(name);
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
-  const resolvedUrl = avatarUrl || null;
+  const resolvedUrl = useAvatarSource(avatarUrl);
   const showImage = !!resolvedUrl && failedUrl !== resolvedUrl;
 
   useEffect(() => {

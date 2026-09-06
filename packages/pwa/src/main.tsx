@@ -1,6 +1,5 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { bootstrapDocumentTheme } from '@freed/ui/lib/theme'
 import {
   type Account,
   type Person,
@@ -12,9 +11,12 @@ import type {
   LibraryCoreSqliteQueryRequest,
 } from '@freed/shared/library-core'
 import './index.css'
-import App from './App.tsx'
-import { installConsoleBugReportCapture, installGlobalBugReportCapture } from '@freed/ui/lib/bug-report'
 import { isFreedDemoMode } from './lib/demo-mode'
+import { installDemoPresentationSession } from './lib/demo-presentation-session'
+
+installDemoPresentationSession(window, isFreedDemoMode(
+  window.location.hostname, undefined, window.location.search,
+))
 
 if (
   !isFreedDemoMode(
@@ -29,7 +31,6 @@ if (
   document.head.append(fonts)
 }
 
-bootstrapDocumentTheme()
 
 const previewLabel = import.meta.env.VITE_FREED_PREVIEW_LABEL?.trim() || ""
 
@@ -117,11 +118,15 @@ if (window.visualViewport) {
 }
 syncVisualViewport()
 
-installGlobalBugReportCapture('pwa')
-installConsoleBugReportCapture('pwa')
-
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-)
+// App and theme modules may hydrate preferences at import time. Load them only
+// after the demo's document-local presentation storage has been installed.
+void Promise.all([
+  import('./App.tsx'),
+  import('@freed/ui/lib/theme'),
+  import('@freed/ui/lib/bug-report'),
+]).then(([{ default: App }, { bootstrapDocumentTheme }, capture]) => {
+  bootstrapDocumentTheme()
+  capture.installGlobalBugReportCapture('pwa')
+  capture.installConsoleBugReportCapture('pwa')
+  createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>)
+})

@@ -1,0 +1,1009 @@
+{
+  "batch": "land-regular-42",
+  "candidates": 2,
+  "holds": 4,
+  "newIdentitiesConditional": 2,
+  "entries": [
+    {
+      "id": "land-regular-42-01",
+      "identityNameBase": "Sylvie Stilt",
+      "characterId": "sylvie-stilt",
+      "fullSpecies": "Antigone canadensis",
+      "title": "When we came down",
+      "platform": "instagram",
+      "contentType": "post",
+      "status": "candidate",
+      "independentLeadReview": "pending",
+      "prose": "Every time she landed, I wanted to be in the air.\n\nShe bowed. I jumped. Came down while she was rising, and sprang up again before my legs had straightened. The grass brushed my toes. Then my feet hit a hollow and I had to take two quick steps to keep under my wings.\n\nShe landed beside me. We stood breathing, with our wings hanging loose.\n\nI lowered my head. She lowered hers. This time we both jumped. I could see her feet beside mine, clear of the grass.",
+      "altText": "A flock of sandhill cranes stands in golden grass with patches of snow. Several foreground cranes spread their wings and leap; the left foreground bird has both feet off the ground.",
+      "fictionBoundary": "The left airborne adult is the proposed narrator. Adult crane dancing is visible and explicitly described by FWS. The focal pair, female sexes, alternating timing, landing hollow, steps and shared final leap are fiction. This does not establish mates, a courtship outcome or continuous flight. Background birds are a flock, not an embarrassed audience.",
+      "sourceUrl": "https://www.fws.gov/media/sandhill-cranes-dancing",
+      "creator": "Rachel Portwood/USFWS",
+      "license": "Public domain",
+      "rightsEvidence": "Exact FWS media page: Media Usage Rights/License Public Domain",
+      "sourceCachePath": "/tmp/freed-land42/sandhill-cranes-dancing.html",
+      "original": {
+        "url": "https://www.fws.gov/sites/default/files/images/2026-04/cranes-dancing-monte-vista-nwr-rachel-portwood-usfws.jpg",
+        "localPath": "/tmp/freed-land42/sandhill-cranes-dancing-original.jpg",
+        "width": 3965,
+        "height": 2275,
+        "bytes": 1912696,
+        "sha1": "1203645c834877e8b861fcfa5876ab8ee223f7d6",
+        "sha256": "07d23736bf7e5e79a1566b2539708c04ede4aee9cca12f25b9b0dfdb4793b922",
+        "publishedLink": "<a href=\"https://www.fws.gov/sites/default/files/images/2026-04/cranes-dancing-monte-vista-nwr-rachel-portwood-usfws.jpg\" download=\"usfws-sandhill-cranes-dancing\">Original (3965 x 2275)"
+      },
+      "delivery": {
+        "url": "https://www.fws.gov/sites/default/files/styles/max_1300x1300/public/images/2026-04/cranes-dancing-monte-vista-nwr-rachel-portwood-usfws.jpg?itok=Kt1bdl6U",
+        "localPath": "/tmp/freed-land42/sandhill-cranes-dancing-delivery.jpg",
+        "width": 1300,
+        "height": 746,
+        "bytes": 764557,
+        "sha1": "13f721c1311b4ed93e87c65492a69e061ea0657b",
+        "sha256": "6330930db8c913a35ab306023bc7d8a9250dde7058369bfbb4e86ae5e855a86e",
+        "publishedLink": "<a href=\"https://www.fws.gov/sites/default/files/styles/max_1300x1300/public/images/2026-04/cranes-dancing-monte-vista-nwr-rachel-portwood-usfws.jpg?itok=Kt1bdl6U\" download=\"usfws-sandhill-cranes-dancing-large\">Large (1300 x 746)"
+      },
+      "visualReview": "Exact original individually opened before prose. Candidate delivery variant also individually opened. No source images retouched or locally resized for delivery."
+    },
+    {
+      "id": "land-regular-42-02",
+      "identityNameBase": "Tobias Tumble",
+      "characterId": "tobias-tumble",
+      "fullSpecies": "Lontra canadensis",
+      "title": "A little farther up",
+      "platform": "facebook",
+      "contentType": "post",
+      "status": "candidate",
+      "independentLeadReview": "pending",
+      "prose": "I came out of the river with a bit of weed caught in the fur under my leg. Rolled onto my back, curled around it and started pulling it loose with my teeth.\n\nThe whole bank began moving uphill.\n\nStraightened out. Dug my feet into the snow. Stopped with my tail hanging over the edge and the weed still attached.\n\nClimbed back up and lay across the slope this time. Got the weed free. Worked through the fur around it, then the other side, without sliding anywhere.\n\nWhen I was finished, I turned downhill and tucked my feet in.",
+      "altText": "A river otter lies on its back on sloping snow above a rocky edge, with limbs tucked near its body and its long tapering tail extended.",
+      "fictionBoundary": "Exact NPS caption records an otter on its back preening. Snow slope, curled body and grooming anchor the event. Weed, accidental slide, braking, climb, reorientation and deliberate final slide are fiction. No attached weed is visible. No injury, dangerous fall, drowning risk or claim that the animal confuses its limbs. The moving-bank sentence is subjective motion, resolved by the next actions.",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/0b7f4117-2eca-4b67-a864-91b02d09d84a",
+      "creator": "NPS/Jim Peaco",
+      "license": "Public domain",
+      "rightsEvidence": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "sourceCachePath": "/tmp/freed-land42/6.html",
+      "original": {
+        "url": "https://npgallery.nps.gov/GetAsset/0b7f4117-2eca-4b67-a864-91b02d09d84a/original.jpg?",
+        "publishedLabel": "920.5 KB, 3345x2281",
+        "localPath": "/tmp/freed-land42/6-original.jpg",
+        "bytes": 942625,
+        "width": 3345,
+        "height": 2281,
+        "sha1": "4aeaae3b56e1a4fc1301bcaafc78f99166de0dad",
+        "sha256": "fcf3817ab1793d623ce0569d018185b52ca7a7d046aab26969833d73c7dcc117"
+      },
+      "delivery": {
+        "url": "https://npgallery.nps.gov/GetAsset/0b7f4117-2eca-4b67-a864-91b02d09d84a/proxyhires.jpg?",
+        "publishedLabel": "802.4 KB, 2000x1363",
+        "localPath": "/tmp/freed-land42/6-delivery.jpg",
+        "bytes": 821664,
+        "width": 1999,
+        "height": 1363,
+        "sha1": "b7e3dadf7a47216fae458ec04cd12826fed9399b",
+        "sha256": "f39226022f67e96e6b5ed9220d06a6d4f0dc74c8c95cf392b2458c1f208a7e25"
+      },
+      "visualReview": "Exact original individually opened before prose. Candidate delivery variant also individually opened. No source images retouched or locally resized for delivery."
+    },
+    {
+      "id": "land-regular-42-03",
+      "identityNameBase": "Sylvie Stilt",
+      "characterId": "sylvie-stilt",
+      "fullSpecies": "Antigone canadensis",
+      "title": "Two small followers",
+      "platform": "instagram",
+      "contentType": "post",
+      "status": "hold-image",
+      "independentLeadReview": "pending",
+      "prose": null,
+      "altText": "An adult sandhill crane stands with two small orange chicks in grass.",
+      "fictionBoundary": "The family relationship is source-supported, but the photograph is dark and soft. No offspring enter proposed canon.",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/5125deb4-68e7-4136-bd78-d0fba2aa2507",
+      "creator": "NPS",
+      "license": "Public domain",
+      "rightsEvidence": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "sourceCachePath": "/tmp/freed-land42/2.html",
+      "original": {
+        "url": "https://npgallery.nps.gov/GetAsset/5125deb4-68e7-4136-bd78-d0fba2aa2507/original.jpg?",
+        "publishedLabel": "4.7 MB, 2304x2388",
+        "localPath": "/tmp/freed-land42/2-original.jpg",
+        "bytes": 5135416,
+        "width": 2304,
+        "height": 2388,
+        "sha1": "3f328091fdfe46dc094bd3763c69362cb3797fb3",
+        "sha256": "d0d47969ed068a8dad5a9331f1eebf2043aeebde8bdc1cfe26f0534ffc37c559"
+      },
+      "delivery": {
+        "url": "https://npgallery.nps.gov/GetAsset/5125deb4-68e7-4136-bd78-d0fba2aa2507/original.jpg?",
+        "publishedLabel": "4.7 MB, 2304x2388",
+        "localPath": "/tmp/freed-land42/2-delivery.jpg",
+        "bytes": 5135416,
+        "width": 2304,
+        "height": 2388,
+        "sha1": "3f328091fdfe46dc094bd3763c69362cb3797fb3",
+        "sha256": "d0d47969ed068a8dad5a9331f1eebf2043aeebde8bdc1cfe26f0534ffc37c559"
+      },
+      "visualReview": "Exact original individually opened before prose. Candidate delivery variant also individually opened. No source images retouched or locally resized for delivery."
+    },
+    {
+      "id": "land-regular-42-04",
+      "identityNameBase": "Sylvie Stilt",
+      "characterId": "sylvie-stilt",
+      "fullSpecies": "Antigone canadensis",
+      "title": "Both necks folded",
+      "platform": "instagram",
+      "contentType": "post",
+      "status": "hold-prose",
+      "independentLeadReview": "pending",
+      "prose": null,
+      "altText": "Two sandhill cranes preen their own necks while standing in shallow water beside a foggy beach.",
+      "fictionBoundary": "Atmospheric scene, but no sufficiently distinct episode emerged from paired grooming without repeating companionship or wing-space mechanisms. No mate added.",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/1ee79328-6f10-4e8a-9b19-9604e49abc8b",
+      "creator": "NPS",
+      "license": "Public domain",
+      "rightsEvidence": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "sourceCachePath": "/tmp/freed-land42/5.html",
+      "original": {
+        "url": "https://npgallery.nps.gov/GetAsset/1ee79328-6f10-4e8a-9b19-9604e49abc8b/original.jpg?",
+        "publishedLabel": "4.5 MB, 2952x3060",
+        "localPath": "/tmp/freed-land42/5-original.jpg",
+        "bytes": 4835677,
+        "width": 2952,
+        "height": 3060,
+        "sha1": "088da75cf83b99b7633d995cc42f6df59aef6399",
+        "sha256": "95549c8bd04dc8cdb07d2c9c24625f5b42d7299bcb1ca899de4351be3bc1e9c9"
+      },
+      "delivery": {
+        "url": "https://npgallery.nps.gov/GetAsset/1ee79328-6f10-4e8a-9b19-9604e49abc8b/proxyhires.jpg?",
+        "publishedLabel": "788.6 KB, 1929x2000",
+        "localPath": "/tmp/freed-land42/5-delivery.jpg",
+        "bytes": 807566,
+        "width": 1929,
+        "height": 2000,
+        "sha1": "5929089b2e690b5ed77993664da6455925109d4a",
+        "sha256": "73b99e19932f2059951edab4ea773110fe3ee18309c433e6710e709a15445f56"
+      },
+      "visualReview": "Exact original individually opened before prose. Candidate delivery variant also individually opened. No source images retouched or locally resized for delivery."
+    },
+    {
+      "id": "land-regular-42-05",
+      "identityNameBase": "Tobias Tumble",
+      "characterId": "tobias-tumble",
+      "fullSpecies": "Lontra canadensis",
+      "title": "Surface wrestling",
+      "platform": "facebook",
+      "contentType": "post",
+      "status": "hold-image",
+      "independentLeadReview": "pending",
+      "prose": null,
+      "altText": "Two river otters make close physical contact at the water surface, one upright above the other.",
+      "fictionBoundary": "Exact NPS source describes play. Strong contact, but crunchy contrast, clipped highlights and degraded face detail fail the image bar. No encounter proposed.",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/a0639ad2-97bb-4661-9d98-8d7cbd546dff",
+      "creator": "NPS/Eric Johnston",
+      "license": "Public domain",
+      "rightsEvidence": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "sourceCachePath": "/tmp/freed-land42/8.html",
+      "original": {
+        "url": "https://npgallery.nps.gov/GetAsset/a0639ad2-97bb-4661-9d98-8d7cbd546dff/original.jpg?",
+        "publishedLabel": "802.6 KB, 2042x1474",
+        "localPath": "/tmp/freed-land42/8-original.jpg",
+        "bytes": 821824,
+        "width": 2042,
+        "height": 1474,
+        "sha1": "7c3c34e3326c2798ef001089387d503e8ebee1d4",
+        "sha256": "52bd97b925b05153d1c72de739b81952593251b357a1459797b90c6743b5c91d"
+      },
+      "delivery": {
+        "url": "https://npgallery.nps.gov/GetAsset/a0639ad2-97bb-4661-9d98-8d7cbd546dff/original.jpg?",
+        "publishedLabel": "802.6 KB, 2042x1474",
+        "localPath": "/tmp/freed-land42/8-delivery.jpg",
+        "bytes": 821824,
+        "width": 2042,
+        "height": 1474,
+        "sha1": "7c3c34e3326c2798ef001089387d503e8ebee1d4",
+        "sha256": "52bd97b925b05153d1c72de739b81952593251b357a1459797b90c6743b5c91d"
+      },
+      "visualReview": "Exact original individually opened before prose. Candidate delivery variant also individually opened. No source images retouched or locally resized for delivery."
+    },
+    {
+      "id": "land-regular-42-06",
+      "identityNameBase": "Tobias Tumble",
+      "characterId": "tobias-tumble",
+      "fullSpecies": "Lontra canadensis",
+      "title": "Three heads above water",
+      "platform": "facebook",
+      "contentType": "post",
+      "status": "hold-prose",
+      "independentLeadReview": "pending",
+      "prose": null,
+      "altText": "Three river otters float with their heads raised above rippled water.",
+      "fictionBoundary": "Faces are legible and rights explicit, but the pose does not yield a fresh event without generic curiosity or unseen threat. No family or companions added.",
+      "sourceUrl": "https://www.fws.gov/media/river-otters-peeking-over-water",
+      "creator": "Ted Narveson/USFWS",
+      "license": "Public domain",
+      "rightsEvidence": "Exact FWS media page: Media Usage Rights/License Public Domain",
+      "sourceCachePath": "/tmp/freed-land42/river-otters-peeking-over-water.html",
+      "original": {
+        "url": "https://www.fws.gov/sites/default/files/2023-07/river-otters-ted-narveson-usfws.png",
+        "localPath": "/tmp/freed-land42/river-otters-peeking-over-water-original.jpg",
+        "width": 1920,
+        "height": 1080,
+        "bytes": 3112908,
+        "sha1": "abb7bb4d2488b68746585a994061d1ef8b0fd22b",
+        "sha256": "ca34c846a136215f9208e7366ab8ff62d4ec3987e6026146eb4b72e804594541",
+        "publishedLink": "<a href=\"https://www.fws.gov/sites/default/files/2023-07/river-otters-ted-narveson-usfws.png\" download=\"usfws-river-otters-peeking-over-water\">Original (1920 x 1080)"
+      },
+      "delivery": {
+        "url": "https://www.fws.gov/sites/default/files/styles/max_1300x1300/public/2023-07/river-otters-ted-narveson-usfws.png?itok=BVirssMy",
+        "localPath": "/tmp/freed-land42/river-otters-peeking-over-water-delivery.jpg",
+        "width": 1300,
+        "height": 731,
+        "bytes": 1525927,
+        "sha1": "81052836d984a42e45f4eb60cf26cac3add58db1",
+        "sha256": "fb8e9c788fbc8c7b07ecd1908af918e32a7369761104afab338360cf219f2fdd",
+        "publishedLink": "<a href=\"https://www.fws.gov/sites/default/files/styles/max_1300x1300/public/2023-07/river-otters-ted-narveson-usfws.png?itok=BVirssMy\" download=\"usfws-river-otters-peeking-over-water-large\">Large (1300 x 731)"
+      },
+      "visualReview": "Exact original individually opened before prose. Candidate delivery variant also individually opened. No source images retouched or locally resized for delivery."
+    }
+  ],
+  "allReviewedOriginals": [
+    {
+      "index": 1,
+      "query": "sandhill crane",
+      "item": 4,
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/6f714b92-8dbd-4d00-baac-50c0164e0430",
+      "sourceCachePath": "/tmp/freed-land42/1.html",
+      "record": {
+        "AltText": "Sandhill Crane Family - two adults and two little ones.",
+        "AssetBaseType": "File",
+        "AssetID": "6f714b92-8dbd-4d00-baac-50c0164e0430",
+        "AssetType": "Standard File",
+        "Brandings": [
+          {
+            "Name": "MAIN"
+          }
+        ],
+        "ConstraintsInformation": {
+          "Constraint": "Public domain",
+          "GrantingRights": "Full"
+        },
+        "Description": "Sandhill Crane Family",
+        "ImageCreateDate": {
+          "Date": "05/20/2017"
+        },
+        "ImageCreateDateTime": "05/20/2017 07:22:11 PM",
+        "Keywords": [
+          "pictured rocks",
+          "bird",
+          "sandhill cranes",
+          "crane"
+        ],
+        "NPSUnits": [
+          {
+            "Name": "Pictured Rocks National Lakeshore",
+            "Type": "National Lakeshore",
+            "Code": "PIRO"
+          }
+        ],
+        "PhotoCredit": "NPS",
+        "PrimaryType": "image",
+        "Rating": 4,
+        "RelatedCollections": [
+          "NPS.gov Collection"
+        ],
+        "ResourceFormat": "jpg",
+        "ResourceType": "Image",
+        "Submitter": "spreece",
+        "SubType": "jpeg",
+        "Title": "Sandhill Crane Family"
+      },
+      "original": {
+        "url": "https://npgallery.nps.gov/GetAsset/6f714b92-8dbd-4d00-baac-50c0164e0430/original.jpg?",
+        "publishedLabel": "3.4 MB, 3965x3282",
+        "localPath": "/tmp/freed-land42/1-original.jpg",
+        "bytes": 3524545,
+        "width": 3965,
+        "height": 3282,
+        "sha1": "abc59c3817cc4155901bbc7e65aba1db1f55d051",
+        "sha256": "1e2dde70593a7ba81f54cb47953bb4813e391ff35bd153a44090e193887234d2"
+      },
+      "delivery": {
+        "url": "https://npgallery.nps.gov/GetAsset/6f714b92-8dbd-4d00-baac-50c0164e0430/proxyhires.jpg?",
+        "publishedLabel": "1.1 MB, 2000x1655",
+        "localPath": "/tmp/freed-land42/1-delivery.jpg",
+        "bytes": 1149288,
+        "width": 1999,
+        "height": 1655,
+        "sha1": "bc7974fc98602953bad9dfa00cb3baccbcb41401",
+        "sha256": "96d975a4c047697943a4bd7c931c7662c1b6c071e5bcbba415f5ffd76c74b98c"
+      }
+    },
+    {
+      "index": 2,
+      "query": "sandhill crane",
+      "item": 6,
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/5125deb4-68e7-4136-bd78-d0fba2aa2507",
+      "sourceCachePath": "/tmp/freed-land42/2.html",
+      "record": {
+        "AltText": "Adult Sandhill crane and two little youngsters",
+        "AssetBaseType": "File",
+        "AssetID": "5125deb4-68e7-4136-bd78-d0fba2aa2507",
+        "AssetType": "Standard File",
+        "Brandings": [
+          {
+            "Name": "MAIN"
+          }
+        ],
+        "ConstraintsInformation": {
+          "Constraint": "Public domain",
+          "GrantingRights": "Full"
+        },
+        "CustomTextFields": [
+          {
+            "Name": "XmpMetadataDate",
+            "Value": "2020-04-01T14:38-04:00"
+          }
+        ],
+        "Description": "Sandhill crane and two youngsters (colts)",
+        "ImageCreateDate": {
+          "Date": "05/20/2017"
+        },
+        "ImageCreateDateTime": "05/20/2017 07:14:44 PM",
+        "Keywords": [
+          "pictured rocks",
+          "bird",
+          "sandhill crane",
+          "crane"
+        ],
+        "NPSUnits": [
+          {
+            "Name": "Pictured Rocks National Lakeshore",
+            "Type": "National Lakeshore",
+            "Code": "PIRO"
+          }
+        ],
+        "PhotoCredit": "NPS",
+        "PrimaryType": "image",
+        "Rating": 4,
+        "RelatedCollections": [
+          "NPS.gov Collection"
+        ],
+        "ResourceFormat": "jpg",
+        "ResourceType": "Image",
+        "Submitter": "spreece",
+        "SubType": "jpeg",
+        "Title": "Sandhill crane and two youngsters"
+      },
+      "original": {
+        "url": "https://npgallery.nps.gov/GetAsset/5125deb4-68e7-4136-bd78-d0fba2aa2507/original.jpg?",
+        "publishedLabel": "4.7 MB, 2304x2388",
+        "localPath": "/tmp/freed-land42/2-original.jpg",
+        "bytes": 5135416,
+        "width": 2304,
+        "height": 2388,
+        "sha1": "3f328091fdfe46dc094bd3763c69362cb3797fb3",
+        "sha256": "d0d47969ed068a8dad5a9331f1eebf2043aeebde8bdc1cfe26f0534ffc37c559"
+      },
+      "delivery": {
+        "url": "https://npgallery.nps.gov/GetAsset/5125deb4-68e7-4136-bd78-d0fba2aa2507/original.jpg?",
+        "publishedLabel": "4.7 MB, 2304x2388",
+        "localPath": "/tmp/freed-land42/2-delivery.jpg",
+        "bytes": 5135416,
+        "width": 2304,
+        "height": 2388,
+        "sha1": "3f328091fdfe46dc094bd3763c69362cb3797fb3",
+        "sha256": "d0d47969ed068a8dad5a9331f1eebf2043aeebde8bdc1cfe26f0534ffc37c559"
+      }
+    },
+    {
+      "index": 3,
+      "query": "sandhill crane",
+      "item": 7,
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/c4568823-1de4-478a-9ed6-cdd12f6cb1a6",
+      "sourceCachePath": "/tmp/freed-land42/3.html",
+      "record": {
+        "AltText": "Sandhill Crane Pair - one standing watch and one sitting",
+        "AssetBaseType": "File",
+        "AssetID": "c4568823-1de4-478a-9ed6-cdd12f6cb1a6",
+        "AssetType": "Standard File",
+        "Brandings": [
+          {
+            "Name": "MAIN"
+          }
+        ],
+        "ConstraintsInformation": {
+          "Constraint": "Public domain",
+          "GrantingRights": "Full"
+        },
+        "CustomTextFields": [
+          {
+            "Name": "XmpMetadataDate",
+            "Value": "2020-04-01T14:33:54-04:00"
+          }
+        ],
+        "Description": "Sandhill Crane Pair",
+        "ImageCreateDate": {
+          "Date": "05/20/2017"
+        },
+        "ImageCreateDateTime": "05/20/2017 06:27:36 PM",
+        "Keywords": [
+          "pictured rocks",
+          "bird",
+          "sandhill cranes",
+          "crane"
+        ],
+        "NPSUnits": [
+          {
+            "Name": "Pictured Rocks National Lakeshore",
+            "Type": "National Lakeshore",
+            "Code": "PIRO"
+          }
+        ],
+        "PhotoCredit": "NPS",
+        "PrimaryType": "image",
+        "Rating": 4,
+        "RelatedCollections": [
+          "NPS.gov Collection"
+        ],
+        "ResourceFormat": "jpg",
+        "ResourceType": "Image",
+        "Submitter": "spreece",
+        "SubType": "jpeg",
+        "Title": "Sandhill Crane Pair"
+      },
+      "original": {
+        "url": "https://npgallery.nps.gov/GetAsset/c4568823-1de4-478a-9ed6-cdd12f6cb1a6/original.jpg?",
+        "publishedLabel": "11.5 MB, 4608x3456",
+        "localPath": "/tmp/freed-land42/3-original.jpg",
+        "bytes": 11929810,
+        "width": 4608,
+        "height": 3456,
+        "sha1": "0875a2cf890622f3166163158402721e2c62cdeb",
+        "sha256": "0c52e756ec87b0bf0e6503d6431866a8c0e3c2b129defb91806a0cc821ecc1f6"
+      },
+      "delivery": {
+        "url": "https://npgallery.nps.gov/GetAsset/c4568823-1de4-478a-9ed6-cdd12f6cb1a6/proxyhires.jpg?",
+        "publishedLabel": "1.3 MB, 2000x1500",
+        "localPath": "/tmp/freed-land42/3-delivery.jpg",
+        "bytes": 1344266,
+        "width": 2000,
+        "height": 1500,
+        "sha1": "345a6dc8c845a61cd086795fc62649836011bcb7",
+        "sha256": "aaa01208d8b55222f3823415f7bf27273b4ca6a644e044063bf221a1daa262f9"
+      }
+    },
+    {
+      "index": 4,
+      "query": "sandhill crane",
+      "item": 33,
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/fde3dfe4-155d-451f-67bf-6b622767df25",
+      "sourceCachePath": "/tmp/freed-land42/4.html",
+      "record": {
+        "AltText": "Sandhill Crane head, closeup, red crest",
+        "AssetBaseType": "File",
+        "AssetID": "fde3dfe4-155d-451f-67bf-6b622767df25",
+        "AssetType": "Standard File",
+        "Brandings": [
+          {
+            "Name": "MAIN"
+          }
+        ],
+        "ConstraintsInformation": {
+          "Constraint": "Public domain",
+          "GrantingRights": "Full"
+        },
+        "Description": "Sandhill Crane head, closeup, red crest",
+        "ImageCreateDate": {
+          "Text": "7/16/2010 1:18:30 AM"
+        },
+        "Keywords": [
+          "bird,sandhill crane"
+        ],
+        "NPSUnits": [
+          {
+            "Name": "Grand Teton National Park",
+            "Type": "National Park",
+            "Code": "GRTE"
+          }
+        ],
+        "PrimaryType": "image",
+        "Publisher": "U.S. National Park Service",
+        "Rating": 3,
+        "RelatedCollections": [
+          "NPS.gov Collection"
+        ],
+        "ResourceFormat": "jpg",
+        "ResourceType": "Image",
+        "Submitter": "amattson",
+        "SubType": "jpeg",
+        "Title": "Sandhill Crane"
+      },
+      "original": {
+        "url": "https://npgallery.nps.gov/GetAsset/FDE3DFE4-155D-451F-67BF6B622767DF25/original.jpg?",
+        "publishedLabel": "279.5 KB, 528x779",
+        "localPath": "/tmp/freed-land42/4-original.jpg",
+        "bytes": 286217,
+        "width": 528,
+        "height": 779,
+        "sha1": "461d677d24ff810eba2fba4f0e1fb862f8c8fdfd",
+        "sha256": "51a4b7905f10b6e009f44c8affc8745fdaf7a5c9f4c1050b76e95b041028dde2"
+      },
+      "delivery": {
+        "url": "https://npgallery.nps.gov/GetAsset/FDE3DFE4-155D-451F-67BF6B622767DF25/original.jpg?",
+        "publishedLabel": "279.5 KB, 528x779",
+        "localPath": "/tmp/freed-land42/4-delivery.jpg",
+        "bytes": 286217,
+        "width": 528,
+        "height": 779,
+        "sha1": "461d677d24ff810eba2fba4f0e1fb862f8c8fdfd",
+        "sha256": "51a4b7905f10b6e009f44c8affc8745fdaf7a5c9f4c1050b76e95b041028dde2"
+      }
+    },
+    {
+      "index": 5,
+      "query": "sandhill crane",
+      "item": 44,
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/1ee79328-6f10-4e8a-9b19-9604e49abc8b",
+      "sourceCachePath": "/tmp/freed-land42/5.html",
+      "record": {
+        "AltText": "Two Sandhill Cranes standing in water preening their neck in the Fog along a beach",
+        "AssetBaseType": "File",
+        "AssetID": "1ee79328-6f10-4e8a-9b19-9604e49abc8b",
+        "AssetType": "Standard File",
+        "Brandings": [
+          {
+            "Name": "MAIN"
+          }
+        ],
+        "ConstraintsInformation": {
+          "Constraint": "Public domain",
+          "GrantingRights": "Full"
+        },
+        "CustomTextFields": [
+          {
+            "Name": "XmpMetadataDate",
+            "Value": "2020-04-01T16:03:04-04:00"
+          }
+        ],
+        "Description": "Sandhill Cranes Preening in the Fog",
+        "ImageCreateDate": {
+          "Date": "06/24/2014"
+        },
+        "ImageCreateDateTime": "06/24/2014 08:25:03 AM",
+        "Keywords": [
+          "pictured rocks",
+          "bird",
+          "sandhill cranes",
+          "crane"
+        ],
+        "NPSUnits": [
+          {
+            "Name": "Pictured Rocks National Lakeshore",
+            "Type": "National Lakeshore",
+            "Code": "PIRO"
+          }
+        ],
+        "PhotoCredit": "NPS",
+        "PrimaryType": "image",
+        "Rating": 1,
+        "RelatedCollections": [
+          "NPS.gov Collection"
+        ],
+        "ResourceFormat": "jpg",
+        "ResourceType": "Image",
+        "Submitter": "spreece",
+        "SubType": "jpeg",
+        "Title": "Sandhill Cranes Preening in the Fog"
+      },
+      "original": {
+        "url": "https://npgallery.nps.gov/GetAsset/1ee79328-6f10-4e8a-9b19-9604e49abc8b/original.jpg?",
+        "publishedLabel": "4.5 MB, 2952x3060",
+        "localPath": "/tmp/freed-land42/5-original.jpg",
+        "bytes": 4835677,
+        "width": 2952,
+        "height": 3060,
+        "sha1": "088da75cf83b99b7633d995cc42f6df59aef6399",
+        "sha256": "95549c8bd04dc8cdb07d2c9c24625f5b42d7299bcb1ca899de4351be3bc1e9c9"
+      },
+      "delivery": {
+        "url": "https://npgallery.nps.gov/GetAsset/1ee79328-6f10-4e8a-9b19-9604e49abc8b/proxyhires.jpg?",
+        "publishedLabel": "788.6 KB, 1929x2000",
+        "localPath": "/tmp/freed-land42/5-delivery.jpg",
+        "bytes": 807566,
+        "width": 1929,
+        "height": 2000,
+        "sha1": "5929089b2e690b5ed77993664da6455925109d4a",
+        "sha256": "73b99e19932f2059951edab4ea773110fe3ee18309c433e6710e709a15445f56"
+      }
+    },
+    {
+      "index": 6,
+      "query": "river otter",
+      "item": 44,
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/0b7f4117-2eca-4b67-a864-91b02d09d84a",
+      "sourceCachePath": "/tmp/freed-land42/6.html",
+      "record": {
+        "AltText": "Otter is on back, preening.",
+        "AssetBaseType": "File",
+        "AssetID": "0b7f4117-2eca-4b67-a864-91b02d09d84a",
+        "AssetType": "Standard File",
+        "Brandings": [
+          {
+            "Name": "MAIN"
+          }
+        ],
+        "ConstraintsInformation": {
+          "Constraint": "Public domain",
+          "GrantingRights": "Full"
+        },
+        "CustomTextFields": [
+          {
+            "Name": "XmpMetadataDate",
+            "Value": "2019-11-14T16:05:12-07:00"
+          }
+        ],
+        "Description": "River otter preening on snow shelf by Lamar River;\nJim Peaco;\nApril 2013;\nCatalog #19079d;\nOriginal #IMG_9977",
+        "ImageCreateDate": {
+          "Date": "04/26/2013"
+        },
+        "ImageCreateDateTime": "04/26/2013 08:00:17 AM",
+        "Keywords": [
+          "yellowstone national park",
+          "wildlife",
+          "mammals",
+          "river otter",
+          "lontra canadensis",
+          "19079d"
+        ],
+        "NPSUnits": [
+          {
+            "Name": "Yellowstone National Park",
+            "Type": "National Park",
+            "Code": "YELL"
+          }
+        ],
+        "PhotoCredit": "NPS/Jim Peaco",
+        "PrimaryType": "image",
+        "Rating": 4,
+        "RelatedCollections": [
+          "NPS.gov Collection"
+        ],
+        "ResourceFormat": "jpg",
+        "ResourceType": "Image",
+        "Submitter": "dianerenkin",
+        "SubType": "jpeg",
+        "Title": "River otter"
+      },
+      "original": {
+        "url": "https://npgallery.nps.gov/GetAsset/0b7f4117-2eca-4b67-a864-91b02d09d84a/original.jpg?",
+        "publishedLabel": "920.5 KB, 3345x2281",
+        "localPath": "/tmp/freed-land42/6-original.jpg",
+        "bytes": 942625,
+        "width": 3345,
+        "height": 2281,
+        "sha1": "4aeaae3b56e1a4fc1301bcaafc78f99166de0dad",
+        "sha256": "fcf3817ab1793d623ce0569d018185b52ca7a7d046aab26969833d73c7dcc117"
+      },
+      "delivery": {
+        "url": "https://npgallery.nps.gov/GetAsset/0b7f4117-2eca-4b67-a864-91b02d09d84a/proxyhires.jpg?",
+        "publishedLabel": "802.4 KB, 2000x1363",
+        "localPath": "/tmp/freed-land42/6-delivery.jpg",
+        "bytes": 821664,
+        "width": 1999,
+        "height": 1363,
+        "sha1": "b7e3dadf7a47216fae458ec04cd12826fed9399b",
+        "sha256": "f39226022f67e96e6b5ed9220d06a6d4f0dc74c8c95cf392b2458c1f208a7e25"
+      }
+    },
+    {
+      "index": 7,
+      "query": "river otter",
+      "item": 46,
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/67039140-61dc-4d2b-affc-1f43f07785c7",
+      "sourceCachePath": "/tmp/freed-land42/7.html",
+      "record": {
+        "AltText": "Otter is on shore with a fish in its mouth.",
+        "AssetBaseType": "File",
+        "AssetID": "67039140-61dc-4d2b-affc-1f43f07785c7",
+        "AssetType": "Standard File",
+        "Brandings": [
+          {
+            "Name": "MAIN"
+          }
+        ],
+        "ConstraintsInformation": {
+          "Constraint": "Public domain",
+          "GrantingRights": "Full"
+        },
+        "CustomTextFields": [
+          {
+            "Name": "XmpMetadataDate",
+            "Value": "2019-11-14T16:05:10-07:00"
+          }
+        ],
+        "Description": "Otter eating a fish;\nJane Olson;\nOctober, 2009;\nCatalog #19225d",
+        "ImageCreateDate": {
+          "Date": "10/24/2009"
+        },
+        "ImageCreateDateTime": "10/24/2009 12:42:33 PM",
+        "Keywords": [
+          "yellowstone national park",
+          "wildlife",
+          "mammals",
+          "river otter",
+          "lontra canadensis",
+          "19225d"
+        ],
+        "NPSUnits": [
+          {
+            "Name": "Yellowstone National Park",
+            "Type": "National Park",
+            "Code": "YELL"
+          }
+        ],
+        "PhotoCredit": "NPS/Jane Olson",
+        "PrimaryType": "image",
+        "Rating": 4,
+        "RelatedCollections": [
+          "NPS.gov Collection"
+        ],
+        "ResourceFormat": "jpg",
+        "ResourceType": "Image",
+        "Submitter": "dianerenkin",
+        "SubType": "jpeg",
+        "Title": "River otter"
+      },
+      "original": {
+        "url": "https://npgallery.nps.gov/GetAsset/67039140-61dc-4d2b-affc-1f43f07785c7/original.jpg?",
+        "publishedLabel": "760.4 KB, 1494x1026",
+        "localPath": "/tmp/freed-land42/7-original.jpg",
+        "bytes": 778669,
+        "width": 1494,
+        "height": 1026,
+        "sha1": "ee747b3268b72f2dd4a69ca59e688ffe3b4e5fd9",
+        "sha256": "40789f1a08665d350305be98dc05fce72b2c9f7758ef52843b6e80535221183e"
+      },
+      "delivery": {
+        "url": "https://npgallery.nps.gov/GetAsset/67039140-61dc-4d2b-affc-1f43f07785c7/original.jpg?",
+        "publishedLabel": "760.4 KB, 1494x1026",
+        "localPath": "/tmp/freed-land42/7-delivery.jpg",
+        "bytes": 778669,
+        "width": 1494,
+        "height": 1026,
+        "sha1": "ee747b3268b72f2dd4a69ca59e688ffe3b4e5fd9",
+        "sha256": "40789f1a08665d350305be98dc05fce72b2c9f7758ef52843b6e80535221183e"
+      }
+    },
+    {
+      "index": 8,
+      "query": "river otter",
+      "item": 50,
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/a0639ad2-97bb-4661-9d98-8d7cbd546dff",
+      "sourceCachePath": "/tmp/freed-land42/8.html",
+      "record": {
+        "AltText": "Otters playing in the water.",
+        "AssetBaseType": "File",
+        "AssetID": "a0639ad2-97bb-4661-9d98-8d7cbd546dff",
+        "AssetType": "Standard File",
+        "Brandings": [
+          {
+            "Name": "MAIN"
+          }
+        ],
+        "ConstraintsInformation": {
+          "Constraint": "Public domain",
+          "GrantingRights": "Full"
+        },
+        "Contributors": [
+          {}
+        ],
+        "CustomTextFields": [
+          {
+            "Name": "XmpMetadataDate",
+            "Value": "2019-11-14T16:05:16-07:00"
+          }
+        ],
+        "Description": "Otters at Trout Lake",
+        "ImageCreateDate": {
+          "Date": "06/29/2013"
+        },
+        "ImageCreateDateTime": "06/29/2013 11:12:18 AM",
+        "Keywords": [
+          "yellowstone national park",
+          "wildlife",
+          "river otter",
+          "lontra canadensis",
+          "mammals",
+          "otter",
+          "20130629_EJ_1365"
+        ],
+        "NPSUnits": [
+          {
+            "Name": "Yellowstone National Park",
+            "Type": "National Park",
+            "Code": "YELL"
+          }
+        ],
+        "PhotoCredit": "NPS/Eric Johnston",
+        "PrimaryType": "image",
+        "Rating": 4,
+        "RelatedCollections": [
+          "NPS.gov Collection"
+        ],
+        "ResourceFormat": "jpg",
+        "ResourceType": "Image",
+        "Submitter": "dianerenkin",
+        "SubType": "jpeg",
+        "Title": "Otters at Trout Lake"
+      },
+      "original": {
+        "url": "https://npgallery.nps.gov/GetAsset/a0639ad2-97bb-4661-9d98-8d7cbd546dff/original.jpg?",
+        "publishedLabel": "802.6 KB, 2042x1474",
+        "localPath": "/tmp/freed-land42/8-original.jpg",
+        "bytes": 821824,
+        "width": 2042,
+        "height": 1474,
+        "sha1": "7c3c34e3326c2798ef001089387d503e8ebee1d4",
+        "sha256": "52bd97b925b05153d1c72de739b81952593251b357a1459797b90c6743b5c91d"
+      },
+      "delivery": {
+        "url": "https://npgallery.nps.gov/GetAsset/a0639ad2-97bb-4661-9d98-8d7cbd546dff/original.jpg?",
+        "publishedLabel": "802.6 KB, 2042x1474",
+        "localPath": "/tmp/freed-land42/8-delivery.jpg",
+        "bytes": 821824,
+        "width": 2042,
+        "height": 1474,
+        "sha1": "7c3c34e3326c2798ef001089387d503e8ebee1d4",
+        "sha256": "52bd97b925b05153d1c72de739b81952593251b357a1459797b90c6743b5c91d"
+      }
+    },
+    {
+      "index": 9,
+      "query": "river otter",
+      "item": 53,
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/933f9e3f-53d7-4090-92ff-8de693f13300",
+      "sourceCachePath": "/tmp/freed-land42/9.html",
+      "record": {
+        "AltText": "Close up of otter face while its swimming.",
+        "AssetBaseType": "File",
+        "AssetID": "933f9e3f-53d7-4090-92ff-8de693f13300",
+        "AssetType": "Standard File",
+        "Brandings": [
+          {
+            "Name": "MAIN"
+          }
+        ],
+        "ConstraintsInformation": {
+          "Constraint": "Public domain",
+          "GrantingRights": "Full"
+        },
+        "Contributors": [
+          {}
+        ],
+        "CustomTextFields": [
+          {
+            "Name": "XmpMetadataDate",
+            "Value": "2019-11-14T16:05:28-07:00"
+          }
+        ],
+        "Description": "River otter in water on Swan Lake Flat;\nNeal Herbert;\nAugust 2015;\nCatalog #20357d;\nOriginal #ndh-yell-2936",
+        "ImageCreateDate": {
+          "Date": "08/29/2015"
+        },
+        "ImageCreateDateTime": "08/29/2015 11:17:51 AM",
+        "Keywords": [
+          "yellowstone national park",
+          "wildlife",
+          "mammals",
+          "river otter",
+          "lontra canadensis",
+          "yellowstone",
+          "20357d"
+        ],
+        "NPSUnits": [
+          {
+            "Name": "Yellowstone National Park",
+            "Type": "National Park",
+            "Code": "YELL"
+          }
+        ],
+        "PhotoCredit": "NPS/Neal Herbert",
+        "PrimaryType": "image",
+        "Rating": 4,
+        "RelatedCollections": [
+          "NPS.gov Collection"
+        ],
+        "ResourceFormat": "jpg",
+        "ResourceType": "Image",
+        "Submitter": "dianerenkin",
+        "SubType": "jpeg",
+        "Title": "River otter, Swan Lake area"
+      },
+      "original": {
+        "url": "https://npgallery.nps.gov/GetAsset/933f9e3f-53d7-4090-92ff-8de693f13300/original.jpg?",
+        "publishedLabel": "946.3 KB, 4805x3203",
+        "localPath": "/tmp/freed-land42/9-original.jpg",
+        "bytes": 968997,
+        "width": 4805,
+        "height": 3203,
+        "sha1": "c67ca869059d7682db23024a1df8d7e1c05e40d3",
+        "sha256": "1f06c66622f665d1c8acff8c4c6f8a22e97ec8dbbe9069eae05ed430bb2d3841"
+      },
+      "delivery": {
+        "url": "https://npgallery.nps.gov/GetAsset/933f9e3f-53d7-4090-92ff-8de693f13300/proxyhires.jpg?",
+        "publishedLabel": "648.3 KB, 2000x1333",
+        "localPath": "/tmp/freed-land42/9-delivery.jpg",
+        "bytes": 663813,
+        "width": 2000,
+        "height": 1333,
+        "sha1": "e40d66a42dcbe4db5ef57c83c1d9ced07b0aefd5",
+        "sha256": "e320e765f8b8f8c369f4d4f4cf8ba2fc995c906e204e3b1dc5a071220c88fc6f"
+      }
+    },
+    {
+      "sourceUrl": "https://www.fws.gov/media/sandhill-cranes-dancing",
+      "sourceCachePath": "/tmp/freed-land42/sandhill-cranes-dancing.html",
+      "creator": "Rachel Portwood/USFWS",
+      "license": "Public domain",
+      "original": {
+        "url": "https://www.fws.gov/sites/default/files/images/2026-04/cranes-dancing-monte-vista-nwr-rachel-portwood-usfws.jpg",
+        "localPath": "/tmp/freed-land42/sandhill-cranes-dancing-original.jpg",
+        "width": 3965,
+        "height": 2275,
+        "bytes": 1912696,
+        "sha1": "1203645c834877e8b861fcfa5876ab8ee223f7d6",
+        "sha256": "07d23736bf7e5e79a1566b2539708c04ede4aee9cca12f25b9b0dfdb4793b922",
+        "publishedLink": "<a href=\"https://www.fws.gov/sites/default/files/images/2026-04/cranes-dancing-monte-vista-nwr-rachel-portwood-usfws.jpg\" download=\"usfws-sandhill-cranes-dancing\">Original (3965 x 2275)"
+      },
+      "delivery": {
+        "url": "https://www.fws.gov/sites/default/files/styles/max_1300x1300/public/images/2026-04/cranes-dancing-monte-vista-nwr-rachel-portwood-usfws.jpg?itok=Kt1bdl6U",
+        "localPath": "/tmp/freed-land42/sandhill-cranes-dancing-delivery.jpg",
+        "width": 1300,
+        "height": 746,
+        "bytes": 764557,
+        "sha1": "13f721c1311b4ed93e87c65492a69e061ea0657b",
+        "sha256": "6330930db8c913a35ab306023bc7d8a9250dde7058369bfbb4e86ae5e855a86e",
+        "publishedLink": "<a href=\"https://www.fws.gov/sites/default/files/styles/max_1300x1300/public/images/2026-04/cranes-dancing-monte-vista-nwr-rachel-portwood-usfws.jpg?itok=Kt1bdl6U\" download=\"usfws-sandhill-cranes-dancing-large\">Large (1300 x 746)"
+      }
+    },
+    {
+      "sourceUrl": "https://www.fws.gov/media/river-otters-peeking-over-water",
+      "sourceCachePath": "/tmp/freed-land42/river-otters-peeking-over-water.html",
+      "creator": "Ted Narveson/USFWS",
+      "license": "Public domain",
+      "original": {
+        "url": "https://www.fws.gov/sites/default/files/2023-07/river-otters-ted-narveson-usfws.png",
+        "localPath": "/tmp/freed-land42/river-otters-peeking-over-water-original.jpg",
+        "width": 1920,
+        "height": 1080,
+        "bytes": 3112908,
+        "sha1": "abb7bb4d2488b68746585a994061d1ef8b0fd22b",
+        "sha256": "ca34c846a136215f9208e7366ab8ff62d4ec3987e6026146eb4b72e804594541",
+        "publishedLink": "<a href=\"https://www.fws.gov/sites/default/files/2023-07/river-otters-ted-narveson-usfws.png\" download=\"usfws-river-otters-peeking-over-water\">Original (1920 x 1080)"
+      },
+      "delivery": {
+        "url": "https://www.fws.gov/sites/default/files/styles/max_1300x1300/public/2023-07/river-otters-ted-narveson-usfws.png?itok=BVirssMy",
+        "localPath": "/tmp/freed-land42/river-otters-peeking-over-water-delivery.jpg",
+        "width": 1300,
+        "height": 731,
+        "bytes": 1525927,
+        "sha1": "81052836d984a42e45f4eb60cf26cac3add58db1",
+        "sha256": "fb8e9c788fbc8c7b07ecd1908af918e32a7369761104afab338360cf219f2fdd",
+        "publishedLink": "<a href=\"https://www.fws.gov/sites/default/files/styles/max_1300x1300/public/2023-07/river-otters-ted-narveson-usfws.png?itok=BVirssMy\" download=\"usfws-river-otters-peeking-over-water-large\">Large (1300 x 731)"
+      }
+    }
+  ],
+  "excludedBeforeDownload": "Rick McMeechan otter photographs had copyright notices conflicting with public-domain flags. Kris Weckel Brown otter photograph had copyright restrictions. None downloaded or used.",
+  "runtimeChanges": false
+}

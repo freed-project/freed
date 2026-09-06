@@ -1,0 +1,546 @@
+{
+  "status": "Nine lead-approved additions integrated into existing characters with nine new media assets; three held candidates remain unadmitted. No publication.",
+  "batchCount": 12,
+  "longStoryCount": 4,
+  "newCharacterCount": 0,
+  "characters": [
+    {
+      "characterId": "peri-bracken",
+      "identityNameBase": "Peri Bracken",
+      "location": {
+        "name": "Oxford meadow",
+        "coordinates": {
+          "lat": 51.79,
+          "lng": -1.25
+        }
+      }
+    },
+    {
+      "characterId": "ludo-bluecap",
+      "identityNameBase": "Ludo Bluecap",
+      "location": {
+        "name": "Collinsvale wet forest, Tasmania",
+        "coordinates": {
+          "lat": -42.84,
+          "lng": 147.17
+        }
+      }
+    },
+    {
+      "characterId": "oona-rose",
+      "identityNameBase": "Oona Rose",
+      "location": {
+        "name": "Central European mixed woodland",
+        "coordinates": {
+          "lat": 48.95,
+          "lng": 9.1
+        }
+      }
+    }
+  ],
+  "entries": [
+    {
+      "id": "strange-10-01",
+      "characterId": "peri-bracken",
+      "characterName": "Peri Bracken",
+      "platform": "instagram",
+      "subject": "peacock butterfly larva",
+      "title": "Careful affection",
+      "body": "Pip tried to cuddle up. We had not thought through the spines.",
+      "theme": "social",
+      "location": {
+        "name": "Oxford meadow",
+        "coordinates": {
+          "lat": 51.79,
+          "lng": -1.25
+        }
+      },
+      "admission": "lead_approved_integrated",
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/9a/Peacock_%28Aglais_io%29_caterpillar_Ruggeller_Riet.jpg/960px-Peacock_%28Aglais_io%29_caterpillar_Ruggeller_Riet.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange10-review.qYcJL3/1.jpg",
+        "downloadedSha256": "f42891d4577b922712bf84a2a40c1e1832c26150990bd4b552585daa48da80d4",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Black spiny peacock larva on nettle; the remembered contact uses its visible defensive body, not a pictured pair.",
+        "reviewDecision": "lead_approved_integrated",
+        "reusedUnusedPhotoFrom": "strange-02-02"
+      },
+      "provenance": {
+        "title": "File:Peacock (Aglais io) caterpillar Ruggeller Riet.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Peacock_(Aglais_io)_caterpillar_Ruggeller_Riet.jpg",
+        "creator": "Charles J. Sharp",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "width": 2263,
+        "height": 1508,
+        "dimensionsReferTo": "original source photograph",
+        "sourceDescription": "Peacock (Aglais io) caterpillar on stinging nettle (Urtica dioica), Ruggeller Riet, Liechtenstein",
+        "sameIndividualClaim": false,
+        "sha1": "b631d286ef54c268912587db2f1ce4b55ba27237"
+      },
+      "payoff": "An affectionate impulse meets an inconvenient shared anatomy."
+    },
+    {
+      "id": "strange-10-02",
+      "characterId": "peri-bracken",
+      "characterName": "Peri Bracken",
+      "platform": "rss",
+      "subject": "peacock butterfly larva",
+      "title": "Not hungry",
+      "body": "There was nothing wrong with the leaf. Pip had eaten from it. I had eaten from it. A perfectly good leaf.\n\nI put my mouth to the edge and stopped.\n\nPip brought his head over. I moved away. He came after me, which would once have been comforting and was now enormously annoying.\n\nI climbed to the underside of a stem. He stayed above, chewing. For a while I was glad of the sound. Then I wanted quiet. Then he stopped, and I wanted it back.\n\nI had no useful explanation for any of this.\n\nWhen he finally went, I was relieved. I was also certain I had been abandoned. I hung there, becoming something, with no improvement at all in my manners.",
+      "theme": "transformation",
+      "location": {
+        "name": "Oxford meadow",
+        "coordinates": {
+          "lat": 51.79,
+          "lng": -1.25
+        }
+      },
+      "admission": "held_not_admitted",
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/bf/Inachis_io_qtl4.jpg/960px-Inachis_io_qtl4.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange10-review.qYcJL3/2.jpg",
+        "downloadedSha256": "3f2a7178f4410efe3eb99ef6218958294a6a2269bae8d0eee1c45761eaa6e0ad",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Large peacock larva on a nettle leaf illustrates the remembered larval body and changing appetite before pupation, not a pictured chrysalis.",
+        "reviewDecision": "lead_reviewed_prose_held",
+        "reusedUnusedPhotoFrom": "strange-02-03"
+      },
+      "provenance": {
+        "title": "File:Inachis io qtl4.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Inachis_io_qtl4.jpg",
+        "creator": "Quartl",
+        "license": "CC BY-SA 3.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+        "width": 3262,
+        "height": 2340,
+        "dimensionsReferTo": "original source photograph",
+        "sourceDescription": "Caterpillar of a Peacock Butterfly (Inachis io) gnawing at a Stinging Nettle (Urtica dioica) in Oberursel, Germany.",
+        "sameIndividualClaim": false,
+        "sha1": "c6270ba8717745147c5127ae5b1ce35f555092eb"
+      },
+      "payoff": "A profound bodily transition arrives first as contradictory social needs, without instantly improving the personality."
+    },
+    {
+      "id": "strange-10-03",
+      "characterId": "peri-bracken",
+      "characterName": "Peri Bracken",
+      "platform": "x",
+      "subject": "peacock butterfly",
+      "title": "After winter",
+      "body": "I opened my wings in the sun and stayed there until I could fly. Then I stayed a little longer. The second part was none of survival's business.",
+      "theme": "pleasure",
+      "location": {
+        "name": "Oxford meadow",
+        "coordinates": {
+          "lat": 51.79,
+          "lng": -1.25
+        }
+      },
+      "admission": "lead_approved_integrated",
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/5/5d/Aglais_io_LC0131.jpg/960px-Aglais_io_LC0131.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange10-review.qYcJL3/3.jpg",
+        "downloadedSha256": "a7b3ba50641fff7f665bac6a7abf9d7c2003a9373111ea15f6382b72c6497e05",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Adult peacock holds wings fully open on dry stems in sunshine.",
+        "reviewDecision": "lead_approved_integrated",
+        "reusedUnusedPhotoFrom": "strange-02-04"
+      },
+      "provenance": {
+        "title": "File:Aglais io LC0131.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Aglais_io_LC0131.jpg",
+        "creator": "Jörg Hempel",
+        "license": "CC BY-SA 2.0 de",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/2.0/de/deed.en",
+        "width": 2279,
+        "height": 1600,
+        "dimensionsReferTo": "original source photograph",
+        "sourceDescription": "European Peacock (Inachis io), Chemnitz, Germany",
+        "sameIndividualClaim": false,
+        "sha1": "67ce28a5d90261f49e291e27a788f82bcf2b7704"
+      },
+      "payoff": "Necessary warming becomes pleasure once the necessity has passed."
+    },
+    {
+      "id": "strange-10-04",
+      "characterId": "peri-bracken",
+      "characterName": "Peri Bracken",
+      "platform": "instagram",
+      "subject": "peacock butterfly",
+      "title": "The other appetite",
+      "body": "The fly likes this flower too. I tried to imagine tasting it through that face. Lost my place and had to start my sip again.",
+      "theme": "curiosity",
+      "location": {
+        "name": "Oxford meadow",
+        "coordinates": {
+          "lat": 51.79,
+          "lng": -1.25
+        }
+      },
+      "admission": "lead_approved_integrated",
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/36/Tagpfauenauge%2C_Inachis_io_auf_Astrantia_major%2C_Gro%C3%9Fer_Sterndolde_1.JPG/960px-Tagpfauenauge%2C_Inachis_io_auf_Astrantia_major%2C_Gro%C3%9Fer_Sterndolde_1.JPG?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange10-review.qYcJL3/4.jpg",
+        "downloadedSha256": "a81b59defd43b46546211542c77ae934f319b4bdaa3d21572f67af5d08ce63cf",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Adult peacock feeds beside an actual blurry fly on white flowers; fly species and exact sensory anatomy remain unspecified.",
+        "reviewDecision": "lead_approved_integrated",
+        "reusedUnusedPhotoFrom": "strange-02-07"
+      },
+      "provenance": {
+        "title": "File:Tagpfauenauge, Inachis io auf Astrantia major, Großer Sterndolde 1.JPG",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Tagpfauenauge,_Inachis_io_auf_Astrantia_major,_Gro%C3%9Fer_Sterndolde_1.JPG",
+        "creator": "Böhringer Friedrich",
+        "license": "CC BY-SA 2.5",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/2.5",
+        "width": 2552,
+        "height": 3403,
+        "dimensionsReferTo": "original source photograph",
+        "sourceDescription": "Das Tagpfauenauge (Inachis io; Syn.: Nymphalis io) ist ein Schmetterling (Tagfalter) aus der Familie der Edelfalter (Nymphalidae). *** sitzend auf einer Großen Sterndolde (Astrantia major). Sie ist eine Pflanzenart der Gattung Sterndolde und gehört zur Familie der Doldenblütler (Apiaceae).*** Gesehen auf der Millrütte in Götzis.",
+        "sameIndividualClaim": false,
+        "sha1": "c8ab37f8214ca3bcefd87472e88be186638d6a32"
+      },
+      "payoff": "Curiosity about another body's experience briefly interrupts one's own pleasure."
+    },
+    {
+      "id": "strange-10-05",
+      "characterId": "ludo-bluecap",
+      "characterName": "Ludo Bluecap",
+      "platform": "instagram",
+      "subject": "Mycena interrupta fungus",
+      "title": "The leak",
+      "body": "There is a hole in my cap. The rain gets through. The little thing sheltering underneath has moved to the left. I wish all complaints came with that much initiative.",
+      "theme": "social",
+      "location": {
+        "name": "Collinsvale wet forest, Tasmania",
+        "coordinates": {
+          "lat": -42.84,
+          "lng": 147.17
+        }
+      },
+      "admission": "lead_approved_integrated",
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/2e/Mycena_interrupta_03_Pengo.jpg/960px-Mycena_interrupta_03_Pengo.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange10-review.qYcJL3/5.jpg",
+        "downloadedSha256": "a972269bd349593ba8bbff6d58c34c39e8598085ffaf5a2b055217ca32cbe06a",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Blue cap visibly has a missing piece or hole; sheltered visitor is fictional and unpictured.",
+        "reviewDecision": "lead_approved_integrated",
+        "reusedUnusedPhotoFrom": "strange-02-16"
+      },
+      "provenance": {
+        "title": "File:Mycena interrupta 03 Pengo.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Mycena_interrupta_03_Pengo.jpg",
+        "creator": "Pengo",
+        "license": "CC BY-SA 3.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+        "width": 2318,
+        "height": 1552,
+        "dimensionsReferTo": "original source photograph",
+        "sourceDescription": "pixie's parasol",
+        "sameIndividualClaim": false,
+        "sha1": "86ae650897db8db31601a8464c602f225261fe0d"
+      },
+      "payoff": "The supposed guest solves its problem without demanding impossible repairs from an immobile host."
+    },
+    {
+      "id": "strange-10-06",
+      "characterId": "ludo-bluecap",
+      "characterName": "Ludo Bluecap",
+      "platform": "rss",
+      "subject": "Mycena interrupta fungus",
+      "title": "The old weight",
+      "body": "The log remembered a bird that used to land on it when it was still a thin branch.\n\nTwo feet, a shuffle, then the weight. The whole branch would bend. The bird would stay while the light changed.\n\nI asked how large it had been. The log said enormous.\n\nI looked at my caps. I had been feeling quite expansive that morning. Now I imagined something settling on one of them and bending me right down to the wood.\n\nThe log said it had liked the weight. It had missed it when it grew thick enough not to bend.\n\nLater a small brown bird came down beside us. Hopped along the bark. Looked under a loose piece and flew away.\n\nThe log said that was the kind.\n\nIt was a wren. He had remembered it enormous.",
+      "theme": "memory",
+      "location": {
+        "name": "Collinsvale wet forest, Tasmania",
+        "coordinates": {
+          "lat": -42.84,
+          "lng": 147.17
+        }
+      },
+      "admission": "lead_approved_integrated",
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/75/Mycena_interrupta_44150.jpg/960px-Mycena_interrupta_44150.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange10-review.qYcJL3/6.jpg",
+        "downloadedSha256": "14c4bf21f2e2dee3938c7b659b92bfbe5fec2ea0a81ed1c3d2c44529f086c65a",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Three small fungi stand on a decaying log. The former tree's remembered birds and later visitor are explicit animistic fiction; no bird or nest is pictured.",
+        "reviewDecision": "lead_approved_integrated",
+        "reusedUnusedPhotoFrom": "strange-02-19"
+      },
+      "provenance": {
+        "title": "File:Mycena interrupta 44150.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Mycena_interrupta_44150.jpg",
+        "creator": "Michael (inski)",
+        "license": "CC BY-SA 3.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+        "width": 1721,
+        "height": 1231,
+        "dimensionsReferTo": "original source photograph",
+        "sourceDescription": "Mycena interrupta\n\n\nCommon name: pixie's parasol.\nLocation: Kaipara harbour, Auckland, New Zealand.\n\nNotes: Found fruiting from fallen tea tree (Leptospermum scoparium) in native New Zealand bush.",
+        "sameIndividualClaim": false,
+        "sha1": "3b8eeb035bddf3144db6576bf7005fb40fcf7f25"
+      },
+      "payoff": "A tree's memory preserves the relative scale of its younger body; a tiny visitor makes the remembered enormity legible to the fungus."
+    },
+    {
+      "id": "strange-10-07",
+      "characterId": "ludo-bluecap",
+      "characterName": "Ludo Bluecap",
+      "platform": "x",
+      "subject": "Mycena interrupta fungus",
+      "title": "Blue",
+      "body": "A drop is sitting on me with a piece of sky inside it. I am keeping very still. This is easy for me. I appreciate a pleasure I am already qualified for.",
+      "theme": "pleasure",
+      "location": {
+        "name": "Collinsvale wet forest, Tasmania",
+        "coordinates": {
+          "lat": -42.84,
+          "lng": 147.17
+        }
+      },
+      "admission": "lead_approved_integrated",
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/07/Mycena_interrupta_534503.jpg/960px-Mycena_interrupta_534503.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange10-review.qYcJL3/7.jpg",
+        "downloadedSha256": "ed5d15a14ead4c24f27ec8a6704282e1b904ccdc6f5cead1f78d7cfaf75d6448",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Deep blue cap visibly holds a reflective wet surface; the sky reflection is fictional interpretation rather than a source identification.",
+        "reviewDecision": "lead_approved_integrated",
+        "reusedUnusedPhotoFrom": "strange-02-21"
+      },
+      "provenance": {
+        "title": "File:Mycena interrupta 534503.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Mycena_interrupta_534503.jpg",
+        "creator": "This image was created by user karode13 at Mushroom Observer, a source for mycological images.You can contact this user here.",
+        "license": "CC BY-SA 3.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+        "width": 3166,
+        "height": 2115,
+        "dimensionsReferTo": "original source photograph",
+        "sourceDescription": "For more information about this, see the observation page at Mushroom Observer.",
+        "sameIndividualClaim": false,
+        "sha1": "4a25b79d6d2408fae597afceabfbdc97342088d4"
+      },
+      "payoff": "The organism's immobility happens to suit the pleasure, without making it universally wise."
+    },
+    {
+      "id": "strange-10-08",
+      "characterId": "ludo-bluecap",
+      "characterName": "Ludo Bluecap",
+      "platform": "instagram",
+      "subject": "Mycena interrupta fungus",
+      "title": "The long pause",
+      "body": "The wind stopped. My cap took a moment to stop after it. I enjoyed that little bit of wind I was having by myself.",
+      "theme": "sensation",
+      "location": {
+        "name": "Collinsvale wet forest, Tasmania",
+        "coordinates": {
+          "lat": -42.84,
+          "lng": 147.17
+        }
+      },
+      "admission": "held_not_admitted",
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/8/84/Mycena_interrupta_NZ.jpg/960px-Mycena_interrupta_NZ.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange10-review.qYcJL3/8.jpg",
+        "downloadedSha256": "d91317a9fb2fc414fee1c859098e9996cc7358f04294646fca483c2b8bc05178",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Small cap on a long curved stem against dark background; remembered movement of the flexible fruiting structure, not visible time-series evidence.",
+        "reviewDecision": "lead_reviewed_prose_held",
+        "reusedUnusedPhotoFrom": "strange-02-23"
+      },
+      "provenance": {
+        "title": "File:Mycena interrupta NZ.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Mycena_interrupta_NZ.jpg",
+        "creator": "Haydenrjones",
+        "license": "CC BY 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0",
+        "width": 5623,
+        "height": 3749,
+        "dimensionsReferTo": "original source photograph",
+        "sourceDescription": "The fruiting body of Mycena interrupta",
+        "sameIndividualClaim": false,
+        "sha1": "7f791d06536fffcdede266b60116fdf992d157ed"
+      },
+      "payoff": "A shared event ends at slightly different times for different bodies."
+    },
+    {
+      "id": "strange-10-09",
+      "characterId": "oona-rose",
+      "characterName": "Oona Rose",
+      "platform": "instagram",
+      "subject": "Lycogala slime mold",
+      "title": "Unevenly",
+      "body": "The rain touched one side first. I had a cool side and a warm side. For once, being lopsided was giving me something to compare.",
+      "theme": "curiosity",
+      "location": {
+        "name": "Central European mixed woodland",
+        "coordinates": {
+          "lat": 48.95,
+          "lng": 9.1
+        }
+      },
+      "admission": "held_not_admitted",
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/5/5d/Lycogala_epidendrum_2011_G1.jpg/960px-Lycogala_epidendrum_2011_G1.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange10-review.qYcJL3/9.jpg",
+        "downloadedSha256": "c2c6b3add4c038fff8d121cebefeb208b77827bc131f3f26573ea654cbe127b2",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Irregular orange Lycogala fruiting bodies on wet wood; imagined temperature sensation, not measured reception.",
+        "reviewDecision": "lead_reviewed_prose_held",
+        "reusedUnusedPhotoFrom": "strange-02-25"
+      },
+      "provenance": {
+        "title": "File:Lycogala epidendrum 2011 G1.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Lycogala_epidendrum_2011_G1.jpg",
+        "creator": "George Chernilevsky",
+        "license": "Public domain",
+        "width": 4500,
+        "height": 3000,
+        "dimensionsReferTo": "original source photograph",
+        "sourceDescription": "Wolf's milk slime mould, groening's slime mould",
+        "sameIndividualClaim": false,
+        "sha1": "76e1b8f4aab126107402bb30300a772c71c91d38"
+      },
+      "payoff": "The imperfect shape supplies an experience rather than merely an appearance."
+    },
+    {
+      "id": "strange-10-10",
+      "characterId": "oona-rose",
+      "characterName": "Oona Rose",
+      "platform": "rss",
+      "subject": "Lycogala slime mold",
+      "title": "Everybody at once",
+      "body": "There were pink bodies all the way along the log. I could no longer tell who had been there yesterday.\n\nRain began at the far end. Someone called out. The next one called out too. It came along the wood toward us, voice after voice, although we were still perfectly dry.\n\nI said there was no need to make such a noise about water. The one beside me agreed.\n\nA drop landed squarely on me.\n\nI made a noise I had never made before. Quite a good one. It frightened her.\n\nShe asked whether I was hurt. I wasn't. It had been cold and sudden and far more interesting than I had allowed for.\n\nThe water was running along the crack now. I could see it coming to her base. I tried to warn her, but she was explaining how much more calmly she intended to take it.",
+      "theme": "community",
+      "location": {
+        "name": "Central European mixed woodland",
+        "coordinates": {
+          "lat": 48.95,
+          "lng": 9.1
+        }
+      },
+      "admission": "lead_approved_integrated",
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/6e/Lycogala_epidendrum_2025_G1.jpg/960px-Lycogala_epidendrum_2025_G1.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange10-review.qYcJL3/10.jpg",
+        "downloadedSha256": "021a27d44d5b8827f402e01bc1b755bf0f19a254952bfd5469fb39ad2cbc6b1f",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Many orange Lycogala fruiting bodies cover a long split log. Fluid reaching them in sequence is imagined, not a documented field observation.",
+        "reviewDecision": "lead_approved_integrated",
+        "reusedUnusedPhotoFrom": "strange-02-26"
+      },
+      "provenance": {
+        "title": "File:Lycogala epidendrum 2025 G1.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Lycogala_epidendrum_2025_G1.jpg",
+        "creator": "George Chernilevsky",
+        "license": "CC BY 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0",
+        "width": 6000,
+        "height": 3300,
+        "dimensionsReferTo": "original source photograph",
+        "sourceDescription": "Wolf's milk slime mould, groening's slime mould (Lycogala epidendrum).",
+        "sameIndividualClaim": false,
+        "sha1": "9017aa14940d9d7601e0e6c5a61476528f93d385"
+      },
+      "payoff": "Oona's dismissal of a collective response collapses under the first direct sensation; her companion prepares to repeat the mistake."
+    },
+    {
+      "id": "strange-10-11",
+      "characterId": "oona-rose",
+      "characterName": "Oona Rose",
+      "platform": "instagram",
+      "subject": "Lycogala slime mold",
+      "title": "Over there",
+      "body": "The small one across the crack is rosy all over. I have spent a lot of time noticing this. She is also round. I am collecting details slowly.",
+      "theme": "attachment",
+      "location": {
+        "name": "Central European mixed woodland",
+        "coordinates": {
+          "lat": 48.95,
+          "lng": 9.1
+        }
+      },
+      "admission": "lead_approved_integrated",
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f3/Lycogala_epidendrum_Blutmilchpilz.jpg/960px-Lycogala_epidendrum_Blutmilchpilz.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange10-review.qYcJL3/11.jpg",
+        "downloadedSha256": "8ed93f6bf6b66dfc9643871172c6f81dbfdf71cc488ca6714a277ec7eb681ee0",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Separated orange fruiting bodies occupy different patches around actual bark cracks.",
+        "reviewDecision": "lead_approved_integrated",
+        "reusedUnusedPhotoFrom": "strange-02-28"
+      },
+      "provenance": {
+        "title": "File:Lycogala epidendrum Blutmilchpilz.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:Lycogala_epidendrum_Blutmilchpilz.jpg",
+        "creator": "Holger Krisp",
+        "license": "CC BY 3.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by/3.0",
+        "width": 3000,
+        "height": 1925,
+        "dimensionsReferTo": "original source photograph",
+        "sourceDescription": "Wolf's Milk or Groening's Slime Lycogala epidendrum, Family: Reticulariaceae, Location: Germany, Lauterach",
+        "sameIndividualClaim": false,
+        "sha1": "e0290a639a0be2b17b6feb8121d1c91e39a711b7"
+      },
+      "payoff": "Oona tries to turn an obvious crush into a painstaking investigation with almost no findings."
+    },
+    {
+      "id": "strange-10-12",
+      "characterId": "oona-rose",
+      "characterName": "Oona Rose",
+      "platform": "rss",
+      "subject": "Lycogala slime mold",
+      "title": "Rosy",
+      "body": "I went gray first.\n\nThe one beside me continued being pink in a way I found quite unnecessary. She called me rosy. She meant to be kind. I asked her not to.\n\nThe next morning there was a dull patch on her side. I noticed immediately. Managed not to mention it.\n\nBy the time the pink had gone, I had been behaving very well for what felt like an enormous portion of my life.\n\nWe sat against the damp bark, two gray bodies with very little to conceal from each other.\n\nI called her rosy.\n\nShe has asked me not to. I can see why she found it difficult.",
+      "theme": "transformation",
+      "location": {
+        "name": "Central European mixed woodland",
+        "coordinates": {
+          "lat": 48.95,
+          "lng": 9.1
+        }
+      },
+      "admission": "lead_approved_integrated",
+      "image": {
+        "url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d5/2025-11-04_D500-1680_Achim-Lammerts_Lycogala-epidendrum.jpg/960px-2025-11-04_D500-1680_Achim-Lammerts_Lycogala-epidendrum.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "localPath": "/tmp/freed-strange10-review.qYcJL3/12.jpg",
+        "downloadedSha256": "0c54561b84d0c3d09855824468dbad2a21e343b083293296fd43dd4dcf0617e3",
+        "visuallyInspected": true,
+        "reviewedOn": "2026-09-05",
+        "sceneMatch": "Mature gray-brown Lycogala fruiting bodies cluster on damp bark. Sequential color change is a fictional history illustrated by the mature endpoint.",
+        "reviewDecision": "lead_approved_integrated",
+        "reusedUnusedPhotoFrom": "strange-02-30"
+      },
+      "provenance": {
+        "title": "File:2025-11-04 D500-1680 Achim-Lammerts Lycogala-epidendrum.jpg",
+        "sourceUrl": "https://commons.wikimedia.org/wiki/File:2025-11-04_D500-1680_Achim-Lammerts_Lycogala-epidendrum.jpg",
+        "creator": "Achim Lammerts (Syntaxys)",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "width": 5566,
+        "height": 3710,
+        "dimensionsReferTo": "original source photograph",
+        "sourceDescription": "Wikidata has entry Lycogala epidendrum (Q520210) with data related to this item.\nFruit body of the wolf's milk mushroom (Lycogala epidendrum) on a rotting tree stump in direct sunlight; size approx. 0.5-2 cm\n\n This  image was created with Helicon Focus.",
+        "sameIndividualClaim": false,
+        "sha1": "91de00261b047fae2ad164e563f22ce2f35e2637"
+      },
+      "payoff": "Having disliked patronizing comfort, Oona discovers the temptation to offer exactly the same thing."
+    }
+  ]
+}

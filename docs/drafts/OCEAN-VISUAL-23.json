@@ -1,0 +1,245 @@
+{
+  "status": "draft_not_admitted",
+  "scope": "Established Ocean21 cast only; no new profiles or avatars.",
+  "reviewedExactImages": 7,
+  "proposals": [
+    {
+      "id": "ocean-visual-23-01",
+      "characterId": "selma-shore",
+      "contentType": "story",
+      "platform": "instagram",
+      "title": "Encouragement",
+      "content": "He leapt out in front of me. I lifted my head. He did it again, closer. I ducked before he landed, which apparently counts as encouragement.",
+      "decision": "propose_for_independent_review",
+      "review": "Conditional proposal. Selma is the foreground spectator, not the airborne animal. This changes the central relationship from her own Ocean21 surfing mishap to an escalating display directed at her. Repeated jumps and intention are fictional. Hold if it still feels too close to the spent aerial-play event.",
+      "sourceIndex": 1,
+      "media": {
+        "src": "https://media.fisheries.noaa.gov/dam-migration-miss/1280_wkV3TwlfX1d3.jpg?1515712396",
+        "alt": "California Sea Lion Rookery, Photo credit: Jeff Harris",
+        "context": " California sea lion frolicking near the rookery at San Miguel Island, California. Scientists combined the results of sea lion pup counts in the Channel Islands, aerial surveys of sea lion rookeries, survival rates and other information to reconstruct the growth of the sea lion population from 1975 to 2014. They gained enough insight into the dynamics of the population to fill in gaps from a few years with little data. California sea lion breeding group at San Miguel Island, California. Adult males are defending territory, females are tending to their pups, and pups are playing amongst themselves. Market hunting, bounties, pollutants such as DDT and other forces depressed sea lion numbers in",
+        "index": 1,
+        "character": "selma",
+        "imageUrl": "https://media.fisheries.noaa.gov/dam-migration-miss/1280_wkV3TwlfX1d3.jpg",
+        "localPath": "/tmp/freed-ocean-23/source-01.jpg",
+        "originalDimensions": [
+          1280,
+          960
+        ],
+        "sha1": "f3400ddd7f078e214cb416226d51eed6af54680c",
+        "sha256": "4596013e00cd593bbdb110a32a1629e826afdb06be0e4b519a43e4f924bedd80",
+        "sourcePage": "https://www.fisheries.noaa.gov/feature-story/california-sea-lion-population-rebounded-new-highs",
+        "attribution": "NOAA Fisheries/Jeff Harris",
+        "width": 1280,
+        "height": 960,
+        "visibleScene": "A dark California sea lion is fully airborne in a sideways arc above the water. A nearer sea lion holds its head above water facing the jumper; a rookery occupies the shore behind.",
+        "individuallyOpened": true,
+        "license": "Public domain, NOAA staff photograph",
+        "licenseUrl": "https://sanctuaries.noaa.gov/news/media/",
+        "dimensionsMeaning": "Exact published source asset dimensions measured from downloaded bytes; no larger camera original inferred."
+      }
+    },
+    {
+      "id": "ocean-visual-23-03",
+      "characterId": "selma-shore",
+      "contentType": "story",
+      "platform": "facebook",
+      "title": "The voice I turned for",
+      "content": "He roared behind me. I waited with my nose toward the water. When he stopped, I heard my pup. That was the voice I turned for.",
+      "decision": "propose_for_independent_review",
+      "review": "Propose. The large open-mouthed male, female facing another direction and nearby pups supply the conflicting voices. The actual call, pause and recognition are imagined. This develops Selma's established maternal recognition rather than making a breeding male an assumed babysitter.",
+      "sourceIndex": 3,
+      "media": {
+        "src": "https://media.fisheries.noaa.gov/dam-migration-miss/1280_IzIZ8HYO3Z41.jpg?1515711855",
+        "alt": "California Sea Lion Rookery, Photo credit: Sharon Melin",
+        "context": " Adult male California sea lions are identified by their large size, dark brown fur and conspicuous crest on their forehead. Adult females are blonde to light brown and are smaller than the adult males. Pups are dark brown to black. California sea lions have now reached those levels, according to the new assessment by scientists from NOAA Fisheries\u2019 Alaska Fisheries Science Center and Southwest Fisheries Science Center. They published the results of the long-term collaborative study today in the Journal of Wildlife Management. \u201cThe population has basically come into balance with its environment,\u201d said coauthor Sharon Melin, a research biologist at the Alaska Fisheries Science Center who has ",
+        "index": 3,
+        "character": "selma",
+        "imageUrl": "https://media.fisheries.noaa.gov/dam-migration-miss/1280_IzIZ8HYO3Z41.jpg",
+        "localPath": "/tmp/freed-ocean-23/source-03.jpg",
+        "originalDimensions": [
+          1280,
+          960
+        ],
+        "sha1": "10dd0eed5cabd5b93610d52ed99c605ee1826b54",
+        "sha256": "bed60ccab76b0a16f150fe8e119016b03204e1d3295f161edd1db187561dbcd1",
+        "sourcePage": "https://www.fisheries.noaa.gov/feature-story/california-sea-lion-population-rebounded-new-highs",
+        "attribution": "NOAA Fisheries/Sharon Melin",
+        "width": 1280,
+        "height": 960,
+        "visibleScene": "A large dark adult male California sea lion holds his mouth open behind a smaller blonde adult female, whose muzzle points in another direction. Several pups and other sea lions surround them.",
+        "individuallyOpened": true,
+        "license": "Public domain, NOAA staff photograph",
+        "licenseUrl": "https://sanctuaries.noaa.gov/news/media/",
+        "dimensionsMeaning": "Exact published source asset dimensions measured from downloaded bytes; no larger camera original inferred."
+      }
+    },
+    {
+      "id": "ocean-visual-23-05",
+      "characterId": "della-crosswake",
+      "contentType": "story",
+      "platform": "instagram",
+      "title": "In the middle",
+      "content": "I went under them to get ahead. Came up with my chin nearly on somebody's back. They kept swimming, and for a few breaths I forgot I was trying to pass.",
+      "decision": "propose_for_independent_review",
+      "review": "Propose. Raised head between close companions is the exact visual premise. Diving underneath and easing out of the contest are imagined. The story develops the established racing flaw into temporary attachment; it does not repeat paired breath-matching.",
+      "sourceIndex": 5,
+      "media": {
+        "src": "/s3/styles/media_375_x_250/s3/2024-03/750x500-SEFSC-4dolphins-photoIDsupp.jpg?itok=C29AtV_N",
+        "alt": "Four grey dolphins swim close together at the surface of the water.",
+        "context": " Common bottlenose dolphins, Tursiops truncatus, in Biscayne Bay, Florida. Credit: NOAA Fisheries/Amy Brossard (Permit #14450) Photo-ID research provides us with information about the social structure of marine mammals. Social structures may vary by species, population, and location. For example, some species, like large sei whales are routinely photographed in smaller social groups of one to five animals, but smaller cetaceans, like spinner dolphins , often travel in much larger groups of a few hundred or more. For some species, like the common bottlenose dolphin, we investigate social bonds using photo-ID to determine which individuals spend the most time together. Bottlenose dolphins have",
+        "index": 5,
+        "character": "della",
+        "imageUrl": "https://www.fisheries.noaa.gov/s3/2024-03/750x500-SEFSC-4dolphins-photoIDsupp.jpg",
+        "localPath": "/tmp/freed-ocean-23/source-05.jpg",
+        "originalDimensions": [
+          750,
+          500
+        ],
+        "sha1": "c3d41e4a37a9cefa561218e4dae81ab169cd18eb",
+        "sha256": "7f341f53bec37b96e8856dcf2de78253c2a28f9e8e0907a1ec0ec84c234063bd",
+        "sourcePage": "https://www.fisheries.noaa.gov/southeast/science-data/what-can-marine-mammal-photo-identification-tell-us",
+        "attribution": "NOAA Fisheries/Amy Brossard (Permit #14450)",
+        "width": 750,
+        "height": 500,
+        "visibleScene": "Four common bottlenose dolphins crowd close at the surface. One has its pale head raised between the others, with its chin near another dolphin's back.",
+        "individuallyOpened": true,
+        "license": "Public domain, NOAA staff photograph",
+        "licenseUrl": "https://sanctuaries.noaa.gov/news/media/",
+        "dimensionsMeaning": "Exact published source asset dimensions measured from downloaded bytes; no larger camera original inferred."
+      }
+    },
+    {
+      "id": "ocean-visual-23-06",
+      "characterId": "della-crosswake",
+      "contentType": "story",
+      "platform": "facebook",
+      "title": "The yellow thing",
+      "content": "Caught the yellow thing before it drifted away. It crumpled between my teeth. I came up to spit it out. It came up with me.",
+      "decision": "hold_image_quality",
+      "review": "Hold image quality pending lead decision. The debris encounter is explicit and distinct, with no suffering punchline or invented rescue. The attempted rejection is fictional. This soft 750-pixel source must not pass because the story is interesting.",
+      "sourceIndex": 6,
+      "media": {
+        "src": "/s3/styles/media_375_x_250/s3/2024-04/750x500-SEFSC-photoIDsupp-debris.JPG?itok=Y9YPBbjP",
+        "alt": "A dolphin upright in the water with its head above water and an empty yellow and white potato chip bag sticking out the side of its mouth..",
+        "context": " Common bottlenose dolphin in Biscayne Bay, Florida with debris. Credit: NOAA Fisheries/Jesse Wicker (Permit #779-1633) Marine debris is any human-made material that ends up in our waterways like microplastics, soda cans, plastic bags, larger discarded items, and more. Marine mammals can become entangled in some of these items like discarded ropes, fabric, or plastic which can become embedded in the animal\u2019s skin as it grows. In addition, animals often ingest discarded plastic items and bags, which can lead to serious internal injury\u2014like tearing the digestive tract\u2014and causing blockages. These situations can prevent proper digestion and eventually lead to death . What Can You Do? If you see",
+        "index": 6,
+        "character": "della",
+        "imageUrl": "https://www.fisheries.noaa.gov/s3/2024-04/750x500-SEFSC-photoIDsupp-debris.JPG",
+        "localPath": "/tmp/freed-ocean-23/source-06.jpg",
+        "originalDimensions": [
+          750,
+          500
+        ],
+        "sha1": "8674855b50684e5bfbf105bb057dcf492614881c",
+        "sha256": "d077438abc0ee12f92b70f8bb5eb428abc8d728066f1bccd8aba0b38cf78351f",
+        "sourcePage": "https://www.fisheries.noaa.gov/southeast/science-data/what-can-marine-mammal-photo-identification-tell-us",
+        "attribution": "NOAA Fisheries/Jesse Wicker (Permit #779-1633)",
+        "width": 750,
+        "height": 500,
+        "visibleScene": "A common bottlenose dolphin holds its head almost vertically above the water with an empty yellow-and-white snack bag across its open mouth. The image is visibly soft.",
+        "individuallyOpened": true,
+        "license": "Public domain, NOAA staff photograph",
+        "licenseUrl": "https://sanctuaries.noaa.gov/news/media/",
+        "dimensionsMeaning": "Exact published source asset dimensions measured from downloaded bytes; no larger camera original inferred."
+      }
+    }
+  ],
+  "holds": [
+    {
+      "sourceIndex": 2,
+      "reason": "Hold. The nursing image is strong, but the available draft mechanism repeats Selma stopping movement for her pup from Ocean21. A new permanent research brand would also need explicit continuity treatment. No new text proposed.",
+      "media": {
+        "src": "https://media.fisheries.noaa.gov/dam-migration-miss/1280_kXzUkF9WHKb2.jpg?1515711937",
+        "alt": "California Sea Lion Rookery, Photo credit: Sharon Melin",
+        "context": " Adult female California sea lion nursing her newborn pup at San Miguel Island, California. The brand on her left shoulder is a permanent brand that identifies her for survival and reproductive rate studies. Marine conditions since 2012 have illustrated that. An unusual marine heat wave off the West Coast known as \u201cthe blob\u201d combined with an El Ni\u00f1o climate pattern reduced pup production and survival , with thousands of malnourished pups stranding on Southern California beaches. NOAA Fisheries declared the elevated number of deaths an Unusual Mortality Event in 2013 . The sea lion population dropped to just over 250,000 in 2013 and 2014. \u201cThis is not just a story about continued growth of th",
+        "index": 2,
+        "character": "selma",
+        "imageUrl": "https://media.fisheries.noaa.gov/dam-migration-miss/1280_kXzUkF9WHKb2.jpg",
+        "localPath": "/tmp/freed-ocean-23/source-02.jpg",
+        "originalDimensions": [
+          1280,
+          960
+        ],
+        "sha1": "19e8925c853c493220d501359de06d7feb0a5d1b",
+        "sha256": "cf3b960ab090376d602dc4e510efa30d19241456268aede9dd5db3b5524a10dd",
+        "sourcePage": "https://www.fisheries.noaa.gov/feature-story/california-sea-lion-population-rebounded-new-highs",
+        "attribution": "NOAA Fisheries/Sharon Melin",
+        "width": 1280,
+        "height": 960,
+        "visibleScene": "A blonde adult female California sea lion nurses a dark newborn on sand. A large permanent numerical research brand, 9840, is clearly visible on her side.",
+        "individuallyOpened": true,
+        "license": "Public domain, NOAA staff photograph",
+        "licenseUrl": "https://sanctuaries.noaa.gov/news/media/",
+        "dimensionsMeaning": "Exact published source asset dimensions measured from downloaded bytes; no larger camera original inferred."
+      }
+    },
+    {
+      "sourceIndex": 4,
+      "reason": "Hold. The available original is only 200 by 258 pixels. It cannot meet the gorgeous Story image gate.",
+      "media": {
+        "src": "/kefj/learn/nature/images/harborseal_JohnBortinak_NOAA.jpg?maxwidth=650&autorotate=false",
+        "alt": "Harbor Seal",
+        "context": " Harbor seals can be found \"hauling out\" on chunks of ice near tidewater glaciers. NOAA Photo / J. Bortinak Phoca vitulina Basic Facts The harbor seal is a member of the family Phocidae or \u201ctrue earless or hair seals.\u201d Only a wrinkling or opening in the skin denotes external ears. The first sighting in the water is usually of the round head. The fore flippers are small and placed far forward with five long, clawed digits. The longer hind flippers are used for locomotion under water but cannot be turned forward as with sea lions. Harbor seals wriggle and hunch to travel on land. Because this is laborious, they will roll or slide whenever possible. The average adult found in Alaska waters is j",
+        "index": 4,
+        "character": "fenn",
+        "imageUrl": "https://www.nps.gov/kefj/learn/nature/images/harborseal_JohnBortinak_NOAA.jpg",
+        "localPath": "/tmp/freed-ocean-23/source-04.jpg",
+        "originalDimensions": [
+          200,
+          258
+        ],
+        "sha1": "c90f7663422038ba842b18a477c1236ffc80fc52",
+        "sha256": "915a49b8a17ed45aaf9f43a499c401d2b7b85b70006101511bee296aeb93fb84",
+        "sourcePage": "https://www.nps.gov/kefj/learn/nature/harbor-seal.htm",
+        "attribution": "NOAA Photo/J. Bortinak",
+        "width": 200,
+        "height": 258,
+        "visibleScene": "A harbor seal holds its open mouth above a small ice floe; other seals appear lower. The original available image is only 200 by 258 pixels.",
+        "individuallyOpened": true,
+        "license": "Public domain, NOAA staff photograph",
+        "licenseUrl": "https://sanctuaries.noaa.gov/news/media/",
+        "dimensionsMeaning": "Exact published source asset dimensions measured from downloaded bytes; no larger camera original inferred."
+      }
+    },
+    {
+      "sourceIndex": 7,
+      "reason": "Hold rights and resolution. Only the thumbnail was downloaded and opened. The page explicitly says photo \u00a9 J. Harris, NOAA Fisheries. No full-size image was fetched after discovering that conflict.",
+      "media": {
+        "src": "https://wildlife.ca.gov/DesktopModules/LiveContent/API/Image/Get?mid=57678&eid=5&PortalId=0",
+        "alt": "California sea lions, females and pups, at Harris Point SMR",
+        "context": " <a id=\"LCModule576787\" data-rel=\"57678\" data-options=\"{'ElementId':'7','force':'image','titleId':'LCModule576787Heading','captionId':'LCModule576787Caption','UID':'Module','",
+        "index": 7,
+        "character": "selma",
+        "sourcePage": "https://wildlife.ca.gov/Conservation/Marine/MPAs/Harris-Point",
+        "imageUrl": "https://wildlife.ca.gov/DesktopModules/LiveContent/API/Image/Get?mid=57678&eid=5&PortalId=0",
+        "localPath": "/tmp/freed-ocean-23/source-07.jpg",
+        "originalDimensions": [
+          107,
+          107
+        ],
+        "sha1": "fd6acbfb4811b53dde4718bf63c27dfed0087bf8",
+        "sha256": "17fd8a5e7a552dbc9a40b041fe391a8449a168f1027ffcabfe1d40648e3ed614",
+        "attribution": "photo \u00a9 J. Harris, NOAA Fisheries",
+        "width": 107,
+        "height": 107,
+        "visibleScene": "A 107-pixel thumbnail shows a crowded sea-lion rookery. The full page caption explicitly carries a copyright symbol despite naming a NOAA photographer.",
+        "individuallyOpened": true,
+        "license": "Unresolved: explicit copyright notice; do not admit",
+        "licenseUrl": "https://sanctuaries.noaa.gov/news/media/",
+        "dimensionsMeaning": "Exact published source asset dimensions measured from downloaded bytes; no larger camera original inferred."
+      }
+    }
+  ],
+  "networkLimitations": [
+    "No Commons request or retry.",
+    "Hawaiian sanctuary gallery fetch failed and was not retried.",
+    "Stellwagen whale-behavior and favorite-photo pages each returned403; neither was retried or accessed through another route.",
+    "NIST dolphin image page returned403 and was not retried."
+  ],
+  "canonDelta": {
+    "selma-shore": "These are adult scenes after the Ocean21 pup memory and motherhood posts. Source01 uses the foreground spectator; do not replace Selma with an unmarked juvenile jumper. Proposed source03 brings her existing fear of losing her pup's voice into a noisy breeding group.",
+    "della-crosswake": "Both proposals concern the established common bottlenose species. NOAA identifies these photographed Florida animals as Tursiops truncatus. The images illustrate species-compatible scenes, not a documented visit by the Kona narrator to Florida. No regional strand-feeding technique, Tamanend's dolphin or motherhood is imported.",
+    "tobin-sound": "No fresh image cleared this discovery pass. Existing breach, bubble feeding and filtering remain spent.",
+    "fenn-lowtide": "No fresh image cleared the quality gate. Existing rotating ice-platform incident remains spent."
+  }
+}
