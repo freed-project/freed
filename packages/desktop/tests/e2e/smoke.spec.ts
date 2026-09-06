@@ -1524,7 +1524,7 @@ test("reader toolbar keeps the Focus toggle text vertically centered", async ({ 
   expect(geometry.centerDelta).toBeLessThanOrEqual(1);
 });
 
-test("fullscreen reader toolbar passive targets expose direct native drag attributes", async ({ app, page }) => {
+test("mobile reader uses one toolbar and keeps reader actions in overflow", async ({ app, page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "userAgentData", {
       configurable: true,
@@ -1537,21 +1537,19 @@ test("fullscreen reader toolbar passive targets expose direct native drag attrib
   await app.injectRssItems(4);
 
   await page.getByText("Article 0:", { exact: false }).click();
-  const title = page.getByTestId("reader-view-toolbar-title");
-  await expect(title).toBeVisible({ timeout: 5_000 });
-
-  const titleState = await readElementFromPointDragState(page, title);
-  const spacerState = await readElementFromPointDragState(page, page.getByTestId("reader-view-toolbar-spacer"));
-  const backButton = page.getByRole("button", { name: "Back", exact: true });
-  const backButtonRegion = await backButton.evaluate((button) => button.style.webkitAppRegion);
-
-  expect(titleState).not.toBeNull();
-  expect(titleState?.hasDirectDragAttr).toBe(true);
-  expect(titleState?.inlineWebkitAppRegion).toBe("drag");
-  expect(spacerState).not.toBeNull();
-  expect(spacerState?.hasDirectDragAttr).toBe(true);
-  expect(spacerState?.inlineWebkitAppRegion).toBe("drag");
-  expect(backButtonRegion).toBe("no-drag");
+  await expect(page.getByTestId("workspace-toolbar-reader-back")).toBeVisible();
+  await expect(page.getByTestId("reader-view-toolbar-title")).toHaveCount(0);
+  await expect(page.getByTestId("workspace-toolbar-logo-drag-region")).toBeHidden();
+  await expect(page.getByText("No richer reader content is available for this item yet.")).toBeVisible();
+  await page.getByRole("button", { name: "More actions", exact: true }).click();
+  await expect(page.getByRole("menuitem", { name: "Open original", exact: true })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Archive", exact: true })).toBeVisible();
+  await page.getByRole("menuitem", { name: "Enable focus mode", exact: true }).click();
+  await page.getByRole("button", { name: "More actions", exact: true }).click();
+  await expect(page.getByRole("menuitem", { name: "Disable focus mode", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "More actions", exact: true }).click();
+  await page.getByTestId("workspace-toolbar-reader-back").click();
+  await expect(page.getByTestId("workspace-toolbar-reader-back")).toHaveCount(0);
 });
 
 test("desktop primary feed marks scrolled-past rows as read", async ({ app, page }) => {
