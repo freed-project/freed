@@ -199,7 +199,7 @@ describe("scheduled social capture retries", () => {
     await captureModule.refreshScheduledRssFeeds();
 
     expect(result).toMatchObject({
-      status: "ignored",
+      status: "deferred",
       stage: "retired_writer",
     });
     expect(mocks.captureFbFeed).not.toHaveBeenCalled();
@@ -208,7 +208,15 @@ describe("scheduled social capture retries", () => {
     expect(mocks.refreshLibraryFeeds).not.toHaveBeenCalled();
   });
 
-  it.each(["linkedin", "instagram", "facebook", "youtube"] as const)(
+  it.each([
+    "x",
+    "linkedin",
+    "instagram",
+    "facebook",
+    "youtube",
+    "substack",
+    "medium",
+  ] as const)(
     "distinguishes missing and unreadable writer admission for %s without provider contact",
     async (provider) => {
       mocks.sqliteActive = true;
@@ -220,6 +228,12 @@ describe("scheduled social capture retries", () => {
           stage: "writer_admission_missing",
         },
       );
+      expect(
+        await captureModule.refreshSocialProvider(provider, "scheduled"),
+      ).toMatchObject({
+        status: "deferred",
+        stage: "writer_admission_missing",
+      });
       mocks.writerError = new Error("database is locked");
       expect(await captureModule.refreshSocialProvider(provider)).toMatchObject(
         {
@@ -227,11 +241,125 @@ describe("scheduled social capture retries", () => {
           stage: "writer_admission_unavailable",
         },
       );
+      expect(
+        await captureModule.refreshSocialProvider(provider, "scheduled"),
+      ).toMatchObject({
+        status: "deferred",
+        stage: "writer_admission_unavailable",
+      });
       expect(mocks.captureLiFeed).not.toHaveBeenCalled();
       expect(mocks.captureIgFeed).not.toHaveBeenCalled();
       expect(mocks.captureFbFeed).not.toHaveBeenCalled();
       expect(mocks.captureYouTube).not.toHaveBeenCalled();
       expect(mocks.withProviderSyncing).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["facebook", "instagram"] as const)(
+    "retains the due %s opportunity through missing and unreadable admission",
+    async (provider) => {
+      const schedule = await import("./provider-sync-schedule-state");
+      localStorage.clear();
+      const random = { uniform: () => 0.5, id: () => "admission-replay" };
+      schedule.initializeProviderSchedules({ now: 1_000, random });
+      const before = schedule.getProviderScheduleSnapshot(provider).record!;
+      const other = provider === "facebook" ? "instagram" : "facebook";
+      const otherBefore = schedule.getProviderScheduleSnapshot(other).record!;
+      mocks.sqliteActive = true;
+      mocks.writerAllowed = false;
+      mocks.writerConfigured = false;
+      let now = before.nextDueAt + 1;
+      for (const stage of [
+        "writer_admission_missing",
+        "writer_admission_unavailable",
+      ]) {
+        mocks.writerError =
+          stage === "writer_admission_unavailable"
+            ? new Error("unreadable")
+            : null;
+        const claim = schedule.claimProviderSchedule({ provider, now, random });
+        expect(claim.status).toBe("claimed");
+        if (claim.status !== "claimed") throw new Error("Expected claim");
+        const contact = vi.fn();
+        const result = await captureModule.refreshSocialProvider(
+          provider,
+          "scheduled",
+          contact,
+        );
+        expect(result).toMatchObject({ status: "deferred", stage });
+        expect(contact).not.toHaveBeenCalled();
+        expect(
+          schedule.settleProviderSchedule({
+            provider,
+            attemptId: claim.attempt.attemptId,
+            now,
+            random,
+            status: result.status,
+            stage: result.stage,
+          }),
+        ).toBe(true);
+        const after = schedule.getProviderScheduleSnapshot(provider).record!;
+        expect(after).toMatchObject({
+          phase: "locally_deferred",
+          nextDueAt: before.nextDueAt,
+          consecutiveFailures: before.consecutiveFailures,
+          previousBackoffMs: before.previousBackoffMs,
+          yieldFactor: before.yieldFactor,
+          regime: before.regime,
+        });
+        expect(after.attempt).toBeUndefined();
+        expect(after.localEligibilityRetryAt).toBeGreaterThan(now);
+        expect(after.localEligibilityRetryAt! - now).toBeGreaterThanOrEqual(
+          45_000,
+        );
+        expect(after.localEligibilityRetryAt! - now).toBeLessThanOrEqual(
+          120_000,
+        );
+        expect(
+          schedule
+            .listDueProviderSchedules(now)
+            .some((due) => due.provider === provider),
+        ).toBe(false);
+        now = after.localEligibilityRetryAt! + 1;
+      }
+      // Listing due work may mark the peer due, but cannot consume its interval.
+      expect(schedule.getProviderScheduleSnapshot(other).record).toEqual({
+        ...otherBefore,
+        phase: "due",
+      });
+      expect(mocks.withProviderSyncing).not.toHaveBeenCalled();
+      const recovered = schedule.claimProviderSchedule({
+        provider,
+        now,
+        random,
+      });
+      expect(recovered.status).toBe("claimed");
+      if (recovered.status !== "claimed")
+        throw new Error("Expected recovery claim");
+      expect(recovered.attempt.scheduledAt).toBe(before.nextDueAt);
+      // A genuine contacted settlement consumes the next interval, unlike the local skips.
+      schedule.markProviderContactIssued({
+        provider,
+        attemptId: recovered.attempt.attemptId,
+        now,
+      });
+      schedule.settleProviderSchedule({
+        provider,
+        attemptId: recovered.attempt.attemptId,
+        now,
+        random,
+        status: "success",
+        itemsSeen: 2,
+        itemsAdded: 1,
+      });
+      const settled = schedule.getProviderScheduleSnapshot(provider).record!;
+      expect(settled.phase).toBe("settled");
+      expect(settled.nextDueAt - now).toBeGreaterThanOrEqual(
+        before.bounds.lowerMs,
+      );
+      expect(settled.nextDueAt - now).toBeLessThanOrEqual(
+        before.bounds.upperMs,
+      );
     },
   );
 
@@ -422,7 +550,7 @@ describe("scheduled social capture retries", () => {
     expect(mocks.withProviderSyncing).not.toHaveBeenCalled();
     expect(result).toMatchObject({
       provider: "facebook",
-      status: "ignored",
+      status: "deferred",
       stage: "follower",
     });
   });

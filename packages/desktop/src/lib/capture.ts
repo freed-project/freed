@@ -421,7 +421,9 @@ export async function refreshSocialProvider(
     clearSocialDeferredRetry(provider);
     return {
       provider,
-      status: "ignored",
+      // No provider contact occurred. Let the scheduler retain the due opportunity
+      // and jitter only local eligibility; manual capture keeps its existing result.
+      status: trigger === "scheduled" ? "deferred" : "ignored",
       ...writerBlock,
     };
   }
