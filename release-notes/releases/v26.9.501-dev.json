@@ -1,0 +1,102 @@
+{
+  "tag": "v26.9.501-dev",
+  "version": "26.9.501-dev",
+  "channel": "dev",
+  "dayKey": "26.9.5",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-09-06T03:49:52.801Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.9.500-dev",
+    "previousPublishedDayTag": "v26.9.300-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "12dde7b82c81e681ba7762b23a7573781b5f6055",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.9.500-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "e6bbae8baa58d9b7502b04d02084f549885e9c05",
+        "toInclusiveProductCommitSha": "12dde7b82c81e681ba7762b23a7573781b5f6055"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:709197038cc687ff0889d7e28497c08704b0a1f7096f4348479ea36bf5896ccb",
+        "currentDigest": "sha256:709197038cc687ff0889d7e28497c08704b0a1f7096f4348479ea36bf5896ccb"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:e01998d97908323feaa4cad766765d84aa4b3f39a220fc370106034115c65a4f",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.9.500-dev",
+      "v26.9.501-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.9.500-dev",
+      "v26.9.501-dev"
+    ],
+    "prNumbers": [
+      1765,
+      1789,
+      1791,
+      1794
+    ],
+    "commitSubjects": [
+      "fix: complete large checkpoint publications with bounded progress",
+      "fix: retain provider opportunities while writer admission is blocked",
+      "fix: restore local main-window diagnostic logging",
+      "chore: prepare v26.9.500-dev",
+      "perf: seek checkpoint pages through the export index",
+      "fix: restore automatic provider sync on unlocked macOS sessions",
+      "fix: coalesce Drive checkpoint publication and fence cancellation",
+      "fix: keep snapshot exports responsive and classify writer refusals",
+      "chore: route instruction contracts and harden governance",
+      "fix: treat PWA Library contention as a busy state",
+      "fix: preserve shared release matrix across promotion (#1794)",
+      "fix: preserve release lane controls during promotion (#1791)",
+      "docs: codify the demo corpus editorial canon (#1790)",
+      "fix: preserve library activation history across releases (#1789)",
+      "feat: launch the complete interactive Freed demo experience (#1765)"
+    ]
+  },
+  "release": {
+    "deck": "Launch the complete interactive Freed demo experience, an interactive sample Library demo, and seek checkpoint pages through the export index",
+    "features": [
+      "Launch the complete interactive Freed demo experience",
+      "An interactive sample Library demo"
+    ],
+    "fixes": [
+      "Complete large checkpoint publications with bounded progress",
+      "Retain provider opportunities while writer admission is blocked",
+      "Automatic provider sync on unlocked macOS sessions restored",
+      "Coalesce Drive checkpoint publication and fence cancellation",
+      "Keep snapshot exports responsive and classify writer refusals",
+      "Treat PWA Library contention as a busy state",
+      "Preserve Library Core activation history across releases",
+      "Keep local snapshot exports off the main thread so they do not block the interface or provider WebViews",
+      "Seek directly to each checkpoint page instead of rescanning previously exported records",
+      "Coalesce overlapping Drive publications and retain the export slot until canceled native work settles",
+      "Recognize unlocked macOS sessions and accept fractional provider wake deadlines",
+      "Distinguish missing or unreadable writer admission from a retired writer"
+    ],
+    "followUps": [
+      "Route instruction contracts and harden governance",
+      "Improve Drive checkpoint exports and restore provider scheduling on unlocked macOS sessions",
+      "Verify Drive publication, writer admission, and LinkedIn extraction on the signed build",
+      "Scheduled Facebook and Instagram observation on the installed build"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.9.501-dev\n\nLaunch the complete interactive Freed demo experience, an interactive sample Library demo, and seek checkpoint pages through the export index\n\n### Features\n\n- Launch the complete interactive Freed demo experience\n- An interactive sample Library demo\n\n### Fixes\n\n- Complete large checkpoint publications with bounded progress\n- Retain provider opportunities while writer admission is blocked\n- Automatic provider sync on unlocked macOS sessions restored\n- Coalesce Drive checkpoint publication and fence cancellation\n- Keep snapshot exports responsive and classify writer refusals\n- Treat PWA Library contention as a busy state\n- Preserve Library Core activation history across releases\n- Keep local snapshot exports off the main thread so they do not block the interface or provider WebViews\n- Seek directly to each checkpoint page instead of rescanning previously exported records\n- Coalesce overlapping Drive publications and retain the export slot until canceled native work settles\n- Recognize unlocked macOS sessions and accept fractional provider wake deadlines\n- Distinguish missing or unreadable writer admission from a retired writer\n\n### Follow-ups\n\n- Route instruction contracts and harden governance\n- Improve Drive checkpoint exports and restore provider scheduling on unlocked macOS sessions\n- Verify Drive publication, writer admission, and LinkedIn extraction on the signed build\n- Scheduled Facebook and Instagram observation on the installed build\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
