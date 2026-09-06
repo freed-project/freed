@@ -11,6 +11,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -61,6 +62,60 @@ async function fixture() {
 }
 
 describe("Linux descriptor-bound Drive credential files", () => {
+  linuxIt.each(["before-rename", "after-rename"] as const)(
+    "reopens a complete credential after writer termination %s",
+    async (boundary) => {
+      const { root, keyPath, store } = await fixture();
+      await store.persistCredential("drive-1", "synthetic-old");
+      // Execute the compiled implementation in another process so SIGKILL
+      // bypasses every catch/finally. ACL checkpoints bracket atomic rename:
+      // the second temporary inspection follows file fsync, and the second
+      // target inspection follows rename and directory fsync. This proves
+      // process-crash recovery, not power-loss durability of the host disk.
+      const child = spawnSync(
+        process.execPath,
+        [
+          "--input-type=module",
+          "-e",
+          `
+        import { createNodeLibraryServicePorts } from ${JSON.stringify(new URL("../dist/node-ports.js", import.meta.url).href)};
+        import { createLinuxDriveCredentialStore } from ${JSON.stringify(new URL("../dist/linux-drive-credential-store.js", import.meta.url).href)};
+        const fs = createNodeLibraryServicePorts().fileSystem;
+        const directory = await fs.openBoundPath(${JSON.stringify(root)});
+        const wrappingKey = await fs.openBoundPath(${JSON.stringify(keyPath)});
+        let temporaryChecks = 0;
+        let targetChecks = 0;
+        const store = createLinuxDriveCredentialStore({
+          directory, wrappingKey, wrappingKeyDigest: await wrappingKey.sha256(),
+          aclProof: { async assertNoExtendedAcl(targets) {
+            for (const target of targets) {
+              if (target.path.endsWith('.tmp')) temporaryChecks += 1;
+              if (target.path.endsWith('/drive-1.sealed.json')) targetChecks += 1;
+            }
+            if ((${JSON.stringify(boundary)} === 'before-rename' && temporaryChecks === 2) ||
+                (${JSON.stringify(boundary)} === 'after-rename' && targetChecks === 2)) {
+              process.kill(process.pid, 'SIGKILL');
+              await new Promise(() => {});
+            }
+          } }
+        });
+        await store.persistCredential('drive-1', 'synthetic-new');
+        process.exit(90);
+      `,
+        ],
+        { timeout: 5000, encoding: "utf8", maxBuffer: 4096 },
+      );
+      expect(child.error).toBeUndefined();
+      expect(child.stderr).toBe("");
+      expect(child.signal).toBe("SIGKILL");
+      expect(await store.readCredential("drive-1")).toBe(
+        boundary === "before-rename" ? "synthetic-old" : "synthetic-new",
+      );
+      await store.persistCredential("drive-1", "synthetic-recovered");
+      expect(await store.readCredential("drive-1")).toBe("synthetic-recovered");
+    },
+  );
+
   linuxIt.each(["replace", "remove"] as const)(
     "invalidates cached tokens after record %s and recovers only with a new token port",
     async (change) => {
