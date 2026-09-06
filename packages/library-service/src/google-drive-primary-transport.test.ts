@@ -40,10 +40,15 @@ describe("headless normalized Drive transport", () => {
         const body = {
           actor_enrollment_body: identity,
           enrollment_body_digest: requestDigest,
+          actor_proof: "d".repeat(128),
+          actor_capability_body: {},
+          actor_capability_body_digest: "e".repeat(64),
         };
-        const bytes = encodeLibraryCoreCanonicalValue(
-          certificate ? { certificate_body: body } : body,
-        );
+        const bytes = encodeLibraryCoreCanonicalValue({
+          certificate_body: body,
+          certificate_digest: hash(`certificate-${index}`),
+          ...(certificate ? { authority_signature: "f".repeat(128) } : {}),
+        });
         const digest = hash(bytes);
         const name = createLibraryCoreImmutableObjectKey({
           kind: certificate ? "actor_enrollment" : "actor_enrollment_request",

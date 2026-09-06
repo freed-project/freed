@@ -11,6 +11,7 @@ import {
   type LibraryCoreNormalizedResultHeadV2,
 } from "@freed/shared/library-core";
 import { describe, expect, it, vi } from "vitest";
+import capabilityVectors from "../../../shared/src/library-core/actor-capability-certificate-v2-vectors.json" with { type: "json" };
 import {
   syncLibraryCoreNormalizedPrimaryEnrollmentsV2,
   syncLibraryCoreNormalizedPrimaryIntentsV2,
@@ -28,22 +29,15 @@ import type { LibraryCoreNormalizedHeadPublicationAdapterV2 } from "./library-co
 
 const LIBRARY_ID = "1".repeat(64);
 const EPOCH_ID = "2".repeat(64);
-const ACTOR_ID = "3".repeat(64);
-const ACTOR_KEY = "4".repeat(64);
-const REQUEST_DIGEST = "5".repeat(64);
+const capabilityVector = capabilityVectors.vectors[0]!;
+const ACTOR_ID =
+  capabilityVector.certificate.certificate_body.actor_enrollment_body.actor_id;
+const ACTOR_KEY = capabilityVector.actor_public_key_hex;
+const REQUEST_DIGEST = capabilityVector.certificate.certificate_digest;
 
 function request(): LibraryCoreNormalizedPrimaryEnrollmentRequestV2 {
   const bytes = encodeLibraryCoreCanonicalValue({
-    certificate_body: {
-      actor_enrollment_body: {
-        actor_id: ACTOR_ID,
-        actor_public_key: ACTOR_KEY,
-        authority_epoch_id: EPOCH_ID,
-        library_id: LIBRARY_ID,
-      },
-      actor_proof: "6".repeat(128),
-      enrollment_body_digest: "7".repeat(64),
-    },
+    certificate_body: capabilityVector.certificate.certificate_body,
     certificate_digest: REQUEST_DIGEST,
   } as LibraryCoreCanonicalValue);
   const contentDigest = sha256LowerHex(bytes);
@@ -67,22 +61,11 @@ function request(): LibraryCoreNormalizedPrimaryEnrollmentRequestV2 {
 }
 
 function nativeReceipt() {
-  const certificate = encodeLibraryCoreCanonicalValue({
-    authority_signature: "8".repeat(128),
-    certificate_body: {
-      actor_enrollment_body: {
-        actor_id: ACTOR_ID,
-        actor_public_key: ACTOR_KEY,
-        authority_epoch_id: EPOCH_ID,
-        library_id: LIBRARY_ID,
-      },
-      actor_proof: "6".repeat(128),
-      enrollment_body_digest: "7".repeat(64),
-    },
-    certificate_digest: REQUEST_DIGEST,
-  } as LibraryCoreCanonicalValue);
+  const certificate = encodeLibraryCoreCanonicalValue(
+    capabilityVector.certificate as LibraryCoreCanonicalValue,
+  );
   return Object.freeze({
-    actorChainGenesis: "9".repeat(64),
+    actorChainGenesis: capabilityVector.actor_chain_genesis,
     actorId: ACTOR_ID,
     actorPublicKey: ACTOR_KEY,
     authorityEpochId: EPOCH_ID,
@@ -128,6 +111,48 @@ function fixture(input: {
 }
 
 describe("normalized Primary enrollment sync", () => {
+  it("rejects the obsolete enrollment body before native countersigning", async () => {
+    const body = capabilityVector.certificate.certificate_body;
+    const bytes = encodeLibraryCoreCanonicalValue({
+      certificate_body: {
+        actor_enrollment_body: body.actor_enrollment_body,
+        actor_proof: body.actor_proof,
+        enrollment_body_digest: body.enrollment_body_digest,
+      },
+      certificate_digest: REQUEST_DIGEST,
+    } as LibraryCoreCanonicalValue);
+    const contentDigest = sha256LowerHex(bytes);
+    const active = fixture({
+      requests: [
+        {
+          bytes,
+          reference: {
+            transportObjectId: "obsolete-request",
+            descriptor: parseLibraryCoreImmutableObjectDescriptorV1({
+              byteLength: bytes.byteLength,
+              contentDigest,
+              objectKey: createLibraryCoreImmutableObjectKey({
+                actorId: ACTOR_ID,
+                digest: contentDigest,
+                epochId: EPOCH_ID,
+                kind: "actor_enrollment_request",
+                libraryId: LIBRARY_ID,
+              }),
+            }),
+          },
+        },
+      ],
+    });
+    await expect(
+      syncLibraryCoreNormalizedPrimaryEnrollmentsV2(
+        active.transport,
+        active.runtime,
+        { libraryId: LIBRARY_ID, storageEpochId: EPOCH_ID },
+      ),
+    ).rejects.toThrow();
+    expect(active.countersignEnrollment).not.toHaveBeenCalled();
+    expect(active.published).toHaveLength(0);
+  });
   it("countersigns one exact request and publishes one immutable certificate", async () => {
     const active = fixture({});
     const receipt = await syncLibraryCoreNormalizedPrimaryEnrollmentsV2(

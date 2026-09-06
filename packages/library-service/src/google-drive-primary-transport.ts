@@ -78,7 +78,9 @@ export function createGoogleDrivePrimaryTransportV2(
       const requests =
         await discoverGoogleDriveLibraryCoreActorEnrollmentRequestsV1(options);
       const pending = requests.filter(({ bytes }) => {
-        const value = record(decodeLibraryCoreCanonicalValue(bytes));
+        const value = record(
+          record(decodeLibraryCoreCanonicalValue(bytes)).certificate_body,
+        );
         return !enrolled.has(
           value.enrollment_body_digest as LibraryCoreLowercaseHex64,
         );

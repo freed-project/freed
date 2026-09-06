@@ -254,7 +254,13 @@ function parseEnrollmentRequestIdentity(
   );
   const certificateBody = closedRecord(
     request.certificate_body,
-    ["actor_enrollment_body", "actor_proof", "enrollment_body_digest"],
+    [
+      "actor_enrollment_body",
+      "actor_proof",
+      "enrollment_body_digest",
+      "actor_capability_body",
+      "actor_capability_body_digest",
+    ],
     "normalized enrollment request certificate body",
   );
   const enrollmentBody = closedRecord(
@@ -265,7 +271,7 @@ function parseEnrollmentRequestIdentity(
   const actorId = enrollmentBody.actor_id;
   const actorPublicKey = enrollmentBody.actor_public_key;
   const libraryId = enrollmentBody.library_id;
-  const storageEpochId = enrollmentBody.authority_epoch_id;
+  const storageEpochId = enrollmentBody.epoch_id;
   const certificateDigest = request.certificate_digest;
   if (
     !isLibraryCoreLowercaseHex64(actorId) ||
