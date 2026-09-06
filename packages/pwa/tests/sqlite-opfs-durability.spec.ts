@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createServer, request, type Server } from "node:http";
 import {
   devices,
   expect,
@@ -16,6 +17,54 @@ import {
   SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT,
 } from "@freed/shared";
 import { pwaOpfsE2eBaseUrl } from "./opfs-e2e-settings";
+
+let testOrigin = pwaOpfsE2eBaseUrl;
+let originServer: Server | null = null;
+
+// A fresh profile alone does not reliably isolate macOS WebKit OPFS. Keep a
+// distinct origin for each case, but preserve it across that case's restarts
+// and tabs so the durability and exclusive-writer assertions stay meaningful.
+test.beforeEach(async () => {
+  const target = new URL(pwaOpfsE2eBaseUrl);
+  const server = createServer((incoming, outgoing) => {
+    const upstream = request(
+      new URL(incoming.url ?? "/", target),
+      {
+        method: incoming.method,
+        headers: { ...incoming.headers, host: target.host },
+      },
+      (response) => {
+        outgoing.writeHead(response.statusCode ?? 502, response.headers);
+        response.pipe(outgoing);
+      },
+    );
+    upstream.on("error", () => {
+      if (!outgoing.headersSent) outgoing.writeHead(502);
+      outgoing.end();
+    });
+    outgoing.on("close", () => upstream.destroy());
+    incoming.pipe(upstream);
+  });
+  originServer = server;
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  if (!address || typeof address === "string")
+    throw new Error("Test origin unavailable");
+  testOrigin = `http://127.0.0.1:${address.port}`;
+});
+
+test.afterEach(async () => {
+  const server = originServer;
+  originServer = null;
+  if (!server) return;
+  server.closeAllConnections();
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => (error ? reject(error) : resolve()));
+  });
+});
 
 interface BrowserLibraryCore {
   facetSummary(): Promise<{
@@ -93,8 +142,7 @@ async function waitForLibrary(page: Page): Promise<void> {
   await page.waitForFunction(() => {
     const current = window as unknown as Record<string, unknown>;
     const store = current.__FREED_STORE__ as
-      | { getState(): { isInitialized: boolean } }
-      | undefined;
+      { getState(): { isInitialized: boolean } } | undefined;
     return (
       store?.getState().isInitialized === true &&
       typeof current.__FREED_LIBRARY_CORE__ === "object"
@@ -110,7 +158,7 @@ async function openLibrary(page: Page): Promise<void> {
 
 async function launchPersistentLibraryContext(
   profileRoot: string,
-  baseURL = pwaOpfsE2eBaseUrl,
+  baseURL = testOrigin,
 ): Promise<BrowserContext> {
   const iphone = devices["iPhone 14"];
   return webkit.launchPersistentContext(profileRoot, {
@@ -325,9 +373,9 @@ async function verifyDurableOpfsLibrary(profileRoot: string): Promise<void> {
   let context: BrowserContext | null = null;
 
   try {
-    let opened = await test.step("write through the first WebKit lifecycle", () =>
-      openPersistentLibrary(profileRoot),
-    );
+    let opened =
+      await test.step("write through the first WebKit lifecycle", () =>
+        openPersistentLibrary(profileRoot));
     context = opened.context;
     const page = opened.page;
 
@@ -357,9 +405,9 @@ async function verifyDurableOpfsLibrary(profileRoot: string): Promise<void> {
 
     await context.close();
     context = null;
-    opened = await test.step("reopen the same OPFS Library after WebKit exits", () =>
-      openPersistentLibrary(profileRoot),
-    );
+    opened =
+      await test.step("reopen the same OPFS Library after WebKit exits", () =>
+        openPersistentLibrary(profileRoot));
     context = opened.context;
     const reopened = opened.page;
     expect(await readContactSyncStatus(reopened)).toMatchObject({
@@ -384,10 +432,9 @@ async function verifyDurableOpfsLibrary(profileRoot: string): Promise<void> {
 
     await context.close();
     context = null;
-    opened = await test.step(
-      "reopen the cleared row after a second WebKit exit",
-      () => openPersistentLibrary(profileRoot),
-    );
+    opened =
+      await test.step("reopen the cleared row after a second WebKit exit", () =>
+        openPersistentLibrary(profileRoot));
     context = opened.context;
     const reopenedAfterDelete = opened.page;
     expect(await readContactSyncStatus(reopenedAfterDelete)).toMatchObject({
@@ -410,9 +457,7 @@ async function verifyDurableOpfsLibrary(profileRoot: string): Promise<void> {
 
 test("iPhone WebKit persists, clears, and rebuilds the local sample Library", async () => {
   test.setTimeout(240_000);
-  const profileRoot = await mkdtemp(
-    join(tmpdir(), "freed-pwa-sample-webkit-"),
-  );
+  const profileRoot = await mkdtemp(join(tmpdir(), "freed-pwa-sample-webkit-"));
   let context: BrowserContext | null = null;
 
   try {
@@ -583,9 +628,8 @@ test("iPhone WebKit reopens and signs with the same actor key", async () => {
   const readIdentityAndSign = async (page: Page) =>
     page.evaluate(
       async ({ expectedLibraryId, signingMessage }) => {
-        const keyVault = await import(
-          "/src/lib/library-core-browser-key-vault.ts"
-        );
+        const keyVault =
+          await import("/src/lib/library-core-browser-key-vault.ts");
         const identity =
           await keyVault.getOrCreatePwaLibraryCoreActorIdentity(
             expectedLibraryId,
@@ -645,11 +689,7 @@ test("iPhone WebKit treats a second Library tab as busy, not corrupted", async (
   let context: BrowserContext | null = null;
 
   try {
-    // This case interrupts sample writes when the owning tab closes. Give it
-    // its own origin as well as its own profile to isolate WebKit OPFS state.
-    const busyOrigin = new URL(pwaOpfsE2eBaseUrl);
-    busyOrigin.hostname = "localhost";
-    context = await launchPersistentLibraryContext(profileRoot, busyOrigin.origin);
+    context = await launchPersistentLibraryContext(profileRoot);
     const firstPage = context.pages()[0] ?? (await context.newPage());
     await openLibrary(firstPage);
     const secondPage = await context.newPage();
