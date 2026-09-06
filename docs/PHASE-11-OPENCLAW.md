@@ -1,6 +1,6 @@
 # Phase 11: Headless Library Authority and Agent Integrations
 
-> **Status:** 🚧 In Progress (the shared transport-neutral Primary scheduler, normalized native SQLite authority, local process lease, native and PWA actor capability enforcement with separate signed mutation and query grants, authority-signed actor enrollment and retirement, fail-closed service supervisor, descriptor-bound normalized sidecar startup, bounded checkpoint and query ingress, native mutation and signed agent query admission, exact local writer reassignment, production macOS and Linux ACL proofs, deterministic service definitions, macOS Drive PKCE and Keychain custody, installed immutable checkpoint publication, and provider-neutral bounded enrollment, intent, and result orchestration have landed; installed inbound transport binding, Linux and Windows Drive secret custody, Windows service transport, and capture workers remain open)
+> **Status:** 🚧 In Progress. Native SQLite authority, bounded commands, actor capabilities, the service supervisor, platform ACL proofs, macOS Keychain custody, Linux sealed OAuth records, and checkpoint publication are implemented. Installed bidirectional acceptance, Linux service lifecycle acceptance, Windows vault and service transport, and capture workers remain open. The inbound transport follow-up is tracked separately.
 
 > **Architecture:** The headless Primary and Freed Desktop consume the
 > same extracted native Rust Library Core and the same stock SQLite contract.
@@ -136,8 +136,10 @@ existing immutable checkpoint protocol, and persists only the committed
 control receipt through an already-bound private state-file descriptor. The
 coordinator stops before service settlement. A missing token, changed Library
 identity, cloud writer conflict, malformed response, or unavailable secret
-backend fails closed. Linux sealed credential custody and complete inbound
-enrollment, intent, and result processing remain open.
+backend fails closed. Linux sealed credential custody has an explicit bound
+configuration and shared authorization/refresh store; installed Linux lifecycle
+acceptance remains open. Complete inbound enrollment, intent, and result
+processing is tracked separately.
 
 The native sidecar acquires the
 data-root lease before opening only the final normalized SQLite catalog in the
@@ -315,10 +317,20 @@ credentials remain separate secret records. They never appear in SQLite,
 backups, cloud objects, command arguments, environment values, logs, or bug
 reports.
 
-macOS and Windows use their platform credential vaults. Linux uses an injected
-secret store. The first Linux implementation should use a versioned sealed
-file whose wrapping key is supplied as a mounted credential file. An
-environment variable is not an acceptable wrapping-key source.
+macOS uses Keychain. Windows vault support remains open. Linux uses the explicit
+`linux-sealed-file-v1` store shared by CLI authorization and runtime refresh.
+Its configuration binds a private record directory, a separate mounted 32-byte
+wrapping-key file and its SHA-256 digest into the admitted configuration hash.
+The key cannot live inside the writable record directory or reuse the native
+signing bundle. Environment values are not acceptable wrapping-key sources.
+
+Bounded AES-256-GCM records authenticate their format and record identity. The
+store checks owner, mode, link count, ACLs, descriptor identity and key digest;
+it atomically replaces sealed files and verifies stored bytes before returning.
+Corrupt existing records are preserved. Linux consent uses the existing PKCE
+flow with an interactive-terminal URL and loopback forwarding instructions for
+remote hosts. It does not log tokens or open a browser automatically. Installed
+Linux acceptance and Windows custody remain required before this phase closes.
 
 Headless Drive authorization uses PKCE through the existing Freed OAuth proxy.
 It requests only the Drive scopes needed by Library Core. Google Contacts
@@ -546,7 +558,7 @@ review before implementation.
 | 11.2  | Complete    | Enforce one operating system backed Library data-root lease before SQLite opens                                                                                                                                                                                                                                                                                                                                                    |
 | 11.3  | Complete    | Extract the reusable native SQLite authority package without changing Tauri behavior                                                                                                                                                                                                                                                                                                                                               |
 | 11.4  | Complete    | Add the headless service supervisor, explicit role config, and fail-closed startup                                                                                                                                                                                                                                                                                                                                                 |
-| 11.5  | In Progress | macOS `drive-auth` now uses PKCE through the existing OAuth proxy, requests only Library Core Drive scopes, stores only the refresh token in Keychain, and keeps access tokens memory-only. Complete the versioned Linux sealed credential store and Windows vault adapter next.                                                                                                                                                   |
+| 11.5 | In Progress | macOS Keychain and Linux versioned sealed-file custody share the existing Drive-only PKCE flow. Linux binds its separate mounted wrapping key and record directory through admitted configuration. Complete installed Linux lifecycle acceptance and the Windows vault adapter. |
 | 11.6  | In Progress | Open final normalized SQLite behind the descriptor-bound sidecar and provide generated bounded checkpoint, atomic pinned export begin, registered query, Primary signing, canonical commit, authority-signed follower enrollment, follower-intent admission, actor state, and result export commands. The installed service now composes one bounded provider-neutral enrollment, intent, and result pass on the existing inbound hook when a transport is injected. Complete the Google Drive transport adapter after its exact behavior approval.              |
 | 11.7  | In Progress | Apply exact writer promotion through the generated native sidecar command and bind the shared 15-second revision plus 60-second inbound schedule to native actor and checkpoint identity. The installed macOS service now starts and stops that scheduler with immutable Drive checkpoint publication and durable exact control receipts. Complete installed promotion and competing-Primary acceptance next.                      |
 | 11.8  | Complete    | Prove actor capability certificates and the frozen transition policy in native SQLite. Phase 6 carries the same proof into PWA SQLite before activation.                                                                                                                                                                                                                                                                           |
