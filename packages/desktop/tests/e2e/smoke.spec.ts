@@ -758,6 +758,12 @@ test("startup emits renderer health before background work can run", async ({ ap
 });
 
 test("no console errors on startup", async ({ page }) => {
+  // This checks application startup, not the availability of an external font
+  // service. A stalled stylesheet otherwise holds page.load after the legal
+  // gate has rendered and prevents the runtime assertion from executing.
+  await page.route("https://fonts.googleapis.com/**", (route) =>
+    route.fulfill({ contentType: "text/css", body: "" }),
+  );
   await page.addInitScript(tauriInitScript());
 
   const errors: string[] = [];
