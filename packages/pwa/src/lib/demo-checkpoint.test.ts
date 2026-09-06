@@ -6,7 +6,7 @@ import { createFreedDemoCheckpointRecords } from "./demo-checkpoint";
 
 describe("demo checkpoint", () => {
   it("activates a host-bounded production policy that admits every reviewed demo image", () => {
-    const script = demoHtml.match(/<script>([\s\S]*?)<\/script>/)?.[1];
+    const script = demoHtml.match(/<script>([\s\S]*?)<\/script>/i)?.[1];
     expect(script).toBeTruthy();
     const activate = (hostname: string, search: string) => {
       let policy = "";

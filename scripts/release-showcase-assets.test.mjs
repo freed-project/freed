@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, symlink, truncate, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -8,6 +8,7 @@ import test from "node:test";
 import {
   SHOWCASE_ASSET_FILENAMES,
   SHOWCASE_MANIFEST_FILENAME,
+  MAX_SHOWCASE_ASSET_BYTES,
   finalizeShowcaseManifest,
   resolveShowcaseReleaseIdentity,
   verifyPublishedShowcaseAssets,
@@ -92,6 +93,12 @@ test("finalization rejects symlinked assets and mismatched capture identity", as
   await assert.rejects(
     finalizeShowcaseManifest({ outputDirectory: directory, repository, tag, ref: `refs/tags/${tag}`, checkoutSha }),
     /regular non-symlink/,
+  );
+  const oversized = await fixture(t);
+  await truncate(path.join(oversized, SHOWCASE_ASSET_FILENAMES[0]), MAX_SHOWCASE_ASSET_BYTES + 1);
+  await assert.rejects(
+    finalizeShowcaseManifest({ outputDirectory: oversized, repository, tag, ref: `refs/tags/${tag}`, checkoutSha }),
+    /exceeds/,
   );
   assert.throws(
     () => resolveShowcaseReleaseIdentity({ repository, tag, ref: "refs/heads/dev" }),

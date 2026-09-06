@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { lstat, readFile, writeFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import { lstat, open, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 export const SHOWCASE_ASSET_FILENAMES = Object.freeze([
@@ -81,14 +82,38 @@ export function showcaseAssetUrls({ repository, tag, filename }) {
 }
 
 async function readRegularFile(filePath, { maxBytes = MAX_SHOWCASE_ASSET_BYTES } = {}) {
-  const entry = await lstat(filePath);
-  if (!entry.isFile() || entry.isSymbolicLink()) {
-    throw new Error(`Showcase asset must be a regular non-symlink file: ${filePath}.`);
+  // Validate and read the same descriptor; a path swap must not redirect the read.
+  const file = await open(filePath, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK)
+    .catch((error) => {
+      if (error.code === "ELOOP") {
+        throw new Error(`Showcase asset must be a regular non-symlink file: ${filePath}.`);
+      }
+      throw error;
+    });
+  try {
+    const entry = await file.stat();
+    if (!entry.isFile()) {
+      throw new Error(`Showcase asset must be a regular non-symlink file: ${filePath}.`);
+    }
+    if (entry.size > maxBytes) {
+      throw new Error(`Showcase asset exceeds ${maxBytes.toLocaleString()} bytes: ${filePath}.`);
+    }
+    // One extra byte detects growth without allowing an unbounded readFile allocation.
+    const contents = Buffer.alloc(entry.size + 1);
+    let offset = 0;
+    while (offset < contents.length) {
+      const { bytesRead } = await file.read(contents, offset, contents.length - offset, offset);
+      if (bytesRead === 0) break;
+      offset += bytesRead;
+    }
+    const after = await file.stat();
+    if (offset !== entry.size || after.size !== entry.size || after.mtimeMs !== entry.mtimeMs) {
+      throw new Error(`Showcase asset changed while reading: ${filePath}.`);
+    }
+    return contents.subarray(0, offset);
+  } finally {
+    await file.close();
   }
-  if (entry.size > maxBytes) {
-    throw new Error(`Showcase asset exceeds ${maxBytes.toLocaleString()} bytes: ${filePath}.`);
-  }
-  return readFile(filePath);
 }
 
 async function readManifest(directory) {
