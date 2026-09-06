@@ -3,7 +3,7 @@
   "version": "26.9.501-dev",
   "channel": "dev",
   "dayKey": "26.9.5",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-09-06T03:49:52.801Z",
   "model": "heuristic",
@@ -72,31 +72,26 @@
     ]
   },
   "release": {
-    "deck": "Launch the complete interactive Freed demo experience, an interactive sample Library demo, and seek checkpoint pages through the export index",
+    "deck": "Give large Drive publications a bounded progress budget and preserve pending provider syncs",
     "features": [
-      "Launch the complete interactive Freed demo experience",
-      "An interactive sample Library demo"
+      "Add an interactive sample Library demo"
     ],
     "fixes": [
-      "Complete large checkpoint publications with bounded progress",
-      "Retain provider opportunities while writer admission is blocked",
-      "Automatic provider sync on unlocked macOS sessions restored",
-      "Coalesce Drive checkpoint publication and fence cancellation",
-      "Keep snapshot exports responsive and classify writer refusals",
-      "Treat PWA Library contention as a busy state",
-      "Preserve Library Core activation history across releases",
-      "Keep local snapshot exports off the main thread so they do not block the interface or provider WebViews",
-      "Seek directly to each checkpoint page instead of rescanning previously exported records",
+      "Publish larger SQLite Libraries without the stale receipt-count limit",
+      "Scale the publication deadline to the pinned export while stopping attempts that make no useful progress for five minutes",
+      "Reduce checkpoint encoding work without changing canonical bytes",
+      "Keep scheduled provider syncs pending while verified writer admission is unavailable",
+      "Restore persistent diagnostics for the Freed Desktop main window",
+      "Seek checkpoint pages through the export index and keep snapshot work off the main thread",
       "Coalesce overlapping Drive publications and retain the export slot until canceled native work settles",
       "Recognize unlocked macOS sessions and accept fractional provider wake deadlines",
-      "Distinguish missing or unreadable writer admission from a retired writer"
+      "Treat a PWA Library held by another tab as busy rather than corrupted"
     ],
     "followUps": [
-      "Route instruction contracts and harden governance",
-      "Improve Drive checkpoint exports and restore provider scheduling on unlocked macOS sessions",
       "Verify Drive publication, writer admission, and LinkedIn extraction on the signed build",
-      "Scheduled Facebook and Instagram observation on the installed build"
+      "Complete scheduled Facebook and Instagram observation on the installed build",
+      "Update PWA clients before importing checkpoints above the former receipt-count limit, then verify bidirectional sync"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.9.501-dev\n\nLaunch the complete interactive Freed demo experience, an interactive sample Library demo, and seek checkpoint pages through the export index\n\n### Features\n\n- Launch the complete interactive Freed demo experience\n- An interactive sample Library demo\n\n### Fixes\n\n- Complete large checkpoint publications with bounded progress\n- Retain provider opportunities while writer admission is blocked\n- Automatic provider sync on unlocked macOS sessions restored\n- Coalesce Drive checkpoint publication and fence cancellation\n- Keep snapshot exports responsive and classify writer refusals\n- Treat PWA Library contention as a busy state\n- Preserve Library Core activation history across releases\n- Keep local snapshot exports off the main thread so they do not block the interface or provider WebViews\n- Seek directly to each checkpoint page instead of rescanning previously exported records\n- Coalesce overlapping Drive publications and retain the export slot until canceled native work settles\n- Recognize unlocked macOS sessions and accept fractional provider wake deadlines\n- Distinguish missing or unreadable writer admission from a retired writer\n\n### Follow-ups\n\n- Route instruction contracts and harden governance\n- Improve Drive checkpoint exports and restore provider scheduling on unlocked macOS sessions\n- Verify Drive publication, writer admission, and LinkedIn extraction on the signed build\n- Scheduled Facebook and Instagram observation on the installed build\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.9.501-dev\n\nGive large Drive publications a bounded progress budget and preserve pending provider syncs\n\n### Features\n\n- Add an interactive sample Library demo\n\n### Fixes\n\n- Publish larger SQLite Libraries without the stale receipt-count limit\n- Scale the publication deadline to the pinned export while stopping attempts that make no useful progress for five minutes\n- Reduce checkpoint encoding work without changing canonical bytes\n- Keep scheduled provider syncs pending while verified writer admission is unavailable\n- Restore persistent diagnostics for the Freed Desktop main window\n- Seek checkpoint pages through the export index and keep snapshot work off the main thread\n- Coalesce overlapping Drive publications and retain the export slot until canceled native work settles\n- Recognize unlocked macOS sessions and accept fractional provider wake deadlines\n- Treat a PWA Library held by another tab as busy rather than corrupted\n\n### Follow-ups\n\n- Verify Drive publication, writer admission, and LinkedIn extraction on the signed build\n- Complete scheduled Facebook and Instagram observation on the installed build\n- Update PWA clients before importing checkpoints above the former receipt-count limit, then verify bidirectional sync\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
