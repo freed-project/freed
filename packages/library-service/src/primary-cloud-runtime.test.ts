@@ -2,9 +2,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
 import {
   createLibraryCoreImmutableObjectKey,
+  createLibraryCoreIntentHeadObjectKey,
   createLibraryCoreResultHeadObjectKey,
+  decodeLibraryCoreCanonicalValue,
   encodeLibraryCoreCanonicalValue,
 } from "@freed/shared/library-core";
+import { prepareLibraryCoreNormalizedIntentSegmentV2 } from "@freed/sync/cloud/library-core";
 import capabilityVectors from "../../shared/src/library-core/actor-capability-certificate-v2-vectors.json" with { type: "json" };
 import type { LibraryServicePrimaryCloudPortV1 } from "./primary-cloud-runtime.js";
 
@@ -37,7 +40,7 @@ import { createNodeLibraryServicePrimaryCloudPortV1 } from "./primary-cloud-runt
 afterEach(() => vi.unstubAllGlobals());
 
 describe("default Primary cloud composition", () => {
-  it("countersigns and publishes a real enrollment envelope through the default transport", async () => {
+  it("enrolls, imports an intent and publishes its result through the default transport", async () => {
     const vector = capabilityVectors.vectors[0]!;
     const certificate = vector.certificate;
     const actorId = certificate.certificate_body.actor_enrollment_body.actor_id;
@@ -87,6 +90,108 @@ describe("default Primary cloud composition", () => {
     files.push(
       immutable("request-1", requestBytes, "actor_enrollment_request"),
     );
+    // These envelopes test transport composition, not cryptographic admission.
+    // Native signature and atomic mutation proofs live in the Rust suite.
+    const intentBytes = encodeLibraryCoreCanonicalValue({
+      actor_chain_digest: "a".repeat(64),
+      actor_id: actorId,
+      actor_sequence: 1,
+      blob_references: [],
+      causal_frontier: [],
+      created_at_ms: 1,
+      entity_id: "item-1",
+      entity_type: "FeedItem",
+      epoch: 1,
+      epoch_id: epochId,
+      hlc_counter: 0,
+      hlc_wall_ms: 1,
+      library_id: libraryId,
+      operation_id: "operation-1",
+      operation_type: "feed_item_read_assignment",
+      payload: { read_at_ms: 1 },
+      payload_digest: "b".repeat(64),
+      previous_actor_chain_digest: vector.actor_chain_genesis,
+      previous_actor_operation_id: null,
+      schema_version: 1,
+      signature: "d".repeat(128),
+      signature_algorithm: "ed25519",
+      transaction_digest: "e".repeat(64),
+      transaction_id: "transaction-1",
+      transaction_member_count: 1,
+      transaction_member_index: 0,
+    });
+    const intent = await prepareLibraryCoreNormalizedIntentSegmentV2({
+      actorId,
+      libraryId,
+      storageEpochId: epochId,
+      previousSegmentDigest: null,
+      canonicalEnvelopes: [intentBytes],
+      subtle: crypto.subtle,
+    });
+    const segmentBytes = intent.object.source;
+    const intentReference = {
+      descriptor: { ...intent.object.descriptor },
+      transportObjectId: "intent-segment",
+    };
+    files.push({
+      id: "intent-segment",
+      name: intent.object.descriptor.objectKey,
+      bytes: segmentBytes,
+      appProperties: {
+        freedProtocol: "library-core-v1",
+        freedLibraryDigest: hash(libraryId),
+        freedObjectKind: "intents",
+        freedObjectKeyDigest: hash(intent.object.descriptor.objectKey),
+        freedContentDigest: intent.object.descriptor.contentDigest,
+      },
+    });
+    files.push({
+      id: "intent-head",
+      name: createLibraryCoreIntentHeadObjectKey(libraryId, epochId, actorId),
+      bytes: encodeLibraryCoreCanonicalValue({
+        actor_id: actorId,
+        library_id: libraryId,
+        storage_epoch_id: epochId,
+        protocol: "normalized_intent_head_v2",
+        protocol_version: 2,
+        next_actor_counter: 2,
+        latest_segment: intentReference,
+        latest_segment_digest: intent.object.descriptor.contentDigest,
+      }),
+      appProperties: {
+        freedProtocol: "library-core-v1",
+        freedLibraryDigest: hash(libraryId),
+        freedObjectKind: "intent_head",
+        freedEpochDigest: hash(epochId),
+        freedActorDigest: hash(actorId),
+      },
+    });
+    const resultBytes = encodeLibraryCoreCanonicalValue({
+      actor_id: actorId,
+      authoritative_source_revision: 8,
+      authority_key_id: "6".repeat(64),
+      canonical_operation_ids: ["operation-1"],
+      epoch: 1,
+      epoch_id: epochId,
+      format: "freed_follower_result_v1",
+      intent_epoch: 1,
+      intent_epoch_id: epochId,
+      library_id: libraryId,
+      original_result_digest: null,
+      previous_result_digest: null,
+      receipt_ids: ["receipt-1"],
+      rejection_reason: null,
+      replacement_fields: [],
+      resolved_at_ms: 1,
+      result_body_digest: "7".repeat(64),
+      result_sequence: 1,
+      schema_version: 1,
+      signature: "8".repeat(128),
+      signature_algorithm: "ed25519",
+      status: "accepted",
+      transaction_digest: "e".repeat(64),
+      transaction_id: "transaction-1",
+    });
     files.push({
       id: "result-head",
       name: createLibraryCoreResultHeadObjectKey(libraryId, epochId, actorId),
@@ -123,16 +228,36 @@ describe("default Primary cloud composition", () => {
         if (init?.method === "POST") {
           expect(url.pathname).toBe("/upload/drive/v3/files");
           expect(init.body).toBeInstanceOf(Blob);
-          expect(await (init.body as Blob).text()).toContain(
-            new TextDecoder().decode(certificateBytes),
+          const multipart = Buffer.from(
+            await (init.body as Blob).arrayBuffer(),
           );
-          const file = immutable(
-            "certificate-1",
-            certificateBytes,
-            "actor_enrollment",
+          const boundary = multipart
+            .subarray(0, multipart.indexOf("\r\n"))
+            .toString();
+          const metadataStart = multipart.indexOf("\r\n\r\n") + 4;
+          const separator = multipart.indexOf(`\r\n${boundary}`, metadataStart);
+          const uploaded = JSON.parse(
+            multipart.subarray(metadataStart, separator).toString(),
           );
+          const bytesStart = multipart.indexOf("\r\n\r\n", separator) + 4;
+          const bytesEnd = multipart.lastIndexOf(`\r\n${boundary}--`);
+          const file: File = {
+            id: `uploaded-${files.length}`,
+            name: uploaded.name,
+            appProperties: uploaded.appProperties,
+            bytes: new Uint8Array(multipart.subarray(bytesStart, bytesEnd)),
+          };
           files.push(file);
           return Response.json(metadata(file));
+        }
+        if (init?.method === "PUT") {
+          expect(url.pathname).toBe("/upload/drive/v2/files/result-head");
+          expect(new Headers(init.headers).get("If-Match")).toBe(
+            '"revision-1"',
+          );
+          files.find((file) => file.id === "result-head")!.bytes =
+            new Uint8Array(init.body as ArrayBuffer);
+          return Response.json({ id: "result-head", etag: '"revision-1"' });
         }
         expect(init?.method ?? "GET").toBe("GET");
         if (url.pathname === "/drive/v3/files") {
@@ -179,6 +304,7 @@ describe("default Primary cloud composition", () => {
       sourceRevision: 7,
       writerId: "c".repeat(64),
     };
+    let nextActorCounter = 1;
     const execute = vi.fn(async (command: string, payload: unknown) => {
       if (command === "describe_checkpoint_export_v2") return descriptor;
       if (command === "countersign_follower_actor_request_v2") {
@@ -204,16 +330,64 @@ describe("default Primary cloud composition", () => {
         return {
           actorId,
           libraryId,
-          nextActorCounter: 1,
+          nextActorCounter,
           storageEpochId: epochId,
         };
-      if (command === "export_follower_result_page_v2")
+      if (command === "ingest_follower_intent_page_v1") {
+        expect(payload).toMatchObject({
+          page: {
+            records: [
+              {
+                actorCounter: 1,
+                canonicalEnvelopeJson: new TextDecoder().decode(intentBytes),
+              },
+            ],
+          },
+        });
+        nextActorCounter = 2;
         return {
-          canonicalRecordBytes: 0,
-          done: true,
-          nextCursor: null,
-          records: [],
+          exactRetries: 0,
+          pendingTransactions: 0,
+          resolvedRecords: 1,
+          resolvedTransactions: 1,
+          stagedRecords: 1,
         };
+      }
+      if (command === "export_follower_result_page_v2") {
+        expect(nextActorCounter).toBe(2);
+        const first = (payload as { firstResultSequence: number })
+          .firstResultSequence;
+        return {
+          canonicalRecordBytes: first === 1 ? resultBytes.byteLength : 0,
+          done: true,
+          nextCursor: {
+            actorId,
+            resultSequence: 1,
+            resultDigest: "7".repeat(64),
+          },
+          records:
+            first === 1
+              ? [
+                  {
+                    actorId,
+                    authoritativeSourceRevision: 8,
+                    authorityEpochId: epochId,
+                    canonicalResultJson: new TextDecoder().decode(resultBytes),
+                    enqueuedAt: 1,
+                    intentEpochId: epochId,
+                    originalResultDigest: null,
+                    previousResultDigest: null,
+                    rejectionReason: null,
+                    resultDigest: "7".repeat(64),
+                    resultSequence: 1,
+                    status: "accepted",
+                    transactionDigest: "e".repeat(64),
+                    transactionId: "transaction-1",
+                  },
+                ]
+              : [],
+        };
+      }
       throw new Error(`unexpected native command: ${command}`);
     });
     await createNodeLibraryServicePrimaryCloudPortV1().start({
@@ -251,6 +425,29 @@ describe("default Primary cloud composition", () => {
         ([command]) => command === "countersign_follower_actor_request_v2",
       ),
     ).toHaveLength(1);
+    expect(
+      execute.mock.calls.filter(
+        ([command]) => command === "ingest_follower_intent_page_v1",
+      ),
+    ).toHaveLength(1);
+    expect(
+      files.filter((file) => file.appProperties.freedObjectKind === "results"),
+    ).toHaveLength(1);
+    expect(
+      files.find((file) => file.appProperties.freedObjectKind === "enrollment")!
+        .bytes,
+    ).toEqual(certificateBytes);
+    expect(
+      fetcher.mock.calls.filter(([, init]) => init?.method === "PUT"),
+    ).toHaveLength(1);
+    expect(
+      decodeLibraryCoreCanonicalValue(
+        files.find((file) => file.id === "result-head")!.bytes,
+      ),
+    ).toMatchObject({
+      next_result_sequence: 2,
+      latest_segment: { transportObjectId: expect.any(String) },
+    });
   });
   it("constructs the default Drive transport without a supplied transport object", async () => {
     const descriptor = {
