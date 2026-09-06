@@ -3,7 +3,7 @@
   "version": "26.9.600-dev",
   "channel": "dev",
   "dayKey": "26.9.6",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-09-06T16:07:48.833Z",
   "model": "heuristic",
@@ -52,10 +52,17 @@
     ]
   },
   "release": {
-    "deck": "Refine demo interactions and identity navigation",
-    "features": [],
-    "fixes": [],
+    "deck": "More reliable social captures, locally cached avatars, and smoother demo navigation.",
+    "features": [
+      "Freed Desktop caches discovered identity avatars locally, including identities not currently onscreen."
+    ],
+    "fixes": [
+      "X link previews and videos without a playable URL no longer create invalid media records that block capture.",
+      "LinkedIn and Facebook accept posts with a video marker but no extracted media URL, and classify duplicate URLs by position.",
+      "Anonymous demo tabs use separate temporary Libraries instead of competing for the persistent Library's lock.",
+      "Demo reader descriptions preserve paragraphs and credit lines."
+    ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.9.600-dev\n\nRefine demo interactions and identity navigation\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.9.600-dev\n\nMore reliable social captures, locally cached avatars, and smoother demo navigation\n\n### Features\n\n- Freed Desktop caches discovered identity avatars locally, including identities not currently onscreen\n\n### Fixes\n\n- X link previews and videos without a playable URL no longer create invalid media records that block capture\n- LinkedIn and Facebook accept posts with a video marker but no extracted media URL, and classify duplicate URLs by position\n- Anonymous demo tabs use separate temporary Libraries instead of competing for the persistent Library's lock\n- Demo reader descriptions preserve paragraphs and credit lines\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
