@@ -3,6 +3,7 @@ import {
   lstat,
   mkdtemp,
   mkdir,
+  open,
   readFile,
   readdir,
   rename,
@@ -172,10 +173,15 @@ describe("Linux descriptor-bound Drive credential files", () => {
       const { root, store } = await fixture();
       await store.persistCredential("drive-1", "synthetic-first");
       const target = path.join(root, "drive-1.sealed.json");
-      const first = await lstat(target);
-      expect(first.mode & 0o7777).toBe(0o600);
-      expect(first.nlink).toBe(1);
-      expect(await readFile(target, "utf8")).not.toContain("synthetic-first");
+      const handle = await open(target, "r");
+      const first = await handle.stat();
+      try {
+        expect(first.mode & 0o7777).toBe(0o600);
+        expect(first.nlink).toBe(1);
+        expect(await handle.readFile("utf8")).not.toContain("synthetic-first");
+      } finally {
+        await handle.close();
+      }
       expect(await store.readCredential("drive-1")).toBe("synthetic-first");
       await store.persistCredential("drive-1", "synthetic-second");
       expect((await lstat(target)).ino).not.toBe(first.ino);
