@@ -150,6 +150,39 @@ describe("DemoWelcomeBanner", () => {
     vi.useRealTimers();
   });
 
+  it("docks the mobile tab on the right, clamps vertical dragging, and distinguishes dragging from restoring", async () => {
+    vi.stubGlobal("innerWidth", 390);
+    vi.stubGlobal("innerHeight", 844);
+    localStorage.setItem("freed.demo.welcome-state.v1", "minimized");
+    const container = document.createElement("div");
+    const root = createRoot(container);
+    await act(async () => root.render(createElement(DemoWelcomeBanner, { downloadUrl: "https://freed.wtf/get" })));
+    const tab = container.querySelector<HTMLButtonElement>('[data-testid="demo-welcome-tab"]')!;
+    Object.defineProperty(tab, "offsetWidth", { value: 288 });
+    expect(tab.style.transform).toContain("rotate(-90deg)");
+    expect(tab.style.top).toBe("422px");
+    const pointer = async (type: string, y: number) => act(async () => {
+      const event = new MouseEvent(type, { bubbles: true, clientY: y, button: 0 });
+      Object.defineProperties(event, { pointerId: { value: 1 }, isPrimary: { value: true } });
+      tab.dispatchEvent(event);
+    });
+    await pointer("pointerdown", 422);
+    await pointer("pointermove", -1000);
+    expect(tab.style.top).toBe("156px");
+    await pointer("pointerup", -1000);
+    await act(async () => tab.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 })));
+    expect(localStorage.getItem("freed.demo.welcome-state.v1")).toBe("minimized");
+    await pointer("pointerdown", 156);
+    await pointer("pointerup", 156);
+    await act(async () => tab.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 })));
+    expect(localStorage.getItem("freed.demo.welcome-state.v1")).toBe("banner");
+    vi.stubGlobal("innerWidth", 1024);
+    await act(async () => window.dispatchEvent(new Event("resize")));
+    expect(tab.style.transform).not.toContain("rotate");
+    expect(tab.style.top).toBe("");
+    await act(async () => root.unmount());
+  });
+
   it("restores a minimized tab immediately without the welcome modal", async () => {
     localStorage.setItem("freed.demo.welcome-state.v1", "minimized");
     const container = document.createElement("div");
