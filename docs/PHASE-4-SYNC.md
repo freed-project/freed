@@ -12,6 +12,14 @@ do not extend either budget. Unknown preflight retains its five-minute bound.
 Drive request concurrency, retries, and remote-byte verification are unchanged.
 Installed publication and bidirectional follower acceptance remain open.
 
+Headless inbound transport now runs after the remote writer and epoch check.
+Complete unresolved native intent staging remains retryable after a late
+authority failure. Incomplete transactions still advance their receive cursor.
+Recovery verifies and replays the complete immutable segment containing the
+pending counter, preserving native exact-retry and atomic admission semantics.
+Offline native and coordinator tests cover these boundaries; installed
+bidirectional acceptance is still required.
+
 > **Architecture:** This phase is governed by
 > [LIBRARY-CORE-ARCHITECTURE.md](LIBRARY-CORE-ARCHITECTURE.md) and
 > [LIBRARY-CORE-CONTRACT.md](LIBRARY-CORE-CONTRACT.md).
