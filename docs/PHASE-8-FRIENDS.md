@@ -866,6 +866,7 @@ The product Friends view now fixes decorative dust to the 100,000-star Raw WebGP
 - [ ] Verify production Galaxy avatars through the platform-owned persistent cache. Desktop supplies the same delivery route used by profile cards, reader authors, and map markers; demos retain their reviewed hotlinks.
 - [x] Demo identities derive care ratings and Friends membership together: one or two is Connection, three or four is Friend, and five is Fam. The stable initial Friends cohort remains 15% of admitted identities, with curated close relationships selected first.
 - [x] Demo directory and detail ratings support session-only edits through an isolated validated checkpoint replacement. Friends membership updates across database-backed views and resets on reload; general Library editing stays disabled.
+- [x] WebGL2 and Canvas fallback labels share provider/profile sizing and node-tinted colors rather than the older small generic-text presentation.
 - [x] Every detached backend and the product engine share one worker-transferable stable-ID, adjacency, sparse-pick index and one allocation-bounded interaction scene state
 - [x] Labels, avatars, overlays, and the product engine share one allocation-free depth-aware world-to-screen projection and viewport-admission helper
 - [x] The detached backends and product engine share theme-aware label and avatar billboard compositors while product metadata retains settled-candidate ownership

@@ -146,6 +146,27 @@ function providerColor(provider: string | undefined, palette: GraphPalette): str
   return palette.providerColors[provider ?? "other"] ?? palette.providerColors.other;
 }
 
+/** Keep both non-WebGPU renderers on the same readable, node-tinted labels. */
+function fallbackLabelStyle(
+  label: IdentityGraphAtlas["labels"][number],
+  provider: string | undefined,
+  smallViewport: boolean,
+  palette: GraphPalette,
+): { fontSize: number; color: string } {
+  if (label.kind === "provider_cluster") return {
+    fontSize: smallViewport ? 16 : 19,
+    color: providerColor(label.nodeId.replace(/^provider:/, ""), palette),
+  };
+  if (label.kind === "friend_person" || label.kind === "connection_person") return {
+    fontSize: smallViewport ? 16 : 18,
+    color: label.kind === "friend_person" ? palette.friendStroke : palette.connectionStroke,
+  };
+  return {
+    fontSize: smallViewport ? 14 : 15,
+    color: label.kind === "feed" ? "#f59e0b" : providerColor(provider, palette),
+  };
+}
+
 function hashValue(value: string): number {
   let hash = 0;
   for (let index = 0; index < value.length; index += 1) {
@@ -918,13 +939,7 @@ function drawFallbackLabels(
   const eligible = new Set(fade.eligible(labelPool).map((label) => label.id));
   const placements = new Map<string, { text: string; screenX: number; screenY: number; fontSize: number }>();
   for (const label of labelPool) {
-    const fontSize = label.kind === "provider_cluster"
-      ? smallViewport ? 16 : 19
-      : label.kind === "friend_person"
-        ? smallViewport ? 16 : 18
-        : label.kind === "connection_person"
-          ? smallViewport ? 16 : 18
-          : smallViewport ? 10 : 11;
+    const { fontSize } = fallbackLabelStyle(label, nodeById.get(label.nodeId)?.provider, smallViewport, palette);
     const text = truncateGalaxyLabel(label.text);
     const screenX = transform.x + label.x * transform.scale;
     const parentNode = nodeById.get(label.nodeId);
@@ -965,9 +980,7 @@ function drawFallbackLabels(
     context.font = `600 ${String(fontSize)}px ${palette.fontFamily}`;
     context.lineWidth = label.kind === "provider_cluster" ? 5.5 : 4.5;
     context.strokeStyle = palette.labelFill;
-    context.fillStyle = label.kind === "provider_cluster"
-      ? providerColor(label.nodeId.replace(/^provider:/, ""), palette)
-      : palette.text;
+    context.fillStyle = fallbackLabelStyle(label, nodeById.get(label.nodeId)?.provider, smallViewport, palette).color;
     drawGalaxyLabel(context, text, screenX, screenY, fontSize);
   }
   context.globalAlpha = 1;
@@ -1707,14 +1720,10 @@ class StarfieldGraphRenderer {
     const { cap, suppressOverlaps } = galaxyLabelVisibilityPolicy(atlas.metrics.lod, this.width, "three-starfield");
     this.suppressLabelOverlaps = suppressOverlaps;
     const records = atlas.labels.slice(0, cap).map((label): GalaxyLabelRecord => {
-      const fontSize = label.kind === "provider_cluster"
-        ? smallViewport ? 16 : 19
-        : label.kind === "friend_person"
-          ? smallViewport ? 16 : 18
-          : label.kind === "connection_person"
-            ? smallViewport ? 16 : 18
-            : smallViewport ? 10 : 11;
       const nodeIndex = this.nodeIndexById.get(label.nodeId);
+      const { fontSize, color } = fallbackLabelStyle(label,
+        nodeIndex === undefined ? undefined : galaxyScene.providers[nodeIndex] ?? undefined,
+        smallViewport, palette);
       const nodeDepth = nodeIndex === undefined
         ? label.kind === "provider_cluster" ? -38 : 0
         : galaxyScene.positions[nodeIndex * 3 + 2]! + 6;
@@ -1730,9 +1739,7 @@ class StarfieldGraphRenderer {
       return {
         id: label.id,
         priority: label.priority,
-        color: colorFromCss(label.kind === "provider_cluster"
-          ? providerColor(label.nodeId.replace(/^provider:/, ""), palette)
-          : palette.text, "#f8fafc"),
+        color: colorFromCss(color, "#f8fafc"),
         text: truncateGalaxyLabel(label.text),
         fontSize,
         offsetY: label.centered ? 0 : label.kind === "account" || label.kind === "feed"

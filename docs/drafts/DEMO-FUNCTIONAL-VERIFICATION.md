@@ -270,3 +270,14 @@ unit tests, nine Desktop smoke scenarios, the Desktop build, native Rust checks,
 and the selected release, instruction, activation, updater and roadmap checks.
 This checkpoint precedes integration of the nine newer `dev` commits and does
 not substitute for exact-head CI or production artifact verification.
+
+The current `dev` snapshot merged cleanly into the functional branch at
+`512ce5e25f2088802c92990c4cad28d1ae22cdaa`. A second full feature gate passed,
+including 830 Desktop unit tests after upstream integration. During that gate,
+the remaining fallback label correction was applied before the Desktop build:
+WebGL2 and Canvas now share larger profile-label sizing and node tint selection.
+Fourteen focused label/engine tests passed. A temporary real Canvas fixture
+render confirmed identity labels follow their node color; the probe was removed.
+Its screenshot is local evidence, not a complete provider-label visual matrix.
+The PWA production build is rerun separately because its earlier gate stage
+preceded this narrow correction.
