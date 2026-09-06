@@ -369,10 +369,39 @@ impl Default for ProviderScheduleWakeState {
 
 #[cfg(target_os = "macos")]
 fn parse_screen_locked_from_ioreg_plist(text: &str) -> Option<bool> {
-    let locked_key = "<key>CGSSessionScreenIsLocked</key>";
-    text.split(locked_key)
-        .nth(1)
-        .map(|tail| tail.trim_start().starts_with("<true/>"))
+    // Recent macOS versions expose IOConsoleLocked on the registry root and
+    // omit CGSSessionScreenIsLocked when unlocked. Parse actual booleans: a
+    // missing or malformed value must never accidentally mean unlocked.
+    let value = plist::Value::from_reader_xml(text.as_bytes()).ok()?;
+    let roots: Vec<&plist::Value> = match value.as_array() {
+        Some(entries) => entries.iter().collect(),
+        None => vec![&value],
+    };
+    let mut states = Vec::new();
+    for root in roots {
+        let root = root.as_dictionary()?;
+        for key in ["IOConsoleLocked", "CGSSessionScreenIsLocked"] {
+            if let Some(state) = root.get(key) {
+                states.push(state.as_boolean());
+            }
+        }
+        if let Some(sessions) = root.get("IOConsoleUsers") {
+            for session in sessions.as_array()? {
+                let session = session.as_dictionary()?;
+                if let Some(state) = session.get("CGSSessionScreenIsLocked") {
+                    states.push(state.as_boolean());
+                }
+            }
+        }
+    }
+    // Any explicit locked signal wins, including conflicting session evidence.
+    if states.contains(&Some(true)) {
+        Some(true)
+    } else if !states.is_empty() && states.iter().all(|state| *state == Some(false)) {
+        Some(false)
+    } else {
+        None
+    }
 }
 
 fn data_store_identifier_folder(identifier: [u8; 16]) -> String {
@@ -639,11 +668,11 @@ fn get_desktop_session_state() -> DesktopSessionState {
         }
 
         let text = String::from_utf8_lossy(&output.stdout);
-        let screen_locked = parse_screen_locked_from_ioreg_plist(&text).unwrap_or(false);
+        let screen_locked = parse_screen_locked_from_ioreg_plist(&text);
 
         DesktopSessionState {
-            available: parse_screen_locked_from_ioreg_plist(&text).is_some(),
-            screen_locked,
+            available: screen_locked.is_some(),
+            screen_locked: screen_locked.unwrap_or(false),
             error: None,
         }
     }
@@ -2181,6 +2210,13 @@ fn dev_sync_trigger_started_result_recoverable(data_dir: &Path, id: &str, now_ms
     if result.status != "started" {
         return false;
     }
+    // Drive publication does not occupy the social background-job slot.
+    // An idle slot therefore says nothing about its completion or renderer
+    // lifetime. Preserve its result until the bridge settles or the existing
+    // renderer keepalive/timeout detects an actual failure.
+    if result.provider.as_deref() == Some("gdrive") {
+        return false;
+    }
     if now_ms.saturating_sub(result.updated_at) < DEV_SYNC_TRIGGER_STALE_STARTED_RECOVERY_MS {
         return false;
     }
@@ -2385,13 +2421,28 @@ fn dev_sync_trigger_keepalive_script(request_id: &str) -> String {
     )
 }
 
-fn start_dev_sync_trigger_keepalive(app: tauri::AppHandle, data_dir: PathBuf, request_id: String) {
+fn dev_sync_trigger_keepalive_timeout(provider: &str) -> Duration {
+    // Drive's renderer owns a five-minute stall deadline and a maximum two-hour
+    // total budget. Allow its terminal result to arrive before this outer guard.
+    if provider == "gdrive" {
+        Duration::from_secs(2 * 60 * 60 + 60)
+    } else {
+        DEV_SYNC_TRIGGER_KEEPALIVE_TIMEOUT
+    }
+}
+
+fn start_dev_sync_trigger_keepalive(
+    app: tauri::AppHandle,
+    data_dir: PathBuf,
+    request_id: String,
+    provider: String,
+) {
     tauri::async_runtime::spawn(async move {
         let started_at = Instant::now();
         let keepalive_script = dev_sync_trigger_keepalive_script(&request_id);
         loop {
             tokio::time::sleep(DEV_SYNC_TRIGGER_KEEPALIVE_INTERVAL).await;
-            if started_at.elapsed() > DEV_SYNC_TRIGGER_KEEPALIVE_TIMEOUT {
+            if started_at.elapsed() > dev_sync_trigger_keepalive_timeout(&provider) {
                 warn!(
                     "[dev-sync-trigger] renderer keepalive timed out for request {}",
                     request_id
@@ -2565,6 +2616,7 @@ fn start_dev_sync_trigger_watcher(app: tauri::AppHandle, data_dir: PathBuf) {
                                             app.clone(),
                                             data_dir.clone(),
                                             request_id.to_string(),
+                                            provider.to_string(),
                                         );
                                     }
                                     Err(error) => {
@@ -15279,19 +15331,34 @@ mod tests {
     #[cfg(target_os = "macos")]
     #[test]
     fn parses_macos_screen_lock_state_from_ioreg_plist() {
-        assert_eq!(
-            parse_screen_locked_from_ioreg_plist(
-                r#"<dict><key>CGSSessionScreenIsLocked</key><true/></dict>"#,
-            ),
-            Some(true),
-        );
-        assert_eq!(
-            parse_screen_locked_from_ioreg_plist(
-                r#"<dict><key>CGSSessionScreenIsLocked</key><false/></dict>"#,
-            ),
-            Some(false),
-        );
-        assert_eq!(parse_screen_locked_from_ioreg_plist("<dict></dict>"), None);
+        for (body, expected) in [
+            ("<dict><key>CGSSessionScreenIsLocked</key><true/></dict>", Some(true)),
+            ("<dict><key>CGSSessionScreenIsLocked</key><false/></dict>", Some(false)),
+            ("<dict><key>IOConsoleLocked</key><false/><key>IOConsoleUsers</key><array><dict><key>kCGSSessionOnConsoleKey</key><true/></dict></array></dict>", Some(false)),
+            ("<dict><key>IOConsoleLocked</key><true/></dict>", Some(true)),
+            ("<array><dict><key>IOConsoleLocked</key><false/></dict></array>", Some(false)),
+            ("<dict><key>IOConsoleUsers</key><array><dict><key>CGSSessionScreenIsLocked</key><false/></dict></array></dict>", Some(false)),
+            ("<dict><key>IOConsoleLocked</key><false/><key>IOConsoleUsers</key><array><dict><key>CGSSessionScreenIsLocked</key><true/></dict></array></dict>", Some(true)),
+            ("<dict><key>IOConsoleLocked</key><true/><key>CGSSessionScreenIsLocked</key><false/></dict>", Some(true)),
+            ("<dict><key>IOConsoleLocked</key><string>false</string></dict>", None),
+            ("<dict><key>CGSSessionScreenIsLocked</key><string>invalid</string></dict>", None),
+            ("<dict><key>IOConsoleLocked</key><false/><key>CGSSessionScreenIsLocked</key><string>invalid</string></dict>", None),
+            ("<dict></dict>", None),
+            ("<dict><key>IOConsoleLocked</key>", None),
+        ] {
+            let xml = format!(r#"<?xml version="1.0"?><plist version="1.0">{body}</plist>"#);
+            assert_eq!(parse_screen_locked_from_ioreg_plist(&xml), expected, "{body}");
+        }
+        assert_eq!(parse_screen_locked_from_ioreg_plist("not a plist"), None);
+    }
+
+    #[test]
+    fn provider_wake_wire_contract_requires_integral_milliseconds() {
+        let fractional = r#"{"provider":"facebook","deadlineAtMs":1788075817236.207}"#;
+        assert!(serde_json::from_str::<ProviderScheduleWakeRequest>(fractional).is_err());
+        let rounded = r#"{"provider":"facebook","deadlineAtMs":1788075817237}"#;
+        let wake = serde_json::from_str::<ProviderScheduleWakeRequest>(rounded).unwrap();
+        assert_eq!(wake.deadline_at_ms, 1788075817237);
     }
 
     fn binary_cookie_record(name: &str) -> Vec<u8> {
@@ -15581,6 +15648,16 @@ mod tests {
 
     #[test]
     fn dev_sync_trigger_recovers_stale_started_result_only_when_work_is_idle() {
+        assert_eq!(
+            dev_sync_trigger_keepalive_timeout("gdrive"),
+            Duration::from_secs(7_260)
+        );
+        for provider in ["x", "facebook", "instagram", "linkedin", "unknown"] {
+            assert_eq!(
+                dev_sync_trigger_keepalive_timeout(provider),
+                Duration::from_secs(600)
+            );
+        }
         let temp = tempfile::tempdir().unwrap();
         std::fs::write(
             dev_sync_trigger_result_path(temp.path()),
@@ -15608,6 +15685,19 @@ mod tests {
         assert!(dev_sync_trigger_started_result_recoverable(
             temp.path(),
             "facebook-stale",
+            47000
+        ));
+
+        // A long-running Drive publication has no social background job.
+        // Its authoritative started result must survive the same idle sample.
+        std::fs::write(
+            dev_sync_trigger_result_path(temp.path()),
+            r#"{"id":"gdrive-active","provider":"gdrive","status":"started","detail":null,"updatedAt":1000}"#,
+        )
+        .unwrap();
+        assert!(!dev_sync_trigger_started_result_recoverable(
+            temp.path(),
+            "gdrive-active",
             47000
         ));
     }

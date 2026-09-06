@@ -78,18 +78,26 @@ export type SocialProviderRefreshResult = {
   retryAfterMs?: number;
 };
 
-async function activeLibraryWriterMayContactProviders(): Promise<boolean> {
+type ProviderWriterBlock = { stage: string; detail: string };
+
+async function providerWriterBlock(): Promise<ProviderWriterBlock | null> {
   if (readLibraryCoreDesktopRole() === "follower") {
-    addDebugEvent(
-      "change",
-      "[Capture] provider work is disabled on this follower Freed Desktop",
-    );
-    return false;
+    return {
+      stage: "follower",
+      detail: "Provider sync is disabled on this follower Freed Desktop.",
+    };
   }
-  if (!isSqliteLibraryActive()) return true;
+  if (!isSqliteLibraryActive()) return null;
   try {
     const admission = await sqliteLibraryCloudWriterAdmissionStatus();
-    if (admission.allowed) return true;
+    if (admission.allowed) return null;
+    if (!admission.configured) {
+      return {
+        stage: "writer_admission_missing",
+        detail:
+          "Library writer authority has not been verified. Complete Google Drive Library sync before syncing providers.",
+      };
+    }
   } catch (error) {
     addDebugEvent(
       "error",
@@ -97,13 +105,23 @@ async function activeLibraryWriterMayContactProviders(): Promise<boolean> {
         error instanceof Error ? error.message : String(error)
       }`,
     );
-    return false;
+    return {
+      stage: "writer_admission_unavailable",
+      detail:
+        "Library writer authority could not be read. Provider sync is paused until authority can be verified.",
+    };
   }
-  addDebugEvent(
-    "change",
-    "[Capture] provider work paused because another Freed Desktop owns Library writes",
-  );
-  return false;
+  return {
+    stage: "retired_writer",
+    detail: "Another Freed Desktop owns Library writes.",
+  };
+}
+
+async function activeLibraryWriterMayContactProviders(): Promise<boolean> {
+  const block = await providerWriterBlock();
+  if (block)
+    addDebugEvent("change", `[Capture] ${block.detail} Stage: ${block.stage}.`);
+  return block === null;
 }
 
 /**
@@ -398,13 +416,15 @@ export async function refreshSocialProvider(
     };
   }
 
-  if (!(await activeLibraryWriterMayContactProviders())) {
+  const writerBlock = await providerWriterBlock();
+  if (writerBlock) {
     clearSocialDeferredRetry(provider);
     return {
       provider,
-      status: "ignored",
-      stage: "retired_writer",
-      detail: "Another Freed Desktop owns Library writes.",
+      // No provider contact occurred. Let the scheduler retain the due opportunity
+      // and jitter only local eligibility; manual capture keeps its existing result.
+      status: trigger === "scheduled" ? "deferred" : "ignored",
+      ...writerBlock,
     };
   }
 

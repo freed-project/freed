@@ -147,7 +147,7 @@ Initial blocking budgets at 25,000 representative items are:
 | Search p95                                  |                          150 ms |
 | Commit and materialize 1,000 captured items |                          500 ms |
 | Logical checkpoint record                   |         131,072 canonical bytes |
-| Decoded checkpoint page                     | 2,097,152 bytes and 128 records |
+| Decoded checkpoint page                     | 2,097,152 bytes and 4,096 records |
 | Native export response                      |          1,048,576 source bytes |
 
 Renderer retained Library DTOs have one shared 48 MiB settled pool and 64 MiB

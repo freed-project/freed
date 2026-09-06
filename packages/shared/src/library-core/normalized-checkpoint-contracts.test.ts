@@ -104,6 +104,25 @@ describe("normalized SQLite checkpoint contract", () => {
     expect(libraryCoreNormalizedCheckpointRecordIdentityV2(record)).toBe(
       '13_feed_item_tag:["item:one","favorite"]',
     );
+    expect(parseLibraryCoreNormalizedCheckpointRecordV2(record)).toBe(record);
+    expect(Object.isFrozen(record)).toBe(true);
+    expect(Object.isFrozen(record.primaryKey)).toBe(true);
+    expect(Object.isFrozen(record.payload)).toBe(true);
+    const externalCopy = JSON.parse(JSON.stringify(record));
+    const validatedCopy =
+      parseLibraryCoreNormalizedCheckpointRecordV2(externalCopy);
+    expect(validatedCopy).not.toBe(externalCopy);
+    expect(validatedCopy).toEqual(record);
+    externalCopy.payload.tag = "changed";
+    expect(validatedCopy.payload.tag).toBe("favorite");
+    expect(() =>
+      parseLibraryCoreNormalizedCheckpointRecordV2(
+        Object.freeze({
+          ...externalCopy,
+          payload: { tag: "favorite", unknown: true },
+        }),
+      ),
+    ).toThrow(/unknown or missing fields/);
     const queryGrant = createLibraryCoreNormalizedCheckpointRecordV2({
       registryKey: "92_actor_capability_query",
       primaryKey: ["a".repeat(64), "search_page_v1"],

@@ -10,7 +10,10 @@ import {
   type LibraryCoreLowercaseHex64,
   type LibraryCoreOperationInstanceId,
 } from "./protocol-scalars.js";
-import { LIBRARY_CORE_NORMALIZED_CHECKPOINT_DATASET_SCHEMA_ID } from "./sqlite-contract.generated.js";
+import {
+  LIBRARY_CORE_NORMALIZED_CHECKPOINT_DATASET_SCHEMA_ID,
+  LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_RECORDS,
+} from "./sqlite-contract.generated.js";
 import { LIBRARY_CORE_MAX_WIRE_RECORD_IDENTITY_BYTES } from "./wire-frame.js";
 
 export const LIBRARY_CORE_CHECKPOINT_MANIFEST_SCHEMA_VERSION = 1 as const;
@@ -20,8 +23,13 @@ export const LIBRARY_CORE_CHECKPOINT_DATASET_SCHEMA_IDS = [
   LIBRARY_CORE_NORMALIZED_CHECKPOINT_DATASET_SCHEMA_ID,
 ] as const;
 export const LIBRARY_CORE_CHECKPOINT_MANIFEST_PAGE_LIMIT = 8_192;
-export const LIBRARY_CORE_CHECKPOINT_MANIFEST_RECORD_LIMIT = 1_048_576;
-export const LIBRARY_CORE_CHECKPOINT_MANIFEST_PAGE_RECORD_LIMIT = 4_096;
+export const LIBRARY_CORE_CHECKPOINT_MANIFEST_PAGE_RECORD_LIMIT =
+  LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_RECORDS;
+// The aggregate ceiling follows the bounded page model, not the retired
+// 128-record page size. Byte and publication-object ceilings still apply.
+export const LIBRARY_CORE_CHECKPOINT_MANIFEST_RECORD_LIMIT =
+  LIBRARY_CORE_CHECKPOINT_MANIFEST_PAGE_LIMIT *
+  LIBRARY_CORE_CHECKPOINT_MANIFEST_PAGE_RECORD_LIMIT;
 
 export type LibraryCoreCheckpointDatasetSchemaId =
   (typeof LIBRARY_CORE_CHECKPOINT_DATASET_SCHEMA_IDS)[number];

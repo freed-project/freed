@@ -216,6 +216,24 @@ describe("Library Core canonical codec", () => {
   });
 
   it("enforces byte and nesting ceilings before returning canonical bytes", () => {
+    // Exercise small ASCII fragments, the platform UTF-8 fallback, and buffer
+    // growth at exact byte ceilings without changing canonical string bytes.
+    for (const value of [
+      ["a".repeat(254), "b".repeat(255), "c".repeat(256), "d".repeat(1024)],
+      ["ASCII", "é", "😀", "line\nbreak", "\u007f", "\u0080"],
+    ]) {
+      const expected = encoder.encode(JSON.stringify(value));
+      expect(
+        encodeLibraryCoreCanonicalValue(value, {
+          maximumBytes: expected.byteLength,
+        }),
+      ).toEqual(expected);
+      expect(() =>
+        encodeLibraryCoreCanonicalValue(value, {
+          maximumBytes: expected.byteLength - 1,
+        }),
+      ).toThrow(/exceeds/);
+    }
     expect(() =>
       encodeLibraryCoreCanonicalValue("12345", { maximumBytes: 4 }),
     ).toThrow(/exceeds/);

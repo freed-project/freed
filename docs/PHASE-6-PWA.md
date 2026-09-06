@@ -13,6 +13,11 @@
 
 ## Current SQLite PWA work
 
+The shared checkpoint parser reuses only its own deeply frozen validated
+records. Incoming OPFS and transport values still receive full validation, and
+the shared codec preserves exact canonical UTF-8 bytes. These serialization
+optimizations do not establish physical iPhone acceptance.
+
 - [x] Consume the same generated normalized checkpoint registry, typed primary
       key identity, protocol ceilings, and content chunk transforms as the
       native core. The browser transform has no `00_library_shell` record.

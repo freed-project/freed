@@ -1,9 +1,11 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 type DesktopCapability = {
   windows: string[];
+  webviews?: string[];
+  local?: boolean;
   permissions: string[];
   remote?: {
     urls: string[];
@@ -23,6 +25,29 @@ function readDefaultDesktopCapability(): DesktopCapability {
 }
 
 describe("desktop Tauri capabilities", () => {
+  it("allows native logging only from the local main window", () => {
+    const capability = readDesktopCapability("main-logging.json");
+
+    expect(capability.windows).toEqual(["main"]);
+    expect(capability.permissions).toEqual(["log:allow-log"]);
+    expect(capability.local).toBe(true);
+    expect(capability.remote).toBeUndefined();
+    expect(capability.webviews).toBeUndefined();
+
+    // Capabilities are additive. Another grant must not expose logging to
+    // provider pages or login windows through a broader capability.
+    const loggingCapabilities = readdirSync(
+      resolve(process.cwd(), "src-tauri/capabilities"),
+    )
+      .filter((fileName) => fileName.endsWith(".json"))
+      .filter((fileName) =>
+        readDesktopCapability(fileName).permissions.some(
+          (permission) => permission === "log:allow-log" || permission === "log:default",
+        ),
+      );
+    expect(loggingCapabilities).toEqual(["main-logging.json"]);
+  });
+
   it("allows the main window to start native drag gestures", () => {
     const capability = readDefaultDesktopCapability();
 

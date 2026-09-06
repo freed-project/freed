@@ -2,6 +2,13 @@
 
 > **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, Windows signing plan scaffolded, legal consent gate shipped, tri-state sidebar chrome shipped, public-safe bug reporting shipped, runtime memory telemetry shipped, native startup recovery shipped, bundled recovery updater flow shipped, permanent local social media vault shipped, desktop hot-path side-effect scheduling shipped, bounded SQLite user mutations and queries shipped, visible-scope bulk actions shipped, background runtime coordination shipped, renderer recovery safe mode shipped, deep local WebKit diagnostics shipped, adaptive high-memory scrape budgets shipped, explicit local-only primary Library authority shipped, normalized sample-data accounting, Story Wall candidates, Saved analytics, full-library native search, bounded scheduled RSS refresh, Google Drive checkpoint publication, follower intents, global background activity monitoring, and native terminal sync soaks shipped)
 
+Drive dev-trigger diagnostics preserve a running publication's result when the
+social background-job slot is idle. That slot does not track Drive publication
+and cannot prove renderer recovery. Existing bridge settlement and keepalive
+timeouts remain responsible for the final result. The native Drive observer
+allows the renderer's two-hour maximum publication budget plus one minute to
+report its terminal result. Social-provider observation stays at ten minutes.
+
 > **Architecture:** Freed Desktop is a bounded SQLite client and a host
 > for the shared native Library Core. Every view calls a named typed query.
 > Every durable product edit calls a registered mutation. React retains only
@@ -902,6 +909,8 @@ export async function captureDomFeed(
 - [x] Desktop terminal sync trigger helpers and the native trigger watcher now use provider-safe deferral backoff and stop after post-completion renderer rebuilds, so installed soaks do not create duplicate Instagram, LinkedIn, or YouTube traffic while diagnosing recovery
 - [x] Idle desktop memory recovery now ignores reclaimable WebKit RSS tail when physical footprint is healthy, but still recovers the main renderer when the high-RSS WebKit process is hot on CPU, including active multi-GB WebKit growth below the global high-memory ceiling
 - [x] Renderer recovery now requires both native window visibility and renderer document visibility before treating heartbeat gaps as foreground stalls, so background provider work is not paused by normal hidden WebKit timer throttling
+- [x] Provider wake scheduling accepts modern macOS console-lock state and rounds fractional deadlines upward at the native boundary. Locked, malformed, or unavailable session state remains ineligible and appears in bounded provider deferral telemetry. Installed effectiveness still requires a multi-day observation window.
+- [x] Scheduled captures blocked by Library writer eligibility retain the due opportunity through local deferral instead of consuming a normal interval. Manual results, writer authority checks, and existing persisted deadlines remain unchanged; installed effectiveness remains pending.
 - [x] Native renderer recovery now marks failed recovery state, requests relaunch, and forces the old process to exit if the main WebView label stays stuck after a destroyed renderer
 - [x] Desktop Library state never ships a complete item ID list or whole Library payload to the renderer, and the content fetcher bounds its failed-item cooldown cache instead of keeping an immortal set of every fetch miss
 - [x] Background fetch now tracks in-flight items, runs one active worker job at a time, and uses randomized pacing plus capped backoff so slow AI or network work cannot overlap the queue into renderer pressure

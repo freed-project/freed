@@ -179,8 +179,18 @@ class BoundedUtf8Writer {
   }
 
   write(value: string): void {
-    const encoded = textEncoder.encode(value);
-    const nextLength = this.length + encoded.byteLength;
+    // JSON punctuation, field names, and most receipt text are ASCII. Copy
+    // those code units directly instead of allocating a UTF-8 buffer for every
+    // fragment. Non-ASCII fragments still use the platform encoder unchanged.
+    let ascii = value.length <= 256;
+    for (let index = 0; ascii && index < value.length; index += 1) {
+      if (value.charCodeAt(index) > 0x7f) {
+        ascii = false;
+        break;
+      }
+    }
+    const encoded = ascii ? null : textEncoder.encode(value);
+    const nextLength = this.length + (encoded?.byteLength ?? value.length);
     if (nextLength > this.maximumBytes) {
       throw new RangeError(
         `canonical value exceeds ${this.maximumBytes.toLocaleString()} UTF-8 bytes`,
@@ -198,7 +208,13 @@ class BoundedUtf8Writer {
       grown.set(this.bytes.subarray(0, this.length));
       this.bytes = grown;
     }
-    this.bytes.set(encoded, this.length);
+    if (encoded !== null) {
+      this.bytes.set(encoded, this.length);
+    } else {
+      for (let index = 0; index < value.length; index += 1) {
+        this.bytes[this.length + index] = value.charCodeAt(index);
+      }
+    }
     this.length = nextLength;
   }
 
