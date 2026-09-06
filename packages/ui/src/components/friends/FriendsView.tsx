@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { flushSync } from "react-dom";
+import { LoadingState } from "../LoadingState.js";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type {
   Account,
@@ -2013,9 +2014,7 @@ export function FriendsView({
       className={`${overlay ? "absolute inset-0 z-10 bg-[color:var(--theme-bg-primary)]" : "h-full"} flex items-center justify-center px-6 text-center`}
       data-testid="friends-graph-loading"
     >
-      <p className="text-sm text-[color:var(--theme-text-muted)]">
-        Loading friend activity...
-      </p>
+      <LoadingState message="Loading friends" />
     </div>
   );
 

@@ -73,8 +73,9 @@ function FirstLookWelcome({
   return (
     <div
       data-testid="demo-welcome-desktop"
-      className={`fixed inset-0 z-[150] flex items-center justify-center bg-black/55 p-5 backdrop-blur-md ${departing ? "demo-welcome-first-look-backdrop--departing" : ""}`}
+      className={`demo-welcome-overlay fixed inset-0 z-[150] isolate flex items-center justify-center p-5 ${departing ? "demo-welcome-first-look-backdrop--departing" : ""}`}
     >
+      <div aria-hidden="true" className="demo-welcome-shade pointer-events-none absolute -z-10 bg-black/55 backdrop-blur-md" />
       <div
         className={`theme-floating-panel relative w-full max-w-3xl overflow-hidden rounded-[2rem] p-7 text-center shadow-2xl shadow-black/40 sm:p-10 ${departing ? "demo-welcome-first-look-card--departing" : ""}`}
         style={{ background: "var(--theme-bg-elevated)", border: "4px solid var(--theme-border-strong)", borderRadius: "2rem" }}
@@ -126,6 +127,40 @@ function FieldGuideWelcome({
   };
   const minimizeRef = useRef<HTMLButtonElement>(null);
   const restoreRef = useRef<HTMLButtonElement>(null);
+  const [mobileTab, setMobileTab] = useState(() => window.innerWidth <= 640);
+  const [tabY, setTabY] = useState<number | null>(null);
+  const [tabDragging, setTabDragging] = useState(false);
+  const tabDrag = useRef<{ pointerId: number; startY: number; originY: number; moved: boolean } | null>(null);
+  const suppressTabClick = useRef(false);
+  const clampTabY = (y: number) => {
+    const viewport = window.visualViewport;
+    const top = viewport?.offsetTop ?? 0;
+    const height = viewport?.height ?? window.innerHeight;
+    // After rotation, the tab's layout width is its vertical footprint.
+    const half = (restoreRef.current?.offsetWidth ?? 288) / 2 + 12;
+    return Math.max(top + Math.min(half, height / 2), Math.min(top + height - half, y));
+  };
+  useLayoutEffect(() => {
+    const fitTab = () => {
+      setMobileTab(window.innerWidth <= 640);
+      setTabY((previous) => clampTabY(previous ??
+        (window.visualViewport?.offsetTop ?? 0) + (window.visualViewport?.height ?? window.innerHeight) / 2));
+    };
+    fitTab();
+    window.addEventListener("resize", fitTab);
+    window.visualViewport?.addEventListener("resize", fitTab);
+    window.visualViewport?.addEventListener("scroll", fitTab);
+    return () => {
+      window.removeEventListener("resize", fitTab);
+      window.visualViewport?.removeEventListener("resize", fitTab);
+      window.visualViewport?.removeEventListener("scroll", fitTab);
+    };
+  }, []);
+  const endTabDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (tabDrag.current?.pointerId !== event.pointerId) return;
+    tabDrag.current = null;
+    setTabDragging(false);
+  };
   const minimizationChanged = useRef(false);
   useLayoutEffect(() => {
     if (!minimizationChanged.current) return;
@@ -243,21 +278,54 @@ function FieldGuideWelcome({
         type="button"
         aria-label="Restore demo banner"
         title="Restore demo banner"
-        onClick={() => setMinimized(false)}
+        onClick={(event) => {
+          if (event.detail !== 0 && suppressTabClick.current) {
+            suppressTabClick.current = false;
+            return;
+          }
+          setMinimized(false);
+        }}
+        onPointerDown={(event) => {
+          if (!mobileTab || event.button !== 0 || !event.isPrimary) return;
+          suppressTabClick.current = false;
+          tabDrag.current = { pointerId: event.pointerId, startY: event.clientY,
+            originY: tabY ?? window.innerHeight / 2, moved: false };
+          event.currentTarget.setPointerCapture?.(event.pointerId);
+        }}
+        onPointerMove={(event) => {
+          const drag = tabDrag.current;
+          if (!drag || drag.pointerId !== event.pointerId) return;
+          const delta = event.clientY - drag.startY;
+          if (!drag.moved && Math.abs(delta) < 6) return;
+          drag.moved = true;
+          suppressTabClick.current = true;
+          setTabDragging(true);
+          setTabY(clampTabY(drag.originY + delta));
+        }}
+        onPointerUp={endTabDrag}
+        onPointerCancel={endTabDrag}
+        onLostPointerCapture={endTabDrag}
         inert={!minimized}
         className="demo-banner-morph demo-tab-restore fixed bottom-0 left-1/2 z-[139] w-[min(18rem,calc(100vw-1rem))] cursor-pointer border-0 bg-transparent p-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--theme-accent-primary)]"
         style={{
-          height: "calc(3rem + var(--safe-area-bottom, 0px))",
+          height: mobileTab ? "3rem" : "calc(3rem + var(--safe-area-bottom, 0px))",
+          left: mobileTab ? "calc(100% - 1.5rem)" : undefined,
+          top: mobileTab ? (tabY ?? "50%") : undefined,
+          bottom: mobileTab ? "auto" : undefined,
+          touchAction: mobileTab ? "none" : undefined,
+          cursor: mobileTab ? (tabDragging ? "grabbing" : "grab") : undefined,
           opacity: minimized ? 1 : 0,
           visibility: minimized ? "visible" : "hidden",
-          transform: `translateX(-50%) translateY(${minimized ? "0" : "100%"}) scale(${minimized ? 1 : 0.85})`,
-          transformOrigin: "bottom center",
+          transform: mobileTab
+            ? `translate(-50%, -50%) rotate(-90deg) translateY(${minimized ? "0" : "100%"}) scale(${minimized ? 1 : 0.85})`
+            : `translateX(-50%) translateY(${minimized ? "0" : "100%"}) scale(${minimized ? 1 : 0.85})`,
+          transformOrigin: mobileTab ? "center" : "bottom center",
           transition: `transform 600ms ease, opacity 600ms ease, visibility 0s ${minimized ? "0s" : "600ms"}`,
           pointerEvents: minimized ? "auto" : "none",
         }}
       >
         <svg aria-hidden="true" viewBox="0 0 352 72" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 h-full w-full overflow-visible"
-          style={{ filter: "drop-shadow(0 8px 20px rgb(0 0 0 / 0.25)) drop-shadow(0 24px 64px rgb(0 0 0 / 0.6))" }}>
+          style={{ filter: mobileTab ? "none" : "drop-shadow(0 4px 12px rgb(0 0 0 / 0.18))" }}>
           <path d="M0 72 C30 72 30 58 36 36 C42 12 54 4 82 4 H270 C298 4 310 12 316 36 C322 58 322 72 352 72"
             fill="var(--theme-bg-elevated)" stroke="var(--theme-border-strong)" strokeWidth="4" vectorEffect="non-scaling-stroke" />
         </svg>
