@@ -1,5 +1,894 @@
 [
   {
+    "version": "26.9.600",
+    "tagName": "v26.9.600",
+    "channel": "production",
+    "date": "2026-09-06T18:18:25Z",
+    "deck": "An interactive Freed demo, a richer Friends galaxy, and connected profiles that bring people and their posts together",
+    "features": [
+      {
+        "text": "Explore Freed in an interactive demo with illustrated stories, a unified social feed, and connected Friends and map views"
+      },
+      {
+        "text": "Move between people, their social profiles, recent posts and locations in the Friends galaxy, with zoom-aware avatars and labels and editable Connection, Friend and Fam ratings"
+      },
+      {
+        "text": "Follow author links into Friends and jump from recent activity into the reader, with profile avatars cached locally in Freed Desktop"
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Synchronize Friends and All content filters across views, with All content selected by default"
+      },
+      {
+        "text": "Add searchable notes to saved content"
+      },
+      {
+        "text": "Restore LinkedIn feed extraction after reconnecting and support updated feed markup"
+      },
+      {
+        "text": "Preserve pending provider syncs during temporary writer admission failures and recognize unlocked macOS sessions correctly"
+      },
+      {
+        "text": "Keep large Library exports off the Desktop command thread and improve Drive publication for larger libraries"
+      },
+      {
+        "text": "Refine the existing SQLite Library with normalized storage and sync records and local-only authority initialization"
+      }
+    ],
+    "followUps": [],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.9.600",
+    "prNumbers": [
+      1187,
+      1189,
+      1356,
+      1357,
+      1362,
+      1366,
+      1439,
+      1512,
+      1514,
+      1542,
+      1543,
+      1547,
+      1548,
+      1551,
+      1553,
+      1555,
+      1560,
+      1561,
+      1563,
+      1566,
+      1567,
+      1569,
+      1570,
+      1571,
+      1572,
+      1573,
+      1574,
+      1579,
+      1580,
+      1581,
+      1582,
+      1590,
+      1591,
+      1592,
+      1593,
+      1594,
+      1595,
+      1596,
+      1597,
+      1598,
+      1599,
+      1601,
+      1602,
+      1604,
+      1605,
+      1606,
+      1610,
+      1612,
+      1613,
+      1614,
+      1616,
+      1617,
+      1619,
+      1629,
+      1631,
+      1634,
+      1635,
+      1638,
+      1640,
+      1641,
+      1642,
+      1643,
+      1644,
+      1645,
+      1646,
+      1647,
+      1648,
+      1649,
+      1650,
+      1652,
+      1653,
+      1655,
+      1657,
+      1658,
+      1659,
+      1660,
+      1661,
+      1662,
+      1663,
+      1664,
+      1665,
+      1666,
+      1667,
+      1668,
+      1669,
+      1670,
+      1671,
+      1673,
+      1677,
+      1678,
+      1679,
+      1680,
+      1681,
+      1682,
+      1683,
+      1684,
+      1685,
+      1686,
+      1687,
+      1688,
+      1690,
+      1692,
+      1694,
+      1695,
+      1696,
+      1697,
+      1698,
+      1699,
+      1702,
+      1703,
+      1704,
+      1705,
+      1706,
+      1710,
+      1712,
+      1716,
+      1719,
+      1720,
+      1722,
+      1723,
+      1724,
+      1727,
+      1728,
+      1729,
+      1732,
+      1733,
+      1735,
+      1736,
+      1738,
+      1739,
+      1741,
+      1744,
+      1745,
+      1746,
+      1747,
+      1750,
+      1751,
+      1752,
+      1754,
+      1759,
+      1762,
+      1763,
+      1765,
+      1766,
+      1767,
+      1771,
+      1773,
+      1774,
+      1775,
+      1776,
+      1783,
+      1787,
+      1789,
+      1791,
+      1792,
+      1793,
+      1794,
+      1795
+    ],
+    "builds": [
+      "26.9.600"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.9.600",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.9.600",
+        "channel": "production"
+      }
+    ]
+  },
+  {
+    "version": "26.9.501-dev",
+    "tagName": "v26.9.501-dev",
+    "channel": "dev",
+    "date": "2026-09-06T07:06:42Z",
+    "deck": "Give large Drive publications a bounded progress budget and preserve pending provider syncs",
+    "features": [
+      {
+        "text": "An interactive sample Library demo"
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Publish larger SQLite Libraries without the stale receipt-count limit"
+      },
+      {
+        "text": "Scale the publication deadline to the pinned export while stopping attempts that make no useful progress for five minutes"
+      },
+      {
+        "text": "Optimized checkpoint encoding work without changing canonical bytes"
+      },
+      {
+        "text": "Keep scheduled provider syncs pending while verified writer admission is unavailable"
+      },
+      {
+        "text": "Persistent diagnostics for the Freed Desktop main window restored"
+      },
+      {
+        "text": "Keep local snapshot exports off the main thread so they do not block the interface or provider WebViews"
+      },
+      {
+        "text": "Seek directly to each checkpoint page instead of rescanning previously exported records"
+      },
+      {
+        "text": "Coalesce overlapping Drive publications and retain the export slot until canceled native work settles"
+      },
+      {
+        "text": "Recognize unlocked macOS sessions and accept fractional provider wake deadlines"
+      },
+      {
+        "text": "Distinguish missing or unreadable writer admission from a retired writer"
+      },
+      {
+        "text": "Treat a PWA Library held by another tab as busy rather than corrupted"
+      },
+      {
+        "text": "Preserve release lane controls and Library Core activation history"
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Verify Drive publication, writer admission, and LinkedIn extraction on the signed build"
+      },
+      {
+        "text": "Scheduled Facebook and Instagram observation on the installed build"
+      },
+      {
+        "text": "PWA clients before importing checkpoints above the former receipt-count limit, then verify bidirectional sync"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.9.501-dev",
+    "prNumbers": [],
+    "builds": [
+      "26.9.500-dev",
+      "26.9.501-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.9.500-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.9.500-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.9.501-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.9.501-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.9.300-dev",
+    "tagName": "v26.9.300-dev",
+    "channel": "dev",
+    "date": "2026-09-03T14:54:20Z",
+    "deck": "LinkedIn feed sync works again after reconnecting",
+    "features": [],
+    "fixes": [
+      {
+        "text": "Restore LinkedIn extraction events after reconnecting the provider"
+      },
+      {
+        "text": "Read LinkedIn's current feed markup while excluding promoted posts"
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Verify the signed build against the connected LinkedIn account on the installation machine"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.9.300-dev",
+    "prNumbers": [],
+    "builds": [
+      "26.9.300-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.9.300-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.9.300-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.9.200-dev",
+    "tagName": "v26.9.200-dev",
+    "channel": "dev",
+    "date": "2026-09-02T20:12:40Z",
+    "deck": "Saved-item notes and safer provider sync",
+    "features": [
+      {
+        "text": "Add searchable, synchronized notes to saved URLs and edit them later from the reader"
+      },
+      {
+        "text": "Preview URL metadata before saving while preserving notes entered during the preview"
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Keep LinkedIn and Instagram login windows separate from their scraper windows without losing the authenticated provider session"
+      },
+      {
+        "text": "Defer shared provider cleanup while Facebook, Instagram, LinkedIn, Medium, or Substack work is active"
+      },
+      {
+        "text": "Show provider beta badges from one canonical metadata source"
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Verify the signed build against the connected LinkedIn and Instagram accounts on the installation machine"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.9.200-dev",
+    "prNumbers": [],
+    "builds": [
+      "26.9.200-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.9.200-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.9.200-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.9.100-dev",
+    "tagName": "v26.9.100-dev",
+    "channel": "dev",
+    "date": "2026-09-01T23:00:41Z",
+    "deck": "Private PWA recovery with a safe signed verifier",
+    "features": [
+      {
+        "text": "Install a separately named, signed Freed Preview build for isolated testing without replacing the normal Freed application or joining its updater channel"
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Recover Safari Private Browsing startup when durable OPFS SQLite is unavailable while keeping persistent sessions fail closed"
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Run installed verification and the bounded stability soak against the isolated dev build"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.9.100-dev",
+    "prNumbers": [],
+    "builds": [
+      "26.9.100-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.9.100-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.9.100-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.8.3104-dev",
+    "tagName": "v26.8.3104-dev",
+    "channel": "dev",
+    "date": "2026-09-01T06:22:14Z",
+    "deck": "Atomic Google Drive checkpoints and resilient PWA sample data",
+    "features": [
+      {
+        "text": "Anonymous release demo experience"
+      },
+      {
+        "text": "Open Map and Friends on demand while keeping return visits available offline"
+      },
+      {
+        "text": "Keep PWA feeds and search bounded across 100,000 locally stored items"
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Recover safely if a PWA factory reset is interrupted and its stored reload data is damaged"
+      },
+      {
+        "text": "Reader, feed, and header polish"
+      },
+      {
+        "text": "Capture and scraper reliability fixes"
+      },
+      {
+        "text": "Release build and type-safety cleanup"
+      },
+      {
+        "text": "Complete PWA update checks promptly"
+      },
+      {
+        "text": "Keep sync status control stable"
+      },
+      {
+        "text": "Admit Google Drive installed sync trigger"
+      },
+      {
+        "text": "Refresh Google Drive authentication once and retry the exact failed request after a 401"
+      },
+      {
+        "text": "Reject corrupted PWA media ranges before they become available offline"
+      },
+      {
+        "text": "Pin each Google Drive checkpoint export to one SQLite read transaction so concurrent local writes cannot invalidate the upload"
+      },
+      {
+        "text": "Show progress while importing or clearing sample data"
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Prepare v26.8.3102-dev"
+      },
+      {
+        "text": "Refresh v26.8.3101-dev identity"
+      },
+      {
+        "text": "WebKit PWA corpus hardening"
+      },
+      {
+        "text": "Friends offset pagination with keysets"
+      },
+      {
+        "text": "Reduce PWA install bundle"
+      },
+      {
+        "text": "Page large Friends directories with stable SQLite keyset cursors"
+      },
+      {
+        "text": "Smaller PWA installs, stronger local storage recovery, and faster large Libraries"
+      },
+      {
+        "text": "Run installed build verification in an isolated profile"
+      },
+      {
+        "text": "Physical iPhone PWA acceptance"
+      },
+      {
+        "text": "Extend large-library proof to WebKit and whole-process memory"
+      },
+      {
+        "text": "Reliable PWA recovery and Google Drive authentication"
+      },
+      {
+        "text": "Verify the first Google Drive publication and exact retry against the real local Library"
+      },
+      {
+        "text": "Prove released Freed Desktop and PWA edits synchronize in both directions"
+      },
+      {
+        "text": "Soak the verified build before production promotion"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.3104-dev",
+    "prNumbers": [],
+    "builds": [
+      "26.8.3100-dev",
+      "26.8.3101-dev",
+      "26.8.3102-dev",
+      "26.8.3103-dev",
+      "26.8.3104-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.8.3100-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.3100-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.8.3101-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.3101-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.8.3102-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.3102-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.8.3103-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.3103-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.8.3104-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.3104-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.8.3006-dev",
+    "tagName": "v26.8.3006-dev",
+    "channel": "dev",
+    "date": "2026-08-31T05:45:06Z",
+    "deck": "Faster Google Drive checkpoints and stable Library views for large SQLite libraries",
+    "features": [
+      {
+        "text": "Orchestrate bounded Primary inbound passes"
+      },
+      {
+        "text": "Bind normalized Primary native transport"
+      },
+      {
+        "text": "Normalized Primary inbound orchestration"
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Finish large Library Google Drive checkpoint publication with bounded 4,096-record pages"
+      },
+      {
+        "text": "Stop recurring view reloads by bounding concurrent SQLite reads and coalescing priority-index refreshes"
+      },
+      {
+        "text": "Fail closed when a stored Drive publication receipt does not match the current control state"
+      },
+      {
+        "text": "Compress GitHub release history reads"
+      },
+      {
+        "text": "Admit long checkpoint record identities"
+      },
+      {
+        "text": "Keep Library queries off the desktop command thread"
+      },
+      {
+        "text": "Preserve navigation after leaving map"
+      },
+      {
+        "text": "Recover Friends graph from stale cursors"
+      },
+      {
+        "text": "Prove installed primary native identity"
+      },
+      {
+        "text": "Stop Friend location render loops"
+      },
+      {
+        "text": "Keep checkpoint exports on one SQLite snapshot"
+      },
+      {
+        "text": "Release abandoned checkpoint readers after five minutes so canceled uploads cannot pin SQLite history"
+      },
+      {
+        "text": "Create local Library snapshots from one consistent SQLite revision"
+      },
+      {
+        "text": "Open the full Map from a Friend's last-seen card after the location resolves"
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Verify first Google Drive publication and exact retry against the real local Library"
+      },
+      {
+        "text": "Complete installed Freed Desktop and physical iPhone PWA acceptance"
+      },
+      {
+        "text": "Prepare v26.8.3005-dev"
+      },
+      {
+        "text": "Expose headless follower enrollment authority"
+      },
+      {
+        "text": "Bind headless Primary to Google Drive"
+      },
+      {
+        "text": "Publish immutable Google Drive checkpoints from bounded SQLite pages without loading the full Library into memory"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.3006-dev",
+    "prNumbers": [],
+    "builds": [
+      "26.8.3000-dev",
+      "26.8.3001-dev",
+      "26.8.3002-dev",
+      "26.8.3003-dev",
+      "26.8.3004-dev",
+      "26.8.3005-dev",
+      "26.8.3006-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.8.3000-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.3000-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.8.3001-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.3001-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.8.3002-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.3002-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.8.3003-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.3003-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.8.3004-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.3004-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.8.3005-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.3005-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.8.3006-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.3006-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.8.2906-dev",
+    "tagName": "v26.8.2906-dev",
+    "channel": "dev",
+    "date": "2026-08-30T07:43:54Z",
+    "deck": "Stop recurring Library view reloads, finish sample-data clearing in bounded batches, and keep the clean-slate SQLite Library responsive",
+    "features": [
+      {
+        "text": "Replace library authority with SQLite"
+      },
+      {
+        "text": "Support trusted automation launchers on Linux"
+      },
+      {
+        "text": "Run every Library view from bounded SQLite queries"
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Restore Command-Q quitting on macOS"
+      },
+      {
+        "text": "Keep Feed, Map, and Story rows visible while background SQLite revisions load"
+      },
+      {
+        "text": "Batch semantic-classifier operation signing through one bounded native Library Core call"
+      },
+      {
+        "text": "Clear marked sample Accounts and People in bounded transactions, with dependent Accounts removed before People"
+      },
+      {
+        "text": "Recover legacy Library cutover"
+      },
+      {
+        "text": "Admit supported Library predecessors"
+      },
+      {
+        "text": "Run Library Core on Windows"
+      },
+      {
+        "text": "Align claim freshness with trusted launcher"
+      },
+      {
+        "text": "Forward Go compiler to Linux actor build"
+      },
+      {
+        "text": "Add event history witness repair"
+      },
+      {
+        "text": "Accept historical schemas 6 through 12 at cutover"
+      },
+      {
+        "text": "Migrate tag-only content analysis without inventing confidence scores"
+      },
+      {
+        "text": "Treat preserved non-finite publication timestamps as missing data"
+      },
+      {
+        "text": "Keep refused cutovers in typed recovery and stop Library sync until retry succeeds"
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Align Vite 8 build tooling"
+      },
+      {
+        "text": "Bump serde_with from 3.16.1 to 3.22.0 in /packages/desktop/src-tauri"
+      },
+      {
+        "text": "Bump vite from 7.3.6 to 8.2.1"
+      },
+      {
+        "text": "Bump globals from 16.5.0 to 17.11.0"
+      },
+      {
+        "text": "Bump react-router and react-router-dom"
+      },
+      {
+        "text": "Bump postcss from 8.5.23 to 8.5.24"
+      },
+      {
+        "text": "Bump the cargo-updates group across 1 directory with 2 updates"
+      },
+      {
+        "text": "Bump js-yaml from 4.3.0 to 4.3.1"
+      },
+      {
+        "text": "Bump fast-uri from 3.1.4 to 3.1.5"
+      },
+      {
+        "text": "Bump undici from 7.28.0 to 7.29.0"
+      },
+      {
+        "text": "Store and sync normalized Library records without the historical engines"
+      },
+      {
+        "text": "Freed now runs its Library on SQLite across Freed Desktop and PWA, with bounded queries, normalized sync records, and native Windows support"
+      },
+      {
+        "text": "The SQLite release now upgrades real-world Libraries without reopening the retired engines"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.2906-dev",
+    "prNumbers": [],
+    "builds": [
+      "26.8.2901-dev",
+      "26.8.2902-dev",
+      "26.8.2903-dev",
+      "26.8.2906-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.8.2901-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.2901-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.8.2902-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.2902-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.8.2903-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.2903-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.8.2906-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.2906-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.8.2002-dev",
+    "tagName": "v26.8.2002-dev",
+    "channel": "dev",
+    "date": "2026-08-21T02:34:16Z",
+    "deck": "SQLite Library contracts, a provider-free primary Library, and bounded Drive checkpoints",
+    "features": [
+      {
+        "text": "Generate SQLite Library contracts"
+      },
+      {
+        "text": "Descriptor-bound Library sidecar"
+      },
+      {
+        "text": "Fail-closed Library service supervisor"
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Enforce PWA actor capabilities"
+      },
+      {
+        "text": "Support local-only Library authority"
+      },
+      {
+        "text": "Bound Drive checkpoint pages by decoded bytes"
+      },
+      {
+        "text": "Defer checkpoint refresh until the current render settles"
+      },
+      {
+        "text": "Preserve PWA intents across checkpoint activation"
+      },
+      {
+        "text": "Bound Library Core search work and result size"
+      },
+      {
+        "text": "Repair Drive mutable revision fencing"
+      },
+      {
+        "text": "Enforce one Library Core process per data root"
+      },
+      {
+        "text": "Recognize release identity backflow"
+      },
+      {
+        "text": "Keep SQLite backups off cloud storage"
+      },
+      {
+        "text": "Show honest Drive sync activity"
+      },
+      {
+        "text": "Read immutable Drive objects without browser ETags"
+      },
+      {
+        "text": "Prevent Drive sync lifecycle stalls"
+      },
+      {
+        "text": "Stabilize Drive Library Core bootstrap"
+      },
+      {
+        "text": "Route CI away from stalled Ubuntu mirrors"
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Publish normalized typed Library checkpoints"
+      },
+      {
+        "text": "Import Library checkpoints into SQLite WASM over OPFS"
+      },
+      {
+        "text": "Retire remaining compatibility shell reads"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.2002-dev",
+    "prNumbers": [],
+    "builds": [
+      "26.8.2001-dev",
+      "26.8.2002-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.8.2001-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.2001-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.8.2002-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.2002-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
     "version": "26.8.1901",
     "tagName": "v26.8.1901",
     "channel": "production",
