@@ -14,6 +14,7 @@ export * from "./library-core/feed-browse-filter-contract";
 // Re-export local content signal inference (browser-safe, no deps)
 export * from "./content-signals";
 export * from "./feed-signal-filters";
+export * from "./provider-admission";
 export * from "./preferences";
 export * from "./sync-write-policy";
 export * from "./local-ai";
