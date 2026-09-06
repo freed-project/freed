@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createServer, type ViteDevServer } from "vite";
+import { createServer, request, type Server } from "node:http";
 import {
   devices,
   expect,
@@ -18,39 +18,54 @@ import {
 } from "@freed/shared";
 import { pwaOpfsE2eBaseUrl } from "./opfs-e2e-settings";
 
-const profileOrigins = new Map<string, { origin: string; server: ViteDevServer }>();
+let testOrigin = pwaOpfsE2eBaseUrl;
+let originServer: Server | null = null;
+const openedProfiles = new Set<string>();
 
-async function isolatedProfileOrigin(profileRoot: string): Promise<string> {
-  const existing = profileOrigins.get(profileRoot);
-  if (existing) return existing.origin;
-  // macOS WebKit can share OPFS across persistent profiles at one origin,
-  // while keeping their IndexedDB keys separate. Give each synthetic Library
-  // its own origin, retained across reopen and worker-loss checks. Keep ports
-  // reserved until the suite ends so a later profile cannot inherit one.
-  const server = await createServer({
-    configFile: false,
-    appType: "custom",
-    root: profileRoot,
-    server: {
-      host: "127.0.0.1",
-      port: 0,
-      proxy: { "/": { target: pwaOpfsE2eBaseUrl, ws: true } },
-    },
+// A fresh profile alone does not reliably isolate macOS WebKit OPFS. Keep a
+// distinct origin for each case, but preserve it across that case's restarts
+// and tabs so the durability and exclusive-writer assertions stay meaningful.
+test.beforeEach(async () => {
+  const target = new URL(pwaOpfsE2eBaseUrl);
+  const server = createServer((incoming, outgoing) => {
+    const upstream = request(
+      new URL(incoming.url ?? "/", target),
+      {
+        method: incoming.method,
+        headers: { ...incoming.headers, host: target.host },
+      },
+      (response) => {
+        outgoing.writeHead(response.statusCode ?? 502, response.headers);
+        response.pipe(outgoing);
+      },
+    );
+    upstream.on("error", () => {
+      if (!outgoing.headersSent) outgoing.writeHead(502);
+      outgoing.end();
+    });
+    outgoing.on("close", () => upstream.destroy());
+    incoming.pipe(upstream);
   });
-  await server.listen();
-  const address = server.httpServer?.address();
-  if (!address || typeof address === "string") {
-    await server.close();
-    throw new Error("WebKit test origin did not acquire a TCP port");
-  }
-  const origin = `http://127.0.0.1:${address.port}`;
-  profileOrigins.set(profileRoot, { origin, server });
-  return origin;
-}
+  originServer = server;
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  if (!address || typeof address === "string")
+    throw new Error("Test origin unavailable");
+  testOrigin = `http://127.0.0.1:${address.port}`;
+});
 
-test.afterAll(async () => {
-  await Promise.all([...profileOrigins.values()].map(({ server }) => server.close()));
-  profileOrigins.clear();
+test.afterEach(async () => {
+  const server = originServer;
+  originServer = null;
+  openedProfiles.clear();
+  if (!server) return;
+  server.closeAllConnections();
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => (error ? reject(error) : resolve()));
+  });
 });
 
 interface BrowserLibraryCore {
@@ -129,8 +144,7 @@ async function waitForLibrary(page: Page): Promise<void> {
   await page.waitForFunction(() => {
     const current = window as unknown as Record<string, unknown>;
     const store = current.__FREED_STORE__ as
-      | { getState(): { isInitialized: boolean } }
-      | undefined;
+      { getState(): { isInitialized: boolean } } | undefined;
     return (
       store?.getState().isInitialized === true &&
       typeof current.__FREED_LIBRARY_CORE__ === "object"
@@ -146,9 +160,8 @@ async function openLibrary(page: Page): Promise<void> {
 
 async function launchPersistentLibraryContext(
   profileRoot: string,
+  baseURL = testOrigin,
 ): Promise<BrowserContext> {
-  const firstOpen = !profileOrigins.has(profileRoot);
-  const baseURL = await isolatedProfileOrigin(profileRoot);
   const iphone = devices["iPhone 14"];
   const context = await webkit.launchPersistentContext(profileRoot, {
     userAgent: iphone.userAgent,
@@ -160,7 +173,7 @@ async function launchPersistentLibraryContext(
     baseURL,
     headless: true,
   });
-  if (firstOpen) {
+  if (!openedProfiles.has(profileRoot)) {
     try {
       const page = context.pages()[0] ?? (await context.newPage());
       await page.goto("/favicon.svg");
@@ -170,7 +183,11 @@ async function launchPersistentLibraryContext(
         for await (const name of root.keys()) names.push(name);
         return names;
       });
-      expect(entries, "a fresh test Library must not inherit another profile's OPFS").toEqual([]);
+      expect(
+        entries,
+        "a fresh test Library must not inherit another profile's OPFS",
+      ).toEqual([]);
+      openedProfiles.add(profileRoot);
     } catch (error) {
       await context.close();
       throw error;
@@ -379,9 +396,9 @@ async function verifyDurableOpfsLibrary(profileRoot: string): Promise<void> {
   let context: BrowserContext | null = null;
 
   try {
-    let opened = await test.step("write through the first WebKit lifecycle", () =>
-      openPersistentLibrary(profileRoot),
-    );
+    let opened =
+      await test.step("write through the first WebKit lifecycle", () =>
+        openPersistentLibrary(profileRoot));
     context = opened.context;
     const page = opened.page;
 
@@ -411,9 +428,9 @@ async function verifyDurableOpfsLibrary(profileRoot: string): Promise<void> {
 
     await context.close();
     context = null;
-    opened = await test.step("reopen the same OPFS Library after WebKit exits", () =>
-      openPersistentLibrary(profileRoot),
-    );
+    opened =
+      await test.step("reopen the same OPFS Library after WebKit exits", () =>
+        openPersistentLibrary(profileRoot));
     context = opened.context;
     const reopened = opened.page;
     expect(await readContactSyncStatus(reopened)).toMatchObject({
@@ -438,10 +455,9 @@ async function verifyDurableOpfsLibrary(profileRoot: string): Promise<void> {
 
     await context.close();
     context = null;
-    opened = await test.step(
-      "reopen the cleared row after a second WebKit exit",
-      () => openPersistentLibrary(profileRoot),
-    );
+    opened =
+      await test.step("reopen the cleared row after a second WebKit exit", () =>
+        openPersistentLibrary(profileRoot));
     context = opened.context;
     const reopenedAfterDelete = opened.page;
     expect(await readContactSyncStatus(reopenedAfterDelete)).toMatchObject({
@@ -464,9 +480,7 @@ async function verifyDurableOpfsLibrary(profileRoot: string): Promise<void> {
 
 test("iPhone WebKit persists, clears, and rebuilds the local sample Library", async () => {
   test.setTimeout(240_000);
-  const profileRoot = await mkdtemp(
-    join(tmpdir(), "freed-pwa-sample-webkit-"),
-  );
+  const profileRoot = await mkdtemp(join(tmpdir(), "freed-pwa-sample-webkit-"));
   let context: BrowserContext | null = null;
 
   try {
@@ -637,9 +651,8 @@ test("iPhone WebKit reopens and signs with the same actor key", async () => {
   const readIdentityAndSign = async (page: Page) =>
     page.evaluate(
       async ({ expectedLibraryId, signingMessage }) => {
-        const keyVault = await import(
-          "/src/lib/library-core-browser-key-vault.ts"
-        );
+        const keyVault =
+          await import("/src/lib/library-core-browser-key-vault.ts");
         const identity =
           await keyVault.getOrCreatePwaLibraryCoreActorIdentity(
             expectedLibraryId,
