@@ -65,7 +65,7 @@ describe("author identity links", () => {
         await act(async () => container.querySelector("button")!.click());
         expect(query).toHaveBeenCalledTimes(1);
         expect(actions.setSelectedPerson).toHaveBeenCalledWith("person-one");
-        expect(actions.setSelectedAccount).toHaveBeenCalledWith(null);
+        expect(actions.setSelectedAccount).not.toHaveBeenCalled();
         expect(actions.setActiveView).toHaveBeenCalledWith("friends");
       } finally {
         await act(async () => root.unmount());
@@ -101,7 +101,7 @@ describe("author identity links", () => {
         ),
       );
       await act(async () => container.querySelector("button")!.click());
-      expect(actions.setSelectedPerson).toHaveBeenCalledWith(null);
+      expect(actions.setSelectedPerson).not.toHaveBeenCalled();
       expect(actions.setSelectedAccount).toHaveBeenCalledWith("unlinked");
     } finally {
       await act(async () => root.unmount());

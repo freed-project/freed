@@ -454,8 +454,9 @@ export function FeedView() {
         }
         const account = await readLibraryAccountDetail?.(accountId);
         setSelectedItem(null);
-        setSelectedAccount(account?.personId ? null : accountId);
-        setSelectedPerson(account?.personId ?? null);
+        // Each selection action clears the other kind of selection.
+        if (account?.personId) setSelectedPerson(account.personId);
+        else setSelectedAccount(accountId);
         setActiveView("friends");
       } catch {
         toast.error("Freed could not open this author from the Library.");

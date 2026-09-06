@@ -111,8 +111,9 @@ export function AuthorIdentityLink({
             }
             const actions = platform.store.getState();
             actions.setSelectedItem(null);
-            actions.setSelectedAccount(result.person ? null : result.accountId);
-            actions.setSelectedPerson(result.person?.id ?? null);
+            // Each selection action clears the other kind of selection.
+            if (result.person) actions.setSelectedPerson(result.person.id);
+            else actions.setSelectedAccount(result.accountId);
             actions.setActiveView("friends");
           } catch {
             if (latestKey.current !== key) return;
