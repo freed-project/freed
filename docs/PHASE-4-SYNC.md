@@ -2,6 +2,16 @@
 
 > **Status:** 🚧 In Progress
 
+Checkpoint publication separates a five-minute no-progress deadline from a
+fixed total budget. After the native snapshot is known, the budget is five
+minutes plus ten seconds per estimated 4,096-record page, capped at two hours
+from attempt start. This is an operational allowance, not a measured network
+latency prediction. Only advancing export pages and newly verified immutable
+objects refresh the stall timer. Repeated milestones, HTTP activity, and retries
+do not extend either budget. Unknown preflight retains its five-minute bound.
+Drive request concurrency, retries, and remote-byte verification are unchanged.
+Installed publication and bidirectional follower acceptance remain open.
+
 > **Architecture:** This phase is governed by
 > [LIBRARY-CORE-ARCHITECTURE.md](LIBRARY-CORE-ARCHITECTURE.md) and
 > [LIBRARY-CORE-CONTRACT.md](LIBRARY-CORE-CONTRACT.md).
@@ -42,6 +52,20 @@ transaction and obtain its descriptor in one native command, so a concurrent
 Library write cannot invalidate the checkpoint between description and export.
 
 ## Current SQLite sync work
+
+Checkpoint serialization reuses only factory-validated, deeply frozen records
+through weak references. Unknown input still crosses the full canonical and
+closed-record checks. Small ASCII codec fragments avoid temporary UTF-8 buffers;
+Unicode encoding and all byte ceilings remain unchanged. Receipt-heavy offline
+publication profiling does not replace installed Drive acceptance, which remains
+open after the v26.9.500-dev publication timeout.
+
+The aggregate record ceiling derives from the existing manifest page count
+and generated records-per-page limit. Publication and import share that ceiling;
+the manifest, decoded-page, native-response, and publication-object byte/count
+bounds remain unchanged. Older clients reject checkpoints above their previous
+aggregate limit before staging. An updated PWA consumer is required before
+claiming cross-client synchronization for these larger Libraries.
 
 - [x] Define `freed_normalized_checkpoint_v2` registry identity and shared
       protocol ceilings from one executable source. Rust and TypeScript reject

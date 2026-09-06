@@ -2209,6 +2209,13 @@ fn dev_sync_trigger_started_result_recoverable(data_dir: &Path, id: &str, now_ms
     if result.status != "started" {
         return false;
     }
+    // Drive publication does not occupy the social background-job slot.
+    // An idle slot therefore says nothing about its completion or renderer
+    // lifetime. Preserve its result until the bridge settles or the existing
+    // renderer keepalive/timeout detects an actual failure.
+    if result.provider.as_deref() == Some("gdrive") {
+        return false;
+    }
     if now_ms.saturating_sub(result.updated_at) < DEV_SYNC_TRIGGER_STALE_STARTED_RECOVERY_MS {
         return false;
     }
@@ -2413,13 +2420,23 @@ fn dev_sync_trigger_keepalive_script(request_id: &str) -> String {
     )
 }
 
-fn start_dev_sync_trigger_keepalive(app: tauri::AppHandle, data_dir: PathBuf, request_id: String) {
+fn dev_sync_trigger_keepalive_timeout(provider: &str) -> Duration {
+    // Drive's renderer owns a five-minute stall deadline and a maximum two-hour
+    // total budget. Allow its terminal result to arrive before this outer guard.
+    if provider == "gdrive" {
+        Duration::from_secs(2 * 60 * 60 + 60)
+    } else {
+        DEV_SYNC_TRIGGER_KEEPALIVE_TIMEOUT
+    }
+}
+
+fn start_dev_sync_trigger_keepalive(app: tauri::AppHandle, data_dir: PathBuf, request_id: String, provider: String) {
     tauri::async_runtime::spawn(async move {
         let started_at = Instant::now();
         let keepalive_script = dev_sync_trigger_keepalive_script(&request_id);
         loop {
             tokio::time::sleep(DEV_SYNC_TRIGGER_KEEPALIVE_INTERVAL).await;
-            if started_at.elapsed() > DEV_SYNC_TRIGGER_KEEPALIVE_TIMEOUT {
+            if started_at.elapsed() > dev_sync_trigger_keepalive_timeout(&provider) {
                 warn!(
                     "[dev-sync-trigger] renderer keepalive timed out for request {}",
                     request_id
@@ -2593,6 +2610,7 @@ fn start_dev_sync_trigger_watcher(app: tauri::AppHandle, data_dir: PathBuf) {
                                             app.clone(),
                                             data_dir.clone(),
                                             request_id.to_string(),
+                                            provider.to_string(),
                                         );
                                     }
                                     Err(error) => {
@@ -15575,6 +15593,10 @@ mod tests {
 
     #[test]
     fn dev_sync_trigger_recovers_stale_started_result_only_when_work_is_idle() {
+        assert_eq!(dev_sync_trigger_keepalive_timeout("gdrive"), Duration::from_secs(7_260));
+        for provider in ["x", "facebook", "instagram", "linkedin", "unknown"] {
+            assert_eq!(dev_sync_trigger_keepalive_timeout(provider), Duration::from_secs(600));
+        }
         let temp = tempfile::tempdir().unwrap();
         std::fs::write(
             dev_sync_trigger_result_path(temp.path()),
@@ -15602,6 +15624,19 @@ mod tests {
         assert!(dev_sync_trigger_started_result_recoverable(
             temp.path(),
             "facebook-stale",
+            47000
+        ));
+
+        // A long-running Drive publication has no social background job.
+        // Its authoritative started result must survive the same idle sample.
+        std::fs::write(
+            dev_sync_trigger_result_path(temp.path()),
+            r#"{"id":"gdrive-active","provider":"gdrive","status":"started","detail":null,"updatedAt":1000}"#,
+        )
+        .unwrap();
+        assert!(!dev_sync_trigger_started_result_recoverable(
+            temp.path(),
+            "gdrive-active",
             47000
         ));
     }
