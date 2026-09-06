@@ -64,9 +64,9 @@
       "inspectionDigest": "sha256:f8dbb8d9aff88c3399f78ead6a9101b2637a3ddf21ab6a860d7d4a8baf690852",
       "decision": {
         "state": "owner_approved",
-        "ownerApprovalReference": "current-task:release-26-9-600#sha256:aabf06eb921866673d0efbe0ed1d8c4a416d7b2d4dde4eaffc4feb11965493c6",
+        "ownerApprovalReference": "current-task:release-26-9-600#sha256:8ffc9ef6827f4508b2fabeb9d4e4aacd27a202c9aa695a7181d9057af33ebb3b",
         "approvedInspectionDigest": "sha256:f8dbb8d9aff88c3399f78ead6a9101b2637a3ddf21ab6a860d7d4a8baf690852",
-        "approvedReleaseArtifactDigest": "sha256:e422581537d282698357466321e27243fbd66994cf6531e7b55d634a4d7e7903"
+        "approvedReleaseArtifactDigest": "sha256:46d527f7b4a15acb9f5dffc63c7d4cd77896d80ddde2bfbaac50080e483b1115"
       }
     },
     "isLatestOfDay": true,
@@ -274,30 +274,21 @@
     ]
   },
   "release": {
-    "deck": "Explore an illustrated Freed demo, navigate connected profiles in Friends, and cache profile avatars in Freed Desktop",
+    "deck": "An interactive Freed demo, a richer Friends galaxy, and connected profiles that bring people and their posts together",
     "features": [
-      "Explore 307 illustrated demo entries through the feed, visual Stories, Friends and map, with a welcome guide you can minimize for your next visit",
-      "Navigate people, connected profiles and recent posts in Friends with editable care ratings, map previews, and animated labels and avatars",
-      "Cache identity and profile avatars locally in Freed Desktop, including profiles you have not opened yet"
+      "Explore Freed in an interactive demo with illustrated stories, a unified social feed, and connected Friends and map views",
+      "Move between people, their social profiles, recent posts and locations in the Friends galaxy, with zoom-aware avatars and labels and editable Connection, Friend and Fam ratings",
+      "Follow author links into Friends and jump from recent activity into the reader, with profile avatars cached locally in Freed Desktop"
     ],
     "fixes": [
       "Synchronize Friends and All content filters across views, with All content selected by default",
-      "Show demo totals and unread counts, resetting read status and care edits on reload while preserving theme and welcome-guide preferences",
-      "Link author names to Friends and recent activity cards to the feed reader",
-      "Improve narrow-screen banner controls, coordinated transitions and theme-aware hover effects",
       "Add searchable notes to saved content",
       "Restore LinkedIn feed extraction after reconnecting and support updated feed markup",
       "Preserve pending provider syncs during temporary writer admission failures and recognize unlocked macOS sessions correctly",
-      "Keep snapshot exports off the Desktop command thread and seek directly to checkpoint pages",
-      "Support larger Drive checkpoint publications, coalesce overlapping exports and stop attempts that cease making progress",
-      "Recover the PWA Library after worker loss and report another tab holding the Library as busy",
-      "Repair PWA startup, sample population, reset and credential-update races",
-      "Refine the existing SQLite Library with normalized storage and sync records, local-only authority initialization, and retirement of older representations"
+      "Keep large Library exports off the Desktop command thread and improve Drive publication for larger libraries",
+      "Refine the existing SQLite Library with normalized storage and sync records and local-only authority initialization"
     ],
-    "followUps": [
-      "The demo currently contains 265 regular entries and 42 visual Stories; the separate expansion to 900 regular entries and 100 Stories is still in progress",
-      "Verify Drive publication and connected-provider behavior on the signed production build"
-    ]
+    "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.9.600\n\nExplore an illustrated Freed demo, navigate connected profiles in Friends, and cache profile avatars in Freed Desktop\n\n### Features\n\n- Explore 307 illustrated demo entries through the feed, visual Stories, Friends and map, with a welcome guide you can minimize for your next visit\n- Navigate people, connected profiles and recent posts in Friends with editable care ratings, map previews, and animated labels and avatars\n- Cache identity and profile avatars locally in Freed Desktop, including profiles you have not opened yet\n\n### Fixes\n\n- Synchronize Friends and All content filters across views, with All content selected by default\n- Show demo totals and unread counts, resetting read status and care edits on reload while preserving theme and welcome-guide preferences\n- Link author names to Friends and recent activity cards to the feed reader\n- Improve narrow-screen banner controls, coordinated transitions and theme-aware hover effects\n- Add searchable notes to saved content\n- LinkedIn feed extraction after reconnecting and support updated feed markup restored\n- Preserve pending provider syncs during temporary writer admission failures and recognize unlocked macOS sessions correctly\n- Keep snapshot exports off the Desktop command thread and seek directly to checkpoint pages\n- Support larger Drive checkpoint publications, coalesce overlapping exports and stop attempts that cease making progress\n- Recover the PWA Library after worker loss and report another tab holding the Library as busy\n- Repair PWA startup, sample population, reset and credential-update races\n- Refine the existing SQLite Library with normalized storage and sync records, local-only authority initialization, and retirement of older representations\n\n### Follow-ups\n\n- The demo currently contains 265 regular entries and 42 visual Stories; the separate expansion to 900 regular entries and 100 Stories is still in progress\n- Verify Drive publication and connected-provider behavior on the signed production build\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.9.600\n\nAn interactive Freed demo, a richer Friends galaxy, and connected profiles that bring people and their posts together\n\n### Features\n\n- Explore Freed in an interactive demo with illustrated stories, a unified social feed, and connected Friends and map views\n- Move between people, their social profiles, recent posts and locations in the Friends galaxy, with zoom-aware avatars and labels and editable Connection, Friend and Fam ratings\n- Follow author links into Friends and jump from recent activity into the reader, with profile avatars cached locally in Freed Desktop\n\n### Fixes\n\n- Synchronize Friends and All content filters across views, with All content selected by default\n- Add searchable notes to saved content\n- LinkedIn feed extraction after reconnecting and support updated feed markup restored\n- Preserve pending provider syncs during temporary writer admission failures and recognize unlocked macOS sessions correctly\n- Keep large Library exports off the Desktop command thread and improve Drive publication for larger libraries\n- Refine the existing SQLite Library with normalized storage and sync records and local-only authority initialization\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
