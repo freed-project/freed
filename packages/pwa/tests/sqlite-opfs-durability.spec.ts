@@ -20,6 +20,7 @@ import { pwaOpfsE2eBaseUrl } from "./opfs-e2e-settings";
 
 let testOrigin = pwaOpfsE2eBaseUrl;
 let originServer: Server | null = null;
+const openedProfiles = new Set<string>();
 
 // A fresh profile alone does not reliably isolate macOS WebKit OPFS. Keep a
 // distinct origin for each case, but preserve it across that case's restarts
@@ -59,6 +60,7 @@ test.beforeEach(async () => {
 test.afterEach(async () => {
   const server = originServer;
   originServer = null;
+  openedProfiles.clear();
   if (!server) return;
   server.closeAllConnections();
   await new Promise<void>((resolve, reject) => {
@@ -161,7 +163,7 @@ async function launchPersistentLibraryContext(
   baseURL = testOrigin,
 ): Promise<BrowserContext> {
   const iphone = devices["iPhone 14"];
-  return webkit.launchPersistentContext(profileRoot, {
+  const context = await webkit.launchPersistentContext(profileRoot, {
     userAgent: iphone.userAgent,
     viewport: iphone.viewport,
     screen: iphone.screen,
@@ -171,6 +173,27 @@ async function launchPersistentLibraryContext(
     baseURL,
     headless: true,
   });
+  if (!openedProfiles.has(profileRoot)) {
+    try {
+      const page = context.pages()[0] ?? (await context.newPage());
+      await page.goto("/favicon.svg");
+      const entries = await page.evaluate(async () => {
+        const root = await navigator.storage.getDirectory();
+        const names: string[] = [];
+        for await (const name of root.keys()) names.push(name);
+        return names;
+      });
+      expect(
+        entries,
+        "a fresh test Library must not inherit another profile's OPFS",
+      ).toEqual([]);
+      openedProfiles.add(profileRoot);
+    } catch (error) {
+      await context.close();
+      throw error;
+    }
+  }
+  return context;
 }
 
 async function openPersistentLibrary(profileRoot: string): Promise<{

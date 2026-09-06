@@ -6696,15 +6696,18 @@ export class PwaLibraryCoreSqliteEngine {
 
   async #applyAcceptedFollowerResultThroughOperationImport(
     verified: LibraryCoreVerifiedFollowerResultV1,
-    receivedAt: number,
   ): Promise<void> {
     const envelope = verified.envelope;
     if (envelope.status !== "accepted") return;
     const transactionRows = this.#database.exec({
-      sql: `SELECT transaction_digest, member_count
-            FROM library_intent_transactions
-            WHERE transaction_id = ?1 AND actor_id = ?2;`,
-      bind: [envelope.transaction_id, envelope.actor_id],
+      sql: `SELECT intent.transaction_digest, intent.member_count,
+                   result.received_at
+            FROM library_intent_transactions AS intent
+            JOIN library_intent_results AS result
+              ON result.transaction_id = intent.transaction_id
+            WHERE intent.transaction_id = ?1 AND intent.actor_id = ?2
+              AND result.result_digest = ?3;`,
+      bind: [envelope.transaction_id, envelope.actor_id, verified.resultDigest],
       rowMode: "array",
       returnValue: "resultRows",
     });
@@ -6717,6 +6720,13 @@ export class PwaLibraryCoreSqliteEngine {
     ) {
       throw new Error("accepted result operation transaction is unavailable");
     }
+    // Settlement may have committed before a worker stopped mid-import. The
+    // original result receipt owns staging's receive time across every replay,
+    // including a replay arriving through a different transport entry point.
+    const receivedAt = safeInteger(
+      transactionRows[0]![2],
+      "accepted result original receive time",
+    );
     const memberRows = this.#database.exec({
       sql: `SELECT member_index, operation_id, canonical_member
             FROM library_intent_members
@@ -7096,7 +7106,6 @@ export class PwaLibraryCoreSqliteEngine {
     for (const verified of verifiedResults) {
       await this.#applyAcceptedFollowerResultThroughOperationImport(
         verified,
-        publication.receivedAt,
       );
     }
     return receipt;
@@ -7152,7 +7161,6 @@ export class PwaLibraryCoreSqliteEngine {
     this.#applyVerifiedFollowerResult(verified, authority, receivedAt, true);
     await this.#applyAcceptedFollowerResultThroughOperationImport(
       verified,
-      receivedAt,
     );
     const receipt = this.#followerResultRetry(
       candidate.transaction_id,
