@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createServer, type ViteDevServer } from "vite";
 import {
   devices,
   expect,
@@ -16,6 +17,41 @@ import {
   SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT,
 } from "@freed/shared";
 import { pwaOpfsE2eBaseUrl } from "./opfs-e2e-settings";
+
+const profileOrigins = new Map<string, { origin: string; server: ViteDevServer }>();
+
+async function isolatedProfileOrigin(profileRoot: string): Promise<string> {
+  const existing = profileOrigins.get(profileRoot);
+  if (existing) return existing.origin;
+  // macOS WebKit can share OPFS across persistent profiles at one origin,
+  // while keeping their IndexedDB keys separate. Give each synthetic Library
+  // its own origin, retained across reopen and worker-loss checks. Keep ports
+  // reserved until the suite ends so a later profile cannot inherit one.
+  const server = await createServer({
+    configFile: false,
+    appType: "custom",
+    root: profileRoot,
+    server: {
+      host: "127.0.0.1",
+      port: 0,
+      proxy: { "/": { target: pwaOpfsE2eBaseUrl, ws: true } },
+    },
+  });
+  await server.listen();
+  const address = server.httpServer?.address();
+  if (!address || typeof address === "string") {
+    await server.close();
+    throw new Error("WebKit test origin did not acquire a TCP port");
+  }
+  const origin = `http://127.0.0.1:${address.port}`;
+  profileOrigins.set(profileRoot, { origin, server });
+  return origin;
+}
+
+test.afterAll(async () => {
+  await Promise.all([...profileOrigins.values()].map(({ server }) => server.close()));
+  profileOrigins.clear();
+});
 
 interface BrowserLibraryCore {
   facetSummary(): Promise<{
@@ -110,10 +146,11 @@ async function openLibrary(page: Page): Promise<void> {
 
 async function launchPersistentLibraryContext(
   profileRoot: string,
-  baseURL = pwaOpfsE2eBaseUrl,
 ): Promise<BrowserContext> {
+  const firstOpen = !profileOrigins.has(profileRoot);
+  const baseURL = await isolatedProfileOrigin(profileRoot);
   const iphone = devices["iPhone 14"];
-  return webkit.launchPersistentContext(profileRoot, {
+  const context = await webkit.launchPersistentContext(profileRoot, {
     userAgent: iphone.userAgent,
     viewport: iphone.viewport,
     screen: iphone.screen,
@@ -123,6 +160,23 @@ async function launchPersistentLibraryContext(
     baseURL,
     headless: true,
   });
+  if (firstOpen) {
+    try {
+      const page = context.pages()[0] ?? (await context.newPage());
+      await page.goto("/favicon.svg");
+      const entries = await page.evaluate(async () => {
+        const root = await navigator.storage.getDirectory();
+        const names: string[] = [];
+        for await (const name of root.keys()) names.push(name);
+        return names;
+      });
+      expect(entries, "a fresh test Library must not inherit another profile's OPFS").toEqual([]);
+    } catch (error) {
+      await context.close();
+      throw error;
+    }
+  }
+  return context;
 }
 
 async function openPersistentLibrary(profileRoot: string): Promise<{
@@ -645,11 +699,7 @@ test("iPhone WebKit treats a second Library tab as busy, not corrupted", async (
   let context: BrowserContext | null = null;
 
   try {
-    // This case interrupts sample writes when the owning tab closes. Give it
-    // its own origin as well as its own profile to isolate WebKit OPFS state.
-    const busyOrigin = new URL(pwaOpfsE2eBaseUrl);
-    busyOrigin.hostname = "localhost";
-    context = await launchPersistentLibraryContext(profileRoot, busyOrigin.origin);
+    context = await launchPersistentLibraryContext(profileRoot);
     const firstPage = context.pages()[0] ?? (await context.newPage());
     await openLibrary(firstPage);
     const secondPage = await context.newPage();
