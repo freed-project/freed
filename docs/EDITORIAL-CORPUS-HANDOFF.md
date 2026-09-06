@@ -40,6 +40,8 @@ No active author assignments survive this handoff. Existing author workers saved
 
 ## Pending work, excluded from391
 
+The owner explicitly requested preservation of promising unfinished writing. Start with [promising unfinished work](EDITORIAL-UNFINISHED-WORK.md); [all396 unpaired runtime passages](drafts/EDITORIAL-UNPAIRED-INVENTORY.md) are preserved verbatim. Missing media is not a reason to erase a promising passage.
+
 | Packet | Disposition and next step |
 | --- | --- |
 | [BOTANICAL165](drafts/BOTANICAL-EDITORIAL-165.md) | Vesta, **What met my foot**. Author and [root review](drafts/BOTANICAL-EDITORIAL-165-ROOT-REVIEW.md) support unchanged Instagram Story. Not integrated before owner stop. Check uniqueness and admit if still suitable. |
