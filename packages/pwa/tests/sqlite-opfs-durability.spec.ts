@@ -714,6 +714,97 @@ test("iPhone WebKit reopens and signs with the same actor key", async () => {
   }
 });
 
+test("iPhone WebKit reads pinned reader content after restart without its source", async () => {
+  test.setTimeout(120_000);
+  const profileRoot = await mkdtemp(
+    join(tmpdir(), "freed-pwa-offline-reader-webkit-"),
+  );
+  const articlePath = "/__freed_offline_reader_source__";
+  const expectedHtml =
+    "<article><h1>Offline field note</h1><p>The pinned rendition survived restart.</p></article>";
+  let context: BrowserContext | null = null;
+
+  try {
+    context = await launchPersistentLibraryContext(profileRoot);
+    await context.route(`**${articlePath}`, (route) =>
+      route.fulfill({
+        body: expectedHtml,
+        contentType: "text/html; charset=utf-8",
+        status: 200,
+      }),
+    );
+    const page = context.pages()[0] ?? (await context.newPage());
+    await openLibrary(page);
+    await expectShowcaseSampleData(page, {
+      rssFeedCount: 0,
+      sampleAccountCount: 0,
+      sampleFeedCount: 0,
+      sampleItemCount: 0,
+      samplePersonCount: 0,
+      totalCount: 0,
+    });
+
+    const pinned = await page.evaluate(
+      async ({ articleUrl }) => {
+        const runtime = await import("/src/lib/library-core-runtime.ts");
+        const readerCache = await import("/src/lib/reader-cache.ts");
+        const reader = await runtime.openPwaLibraryCoreFeedReader(
+          {},
+          Date.now(),
+        );
+        try {
+          const item = (await reader.readNext())[0];
+          if (!item) throw new Error("sample reader item is unavailable");
+          const readerItem = {
+            ...item,
+            content: {
+              ...item.content,
+              linkPreview: {
+                description: "Pinned WebKit lifecycle proof",
+                imageUrl: null,
+                siteName: "Freed test source",
+                title: "Offline field note",
+                url: articleUrl,
+              },
+            },
+            sourceUrl: articleUrl,
+          };
+          await readerCache.pinReaderItemInPwa(readerItem);
+          return { globalId: item.globalId };
+        } finally {
+          await reader.close();
+        }
+      },
+      { articleUrl: `${testOrigin}${articlePath}` },
+    );
+
+    await context.close();
+    context = null;
+
+    context = await launchPersistentLibraryContext(profileRoot);
+    await context.route(`**${articlePath}`, (route) =>
+      route.abort("internetdisconnected"),
+    );
+    const reopened = context.pages()[0] ?? (await context.newPage());
+    await reopened.goto(`/?item=${encodeURIComponent(pinned.globalId)}`);
+    await acceptLegalGate(reopened);
+    await waitForLibrary(reopened);
+    const sourceUnavailable = await reopened.evaluate((articleUrl) =>
+      fetch(articleUrl)
+        .then(() => false)
+        .catch(() => true),
+      `${testOrigin}${articlePath}`,
+    );
+    expect(sourceUnavailable).toBe(true);
+    const reader = reopened.getByTestId("reader-article");
+    await expect(reader.getByRole("heading", { name: "Offline field note" })).toBeVisible();
+    await expect(reader).toContainText("The pinned rendition survived restart.");
+  } finally {
+    await context?.close();
+    await rm(profileRoot, { force: true, recursive: true });
+  }
+});
+
 test("iPhone WebKit treats a second Library tab as busy, not corrupted", async () => {
   const profileRoot = await mkdtemp(
     join(tmpdir(), "freed-pwa-library-busy-webkit-"),
