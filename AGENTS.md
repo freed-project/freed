@@ -84,7 +84,7 @@ Task skills are discovered from their descriptions. These routes must happen bef
 
 ### Provider fingerprinting stop sign
 
-Before writing code or enabling a feature that could alter behavior visible to X, Facebook, Instagram, LinkedIn, or another provider, stop. This includes authenticated WebView loads, navigation, requests, retries, cadence, cookies, headers, scripted scrolling or clicking, extraction scripts, media loading, login behavior, canvas or WebGL behavior, and fingerprint masking.
+Before writing code or enabling a feature that could alter behavior visible to X, Facebook, Instagram, LinkedIn, or another provider, complete the provider review and warning below. This includes authenticated WebView loads, navigation, requests, retries, cadence, cookies, headers, scripted scrolling or clicking, extraction scripts, media loading, login behavior, canvas or WebGL behavior, and fingerprint masking.
 
 Warn the owner in plain language. Name the provider, describe the observable change, explain how it could increase fingerprinting or detection risk, and offer the lowest-profile alternative. Level 5 or higher covers necessary provider-observable behavior only after that warning. At a lower level, ask for an authorization level. Ordinary permission without a numbered level is not provider approval.
 
@@ -134,7 +134,9 @@ Marketing is `https://freed.wtf`, the PWA is `https://app.freed.wtf`, and downlo
 
 ### Autonomous decision review
 
-For a complex task sequence, maintain a worktree-local, Git-ignored `TASK-DECISIONS.local.md` from the first judgment decision or unanswered question. Follow the [decision review contract](docs/AGENT-INSTRUCTIONS.md#local-decision-review). Update it as work proceeds, link it at handoff, and preserve it for owner review before worktree cleanup. Never commit or publish this log. Logging does not replace required clarification or authorization.
+Complete authorized delivery under the [initiative contract](docs/AGENT-INSTRUCTIONS.md#local-decision-review). Follow its decision paths. Skills cannot add approval for included actions. Resume after side questions unless the owner pauses, cancels, or replaces the task.
+
+Record meaningful choices in private `TASK-DECISIONS.local.md` and tell the owner while correction is cheap. Closeout must summarize delivery, trade-offs, and open items, then link the log. Preserve it before cleanup; never publish it. A log link alone is not a decision update.
 
 ### Lanes and local proof
 
@@ -148,13 +150,13 @@ For a complex task sequence, maintain a worktree-local, Git-ignored `TASK-DECISI
 ### Validation and publication
 
 - `npm run validate:feature` is the normal feature-branch gate.
-- `npm run validate:dev` is the full integration gate for merges and pushes to `dev`.
+- `npm run validate:dev` runs full integration on `dev` pushes. PRs require local `validate:feature` and exact-head required CI; follow [validation reuse](docs/TESTING-STANDARD.md#validation-reuse).
 - `npm run validate:release` is the release-preparation gate on `main`.
 - Read [docs/TESTING-STANDARD.md](docs/TESTING-STANDARD.md) before adding, moving, or deleting permanent tests. Use the cheapest deterministic layer that protects a distinct contract. Delete temporary probes before publication.
 - Publish ordinary work through `./scripts/worktree-publish.sh` with existing GitHub authentication. Use `--ready` only for finished work. Missing optional broker configuration does not block the normal authenticated path.
 - Branch names use `feat/`, `fix/`, `chore/`, `docs/`, `refactor/`, `perf/`, or `style/` plus a short kebab-case description. Commit messages and PR titles use the matching Conventional Commit prefix.
 - Squash merge into the PR's destination lane. One PR becomes one commit on that lane. Use the PR title as the squash commit subject.
-- An authorized request to merge includes enabling repository auto-merge and arming squash auto-merge when required checks are pending. Follow [authorized merge completion](docs/AGENT-INSTRUCTIONS.md#authorized-merge-completion); preserve required checks, reviews, lane authority, and explicit owner holds.
+- Follow [authorized merge completion](docs/AGENT-INSTRUCTIONS.md#authorized-merge-completion), including enabling and arming squash auto-merge. Preserve checks, reviews, lane authority, and owner holds.
 - After a merge, stop only that worktree's processes, remove its worktree, and delete the local task branch. Never use branch ancestry to infer whether a squash PR merged; query the PR or remote branch state.
 
 ### Promotion
