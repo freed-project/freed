@@ -210,11 +210,7 @@ test("beta", async (t) => { console.log("top:beta"); await t.test("nested", () =
 test("gamma", async (t) => { console.log("top:gamma"); await t.test("nested", () => console.log("nested:gamma")); });
 test("delta", async (t) => { console.log("top:delta"); await t.test("nested", () => console.log("nested:delta")); });
 `;
-  writeFileSync(
-    filePath,
-    fixtureSource,
-    { mode: 0o600 },
-  );
+  writeFileSync(filePath, fixtureSource, { mode: 0o600 });
 
   let output = "";
   const childEnvironment = { ...process.env };
@@ -368,15 +364,31 @@ test("validation workflow preserves the complete tooling smoke gate", () => {
   assert.match(workflow, /plan-tooling-smoke\.mjs --all --github-output/);
 
   const nightlyWorkflow = readFileSync(
-    path.join(
-      process.cwd(),
-      ".github",
-      "workflows",
-      "tooling-nightly.yml",
-    ),
+    path.join(process.cwd(), ".github", "workflows", "tooling-nightly.yml"),
     "utf8",
   );
-  assert.match(nightlyWorkflow, /node scripts\/measure-tooling-smoke\.mjs/);
+  assert.match(
+    nightlyWorkflow,
+    /plan-tooling-smoke\.mjs --all --max-jobs 40 --github-output/,
+  );
+  assert.match(
+    nightlyWorkflow,
+    /matrix: \$\{\{ fromJSON\(needs\.exhaustive-tooling-plan\.outputs\.matrix\) \}\}/,
+  );
+  assert.match(nightlyWorkflow, /--suite=\$\{\{ matrix\.suite \}\}/);
+  assert.match(
+    nightlyWorkflow,
+    /--repeat="\$\{\{ github\.event\.inputs\.repeat \|\| '2' \}\}"/,
+  );
+  assert.match(nightlyWorkflow, /--aggregate=tooling-smoke-measurements/);
+  assert.match(
+    nightlyWorkflow,
+    /needs: \[exhaustive-tooling-plan, exhaustive-tooling-shards\]/,
+  );
+  assert.doesNotMatch(
+    nightlyWorkflow,
+    /--repeat="\$\{\{ github\.event\.inputs\.repeat \|\| '2' \}\}" \\\n\s*> tooling-smoke-measured\.json/,
+  );
 
   // The gate observes the planner, the shards, and the native lane together.
   assert.match(

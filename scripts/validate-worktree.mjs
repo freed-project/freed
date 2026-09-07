@@ -156,6 +156,7 @@ const PULL_REQUEST_PUBLISHER_TEST_FILES = ["scripts/worktree-publish.test.mjs"];
 
 const TOOLING_SMOKE_RUNNER_PATHS = new Set([
   ".github/workflows/ci.yml",
+  ".github/workflows/tooling-nightly.yml",
   "scripts/lib/tooling-smoke-plan.mjs",
   "scripts/measure-tooling-smoke.mjs",
   "scripts/measure-tooling-smoke.test.mjs",
