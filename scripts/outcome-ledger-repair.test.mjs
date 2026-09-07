@@ -53,6 +53,10 @@ import {
   repairOutcomeLedger,
 } from "./lib/outcome-ledger-repair.mjs";
 import {
+  repairEventPlanParentsMatch,
+  repairPublicationIdentityMatchesFile,
+} from "./lib/outcome-ledger-repair-validation.mjs";
+import {
   OUTCOME_LEDGER_REPAIR_MAX_BYTES,
   OUTCOME_LEDGER_REPAIR_MAX_LINE_BYTES,
   OUTCOME_LEDGER_REPAIR_MAX_LINES,
@@ -88,6 +92,128 @@ const MOVE_HELPER_PATH = path.join(
   "lib",
   "lease-archive-move.py",
 );
+
+test("completed Darwin repair replay admits only coherent device renumbering", () => {
+  const recordedHistoryParent = {
+    dev: "16777234",
+    ino: "101",
+    mode: 0o40700,
+    uid: 501,
+  };
+  const recordedReplacementParent = {
+    dev: "16777234",
+    ino: "202",
+    mode: 0o40700,
+    uid: 501,
+  };
+  const currentHistoryParent = {
+    ...recordedHistoryParent,
+    dev: "16777232",
+  };
+  const currentReplacementParent = {
+    ...recordedReplacementParent,
+    dev: "16777232",
+  };
+  const parents = {
+    recordedHistoryParent,
+    currentHistoryParent,
+    recordedReplacementParent,
+    currentReplacementParent,
+    completedAdmission: true,
+  };
+  assert.equal(
+    repairEventPlanParentsMatch(parents, { platform: "darwin" }),
+    true,
+  );
+  assert.equal(
+    repairEventPlanParentsMatch(parents, { platform: "linux" }),
+    false,
+  );
+  assert.equal(
+    repairEventPlanParentsMatch(
+      { ...parents, completedAdmission: false },
+      { platform: "darwin" },
+    ),
+    false,
+  );
+  assert.equal(
+    repairEventPlanParentsMatch(
+      {
+        ...parents,
+        currentReplacementParent: {
+          ...currentReplacementParent,
+          dev: "16777231",
+        },
+      },
+      { platform: "darwin" },
+    ),
+    false,
+  );
+  assert.equal(
+    repairEventPlanParentsMatch(
+      {
+        ...parents,
+        currentHistoryParent: { ...currentHistoryParent, ino: "999" },
+      },
+      { platform: "darwin" },
+    ),
+    false,
+  );
+
+  const bytes = Buffer.from("durable repair evidence\n", "utf8");
+  const identity = {
+    device: "16777234",
+    inode: "303",
+    uid: 501,
+    mode: 0o100600,
+    linkCount: 1,
+    size: bytes.length,
+    digest: createHash("sha256").update(bytes).digest("hex"),
+  };
+  const file = {
+    bytes,
+    identity: {
+      dev: "16777232",
+      ino: identity.inode,
+      uid: identity.uid,
+      mode: identity.mode,
+      nlink: identity.linkCount,
+      size: identity.size,
+    },
+  };
+  assert.equal(
+    repairPublicationIdentityMatchesFile(identity, file, bytes, {
+      allowDarwinDeviceRenumbering: true,
+      platform: "darwin",
+    }),
+    true,
+  );
+  assert.equal(
+    repairPublicationIdentityMatchesFile(identity, file, bytes, {
+      allowDarwinDeviceRenumbering: true,
+      platform: "linux",
+    }),
+    false,
+  );
+  assert.equal(
+    repairPublicationIdentityMatchesFile(
+      identity,
+      { ...file, identity: { ...file.identity, ino: "404" } },
+      bytes,
+      { allowDarwinDeviceRenumbering: true, platform: "darwin" },
+    ),
+    false,
+  );
+  assert.equal(
+    repairPublicationIdentityMatchesFile(
+      identity,
+      { ...file, bytes: Buffer.from("changed\n", "utf8") },
+      bytes,
+      { allowDarwinDeviceRenumbering: true, platform: "darwin" },
+    ),
+    false,
+  );
+});
 
 function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
