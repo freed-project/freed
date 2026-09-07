@@ -522,3 +522,8 @@ Reward security researchers for responsible disclosure.
 ## Deliverable
 
 Polished, accessible app with AI-powered features and thriving community infrastructure.
+
+OpenAI model default reviewed September 7, 2026: new OpenAI selections use
+`gpt-6-astra`. Existing saved models remain unchanged. Astra summaries use low
+reasoning with a bounded completion budget; Ollama retains its local request
+parameters. Live output quality and account access require API validation.
