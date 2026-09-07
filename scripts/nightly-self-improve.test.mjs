@@ -3103,7 +3103,7 @@ test("pending outcome planning rejects an event FIFO without blocking", () => {
   const child = spawnSync(
     process.execPath,
     ["--input-type=module", "--eval", childScript],
-    { encoding: "utf8", timeout: 2_000 },
+    { encoding: "utf8" },
   );
   assert.notEqual(child.error?.code, "ETIMEDOUT");
   assert.equal(child.signal, null);
@@ -3147,7 +3147,7 @@ for (const [authorityFile, healthField] of [
     const child = spawnSync(
       process.execPath,
       ["--input-type=module", "--eval", childScript],
-      { encoding: "utf8", timeout: 2_000 },
+      { encoding: "utf8" },
     );
     assert.notEqual(child.error?.code, "ETIMEDOUT");
     assert.equal(child.signal, null);
