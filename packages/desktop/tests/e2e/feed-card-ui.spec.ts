@@ -286,6 +286,13 @@ test("feed card overhaul actions and reader open flow work", async ({ app }) => 
   const storyTile = app.page.locator('[data-feed-item-id="test-instagram-story-thumbnail"]');
   const storyImage = storyTile.locator(`img[src="${STORY_MEDIA_URL}"]`).first();
   await expect(storyImage).toBeVisible();
+  // A visible img can still be broken. Prove that the local fixture decoded.
+  await storyImage.evaluate(async (image: HTMLImageElement) => {
+    await image.decode();
+    if (!image.complete || image.naturalWidth === 0 || image.naturalHeight === 0) {
+      throw new Error("Story thumbnail did not decode");
+    }
+  });
 
   const brokenCard = app.page.locator('[data-feed-item-id="test-broken-thumbnail-fallback"]');
   const brokenImage = brokenCard.locator("img").first();

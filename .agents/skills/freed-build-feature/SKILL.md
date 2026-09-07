@@ -34,6 +34,7 @@ Build one attributable product change from the latest `origin/dev`. Keep the cha
 3. Before creating a component or hook, search the relevant package for an existing primitive. Before closeout, search for every new or changed export and confirm a real entry point consumes it.
 4. Implement one runnable slice. Keep instrumentation changes separate from the behavior they are intended to judge unless the metric cannot exist independently.
 5. Launch the lightest useful preview on a fresh port with `scripts/lib/find-free-port.mjs` and `scripts/worktree-preview.sh`. Use a native Desktop preview only when Tauri behavior matters.
+   When populating a feature preview, follow [sample thumbnail proof](references/sample-thumbnail-proof.md): include image-backed posts and stories and verify decoded thumbnails before handing over the preview.
 6. Iterate with the cheapest proof that answers the current question. Preserve useful previews until the user is finished reviewing them.
 
 ## Validate

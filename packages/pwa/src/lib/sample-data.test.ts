@@ -108,7 +108,7 @@ describe("sample data batches", () => {
     expect(linkedItems.length).toBeGreaterThan(0);
   });
 
-  it("fingerprints every generated sample record", () => {
+  it("fingerprints every sample record and supplies an image for every item", () => {
     const batch = generateSampleLibraryData({
       batchId: "batch-fingerprint",
       generatedAt: 123,
@@ -116,6 +116,19 @@ describe("sample data batches", () => {
     });
     expect(batch.feeds.every(hasSampleDataFingerprint)).toBe(true);
     expect(batch.items.every(hasSampleDataFingerprint)).toBe(true);
+    // Every showcase record needs a thumbnail source, not just Instagram.
+    expect(batch.items.some((item) => item.contentType === "post")).toBe(true);
+    expect(batch.items.some((item) => item.contentType === "story")).toBe(true);
+    for (const item of batch.items) {
+      expect(item.content.mediaTypes[0], item.globalId).toBe("image");
+      expect(item.content.mediaUrls[0], item.globalId).toMatch(/^https:\/\//);
+      const url = new URL(item.content.mediaUrls[0]!);
+      expect(url.hostname, item.globalId).not.toBe("");
+      // NPS download suffixes can return HTML instead of a decodable image.
+      if (url.hostname === "npgallery.nps.gov") {
+        expect(url.pathname, item.globalId).toMatch(/\/GetAsset\/[^/]+\/(?:original|proxy(?:lo|md|hi)res)$/);
+      }
+    }
     expect(batch.persons.every(hasSampleDataFingerprint)).toBe(true);
     expect(batch.accounts.every(hasSampleDataFingerprint)).toBe(true);
     expect(batch.items[0]?.sampleDataFingerprint).toEqual({
