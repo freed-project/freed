@@ -319,7 +319,7 @@ describe("ReaderView cache-first hydration", () => {
     await act(async () => root.unmount());
   });
 
-  it("uses focused YouTube actions without article hydration or eager player loading", async () => {
+  it("loads the paused YouTube player without article hydration", async () => {
     Object.defineProperty(window.navigator, "onLine", { configurable: true, value: true });
     const hydrateReaderItem = vi.fn();
     const openUrl = vi.fn();
@@ -355,8 +355,8 @@ describe("ReaderView cache-first hydration", () => {
     await flushReaderEffects();
 
     expect(hydrateReaderItem).not.toHaveBeenCalled();
-    expect(container.querySelector("iframe")).toBeNull();
-    expect(container.textContent).toContain("Watch here in Focus Mode");
+    expect(container.querySelector("iframe")?.getAttribute("src")).toContain("youtube-nocookie.com/embed/dQw4w9WgXcQ");
+    expect(container.textContent).not.toContain("Watch here in Focus Mode");
     expect(container.querySelector("img[src*='i.ytimg.com']")).toBeNull();
     const description = Array.from(container.querySelectorAll("p")).find(
       (paragraph) => paragraph.textContent === item.content.text,

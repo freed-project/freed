@@ -959,13 +959,13 @@ export function ReaderView({
                 <span>{item.preservedContent.readingTime} min read</span>
               </>
             )}
-            {originalPostUrl ? (
+            {originalPostUrl && interactionMode !== "read-only" && !isSampleFeedItem(item) ? (
               <a
                 href={originalPostUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label={`View original on ${PLATFORM_LABELS[item.platform]}`}
-                className="btn-secondary ml-auto inline-flex min-h-11 shrink-0 items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium"
+                className="theme-accent-tag ml-auto inline-flex shrink-0 items-center gap-1 rounded-full px-3 py-1 text-xs font-medium transition-colors hover:bg-[rgb(var(--theme-accent-secondary-rgb)/0.24)]"
                 onClick={(event) => {
                   const openExternal = onOpenUrl ?? platformOpenUrl;
                   if (openExternal && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
@@ -975,7 +975,7 @@ export function ReaderView({
                 }}
               >
                 {PLATFORM_LABELS[item.platform]}
-                <ExternalLinkIcon className="h-4 w-4" />
+                <ExternalLinkIcon className="h-3 w-3" />
               </a>
             ) : (
               <span className="theme-accent-tag ml-auto shrink-0 rounded-full px-3 py-1 text-xs font-medium">

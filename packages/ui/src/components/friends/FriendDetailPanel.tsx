@@ -22,7 +22,7 @@ import {
   MastodonIcon,
   BookmarkIcon,
 } from "../icons.js";
-import type { ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { MiniFriendMapCard } from "../map/MiniFriendMapCard.js";
 import { FriendAvatar } from "./FriendAvatar.js";
 import { CareRating, type CareLevel } from "./CareRating.js";
@@ -88,6 +88,42 @@ interface FriendDetailPanelProps {
   onCareLevelChange?: (level: CareLevel) => void | Promise<void>;
 }
 
+function ProfileDescription({ text }: { text: string }) {
+  const id = useId();
+  const paragraph = useRef<HTMLParagraphElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [truncated, setTruncated] = useState(false);
+
+  useEffect(() => {
+    if (expanded || !paragraph.current) return;
+    const element = paragraph.current;
+    let disposed = false;
+    const measure = () => {
+      if (!disposed) setTruncated(element.scrollHeight > element.clientHeight + 1);
+    };
+    measure();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(element);
+    void document.fonts?.ready.then(measure);
+    return () => { disposed = true; observer?.disconnect(); };
+  }, [expanded, text]);
+
+  return (
+    <>
+      <p ref={paragraph} id={id} className={`text-xs text-text-secondary mt-1 whitespace-pre-line break-words ${expanded ? "" : "line-clamp-2"}`}>
+        {text}
+      </p>
+      {(truncated || expanded) && (
+        <button type="button" aria-expanded={expanded} aria-controls={id}
+          onClick={() => setExpanded(value => !value)}
+          className="mt-1 text-xs text-[color:var(--theme-accent-primary)] hover:underline focus-visible:underline">
+          {expanded ? "Show less" : "Show more"}
+        </button>
+      )}
+    </>
+  );
+}
+
 export function FriendDetailPanel({
   friend,
   feedItems,
@@ -130,9 +166,7 @@ export function FriendDetailPanel({
             </p>
             <CareRating level={friend.careLevel} onChange={onCareLevelChange} />
             {friend.bio && (
-              <p className="text-xs text-text-secondary mt-1 line-clamp-2">
-                {friend.bio}
-              </p>
+              <ProfileDescription key={`${friend.id}:${friend.bio}`} text={friend.bio} />
             )}
           </div>
         </div>

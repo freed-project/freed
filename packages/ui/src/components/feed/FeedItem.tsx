@@ -535,7 +535,7 @@ export const FeedItem = memo(function FeedItem({
                 </p>
               )}
               {item.location?.name && (
-                <span className="inline-flex items-center gap-1 text-[10px] text-white/80 bg-black/35 backdrop-blur-sm rounded-full px-2 py-0.5">
+                <span className="inline-flex items-center gap-1 text-[10px] text-white/80 bg-[rgb(var(--theme-thumbnail-tint-rgb)/0.35)] backdrop-blur-sm rounded-full px-2 py-0.5">
                   <svg className="w-2.5 h-2.5 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
                     <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
                   </svg>
@@ -551,7 +551,7 @@ export const FeedItem = memo(function FeedItem({
                     <button
                       onClick={(e) => { e.stopPropagation(); onSave(e); }}
                       aria-label={item.userState.saved ? "Remove bookmark" : "Bookmark"}
-                      className={`p-1.5 rounded-lg bg-black/35 backdrop-blur-sm transition-colors ${
+                      className={`p-1.5 rounded-lg bg-[rgb(var(--theme-thumbnail-tint-rgb)/0.35)] backdrop-blur-sm transition-colors ${
                         item.userState.saved ? "text-[var(--theme-accent-secondary)]" : "text-white/70 hover:text-[var(--theme-accent-secondary)]"
                       }`}
                     >
@@ -566,7 +566,7 @@ export const FeedItem = memo(function FeedItem({
                     <button
                       onClick={(e) => { e.stopPropagation(); onArchive(e); }}
                       aria-label="Archive"
-                      className="p-1.5 rounded-lg bg-black/35 backdrop-blur-sm text-white/70 hover:text-[rgb(var(--theme-feedback-success-rgb))] transition-colors"
+                      className="p-1.5 rounded-lg bg-[rgb(var(--theme-thumbnail-tint-rgb)/0.35)] backdrop-blur-sm text-white/70 hover:text-[rgb(var(--theme-feedback-success-rgb))] transition-colors"
                     >
                       <TrashIcon className="w-3.5 h-3.5" />
                     </button>

@@ -9,6 +9,8 @@ export const SHOWCASE_ASSET_FILENAMES = Object.freeze([
   "freed-showcase-instagram-neon.png",
   "freed-showcase-map-scriptorium.png",
   "freed-showcase-friends-dark-star.png",
+  "freed-showcase-friend-detail-starship.png",
+  "freed-showcase-reader-scriptorium.png",
   "freed-showcase.gif",
 ]);
 export const SHOWCASE_MANIFEST_FILENAME = "freed-showcase-manifest.json";

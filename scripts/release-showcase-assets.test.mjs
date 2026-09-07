@@ -69,7 +69,7 @@ test("finalizes only the exact regular showcase assets with release and latest U
     checkoutSha,
   });
 
-  assert.equal(finalized.assets.length, 6);
+  assert.equal(finalized.assets.length, 8);
   assert.equal(finalized.corpusStage, "complete");
   assert.deepEqual(finalized.assets.map((asset) => asset.filename), SHOWCASE_ASSET_FILENAMES);
   for (const asset of finalized.assets) {
@@ -173,9 +173,9 @@ test("public verifier checks both URL variants and rejects bounded or mismatched
       return streamResponse(bytesByUrl.get(url));
     },
   });
-  assert.equal(result.assetsVerified, 6);
-  assert.equal(result.downloadsVerified, 12);
-  assert.equal(requested.length, 12);
+  assert.equal(result.assetsVerified, 8);
+  assert.equal(result.downloadsVerified, 16);
+  assert.equal(requested.length, 16);
   let incompleteFetches = 0;
   await assert.rejects(verifyPublishedShowcaseAssets({
     manifest: { ...manifest, contentCounts: { total: 1_000, regular: 1_000, stories: 0 } },
@@ -188,7 +188,7 @@ test("public verifier checks both URL variants and rejects bounded or mismatched
     manifest: interim,
     fetchImpl: async url => streamResponse(bytesByUrl.get(url)),
   });
-  assert.equal(interimResult.downloadsVerified, 12);
+  assert.equal(interimResult.downloadsVerified, SHOWCASE_ASSET_FILENAMES.length * 2);
   await assert.rejects(verifyPublishedShowcaseAssets({
     manifest: { ...interim, corpusStage: "complete" },
     fetchImpl: async () => { throw new Error("Invalid stage must fail before any download"); },

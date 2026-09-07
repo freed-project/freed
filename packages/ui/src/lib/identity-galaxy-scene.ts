@@ -328,16 +328,8 @@ export function compileIdentityGalaxyScene(
     const personIndex = personIndexById.get(node.linkedPersonId);
     if (personIndex === undefined) continue;
     const personDepth = positions[personIndex * 3 + 2]!;
-    // Atlas orbits are world-space, while avatars remain bounded on screen.
-    // Tighten automatic shells without changing their stable angular slots or
-    // moving a profile away from the position the user explicitly pinned.
-    if (!node.graphPinned) {
-      for (const axis of [0, 1]) {
-        const parentCoordinate = positions[personIndex * 3 + axis]!;
-        positions[index * 3 + axis] = parentCoordinate +
-          (positions[index * 3 + axis]! - parentCoordinate) * 0.3;
-      }
-    }
+    // Preserve the atlas's world-space orbit. Avatars scale in the same space,
+    // so shrinking this shell would bury linked profiles beneath the portrait.
     // A linked profile belongs to the same compact system as its identity.
     // Large depth separation made even tiny XY orbits project far apart.
     positions[index * 3 + 2] = personDepth;

@@ -1,5 +1,20 @@
 # Phase 6: PWA
 
+Marketing demo links carry the selected theme in a `theme` query parameter.
+Demo startup validates it against the shared theme IDs, commits it through the
+device theme preference, then removes that parameter with history replacement.
+Other query parameters, the hash, and history state remain intact. Later theme
+choices are not overridden on reload. A failed preference write leaves the
+parameter available for a later load; invalid theme values are discarded.
+
+YouTube content opens with a paused privacy-enhanced embed, without a separate
+load card. The owner approved this provider contact on September 7, 2026.
+Completion and player errors remove the embed; replay remains explicit.
+The release showcase now covers four desktop views and three phone-framed
+mobile views, including wide and selected Friends views. All frames exclude
+the demo download banner and local preview badge. Release verification remains
+pending until the exact tagged assets are published and checked.
+
 > **Status:** 🚧 In Progress (the official SQLite WebAssembly engine, exact schema identity, single-worker OPFS runtime, normalized checkpoint import, product mutation entrypoints, bounded product queries, follower transport, recovery UI, selective content, and IndexedDB Library deletion are implemented; physical iPhone acceptance remains open)
 
 > **Architecture:** The PWA runs official SQLite WebAssembly over OPFS in
@@ -824,7 +839,7 @@ without enabling player loading or changing provider requests.
 
 The production demo CSP admits exact reviewed Commons, NOAA, NPS, FWS, Chandra,
 iNaturalist, Flickr, NASA Science, and YouTube thumbnail hosts. A checkpoint test checks every admitted media and
-avatar origin against the actual HTML policy. Existing click-to-watch playback
+avatar origin against the actual HTML policy. Owner-approved paused playback
 permits the privacy-enhanced YouTube frame and its API script hosts, without
 eager player loading. Showcase capture enables the production CSP on loopback
 and fails on policy violations rather than relying on localhost-only behavior.

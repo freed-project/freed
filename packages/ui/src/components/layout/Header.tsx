@@ -845,6 +845,8 @@ export function Header({
   });
 
   const handleCloseReader = useCallback(() => {
+    // Returning to the list should reveal it, not leave it behind the drawer.
+    if (mobileSidebarOpen) onMobileMenuToggle();
     if (deviceDisplay.dualColumnMode && !isMobile && selectedItemId) {
       runFeedLayoutTransition(() => {
         setSelectedItem(null);
@@ -852,7 +854,7 @@ export function Header({
       return;
     }
     setSelectedItem(null);
-  }, [deviceDisplay.dualColumnMode, isMobile, selectedItemId, setSelectedItem]);
+  }, [deviceDisplay.dualColumnMode, isMobile, selectedItemId, setSelectedItem, mobileSidebarOpen, onMobileMenuToggle]);
 
   const handleToggleReaderSaved = useCallback(() => {
     if (!selectedItem) return;

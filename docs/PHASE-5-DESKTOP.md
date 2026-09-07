@@ -1,5 +1,10 @@
 # Phase 5: Freed Desktop (Tauri)
 
+YouTube reader content loads the privacy-enhanced player immediately with
+autoplay disabled. Completion removes the iframe until an explicit replay;
+API errors and timeouts also close it. The owner approved this additional
+provider contact on September 7, 2026. Capture and refresh cadence are unchanged.
+
 > **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, Windows signing plan scaffolded, legal consent gate shipped, tri-state sidebar chrome shipped, public-safe bug reporting shipped, runtime memory telemetry shipped, native startup recovery shipped, bundled recovery updater flow shipped, permanent local social media vault shipped, desktop hot-path side-effect scheduling shipped, bounded SQLite user mutations and queries shipped, visible-scope bulk actions shipped, background runtime coordination shipped, renderer recovery safe mode shipped, deep local WebKit diagnostics shipped, adaptive high-memory scrape budgets shipped, explicit local-only primary Library authority shipped, normalized sample-data accounting, Story Wall candidates, Saved analytics, full-library native search, bounded scheduled RSS refresh, Google Drive checkpoint publication, follower intents, global background activity monitoring, and native terminal sync soaks shipped)
 
 Drive dev-trigger diagnostics preserve a running publication's result when the

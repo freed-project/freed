@@ -35,10 +35,12 @@ const reviewedMediaHosts = new Set([
 
 const captures = [
   { file: "freed-showcase-unified-midas.png", theme: "midas", view: "unified" },
-  { file: "freed-showcase-stories-ember.png", theme: "ember", view: "stories" },
-  { file: "freed-showcase-instagram-neon.png", theme: "neon", view: "instagram" },
+  { file: "freed-showcase-stories-ember.png", theme: "ember", view: "stories", mobile: true },
+  { file: "freed-showcase-instagram-neon.png", theme: "neon", view: "instagram", mobile: true },
   { file: "freed-showcase-map-scriptorium.png", theme: "scriptorium", view: "map" },
   { file: "freed-showcase-friends-dark-star.png", theme: "dark-star", view: "friends" },
+  { file: "freed-showcase-friend-detail-starship.png", theme: "starship", view: "friends", detail: true },
+  { file: "freed-showcase-reader-scriptorium.png", theme: "scriptorium", view: "instagram", mobile: true, reader: true },
 ];
 
 function stableShuffle(values, seed) {
@@ -93,7 +95,7 @@ async function waitForVisibleImages(page) {
       if (rect.width === 0 || rect.height === 0 || rect.bottom <= 0 ||
           rect.right <= 0 || rect.top >= innerHeight || rect.left >= innerWidth) return true;
       return image.complete && image.naturalWidth > 0;
-    }), undefined, { timeout: 30_000 });
+    }), undefined, { timeout: 60_000 });
   } catch (cause) {
     const media = await page.evaluate(() => ({
       pending: [...document.images].filter((image) => {
@@ -163,7 +165,11 @@ page.on("request", (request) => {
     // Observe the public media the demo already loads. This does not initiate
     // requests, retries, authenticated provider navigation, or video playback.
     const existingPublicMapAsset = url.protocol === "https:" && url.hostname === "tiles.openfreemap.org";
-    if (!existingPublicMapAsset && (url.protocol !== "https:" ||
+    const existingSelectedLocationLookup = url.protocol === "https:" &&
+      url.hostname === "nominatim.openstreetmap.org" && url.pathname === "/search" &&
+      request.method() === "GET" && request.resourceType() === "fetch" &&
+      url.searchParams.get("format") === "json" && url.searchParams.get("limit") === "1";
+    if (!existingPublicMapAsset && !existingSelectedLocationLookup && (url.protocol !== "https:" ||
         !["image", "fetch"].includes(request.resourceType()) ||
         (!reviewedMediaUrls.has(url.href) &&
           (!reviewedMediaHosts.has(url.hostname) || !/\.(?:jpe?g|png|webp|avif)(?:$|\/)/i.test(url.pathname))))) {
@@ -174,6 +180,7 @@ page.on("request", (request) => {
 
 try {
   for (const [index, capture] of captures.entries()) {
+    await page.setViewportSize({ width: 1440, height: 960 });
     // Exercise the real production demo policy even on a loopback build server.
     const captureUrl = new URL(baseUrl);
     captureUrl.searchParams.set("freed-demo", "1");
@@ -224,10 +231,29 @@ try {
         '[data-testid="friend-graph-viewport"]',
       )?.getAttribute("data-ready-renderer-label-count")) > 0);
     }
-    if (index > 0) {
-      await page.addStyleTag({
-        content: '[data-testid="demo-welcome-desktop"] { display: none !important; }',
-      });
+    if (capture.detail) {
+      // Search through the real directory so this located sample friend is
+      // mounted regardless of the current activity ordering or virtualization.
+      await page.getByRole("textbox", { name: "Search friends", exact: true }).fill("Sela Current");
+      await page.locator('[data-testid="friend-overview-virtual-row"] > [role="button"]').filter({ hasText: "Sela Current" }).first().click();
+      await page.locator('[data-testid="friends-sidebar"]').getByText("Recent activity", { exact: true }).waitFor();
+      try {
+        await page.locator('[data-testid="friends-sidebar"] [data-testid="map-surface"][data-map-ready="true"][data-map-tiles-ready="true"]').waitFor({ timeout: 30_000 });
+      } catch (error) {
+        const mapState = await page.locator('[data-testid="friends-sidebar"] [data-testid="map-surface"]').evaluateAll(elements => elements.map(element => ({
+          attributes: Object.fromEntries([...element.attributes].map(attribute => [attribute.name, attribute.value])),
+          text: element.textContent,
+        })));
+        throw new Error(`Selected friend map did not settle: ${JSON.stringify(mapState)}`, { cause: error });
+      }
+      // Allow the actual camera focus transition to finish before its still frame.
+      await page.waitForTimeout(1_200);
+    }
+    await page.addStyleTag({ content: '[data-testid="demo-welcome-desktop"], [data-testid="demo-welcome-tab"], [data-testid="local-preview-badge"] { display: none !important; }' });
+    if (capture.mobile) await page.setViewportSize({ width: 390, height: 844 });
+    if (capture.reader) {
+      await page.locator('[data-feed-item-id]').first().click();
+      await page.locator("article").waitFor();
     }
     await waitForVisibleImages(page);
     const policyViolations = await page.evaluate(() => window.__freedShowcasePolicyViolations);
@@ -238,11 +264,17 @@ try {
     if (imageFailures.length > 0) {
       throw new Error(`Showcase images failed in ${capture.view}: ${JSON.stringify(imageFailures)}`);
     }
-    await page.screenshot({
-      animations: "disabled",
-      path: path.join(outputDirectory, capture.file),
-      type: "png",
-    });
+    if (capture.mobile) {
+      const screen = await page.screenshot({ animations: "disabled", type: "png" });
+      const frame = await context.newPage();
+      await frame.setViewportSize({ width: 1440, height: 960 });
+      await frame.setContent(`<html><body style="margin:0;width:1440px;height:960px;background:#d9dadc;display:grid;place-items:center"><div style="padding:12px;background:#202124;border:2px solid #737578;border-radius:48px;box-shadow:0 18px 42px #20212440"><img alt="Freed mobile screen" src="data:image/png;base64,${screen.toString("base64")}" style="display:block;width:390px;height:844px;border-radius:36px" /></div></body></html>`);
+      await frame.locator("img").evaluate((img) => img.decode());
+      await frame.screenshot({ path: path.join(outputDirectory, capture.file), type: "png" });
+      await frame.close();
+    } else {
+      await page.screenshot({ animations: "disabled", path: path.join(outputDirectory, capture.file), type: "png" });
+    }
   }
 } finally {
   await browser.close();

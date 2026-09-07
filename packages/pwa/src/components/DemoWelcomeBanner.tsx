@@ -309,7 +309,10 @@ function FieldGuideWelcome({
         className="demo-banner-morph demo-tab-restore fixed bottom-0 left-1/2 z-[139] w-[min(18rem,calc(100vw-1rem))] cursor-pointer border-0 bg-transparent p-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--theme-accent-primary)]"
         style={{
           height: mobileTab ? "3rem" : "calc(3rem + var(--safe-area-bottom, 0px))",
-          left: mobileTab ? "calc(100% - 1.5rem)" : undefined,
+          // Percentage positioning follows the layout viewport's scrollbar
+          // gutter. Use viewport width so the rotated tab stays on the physical
+          // right edge when the document starts or stops scrolling.
+          left: mobileTab ? "calc(100vw - 1.5rem)" : undefined,
           top: mobileTab ? (tabY ?? "50%") : undefined,
           bottom: mobileTab ? "auto" : undefined,
           touchAction: mobileTab ? "none" : undefined,

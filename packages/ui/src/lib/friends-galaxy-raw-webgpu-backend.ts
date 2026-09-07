@@ -154,9 +154,17 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
   let envelope = 1.0 - smoothstep(0.48, 1.07, edgeRadius);
   let core = 1.0 - smoothstep(0.02, 0.52, radius);
   let cloud = smoothstep(0.28, 0.78, coarseNoise);
-  var density = envelope * (0.52 + cloud * 0.38 + core * 0.1);
+  // Nebula includes spiral arms in the WebGL renderer too. Do not reserve
+  // arms for the optional ring styles or fallback changes turn these into blobs.
+  let angle = atan2(point.y, point.x);
+  let spiral = pow(
+    0.5 + 0.5 * cos(angle * arms - radius * 10.8 + seed * 6.28318),
+    4.0,
+  );
+  let dust = envelope * (0.18 + spiral * 0.82) *
+    (0.38 + coarseNoise * 0.86);
+  var density = dust * 0.72 + core * 0.2;
   if (style > 0.5) {
-    let angle = atan2(point.y, point.x);
     let armFade = smoothstep(0.18, 0.48, radius) *
       (1.0 - smoothstep(0.82, 1.08, radius));
     let armPhase = angle * arms - radius * 9.2 + seed * 6.28318;
@@ -389,7 +397,11 @@ struct Uniforms {
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var labelAtlas: texture_2d<f32>;
 @group(0) @binding(2) var labelSampler: sampler;
-@group(0) @binding(3) var<uniform> billboardOpacity: f32;
+struct BillboardPresentation {
+  opacity: f32,
+  worldSpace: f32,
+};
+@group(0) @binding(3) var<uniform> billboard: BillboardPresentation;
 
 struct VertexInput {
   @location(0) corner: vec2<f32>,
@@ -411,7 +423,13 @@ fn vertexMain(input: VertexInput) -> VertexOutput {
   var output: VertexOutput;
   var clip = uniforms.viewProjection * vec4<f32>(input.anchor, 1.0);
   let pixelPosition = input.offset + input.corner * input.size * 0.5;
-  clip = vec4<f32>(clip.xy + pixelPosition * 2.0 / uniforms.viewport * clip.w, clip.zw);
+  if (billboard.worldSpace > 0.5) {
+    clip = uniforms.viewProjection * vec4<f32>(
+      input.anchor + vec3<f32>(pixelPosition, 0.0), 1.0,
+    );
+  } else {
+    clip = vec4<f32>(clip.xy + pixelPosition * 2.0 / uniforms.viewport * clip.w, clip.zw);
+  }
   let localUv = vec2<f32>(input.corner.x * 0.5 + 0.5, 0.5 - input.corner.y * 0.5);
   output.position = clip;
   output.uv = mix(input.uvRect.xy, input.uvRect.zw, localUv);
@@ -422,7 +440,7 @@ fn vertexMain(input: VertexInput) -> VertexOutput {
 @fragment
 fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
   let sample = textureSample(labelAtlas, labelSampler, input.uv);
-  let alpha = sample.a * billboardOpacity * input.opacity;
+  let alpha = sample.a * billboard.opacity * input.opacity;
   if (alpha < 0.015) {
     discard;
   }
@@ -538,7 +556,7 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
     FRIENDS_GALAXY_STAR_PALETTE_FLOAT_OFFSET + FRIENDS_GALAXY_STAR_PALETTE_FLOAT_COUNT,
   );
   private readonly labelOpacityData = new Float32Array([1, 0, 0, 0]);
-  private readonly avatarOpacityData = new Float32Array(4);
+  private readonly avatarOpacityData = new Float32Array([0, 1, 0, 0]);
   private readonly identityDetailFade = new FriendsGalaxyIdentityDetailFade();
   private colorAttachment: GPURenderPassColorAttachment | null = null;
   private renderPassDescriptor: GPURenderPassDescriptor | null = null;
@@ -1375,6 +1393,7 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
     this.avatarCandidateSource = "atlas";
     this.avatarBundleVisible = false;
     this.avatarOpacityData.fill(0);
+    this.avatarOpacityData[1] = 1;
     this.identityDetailFade.restartFromHidden();
   }
 

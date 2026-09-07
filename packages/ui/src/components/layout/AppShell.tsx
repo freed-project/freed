@@ -575,7 +575,7 @@ export function AppShell({ children }: AppShellProps) {
 
           <div
             data-testid="debug-panel-drawer"
-            className="relative z-10 hidden flex-none overflow-hidden pb-[var(--feed-card-gap,8px)] sm:flex"
+            className={`relative z-10 flex-none overflow-hidden pb-[var(--feed-card-gap,8px)] ${isMobileViewport ? "hidden" : "flex"}`}
             style={{
               width: debugVisible ? debugWidth + AUXILIARY_DRAWER_GAP_WIDTH_PX : 0,
               opacity: debugVisible ? 1 : 0,
@@ -600,7 +600,7 @@ export function AppShell({ children }: AppShellProps) {
           </div>
         </div>
         {debugVisible && isMobileViewport && (
-          <div className="sm:hidden">
+          <div>
             <DebugPanel variant="overlay" />
           </div>
         )}
