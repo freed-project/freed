@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm, symlink, truncate, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -212,4 +213,26 @@ test("public verifier checks both URL variants and rejects bounded or mismatched
     }),
     /integrity mismatch/,
   );
+});
+
+// Tier 1 tooling: a failed local export must never replace the reviewed GIF.
+test("local showcase rejects invalid themes and preserves the last animation on encoder failure", async (t) => {
+  const directory = await fixture(t);
+  const invalid = spawnSync(process.execPath, ["scripts/build-showcase-local.mjs", "--theme", "unknown", "--output", directory], { encoding: "utf8" });
+  assert.notEqual(invalid.status, 0);
+  assert.match(invalid.stderr, /Unknown theme/);
+  const { mkdir } = await import("node:fs/promises");
+  const themeDirectory = path.join(directory, "midas");
+  await mkdir(themeDirectory);
+  const captures = Array.from({ length: 6 }, (_, index) => ({ theme: "midas", file: `frame-${index}.png` }));
+  for (const capture of captures) await writeFile(path.join(themeDirectory, capture.file), "fixture frame");
+  await writeFile(path.join(themeDirectory, "freed-showcase-manifest.json"), JSON.stringify({ transparentCanvas: true, captures, gifOrder: captures.map(c => c.file) }));
+  await writeFile(path.join(themeDirectory, "freed-showcase-midas.apng"), "reviewed GIF");
+  await writeFile(path.join(themeDirectory, "latest.json"), "reviewed manifest");
+  const failed = spawnSync(process.execPath, ["scripts/build-showcase-local.mjs", "--theme", "midas", "--encode-only", "--output", directory], {
+    encoding: "utf8", env: { ...process.env, FFMPEG_PATH: path.join(directory, "missing-encoder") },
+  });
+  assert.notEqual(failed.status, 0);
+  assert.equal(await readFile(path.join(themeDirectory, "freed-showcase-midas.apng"), "utf8"), "reviewed GIF");
+  assert.equal(await readFile(path.join(themeDirectory, "latest.json"), "utf8"), "reviewed manifest");
 });
