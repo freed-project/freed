@@ -9,6 +9,7 @@
     {
       "id": 2,
       "status": "complete",
+      "reviewedAt": "2026-09-06",
       "source": "docs/PHASE-2-CAPTURE-SKILLS.md"
     },
     {
@@ -31,7 +32,7 @@
     {
       "id": 6,
       "status": "current",
-      "reviewedAt": "2026-09-05",
+      "reviewedAt": "2026-09-06",
       "source": "docs/PHASE-6-PWA.md"
     },
     {
@@ -53,6 +54,7 @@
     {
       "id": 10,
       "status": "upcoming",
+      "reviewedAt": "2026-09-06",
       "source": "docs/PHASE-10-POLISH.md"
     },
     {
@@ -63,6 +65,7 @@
     {
       "id": 12,
       "status": "current",
+      "reviewedAt": "2026-09-06",
       "source": "docs/PHASE-12-ADDITIONAL-PLATFORMS.md"
     },
     {

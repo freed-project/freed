@@ -27,6 +27,7 @@ interface CachedItemDetail {
 
 interface ItemDetailState extends LibraryItemDetailResult {
   readonly key: string;
+  readonly reader?: ItemDetailReader;
 }
 
 const itemDetailCache = new WeakMap<ItemDetailReader, CachedItemDetail>();
@@ -89,16 +90,22 @@ export function useLibraryItemDetail(
       sourceVersion,
     );
     if (prepared.result !== undefined) {
-      setState({ item: prepared.result, key, status: "ready" });
+      setState({ item: prepared.result, key, reader: readLibraryItemDetail, status: "ready" });
     } else {
-      setState({ item: null, key, status: "loading" });
+      setState((previous) => ({
+        item: previous.reader === readLibraryItemDetail && previous.item?.globalId === globalId
+          ? previous.item : null,
+        key,
+        reader: readLibraryItemDetail,
+        status: "loading",
+      }));
     }
     void prepared.promise
       .then((item) => {
-        if (!cancelled) setState({ item, key, status: "ready" });
+        if (!cancelled) setState({ item, key, reader: readLibraryItemDetail, status: "ready" });
       })
       .catch(() => {
-        if (!cancelled) setState({ item: null, key, status: "failed" });
+        if (!cancelled) setState({ item: null, key, reader: readLibraryItemDetail, status: "failed" });
       });
     return () => {
       cancelled = true;
@@ -106,6 +113,14 @@ export function useLibraryItemDetail(
   }, [enabled, globalId, key, readLibraryItemDetail, sourceVersion]);
 
   if (!enabled || !globalId) return { item: null, status: "idle" };
-  if (state.key !== key) return { item: null, status: "loading" };
+  if (state.key !== key || state.reader !== readLibraryItemDetail) {
+    // Refreshing the same row must not dismiss reader controls. Never reuse
+    // presentation from another selection or another Library reader.
+    return {
+      item: state.reader === readLibraryItemDetail && state.item?.globalId === globalId
+        ? state.item : null,
+      status: "loading",
+    };
+  }
   return { item: state.item, status: state.status };
 }

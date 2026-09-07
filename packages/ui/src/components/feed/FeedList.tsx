@@ -9,7 +9,7 @@ import {
 } from "react";
 import { useVirtualizer, useWindowVirtualizer } from "@tanstack/react-virtual";
 import { FeedItem } from "./FeedItem.js";
-import { FeedItemSkeleton } from "./FeedItemSkeleton.js";
+import { LoadingState } from "../LoadingState.js";
 import { useReadOnScrollTracker } from "./useReadOnScrollTracker.js";
 import type { FeedItem as FeedItemType } from "@freed/shared";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
@@ -114,7 +114,6 @@ function buildRows(allItems: FeedItemType[], maxCols: number): FeedRow[] {
   return rows;
 }
 
-const SKELETON_COUNT = 8;
 
 interface FeedListProps {
   items: FeedItemType[];
@@ -702,32 +701,12 @@ export function FeedList({
     rows.length,
   ]);
 
-  // Show shimmer placeholders while the first bounded SQLite page is loading.
+  // Keep initial loading consistent with the other routed views.
   // Once isLoading flips false, the visible window enters the normal
   // virtualizer path, or the empty state if the query is genuinely empty.
   if (isLoading && items.length === 0) {
     return (
-      <div className="flex-1 min-h-0 overflow-auto overscroll-none minimal-scroll">
-        <div
-          className="max-w-2xl mx-auto"
-          style={{
-            paddingInline: `${feedCardHorizontalGutter}px`,
-            paddingTop: `${FEED_CARD_GAP}px`,
-            paddingBottom: `${FEED_CARD_GAP}px`,
-          }}
-        >
-          {Array.from({ length: SKELETON_COUNT }, (_, i) => (
-            <div
-              key={i}
-              style={{ marginTop: i === 0 ? 0 : `${FEED_CARD_GAP}px` }}
-            >
-              <FeedItemSkeleton
-                fixedHeight={isMobile ? undefined : desktopFeedCardHeight}
-              />
-            </div>
-          ))}
-        </div>
-      </div>
+      <LoadingState message="Loading feed" className="flex-1 min-h-0" />
     );
   }
 

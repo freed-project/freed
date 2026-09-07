@@ -2131,6 +2131,12 @@ describe("PWA Library Core SQLite engine", () => {
       }),
     ).toEqual([[7, 1, 1, 1, 0, 0, 0]]);
     database.exec("DROP TRIGGER fail_operation_replication_result;");
+    // The failed materialization leaves durable staging behind. A later direct
+    // replay must retain the original receive time for the same signed result.
+    await expect(engine.applyFollowerResult({ canonicalResultBytes })).resolves.toMatchObject({
+      sourceRevision: 8,
+      transactionId: "intent-transaction-1",
+    });
     const transportReceipt =
       await engine.importNormalizedFollowerResultTransport(resultPublication);
     expect(transportReceipt).toEqual({

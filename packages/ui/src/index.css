@@ -1895,6 +1895,18 @@ html[data-theme="scriptorium"] .theme-floating-panel {
   background: var(--theme-attached-topbar-background);
 }
 
+@media (max-width: 767px) {
+  .reader-overlay.theme-scroll-fade-y {
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+  .theme-attached-topbar.theme-floating-panel {
+    filter: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
 html.freed-mobile-sidebar-open .theme-attached-topbar {
   border-bottom-color: transparent;
 }

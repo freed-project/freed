@@ -103,6 +103,7 @@ interface ToolbarOverflowAction {
   icon: ReactNode;
   active?: boolean;
   danger?: boolean;
+  disabled?: boolean;
 }
 
 const toolbarControlStyle = { ...noDrag, userSelect: "none" } as CSSProperties;
@@ -522,7 +523,7 @@ export function Header({
   const collapsedReaderBaseActionWidthRem = selectedItem?.sourceUrl
     ? showInlineReaderBookmark ? 11 : 8.5
     : showInlineReaderBookmark ? 6.5 : 3.5;
-  const collapsedReaderActionWidthRem = collapsedReaderBaseActionWidthRem + 2.75;
+  const collapsedReaderActionWidthRem = isMobileDevice ? (readOnly ? 3 : 5.75) : collapsedReaderBaseActionWidthRem + 2.75;
   const collapsedReaderTitleStyle = readerActive && isBelowLargeToolbar
     ? ({ paddingRight: `${collapsedReaderActionWidthRem}rem` } as CSSProperties)
     : undefined;
@@ -950,6 +951,14 @@ export function Header({
     const actions: ToolbarOverflowAction[] = [];
 
     if (selectedItem && isBelowLargeToolbar) {
+      if (isMobileDevice && selectedItem.sourceUrl) {
+        actions.push({
+          id: "open-reader",
+          label: "Open original",
+          onClick: handleOpenReaderUrl,
+          icon: <span aria-hidden="true">↗</span>,
+        });
+      }
       actions.push({
         id: "focus",
         label: display.reading.focusMode ? "Disable focus mode" : "Enable focus mode",
@@ -962,9 +971,10 @@ export function Header({
         ),
       });
 
-      if (!readOnly && !showInlineReaderBookmark) {
+      if ((!readOnly || isMobileDevice) && !showInlineReaderBookmark) {
         actions.push({
           id: "bookmark-reader",
+          disabled: readOnly,
           label: selectedItem.userState.saved ? "Remove bookmark" : "Bookmark",
           onClick: handleToggleReaderSaved,
           active: selectedItem.userState.saved,
@@ -982,9 +992,10 @@ export function Header({
         });
       }
 
-      if (!readOnly) {
+      if (!readOnly || isMobileDevice) {
         actions.push({
           id: "archive-reader",
+          disabled: readOnly,
           label: selectedItem.userState.archived ? "Unarchive" : "Archive",
           onClick: handleToggleReaderArchived,
           active: selectedItem.userState.archived,
@@ -1059,6 +1070,7 @@ export function Header({
     handleToggleReaderArchived,
     handleUnarchiveSavedClick,
     isBelowLargeToolbar,
+    isMobileDevice,
     readerActive,
     readOnly,
     savedArchivedCount,
@@ -1534,7 +1546,7 @@ export function Header({
 
               <div
                 data-testid="workspace-toolbar-logo-drag-region"
-                className="flex h-full min-w-0 flex-1 items-center pl-3 sm:pl-4"
+                className={`${isMobileDevice ? "hidden" : "flex"} h-full min-w-0 flex-1 items-center pl-3 sm:pl-4`}
                 {...getPassiveDragRegionProps(headerDragRegion, toolbarLogoRowStyle)}
               >
                 <span
@@ -1840,7 +1852,7 @@ export function Header({
                   ) : null}
                 </ToolbarAnimatedSlot>
 
-                {selectedItem.sourceUrl ? (
+                {selectedItem.sourceUrl && !isMobileDevice ? (
                   <ToolbarAnimatedSlot visible={true} width="4.5rem" style={{ order: 99 }}>
                     <button
                       onClick={handleOpenReaderUrl}
@@ -2075,13 +2087,15 @@ export function Header({
                   key={action.id}
                   type="button"
                   role="menuitem"
+                  disabled={action.disabled}
+                  title={action.disabled ? "Unavailable in this read-only demo" : undefined}
                   onClick={() => {
                     action.onClick();
                     if (action.id !== "delete-archived" || action.danger) {
                       setToolbarOverflowMenuOpen(false);
                     }
                   }}
-                  className={`flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors hover:bg-[var(--theme-bg-muted)] ${
+                  className={`flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors hover:bg-[var(--theme-bg-muted)] disabled:cursor-not-allowed disabled:opacity-40 ${
                     action.danger
                       ? "text-red-400"
                       : action.active

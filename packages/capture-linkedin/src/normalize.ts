@@ -28,16 +28,15 @@ function buildAuthor(post: RawLiPost): Author {
 // =============================================================================
 
 function buildContent(post: RawLiPost): Content {
-  const mediaTypes = post.mediaUrls.map((url): "image" | "video" => {
-    if (post.hasVideo && post.mediaUrls.indexOf(url) === 0) return "video";
+  // A video marker without an extracted URL must not create an orphan type.
+  const mediaTypes = post.mediaUrls.map((_, index): "image" | "video" => {
+    if (post.hasVideo && index === 0) return "video";
     return "image";
   });
 
   const content: Content = {
     mediaUrls: post.mediaUrls,
-    mediaTypes: post.hasVideo
-      ? ["video", ...mediaTypes.slice(1)]
-      : mediaTypes,
+    mediaTypes,
   };
 
   if (post.text) {

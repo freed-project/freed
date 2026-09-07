@@ -161,6 +161,9 @@ settlement commits but operation application fails, the optimistic overlay
 remains visible and an exact result-segment retry resumes the staged operation.
 The overlay is removed only inside the successful operation transaction, or
 when an exact already-applied operation proof is present.
+Resuming a locally settled result uses its stored first receive time, not the
+retry's wall clock. Direct and transport-based retries therefore retain the
+same staging identity after an interrupted materialization.
 
 The PWA cloud coordinator never resumes publication by scanning that history
 from counter one. One closed SQLite transport context returns the enrolled

@@ -23,6 +23,7 @@ import { createMarkerElement } from "./MarkerElement.js";
 import { createFriendAvatarPalette } from "../../lib/friend-avatar-style.js";
 import { buildThemedMapStyle } from "../../lib/map-style.js";
 import { CANVAS_CONTROL_BUTTON_CLASS } from "../layout/layoutConstants.js";
+import { LoadingState } from "../LoadingState.js";
 import { usePlatform } from "../../context/PlatformContext.js";
 
 type PopupInstance = HTMLElement;
@@ -1173,7 +1174,8 @@ export function MapSurface({
     () => renderedMarkers.find((marker) => marker.key === selectedFallbackMarkerKey) ?? null,
     [renderedMarkers, selectedFallbackMarkerKey]
   );
-  const showFallback = loadFailed || !mapReady;
+  // Loading is not a failure: do not flash fallback labels before native pins.
+  const showFallback = loadFailed;
   const fallbackRenderedMarkers = useMemo(() => {
     if (!showFallback || !fallbackMoving || !useDenseMarkers) return renderedMarkers;
     return renderedMarkers.filter((marker, markerIndex) => {
@@ -1653,6 +1655,9 @@ export function MapSurface({
         </div>
       )}
       <div className="absolute inset-0 overflow-hidden">
+        {!mapReady && !loadFailed && (
+          <LoadingState message="Loading map" className="absolute inset-0 z-30 bg-[var(--theme-bg-primary)]" />
+        )}
         <div
           ref={containerRef}
           className={`h-full w-full ${showFallback ? "invisible" : "visible"}`}
