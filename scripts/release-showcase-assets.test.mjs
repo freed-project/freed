@@ -36,7 +36,7 @@ async function fixture(t, manifestOverrides = {}) {
   t.after(() => rm(directory, { recursive: true, force: true }));
   await writeFile(
     path.join(directory, SHOWCASE_MANIFEST_FILENAME),
-    `${JSON.stringify({ schemaVersion: 1, captures: [], releaseTag: tag, releaseSha: checkoutSha, contentCounts: { total: 1_000, regular: 900, stories: 100 }, ...manifestOverrides })}\n`,
+    `${JSON.stringify({ schemaVersion: 1, captures: [], releaseTag: tag, releaseSha: checkoutSha, contentCounts: { total: 500, regular: 397, stories: 103 }, ...manifestOverrides })}\n`,
   );
   for (const [index, filename] of SHOWCASE_ASSET_FILENAMES.entries()) {
     await writeFile(path.join(directory, filename), `${filename}:${index}`);
@@ -89,6 +89,8 @@ test("finalization rejects symlinked assets and mismatched capture identity", as
   for (const contentCounts of [undefined, { total: 241, regular: 203, stories: 39 },
     { total: 1_000, regular: 1_000, stories: 0 },
     { total: 1_100, regular: 1_000, stories: 100 },
+    { total: 500, regular: 396, stories: 104 },
+    { total: 500, regular: 398, stories: 102 },
     { total: "1000", regular: "900", stories: "100" }]) {
     const incomplete = await fixture(t, { contentCounts });
     await assert.rejects(

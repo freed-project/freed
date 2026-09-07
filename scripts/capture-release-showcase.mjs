@@ -194,6 +194,17 @@ try {
       ),
     );
     await selectView(page, capture.view);
+    if (capture.view === "stories") {
+      // The title changes before the bounded query publishes its count. Our
+      // mixed sample corpus has both posts and Stories, so the previous full
+      // count (and the transient zero) cannot describe the settled filter.
+      await page.waitForFunction((total) => {
+        const label = document.querySelector("header")?.textContent ?? "";
+        const match = label.match(/Stories[^0-9]*([0-9][0-9,]*) items/);
+        const count = match ? Number(match[1].replaceAll(",", "")) : 0;
+        return count > 0 && count < total;
+      }, contentCounts.total, { timeout: 30_000 });
+    }
     if (capture.view === "unified" || capture.view === "stories") {
       const countLabel = page.locator("header").getByText(
         capture.view === "stories" ? /Stories.*[0-9,]+ items/ : /[0-9,]+ items/,

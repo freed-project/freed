@@ -145,13 +145,13 @@ async function readManifest(directory) {
 function showcaseCorpusStage(manifest) {
   const counts = manifest?.contentCounts;
   if (!counts || ![counts.total, counts.regular, counts.stories].every(Number.isSafeInteger) ||
-      counts.regular < 1 || counts.regular > 900 || counts.stories < 1 || counts.stories > 100 ||
+      counts.regular < 1 || counts.regular > 397 || counts.stories < 1 || counts.stories > 103 ||
       counts.total !== counts.regular + counts.stories) {
-    throw new Error("Showcase counts must be consistent positive integers within the 900 regular entries and 100 visual Stories target.");
+    throw new Error("Showcase counts must be consistent positive integers within the 397 regular entries and 103 visual Stories target.");
   }
   // Functional releases may precede editorial completion. Never label those
   // snapshots complete, and never infer completion from the total alone.
-  return counts.regular === 900 && counts.stories === 100 ? "complete" : "interim";
+  return counts.regular === 397 && counts.stories === 103 ? "complete" : "interim";
 }
 
 export async function finalizeShowcaseManifest({
