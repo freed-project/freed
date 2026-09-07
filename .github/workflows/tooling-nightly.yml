@@ -78,6 +78,17 @@ jobs:
           retention-days: 30
           if-no-files-found: warn
 
+      - name: Upload PWA corpus progress and failure evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pwa-library-corpus-progress-${{ matrix.browser }}
+          path: |
+            packages/pwa/test-results/pwa-library-corpus-hardening-progress.json
+            packages/pwa/test-results/pwa-library-corpus-playwright
+          retention-days: 30
+          if-no-files-found: warn
+
       - name: Record a corpus hardening failure
         if: failure()
         env:
@@ -91,8 +102,9 @@ jobs:
           Target: ${{ matrix.target }}
 
           The nonblocking PWA OPFS corpus hardening lane failed before it could
-          prove its configured corpus checkpoints. The uploaded measurement
-          report, when present, contains the last completed checkpoint."
+          prove its configured corpus checkpoints. The uploaded progress receipt
+          identifies the last completed batch and operation stage. The Playwright
+          failure artifact contains the retained trace and screenshot."
           gh issue comment 1446 --body "$body"
 
   exhaustive-tooling:
