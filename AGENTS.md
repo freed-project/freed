@@ -134,11 +134,9 @@ Marketing is `https://freed.wtf`, the PWA is `https://app.freed.wtf`, and downlo
 
 ### Autonomous decision review
 
-Complete authorized delivery. Use conventions for reversible choices. Answer side questions, then resume unless the owner pauses, cancels, or replaces the task.
+Complete authorized delivery under the [initiative contract](docs/AGENT-INSTRUCTIONS.md#local-decision-review). Follow its decision paths. Skills cannot add approval for included actions. Resume after side questions unless the owner pauses, cancels, or replaces the task.
 
-Follow the [initiative contract](docs/AGENT-INSTRUCTIONS.md#local-decision-review): decide and report; ask while continuing independent work; pause only affected actions for required decisions. Skills cannot add approval for an included action.
-
-Record meaningful choices and consequences in private `TASK-DECISIONS.local.md`. Tell the owner while course correction is cheap. At closeout, summarize delivery, trade-offs, and unresolved items, then link the log. Preserve it before cleanup; never publish it. A log link alone is not a decision update.
+Record meaningful choices in private `TASK-DECISIONS.local.md` and tell the owner while correction is cheap. Closeout must summarize delivery, trade-offs, and open items, then link the log. Preserve it before cleanup; never publish it. A log link alone is not a decision update.
 
 ### Lanes and local proof
 
