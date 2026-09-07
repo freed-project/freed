@@ -53,6 +53,11 @@ const progressPath = resolve(
 );
 
 type ProgressStage =
+  | "context_launch_pending"
+  | "context_opened"
+  | "legal_gate_pending"
+  | "legal_gate_accepted"
+  | "library_open_pending"
   | "library_opened"
   | "add_items_pending"
   | "add_items_resolved"
@@ -133,26 +138,52 @@ interface MilestoneReport {
   };
 }
 
-async function acceptLegalGate(page: Page): Promise<void> {
+async function acceptLegalGate(page: Page): Promise<boolean> {
   const accept = page.getByTestId("legal-gate-accept");
-  if (!(await accept.isVisible({ timeout: 5_000 }).catch(() => false))) return;
-  await page.getByRole("checkbox").check();
-  await expect(accept).toBeEnabled();
-  await accept.click();
+  await page.waitForFunction(
+    () => {
+      const current = window as unknown as Record<string, unknown>;
+      const store = current.__FREED_STORE__ as
+        { getState(): { isInitialized: boolean } } | undefined;
+      return (
+        document.querySelector('[data-testid="legal-gate-accept"]') !== null ||
+        (store?.getState().isInitialized === true &&
+          typeof current.__FREED_LIBRARY_CORE__ === "object")
+      );
+    },
+    undefined,
+    { timeout: 30_000 },
+  );
+  if (!(await accept.isVisible())) return false;
+  await page.getByRole("checkbox").check({ timeout: 15_000 });
+  await expect(accept).toBeEnabled({ timeout: 15_000 });
+  await accept.click({ timeout: 15_000 });
+  return true;
 }
 
-async function openLibrary(page: Page): Promise<void> {
+async function openLibrary(
+  page: Page,
+  writeStartupProgress: (stage: ProgressStage) => Promise<void>,
+): Promise<void> {
   await page.goto(pwaCorpusHardeningBaseUrl);
-  await acceptLegalGate(page);
-  await page.waitForFunction(() => {
-    const current = window as unknown as Record<string, unknown>;
-    const store = current.__FREED_STORE__ as
-      { getState(): { isInitialized: boolean } } | undefined;
-    return (
-      store?.getState().isInitialized === true &&
-      typeof current.__FREED_LIBRARY_CORE__ === "object"
-    );
-  });
+  await writeStartupProgress("legal_gate_pending");
+  if (await acceptLegalGate(page)) {
+    await writeStartupProgress("legal_gate_accepted");
+  }
+  await writeStartupProgress("library_open_pending");
+  await page.waitForFunction(
+    () => {
+      const current = window as unknown as Record<string, unknown>;
+      const store = current.__FREED_STORE__ as
+        { getState(): { isInitialized: boolean } } | undefined;
+      return (
+        store?.getState().isInitialized === true &&
+        typeof current.__FREED_LIBRARY_CORE__ === "object"
+      );
+    },
+    undefined,
+    { timeout: 120_000 },
+  );
 }
 
 async function seedUntil(
@@ -414,6 +445,35 @@ async function writeReport(
   );
 }
 
+test("corpus startup waits for a legal gate that renders after navigation", async ({
+  page,
+}) => {
+  await page.setContent("<main>Loading Freed</main>");
+  await page.evaluate(() => {
+    window.setTimeout(() => {
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      const accept = document.createElement("button");
+      accept.dataset.testid = "legal-gate-accept";
+      accept.disabled = true;
+      accept.textContent = "Agree and open Freed";
+      checkbox.addEventListener("change", () => {
+        accept.disabled = !checkbox.checked;
+      });
+      accept.addEventListener("click", () => {
+        document.body.dataset.legalAccepted = "true";
+      });
+      document.body.append(checkbox, accept);
+    }, 100);
+  });
+
+  await expect(acceptLegalGate(page)).resolves.toBe(true);
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-legal-accepted",
+    "true",
+  );
+});
+
 test("OPFS SQLite keeps PWA queries bounded at representative corpus scale", async () => {
   test.setTimeout(testTimeoutMs);
   const profileRoot = resolve(
@@ -429,6 +489,15 @@ test("OPFS SQLite keeps PWA queries bounded at representative corpus scale", asy
   try {
     await rm(progressPath, { force: true });
     await rm(profileRoot, { force: true, recursive: true });
+    const progressStartedAtMs = Date.now();
+    const writeStartupProgress = (operationStage: ProgressStage) =>
+      writeProgress(progressStartedAtMs, {
+        batchNumber: 0,
+        lastSuccessfulWorkerResponse: null,
+        operationStage,
+        recordCount: 0,
+      });
+    await writeStartupProgress("context_launch_pending");
     context =
       pwaCorpusHardeningBrowser === "webkit"
         ? await webkit.launchPersistentContext(profileRoot, {
@@ -440,17 +509,17 @@ test("OPFS SQLite keeps PWA queries bounded at representative corpus scale", asy
             baseURL: pwaCorpusHardeningBaseUrl,
             headless: true,
           });
-    const progressStartedAtMs = Date.now();
     await context.exposeBinding(
       "__FREED_CORPUS_PROGRESS__",
       async (_source, update: CorpusProgressUpdate) =>
         writeProgress(progressStartedAtMs, update),
     );
     const page = context.pages()[0] ?? (await context.newPage());
+    await writeStartupProgress("context_opened");
     page.on("console", (message) => {
       if (message.type() === "info") console.info(message.text());
     });
-    await openLibrary(page);
+    await openLibrary(page, writeStartupProgress);
     const baseline = await page.evaluate(async () => {
       const library = (window as unknown as Record<string, unknown>)
         .__FREED_LIBRARY_CORE__ as BrowserLibraryCore;
