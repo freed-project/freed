@@ -1,3 +1,5 @@
+import { LAND_SIXTY_TWO_CHARACTER_ARCS } from "./sample-character-arcs-land-sixty-two.js";
+import { AQUATIC_FIFTY_SEVEN_CHARACTER_ARCS } from "./sample-character-arcs-aquatic-fifty-seven.js";
 import { BOTANICAL_FIFTY_CHARACTER_ARCS } from "./sample-character-arcs-botanical-fifty.js";
 import { LAND_FORTY_NINE_CHARACTER_ARCS } from "./sample-character-arcs-land-forty-nine.js";
 import { BOTANICAL_FORTY_SIX_CHARACTER_ARCS } from "./sample-character-arcs-botanical-forty-six.js";
@@ -29,6 +31,13 @@ import { STRANGE_EIGHT_CHARACTER_ARCS } from "./sample-character-arcs-strange-ei
 import { DEEPSEA_NINE_CHARACTER_ARCS } from "./sample-character-arcs-deepsea-nine.js";
 import type { SampleYouTubeVideo } from "./sample-youtube.js";
 
+export type SampleEditorialClassification =
+  | "inspiring"
+  | "event"
+  | "personal"
+  | "conversation"
+  | "news";
+
 export interface SampleCharacterEpisode {
   subject: string;
   /** A character may use several platforms without becoming separate identities. */
@@ -39,6 +48,8 @@ export interface SampleCharacterEpisode {
   video?: SampleYouTubeVideo;
   /** Null marks legacy draft prose awaiting image-led replacement, never final admission. */
   mediaSha1: string | null;
+  /** Required for every accepted demo post. Null-media legacy drafts may omit it. */
+  classification?: SampleEditorialClassification;
   theme: "transformation" | "feeding" | "weather" | "danger" | "wonder" | "social" | "courtship" | "family" | "movement" | "cosmic";
   title: string;
   body: string;
@@ -71,7 +82,8 @@ export const SAMPLE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       },
       {
         subject: "praying mantis",
-        mediaSha1: null,
+        mediaSha1: "11733f05f36f7f850672fe7b8b87460ef5675b59",
+        classification: "inspiring",
         theme: "feeding",
         title: "Violence, and better lighting.",
         body: "Caught a bee where the light was good. Then a bird landed above me. I carried breakfast under a leaf and ate in the dark, where I am considerably less impressive and still alive.",
@@ -100,6 +112,7 @@ export const SAMPLE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         subject: "praying mantis",
         mediaSha1: "d67cc98af34b60d6e8b2e7aa586aa9e05de4d3fd",
+        classification: "conversation",
         theme: "social",
         title: "Quite different",
         body: "She called me a walking stick. I took three very deliberate steps. That settled absolutely nothing.",
@@ -144,6 +157,7 @@ export const SAMPLE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         subject: "frogfish underwater",
         mediaSha1: "3c0d019158c7d78248e12b1151b0a462cea627b3",
+        classification: "inspiring",
         theme: "feeding",
         title: "Do the little dance",
         body: "Waggled my lure at a shrimp. Nothing. Waggled harder. It went around me and ate a real worm. I kept waggling for a moment after it left.",
@@ -165,6 +179,7 @@ export const SAMPLE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         subject: "frogfish underwater",
         mediaSha1: "4fac2f792ffba0fc2240e5e6cb792decd3596f65",
+        classification: "personal",
         theme: "courtship",
         title: "Crush beside the sponge",
         body: "Someone lumpy settled three corals away and pretended not to notice me. I changed color twice, casually, over forty minutes.",
@@ -172,6 +187,7 @@ export const SAMPLE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         subject: "frogfish underwater",
         mediaSha1: "215028f2956ac61b9567ca0ac7d45450cf451bae",
+        classification: "inspiring",
         theme: "feeding",
         title: "A mouthful of consequences",
         body: "I lunged at a fish larger than prudence. For one bright second we were both certain this was the other's mistake.",
@@ -200,6 +216,7 @@ export const SAMPLE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         subject: "frogfish underwater",
         mediaSha1: "708922c5bacfa31a2ed33f2b068c1837fe027b8b",
+        classification: "inspiring",
         theme: "feeding",
         title: "grey.",
         body: "the wrasse was right there and i went for it the wrong way and now i have a square of the bottom in my cheek. grey. grainy. i keep pushing it around. it is the least dignified thing i have ever swallowed, and i have swallowed a lot.",
@@ -279,6 +296,7 @@ export const SAMPLE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         subject: "nudibranch underwater",
         mediaSha1: "78cee6949fb8cd5308c53c9725de02cea1c64a62",
+        classification: "inspiring",
         theme: "feeding",
         title: "Breakfast is fastened down",
         body: "Finished the blue clump and raised my head to leave. There was another blue clump underneath. I have been leaving for quite a while.",
@@ -293,6 +311,7 @@ export const SAMPLE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         subject: "nudibranch underwater",
         mediaSha1: "3dbe7e0c03e5de95816b0cec07171d1915c27199",
+        classification: "event",
         theme: "movement",
         title: "All of me must turn",
         body: "I took the corner headfirst. My gills are still on the old side of the rock. We are both insisting this is forward.",
@@ -300,9 +319,20 @@ export const SAMPLE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         subject: "nudibranch mating",
         mediaSha1: "129c619a92dfef320bf5e9fb98b05742b3e36a7b",
+        classification: "personal",
         theme: "courtship",
         title: "We both brought everything",
         body: "We both arrived with eggs and sperm. Neither of us arrived facing the useful direction. We spent the beginning of the encounter reversing past each other.",
+      },
+      {
+        "subject": "Nembrotha kubaryana",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "courtship",
+        "title": "I went back",
+        "body": "They stopped beside me. I kept going until the side of my foot had left theirs.\n\nIt was only a small gap. I turned back to close it.\n\nThey were already turning.\n\nWe touched all the way down before either of us found anything to say.",
+        "classification": "personal",
+        "mediaSha1": "34f2a4da704222a48592ad20bb8d1c645a105c70"
       },
       {
         subject: "nudibranch underwater",
@@ -314,6 +344,7 @@ export const SAMPLE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         subject: "nudibranch underwater",
         mediaSha1: "d47c50dd9dc91166939340307b3560a3ea9d032e",
+        classification: "conversation",
         theme: "social",
         title: "Separate mouths",
         body: "We agreed to eat from different sides. Every mouthful brought us closer. I am trying to leave them a polite amount of dinner without having to stop eating mine.",
@@ -328,6 +359,7 @@ export const SAMPLE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         subject: "nudibranch underwater",
         mediaSha1: "628d8aba303ab7799dd78292023cdddb8194baf7",
+        classification: "event",
         theme: "movement",
         title: "One foot, several problems",
         body: "I left my tail on one side of the lump and stretched my face toward the other. For a creature with one foot, I have made this unnecessarily complicated.",
@@ -342,8 +374,19 @@ export const SAMPLE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
     bio: "A mute swan who hisses first and checks what it was afterward. Nine cygnets, very little sleep.",
     episodes: [
       {
+        "subject": "mute swan",
+        "classification": "inspiring",
+        "mediaSha1": "df9f51135123877410a7dd79e49e56db7f41df02",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "wonder",
+        "title": "Five of us",
+        "body": "They all stopped to look into the reeds. I went over and stretched up beside them.\n\nNothing moved. I waited.\n\nA duck came out. They kept looking.\n\nWent in after it to see what it had been standing in front of."
+      },
+      {
         subject: "swan",
         mediaSha1: "a28cb915c46d2dcb4966227b7b34b475cc5cdfdc",
+        classification: "conversation",
         theme: "social",
         title: "Threatening my own armpit",
         body: "A goose woke me. I hissed before taking my head out from under my wing. Nobody heard except me, and I frightened myself awake.",
@@ -351,6 +394,7 @@ export const SAMPLE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         subject: "swan",
         mediaSha1: "cd185b8e433a0179c4ffea8bd75db0ecd252c90c",
+        classification: "event",
         theme: "movement",
         title: "Too late to stay",
         body: "Halfway through my takeoff I remembered I had nowhere to go. By then my feet were going so fast I had to leave.",
@@ -358,6 +402,7 @@ export const SAMPLE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         subject: "swan",
         mediaSha1: "ce1ef641230b414aeb30ce82ce63b418334d53a9",
+        classification: "personal",
         theme: "courtship",
         title: "A mouthful of romance",
         body: "He lowered his head. I lowered mine. We touched faces and stayed there until I swallowed the weed I had been hiding in my mouth.",
@@ -386,6 +431,7 @@ export const SAMPLE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         subject: "swan",
         mediaSha1: "a2a57edb7708d629231c15bc1ff5fa6af728f513",
+        classification: "inspiring",
         theme: "transformation",
         title: "Still attached",
         body: "I gave a loose feather a firm tug. It was not loose. The duck fled at the noise, so I let it believe that had been the purpose.",
@@ -401,7 +447,8 @@ export const SAMPLE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
     episodes: [
       {
         subject: "flamingo",
-        mediaSha1: null,
+        mediaSha1: "9d875e71ac887bb4ff3b0565fc02415d3dbd58e8",
+        classification: "news",
         theme: "transformation",
         title: "Before the pink",
         body: "I began gray. The pink arrived one mouthful at a time. Adults kept checking as if I were late.",
@@ -416,6 +463,7 @@ export const SAMPLE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         subject: "flamingo",
         mediaSha1: "d7db5d3f032ac43eb40c19d527e79ea12e4a6ac8",
+        classification: "news",
         theme: "feeding",
         title: "Upside-down supper",
         body: "I was explaining how I achieved this pink when a shrimp went past. Put my head between my ankles to get it. Continued the explanation from there.",
@@ -466,9 +514,20 @@ export const SAMPLE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         subject: "supernova remnant NASA",
         mediaSha1: "c447255ad8fe6aab3c24c59dde232234cce6c490",
+        classification: "news",
         theme: "cosmic",
         title: "Iron leaves home",
         body: "I scattered iron into space. Somewhere ahead, a world will put it in blood and call the pulse its own.",
+      },
+      {
+        subject: "supernova remnant NASA",
+        platform: "instagram",
+        contentType: "story",
+        mediaSha1: "3cea93a1a3bf7a2e60405c6fce570ecfac26842f",
+        classification: "inspiring",
+        theme: "cosmic",
+        title: "Still arriving",
+        body: "I had begun to think of the explosion as something I had got through.\n\nThen my old light reached a cloud far from me. It warmed the dust, and the dust began to shine.\n\nI would have liked to introduce myself more gently. That was the first thing it knew of me.",
       },
       {
         subject: "supernova remnant NASA",
@@ -495,7 +554,8 @@ export const SAMPLE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
     episodes: [
       {
         subject: "octopus underwater",
-        mediaSha1: null,
+        mediaSha1: "a72ef215b1265e2dda4eb754f72bf11015d8f86b",
+        classification: "event",
         theme: "movement",
         title: "The room behind the stone",
         body: "I found the entrance with an arm. Sand, a lip of rock, then space. I put another arm in. Those two began exploring while I was still outside deciding whether to live there.\n\nGetting my head through required a fold I had not tried before. For a moment one eye was outside and nearly everything else was inside. I had an excellent view of the thing I was stuck in.\n\nWhen I finally squeezed through, an arm brought me a smooth shell from under the lip. Empty, I thought. I settled into the back with it. Two arms were still outside. I pulled them in and discovered they had brought a stone. Apparently we were moving in whether I liked it or not.",
@@ -509,7 +569,8 @@ export const SAMPLE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       },
       {
         subject: "octopus underwater",
-        mediaSha1: null,
+        mediaSha1: "8a723a73f4877b300ec621959412dd7ac517b7cd",
+        classification: "conversation",
         theme: "social",
         title: "Not empty",
         body: "The smooth shell moved during the night. I returned it to its corner. Later it moved farther. I put a stone beside it so it would stop rolling.\n\nA hermit crab came out, climbed over the stone, and started dragging the shell toward the entrance. I had been moving him around my room for two days. He had waited until I was asleep to leave, and I had caught him twice.\n\nI moved the stone. He went out very slowly. I wanted to help him over the lip, but I could not think of a way to touch him that would not look like the beginning of a third day.",
@@ -549,6 +610,16 @@ export const SAMPLE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
         title: "Nothing to carry",
         body: "Went over the ridge with every intention of leaving things where they were. Found a lovely shell. A foot withdrew inside it. I put it back.\n\nFarther down, a smooth stone fitted beautifully into the curl of an arm. I held it, turned it, put it down. Kept moving. I went all the way home without a shell, a stone, or anyone else's house.\n\nAt the entrance an arm uncurled and produced a second stone. I do not know when it picked that up. I moved aside to let it bring the stone in.",
       },
+      {
+        "subject": "octopus underwater",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "movement",
+        "title": "The way round",
+        "body": "I could see the weed under the clear floor. Kept reaching for it. When an arm finally found the top of the wall, I nearly pulled it back to help the others. It was the only one going the right way.",
+        "classification": "event",
+        "mediaSha1": "cd9f07eeaa5ac2ec4e391fd18e4f792c0480af0c"
+      },
     ],
   },
   {
@@ -561,6 +632,7 @@ export const SAMPLE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         subject: "moray eel underwater",
         mediaSha1: "591383436276e3a2ce2539a8d71b2ed7bab14c6d",
+        classification: "conversation",
         theme: "social",
         title: "I was breathing",
         body: "A little fish froze every time I opened my mouth. Swam when I closed it. Froze when I opened it. We made very slow progress through the morning.",
@@ -593,8 +665,18 @@ export const SAMPLE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
         title: "Room for the rest of me",
         body: "My old hole cleared. I went in, came out, and went in again. A fish paused outside. I opened my mouth and it fled. At the new hole everyone had ignored me. It is good to be home.",
       },
-      {"platform": "facebook", "contentType": "post", "theme": "social", "title": "Still listening", "body": "I went round the corner before he had finished talking. He followed my tail. I stopped so he could finish. Neither of us has mentioned which end he is addressing.", "subject": "moray eel underwater", "mediaSha1": "07937bdc8f0afca1203c479dab4e63e15d21922f"},
-      {"platform": "facebook", "contentType": "post", "theme": "social", "title": "A better angle", "body": "The wrasse said he wanted to show me something. Then he stopped broadside in front of my face. I waited. He turned a little in the light. I said yes, very nice, and he turned the other way.", "subject": "moray eel underwater", "mediaSha1": "f153543d44150bd03fb04a49c9419ad6d02737c2"},
+      { "classification": "conversation","platform": "facebook", "contentType": "post", "theme": "social", "title": "Still listening", "body": "I went round the corner before he had finished talking. He followed my tail. I stopped so he could finish. Neither of us has mentioned which end he is addressing.", "subject": "moray eel underwater", "mediaSha1": "07937bdc8f0afca1203c479dab4e63e15d21922f"},
+      { "classification": "conversation","platform": "facebook", "contentType": "post", "theme": "social", "title": "A better angle", "body": "The wrasse said he wanted to show me something. Then he stopped broadside in front of my face. I waited. He turned a little in the light. I said yes, very nice, and he turned the other way.", "subject": "moray eel underwater", "mediaSha1": "f153543d44150bd03fb04a49c9419ad6d02737c2"},
+      {
+        "subject": "moray eel underwater",
+        "platform": "facebook",
+        "contentType": "post",
+        "theme": "social",
+        "title": "I had been here anyway",
+        "body": "The wrasse asked how I always knew when the other moray was coming. I described the bump against the ceiling, the correction, the second bump. I was explaining that it was impossible not to notice when his head appeared above mine.\n\nThe wrasse left.\n\nHe asked whether I had been waiting.\n\nI said I had been here anyway.\n\nHe began to draw back. I raised my head a little and touched his.\n\nI told him to stay. He had arrived perfectly well this time.",
+        "classification": "conversation",
+        "mediaSha1": "43ac01cd923ae245f3519bd5c2284510e33a24f4"
+      },
     ],
   },
   {
@@ -607,6 +689,7 @@ export const SAMPLE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         subject: "basalt columns geology",
         mediaSha1: "e79a752849690cedabe3da27bb875d7e8072fe36",
+        classification: "inspiring",
         theme: "transformation",
         title: "When we cooled",
         body: "We were touching everywhere. Then we cooled and pulled apart along the cracks. I have stood beside the same piece of rock ever since, with rain between us.",
@@ -614,6 +697,7 @@ export const SAMPLE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         subject: "basalt columns geology",
         mediaSha1: "4bfa89fc6b9b8721976b3cfdb59ce7b0b9493d06",
+        classification: "event",
         theme: "weather",
         title: "A small departure",
         body: "Water froze in a crack and broke a piece off me. It bounced all the way down the slope. I spent an age becoming a column, and the first piece to go anywhere did it lying down.",
@@ -655,5 +739,7 @@ export const SAMPLE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
   ...LAND_FORTY_FIVE_CHARACTER_ARCS,
   ...BOTANICAL_FORTY_SIX_CHARACTER_ARCS,
   ...LAND_FORTY_NINE_CHARACTER_ARCS,
+  ...LAND_SIXTY_TWO_CHARACTER_ARCS,
+  ...AQUATIC_FIFTY_SEVEN_CHARACTER_ARCS,
   ...BOTANICAL_FIFTY_CHARACTER_ARCS,
 ] as const;

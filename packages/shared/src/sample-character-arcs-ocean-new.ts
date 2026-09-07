@@ -22,6 +22,7 @@ export const NEW_OCEAN_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "feather star underwater",
         "platform": "instagram",
+        "classification": "inspiring",
         "mediaSha1": "6a7f48a0dc62505cae9b8074fbebada1322a3aa5",
         "theme": "feeding",
         "title": "Our lunch",
@@ -30,10 +31,21 @@ export const NEW_OCEAN_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "feather star underwater",
         "platform": "x",
+        "classification": "personal",
         "mediaSha1": "b1df4fa47ce47bb07926f27c65347de5cc8d88c6",
         "theme": "courtship",
         "title": "Attached",
         "body": "He asked if I came here often. I said I lived on her. He went very quiet. I had meant the feather star. I let him remain impressed."
+      },
+      {
+        "subject": "feather star underwater",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "movement",
+        "title": "A little less still",
+        "body": "I asked her to stop moving.\n\nShe curled the arm under me. I caught the next one, then stretched across another. By the time she stopped, I had feet on both sides and no comfortable way to bring them together.\n\nAsked her to move a little.\n\nShe asked which way.",
+        "classification": "event",
+        "mediaSha1": "f29c75d10e98aa43758b3396e03cbae88c9a64ba"
       }
     ]
   },
@@ -53,6 +65,7 @@ export const NEW_OCEAN_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "starfish underwater",
         "platform": "facebook",
+        "classification": "personal",
         "mediaSha1": "415234706fa3c535ec8b8dedcd0d750e7e6782cb",
         "theme": "courtship",
         "title": "A type",
@@ -62,6 +75,7 @@ export const NEW_OCEAN_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
         "subject": "starfish underwater",
         "platform": "facebook",
         "contentType": "story",
+        "classification": "event",
         "mediaSha1": "fec3f03a08b7c4e45240eeed98d0cfcb6629be1b",
         "theme": "movement",
         "title": "Worse after washing",
@@ -74,7 +88,18 @@ export const NEW_OCEAN_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
         "title": "A small hello",
         "body": "An anemone brushed my arm. I touched it back, very carefully. Then the others reached across me. I had meant hello, not come over.",
         "subject": "starfish underwater",
+        "classification": "conversation",
         "mediaSha1": "e424873ed88757f40bea550f9c8d8c92fb893193"
+      },
+      {
+        "subject": "spiny starfish",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "social",
+        "title": "I still meant it",
+        "body": "He touched my back and pulled away. I had forgotten the little pincers around my spines.\n\nI said I hadn't meant it.\n\nHe asked whether I still wanted him close.\n\nI said yes.\n\nHe is waiting for the rest of me to agree.",
+        "classification": "conversation",
+        "mediaSha1": "04291adc10ca9f9b80b1779bf55c0a7cda454a63"
       }
     ]
   },
@@ -94,6 +119,7 @@ export const NEW_OCEAN_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "comb jelly underwater",
         "platform": "x",
+        "classification": "conversation",
         "mediaSha1": "62c3eb852eb1b7393e2eb13fff034b9abe009387",
         "theme": "social",
         "title": "Mostly water",

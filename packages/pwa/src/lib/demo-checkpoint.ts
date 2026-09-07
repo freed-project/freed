@@ -6,6 +6,7 @@ import {
   sampleCorpusAttribution,
   sampleCorpusMediaUrl,
   sampleCorpusSourceUrl,
+  sampleEditorialContentSignals,
   projectSampleYouTubeVideo,
   type Account,
   type FeedItem,
@@ -99,6 +100,9 @@ function curatedDemoSample(
     const items = arc.episodes.flatMap((episode, sequence) => {
       // Keep sequence IDs from the authored timeline, including unpublished gaps.
       if (!episode.mediaSha1) return [];
+      if (!episode.classification) {
+        throw new Error(`Missing editorial classification for ${arc.characterId}:${sequence}`);
+      }
       const platform = episode.platform ?? arc.platform;
       const contentType = episode.contentType ?? (
         platform === "rss" || platform === "medium" || platform === "substack"
@@ -151,6 +155,7 @@ function curatedDemoSample(
               : (asset ? sampleCorpusAttribution(asset) : undefined),
           },
         },
+        contentSignals: sampleEditorialContentSignals(episode.classification, generatedAt),
         ...(platform === "rss"
           ? {
               rssSource: {
@@ -206,10 +211,19 @@ function curatedDemoSample(
       newestFirst.push(episodes[episodes.length - 1 - round]!);
     }
   }
-  if (newestFirst.length > 1 && newestFirst[0]?.globalId === previousTopItemId) {
-    const replacementIndex = newestFirst.findIndex((item) => item.author.id !== newestFirst[0]!.author.id);
-    if (replacementIndex > 0) {
-      [newestFirst[0], newestFirst[replacementIndex]] = [newestFirst[replacementIndex]!, newestFirst[0]!];
+  const visibleTopIndex = newestFirst.findIndex((item) => item.contentType !== "story");
+  const visibleTop = newestFirst[visibleTopIndex];
+  if (visibleTop && visibleTop.globalId === previousTopItemId) {
+    const replacementIndex = newestFirst.findIndex((item, index) =>
+      index !== visibleTopIndex &&
+      item.contentType !== "story" &&
+      item.author.id !== visibleTop.author.id
+    );
+    if (replacementIndex >= 0) {
+      [newestFirst[visibleTopIndex], newestFirst[replacementIndex]] = [
+        newestFirst[replacementIndex]!,
+        newestFirst[visibleTopIndex]!,
+      ];
     }
   }
   const timelineSlots = sample.items
@@ -400,6 +414,23 @@ function feedItemRecords(item: FeedItem) {
   }
   for (const tag of state.tags) {
     records.push(record("13_feed_item_tag", [item.globalId, tag], { tag }));
+  }
+  if (item.contentSignals) {
+    records.push(record("15_feed_item_signal", item.globalId, {
+      inferredAt: item.contentSignals.inferredAt,
+      method: item.contentSignals.method,
+      version: item.contentSignals.version,
+    }));
+    const tagged = new Set(item.contentSignals.tags);
+    for (const [signal, score] of Object.entries(item.contentSignals.scores)
+      .sort(([left], [right]) => left.localeCompare(right))) {
+      if (score === undefined) continue;
+      records.push(record("16_feed_item_signal_score", [item.globalId, signal], {
+        score,
+        signal,
+        tagged: tagged.has(signal as keyof typeof item.contentSignals.scores),
+      }));
+    }
   }
   return records;
 }

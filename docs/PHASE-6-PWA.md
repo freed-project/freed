@@ -797,12 +797,18 @@ tests pass. The first admitted YouTube entry preserves NOAA uploader attribution
 fictional character commentary, and a separately reviewed NOAA archive still.
 Full corpus acceptance and production verification remain pending.
 
+Every admitted demo post carries one human editorial classification:
+`inspiring`, `event`, `personal`, `conversation`, or `news`. The checkpoint
+stores the corresponding existing feed signal with method `manual`, and demo
+generation fails closed when an accepted post lacks a classification. No model
+or runtime rules classifier participates in this path.
+
 YouTube reader descriptions preserve authored paragraph breaks and separate
 video, uploader, source, and thumbnail credit lines. Long credit URLs wrap
 without enabling player loading or changing provider requests.
 
 The production demo CSP admits exact reviewed Commons, NOAA, NPS, FWS, Chandra,
-and YouTube thumbnail hosts. A checkpoint test checks every admitted media and
+iNaturalist, Flickr, NASA Science, and YouTube thumbnail hosts. A checkpoint test checks every admitted media and
 avatar origin against the actual HTML policy. Existing click-to-watch playback
 permits the privacy-enhanced YouTube frame and its API script hosts, without
 eager player loading. Showcase capture enables the production CSP on loopback
@@ -852,3 +858,15 @@ remain forbidden. Added portraits require fresh delivery verification.
 This proves local delivery, not deployment availability or every Galaxy layout.
 
 Mobile-friendly PWA at [app.freed.wtf](https://app.freed.wtf), plus the dev channel at `dev-app.freed.wtf`, with offline article, image, and pinned saved-reader support.
+
+
+### Isolated editorial showcase correction, September 6, 2026
+
+The shared showcase generator now projects admitted character episodes, reviewed portraits and authored platform identities directly. Null-media drafts and synthetic stress fixtures are excluded from showcase counts. YouTube uses verified video sources and preserves narrative paragraphs and separate credit lines. Sample feed URLs retain the non-fetching sentinel domain. The explicit stress mode remains separate, with bounded text-collision fallback. This is an isolated source implementation; rendered preview and full repository verification remain outstanding, and no deployment or merge is claimed. See [integration evidence](drafts/EDITORIAL-GENERATOR-INTEGRATION.md).
+
+Isolated editorial follow-up on September 6: accepted sample Stories now carry complete local preserved text and display separate photo credits in the reader. The shared reader omits the misleading Summary label for complete sample entries. Focused tests and offline mobile rendering pass; deployment and full integration remain unverified.
+
+The same continuation classifies all 392 accepted posts by human editorial
+review and writes one bounded manual signal pair per post into the anonymous
+demo checkpoint. The five feed classifications are all represented. Runtime
+model inference is not used for demo content.

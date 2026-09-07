@@ -1,5 +1,37 @@
 # Freed character canon
 
+Oswin adds [I kept them shut](drafts/LAND-STORIES-65-ADMISSION.md) in adult
+chronology. Neighboring animals extend the dust cloud he started, so he keeps
+his eyes closed. This sequence is now spent. His Yellowstone home, existing
+portrait and earlier three passages remain unchanged; the Colorado source
+photograph illustrates compatible bison and is not a travel record.
+
+Edith Scrabble joins under [Land62 canon](drafts/LAND-STORIES-62.md) and
+[lead admission](drafts/LAND-STORIES-62-ADMISSION.md). She is a dependent
+cinnamon-colored American black bear cub in Lassen, with Mother and an
+unnamed brother. Her first mistake is taking his grip for a helpful push.
+The fall ends with him choosing the snow as his climbing surface. This
+mechanism is spent. Keep her separate from Beatrice and from the adult
+mother pictured above the cubs. Neither source verifies sex or the same
+individual across photographs; the proposed female identity is fiction.
+
+Sabine adds [Winter stopped there](drafts/BOTANICAL-STORIES-63-ADMISSION.md)
+as an explicit recollection before she had pollen to give. Her warming makes
+a local snow hollow; she briefly expects the wider cold to leave. The later
+pollen-shedding episode stays unchanged. She does not reverse reproductive
+stages, move between habitats, or become another plant. The existing portrait
+and Potomac home remain in place.
+
+Latest isolated admission: [Mabel Lowwater](drafts/AQUATIC-STORIES-57.md), an
+adult female American alligator in the Everglades, remembers being the larger
+of two juveniles. The smaller companion is not an established sibling or
+offspring. Her failed attempt to hide becomes a willingness to remain facing
+the reeds. Preserve the literal admitted passage. Her childhood memory and
+adult portrait cast a fictional individual across life stages. Source sex and
+individual identity are unverified. The linked record supplies her body,
+voice, habitat, chronology, relationships and image constraints; the
+[lead admission](drafts/AQUATIC-STORIES-57-ADMISSION.md) records both reviews.
+
 This is the internal continuity record for the illustrated 1,000-entry universe. The [editorial guide](SAMPLE-CORPUS-EDITORIAL-GUIDE.md) owns acceptance rules. Character records belong here or in linked cast volumes, not in the root agent instructions.
 
 ## Status
@@ -226,6 +258,8 @@ Aquatic44 admits Silas Return under [lead decisions](drafts/AQUATIC-VISUAL-44-AD
 
 Land45 admits Beatrice Bark under [lead decisions](drafts/LAND-REGULAR-45-ADMISSION.md) and [revised canon](drafts/LAND-REGULAR-45-CANON.md). Her first event concerns savoring defeated by appetite; the earlier descent draft is not her history.
 
+Beatrice's [childhood recollection](drafts/BEATRICE-CHILDHOOD-ADMISSION.md) adds a remembered outing with her mother. She climbs expecting a forest view, finds her mother's body blocking it, and falls asleep. This is a memory told by the adult narrator, not present motherhood or a replacement avatar. The obstructed outing and sleeping through its intended pleasure are spent mechanisms.
+
 
 Botanical46 admits Sabine Warmfold under [lead decisions](drafts/BOTANICAL-REGULAR-46-ADMISSION.md) and [stage-specific canon](drafts/BOTANICAL-REGULAR-46-CANON.md). Her close-up shows flowers on the spadix; her profile shows the enclosing spathe. The same flowers cannot return to their earlier receptive stage.
 
@@ -234,3 +268,106 @@ Land49 admits Eustace Peel under [lead decisions](drafts/LAND-REGULAR-49-ADMISSI
 
 
 Botanical50 admits Lucille Loop under [lead decisions](drafts/BOTANICAL-VISUAL-50-ADMISSION.md) and [tendril canon](drafts/BOTANICAL-VISUAL-50-CANON.md). The title is A little give; proposed Still attached was already in use. Nestor52 and Sylvia53 only change published delivery variants, not events or identities.
+
+
+[Aquatic67 admission](drafts/AQUATIC-STORIES-67-ADMISSION.md) inserts Mabel's hatching memory before her juvenile support scene. Her unseen calling sibling is unnamed; this is not her own adult nest or offspring. Existing profile, home, avatar and approved prose remain unchanged.
+
+
+[Aquatic71 admission](drafts/AQUATIC-STORIES-71-ADMISSION.md) places Hugo's overturned rescue before his attached-passenger and courtship episodes. Keep the source's New Jersey locality separate from his fictional Jamaica Bay home. [Nova74](drafts/NOVA-LIGHT-ECHO-74.md) adds a remote thermal light echo after iron dispersal. It is pre-existing dust heated by old light, not new ejecta, shock impact, a second explosion or instant return of information.
+
+
+[Aquatic75](drafts/AQUATIC-STORIES-75-ADMISSION.md) adds Nudi choosing renewed contact after the earlier mating logistics. The unnamed partner is not established as recurring. [Botanical77](drafts/BOTANICAL-STORIES-77-ADMISSION.md) extends Hester's flower encounters through a perceived lingering visitor after a bee leaves. Neither passage turns its fictional sequence into a source observation.
+
+
+Aquatic79 develops Elspeth’s curiosity after her raised-arm response without changing her taxon, home or avatar. Land80 admits new Stories for Brio and Alba from previously unspent premises, preserving the earlier null-slot drafts verbatim. No new offspring, mate or injury enters canon. [Aquatic79 admission](drafts/AQUATIC-STORIES-79-ADMISSION.md) and [Land80 admission](drafts/LAND-STORIES-80-ADMISSION.md) record the visible facts and fictional sequences.
+
+Botanical81 adds a shared alarm on weathered wood for Coral Clad. The green partner postpones the argument; neither voice separates, and the woodland home and avatar remain unchanged. [Lead admission](drafts/BOTANICAL-STORIES-81-ADMISSION.md) distinguishes fictional pressure and dialogue from photographed split wood.
+
+Ansel85 adds uncertainty about the departure of seeds from an open cone, distinct from his earlier account of structural dead wood. No successful offspring, new home or new avatar is asserted. The body passed independent review unchanged; the final title is Without a signal. [Admission](drafts/ANSEL-CONES-85.md) and [independent review](drafts/ANSEL-CONES-85-REVIEW.md).
+
+Land83 adds one brief anonymous hand encounter for adult male Velvet after emergence. His own grip contributes to his mistaken feeling of capture; no working appetite, new mate, lasting companion or changed home. [Admission](drafts/LAND-STORIES-83-ADMISSION.md) retains exact body and source boundaries.
+
+
+## Finch Fidget: Land87
+
+The patch she left adds a Facebook post about crowding into bench shade. Adult female Setonix brachyurus, Rottnest home and portrait stay unchanged. Contacts and timing are fiction; smaller photographed animals establish no family relationship. Both earlier held shade passages remain verbatim and excluded.
+
+
+## Boris and Dora: batches 86 and 88
+
+Boris adds an invented detour around attached whip coral after his edible gift. Dora adds a spring feeding Story involving neighboring sticky leaves after her winter-bud episode. Homes, taxa, portraits and earlier bodies remain unchanged. See EDITORIAL-86-88-ADMISSION.md for evidence and fiction boundaries.
+
+
+## Sela Current: Story93
+
+Separate arrangements adds a passenger, boat and paddle separating in the river. Sela neither chooses the capsize nor promises a rescue. All four earlier passages and the Soca identity remain unchanged. Exact full frame is essential to retain the loose paddle.
+
+
+## Maud94 and Ivo95
+
+Maud postpones leaving a sunlit roof while trying to make her final call louder. Warmth and calls are fiction around an open-billed raven photograph. Ivo wishes to be his neighboring stone as wind moves his fronds and a spider adds repair silk. No new identity, relocation, injury or deliberate plant motion. Existing bodies and portraits remain unchanged. See EDITORIAL-94-95-ADMISSION.md.
+
+
+## Mina96
+
+A little less still adds an awkward position across Rill's arms after Mina demands stillness. No new host species, injury, mate or home; existing prose and avatar remain unchanged. See AQUATIC-STORIES-96-ADMISSION.md.
+
+## Isolated admissions97 through103
+
+Lark97 begins before her adult scenes. Oona98 explicitly remembers her earlier pink stage after Rosy. Luna101 ends in unresolved web entanglement, without an admitted death or escape. Fern100 and Sable100 add independent adult incidents. Aster100 replaces the held lost-perch premise for admission; preserve A perch without history literally but do not later count it as a second version of this event. Sela103 adds curiosity about visitors describing her familiar rocks. All existing homes and portraits remain unchanged. Decisions: drafts/EDITORIAL-97-98-ADMISSION.md, drafts/BOTANICAL-STORIES-101-ADMISSION.md and drafts/EDITORIAL-100-103-ADMISSION.md.
+
+Admissions104/107/108 append Vesta’s explicit smaller-body recollection, Lucille’s attached fruit held by a hand, Mora’s invitation to another moray, and Edmund’s jealousy when a neighbor receives affection. Homes and avatars remain unchanged. Source photographs do not establish fictional motives or temporal sequences. See drafts/EDITORIAL-104-108-ADMISSION.md.
+
+Land106: Cygnus’s young-plumage birdwatching Story precedes all adult scenes and her nine cygnets. Berta’s unfinished tree is a later adult scene. Ines’s first illustrated scene is a separate preening incident; ten older held passages remain untouched. See drafts/LAND-STORIES-106-ADMISSION.md.
+
+Admissions109 through113: Greta lays as an adult after the remembered molt; Sylvia’s mature caps remain continuous with her earlier young cap. Fenn and Nessa’s juvenile memories precede adult episodes. Ada’s imagined welcome conflicts with local defensive anatomy. Mira’s tactile search becomes swimming. Alma’s original den opening is recovered unchanged; a separate temporary container encounter appends without actual handler or release claims. See drafts/EDITORIAL-109-114-ADMISSION.md.
+
+Admissions116/119: Rhea’s juvenile passengers precede adult reef scenes; Rose Atoll is image provenance only. Clove’s held-shell emergence precedes the shell-search drafts without a new shell acquisition. Alma’s original Not empty slot now reveals the occupant after her recovered den opening. No previous passage, home or portrait changed. See drafts/EDITORIAL-116-119-ADMISSION.md.
+
+## Admission 121 continuity
+
+Vesta's remembered molt in The meal above me occurs before adulthood; eating the empty shed skin is species-supported and does not mean injury or another adult molt. Lionel's Under the path explicitly recalls his young cap before his established blackening rim. Ludo's Before the introductions uses his already established distributed fictional identity without asserting that photographed caps share a genotype. Homes and avatars remain unchanged.
+
+Faye's Held below is placed at the beginning, with a green completed nest before later drying and repairs. The loop that stayed remains preserved but held; do not admit it as another version of the same first-trust scene. The photograph includes a woody support behind the hanging male. Moss's Past my foot remains held because the image does not show the departing hatchling. Rollo's A little farther adds an accepted cleaning interaction without replacing or binding his earlier held cleaner passages.
+
+## Silas124 continuity
+
+When I saw him again follows the shared shallow-water passage in What I remembered. Recognition of that companion is fictional; the photograph documents male competition. Silas remains alive before any completed spawning, in his established Lake Clark watershed. Source image from Izembek does not change his home. No offspring, completed spawning, injury outcome or survival after spawning is added.
+
+## Admission128 continuity
+
+Cora's Back above ground is her first accepted reproductive episode, preserving female adult identity and Ambanja home. No mate, clutch count, fertility, hatching or offspring survival is asserted. Faye's I put it down to look follows Held below before the older nest episodes; Extra green remains a held alternative. Moss's original The leaf I could not leave is now bound in its existing slot, before his still-held hatching scene. No original word changed. Ellis's Holding still together is an isolated afternoon scene with leaf contact, without new sex, age, tail-loss history or claims of documented wind-response behavior.
+
+## Nellie126 continuity
+
+How she says hello adds an adult acquaintance with visible old scars. Nellie is the left pictured animal, the scarred companion the foreground animal. The companion is not Nellie's calf from Her turn. No injury is assigned to Nellie; neither accident date nor medical recovery is invented. Dialogue and recognition remain fictional. Existing Crystal River home, avatar and earlier13 passages remain unchanged.
+
+## Ada130 continuity
+
+Before feet is Ada's earliest episode, narrated from inside an egg before her adult leaf scenes. It is fictional immediate perspective, not adult memory. The embryo does not hatch during the episode; sex, exact age, parent identity and number of siblings are not inferred from the photograph. Tortuguero home and adult avatar remain unchanged.
+
+## Admission133 continuity
+
+Ada's Fold until invisible is recovered verbatim in the original adult slot after Before feet. Before I objected is a later adult courtship Story; no prior neighboring frog is retroactively identified as the mate. Ludo Leap's The far end of lunch occurs after his older molt/reach sequence, with no adult remolt. Prey is called only a caterpillar; no toxin, injury or sex claim is inferred. Source handling before the observed meal is recorded in provenance, not narrated as a rescue or invented pursuit.
+
+## Dot131 continuity
+
+A tail beside mine is bound in its original seventh slot without changing a word. Female Dot and a fictional male companion are assigned to the pictured pair; neither sex nor actual courtship is proven by the photo. No tail contact, pregnancy, egg transfer or new location is added. Later held Leave a little grip stays in its existing order and remains unbound.
+
+## Land134 admissions
+
+Mallow Fold’s first accepted scene, Quiet on the outside, shows her defensive curled shape. Hunger and imagined stomach noises draw her toward opening; they are fictional interior experience, not recorded audio or a species-specific sound claim. Her sex, Kruger home and avatar remain unchanged. Preserve Safe, but facing inward unbound rather than admitting a duplicate first curled interruption.
+
+Sorrel Spring’s first accepted scene, Room between them, uses two visible cast shadows under artificial light. His misunderstanding and delayed leap are fictional. Keep the full composition so both shadows remain visible. His Sinai home and reviewed Jaculus jaculus identity remain unchanged; the Negev image is provenance only. Original ten passages remain unbound and unchanged.
+
+Mallow140 recovers Claws held clear in its original position, with only tear apart a mound corrected to dig open an ant tunnel. Independent review passes exact revised prose, image, rights and canon. Her careful walking and later digging are distinct from the defensive-ball scene. The original unadmitted wording is preserved in140 review evidence.
+
+Berta138 adds A smaller disturbance as an Instagram Story. Her attempts to watch her own splash end with a small movement she can see. Tail-slap imagery is documented; curiosity and repeated trials are fiction. No predator, relocation or precise season sequence is introduced. Existing three passages remain unchanged.
+
+Greta141 adds After I was released as an explicitly juvenile recollection. A bite achieves release before she lets go. Short wing pads match a nymph; no precise instar, injury or source-proven sex is claimed. Existing adult episodes, home and avatar are preserved.
+
+Fenn145 adds The end without teeth, an adult encounter with a gull repeatedly approaching his back. His active attempts to face it differ from resting through the group’s ice rotation. La Jolla remains source provenance; his Kenai Fjords home, avatar and prior two passages remain unchanged.
+
+Tavi144 adds She had heard that part after Within reach. A brooding female companion has followed his story despite her divided-looking attention. Tavi narrates offscreen and is not the egg carrier. Fatherhood and a shared burrow remain unspecified. Prior male identity, home, avatar and all ten passages are preserved.
+
+Akio146 adds A firm grip, an explicit first-flight recollection in which he mistakes his own motion for movement of the trunk. The existing hand encounter concerns mutual hesitation; this scene adds misplaced credit for stopping the tree. Avoid another gripping/stopping mechanism next. No body-color change or relocation is introduced.

@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "kind": "provider-risk-review",
+  "taskId": "editorial-corpus-transfer-20260906",
+  "createdAt": "2026-09-06T16:28:56.669Z",
+  "status": "diff_authorized",
+  "source": {
+    "status": "healthy",
+    "references": [
+      {
+        "reference": "git:9d376d738a1a382b2c80ce6561514f45be29077b:packages/ui/src/components/feed/ReaderView.tsx",
+        "digest": "521a73b748af6b72d00f273d6002b7cb0b036fe776b68bb04c4206e123212f7b"
+      }
+    ]
+  },
+  "payload": {
+    "providers": [
+      "facebook",
+      "instagram",
+      "medium",
+      "other",
+      "substack",
+      "x"
+    ],
+    "observableBehavior": "ReaderView changes rendered sample text, credit layout and a sample-only Summary badge. No navigation, provider request, retry, cadence, cookie, header, extraction, authentication, autoplay or background contact path changes in this classified diff.",
+    "fingerprintingRisk": "No additional provider-observable behavior in the classified ReaderView diff. Publication does not exercise a provider or authorize new traffic.",
+    "lowestProfileAlternative": "Offline static corpus and rendered reader fixtures, with SQLite mocked and media review separate from account/provider interaction.",
+    "allowedBehavior": "Publish this behavior-neutral editorial handoff as a draft PR only. No merge, release, deployment or live provider behavior change.",
+    "paths": [
+      "packages/ui/src/components/feed/ReaderView.tsx"
+    ],
+    "ownerAuthorization": "Current owner explicitly requests all existing work in a PR and a continuity comment, then task closure.",
+    "providerSubdiffSha": "967658443c82621c1445f0f7fd0259dacac19291"
+  },
+  "artifactDigest": "9e289dfb8c3c17e3ee2d9ba639d0b23d39b87728ce82d3b607a0be24d84a3ca0"
+}

@@ -1,8 +1,24 @@
+> Historical planning and current progress. Current authority, counts, and continuation assignments are in [EDITORIAL-CORPUS-HANDOFF.md](EDITORIAL-CORPUS-HANDOFF.md). The canonical editorial rules are in [SAMPLE-CORPUS-EDITORIAL-GUIDE.md](SAMPLE-CORPUS-EDITORIAL-GUIDE.md).
+
 # Illustrated universe rebuild
+
+## Active milestone: 1,000 accepted illustrated entries
+
+The current target is exactly 1,000 accepted, high-quality demo entries with matching reviewed media, split into 900 regular entries and 100 visual Stories. Retain the Instagram format guidance, first-person YouTube requirements, protected passages, independent review, and isolated worktree boundaries. This task has Level 2 authority, so publication and merge remain outside scope.
+
+Latest isolated checkpoint after the Beatrice childhood admission: 788 drafts, 392 illustrated entries, 289 regular entries, 103 Stories, 396 excluded drafts, 134 identities, and 2,177 catalog records. Instagram has 83 Stories and 92 posts. All 392 pairs have author and independent review decisions. See AQUATIC-EDITORIAL-159-ADMISSION.md, LAND-EDITORIAL-161-ADMISSION.md, BOTANICAL-EDITORIAL-160-ADMISSION.md, and BEATRICE-CHILDHOOD-ADMISSION.md. There are 608 accepted entries left to the 1,000 milestone. The Story count already exceeds the final 100 Story target, so new admissions should be regular entries until that discrepancy is reconciled. Full gates and live media delivery remain unverified.
 
 ## Delivery contract
 
-Latest count correction: exactly 900 regular entries and 100 visual Stories,
+Latest owner instruction: Instagram should be approximately 60% visual Stories
+and 40% posts. With 89 accepted Instagram posts, the old 100-Story total is
+insufficient. The final total split awaits owner clarification. Preserve
+accepted work and prioritize distinct Instagram Stories. See
+[platform balance](drafts/PLATFORM-FORMAT-BALANCE.md).
+
+Editorial work is isolated in its task worktree. No merge back may occur at Level 2.
+
+Earlier count correction: exactly 900 regular entries and 100 visual Stories,
 totaling 1,000. Regular entries include articles and videos; only the explicit
 `story` content type counts toward visual Stories. YouTube, Medium, and
 Substack must have authored regular content. Visual Stories belong on
@@ -27,6 +43,8 @@ The previous 500-entry snapshot is not the destination. It has 80 illustrated en
 No mechanical quota, passing test, or author's completion claim substitutes for editorial review. No image binaries belong in Git. A failed remote image is a release defect, not permission to display text-only content.
 
 ## Working batches
+
+Current isolated checkpoint: 716 authored drafts, 311 illustrated entries (265 regular and 46 Stories), 405 excluded drafts, 134 identities, and 2,096 catalog records. All illustrated pairs have author and independent lead review. Latest admission: [Land65](drafts/LAND-STORIES-65-ADMISSION.md), after Aquatic57, Botanical63 and Land62. Earlier counts below are history.
 
 The authored working draft contains 643 entries across 101 identities. The
 checkpoint excludes 403 image-less drafts and projects 240 illustrated entries:

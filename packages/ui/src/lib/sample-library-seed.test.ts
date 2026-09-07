@@ -1,3 +1,4 @@
+import { SAMPLE_SHOWCASE_FEED_COUNT, SAMPLE_SHOWCASE_ITEM_COUNT, SAMPLE_SHOWCASE_FRIEND_COUNT, SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT } from "@freed/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearSampleLibraryDataWithProgressToast,
@@ -22,8 +23,8 @@ describe("sample Library seeding", () => {
     const initialize = vi.fn(async () => undefined);
     const onProgress = vi.fn();
     const addSampleLibraryData = vi.fn(async (data, listener) => {
-      expect(data.feeds).toHaveLength(15);
-      expect(data.items).toHaveLength(1_701);
+      expect(data.feeds).toHaveLength(SAMPLE_SHOWCASE_FEED_COUNT);
+      expect(data.items).toHaveLength(SAMPLE_SHOWCASE_ITEM_COUNT);
       listener?.({ percent: 40, phase: "items" });
     });
     const seedSocialConnections = vi.fn();
@@ -75,7 +76,7 @@ describe("sample Library seeding", () => {
     expect(useToastStore.getState().toasts).toHaveLength(1);
     expect(useToastStore.getState().toasts[0]).toMatchObject({
       message:
-        "Sample data added: 100%. 15 feeds, 1,701 items, 250 friends, and 1,500 social identities.",
+        `Sample data added: 100%. ${SAMPLE_SHOWCASE_FEED_COUNT.toLocaleString()} feeds, ${SAMPLE_SHOWCASE_ITEM_COUNT.toLocaleString()} items, ${SAMPLE_SHOWCASE_FRIEND_COUNT.toLocaleString()} friends, and ${SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT.toLocaleString()} social identities.`,
       type: "success",
     });
   });

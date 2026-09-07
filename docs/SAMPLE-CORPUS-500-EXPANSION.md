@@ -1,3 +1,5 @@
+> Historical planning and progress. Current authority, counts and continuation assignments are in [EDITORIAL-CORPUS-HANDOFF.md](EDITORIAL-CORPUS-HANDOFF.md); the canonical editorial rules are in [SAMPLE-CORPUS-EDITORIAL-GUIDE.md](SAMPLE-CORPUS-EDITORIAL-GUIDE.md).
+
 # Expansion to 500 authored episodes
 
 ## Progress snapshot: September 4

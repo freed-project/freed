@@ -4,7 +4,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import type { FeedItem as FeedItemType } from "@freed/shared";
+import { generateSampleLibraryData, type FeedItem as FeedItemType } from "@freed/shared";
 import { PlatformProvider, type PlatformConfig } from "../../context/PlatformContext.js";
 import { ReaderView } from "./ReaderView";
 
@@ -263,6 +263,30 @@ describe("ReaderView cache-first hydration", () => {
     expect(images).toHaveLength(1);
     expect(images[0].getAttribute("src")).toBe("https://cdn.example.com/article-hero.jpg");
     expect(images[0].getAttribute("alt")).toBe("Article hero");
+
+    await act(async () => root.unmount());
+  });
+
+  it("keeps reviewed Story credit separate from character prose and preserves full-frame media", async () => {
+    const platform = {
+      ...basePlatformConfig,
+      getLocalContent: vi.fn(async () => null),
+      getLocalPreservedText: vi.fn(async () => null),
+      hydrateReaderItem: vi.fn(),
+    } as unknown as PlatformConfig;
+    const sample = generateSampleLibraryData({ scale: "showcase", generatedAt: NOW, batchId: "reader-credit" });
+    const item = sample.items.find((entry) => entry.content.linkPreview?.title === "Separate arrangements")!;
+    const { container, root } = await renderReaderView(platform, item);
+    await flushReaderEffects();
+
+    expect(platform.hydrateReaderItem).not.toHaveBeenCalled();
+    expect(container.textContent).not.toContain("Summary");
+    const credit = container.querySelector('[aria-label="Image credit"]');
+    expect(credit?.textContent).toContain("Photograph by malenki, CC BY-SA 3.0.");
+    expect(credit?.textContent).toContain("\nLicense: https://creativecommons.org/licenses/by-sa/3.0/");
+    expect(credit?.textContent).not.toContain(item.content.text);
+    expect(container.textContent).toContain(item.content.text);
+    expect(container.querySelector(`img[src="${item.content.mediaUrls[0]}"]`)?.classList.contains("object-contain")).toBe(true);
 
     await act(async () => root.unmount());
   });
