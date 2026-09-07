@@ -64,6 +64,16 @@ function PaginationNav({
   const router = useRouter();
   const toggleHref = mode === "all" ? "/changelog/prod" : "/changelog";
   const toggleLabel = mode === "all" ? "Hide dev releases" : "Show dev releases";
+  // Keep both ends reachable while reserving four slots around the active page.
+  const windowStart = Math.max(4, Math.min(currentPage - 1, totalPages - 6));
+  const pages = totalPages <= 10
+    ? Array.from({ length: totalPages }, (_, index) => index + 1)
+    : [1, 2, 3, ...Array.from({ length: 4 }, (_, index) => windowStart + index),
+      totalPages - 2, totalPages - 1, totalPages];
+  const pageEntries = pages.flatMap((page, index): Array<number | string> =>
+    index > 0 && page > pages[index - 1]! + 1
+      ? [`gap-${page}`, page]
+      : [page]);
 
   return (
     <nav
@@ -95,8 +105,10 @@ function PaginationNav({
         >
           {toggleLabel}
         </Link>
-        {Array.from({ length: totalPages }, (_, index) => {
-          const page = index + 1;
+        {pageEntries.map((page) => {
+          if (typeof page === "string") {
+            return <span key={page} className="px-1.5 py-1" aria-label="Skipped pages">…</span>;
+          }
           const isCurrent = page === currentPage;
           const label = page === 1 ? "Latest" : page.toLocaleString();
 

@@ -67,24 +67,12 @@ export default function CTA() {
               transition={{ delay: 0.4 }}
               className="relative z-10 flex flex-col flex-wrap justify-center gap-3 sm:flex-row sm:gap-4"
             >
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => openModal()}
-                className="btn-primary text-base px-8 py-3 w-full sm:w-auto"
-              >
-                Free Yourself
-              </motion.button>
-
-              <Link href="/manifesto" className="w-full sm:w-auto">
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  className="btn-secondary text-base px-8 py-3 w-full"
-                >
-                  Why We Built This
-                </motion.button>
+              <Link href="/manifesto" className="btn-secondary text-base px-8 py-3 w-full sm:w-auto">
+                Why We Built This
               </Link>
+              <button onClick={() => openModal()} className="btn-primary text-base px-8 py-3 w-full sm:w-auto">
+                Free Yourself
+              </button>
             </motion.div>
 
             {/* <motion.p

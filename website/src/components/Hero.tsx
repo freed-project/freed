@@ -2,6 +2,7 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
+import DemoLink from "./DemoLink";
 import { useState, useEffect, type FormEvent } from "react";
 import {
   FaArrowRight,
@@ -262,32 +263,19 @@ export default function Hero() {
             </form>
           )}
 
-          <div className="hidden flex-col flex-wrap justify-center gap-3 lg:flex lg:flex-row lg:justify-start lg:gap-4">
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => openModal()}
-              className="btn-primary inline-flex items-center justify-center gap-2 text-base px-8 py-3 w-full sm:w-auto"
-            >
-              Get Freed
-              <FaArrowRight aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
-            </motion.button>
-
-            <Link href="/changelog" className="w-full sm:w-auto">
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                className="btn-secondary inline-flex items-center justify-center gap-2 text-base px-8 py-3 w-full"
-              >
+          <div className="demo-action-pair mx-auto mt-5 w-fit text-sm sm:text-base lg:mx-0">
+            <DemoLink className="demo-action demo-action-outline">
+              Live demo
+            </DemoLink>
+            <Link href="/changelog" className="demo-action demo-action-outline gap-2">
                 Latest Updates
                 <FaWaveSquare aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
-              </motion.button>
             </Link>
           </div>
 
           {/* Stats */}
-          <div className="mt-6 flex justify-center gap-6 border-t border-freed-border pt-5 sm:mt-12 sm:gap-8 sm:pt-8 lg:justify-start">
-            <div className="text-center lg:text-left">
+          <div className="mt-6 flex justify-center gap-6 pt-5 sm:mt-12 sm:gap-8 sm:pt-8 lg:justify-start">
+            <div className="text-center">
               <p
                 className="text-2xl sm:text-3xl font-bold"
                 style={{ color: "var(--theme-metric-value)" }}
@@ -298,7 +286,7 @@ export default function Hero() {
                 Local Storage
               </p>
             </div>
-            <div className="text-center lg:text-left">
+            <div className="text-center">
               <p
                 className="text-2xl sm:text-3xl font-bold"
                 style={{ color: "var(--theme-metric-value)" }}
@@ -309,7 +297,7 @@ export default function Hero() {
                 Data Collected
               </p>
             </div>
-            <div className="text-center lg:text-left">
+            <div className="text-center">
               <p
                 className="text-2xl sm:text-3xl font-bold"
                 style={{ color: "var(--theme-metric-value)" }}

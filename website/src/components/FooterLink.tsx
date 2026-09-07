@@ -18,9 +18,11 @@ function isCurrentPath(href: string, pathname: string): boolean {
 export default function FooterLink({
   children,
   href,
+  target,
 }: {
   children: ReactNode;
   href: string;
+  target?: "_blank";
 }) {
   const pathname = usePathname();
   const isCurrent = isCurrentPath(href, pathname);
@@ -29,6 +31,8 @@ export default function FooterLink({
   return (
     <Link
       href={href}
+      target={target}
+      rel={target === "_blank" ? "noopener noreferrer" : undefined}
       aria-current={isCurrent ? "page" : undefined}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}

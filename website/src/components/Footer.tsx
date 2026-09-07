@@ -1,4 +1,5 @@
 import Link from "next/link";
+import DemoLink from "./DemoLink";
 import FooterLink from "@/components/FooterLink";
 import ThemeSelector from "@/components/ThemeSelector";
 
@@ -54,6 +55,9 @@ export default function Footer() {
                 </li>
                 <li>
                   <FooterLink href="/changelog">Updates</FooterLink>
+                </li>
+                <li>
+                  <DemoLink className="relative inline-flex items-center text-sm text-text-secondary transition-colors hover:text-text-primary">Live demo</DemoLink>
                 </li>
                 <li>
                   <FooterLink href="/get">Get Freed</FooterLink>

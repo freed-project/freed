@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { motion } from "framer-motion";
 
 const steps = [
@@ -59,14 +58,6 @@ export default function HowItWorks() {
 
         {/* Steps */}
         <div className="relative">
-          <div
-            className="hidden xl:block absolute top-1/2 left-0 right-0 h-px -translate-y-1/2"
-            style={{
-              background:
-                "linear-gradient(to right, transparent, color-mix(in srgb, var(--theme-accent-secondary) 28%, transparent), transparent)",
-            }}
-          />
-
           <div className="grid grid-cols-1 gap-4 sm:gap-8 lg:grid-cols-2 xl:grid-cols-4">
             {steps.map((step, index) => (
               <motion.div
@@ -94,22 +85,22 @@ export default function HowItWorks() {
                   </p>
                 </div>
 
-                {/* Connector dot */}
+                {/* Draw only in the grid gap, sharing the dot's centerline.
+                    Both disappear when the four cards wrap below xl. */}
                 {index < steps.length - 1 && (
                   <div
-                    className="hidden xl:block absolute top-1/2 -right-5 h-2 w-2 rounded-full glow-sm -translate-y-1/2 z-20"
-                    style={{ background: "var(--theme-heading-accent)" }}
-                  />
+                    aria-hidden="true"
+                    className="pointer-events-none hidden xl:block absolute top-1/2 left-full h-px w-8 -translate-y-1/2"
+                    style={{ background: "color-mix(in srgb, var(--theme-accent-secondary) 28%, transparent)" }}
+                  >
+                    <span className="absolute left-1/2 top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full glow-sm"
+                      style={{ background: "var(--theme-heading-accent)" }} />
+                  </div>
                 )}
               </motion.div>
             ))}
           </div>
 
-          <div className="mt-8 flex justify-center sm:mt-12">
-            <Link href="/roadmap" className="btn-secondary px-6 py-3 text-sm">
-              See the roadmap
-            </Link>
-          </div>
         </div>
       </div>
     </section>
