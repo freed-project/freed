@@ -17,7 +17,7 @@ Never discard launcher changes to make it fresh. Preserve and report unexpected 
 
 ## Authorization levels
 
-Default to Level 2 (Build). Ask only when a different level is needed to safely or efficiently complete the requested task. Finish authorized work before asking. To change levels, ask exactly:
+Default to Level 2 (Build). Finish authorized work first. Ask exactly the following only when safe or efficient task completion needs another level:
 
 > What authorization level should this task proceed at?
 >
@@ -31,7 +31,7 @@ Default to Level 2 (Build). Ask only when a different level is needed to safely 
 >
 > Reply with a number.
 
-Do not request authorization for one isolated action or append exclusions and safety boilerplate.
+Ask for task authority, without isolated permissions, exclusions, or safety boilerplate.
 
 1. **Inspect:** Read-only diagnosis, evidence capture, and planning.
 2. **Build:** Level 1 plus local edits, tests, previews, synthetic fixtures, and reversible local files.
@@ -43,7 +43,7 @@ Do not request authorization for one isolated action or append exclusions and sa
 
 Each level includes lower levels. The newest explicit level controls for the stated task. Do not ask again for included actions. Clarification about ambiguous scope is not an authorization challenge.
 
-Use these numbers in owner-facing authorization requests and status. Internal labels such as `observe-only`, `plan-only`, `pr-only`, and `merge-safe` never replace them.
+Use numbered levels in owner-facing requests and status; internal actor labels never replace them.
 
 ## Load only the applicable instructions
 
