@@ -1190,6 +1190,11 @@ export function Header({
   const layoutControlWrapperClass = "absolute inset-y-0 inline-flex items-center";
   const toolbarContainerStyle = {
     ...(headerDragRegion ? dragStyle : {}),
+    // Keep narrow-screen controls clear of rounded device edges and safe areas.
+    ...(isMobile && !headerDragRegion ? {
+      paddingLeft: "max(12px, env(safe-area-inset-left))",
+      paddingRight: "max(12px, env(safe-area-inset-right))",
+    } : {}),
     boxSizing: "border-box",
     height: px(topToolbarHeightPx),
     minHeight: px(topToolbarHeightPx),

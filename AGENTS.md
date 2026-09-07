@@ -163,6 +163,8 @@ Record meaningful choices and consequences in private `TASK-DECISIONS.local.md`.
 
 ### Promotion
 
+Every new production version must complete [the showcase release contract](docs/RELEASE-SHOWCASE.md), including all themes, the Scriptorium README embed, and verified marketing references.
+
 `dev`, `main`, and `www` are separate lanes. Promote a reviewed immutable `dev` snapshot into `main` only through the release workflow. After a stable production release, reverse-integrate `main` into `dev`. Sync approved `main` changes into `www` only when the website or checked-in changelog needs them.
 
 Use [freed-ship-build](.agents/skills/freed-ship-build/SKILL.md) for release economy, CalVer, signing, installation, rollback, and reverse integration. Use [freed-ship-www](.agents/skills/freed-ship-www/SKILL.md) for website deployment. Use [docs/SOAK-AND-TRIGGERS.md](docs/SOAK-AND-TRIGGERS.md) and [freed-soak](.agents/skills/freed-soak/SKILL.md) for installed observation.

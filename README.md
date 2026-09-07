@@ -6,14 +6,7 @@ Capture your social/rss/newsletter feeds locally. Tune the ranking algo yourself
 
 [Freed.wtf](https://freed.wtf)
 
----
-
-## Branch Flow
-
-- `dev` is the default integration branch
-- `main` is the production promotion branch
-- Production web surfaces live at `freed.wtf` and `app.freed.wtf`
-- Dev web surfaces live at `dev.freed.wtf` and `dev-app.freed.wtf`
+![Freed in Scriptorium: Unified Feed, Map, Friends, friend details, mobile Stories, and mobile reader](docs/assets/freed-showcase-scriptorium.webp)
 
 ---
 
@@ -136,6 +129,15 @@ Compose and publish through your own site.
 6. **Ranking in the Primary:** Canonical scores are materialized through signed Primary operations and queried locally on every client
 7. **Logical-object sync:** Devices exchange signed normalized records and selective content, never database files
 8. **Next.js for the marketing site:** The public site remains isolated in the `www` lane
+
+---
+
+## Branch Flow
+
+- `dev` is the default integration branch
+- `main` is the production promotion branch
+- Production web surfaces live at `freed.wtf` and `app.freed.wtf`
+- Dev web surfaces live at `dev.freed.wtf` and `dev-app.freed.wtf`
 
 ---
 
