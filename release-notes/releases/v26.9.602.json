@@ -3,7 +3,7 @@
   "version": "26.9.602",
   "channel": "production",
   "dayKey": "26.9.6",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-09-07T01:25:31.639Z",
   "model": "heuristic",
@@ -225,30 +225,30 @@
     ]
   },
   "release": {
-    "deck": "Explore Freed in an interactive demo with illustrated stories, a unified social feed, and connected Friends and map views, backport snapshot publisher forwarding, and backport immutable snapshot controls",
+    "deck": "An interactive Freed demo, connected Friends and map views, and a clearer mobile reading experience.",
     "features": [
       "Explore Freed in an interactive demo with illustrated stories, a unified social feed, and connected Friends and map views",
       "Move between people, their social profiles, recent posts and locations in the Friends galaxy, with zoom-aware avatars and labels and editable Connection, Friend and Fam ratings",
-      "Follow author links into Friends and jump from recent activity into the reader, with profile avatars cached locally in Freed Desktop"
+      "Read on mobile with one toolbar, accessible overflow actions, and a draggable demo tab docked to the right edge"
     ],
     "fixes": [
       "Synchronize Friends and All content filters across views, with All content selected by default",
       "Add searchable notes to saved content",
-      "LinkedIn feed extraction after reconnecting and support updated feed markup restored",
+      "Restore LinkedIn feed extraction after reconnecting and support updated feed markup",
       "Preserve pending provider syncs during temporary writer admission failures and recognize unlocked macOS sessions correctly",
       "Keep large Library exports off the Desktop command thread and improve Drive publication for larger libraries",
-      "Refine the existing SQLite Library with normalized storage and sync records and local-only authority initialization",
+      "Follow author links into Friends and jump from recent activity into the reader, with profile avatars cached locally in Freed Desktop",
       "X link previews and videos without a playable URL no longer create invalid media records that block capture",
       "LinkedIn and Facebook accept posts with a video marker but no extracted media URL, and classify duplicate URLs by position",
       "The PWA can resume an accepted sync result after interrupted local processing without rejecting its unchanged contents",
       "Anonymous demo tabs use separate temporary Libraries instead of competing for the persistent Library lock",
-      "Demo reader descriptions preserve paragraphs and credit lines"
+      "Demo reader descriptions preserve paragraphs and credit lines",
+      "Use consistent loading indicators across feed, reader, Friends and map views, without flashing unfinished map markers",
+      "Fade in the demo welcome shade and extend it across mobile viewport and safe-area bounds",
+      "Keep reader actions available during background refreshes and remove the duplicate mobile toolbar, blur and dark bottom fade",
+      "Make Fit All controls square in Friends and map views"
     ],
-    "followUps": [
-      "An interactive Freed demo, a richer Friends galaxy, and connected profiles that bring people and their posts together",
-      "Freed Desktop caches discovered identity avatars locally, including identities not currently onscreen",
-      "More reliable social captures, interrupted-sync recovery, and locally cached avatars"
-    ]
+    "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.9.602\n\nExplore Freed in an interactive demo with illustrated stories, a unified social feed, and connected Friends and map views, backport snapshot publisher forwarding, and backport immutable snapshot controls\n\n### Features\n\n- Explore Freed in an interactive demo with illustrated stories, a unified social feed, and connected Friends and map views\n- Move between people, their social profiles, recent posts and locations in the Friends galaxy, with zoom-aware avatars and labels and editable Connection, Friend and Fam ratings\n- Follow author links into Friends and jump from recent activity into the reader, with profile avatars cached locally in Freed Desktop\n\n### Fixes\n\n- Synchronize Friends and All content filters across views, with All content selected by default\n- Add searchable notes to saved content\n- LinkedIn feed extraction after reconnecting and support updated feed markup restored\n- Preserve pending provider syncs during temporary writer admission failures and recognize unlocked macOS sessions correctly\n- Keep large Library exports off the Desktop command thread and improve Drive publication for larger libraries\n- Refine the existing SQLite Library with normalized storage and sync records and local-only authority initialization\n- X link previews and videos without a playable URL no longer create invalid media records that block capture\n- LinkedIn and Facebook accept posts with a video marker but no extracted media URL, and classify duplicate URLs by position\n- The PWA can resume an accepted sync result after interrupted local processing without rejecting its unchanged contents\n- Anonymous demo tabs use separate temporary Libraries instead of competing for the persistent Library lock\n- Demo reader descriptions preserve paragraphs and credit lines\n\n### Follow-ups\n\n- An interactive Freed demo, a richer Friends galaxy, and connected profiles that bring people and their posts together\n- Freed Desktop caches discovered identity avatars locally, including identities not currently onscreen\n- More reliable social captures, interrupted-sync recovery, and locally cached avatars\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.9.602\n\nAn interactive Freed demo, connected Friends and map views, and a clearer mobile reading experience\n\n### Features\n\n- Explore Freed in an interactive demo with illustrated stories, a unified social feed, and connected Friends and map views\n- Move between people, their social profiles, recent posts and locations in the Friends galaxy, with zoom-aware avatars and labels and editable Connection, Friend and Fam ratings\n- Read on mobile with one toolbar, accessible overflow actions, and a draggable demo tab docked to the right edge\n\n### Fixes\n\n- Synchronize Friends and All content filters across views, with All content selected by default\n- Add searchable notes to saved content\n- LinkedIn feed extraction after reconnecting and support updated feed markup restored\n- Preserve pending provider syncs during temporary writer admission failures and recognize unlocked macOS sessions correctly\n- Keep large Library exports off the Desktop command thread and improve Drive publication for larger libraries\n- Follow author links into Friends and jump from recent activity into the reader, with profile avatars cached locally in Freed Desktop\n- X link previews and videos without a playable URL no longer create invalid media records that block capture\n- LinkedIn and Facebook accept posts with a video marker but no extracted media URL, and classify duplicate URLs by position\n- The PWA can resume an accepted sync result after interrupted local processing without rejecting its unchanged contents\n- Anonymous demo tabs use separate temporary Libraries instead of competing for the persistent Library lock\n- Demo reader descriptions preserve paragraphs and credit lines\n- Consistent loading indicators across feed, reader, Friends and map views, without flashing unfinished map markers now uses the correct path\n- Fade in the demo welcome shade and extend it across mobile viewport and safe-area bounds\n- Keep reader actions available during background refreshes and remove the duplicate mobile toolbar, blur and dark bottom fade\n- Make Fit All controls square in Friends and map views\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
