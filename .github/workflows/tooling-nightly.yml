@@ -32,15 +32,17 @@ env:
 jobs:
   pwa-library-corpus-hardening:
     name: PWA Library corpus hardening (${{ matrix.browser }})
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
         include:
           - browser: chromium
+            runner: ubuntu-latest
             target: "100000"
           - browser: webkit
+            runner: macos-latest
             target: "25000"
     permissions:
       contents: read
@@ -58,8 +60,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install browser system dependencies
+        if: runner.os == 'Linux'
+        run: npx playwright install-deps "${{ matrix.browser }}"
+        working-directory: packages/pwa
+
       - name: Install browser
-        run: npx playwright install --with-deps "${{ matrix.browser }}"
+        run: npx playwright install "${{ matrix.browser }}"
         working-directory: packages/pwa
 
       - name: Exercise the OPFS Library corpus

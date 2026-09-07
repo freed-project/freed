@@ -80,6 +80,22 @@ test("nightly PWA corpus failures retain progress and browser evidence", () => {
     /Upload PWA corpus progress and failure evidence[\s\S]*?if: always\(\)/,
   );
 });
+
+test("nightly WebKit corpus proof uses a macOS OPFS environment", () => {
+  assert.match(toolingNightlyWorkflow, /runs-on: \$\{\{ matrix\.runner \}\}/);
+  assert.match(
+    toolingNightlyWorkflow,
+    /browser: chromium\s+runner: ubuntu-latest\s+target: "100000"/,
+  );
+  assert.match(
+    toolingNightlyWorkflow,
+    /browser: webkit\s+runner: macos-latest\s+target: "25000"/,
+  );
+  assert.match(
+    toolingNightlyWorkflow,
+    /Install browser system dependencies\s+if: runner\.os == 'Linux'/,
+  );
+});
 const aptSourceSanitizer = readFileSync(
   path.join(scriptsDir, "ci-sanitize-apt-sources.sh"),
   "utf8",
