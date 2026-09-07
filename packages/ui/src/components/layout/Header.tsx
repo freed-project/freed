@@ -1191,9 +1191,9 @@ export function Header({
   const toolbarContainerStyle = {
     ...(headerDragRegion ? dragStyle : {}),
     // Keep narrow-screen controls clear of rounded device edges and safe areas.
-    ...(isMobile && !headerDragRegion ? {
-      paddingLeft: "max(12px, env(safe-area-inset-left))",
-      paddingRight: "max(12px, env(safe-area-inset-right))",
+    ...(isMobileDevice && !headerDragRegion ? {
+      paddingLeft: "max(12px, var(--safe-area-left, env(safe-area-inset-left, 0px)))",
+      paddingRight: "max(12px, var(--safe-area-right, env(safe-area-inset-right, 0px)))",
     } : {}),
     boxSizing: "border-box",
     height: px(topToolbarHeightPx),

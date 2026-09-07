@@ -501,7 +501,7 @@ export function AppShell({ children }: AppShellProps) {
       {/* On actual mobile devices, the layout flows naturally in the document so
           Safari can collapse its address bar when the feed scrolls. Desktop devices
           keep the fixed-height shell even when the viewport is narrow. */}
-      <div className={`app-theme-shell relative flex min-w-0 flex-1 flex-col ${isMobileDevice ? "" : "min-h-0"}`}>
+      <div data-mobile-device={isMobileDevice} className={`app-theme-shell relative flex min-w-0 flex-1 flex-col ${isMobileDevice ? "" : "min-h-0"}`}>
         {showAtmosphere ? <BackgroundAtmosphere /> : null}
         <Header
           mobileSidebarOpen={mobileSidebarOpen}
@@ -519,7 +519,8 @@ export function AppShell({ children }: AppShellProps) {
 
         <div
           ref={contentFrameRef}
-          className={`relative z-10 flex flex-1 ${contentFrameSpacingClass} ${
+          data-testid="workspace-content-frame"
+          className={`app-content-frame relative z-10 flex flex-1 ${contentFrameSpacingClass} ${
             isMobileDevice ? "" : "min-h-0 overflow-hidden"
           }`}
         >
