@@ -517,6 +517,8 @@ export interface PlatformConfig {
    * Desktop can force reader-only mode to reduce WebKit renderer pressure.
    */
   feedMediaPreviews?: "inline" | "reader-only";
+  /** Feature previews can display the original media for sample records. */
+  sampleMediaPreviews?: "inline";
 
   /**
    * Register + fetch a feed by URL.

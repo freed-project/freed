@@ -1446,6 +1446,7 @@ function App() {
     () => ({
       store: useAppStore,
       feedMediaPreviews: "reader-only",
+      sampleMediaPreviews: IS_FEATURE_PREVIEW ? "inline" : undefined,
       addRssFeed,
       importOPMLFeeds,
       exportFeedsAsOPML,
@@ -1695,7 +1696,7 @@ function App() {
         tauriRuntimeAvailable && isInitialized
           ? queryNormalizedLibrary
           : undefined,
-      resolveAvatarUrl: tauriRuntimeAvailable ? resolveDesktopAvatarUrl : undefined,
+      resolveAvatarUrl: tauriRuntimeAvailable && import.meta.env.VITE_TEST_TAURI !== "1" ? resolveDesktopAvatarUrl : undefined,
       mutateDeviceGraphLayout:
         tauriRuntimeAvailable && isInitialized
           ? mutateNormalizedDeviceGraphLayout

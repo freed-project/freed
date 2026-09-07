@@ -215,7 +215,7 @@ test("settings version click smooth-scrolls to updates once and remains anchored
   await expectHeadingTopNear(page, "updates", 20);
 });
 
-test("settings reduces backdrop work during scroll and restores it at idle", async ({ app, page }) => {
+test("settings limits scroll effects to content and preserves backdrop blur", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
@@ -228,7 +228,7 @@ test("settings reduces backdrop work during scroll and restores it at idle", asy
   const overlay = page.locator(".theme-settings-overlay").first();
   await expect(dialog).toBeVisible({ timeout: 5_000 });
 
-  await dialog.getByRole("button", { name: "Sync", exact: true }).hover();
+  await dialog.getByRole("button", { name: "Cloud Sync", exact: true }).hover();
   await page.getByTestId("settings-scroll-container").hover();
   await expect(dialog).not.toHaveAttribute("data-moving", "true");
   await expect(overlay).not.toHaveClass(/theme-settings-overlay-preview-off/);
@@ -238,11 +238,12 @@ test("settings reduces backdrop work during scroll and restores it at idle", asy
     container.scrollTop += 180;
     container.dispatchEvent(new Event("scroll"));
   });
-  await expect(dialog).toHaveAttribute("data-moving", "true");
-  await expect(overlay).toHaveAttribute("data-moving", "true");
-  await expect(overlay).toHaveCSS("backdrop-filter", "none");
+  await expect(page.getByTestId("settings-scroll-container")).toHaveAttribute("data-moving", "true");
+  await expect(dialog).not.toHaveAttribute("data-moving", "true");
+  await expect(overlay).not.toHaveAttribute("data-moving", "true");
+  await expect(overlay).toHaveCSS("backdrop-filter", /blur\(17px\)/);
   await expect(overlay).not.toHaveClass(/theme-settings-overlay-preview-off/);
-  await expect(overlay).not.toHaveAttribute("data-moving", "true", { timeout: 2_000 });
+  await expect(page.getByTestId("settings-scroll-container")).not.toHaveAttribute("data-moving", "true", { timeout: 2_000 });
 
   await dialog.getByRole("button", { name: "Appearance", exact: true }).click();
   await dialog.locator(".theme-settings-theme-card").hover();

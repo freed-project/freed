@@ -7,6 +7,7 @@ import { fileURLToPath } from "url";
 import pkg from "./package.json" with { type: "json" };
 import { getBuildMetadata } from "../../scripts/lib/build-metadata.mjs";
 import { assertNoRetiredAutomergeRollupBundle } from "../../scripts/lib/retired-automerge-runtime.mjs";
+import { tauriInitScript } from "./tests/e2e/fixtures/tauri-init";
 
 // Resolve workspace packages directly from their TypeScript source so that
 // worktrees don't need to build dist/ artifacts before running the dev server.
@@ -100,6 +101,15 @@ export default defineConfig({
     ],
   },
   plugins: [
+    ...(process.env.VITE_TEST_TAURI === "1" && process.env.VITE_FREED_FEATURE_PREVIEW === "1"
+      ? [{
+          name: "feature-preview-tauri-startup",
+          apply: "serve" as const,
+          transformIndexHtml() {
+            return [{ tag: "script", children: tauriInitScript(), injectTo: "head-prepend" as const }];
+          },
+        }]
+      : []),
     rejectRetiredDesktopLibraryAssets,
     wasm(),
     topLevelAwait(),

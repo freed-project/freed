@@ -569,6 +569,7 @@ function App() {
         : undefined,
       geographicMapMode: "online",
       feedMediaPreviews: "inline",
+      sampleMediaPreviews: IS_FEATURE_PREVIEW && !IS_DEMO ? "inline" : undefined,
       SourceIndicator: null,
       HeaderSyncIndicator: null,
       FeedsSettingsContent: PwaFeedsSettings,
