@@ -84,7 +84,7 @@ Task skills are discovered from their descriptions. These routes must happen bef
 
 ### Provider fingerprinting stop sign
 
-Before writing code or enabling a feature that could alter behavior visible to X, Facebook, Instagram, LinkedIn, or another provider, stop. This includes authenticated WebView loads, navigation, requests, retries, cadence, cookies, headers, scripted scrolling or clicking, extraction scripts, media loading, login behavior, canvas or WebGL behavior, and fingerprint masking.
+Before writing code or enabling a feature that could alter behavior visible to X, Facebook, Instagram, LinkedIn, or another provider, complete the provider review and warning below. This includes authenticated WebView loads, navigation, requests, retries, cadence, cookies, headers, scripted scrolling or clicking, extraction scripts, media loading, login behavior, canvas or WebGL behavior, and fingerprint masking.
 
 Warn the owner in plain language. Name the provider, describe the observable change, explain how it could increase fingerprinting or detection risk, and offer the lowest-profile alternative. Level 5 or higher covers necessary provider-observable behavior only after that warning. At a lower level, ask for an authorization level. Ordinary permission without a numbered level is not provider approval.
 
@@ -134,7 +134,11 @@ Marketing is `https://freed.wtf`, the PWA is `https://app.freed.wtf`, and downlo
 
 ### Autonomous decision review
 
-For a complex task sequence, maintain a worktree-local, Git-ignored `TASK-DECISIONS.local.md` from the first judgment decision or unanswered question. Follow the [decision review contract](docs/AGENT-INSTRUCTIONS.md#local-decision-review). Update it as work proceeds, link it at handoff, and preserve it for owner review before worktree cleanup. Never commit or publish this log. Logging does not replace required clarification or authorization.
+Complete every authorized delivery step. Make routine reversible choices using repository conventions. Answer side questions and resume the active task unless the owner pauses, cancels, or replaces it.
+
+Follow the [initiative contract](docs/AGENT-INSTRUCTIONS.md#local-decision-review): decide and report routine choices; ask while continuing independent work for material preferences; pause only dependent actions for missing authority, explicit checkpoints, or consequential uncertainty. Skills cannot add a second approval for an included action.
+
+Record meaningful choices and consequences in private `TASK-DECISIONS.local.md`. Tell the owner while course correction is cheap. At closeout, summarize delivery, trade-offs, and unresolved items, then link the log. Preserve it before cleanup; never publish it. A log link alone is not a decision update.
 
 ### Lanes and local proof
 
@@ -148,7 +152,7 @@ For a complex task sequence, maintain a worktree-local, Git-ignored `TASK-DECISI
 ### Validation and publication
 
 - `npm run validate:feature` is the normal feature-branch gate.
-- `npm run validate:dev` is the full integration gate for merges and pushes to `dev`.
+- `npm run validate:dev` runs full integration on `dev` pushes. PRs require local `validate:feature` and exact-head required CI; follow [validation reuse](docs/TESTING-STANDARD.md#validation-reuse).
 - `npm run validate:release` is the release-preparation gate on `main`.
 - Read [docs/TESTING-STANDARD.md](docs/TESTING-STANDARD.md) before adding, moving, or deleting permanent tests. Use the cheapest deterministic layer that protects a distinct contract. Delete temporary probes before publication.
 - Publish ordinary work through `./scripts/worktree-publish.sh` with existing GitHub authentication. Use `--ready` only for finished work. Missing optional broker configuration does not block the normal authenticated path.
