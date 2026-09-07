@@ -60,14 +60,11 @@ export default function Navigation() {
   const [captionIndex, setCaptionIndex] = useState(0);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const [homePageScrolledPastFold, setHomePageScrolledPastFold] = useState(false);
   const [mobileMenuTopOffset, setMobileMenuTopOffset] = useState(64);
   const [hoveredNavPath, setHoveredNavPath] = useState<string | null>(null);
   const navRefs = useRef<(HTMLAnchorElement | null)[]>([]);
   const mobileTopBarRef = useRef<HTMLDivElement | null>(null);
   const [underlineStyle, setUnderlineStyle] = useState({ left: 0, width: 0 });
-  const showMobileTopCta =
-    !mobileMenuOpen && (pathname !== "/" || homePageScrolledPastFold);
   const activeNavPath = NAV_ITEMS.find((item) =>
     isActive(item.path, pathname),
   )?.path;
@@ -76,7 +73,6 @@ export default function Navigation() {
   useEffect(() => {
     const handleScroll = () => {
       setScrolled(window.scrollY > 20);
-      setHomePageScrolledPastFold(window.scrollY > window.innerHeight);
     };
     handleScroll(); // Check initial position
     window.addEventListener("scroll", handleScroll, { passive: true });
@@ -210,7 +206,10 @@ export default function Navigation() {
         />
       )}
 
-      <button onClick={() => openModal()} className="btn-primary text-sm !py-2">
+      <a href="https://demo.freed.wtf" target="_blank" rel="noopener noreferrer" className="btn-primary text-sm !py-2 whitespace-nowrap">
+        Live demo
+      </a>
+      <button onClick={() => openModal()} className="btn-primary text-sm !py-2 whitespace-nowrap">
         Get Freed
       </button>
     </div>
@@ -287,42 +286,19 @@ export default function Navigation() {
         {/* Mobile: solid full-width bar */}
         <div
           ref={mobileTopBarRef}
-          className={`lg:hidden bg-freed-black pl-8 pr-4 py-3 ${
+          className={`lg:hidden bg-freed-black px-3 py-3 ${
             mobileMenuOpen ? "" : "border-b border-freed-border"
           }`}
         >
           <div className="flex items-center justify-between">
             {logoElement}
-            <div className="flex items-center gap-3">
-              <AnimatePresence initial={false}>
-                {showMobileTopCta && (
-                  <motion.div
-                    key="mobile-top-cta"
-                    initial={{ width: 0 }}
-                    animate={{ width: "auto" }}
-                    exit={{ width: 0 }}
-                    transition={{ duration: 0.2, ease: "easeInOut" }}
-                    className="overflow-hidden pr-4"
-                    style={{
-                      WebkitMaskImage:
-                        "linear-gradient(to right, black 0, black calc(100% - 18px), transparent 100%)",
-                      maskImage:
-                        "linear-gradient(to right, black 0, black calc(100% - 18px), transparent 100%)",
-                    }}
-                  >
-                    <motion.button
-                      onClick={() => openModal()}
-                      initial={{ opacity: 0, x: 8 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: 8 }}
-                      transition={{ duration: 0.2, ease: "easeInOut" }}
-                      className="btn-primary nav-mobile-cta my-0 shrink-0 whitespace-nowrap text-[0.765rem]"
-                    >
-                      Get Freed
-                    </motion.button>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <a href="https://demo.freed.wtf" target="_blank" rel="noopener noreferrer" className="btn-primary !px-2 !py-2 min-h-11 whitespace-nowrap text-xs">
+                Live demo
+              </a>
+              <button onClick={() => openModal()} className="btn-primary !px-2 !py-2 min-h-11 whitespace-nowrap text-xs">
+                Get Freed
+              </button>
               {mobileHamburger}
             </div>
           </div>

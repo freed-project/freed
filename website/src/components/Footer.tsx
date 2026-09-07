@@ -56,6 +56,9 @@ export default function Footer() {
                   <FooterLink href="/changelog">Updates</FooterLink>
                 </li>
                 <li>
+                  <FooterLink href="https://demo.freed.wtf" target="_blank">Live demo</FooterLink>
+                </li>
+                <li>
                   <FooterLink href="/get">Get Freed</FooterLink>
                 </li>
               </ul>

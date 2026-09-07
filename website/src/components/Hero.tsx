@@ -263,6 +263,9 @@ export default function Hero() {
           )}
 
           <div className="hidden flex-col flex-wrap justify-center gap-3 lg:flex lg:flex-row lg:justify-start lg:gap-4">
+            <a href="https://demo.freed.wtf" target="_blank" rel="noopener noreferrer" className="btn-primary inline-flex items-center justify-center text-base px-8 py-3 w-full sm:w-auto">
+              Live demo
+            </a>
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.98 }}
