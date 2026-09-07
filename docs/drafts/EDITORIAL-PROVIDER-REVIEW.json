@@ -1,15 +1,15 @@
 {
   "schemaVersion": 1,
   "kind": "provider-risk-review",
-  "taskId": "editorial-corpus-transfer-20260906",
-  "createdAt": "2026-09-06T16:28:56.669Z",
-  "status": "diff_authorized",
+  "taskId": "editorial-corpus-continuation-20260906",
+  "createdAt": "2026-09-07T02:12:00.000Z",
+  "status": "behavior_approved",
   "source": {
     "status": "healthy",
     "references": [
       {
-        "reference": "git:9d376d738a1a382b2c80ce6561514f45be29077b:packages/ui/src/components/feed/ReaderView.tsx",
-        "digest": "521a73b748af6b72d00f273d6002b7cb0b036fe776b68bb04c4206e123212f7b"
+        "reference": "git:05aa6ce9f4dcfe676414764e747c9288daf9219e:packages/ui/src/components/feed/ReaderView.tsx",
+        "digest": "184c4cff1a107242f0126fc9ea9b5cb00746fe94b2f538c2cdda7b0f99600dbb"
       }
     ]
   },
@@ -22,15 +22,14 @@
       "substack",
       "x"
     ],
-    "observableBehavior": "ReaderView changes rendered sample text, credit layout and a sample-only Summary badge. No navigation, provider request, retry, cadence, cookie, header, extraction, authentication, autoplay or background contact path changes in this classified diff.",
-    "fingerprintingRisk": "No additional provider-observable behavior in the classified ReaderView diff. Publication does not exercise a provider or authorize new traffic.",
-    "lowestProfileAlternative": "Offline static corpus and rendered reader fixtures, with SQLite mocked and media review separate from account/provider interaction.",
-    "allowedBehavior": "Publish this behavior-neutral editorial handoff as a draft PR only. No merge, release, deployment or live provider behavior change.",
+    "observableBehavior": "The public demo can display exactly 500 accepted image-led posts. Browsing more cards can issue additional ordinary passive image GET requests to the same approved media hosts already represented in the reviewed catalog. ReaderView displays the complete authored text and separate image credit without a sample Summary badge. There is no provider navigation, authentication, background activity, cookie change, custom header, retry loop, scripted interaction, extraction, or autoplay.",
+    "fingerprintingRisk": "Approved media hosts can observe additional ordinary image requests when a visitor browses the larger corpus. Request volume can therefore be higher than the 392-post baseline. The change adds no authenticated social traffic, timing loop, retry behavior, custom header, cookie access, navigation, or background contact.",
+    "lowestProfileAlternative": "Keep the demo at 392 posts, or defer the added images until a rights-compliant Freed controlled media cache exists. Either alternative misses the owner's exact 500-post delivery target.",
+    "allowedBehavior": "Publish and merge the exact 500-post demo corpus with passive reviewed media loading from the already approved hosts. Approval is limited to 397 regular posts and 103 Stories and expires if providers, navigation, background activity, cookies, headers, retries, scripted interaction, extraction, autoplay, or request timing change materially.",
     "paths": [
       "packages/ui/src/components/feed/ReaderView.tsx"
     ],
-    "ownerAuthorization": "Current owner explicitly requests all existing work in a PR and a continuity comment, then task closure.",
-    "providerSubdiffSha": "967658443c82621c1445f0f7fd0259dacac19291"
-  },
-  "artifactDigest": "9e289dfb8c3c17e3ee2d9ba639d0b23d39b87728ce82d3b607a0be24d84a3ca0"
+    "ownerAuthorization": "After being told that the extra posts increase passive image request volume to the same approved hosts, the owner confirmed existing Level 5 approval on September 6, 2026.",
+    "providerSubdiffSha": "87ed1734a099d1b1ae8b08132b2dcb9058dc173a"
+  }
 }
