@@ -17,7 +17,7 @@
 .demo-action-pair > .btn-primary:hover { filter: brightness(1.18); transform: none; }
 .demo-action:focus-visible { outline: 3px solid var(--theme-text-primary); outline-offset: 3px; z-index: 1; }
 .demo-action-pair-compact > .demo-action { padding: 5px 8px; }
-.demo-showcase { position: relative; display: block; overflow: hidden; border-radius: var(--card-radius); border: 1px solid var(--theme-border-subtle); transition: transform 180ms ease; }
+.demo-showcase { position: relative; display: block; overflow: visible; transition: transform 180ms ease; }
 @media (hover: hover) and (prefers-reduced-motion: no-preference) {
   .demo-showcase:hover { transform: scale(1.025); }
 }
