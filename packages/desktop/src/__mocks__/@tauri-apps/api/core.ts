@@ -218,23 +218,8 @@ function normalizedLibraryCloudIdentity(): Record<string, unknown> {
 
 /** Default handlers for every command the app calls on startup. */
 const handlers: Record<string, Handler> = {
-  query_normalized_library: (args) => {
-    const request = args.request as Record<string, unknown> | undefined;
-    if (request?.queryId !== "story_wall_candidates_v1") return null;
-    // The module-only preview has no Library corpus. E2E injection overrides
-    // this with the same closed response populated from its SQLite fixture.
-    return {
-      hasMore: false,
-      queryId: request.queryId,
-      rows: [],
-      schemaVersion: request.schemaVersion,
-      source: {
-        generationId: "d".repeat(64),
-        projectionRevision: 0,
-        transitionSequence: 0,
-      },
-    };
-  },
+  // Normalized Library commands come from the shared HTML/init bootstrap.
+  // Keep one query implementation for previews and injected test fixtures.
   ensure_fresh_normalized_desktop_library: () => {
     sqliteLibrary().active = true;
     return true;

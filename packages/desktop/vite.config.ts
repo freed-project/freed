@@ -1,4 +1,5 @@
 import { defineConfig } from "vitest/config";
+import { tauriInitScript } from "./src/__mocks__/tauri-init.js";
 import react from "@vitejs/plugin-react";
 import wasm from "vite-plugin-wasm";
 import topLevelAwait from "vite-plugin-top-level-await";
@@ -100,6 +101,16 @@ export default defineConfig({
     ],
   },
   plugins: [
+    ...(process.env.VITE_TEST_TAURI
+      ? [{
+          name: "desktop-mock-bootstrap",
+          transformIndexHtml: () => [{
+            tag: "script",
+            children: tauriInitScript(),
+            injectTo: "head-prepend" as const,
+          }],
+        }]
+      : []),
     rejectRetiredDesktopLibraryAssets,
     wasm(),
     topLevelAwait(),
