@@ -95,11 +95,20 @@ Public roadmap and changelog updates must remain attributable to an approved sou
 
 ## Delivery kernel
 
+### Autonomous decision review
+
+Complete every authorized delivery step. Make routine reversible choices using repository conventions. Answer side questions and resume the active task unless the owner pauses, cancels, or replaces it.
+
+Follow the [initiative contract](docs/AGENT-INSTRUCTIONS.md#local-decision-review): decide and report routine choices; ask while continuing independent work for material preferences; pause only dependent actions for missing authority, explicit checkpoints, or consequential uncertainty. Skills cannot add a second approval for an included action.
+
+Record meaningful choices and consequences in private `TASK-DECISIONS.local.md`. Tell the owner while course correction is cheap. At closeout, summarize delivery, trade-offs, and unresolved items, then link the log. Preserve it before cleanup; never publish it. A log link alone is not a decision update.
+
+
 - Create website worktrees with `./scripts/worktree-add.sh ../freed-<slug> -b <branch> origin/www`. Never use bare `git worktree add`.
 - Build and test locally before publication. Run website commands from `website/`, with the worktree root `node_modules/.bin` on `PATH` when a hoisted binary is needed.
 - Branch names use `feat/`, `fix/`, `chore/`, `docs/`, `refactor/`, `perf/`, or `style/` plus a short kebab-case description. Commit messages and pull request titles use the matching Conventional Commit prefix.
 - Do not put an agent product name or other authorship giveaway in a branch name, commit subject, pull request title, issue title, or external title.
-- Publish using the caller's existing GitHub authentication. A pull request must target `www`, carry the required external-post marker, identify its source when applicable, and represent a locally verified candidate.
+- Publish with `scripts/worktree-publish.sh` using the caller's existing GitHub authentication. A pull request must target `www`, carry the required external-post marker, identify its source when applicable, and represent a locally verified candidate.
 - Squash merge only. One pull request becomes one commit on `www`, and the pull request title becomes the squash subject.
 - Verify that required checks passed for the exact head SHA. After an authorized merge, verify `origin/www`, the Vercel deployment identity, and the production response before claiming the site shipped.
 - Stop only the current task's preview or browser session at closeout. Remove the merged worktree and task branch. Query pull request or remote branch state instead of using branch ancestry to judge a squash merge.

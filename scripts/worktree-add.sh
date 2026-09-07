@@ -19,6 +19,8 @@
 #   With a warm cache this takes ~74s vs ~170s for a cold `npm install`.
 
 set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/lib/node-tooling.sh"
 
 if [[ $# -eq 0 ]]; then
   echo "Usage: ./scripts/worktree-add.sh <path> [-b <branch>] [<commit-ish>]"
@@ -27,10 +29,12 @@ fi
 
 git worktree add "$@"
 
-# The new worktree is always the last entry in the list.
-NEW_WT=$(git worktree list --porcelain | awk '/^worktree/ {path=$2} END {print path}')
+# The wrapper requires its destination path first, including paths with spaces.
+NEW_WT="$(cd "$1" && pwd -P)"
 
 echo ""
+"$(resolve_node_bin)" "$SCRIPT_DIR/task-decisions.mjs" init --worktree "$NEW_WT"
+
 echo "Installing node_modules in $NEW_WT (~74s with warm cache) ..."
 npm ci --prefer-offline --prefix "$NEW_WT"
 echo ""

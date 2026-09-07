@@ -29,7 +29,7 @@ Skill selection grants no authority. Building locally requires Level 2. Committi
 2. Run the focused checks for the changed behavior, then `npm run build` from `website/`.
 3. Launch `npm run dev` from `website/` when rendered inspection is needed. Show visible previews only in the task's built-in Browser unless the owner explicitly requests an external surface.
 4. Let Vercel Git integration create the normal pull request preview. If the owner requests a manual fallback, stop and route a separate helper-repair task. Do not invoke the current helper scripts.
-5. Publish a conventional commit and pull request targeting `www` with the caller's existing GitHub authentication. Include source identity when applicable. Do not merge at Level 3.
+5. Commit the verified change, then publish with `scripts/worktree-publish.sh --title "<conventional title>" --body-file <path> --ready`. The helper checks private decision-log custody before pushing with existing GitHub authentication. Include source identity when applicable. Do not merge at Level 3.
 6. Confirm the pull request base, exact head SHA, local validation, preview state, and granted authority.
 
 Report the starting `www` SHA, website commit, checks, pull request, and preview identity when one exists.

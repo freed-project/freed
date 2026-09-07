@@ -42,3 +42,6 @@ npm-debug.log*
 test-results/
 playwright-report/
 .vercel
+
+# Private task decisions
+TASK-DECISIONS.local.md

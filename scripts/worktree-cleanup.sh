@@ -2,11 +2,13 @@
 # worktree-cleanup.sh
 #
 # Removes worktrees and local branches for PRs that have already been merged
-# on GitHub. Run this from the primary worktree (the repo root).
+# on GitHub. It also stops tracked preview processes before removing a
+# worktree. Run this from the primary worktree.
 #
 # Usage:
 #   ./scripts/worktree-cleanup.sh          # interactive: confirms each removal
-#   ./scripts/worktree-cleanup.sh --yes    # non-interactive: removes everything
+#   ./scripts/worktree-cleanup.sh --yes --worktree <path>  # one merged task
+#   ./scripts/worktree-cleanup.sh --yes    # all clean, unchanged merged heads
 #
 # How it works:
 #   1. Lists every git worktree except the primary one.
@@ -23,10 +25,20 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/lib/node-tooling.sh"
+NODE_BIN="$(resolve_node_bin)"
 YES=false
-if [[ "${1:-}" == "--yes" ]]; then
-  YES=true
-fi
+TARGET=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --yes) YES=true; shift ;;
+    --worktree)
+      [[ $# -ge 2 ]] || { echo "--worktree requires a path" >&2; exit 1; }
+      TARGET="$(cd "$2" && pwd -P)"; shift 2 ;;
+    *) echo "Usage: worktree-cleanup.sh [--yes] [--worktree <path>]" >&2; exit 1 ;;
+  esac
+done
 
 confirm() {
   local msg="$1"
@@ -35,10 +47,10 @@ confirm() {
     return 0
   fi
   read -r -p "  $msg [y/N] " reply
-  [[ "${reply,,}" == "y" ]]
+  [[ "$reply" == "y" || "$reply" == "Y" ]]
 }
 
-PRIMARY=$(git worktree list --porcelain | awk 'NR==1 && /^worktree/ {print $2}')
+PRIMARY=$(git worktree list --porcelain | sed -n '1s/^worktree //p')
 echo "Primary worktree: $PRIMARY"
 echo ""
 
@@ -72,11 +84,19 @@ for i in "${!PATHS[@]}"; do
   path="${PATHS[$i]}"
   branch="${BRANCHES[$i]}"
 
+  [[ -z "$TARGET" || "$path" == "$TARGET" ]] || continue
   echo "Checking $branch ($path) ..."
 
   # Ask GitHub if a PR for this branch has been merged.
-  pr_info=$(gh pr list --state merged --head "$branch" --json number,mergedAt --limit 1 2>/dev/null || true)
-  pr_number=$(echo "$pr_info" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d[0]['number'] if d else '')" 2>/dev/null || true)
+  pr_number=$(
+    gh pr list \
+      --state merged \
+      --head "$branch" \
+      --json number \
+      --limit 1 \
+      --jq '.[0].number // ""' \
+      2>/dev/null || true
+  )
 
   if [[ -z "$pr_number" ]]; then
     echo "  -> No merged PR found. Skipping (branch may still be in flight)."
@@ -86,8 +106,25 @@ for i in "${!PATHS[@]}"; do
 
   echo "  -> Merged via PR #$pr_number"
 
+  if [[ -n "$(git -C "$path" status --porcelain)" ]]; then
+    echo "  -> Working tree has changes. Retaining it."
+    skipped=$((skipped + 1)); continue
+  fi
+  merged_head=$(gh pr view "$pr_number" --json headRefOid --jq '.headRefOid')
+  if [[ "$(git -C "$path" rev-parse HEAD)" != "$merged_head" ]]; then
+    echo "  -> Local head differs from the merged PR head. Retaining it."
+    skipped=$((skipped + 1)); continue
+  fi
+
   if confirm "Remove worktree '$path' and delete branch '$branch'?"; then
-    git worktree remove --force "$path"
+    if ! archive=$("${NODE_BIN}" "${SCRIPT_DIR}/task-decisions.mjs" preserve --worktree "$path"); then
+      echo "  -> Decision log preservation failed. Retaining worktree."
+      skipped=$((skipped + 1)); continue
+    fi
+    echo "  Decision record: $archive"
+    # This lane has no process registry. The owning task stops its preview
+    # before cleanup, as required by the website workflow.
+    git worktree remove "$path"
     # -D because squash merges leave branch commits unreachable from the
     # target branch.
     git branch -D "$branch" 2>/dev/null || true
@@ -100,14 +137,26 @@ for i in "${!PATHS[@]}"; do
   echo ""
 done
 
+if [[ -n "$TARGET" ]]; then
+  echo "Done. Removed: $removed  Skipped: $skipped"
+  exit 0
+fi
+
 # Also clean up local branches with [gone] tracking refs that have no worktree.
 echo "Checking for stale local branches (no worktree, remote gone) ..."
 while IFS= read -r line; do
   branch=$(echo "$line" | awk '{print $1}')
-  [[ -z "$branch" || "$branch" == "main" || "$branch" == "dev" ]] && continue
+  [[ -z "$branch" || "$branch" == "main" || "$branch" == "dev" || "$branch" == "www" ]] && continue
 
-  pr_info=$(gh pr list --state merged --head "$branch" --json number --limit 1 2>/dev/null || true)
-  pr_number=$(echo "$pr_info" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d[0]['number'] if d else '')" 2>/dev/null || true)
+  pr_number=$(
+    gh pr list \
+      --state merged \
+      --head "$branch" \
+      --json number \
+      --limit 1 \
+      --jq '.[0].number // ""' \
+      2>/dev/null || true
+  )
   if [[ -n "$pr_number" ]]; then
     echo "  $branch -> PR #$pr_number merged"
     if confirm "Delete local branch '$branch'?"; then
@@ -119,6 +168,8 @@ while IFS= read -r line; do
     fi
   fi
 done < <(git branch -vv | grep '\[.*: gone\]' | awk '{print $1}')
+
+
 
 echo ""
 echo "Done. Removed: $removed  Skipped: $skipped"
