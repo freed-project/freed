@@ -1,4 +1,5 @@
 import { LAND_SIXTY_TWO_CHARACTER_ARCS } from "./sample-character-arcs-land-sixty-two.js";
+import { FIVE_HUNDRED_EPISODES_BY_CHARACTER } from "./sample-character-arcs-five-hundred.js";
 import { AQUATIC_FIFTY_SEVEN_CHARACTER_ARCS } from "./sample-character-arcs-aquatic-fifty-seven.js";
 import { BOTANICAL_FIFTY_CHARACTER_ARCS } from "./sample-character-arcs-botanical-fifty.js";
 import { LAND_FORTY_NINE_CHARACTER_ARCS } from "./sample-character-arcs-land-forty-nine.js";
@@ -65,7 +66,7 @@ export interface SampleCharacterArc {
   episodes: readonly SampleCharacterEpisode[];
 }
 
-export const SAMPLE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
+const BASE_SAMPLE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
   {
     characterId: "manny-tis",
     location: { name: "Mediterranean scrub near Hyères", coordinates: { lat: 43.12, lng: 6.15 } },
@@ -743,3 +744,16 @@ export const SAMPLE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
   ...AQUATIC_FIFTY_SEVEN_CHARACTER_ARCS,
   ...BOTANICAL_FIFTY_CHARACTER_ARCS,
 ] as const;
+
+const baseCharacterIds = new Set(BASE_SAMPLE_CHARACTER_ARCS.map((arc) => arc.characterId));
+for (const characterId of Object.keys(FIVE_HUNDRED_EPISODES_BY_CHARACTER)) {
+  if (!baseCharacterIds.has(characterId)) {
+    throw new Error(`The 500 post extension references missing character ${characterId}.`);
+  }
+}
+
+export const SAMPLE_CHARACTER_ARCS: readonly SampleCharacterArc[] = BASE_SAMPLE_CHARACTER_ARCS.map((arc) => {
+  const additions = FIVE_HUNDRED_EPISODES_BY_CHARACTER[arc.characterId];
+  if (!additions) return arc;
+  return { ...arc, episodes: [...arc.episodes, ...additions] };
+});

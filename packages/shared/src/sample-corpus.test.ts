@@ -82,13 +82,13 @@ describe("sample corpus", () => {
       expect(sampleCorpusAttribution(asset)).toBe(`Photograph by ${asset.creator}, ${asset.license}.\nSource: ${asset.sourceUrl}${asset.licenseUrl ? `\nLicense: ${asset.licenseUrl}` : ""}`);
     }
   });
-  it("tracks the intermediate 788-entry rebuild across 134 located characters", () => {
+  it("tracks the 896-entry source corpus across 134 located characters", () => {
     const episodes = SAMPLE_CHARACTER_ARCS.flatMap((arc) => arc.episodes);
     const normalize = (value: string) => value.trim().toLocaleLowerCase().replace(/\s+/g, " ");
-    expect(episodes).toHaveLength(788);
-    expect(new Set(episodes.map((episode) => normalize(episode.title))).size).toBe(788);
-    expect(new Set(episodes.map((episode) => normalize(episode.body))).size).toBe(788);
-    expect(SAMPLE_CHARACTER_ARCS.flatMap((arc) => arc.episodes.filter((episode) => (episode.platform ?? arc.platform) === "rss"))).toHaveLength(175);
+    expect(episodes).toHaveLength(896);
+    expect(new Set(episodes.map((episode) => normalize(episode.title))).size).toBe(896);
+    expect(new Set(episodes.map((episode) => normalize(episode.body))).size).toBe(896);
+    expect(SAMPLE_CHARACTER_ARCS.flatMap((arc) => arc.episodes.filter((episode) => (episode.platform ?? arc.platform) === "rss"))).toHaveLength(196);
     for (const arc of SAMPLE_CHARACTER_ARCS) {
       if (arc.characterId === "nova-remains") continue; // A supernova has no Earth coordinate.
       expect(arc.location, arc.characterId).toBeDefined();
@@ -98,10 +98,10 @@ describe("sample corpus", () => {
   });
   it("keeps every curated image attributable and uniquely addressable", () => {
     expect(SAMPLE_CORPUS_MEDIA).toHaveLength(2_177);
-    expect(SAMPLE_CURATED_DEMO_MEDIA).toHaveLength(392);
-    expect(new Set(SAMPLE_CURATED_DEMO_MEDIA.map((asset) => asset.id)).size).toBe(392);
-    expect(new Set(SAMPLE_CURATED_DEMO_MEDIA.map((asset) => asset.sha1)).size).toBe(392);
-    expect(new Set(SAMPLE_CURATED_DEMO_MEDIA.map((asset) => asset.imageUrl)).size).toBe(392);
+    expect(SAMPLE_CURATED_DEMO_MEDIA).toHaveLength(500);
+    expect(new Set(SAMPLE_CURATED_DEMO_MEDIA.map((asset) => asset.id)).size).toBe(500);
+    expect(new Set(SAMPLE_CURATED_DEMO_MEDIA.map((asset) => asset.sha1)).size).toBe(500);
+    expect(new Set(SAMPLE_CURATED_DEMO_MEDIA.map((asset) => asset.imageUrl)).size).toBe(500);
     expect(SAMPLE_CURATED_DEMO_MEDIA.every((asset) => asset.creator.trim().length > 0)).toBe(true);
     expect(SAMPLE_CURATED_DEMO_MEDIA.every((asset) => asset.license.trim().length > 0)).toBe(true);
     expect(SAMPLE_CURATED_DEMO_MEDIA.every((asset) => asset.alt.trim().length > 0)).toBe(true);
@@ -127,7 +127,7 @@ describe("sample corpus", () => {
     const authoredSha1s = episodes.map((episode) => episode.mediaSha1!);
     const curatedSha1s = SAMPLE_CURATED_DEMO_MEDIA.map((asset) => asset.sha1);
 
-    expect(allEpisodes).toHaveLength(788);
+    expect(allEpisodes).toHaveLength(896);
     expect(allEpisodes.filter((episode) => episode.mediaSha1 === null)).toHaveLength(396);
     expect(authoredSha1s.filter((sha1) => EXPECTED_CURATED_MEDIA_SHA1S.includes(sha1))).toEqual(EXPECTED_CURATED_MEDIA_SHA1S);
     expect(curatedSha1s).toEqual(authoredSha1s);
@@ -151,11 +151,11 @@ describe("sample corpus", () => {
 
     expect(accepted.every((episode) => episode.classification !== undefined)).toBe(true);
     expect(counts).toEqual({
-      inspiring: 99,
-      conversation: 134,
-      personal: 66,
-      event: 51,
-      news: 42,
+      inspiring: 115,
+      conversation: 155,
+      personal: 106,
+      event: 72,
+      news: 52,
     });
   });
 
@@ -163,13 +163,13 @@ describe("sample corpus", () => {
     const episodes = SAMPLE_CHARACTER_ARCS.flatMap((arc) => arc.episodes);
     const intimateThemes = new Set(["courtship", "family"]);
 
-    expect(episodes).toHaveLength(788);
+    expect(episodes).toHaveLength(896);
     // The 1,000-entry brief supersedes the old per-character two-entry cap.
     // Relationships may develop within an arc without dominating the whole feed.
     expect(episodes.filter((episode) => intimateThemes.has(episode.theme)).length).toBeLessThan(episodes.length / 2);
 
     const flora = SAMPLE_CHARACTER_ARCS.find((arc) => arc.characterId === "flora-mingo");
-    expect(flora?.episodes).toHaveLength(4);
+    expect(flora?.episodes).toHaveLength(5);
     expect(flora?.episodes.filter((episode) => intimateThemes.has(episode.theme))).toHaveLength(1);
   });
 
@@ -261,7 +261,7 @@ describe("sample corpus", () => {
       sampleCorpusAuthoredText(asset, "instagram", index).split(";")[0]!.trim()
     );
 
-    expect(frogfish).toHaveLength(4);
+    expect(frogfish).toHaveLength(9);
     expect(new Set(openings).size).toBe(frogfish.length);
   });
 });

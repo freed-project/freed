@@ -418,7 +418,7 @@ describe("demo checkpoint", () => {
     const scores = records.filter((record) => record.registryKey === "16_feed_item_signal_score");
     const expectedSignals = new Set(["essay", "event", "life_update", "discussion", "news"]);
 
-    expect(items).toHaveLength(392);
+    expect(items).toHaveLength(500);
     expect(metadata).toHaveLength(items.length);
     expect(scores).toHaveLength(items.length);
     expect(metadata.every((record) => record.payload.method === "manual")).toBe(true);

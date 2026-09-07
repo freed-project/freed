@@ -32,7 +32,7 @@ individual identity are unverified. The linked record supplies her body,
 voice, habitat, chronology, relationships and image constraints; the
 [lead admission](drafts/AQUATIC-STORIES-57-ADMISSION.md) records both reviews.
 
-This is the internal continuity record for the illustrated 1,000-entry universe. The [editorial guide](SAMPLE-CORPUS-EDITORIAL-GUIDE.md) owns acceptance rules. Character records belong here or in linked cast volumes, not in the root agent instructions.
+This is the internal continuity record for the illustrated 500-entry universe. The [editorial guide](SAMPLE-CORPUS-EDITORIAL-GUIDE.md) owns acceptance rules. Character records belong here or in linked cast volumes, not in the root agent instructions.
 
 ## Status
 
@@ -315,6 +315,10 @@ A little less still adds an awkward position across Rill's arms after Mina deman
 ## Isolated admissions97 through103
 
 Lark97 begins before her adult scenes. Oona98 explicitly remembers her earlier pink stage after Rosy. Luna101 ends in unresolved web entanglement, without an admitted death or escape. Fern100 and Sable100 add independent adult incidents. Aster100 replaces the held lost-perch premise for admission; preserve A perch without history literally but do not later count it as a second version of this event. Sela103 adds curiosity about visitors describing her familiar rocks. All existing homes and portraits remain unchanged. Decisions: drafts/EDITORIAL-97-98-ADMISSION.md, drafts/BOTANICAL-STORIES-101-ADMISSION.md and drafts/EDITORIAL-100-103-ADMISSION.md.
+
+## Demo corpus 500 admission
+
+The [500-post admission](drafts/DEMO-CORPUS-500-ADMISSION.md) adds 108 regular posts across 52 existing characters without changing their homes, portraits, taxa, or prior episodes. The exact appended sequences live in `sample-character-arcs-five-hundred.ts`. None of these entries adds a Story. Visible captive settings remain source provenance, not fictional relocations. Cygnus gains a courtship exchange but remains the same female mute swan with nine cygnets. Flora's juvenile image is an explicit earlier life stage. Delphine's closed pods precede her existing opening and dispersal sequence. Nova's observations describe different views and remnants of the same historical explosion, not repeated explosions.
 
 Admissions104/107/108 append Vesta’s explicit smaller-body recollection, Lucille’s attached fruit held by a hand, Mora’s invitation to another moray, and Edmund’s jealousy when a neighbor receives affection. Homes and avatars remain unchanged. Source photographs do not establish fictional motives or temporal sequences. See drafts/EDITORIAL-104-108-ADMISSION.md.
 

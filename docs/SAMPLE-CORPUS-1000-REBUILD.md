@@ -1,4 +1,4 @@
-> Historical planning and current progress. Current authority, counts, and continuation assignments are in [EDITORIAL-CORPUS-HANDOFF.md](EDITORIAL-CORPUS-HANDOFF.md). The canonical editorial rules are in [SAMPLE-CORPUS-EDITORIAL-GUIDE.md](SAMPLE-CORPUS-EDITORIAL-GUIDE.md).
+> Historical planning only. The owner superseded this 1,000-entry target on September 6, 2026 with an exact 500-post delivery target. Current authority and counts are in [EDITORIAL-CORPUS-HANDOFF.md](EDITORIAL-CORPUS-HANDOFF.md). The canonical editorial rules are in [SAMPLE-CORPUS-EDITORIAL-GUIDE.md](SAMPLE-CORPUS-EDITORIAL-GUIDE.md).
 
 # Illustrated universe rebuild
 

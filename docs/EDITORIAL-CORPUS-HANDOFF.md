@@ -2,7 +2,7 @@
 
 ## Start here
 
-The owner resumed this task on September 6, 2026 and requested that pull request 1828 be consolidated into draft pull request 1824. The resumed baseline has **391 accepted illustrated entries** before the Beatrice addition from pull request 1828. This is a continuation checkpoint, not completion of the 1,000-entry milestone or a demo release.
+The owner resumed this task on September 6, 2026, requested that pull request 1828 be consolidated into pull request 1824, then corrected the delivery target to exactly 500 visible posts. Pull request 1828 contributes Beatrice's childhood entry. The completed local corpus adds 108 regular posts to the 392-post consolidated baseline.
 
 Read [the canonical editorial guide](SAMPLE-CORPUS-EDITORIAL-GUIDE.md), [character canon](SAMPLE-CHARACTER-CANON.md), the full runtime arc for an assigned character, then its latest admission records. Do not read every historical draft before starting. Historical targets, approvals and task instructions are superseded by this document and the current owner request.
 
@@ -10,19 +10,19 @@ Read [the canonical editorial guide](SAMPLE-CORPUS-EDITORIAL-GUIDE.md), [charact
 
 | Measure | Count |
 | --- | ---: |
-| Accepted illustrated entries | 392 |
-| Regular entries | 289 |
+| Accepted illustrated entries | 500 |
+| Regular entries | 397 |
 | Visual Stories | 103 |
-| Authored source episodes | 788 |
+| Authored source episodes | 896 |
 | Excluded null-media episodes | 396 |
 | Editorial identities with reviewed avatars | 134 |
 | Represented characters | 133 |
 | Authored platform accounts | 237 |
 | Disabled sample subscriptions | 64 |
 | Media catalog records | 2,177 |
-| Additional accepted entries to 1,000 | 608 |
+| Additional accepted entries to target | 0 |
 
-Instagram has 83 Stories and 92 posts. Preserve the posts and prioritize new Stories; 55 more Stories reach 60% at that fixed post count. Facebook has 20 Stories and 70 posts. Other accepted regular entries: X33, LinkedIn12, RSS64, Medium8, Substack4, YouTube5. These are corpus counts, not platform usage statistics. [Format research](drafts/PLATFORM-FORMAT-BALANCE.md) records evidence and limits.
+Instagram has 83 Stories and 125 posts. Facebook has 20 Stories and 105 posts. Other accepted regular entries: X52, LinkedIn13, RSS85, Medium8, Substack4, YouTube5. These are corpus counts, not platform usage statistics. [Format research](drafts/PLATFORM-FORMAT-BALANCE.md) records evidence and limits.
 
 Recompute from runtime with pinned Node: `node docs/drafts/editorial-counts.mjs`. Catalog records, excluded drafts, duplicate copies and avatars never increase accepted totals.
 
@@ -33,12 +33,12 @@ Recompute from runtime with pinned Node: `node docs/drafts/editorial-counts.mjs`
 3. Authors own proposal Markdown/JSON, source provenance and review notes only. A separately designated integrator owns runtime arcs, media catalog imports, counters, canon updates and admissions. Do not let every worker edit shared registration files.
 4. Every candidate needs an author decision and an independent reviewer decision on prose, exact image, source-specific rights, biology, continuity and corpus repetition. An explanation of why something is funny cannot substitute for the prose.
 5. Preserve original bodies on media recoveries. Record rejected drafts literally with reasons, so the next author does not repeat failed mechanisms. New photos for accepted entries are replacements, not additions.
-6. The integrator serializes accepted admissions, checks uniqueness, recomputes counts, and updates the current checkpoint. The active target is 1,000 entries, with 900 regular entries and 100 visual Stories. The current 103 Story count must be reconciled before another Story is admitted.
+6. The integrator serializes accepted admissions, checks uniqueness, recomputes counts, and updates the current checkpoint. The active target is complete at exactly 500 entries, with 397 regular entries and 103 visual Stories. Do not add another entry without a new owner target.
 7. Never contact, inspect, monitor, coordinate with, interrupt or change DEMO LAUNCH, its worktree, processes, dependencies, automations or task state. Keep installations, test caches and previews local to each editorial worktree.
 
 No active author assignments survive the earlier handoff. Existing author workers saved their work and stopped. The heartbeat service reported that `editorial-corpus-continuity` no longer exists when deactivation was attempted. Do not recreate it unless the owner requests a new schedule.
 
-## Pending work, excluded from 392
+## Pending work, excluded from 500
 
 The owner explicitly requested preservation of promising unfinished writing. Start with [promising unfinished work](EDITORIAL-UNFINISHED-WORK.md); [all396 unpaired runtime passages](drafts/EDITORIAL-UNPAIRED-INVENTORY.md) are preserved verbatim. Missing media is not a reason to erase a promising passage.
 
@@ -70,7 +70,7 @@ New exported projection and YouTube helpers have real callers in sample-data, sa
 
 ## Validation and limits
 
-All46 focused tests across six suites pass: shared corpus and YouTube, PWA sample and demo checkpoint, UI seed and ReaderView. Shared TypeScript, direct runtime counts, roadmap validation and whitespace checks pass. Offline rendered desktop/mobile reader evidence is in [the formatting review](drafts/YOUTUBE-READER-FORMATTING-ISOLATED.md) and `output/playwright/editorial-reader/`.
+The exact 500-post feature gate passes. This includes root type checking, 170 provider unit tests, 23 provider browser tests, 425 shared tests, the PWA production build and type check, 423 PWA tests, 841 Freed Desktop tests, nine Freed Desktop smoke tests, roadmap validation, and three roadmap tests. Offline rendered desktop and mobile reader evidence is in [the formatting review](drafts/YOUTUBE-READER-FORMATTING-ISOLATED.md) and `output/playwright/editorial-reader/`.
 
 Portable focused-test configuration: `docs/drafts/editorial-vitest.config.mjs`. Recreate its isolated dependencies from `docs/drafts/handoff-evidence/validation-package.json` and `validation-package-lock.json` in a temporary directory, then run from repository root:
 
@@ -82,7 +82,7 @@ EDITORIAL_TEST_DEPENDENCIES=/absolute/task-local/node_modules \
 
 Use Node24.14.1 from `.nvmrc`, with matching npm/npx. Do not install into or symlink another task's dependencies. The dedicated test config uses one worker and no file parallelism. The demo checkpoint test mocks SQLite, so it does not establish live database activation.
 
-`npm run validate:feature` was attempted at publication and failed at root typecheck because package dependencies such as `tsc` are absent in this deliberately dependency-free worktree. The machine preflight also reports absent host automation guard files. Do not repair shared controls from an editorial task. Full integration gates, live media delivery for the complete corpus, browser React hydration, live YouTube playback and production release are unverified. This transfer remains a draft PR.
+`npm run validate:feature` passes with the pinned Node 24.14.1 toolchain. The 500-post admission opened all 108 newly selected delivery images and rejected two weak candidates before writing. Production release and deployment remain outside this Level 5 task.
 
 ## Evidence portability
 

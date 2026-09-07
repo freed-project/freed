@@ -4,7 +4,7 @@ This is the canonical editorial contract for sample content in Freed Desktop, th
 
 ## Current scope and authority
 
-The current checkpoint has **392 accepted illustrated entries**. The active delivery target is exactly **1,000 accepted illustrated entries**, split into 900 regular entries and 100 visual Stories. The earlier instruction to stop at 500 is historical.
+The current checkpoint and active delivery target are exactly **500 accepted illustrated entries**, split into 397 regular entries and 103 visual Stories. The earlier 1,000-entry target is superseded by the owner's September 6 correction.
 
 The current task has Level 5 authority. Local consolidation, editing, testing, publication, non-production merge work, and the approved passive demo-media behavior are authorized. Production deployment and release are not authorized.
 
@@ -12,7 +12,7 @@ Count accepted episode/media pairs only. Drafts, catalog rows, avatars, platform
 
 ## Platform mix
 
-Instagram targets approximately 60% visual Stories and 40% posts. Current mix: 83 Stories and 92 posts. The full accepted corpus already contains 103 visual Stories, three more than the final 100 Story target. Do not add another Story until those requirements are reconciled. Preserve accepted posts and Stories; do not relabel them to manufacture progress.
+Instagram targets approximately 60% visual Stories and 40% posts. Current mix: 83 Stories and 125 posts. The full accepted corpus contains 103 visual Stories. Preserve accepted posts and Stories; do not relabel them to manufacture a platform ratio. New editorial work should default to regular posts unless the owner changes the Story direction.
 
 Facebook may use Stories and posts without an invented numeric quota. X and LinkedIn use regular posts, YouTube actual video entries, Medium and Substack articles, RSS its existing regular mapping. Narrative prose and vertical video do not by themselves make an application Story. Count `contentType: "story"` and respect each episode's platform override before the character default. [Platform evidence and limits](drafts/PLATFORM-FORMAT-BALANCE.md) records the research date and sources; business-account benchmarks are not a census of all users.
 
@@ -283,7 +283,7 @@ Nova Remains establishes the desired cosmic reach: deep time, matter changing id
 
 Manny's near-death episode works when the bird attack, fall, altered perception, impact, and blame unfold as firsthand physical experience. Future revelations should arise from events with consequences. Abstract declarations of doctrine are not events.
 
-## Expansion workflow to 1,000
+## Continuing the corpus after 500
 
 1. Audit the current cast and preserve accepted continuity before adding material.
 2. Design the bounded roster and write a character bible for each addition.
@@ -301,9 +301,9 @@ Static authored copy is the only public source. Platform wrappers, noun substitu
 
 ## Machine acceptance
 
-The 1,000-entry milestone is complete only after the accepted runtime projection and appropriate checks prove:
+The 500-entry milestone is complete only after the accepted runtime projection and appropriate checks prove:
 
-- exactly 1,000 accepted episodes, each bound to a reviewed scene-fitting image; excluded null drafts may remain in source and must never be counted or displayed;
+- exactly 500 accepted episodes, each bound to a reviewed scene-fitting image; excluded null drafts may remain in source and must never be counted or displayed;
 - unique episode IDs, titles, and normalized bodies, plus unique image hashes and image URLs among illustrated episodes;
 - no repeated opening sentence, closing sentence, or long normalized phrase across unrelated episodes;
 - every `mediaSha1` is nonempty, resolves once, and matches the episode subject;
