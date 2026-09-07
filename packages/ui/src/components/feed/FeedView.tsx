@@ -565,6 +565,7 @@ export function FeedView() {
   ]);
   const {
     feed: boundedFeed,
+    retry: retryBoundedFeed,
     loadMore: loadMoreBoundedItems,
     loadPrevious: loadPreviousBoundedItems,
     patchItems: patchBoundedItems,
@@ -1204,7 +1205,14 @@ export function FeedView() {
 
   return (
     <div className="h-full flex flex-col">
-      {!selectedItem && <FeedList
+      {!selectedItem && boundedFeedEligible && boundedFeedStatusIsCurrent && boundedFeed.status === "failed" ? (
+        <div role="alert" className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
+          <p>Unable to load this feed.</p>
+          <button type="button" className="theme-accent-button rounded-xl px-5 py-2.5 text-sm font-medium" onClick={retryBoundedFeed}>
+            Try again
+          </button>
+        </div>
+      ) : !selectedItem && <FeedList
         items={visibleItems}
         onItemClick={openItemDirect}
         focusedIndex={focusedIndex}
