@@ -23,7 +23,6 @@ import { ContactSyncModal } from "../friends/ContactSyncModal.js";
 import { useContactSync } from "../../hooks/useContactSync.js";
 import { ContactSyncContext } from "../../context/ContactSyncContext.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
-import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import { useSettingsStore } from "../../lib/settings-store.js";
 import {
   type Account,
@@ -100,10 +99,19 @@ export function AppShell({ children }: AppShellProps) {
   const [friendsMobileSurface, setFriendsMobileSurface] =
     useState<FriendsMobileSurface>("graph");
   const isMobileViewport = useIsMobile();
-  const isMobileDevice = useIsMobileDevice();
   const debugVisible = useDebugStore((s) => s.visible);
   const toggleDebug = useDebugStore((s) => s.toggle);
   const activeView = useAppStore((s) => s.activeView);
+  const selectedFriendId = useAppStore((s) => s.selectedPersonId);
+  const selectedFriendAccountId = useAppStore((s) => s.selectedAccountId);
+  useEffect(() => {
+    // Author links and map actions select through the shared store, without
+    // invoking the galaxy's sidebar callback. Reveal their detail on mobile.
+    if (isMobileViewport && activeView === "friends" &&
+      (selectedFriendId || selectedFriendAccountId)) {
+      setFriendsMobileSurface("details");
+    }
+  }, [activeView, isMobileViewport, selectedFriendId, selectedFriendAccountId]);
   const setActiveView = useAppStore((s) => s.setActiveView);
   const {
     queryLibraryCore,
@@ -197,15 +205,8 @@ export function AppShell({ children }: AppShellProps) {
     closeSavedContentDialog();
   }, [closeSavedContentDialog]);
 
-  const forceCompactDesktopSidebar = !isMobileDevice && isMobileViewport;
-  const effectiveDesktopSidebarDisplayMode =
-    forceCompactDesktopSidebar && desktopSidebarMode !== "closed"
-      ? "compact"
-      : desktopSidebarDisplayMode;
-  const desktopSidebarToggleMode =
-    forceCompactDesktopSidebar && desktopSidebarMode !== "closed"
-      ? "compact"
-      : desktopSidebarMode;
+  const effectiveDesktopSidebarDisplayMode = desktopSidebarDisplayMode;
+  const desktopSidebarToggleMode = desktopSidebarMode;
 
   useEffect(() => {
     if (dragging.current || dragWidth !== null) return;
@@ -273,7 +274,7 @@ export function AppShell({ children }: AppShellProps) {
       observer.disconnect();
       window.removeEventListener("resize", scheduleUpdate);
     };
-  }, [activeView, debugVisible, debugWidth, desktopSidebarMode, effectiveDesktopSidebarDisplayMode, isMobileDevice]);
+  }, [activeView, debugVisible, debugWidth, desktopSidebarMode, effectiveDesktopSidebarDisplayMode, isMobileViewport]);
 
   const persistDesktopSidebarMode = useCallback((nextMode: SidebarMode) => {
     if (!setDeviceDisplay({ sidebarMode: nextMode })) {
@@ -297,10 +298,13 @@ export function AppShell({ children }: AppShellProps) {
   }, [desktopSidebarToggleMode, persistDesktopSidebarMode]);
 
   const handleFriendsSidebarOpenChange = useCallback((open: boolean) => {
+    if (isMobileViewport) {
+      setFriendsMobileSurface(open ? "details" : "graph");
+    }
     if (!setDeviceDisplay({ friendsSidebarOpen: open })) {
       toast.error("Freed could not save the sidebar layout on this device.");
     }
-  }, [setDeviceDisplay]);
+  }, [isMobileViewport, setDeviceDisplay]);
 
   const handleDebugDragStart = useCallback(
     (e: React.MouseEvent) => {
@@ -369,19 +373,19 @@ export function AppShell({ children }: AppShellProps) {
   }, [blockingModalOpen, debugVisible, requestSearchPalette, toggleDebug]);
 
   useEffect(() => {
-    if (!isMobileDevice && mobileSidebarOpen) {
+    if (!isMobileViewport && mobileSidebarOpen) {
       setMobileSidebarOpen(false);
     }
-  }, [isMobileDevice, mobileSidebarOpen]);
+  }, [isMobileViewport, mobileSidebarOpen]);
 
   useEffect(() => {
-    if (!isMobileDevice || !mobileSidebarOpen) return;
+    if (!isMobileViewport || !mobileSidebarOpen) return;
 
     document.documentElement.classList.add("freed-mobile-sidebar-open");
     return () => {
       document.documentElement.classList.remove("freed-mobile-sidebar-open");
     };
-  }, [isMobileDevice, mobileSidebarOpen]);
+  }, [isMobileViewport, mobileSidebarOpen]);
 
   useEffect(() => {
     if (activeView === "friends" && isMobileViewport) return;
@@ -498,10 +502,9 @@ export function AppShell({ children }: AppShellProps) {
 
   return (
     <ContactSyncContext.Provider value={{ ...contactSync, openReview }}>
-      {/* On actual mobile devices, the layout flows naturally in the document so
-          Safari can collapse its address bar when the feed scrolls. Desktop devices
-          keep the fixed-height shell even when the viewport is narrow. */}
-      <div className={`app-theme-shell relative flex min-w-0 flex-1 flex-col ${isMobileDevice ? "" : "min-h-0"}`}>
+      {/* Narrow viewports use document scrolling on every platform. Wide
+          viewports keep the fixed-height shell and independently scrolling panels. */}
+      <div className={`app-theme-shell relative flex min-w-0 flex-1 flex-col ${isMobileViewport ? "" : "min-h-0"}`}>
         {showAtmosphere ? <BackgroundAtmosphere /> : null}
         <Header
           mobileSidebarOpen={mobileSidebarOpen}
@@ -520,7 +523,7 @@ export function AppShell({ children }: AppShellProps) {
         <div
           ref={contentFrameRef}
           className={`relative z-10 flex flex-1 ${contentFrameSpacingClass} ${
-            isMobileDevice ? "" : "min-h-0 overflow-hidden"
+            isMobileViewport ? "" : "min-h-0 overflow-hidden"
           }`}
         >
           {activeView === "friends" ? (
@@ -552,7 +555,7 @@ export function AppShell({ children }: AppShellProps) {
           <main
             ref={mainRef}
             className={`relative min-w-0 flex-1 ${activeView === "friends" ? "z-0" : "z-10"} ${activeView === "map" ? "pointer-events-none" : ""} ${
-              isMobileDevice ? "" : activeView === "friends" ? "min-h-0 overflow-visible" : "min-h-0 overflow-hidden"
+              isMobileViewport ? "" : activeView === "friends" ? "min-h-0 overflow-visible" : "min-h-0 overflow-hidden"
             }`}
           >
             {activeView === "friends"

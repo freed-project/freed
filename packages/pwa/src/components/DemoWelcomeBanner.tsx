@@ -77,7 +77,7 @@ function FirstLookWelcome({
     >
       <div aria-hidden="true" className="demo-welcome-shade pointer-events-none absolute -z-10 bg-black/55 backdrop-blur-md" />
       <div
-        className={`theme-floating-panel relative w-full max-w-3xl overflow-hidden rounded-[2rem] p-7 text-center shadow-2xl shadow-black/40 sm:p-10 ${departing ? "demo-welcome-first-look-card--departing" : ""}`}
+        className={`theme-floating-panel relative w-full max-w-3xl overflow-hidden rounded-[2rem] p-7 text-center shadow-2xl shadow-black/40 sm:p-10 ${departing ? "demo-welcome-first-look-card--departing" : "demo-welcome-first-look-card--arriving"}`}
         style={{ background: "var(--theme-bg-elevated)", border: "4px solid var(--theme-border-strong)", borderRadius: "2rem" }}
       >
         <div

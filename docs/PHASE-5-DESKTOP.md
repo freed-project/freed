@@ -27,6 +27,11 @@ not relax native persistence validation or change provider cadence.
 
 ## Current SQLite Desktop work
 
+The shared shell selects its mobile layout by viewport width, including narrow
+Freed Desktop windows. Narrow layouts use document scrolling. Reader controls,
+thumbnail text fitting, theme hover states, and Friends selection use the same
+shared components across Desktop and PWA.
+
 - [x] Complete extraction of Library semantics into
       `packages/library-core-native` so Freed Desktop and the headless Primary
       call the same Rust core. The Tauri crate retains only host key custody,

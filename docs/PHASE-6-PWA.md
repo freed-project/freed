@@ -13,6 +13,13 @@
 
 ## Current SQLite PWA work
 
+The reader consolidates original-post navigation into its provider button and
+keeps theme, zoom, and Focus controls available in the toolbar menu. Synthetic
+items omit reply controls. Demo Focus changes remain document-local and do not
+invoke the enrolled follower mutation path. Failed feed queries show recovery
+controls rather than the empty-Library prompt. Physical Safari viewport and
+gesture acceptance remains separate from the automated browser checks.
+
 The shared checkpoint parser reuses only its own deeply frozen validated
 records. Incoming OPFS and transport values still receive full validation, and
 the shared codec preserves exact canonical UTF-8 bytes. These serialization

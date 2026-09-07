@@ -45,7 +45,6 @@ import { useLibraryFilterScopeSummary } from "../../hooks/useLibraryFilterScopeS
 import { useLibraryItemDetail } from "../../hooks/useLibraryItemDetail.js";
 import { useLibraryCommandPaletteReader } from "../../hooks/useLibraryCommandPaletteReader.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
-import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import { useBackgroundActivityStore } from "../../lib/background-activity-store.js";
 import { useCommandSurfaceStore } from "../../lib/command-surface-store.js";
 import {
@@ -113,8 +112,7 @@ const TOOLBAR_READER_LAYOUT_TOGGLE_BUTTON_CLASS =
   "theme-toolbar-reader-layout-button rounded-lg";
 const TOOLBAR_ICON_BUTTON_SIZE = "2.25rem";
 const READER_LAYOUT_CONTROL_BUTTON_SIZE_PX = 32;
-const READER_LAYOUT_CONTROL_ICON_SIZE_PX = 20;
-const READER_LAYOUT_CONTROL_BUTTON_GAP_PX = 0;
+const READER_LAYOUT_CONTROL_BUTTON_GAP_PX = 8;
 const LAYOUT_CONTROL_SAFE_GAP_PX = 8;
 const MENU_VIEWPORT_MARGIN_PX = 8;
 const CLOSED_SIDEBAR_TOGGLE_LEFT_PX = 12;
@@ -333,12 +331,10 @@ export function Header({
     saveUrl,
     importMarkdown,
     exportMarkdown,
-    openUrl,
     interactionMode,
   } = usePlatform();
   const readOnly = interactionMode === "read-only";
   const isMobile = useIsMobile();
-  const isMobileDevice = useIsMobileDevice();
   const visibleDesktopSidebarMode = desktopSidebarDisplayMode ?? desktopSidebarMode;
   const desktopSidebarToggleLabel = visibleDesktopSidebarMode === "closed"
     ? "Show sidebar"
@@ -500,8 +496,7 @@ export function Header({
     !isMobile;
   const hideMobileDrawerToolbarActions = mobileSidebarOpen;
   const showCollapsedToolbarFilterMenu =
-    !hideMobileDrawerToolbarActions &&
-    !readerActive;
+    !hideMobileDrawerToolbarActions;
   const showInlineFeedSignalFilter =
     !hideMobileDrawerToolbarActions &&
     showFeedSignalFilter &&
@@ -520,16 +515,6 @@ export function Header({
     showFeedSignalFilter;
   const showInlineReaderBookmark =
     !readOnly && !!selectedItem && !isBelowReaderBookmarkToolbar;
-  const collapsedReaderBaseActionWidthRem = selectedItem?.sourceUrl
-    ? showInlineReaderBookmark ? 11 : 8.5
-    : showInlineReaderBookmark ? 6.5 : 3.5;
-  const collapsedReaderActionWidthRem = isMobileDevice ? (readOnly ? 3 : 5.75) : collapsedReaderBaseActionWidthRem + 2.75;
-  const collapsedReaderTitleStyle = readerActive && isBelowLargeToolbar
-    ? ({ paddingRight: `${collapsedReaderActionWidthRem}rem` } as CSSProperties)
-    : undefined;
-  const collapsedReaderActionStyle = readerActive && isBelowLargeToolbar
-    ? ({ width: `${collapsedReaderActionWidthRem}rem` } as CSSProperties)
-    : undefined;
 
   const handleSocialContentFilterChange = useCallback(
     (value: SocialContentFilter) => {
@@ -906,14 +891,6 @@ export function Header({
   const [deleteConfirmArmed, setDeleteConfirmArmed] = useState(false);
   const deleteConfirmTimerRef = useRef<number | null>(null);
 
-  const handleOpenReaderUrl = useCallback(() => {
-    if (!selectedItem?.sourceUrl) return;
-    if (openUrl) {
-      openUrl(selectedItem.sourceUrl);
-      return;
-    }
-    window.open(selectedItem.sourceUrl, "_blank", "noopener,noreferrer");
-  }, [openUrl, selectedItem]);
 
   const handleDeleteArchivedClick = useCallback(() => {
     if (!deleteConfirmArmed) {
@@ -951,27 +928,8 @@ export function Header({
     const actions: ToolbarOverflowAction[] = [];
 
     if (selectedItem && isBelowLargeToolbar) {
-      if (isMobileDevice && selectedItem.sourceUrl) {
-        actions.push({
-          id: "open-reader",
-          label: "Open original",
-          onClick: handleOpenReaderUrl,
-          icon: <span aria-hidden="true">↗</span>,
-        });
-      }
-      actions.push({
-        id: "focus",
-        label: display.reading.focusMode ? "Disable focus mode" : "Enable focus mode",
-        onClick: handleToggleFocusMode,
-        active: display.reading.focusMode,
-        icon: (
-          <span className="inline-flex h-5 w-5 items-center justify-center text-sm font-black" aria-hidden="true">
-            F
-          </span>
-        ),
-      });
 
-      if ((!readOnly || isMobileDevice) && !showInlineReaderBookmark) {
+      if ((!readOnly || isMobile) && !showInlineReaderBookmark) {
         actions.push({
           id: "bookmark-reader",
           disabled: readOnly,
@@ -992,7 +950,7 @@ export function Header({
         });
       }
 
-      if (!readOnly || isMobileDevice) {
+      if (!readOnly || isMobile) {
         actions.push({
           id: "archive-reader",
           disabled: readOnly,
@@ -1064,13 +1022,12 @@ export function Header({
     handleArchiveFilteredRead,
     handleDeleteArchivedClick,
     handleMarkFilteredUnreadAsRead,
-    handleOpenReaderUrl,
     handleToggleFocusMode,
     handleToggleReaderSaved,
     handleToggleReaderArchived,
     handleUnarchiveSavedClick,
     isBelowLargeToolbar,
-    isMobileDevice,
+    isMobile,
     readerActive,
     readOnly,
     savedArchivedCount,
@@ -1145,10 +1102,10 @@ export function Header({
     : undefined;
   const sidebarHandleCenterline = "var(--freed-sidebar-handle-centerline, 264px)";
   const toolbarBoundaryWidth = `calc(${sidebarHandleCenterline} + ${px(toolbarGapHalfPx)})`;
-  const leftToolbarWidth = !isMobileDevice
+  const leftToolbarWidth = !isMobile
     ? px(layoutControlMetrics.reservedWidthPx)
     : toolbarBoundaryWidth;
-  const leftToolbarStyle = !isMobileDevice
+  const leftToolbarStyle = !isMobile
     ? ({
         position: "relative",
         width: leftToolbarWidth,
@@ -1314,7 +1271,7 @@ export function Header({
   }, [hideMobileDrawerToolbarActions]);
 
   useLayoutEffect(() => {
-    if (isMobileDevice) return undefined;
+    if (isMobile) return undefined;
 
     let active = true;
     const updateLayoutControlMetrics = () => {
@@ -1362,12 +1319,9 @@ export function Header({
       const previewToggleLeftPx = Math.ceil(
         sidebarToggleLeftPx + READER_LAYOUT_CONTROL_BUTTON_SIZE_PX + READER_LAYOUT_CONTROL_BUTTON_GAP_PX,
       );
-      const readerLayoutControlVisualInsetPx =
-        (READER_LAYOUT_CONTROL_BUTTON_SIZE_PX - READER_LAYOUT_CONTROL_ICON_SIZE_PX) / 2;
       const toolbarBoundaryWidthPx =
         sidebarToggleLeftPx +
-        readerLayoutControlPairWidthPx -
-        (readerActive ? readerLayoutControlVisualInsetPx : 0);
+        readerLayoutControlPairWidthPx;
       const toolbarSlotPaddingRightPx = readerActive
         ? 0
         : TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX;
@@ -1438,7 +1392,7 @@ export function Header({
     };
   }, [
     isBelowLargeToolbar,
-    isMobileDevice,
+    isMobile,
     previewToggleMounted,
     readerActive,
     showDesktopReaderLayoutToggle,
@@ -1523,14 +1477,14 @@ export function Header({
           style={toolbarContainerStyle}
         >
           <div
-            className={`theme-toolbar-cluster theme-toolbar-cluster-tight flex h-full shrink-0 items-center ${isMobileDevice ? "pl-2" : ""}`}
+            className={`theme-toolbar-cluster theme-toolbar-cluster-tight flex h-full shrink-0 items-center ${isMobile ? "pl-2" : ""}`}
           >
             <div
               ref={layoutControlHostRef}
               className="relative flex h-full shrink-0 items-center"
               style={leftToolbarStyle}
             >
-              {isMobileDevice ? (
+              {isMobile ? (
                 <Tooltip label="Menu">
                   <button
                     onClick={onMobileMenuToggle}
@@ -1546,7 +1500,7 @@ export function Header({
 
               <div
                 data-testid="workspace-toolbar-logo-drag-region"
-                className={`${isMobileDevice ? "hidden" : "flex"} h-full min-w-0 flex-1 items-center pl-3 sm:pl-4`}
+                className={`${isMobile ? "hidden" : "flex"} h-full min-w-0 flex-1 items-center pl-3 sm:pl-4`}
                 {...getPassiveDragRegionProps(headerDragRegion, toolbarLogoRowStyle)}
               >
                 <span
@@ -1559,7 +1513,7 @@ export function Header({
                 </span>
               </div>
 
-              {!isMobileDevice ? (
+              {!isMobile ? (
                 <div
                   data-testid="desktop-layout-control-cluster"
                   className="absolute inset-y-0"
@@ -1615,9 +1569,7 @@ export function Header({
 
           <div
             className="min-w-0 basis-0 flex-1 overflow-hidden"
-            style={headerDragRegion
-              ? ({ ...collapsedReaderTitleStyle, ...dragStyle } as CSSProperties)
-              : collapsedReaderTitleStyle}
+            style={headerDragRegion ? dragStyle : undefined}
             {...(headerDragRegion ? { "data-tauri-drag-region": true } : {})}
           >
             {readerActive ? (
@@ -1693,12 +1645,7 @@ export function Header({
           </div>
 
           <div
-            className={readerActive
-              ? isBelowLargeToolbar
-                ? "theme-toolbar-cluster theme-toolbar-cluster-tight absolute right-0 top-1/2 z-10 flex shrink-0 -translate-y-1/2 items-center justify-end pr-2"
-                : "theme-toolbar-cluster theme-toolbar-cluster-tight ml-auto flex min-w-max shrink-0 items-center pr-2"
-              : "theme-toolbar-cluster theme-toolbar-cluster-tight flex min-w-max shrink-0 items-center pr-2"}
-            style={collapsedReaderActionStyle}
+            className="theme-toolbar-cluster theme-toolbar-cluster-tight flex min-w-max shrink-0 items-center pr-2"
           >
             <ToolbarAnimatedSlot
               visible={!readOnly}
@@ -1714,7 +1661,7 @@ export function Header({
                   className={`${TOOLBAR_ICON_BUTTON_CLASS} ${
                     activityPopoverOpen
                       ? "theme-toolbar-button-active"
-                      : isMobileDevice
+                      : isMobile
                         ? "theme-toolbar-button-ghost"
                         : "theme-toolbar-button-neutral"
                   }`}
@@ -1753,32 +1700,6 @@ export function Header({
               </span>
             ) : selectedItem ? (
               <>
-                <ToolbarAnimatedSlot visible={!isMobile && !isBelowLargeToolbar} width="4.5rem" className="hidden lg:flex">
-                  {!isBelowLargeToolbar ? (
-                  <Tooltip label={display.reading.focusMode ? "Disable focus mode" : "Enable focus mode"}>
-                    <button
-                      onClick={handleToggleFocusMode}
-                      {...getToolbarControlProps()}
-                      style={{
-                        ...(headerDragRegion ? toolbarControlStyle : undefined),
-                        width: "4.5rem",
-                      }}
-                      className={`inline-flex h-9 w-full items-center justify-center rounded-lg px-2.5 py-0 text-sm font-bold leading-none ${
-                        display.reading.focusMode
-                          ? "theme-toolbar-button-active"
-                          : "theme-toolbar-button-neutral"
-                      }`}
-                      aria-pressed={display.reading.focusMode}
-                      aria-label="Toggle focus reading mode"
-                    >
-                      <span className="inline-flex items-baseline leading-none" aria-hidden="true">
-                        <span className="font-black">F</span>
-                        <span className="text-xs font-light">ocus</span>
-                      </span>
-                    </button>
-                  </Tooltip>
-                  ) : null}
-                </ToolbarAnimatedSlot>
 
                 <ToolbarAnimatedSlot visible={showInlineReaderBookmark} width={TOOLBAR_ICON_BUTTON_SIZE}>
                   {showInlineReaderBookmark ? (
@@ -1821,7 +1742,7 @@ export function Header({
                         {...getToolbarControlProps()}
                         data-testid="toolbar-overflow-button"
                         className={`${TOOLBAR_ICON_BUTTON_CLASS} ${
-                          isMobileDevice ? "theme-toolbar-button-ghost" : "theme-toolbar-button-neutral"
+                          isMobile ? "theme-toolbar-button-ghost" : "theme-toolbar-button-neutral"
                         }`}
                         aria-haspopup="menu"
                         aria-expanded={toolbarOverflowMenuOpen}
@@ -1852,21 +1773,6 @@ export function Header({
                   ) : null}
                 </ToolbarAnimatedSlot>
 
-                {selectedItem.sourceUrl && !isMobileDevice ? (
-                  <ToolbarAnimatedSlot visible={true} width="4.5rem" style={{ order: 99 }}>
-                    <button
-                      onClick={handleOpenReaderUrl}
-                      {...getToolbarControlProps({ width: "4.5rem" })}
-                      className="theme-toolbar-button-neutral inline-flex h-9 items-center justify-center gap-1.5 rounded-lg px-2.5 py-0 text-sm"
-                      aria-label="Open"
-                    >
-                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5h5m0 0v5m0-5L10 14M5 9v10h10" />
-                      </svg>
-                      <span>Open</span>
-                    </button>
-                  </ToolbarAnimatedSlot>
-                ) : null}
               </>
             ) : (
               <>
@@ -2024,7 +1930,7 @@ export function Header({
                             {...getToolbarControlProps()}
                             data-testid="toolbar-overflow-button"
                             className={`${TOOLBAR_ICON_BUTTON_CLASS} ${
-                              isMobileDevice ? "theme-toolbar-button-ghost" : "theme-toolbar-button-neutral"
+                              isMobile ? "theme-toolbar-button-ghost" : "theme-toolbar-button-neutral"
                             }`}
                             aria-haspopup="menu"
                             aria-expanded={toolbarOverflowMenuOpen}
@@ -2043,7 +1949,7 @@ export function Header({
                             {...getToolbarControlProps()}
                             data-testid="mobile-toolbar-filter-button"
                             className={`${TOOLBAR_ICON_BUTTON_CLASS} ${
-                              isMobileDevice ? "theme-toolbar-button-ghost" : "theme-toolbar-button-neutral"
+                              isMobile ? "theme-toolbar-button-ghost" : "theme-toolbar-button-neutral"
                             }`}
                             aria-haspopup="menu"
                             aria-expanded={signalFilterMenuOpen}
@@ -2059,6 +1965,25 @@ export function Header({
 
               </>
             )}
+            {readerActive && showCollapsedToolbarFilterMenu ? (
+              <ToolbarAnimatedSlot visible width={TOOLBAR_ICON_BUTTON_SIZE} style={{ order: 100 }}>
+                <Tooltip label="View settings">
+                  <button
+                    ref={signalFilterButtonRef}
+                    type="button"
+                    onClick={toggleSignalFilterMenu}
+                    {...getToolbarControlProps()}
+                    data-testid="reader-view-settings-button"
+                    className={`${TOOLBAR_ICON_BUTTON_CLASS} ${isMobile ? "theme-toolbar-button-ghost" : "theme-toolbar-button-neutral"}`}
+                    aria-haspopup="menu"
+                    aria-expanded={signalFilterMenuOpen}
+                    aria-label="View settings"
+                  >
+                    <FilterIcon className="h-5 w-5" />
+                  </button>
+                </Tooltip>
+              </ToolbarAnimatedSlot>
+            ) : null}
           </div>
         </div>
       </header>
@@ -2188,6 +2113,20 @@ export function Header({
               />
             </div>
           </div>
+
+          {readerActive ? (
+            <div className="px-3 pb-3">
+              <ToolbarToggleGroup
+                dataTestId="reader-focus-toggle"
+                options={[{ value: "off", label: "Focus off" }, { value: "on", label: "Focus on" }]}
+                value={display.reading.focusMode ? "on" : "off"}
+                onChange={(value) => {
+                  if ((value === "on") !== display.reading.focusMode) handleToggleFocusMode();
+                }}
+                fullWidth
+              />
+            </div>
+          ) : null}
 
           {showFilterMenuFeedCardDensityControl ? (
             <div

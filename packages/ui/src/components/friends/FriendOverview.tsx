@@ -10,9 +10,7 @@ export function FriendOverview({
   bio,
   careLevel,
   latestActivityAt,
-  lastContactAt,
   hasLocation,
-  needsOutreach,
   onCareLevelChange,
 }: {
   name: string;
@@ -72,21 +70,11 @@ export function FriendOverview({
                 : "No posts yet"}
             </span>
           )}
-          {lastContactAt !== undefined && (
-            <span>
-              {lastContactAt
-                ? formatDistanceToNow(lastContactAt, { addSuffix: true })
-                : "Never contacted"}
-            </span>
-          )}
           {hasLocation && (
             <span className="inline-flex items-center gap-1 text-[color:var(--theme-accent-secondary)]">
               <MapPinIcon className="h-3 w-3" />
               Has location
             </span>
-          )}
-          {needsOutreach && (
-            <span className="theme-feedback-text-warning">Needs outreach</span>
           )}
         </div>
       </div>

@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { AuthorIdentityLink } from "../AuthorIdentityLink.js";
 import { LoadingState } from "../LoadingState.js";
-import { parseYouTubeVideoUrl, type FeedItem as FeedItemType, type FocusOptions } from "@freed/shared";
+import { PLATFORM_LABELS, isSampleFeedItem, parseYouTubeVideoUrl, type FeedItem as FeedItemType, type FocusOptions } from "@freed/shared";
 import {
   useAppStore,
   usePlatform,
@@ -401,6 +401,7 @@ export function ReaderView({
       : offlinePlaylistState;
 
   const articleUrl = item.content.linkPreview?.url;
+  const originalPostUrl = item.sourceUrl || articleUrl;
   const youtubeReference = useMemo(
     () =>
       [item.sourceUrl, item.content.linkPreview?.url]
@@ -457,6 +458,7 @@ export function ReaderView({
     }
   }, [item.globalId, item.userState.saved, toggleSaved, visibleOfflinePlaylistState.status, youtube, youtubeReference]);
   const supportsThreadHydration =
+    !isSampleFeedItem(item) &&
     !isStory &&
     (item.platform === "x" || item.platform === "facebook" || item.platform === "instagram");
   const replyPlatformLabel = REPLY_PLATFORM_LABELS[item.platform] ?? "the platform";
@@ -668,7 +670,7 @@ export function ReaderView({
   ]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLoadThreadReplies = useCallback(async () => {
-    if (interactionMode === "read-only" || !hydrateReaderItem || !navigator.onLine || isThreadLoading) return;
+    if (!supportsThreadHydration || interactionMode === "read-only" || !hydrateReaderItem || !navigator.onLine || isThreadLoading) return;
 
     setHasRequestedThreadReplies(true);
     setThreadReplyMessage(null);
@@ -710,7 +712,7 @@ export function ReaderView({
     } finally {
       setIsThreadLoading(false);
     }
-  }, [interactionMode, hydrateReaderItem, isThreadLoading, item, replyPlatformLabel]);
+  }, [supportsThreadHydration, interactionMode, hydrateReaderItem, isThreadLoading, item, replyPlatformLabel]);
 
   const handleToggleSaved = useCallback(() => {
     toggleSaved(item.globalId);
@@ -914,17 +916,6 @@ export function ReaderView({
               </button>
             </Tooltip>
 
-            {onOpenUrl && item.sourceUrl && (
-              <button
-                onClick={() => onOpenUrl(item.sourceUrl!)}
-                className="theme-subtle-button inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm"
-                style={headerDragRegion ? noDrag : undefined}
-                aria-label="Open"
-              >
-                <ExternalLinkIcon className="w-4 h-4" />
-                <span>Open</span>
-              </button>
-            )}
 
             <Tooltip label={dualColumn ? "Single column" : "Dual column"}>
               <button
@@ -963,28 +954,37 @@ export function ReaderView({
                 <span>{item.preservedContent.readingTime} min read</span>
               </>
             )}
+            {originalPostUrl ? (
+              <a
+                href={originalPostUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={`View original on ${PLATFORM_LABELS[item.platform]}`}
+                className="btn-secondary ml-auto inline-flex min-h-11 shrink-0 items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium"
+                onClick={(event) => {
+                  const openExternal = onOpenUrl ?? platformOpenUrl;
+                  if (openExternal && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
+                    event.preventDefault();
+                    openExternal(originalPostUrl);
+                  }
+                }}
+              >
+                {PLATFORM_LABELS[item.platform]}
+                <ExternalLinkIcon className="h-4 w-4" />
+              </a>
+            ) : (
+              <span className="theme-accent-tag ml-auto shrink-0 rounded-full px-3 py-1 text-xs font-medium">
+                {PLATFORM_LABELS[item.platform]}
+              </span>
+            )}
           </div>
 
           <h1 className="theme-display-large text-2xl sm:text-3xl font-bold mb-4 leading-tight">
             {readerPresentation.title}
           </h1>
 
-          {(articleUrl || (item.platform === "saved" && updateSavedContent)) && (
+          {item.platform === "saved" && updateSavedContent && (
             <div className="flex flex-wrap items-center gap-3">
-              {articleUrl && (
-                <a
-                  href={articleUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-sm font-medium text-[var(--theme-accent-secondary)] transition-colors hover:opacity-80"
-                >
-                  View original
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                  </svg>
-                </a>
-              )}
-              {item.platform === "saved" && updateSavedContent && (
                 <button
                   type="button"
                   onClick={() => openSavedContentEditor(item)}
@@ -992,7 +992,6 @@ export function ReaderView({
                 >
                   Edit save
                 </button>
-              )}
             </div>
           )}
         </div>
@@ -1056,7 +1055,7 @@ export function ReaderView({
           </div>
         )}
 
-        {hydrationMessage && (
+        {hydrationMessage && !(isSampleFeedItem(item) && hydrationMessage === STORY_REPLY_MESSAGE) && (
           <div
             className={`mb-6 rounded-xl border px-4 py-3 text-sm ${
               hydrationStatus === "expired" || hydrationStatus === "auth_required"
@@ -1121,7 +1120,7 @@ export function ReaderView({
           />
         )}
 
-        {(threadReplies.length > 0 || isThreadLoading || threadReplyMessage) && (
+        {supportsThreadHydration && (threadReplies.length > 0 || isThreadLoading || threadReplyMessage) && (
           <ThreadReplies
             replies={threadReplies}
             loading={isThreadLoading}

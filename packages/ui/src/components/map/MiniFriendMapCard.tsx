@@ -1,6 +1,7 @@
 import { formatDistanceToNow } from "date-fns";
 import { useMemo } from "react";
 import { MapSurface } from "./MapSurface.js";
+import { LoadingState } from "../LoadingState.js";
 import { useAppliedThemeId } from "../../lib/theme.js";
 import { usePlatform } from "../../context/PlatformContext.js";
 import type { FeedItem, Person } from "@freed/shared";
@@ -33,7 +34,7 @@ export function MiniFriendMapCard({
   if (!lastSeen && resolvingCount === 0 && !namedLocation) return null;
 
   return (
-    <div className="theme-dialog-divider flex shrink-0 justify-end border-t p-3">
+    <div className="mb-4 w-full">
     <div
       role="button"
       aria-label={`Open map for ${friend.name}`}
@@ -45,13 +46,14 @@ export function MiniFriendMapCard({
           onOpenMap();
         }
       }}
-      className="theme-card-soft w-56 max-w-full cursor-pointer overflow-hidden rounded-2xl text-left transition-colors hover:border-[color:var(--theme-accent-primary)] hover:bg-[color:var(--theme-bg-card-hover)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--theme-accent-primary)]"
+      className="theme-card-soft w-full cursor-pointer overflow-hidden rounded-2xl text-left transition-colors hover:border-[color:var(--theme-accent-primary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--theme-accent-primary)]"
     >
-      <div className="pointer-events-none h-32" inert aria-hidden="true">
+      {lastSeen ? <div className="pointer-events-none h-32" inert aria-hidden="true">
         <MapSurface markers={markers} focusedMarkerKey={lastSeen?.key} interactive={false} themeId={themeId}
-          emptyTitle={resolvingCount ? "Locating..." : "Location not pinpointed"}
-          emptyBody="Open Map to explore" />
-      </div>
+          emptyTitle="Location not pinpointed" />
+      </div> : resolvingCount > 0 ? (
+        <LoadingState message="Locating profile" className="h-32" />
+      ) : null}
       <div className="flex items-center justify-between gap-2 px-3 py-2">
         <div>
           <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-[color:var(--theme-accent-secondary)]">
@@ -66,9 +68,6 @@ export function MiniFriendMapCard({
               : resolvingCount ? `Resolving ${resolvingCount.toLocaleString()} location${resolvingCount !== 1 ? "s" : ""}` : "Coordinates unavailable"}
           </p>
         </div>
-        <span className="theme-chip rounded-full px-2.5 py-1 text-[11px]">
-          Open map
-        </span>
       </div>
 
     </div>

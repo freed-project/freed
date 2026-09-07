@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import { memo, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { AuthorIdentityLink } from "../AuthorIdentityLink.js";
 import { PLATFORM_LABELS, type FeedItem as FeedItemType } from "@freed/shared";
@@ -70,6 +70,7 @@ const SWIPE_THRESHOLD = 72;
 const EVENT_CHIP_THRESHOLD = 0.7;
 const STORY_CARD_TEXT_LIMIT = 240;
 const COMPACT_CARD_TEXT_LIMIT = 500;
+const COMPACT_CARD_WORD_LIMIT = 45;
 const FIXED_CARD_TEXT_LIMIT = 900;
 const FULL_CARD_TEXT_LIMIT = 1_500;
 const FEED_IMAGE_SHED_APP_PRESSURE_BYTES = 2.25 * 1024 * 1024 * 1024;
@@ -250,7 +251,7 @@ export const FeedItem = memo(function FeedItem({
   const timeAgo = formatDistanceToNow(item.publishedAt, { addSuffix: true });
   const platformIcon = platformIcons[item.platform] ?? <span className="text-xs">📄</span>;
   const isRead = Boolean(item.userState.readAt);
-  const readVisualClass = isRead && showReadInGrayscale ? "grayscale opacity-60" : "";
+  const readVisualClass = isRead && showReadInGrayscale ? "grayscale opacity-60 hover:grayscale-0 hover:opacity-100 !transition-[filter,opacity] duration-300 motion-reduce:transition-none" : "";
   const reactions = PLATFORM_REACTIONS[item.platform] ?? [];
   const hasReactionPalette = reactions.length > 1;
   const likeCount = formatEngagementCount(item.engagement?.likes);
@@ -258,7 +259,43 @@ export const FeedItem = memo(function FeedItem({
   const semanticLabel = semanticChip(item);
   const firstMediaUrl = item.content.mediaUrls[0];
   const storyPreviewText = cardPreviewText(item.content.text, STORY_CARD_TEXT_LIMIT);
-  const compactPreviewText = cardPreviewText(item.content.text, COMPACT_CARD_TEXT_LIMIT);
+  const compactPreview = cardPreviewText(item.content.text, COMPACT_CARD_TEXT_LIMIT);
+  const compactWords = compactPreview?.split(/\s+/) ?? [];
+  const compactPreviewText = compactWords.length > COMPACT_CARD_WORD_LIMIT
+    ? `${compactWords.slice(0, COMPACT_CARD_WORD_LIMIT).join(" ")}…`
+    : compactPreview;
+  const compactTextAreaRef = useRef<HTMLDivElement>(null);
+  const [compactTextLines, setCompactTextLines] = useState(0);
+  useLayoutEffect(() => {
+    const area = compactTextAreaRef.current;
+    if (!compact || !area) return;
+    let disposed = false;
+    const measure = () => {
+      if (disposed) return;
+      const text = area.querySelector("p");
+      if (!text) return;
+      const lineHeight = Number.parseFloat(getComputedStyle(text).lineHeight);
+      if (lineHeight > 0) {
+        const title = area.querySelector("h3");
+        const titleStyle = title ? getComputedStyle(title) : null;
+        const titleHeight = title ? title.offsetHeight + Number.parseFloat(titleStyle!.marginTop) + Number.parseFloat(titleStyle!.marginBottom) : 0;
+        setCompactTextLines(Math.max(0, Math.floor((area.clientHeight - titleHeight) / lineHeight)));
+      }
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(area);
+    const title = area.querySelector("h3");
+    if (title) observer.observe(title);
+    // Theme fonts can settle after the card's outer dimensions stop changing.
+    void document.fonts.ready.then(measure);
+    document.fonts.addEventListener("loadingdone", measure);
+    return () => {
+      disposed = true;
+      observer.disconnect();
+      document.fonts.removeEventListener("loadingdone", measure);
+    };
+  }, [compact, narrow, item.globalId, compactPreviewText, item.content.linkPreview?.title]);
   const fixedPreviewText = cardPreviewText(item.content.text, FIXED_CARD_TEXT_LIMIT);
   const fullPreviewText = cardPreviewText(item.content.text, FULL_CARD_TEXT_LIMIT);
 
@@ -417,7 +454,7 @@ export const FeedItem = memo(function FeedItem({
     onClick?.();
   };
 
-  if (item.contentType === "story") {
+  if (item.contentType === "story" && !compact) {
     const bg = firstMediaUrl;
     const firstMediaType = item.content.mediaTypes[0];
     const showStoryMedia = showInlineMedia && bg && !mediaFailed;
@@ -545,6 +582,7 @@ export const FeedItem = memo(function FeedItem({
 
   if (compact) {
     const showCompactMedia = showInlineMedia && firstMediaUrl && !mediaFailed;
+    const thumbnailTitle = item.content.linkPreview?.title || (item.contentType === "story" ? storyPreviewText : "");
 
     return (
       <div className="relative overflow-hidden rounded-[var(--feed-card-radius)]" style={sharedTransitionStyle}>
@@ -552,7 +590,7 @@ export const FeedItem = memo(function FeedItem({
           data-feed-item-id={item.globalId}
           data-focused={focused ? "true" : "false"}
           data-selected={selected ? "true" : "false"}
-          className={`feed-card ${quickActionsEnabled ? "group" : ""} relative min-w-0 cursor-pointer aspect-square overflow-hidden p-3 flex flex-col transition-colors ${
+          className={`feed-card group relative min-w-0 cursor-pointer aspect-square overflow-hidden !p-[6%] !pb-[calc(9%+24px)] flex flex-col transition-colors ${
             selected
               ? "border-l-2 border-l-[var(--theme-accent-secondary)] bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.12)]"
               : quickActionsEnabled
@@ -568,65 +606,69 @@ export const FeedItem = memo(function FeedItem({
         >
           {showCompactMedia && (
             <>
+              {item.content.mediaTypes[0] === "video" ? (
+                <video
+                  src={firstMediaUrl}
+                  muted
+                  playsInline
+                  preload="metadata"
+                  onError={() => setMediaFailed(true)}
+                  className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.03] motion-reduce:transform-none motion-reduce:transition-none"
+                />
+              ) : (
               <img
                 src={firstMediaUrl}
                 alt=""
                 loading="lazy"
                 decoding="async"
                 onError={() => setMediaFailed(true)}
-                className="absolute inset-0 h-full w-full object-cover"
+                className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.03] motion-reduce:transform-none motion-reduce:transition-none"
               />
-              <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/5 to-black/70 pointer-events-none" />
+              )}
+              <div className="absolute inset-0 pointer-events-none transition-opacity duration-300 ease-out group-hover:opacity-0 motion-reduce:transition-none" style={{ background: "linear-gradient(to bottom, rgb(var(--theme-thumbnail-tint-rgb) / .3), rgb(var(--theme-thumbnail-tint-rgb) / .05), rgb(var(--theme-thumbnail-tint-rgb) / .7))" }} />
+              <div className="pointer-events-none absolute inset-0 bg-[rgb(var(--theme-thumbnail-tint-rgb)/0.45)] transition-opacity duration-300 ease-out motion-reduce:transition-none group-hover:opacity-0" />
             </>
           )}
 
-          {!narrow && (
-            <div className="mb-2 flex min-w-0 items-center gap-2">
+          {(
+            <div className="relative flex min-w-0 shrink-0 items-center gap-2">
               <ChannelAvatar
                 name={item.author.displayName}
                 avatarUrl={showAvatarImages ? item.author.avatarUrl : null}
-                size={28}
+                size={16}
                 className={`text-xs ring-1 ${showCompactMedia ? "ring-white/40" : "ring-white/10"}`}
               />
               <div className="flex-1 min-w-0">
                 <span className={`font-medium text-xs truncate block ${showCompactMedia ? "text-white drop-shadow" : ""}`}>{item.author.displayName}</span>
-                <div className={`flex items-center gap-1.5 text-[10px] ${showCompactMedia ? "text-white/75" : "text-[var(--theme-text-muted)]"}`}>
-                  <span>{platformIcon}</span>
-                  <span className="truncate">{timeAgo}</span>
-                </div>
               </div>
             </div>
           )}
 
-          {item.content.linkPreview?.title && (
-            <h3 className={`mb-1 min-w-0 break-words font-semibold leading-snug ${showCompactMedia ? "mt-auto text-white drop-shadow" : ""} ${narrow ? "text-xs line-clamp-3" : "text-sm line-clamp-2"}`}>
-              {item.content.linkPreview.title}
+          <div ref={compactTextAreaRef} className="relative flex min-h-0 min-w-0 flex-1 flex-col justify-center text-center">
+          {thumbnailTitle && (
+            <h3 title={thumbnailTitle} className={`relative my-[3%] min-w-0 shrink-0 truncate font-semibold leading-normal ${showCompactMedia ? "text-white drop-shadow transition-[opacity,transform] duration-300 ease-out group-hover:opacity-0 group-hover:scale-[1.03] motion-reduce:transform-none motion-reduce:transition-none" : ""} ${narrow ? "text-xs" : "text-sm"}`}>
+              {thumbnailTitle}
             </h3>
           )}
 
-          {compactPreviewText && (
-            <p className={`min-h-0 min-w-0 break-words ${showCompactMedia ? "text-white/85 drop-shadow flex-none" : "text-[var(--theme-text-secondary)] flex-1"} leading-relaxed ${narrow ? "text-[10px] line-clamp-4" : "text-xs line-clamp-3"}`}>
+          {compactPreviewText && compactPreviewText !== thumbnailTitle && (
+            <p style={{ display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: Math.max(1, compactTextLines), visibility: compactTextLines ? "visible" : "hidden" }} className={`m-0 min-w-0 overflow-hidden break-words ${showCompactMedia ? "text-white/85 drop-shadow transition-[opacity,transform] duration-300 ease-out group-hover:opacity-0 group-hover:scale-[1.03] motion-reduce:transform-none motion-reduce:transition-none" : "text-[var(--theme-text-secondary)]"} leading-relaxed ${narrow ? "text-[10px]" : "text-xs"}`}>
               {compactPreviewText}
             </p>
           )}
+          </div>
 
-          {(semanticLabel || item.userState.tags.length > 0) && (
-            <div className="mt-auto flex min-w-0 flex-wrap gap-1 pt-2">
-              {semanticLabel && (
-                <span className="theme-accent-tag rounded-full px-1.5 py-0.5 text-[10px]">
-                  {semanticLabel}
-                </span>
-              )}
-              {item.userState.tags.slice(0, 2).map((tag) => (
-                <span
-                  key={tag}
-                  className="theme-accent-tag max-w-full truncate rounded-full px-1.5 py-0.5 text-[10px]"
-                >
-                  {tag}
-                </span>
-              ))}
-            </div>
-          )}
+          <div className={`absolute bottom-[6%] left-[6%] right-[6%] flex min-w-0 items-center gap-[6.818182%] ${showCompactMedia ? "text-white/85 drop-shadow" : "text-[var(--theme-text-muted)]"}`}>
+            <span className="flex h-4 w-4 shrink-0 items-center justify-center">{platformIcon}</span>
+            {item.location?.name && (
+              <span title={item.location.name} className={`ml-auto flex min-w-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] ${showCompactMedia ? "bg-[rgb(var(--theme-thumbnail-tint-rgb)/0.35)]" : "bg-[var(--theme-bg-muted)]"}`}>
+                <svg className="h-2.5 w-2.5 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
+                </svg>
+                <span className="min-w-0 truncate">{item.location.name}</span>
+              </span>
+            )}
+          </div>
         </article>
       </div>
     );
@@ -696,7 +738,7 @@ export const FeedItem = memo(function FeedItem({
                 />
                 <div className="min-w-0 flex-1">
                   <div className="flex min-w-0 items-center gap-2">
-                    <AuthorIdentityLink item={item} className={`truncate font-medium ${fixedCardDensity.author}`} />
+                    <AuthorIdentityLink item={item} showProfileTooltip={false} className={`truncate font-medium ${fixedCardDensity.author}`} />
                     <span className={`truncate text-[var(--theme-text-muted)] ${fixedCardDensity.handle}`}>@{item.author.handle}</span>
                   </div>
                   <div className={`flex min-w-0 items-center gap-2 ${fixedCardDensity.meta} text-[var(--theme-text-muted)]`}>
@@ -926,7 +968,7 @@ export const FeedItem = memo(function FeedItem({
           />
           <div className="flex-1 min-w-0">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <AuthorIdentityLink item={item} className={`font-medium truncate ${fullCardDensity.author}`} />
+              <AuthorIdentityLink item={item} showProfileTooltip={false} className={`font-medium truncate ${fullCardDensity.author}`} />
               <span className="min-w-0 truncate text-sm text-[var(--theme-text-muted)]">@{item.author.handle}</span>
             </div>
             <div className={`flex min-w-0 items-center gap-2 ${fullCardDensity.meta} text-[var(--theme-text-muted)]`}>

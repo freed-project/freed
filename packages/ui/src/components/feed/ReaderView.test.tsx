@@ -122,6 +122,34 @@ async function flushReaderEffects(): Promise<void> {
 }
 
 describe("ReaderView cache-first hydration", () => {
+  it.each(["facebook", "instagram", "x"] as const)("hides replies for synthetic %s items outside the read-only demo", async (platform) => {
+    const item = makeArticleItem({
+      platform,
+      sampleDataFingerprint: {
+        marker: "freed.sample-data.v1",
+        batchId: "sample-installed-library",
+        generatedAt: NOW,
+        generatorVersion: 1,
+      },
+    });
+    const { container, root } = await renderReaderView(basePlatformConfig, item);
+    await flushReaderEffects();
+    expect(container.textContent).not.toContain("Load replies");
+    expect(container.textContent).not.toContain("View replies");
+    expect(container.querySelector("article section.border-t")).toBeNull();
+    await act(async () => root.unmount());
+    const real = await renderReaderView(basePlatformConfig, makeArticleItem({ platform }));
+    await flushReaderEffects();
+    expect(real.container.textContent).toContain("Load replies inline");
+    await act(async () => real.root.unmount());
+    const compact = await renderReaderView(basePlatformConfig, makeArticleItem({
+      platform,
+      globalId: `custom-batch:sample-${platform}:2`,
+    }));
+    await flushReaderEffects();
+    expect(compact.container.textContent).not.toContain("Load replies");
+    await act(async () => compact.root.unmount());
+  });
   beforeAll(() => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     installLocalStorageMock();

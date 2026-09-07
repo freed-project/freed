@@ -607,19 +607,15 @@ function buildPopupContent(
     const friendButton = document.createElement("button");
     friendButton.type = "button";
     friendButton.textContent = "Open Friend";
+    friendButton.className = "btn-primary";
     friendButton.style.cssText = [
       "padding:10px 14px",
       "border-radius:12px",
-      "border:1px solid var(--theme-border-strong)",
-      "background:var(--theme-button-primary-background)",
-      "color:var(--theme-button-primary-text)",
       "font-size:12px",
       "font-weight:600",
       "cursor:pointer",
-      "outline:none",
       "width:100%",
       "white-space:nowrap",
-      "box-shadow:var(--theme-button-primary-shadow)",
     ].join(";");
     friendButton.addEventListener("click", () => onOpenFriend(marker));
     actions.appendChild(friendButton);
@@ -629,19 +625,15 @@ function buildPopupContent(
     const promoteButton = document.createElement("button");
     promoteButton.type = "button";
     promoteButton.textContent = "Promote to friend";
+    promoteButton.className = "btn-primary";
     promoteButton.style.cssText = [
       "padding:10px 14px",
       "border-radius:12px",
-      "border:1px solid var(--theme-border-strong)",
-      "background:var(--theme-button-primary-background)",
-      "color:var(--theme-button-primary-text)",
       "font-size:12px",
       "font-weight:600",
       "cursor:pointer",
-      "outline:none",
       "width:100%",
       "white-space:nowrap",
-      "box-shadow:var(--theme-button-primary-shadow)",
     ].join(";");
     promoteButton.addEventListener("click", () => onPromoteAccount(marker));
     actions.appendChild(promoteButton);
@@ -651,16 +643,13 @@ function buildPopupContent(
     const linkButton = document.createElement("button");
     linkButton.type = "button";
     linkButton.textContent = "Link to existing friend";
+    linkButton.className = "btn-secondary";
     linkButton.style.cssText = [
       "padding:10px 14px",
       "border-radius:12px",
-      "border:1px solid var(--theme-border-subtle)",
-      "background:var(--theme-button-secondary-background)",
-      "color:var(--theme-text-primary)",
       "font-size:12px",
       "font-weight:600",
       "cursor:pointer",
-      "outline:none",
       "width:100%",
       "white-space:nowrap",
     ].join(";");
@@ -672,16 +661,13 @@ function buildPopupContent(
     const postButton = document.createElement("button");
     postButton.type = "button";
     postButton.textContent = "Open Post";
+    postButton.className = "btn-secondary";
     postButton.style.cssText = [
       "padding:10px 14px",
       "border-radius:12px",
-      "border:1px solid var(--theme-border-subtle)",
-      "background:var(--theme-button-secondary-background)",
-      "color:var(--theme-text-primary)",
       "font-size:12px",
       "font-weight:600",
       "cursor:pointer",
-      "outline:none",
       "width:100%",
       "white-space:nowrap",
     ].join(";");

@@ -182,7 +182,7 @@ function Toggle({
             data-testid={testId ? `${testId}-switch` : undefined}
             onClick={() => onChange(!checked)}
             className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${
-              checked ? "bg-[#8b5cf6]" : "bg-white/10"
+              checked ? "bg-[var(--theme-accent-secondary)]" : "bg-[var(--theme-bg-muted)]"
             }`}
           >
             <span
@@ -861,7 +861,7 @@ export function FacebookSettingsSection({
                         <span
                           aria-label={`Refreshing group: ${title}`}
                           data-testid={`facebook-group-${group.id}-refreshing`}
-                          className="h-3 w-3 shrink-0 rounded-full border border-[#8b5cf6]/50 border-t-[#c4b5fd] animate-spin"
+                          className="h-3 w-3 shrink-0 rounded-full border border-[var(--theme-border-strong)] border-t-[var(--theme-accent-secondary)] animate-spin"
                         />
                       ) : null
                     }

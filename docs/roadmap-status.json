@@ -26,13 +26,13 @@
     {
       "id": 5,
       "status": "current",
-      "reviewedAt": "2026-09-06",
+      "reviewedAt": "2026-09-07",
       "source": "docs/PHASE-5-DESKTOP.md"
     },
     {
       "id": 6,
       "status": "current",
-      "reviewedAt": "2026-09-06",
+      "reviewedAt": "2026-09-07",
       "source": "docs/PHASE-6-PWA.md"
     },
     {
@@ -44,6 +44,7 @@
     {
       "id": 8,
       "status": "current",
+      "reviewedAt": "2026-09-07",
       "source": "docs/PHASE-8-FRIENDS.md"
     },
     {

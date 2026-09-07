@@ -4,13 +4,10 @@
  * Shows:
  *   - Identity card (avatar, name, care level, linked handles, contact info)
  *   - Cross-platform timeline of all FeedItems from their linked sources
- *   - "Reach out" button that logs a reach-out event and clears the Reconnect ring
  */
 
-import { useState } from "react";
 import { formatDistanceToNow } from "date-fns";
-import type { Friend, FeedItem, ReachOutLog } from "@freed/shared";
-import { lastReachOutAt } from "@freed/shared";
+import type { Friend, FeedItem } from "@freed/shared";
 import {
   FacebookIcon,
   InstagramIcon,
@@ -19,7 +16,6 @@ import {
   RssIcon,
   SubstackIcon,
   XIcon,
-  UsersIcon,
   YoutubeIcon,
   RedditIcon,
   GithubIcon,
@@ -68,72 +64,6 @@ function safeText(value: unknown, fallback = ""): string {
 // Reach-out logger popover
 // ---------------------------------------------------------------------------
 
-const CHANNELS: Array<{ id: ReachOutLog["channel"]; label: string }> = [
-  { id: "phone", label: "Phone call" },
-  { id: "text", label: "Text message" },
-  { id: "email", label: "Email" },
-  { id: "in_person", label: "In person" },
-  { id: "other", label: "Other" },
-];
-
-interface ReachOutPopoverProps {
-  onLog: (entry: ReachOutLog) => void;
-  onCancel: () => void;
-}
-
-function ReachOutPopover({ onLog, onCancel }: ReachOutPopoverProps) {
-  const [channel, setChannel] = useState<ReachOutLog["channel"]>("other");
-  const [notes, setNotes] = useState("");
-
-  return (
-    <div className="glass-card mx-4 mb-4 rounded-xl px-4 py-3">
-      <p className="text-sm font-medium text-text-primary mb-3">
-        Log a reach-out
-      </p>
-      <div className="flex flex-wrap gap-1.5 mb-3">
-        {CHANNELS.map((c) => (
-          <button
-            key={c.id}
-            className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
-              channel === c.id ? "theme-chip-active" : "theme-chip"
-            }`}
-            onClick={() => setChannel(c.id)}
-          >
-            {c.label}
-          </button>
-        ))}
-      </div>
-      <textarea
-        className="theme-input mb-3 w-full resize-none rounded-lg px-3 py-2 text-sm"
-        placeholder="Optional note..."
-        rows={2}
-        value={notes}
-        onChange={(e) => setNotes(e.target.value)}
-      />
-      <div className="flex gap-2 justify-end">
-        <button
-          className="px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary transition-colors"
-          onClick={onCancel}
-        >
-          Cancel
-        </button>
-        <button
-          className="btn-primary rounded-lg px-3 py-1.5 text-xs"
-          onClick={() =>
-            onLog({
-              loggedAt: Date.now(),
-              channel,
-              notes: notes.trim() || undefined,
-            })
-          }
-        >
-          Save
-        </button>
-      </div>
-    </div>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Main panel
 // ---------------------------------------------------------------------------
@@ -152,7 +82,6 @@ interface FriendDetailPanelProps {
   timelineTotalCount: number;
   onLoadMoreTimeline: () => void;
   onShowNewestTimeline: () => void;
-  onLogReachOut: (entry: ReachOutLog) => void;
   onOpenMap: () => void;
   onSelectSource: (source: Friend["sources"][number]) => void;
   readOnly?: boolean;
@@ -172,24 +101,16 @@ export function FriendDetailPanel({
   timelineAwayFromNewest,
   onLoadMoreTimeline,
   onShowNewestTimeline,
-  onLogReachOut,
   onOpenMap,
   onSelectSource,
-  readOnly = false,
   onCareLevelChange,
 }: FriendDetailPanelProps) {
-  const [showReachOut, setShowReachOut] = useState(false);
   const items = [...feedItems];
-  const lastContact = lastReachOutAt(friend);
   const avatarUrl = resolveFriendAvatarUrl(friend, [
     ...activityAvatarUrls,
     ...items.map((item) => item.author.avatarUrl),
   ]);
 
-  const handleLogReachOut = (entry: ReachOutLog) => {
-    onLogReachOut(entry);
-    setShowReachOut(false);
-  };
 
   return (
     <div className="flex h-full flex-col bg-[color:var(--theme-bg-deep)]">
@@ -274,37 +195,14 @@ export function FriendDetailPanel({
                 ? "loading..."
                 : "never"}
           </span>
-          <span>
-            <span className="text-text-tertiary">Last contact</span>{" "}
-            {lastContact
-              ? formatDistanceToNow(lastContact, { addSuffix: true })
-              : "never"}
-          </span>
         </div>
 
       </div>
 
-      {/* Reach out button / popover */}
-      {!readOnly ? <div className="theme-dialog-divider shrink-0 border-b bg-[color:color-mix(in_oklab,var(--theme-bg-surface)_90%,transparent)] px-4 py-3 backdrop-blur-md">
-        {showReachOut ? (
-          <ReachOutPopover
-            onLog={handleLogReachOut}
-            onCancel={() => setShowReachOut(false)}
-          />
-        ) : (
-          <button
-            className="btn-secondary flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm"
-            onClick={() => setShowReachOut(true)}
-          >
-            <UsersIcon className="w-3.5 h-3.5" />
-            Mark as reached out
-          </button>
-        )}
-      </div> : null}
-
       {/* Timeline */}
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">Recent activity</p>
+        <MiniFriendMapCard friend={friend} feedItems={locationItems.length ? locationItems : feedItems} onOpenMap={onOpenMap} />
+        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">Recent activity</p>
         {timelineLoading ? (
           <div className="flex h-full items-center justify-center px-6 py-12 text-center">
             <p className="text-sm text-text-secondary">
@@ -362,7 +260,6 @@ export function FriendDetailPanel({
           </>
         )}
       </div>
-      <MiniFriendMapCard friend={friend} feedItems={locationItems.length ? locationItems : feedItems} onOpenMap={onOpenMap} />
     </div>
   );
 }

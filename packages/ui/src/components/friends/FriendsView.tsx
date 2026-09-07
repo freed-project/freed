@@ -17,7 +17,6 @@ import type {
   FriendSource,
   MapMode,
   Person,
-  ReachOutLog,
 } from "@freed/shared";
 import { formatDistanceToNow } from "date-fns";
 import { compareUtf8Binary } from "@freed/shared";
@@ -59,7 +58,6 @@ import { UsersIcon, MapPinIcon } from "../icons.js";
 import {
   buildFriendOverviewEntriesFromActivity,
   friendActivitySourceKey,
-  type FriendOverviewFilter,
   type FriendOverviewSort,
 } from "../../lib/friends-workspace.js";
 import { resolveFriendAvatarUrl } from "../../lib/friend-avatar.js";
@@ -83,18 +81,10 @@ const DEFAULT_SIDEBAR_WIDTH = 360;
 const MIN_SIDEBAR_WIDTH = 280;
 const MAX_SIDEBAR_WIDTH = 400;
 
-const FILTER_OPTIONS: Array<{ id: FriendOverviewFilter; label: string }> = [
-  { id: "need_outreach", label: "Need outreach" },
-  { id: "no_contact", label: "No contact logged" },
-  { id: "close_friends", label: "Fam" },
-  { id: "recently_active", label: "Recently active" },
-  { id: "has_location", label: "Has location" },
-];
 
 const SORT_OPTIONS: Array<{ id: FriendOverviewSort; label: string }> = [
   { id: "recent_activity", label: "Recent activity" },
   { id: "care_level", label: "Care level" },
-  { id: "last_contact", label: "Last contact" },
   { id: "name", label: "Name" },
 ];
 
@@ -107,7 +97,6 @@ const unavailableLibraryCoreQuery: LibraryCoreNormalizedQueryExecutor =
   async () => {
     throw new Error("The bounded SQLite Library query boundary is unavailable");
   };
-const NEED_OUTREACH_DIRECTORY_FILTERS = ["need_outreach"] as const;
 
 type RelationshipTierLevel = 1 | 3 | 5;
 
@@ -547,9 +536,6 @@ export function FriendsView({
   const [libraryMutationNonce, setLibraryMutationNonce] = useState(0);
   const [openingSyncModal, setOpeningSyncModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeFilters, setActiveFilters] = useState<Set<FriendOverviewFilter>>(
-    new Set(),
-  );
   const [sortBy, setSortBy] = useState<FriendOverviewSort>("recent_activity");
   const [dragWidth, setDragWidth] = useState<number | null>(null);
   const [committedSidebarWidth, setCommittedSidebarWidth] =
@@ -567,27 +553,15 @@ export function FriendsView({
   const sidebarDragCleanup = useRef<(() => void) | null>(null);
   const isMobile = useIsMobile();
   const friendsReadVersion = searchCorpusVersion + libraryMutationNonce;
-  const directoryFilters = useMemo(
-    () => [...activeFilters].sort(),
-    [activeFilters],
-  );
   const friendsDirectory = useLibraryFriendsDirectory({
-    filters: directoryFilters,
+    filters: [],
     search: searchQuery,
     sort: sortBy,
-    sourceVersion: friendsReadVersion,
-  });
-  const reconnectDirectory = useLibraryFriendsDirectory({
-    filters: NEED_OUTREACH_DIRECTORY_FILTERS,
-    limit: 1,
-    search: "",
-    sort: "last_contact",
     sourceVersion: friendsReadVersion,
   });
   const libraryFacets = useLibraryFacetSummary(friendsReadVersion);
 
   const {
-    appendLibraryPersonReachOut,
     assignLibraryAccountToPerson,
     googleContacts,
     mutateDeviceGraphLayout,
@@ -681,7 +655,6 @@ export function FriendsView({
         : null,
     [friendsRows.graph],
   );
-  const reconnectCount = reconnectDirectory.totalCount;
 
   const selectedAccountSuggestions = useLibraryAccountLinkCandidates({
     entityId: selectedAccountId,
@@ -827,17 +800,6 @@ export function FriendsView({
     [openMapForPerson, setActiveView],
   );
 
-  const handleLogReachOut = useCallback(
-    async (entry: ReachOutLog) => {
-      if (!selectedPerson) return;
-      if (!appendLibraryPersonReachOut) {
-        throw new Error("The Person reach-out SQLite mutation is unavailable.");
-      }
-      await appendLibraryPersonReachOut(selectedPerson.id, entry);
-      setLibraryMutationNonce((value) => value + 1);
-    },
-    [appendLibraryPersonReachOut, selectedPerson],
-  );
 
   const persistFriend = useCallback(
     async (
@@ -1186,17 +1148,6 @@ export function FriendsView({
     }
   }, [contactSync]);
 
-  const toggleFilter = useCallback((filter: FriendOverviewFilter) => {
-    setActiveFilters((current) => {
-      const next = new Set(current);
-      if (next.has(filter)) {
-        next.delete(filter);
-      } else {
-        next.add(filter);
-      }
-      return next;
-    });
-  }, []);
 
   useEffect(
     () => () => {
@@ -1302,8 +1253,7 @@ export function FriendsView({
             <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
               {friendCount.toLocaleString()} total,{" "}
               {socialAccountCount.toLocaleString()} account
-              {socialAccountCount === 1 ? "" : "s"},{" "}
-              {reconnectCount.toLocaleString()} due to reconnect
+              {socialAccountCount === 1 ? "" : "s"}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -1345,49 +1295,6 @@ export function FriendsView({
             aria-label="Search friends"
             inputClassName="rounded-xl"
           />
-        </div>
-      </div>
-
-      <div className={FRIENDS_SIDEBAR_SECTION}>
-        <div className="theme-panel-muted rounded-xl p-3">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="theme-feedback-text-warning text-[11px] font-semibold uppercase tracking-[0.14em]">
-                Reconnect
-              </p>
-              <p className="mt-1 text-sm font-medium text-[var(--theme-text-primary)]">
-                {reconnectCount.toLocaleString()} friend
-                {reconnectCount === 1 ? "" : "s"} waiting on a follow-up
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                setActiveFilters(new Set(["need_outreach"]));
-                setSortBy("last_contact");
-              }}
-              className={BUTTON_CHROME}
-            >
-              Review
-            </button>
-          </div>
-        </div>
-
-        <div className="mt-3 flex flex-wrap gap-2">
-          {FILTER_OPTIONS.map((filter) => (
-            <button
-              key={filter.id}
-              type="button"
-              onClick={() => toggleFilter(filter.id)}
-              className={`rounded-full border px-2.5 py-1 text-[11px] transition-colors ${
-                activeFilters.has(filter.id)
-                  ? "theme-chip-active"
-                  : "theme-chip"
-              }`}
-            >
-              {filter.label}
-            </button>
-          ))}
         </div>
 
         <div className="mt-3 flex items-center justify-between gap-3">
@@ -1684,7 +1591,6 @@ export function FriendsView({
             timelineTotalCount={friendsRows.timelineTotalCount}
             onLoadMoreTimeline={friendsRows.loadMoreTimeline}
             onShowNewestTimeline={friendsRows.showNewestTimeline}
-            onLogReachOut={handleLogReachOut}
             onSelectSource={async (source) => {
               try {
                 if (!queryLibraryCore) throw new Error("Library query unavailable");
@@ -1891,11 +1797,6 @@ export function FriendsView({
               addSuffix: true,
             })
           : "No posts yet";
-      const lastContactLabel = selectedOverviewEntry?.lastContactAt
-        ? formatDistanceToNow(selectedOverviewEntry.lastContactAt, {
-            addSuffix: true,
-          })
-        : "Never contacted";
 
       return (
         <CompactDetailCard>
@@ -1948,8 +1849,6 @@ export function FriendsView({
               <div className="mt-3 flex flex-wrap gap-2 text-xs text-[color:var(--theme-text-muted)]">
                 <span>{lastPostLabel}</span>
                 <span>•</span>
-                <span>{lastContactLabel}</span>
-                <span>•</span>
                 <span>
                   {selectedFriend.sources.length.toLocaleString()} channel
                   {selectedFriend.sources.length === 1 ? "" : "s"}
@@ -1991,12 +1890,29 @@ export function FriendsView({
     return null;
   };
 
+  // Selection belongs to the store, not to the asynchronous detail response.
+  // Keep the selected surface visible while its row is loading or unavailable.
+  const selectedDetailStatus = selectedAccountId
+    ? selectedAccountDetail.status
+    : selectedFriendDetail.status;
+  const pendingSelectionSidebar = (
+    <div className="flex h-full flex-col items-center justify-center gap-4 p-4">
+      {selectedDetailStatus === "failed" ? (
+        <p role="alert">Could not load this profile.</p>
+      ) : (
+        <LoadingState message="Loading profile" />
+      )}
+      <button className="theme-toolbar-button-neutral rounded-lg px-3 py-2" onClick={handleClearSelection}>
+        Back to friends
+      </button>
+    </div>
+  );
   const activeSidebar = selectedFeedUrl
     ? <RssPlanetDetail url={selectedFeedUrl} sourceVersion={friendsReadVersion} onBack={handleClearSelection} />
-    : selectedAccount
-    ? renderSelectedAccountSidebar()
-    : selectedPerson
-      ? renderSelectedPersonSidebar()
+    : selectedAccountId
+    ? selectedAccount ? renderSelectedAccountSidebar() : pendingSelectionSidebar
+    : selectedPersonId
+      ? selectedPerson ? renderSelectedPersonSidebar() : pendingSelectionSidebar
       : renderOverviewSidebar();
   const showGraphSurface = !isMobile || mobileSurface === "graph";
   const showDesktopSidebar = !isMobile && friendsSidebarOpen;
@@ -2039,12 +1955,12 @@ export function FriendsView({
             sqliteGraphQuery={graphSqliteQuery}
             sourceVersion={friendsReadVersion}
             mode={effectiveMode}
-            selectedPersonId={selectedPerson?.id ?? null}
-            selectedAccountId={selectedAccount?.id ?? null}
+            selectedPersonId={selectedPersonId}
+            selectedAccountId={selectedAccountId}
             selectedFeedUrl={selectedFeedUrl}
             onSelectFeedUrl={(url) => { setSelectedPerson(null); setSelectedAccount(null); setSelectedFeedUrl(url); onFriendsSidebarOpenChange(true); }}
-            onSelectPersonId={(personId) => { setSelectedFeedUrl(null); setSelectedPerson(personId); }}
-            onSelectAccountId={(accountId) => { setSelectedFeedUrl(null); setSelectedAccount(accountId); }}
+            onSelectPersonId={(personId) => { setSelectedFeedUrl(null); setSelectedPerson(personId); onFriendsSidebarOpenChange(true); }}
+            onSelectAccountId={(accountId) => { setSelectedFeedUrl(null); setSelectedAccount(accountId); onFriendsSidebarOpenChange(true); }}
             onSourceCounts={(counts) => {
               setGraphSourceCounts({ ...counts, mode: effectiveMode });
             }}

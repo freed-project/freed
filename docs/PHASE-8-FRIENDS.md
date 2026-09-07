@@ -7,6 +7,13 @@
 
 ## Overview
 
+Galaxy and sidebar selection share canonical person and account IDs. Directory
+search includes matching connections as well as friends, using identity names
+and account fields rather than incidental biography substrings. The sidebar
+keeps search, count, and sort above one divider, with results scrolling below.
+Contact tracking, outreach, and reconnection controls are withheld until the
+underlying feature is available.
+
 Care levels map to Connection at one or two, Friend at three or four, and Fam
 at five. Editable identity details, directory cards, collapsed selection cards,
 and the identity editor share a keyboard-accessible rating control with category
@@ -24,8 +31,8 @@ known identity fields; it does not infer latest identity activity from one post.
 Stars and planets are internal design shorthand only. Interface copy uses
 identity, profile, account, or feed, including tooltips and accessibility labels.
 
-Star and linked planet detail panels dock a non-interactive map preview at the
-bottom right when a known location exists. The entire preview opens Map with
+Person and linked account detail panels place a full-width map preview above
+recent activity in the scrolling sidebar when a known location exists. The entire preview opens Map with
 the parent identity selected. It uses the shared map surface and theme, retains
 the demo's local geographic mode, and does not invent locations for empty records.
 

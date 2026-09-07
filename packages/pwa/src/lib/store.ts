@@ -5,6 +5,8 @@
  */
 
 import { create } from "zustand";
+import { isFreedDemoMode } from "./demo-mode";
+import { isDemoFocusPreferenceUpdate } from "./demo-presentation-session";
 import {
   applyFeedSignalModesToFilter,
   assertSupportedUserPreferenceWrite,
@@ -755,6 +757,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       currentPreferences,
       syncedUpdate,
     );
+    // Anonymous demos have no enrolled follower. Focus is presentation state
+    // for this document, not a simulated durable or synchronized mutation.
+    if (typeof location !== "undefined" &&
+      isFreedDemoMode(location.hostname, undefined, location.search) &&
+      isDemoFocusPreferenceUpdate(syncedUpdate)) {
+      set({ preferences: nextPreferences });
+      return;
+    }
     if (syncedUpdate.fbCapture !== undefined) {
       nextPreferences.fbCapture = mergeFacebookCapturePreferenceUpdate(
         currentPreferences.fbCapture,

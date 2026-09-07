@@ -5,6 +5,7 @@
 
 :root,
 html[data-theme="neon"] {
+  --theme-thumbnail-tint-rgb: 18 14 36;
   --font-body: "Manrope", system-ui, -apple-system, sans-serif;
   --font-logo: "Space Grotesk", system-ui, sans-serif;
   --font-display: "Space Grotesk", "Manrope", system-ui, sans-serif;
@@ -165,6 +166,7 @@ html[data-theme="neon"] {
 }
 
 html[data-theme="midas"] {
+  --theme-thumbnail-tint-rgb: 38 28 17;
   --font-body:
     "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
   --font-logo: "Baskerville", "Didot", "Bodoni 72", "Times New Roman", serif;
@@ -280,6 +282,7 @@ html[data-theme="midas"] {
 }
 
 html[data-theme="ember"] {
+  --theme-thumbnail-tint-rgb: 40 19 13;
   --font-body:
     "Optima", "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
   --font-logo: "Impact", "Arial Black", "Avenir Next Condensed", sans-serif;
@@ -392,6 +395,7 @@ html[data-theme="ember"] {
 }
 
 html[data-theme="scriptorium"] {
+  --theme-thumbnail-tint-rgb: 48 34 21;
   --font-body:
     "Manrope", "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   --font-logo: "Baskerville", "Hoefler Text", "Iowan Old Style", Georgia, serif;
@@ -523,6 +527,7 @@ html[data-theme="scriptorium"] {
 }
 
 html[data-theme="starship"] {
+  --theme-thumbnail-tint-rgb: 22 22 58;
   --font-body: "Barlow", "Avenir Next", "Segoe UI", sans-serif;
   --font-logo: "Barlow Condensed", "Arial Narrow", sans-serif;
   --font-display: "Barlow Condensed", "Arial Narrow", sans-serif;
@@ -652,6 +657,7 @@ html[data-theme="starship"] {
 }
 
 html[data-theme="dark-star"] {
+  --theme-thumbnail-tint-rgb: 19 22 28;
   --font-body: "Barlow", "Avenir Next", "Segoe UI", sans-serif;
   --font-logo: "Barlow Condensed", "Arial Narrow", sans-serif;
   --font-display: "Barlow Condensed", "Arial Narrow", sans-serif;
@@ -2114,9 +2120,14 @@ html.freed-mobile-sidebar-open body {
   padding: 0;
   border: 1px solid transparent;
   background: transparent;
-  color: var(--theme-text-muted);
+  color: var(--theme-reader-layout-idle-color, var(--theme-text-muted));
   line-height: 1;
   transition: color 0.18s ease;
+}
+
+/* These palettes need quieter resting icons; keep the shared hover color. */
+html:is([data-theme="midas"], [data-theme="scriptorium"], [data-theme="starship"], [data-theme="dark-star"]) .theme-toolbar-reader-layout-button {
+  --theme-reader-layout-idle-color: var(--theme-border-subtle);
 }
 
 .theme-toolbar-reader-layout-button:hover {
@@ -2400,11 +2411,11 @@ html.freed-mobile-sidebar-open body {
   gap: 0;
 }
 
-.theme-toolbar-cluster > .theme-toolbar-slot + .theme-toolbar-slot {
+.theme-toolbar-cluster > .theme-toolbar-slot-visible ~ .theme-toolbar-slot-visible {
   margin-inline-start: 0.75rem;
 }
 
-.theme-toolbar-cluster-tight > .theme-toolbar-slot + .theme-toolbar-slot {
+.theme-toolbar-cluster-tight > .theme-toolbar-slot-visible ~ .theme-toolbar-slot-visible {
   margin-inline-start: 0.5rem;
 }
 
@@ -2886,9 +2897,28 @@ html[data-theme="scriptorium"] .btn-primary:hover {
   background: var(--theme-button-secondary-hover);
 }
 
-.theme-canvas-control,
-.theme-canvas-control:hover {
-  background: var(--theme-bg-elevated);
+.theme-canvas-control {
+  background: var(--theme-header-background);
+  border-color: var(--theme-header-border);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05), var(--theme-header-shadow);
+  backdrop-filter: blur(18px);
+  transition: color 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.theme-canvas-control:hover:not(:disabled),
+.theme-canvas-control:focus-visible {
+  background: var(--theme-header-background);
+  color: var(--theme-accent-secondary);
+  border-color: var(--theme-accent-secondary);
+  box-shadow: inset 0 0 0 999px rgb(var(--theme-accent-secondary-rgb) / 0.12), var(--theme-header-shadow);
+}
+
+html[data-theme="scriptorium"] .theme-canvas-control {
+  backdrop-filter: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-canvas-control { transition: none; }
 }
 
 .theme-input {
@@ -3418,6 +3448,37 @@ input[type="radio"]:focus-visible {
   100% {
     opacity: 1;
     transform: scale(1);
+  }
+}
+
+/* Touch navigation must not reveal a new click target on the first tap.
+   Reserve separate space for options and counts rather than swapping them. */
+@media (hover: none), (pointer: coarse), (max-width: 767px) {
+  [data-sidebar-row] .sidebar-nav-action-slot-with-menu {
+    box-sizing: content-box;
+    padding-right: 28px;
+  }
+
+  [data-sidebar-row] .sidebar-nav-menu-button {
+    top: 50%;
+    bottom: auto;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    transform: translateY(-50%) !important;
+  }
+
+  [data-sidebar-row] .sidebar-nav-action-slot-with-menu[data-sidebar-has-count="false"] {
+    width: 0 !important;
+  }
+
+  [data-sidebar-row] .sidebar-nav-action-slot-with-menu [data-sidebar-count-slot] {
+    right: 28px;
+    opacity: 1 !important;
+    pointer-events: none !important;
+    transform: none !important;
   }
 }
 

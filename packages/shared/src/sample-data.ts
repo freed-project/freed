@@ -441,6 +441,14 @@ export function hasSampleDataFingerprint(
   return record?.sampleDataFingerprint?.marker === SAMPLE_DATA_FINGERPRINT;
 }
 
+/** Compact reader cards omit fingerprints but retain the generator's namespaced IDs. */
+export function isSampleFeedItem(
+  item: Pick<FeedItem, "globalId" | "sampleDataFingerprint">,
+): boolean {
+  return hasSampleDataFingerprint(item) ||
+    /(?:^|:)sample-(?:character|rss|saved|x|facebook|instagram|linkedin|ig-story|fb-story|location-window|graph|unlinked-graph):/.test(item.globalId);
+}
+
 function rotateArray<T>(values: T[], offset: number): T[] {
   if (values.length === 0) return [];
   const normalizedOffset = ((offset % values.length) + values.length) % values.length;

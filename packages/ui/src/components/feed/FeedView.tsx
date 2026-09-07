@@ -33,7 +33,6 @@ import { useSearchResults } from "../../hooks/useSearchResults.js";
 import { useLibraryFacetSummary } from "../../hooks/useLibraryFacetSummary.js";
 import { useLibraryItemDetail } from "../../hooks/useLibraryItemDetail.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
-import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import { type FeedItem } from "@freed/shared";
 import { runFeedLayoutTransition } from "../../lib/view-transitions.js";
 import {
@@ -565,6 +564,7 @@ export function FeedView() {
   ]);
   const {
     feed: boundedFeed,
+    retry: retryBoundedFeed,
     loadMore: loadMoreBoundedItems,
     loadPrevious: loadPreviousBoundedItems,
     patchItems: patchBoundedItems,
@@ -680,15 +680,14 @@ export function FeedView() {
     resolveAnimationIntensity(s.preferences.display.animationIntensity),
   );
   const isMobileViewport = useIsMobile();
-  const isMobileDevice = useIsMobileDevice();
-  const autoCollapseReaderRail = !isMobileDevice && isMobileViewport;
-  const canShowInlineReader = !isMobileDevice;
+  const autoCollapseReaderRail = isMobileViewport;
+  const canShowInlineReader = !isMobileViewport;
   const showInlineReader = !!selectedItemId && canShowInlineReader;
   const showDualColumn =
     dualColumnMode && canShowInlineReader && !autoCollapseReaderRail;
   const desktopSidebarMode = deviceDisplay.sidebarMode;
   const compactRailLeadingOffset =
-    !isMobileDevice && desktopSidebarMode !== "closed"
+    !isMobileViewport && desktopSidebarMode !== "closed"
       ? `-${COMPACT_CARD_LEFT_PAD}px`
       : undefined;
 
@@ -1204,7 +1203,14 @@ export function FeedView() {
 
   return (
     <div className="h-full flex flex-col">
-      {!selectedItem && <FeedList
+      {!selectedItem && boundedFeedEligible && boundedFeedStatusIsCurrent && boundedFeed.status === "failed" ? (
+        <div role="alert" className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
+          <p>Unable to load this feed.</p>
+          <button type="button" className="theme-accent-button rounded-xl px-5 py-2.5 text-sm font-medium" onClick={retryBoundedFeed}>
+            Try again
+          </button>
+        </div>
+      ) : !selectedItem && <FeedList
         items={visibleItems}
         onItemClick={openItemDirect}
         focusedIndex={focusedIndex}

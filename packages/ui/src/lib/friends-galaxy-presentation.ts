@@ -483,7 +483,12 @@ function buildFriendsGalaxyLabelSeeds(
       scene.interactionIndex,
       selectedPersonId,
     );
-    if (nodeIndex !== null) seeds.push(seedForIdentityNode(nodeIndex));
+    // Interaction can select a resident node before the worker admits its
+    // metadata. Keep selection responsive and add its label on the next atlas.
+    if (nodeIndex !== null && (presentationCandidateSource(scene, candidateSource) !== "atlas" ||
+      scene.atlas.nodes.some(node => node.id === selectedPersonId))) {
+      seeds.push(seedForIdentityNode(nodeIndex));
+    }
   }
   if (hoveredNodeId) {
     const nodeIndex = findFriendsGalaxySceneNodeIndex(scene.scene, scene.interactionIndex, hoveredNodeId);
