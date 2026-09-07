@@ -1,4 +1,5 @@
 import Link from "next/link";
+import DemoLink from "./DemoLink";
 import FooterLink from "@/components/FooterLink";
 import ThemeSelector from "@/components/ThemeSelector";
 
@@ -56,7 +57,7 @@ export default function Footer() {
                   <FooterLink href="/changelog">Updates</FooterLink>
                 </li>
                 <li>
-                  <FooterLink href="https://demo.freed.wtf" target="_blank">Live demo</FooterLink>
+                  <DemoLink className="relative inline-flex items-center text-sm text-text-secondary transition-colors hover:text-text-primary">Live demo</DemoLink>
                 </li>
                 <li>
                   <FooterLink href="/get">Get Freed</FooterLink>

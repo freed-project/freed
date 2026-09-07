@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import DemoLink from "./DemoLink";
 import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useRef, useLayoutEffect } from "react";
@@ -206,12 +207,14 @@ export default function Navigation() {
         />
       )}
 
-      <a href="https://demo.freed.wtf" target="_blank" rel="noopener noreferrer" className="btn-primary text-sm !py-2 whitespace-nowrap">
-        Live demo
-      </a>
-      <button onClick={() => openModal()} className="btn-primary text-sm !py-2 whitespace-nowrap">
+      <div className="flex items-center gap-4 text-sm">
+      <DemoLink className="font-medium text-[var(--theme-accent-primary)] hover:underline underline-offset-4 whitespace-nowrap">
+        Live Demo
+      </DemoLink>
+      <button onClick={() => openModal()} className="btn-primary px-6 py-3 whitespace-nowrap">
         Get Freed
       </button>
+      </div>
     </div>
   );
 
@@ -293,12 +296,14 @@ export default function Navigation() {
           <div className="flex items-center justify-between">
             {logoElement}
             <div className="flex shrink-0 items-center gap-1.5">
-              <a href="https://demo.freed.wtf" target="_blank" rel="noopener noreferrer" className="btn-primary !px-2 !py-2 min-h-11 whitespace-nowrap text-xs">
-                Live demo
-              </a>
-              <button onClick={() => openModal()} className="btn-primary !px-2 !py-2 min-h-11 whitespace-nowrap text-xs">
+              <div className="flex items-center gap-2 text-xs">
+              <DemoLink className="font-medium text-[var(--theme-accent-primary)] hover:underline underline-offset-4 whitespace-nowrap">
+                Live Demo
+              </DemoLink>
+              <button onClick={() => openModal()} className="btn-primary px-3 py-2 whitespace-nowrap">
                 Get Freed
               </button>
+              </div>
               {mobileHamburger}
             </div>
           </div>
@@ -355,18 +360,19 @@ export default function Navigation() {
                   </motion.div>
                 ))}
 
-                <motion.button
+                <motion.div
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.2, duration: 0.15 }}
-                  onClick={() => {
-                    openModal();
-                    setMobileMenuOpen(false);
-                  }}
-                  className="btn-primary text-[1.0125rem] px-12 py-4 mt-4"
+                  className="flex items-center gap-4 text-sm mt-4"
                 >
-                  Get Freed
-                </motion.button>
+                  <DemoLink onClick={() => setMobileMenuOpen(false)} className="font-medium text-[var(--theme-accent-primary)] hover:underline underline-offset-4 whitespace-nowrap">
+                    Live Demo
+                  </DemoLink>
+                  <button onClick={() => { openModal(); setMobileMenuOpen(false); }} className="btn-primary px-6 py-3 whitespace-nowrap">
+                    Get Freed
+                  </button>
+                </motion.div>
               </div>
             </motion.div>
           )}
