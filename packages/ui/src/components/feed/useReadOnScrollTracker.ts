@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { recordBugReportEvent } from "../../lib/bug-report.js";
 import {
   collectUnreadIdsFromRows,
@@ -44,6 +44,8 @@ interface ReadListSession<TItem extends ReadTrackItem> {
 interface UseReadOnScrollTrackerOptions<TItem extends ReadTrackItem> {
   surface: ReadScrollSurface;
   listKey: string;
+  /** Geometry changes establish a new scroll baseline without marking items. */
+  layoutKey?: string;
   rows: Array<ReadTrackSourceRow<TItem>>;
   items: TItem[];
   markReadOnScroll: boolean;
@@ -70,6 +72,7 @@ function recordReadScrollDiagnostic(
 export function useReadOnScrollTracker<TItem extends ReadTrackItem>({
   surface,
   listKey,
+  layoutKey,
   rows,
   items,
   markReadOnScroll,
@@ -77,6 +80,7 @@ export function useReadOnScrollTracker<TItem extends ReadTrackItem>({
   markItemsAsRead,
 }: UseReadOnScrollTrackerOptions<TItem>) {
   const maxPassedRowIndexRef = useRef(-1);
+  const geometryRef = useRef({ key: layoutKey, blockedScrollTop: null as number | null });
   const pendingReadIdsRef = useRef<Set<string>>(new Set());
   const readFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const listSessionRef = useRef<ReadListSession<TItem>>({
@@ -189,6 +193,21 @@ export function useReadOnScrollTracker<TItem extends ReadTrackItem>({
       rawMetrics.scrollMargin ?? virtualizer.options?.scrollMargin ?? 0,
     );
 
+    if (layoutKey !== undefined) {
+      const geometry = geometryRef.current;
+      if (geometry.key !== layoutKey) {
+        geometry.key = layoutKey;
+        geometry.blockedScrollTop = scrollTop;
+        maxPassedRowIndexRef.current =
+          (vItems.find((row) => row.end > scrollTop)?.index ?? rows.length) -
+          1;
+        return;
+      }
+      if (geometry.blockedScrollTop !== null) {
+        if (scrollTop === geometry.blockedScrollTop) return;
+        geometry.blockedScrollTop = null;
+      }
+    }
     const previousPassedRowIndex = maxPassedRowIndexRef.current;
     const newlyPassedEnd = getNewlyPassedRowEnd(
       vItems,
@@ -219,6 +238,7 @@ export function useReadOnScrollTracker<TItem extends ReadTrackItem>({
     }
   }, [
     collectUnreadIdsFromVisibleRows,
+    layoutKey,
     getScrollMetrics,
     markReadOnScroll,
     markRemainingUnreadInSession,
@@ -235,7 +255,7 @@ export function useReadOnScrollTracker<TItem extends ReadTrackItem>({
     listSessionRef.current.reachedBottom = false;
   }, [clearReadFlushTimer, markReadOnScroll]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const session = listSessionRef.current;
     if (session.key !== listKey) {
       flushBufferedReadIds("session-switch");

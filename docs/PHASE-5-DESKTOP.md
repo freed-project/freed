@@ -1007,3 +1007,7 @@ The shared editorial source now requires one human `inspiring`, `event`,
 `personal`, `conversation`, or `news` classification for every accepted sample
 post. Shared sample generation writes the corresponding existing content signal
 with method `manual`; it never calls the normal model or rules classifier.
+
+## Bounded story presentation
+
+Nearby stories share consecutive grid rows after the canonical feed sort. The presentation pass searches five original positions ahead and moves no story or article more than two positions. Existing uninterrupted story runs remain intact; newly assembled groups contain at most six stories. Retained groups stay closed across reader page changes. Keyboard and reader navigation use the displayed sequence, while ranking, SQLite cursors, and stored item state retain their existing authority. Narrow single-column feeds preserve exact sorting. Desktop and mobile reuse the same row builder; the compact reader rail repacks the shared sequence at its own width. Geometry changes establish a fresh read-on-scroll baseline and preserve the visible item anchor.

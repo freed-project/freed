@@ -34,7 +34,7 @@ interface FeedItemProps {
   focused?: boolean;
   /** Square card variant for the dual-column sidebar */
   compact?: boolean;
-  /** Hides avatars and platform icons in compact mode to maximize title space */
+  /** Hides avatars and platform icons on narrow cards to preserve title space */
   narrow?: boolean;
   /** Highlights as the currently-open item in dual-column mode */
   selected?: boolean;
@@ -427,7 +427,10 @@ export const FeedItem = memo(function FeedItem({
       : "from-[var(--theme-media-facebook)] to-[var(--theme-media-linkedin)]";
 
     return (
-      <div className="relative overflow-hidden rounded-[var(--feed-card-radius)]" style={sharedTransitionStyle}>
+      <div
+        className={`relative overflow-hidden rounded-[var(--feed-card-radius)] ${focused || selected ? "ring-2 ring-[var(--theme-accent-primary)]" : ""}`}
+        style={sharedTransitionStyle}
+      >
         <div
           data-feed-item-id={item.globalId}
           data-focused={focused ? "true" : "false"}
@@ -468,28 +471,28 @@ export const FeedItem = memo(function FeedItem({
           <div className="absolute inset-0 bg-gradient-to-b from-black/65 via-black/10 to-black/55 pointer-events-none" />
 
           <div className="absolute top-0 left-0 right-0 p-3 flex items-center gap-2">
-            <ChannelAvatar
+            {!narrow && <ChannelAvatar
               name={item.author.displayName}
               avatarUrl={showAvatarImages ? item.author.avatarUrl : null}
               size={28}
               className={`bg-gradient-to-br ${gradientFallback} text-[11px] font-bold text-white ring-2 ring-white/50`}
               imageClassName="ring-0"
-            />
+            />}
             <div className="flex-1 min-w-0">
               <span className="text-[11px] font-semibold text-white drop-shadow truncate block leading-tight">
                 {item.author.displayName}
               </span>
-              <span className="text-[10px] text-white/70 leading-none">{timeAgo}</span>
+              <span className="block truncate text-[10px] text-white/70 leading-none">{timeAgo}</span>
             </div>
-            <span className="shrink-0 px-1.5 py-0.5 rounded-full bg-white/20 backdrop-blur-sm text-[10px] text-white font-medium">
+            {!narrow && <span className="shrink-0 px-1.5 py-0.5 rounded-full bg-white/20 backdrop-blur-sm text-[10px] text-white font-medium">
               Story
-            </span>
+            </span>}
           </div>
 
           <div className="absolute bottom-0 left-0 right-0 p-3 flex items-end gap-2">
-            <div className="flex items-center gap-1.5 shrink-0 text-white/75">
+            {!narrow && <div className="flex items-center gap-1.5 shrink-0 text-white/75">
               {platformIcons[item.platform] ?? <span className="text-xs">📄</span>}
-            </div>
+            </div>}
 
             <div className="flex-1 min-w-0">
               {storyPreviewText && (

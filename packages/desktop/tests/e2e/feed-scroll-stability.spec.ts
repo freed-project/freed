@@ -30,6 +30,7 @@ async function disableReadOnScroll(page: import("@playwright/test").Page): Promi
     await state.updatePreferences({
       display: {
         ...state.preferences.display,
+        animationIntensity: "none",
         reading: {
           ...state.preferences.display.reading,
           markReadOnScroll: false,
@@ -45,16 +46,16 @@ async function setCardDensity(page: import("@playwright/test").Page, density: De
   }, density);
 }
 
-async function injectMixedFeedItems(page: import("@playwright/test").Page): Promise<void> {
+async function injectMixedFeedItems(page: import("@playwright/test").Page, storyIndices = [7, 8, 9]): Promise<void> {
   await page.evaluate(
-    async ({ delayedMediaUrl, brokenMediaUrl }) => {
+    async ({ delayedMediaUrl, brokenMediaUrl, storyIndices }) => {
       const libraryCore = (window as Record<string, unknown>).__FREED_LIBRARY_CORE__ as {
         importLibraryItems: (items: unknown[]) => Promise<unknown>;
       };
       const now = Date.now();
       const longText = "Long preview text ".repeat(60);
       const items = Array.from({ length: 36 }, (_, index) => {
-        const isStory = index >= 7 && index <= 9;
+        const isStory = storyIndices.includes(index);
         const hasDelayedMedia = index % 4 === 1 || isStory;
         const hasBrokenMedia = index === 5;
         const globalId = isStory
@@ -108,7 +109,7 @@ async function injectMixedFeedItems(page: import("@playwright/test").Page): Prom
             hidden: false,
             saved: false,
             archived: false,
-            tags: index === 3 ? ["alpha", "beta", "gamma", "delta", "epsilon"] : [],
+            tags: index === 3 ? ["scroll-stability", "alpha", "beta", "gamma", "delta", "epsilon"] : ["scroll-stability"],
           },
           topics: ["scroll", "stability"],
           rssSource: isStory
@@ -124,18 +125,13 @@ async function injectMixedFeedItems(page: import("@playwright/test").Page): Prom
 
       await libraryCore.importLibraryItems(items);
     },
-    { delayedMediaUrl: DELAYED_MEDIA_URL, brokenMediaUrl: BROKEN_MEDIA_URL },
+    { delayedMediaUrl: DELAYED_MEDIA_URL, brokenMediaUrl: BROKEN_MEDIA_URL, storyIndices },
   );
 
-  await page.waitForFunction(
-    () => {
-      const store = (window as Record<string, unknown>).__FREED_STORE__ as
-        | { getState: () => { items: unknown[] } }
-        | undefined;
-      return (store?.getState().items.length ?? 0) >= 36;
-    },
-    { timeout: 30_000 },
-  );
+  // The Library reader is authoritative; the renderer no longer owns a
+  // corpus-wide store.items array. Wait for the imported window to render.
+  await expect(page.locator('[data-feed-item-id="test-scroll-stability-item-0"]').first()).toBeVisible();
+
 }
 
 async function collectVisibleGeometry(page: import("@playwright/test").Page) {
@@ -257,3 +253,154 @@ for (const [density, expectedCardHeight] of Object.entries(DESKTOP_CARD_HEIGHT_B
     expect(after.cards).toEqual(before.cards);
   });
 }
+
+// Cross-component contract: display packing, keyboard order and the reader
+// rail must agree while the canonical Library reader stays sorted.
+test("nearby stories share rows and keyboard navigation follows their display order", async ({
+  app,
+  page,
+}) => {
+  await page.route("**/*", (route) => {
+    const url = new URL(route.request().url());
+    return url.hostname === "localhost" || url.hostname === "127.0.0.1"
+      ? route.continue()
+      : route.abort();
+  });
+  await page.route(`**${DELAYED_MEDIA_URL}?*`, (route) =>
+    route.fulfill({
+      contentType: "image/svg+xml",
+      body: svgBody("Story"),
+    }),
+  );
+  await page.route(`**${BROKEN_MEDIA_URL}`, (route) =>
+    route.fulfill({ status: 404, body: "" }),
+  );
+  await app.goto();
+  await app.waitForReady();
+  await disableReadOnScroll(page);
+  await injectMixedFeedItems(page, [1, 3, 5]);
+  await page.evaluate(() => {
+    const store = (
+      window as unknown as {
+        __FREED_STORE__: {
+          getState: () => { setFilter: (filter: unknown) => void };
+        };
+      }
+    ).__FREED_STORE__;
+    store.getState().setFilter({ tags: ["scroll-stability"] });
+  });
+  const feed = page.getByTestId("feed-list-scroll-container");
+  await expect(feed).toBeVisible();
+  const story1 = feed.locator(
+    '[data-feed-item-id="test-scroll-stability-story-1"]',
+  );
+  const story3 = feed.locator(
+    '[data-feed-item-id="test-scroll-stability-story-3"]',
+  );
+  await expect(story1).toBeVisible();
+  await expect(story3).toBeVisible();
+  expect(
+    await story1.evaluate((el) =>
+      el.closest("[data-feed-row-index]")?.getAttribute("data-feed-row-index"),
+    ),
+  ).toBe(
+    await story3.evaluate((el) =>
+      el.closest("[data-feed-row-index]")?.getAttribute("data-feed-row-index"),
+    ),
+  );
+  await page.keyboard.press("j");
+  await page.keyboard.press("j");
+  await expect(story1).toHaveAttribute("data-focused", "true");
+  await page.keyboard.press("j");
+  await expect(story3).toHaveAttribute("data-focused", "true");
+  await page.screenshot({
+    path: "test-results/story-presentation-desktop.png",
+  });
+  await page.keyboard.press("Enter");
+  const compact = page.getByTestId("compact-feed-panel-scroll-container");
+  await expect(compact).toBeVisible();
+  await expect(
+    compact.locator('[data-feed-item-id="test-scroll-stability-story-3"]'),
+  ).toHaveAttribute("data-selected", "true");
+  await page.keyboard.press("ArrowDown");
+  await expect(
+    compact.locator('[data-feed-item-id="test-scroll-stability-story-5"]'),
+  ).toHaveAttribute("data-selected", "true");
+  await page.keyboard.press("ArrowDown");
+  await expect(
+    compact.locator('[data-feed-item-id="test-scroll-stability-item-2"]'),
+  ).toHaveAttribute("data-selected", "true");
+  await compact.evaluate((el) => {
+    el.scrollTop = 220;
+  });
+  const firstStory = compact.locator(
+    '[data-feed-item-id="test-scroll-stability-story-1"]',
+  );
+  const anchorOffset = await firstStory.evaluate(
+    (el) =>
+      el.getBoundingClientRect().top -
+      el
+        .closest('[data-testid="compact-feed-panel-scroll-container"]')!
+        .getBoundingClientRect().top,
+  );
+  const handle = page.getByRole("separator", { name: "Resize sidebar" });
+  const box = await handle.boundingBox();
+  expect(box).not.toBeNull();
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + 100);
+  await page.mouse.down();
+  await page.mouse.move(box!.x + box!.width / 2 + 160, box!.y + 100, {
+    steps: 8,
+  });
+  await page.mouse.up();
+  await expect
+    .poll(() =>
+      firstStory.evaluate(
+        (el) =>
+          el.getBoundingClientRect().top -
+          el
+            .closest('[data-testid="compact-feed-panel-scroll-container"]')!
+            .getBoundingClientRect().top,
+      ),
+    )
+    .toBeCloseTo(anchorOffset, 0);
+  const compactRow = (id: string) =>
+    compact
+      .locator(`[data-feed-item-id="${id}"]`)
+      .evaluate((el) =>
+        el
+          .closest("[data-compact-panel-index]")
+          ?.getAttribute("data-compact-panel-index"),
+      );
+  expect(await compactRow("test-scroll-stability-story-1")).toBe(
+    await compactRow("test-scroll-stability-story-3"),
+  );
+  await compact.evaluate((el) => {
+    el.scrollTop = 0;
+  });
+  await page.screenshot({ path: "test-results/story-presentation-reader.png" });
+  await page.keyboard.press("Escape");
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobileStory1 = page.locator(
+    '[data-feed-item-id="test-scroll-stability-story-1"]',
+  );
+  const mobileStory3 = page.locator(
+    '[data-feed-item-id="test-scroll-stability-story-3"]',
+  );
+  await expect(mobileStory1).toBeVisible();
+  await expect
+    .poll(() =>
+      mobileStory1.evaluate((el) =>
+        el
+          .closest("[data-feed-row-index]")
+          ?.getAttribute("data-feed-row-index"),
+      ),
+    )
+    .toBe(
+      await mobileStory3.evaluate((el) =>
+        el
+          .closest("[data-feed-row-index]")
+          ?.getAttribute("data-feed-row-index"),
+      ),
+    );
+  await page.screenshot({ path: "test-results/story-presentation-mobile.png" });
+});

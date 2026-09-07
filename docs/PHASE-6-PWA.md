@@ -887,3 +887,7 @@ The same continuation classifies all 500 accepted posts by human editorial
 review and writes one bounded manual signal pair per post into the anonymous
 demo checkpoint. The five feed classifications are all represented. Runtime
 model inference is not used for demo content.
+
+## Bounded story presentation
+
+Nearby stories share consecutive grid rows after the canonical feed sort. The presentation pass searches five original positions ahead and moves no story or article more than two positions. Existing uninterrupted story runs remain intact; newly assembled groups contain at most six stories. Retained groups stay closed across reader page changes. Keyboard and reader navigation use the displayed sequence, while ranking, SQLite cursors, and stored item state retain their existing authority. Narrow single-column feeds preserve exact sorting. Desktop and mobile reuse the same row builder; the compact reader rail repacks the shared sequence at its own width. Geometry changes establish a fresh read-on-scroll baseline and preserve the visible item anchor.
