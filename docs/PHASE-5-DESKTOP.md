@@ -509,6 +509,10 @@ packages/desktop/
 
 ## UI Design
 
+Feed, reader, Friends, and Map share a theme-aware loading spinner with optional
+inline text. Map initialization stays separate from fallback marker rendering,
+avoiding a flash of fallback content before the map is ready.
+
 **Three-column layout, dark theme, native vibrancy**
 
 | Element           | Implementation                                                                 |

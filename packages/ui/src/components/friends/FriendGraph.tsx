@@ -53,6 +53,7 @@ import type {
 } from "../../lib/identity-graph-atlas.js";
 import { IdentityGalaxyNodeKindCode } from "../../lib/identity-galaxy-scene.js";
 import { CANVAS_CONTROL_BUTTON_CLASS } from "../layout/layoutConstants.js";
+import { LoadingState } from "../LoadingState.js";
 
 export interface FriendGraphHandle {
   fitAll: () => void;
@@ -405,7 +406,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
     });
     const { channelCount, linkCount, personCount } = sourceCounts;
     const [graphReady, setGraphReady] = useState(false);
-    const [graphStatus, setGraphStatus] = useState("Building galaxy...");
+    const [graphStatus, setGraphStatus] = useState("Loading friends");
     const [graphError, setGraphError] = useState<string | null>(null);
     const decorativeStarMode = DECORATIVE_STAR_MODE;
     const [sourceRetry, setSourceRetry] = useState(0);
@@ -903,7 +904,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
         onLoading: ({ recovery }) => {
           if (!graphReadyRef.current) {
             setGraphStatus(
-              recovery ? "Recovering graphics..." : "Starting galaxy...",
+              recovery ? "Recovering graphics..." : "Loading friends",
             );
           }
         },
@@ -948,7 +949,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
           if (!engine.sourceReady) {
             graphReadyRef.current = false;
             setGraphReady(false);
-            setGraphStatus("Building galaxy...");
+            setGraphStatus("Loading friends");
           }
           sourceBuildStartedAtRef.current = nowMs();
           setGraphError(null);
@@ -1293,8 +1294,8 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
         />
 
         {!graphReady || graphError || graphStatus ? (
-          <div className="pointer-events-none absolute inset-x-0 top-16 z-20 flex justify-center px-4">
-            <div className="max-w-[min(28rem,calc(100%-2rem))] rounded-lg border border-[color:rgb(var(--theme-border-rgb)/0.28)] bg-[color:rgb(var(--theme-surface-rgb)/0.9)] px-4 py-2 text-center text-xs text-[color:var(--theme-text-secondary)] shadow-lg backdrop-blur-md">
+          <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center px-4">
+            <div className="text-sm text-[var(--theme-text-muted)]">
               {graphError ? (
                 <div className="pointer-events-auto flex items-center gap-3">
                   <span>{graphError}</span>
@@ -1307,7 +1308,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
                   </button>
                 </div>
               ) : (
-                graphStatus || "Building galaxy..."
+                <LoadingState message={graphStatus || "Loading friends"} />
               )}
             </div>
           </div>

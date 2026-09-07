@@ -1,4 +1,5 @@
 import { useAppStore } from "../lib/store";
+import { LoadingState } from "@freed/ui/components/LoadingState";
 import { useDebugStore } from "@freed/ui/lib/debug-store";
 import { SampleDataTestingSection } from "@freed/ui/components/SampleDataTestingSection";
 import { useLibraryRssFeedDetail } from "@freed/ui/hooks/useLibraryRssFeedDetail";
@@ -10,16 +11,6 @@ const openSyncSettings = () =>
 
 function isMergeBlocked(message?: string): boolean {
   return message?.includes("blocked a sync merge") ?? false;
-}
-
-function StatusSpinner({ label }: { label: string }) {
-  return (
-    <div
-      aria-label={label}
-      role="status"
-      className="mb-4 h-10 w-10 animate-spin rounded-full border-2 border-[rgb(var(--theme-accent-secondary-rgb)/0.24)] border-t-[var(--theme-accent-secondary)]"
-    />
-  );
 }
 
 export function PwaFeedEmptyState() {
@@ -56,11 +47,7 @@ export function PwaFeedEmptyState() {
   if (samplePopulationActive) {
     return (
       <>
-        <StatusSpinner label="Populating demo" />
-        <p className="mb-2 text-lg font-medium">Populating your demo</p>
-        <p className="text-sm text-[var(--theme-text-muted)]">
-          {samplePopulationPercent.toLocaleString()}% complete
-        </p>
+        <LoadingState message={`Loading · ${samplePopulationPercent.toLocaleString()}%`} />
       </>
     );
   }
@@ -116,7 +103,7 @@ export function PwaFeedEmptyState() {
 
   return (
     <>
-      {cloudTransferRunning && <StatusSpinner label="Syncing" />}
+      {cloudTransferRunning && <LoadingState message="Syncing" className="mb-4" />}
       <p className="text-lg font-medium mb-2">
         {syncBlocked ? "Sync is blocked" : syncConnected ? "Waiting for content..." : "No content yet"}
       </p>

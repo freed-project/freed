@@ -561,16 +561,25 @@ test("iPhone WebKit completes interrupted sample population after restart", asyn
   let context: BrowserContext | null = null;
 
   try {
-    let opened = await openPersistentLibrary(profileRoot);
-    context = opened.context;
+    context = await launchPersistentLibraryContext(profileRoot);
+    // Stop after feed settlement, before capturing items. Do not depend on a
+    // natural failure or a transient percentage to create the partial Library.
+    await context.route("**/src/lib/store.ts*", async (route) => {
+      const response = await route.fetch();
+      const body = await response.text();
+      const boundary = "await enqueuePwaLibraryCoreFeedItemCaptures(data.items";
+      expect(body).toContain(boundary);
+      await route.fulfill({
+        response,
+        body: body.replace(boundary, `await new Promise(() => {});\n    ${boundary}`),
+      });
+    });
+    let opened = { context, page: context.pages()[0] ?? await context.newPage() };
+    await openLibrary(opened.page);
     await expect(
-      opened.page.getByText("30% complete", { exact: true }),
+      opened.page.getByRole("status").filter({ hasText: /^Loading · \d+%$/ }),
     ).toBeVisible({ timeout: 90_000 });
-    await expect(
-      opened.page.getByRole("status", { name: "Populating demo", exact: true }),
-    ).toBeVisible();
-    const interrupted = await readFacetSummary(opened.page);
-    expect(interrupted).toMatchObject({
+    await expect.poll(() => readFacetSummary(opened.page)).toMatchObject({
       rssFeedCount: SAMPLE_SHOWCASE_FEED_COUNT,
       sampleFeedCount: SAMPLE_SHOWCASE_FEED_COUNT,
       sampleItemCount: 0,

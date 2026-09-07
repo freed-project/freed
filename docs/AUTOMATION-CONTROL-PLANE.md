@@ -477,11 +477,19 @@ node scripts/authority-witness-repair.mjs plan-events \
 
 It requires one complete ready witness, a canonical history containing exactly
 one additional event, healthy lease, task, task-manifest, and outcome history,
-an unchanged task manifest, one exact permanent kernel-guard receipt generation,
-and no second event witness. It records both event-history generations, the
-exact witness bytes, semantic event lineage, task-manifest generation,
-kernel-guard receipt generation, original opaque namespace, and a
-content-derived operation and owner-intent digest.
+one exact permanent kernel-guard receipt generation, and no second event
+witness. The task manifest may have no witness or one exact stranded semantic
+predecessor already supported by the task-manifest repair path. The event plan
+binds that task witness and its lineage without retiring it. Apply rechecks the
+same generation before any authorization or event-witness retirement. After the
+event repair completes, the ordinary task-manifest planner can retire the still
+unchanged task witness through its separate owner lease. This ordered path
+breaks the simultaneous-witness admission deadlock without granting either
+repair authority over the other surface. The plan records both event-history
+generations, the exact event witness bytes, semantic event lineage,
+task-manifest generation and optional witness, kernel-guard receipt generation,
+original opaque namespace, and a content-derived operation and owner-intent
+digest.
 
 The planner cannot reconstruct the original staging namespace. That namespace
 includes the predecessor inode as it existed before publication. Once another
@@ -514,9 +522,10 @@ not need a still-live owner confirmation after that record exists. It proves
 the unchanged authorization, exact retirement receipt, canonical byte prefix,
 and single audit event instead. A changed plan, canonical history, witness,
 task manifest, kernel-guard receipt, authorization record, semantic lineage,
-ambiguous stage set, or foreign audit event fails closed. The command never alters the planned
-`events.jsonl` byte prefix, deletes a witness, acquires a lease through the
-broken history, contacts a provider, or grants publication authority.
+ambiguous stage set, or foreign audit event fails closed. The command never
+alters the planned `events.jsonl` byte prefix, deletes the task-manifest witness,
+acquires a lease through the broken history, contacts a provider, or grants
+publication authority.
 
 The generic authority publication path may call only
 `authority-stage-create`, `authority-stage-rewrite`, `authority-exchange`, and
