@@ -1483,12 +1483,13 @@ export function tauriInitScript() {
         };
       }
       if (request.queryId === 'background_item_page_v1') {
-        var backgroundRows = Object.values(sqliteState().items)
-          .filter(function(item) { return item && !item.__deleted; })
+        var backgroundAfter = identityCursorEntityId(request.cursor);
+        var backgroundCandidates = Object.values(sqliteState().items)
+          .filter(function(item) { return item && !item.__deleted && (backgroundAfter === null || item.globalId > backgroundAfter); })
           .sort(function(left, right) {
-            return left.globalId.localeCompare(right.globalId);
-          })
-          .slice(0, request.limit || 64)
+            return left.globalId < right.globalId ? -1 : left.globalId > right.globalId ? 1 : 0;
+          });
+        var backgroundRows = backgroundCandidates.slice(0, request.limit || 64)
           .map(function(item) {
             var rss = item.rssSource || null;
             return Object.assign({}, sqliteFeedCard(item), {
@@ -1510,7 +1511,9 @@ export function tauriInitScript() {
             });
           });
         return {
-          nextCursor: null,
+          nextCursor: backgroundCandidates.length > backgroundRows.length
+            ? identityPageCursor(source, 0, backgroundRows[backgroundRows.length - 1].globalId)
+            : null,
           queryId: request.queryId,
           rows: backgroundRows,
           schemaVersion: request.schemaVersion,

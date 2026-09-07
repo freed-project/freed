@@ -8,10 +8,6 @@ import {
 } from "./lib/demo-read-session";
 import {
   getWebsiteHostForChannel,
-  SAMPLE_SHOWCASE_FEED_COUNT,
-  SAMPLE_SHOWCASE_FRIEND_COUNT,
-  SAMPLE_SHOWCASE_ITEM_COUNT,
-  SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT,
   SAMPLE_CURATED_DEMO_MEDIA,
   SAMPLE_CHARACTER_AVATAR_MEDIA,
   SAMPLE_CHARACTER_AVATAR_FOCAL_POINTS,
@@ -28,6 +24,7 @@ import { ToastContainer, toast } from "@freed/ui/components/Toast";
 import { LegalGate } from "@freed/ui/components/legal/LegalGate";
 import { OAuthCallback } from "./components/OAuthCallback";
 import { DemoWelcomeBanner } from "./components/DemoWelcomeBanner";
+import { LoadingState } from "@freed/ui/components/LoadingState";
 import { DemoInitializationBoundary } from "./components/DemoInitializationBoundary";
 import {
   PlatformProvider,
@@ -139,6 +136,7 @@ import {
   completeSamplePopulationProgress,
   resetSamplePopulationProgress,
   updateSamplePopulationProgress,
+  useSamplePopulationProgress,
 } from "./lib/sample-population-progress";
 import {
   clearInstallNoticeDismissal,
@@ -253,6 +251,9 @@ function FloatingNotice({
 }
 
 function App() {
+  const previewPopulationStarted = useRef(false);
+  const [previewPopulationReady, setPreviewPopulationReady] = useState(false);
+  const previewPopulationPercent = useSamplePopulationProgress(state => state.percent);
   const initialize = useAppStore((state) => state.initialize);
   const isInitialized = useAppStore((state) => state.isInitialized);
   const initializationBlocker = useAppStore(
@@ -344,24 +345,19 @@ function App() {
   }, [initialize, legalAccepted, setInitializationFailure]);
 
   useEffect(() => {
-    if (!isInitialized || !IS_FEATURE_PREVIEW || IS_DEMO) return;
+    if (!isInitialized || !IS_FEATURE_PREVIEW || IS_DEMO || previewPopulationStarted.current) return;
+    previewPopulationStarted.current = true;
+    beginSamplePopulationProgress();
     void (async () => {
       await ensurePwaLibraryCoreLocalSampleState();
       await settlePwaLibraryCoreLocalSampleState();
       const facets = await readPwaLibraryCoreFacetSummary();
-      const sampleIsComplete =
-        facets.sampleAccountCount >= SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT &&
-        facets.sampleFeedCount >= SAMPLE_SHOWCASE_FEED_COUNT &&
-        facets.sampleItemCount >= SAMPLE_SHOWCASE_ITEM_COUNT &&
-        facets.samplePersonCount >= SAMPLE_SHOWCASE_FRIEND_COUNT;
-      if (sampleIsComplete) return;
       const sampleTotal =
         facets.sampleAccountCount +
         facets.sampleFeedCount +
         facets.sampleItemCount +
         facets.samplePersonCount;
       const actions = useAppStore.getState();
-      beginSamplePopulationProgress();
       if (sampleTotal > 0) {
         await actions.clearSampleData();
       }
@@ -373,8 +369,10 @@ function App() {
       });
       completeSamplePopulationProgress();
       resetSamplePopulationProgress();
+      setPreviewPopulationReady(true);
     })().catch((error) => {
       resetSamplePopulationProgress();
+      setPreviewPopulationReady(true);
       console.error(
         "[sample-data] failed to seed local preview data:",
         error instanceof Error
@@ -760,6 +758,13 @@ function App() {
   // Routed views issue Library queries as soon as they mount. In the demo,
   // the SQLite materialization does not exist until checkpoint activation.
   // Keep all routes behind initialization, including direct Map/Friends links.
+  // Never expose the previous batch while its replacement is still running.
+  if (IS_FEATURE_PREVIEW && !IS_DEMO && !previewPopulationReady) {
+    return <div className="app-theme-shell flex h-screen items-center justify-center">
+      <LoadingState message={`Loading · ${previewPopulationPercent.toLocaleString()}%`} />
+    </div>;
+  }
+
   return (
     <DemoInitializationBoundary pending={IS_DEMO && !isInitialized}>
       <PlatformProvider value={platform}>
