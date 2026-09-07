@@ -25,7 +25,7 @@ const openedProfiles = new Set<string>();
 // A fresh profile alone does not reliably isolate macOS WebKit OPFS. Keep a
 // distinct origin for each case, but preserve it across that case's restarts
 // and tabs so the durability and exclusive-writer assertions stay meaningful.
-test.beforeEach(async () => {
+async function startTestOrigin(): Promise<void> {
   const target = new URL(pwaOpfsE2eBaseUrl);
   const server = createServer((incoming, outgoing) => {
     const upstream = request(
@@ -55,7 +55,9 @@ test.beforeEach(async () => {
   if (!address || typeof address === "string")
     throw new Error("Test origin unavailable");
   testOrigin = `http://127.0.0.1:${address.port}`;
-});
+}
+
+test.beforeEach(startTestOrigin);
 
 test.afterEach(async () => {
   const server = originServer;
@@ -164,6 +166,7 @@ async function openLibrary(page: Page): Promise<void> {
 async function launchPersistentLibraryContext(
   profileRoot: string,
   baseURL = testOrigin,
+  originAttempt = 0,
 ): Promise<BrowserContext> {
   const iphone = devices["iPhone 14"];
   const context = await webkit.launchPersistentContext(profileRoot, {
@@ -186,6 +189,19 @@ async function launchPersistentLibraryContext(
         for await (const name of root.keys()) names.push(name);
         return names;
       });
+      // macOS WebKit can retain OPFS beyond a temporary profile's lifetime.
+      // An OS-assigned port may therefore name an old test origin. Before any
+      // app code runs, retry with another origin instead of deleting that data.
+      if (entries.length > 0 && openedProfiles.size === 0 && originAttempt < 3) {
+        await context.close();
+        const server = originServer!;
+        server.closeAllConnections();
+        await new Promise<void>((resolve, reject) => {
+          server.close(error => error ? reject(error) : resolve());
+        });
+        await startTestOrigin();
+        return launchPersistentLibraryContext(profileRoot, testOrigin, originAttempt + 1);
+      }
       expect(
         entries,
         "a fresh test Library must not inherit another profile's OPFS",
