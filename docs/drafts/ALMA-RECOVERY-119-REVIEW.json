@@ -1,0 +1,41 @@
+{
+  "decision": "pass_preserved_pair_for_root_admission",
+  "characterId": "alma-eight",
+  "title": "Not empty",
+  "imageDecision": "pass",
+  "proseDecision": "pass_verbatim",
+  "canonDecision": "pass_original_slot",
+  "literalBody": "The smooth shell moved during the night. I returned it to its corner. Later it moved farther. I put a stone beside it so it would stop rolling.\n\nA hermit crab came out, climbed over the stone, and started dragging the shell toward the entrance. I had been moving him around my room for two days. He had waited until I was asleep to leave, and I had caught him twice.\n\nI moved the stone. He went out very slowly. I wanted to help him over the lip, but I could not think of a way to touch him that would not look like the beginning of a third day.",
+  "localPath": "/tmp/freed-alma119/285264344.jpg",
+  "sha1": "8a723a73f4877b300ec621959412dd7ac517b7cd",
+  "sha256": "c69cce4bc8f7f09182b2b0d714fa84725af7f4ddef6c331e634891f2613ebae7",
+  "byteLength": 336495,
+  "deliveryDimensions": [
+    1024,
+    768
+  ],
+  "sourceReportedUploadDimensions": [
+    2048,
+    1536
+  ],
+  "individuallyOpened": true,
+  "rights": {
+    "source": "https://www.inaturalist.org/observations/164842609",
+    "primaryCache": "/tmp/freed-alma119/164842609.json",
+    "photoId": 285264344,
+    "creator": "Donald Davesne",
+    "license": "CC BY4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+    "verification": "Independently read cached primary photo record, not a separate fresh iNaturalist network response."
+  },
+  "biology": {
+    "url": "https://biotic.marlin.ac.uk/data/species/6173",
+    "verification": "Independently opened live BIOTIC account; marine crawling hermit, NEAtlantic distribution south to Portugal and rock/gravel habitats compatible with Mouro."
+  },
+  "visibleScene": "A hermit crab visibly extends eyes, antennae, claws and legs from a gastropod shell among rounded stones. Organism and shell entrance are sharp. This shows an occupied shell whose hidden contents have become visible. No octopus, den roof, identifiable blocking stone or exit lip is visible.",
+  "fictionBoundary": "Two days of manipulation, apparent rolling, emerging in sequence, climbing a selected stone, departure, Alma moving a barrier and her hesitation are fictional. Still proves neither the chronology nor the observer interpretations. Male pronouns remain fictional casting.",
+  "rationale": "The reveal is the scene: an apparently inert possession contains a creature trying to leave. The image supplies that creature emerging from that object among stones. Alma is a plausible off-frame observer, so requiring her body would add an unnecessary condition. The specific blocking stone and later departure remain authored, but no contradictory body or habitat is introduced. This is an illustrative POV pairing, not documentary evidence of octopus captivity.",
+  "continuity": "All nine current episodes read. Bind the original third slot only. First episode already mistakes this shell for empty; Not empty pays that off before later recollections. Preserve all words, avatar, home and surrounding chronology. Do not reuse for Premature condolences, which needs the visibly empty former shell as well as the living crab.",
+  "metadataNote": "Root proposal JSON lacks dimensions; delivery is independently decoded1024x768. Source photo record2048x1536 is full upload, not inspected file. Both values supplied here for integration.",
+  "admitted": 0
+}

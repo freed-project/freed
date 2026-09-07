@@ -1,0 +1,190 @@
+{
+  "batch": "AQUATIC-REGULAR-86",
+  "status": "one_regular_proposal_pending_independent_review",
+  "worktree": "/Users/aubreyfalconer/dev/freed-editorial-isolated",
+  "proposals": [
+    {
+      "id": "aquatic-regular-86-01",
+      "characterId": "boris-plated",
+      "subject": "Bathynomus giganteus",
+      "platform": "facebook",
+      "contentType": "post",
+      "theme": "movement",
+      "title": "It has moved again",
+      "body": "I went round the whip coral. It swung into my path. I went round it again. We are both still exactly where it lives.",
+      "media": {
+        "sourceId": 11564,
+        "sourcePage": "https://oceanexplorer.noaa.gov/multimedia/daily-image-media-20200923/",
+        "sourceTitle": "Giant Isopod",
+        "sourceCaption": "A giant deep-sea isopod, Bathynomus giganteus, with an antipatharian whip coral, Stichopathes sp., in the foreground, seen during the Gulf of Mexico 2017 expedition. While the isopod imaged here was spotted during exploration of a site dubbed \u201cOkeanos Ridge,\u201d the team saw several of these throughout the expedition and even managed to catch footage of one swimming.\nFrom: Gulf of Mexico 2017: Highlight Images.\n",
+        "attribution": "NOAA Ocean Exploration, Gulf of Mexico 2017",
+        "imageUrl": "https://oceanexplorer.noaa.gov/wp-content/uploads/2020/09/20200923-hires.jpg",
+        "subjectGroup": "isopod",
+        "index": 1,
+        "localPath": "/tmp/freed-aquatic-26/source-04.jpg",
+        "width": 1920,
+        "height": 1080,
+        "sha1": "7ac2ff3e6b3bc8dc47934a16af52f6dc114a4894",
+        "sha256": "5b6adb658ea46cc43c1c435fc9a65d30b71619aa7b94ad397f6b8e4f147cef37",
+        "priorBatchIndex": 4,
+        "byteLength": 1111148,
+        "originalDimensions": [
+          1920,
+          1080
+        ],
+        "individuallyOpened": true,
+        "deliveryKind": "Source-published original or poster at exact cached URL; no larger camera original inferred.",
+        "license": "Public domain",
+        "licenseUrl": "https://oceanexplorer.noaa.gov/faqs/",
+        "sourceURLStillPublished": true,
+        "rightsVerifiedAt": "2026-09-06",
+        "rightsEvidence": "Live primary source identifies both taxa and credits NOAA Ocean Exploration, Gulf of Mexico2017. Live NOAA FAQ states public domain unless exception; selected image has no exception. Preserve credit and embedded metadata.",
+        "decision": "propose_for_independent_review",
+        "reason": "Propose a short fictional rerouting incident between mobile isopod and attached whip coral. Exact frame places both bodies in the scene; sequence is not documented."
+      },
+      "alt": "A pale giant isopod stands on sediment behind a curling orange whip coral that crosses the foreground.",
+      "authorDecision": "propose_for_independent_review",
+      "independentLeadDecision": "pending",
+      "canon": "Boris remains Bathynomus giganteus in the deep Gulf of Mexico. Source identifies B. giganteus and Stichopathes sp. at Okeanos Ridge during Gulf of Mexico2017. No new sex, life stage, mate or home is established.",
+      "chronology": "Append after his existing gentle-arrival video and smaller-fish-head gift post. Preserve both literal bodies and avatar.",
+      "fictionBoundary": "The still documents the isopod, coral and foreground overlap. Walking around the coral, its swing, the second detour and irritation are fiction. No documented contact, measured current or photographed movement sequence is claimed. The coral remains attached, not a crawling animal.",
+      "biologyBasis": "Black corals have flexible skeletons and attach to hard substrate. This supports limited current-driven bending, not a claim that this exact coral swung as described. Do not substitute octocoral anatomy or assert a measured bend amplitude.",
+      "distinctness": "Boris\u2019s existing episodes concern an overbearing arrival and an edible gift. Here a small spatial detour becomes a repeated negotiation with an attached neighbor. No rescue, protection or meal frustration."
+    }
+  ],
+  "profiles": [],
+  "sourceReviews": [
+    {
+      "sourceId": 11564,
+      "sourcePage": "https://oceanexplorer.noaa.gov/multimedia/daily-image-media-20200923/",
+      "sourceTitle": "Giant Isopod",
+      "sourceCaption": "A giant deep-sea isopod, Bathynomus giganteus, with an antipatharian whip coral, Stichopathes sp., in the foreground, seen during the Gulf of Mexico 2017 expedition. While the isopod imaged here was spotted during exploration of a site dubbed \u201cOkeanos Ridge,\u201d the team saw several of these throughout the expedition and even managed to catch footage of one swimming.\nFrom: Gulf of Mexico 2017: Highlight Images.\n",
+      "attribution": "NOAA Ocean Exploration, Gulf of Mexico 2017",
+      "imageUrl": "https://oceanexplorer.noaa.gov/wp-content/uploads/2020/09/20200923-hires.jpg",
+      "subjectGroup": "isopod",
+      "index": 1,
+      "localPath": "/tmp/freed-aquatic-26/source-04.jpg",
+      "width": 1920,
+      "height": 1080,
+      "sha1": "7ac2ff3e6b3bc8dc47934a16af52f6dc114a4894",
+      "sha256": "5b6adb658ea46cc43c1c435fc9a65d30b71619aa7b94ad397f6b8e4f147cef37",
+      "priorBatchIndex": 4,
+      "byteLength": 1111148,
+      "originalDimensions": [
+        1920,
+        1080
+      ],
+      "individuallyOpened": true,
+      "deliveryKind": "Source-published original or poster at exact cached URL; no larger camera original inferred.",
+      "license": "Public domain",
+      "licenseUrl": "https://oceanexplorer.noaa.gov/faqs/",
+      "sourceURLStillPublished": true,
+      "rightsVerifiedAt": "2026-09-06",
+      "rightsEvidence": "Live primary source identifies both taxa and credits NOAA Ocean Exploration, Gulf of Mexico2017. Live NOAA FAQ states public domain unless exception; selected image has no exception. Preserve credit and embedded metadata.",
+      "decision": "propose_for_independent_review",
+      "reason": "Propose a short fictional rerouting incident between mobile isopod and attached whip coral. Exact frame places both bodies in the scene; sequence is not documented."
+    },
+    {
+      "sourceId": 14406,
+      "sourcePage": "https://oceanexplorer.noaa.gov/multimedia/okeanos-explorations-ex1907-dailyupdates-nov18-media-giant-isopod-2/",
+      "sourceTitle": "Giant Isopod",
+      "sourceCaption": "This is one of two giant isopods (Bathynomous gigantus) seen during Dive 11 of the 2019 Southeastern U.S. Deep-sea Exploration.\nLearn more\n",
+      "attribution": "NOAA Ocean Exploration, 2019 Southeastern U.S. Deep-sea Exploration",
+      "imageUrl": "https://oceanexplorer.noaa.gov/wp-content/uploads/2025/05/giant-isopod-hires.jpg",
+      "subjectGroup": "isopod",
+      "index": 2,
+      "localPath": "/tmp/freed-aquatic-26/source-06.jpg",
+      "width": 1920,
+      "height": 1080,
+      "sha1": "1f435d76df978aae4e698a8b2b9f64cfdda0106e",
+      "sha256": "47b64ea05e9c00bdd2beb9c1e39d2521ba00bee6f319a203b9fe2636c84e7183",
+      "priorBatchIndex": 6,
+      "byteLength": 1046529,
+      "originalDimensions": [
+        1920,
+        1080
+      ],
+      "individuallyOpened": true,
+      "deliveryKind": "Source-published original or poster at exact cached URL; no larger camera original inferred.",
+      "license": "Public domain",
+      "licenseUrl": "https://oceanexplorer.noaa.gov/faqs/",
+      "decision": "hold",
+      "reason": "Hold: beautiful antenna/face detail but no new distinct event earned from this second portrait."
+    },
+    {
+      "sourceId": 12944,
+      "sourcePage": "https://oceanexplorer.noaa.gov/multimedia/okeanos-explorations-ex2107-gallery-media-dive09-crab-squid/",
+      "sourceTitle": "Crab with Squid Snack",
+      "sourceCaption": "This hungry red crab (Chaceon quinquedens) was lucky enough to nab the head of an Illex squid for a meal. It quickly scurried away from remotely operated vehicle Deep Discoverer at 977 meters (3,205 feet) during Dive 09 of Windows to the Deep 2021.\n",
+      "attribution": "NOAA Ocean Exploration, Windows to the Deep 2021",
+      "imageUrl": "https://oceanexplorer.noaa.gov/wp-content/uploads/2021/11/dive09-crab-squid-poster.jpg",
+      "subjectGroup": "Chaceon",
+      "index": 3,
+      "localPath": "/tmp/freed-aquatic-26/source-27.jpg",
+      "width": 640,
+      "height": 360,
+      "sha1": "3f2aeeda1179cb4fd99453c07f67339cdf3c9393",
+      "sha256": "3ccc9c0ef5e9a02f68bd79777443c5334538083e48b924db9adf3789fe6af084",
+      "priorBatchIndex": 27,
+      "byteLength": 67520,
+      "originalDimensions": [
+        640,
+        360
+      ],
+      "individuallyOpened": true,
+      "deliveryKind": "Source-published original or poster at exact cached URL; no larger camera original inferred.",
+      "license": "Public domain",
+      "licenseUrl": "https://oceanexplorer.noaa.gov/faqs/",
+      "decision": "hold",
+      "reason": "Hold: small640x360 video poster with prominent burned-in caption; would also repeat food-carrying territory."
+    },
+    {
+      "sourceId": 12674,
+      "sourcePage": "https://oceanexplorer.noaa.gov/multimedia/okeanos-explorations-ex2104-dives-dive11-media-crab/",
+      "sourceTitle": "Chaceon Crab",
+      "sourceCaption": "Towards the end of Dive 11 of the 2021 North Atlantic Stepping Stones expedition, we moved from stable ripples and pavement to softer sediments with smaller fractions of broken paleo reef. The seafloor here was pockmarked with circular patches of turned-over sediments, and we also observed larger scar marks that were likely feeding holds for fish and/or Chaceon crabs \u2014 like the one pictured here.\nLearn more\n",
+      "attribution": "NOAA Ocean Exploration, 2021 North Atlantic Stepping Stones",
+      "imageUrl": "https://oceanexplorer.noaa.gov/wp-content/uploads/2025/05/crab-hires-1.jpg",
+      "subjectGroup": "Chaceon",
+      "index": 4,
+      "localPath": "/tmp/freed-aquatic-26/source-29.jpg",
+      "width": 1920,
+      "height": 1080,
+      "sha1": "755b351ccd9441e3a76a31cb92697d600dc3ea56",
+      "sha256": "4e3591449e5463be7f373a6a90c5b349d85eab5a1546f795bf345e7c1c259ec2",
+      "priorBatchIndex": 29,
+      "byteLength": 1571369,
+      "originalDimensions": [
+        1920,
+        1080
+      ],
+      "individuallyOpened": true,
+      "deliveryKind": "Source-published original or poster at exact cached URL; no larger camera original inferred.",
+      "license": "Public domain",
+      "licenseUrl": "https://oceanexplorer.noaa.gov/faqs/",
+      "decision": "hold",
+      "reason": "Hold: golden-brown Chaceon image does not clearly match Rufus\u2019s established red form. Genus-level source identification alone is insufficient to resolve this."
+    }
+  ],
+  "biologySources": [
+    {
+      "url": "https://www.scielo.sa.cr/scielo.php?pid=S0034-77442005000300011&script=sci_arttext",
+      "supports": "Primary Jamaican antipatharian study describes flexible skeletons, attachment by holdfast and Stichopathes occurrence."
+    },
+    {
+      "url": "https://www.frontiersin.org/journals/marine-science/articles/10.3389/fmars.2022.904835/full",
+      "supports": "Primary black-coral skeletal study includes Stichopathes and supports flexibility."
+    }
+  ],
+  "discoverySummary": {
+    "exactImagesReopened": 4,
+    "newImagesDownloaded": 0,
+    "metadataOnlySearches": [
+      "Hawksbill cleaning result actually concerned people cleaning a nesting beach.",
+      "Nembrotha egg query had no licensed observations.",
+      "Whale/bird records did not provide a new short incident before this bounded package."
+    ],
+    "runtimeEdits": false,
+    "approvedOrHeldProseEdited": false
+  }
+}

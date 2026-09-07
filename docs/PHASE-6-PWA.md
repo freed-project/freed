@@ -662,7 +662,7 @@ never sorts, filters, or ranks a Library collection.
 | 6.133 | Recover a fresh Safari Private Browsing session when WebKit transiently rejects the first OPFS SAH pool installation. Retry exactly one `UnknownError` through SQLite's supported failed-initialization reset, then fail closed on a repeated transient failure or any quota, permission, integrity, or other storage error                                                                                                                                                                                                                                                                                                                                        | High       | ✓ Complete                                                                                       |
 | 6.134 | Refine the selected one-action "Take back" First Look into a draggable bottom-centered Field Guide. Use themed logos, opaque elevated panels, and 4px strong theme borders. Overlap the 460ms First Look departure above the 900ms guide arrival. Center the guide description: below 641px, "Social media that respects you." and "Download Freed"; at 641px and wider, "Social media that respects you, and your friends." followed by "Ready to make it your own?" and "Download Freed Desktop". Keep compact action buttons. At 576px and narrower, use the available width with side gutters and vertical-only dragging. An explicit minimize button replaces the guide with a stationary bottom-center folder tab carrying the logo, title, and restore control. Preserve newsletter drafts and transfer keyboard focus when minimizing or restoring. Keep the guide within viewport bounds and animate newsletter height changes around the chosen edge. | Medium | Implemented locally; owner review and final tests pending |
 | 6.135 | Keep protected newsletter signup inside PWA Settings and the demo Field Guide. The compact guide switches its header to "Freed Newsletter", removes the guide description and duplicate signup introduction, and centers the privacy footer. Suggest a name from the email until the reader edits it; retain inline validation and automatic continuation after the existing Turnstile check. Keep the smaller download action independent and provide "Skip the newsletter" with an X icon to return to the guide. Preview-only completion sends no subscription request. Preserve the Freed-owned subscription endpoint, success confirmation, and local completed-signup memory. | Medium | Implemented locally; owner review and final tests pending |
-| 6.136 | Replace formulaic demo captions with 500 individually authored episodes from 52 recurring natural characters, including 145 RSS story entries. The local integrated feed intentionally combines 80 reviewed photos and 420 text-only entries. Resolve every declared image hash once with an exact subject match across the base and three supplemental source catalogs, totaling 1,772 attributable remote image records; null means intentional text-only, never an unresolved or broken-image fallback. Preserve approved prose, natural-history grounding, plausible fictional home coordinates, and distinct events with remembered consequences. Keep romance below the editorial cap, reject misleading images and performative copy, and never construct public posts from wrappers or randomized fragments. Interleave stable arcs afresh on each visit while preserving each character's chronology. Keep image binaries outside the repository and preserve the read-only demo checkpoint and signed sample-import path. The [editorial guide](SAMPLE-CORPUS-EDITORIAL-GUIDE.md) and [expansion ledger](SAMPLE-CORPUS-500-EXPANSION.md) govern review and delivery evidence. | High | Local integration complete; final validation and publication pending |
+| 6.136 | Deliver exactly 500 individually authored, image-led demo posts across a bounded recurring cast. The accepted projection contains 397 regular posts and 103 visual Stories, each with one unique attributable image and one manual editorial classification. Preserve 396 null-media drafts outside the visible demo, approved prose, natural-history grounding, plausible fictional home coordinates, and distinct events with remembered consequences. Reject misleading images and performative copy, and never construct public posts from wrappers or randomized fragments. Interleave stable arcs afresh on each visit while preserving each character's chronology. Keep image binaries outside the repository and preserve the read-only demo checkpoint and signed sample-import path. The [editorial guide](SAMPLE-CORPUS-EDITORIAL-GUIDE.md) and [500-post admission](drafts/DEMO-CORPUS-500-ADMISSION.md) govern review and delivery evidence. | High | ✓ Complete |
 
 ---
 
@@ -711,10 +711,10 @@ Build chain: `@freed/shared` → `@freed/sync` → `vite build` (configured in `
 - [x] Sample clearing reports committed bounded removal progress in one persistent toast, keeps maintenance controls disabled through final settlement and SQLite invalidation, and restores population controls only after the marked sample Library is fully removed
 - [x] The anonymous demo atomically activates its curated normalized checkpoint before mounting the app shell, restores the pristine Library on refresh, avoids the signed mutation importer, and opens directly into the Unified Feed behind a one-action First Look. Entering the demo descends into a responsive Field Guide. Background activity stays hidden, while Settings explains that provider and cloud connections are disabled and hands configuration off to Freed Desktop.
 - [x] PWA Settings and the anonymous demo Field Guide complete protected newsletter signup in place, confirm success without navigation, and keep the Freed Desktop download action separate
-- [ ] Rebuild and publish exactly 1,000 illustrated entries under the [revised delivery contract](SAMPLE-CORPUS-1000-REBUILD.md). The former 500-entry snapshot is a rejected baseline, not an accepted milestone. Every entry needs an independently reviewed image/text pairing, every profile needs a reviewed avatar, and every character needs private continuity notes. Mixed social and RSS episodes must stay linked to one identity. Preserve plausible homes, source attribution, chronological character arcs and fresh visit interleaving. Final tests, production builds and official-domain verification remain delivery gates, not implied by a local count.
+- [ ] Publish exactly 500 illustrated entries under the [current delivery contract](SAMPLE-CORPUS-EDITORIAL-GUIDE.md). The earlier mixed-media 500-entry snapshot remains rejected. The accepted replacement has one reviewed image and one manual classification for every visible post. Mixed social and RSS episodes stay linked to one identity. Preserve plausible homes, source attribution, chronological character arcs, and fresh visit interleaving. Final tests and pull request verification remain delivery gates, not implied by a local count.
 - [x] Mount the application shell during demo checkpoint preparation. In an empty content region, show only the friendly "Populating your demo" message, status spinner, and percentage from population progress. Suppress the ordinary connect/sample maintenance empty state during population; completion returns the normal feed. Do not replace the shell with a blank startup screen or rely on a population toast for this state.
 - [x] Reconcile `docs/roadmap-status.json` for this corpus revision. Phase 6 remains `current`; the structured schema records phase identity, status, and source, not episode counts. The source document above owns the counts and pending delivery evidence.
-- [ ] Verify the five themed demo captures and release-specific animated GIF against the exact production tag, then confirm the manifest and media are publicly accessible GitHub release assets. Functional releases may publish the reviewed interim corpus with its actual counts and an explicit `interim` stage. Only the exact 900 regular entries and 100 Stories qualify as `complete`. Capture waits for settled map tiles, not merely map construction. Workflow wiring exists; updated capture behavior still requires final release proof.
+- [ ] Verify the five themed demo captures and release-specific animated GIF against the exact production tag, then confirm the manifest and media are publicly accessible GitHub release assets. The current complete editorial corpus contains exactly 397 regular posts and 103 Stories. Capture waits for settled map tiles, not merely map construction. Workflow wiring exists; updated capture behavior still requires final release proof.
 - [x] An unconnected PWA can populate one durable local sample Library without Drive traffic, retain it across WebKit restarts, recover an interrupted accepted result, prevent repeat population, clear only internally marked sample records in bounded signed batches, and rebuild the sample Library from the rendered mobile workflow
 - [x] Production PWA bundles contain no Automerge JavaScript, worker, WASM asset, retired registry payload, or legacy `/sync` service-worker route. Stale rollback state cannot reactivate the retired engine, while historical verification and the required legacy-presence loss fence remain available.
 - [x] Full-library search runs `search_page_v1` directly against OPFS SQLite, scans at most 256 filtered normalized rows per source-fenced request, streams at most 32 scored cards, and retains at most 100 result cards in React. Account aliases remain in normalized Account rows. No IndexedDB search projection or renderer alias corpus exists.
@@ -780,7 +780,7 @@ Build chain: `@freed/shared` → `@freed/sync` → `vite build` (configured in `
 
 ## Deliverable
 
-The illustrated demo targets 900 regular entries and 100 visual Stories.
+The illustrated demo contains exactly 397 regular entries and 103 visual Stories.
 Each demo document uses its own in-memory SQLite worker and does not acquire
 the persistent app's OPFS lock. Concurrent demo tabs therefore remain usable,
 while refresh rebuilds the anonymous Library without deleting persistent data.
@@ -797,12 +797,18 @@ tests pass. The first admitted YouTube entry preserves NOAA uploader attribution
 fictional character commentary, and a separately reviewed NOAA archive still.
 Full corpus acceptance and production verification remain pending.
 
+Every admitted demo post carries one human editorial classification:
+`inspiring`, `event`, `personal`, `conversation`, or `news`. The checkpoint
+stores the corresponding existing feed signal with method `manual`, and demo
+generation fails closed when an accepted post lacks a classification. No model
+or runtime rules classifier participates in this path.
+
 YouTube reader descriptions preserve authored paragraph breaks and separate
 video, uploader, source, and thumbnail credit lines. Long credit URLs wrap
 without enabling player loading or changing provider requests.
 
 The production demo CSP admits exact reviewed Commons, NOAA, NPS, FWS, Chandra,
-and YouTube thumbnail hosts. A checkpoint test checks every admitted media and
+iNaturalist, Flickr, NASA Science, and YouTube thumbnail hosts. A checkpoint test checks every admitted media and
 avatar origin against the actual HTML policy. Existing click-to-watch playback
 permits the privacy-enhanced YouTube frame and its API script hosts, without
 eager player loading. Showcase capture enables the production CSP on loopback
@@ -860,3 +866,15 @@ remain forbidden. Added portraits require fresh delivery verification.
 This proves local delivery, not deployment availability or every Galaxy layout.
 
 Mobile-friendly PWA at [app.freed.wtf](https://app.freed.wtf), plus the dev channel at `dev-app.freed.wtf`, with offline article, image, and pinned saved-reader support.
+
+
+### Isolated editorial showcase correction, September 6, 2026
+
+The shared showcase generator now projects admitted character episodes, reviewed portraits and authored platform identities directly. Null-media drafts and synthetic stress fixtures are excluded from showcase counts. YouTube uses verified video sources and preserves narrative paragraphs and separate credit lines. Sample feed URLs retain the non-fetching sentinel domain. The explicit stress mode remains separate, with bounded text-collision fallback. This is an isolated source implementation; rendered preview and full repository verification remain outstanding, and no deployment or merge is claimed. See [integration evidence](drafts/EDITORIAL-GENERATOR-INTEGRATION.md).
+
+Isolated editorial follow-up on September 6: accepted sample Stories now carry complete local preserved text and display separate photo credits in the reader. The shared reader omits the misleading Summary label for complete sample entries. Focused tests and offline mobile rendering pass; deployment and full integration remain unverified.
+
+The same continuation classifies all 500 accepted posts by human editorial
+review and writes one bounded manual signal pair per post into the anonymous
+demo checkpoint. The five feed classifications are all represented. Runtime
+model inference is not used for demo content.

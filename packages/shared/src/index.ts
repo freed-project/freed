@@ -43,6 +43,7 @@ export * from "./location";
 export * from "./sample-data";
 export * from "./sample-corpus";
 export * from "./sample-character-arcs";
+export * from "./sample-editorial-data";
 
 // Re-export shared theme metadata (browser-safe, no deps)
 export * from "./themes";
