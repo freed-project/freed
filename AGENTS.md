@@ -158,6 +158,7 @@ Record meaningful choices and consequences in private `TASK-DECISIONS.local.md`.
 - Publish ordinary work through `./scripts/worktree-publish.sh` with existing GitHub authentication. Use `--ready` only for finished work. Missing optional broker configuration does not block the normal authenticated path.
 - Branch names use `feat/`, `fix/`, `chore/`, `docs/`, `refactor/`, `perf/`, or `style/` plus a short kebab-case description. Commit messages and PR titles use the matching Conventional Commit prefix.
 - Squash merge into the PR's destination lane. One PR becomes one commit on that lane. Use the PR title as the squash commit subject.
+- An authorized request to merge includes enabling repository auto-merge and arming squash auto-merge when required checks are pending. Follow [authorized merge completion](docs/AGENT-INSTRUCTIONS.md#authorized-merge-completion); preserve required checks, reviews, lane authority, and explicit owner holds.
 - After a merge, stop only that worktree's processes, remove its worktree, and delete the local task branch. Never use branch ancestry to infer whether a squash PR merged; query the PR or remote branch state.
 
 ### Promotion
