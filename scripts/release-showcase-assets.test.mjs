@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm, symlink, truncate, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, symlink, truncate, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -215,13 +215,12 @@ test("public verifier checks both URL variants and rejects bounded or mismatched
   );
 });
 
-// Tier 1 tooling: a failed local export must never replace the reviewed GIF.
+// Tier 1 tooling: a failed local export must never replace the reviewed animation.
 test("local showcase rejects invalid themes and preserves the last animation on encoder failure", async (t) => {
   const directory = await fixture(t);
   const invalid = spawnSync(process.execPath, ["scripts/build-showcase-local.mjs", "--theme", "unknown", "--output", directory], { encoding: "utf8" });
   assert.notEqual(invalid.status, 0);
   assert.match(invalid.stderr, /Unknown theme/);
-  const { mkdir } = await import("node:fs/promises");
   const themeDirectory = path.join(directory, "midas");
   await mkdir(themeDirectory);
   const captures = Array.from({ length: 6 }, (_, index) => ({ theme: "midas", file: `frame-${index}.png` }));
@@ -235,4 +234,42 @@ test("local showcase rejects invalid themes and preserves the last animation on 
   assert.notEqual(failed.status, 0);
   assert.equal(await readFile(path.join(themeDirectory, "freed-showcase-midas.apng"), "utf8"), "reviewed GIF");
   assert.equal(await readFile(path.join(themeDirectory, "latest.json"), "utf8"), "reviewed manifest");
+});
+
+// Tier 1: the local capture command must reject remote destinations before
+// opening a browser or creating artifacts. No network fixture is needed.
+test("local capture rejects non-loopback destinations before capture", async (t) => {
+  const directory = await fixture(t);
+  const output = path.join(directory, "uncreated");
+  const result = spawnSync(process.execPath, ["scripts/capture-showcase-local.mjs"], {
+    encoding: "utf8",
+    env: { ...process.env, FREED_SHOWCASE_URL: "https://example.invalid", FREED_SHOWCASE_OUTPUT: output, FREED_SHOWCASE_DESKTOP_ONLY: "0" },
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Local capture requires a loopback URL/);
+  await assert.rejects(readFile(path.join(output, "freed-showcase-manifest.json")), { code: "ENOENT" });
+});
+
+// Tier 1: publication must bind the review page to immutable frame copies.
+// Encoding quality is covered by decoded-image review; this stub isolates the
+// file publication contract from the host's FFmpeg installation.
+test("local export publishes a usable review index and immutable source frames", async (t) => {
+  const directory = await fixture(t);
+  const themeDirectory = path.join(directory, "midas");
+  await mkdir(themeDirectory);
+  const captures = Array.from({ length: 6 }, (_, index) => ({ theme: "midas", file: `frame-${index}.png` }));
+  for (const capture of captures) await writeFile(path.join(themeDirectory, capture.file), "reviewed frame");
+  await writeFile(path.join(themeDirectory, "freed-showcase-manifest.json"), JSON.stringify({ transparentCanvas: true, captures, gifOrder: captures.map(c => c.file) }));
+  const encoder = path.join(directory, "encoder");
+  await writeFile(encoder, `#!${process.execPath}\nrequire('node:fs').writeFileSync(process.argv.at(-1), 'encoded fixture');\n`);
+  await chmod(encoder, 0o755);
+  const result = spawnSync(process.execPath, ["scripts/build-showcase-local.mjs", "--theme", "midas", "--encode-only", "--output", directory], {
+    encoding: "utf8", env: { ...process.env, FFMPEG_PATH: encoder },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const [published] = JSON.parse(await readFile(path.join(directory, "index.json"), "utf8"));
+  assert.equal(await readFile(path.join(directory, published.animation), "utf8"), "encoded fixture");
+  assert.equal(await readFile(path.join(directory, "index.html"), "utf8"), await readFile("scripts/showcase-local-preview.html", "utf8"));
+  await writeFile(path.join(themeDirectory, captures[0].file), "later capture");
+  assert.equal(await readFile(path.join(themeDirectory, "revisions", published.revision, captures[0].file), "utf8"), "reviewed frame");
 });
