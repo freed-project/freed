@@ -61,13 +61,15 @@ test("preservation is private, verified, idempotent, outside the worktree, and r
   const archiveRoot = path.join(root, "archive");
   const file = preserveDecisions(repo, { archiveRoot });
   assert.equal(preserveDecisions(repo, { archiveRoot }), file);
-  assert.equal(fs.statSync(file).mode & 0o077, 0);
+  const fd = fs.openSync(file, fs.constants.O_RDWR | fs.constants.O_NOFOLLOW);
+  t.after(() => fs.closeSync(fd));
+  assert.equal(fs.fstatSync(fd).mode & 0o077, 0);
   assert.equal(fs.statSync(archiveRoot).mode & 0o077, 0);
-  assert.deepEqual(fs.readFileSync(file), fs.readFileSync(path.join(repo, name)));
+  assert.deepEqual(fs.readFileSync(fd), fs.readFileSync(path.join(repo, name)));
   assert.throws(() => preserveDecisions(repo, { archiveRoot: path.join(repo, "archive") }), /outside/);
   fs.symlinkSync(archiveRoot, path.join(root, "redirect"));
   assert.throws(() => preserveDecisions(repo, { archiveRoot: path.join(root, "redirect") }), /symbolic/);
-  fs.writeFileSync(file, "corrupted");
+  fs.writeFileSync(fd, "corrupted");
   assert.throws(() => preserveDecisions(repo, { archiveRoot }), /verification/);
 });
 
