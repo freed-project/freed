@@ -399,7 +399,7 @@ export function FeedList({
     return () => ro.disconnect();
   }, [scrollElement]);
 
-  // Max grid columns based on current container width (capped at 3).
+  // Keep mobile story cards readable with at most two columns; desktop allows three.
   // Inner width = containerWidth minus the feed-card gutter on each side.
   const maxCols = useMemo(() => {
     const inner = Math.max(
@@ -408,9 +408,12 @@ export function FeedList({
     );
     return Math.max(
       1,
-      Math.min(3, Math.floor((inner + TILE_GAP) / (MIN_TILE_W + TILE_GAP))),
+      Math.min(
+        isMobile ? 2 : 3,
+        Math.floor((inner + TILE_GAP) / (MIN_TILE_W + TILE_GAP)),
+      ),
     );
-  }, [containerWidth, feedCardHorizontalGutter]);
+  }, [containerWidth, feedCardHorizontalGutter, isMobile]);
 
   // Preprocess items into virtual rows, collapsing consecutive stories into grids.
   const rows = useMemo(() => buildRows(items, maxCols), [items, maxCols]);
