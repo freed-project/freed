@@ -347,75 +347,41 @@ function FriendCandidateRow({
   selected,
   onSelect,
   onDismiss,
-  onPromoteToFriend,
-  onPromoteToFam,
+  overview,
 }: {
   suggestion: FriendCandidateSuggestion;
   selected: boolean;
   onSelect: () => void;
   onDismiss: (suggestionId: string) => void;
-  onPromoteToFriend: () => void;
-  onPromoteToFam: () => void;
+  overview?: LibraryCoreFriendsDirectoryRowV1;
 }) {
-  const lastActivity = suggestion.lastActivityAt
-    ? formatDistanceToNow(suggestion.lastActivityAt, { addSuffix: true })
-    : "No recent posts";
   return (
     <div
       data-testid="friend-candidate-suggestion"
-      className={`theme-card-soft rounded-2xl px-3 py-3 transition-colors ${
+      className={`theme-card-soft relative rounded-2xl p-3 transition-colors hover:border-[color:var(--theme-border-strong)] hover:bg-[color:var(--theme-bg-card-hover)] ${
         selected
           ? "border-[color:var(--theme-border-strong)] bg-[color:var(--theme-bg-card-hover)]"
           : ""
       }`}
     >
-      <button type="button" onClick={onSelect} className="w-full text-left">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="truncate text-sm font-medium text-[color:var(--theme-text-primary)]">
-              {suggestion.displayName}
-            </p>
-            <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
-              Score {suggestion.score.toLocaleString()}, {lastActivity}
-            </p>
-          </div>
-          <span
-            className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] ${
-              suggestion.confidence === "high"
-                ? "bg-[color:rgb(var(--theme-feedback-success-rgb)/0.18)] text-[color:rgb(var(--theme-feedback-success-rgb))]"
-                : "bg-[color:rgb(var(--theme-feedback-warning-rgb)/0.18)] text-[color:rgb(var(--theme-feedback-warning-rgb))]"
-            }`}
-          >
-            {suggestion.confidence}
-          </span>
-        </div>
-        <p className="mt-2 line-clamp-1 text-xs text-[color:var(--theme-text-muted)]">
-          {suggestion.reasons.map((reason) => reason.label).join(", ")}
-        </p>
+      <button type="button" onClick={onSelect} className="w-full pr-7 text-left">
+        <FriendOverview
+          {...overview}
+          name={safeText(suggestion.displayName, "Unnamed friend")}
+          avatarUrl={overview?.latestAvatarUrl ?? overview?.avatarUrl}
+          latestActivityAt={suggestion.lastActivityAt}
+        />
       </button>
-      <div className="mt-3 flex flex-wrap justify-end gap-2">
         <button
           type="button"
           onClick={() => onDismiss(suggestion.id)}
-          className="btn-secondary rounded-lg px-3 py-1.5 text-xs"
+          aria-label={`Dismiss suggestion for ${suggestion.displayName}`}
+          className="absolute right-2 top-2 rounded-lg p-1 text-[color:var(--theme-text-muted)] hover:text-[color:var(--theme-text-primary)]"
         >
-          Dismiss
+          <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
+            <path d="M5 5l10 10M15 5L5 15" strokeLinecap="round" />
+          </svg>
         </button>
-        <button
-          type="button"
-          onClick={onPromoteToFriend}
-          className="btn-primary rounded-lg px-3 py-1.5 text-xs"
-        >
-          Promote to friend
-        </button>
-        <button
-          type="button"
-          onClick={onPromoteToFam}
-          className="btn-primary rounded-lg px-3 py-1.5 text-xs"
-        >
-          Promote to Fam
-        </button>
-      </div>
     </div>
   );
 }
@@ -1020,46 +986,6 @@ export function FriendsView({
     [handleSetPersonRelationshipLevel, selectedPerson],
   );
 
-  const handlePromoteFriendSuggestion = useCallback(
-    async (suggestion: FriendCandidateSuggestion, level: 3 | 5) => {
-      if (suggestion.personId) {
-        const person = readLibraryPersonDetail
-          ? await readLibraryPersonDetail(suggestion.personId)
-          : null;
-        if (person) {
-          await handleSetPersonRelationshipLevel(person, level);
-          return;
-        }
-      }
-      const accountId = suggestion.accountIds[0];
-      const account =
-        accountId && readLibraryAccountDetail
-          ? await readLibraryAccountDetail(accountId)
-          : null;
-      if (!account) return;
-      const linkedPerson = account.personId
-        ? readLibraryPersonDetail
-          ? await readLibraryPersonDetail(account.personId)
-          : null
-        : null;
-      if (linkedPerson) {
-        await handleSetPersonRelationshipLevel(linkedPerson, level);
-        return;
-      }
-      setSelectedAccount(account.id);
-      setEditorState({
-        kind: "new",
-        draft: friendDraftFromAccount(account, level),
-      });
-    },
-    [
-      handleSetPersonRelationshipLevel,
-      readLibraryAccountDetail,
-      readLibraryPersonDetail,
-      setSelectedAccount,
-    ],
-  );
-
   const handleDropGraphNodeToRelationshipTier = useCallback(
     async ({
       personId,
@@ -1244,8 +1170,17 @@ export function FriendsView({
 
   const renderOverviewSidebar = () => (
     <div className="flex h-full flex-col bg-transparent">
-      <div className={FRIENDS_SIDEBAR_SECTION}>
+      <div className={`${FRIENDS_SIDEBAR_SECTION} ${isMobile ? "!px-3" : ""}`}>
         <div className="flex items-center justify-between gap-3">
+          {isMobile && (
+            <button type="button" aria-label="Close friends panel"
+              onClick={() => onFriendsSidebarOpenChange(false)}
+              className="btn-secondary shrink-0 rounded-lg p-1.5">
+              <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
+                <path d="M5 5l10 10M15 5L5 15" strokeLinecap="round" />
+              </svg>
+            </button>
+          )}
           <div>
             <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
               Friends
@@ -1355,18 +1290,16 @@ export function FriendsView({
                   }
                   onSelect={() => handleSelectFriendCandidate(suggestion)}
                   onDismiss={handleDismissFriendSuggestion}
-                  onPromoteToFriend={() =>
-                    void handlePromoteFriendSuggestion(suggestion, 3)
-                  }
-                  onPromoteToFam={() =>
-                    void handlePromoteFriendSuggestion(suggestion, 5)
-                  }
+                  overview={friendsDirectory.rows.find(row => row.id === suggestion.personId)}
                 />
               ))}
             </div>
           </div>
         ) : null}
 
+        <h3 className={`mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)] ${friendCandidateSuggestions.length > 0 ? "theme-dialog-divider border-t pt-4" : ""}`}>
+          {searchQuery.trim() ? "Matching friends" : "All friends"}
+        </h3>
         {!friendsDirectory.loading && friendsDirectory.rows.length === 0 ? (
           <div className="theme-panel-muted rounded-xl px-4 py-6 text-center">
             <p className="text-sm font-medium text-[color:var(--theme-text-primary)]">
@@ -1452,9 +1385,9 @@ export function FriendsView({
   const renderSelectedPersonSidebar = () => (
     <div className="flex h-full flex-col bg-transparent">
       <div
-        className={`${FRIENDS_SIDEBAR_SECTION} flex items-center justify-between gap-3`}
+        className={`${FRIENDS_SIDEBAR_SECTION} flex items-center justify-between gap-3 ${isMobile ? "!px-3" : ""}`}
       >
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 items-center gap-4">
           <button
             type="button"
             onClick={handleClearSelection}

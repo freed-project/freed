@@ -2,6 +2,11 @@
 
 > **Status:** 🚧 In Progress (the official SQLite WebAssembly engine, exact schema identity, single-worker OPFS runtime, normalized checkpoint import, product mutation entrypoints, bounded product queries, follower transport, recovery UI, selective content, and IndexedDB Library deletion are implemented; physical iPhone acceptance remains open)
 
+Mobile Friends details use evenly inset back controls; the overview has a close
+control to reveal the graph. Suggested cards reuse friend overview content and
+offer a dismiss control, with a separate All friends or Matching friends section.
+Account orbits and avatars share world-space sizing so zoom preserves clearance.
+
 Marketing demo links carry the selected theme in a `theme` query parameter.
 Demo startup validates it against the shared theme IDs, commits it through the
 device theme preference, then removes that parameter with history replacement.

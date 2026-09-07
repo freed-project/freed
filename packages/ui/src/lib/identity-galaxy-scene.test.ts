@@ -153,7 +153,7 @@ describe("compileIdentityGalaxyScene", () => {
     expect(linkedAccountDepth).toBe(famDepth);
   });
 
-  it("tightens automatic planet shells while retaining slots, depth and explicit pins", () => {
+  it("preserves world-space account orbits, depth and explicit pins", () => {
     const parent = node("person:shell", { personId: "shell", careLevel: 4 });
     const profiles = Array.from({ length: 6 }, (_, index) => {
       const angle = index * Math.PI / 3;
@@ -175,8 +175,8 @@ describe("compileIdentityGalaxyScene", () => {
     const repeated = compileIdentityGalaxyScene(input, { quality: "settled", now: 1_000 });
     expect(scene.positions).toEqual(repeated.positions);
     profiles.forEach((profile, index) => {
-      expect(scene.positions[index * 3]).toBeCloseTo(parent.x + (profile.x - parent.x) * 0.3, 4);
-      expect(scene.positions[index * 3 + 1]).toBeCloseTo(-parent.y - (profile.y - parent.y) * 0.3, 4);
+      expect(scene.positions[index * 3]).toBeCloseTo(profile.x, 4);
+      expect(scene.positions[index * 3 + 1]).toBeCloseTo(-profile.y, 4);
       expect(Math.abs(scene.positions[index * 3 + 2]! - scene.positions[6 * 3 + 2]!))
         .toBeLessThanOrEqual(3);
     });
