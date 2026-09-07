@@ -17,7 +17,7 @@ Never discard launcher changes to make it fresh. Preserve and report unexpected 
 
 ## Authorization levels
 
-When authorization is required and the owner has not set a level, ask exactly:
+Default to Level 2 (Build). Ask only when a different level is needed to safely or efficiently complete the requested task. Finish authorized work before asking. To change levels, ask exactly:
 
 > What authorization level should this task proceed at?
 >

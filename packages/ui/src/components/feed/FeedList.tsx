@@ -13,7 +13,7 @@ import { LoadingState } from "../LoadingState.js";
 import { useReadOnScrollTracker } from "./useReadOnScrollTracker.js";
 import type { FeedItem as FeedItemType } from "@freed/shared";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
-import { useIsMobile } from "../../hooks/useIsMobile.js";
+import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import {
   DESKTOP_FEED_CARD_HEIGHT_BY_DENSITY,
   useFeedCardDensity,
@@ -346,7 +346,8 @@ export function FeedList({
   // Mobile window-scroll container (used to compute scrollMargin for the virtualizer)
   const windowListRef = useRef<HTMLDivElement>(null);
 
-  const isMobile = useIsMobile();
+  // Scroll ownership must survive rotation, just like AppShell's layout mode.
+  const isMobile = useIsMobileDevice();
   const feedCardHorizontalGutter = isMobile
     ? 0
     : DESKTOP_FEED_CARD_HORIZONTAL_GUTTER;
