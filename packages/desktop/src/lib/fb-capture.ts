@@ -19,7 +19,11 @@ import {
   deduplicateFeedItems,
 } from "@freed/capture-facebook/browser";
 import type { FbGroupInfo, FeedItem } from "@freed/shared";
-import { isValidFacebookAuthorIdentity } from "@freed/shared";
+import {
+  isProviderAdmissionEnvelope,
+  isValidFacebookAuthorIdentity,
+  PROVIDER_ADMISSION_RULE_VERSION,
+} from "@freed/shared";
 import { formatClockTime } from "@freed/ui/lib/date-format";
 import { useAppStore } from "./store";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
@@ -29,6 +33,7 @@ import { attachScraperMediaDiagListener } from "./scraper-media-diag";
 import { getProviderPause, recordProviderHealthEvent } from "./provider-health";
 import {
   recordScrapeOutcome,
+  recordFacebookAdmissionSummary,
   type FacebookGroupDiscoverySource,
   type SocialScrapeTrigger,
 } from "./runtime-health-events";
@@ -111,6 +116,12 @@ export interface FbSyncDiag {
   totalCandidateCount: number;
   totalRejected: {
     suggestedOrSponsored: number;
+    advertising: number;
+    recommendation: number;
+    deferredAdvertising: number;
+    detectorErrors: number;
+    inspectedPlacements: number;
+    observationCount: number;
     missingAuthor: number;
     missingContent: number;
   };
@@ -118,6 +129,12 @@ export interface FbSyncDiag {
   lastCandidateCount: number | null;
   lastRejected: {
     suggestedOrSponsored?: number;
+    advertising?: number;
+    recommendation?: number;
+    deferredAdvertising?: number;
+    detectorErrors?: number;
+    inspectedPlacements?: number;
+    observationCount?: number;
     missingAuthor?: number;
     missingContent?: number;
   } | null;
@@ -165,6 +182,12 @@ function createEmptyFbSyncDiag(
   const { totalRejected: rejectedOverrides, ...rest } = overrides;
   const totalRejected = {
     suggestedOrSponsored: 0,
+    advertising: 0,
+    recommendation: 0,
+    deferredAdvertising: 0,
+    detectorErrors: 0,
+    inspectedPlacements: 0,
+    observationCount: 0,
     missingAuthor: 0,
     missingContent: 0,
     ...rejectedOverrides,
@@ -478,6 +501,12 @@ async function fetchFbFeedInternal(
       candidateCount?: number;
       rejected?: {
         suggestedOrSponsored?: number;
+        advertising?: number;
+        recommendation?: number;
+        deferredAdvertising?: number;
+        detectorErrors?: number;
+        inspectedPlacements?: number;
+        observationCount?: number;
         missingAuthor?: number;
         missingContent?: number;
       };
@@ -485,6 +514,7 @@ async function fetchFbFeedInternal(
       feedContainerFound?: boolean;
       scrapeRunId?: string | null;
       pageState?: FbSyncDiag["lastPageState"];
+      admissionRuleVersion?: string;
     }>("fb-feed-data", (event) => {
       const {
         posts,
@@ -517,6 +547,14 @@ async function fetchFbFeedInternal(
       if (rejected) {
         diag.totalRejected.suggestedOrSponsored +=
           rejected.suggestedOrSponsored ?? 0;
+        diag.totalRejected.advertising += rejected.advertising ?? 0;
+        diag.totalRejected.recommendation += rejected.recommendation ?? 0;
+        diag.totalRejected.deferredAdvertising +=
+          rejected.deferredAdvertising ?? 0;
+        diag.totalRejected.detectorErrors += rejected.detectorErrors ?? 0;
+        diag.totalRejected.inspectedPlacements +=
+          rejected.inspectedPlacements ?? 0;
+        diag.totalRejected.observationCount += rejected.observationCount ?? 0;
         diag.totalRejected.missingAuthor += rejected.missingAuthor ?? 0;
         diag.totalRejected.missingContent += rejected.missingContent ?? 0;
       }
@@ -549,7 +587,31 @@ async function fetchFbFeedInternal(
         return;
       }
 
+      if (
+        (posts.length > 0 || (candidateCount ?? 0) > 0) &&
+        event.payload.admissionRuleVersion !== PROVIDER_ADMISSION_RULE_VERSION
+      ) {
+        diag.errorStage = "admission";
+        diag.errorMessage =
+          "Facebook capture returned a missing or incompatible advertising admission rule version.";
+        addDebugEvent("error", `[FB] ${diag.errorMessage}`);
+        return;
+      }
+
       for (const post of posts) {
+        const surface = post.postType === "story" ? "story" : "feed";
+        if (
+          !isProviderAdmissionEnvelope(post.admission, {
+            provider: "facebook",
+            surface,
+          })
+        ) {
+          diag.errorStage = "admission";
+          diag.errorMessage =
+            "Facebook capture returned a post without a valid advertising admission envelope.";
+          addDebugEvent("error", `[FB] ${diag.errorMessage}`);
+          return;
+        }
         const key =
           post.id ??
           post.url ??
@@ -596,6 +658,15 @@ async function fetchFbFeedInternal(
     safeUnlisten(unlisten, "fb-feed-data");
     safeUnlisten(unlistenDiag, "fb-diag");
   }
+
+  recordFacebookAdmissionSummary({
+    ruleVersion: PROVIDER_ADMISSION_RULE_VERSION,
+    inspectedPlacements: diag.totalRejected.inspectedPlacements,
+    observationCount: diag.totalRejected.observationCount,
+    excludedAdvertising: diag.totalRejected.advertising,
+    deferredAdvertising: diag.totalRejected.deferredAdvertising,
+    detectorErrors: diag.totalRejected.detectorErrors,
+  });
 
   if (diag.errorStage) {
     return { items: [], diag };
