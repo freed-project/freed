@@ -71,6 +71,18 @@ requires Level 6 or 7 for a merge that deploys production. Its task and
 deployment routes stay website-specific. Main receives instruction changes
 through normal reviewed promotion, not an out-of-band product merge.
 
+## Authorized merge completion
+
+An explicit owner request to merge a task includes the repository setting and PR actions needed to complete that merge. Apply the existing authorization level for the destination lane; this policy grants no production deployment or provider behavior authority.
+
+1. Finish implementation, owner-requested review, and required local validation before arranging the merge. Resolve failing checks, conflicts, missing approvals, and explicit owner holds first.
+2. If the PR is eligible to merge now, squash merge it using its title as the commit subject and verify the resulting remote commit.
+3. If required checks are queued or running, inspect the repository's `allow_auto_merge` setting. Enable it when disabled and the current account has permission. The owner's merge request authorizes this setting change without a second confirmation. Read it back to verify success.
+4. Arm squash auto-merge for the reviewed PR, binding the request to its current head. Verify that GitHub recorded the auto-merge request. If a new commit or base update cancels it, revalidate the affected work and re-arm it within the existing task authority.
+5. Preserve all required checks, review requirements, branch rules, and owner holds. Enabling auto-merge never authorizes an administrative bypass, weakened protections, fabricated checks, or merging a failing candidate.
+6. Continue monitoring when possible. If an external wait outlasts the current run, leave auto-merge armed and report the PR as pending, with its link and remaining conditions. A queued auto-merge request is not a completed merge.
+7. Verify the actual merge before reporting success, updating the launcher, or performing post-merge worktree cleanup. If GitHub policy or account permissions prevent enabling or arming auto-merge, report the exact blocker and preserve the prepared PR.
+
 ## Routing fixtures
 
 `docs/instruction-routing-fixtures.json` records representative prompts,
