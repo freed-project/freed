@@ -46,15 +46,15 @@ async function setCardDensity(page: import("@playwright/test").Page, density: De
   }, density);
 }
 
-async function injectMixedFeedItems(page: import("@playwright/test").Page, storyIndices = [7, 8, 9]): Promise<void> {
+async function injectMixedFeedItems(page: import("@playwright/test").Page, storyIndices = [7, 8, 9], count = 36): Promise<void> {
   await page.evaluate(
-    async ({ delayedMediaUrl, brokenMediaUrl, storyIndices }) => {
+    async ({ delayedMediaUrl, brokenMediaUrl, storyIndices, count }) => {
       const libraryCore = (window as Record<string, unknown>).__FREED_LIBRARY_CORE__ as {
         importLibraryItems: (items: unknown[]) => Promise<unknown>;
       };
       const now = Date.now();
       const longText = "Long preview text ".repeat(60);
-      const items = Array.from({ length: 36 }, (_, index) => {
+      const items = Array.from({ length: count }, (_, index) => {
         const isStory = storyIndices.includes(index);
         const hasDelayedMedia = index % 4 === 1 || isStory;
         const hasBrokenMedia = index === 5;
@@ -125,7 +125,7 @@ async function injectMixedFeedItems(page: import("@playwright/test").Page, story
 
       await libraryCore.importLibraryItems(items);
     },
-    { delayedMediaUrl: DELAYED_MEDIA_URL, brokenMediaUrl: BROKEN_MEDIA_URL, storyIndices },
+    { delayedMediaUrl: DELAYED_MEDIA_URL, brokenMediaUrl: BROKEN_MEDIA_URL, storyIndices, count },
   );
 
   // The Library reader is authoritative; the renderer no longer owns a
@@ -309,7 +309,6 @@ test("nearby stories share rows and keyboard navigation follows their display or
     ),
   );
   await page.keyboard.press("j");
-  await page.keyboard.press("j");
   await expect(story1).toHaveAttribute("data-focused", "true");
   await page.keyboard.press("j");
   await expect(story3).toHaveAttribute("data-focused", "true");
@@ -328,20 +327,20 @@ test("nearby stories share rows and keyboard navigation follows their display or
   ).toHaveAttribute("data-selected", "true");
   await page.keyboard.press("ArrowDown");
   await expect(
-    compact.locator('[data-feed-item-id="test-scroll-stability-item-2"]'),
+    compact.locator('[data-feed-item-id="test-scroll-stability-item-0"]'),
   ).toHaveAttribute("data-selected", "true");
   await compact.evaluate((el) => {
     el.scrollTop = 220;
   });
-  const firstStory = compact.locator(
-    '[data-feed-item-id="test-scroll-stability-story-1"]',
-  );
-  const anchorOffset = await firstStory.evaluate(
-    (el) =>
-      el.getBoundingClientRect().top -
-      el
-        .closest('[data-testid="compact-feed-panel-scroll-container"]')!
-        .getBoundingClientRect().top,
+  const anchorId = await compact.evaluate((element) => {
+    const top = element.getBoundingClientRect().top;
+    return [...element.querySelectorAll<HTMLElement>("[data-feed-item-id]")]
+      .find((node) => node.getBoundingClientRect().bottom > top)!.dataset.feedItemId!;
+  });
+  const anchorCard = compact.locator(`[data-feed-item-id="${anchorId}"]`);
+  const anchorOffset = await anchorCard.evaluate((el) =>
+    el.getBoundingClientRect().top -
+    el.closest('[data-testid="compact-feed-panel-scroll-container"]')!.getBoundingClientRect().top,
   );
   const handle = page.getByRole("separator", { name: "Resize sidebar" });
   const box = await handle.boundingBox();
@@ -354,7 +353,7 @@ test("nearby stories share rows and keyboard navigation follows their display or
   await page.mouse.up();
   await expect
     .poll(() =>
-      firstStory.evaluate(
+      anchorCard.evaluate(
         (el) =>
           el.getBoundingClientRect().top -
           el
@@ -403,4 +402,55 @@ test("nearby stories share rows and keyboard navigation follows their display or
       ),
     );
   await page.screenshot({ path: "test-results/story-presentation-mobile.png" });
+});
+
+// Preserve actual viewport content when read-on-scroll refreshes multiple pages.
+test("read-on-scroll keeps story rows stable across loaded and evicted pages", async ({ app, page }) => {
+  await page.route("**/*", (route) => {
+    const url = new URL(route.request().url());
+    return ["localhost", "127.0.0.1"].includes(url.hostname) ? route.continue() : route.abort();
+  });
+  await page.route(`**${DELAYED_MEDIA_URL}?*`, (route) => route.fulfill({ contentType: "image/svg+xml", body: svgBody("Story") }));
+  await page.route(`**${BROKEN_MEDIA_URL}`, (route) => route.fulfill({ status: 404, body: "" }));
+  await app.goto();
+  await app.waitForReady();
+  await injectMixedFeedItems(page, [9, ...Array.from({ length: 65 }, (_, i) => 15 + i * 5)], 360);
+  await page.evaluate(async () => {
+    const w = window as any;
+    const state = w.__FREED_STORE__.getState();
+    await state.updatePreferences({ display: { ...state.preferences.display, animationIntensity: "none", reading: { ...state.preferences.display.reading, markReadOnScroll: true } } });
+    w.__FREED_STORE__.getState().setFilter({ tags: ["scroll-stability"] });
+  });
+  const feed = page.getByTestId("feed-list-scroll-container");
+  await expect(feed.locator('[data-feed-item-id="test-scroll-stability-story-9"]')).toBeInViewport();
+  await page.clock.install();
+  const initialVersion = await page.evaluate(() => (window as any).__FREED_STORE__.getState().libraryItemVersion);
+  let sawStoryGrid = false;
+  for (let step = 0; step < 16; step++) {
+    const before = await feed.evaluate(async (element) => {
+      element.scrollTop += 3500;
+      await new Promise(requestAnimationFrame);
+      const bounds = element.getBoundingClientRect();
+      const visible = [...element.querySelectorAll<HTMLElement>("[data-feed-item-id]")]
+        .filter((node) => { const r = node.getBoundingClientRect(); return r.bottom > bounds.top && r.top < bounds.bottom; })
+        .map((node) => ({ id: node.dataset.feedItemId!, y: Math.round(node.getBoundingClientRect().top) }));
+      const storyGrid = [...element.querySelectorAll("[data-feed-row-index]")].some((row) => {
+        const bounds = row.getBoundingClientRect();
+        return bounds.bottom > element.getBoundingClientRect().top && bounds.top < element.getBoundingClientRect().bottom && row.querySelectorAll("[data-feed-item-id]").length > 1;
+      });
+      return { visible, storyGrid };
+    });
+    sawStoryGrid ||= before.storyGrid;
+    // Advance the real read-flush timer deterministically. An eviction may
+    // establish a new baseline without a flush; its viewport must stay put too.
+    await page.clock.runFor(250);
+    await page.evaluate(async () => { await new Promise(requestAnimationFrame); await new Promise(requestAnimationFrame); });
+    for (const anchor of before.visible) {
+      const item = feed.locator(`[data-feed-item-id="${anchor.id}"]`);
+      await expect(item).toBeInViewport();
+      expect(Math.abs((await item.boundingBox())!.y - anchor.y)).toBeLessThanOrEqual(2);
+    }
+  }
+  expect(sawStoryGrid).toBe(true);
+  expect(await page.evaluate(() => (window as any).__FREED_STORE__.getState().libraryItemVersion)).toBeGreaterThan(initialVersion + 3);
 });

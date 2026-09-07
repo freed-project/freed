@@ -56,7 +56,6 @@ function storyHeightRatio(numCols: number): number {
 
 interface FeedListProps {
   storyGroups?: ReadonlyMap<string, string>;
-  onColumnsChange?: (columns: number) => void;
   items: FeedItemType[];
   onItemClick?: (item: FeedItemType) => void;
   focusedIndex?: number;
@@ -265,7 +264,6 @@ const StoryGroupRow = memo(function StoryGroupRow({
 export function FeedList({
   items,
   storyGroups,
-  onColumnsChange,
   onItemClick,
   focusedIndex = -1,
   focusMoveDirection = 0,
@@ -365,9 +363,6 @@ export function FeedList({
   }, [containerWidth, feedCardHorizontalGutter]);
 
   // Preprocess items into virtual rows, collapsing consecutive stories into grids.
-  useLayoutEffect(() => {
-    onColumnsChange?.(maxCols);
-  }, [maxCols, onColumnsChange]);
   const rows = useMemo(
     () => buildFeedRows(items, maxCols, storyGroups),
     [items, maxCols, storyGroups],

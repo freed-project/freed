@@ -1,3 +1,5 @@
+import { encodeLibraryCoreFeedBrowsePageCursorV2, decodeLibraryCoreFeedBrowsePageCursorV2 } from "./feed-browse-page-contracts.js";
+import { encodeLibraryCoreSavedFeedPageCursorV2, decodeLibraryCoreSavedFeedPageCursorV2 } from "./saved-feed-page-contracts.js";
 import { describe, expect, it, vi } from "vitest";
 import {
   openLibraryCoreNormalizedFeedReaderV1,
@@ -73,6 +75,33 @@ const querySource = Object.freeze({
 });
 
 describe("cross-platform normalized feed readers", () => {
+  it.each([false, true])("resumes a %s Saved bookmark with fresh fences and includes the anchor", async (saved) => {
+    const cursor = (id: string, revision: number, generation = "a".repeat(64)) => saved
+      ? encodeLibraryCoreSavedFeedPageCursorV2({ filterDigest: "b".repeat(64), generationId: generation, sourceRevision: revision, sortMode: "date_saved", sortGroup: 0, sortPrimary: 100, sortSecondary: 100, globalId: id } as Parameters<typeof encodeLibraryCoreSavedFeedPageCursorV2>[0])
+      : encodeLibraryCoreFeedBrowsePageCursorV2({ filterDigest: "b".repeat(64), generationId: generation, projectionRevision: revision, transitionSequence: revision, priority: 0, publishedAt: 100, globalId: id } as Parameters<typeof encodeLibraryCoreFeedBrowsePageCursorV2>[0]);
+    const requests: Array<{ cursor: string | null; direction: string }> = [];
+    const query = vi.fn(async (request) => {
+      if (request.queryId === "optimistic_fields_v1") return { ...request, rows: [], source: querySource };
+      requests.push(request);
+      const id = request.cursor === null ? "head" : request.direction === "previous" ? "before" : "anchor";
+      return { rows: [feedCard(id)], totalCount: 500, nextCursor: cursor(id, 1), previousCursor: null, source: querySource };
+    });
+    const runtime = { query: query as LibraryCoreNormalizedQueryExecutor, randomId: () => "bookmark-test" };
+    const reader = saved
+      ? await openLibraryCoreNormalizedSavedFeedReaderV1(runtime, {}, "date_saved")
+      : await openLibraryCoreNormalizedFeedReaderV1(runtime, {}, 123);
+    const resumed = await reader.resumePage(cursor("anchor", 0));
+    expect(resumed.items[0].globalId).toBe("anchor");
+    expect(requests.map((request) => request.direction)).toEqual(["next", "previous", "next"]);
+    const decoded = saved ? decodeLibraryCoreSavedFeedPageCursorV2(requests[1].cursor!) : decodeLibraryCoreFeedBrowsePageCursorV2(requests[1].cursor!);
+    expect(decoded.ok && decoded.value.globalId).toBe("anchor");
+    expect(decoded.ok && ("sourceRevision" in decoded.value ? decoded.value.sourceRevision : decoded.value.projectionRevision)).toBe(1);
+    await expect(reader.resumePage(cursor("anchor", 0, "c".repeat(64)))).rejects.toThrow("another source or filter");
+    expect(requests).toHaveLength(3);
+    await reader.close();
+    await expect(reader.resumePage(cursor("anchor", 0))).rejects.toThrow("closed");
+  });
+
   it("converts exact SQLite Person and Account details without renderer catalogs", async () => {
     const query = vi
       .fn()

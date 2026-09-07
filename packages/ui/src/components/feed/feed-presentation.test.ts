@@ -41,28 +41,35 @@ describe("bounded story presentation", () => {
         );
       }
       result.forEach((item, i) =>
-        expect(Math.abs(Number(item.globalId) - i)).toBeLessThanOrEqual(2),
+        expect(Math.abs(Number(item.globalId) - i)).toBeLessThanOrEqual(5),
       );
     }
   });
 
-  it("does not pull across three articles or chase stories outside the neighborhood", () => {
-    expect(ids(presentFeed(fixture("saaas")).items)).toEqual([
-      "0",
-      "1",
-      "2",
-      "3",
-      "4",
-    ]);
-    expect(ids(presentFeed(fixture("sssssas")).items)).toEqual([
-      "0",
-      "1",
-      "2",
-      "3",
-      "4",
-      "5",
-      "6",
-    ]);
+  it("joins across five posts but not six", () => {
+    expect(ids(presentFeed(fixture("saaaaas")).items)).toEqual(["0", "6", "1", "2", "3", "4", "5"]);
+    const far = fixture("saaaaaas");
+    expect(ids(presentFeed(far).items)).toEqual(ids(far));
+  });
+
+  it("opens mixed feeds with their earliest top-ten story, without changing post order", () => {
+    for (let index = 1; index < 10; index++) {
+      const source = fixture("a".repeat(index) + "s" + "a".repeat(12 - index));
+      const plan = presentFeed(source, undefined, true, true);
+      expect(plan.items[0].globalId).toBe(String(index));
+      expect(ids(plan.items.filter((item) => item.contentType !== "story"))).toEqual(
+        ids(source.filter((item) => item.contentType !== "story")),
+      );
+      expect(ids(presentFeed([...source], plan, true, true).items)).toEqual(ids(plan.items));
+      expect(presentFeed(source, undefined, false, true).items[0].contentType).toBe("story");
+    }
+    const prefix = fixture("aaaaaaaaa");
+    const initial = presentFeed(prefix, undefined, true, true);
+    const completed = presentFeed([...prefix, ...fixture("s", "late")], initial, true, true);
+    expect(completed.items[0].globalId).toBe("late0");
+    const outside = fixture("aaaaaaaaaas");
+    expect(ids(presentFeed(outside, undefined, true, true).items)).toEqual(ids(outside));
+    expect(ids(presentFeed(fixture("aaaa"), undefined, true, true).items)).toEqual(["0", "1", "2", "3"]);
   });
 
   it("keeps retained groups closed across append, prepend, eviction and patches", () => {

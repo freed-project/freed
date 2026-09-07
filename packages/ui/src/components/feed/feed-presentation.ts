@@ -1,12 +1,15 @@
 import type { FeedItem } from "@freed/shared";
 
-const LOOKAHEAD = 5;
-const MAX_DISPLACEMENT = 2;
+const MAX_DISPLACEMENT = 5;
 const MAX_ASSEMBLED_STORIES = 6;
+const LOOKAHEAD = MAX_DISPLACEMENT + MAX_ASSEMBLED_STORIES - 1;
+const OPENING_STORY_WINDOW = 10;
 
 export interface FeedPresentation {
   /** Canonical rank order, used only to detect a changed ranking. */
   sourceIds: string[];
+  /** One opening story may move from the first ten items to the first row. */
+  openingStoryId: string | null;
   items: FeedItem[];
   /** A group stays closed when a later reader page arrives. */
   groupById: ReadonlyMap<string, string>;
@@ -24,7 +27,15 @@ export type FeedRow =
 
 /** Stable partition of a small neighborhood, with displacement checked for
  * articles as well as stories. Never feed the output back in as ranked input. */
-function arrange(items: FeedItem[]): FeedPresentation {
+function arrange(source: FeedItem[], opening = false, enabled = true): FeedPresentation {
+  const firstStory = opening
+    ? source.slice(0, OPENING_STORY_WINDOW).findIndex((item) => item.contentType === "story")
+    : -1;
+  const openingStoryId = firstStory >= 0 ? source[firstStory].globalId : null;
+  const items = firstStory > 0
+    ? [source[firstStory], ...source.slice(0, firstStory), ...source.slice(firstStory + 1)]
+    : source;
+  const originalRanks = new Map(source.map((item, i) => [item.globalId, i]));
   const result: FeedItem[] = [];
   const groupById = new Map<string, string>();
   let start = 0;
@@ -39,7 +50,7 @@ function arrange(items: FeedItem[]): FeedPresentation {
     let indices = Array.from({ length: end - start }, (_, i) => start + i);
     for (
       let candidate = end;
-      candidate < items.length && candidate <= start + LOOKAHEAD;
+      enabled && candidate < items.length && candidate <= start + LOOKAHEAD;
       candidate++
     ) {
       if (indices.length >= MAX_ASSEMBLED_STORIES) break;
@@ -57,7 +68,8 @@ function arrange(items: FeedItem[]): FeedPresentation {
       if (
         proposed.some(
           (original, position) =>
-            Math.abs(original - (start + position)) > MAX_DISPLACEMENT,
+            items[original].globalId !== openingStoryId &&
+            Math.abs(originalRanks.get(items[original].globalId)! - (start + position)) > MAX_DISPLACEMENT,
         )
       )
         break;
@@ -73,7 +85,8 @@ function arrange(items: FeedItem[]): FeedPresentation {
     start = end;
   }
   return {
-    sourceIds: items.map((item) => item.globalId),
+    sourceIds: source.map((item) => item.globalId),
+    openingStoryId,
     items: result,
     groupById,
   };
@@ -86,31 +99,37 @@ export function presentFeed(
   items: FeedItem[],
   previous?: FeedPresentation,
   enabled = true,
+  opening = false,
 ): FeedPresentation {
-  if (!enabled)
-    return {
-      sourceIds: items.map((item) => item.globalId),
-      items,
-      groupById: new Map(),
-    };
-  if (!previous?.items.length) return arrange(items);
+  if (!enabled && !opening) return {
+    sourceIds: items.map((item) => item.globalId), items,
+    openingStoryId: null, groupById: new Map(),
+  };
+  if (!enabled) return arrange(items, opening, false);
+  if (!previous?.items.length) return arrange(items, opening);
+  // Startup imports can first publish a short post-only prefix. Apply the
+  // opening rule once its top-ten story arrives, then keep the chosen row.
+  if (opening && previous.openingStoryId === null &&
+      items.slice(0, OPENING_STORY_WINDOW).some((item) => item.contentType === "story")) {
+    return arrange(items, true);
+  }
   const sourceIds = items.map((item) => item.globalId);
   const byId = new Map(items.map((item) => [item.globalId, item]));
   const previousIds = new Set(previous.sourceIds);
   const retained = sourceIds.filter((id) => previousIds.has(id));
   const oldRetained = previous.sourceIds.filter((id) => byId.has(id));
   if (!retained.length || retained.some((id, i) => id !== oldRetained[i]))
-    return arrange(items);
+    return arrange(items, opening);
   const first = sourceIds.indexOf(retained[0]);
   const last = sourceIds.indexOf(retained[retained.length - 1]);
-  if (last - first + 1 !== retained.length) return arrange(items);
+  if (last - first + 1 !== retained.length) return arrange(items, opening);
   const oldById = new Map(previous.items.map((item) => [item.globalId, item]));
   if (
     retained.some(
       (id) => byId.get(id)!.contentType !== oldById.get(id)!.contentType,
     )
   )
-    return arrange(items);
+    return arrange(items, opening);
   const prefix = arrange(items.slice(0, first));
   const suffix = arrange(items.slice(last + 1));
   const middle = previous.items
@@ -121,16 +140,17 @@ export function presentFeed(
   if (
     result.some(
       (item, index) =>
+        item.globalId !== previous.openingStoryId &&
         Math.abs(ranks.get(item.globalId)! - index) > MAX_DISPLACEMENT,
     )
   )
-    return arrange(items);
+    return arrange(items, opening);
   const groupById = new Map([...prefix.groupById, ...suffix.groupById]);
   for (const item of middle) {
     const group = previous.groupById.get(item.globalId);
     if (group) groupById.set(item.globalId, group);
   }
-  return { sourceIds, items: result, groupById };
+  return { sourceIds, items: result, groupById, openingStoryId: previous.openingStoryId };
 }
 
 /** Row geometry is independent of ranking and navigation order. */

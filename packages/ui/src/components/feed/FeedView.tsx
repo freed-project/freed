@@ -181,7 +181,7 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
         const members = row.type === "item" ? [row.item] : row.items;
         if (members.some((item) => item.globalId === anchor.id)) {
           parentRef.current.scrollTop =
-            start + Math.min(anchor.offset, estimateItemSize(i) - 1);
+            start + (i === 0 ? CARD_V_GAP : 0) + Math.min(anchor.offset, rowHeight(i) - 1);
           break;
         }
         start += estimateItemSize(i);
@@ -198,7 +198,7 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
           const row = rows[i];
           anchorRef.current = {
             id: row.type === "item" ? row.item.globalId : row.items[0].globalId,
-            offset: scrollTop - start,
+            offset: scrollTop - start - (i === 0 ? CARD_V_GAP : 0),
           };
           break;
         }
@@ -572,11 +572,10 @@ export function FeedView() {
     filteredItems,
     isSearching,
   ]);
-  const [feedColumns, setFeedColumns] = useState(3);
   const presentation = useFeedPresentation(
     rankedItems,
     JSON.stringify([boundedSelectionIdentity, searchQuery]),
-    feedColumns > 1,
+    boundedFeed.windowStartIndex === 0,
   );
   const visibleItems = presentation.items;
   useEffect(() => {
@@ -1177,7 +1176,6 @@ export function FeedView() {
           <FeedList
             items={visibleItems}
             storyGroups={presentation.groupById}
-            onColumnsChange={setFeedColumns}
             onItemClick={openItemDirect}
             focusedIndex={focusedIndex}
             focusMoveDirection={keyboardFocusDirection}

@@ -5,27 +5,26 @@ import { presentFeed, type FeedPresentation } from "./feed-presentation.js";
 export function useFeedPresentation(
   items: FeedItem[],
   sessionKey: string,
-  enabled: boolean,
+  opening: boolean,
 ) {
   const committed = useRef<{
     key: string;
-    enabled: boolean;
     presentation: FeedPresentation;
   } | null>(null);
   const presentation = useMemo(
     () =>
       presentFeed(
         items,
-        committed.current?.key === sessionKey &&
-          committed.current.enabled === enabled
+        committed.current?.key === sessionKey
           ? committed.current.presentation
           : undefined,
-        enabled,
+        true,
+        opening,
       ),
-    [items, sessionKey, enabled],
+    [items, sessionKey, opening],
   );
   useLayoutEffect(() => {
-    committed.current = { key: sessionKey, enabled, presentation };
-  }, [sessionKey, enabled, presentation]);
+    committed.current = { key: sessionKey, presentation };
+  }, [sessionKey, opening, presentation]);
   return presentation;
 }
