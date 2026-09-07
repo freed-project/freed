@@ -1,10 +1,10 @@
 [
   {
-    "version": "26.9.600",
-    "tagName": "v26.9.600",
+    "version": "26.9.602",
+    "tagName": "v26.9.602",
     "channel": "production",
-    "date": "2026-09-06T18:18:25Z",
-    "deck": "An interactive Freed demo, a richer Friends galaxy, and connected profiles that bring people and their posts together",
+    "date": "2026-09-07T04:53:48Z",
+    "deck": "An interactive Freed demo, connected Friends and map views, and a clearer mobile reading experience.",
     "features": [
       {
         "text": "Explore Freed in an interactive demo with illustrated stories, a unified social feed, and connected Friends and map views"
@@ -13,7 +13,7 @@
         "text": "Move between people, their social profiles, recent posts and locations in the Friends galaxy, with zoom-aware avatars and labels and editable Connection, Friend and Fam ratings"
       },
       {
-        "text": "Follow author links into Friends and jump from recent activity into the reader, with profile avatars cached locally in Freed Desktop"
+        "text": "Read on mobile with one toolbar, accessible overflow actions, and a draggable demo tab docked to the right edge"
       }
     ],
     "fixes": [
@@ -24,7 +24,7 @@
         "text": "Add searchable notes to saved content"
       },
       {
-        "text": "Restore LinkedIn feed extraction after reconnecting and support updated feed markup"
+        "text": "LinkedIn captures work after reconnecting and support updated feed markup"
       },
       {
         "text": "Preserve pending provider syncs during temporary writer admission failures and recognize unlocked macOS sessions correctly"
@@ -33,11 +33,38 @@
         "text": "Keep large Library exports off the Desktop command thread and improve Drive publication for larger libraries"
       },
       {
-        "text": "Refine the existing SQLite Library with normalized storage and sync records and local-only authority initialization"
+        "text": "Follow author links into Friends and jump from recent activity into the reader, with profile avatars cached locally in Freed Desktop"
+      },
+      {
+        "text": "X link previews and videos without a playable URL no longer create invalid media records that block capture"
+      },
+      {
+        "text": "LinkedIn and Facebook accept posts with a video marker but no extracted media URL, and classify duplicate URLs by position"
+      },
+      {
+        "text": "The PWA can resume an accepted sync result after interrupted local processing without rejecting its unchanged contents"
+      },
+      {
+        "text": "Anonymous demo tabs use separate temporary Libraries instead of competing for the persistent Library lock"
+      },
+      {
+        "text": "Demo reader descriptions preserve paragraphs and credit lines"
+      },
+      {
+        "text": "Feed, reader, Friends and map views share consistent loading indicators, and map markers no longer flash unfinished content"
+      },
+      {
+        "text": "Fade in the demo welcome shade and extend it across mobile viewport and safe-area bounds"
+      },
+      {
+        "text": "Keep reader actions available during background refreshes and remove the duplicate mobile toolbar, blur and dark bottom fade"
+      },
+      {
+        "text": "Make Fit All controls square in Friends and map views"
       }
     ],
     "followUps": [],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.9.600",
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.9.602",
     "prNumbers": [
       1187,
       1189,
@@ -199,13 +226,61 @@
       1795
     ],
     "builds": [
-      "26.9.600"
+      "26.9.600",
+      "26.9.602"
     ],
     "buildLinks": [
       {
         "version": "26.9.600",
         "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.9.600",
         "channel": "production"
+      },
+      {
+        "version": "26.9.602",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.9.602",
+        "channel": "production"
+      }
+    ]
+  },
+  {
+    "version": "26.9.601-dev",
+    "tagName": "v26.9.601-dev",
+    "channel": "dev",
+    "date": "2026-09-06T19:25:24Z",
+    "deck": "More reliable social captures, interrupted-sync recovery, and locally cached avatars",
+    "features": [
+      {
+        "text": "Freed Desktop caches discovered identity avatars locally, including identities not currently onscreen"
+      }
+    ],
+    "fixes": [
+      {
+        "text": "X link previews and videos without a playable URL no longer create invalid media records that block capture"
+      },
+      {
+        "text": "LinkedIn and Facebook accept posts with a video marker but no extracted media URL, and classify duplicate URLs by position"
+      },
+      {
+        "text": "The PWA can resume an accepted sync result after interrupted local processing without rejecting its unchanged contents"
+      },
+      {
+        "text": "Anonymous demo tabs use separate temporary Libraries instead of competing for the persistent Library lock"
+      },
+      {
+        "text": "Demo reader descriptions preserve paragraphs and credit lines"
+      }
+    ],
+    "followUps": [],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.9.601-dev",
+    "prNumbers": [],
+    "builds": [
+      "26.9.601-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.9.601-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.9.601-dev",
+        "channel": "dev"
       }
     ]
   },
