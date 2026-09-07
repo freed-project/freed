@@ -36,8 +36,8 @@ type ExchangeResult =
 async function exchangeGDrive(
   code: string,
   verifier: string,
+  redirectUri: string,
 ): Promise<ExchangeResult> {
-  const redirectUri = getStoredGoogleOAuthRedirectUri();
   // Token exchange is proxied server-side: Google requires a client_secret
   // even for PKCE, so we never expose it to the browser.
   const res = await fetch("/api/oauth/google", {
@@ -102,6 +102,7 @@ export function OAuthCallback() {
 
       const provider = sessionStorage.getItem("freed_pkce_provider");
       const verifier = sessionStorage.getItem("freed_pkce_verifier");
+      const googleRedirectUri = getStoredGoogleOAuthRedirectUri();
       const oauthGeneration = consumePwaOAuthRuntimeGeneration();
 
       // Clean up PKCE state immediately, single-use.
@@ -138,7 +139,7 @@ export function OAuthCallback() {
 
       const lifecycle = captureCloudLifecycle();
       try {
-        const result = await exchangeGDrive(code, verifier);
+        const result = await exchangeGDrive(code, verifier, googleRedirectUri);
         if (!result.ok) {
           if (
             !cancelled &&
