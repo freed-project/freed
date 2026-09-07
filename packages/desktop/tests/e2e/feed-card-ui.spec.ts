@@ -1120,3 +1120,31 @@ test("feed cards show compact event metadata from semantic enrichment", async ({
   await expect(eventCard).toBeVisible();
   await expect(eventCard).toContainText(/Event/);
 });
+
+
+test("failed feed refresh shows a retry action instead of an empty Library", async ({ app }) => {
+  await app.goto();
+  await app.waitForReady();
+  await injectCardUiItems(app.page);
+  await expect(app.page.locator("article").first()).toBeVisible();
+  await app.page.evaluate(() => {
+    const w = window as Record<string, unknown>;
+    const handlers = w.__TAURI_MOCK_HANDLERS__ as Record<string, (args: any) => unknown>;
+    const original = handlers.query_normalized_library;
+    w.__RESTORE_FEED_QUERY__ = () => { handlers.query_normalized_library = original; };
+    handlers.query_normalized_library = (args) => {
+      if (args.request?.queryId === "feed_browse_page_v3") throw new Error("forced feed failure");
+      return original(args);
+    };
+    const store = w.__FREED_STORE__ as { getState(): { setFilter(filter: unknown): void } };
+    store.getState().setFilter({ platform: "facebook" });
+  });
+  await expect(app.page.getByRole("alert")).toContainText("Unable to load this feed.");
+  await expect(app.page.getByText("Welcome to Freed", { exact: true })).toHaveCount(0);
+  await app.page.evaluate(() => {
+    ((window as Record<string, unknown>).__RESTORE_FEED_QUERY__ as () => void)();
+  });
+  await app.page.getByRole("button", { name: "Try again", exact: true }).click();
+  await expect(app.page.getByRole("alert")).toHaveCount(0);
+  await expect(app.page.locator("article").filter({ hasText: FACEBOOK_TITLE }).first()).toBeVisible();
+});

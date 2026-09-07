@@ -11,8 +11,8 @@
     "website"
   ],
   "scripts": {
-    "contracts:generate": "node scripts/generate-library-core-contract.mjs",
-    "contracts:check": "node scripts/generate-library-core-contract.mjs --check",
+    "contracts:generate": "node scripts/generate-library-core-contract.mjs && node scripts/generate-provider-admission-policy.mjs",
+    "contracts:check": "node scripts/generate-library-core-contract.mjs --check && node scripts/generate-provider-admission-policy.mjs --check",
     "automation:actors": "node scripts/automation-actors.mjs",
     "automation:hosts": "node scripts/automation-hosts.mjs",
     "automation:control": "node scripts/automation-control.mjs",

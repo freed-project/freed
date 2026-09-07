@@ -12,6 +12,8 @@ export interface SampleAvatarFocalPoint {
 
 /** Reviewed source-specific crops, independent of any fictional identity name. */
 export const SAMPLE_AVATAR_FOCAL_POINTS: Readonly<Record<string, SampleAvatarFocalPoint>> = {
+  "15ea5019ad83a2f700c94d3b45467808f9a430f4": { x: 0.5, y: 0.445, zoom: 2.4 },
+  "e7305047582704112f4e8007a5185cc6f9fd00f6": { x: 0.51, y: 0.55, zoom: 1.8 },
   "f7793124b2f5946acc5bce246a32cdd921f81ffd": {"x": 0.47, "y": 0.47, "zoom": 1.3},
   "6206ed56478487503810b5afa05d8d8eadd01655": {"x": 0.5, "y": 0.755, "zoom": 2.2},
   "49106f4e4f269ddf47dd35e521a5a45eef8728a5": {"x": 0.34, "y": 0.55, "zoom": 1.3},
@@ -124,6 +126,8 @@ export const SAMPLE_AVATAR_FOCAL_POINTS: Readonly<Record<string, SampleAvatarFoc
 };
 
 export const SAMPLE_CHARACTER_AVATAR_SHA1: Readonly<Partial<Record<string, string>>> = {
+  "edith-scrabble": "15ea5019ad83a2f700c94d3b45467808f9a430f4",
+  "mabel-lowwater": "e7305047582704112f4e8007a5185cc6f9fd00f6",
   "lionel-fringe": "b32628916e16633176a6b3e7fb25c00d2c65f8dd",
   "sylvia-bead": "f7793124b2f5946acc5bce246a32cdd921f81ffd",
   "sylvie-stilt": "461d677d24ff810eba2fba4f0e1fb862f8c8fdfd",

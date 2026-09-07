@@ -398,6 +398,8 @@ describe("demo checkpoint", () => {
       "npgallery.nps.gov", "www.fisheries.noaa.gov", "media.fisheries.noaa.gov",
       "www.nps.gov", "www.fws.gov",
       "d9-wret.s3.us-west-2.amazonaws.com",
+      "inaturalist-open-data.s3.amazonaws.com", "live.staticflickr.com",
+      "assets.science.nasa.gov",
     ]);
     const imageUrls = records.flatMap((record) => [
       record.payload.authorAvatarUrl, record.payload.avatarUrl, record.payload.imageUrl,
@@ -407,6 +409,22 @@ describe("demo checkpoint", () => {
     expect([...new Set(imageUrls.map((url) => new URL(url).hostname))]
       .filter((host) => !allowedHosts.has(host))).toEqual([]);
     expect(serialized).not.toMatch(/private[_-]?key/i);
+  });
+
+  it("installs one manual editorial classification for every demo post", () => {
+    const records = createFreedDemoCheckpointRecords(FIXED_PRESENTATION);
+    const items = records.filter((record) => record.registryKey === "10_feed_item");
+    const metadata = records.filter((record) => record.registryKey === "15_feed_item_signal");
+    const scores = records.filter((record) => record.registryKey === "16_feed_item_signal_score");
+    const expectedSignals = new Set(["essay", "event", "life_update", "discussion", "news"]);
+
+    expect(items).toHaveLength(500);
+    expect(metadata).toHaveLength(items.length);
+    expect(scores).toHaveLength(items.length);
+    expect(metadata.every((record) => record.payload.method === "manual")).toBe(true);
+    expect(scores.every((record) =>
+      record.payload.tagged === true && expectedSignals.has(String(record.payload.signal))
+    )).toBe(true);
   });
 
   it("avoids repeating the previous first item without changing the corpus", () => {

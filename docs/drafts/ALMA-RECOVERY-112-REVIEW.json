@@ -1,0 +1,65 @@
+{
+  "decision": "pass_preserved_first_episode_only",
+  "imageDecision": "pass",
+  "proseDecision": "pass_verbatim",
+  "canonDecision": "pass",
+  "runtimeAdmission": false,
+  "episode": {
+    "subject": "octopus underwater",
+    "platform": "rss",
+    "title": "The room behind the stone",
+    "theme": "movement",
+    "body": "I found the entrance with an arm. Sand, a lip of rock, then space. I put another arm in. Those two began exploring while I was still outside deciding whether to live there.\n\nGetting my head through required a fold I had not tried before. For a moment one eye was outside and nearly everything else was inside. I had an excellent view of the thing I was stuck in.\n\nWhen I finally squeezed through, an arm brought me a smooth shell from under the lip. Empty, I thought. I settled into the back with it. Two arms were still outside. I pulled them in and discovered they had brought a stone. Apparently we were moving in whether I liked it or not.",
+    "mediaSha1": "a72ef215b1265e2dda4eb754f72bf11015d8f86b"
+  },
+  "visibleScene": "Common octopus tucked below encrusted rock roof, with exposed eye, mantle/head skin and several arm suckers visible. Smooth open bivalve shells occupy foreground, with ribbed shells higher at right. This is a specific occupied rocky den with loose shell material, not a generic octopus portrait.",
+  "quality": "Some underwater haze and softer contrast across octopus, but eye, suckers, roof and shells remain legible at exact1024px delivery. Shells are bright without erasing their shape. Image passes for its unusually precise den-and-shell setting.",
+  "proseReason": "Existing passage delivers body-level conflict: exploration and collection get ahead of the narrator decision. Tight roof, eye outside and loose shells visually earn the setup. Squeezing, collected stone and arm sequence are invented but physically compatible; photograph need not document every stage.",
+  "fictionBoundary": "Do not claim the still shows squeezing in progress, exact stone collection, two arms outside, or a hermit crab. Smooth photographed bivalve valves are not identified as the occupied gastropod shell in later passages. No reuse for Not empty or Premature condolences.",
+  "canonReview": {
+    "file": "packages/shared/src/sample-character-arcs.ts",
+    "episodes": [
+      "The room behind the stone",
+      "It had hold of me too",
+      "Not empty",
+      "I kept the stone",
+      "The water came backward",
+      "Premature condolences",
+      "A way out",
+      "Nothing to carry"
+    ],
+    "placement": "Bind existing first slot only. No new episode appended; preserve exact body and all other held slots.",
+    "reason": "Existing introduction already establishes the den and habits developed by subsequent passages. NEAtlantic Octopus vulgaris source from Sesimbra is geographically compatible illustration for Mouro narrator, without fictional relocation. No South African TypeIII substitution. No source sex or exact individual identity established."
+  },
+  "primaryEvidence": {
+    "sourceUrl": "https://www.inaturalist.org/observations/388406868",
+    "metadataUrl": "https://www.inaturalist.org/observations/388406868.json",
+    "cachedMetadata": "/tmp/freed-alma112/388406868.json",
+    "method": "Independently read root-cached primary observation JSON and exact photo object. No new metadata network request; do not label it reviewer-refreshed live.",
+    "taxon": "Octopus vulgaris",
+    "qualityGrade": "research",
+    "place": "Sesimbra, Portugal",
+    "identifications": [
+      "Octopus vulgaris by oddmarble",
+      "Octopus vulgaris by ruseva"
+    ],
+    "photoId": 711360406,
+    "creator": "(c) Vsevolod Rudyi, some rights reserved (CC BY), uploaded by Vsevolod Rudyi",
+    "license": "CC-BY",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+    "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/711360406/large.jpg",
+    "originalWidth": 2048,
+    "originalHeight": 1536
+  },
+  "exactImage": {
+    "individuallyOpened": true,
+    "localPath": "/tmp/freed-alma112/711360406.jpg",
+    "width": 1024,
+    "height": 768,
+    "bytes": 850607,
+    "sha1": "a72ef215b1265e2dda4eb754f72bf11015d8f86b",
+    "sha256": "3be00b97e4a7d16dd835a19e0cf1eb949a11d345d9117b5780d68be2aa5ec107",
+    "hashScope": "Inspected source-published large delivery; original upload not opened"
+  },
+  "scope": "Only112 review documents written. No runtime writes or publication."
+}

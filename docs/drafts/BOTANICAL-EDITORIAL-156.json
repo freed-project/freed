@@ -1,0 +1,386 @@
+{
+  "batch": "BOTANICAL-EDITORIAL-156",
+  "status": "one pending proposal; zero author admissions",
+  "proposals": [
+    {
+      "candidateId": "156-01",
+      "characterId": "oona-rose",
+      "identityNameBase": "Oona Rose",
+      "admission": "pending independent lead review",
+      "operation": "append later mature-fruiting event; no admission or runtime author mutation",
+      "episode": {
+        "subject": "Lycogala slime mold",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "transformation",
+        "title": "Before the hand left",
+        "body": "A finger pressed down and a pale cloud burst out of me. I wanted it to go away. Then it lifted, carrying some of me on its skin, and I wanted it to wait.",
+        "mediaSha1": "ecdcaeed543cec9d423065f500bdada9ec77d7ef"
+      },
+      "media": {
+        "observationId": 68557200,
+        "photoId": 111040705,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/111040705/large.jpg",
+        "localFile": "/tmp/botanical156/111040705.jpg",
+        "sourceLocal": "/tmp/botanical156/obs-68557200.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/68557200",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) Christine Young, some rights reserved (CC BY), uploaded by Christine Young",
+        "dimensions": [
+          1024,
+          846
+        ],
+        "originalUploadDimensions": [
+          2048,
+          1691
+        ],
+        "bytes": 576862,
+        "sha1": "ecdcaeed543cec9d423065f500bdada9ec77d7ef",
+        "sha256": "160d574032cf1ce16fb8bd06834c1d6967ab5d4fbfcc22b9405eb7d691ac4625",
+        "seconds": 0.83,
+        "status": 200,
+        "category": "wildlife",
+        "aggregated": false,
+        "alt": "A fingertip presses a mature brown Lycogala fruiting body on decaying wood as a pale cloud of spores streams outward across the frame."
+      },
+      "sourceEvidence": {
+        "currentTaxon": "Lycogala",
+        "qualityGrade": "needs_id",
+        "currentMatchingIdentifications": 2,
+        "inactiveOlderIdentifications": [
+          "Lycogala epidendrum",
+          "Lycogala epidendrum"
+        ],
+        "identificationLimit": "Current genus-level identification matches Oona's deliberately genus-level canon. Needs ID is disclosed; no narrow species identity is inferred from older inactive IDs.",
+        "description": "Mature, brown aethalia with a powdery mass of lavender spores inside. Some had already burst out through the little holes.\n\nHabitat: Growing on rotting wood in a deciduous, swampy forest.",
+        "sourcePlace": "Sharon, Connecticut, USA",
+        "photoRights": "Exact photo 111040705 is CC BY 4.0, Christine Young. The matching observation_photos record supplies the license and source-published large URL.",
+        "companions": [
+          111040527,
+          111040619
+        ]
+      },
+      "imageReview": "PASS recommendation for independent review. Exact image individually opened. Finger pressure, collapsed/open mature fruiting material, pale debris on the fingertip and airborne spore cloud are visible. Motion streaks belong to released material; they are not a substitute for a sharp focal subject. Companion 111040527 sharply resolves a mature perforated outer wall. Companion 111040619 shows discharge from a touched body under a small stick. Only the fingertip image is proposed as an entry. No crop or editing. Original upload metadata 2048 x 1691 is separate from the reviewed 1024 x 846 delivery.",
+      "proseAssessment": "PASS recommendation. Oona first wants the intrusive finger gone, then wants it to remain once part of her material is leaving with it. The reversal is caused by visible bodily dispersal, not advice, an abstract moral or offspring described as departing children. This continues her difficult attachment without another crowding argument or a human recoiling in fear. It is uneasy rather than a joke about suffering. No active choice to release spores is asserted.",
+      "canon": {
+        "read": [
+          "packages/shared/src/sample-character-arcs-strange.ts complete Oona seven-entry runtime arc",
+          "docs/drafts/strange-canon-02.md Oona",
+          "docs/drafts/strange-canon-10.md Oona continuation",
+          "docs/SAMPLE-CORPUS-EDITORIAL-GUIDE.md current owner cap and editorial contract"
+        ],
+        "chronology": "After the mature phase in Rosy. Does not return Oona to pink, undo release, restore an intact wall or turn spores into walking fruiting bodies. Later entries must preserve this released material or explicitly be earlier memories. No automatic death or new generation is admitted.",
+        "appearance": "Compared actual /tmp/freed-strange10-review.qYcJL3/12.jpg, the mature Rosy reference. Both show muted mature fruiting structures. New source is browner, and its author explicitly calls it mature brown; this is not evidence of an individual changing species or a claimed exact time series. Lead should assess the mature gray/brown continuity.",
+        "home": "Damp deadwood in a central European woodland, 48.95, 9.1 unchanged. Connecticut is source locality only.",
+        "identity": "Genus Lycogala retained. The spore material described as some of me is fictional continuity of a fruiting body with its contents, not proof of one conscious distributed organism or identical genomes.",
+        "avatar": "Existing approved avatar unchanged."
+      },
+      "fictionBoundary": {
+        "visible": "Human fingertip contact, opened mature structures, pale particles on skin and a dispersing cloud.",
+        "fiction": "First-person feeling, initial wish for withdrawal, subsequent lifted finger carrying particles and wish that it wait. The still depicts contact and discharge, not the later hand withdrawal.",
+        "notClaimed": "No nervous system, pain experiment, conscious spore control, spore viability, germination, respiratory organ, moving fruiting body, infection, human harm or complete annihilation. No attribution of fictional narration to Christine Young."
+      },
+      "biologySources": [
+        {
+          "url": "https://www.inaturalist.org/observations/68557200",
+          "publisher": "Primary observation by Christine Young",
+          "review": "Detailed current JSON read. It identifies mature aethalia, powdery internal spores and discharge holes. The exact images independently establish physical release under contact."
+        },
+        {
+          "url": "https://www.horniman.ac.uk/story/dog-vomit-and-wolfs-milk-the-extraordinary-world-of-slime-moulds/",
+          "publisher": "Horniman Museum and Gardens",
+          "review": "Opened institution-published account. Its specific Lycogala paragraph describes brown mature fruiting bodies releasing spores. No Physarum maze, slime-mold aggregation, intelligence or cosmic claims elsewhere on that page are transferred to Lycogala."
+        }
+      ]
+    }
+  ],
+  "holds": [
+    {
+      "photoIds": [
+        5130520,
+        5130521,
+        350517787,
+        39089128,
+        39089142
+      ],
+      "verdict": "HOLD visual quality: soft or distant mature-body images. Visible ruptures do not automatically satisfy the visual standard."
+    },
+    {
+      "photoIds": [
+        701049941,
+        701066374
+      ],
+      "title": "The lifted roof",
+      "body": "The bark above us lifted. Light reached a side of me that had never needed to be presentable. I wanted the shade back until the person leaned closer. Then I wanted a little time to prepare.",
+      "verdict": "HOLD. A loose bark slab is visible but the central lift is invented, and embarrassment under inspection repeats Ivo's Underneath. Do not admit this actual tested draft."
+    },
+    {
+      "photoIds": [
+        111040527,
+        111040619
+      ],
+      "verdict": "Strong companion evidence from the selected observation, but not separate incidents. No duplicate entry from another exposure or second discharge trigger."
+    }
+  ],
+  "searchNotes": "Additional photo-specific public queries for Mycena interrupta slug/insect, Cladonia cristatella insect and Coprinus comatus insect returned no candidates. Female Phidippus regius search did not produce a new orange-faced feeding image; older Penny152 hold preserved without rewriting. No new identity or quota filler.",
+  "inspection": {
+    "newPhotosDownloaded": 10,
+    "newPhotosIndividuallyOpened": 10,
+    "priorMatureImageOpened": "/tmp/freed-strange10-review.qYcJL3/12.jpg",
+    "sources": [
+      {
+        "observationId": 4281526,
+        "photoId": 5130520,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/5130520/large.jpeg",
+        "localFile": "/tmp/botanical156/5130520.jpg",
+        "sourceLocal": "/tmp/botanical156/obs-4281526.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/4281526",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) Grey Smith, some rights reserved (CC BY), uploaded by Grey Smith",
+        "dimensions": [
+          640,
+          480
+        ],
+        "originalUploadDimensions": [
+          640,
+          480
+        ],
+        "bytes": 127187,
+        "sha1": "34ad7ec58dada05124b3af87f369fc0da1f727be",
+        "sha256": "75ff27a5b7fd849092057232cdfc4b19822d89dd23d6df33af934467884c0cd4",
+        "seconds": 0.585,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 4281526,
+        "photoId": 5130521,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/5130521/large.jpeg",
+        "localFile": "/tmp/botanical156/5130521.jpg",
+        "sourceLocal": "/tmp/botanical156/obs-4281526.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/4281526",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) Grey Smith, some rights reserved (CC BY), uploaded by Grey Smith",
+        "dimensions": [
+          640,
+          480
+        ],
+        "originalUploadDimensions": [
+          640,
+          480
+        ],
+        "bytes": 125044,
+        "sha1": "692b83e9678560b0bdf5c79e9167d852325589a5",
+        "sha256": "09d8bab3c5729cfec06155316232fe5d428e67708f5420cdc741b73b505a40a4",
+        "seconds": 0.687,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 383052908,
+        "photoId": 701049941,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/701049941/large.jpg",
+        "localFile": "/tmp/botanical156/701049941.jpg",
+        "sourceLocal": "/tmp/botanical156/obs-383052908.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/383052908",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) Alex Reitan, some rights reserved (CC BY), uploaded by Alex Reitan",
+        "dimensions": [
+          768,
+          1024
+        ],
+        "originalUploadDimensions": [
+          1536,
+          2048
+        ],
+        "bytes": 481715,
+        "sha1": "12a9d78fd6131691f565ecd1d61d17d632920423",
+        "sha256": "8272cca96f4384fe899d0febcc830bbd40cdb99069d0e4739a6e185888453d55",
+        "seconds": 0.792,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 383052908,
+        "photoId": 701066374,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/701066374/large.jpg",
+        "localFile": "/tmp/botanical156/701066374.jpg",
+        "sourceLocal": "/tmp/botanical156/obs-383052908.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/383052908",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) Alex Reitan, some rights reserved (CC BY), uploaded by Alex Reitan",
+        "dimensions": [
+          768,
+          1024
+        ],
+        "originalUploadDimensions": [
+          1536,
+          2048
+        ],
+        "bytes": 531360,
+        "sha1": "2dc18e1a7131cedefa87b67b38f0f12153bde1ab",
+        "sha256": "2ad513e1d0e3d6bd175a472f2be8c7849c0ad46eeb1b061735c2fd8a2de967d4",
+        "seconds": 0.97,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 198828065,
+        "photoId": 350517787,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/350517787/large.jpeg",
+        "localFile": "/tmp/botanical156/350517787.jpg",
+        "sourceLocal": "/tmp/botanical156/obs-198828065.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/198828065",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) Garth Harwood, some rights reserved (CC BY), uploaded by Garth Harwood",
+        "dimensions": [
+          1024,
+          768
+        ],
+        "originalUploadDimensions": [
+          2048,
+          1536
+        ],
+        "bytes": 340082,
+        "sha1": "5a013ccf71b70fbda30f51d3572fb47f515bcf70",
+        "sha256": "1ee63e5d31d60d1b02ef7dd90e3b41a28a74b07b4b2254ee639f1a735f6a5ed8",
+        "seconds": 0.687,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 68557200,
+        "photoId": 111040527,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/111040527/large.jpg",
+        "localFile": "/tmp/botanical156/111040527.jpg",
+        "sourceLocal": "/tmp/botanical156/obs-68557200.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/68557200",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) Christine Young, some rights reserved (CC BY), uploaded by Christine Young",
+        "dimensions": [
+          1024,
+          794
+        ],
+        "originalUploadDimensions": [
+          2048,
+          1587
+        ],
+        "bytes": 732595,
+        "sha1": "24727a2efa2b139c626e5908374006627ec239db",
+        "sha256": "276da5e4e36d50c0a399d886c72b16099e464c711329738a868d44367685481b",
+        "seconds": 0.877,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 68557200,
+        "photoId": 111040619,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/111040619/large.jpg",
+        "localFile": "/tmp/botanical156/111040619.jpg",
+        "sourceLocal": "/tmp/botanical156/obs-68557200.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/68557200",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) Christine Young, some rights reserved (CC BY), uploaded by Christine Young",
+        "dimensions": [
+          1024,
+          790
+        ],
+        "originalUploadDimensions": [
+          2048,
+          1580
+        ],
+        "bytes": 743155,
+        "sha1": "3d005a4342a49370d6a1cb260ca3950ed748f95c",
+        "sha256": "3b71b941293b22015920d593be874c9e2e2c00829f17636d4e68ae3bcfdbf593",
+        "seconds": 1.079,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 68557200,
+        "photoId": 111040705,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/111040705/large.jpg",
+        "localFile": "/tmp/botanical156/111040705.jpg",
+        "sourceLocal": "/tmp/botanical156/obs-68557200.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/68557200",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) Christine Young, some rights reserved (CC BY), uploaded by Christine Young",
+        "dimensions": [
+          1024,
+          846
+        ],
+        "originalUploadDimensions": [
+          2048,
+          1691
+        ],
+        "bytes": 576862,
+        "sha1": "ecdcaeed543cec9d423065f500bdada9ec77d7ef",
+        "sha256": "160d574032cf1ce16fb8bd06834c1d6967ab5d4fbfcc22b9405eb7d691ac4625",
+        "seconds": 0.83,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 25249414,
+        "photoId": 39089128,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/39089128/large.jpg",
+        "localFile": "/tmp/botanical156/39089128.jpg",
+        "sourceLocal": "/tmp/botanical156/obs-25249414.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/25249414",
+        "license": "CC0",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "attribution": "no rights reserved, uploaded by pynklynx",
+        "dimensions": [
+          768,
+          1024
+        ],
+        "originalUploadDimensions": [
+          1536,
+          2048
+        ],
+        "bytes": 410761,
+        "sha1": "3e89d9eafc78744d63efaa96744a91346654f5f1",
+        "sha256": "4cdeac3354ea44ce328ee706e370f949856b4fb5521c9a5928f5ea99e57522b0",
+        "seconds": 0.774,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 25249414,
+        "photoId": 39089142,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/39089142/large.jpg",
+        "localFile": "/tmp/botanical156/39089142.jpg",
+        "sourceLocal": "/tmp/botanical156/obs-25249414.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/25249414",
+        "license": "CC0",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "attribution": "no rights reserved, uploaded by pynklynx",
+        "dimensions": [
+          768,
+          1024
+        ],
+        "originalUploadDimensions": [
+          1536,
+          2048
+        ],
+        "bytes": 365517,
+        "sha1": "c1294592d2f6cd00d50ee31c495437c19c01c93a",
+        "sha256": "37b8f5998d3227f63bb8e611fde5b8c2a9ace5bb3b8c4933fc8bc847bcdb1d98",
+        "seconds": 0.775,
+        "status": 200,
+        "individuallyOpened": true
+      }
+    ],
+    "checks": "Exact byte counts, SHA-1 and SHA-256 reverified for all ten. JSON parse and owned-file whitespace check pass.",
+    "scope": "Only BOTANICAL-EDITORIAL-156.md/.json and /tmp/botanical156. No runtime, avatar, accepted prose, shared dependencies/controls, other-task contact/inspection, publication or merge."
+  }
+}

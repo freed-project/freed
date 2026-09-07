@@ -7,7 +7,9 @@ import {
   SAMPLE_SHOWCASE_LINKED_SOCIAL_IDENTITY_COUNT,
   SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT,
   SAMPLE_SHOWCASE_UNLINKED_SOCIAL_IDENTITY_COUNT,
-  SAMPLE_CORPUS_MEDIA,
+  SAMPLE_CURATED_DEMO_MEDIA,
+  SAMPLE_CHARACTER_ARCS,
+  SAMPLE_CHARACTER_AVATAR_MEDIA,
   SAMPLE_STRESS_FRIEND_COUNT,
   SAMPLE_STRESS_LINKED_SOCIAL_IDENTITY_COUNT,
   SAMPLE_STRESS_SOCIAL_IDENTITY_COUNT,
@@ -36,7 +38,7 @@ function linkedSampleAuthorKeys(
 }
 
 describe("sample data batches", () => {
-  it("bounds exhausted template work and limits synthetic fallback to deterministic stress fixtures", () => {
+  it("bounds exhausted template work in deterministic stress fixtures", () => {
     const text = vi.spyOn(corpus, "sampleCorpusGeneratedText")
       .mockReturnValue("I am a fixed synthetic fixture.");
     const options = {
@@ -57,8 +59,6 @@ describe("sample data batches", () => {
       expect(first.items.every((item) => item.content.mediaUrls.length === 1)).toBe(true);
       const second = generateSampleLibraryData(options);
       expect(second).toEqual(first);
-      expect(() => generateSampleLibraryData({ ...options, scale: "showcase" }))
-        .toThrow("Sample showcase text pool exhausted");
     } finally {
       text.mockRestore();
     }
@@ -68,6 +68,9 @@ describe("sample data batches", () => {
     const batchA = generateSampleLibraryData({ batchId: "batch-a", seed: 1 });
     const batchB = generateSampleLibraryData({ batchId: "batch-b", seed: 2 });
 
+    expect(generateSampleLibraryData({ batchId: "repeat", seed: 1, generatedAt: 123 })).toEqual(
+      generateSampleLibraryData({ batchId: "repeat", seed: 1, generatedAt: 123 }),
+    );
     expect(batchA.persons).toHaveLength(SAMPLE_SHOWCASE_FRIEND_COUNT);
     expect(batchB.persons).toHaveLength(SAMPLE_SHOWCASE_FRIEND_COUNT);
     expect(batchA.items).toHaveLength(SAMPLE_SHOWCASE_ITEM_COUNT);
@@ -119,7 +122,7 @@ describe("sample data batches", () => {
       marker: "freed.sample-data.v1",
       batchId: "batch-fingerprint",
       generatedAt: 123,
-      generatorVersion: 11,
+      generatorVersion: 12,
     });
   });
 
@@ -127,7 +130,10 @@ describe("sample data batches", () => {
     const batch = generateSampleLibraryData({ batchId: "batch-negative", seed: -1 });
 
     expect(batch.persons).toHaveLength(SAMPLE_SHOWCASE_FRIEND_COUNT);
-    expect(batch.persons.every((person) => person.id.includes("sample-friend-"))).toBe(true);
+    expect(batch.persons.every((person) => person.id.includes(":person:"))).toBe(true);
+    for (const seed of [0.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(generateSampleLibraryData({ batchId: "numeric-seed", seed, presentationSeed: seed }).items).toHaveLength(SAMPLE_SHOWCASE_ITEM_COUNT);
+    }
   });
 
   it("includes LinkedIn posts that are linked to sample friends", () => {
@@ -151,7 +157,7 @@ describe("sample data batches", () => {
 
   it("includes timestamped map entries for past, current, and future location tests", () => {
     const now = Date.now();
-    const batch = generateSampleLibraryData({ batchId: "batch-map-time", seed: 10 });
+    const batch = generateSampleLibraryData({ batchId: "batch-map-time", seed: 10, scale: "stress", friendCount: 5 });
     const locationItems = batch.items.filter((item) =>
       item.globalId.includes("sample-location-window:")
     );
@@ -194,68 +200,47 @@ describe("sample data batches", () => {
     expect(linkedIdentityCount).toBe(SAMPLE_SHOWCASE_LINKED_SOCIAL_IDENTITY_COUNT);
     expect(unlinkedAccounts).toHaveLength(SAMPLE_SHOWCASE_UNLINKED_SOCIAL_IDENTITY_COUNT);
     expect(batch.accounts).toHaveLength(SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT);
-    expect(new Set(unlinkedAccounts.map((account) => account.provider))).toEqual(
-      new Set(["instagram", "x", "facebook", "linkedin", "rss"]),
-    );
     expect(unlinkedAccounts.every((account) => batch.items.some((item) =>
       item.platform === account.provider && item.author.id === account.externalId
     ))).toBe(true);
   });
 
-  it("custom authors the entire shared corpus with unique matching imagery", () => {
+  it("projects only accepted episodes with exact prose, portraits and source credits", () => {
     const batch = generateSampleLibraryData({ batchId: "batch-corpus", seed: 17 });
-    const imageItems = batch.items.filter((item) => item.content.mediaUrls.length > 0);
-
-    expect(imageItems).toHaveLength(batch.items.length);
-    expect(new Set(batch.items.map((item) => item.content.text ?? "")).size).toBe(batch.items.length);
-    expect(imageItems.every((item) => item.content.mediaUrls.every((url) =>
-      ["thumb.wikimedia.org", "upload.wikimedia.org"].includes(new URL(url).hostname)
-    ))).toBe(true);
-    expect(new Set(imageItems.map((item) => item.platform))).toEqual(
-      new Set(["facebook", "instagram", "linkedin", "rss", "saved", "x"]),
-    );
-    expect(new Set(imageItems.map((item) => item.content.mediaUrls[0])).size).toBe(batch.items.length);
-    const recurringIdentityCount = new Set(batch.items.map((item) => item.author.displayName)).size;
-    expect(recurringIdentityCount).toBeGreaterThan(100);
-    expect(recurringIdentityCount).toBeLessThan(batch.items.length);
-    const generatedTitleCount = new Set(batch.items.map((item) => item.content.linkPreview?.title)).size;
-    expect(generatedTitleCount).toBeGreaterThan(300);
-    expect(generatedTitleCount).toBeLessThan(batch.items.length);
-    const bannedTechnologyLanguage = /\b(?:algorithm|computer|database|dashboard|design system|digital|email|group chat|hardware|internet|notification|roadmap|server|software|status page|version control|webinar)\b/i;
-    expect(batch.items.filter((item) => bannedTechnologyLanguage.test(item.content.text ?? ""))).toEqual([]);
-    expect(batch.items.some((item) => item.platform === "instagram" && /equal billing|effortless beauty|good side/i.test(item.content.text ?? ""))).toBe(true);
-    expect(batch.items.some((item) => item.platform === "facebook" && /will not be taking corrections|wetlands tribunal|unpopular opinion/i.test(item.content.text ?? ""))).toBe(true);
-    expect(batch.items.some((item) => item.platform === "linkedin" && /major milestone|promoted|leadership philosophy|high-impact deliverable/i.test(item.content.text ?? ""))).toBe(true);
-    expect(batch.items.some((item) => item.platform === "x" && /null hypothesis|uncontrolled variable|peer review|effect size/i.test(item.content.text ?? ""))).toBe(true);
-    const openingStructures = new Set(batch.items.map((item) =>
-      (item.content.text ?? "").toLowerCase().replace(/[^a-z ]/g, "").split(/\s+/).slice(0, 4).join(" ")
-    ));
-    expect(openingStructures.size).toBeGreaterThan(300);
-    const publicationItems = batch.items.filter((item) => item.platform === "rss");
-    for (const publication of ["Substack", "Medium", "YouTube"] as const) {
-      const channelItems = publicationItems.filter((item) => item.rssSource?.feedTitle.includes(publication));
-      expect(channelItems).toHaveLength(40);
-      expect(new Set(channelItems.map((item) => item.content.text ?? "")).size).toBe(channelItems.length);
-    }
-    const xPostLengths = batch.items
-      .filter((item) => item.platform === "x")
-      .map((item) => (item.content.text ?? "").length);
-    expect(Math.max(...xPostLengths)).toBeLessThanOrEqual(280);
-    const locatedItems = batch.items.filter((item) => item.location?.coordinates);
-    expect(locatedItems.length).toBeGreaterThanOrEqual(96);
-    expect(locatedItems.every((item) => item.content.mediaUrls.length > 0)).toBe(true);
-
-    for (const item of imageItems) {
-      const asset = SAMPLE_CORPUS_MEDIA.find((candidate) =>
-        item.content.mediaUrls.some((url) => url.startsWith(candidate.baseUrl))
-      );
-      expect(asset, item.globalId).toBeDefined();
-      const displayTitle = item.content.linkPreview?.title;
-      expect(displayTitle, item.globalId).toBeTruthy();
-      if (item.location && asset?.placeId) {
-        expect(item.location.name, item.globalId).toBe(displayTitle);
+    const expected = SAMPLE_CHARACTER_ARCS.flatMap((arc) => arc.episodes
+      .filter((episode) => episode.mediaSha1 !== null)
+      .map((episode) => ({ arc, episode })));
+    expect(batch.items).toHaveLength(expected.length);
+    expect(new Set(batch.items.map((item) => item.content.mediaUrls[0])).size).toBe(expected.length);
+    for (const { arc, episode } of expected) {
+      const item = batch.items.find((candidate) => candidate.globalId.endsWith(`:${episode.mediaSha1}`))!;
+      const asset = SAMPLE_CURATED_DEMO_MEDIA.find((candidate) => candidate.sha1 === episode.mediaSha1)!;
+      expect(item, episode.title).toBeDefined();
+      expect(item.platform).toBe(episode.platform ?? arc.platform);
+      expect(item.content.linkPreview?.title).toBe(episode.title);
+      expect(item.content.mediaUrls).toEqual([asset.imageUrl]);
+      expect(item.author.displayName).toBe(arc.identityNameBase);
+      expect(item.author.avatarUrl).toBe(SAMPLE_CHARACTER_AVATAR_MEDIA.get(arc.characterId)?.imageUrl);
+      expect(item.location?.name).toBe(arc.location?.name);
+      if (episode.video) {
+        expect(item.contentType).toBe("video");
+        expect(item.sourceUrl).toBe(episode.video.watchUrl);
+        expect(item.content.text).toBe(`${episode.body}\n\nOriginal video: ${episode.video.title}\nUploaded by ${episode.video.uploader}: ${episode.video.channelUrl}\nSource: ${episode.video.primarySourceUrl}\nThumbnail by ${asset.creator}, ${asset.license}.\nThumbnail source: ${asset.sourceUrl}`);
+      } else {
+        expect(item.content.text).toBe(episode.body);
       }
     }
+    expect(batch.feeds.every((feed) => !feed.enabled && feed.url.startsWith("https://sample.freed.wtf/"))).toBe(true);
+    expect(batch.items.every((item) => !item.timeRange)).toBe(true);
+    for (const arc of SAMPLE_CHARACTER_ARCS) {
+      const timeline = arc.episodes.filter((episode) => episode.mediaSha1 !== null)
+        .map((episode) => batch.items.find((item) => item.globalId.endsWith(`:${episode.mediaSha1}`))!.publishedAt);
+      expect(timeline).toEqual([...timeline].sort((left, right) => left - right));
+    }
+    const now = batch.items[0]!.capturedAt;
+    expect(batch.items.filter((item) => item.contentType === "story").every((item) =>
+      item.publishedAt < now && item.publishedAt > now - 22 * 3_600_000
+    )).toBe(true);
   });
 
   it("gives every Instagram post an image and distinct copy", () => {
@@ -264,7 +249,7 @@ describe("sample data batches", () => {
       item.platform === "instagram" && item.contentType === "post"
     );
 
-    expect(instagramPosts.length).toBeGreaterThan(250);
+    expect(instagramPosts.length).toBe(SAMPLE_CHARACTER_ARCS.flatMap((arc) => arc.episodes.filter((episode) => episode.mediaSha1 && (episode.platform ?? arc.platform) === "instagram" && (episode.contentType ?? "post") === "post")).length);
     expect(instagramPosts.every((item) =>
       item.content.mediaTypes.includes("image") && item.content.mediaUrls.length > 0
     )).toBe(true);

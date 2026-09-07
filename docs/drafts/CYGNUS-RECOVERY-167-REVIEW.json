@@ -1,0 +1,47 @@
+{
+  "decision": "pass_unchanged_recovery",
+  "characterId": "cygnus-shy",
+  "episode": {
+    "subject": "swan",
+    "title": "The missing one",
+    "body": "Counted eight cygnets. Heard the ninth behind me. Turned around. Still behind me. I swam two circles before a small head came out from under my wing to complain about the ride.",
+    "theme": "family",
+    "platform": "instagram",
+    "mediaSha1": "f6d2e1155cc6d6daab8714a97934078f3f3bf25b"
+  },
+  "reviewScope": "Read both167proposal files and all eight current Cygnus episodes. Individually opened exact proposed1024x768image. Independently read cached primary observation163743160 nested photo283242966 license record. No new network source after owner stop.",
+  "imageDecision": "Pass. Foreground mute swan, one cygnet clearly riding between folded wing feathers and another swimming beside. Second adult behind. Heads and feather detail legible with gentle light and dark water. Some softness, especially rear adult, but key riding body and contact clear.",
+  "proseDecision": "Pass verbatim. Hidden rider directly earns source-dependent payoff. Count, hearing behind her, two circles and complaint are fictional temporal/interior narration. No rewrite necessary. Title distinct and not repeated verbatim in body.",
+  "continuity": "Keep original slot7, Instagram regular, female adult, existing nine-cygnet canon and Thames home. No additional family or chronology event invented by binding. Two visible cygnets do not establish total brood size; source observer reports seven, not nine. This remains an illustrative different family, not a documentary assertion that photographed family is fictional Cygnus entire brood. Background adult not named or sexed from image.",
+  "rightsDecision": "Pass. Cached primary nested photo record explicitly CC-BY, Creative Commons Attribution License, https://creativecommons.org/licenses/by/4.0/, Laura Mae. Published large_url exactly matches downloaded delivery. Parent supplied primary cache; no independent fresh network request claimed. Observer evolutionary/mortality speculation excluded.",
+  "media": {
+    "observationId": 163743160,
+    "photo": {
+      "id": 283242966,
+      "license_code": "cc-by",
+      "original_dimensions": {
+        "width": 2048,
+        "height": 1536
+      },
+      "url": "https://inaturalist-open-data.s3.amazonaws.com/photos/283242966/square.jpg",
+      "attribution": "(c) Laura Mae, some rights reserved (CC BY)",
+      "flags": [],
+      "moderator_actions": [],
+      "hidden": false
+    },
+    "url": "https://inaturalist-open-data.s3.amazonaws.com/photos/283242966/large.jpg",
+    "localPath": "/tmp/freed-cygnus167/283242966.jpg",
+    "bytes": 177724,
+    "sha1": "f6d2e1155cc6d6daab8714a97934078f3f3bf25b",
+    "width": 1024,
+    "height": 768,
+    "sha256": "1e9c68920d4597e2099ce16f5adbd89bf726ecf3e28f0acec425ae8360990369",
+    "sourceUrl": "https://www.inaturalist.org/observations/163743160",
+    "sourceMetadataLocal": "/tmp/freed-cygnus167/obs-163743160.json",
+    "creator": "Laura Mae",
+    "license": "CC BY 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/"
+  },
+  "validation": "Literal body matches runtime.177724bytes,1024x768,SHA1andSHA256 independently recomputed and match.2048x1536is larger upload metadata, not opened upload. Root owns runtime admission.",
+  "runtimeEdits": false
+}

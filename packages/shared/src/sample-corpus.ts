@@ -1,3 +1,59 @@
+import floraOneHundredSixtySixMedia from "./sample-corpus-flora-one-hundred-sixty-six-media.json" with { type: "json" };
+import botanicalOneHundredSixtyMedia from "./sample-corpus-botanical-one-hundred-sixty-media.json" with { type: "json" };
+import landOneHundredSixtyOneMedia from "./sample-corpus-land-one-hundred-sixty-one-media.json" with { type: "json" };
+import aquaticOneHundredFiftyNineMedia from "./sample-corpus-aquatic-one-hundred-fifty-nine-media.json" with { type: "json" };
+import inesOneHundredFiftyEightMedia from "./sample-corpus-ines-one-hundred-fifty-eight-media.json" with { type: "json" };
+import botanicalOneHundredFiftySixMedia from "./sample-corpus-botanical-one-hundred-fifty-six-media.json" with { type: "json" };
+import landOneHundredFiftyFiveMedia from "./sample-corpus-land-one-hundred-fifty-five-media.json" with { type: "json" };
+import aquaticOneHundredFiftyMedia from "./sample-corpus-aquatic-one-hundred-fifty-media.json" with { type: "json" };
+import botanicalOneHundredFiftyTwoMedia from "./sample-corpus-botanical-one-hundred-fifty-two-media.json" with { type: "json" };
+import larkOneHundredFiftyFourMedia from "./sample-corpus-lark-one-hundred-fifty-four-media.json" with { type: "json" };
+import rheaOneHundredFiftyThreeMedia from "./sample-corpus-rhea-one-hundred-fifty-three-media.json" with { type: "json" };
+import landOneHundredFiftyOneMedia from "./sample-corpus-land-one-hundred-fifty-one-media.json" with { type: "json" };
+import landOneHundredFortyEightMedia from "./sample-corpus-land-one-hundred-forty-eight-media.json" with { type: "json" };
+import botanicalOneHundredFortySixMedia from "./sample-corpus-botanical-one-hundred-forty-six-media.json" with { type: "json" };
+import aquaticOneHundredFortyFourMedia from "./sample-corpus-aquatic-one-hundred-forty-four-media.json" with { type: "json" };
+import fennOneHundredFortyFiveMedia from "./sample-corpus-fenn-one-hundred-forty-five-media.json" with { type: "json" };
+import botanicalOneHundredFortyOneMedia from "./sample-corpus-botanical-one-hundred-forty-one-media.json" with { type: "json" };
+import landOneHundredThirtyEightMedia from "./sample-corpus-land-one-hundred-thirty-eight-media.json" with { type: "json" };
+import mallowOneHundredFortyMedia from "./sample-corpus-mallow-one-hundred-forty-media.json" with { type: "json" };
+import landOneHundredThirtyFourMedia from "./sample-corpus-land-one-hundred-thirty-four-media.json" with { type: "json" };
+import aquaticOneHundredThirtyOneMedia from "./sample-corpus-aquatic-one-hundred-thirty-one-media.json" with { type: "json" };
+import editorialOneHundredThirtyThreeMedia from "./sample-corpus-editorial-one-hundred-thirty-three-media.json" with { type: "json" };
+import landOneHundredThirtyMedia from "./sample-corpus-land-one-hundred-thirty-media.json" with { type: "json" };
+import aquaticOneHundredTwentySixMedia from "./sample-corpus-aquatic-one-hundred-twenty-six-media.json" with { type: "json" };
+import editorialOneHundredTwentyEightMedia from "./sample-corpus-editorial-one-hundred-twenty-eight-media.json" with { type: "json" };
+import aquaticOneHundredTwentyFourMedia from "./sample-corpus-aquatic-one-hundred-twenty-four-media.json" with { type: "json" };
+import editorialOneHundredTwentyOneMedia from "./sample-corpus-editorial-one-hundred-twenty-one-media.json" with { type: "json" };
+import almaOneHundredNineteenMedia from "./sample-corpus-alma-one-hundred-nineteen-media.json" with { type: "json" };
+import aquaticOneHundredSixteenMedia from "./sample-corpus-aquatic-one-hundred-sixteen-media.json" with { type: "json" };
+import editorialOneHundredFourteenMedia from "./sample-corpus-editorial-one-hundred-fourteen-media.json" with { type: "json" };
+import landOneHundredSixMedia from "./sample-corpus-land-one-hundred-six-media.json" with { type: "json" };
+import editorialOneHundredEightMedia from "./sample-corpus-editorial-one-hundred-eight-media.json" with { type: "json" };
+import editorialOneHundredThreeMedia from "./sample-corpus-editorial-one-hundred-three-media.json" with { type: "json" };
+import botanicalOneHundredOneMedia from "./sample-corpus-botanical-one-hundred-one-media.json" with { type: "json" };
+import editorialNinetySevenEightMedia from "./sample-corpus-editorial-ninety-seven-eight-media.json" with { type: "json" };
+import aquaticNinetySixMedia from "./sample-corpus-aquatic-ninety-six-media.json" with { type: "json" };
+import maudNinetyFourMedia from "./sample-corpus-maud-ninety-four-media.json" with { type: "json" };
+import botanicalNinetyFiveMedia from "./sample-corpus-botanical-ninety-five-media.json" with { type: "json" };
+import selaNinetyThreeMedia from "./sample-corpus-sela-ninety-three-media.json" with { type: "json" };
+import aquaticEightySixMedia from "./sample-corpus-aquatic-eighty-six-media.json" with { type: "json" };
+import botanicalEightyEightMedia from "./sample-corpus-botanical-eighty-eight-media.json" with { type: "json" };
+import landEightySevenMedia from "./sample-corpus-land-eighty-seven-media.json" with { type: "json" };
+import landEightyThreeMedia from "./sample-corpus-land-eighty-three-media.json" with { type: "json" };
+import botanicalEightyFiveMedia from "./sample-corpus-botanical-eighty-five-media.json" with { type: "json" };
+import botanicalEightyOneMedia from "./sample-corpus-botanical-eighty-one-media.json" with { type: "json" };
+import landEightyMedia from "./sample-corpus-land-eighty-media.json" with { type: "json" };
+import aquaticSeventyNineMedia from "./sample-corpus-aquatic-seventy-nine-media.json" with { type: "json" };
+import botanicalSeventySevenMedia from "./sample-corpus-botanical-seventy-seven-media.json" with { type: "json" };
+import aquaticSeventyFiveMedia from "./sample-corpus-aquatic-seventy-five-media.json" with { type: "json" };
+import novaSeventyFourMedia from "./sample-corpus-nova-seventy-four-media.json" with { type: "json" };
+import aquaticSeventyOneMedia from "./sample-corpus-aquatic-seventy-one-media.json" with { type: "json" };
+import aquaticSixtySevenMedia from "./sample-corpus-aquatic-sixty-seven-media.json" with { type: "json" };
+import landSixtyFiveMedia from "./sample-corpus-land-sixty-five-media.json" with { type: "json" };
+import landSixtyTwoMedia from "./sample-corpus-land-sixty-two-media.json" with { type: "json" };
+import botanicalSixtyThreeMedia from "./sample-corpus-botanical-sixty-three-media.json" with { type: "json" };
+import aquaticFiftySevenMedia from "./sample-corpus-aquatic-fifty-seven-media.json" with { type: "json" };
 import sylviaDeliveryFiftyThreeMedia from "./sample-corpus-sylvia-delivery-fifty-three-media.json" with { type: "json" };
 import editorialFiftyFiftyTwoMedia from "./sample-corpus-editorial-fifty-fifty-two-media.json" with { type: "json" };
 import landFortyNineMedia from "./sample-corpus-land-forty-nine-media.json" with { type: "json" };
@@ -98,6 +154,7 @@ export interface SampleCorpusMediaAsset {
   sourceUrl: string;
   creator: string;
   license: string;
+  licenseUrl?: string;
   width: number;
   height: number;
   sha1: string;
@@ -116,7 +173,7 @@ interface CuratedEpisodeAssignment {
   sequence: number;
 }
 
-const generatedAssets = [...generatedCorpus, ...airMedia, ...landMedia, ...oceanMedia, ...strangeMedia, ...strangeNextMedia, ...strangeFoundationsMedia, ...deepseaNextMedia, ...deepseaBondsMedia, ...strangeWildMedia, ...strangeEightMedia, ...deepseaNineMedia, ...legacyOceanTenMedia, ...nellVeraTwelveMedia, ...legacyOceanThirteenMedia, ...legacyLandNineMedia, ...strangeTenMedia, ...strangeElevenMedia, ...mediumOneMedia, ...substackOneMedia, ...visualLandTwoMedia, ...visualLandThreeMedia, ...landRegularFourMedia, ...frogbertVisualTwoMedia, ...oceanRegularThreeMedia, ...landRegularFiveMedia, ...youtubeOneMedia, ...oceanRegularSixMedia, ...visualLandSixMedia, ...avatarSevenMedia, ...avatarEightMedia, ...landRegularSevenMedia, ...avatarNineMedia, ...novaNineMedia, ...visualLandEightMedia, ...editorialTwelveMedia, ...youtubeTenMedia, ...landTwelveMedia, ...oceanTwelveMedia, ...visualLandThirteenMedia, ...oceanSeventeenMedia, ...oceanTwentyOneMedia, ...landTwentyMedia, ...oceanVisualTwentyThreeMedia, ...botanicalTwentyFourMedia, ...birdTwentyFiveMedia, ...aquaticTwentySixMedia, ...botanicalTwentySevenMedia, ...landRecoveryTwentyEightMedia, ...avatarDeliveryThirtyFourMedia, ...botanicalThirtyTwoMedia, ...landThirtyOneMedia, ...aquaticThirtyMedia, ...avatarDeliveryThirtySevenMedia, ...botanicalThirtyEightMedia, ...aquaticThirtyFiveMedia, ...landThirtySixMedia, ...botanicalFortyMedia, ...aquaticFortyOneMedia, ...editorialFortyTwoThreeMedia, ...aquaticFortyFourMedia, ...landFortyFiveMedia, ...botanicalFortySixMedia, ...landFortyNineMedia, ...editorialFiftyFiftyTwoMedia, ...sylviaDeliveryFiftyThreeMedia] as readonly GeneratedAsset[];
+const generatedAssets = [...generatedCorpus, ...airMedia, ...landMedia, ...oceanMedia, ...strangeMedia, ...strangeNextMedia, ...strangeFoundationsMedia, ...deepseaNextMedia, ...deepseaBondsMedia, ...strangeWildMedia, ...strangeEightMedia, ...deepseaNineMedia, ...legacyOceanTenMedia, ...nellVeraTwelveMedia, ...legacyOceanThirteenMedia, ...legacyLandNineMedia, ...strangeTenMedia, ...strangeElevenMedia, ...mediumOneMedia, ...substackOneMedia, ...visualLandTwoMedia, ...visualLandThreeMedia, ...landRegularFourMedia, ...frogbertVisualTwoMedia, ...oceanRegularThreeMedia, ...landRegularFiveMedia, ...youtubeOneMedia, ...oceanRegularSixMedia, ...visualLandSixMedia, ...avatarSevenMedia, ...avatarEightMedia, ...landRegularSevenMedia, ...avatarNineMedia, ...novaNineMedia, ...visualLandEightMedia, ...editorialTwelveMedia, ...youtubeTenMedia, ...landTwelveMedia, ...oceanTwelveMedia, ...visualLandThirteenMedia, ...oceanSeventeenMedia, ...oceanTwentyOneMedia, ...landTwentyMedia, ...oceanVisualTwentyThreeMedia, ...botanicalTwentyFourMedia, ...birdTwentyFiveMedia, ...aquaticTwentySixMedia, ...botanicalTwentySevenMedia, ...landRecoveryTwentyEightMedia, ...avatarDeliveryThirtyFourMedia, ...botanicalThirtyTwoMedia, ...landThirtyOneMedia, ...aquaticThirtyMedia, ...avatarDeliveryThirtySevenMedia, ...botanicalThirtyEightMedia, ...aquaticThirtyFiveMedia, ...landThirtySixMedia, ...botanicalFortyMedia, ...aquaticFortyOneMedia, ...editorialFortyTwoThreeMedia, ...aquaticFortyFourMedia, ...landFortyFiveMedia, ...botanicalFortySixMedia, ...landFortyNineMedia, ...editorialFiftyFiftyTwoMedia, ...sylviaDeliveryFiftyThreeMedia, ...aquaticFiftySevenMedia, ...botanicalSixtyThreeMedia, ...landSixtyTwoMedia, ...landSixtyFiveMedia, ...aquaticSixtySevenMedia, ...aquaticSeventyOneMedia, ...novaSeventyFourMedia, ...aquaticSeventyFiveMedia, ...botanicalSeventySevenMedia, ...aquaticSeventyNineMedia, ...landEightyMedia, ...botanicalEightyOneMedia, ...botanicalEightyFiveMedia, ...landEightyThreeMedia, ...landEightySevenMedia, ...aquaticEightySixMedia, ...botanicalEightyEightMedia, ...selaNinetyThreeMedia, ...maudNinetyFourMedia, ...botanicalNinetyFiveMedia, ...aquaticNinetySixMedia, ...editorialNinetySevenEightMedia, ...botanicalOneHundredOneMedia, ...editorialOneHundredThreeMedia, ...editorialOneHundredEightMedia, ...landOneHundredSixMedia, ...editorialOneHundredFourteenMedia, ...aquaticOneHundredSixteenMedia, ...almaOneHundredNineteenMedia, ...editorialOneHundredTwentyOneMedia, ...aquaticOneHundredTwentyFourMedia, ...editorialOneHundredTwentyEightMedia, ...aquaticOneHundredTwentySixMedia, ...landOneHundredThirtyMedia, ...editorialOneHundredThirtyThreeMedia, ...aquaticOneHundredThirtyOneMedia, ...landOneHundredThirtyFourMedia, ...mallowOneHundredFortyMedia, ...landOneHundredThirtyEightMedia, ...botanicalOneHundredFortyOneMedia, ...fennOneHundredFortyFiveMedia, ...aquaticOneHundredFortyFourMedia, ...botanicalOneHundredFortySixMedia, ...landOneHundredFortyEightMedia, ...landOneHundredFiftyOneMedia, ...rheaOneHundredFiftyThreeMedia, ...larkOneHundredFiftyFourMedia, ...botanicalOneHundredFiftyTwoMedia, ...aquaticOneHundredFiftyMedia, ...botanicalOneHundredFiftySixMedia, ...landOneHundredFiftyFiveMedia, ...inesOneHundredFiftyEightMedia, ...aquaticOneHundredFiftyNineMedia, ...landOneHundredSixtyOneMedia, ...botanicalOneHundredSixtyMedia, ...floraOneHundredSixtySixMedia] as readonly GeneratedAsset[];
 const generatedAssetsBySha1 = new Map<string, GeneratedAsset>();
 for (const asset of generatedAssets) {
   if (generatedAssetsBySha1.has(asset.sha1)) {
@@ -848,7 +905,7 @@ export function sampleCorpusSourceUrl(asset: SampleCorpusMediaAsset): string {
 }
 
 export function sampleCorpusAttribution(asset: SampleCorpusMediaAsset): string {
-  return `Photograph by ${asset.creator}, ${asset.license}. Source: ${asset.sourceUrl}`;
+  return `Photograph by ${asset.creator}, ${asset.license}.\nSource: ${asset.sourceUrl}${asset.licenseUrl ? `\nLicense: ${asset.licenseUrl}` : ""}`;
 }
 
 export function sampleCorpusIdentityName(asset: SampleCorpusMediaAsset, _index: number): string {

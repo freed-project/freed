@@ -1,0 +1,72 @@
+{
+  "status": "independent_review_pass",
+  "reviewDate": "2026-09-06",
+  "characterId": "sela-current",
+  "episode": {
+    "subject": "river",
+    "platform": "instagram",
+    "contentType": "story",
+    "theme": "movement",
+    "title": "Separate arrangements",
+    "body": "I was carrying him quite well until he became three things. Now I have a man, a boat and a paddle, all taking different routes. He is still trying to tell me where we are going.",
+    "mediaSha1": "181c4495c4102f05d70fbd8283455cf4082ac3e2"
+  },
+  "decisions": {
+    "image": "pass",
+    "prose": "pass_verbatim",
+    "physicalPlausibility": "pass_with_declared_fiction",
+    "canon": "pass_append_after_current_four",
+    "rights": "pass_CC_BY_SA_3_0"
+  },
+  "exactImage": {
+    "id": "sela93-canoe-separation",
+    "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/86/Overturned_canoe_in_river_So%C4%8Da.png/960px-Overturned_canoe_in_river_So%C4%8Da.png",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Overturned_canoe_in_river_So%C4%8Da.png",
+    "creator": "malenki",
+    "license": "CC BY-SA 3.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0/",
+    "localPath": "/tmp/freed-sela93/canoe.png",
+    "width": 960,
+    "height": 720,
+    "bytes": 814495,
+    "sha1": "181c4495c4102f05d70fbd8283455cf4082ac3e2",
+    "sha256": "50beb4f1f7b5be4b3e1f7347a3696fb25e4989dffdf0d645715c50a4432c15e2",
+    "alt": "An overturned orange canoe, a swimmer in a red buoyancy aid and a loose paddle are separated in pale turbulent water. Another canoeist sits upright nearby.",
+    "category": "geology",
+    "subject": "river"
+  },
+  "individuallyOpened": true,
+  "independentlyRecomputedMetadata": {
+    "width": 960,
+    "height": 720,
+    "bytes": 814495,
+    "sha1": "181c4495c4102f05d70fbd8283455cf4082ac3e2",
+    "sha256": "50beb4f1f7b5be4b3e1f7347a3696fb25e4989dffdf0d645715c50a4432c15e2"
+  },
+  "visibleEvidence": "Pale turbulent river fills the frame. Swimmer in red buoyancy aid near center-left is separated from an overturned orange/yellow boat to the right and a loose double-bladed paddle farther down/right. Upright blue boat and paddler are separately visible upper-left. The three separated components are legible without needing facial detail.",
+  "imageRationale": "The pale water has visible folds, seams and currents; orange, red and blue objects make the dispersal readable. The river is the narrator, so its dominant area is meaningful. This is a distinct river incident rather than a small animal lost in empty habitat.",
+  "proseRationale": "The first sentence changes the river's unit of attention from one passenger to three independent burdens. The final sentence preserves the passenger's intention after his means of directing travel have separated. The consequence is present and embodied; no added moral or explanatory punchline. Keep exact title and body.",
+  "fictionBoundary": "The still proves separation, not the prior capsize, precise trajectories, spoken directions, swimmer sex, intended destination or rescue outcome. Those limited temporal/interior details are fiction. The river does not claim to cause the capsize deliberately. No injury or death is asserted.",
+  "continuity": "Read all four existing Sela episodes in sample-character-arcs-strange-foundations.ts and the canon note on distributed river identity. Append after the current four without modifying their bodies, avatar or So\u010da home. No seasonal or spatial relocation is required.",
+  "rightsEvidence": {
+    "primaryPage": "https://commons.wikimedia.org/wiki/File:Overturned_canoe_in_river_So%C4%8Da.png",
+    "verifiedLive": true,
+    "author": "malenki",
+    "source": "Own work",
+    "date": "2011-08-09",
+    "originalDimensions": [
+      2550,
+      1913
+    ],
+    "originalDownloaded": false,
+    "selectedLicense": "CC BY-SA 3.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0/",
+    "basis": "Primary file page explicitly offers the selectable CC BY-SA 3.0 license and credits malenki. It publishes a 960 \u00d7 720 preview; local delivery metadata matches the proposal. Attribution, source link and license link must remain with reuse.",
+    "sourceCoordinates": [
+      46.315439,
+      13.494503
+    ]
+  },
+  "presentationNote": "Preserve the full-frame swimmer, overturned boat and lower-right loose paddle. A portrait center crop that removes the paddle would break the three-part premise. No cropped derivative was reviewed or requested.",
+  "runtimeEdits": false
+}

@@ -1,0 +1,36 @@
+{
+  "status": "proposal_pending_independent_review",
+  "characterId": "sela-current",
+  "identityNameBase": "Sela Current",
+  "episode": {
+    "subject": "river",
+    "platform": "instagram",
+    "contentType": "story",
+    "theme": "movement",
+    "title": "Separate arrangements",
+    "body": "I was carrying him quite well until he became three things. Now I have a man, a boat and a paddle, all taking different routes. He is still trying to tell me where we are going.",
+    "mediaSha1": "181c4495c4102f05d70fbd8283455cf4082ac3e2"
+  },
+  "media": {
+    "id": "sela93-canoe-separation",
+    "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/86/Overturned_canoe_in_river_So%C4%8Da.png/960px-Overturned_canoe_in_river_So%C4%8Da.png",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:Overturned_canoe_in_river_So%C4%8Da.png",
+    "creator": "malenki",
+    "license": "CC BY-SA 3.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0/",
+    "localPath": "/tmp/freed-sela93/canoe.png",
+    "width": 960,
+    "height": 720,
+    "bytes": 814495,
+    "sha1": "181c4495c4102f05d70fbd8283455cf4082ac3e2",
+    "sha256": "50beb4f1f7b5be4b3e1f7347a3696fb25e4989dffdf0d645715c50a4432c15e2",
+    "alt": "An overturned orange canoe, a swimmer in a red buoyancy aid and a loose paddle are separated in pale turbulent water. Another canoeist sits upright nearby.",
+    "category": "geology",
+    "subject": "river"
+  },
+  "canon": "Sela remains the distributed Soca River, Slovenia. No new person identity, injury, death or rescue outcome. All four current entries and portrait unchanged.",
+  "chronology": "Append after current four episodes. No seasonal dependence.",
+  "fictionBoundary": "Photo supports separation of swimmer, boat and paddle. Prior unified travel, divergent trajectories, spoken directions and river perspective are fictional. Nearby upright canoeist is not assigned rescue intent or outcome. No claim river deliberately causes capsizing.",
+  "sourceEvidence": "Root opened Commons primary record September 6. Creator own work dated August 9, 2011, Soca coordinates46.315439,13.494503. Explicit selectable CC BY-SA3.0. Published960px variant individually opened, no local edits; original2550x1913 not downloaded.",
+  "authorReview": "Visually legible separation, flowing water fills frame because river is narrator. Humor is loss of passenger coordination rather than injury or triumphant river violence. Independent reviewer must judge whether small human figures and subdued water color meet visual bar."
+}

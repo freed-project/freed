@@ -1,0 +1,230 @@
+{
+  "status": "proposals_pending_independent_root_review",
+  "counts": {
+    "exactPublishedImagesOpened": 6,
+    "actualDraftsWritten": 3,
+    "proposals": 2,
+    "admitted": 0,
+    "newIdentities": 0
+  },
+  "proposals": [
+    {
+      "candidateId": "101-01",
+      "characterId": "luna-after",
+      "identityNameBase": "Luna After",
+      "episode": {
+        "subject": "luna moth",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "danger",
+        "title": "Every step tells",
+        "body": "I pulled one foot free and set it down on another thread. The spider moved toward the place I'd just touched. I am trying to stop explaining where I am.",
+        "mediaSha1": "0972c379561111b2433aee7c4998ddb4ce8afd23"
+      },
+      "admission": "pending_independent_root_review",
+      "imageReview": "Exact frame individually opened. Lime-green wing, eye spot, pale furry body, legs and feathery antennae are sharp; fine silk crosses the moth and leaf litter. Glossy dark spider with clear red dorsal marks visible above wing. The source description explicitly reports caught in a web. No vague shadow identification. Tail ends extend toward frame edge; scene remains legible.",
+      "fictionBoundary": "Visible moth, spider and silk; observer explicitly says caught in a web. Foot release, putting it on another strand, spider approach and present-tense thought are fiction. No witnessed bite, death, successful escape or exact spider species/sex is asserted. Life status at the shutter instant is not independently determined; fiction voices a living moment during entanglement rather than claiming a documented outcome.",
+      "canon": "Read current Luna arc and strange-canon04. Existing adult Actias luna after larval appetite/metamorphosis, Catskills42.20/-74.35, no adult eating or dietary body-shaming repeated. Source New Jersey illustrates existing fiction without relocation. Antennae are feathery; existing canon does not require photo-assigned sex. No new portrait or physical meeting with another cast identity. End state is an unresolved encounter; no subsequent escape or death is admitted.",
+      "proseAssessment": "A concrete attempted escape changes into a problem of involuntary communication. The joke is the narrator's predicament, not a celebration of prey distress. Last sentence is brief metaphor for transmitted vibration, with no systems vocabulary or moral. Distinct from Ivo's wind-damaged web and Dora's mutual leaf adhesion: this moth tries to move without directing the predator toward itself.",
+      "biologySource": "https://pubmed.ncbi.nlm.nih.gov/27461115/",
+      "biologyEvidence": "Primary research abstract retrieved through EuropePMC core record and read; cached /tmp/botanical101/web-vibration-primary.json. Supports web transmission of prey-generated vibration in web spiders including Latrodectus hesperus. Does not identify this spider or measure this encounter. No full-paper claim."
+    },
+    {
+      "candidateId": "101-02",
+      "characterId": "edmund-oldring",
+      "identityNameBase": "Edmund Oldring",
+      "episode": {
+        "subject": "giant sequoia",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "social",
+        "title": "The wrong trunk",
+        "body": "A cone fell from me onto the path. The man beneath it looked up and complained to the tree beside me. I was enjoying the mistake until he stroked her bark to apologize.",
+        "mediaSha1": "206b2bdbbecaeed1b71620623526b5af15cf6d49"
+      },
+      "admission": "pending_independent_root_review",
+      "imageReview": "Exact vertical frame individually opened. Full broad reddish trunk, green living crown, nearby conifers and path visible; bark is sharp enough to distinguish scars and texture. Small physical park sign and fence remain in frame. No cone or person is shown; image supplies the setting and distinct neighboring trunks, not a photographed incident.",
+      "fictionBoundary": "Living sequoia and surrounding grove/path are observed. Falling cone, man, mistaken attribution, complaint and touch are fiction. No exact tree age, named real-tree identity, cone impact injury, intentional throwing or cause of detachment asserted. Neighbor's species and sex unassigned; her is characterization. A falling cone does not assert seed dispersal or successful offspring.",
+      "canon": "Read all current Edmund stories in botanical27. Existing Sequoiadendron giganteum, western Sierra36.6/-118.7. Source Tuolumne Grove in Yosemite, no claim Edmund is named Big Red or any actual individually tracked tree. Living crown and old scars fit. No regeneration of dead tree, new avatar or continuity reset. Prior wrap/hose/firefighter passages remain exact.",
+      "proseAssessment": "Edmund initially benefits from a mistaken complaint, then regrets the mistake when it earns his neighbor affection. The final physical touch changes his attitude without explaining jealousy. This adds an imperfect social response rather than another acceptance of practical help or fear of scar inspection. Root should judge whether the attractive full-tree image sufficiently supports a prior fictional incident with no visible cone or human.",
+      "biologySource": "https://www.nps.gov/places/000/general-sherman-tree.htm",
+      "biologyEvidence": "NPS source independently opened: Douglas squirrels can cut sequoia cone stems, causing cones to fall. Body leaves detachment cause unstated and does not add an unseen squirrel. This is support for falling-cone plausibility, not identification of pictured tree as General Sherman."
+    }
+  ],
+  "media": [
+    {
+      "observationId": 363718292,
+      "photoId": 663948899,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/663948899/large.jpg",
+      "localFile": "/tmp/botanical101/363718292.jpg",
+      "bytes": 414639,
+      "sha1": "0972c379561111b2433aee7c4998ddb4ce8afd23",
+      "sha256": "8653c11733134bcdc046702e00b3d5d30d32782d9a9f5c3fea8c5e97c3455f2c",
+      "dimensions": [
+        1024,
+        768
+      ],
+      "seconds": 0.686,
+      "status": 200,
+      "attribution": "no rights reserved, uploaded by Samuel Paul Galick",
+      "license": "CC0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/363718292",
+      "sourceLocal": "/tmp/botanical101/obs-363718292.json",
+      "id": "botanical101-luna-web-spider",
+      "category": "wildlife",
+      "subject": "luna moth",
+      "species": "Actias luna",
+      "creator": "Samuel Paul Galick",
+      "alt": "A green luna moth lies caught among silk strands and leaves beside a glossy black spider with red markings.",
+      "sourceMetadataUrl": "https://www.inaturalist.org/observations/363718292.json",
+      "aggregated": false,
+      "sourceUploadDimensions": [
+        2048,
+        1536
+      ],
+      "rightsEvidence": "Exact photo-specific CC0 code and publicdomain/zero/1.0 URL read in detailed primary observation JSON; attribution retained separately from fiction.",
+      "taxonEvidence": "Current research-grade Actias luna, 3 identification agreements, 0 disagreements; all current identifications agree at this species.",
+      "deliveryEvidence": "Exact published large_url individually opened. Full upload dimensions are metadata, not a claim that full upload was inspected."
+    },
+    {
+      "observationId": 297931673,
+      "photoId": 536601048,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/536601048/large.jpg",
+      "localFile": "/tmp/botanical101/297931673.jpg",
+      "bytes": 376786,
+      "sha1": "206b2bdbbecaeed1b71620623526b5af15cf6d49",
+      "sha256": "8cc571f072f8b553cd630bcb7a1eb799f15f43d083f06c07df0463392468ca52",
+      "dimensions": [
+        599,
+        1024
+      ],
+      "seconds": 0.683,
+      "status": 200,
+      "attribution": "no rights reserved, uploaded by Irene",
+      "license": "CC0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/297931673",
+      "sourceLocal": "/tmp/botanical101/obs-297931673.json",
+      "id": "botanical101-sequoia-path-neighbors",
+      "category": "wildlife",
+      "subject": "giant sequoia",
+      "species": "Sequoiadendron giganteum",
+      "creator": "Irene",
+      "alt": "A living giant sequoia with a tall crown stands beside a woodland path and neighboring conifers.",
+      "sourceMetadataUrl": "https://www.inaturalist.org/observations/297931673.json",
+      "aggregated": false,
+      "sourceUploadDimensions": [
+        1198,
+        2048
+      ],
+      "rightsEvidence": "Exact photo-specific CC0 code and publicdomain/zero/1.0 URL read in detailed primary observation JSON; attribution retained separately from fiction.",
+      "taxonEvidence": "Current research-grade Sequoiadendron giganteum, 2 identification agreements, 0 disagreements; all current identifications agree at this species.",
+      "deliveryEvidence": "Exact published large_url individually opened. Full upload dimensions are metadata, not a claim that full upload was inspected."
+    }
+  ],
+  "holds": [
+    {
+      "media": {
+        "observationId": 246217199,
+        "photoId": 439505668,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/439505668/large.jpeg",
+        "localFile": "/tmp/botanical101/246217199.jpg",
+        "bytes": 385099,
+        "sha1": "4b5d444da51fbe3000aa6df9d1f7557eb517281b",
+        "sha256": "c40f5ec0751d95a2f2018ccafe0906c1db7f396a953ca9af170b7748aa682db0",
+        "dimensions": [
+          768,
+          1024
+        ],
+        "seconds": 0.675,
+        "status": 200,
+        "attribution": "no rights reserved, uploaded by Karen McCabe",
+        "license": "CC0",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "sourceUrl": "https://www.inaturalist.org/observations/246217199",
+        "sourceLocal": "/tmp/botanical101/obs-246217199.json"
+      },
+      "reason": "Lichen occupies a decorated wooden post against blue sky and building. No snow despite search match; source-only hold, no new incident authored.",
+      "body": null
+    },
+    {
+      "media": {
+        "observationId": 85327757,
+        "photoId": 140375882,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/140375882/large.jpg",
+        "localFile": "/tmp/botanical101/85327757.jpg",
+        "bytes": 316756,
+        "sha1": "7575920c8cd88a1d8970ec8fbd5a5203ba910009",
+        "sha256": "309ae3c084af97ba7c6faf49c58df1d98e54aff18da51b2d4bcd07f75df17905",
+        "dimensions": [
+          1024,
+          768
+        ],
+        "seconds": 0.732,
+        "status": 200,
+        "attribution": "no rights reserved, uploaded by Karen McCabe",
+        "license": "CC0",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "sourceUrl": "https://www.inaturalist.org/observations/85327757",
+        "sourceLocal": "/tmp/botanical101/obs-85327757.json"
+      },
+      "reason": "Close red-tipped lichen but soft detail and shallow focus; no frozen state or new incident. No snow inferred from query.",
+      "body": null
+    },
+    {
+      "media": {
+        "observationId": 118128563,
+        "photoId": 199556046,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/199556046/large.jpg",
+        "localFile": "/tmp/botanical101/118128563.jpg",
+        "bytes": 302143,
+        "sha1": "b20f3e024860d7057f88097c206fde5f5ebee1d0",
+        "sha256": "4f8df7d5a1ac2ba2d6f638d03e4ac439e48f09e29ee6412a2e5ed056e6f690dc",
+        "dimensions": [
+          768,
+          1024
+        ],
+        "seconds": 0.67,
+        "status": 200,
+        "attribution": "(c) Meghan Cassidy, some rights reserved (CC BY-SA), uploaded by Meghan Cassidy",
+        "license": "CC-BY-SA",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "sourceUrl": "https://www.inaturalist.org/observations/118128563",
+        "sourceLocal": "/tmp/botanical101/obs-118128563.json"
+      },
+      "reason": "Beautiful adult luna moth on a dirty window with pink foliage behind it. Source-only hold: an actual draft about waiting for the light did not produce a sufficiently distinct consequence; preserve its literal text below if revisited.",
+      "body": "I followed the light to a window and put all six feet down. The light went out. I stayed there until morning, waiting for it to come back, while the sky behind me grew brighter."
+    },
+    {
+      "media": {
+        "observationId": 46163233,
+        "photoId": 73213983,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/73213983/large.jpeg",
+        "localFile": "/tmp/botanical101/46163233.jpg",
+        "bytes": 247253,
+        "sha1": "119612d0eff8d7b96de9353cd288b1b811df6d53",
+        "sha256": "37eb282b551fa5d5e5c1a80c267190f702a04ffd8b8f382cc56d7f0911785627",
+        "dimensions": [
+          1024,
+          526
+        ],
+        "seconds": 0.673,
+        "status": 200,
+        "attribution": "(c) Louise Woodrich, some rights reserved (CC BY), uploaded by Louise Woodrich",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "sourceUrl": "https://www.inaturalist.org/observations/46163233",
+        "sourceLocal": "/tmp/botanical101/obs-46163233.json"
+      },
+      "reason": "Noisy yellow night-window image, lower wings hidden behind frame edge; image hold.",
+      "body": null
+    }
+  ],
+  "limitations": [
+    "All exact delivery files opened individually; full source uploads not opened.",
+    "No actual application relay or Story rendering checked.",
+    "Unresolved photographed moth life status and unpictured tree incident explicitly retained for root assessment.",
+    "Only101 draft documents and task-scoped temporary evidence written. No runtime or prior bodies altered."
+  ]
+}
