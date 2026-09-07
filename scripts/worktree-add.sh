@@ -121,14 +121,14 @@ print_node_tooling_preflight
 EXISTING_WORKTREES=()
 while IFS= read -r line; do
   EXISTING_WORKTREES+=("$line")
-done < <(git worktree list --porcelain | awk '/^worktree / { print $2 }')
+done < <(git worktree list --porcelain | sed -n 's/^worktree //p')
 
 git worktree add "${PASSTHROUGH_ARGS[@]}"
 
 CURRENT_WORKTREES=()
 while IFS= read -r line; do
   CURRENT_WORKTREES+=("$line")
-done < <(git worktree list --porcelain | awk '/^worktree / { print $2 }')
+done < <(git worktree list --porcelain | sed -n 's/^worktree //p')
 
 NEW_WT=""
 for candidate in "${CURRENT_WORKTREES[@]}"; do
@@ -144,6 +144,7 @@ if [[ -z "${NEW_WT}" ]]; then
 fi
 
 record_worktree_metadata "${NEW_WT}" "${INSTALL_MODE}" "${TARGET_HINT}"
+"$(resolve_node_bin)" "${SCRIPT_DIR}/task-decisions.mjs" init --worktree "${NEW_WT}"
 
 echo ""
 case "${INSTALL_MODE}" in

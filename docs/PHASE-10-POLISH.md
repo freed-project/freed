@@ -530,3 +530,8 @@ Nearby stories share consecutive grid rows after the canonical feed sort. A grou
 Read-on-scroll refreshes replace the complete resident window atomically, avoiding a temporary first-page list that clamps the scroll position. Deep windows resume from an ordering bookmark through fresh source-fenced queries. Ranking, durable state, filter validation, and stale-cursor rejection remain in the Library layer. Geometry changes establish a fresh read-on-scroll baseline and preserve the visible card anchor, including the compact rail's first-row padding.
 
 Sample population now shares the public demo's curated generator and randomized posting times across every build. Settings and completion messages use the same population counts and distinguish people from friend relationships. Local previews repopulate on reload and render remote media through browser-compatible URLs.
+
+OpenAI model default reviewed September 7, 2026: new OpenAI selections use
+`gpt-6-astra`. Existing saved models remain unchanged. Astra summaries use low
+reasoning with a bounded completion budget; Ollama retains its local request
+parameters. Live output quality and account access require API validation.

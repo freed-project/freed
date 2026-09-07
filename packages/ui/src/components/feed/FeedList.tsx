@@ -14,7 +14,7 @@ import { LoadingState } from "../LoadingState.js";
 import { useReadOnScrollTracker } from "./useReadOnScrollTracker.js";
 import type { FeedItem as FeedItemType } from "@freed/shared";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
-import { useIsMobile } from "../../hooks/useIsMobile.js";
+import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import {
   DESKTOP_FEED_CARD_HEIGHT_BY_DENSITY,
   useFeedCardDensity,
@@ -296,7 +296,8 @@ export function FeedList({
   // Mobile window-scroll container (used to compute scrollMargin for the virtualizer)
   const windowListRef = useRef<HTMLDivElement>(null);
 
-  const isMobile = useIsMobile();
+  // Scroll ownership must survive rotation, just like AppShell's layout mode.
+  const isMobile = useIsMobileDevice();
   const feedCardHorizontalGutter = isMobile
     ? 0
     : DESKTOP_FEED_CARD_HORIZONTAL_GUTTER;
@@ -349,7 +350,7 @@ export function FeedList({
     return () => ro.disconnect();
   }, [scrollElement, isMobile, items.length === 0]);
 
-  // Max grid columns based on current container width (capped at 3).
+  // Keep mobile story cards readable with at most two columns; desktop allows three.
   // Inner width = containerWidth minus the feed-card gutter on each side.
   const maxCols = useMemo(() => {
     const inner = Math.max(
@@ -358,9 +359,12 @@ export function FeedList({
     );
     return Math.max(
       1,
-      Math.min(3, Math.floor((inner + TILE_GAP) / (MIN_TILE_W + TILE_GAP))),
+      Math.min(
+        isMobile ? 2 : 3,
+        Math.floor((inner + TILE_GAP) / (MIN_TILE_W + TILE_GAP)),
+      ),
     );
-  }, [containerWidth, feedCardHorizontalGutter]);
+  }, [containerWidth, feedCardHorizontalGutter, isMobile]);
 
   // Preprocess items into virtual rows, collapsing consecutive stories into grids.
   const rows = useMemo(
