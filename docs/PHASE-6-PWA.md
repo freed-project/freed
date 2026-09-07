@@ -1,5 +1,7 @@
 # Phase 6: PWA
 
+> **Status:** 🚧 In Progress (the official SQLite WebAssembly engine, exact schema identity, single-worker OPFS runtime, normalized checkpoint import, product mutation entrypoints, bounded product queries, follower transport, recovery UI, selective content, and IndexedDB Library deletion are implemented; physical iPhone acceptance remains open)
+
 Marketing demo links carry the selected theme in a `theme` query parameter.
 Demo startup validates it against the shared theme IDs, commits it through the
 device theme preference, then removes that parameter with history replacement.
@@ -14,8 +16,6 @@ The release showcase now covers four desktop views and three phone-framed
 mobile views, including wide and selected Friends views. All frames exclude
 the demo download banner and local preview badge. Release verification remains
 pending until the exact tagged assets are published and checked.
-
-> **Status:** 🚧 In Progress (the official SQLite WebAssembly engine, exact schema identity, single-worker OPFS runtime, normalized checkpoint import, product mutation entrypoints, bounded product queries, follower transport, recovery UI, selective content, and IndexedDB Library deletion are implemented; physical iPhone acceptance remains open)
 
 > **Architecture:** The PWA runs official SQLite WebAssembly over OPFS in
 > one worker. It uses the same schema catalog, named SQL, result DTOs, mutation
