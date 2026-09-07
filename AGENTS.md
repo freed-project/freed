@@ -85,6 +85,8 @@ Vercel Git integration is the supported website path. The current manual helper 
 
 ## Source identity
 
+For every new production application version, follow [the showcase release contract](docs/RELEASE-SHOWCASE.md) and verify that every marketing theme references its newly published animation.
+
 Public roadmap and changelog updates must remain attributable to an approved source:
 
 - For roadmap presentation, use canonical `docs/roadmap-status.json` from an approved product source checkout. Record the source commit and file digest. Run `node scripts/validate-roadmap-status.mjs` inside that exact approved product checkout before transferring the validated data. Map it exactly. Do not infer status from phase prose, commit messages, or unchecked assumptions.

@@ -20,6 +20,8 @@ Skill selection does not grant production authority.
 
 ## Modes
 
+For every production application release, read [the showcase release contract](../../../docs/RELEASE-SHOWCASE.md) before updating or verifying marketing animation references. Verify every active theme against that release manifest, even when stable URLs require no code change.
+
 ### Ship a reviewed WWW pull request
 
 1. Confirm the pull request targets `www`, its exact head passed required checks, and it contains only the approved website slice.
