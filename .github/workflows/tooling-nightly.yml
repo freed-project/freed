@@ -1,7 +1,7 @@
 name: Nightly exhaustive
 
 # The blocking lanes are deliberately narrow. This is where the expensive work
-# lives: every suite unsharded, repeated runs to surface flake, and the native
+# lives: every suite sharded into bounded repeated runs, plus the native
 # acceptance tests on a real macOS runner.
 #
 # Nothing here gates a pull request. When it finds something it files debt the
@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
     inputs:
       repeat:
-        description: "Runs per suite for flake discovery"
+        description: "Runs per suite for flake discovery, from 1 through 3"
         required: false
         default: "2"
 
@@ -114,10 +114,73 @@ jobs:
           failure artifact contains the retained trace and screenshot."
           gh issue comment 1446 --body "$body"
 
+  exhaustive-tooling-plan:
+    name: Exhaustive tooling plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ".nvmrc"
+
+      - name: Plan bounded measurement shards
+        id: plan
+        # Two attempts run inside each job. Forty shards leave the slowest
+        # projected job below 50 minutes even with the observed 1.5x imbalance,
+        # while preserving the exact total test work.
+        run: node scripts/plan-tooling-smoke.mjs --all --max-jobs 40 --github-output
+
+  exhaustive-tooling-shards:
+    name: Exhaustive tooling shard (${{ matrix.name }})
+    needs: exhaustive-tooling-plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.exhaustive-tooling-plan.outputs.matrix) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Measure the shard and look for flake
+        run: |
+          node scripts/measure-tooling-smoke.mjs \
+            --suite=${{ matrix.suite }} \
+            --shard-index=${{ matrix.shard }} \
+            --shard-count=${{ matrix.shardCount }} \
+            --repeat="${{ github.event.inputs.repeat || '2' }}" \
+            --output-dir=tooling-smoke-measurements
+
+      - name: Upload shard measurements
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: tooling-smoke-measurement-${{ matrix.suite }}-${{ matrix.shard }}-of-${{ matrix.shardCount }}
+          path: tooling-smoke-measurements
+          retention-days: 30
+          if-no-files-found: error
+
   exhaustive-tooling:
     name: Exhaustive tooling suites
+    needs: [exhaustive-tooling-plan, exhaustive-tooling-shards]
+    if: ${{ always() }}
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 20
     permissions:
       contents: read
       issues: write
@@ -134,16 +197,26 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Measure every suite and look for flake
-        id: measure
+      - name: Download shard measurements
+        if: needs.exhaustive-tooling-plan.result == 'success'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: tooling-smoke-measurement-*
+          path: tooling-smoke-measurements
+          merge-multiple: true
+
+      - name: Aggregate complete shard coverage
+        id: aggregate
+        continue-on-error: true
         run: |
           node scripts/measure-tooling-smoke.mjs \
-            --repeat="${{ github.event.inputs.repeat || '2' }}" \
-            > tooling-smoke-measured.json 2> tooling-smoke-measured.log
-          cat tooling-smoke-measured.log
+            --aggregate=tooling-smoke-measurements \
+            > tooling-smoke-measured.json
 
       - name: Report timings and drift
-        if: always()
+        id: drift
+        if: steps.aggregate.outcome == 'success'
+        continue-on-error: true
         run: node scripts/report-tooling-smoke-drift.mjs tooling-smoke-measured.json
 
       - name: Upload measurements
@@ -153,14 +226,18 @@ jobs:
           name: tooling-smoke-measurements
           path: |
             tooling-smoke-measured.json
-            tooling-smoke-measured.log
+            tooling-smoke-measurements
           retention-days: 30
           if-no-files-found: warn
 
       # Flake and drift are debt, not incidents. One issue, deduplicated, so the
       # backlog stays the single source per the repo debt contract.
       - name: File or update the tooling debt issue
-        if: failure()
+        if: >-
+          needs.exhaustive-tooling-plan.result != 'success' ||
+          needs.exhaustive-tooling-shards.result != 'success' ||
+          steps.aggregate.outcome != 'success' ||
+          steps.drift.outcome != 'success'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -179,6 +256,25 @@ jobs:
             gh issue comment "$existing" --body "$body"
           else
             gh issue create --title "$title" --label debt --body "$body"
+          fi
+
+      - name: Require complete measurements
+        env:
+          PLAN_RESULT: ${{ needs.exhaustive-tooling-plan.result }}
+          SHARD_RESULT: ${{ needs.exhaustive-tooling-shards.result }}
+          AGGREGATE_RESULT: ${{ steps.aggregate.outcome }}
+          DRIFT_RESULT: ${{ steps.drift.outcome }}
+        run: |
+          if [ "$PLAN_RESULT" != "success" ] \
+            || [ "$SHARD_RESULT" != "success" ] \
+            || [ "$AGGREGATE_RESULT" != "success" ] \
+            || [ "$DRIFT_RESULT" != "success" ]; then
+            echo "Nightly tooling measurement did not produce one complete stable result."
+            echo "  plan: $PLAN_RESULT"
+            echo "  shards: $SHARD_RESULT"
+            echo "  aggregate: $AGGREGATE_RESULT"
+            echo "  drift: $DRIFT_RESULT"
+            exit 1
           fi
 
   native-acceptance:
