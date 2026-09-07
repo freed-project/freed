@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { addDebugEvent } from "../../lib/debug-store.js";
 import type { FeedItem, FilterOptions } from "@freed/shared";
 import type {
   BoundedFeedPage,
@@ -67,10 +68,13 @@ export function useBoundedFeedItems({
   sourceVersion: number;
 }): {
   readonly feed: BoundedFeedItemsState;
+  retry(): void;
   loadMore(): void;
   loadPrevious(): void;
   patchItems(update: (item: FeedItem) => FeedItem | null): void;
 } {
+  const [retryVersion, setRetryVersion] = useState(0);
+  const retry = useCallback(() => setRetryVersion((value) => value + 1), []);
   const readerRef = useRef<BoundedFeedReader | null>(null);
   const loadRef = useRef<Promise<void> | null>(null);
   const pagesRef = useRef<ResidentPage[]>([]);
@@ -125,6 +129,8 @@ export function useBoundedFeedItems({
 
   useEffect(() => {
     let cancelled = false;
+    let attempts = 0;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
     let openedReader: BoundedFeedReader | null = null;
     loadRef.current = null;
     resetWindow();
@@ -145,75 +151,92 @@ export function useBoundedFeedItems({
       hasMore: false,
       hasPrevious: false,
     }));
-    void openReader(activeFilter, rankingClockMs)
-      .then(async (reader) => {
-        openedReader = reader;
-        if (cancelled) {
-          await closeReader(reader);
-          return;
-        }
-        readerRef.current = reader;
-        const firstPage: BoundedFeedPage = reader.readPage
-          ? await reader.readPage(null, "next")
-          : {
-              items: await reader.readNext(),
-              nextCursor: null,
-              previousCursor: null,
-            };
-        if (cancelled || readerRef.current !== reader) {
-          await closeReader(reader);
-          return;
-        }
-        if (
-          firstPage.items.length > maxPageItems ||
-          firstPage.items.length > reader.totalCount ||
-          (firstPage.items.length === 0 && reader.totalCount > 0)
-        ) {
-          readerRef.current = null;
-          resetWindow();
-          await closeReader(reader);
-          setFeed({
-            status: "failed",
-            items: [],
-            hasMore: false,
-            hasPrevious: false,
-            windowStartIndex: 0,
-            totalCount: 0,
-          });
-          return;
-        }
-        pagesRef.current = [
-          {
-            items: [...firstPage.items],
-            sourceCount: firstPage.items.length,
-            previousCursor: firstPage.previousCursor,
-            nextCursor: firstPage.nextCursor,
-          },
-        ];
-        windowStartIndexRef.current = 0;
-        windowEndIndexRef.current = firstPage.items.length;
-        publishWindow(reader.totalCount);
-      })
-      .catch(() => {
-        const failedReader = openedReader;
-        openedReader = null;
-        if (failedReader) void closeReader(failedReader);
-        if (!cancelled) {
-          readerRef.current = null;
-          resetWindow();
-          setFeed({
-            status: "failed",
-            items: [],
-            hasMore: false,
-            hasPrevious: false,
-            windowStartIndex: 0,
-            totalCount: 0,
-          });
-        }
-      });
+    const openPage = () => {
+      attempts += 1;
+      void openReader(activeFilter, rankingClockMs)
+        .then(async (reader) => {
+          openedReader = reader;
+          if (cancelled) {
+            await closeReader(reader);
+            return;
+          }
+          readerRef.current = reader;
+          const firstPage: BoundedFeedPage = reader.readPage
+            ? await reader.readPage(null, "next")
+            : {
+                items: await reader.readNext(),
+                nextCursor: null,
+                previousCursor: null,
+              };
+          if (cancelled || readerRef.current !== reader) {
+            await closeReader(reader);
+            return;
+          }
+          if (
+            firstPage.items.length > maxPageItems ||
+            firstPage.items.length > reader.totalCount ||
+            (firstPage.items.length === 0 && reader.totalCount > 0)
+          ) {
+            readerRef.current = null;
+            resetWindow();
+            await closeReader(reader);
+            setFeed({
+              status: "failed",
+              items: [],
+              hasMore: false,
+              hasPrevious: false,
+              windowStartIndex: 0,
+              totalCount: 0,
+            });
+            return;
+          }
+          pagesRef.current = [
+            {
+              items: [...firstPage.items],
+              sourceCount: firstPage.items.length,
+              previousCursor: firstPage.previousCursor,
+              nextCursor: firstPage.nextCursor,
+            },
+          ];
+          windowStartIndexRef.current = 0;
+          windowEndIndexRef.current = firstPage.items.length;
+          publishWindow(reader.totalCount);
+          if (attempts > 1) {
+            addDebugEvent("change", `[feed-reader] source race recovered after ${attempts.toLocaleString()} attempts`);
+          }
+        })
+        .catch((error: unknown) => {
+          const failedReader = openedReader;
+          openedReader = null;
+          if (failedReader) void closeReader(failedReader);
+          if (!cancelled) {
+            readerRef.current = null;
+            const message = error instanceof Error ? error.message : String(error);
+            // Retry only a recognized source race, always from a fresh reader.
+            // Never accept rows and overlays from different SQLite revisions.
+            const sourceRace = message === "SQLite Library changed while optimistic fields were loading" || message.includes("CURSOR_STALE");
+            if (sourceRace && attempts < 3) {
+              retryTimer = setTimeout(openPage, attempts * 250);
+              return;
+            }
+            addDebugEvent("error", `[feed-reader] open failed category=${sourceRace ? "source-race" : "query"} attempts=${attempts.toLocaleString()}`);
+            resetWindow();
+            setFeed({
+              status: "failed",
+              items: [],
+              hasMore: false,
+              hasPrevious: false,
+              windowStartIndex: 0,
+              totalCount: 0,
+            });
+          }
+        });
+    };
+    openPage();
 
     return () => {
       cancelled = true;
+      if (retryTimer !== null) clearTimeout(retryTimer);
       const reader = readerRef.current;
       readerRef.current = null;
       if (reader) void closeReader(reader);
@@ -229,6 +252,7 @@ export function useBoundedFeedItems({
     rankingClockMs,
     resetWindow,
     sourceVersion,
+    retryVersion,
   ]);
 
   const loadMore = useCallback(() => {
@@ -386,5 +410,5 @@ export function useBoundedFeedItems({
     [],
   );
 
-  return { feed, loadMore, loadPrevious, patchItems };
+  return { feed, retry, loadMore, loadPrevious, patchItems };
 }
