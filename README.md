@@ -1,12 +1,12 @@
 # FREEDme
 
-![Freed in Scriptorium: Unified Feed, Map, Friends, friend details, mobile Stories, and mobile reader](docs/assets/freed-showcase-scriptorium.webp)
-
 > **Their algorithms optimize for profit. Optimize yours for life.**
 
 Capture your social/rss/newsletter feeds locally. Tune the ranking algo yourself. Sync across devices. No cloud dependency, no tracking, no algorithmic manipulation.
 
 [Freed.wtf](https://freed.wtf)
+
+![Freed in Scriptorium: Unified Feed, Map, Friends, friend details, mobile Stories, and mobile reader](docs/assets/freed-showcase-scriptorium.webp)
 
 ---
 

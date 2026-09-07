@@ -68,7 +68,8 @@ all themes on the live site after each production release, even when stable
 latest-release URLs make a website code change unnecessary. A local preview
 URL, missing asset, older release hash, or fixed mixed-theme GIF fails closeout.
 
-Keep the Scriptorium embed immediately below the `FREEDme` heading in README.md.
+Keep the Scriptorium embed below the `Freed.wtf` link and above the first
+horizontal rule in README.md.
 Once its release asset exists and has passed public verification, use:
 
 ```markdown
