@@ -65,6 +65,37 @@ const toolingNightlyWorkflow = readFileSync(
   path.join(scriptsDir, "..", ".github", "workflows", "tooling-nightly.yml"),
   "utf8",
 );
+
+test("nightly PWA corpus failures retain progress and browser evidence", () => {
+  assert.match(
+    toolingNightlyWorkflow,
+    /pwa-library-corpus-hardening-progress\.json/,
+  );
+  assert.match(
+    toolingNightlyWorkflow,
+    /packages\/pwa\/test-results\/pwa-library-corpus-playwright/,
+  );
+  assert.match(
+    toolingNightlyWorkflow,
+    /Upload PWA corpus progress and failure evidence[\s\S]*?if: always\(\)/,
+  );
+});
+
+test("nightly WebKit corpus proof uses a macOS OPFS environment", () => {
+  assert.match(toolingNightlyWorkflow, /runs-on: \$\{\{ matrix\.runner \}\}/);
+  assert.match(
+    toolingNightlyWorkflow,
+    /browser: chromium\s+runner: ubuntu-latest\s+target: "100000"/,
+  );
+  assert.match(
+    toolingNightlyWorkflow,
+    /browser: webkit\s+runner: macos-latest\s+target: "25000"/,
+  );
+  assert.match(
+    toolingNightlyWorkflow,
+    /Install browser system dependencies\s+if: runner\.os == 'Linux'/,
+  );
+});
 const aptSourceSanitizer = readFileSync(
   path.join(scriptsDir, "ci-sanitize-apt-sources.sh"),
   "utf8",
@@ -85,10 +116,7 @@ test("release preparation uses the channel's protected branch as its exact base"
   assert.match(releasePrep, /npm run validate:release/);
   assert.match(releasePrep, /npm run validate:feature/);
   assert.match(releasePrep, /--promoted-dev-sha=<40-hex-sha>/);
-  assert.match(
-    releasePrep,
-    /--from-ref="\$\{PROMOTED_DEV_COMMIT_SHA\}"/,
-  );
+  assert.match(releasePrep, /--from-ref="\$\{PROMOTED_DEV_COMMIT_SHA\}"/);
   assert.doesNotMatch(
     releasePrep,
     /validate-release-promotion\.mjs --from-ref=origin\/dev/,
@@ -98,20 +126,14 @@ test("release preparation uses the channel's protected branch as its exact base"
 
 test("PWA production snapshots bind one promoted dev SHA without generating a release", () => {
   assert.match(pwaProductionSnapshot, /git fetch origin main/);
-  assert.match(
-    pwaProductionSnapshot,
-    /\$\{HEAD_SHA\}" != "\$\{MAIN_SHA\}"/,
-  );
+  assert.match(pwaProductionSnapshot, /\$\{HEAD_SHA\}" != "\$\{MAIN_SHA\}"/);
   assert.match(
     pwaProductionSnapshot,
     /validate-release-promotion\.mjs[\s\S]*--from-ref="\$\{SNAPSHOT_SHA\}"[\s\S]*--to-ref="\$\{MAIN_SHA\}"/,
   );
   assert.match(pwaProductionSnapshot, /FREED_BUILD_KIND=snapshot/);
   assert.match(pwaProductionSnapshot, /FREED_BUILD_CHANNEL=production/);
-  assert.match(
-    pwaProductionSnapshot,
-    /vercel-deploy-production\.sh" pwa/,
-  );
+  assert.match(pwaProductionSnapshot, /vercel-deploy-production\.sh" pwa/);
   assert.doesNotMatch(pwaProductionSnapshot, /release\.sh/);
   assert.doesNotMatch(pwaProductionSnapshot, /release-notes/);
 });
@@ -148,7 +170,10 @@ test("release publication delegates one exact tag to the trusted App publisher",
     releasePublish,
     /for \(\(TAG_FETCH_ATTEMPT = 1; TAG_FETCH_ATTEMPT <= TAG_FETCH_MAX_ATTEMPTS; TAG_FETCH_ATTEMPT \+= 1\)\)/,
   );
-  assert.match(releasePublish, /Waiting for GitHub to expose newly published tag/);
+  assert.match(
+    releasePublish,
+    /Waiting for GitHub to expose newly published tag/,
+  );
   assert.match(
     releasePublish,
     /published tag \$\{TAG\} did not become readable after \$\{TAG_FETCH_MAX_ATTEMPTS\} attempts/,
@@ -345,10 +370,7 @@ test("production validation runs OPFS durability on macOS WebKit", () => {
   assert.match(mainReleaseValidationWorkflow, /runs-on: macos-latest/);
   assert.match(mainReleaseValidationWorkflow, /playwright install webkit/);
   assert.match(mainReleaseValidationWorkflow, /npm run test:e2e:opfs/);
-  assert.match(
-    releaseValidationJob,
-    /FREED_SKIP_PWA_OPFS_DURABILITY: "true"/,
-  );
+  assert.match(releaseValidationJob, /FREED_SKIP_PWA_OPFS_DURABILITY: "true"/);
   assert.match(releaseOpfsJob, /runs-on: macos-latest/);
   assert.match(releaseOpfsJob, /playwright install webkit/);
   assert.match(releaseOpfsJob, /npm run test:e2e:opfs/);
@@ -368,14 +390,8 @@ test("draft release assets and publication use the exact release ID", () => {
     releaseWorkflow.indexOf("\n  # Redeploy the public marketing site"),
   );
 
-  assert.match(
-    updaterJob,
-    /releases\/\$\{RELEASE_ID\}/,
-  );
-  assert.match(
-    updaterJob,
-    /releases\/assets\/\$\{asset_id\}/,
-  );
+  assert.match(updaterJob, /releases\/\$\{RELEASE_ID\}/);
+  assert.match(updaterJob, /releases\/assets\/\$\{asset_id\}/);
   assert.match(
     updaterJob,
     /uploads\.github\.com\/repos\/\$\{\{ github\.repository \}\}\/releases\/\$\{RELEASE_ID\}\/assets\?name=latest\.json/,
@@ -459,11 +475,23 @@ test("production releases publish an exact-tag PWA showcase with reviewed media"
   assert.match(showcaseJob, /capture-release-showcase\.mjs/);
   assert.match(showcaseJob, /freed-showcase\.gif/);
   assert.match(showcaseJob, /gh release upload "\$TAG"/);
-  assert.match(showcaseJob, /release-showcase-assets\.mjs finalize --directory release-showcase/);
-  const publishJob = releaseWorkflow.slice(releaseWorkflow.indexOf("\n  publish:"), releaseWorkflow.indexOf("\n  publish-website:"));
-  assert.match(publishJob, /release-showcase-assets\.mjs verify-public --directory release-showcase/);
+  assert.match(
+    showcaseJob,
+    /release-showcase-assets\.mjs finalize --directory release-showcase/,
+  );
+  const publishJob = releaseWorkflow.slice(
+    releaseWorkflow.indexOf("\n  publish:"),
+    releaseWorkflow.indexOf("\n  publish-website:"),
+  );
+  assert.match(
+    publishJob,
+    /release-showcase-assets\.mjs verify-public --directory release-showcase/,
+  );
   assert.match(publishJob, /needs\.showcase-assets\.result == 'success'/);
-  const capture = readFileSync(path.join(scriptsDir, "capture-release-showcase.mjs"), "utf8");
+  const capture = readFileSync(
+    path.join(scriptsDir, "capture-release-showcase.mjs"),
+    "utf8",
+  );
   assert.match(capture, /Explore Freed Demo/);
   assert.match(capture, /await selectTheme\(page, capture.theme\)/);
   assert.doesNotMatch(capture, /page\.reload\(/);
@@ -529,10 +557,7 @@ test("main PR validation inspects the actual PR head instead of the synthetic me
     ciWorkflow,
     /validate-main-pr\.mjs[\s\S]*--head-ref=HEAD/,
   );
-  assert.match(
-    ciWorkflow,
-    /trailers:key=Freed-Dev-Snapshot,valueonly/,
-  );
+  assert.match(ciWorkflow, /trailers:key=Freed-Dev-Snapshot,valueonly/);
   assert.match(ciWorkflow, /--snapshot-ref="\$\{snapshot_ref\}"/);
 });
 

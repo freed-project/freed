@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import demoAvatarSources from "./lib/demo-avatar-sources.json";
-import { markDemoItemRead, projectDemoItemRead, projectDemoFacetReads, projectDemoReaderReads } from "./lib/demo-read-session";
+import {
+  markDemoItemRead,
+  projectDemoItemRead,
+  projectDemoFacetReads,
+  projectDemoReaderReads,
+} from "./lib/demo-read-session";
 import {
   getWebsiteHostForChannel,
   SAMPLE_SHOWCASE_FEED_COUNT,
@@ -128,9 +133,7 @@ import {
   queryPwaDeviceContacts,
   queryPwaNormalizedLibrary,
 } from "./lib/library-core-sqlite-runtime";
-import {
-  refreshSampleLibraryData,
-} from "@freed/ui/lib/sample-library-seed";
+import { refreshSampleLibraryData } from "@freed/ui/lib/sample-library-seed";
 import {
   beginSamplePopulationProgress,
   completeSamplePopulationProgress,
@@ -149,7 +152,10 @@ import {
   preparePwaFactoryResetReload,
   runCoordinatedPwaFactoryReset,
 } from "./lib/factory-reset-coordinator";
-import { installFreedDemoCheckpoint, setFreedDemoPersonCare } from "./lib/demo-checkpoint";
+import {
+  installFreedDemoCheckpoint,
+  setFreedDemoPersonCare,
+} from "./lib/demo-checkpoint";
 import {
   isFreedDemoMode,
   isFreedNewsletterPreviewHostname,
@@ -164,10 +170,20 @@ const IS_DEMO = isFreedDemoMode(
 // Only images already admitted to the public demo can be requested by Galaxy.
 // Real libraries do not opt into this new image-loading path.
 const APPROVED_DEMO_AVATAR_URLS = IS_DEMO
-  ? new Set([...SAMPLE_CURATED_DEMO_MEDIA, ...SAMPLE_CHARACTER_AVATAR_MEDIA.values()].map((asset) => asset.baseUrl))
+  ? new Set(
+      [
+        ...SAMPLE_CURATED_DEMO_MEDIA,
+        ...SAMPLE_CHARACTER_AVATAR_MEDIA.values(),
+      ].map((asset) => asset.baseUrl),
+    )
   : undefined;
 const DEMO_AVATAR_DELIVERY_URLS = IS_DEMO
-  ? new Map(Object.entries(demoAvatarSources).map(([sha, source]) => [source, `/api/demo-avatar?sha=${sha}`]))
+  ? new Map(
+      Object.entries(demoAvatarSources).map(([sha, source]) => [
+        source,
+        `/api/demo-avatar?sha=${sha}`,
+      ]),
+    )
   : undefined;
 const LOCAL_PREVIEW_LABEL =
   import.meta.env.VITE_FREED_PREVIEW_LABEL?.trim() || null;
@@ -537,15 +553,20 @@ function App() {
     () => ({
       store: useAppStore,
       interactionMode: IS_DEMO ? "read-only" : "full",
-      onReadOnlyItemOpened: IS_DEMO ? (item) => {
-        if (markDemoItemRead(item)) useAppStore.setState(state => ({
-          searchCorpusVersion: state.searchCorpusVersion + 1,
-          libraryItemVersion: (state.libraryItemVersion ?? 0) + 1,
-        }));
-      } : undefined,
+      onReadOnlyItemOpened: IS_DEMO
+        ? (item) => {
+            if (markDemoItemRead(item))
+              useAppStore.setState((state) => ({
+                searchCorpusVersion: state.searchCorpusVersion + 1,
+                libraryItemVersion: (state.libraryItemVersion ?? 0) + 1,
+              }));
+          }
+        : undefined,
       approvedDemoAvatarUrls: APPROVED_DEMO_AVATAR_URLS,
       approvedDemoAvatarDeliveryUrls: DEMO_AVATAR_DELIVERY_URLS,
-      approvedDemoAvatarFocalPoints: IS_DEMO ? SAMPLE_CHARACTER_AVATAR_FOCAL_POINTS : undefined,
+      approvedDemoAvatarFocalPoints: IS_DEMO
+        ? SAMPLE_CHARACTER_AVATAR_FOCAL_POINTS
+        : undefined,
       geographicMapMode: "online",
       feedMediaPreviews: "inline",
       SourceIndicator: null,
@@ -599,34 +620,54 @@ function App() {
         ? async () =>
             toast.info("External links are disabled in this read only demo")
         : openPwaUrl,
-      openBoundedFeedReader: IS_DEMO ? async (...args) => projectDemoReaderReads(await openPwaLibraryCoreFeedReader(...args)) : openPwaLibraryCoreFeedReader,
-      openBoundedFriendsFeedReader: IS_DEMO ? async (...args) => projectDemoReaderReads(await openPwaLibraryCoreFriendsFeedReader(...args)) : openPwaLibraryCoreFriendsFeedReader,
-      openBoundedSavedFeedReader: IS_DEMO ? async (...args) => projectDemoReaderReads(await openPwaLibraryCoreSavedFeedReader(...args)) : openPwaLibraryCoreSavedFeedReader,
+      openBoundedFeedReader: IS_DEMO
+        ? async (...args) =>
+            projectDemoReaderReads(await openPwaLibraryCoreFeedReader(...args))
+        : openPwaLibraryCoreFeedReader,
+      openBoundedFriendsFeedReader: IS_DEMO
+        ? async (...args) =>
+            projectDemoReaderReads(
+              await openPwaLibraryCoreFriendsFeedReader(...args),
+            )
+        : openPwaLibraryCoreFriendsFeedReader,
+      openBoundedSavedFeedReader: IS_DEMO
+        ? async (...args) =>
+            projectDemoReaderReads(
+              await openPwaLibraryCoreSavedFeedReader(...args),
+            )
+        : openPwaLibraryCoreSavedFeedReader,
       scanLibraryItems: scanPwaLibraryCoreItems,
       searchLibraryItems: searchPwaLibraryCoreItems,
       executeLibraryScopeAction: IS_DEMO
         ? undefined
         : executePwaLibraryCoreScopeAction,
       readFeedSignalCounts: readPwaLibraryCoreFeedSignalCounts,
-      readLibraryFacetSummary: IS_DEMO ? async () => projectDemoFacetReads(await readPwaLibraryCoreFacetSummary()) : readPwaLibraryCoreFacetSummary,
+      readLibraryFacetSummary: IS_DEMO
+        ? async () =>
+            projectDemoFacetReads(await readPwaLibraryCoreFacetSummary())
+        : readPwaLibraryCoreFacetSummary,
       readLibrarySavedAnalytics: readPwaLibraryCoreSavedAnalytics,
       readLibraryFriendsGraph: readPwaLibraryCoreFriendsGraph,
       readLibraryPersonDetail: readPwaLibraryCorePersonDetail,
       readLibraryFriendDetail: readPwaLibraryCoreFriendDetail,
       replaceLibraryFriend: IS_DEMO ? undefined : replacePwaLibraryCoreFriend,
       upsertLibraryPerson: IS_DEMO ? undefined : upsertPwaLibraryCorePerson,
-      onReadOnlyPersonCareChange: IS_DEMO ? async (personId, level) => {
-        try {
-          await setFreedDemoPersonCare(personId, level);
-        } catch (error) {
-          toast.error("Could not update this demo. Reload the page to try again.");
-          throw error;
-        }
-        useAppStore.setState(state => ({
-          searchCorpusVersion: state.searchCorpusVersion + 1,
-          libraryItemVersion: (state.libraryItemVersion ?? 0) + 1,
-        }));
-      } : undefined,
+      onReadOnlyPersonCareChange: IS_DEMO
+        ? async (personId, level) => {
+            try {
+              await setFreedDemoPersonCare(personId, level);
+            } catch (error) {
+              toast.error(
+                "Could not update this demo. Reload the page to try again.",
+              );
+              throw error;
+            }
+            useAppStore.setState((state) => ({
+              searchCorpusVersion: state.searchCorpusVersion + 1,
+              libraryItemVersion: (state.libraryItemVersion ?? 0) + 1,
+            }));
+          }
+        : undefined,
       removeLibraryPerson: IS_DEMO ? undefined : removePwaLibraryCorePerson,
       assignLibraryAccountToPerson: IS_DEMO
         ? undefined
@@ -644,10 +685,12 @@ function App() {
       readLibraryFriendsLocationItem: readPwaLibraryCoreFriendsLocationItem,
       readLibraryStoryWallCandidates: readPwaLibraryCoreStoryWallCandidates,
       readLibraryMapCandidates: readPwaLibraryCoreMapCandidates,
-      readLibraryItemDetail: IS_DEMO ? async (id) => {
-        const item = await readPwaLibraryCoreItemDetail(id);
-        return item ? projectDemoItemRead(item) : null;
-      } : readPwaLibraryCoreItemDetail,
+      readLibraryItemDetail: IS_DEMO
+        ? async (id) => {
+            const item = await readPwaLibraryCoreItemDetail(id);
+            return item ? projectDemoItemRead(item) : null;
+          }
+        : readPwaLibraryCoreItemDetail,
       bugReporting: pwaBugReporting,
     }),
     [checkForUpdates, handleFactoryReset, releaseChannel, setReleaseChannel],
@@ -719,56 +762,56 @@ function App() {
   // Keep all routes behind initialization, including direct Map/Friends links.
   return (
     <DemoInitializationBoundary pending={IS_DEMO && !isInitialized}>
-    <PlatformProvider value={platform}>
-      <BugReportBoundary>
-        <LocalPreviewBadge label={LOCAL_PREVIEW_LABEL} />
-        {IS_DEMO && (
-          <DemoWelcomeBanner
-            downloadUrl={`https://${getWebsiteHostForChannel(releaseChannel)}/get`}
-          />
-        )}
-        <AppShell>
-          <FeedView />
-        </AppShell>
-        <ToastContainer />
-        {(installNotice || showUpdateBanner) && (
-          <div className="fixed bottom-20 left-4 right-4 z-[120] flex flex-col gap-3 sm:bottom-4 sm:left-auto sm:w-[min(24rem,calc(100vw-2rem))]">
-            {installNotice && (
-              <FloatingNotice
-                title="Install Freed"
-                body={
-                  installNotice.kind === "browser"
-                    ? "Add Freed to your home screen for faster launch and offline reading."
-                    : "Add Freed to your home screen for faster launch and offline reading. In Safari, open Share, then tap Add to Home Screen."
-                }
-                actionLabel={
-                  installNotice.kind === "browser" ? "Install" : undefined
-                }
-                onAction={
-                  installNotice.kind === "browser"
-                    ? () => {
-                        void handleInstallAction();
-                      }
-                    : undefined
-                }
-                onDismiss={handleDismissInstallNotice}
-                testId="pwa-install-notice"
-              />
-            )}
-            {showUpdateBanner && (
-              <FloatingNotice
-                title="New version available"
-                body="Reload to apply the update."
-                actionLabel="Reload"
-                onAction={applyPwaUpdate}
-                onDismiss={() => setShowUpdateBanner(false)}
-                testId="pwa-update-notice"
-              />
-            )}
-          </div>
-        )}
-      </BugReportBoundary>
-    </PlatformProvider>
+      <PlatformProvider value={platform}>
+        <BugReportBoundary>
+          <LocalPreviewBadge label={LOCAL_PREVIEW_LABEL} />
+          {IS_DEMO && (
+            <DemoWelcomeBanner
+              downloadUrl={`https://${getWebsiteHostForChannel(releaseChannel)}/get`}
+            />
+          )}
+          <AppShell>
+            <FeedView />
+          </AppShell>
+          <ToastContainer />
+          {(installNotice || showUpdateBanner) && (
+            <div className="fixed bottom-20 left-4 right-4 z-[120] flex flex-col gap-3 sm:bottom-4 sm:left-auto sm:w-[min(24rem,calc(100vw-2rem))]">
+              {installNotice && (
+                <FloatingNotice
+                  title="Install Freed"
+                  body={
+                    installNotice.kind === "browser"
+                      ? "Add Freed to your home screen for faster launch and offline reading."
+                      : "Add Freed to your home screen for faster launch and offline reading. Open Share, then tap Add to Home Screen."
+                  }
+                  actionLabel={
+                    installNotice.kind === "browser" ? "Install" : undefined
+                  }
+                  onAction={
+                    installNotice.kind === "browser"
+                      ? () => {
+                          void handleInstallAction();
+                        }
+                      : undefined
+                  }
+                  onDismiss={handleDismissInstallNotice}
+                  testId="pwa-install-notice"
+                />
+              )}
+              {showUpdateBanner && (
+                <FloatingNotice
+                  title="New version available"
+                  body="Reload to apply the update."
+                  actionLabel="Reload"
+                  onAction={applyPwaUpdate}
+                  onDismiss={() => setShowUpdateBanner(false)}
+                  testId="pwa-update-notice"
+                />
+              )}
+            </div>
+          )}
+        </BugReportBoundary>
+      </PlatformProvider>
     </DemoInitializationBoundary>
   );
 }
