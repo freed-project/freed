@@ -20,8 +20,9 @@ function git(root, args, gitBin = "git", allowed = [0]) {
 
 function readLog(root) {
   const file = path.join(root, NAME);
-  if (!fs.existsSync(file) && !fs.lstatSync(file, { throwIfNoEntry: false })) return null;
-  const fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+  let fd;
+  try { fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW); }
+  catch (error) { if (error.code === "ENOENT") return null; throw error; }
   try {
     const stat = fs.fstatSync(fd);
     if (!stat.isFile() || stat.nlink !== 1 || stat.size > 1024 * 1024) {
@@ -91,10 +92,13 @@ export function preserveDecisions(root, { archiveRoot = path.join(os.homedir(), 
   const directory = privateDirectory(destination);
   const file = path.join(directory, `${digest(root).slice(0, 12)}-${digest(contents)}.md`);
   try { fs.writeFileSync(file, contents, { flag: "wx", mode: 0o600 }); } catch (error) { if (error.code !== "EEXIST") throw error; }
-  const stat = fs.lstatSync(file);
-  if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1 || (stat.mode & 0o077) !== 0 || !fs.readFileSync(file).equals(contents)) {
-    throw new Error("Decision archive verification failed; retain the worktree.");
-  }
+  const fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+  try {
+    const stat = fs.fstatSync(fd);
+    if (!stat.isFile() || stat.nlink !== 1 || (stat.mode & 0o077) !== 0 || !fs.readFileSync(fd).equals(contents)) {
+      throw new Error("Decision archive verification failed; retain the worktree.");
+    }
+  } finally { fs.closeSync(fd); }
   return file;
 }
 
