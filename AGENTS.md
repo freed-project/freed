@@ -134,9 +134,9 @@ Marketing is `https://freed.wtf`, the PWA is `https://app.freed.wtf`, and downlo
 
 ### Autonomous decision review
 
-Complete every authorized delivery step. Make routine reversible choices using repository conventions. Answer side questions and resume the active task unless the owner pauses, cancels, or replaces it.
+Complete authorized delivery. Use conventions for reversible choices. Answer side questions, then resume unless the owner pauses, cancels, or replaces the task.
 
-Follow the [initiative contract](docs/AGENT-INSTRUCTIONS.md#local-decision-review): decide and report routine choices; ask while continuing independent work for material preferences; pause only dependent actions for missing authority, explicit checkpoints, or consequential uncertainty. Skills cannot add a second approval for an included action.
+Follow the [initiative contract](docs/AGENT-INSTRUCTIONS.md#local-decision-review): decide and report; ask while continuing independent work; pause only affected actions for required decisions. Skills cannot add approval for an included action.
 
 Record meaningful choices and consequences in private `TASK-DECISIONS.local.md`. Tell the owner while course correction is cheap. At closeout, summarize delivery, trade-offs, and unresolved items, then link the log. Preserve it before cleanup; never publish it. A log link alone is not a decision update.
 
@@ -158,7 +158,7 @@ Record meaningful choices and consequences in private `TASK-DECISIONS.local.md`.
 - Publish ordinary work through `./scripts/worktree-publish.sh` with existing GitHub authentication. Use `--ready` only for finished work. Missing optional broker configuration does not block the normal authenticated path.
 - Branch names use `feat/`, `fix/`, `chore/`, `docs/`, `refactor/`, `perf/`, or `style/` plus a short kebab-case description. Commit messages and PR titles use the matching Conventional Commit prefix.
 - Squash merge into the PR's destination lane. One PR becomes one commit on that lane. Use the PR title as the squash commit subject.
-- An authorized request to merge includes enabling repository auto-merge and arming squash auto-merge when required checks are pending. Follow [authorized merge completion](docs/AGENT-INSTRUCTIONS.md#authorized-merge-completion); preserve required checks, reviews, lane authority, and explicit owner holds.
+- Follow [authorized merge completion](docs/AGENT-INSTRUCTIONS.md#authorized-merge-completion), including enabling and arming squash auto-merge. Preserve checks, reviews, lane authority, and owner holds.
 - After a merge, stop only that worktree's processes, remove its worktree, and delete the local task branch. Never use branch ancestry to infer whether a squash PR merged; query the PR or remote branch state.
 
 ### Promotion
