@@ -57,6 +57,42 @@ Skill selection loads instructions. It never raises the numbered authorization l
 
 When a shared safety rule changes, inspect all three long-lived versions and record every intentional difference in the pull request.
 
+## Local decision review
+
+All workflows inherit the root initiative contract, including builds, reviews, repairs, releases, website work, and background actors within their granted capabilities. Preserve the current objective when the owner asks a side question. Answer it and resume unless the owner pauses, cancels, or replaces the task. Requests to implement are instructions to act within existing authority, not invitations to offer another plan.
+
+### Decision paths
+
+- **Decide and report:** Use repository conventions for routine, reversible implementation choices. Record meaningful alternatives, consequences, and uncertainty. Do not ask merely because a choice affects architecture or user experience.
+- **Ask and continue:** Ask a focused question when a preference materially improves the result. Continue independent authorized work. For optional unanswered preferences, use a stated, reversible default after a reasonable response opportunity; silence never supplies approval.
+- **Pause the affected action:** Stop dependent work for missing authority, an explicit owner review checkpoint, or uncertainty about scope, privacy, durable data, substantial cost, or a difficult-to-reverse choice that cannot be resolved from available evidence. Explain the concrete blocker and cite the exact instruction if one causes the stop. Complete independent preparation first. Do not fabricate an approval or weaken runtime authority.
+
+### Decision updates and closeout
+
+For authorized file-writing work, create `TASK-DECISIONS.local.md` at the first meaningful choice or unanswered question. Read-only tasks report decisions in the response; do not create a log when writes are prohibited. Worktree creation initializes the private log. For simple tasks, a short statement that no material trade-offs arose is sufficient. Ready publication requires a nonempty, ignored, untracked log; drafts still enforce privacy. These checks do not prove reasoning quality or owner acknowledgement.
+
+For each meaningful entry record a stable number, date, affected surface, status, observed facts, choice and alternatives, consequence, validation, and what the owner should inspect. Mark corrections as superseded instead of erasing them. Keep a short review summary of current decisions and open items. Record choices when made; label retrospective entries. Never include secrets, raw private data, or a tool transcript.
+
+Tell the owner about consequential choices before or as they are implemented, while course correction is cheap. Use concise updates explaining the choice, reason, consequence, and whether an answer is needed. Batch routine details. Report discoveries, changed direction, and blockers instead of narrating commands or repeating unchanged test counts. A decision update is not an approval request.
+
+Before handoff or release, reconcile the log and state in the response:
+
+- Which requested delivery steps completed, with source and validation evidence. Distinguish built, published, merged, and released.
+- The significant trade-offs and consequences, including provisional defaults the owner may want to revisit.
+- Unresolved choices or blockers, the next concrete action, and a clickable log link.
+
+Never claim that logging a choice means the owner approved it. Never copy the private log into a PR, issue, or release. Public descriptions include only the technical rationale needed to review the change.
+
+### Local lifecycle checks
+
+Use `node scripts/task-decisions.mjs init --worktree <path>` for older worktrees. Publication checks the index and outgoing history before staging or pushing, so force-adding and then deleting the log does not hide a privacy leak. It never prints log contents.
+
+Use `scripts/worktree-cleanup.sh --yes --worktree <path>` for task-scoped cleanup. Before removal it checks a clean working tree and the exact merged PR head, preserves the log outside the worktree with private permissions and a content digest, verifies the copy, and prints its path. A preservation failure retains the worktree. Include the preserved link in closeout. Do not delete the only copy manually.
+
+### Behavioral evaluation
+
+Use [initiative scenarios](initiative-scenarios.json) when initiative, authority, or completion rules change. Give an independent evaluator the scenario input and current instructions without the scoring rubric, permit only synthetic actions, and inspect its response and action trace against the rubric afterward. Include optional questions, side questions, exact authority reuse, explicit stops, validation reuse, and closeout. Record model, instruction digest, observed behavior, failures, and remaining limits in the private log. Structural validators do not establish model compliance. Do not add live API calls or a universal expensive model-eval gate.
+
 ## Measure the result
 
 Review this architecture after a concrete routing error, missed production stop, or repeated-context regression. Use that evidence to adjust the route or budget. Do not optimize for line count alone.
