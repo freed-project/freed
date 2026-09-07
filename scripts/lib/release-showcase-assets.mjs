@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
-import { lstat, open, writeFile } from "node:fs/promises";
+import { lstat, open, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 export const SHOWCASE_ASSET_FILENAMES = Object.freeze([
@@ -14,6 +14,22 @@ export const SHOWCASE_ASSET_FILENAMES = Object.freeze([
 export const SHOWCASE_MANIFEST_FILENAME = "freed-showcase-manifest.json";
 export const MAX_SHOWCASE_ASSET_BYTES = 64 * 1024 * 1024;
 export const DEFAULT_SHOWCASE_DOWNLOAD_TIMEOUT_MS = 15_000;
+
+/** Exact checked-in media URLs, including extensionless NPS and new image hosts. */
+export async function readShowcaseMediaCatalog(directory) {
+  const urls = new Set();
+  for (const filename of await readdir(directory)) {
+    if (!/^sample-corpus-[a-z0-9-]+-media\.json$/.test(filename)) continue;
+    const entries = JSON.parse(await readFile(path.join(directory, filename), "utf8"));
+    if (!Array.isArray(entries)) throw new Error(`Invalid showcase media catalog: ${filename}`);
+    for (const entry of entries) {
+      if (typeof entry.imageUrl === "string" && entry.imageUrl.startsWith("https://")) {
+        urls.add(entry.imageUrl);
+      }
+    }
+  }
+  return urls;
+}
 
 const REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const TAG_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;

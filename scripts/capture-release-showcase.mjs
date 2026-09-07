@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { chromium } from "playwright";
-import aquaticMedia from "../packages/shared/src/sample-corpus-aquatic-forty-four-media.json" with { type: "json" };
+import { fileURLToPath } from "node:url";
+import { readShowcaseMediaCatalog } from "./lib/release-showcase-assets.mjs";
 
 const baseUrl = process.env.FREED_SHOWCASE_URL ?? "http://127.0.0.1:4173";
 const outputDirectory = path.resolve(
@@ -11,9 +12,11 @@ const outputDirectory = path.resolve(
 const releaseTag = process.env.GITHUB_REF_NAME ?? "local-preview";
 const releaseSha = process.env.GITHUB_SHA ?? "local-preview";
 const baseOrigin = new URL(baseUrl).origin;
-// NPS delivers this reviewed sockeye pair without filename extensions. Keep
-// the exception bound to the catalog's exact URLs, not arbitrary NPS assets.
-const reviewedExtensionlessMediaUrls = new Set(aquaticMedia.map((item) => item.imageUrl));
+// New catalog hosts and extensionless assets are admitted by exact URL, never
+// by broadening the network host allowlist. This only audits existing loads.
+const reviewedMediaUrls = await readShowcaseMediaCatalog(
+  fileURLToPath(new URL("../packages/shared/src/", import.meta.url)),
+);
 const useMemorySqlite = process.env.FREED_SHOWCASE_SQLITE_MEMORY === "1";
 const reviewedMediaHosts = new Set([
   "thumb.wikimedia.org",
@@ -160,10 +163,10 @@ page.on("request", (request) => {
     // Observe the public media the demo already loads. This does not initiate
     // requests, retries, authenticated provider navigation, or video playback.
     const existingPublicMapAsset = url.protocol === "https:" && url.hostname === "tiles.openfreemap.org";
-    if (!existingPublicMapAsset && (url.protocol !== "https:" || !reviewedMediaHosts.has(url.hostname) ||
+    if (!existingPublicMapAsset && (url.protocol !== "https:" ||
         !["image", "fetch"].includes(request.resourceType()) ||
-        (!/\.(?:jpe?g|png|webp|avif)(?:$|\/)/i.test(url.pathname) &&
-          !reviewedExtensionlessMediaUrls.has(url.href)))) {
+        (!reviewedMediaUrls.has(url.href) &&
+          (!reviewedMediaHosts.has(url.hostname) || !/\.(?:jpe?g|png|webp|avif)(?:$|\/)/i.test(url.pathname))))) {
       unexpectedRequestUrls.add(url.href);
     }
   }

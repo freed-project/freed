@@ -12,11 +12,24 @@ import {
   finalizeShowcaseManifest,
   resolveShowcaseReleaseIdentity,
   verifyPublishedShowcaseAssets,
+  readShowcaseMediaCatalog,
 } from "./lib/release-showcase-assets.mjs";
 
 const repository = "freed-project/freed";
 const tag = "v26.9.0500";
 const checkoutSha = "a".repeat(40);
+
+test("showcase media admission follows exact reviewed catalog URLs", async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "freed-showcase-catalog-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const known = "https://images.example/photos/approved";
+  await writeFile(path.join(directory, "sample-corpus-reviewed-media.json"), JSON.stringify([
+    { imageUrl: known, sourceUrl: "https://images.example/unreviewed-page" },
+    { imageUrl: "http://images.example/insecure.jpg" },
+  ]));
+  await writeFile(path.join(directory, "unrelated.json"), JSON.stringify([{ imageUrl: "https://images.example/other.jpg" }]));
+  assert.deepEqual([...await readShowcaseMediaCatalog(directory)], [known]);
+});
 
 async function fixture(t, manifestOverrides = {}) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "freed-showcase-assets-"));
