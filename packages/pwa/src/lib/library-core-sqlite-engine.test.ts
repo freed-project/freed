@@ -4127,6 +4127,71 @@ describe("PWA Library Core SQLite engine", () => {
     ).toThrow("cursor row is missing");
   });
 
+  it("reads bounded annotations and overlapping RSS counts from normalized rows", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(
+      database,
+      sqlite3.version.libVersion,
+    );
+    engine.initialize();
+    database.exec(`
+      INSERT INTO library_meta (singleton_id, library_id, schema_version, authority_epoch, source_revision, updated_at)
+      VALUES (1, '${"a".repeat(64)}', 1, 'epoch-1', 7, 1000);
+      INSERT INTO library_materialization_generation SELECT 1, library_id FROM library_meta;
+      UPDATE library_change_state SET revision = 7 WHERE singleton_id = 1;
+      INSERT INTO library_feed_items (global_id, platform, content_type, captured_at, published_at, author_id, author_handle, author_display_name, hidden, saved, archived, updated_at, rss_feed_url, read_at)
+      VALUES ('rss-1', 'rss', 'article', 100, 100, 'a', 'a', 'Ada', 0, 0, 0, 100, NULL, NULL),
+             ('rss-2', 'rss', 'article', 100, 100, 'a', 'a', 'Ada', 0, 0, 0, 100, 'https://example.com/feed', 100),
+             ('substack-1', 'substack', 'article', 100, 100, 'a', 'a', 'Ada', 0, 0, 0, 100, 'https://example.com/feed', NULL),
+             ('x-1', 'x', 'post', 100, 100, 'a', 'a', 'Ada', 0, 0, 0, 100, NULL, NULL);
+      INSERT INTO library_feed_item_tags (global_id, tag) VALUES ('rss-1', 'favorite');
+      INSERT INTO library_feed_item_highlights (global_id, ordinal, created_at, note, text_value, text_blob_digest)
+      VALUES ('rss-1', 0, 123, 'Keep this', 'Quoted text', NULL);
+    `);
+    const summaryRequest = {
+      queryId: "rss_item_summary_v1",
+      schemaVersion: 1,
+    } as const;
+    expect(engine.query(summaryRequest)).toMatchObject({
+      totalCount: 3,
+      unreadCount: 2,
+      source: { projectionRevision: 7 },
+    });
+    const request = {
+      globalId: "rss-1",
+      queryId: "item_annotations_v1",
+      schemaVersion: 1,
+    } as const;
+    expect(engine.query(request)).toMatchObject({
+      tags: ["favorite"],
+      highlights: [
+        {
+          createdAt: 123,
+          note: "Keep this",
+          text: "Quoted text",
+          textBlobDigest: null,
+        },
+      ],
+      source: { projectionRevision: 7 },
+    });
+    database.exec({
+      sql: "UPDATE library_feed_item_highlights SET note = ?1",
+      bind: ["x".repeat(8193)],
+    });
+    expect(() => engine.query(request)).toThrow();
+    database.exec(
+      "DELETE FROM library_feed_items WHERE global_id = 'substack-1'",
+    );
+    expect(engine.query(summaryRequest)).toMatchObject({
+      totalCount: 2,
+      unreadCount: 1,
+    });
+    database.exec("DELETE FROM library_feed_items");
+    expect(engine.query(summaryRequest)).toMatchObject({
+      totalCount: 0,
+      unreadCount: 0,
+    });
+  });
+
   it("pages normalized feed rows through the bounded named query", () => {
     const engine = new PwaLibraryCoreSqliteEngine(
       database,

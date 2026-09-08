@@ -23,7 +23,7 @@ import {
 import { MapPinIcon, RssIcon, BookmarkIcon, ArchiveIcon, UsersIcon, CopyIcon } from "../icons.js";
 import { getTopSourceItems, type SourceNavigationItem } from "../../lib/source-navigation.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
-import { useLibraryFacetSummary } from "../../hooks/useLibraryFacetSummary.js";
+import { useLibraryFacetSummary, useLibraryRssItemSummary } from "../../hooks/useLibraryFacetSummary.js";
 import { useLibraryRssFeedPage } from "../../hooks/useLibraryRssFeedPage.js";
 import { SearchJumpField } from "./SearchJumpField.js";
 import { resolveAnimationIntensity } from "../../lib/animation-preferences.js";
@@ -710,8 +710,9 @@ export function Sidebar({
   const totalItemCount = libraryFacets.totalCount;
   const unreadCountByPlatform = Object.fromEntries(libraryFacets.platformCounts.map(row => [row.platform, row.unreadCount]));
   const itemCountByPlatform = Object.fromEntries(libraryFacets.platformCounts.map(row => [row.platform, row.totalCount]));
-  const rssUnreadCount = unreadCountByPlatform.rss ?? 0;
-  const rssItemCount = itemCountByPlatform.rss ?? 0;
+  const rssSummary = useLibraryRssItemSummary(searchCorpusVersion);
+  const rssUnreadCount = rssSummary?.unreadCount ?? 0;
+  const rssItemCount = rssSummary?.totalCount ?? 0;
   const savedCount = libraryFacets.savedCount;
   const archivedCount = libraryFacets.archivedCount;
   const friendCount = libraryFacets.friendPersonCount;

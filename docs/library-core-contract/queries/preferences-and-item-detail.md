@@ -22,6 +22,16 @@ bodies, media bytes, arbitrary remainder objects, or an enlarged metadata
 response. Freed Desktop and the PWA use these locators to commit device-local
 hydration policy. React receives no vault path or content byte buffer.
 
+`item_annotations_v1` reads tags and highlights for one exact item. It preserves
+the compact `item_detail_v1` contract and returns at most 64 tags and 64
+highlights, with a 1 MiB response ceiling. Both reads must have the same source
+generation and revision before the selected item receives its annotations.
+The query preserves blob references instead of substituting empty text. The
+current selected-item adapter rejects a blob-backed highlight until its text
+can be hydrated; it never passes incomplete annotations to a replacement write.
+Content pinning does not request annotations. Native and browser SQLite use
+the same generated point-query programs and reject oversized results.
+
 Desktop provider-delivery discovery also has no renderer corpus path. Startup
 and explicit replacement scans must visit bounded authoritative SQLite pages.
 Ordinary item-patch events may enqueue only the exact changed rows carried by

@@ -160,8 +160,8 @@ function FieldGuideWelcome({
     if (requestedMobileTab === mobileTab) return;
     // Leave through the old edge before mounting at the new edge. Remounting
     // prevents CSS from interpolating the rotation across the page.
-    setTabChangingEdge(true);
     const timer = window.setTimeout(() => {
+      setTabChangingEdge(true);
       setMobileTab(requestedMobileTab);
     }, minimized ? 600 : 0);
     return () => window.clearTimeout(timer);
@@ -177,7 +177,7 @@ function FieldGuideWelcome({
       cancelAnimationFrame(secondFrame);
     };
   }, [requestedMobileTab, mobileTab]);
-  const tabVisible = minimized && !tabChangingEdge;
+  const tabVisible = minimized && requestedMobileTab === mobileTab && !tabChangingEdge;
   const [tabY, setTabY] = useState<number | null>(null);
   const [tabDragging, setTabDragging] = useState(false);
   const tabDrag = useRef<{ pointerId: number; startY: number; originY: number; moved: boolean } | null>(null);

@@ -1,3 +1,5 @@
+import { parseLibraryCoreItemAnnotationsRequestV1, parseLibraryCoreItemAnnotationsResponseV1, type LibraryCoreItemAnnotationsRequestV1, type LibraryCoreItemAnnotationsResponseV1 } from "./item-annotations-contracts.js";
+import { parseLibraryCoreRssItemSummaryRequestV1, parseLibraryCoreRssItemSummaryResponseV1, type LibraryCoreRssItemSummaryRequestV1, type LibraryCoreRssItemSummaryResponseV1 } from "./rss-item-summary-contracts.js";
 import {
   parseLibraryCoreAccountDetailRequestV1,
   parseLibraryCoreAccountDetailResponseV1,
@@ -331,6 +333,8 @@ export type LibraryCoreSqliteQueryRequest =
   | LibraryCoreFriendCandidateReviewRequestV1
   | LibraryCoreFriendsDirectoryPageRequestV1
   | LibraryCoreItemDetailRequestV1
+  | LibraryCoreItemAnnotationsRequestV1
+  | LibraryCoreRssItemSummaryRequestV1
   | LibraryCoreItemReaderBodyRequestV1
   | LibraryCoreItemScanRequestV1
   | LibraryCoreContentFetchPageRequestV1
@@ -351,7 +355,11 @@ export type LibraryCoreSqliteQueryRequest =
 
 export type LibraryCoreSqliteQueryResponseFor<
   T extends LibraryCoreSqliteQueryRequest,
-> = T extends LibraryCoreFacetSummaryRequestV1
+> = T extends LibraryCoreRssItemSummaryRequestV1
+  ? LibraryCoreRssItemSummaryResponseV1
+  : T extends LibraryCoreItemAnnotationsRequestV1
+  ? LibraryCoreItemAnnotationsResponseV1
+  : T extends LibraryCoreFacetSummaryRequestV1
   ? LibraryCoreFacetSummaryResponseV1
   : T extends LibraryCoreAccountDetailRequestV1
     ? LibraryCoreAccountDetailResponseV1
@@ -427,7 +435,11 @@ export function parseLibraryCoreSqliteQueryResponse<
   T extends LibraryCoreSqliteQueryRequest,
 >(value: unknown, request: T): LibraryCoreSqliteQueryResponseFor<T> {
   const parsed =
-    request.queryId === "account_detail_v1"
+    request.queryId === "rss_item_summary_v1"
+      ? parseLibraryCoreRssItemSummaryResponseV1(value)
+      : request.queryId === "item_annotations_v1"
+      ? parseLibraryCoreItemAnnotationsResponseV1(value, request)
+      : request.queryId === "account_detail_v1"
       ? parseLibraryCoreAccountDetailResponseV1(value, request)
       : request.queryId === "contact_match_v1"
         ? parseLibraryCoreContactMatchResponseV1(value, request)
@@ -1165,7 +1177,11 @@ export function parseLibraryCoreSqliteWorkerRequest(
     parseLibraryCoreActivateNormalizedCheckpointStageV2(value.activation);
   } else if (value.kind === "query") {
     const query = isClosedRecord(value.query)
-      ? value.query.queryId === "account_detail_v1"
+      ? value.query.queryId === "rss_item_summary_v1"
+        ? parseLibraryCoreRssItemSummaryRequestV1(value.query)
+        : value.query.queryId === "item_annotations_v1"
+        ? parseLibraryCoreItemAnnotationsRequestV1(value.query)
+        : value.query.queryId === "account_detail_v1"
         ? parseLibraryCoreAccountDetailRequestV1(value.query)
         : value.query.queryId === "contact_match_v1"
           ? parseLibraryCoreContactMatchRequestV1(value.query)

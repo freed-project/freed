@@ -170,28 +170,50 @@ async function collectVisibleGeometry(page: import("@playwright/test").Page) {
   });
 }
 
-for (const [density, expectedCardHeight] of Object.entries(DESKTOP_CARD_HEIGHT_BY_DENSITY) as Array<[DesktopCardDensity, number]>) {
-  test(`desktop ${density} feed skeletons match assigned card height`, async ({ app, page }) => {
-    await setCardDensity(page, density);
-    await app.goto();
-    await app.waitForReady();
+test("desktop feed shows loading status until its bounded query completes", async ({
+  app,
+  page,
+}) => {
+  await app.goto();
+  await app.waitForReady();
 
-    await page.evaluate(() => {
-      const store = (window as Record<string, unknown>).__FREED_STORE__ as {
-        setState: (patch: unknown) => void;
-      };
-      store.setState({ isLoading: true, items: [] });
+  await page.evaluate(() => {
+    const root = window as Record<string, unknown>;
+    const handlers = root.__TAURI_MOCK_HANDLERS__ as Record<
+      string,
+      (args: { request?: { queryId?: string } }) => unknown
+    >;
+    const original = handlers.query_normalized_library;
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
     });
-
-    const skeletons = page.getByTestId("feed-item-skeleton");
-    await expect(skeletons.first()).toBeVisible();
-
-    const heights = await skeletons.evaluateAll((elements) =>
-      elements.slice(0, 3).map((element) => Math.round(element.getBoundingClientRect().height)),
-    );
-    expect(heights).toEqual([expectedCardHeight, expectedCardHeight, expectedCardHeight]);
+    root.__RELEASE_FEED_QUERY__ = () => {
+      handlers.query_normalized_library = original;
+      release();
+    };
+    handlers.query_normalized_library = async (args) => {
+      if (args.request?.queryId === "feed_browse_page_v3") await pending;
+      return original(args);
+    };
+    const store = root.__FREED_STORE__ as {
+      getState: () => { setFilter: (filter: { platform: string }) => void };
+    };
+    store.getState().setFilter({ platform: "rss" });
   });
-}
+
+  const loading = page
+    .getByRole("status")
+    .filter({ hasText: "Loading feed" });
+  await expect(loading).toBeVisible();
+  await page.evaluate(() => {
+    (
+      (window as Record<string, unknown>)
+        .__RELEASE_FEED_QUERY__ as () => void
+    )();
+  });
+  await expect(loading).toHaveCount(0);
+});
 
 for (const [density, expectedCardHeight] of Object.entries(DESKTOP_CARD_HEIGHT_BY_DENSITY) as Array<[DesktopCardDensity, number]>) {
   test(`desktop ${density} feed rows do not shift when media loads or fails`, async ({ app, page }) => {
