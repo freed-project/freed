@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createDefaultPreferences } from "@freed/shared";
 
 const mocks = vi.hoisted(() => ({
   invoke: vi.fn(),
@@ -184,6 +185,16 @@ describe("SQLite editable follower mutations", () => {
             rows: [],
             schemaVersion: request.schemaVersion,
             source,
+          };
+        }
+        if (request.queryId === "item_annotations_v1") {
+          return {
+            queryId: request.queryId,
+            schemaVersion: 1,
+            globalId: (request as { globalId: string }).globalId,
+            source,
+            tags: [],
+            highlights: [],
           };
         }
         if (request.queryId === "item_detail_v1") {
@@ -558,6 +569,118 @@ describe("SQLite Primary mutations", () => {
       throw new Error(`Unexpected native command: ${command}`);
     });
   });
+
+  it("encodes fractional synchronized preferences in the canonical envelope", async () => {
+    const storyWall = createDefaultPreferences().storyWall;
+    await dispatchSqliteMutation({
+      reqId: 5,
+      type: "UPDATE_PREFERENCES",
+      updates: {
+        storyWall: {
+          ...storyWall,
+          style: { ...storyWall.style, mediaDensity: 0.95 },
+        },
+      },
+    });
+    const [envelope] = mocks.enqueuedEnvelopes.map((value) =>
+      JSON.parse(value),
+    );
+    expect(envelope.operation_type).toBe("preferences_leaf_assignment");
+    expect(envelope.payload.updates.storyWall.style.mediaDensity).not.toBe(
+      0.95,
+    );
+    expect(envelope.payload.updates.storyWall.style.mediaDensity).toEqual({
+      bits: "3fee666666666666",
+      codec: "ieee754_binary64_hex_v1",
+    });
+  });
+
+  it.each([
+    {
+      displayName: "Ada Lovelace",
+      existingPerson: false,
+      expectedReplacements: 1,
+    },
+    {
+      displayName: "Science Daily",
+      existingPerson: false,
+      expectedReplacements: 0,
+    },
+    {
+      displayName: "Ada Lovelace",
+      existingPerson: true,
+      expectedReplacements: 0,
+    },
+  ])(
+    "reconciles $displayName without replacing an existing Person ($existingPerson)",
+    async ({ displayName, existingPerson, expectedReplacements }) => {
+      const original = mocks.invoke.getMockImplementation()!;
+      mocks.invoke.mockImplementation(async (command, args) => {
+        if (command === "query_normalized_library") {
+          const { request } = args;
+          if (request.queryId === "account_detail_v1")
+            return {
+              queryId: request.queryId,
+              schemaVersion: 1,
+              account: null,
+              source: {
+                generationId: "bc".repeat(32),
+                projectionRevision: 2,
+                transitionSequence: 2,
+              },
+            };
+          if (request.queryId === "person_detail_v1") {
+            const response = await original(command, args);
+            return {
+              ...response,
+              person: existingPerson
+                ? { ...response.person, id: request.personId }
+                : null,
+            };
+          }
+        }
+        return original(command, args);
+      });
+      await dispatchSqliteMutation({
+        reqId: 5,
+        type: "RECONCILE_FOLLOW_ROSTER_CAPTURE",
+        items: [],
+        options: { provider: "substack", capturedAt: 100 },
+        accounts: [
+          {
+            id: "substack:ada",
+            kind: "social",
+            provider: "substack",
+            externalId: "ada",
+            displayName,
+            discoveredFrom: "follow_roster",
+            firstSeenAt: 100,
+            lastSeenAt: 100,
+            createdAt: 100,
+            updatedAt: 100,
+          },
+        ],
+      });
+      const envelopes = mocks.invoke.mock.calls
+        .filter(
+          ([command]) => command === "commit_normalized_library_transaction",
+        )
+        .flatMap(([, args]) =>
+          args.request.canonicalEnvelopeJson.map((value: string) =>
+            JSON.parse(value),
+          ),
+        );
+      const replacements = envelopes.filter(
+        (envelope) => envelope.operation_type === "friend_replace",
+      );
+      expect(replacements).toHaveLength(expectedReplacements);
+      if (expectedReplacements)
+        expect(replacements[0].payload).toMatchObject({
+          person: { name: "Ada Lovelace", relationshipStatus: "connection" },
+          accounts: [{ id: "substack:ada", externalId: "ada" }],
+        });
+    },
+  );
 
   it("commits a read assignment through the selected normalized Primary", async () => {
     await dispatchSqliteMutation({

@@ -5802,7 +5802,6 @@ test("stress Friends graph keeps labels resident and avoids scene rebuilds durin
   const afterHover = await readGraphDebug(page);
   expect(afterHover).not.toBeNull();
   expect(afterHover!.metrics.sceneSyncMs).toBeLessThan(250);
-
   await page.mouse.click(benchmarkPoint!.x, benchmarkPoint!.y);
   const afterSelection = await waitForGraphPresentationSyncAfter(
     page,

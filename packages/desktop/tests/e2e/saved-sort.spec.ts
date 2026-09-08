@@ -19,7 +19,6 @@ async function seedSavedSortItems(page: Page): Promise<void> {
     const store = w.__FREED_STORE__ as {
       getState: () => {
         setFilter: (filter: { savedOnly: true }) => void;
-        updatePreferences: (update: unknown) => Promise<void>;
       };
     };
     const now = Date.now();
@@ -115,9 +114,6 @@ async function seedSavedSortItems(page: Page): Promise<void> {
         userState: { hidden: false, saved: true, savedAt: now - 2 * 86_400_000, archived: false, tags: [] },
       },
     ]);
-    await store.getState().updatePreferences({
-      display: { savedContentSortMode: "date_saved" },
-    });
     store.getState().setFilter({ savedOnly: true });
   });
 
@@ -141,12 +137,14 @@ test("Saved content can sort by saved date, published date, recommendations, and
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
+  await app.setDeviceDisplayPreferences({ savedContentSortMode: "date_saved" });
   await seedSavedSortItems(page);
 
+  await page.getByTestId("mobile-toolbar-filter-button").click();
   const sortSelect = page.getByTestId("saved-sort-select");
   await expect(page.getByTestId("saved-sort-control")).toBeVisible();
   await expect(sortSelect).toHaveValue("date_saved");
-  await expect(page.getByTestId("feed-signal-filter-button")).toBeVisible();
+  await expect(page.getByTestId("feed-signal-filter-menu")).toBeVisible();
 
   await expectFirstSavedSortItem(page, "rss:https://saved-sort.example/feed.xml:saved-newest");
 
@@ -170,6 +168,7 @@ test("Saved sort collapses into the mobile filter menu", async ({ app, page }) =
   await page.setViewportSize({ width: 430, height: 720 });
   await app.goto();
   await app.waitForReady();
+  await app.setDeviceDisplayPreferences({ savedContentSortMode: "date_saved" });
   await seedSavedSortItems(page);
 
   await expect(page.getByTestId("saved-sort-control")).toHaveCount(0);

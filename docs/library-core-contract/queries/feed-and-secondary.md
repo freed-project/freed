@@ -57,6 +57,13 @@ request accepts no SQL or arbitrary grouping, the result is one row under
 The historical Saved analytics reader and its document-head source vocabulary
 are not part of this final query.
 
+`rss_item_summary_v1` returns exact total and unread counts for items whose
+platform is RSS or whose source is an RSS feed. The two disjoint SQL branches
+prevent double counting. This scalar aggregate does not return item identities
+or bodies. It is separate from `library_facet_summary_v1`, whose platform totals
+must remain disjoint. RSS-backed Substack and Medium items therefore count in
+Feeds without losing their provider attribution.
+
 `saved_feed_page_v2` is the normalized Saved list query. Its closed sort enum
 selects one of four generated SQL variants for date saved, date published,
 recommendation priority, or shortest read. Each variant has matching forward

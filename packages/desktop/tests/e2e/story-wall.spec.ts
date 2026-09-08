@@ -24,16 +24,13 @@ async function injectStoryWallMediaItem(page: Page) {
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
     const libraryCore = w.__FREED_LIBRARY_CORE__ as {
-      addLibraryFeedItems: (items: unknown[]) => Promise<void>;
-    };
-    const store = w.__FREED_STORE__ as {
-      getState: () => { items: Array<{ globalId: string }> };
+      importLibraryItems: (items: unknown[]) => Promise<unknown>;
     };
     const now = Date.now();
     const mediaUrl =
       "data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20400%20260%22%3E%3Crect%20width%3D%22400%22%20height%3D%22260%22%20fill%3D%22%23c46b45%22%2F%3E%3Ccircle%20cx%3D%22295%22%20cy%3D%2285%22%20r%3D%2252%22%20fill%3D%22%23f0d6b6%22%2F%3E%3Cpath%20d%3D%22M0%20235%20L120%20145%20L210%20215%20L295%20160%20L400%20230%20V260%20H0Z%22%20fill%3D%22%235b3b2f%22%2F%3E%3C%2Fsvg%3E";
 
-    await libraryCore.addLibraryFeedItems([
+    await libraryCore.importLibraryItems([
       {
         globalId: "instagram:story-wall:media-1",
         platform: "instagram",
@@ -61,20 +58,6 @@ async function injectStoryWallMediaItem(page: Page) {
       },
     ]);
 
-    await new Promise<void>((resolve, reject) => {
-      const startedAt = Date.now();
-      const interval = window.setInterval(() => {
-        if (store.getState().items.some((item) => item.globalId === "instagram:story-wall:media-1")) {
-          clearInterval(interval);
-          resolve();
-          return;
-        }
-        if (Date.now() - startedAt > 5_000) {
-          clearInterval(interval);
-          reject(new Error("story wall media seed timeout"));
-        }
-      }, 50);
-    });
   });
 }
 
@@ -107,7 +90,8 @@ test("Story Wall style controls update the preview from settings", async ({ app,
   await page.getByTestId("story-wall-palette-select").selectOption("gallery");
   await expect(preview).toHaveAttribute("data-palette", "gallery");
 
-  await page.getByTestId("story-wall-density").fill("0.95");
+  await page.getByTestId("story-wall-density").focus();
+  await page.getByTestId("story-wall-density").press("End");
   await expect(preview).toHaveAttribute("data-density", "0.95");
 
   await page.getByLabel("Show captions").uncheck();
