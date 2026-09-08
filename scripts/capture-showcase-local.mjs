@@ -300,7 +300,9 @@ try {
       // Search through the real directory so this located sample friend is
       // mounted regardless of the current activity ordering or virtualization.
       await page.getByRole("textbox", { name: "Search friends", exact: true }).fill("Sela Current");
-      await page.locator('[data-testid="friend-overview-virtual-row"] > [role="button"]').filter({ hasText: "Sela Current" }).first().click();
+      // The card center can land on its relationship slider at some font/layout
+      // metrics. Select its title, which bubbles through the normal card handler.
+      await page.locator('[data-testid="friend-overview-virtual-row"] > [role="button"]').getByText("Sela Current", { exact: true }).click();
       await page.locator('[data-testid="friends-sidebar"]').getByText("Recent activity", { exact: true }).waitFor();
       try {
         await page.locator('[data-testid="friends-sidebar"] [data-testid="map-surface"][data-map-ready="true"][data-map-tiles-ready="true"]').waitFor({ timeout: 30_000 });
