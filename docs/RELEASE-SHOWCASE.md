@@ -22,14 +22,19 @@ Generate one animation per theme with this exact sequence:
 6. Mobile reader.
 
 Omit the separate Instagram mobile grid frame. Use 120% desktop interface zoom.
-Preserve the reviewed mobile viewport and device framing. Bake the marketing
-card radius and theme-aware border into desktop frames only, scaling their
-pixel dimensions for export. Keep rounded corners and the mobile canvas
+Emulate mobile device identity as well as the reviewed viewport, and verify the
+two-column Stories layout. Preserve the reviewed device framing. Apply theme-tinted frames outside the captured content on both devices.
+Desktop and mobile frames have the same 7px total width, measured on the
+1440px capture canvas. Use a 20px desktop outer radius and a 44px mobile outer radius across
+all themes, measured in CSS pixels on the 1440px capture canvas. Use the reviewed theme-aware frame palettes: muted gold for Midas, lighter
+Scriptorium, purple Neon, and a darker Dark Star. Preserve the closer Friends overview; keep friend-detail zoom unchanged. Keep rounded corners and the mobile canvas
 transparent, including partial alpha in device shadows. Do not add a border or
 clipping radius to the whole animation element on the website.
 
 Use the anonymous demo Library. Wait for content, images, fonts, map tiles,
-graph layout and selected details to settle. Failed or incomplete captures
+graph layout and selected details to settle. Friends captures must report
+`raw-webgpu` with a nonzero decorative-star count; record that renderer proof
+in the manifest and reject silent fallback screenshots. Failed or incomplete captures
 block the new asset set. Preserve existing corpus-stage and integrity checks;
 content counts do not establish visual or editorial quality.
 
@@ -41,11 +46,14 @@ For every production version:
    Local iterations may retain approved frames, but production must not reuse
    frames from an earlier source or use desktop-only capture.
 2. Export a transparent animated WebP for each theme, using the reviewed
-   quality-90 setting unless the owner approves another setting. Retain the
+   quality-90 setting at 1920 by 1280 pixels, with three seconds per frame
+   (18 seconds total), unless the owner approves another setting. Capture at
+   device pixel ratio 2 while preserving CSS viewport size and interface zoom;
+   never upscale older low-resolution source frames. Retain the
    source PNGs and manifest. APNG and lossless WebP are review alternatives.
-3. Publish each animation as `freed-showcase-<theme-id>.webp`, its static
-   `freed-showcase-unified-<theme-id>.png` poster, and the manifest on the
-   corresponding GitHub release. Scriptorium is the GitHub README variant.
+3. Publish one `freed-showcase-<theme-id>.webp` per theme and the manifest on
+   the corresponding GitHub release. Source PNGs remain build evidence, not
+   separately published presentation assets. Scriptorium is the GitHub README variant.
 4. Record tag, source SHA, theme, ordered frame identities, durations, dimensions,
    zoom, decoration tokens, file sizes, SHA-256 hashes and public URLs. Require
    all expected themes and six frames per theme. Decode the animation to check
@@ -62,8 +70,8 @@ changes. Carry the source release ID, tag, SHA and manifest digest into that tas
 Never merge `dev` into `www` to move showcase media or instructions.
 
 The marketing animation must follow `activeThemeId`, including theme previews,
-and reference the matching published WebP. Use the same theme's static poster
-for reduced motion. Verify the rendered image source and downloaded hash for
+and reference the matching published WebP. For reduced motion, offer a static link to the demo instead of
+autoplaying the animation; this needs no separately published poster. Verify the rendered image source and downloaded hash for
 all themes on the live site after each production release, even when stable
 latest-release URLs make a website code change unnecessary. A local preview
 URL, missing asset, older release hash, or fixed mixed-theme GIF fails closeout.
@@ -98,8 +106,8 @@ At this instruction update, the checked-in production workflow and
 `scripts/lib/release-showcase-assets.mjs` still implement the older five-view,
 mixed-theme GIF contract. Update those capture, manifest, upload and public
 verification paths to the contract above before the next production release.
-The marketing page now uses the active theme and a matching reduced-motion
-poster. Its reviewed standalone asset set lives in `website/public/showcase/`,
+The marketing page uses the active theme and a static demo link for reduced
+motion. Its reviewed standalone asset set lives in `website/public/showcase/`,
 with content-hashed URLs selected by `website/src/data/showcase.json`. This set
 is an owner-reviewed showcase publication, not a tagged application release.
 When publishing the next application release, update that mapping to the new

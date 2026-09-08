@@ -15,7 +15,14 @@ test("showcase follows all theme previews and reduced motion with verified asset
       await footer.scrollIntoViewIfNeeded();
       await footer.locator(`[data-theme-preview="${theme}"]`).hover();
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
-      const selected = reducedMotion === "reduce" ? asset.poster : asset.animation;
+      if (reducedMotion === "reduce") {
+        await expect(image).toBeHidden();
+        await expect(page.locator(".demo-showcase-reduced-motion")).toBeVisible();
+      } else {
+        await expect(image).toBeVisible();
+        await expect(page.locator(".demo-showcase-reduced-motion")).toBeHidden();
+      }
+      const selected = asset.animation;
       await expect.poll(() => image.evaluate((img: HTMLImageElement) => new URL(img.currentSrc).pathname)).toBe(selected.url);
       const response = await request.get(selected.url);
       expect(response.ok()).toBeTruthy();
