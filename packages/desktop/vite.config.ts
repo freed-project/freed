@@ -68,6 +68,11 @@ const rejectRetiredDesktopLibraryAssets = {
 const buildMetadata = getBuildMetadata(pkg.version);
 
 export default defineConfig({
+  // Development and production-React test servers must not replace each
+  // other's optimized dependency graph when the complete suite runs both.
+  cacheDir: process.env.FREED_E2E_PERF === "1"
+    ? rootFile("node_modules/.vite-feed-perf")
+    : undefined,
   define: {
     __APP_VERSION__: JSON.stringify(buildMetadata.appVersion),
     __BUILD_KIND__: JSON.stringify(buildMetadata.buildKind),
@@ -105,6 +110,10 @@ export default defineConfig({
       ? [{
           name: "desktop-mock-bootstrap",
           transformIndexHtml: () => [{
+            tag: "meta",
+            attrs: { name: "freed-e2e-render-mode", content: process.env.NODE_ENV === "production" ? "production" : "development" },
+            injectTo: "head-prepend" as const,
+          }, {
             tag: "script",
             children: tauriInitScript(),
             injectTo: "head-prepend" as const,

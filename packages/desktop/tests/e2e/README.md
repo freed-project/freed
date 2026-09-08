@@ -59,6 +59,18 @@ headless. `npm run test:e2e:ui` and `npm run test:e2e:debug` open external
 browser surfaces, so use them only when the owner explicitly requests that
 surface.
 
+The full command includes the `chromium` functional project and the
+`chromium-feed-perf` scroll benchmark project. The two feed scroll probes use a separate
+mock server with production React and an isolated dependency cache. This keeps
+development JSX validation and StrictMode diagnostics out of shipping-path
+timing measurements. The ordinary functional project retains development
+checks, including the React Profiler case. External benchmark servers must use `PERF_BASE_URL` and advertise the
+production render-mode marker; a development preview fails the benchmark
+precondition. No performance limits are relaxed by this routing.
+
+Mock Library transactions retain their existing synchronous reload snapshots.
+Native SQLite commit acknowledgments and durability are unchanged.
+
 ## Test-specific state and assertions
 
 Override an IPC command after fixture injection with `ipc.setHandler()`. Use
