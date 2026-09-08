@@ -165,12 +165,13 @@ export function writeFriendsGalaxyProviderFieldPresentation(
     throw new Error("Friends Galaxy provider field storage is malformed.");
   }
   const light = friendsGalaxyColorIsLight(palette.background);
+  const fieldContrast = palette.background.toLowerCase() === "#f2e5cc" ? 2 : 1;
   const styleCode = fieldStyleCode(style);
   writeFieldPresentation(
     fields.instanceData,
     0,
     palette.friend,
-    light ? 0.26 : 0.64,
+    light ? 0.62 * fieldContrast : 0.64,
     styleCode,
   );
 
@@ -182,7 +183,7 @@ export function writeFriendsGalaxyProviderFieldPresentation(
       fields.instanceData,
       index + 1,
       providerColor ?? palette.account,
-      light ? 0.13 : 0.34,
+      light ? 0.32 * fieldContrast : 0.34,
       styleCode,
     );
   });

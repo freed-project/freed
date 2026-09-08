@@ -64,11 +64,11 @@ export function MiniFriendMapCard({
         <LoadingState message="Locating profile" className="h-32" />
       ) : null}
       <div className="flex items-center justify-between gap-2 px-3 py-2 transition-colors group-hover:bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.12)] group-focus-visible:bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.12)]">
-        <div>
+        <div className="min-w-0 w-full">
           <p className="text-[0.6875rem] font-medium uppercase tracking-[0.18em] text-[color:var(--theme-accent-secondary)]">
             Last seen
           </p>
-          <p className="mt-1 text-xs font-medium text-[color:var(--theme-text-primary)]">
+          <p className="mt-1 text-right text-xs font-medium text-[color:var(--theme-text-primary)]">
             {lastSeen?.label ?? namedLocation ?? "Resolving location..."}
           </p>
           <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">

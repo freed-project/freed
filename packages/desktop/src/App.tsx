@@ -1456,7 +1456,8 @@ function App() {
       addRssFeed,
       importOPMLFeeds,
       exportFeedsAsOPML,
-      headerDragRegion: true,
+      // Browser previews have no native window controls to reserve space for.
+      headerDragRegion: isTauri(),
       startWindowDrag:
         import.meta.env.VITE_TEST_TAURI === "1" || isTauri()
           ? () => getCurrentWindow().startDragging()

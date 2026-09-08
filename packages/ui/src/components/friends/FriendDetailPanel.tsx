@@ -166,7 +166,7 @@ export function FriendDetailPanel({
             </p>
           </div>
         </div>
-        <div className="mt-3">
+        <div className="mt-1">
           <CareRating level={friend.careLevel} onChange={onCareLevelChange} />
         </div>
         {friend.bio && (

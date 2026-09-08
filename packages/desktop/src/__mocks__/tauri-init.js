@@ -43,14 +43,51 @@ export function tauriInitScript() {
       items: {},
       persons: {},
     };
-    function persistSqliteState() {
+    async function persistSqliteState() {
       try {
-        window.name = SQLITE_LIBRARY_WINDOW_PREFIX + JSON.stringify(sqliteState());
+        var state = sqliteState();
+        var fields = [];
+        var sliceStartedAt = performance.now();
+        for (var field of Object.keys(state)) {
+          var value = state[field];
+          var encoded;
+          if (['items', 'accounts', 'feeds', 'persons'].includes(field)) {
+            var rows = [];
+            for (var id of Object.keys(value)) {
+              var row = JSON.stringify(value[id]);
+              if (row !== undefined) rows.push(JSON.stringify(id) + ':' + row);
+              if (performance.now() - sliceStartedAt >= 4) {
+                await new Promise(function(resolve) { setTimeout(resolve, 0); });
+                sliceStartedAt = performance.now();
+              }
+            }
+            encoded = '{' + rows.join(',') + '}';
+          } else {
+            encoded = JSON.stringify(value);
+          }
+          if (encoded !== undefined) fields.push(JSON.stringify(field) + ':' + encoded);
+        }
+        window.name = SQLITE_LIBRARY_WINDOW_PREFIX + '{' + fields.join(',') + '}';
       } catch (error) {
         window.__TAURI_MOCK_SQLITE_PERSIST_ERROR__ = String(error);
         // Large performance fixtures may exceed browser storage. They do not
         // rely on reload persistence, so keep their authoritative mock in RAM.
       }
+    }
+    // Native IPC does not stringify the entire fixture on the renderer thread.
+    // Yield while encoding the browser-only reload snapshot, but serialize all
+    // writers and do not acknowledge any mutation before its snapshot is saved.
+    var sqliteMutationTail = Promise.resolve();
+    function serializedSqliteMutation(mutate) {
+      return function(args) {
+        var result = sqliteMutationTail.then(async function() {
+          var receipt = mutate(args);
+          await persistSqliteState();
+          return receipt;
+        });
+        sqliteMutationTail = result.catch(function() {});
+        return result;
+      };
     }
     function sqliteState() {
       return window.__TAURI_MOCK_SQLITE_LIBRARY__;
@@ -154,7 +191,6 @@ export function tauriInitScript() {
       var first = envelopes[0];
       envelopes.forEach(applyNormalizedEnvelope);
       sqliteState().revision += 1;
-      persistSqliteState();
       return {
         transactionId: first.transaction_id,
         actorId: first.actor_id,
@@ -368,7 +404,6 @@ export function tauriInitScript() {
       var previousRevision = sqliteState().revision;
       envelopes.forEach(applyNormalizedEnvelope);
       sqliteState().revision = previousRevision + 1;
-      persistSqliteState();
       return {
         transactionId: first.transaction_id,
         transactionDigest: first.transaction_digest,
@@ -1860,7 +1895,6 @@ export function tauriInitScript() {
         entity.graphUpdatedAt = mutation.updatedAt;
       }
       if (changed) state.revision += 1;
-      persistSqliteState();
       return {
         changed: changed,
         layoutRevision: state.revision,
@@ -1923,11 +1957,10 @@ export function tauriInitScript() {
       return null;
     }
     window.__TAURI_MOCK_HANDLERS__ = {
-      ensure_fresh_normalized_desktop_library: () => {
+      ensure_fresh_normalized_desktop_library: serializedSqliteMutation(() => {
         sqliteState().active = true;
-        persistSqliteState();
         return true;
-      },
+      }),
       describe_normalized_library_cloud_identity: normalizedLibraryCloudIdentity,
       query_normalized_library: sqliteNormalizedQuery,
       normalized_library_primary_mutation_context: normalizedPrimaryMutationContext,
@@ -1943,14 +1976,14 @@ export function tauriInitScript() {
         operationSigningBodyDigest: args.request.operationSigningBodyDigest,
         signature: 'd'.repeat(128),
       }),
-      enqueue_normalized_library_follower_intent: enqueueNormalizedFollowerIntent,
-      commit_normalized_library_transaction: commitNormalizedLibraryTransaction,
+      enqueue_normalized_library_follower_intent: serializedSqliteMutation(enqueueNormalizedFollowerIntent),
+      commit_normalized_library_transaction: serializedSqliteMutation(commitNormalizedLibraryTransaction),
       begin_normalized_scope_action: beginNormalizedScopeAction,
       append_normalized_scope_action: appendNormalizedScopeAction,
       finalize_normalized_scope_action: finalizeNormalizedScopeAction,
       page_normalized_scope_action: pageNormalizedScopeAction,
       close_normalized_scope_action: closeNormalizedScopeAction,
-      mutate_normalized_device_graph_layout: mutateDeviceGraphLayout,
+      mutate_normalized_device_graph_layout: serializedSqliteMutation(mutateDeviceGraphLayout),
       mutate_normalized_device_contacts: mutateDeviceContacts,
       query_normalized_device_contact_status: deviceContactStatus,
       query_normalized_device_contact_match_page: (args) => {

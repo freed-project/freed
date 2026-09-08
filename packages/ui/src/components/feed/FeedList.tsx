@@ -33,14 +33,9 @@ const TILE_GAP = FEED_CARD_GAP;
 const MIN_TILE_W = 80; // minimum tile width before a column wraps
 // Tailwind max-w-2xl = 42rem = 672px.
 const MAX_CONTENT_W = 672;
-const ITEM_ROW_ESTIMATE_BY_DENSITY: Record<FeedCardDensity, number> = {
-  compact: 172,
-  comfortable: 220,
-  expansive: 300,
-};
 const MAX_TILE_H_BY_DENSITY: Record<FeedCardDensity, number> = {
-  compact: 220,
-  comfortable: 288,
+  compact: 252,
+  comfortable: 316,
   expansive: 340,
 };
 
@@ -415,7 +410,7 @@ export function FeedList({
       if (!isMobile) return estimateDesktopRowSize(index);
       const row = rows[index];
       if (!row || row.type !== "stories")
-        return ITEM_ROW_ESTIMATE_BY_DENSITY[cardDensity];
+        return desktopFeedCardHeight + FEED_CARD_GAP + (index === 0 ? FEED_CARD_GAP : 0);
       const inner = Math.max(
         Math.min(containerWidth, MAX_CONTENT_W) - feedCardHorizontalGutter * 2,
         0,
@@ -432,6 +427,7 @@ export function FeedList({
     },
     [
       cardDensity,
+      desktopFeedCardHeight,
       estimateDesktopRowSize,
       isMobile,
       rows,
@@ -935,6 +931,7 @@ export function FeedList({
                       onItemSave={onItemSave}
                       onItemLike={onItemLike}
                       onOpenCommentUrl={onOpenCommentUrl}
+                      fixedHeight={desktopFeedCardHeight}
                     />
                   )}
                 </div>
