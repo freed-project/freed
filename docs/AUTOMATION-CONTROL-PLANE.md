@@ -568,6 +568,14 @@ revalidates the exact receipt, canonical directory ancestry, owner, mode, link
 count, marker bytes, and locked inode for every operation. A prior doctor run
 is never used as mutation authority.
 
+This migration admits automation control-plane operations, not ordinary product
+builds, GitHub-authenticated PR publication, or the dedicated release tag
+publisher. A failing doctor automation check does not establish a release
+dependency. Trace the requested operation to its actual consumer before
+proposing host repair. An automated soak or lifecycle transition that uses
+this control plane still requires healthy guards; report that specific
+operation separately rather than blocking unrelated release preparation.
+
 The one-time rollout is an explicit quiescent owner operation. All five saved
 actors must be `PAUSED`, every canonical lease must be absent, no older control
 process may be alive, and every source byte named by the read-only plan must

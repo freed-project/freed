@@ -87,7 +87,7 @@ export function HealthStatusBadge({ snapshot }: { snapshot: ProviderHealthSnapsh
       : getHealthStatusLabel(snapshot);
 
   return (
-    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${styles}`}>
+    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[0.625rem] font-medium ${styles}`}>
       {label}
     </span>
   );
@@ -131,7 +131,7 @@ export function VolumeBars({
   return (
     <div className="space-y-1">
       {title && (
-        <p className="text-[10px] uppercase tracking-widest text-[var(--theme-text-soft)]">
+        <p className="text-[0.625rem] uppercase tracking-widest text-[var(--theme-text-soft)]">
           {title}
         </p>
       )}
@@ -161,7 +161,7 @@ function RecentAttemptsList({
 }) {
   return (
     <div className="space-y-2">
-      <p className="text-[10px] uppercase tracking-widest text-[var(--theme-text-soft)]">
+      <p className="text-[0.625rem] uppercase tracking-widest text-[var(--theme-text-soft)]">
         Recent Attempts
       </p>
       {attempts.length === 0 ? (
@@ -259,13 +259,13 @@ export function ProviderHealthSummary({
             <p className="text-sm font-medium text-[var(--theme-text-primary)]">
               {providerHealthLabel(snapshot.provider)}
             </p>
-            <p className="text-[11px] text-[var(--theme-text-muted)]">
+            <p className="text-[0.6875rem] text-[var(--theme-text-muted)]">
               Last success {formatHealthRelative(snapshot.lastSuccessfulAt)}
             </p>
           </div>
         ) : (
           <div className="min-w-0">
-            <p className="text-[11px] text-[var(--theme-text-muted)]">
+            <p className="text-[0.6875rem] text-[var(--theme-text-muted)]">
               Last success {formatHealthRelative(snapshot.lastSuccessfulAt)}
             </p>
           </div>
@@ -296,7 +296,7 @@ export function ProviderHealthSummary({
       </div>
 
       <div className="space-y-1">
-        <p className="text-[10px] uppercase tracking-widest text-[var(--theme-text-soft)]">
+        <p className="text-[0.625rem] uppercase tracking-widest text-[var(--theme-text-soft)]">
           Reliability (7d)
         </p>
         <ReliabilityBars dailyBuckets={snapshot.dailyBuckets} />

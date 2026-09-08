@@ -34,12 +34,10 @@ import { useSearchResults } from "../../hooks/useSearchResults.js";
 import { useLibraryFacetSummary } from "../../hooks/useLibraryFacetSummary.js";
 import { useLibraryItemDetail } from "../../hooks/useLibraryItemDetail.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
-import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import { type FeedItem } from "@freed/shared";
 import { runFeedLayoutTransition } from "../../lib/view-transitions.js";
 import {
   animationAwareScrollBehavior,
-  resolveAnimationIntensity,
 } from "../../lib/animation-preferences.js";
 import { useDeviceDisplayPreferences } from "../../lib/device-display-preferences.js";
 
@@ -601,19 +599,15 @@ export function FeedView() {
   const showReadInGrayscale = useAppStore(
     (s) => s.preferences.display.reading.showReadInGrayscale,
   );
-  const animationIntensity = useAppStore((s) =>
-    resolveAnimationIntensity(s.preferences.display.animationIntensity),
-  );
   const isMobileViewport = useIsMobile();
-  const isMobileDevice = useIsMobileDevice();
-  const autoCollapseReaderRail = !isMobileDevice && isMobileViewport;
-  const canShowInlineReader = !isMobileDevice;
+  const autoCollapseReaderRail = isMobileViewport;
+  const canShowInlineReader = !isMobileViewport;
   const showInlineReader = !!selectedItemId && canShowInlineReader;
   const showDualColumn =
     dualColumnMode && canShowInlineReader && !autoCollapseReaderRail;
   const desktopSidebarMode = deviceDisplay.sidebarMode;
   const compactRailLeadingOffset =
-    !isMobileDevice && desktopSidebarMode !== "closed"
+    !isMobileViewport && desktopSidebarMode !== "closed"
       ? `-${COMPACT_CARD_LEFT_PAD}px`
       : undefined;
 
@@ -982,45 +976,11 @@ export function FeedView() {
   // ─── Dual-column drag-resize ───────────────────────────────────────────────
 
   const [panelWidth, setPanelWidth] = useState(DEFAULT_PANEL_WIDTH);
-  const [railMounted, setRailMounted] = useState(showDualColumn);
-  const [railExpanded, setRailExpanded] = useState(showDualColumn);
+  const railMounted = showDualColumn;
+  const railExpanded = showDualColumn;
   const isDraggingRef = useRef(false);
   const dragStartXRef = useRef(0);
   const dragStartWidthRef = useRef(0);
-  const previousShowDualColumnRef = useRef(showDualColumn);
-  const railMotionDisabled = animationIntensity === "none";
-
-  useEffect(() => {
-    const wasShowingDualColumn = previousShowDualColumnRef.current;
-    previousShowDualColumnRef.current = showDualColumn;
-
-    if (showDualColumn) {
-      setRailMounted(true);
-
-      if (
-        railMotionDisabled ||
-        wasShowingDualColumn ||
-        typeof window === "undefined"
-      ) {
-        setRailExpanded(true);
-        return;
-      }
-
-      setRailExpanded(false);
-      const frameId = window.requestAnimationFrame(() => {
-        setRailExpanded(true);
-      });
-
-      return () => window.cancelAnimationFrame(frameId);
-    }
-
-    setRailExpanded(false);
-
-    if (railMotionDisabled) {
-      setRailMounted(false);
-    }
-  }, [railMotionDisabled, showDualColumn]);
-
   useLayoutEffect(() => {
     if (typeof document === "undefined") return;
     document.documentElement.style.setProperty(
@@ -1029,12 +989,6 @@ export function FeedView() {
     );
   }, [panelWidth, showDualColumn]);
 
-  const railTransition =
-    railMotionDisabled || isDraggingRef.current
-      ? "none"
-      : animationIntensity === "light"
-        ? "width 140ms ease-out, margin-inline-start 140ms ease-out, opacity 120ms ease-out"
-        : "width 220ms ease, margin-inline-start 220ms ease, opacity 180ms ease";
   const railWidth = railExpanded
     ? panelWidth + COMPACT_PANEL_RESIZE_HANDLE_WIDTH
     : 0;
@@ -1043,7 +997,7 @@ export function FeedView() {
     marginInlineStart: railExpanded ? compactRailLeadingOffset : undefined,
     opacity: railExpanded ? 1 : 0,
     pointerEvents: railExpanded ? undefined : "none",
-    transition: railTransition,
+    transition: "none",
   } satisfies React.CSSProperties;
   const railContentStyle = {
     width: `${panelWidth + COMPACT_PANEL_RESIZE_HANDLE_WIDTH}px`,
@@ -1053,16 +1007,6 @@ export function FeedView() {
       "calc(100% - var(--feed-card-gap, 8px) - var(--feed-card-gap, 8px))",
     marginTop: "var(--feed-card-gap, 8px)",
   } satisfies React.CSSProperties;
-
-  const handleRailTransitionEnd = useCallback(
-    (e: React.TransitionEvent<HTMLDivElement>) => {
-      if (e.target !== e.currentTarget || e.propertyName !== "width") return;
-      if (!showDualColumn && !railExpanded) {
-        setRailMounted(false);
-      }
-    },
-    [railExpanded, showDualColumn],
-  );
 
   const handleDragStart = useCallback(
     (e: React.PointerEvent) => {
@@ -1105,7 +1049,6 @@ export function FeedView() {
               data-testid="compact-feed-panel-rail"
               className="flex-none overflow-hidden"
               style={railSlotStyle}
-              onTransitionEnd={handleRailTransitionEnd}
             >
               <div className="flex" style={railContentStyle}>
                 <CompactFeedPanel

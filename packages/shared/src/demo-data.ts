@@ -5,6 +5,68 @@ import { sampleEditorialContentSignals } from "./sample-editorial-data.js";
 import { projectSampleYouTubeVideo } from "./sample-youtube.js";
 import type { Account, FeedItem, Person, RssFeed } from "./types.js";
 
+/** Authored publication names, never generated from a generic suffix. */
+const DEMO_RSS_PUBLICATION_TITLES: Readonly<Record<string, string>> = {
+  "nova-remains": "Nova's Afterglow",
+  "alma-eight": "Alma's Eight-Sided Argument",
+  "alba-longwing": "Alba Takes the Long Way",
+  "faye-thread": "Faye's Loose Ends",
+  "ellis-hook": "Ellis Was Never Here",
+  "moss-button": "Moss, Transparently",
+  "ada-dew": "Ada After Dark",
+  "nib-willow": "Nib's Branch Office",
+  "juniper-ears": "Juniper Heard That",
+  "orla-reach": "Orla Gets to the Point",
+  "finch-fidget": "Finch Can't Sit Still",
+  "bramble-shortlegs": "Bramble's Underground Affairs",
+  "kit-snowshoe": "Kit's Haypile Dispatch",
+  "mallow-fold": "Mallow, Unfolded",
+  "nessa-whisker": "Nessa Below Zero",
+  "mira-mask": "Mira's Midnight Acquisitions",
+  "nell-pelagic": "Nell Flaps Through It",
+  "percy-silt": "Percy's Bottom Line",
+  "vera-veil": "Vera Lets It Drift",
+  "iris-undertow": "Iris Changes the Subject",
+  "tavi-tilt": "Tavi Sees Another Colour",
+  "rue-ribbon": "Rue's Narrow Opening",
+  "rollo-round": "Rollo Under Pressure",
+  "peri-bracken": "Peri's Next Instar",
+  "ludo-bluecap": "Under Ludo's Little Umbrella",
+  "oona-rose": "Oona Is Several Things",
+  "vesta-prickle": "Vesta Sticks to Her Story",
+  "ottilie-hook": "Ottilie's Acorn Affairs",
+  "dora-dew": "Dora's Sticky Invitations",
+  "coral-clad": "Coral's Joint Account",
+  "sela-current": "Sela Keeps Going",
+  "ivo-softshield": "Ivo's Unfurling Business",
+  "calder-mugger": "Calder's Patient Smile",
+  "gilda-grip": "Gilda Holds On",
+  "tess-near": "Tess at Arm's Length",
+  "miri-faint": "Miri's Falling Company",
+  "claude-carry": "Claude Brings the House",
+  "otto-interlace": "Otto's Tangled Attachments",
+  "pip-sway": "Pip Goes with the Flow",
+  "rudi-glide": "Rudi's Unscheduled Landing",
+  "mireille-tap": "Mireille Knocks on Wood",
+  "yuri-thaw": "Yuri Follows His Nose",
+  "akio-sheen": "Akio in a Different Light",
+  "lucette-vein": "Lucette's Delicate Business",
+  "greta-blade": "Greta in the Tall Grass",
+  "barnaby-many": "Barnaby Puts His Feet Down",
+  "penny-focus": "Penny's Small Leaps",
+  "romy-helix": "Romy's Spiral Correspondence",
+  "oswald-cup": "Oswald Takes It All In",
+  "severin-quiet": "Severin's Nothing Happened Today",
+  "dorian-sulk": "Dorian Sits with It",
+  "cato-many": "Cato's Many Open Arms"
+};
+
+function demoRssPublicationTitle(characterId: string): string {
+  const title = DEMO_RSS_PUBLICATION_TITLES[characterId];
+  if (!title) throw new Error(`Missing editorial RSS publication title for ${characterId}`);
+  return title;
+}
+
 const admittedPopulationArcs = SAMPLE_CHARACTER_ARCS.map(arc => ({
   ...arc, episodes: arc.episodes.filter(episode => episode.mediaSha1 !== null),
 })).filter(arc => arc.episodes.length > 0);
@@ -128,7 +190,7 @@ function curatedDemoSample(
           ? {
               rssSource: {
                 feedUrl: `https://sample.freed.wtf/${batchId}/characters/${arc.characterId}`,
-                feedTitle: `${arc.identityNameBase} Field Notes`,
+                feedTitle: demoRssPublicationTitle(arc.characterId),
                 siteUrl: "https://sample.freed.wtf",
               },
             }
@@ -268,7 +330,7 @@ function curatedDemoSample(
     // Sample feeds are presentation records, never scheduled RSS endpoints.
     enabled: false,
     url: `https://sample.freed.wtf/${batchId}/characters/${arc.characterId}`,
-    title: `${arc.identityNameBase} Field Notes`,
+    title: demoRssPublicationTitle(arc.characterId),
     siteUrl: "https://sample.freed.wtf",
     imageUrl: undefined,
   }));

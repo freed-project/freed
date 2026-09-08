@@ -1,12 +1,12 @@
-import { THEME_DEFINITIONS } from "@freed/shared/themes";
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import { mkdir, readFile, writeFile, rename, copyFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { SHOWCASE_THEME_IDS } from './lib/release-showcase-assets.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const themes = THEME_DEFINITIONS.map(theme => theme.id);
+const themes = SHOWCASE_THEME_IDS;
 const args = process.argv.slice(2);
 const value = (name, fallback) => args.includes(name) ? args[args.indexOf(name) + 1] : fallback;
 if (args.includes('--help')) {

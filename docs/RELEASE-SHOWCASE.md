@@ -102,10 +102,14 @@ website handoff pending; it does not waive verification.
 saved frames. Its local review server exposes timing and encoding controls.
 These are review tools, not release publication authority or proof.
 
-At this instruction update, the checked-in production workflow and
-`scripts/lib/release-showcase-assets.mjs` still implement the older five-view,
-mixed-theme GIF contract. Update those capture, manifest, upload and public
-verification paths to the contract above before the next production release.
+The production runner uses the same six-view capture path as local review,
+then encodes quality-90 WebP for every theme in the shared registry. It checks
+the clean checkout before and after capture, decodes each animation to verify
+dimensions, timing, looping and alpha clearing, and retains source PNGs.
+Manifest finalization rejects missing themes, reordered frames, retained frames
+and incorrect capture settings. The workflow uploads WebP and JSON assets
+without replacing existing immutable assets. The first complete production run
+and public verification are still required; local tests do not prove delivery.
 The marketing page uses the active theme and a static demo link for reduced
 motion. Its reviewed standalone asset set lives in `website/public/showcase/`,
 with content-hashed URLs selected by `website/src/data/showcase.json`. This set

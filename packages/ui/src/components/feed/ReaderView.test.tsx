@@ -122,6 +122,34 @@ async function flushReaderEffects(): Promise<void> {
 }
 
 describe("ReaderView cache-first hydration", () => {
+  it.each(["facebook", "instagram", "x"] as const)("hides replies for synthetic %s items outside the read-only demo", async (platform) => {
+    const item = makeArticleItem({
+      platform,
+      sampleDataFingerprint: {
+        marker: "freed.sample-data.v1",
+        batchId: "sample-installed-library",
+        generatedAt: NOW,
+        generatorVersion: 1,
+      },
+    });
+    const { container, root } = await renderReaderView(basePlatformConfig, item);
+    await flushReaderEffects();
+    expect(container.textContent).not.toContain("Load replies");
+    expect(container.textContent).not.toContain("View replies");
+    expect(container.querySelector("article section.border-t")).toBeNull();
+    await act(async () => root.unmount());
+    const real = await renderReaderView(basePlatformConfig, makeArticleItem({ platform }));
+    await flushReaderEffects();
+    expect(real.container.textContent).toContain("Load replies inline");
+    await act(async () => real.root.unmount());
+    const compact = await renderReaderView(basePlatformConfig, makeArticleItem({
+      platform,
+      globalId: `custom-batch:sample-${platform}:2`,
+    }));
+    await flushReaderEffects();
+    expect(compact.container.textContent).not.toContain("Load replies");
+    await act(async () => compact.root.unmount());
+  });
   beforeAll(() => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     installLocalStorageMock();
@@ -291,7 +319,7 @@ describe("ReaderView cache-first hydration", () => {
     await act(async () => root.unmount());
   });
 
-  it("uses focused YouTube actions without article hydration or eager player loading", async () => {
+  it("loads the paused YouTube player without article hydration", async () => {
     Object.defineProperty(window.navigator, "onLine", { configurable: true, value: true });
     const hydrateReaderItem = vi.fn();
     const openUrl = vi.fn();
@@ -327,8 +355,8 @@ describe("ReaderView cache-first hydration", () => {
     await flushReaderEffects();
 
     expect(hydrateReaderItem).not.toHaveBeenCalled();
-    expect(container.querySelector("iframe")).toBeNull();
-    expect(container.textContent).toContain("Watch here in Focus Mode");
+    expect(container.querySelector("iframe")?.getAttribute("src")).toContain("youtube-nocookie.com/embed/dQw4w9WgXcQ");
+    expect(container.textContent).not.toContain("Watch here in Focus Mode");
     expect(container.querySelector("img[src*='i.ytimg.com']")).toBeNull();
     const description = Array.from(container.querySelectorAll("p")).find(
       (paragraph) => paragraph.textContent === item.content.text,

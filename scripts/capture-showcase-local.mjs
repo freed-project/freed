@@ -1,19 +1,9 @@
-import { THEME_DEFINITIONS } from "@freed/shared/themes";
 import { execFileSync } from "node:child_process";
-import { mkdir, writeFile, readFile, readdir } from "node:fs/promises";
+import { mkdir, writeFile, readFile } from "node:fs/promises";
 import path from "node:path";
 import { chromium } from "playwright";
 import { fileURLToPath } from "node:url";
-async function readShowcaseMediaCatalog(directory) {
-  const urls = new Set();
-  for (const file of await readdir(directory)) {
-    if (!/^sample-corpus-[a-z0-9-]+-media\.json$/.test(file)) continue;
-    for (const entry of JSON.parse(await readFile(path.join(directory, file), "utf8"))) {
-      if (entry.imageUrl?.startsWith("https://")) urls.add(entry.imageUrl);
-    }
-  }
-  return urls;
-}
+import { readShowcaseMediaCatalog, SHOWCASE_THEME_IDS } from "./lib/release-showcase-assets.mjs";
 
 const baseUrl = process.env.FREED_SHOWCASE_URL ?? "http://127.0.0.1:4173";
 const outputDirectory = path.resolve(
@@ -56,7 +46,7 @@ const originalCaptures = [
 ];
 
 const selectedTheme = process.env.FREED_SHOWCASE_THEME;
-const themeIds = THEME_DEFINITIONS.map(theme => theme.id);
+const themeIds = SHOWCASE_THEME_IDS;
 if (selectedTheme && !themeIds.includes(selectedTheme)) throw new Error("Unknown showcase theme");
 if (!["localhost", "127.0.0.1"].includes(new URL(baseUrl).hostname)) throw new Error("Local capture requires a loopback URL");
 const captures = originalCaptures.map((capture) => ({ ...capture,

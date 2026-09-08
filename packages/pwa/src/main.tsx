@@ -13,6 +13,7 @@ import type {
 import './index.css'
 import { isFreedDemoMode } from './lib/demo-mode'
 import { installDemoPresentationSession } from './lib/demo-presentation-session'
+import { isThemeId } from '@freed/shared/themes'
 
 installDemoPresentationSession(window, isFreedDemoMode(
   window.location.hostname, undefined, window.location.search,
@@ -124,7 +125,19 @@ void Promise.all([
   import('./App.tsx'),
   import('@freed/ui/lib/theme'),
   import('@freed/ui/lib/bug-report'),
-]).then(([{ default: App }, { bootstrapDocumentTheme }, capture]) => {
+]).then(([{ default: App }, { bootstrapDocumentTheme, setThemePreference }, capture]) => {
+  const entryUrl = new URL(window.location.href)
+  const entryTheme = entryUrl.searchParams.get('theme')
+  if (entryTheme !== null && isFreedDemoMode(
+    window.location.hostname, undefined, window.location.search,
+  )) {
+    // Commit through the normal device theme preference before rendering.
+    // Remove only this handoff parameter, retaining router state and deep links.
+    if (!isThemeId(entryTheme) || setThemePreference(entryTheme)) {
+      entryUrl.searchParams.delete('theme')
+      window.history.replaceState(window.history.state, '', entryUrl.href)
+    }
+  }
   bootstrapDocumentTheme()
   capture.installGlobalBugReportCapture('pwa')
   capture.installConsoleBugReportCapture('pwa')

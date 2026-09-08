@@ -502,6 +502,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     installedReleaseChannel,
     setReleaseChannel,
     updateDownloadProgress,
+    interactionMode,
   } = usePlatform();
   const preferences = useAppStore((s) => s.preferences);
   const updatePreferences = useAppStore((s) => s.updatePreferences);
@@ -533,6 +534,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         hasYouTube: !!YouTubeSettingsContent,
         hasUpdateChecks: !!checkForUpdates,
         hasFactoryReset: !!factoryReset,
+        hasLegal: interactionMode !== "read-only",
       }).map((section) => ({
         ...section,
         icon: ICONS[section.id],
@@ -556,6 +558,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       secureStorage,
       ShortcutsSettingsContent,
       NewsletterSettingsContent,
+      interactionMode,
     ],
   );
 
@@ -598,7 +601,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       },
       ...(sectionById.updates ? [sectionById.updates] : []),
       ...(sectionById.newsletter ? [sectionById.newsletter] : []),
-      sectionById.legal!,
+      ...(sectionById.legal ? [sectionById.legal] : []),
       ...(sectionById.danger ? [sectionById.danger] : []),
     ],
     [
@@ -1461,6 +1464,22 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       case "appearance":
         return (
           <>
+            {interactionMode === "read-only" && (
+              <div className="theme-card-soft mb-6 rounded-2xl p-4 sm:p-5" data-testid="demo-settings-welcome">
+                <h3 className="text-base font-semibold text-[var(--theme-text-primary)]">
+                  Welcome to the Freed demo
+                </h3>
+                <p className="mt-2 text-sm leading-relaxed text-[var(--theme-text-muted)]">
+                  Explore Freed with sample content and try the settings freely.
+                  Preference changes reset when you reload, except your theme and demo welcome choice.
+                  Download Freed Desktop to connect your accounts and configure your own Library.
+                </p>
+                <a href="https://freed.wtf/get" target="_blank" rel="noopener noreferrer"
+                  className="theme-accent-button mt-5 inline-flex items-center justify-center rounded-lg px-4 py-2 text-xs">
+                  Download Freed Desktop
+                </a>
+              </div>
+            )}
             <SectionHeading label="Appearance" />
             <div data-testid="settings-display-scale-controls" className="space-y-5">
               <div
@@ -1884,7 +1903,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   <p className="text-sm text-[var(--theme-text-secondary)]">Open Debug Panel</p>
                   <p className="mt-0.5 text-xs text-[var(--theme-text-soft)]">Sync diagnostics, event log, document inspector</p>
                 </div>
-                <span className="ml-3 shrink-0 text-[10px] font-mono text-[var(--theme-text-soft)]">⌘⇧D</span>
+                <span className="ml-3 shrink-0 text-[0.625rem] font-mono text-[var(--theme-text-soft)]">⌘⇧D</span>
               </button>
               <button
                 onClick={requestSeedSampleData}
@@ -1990,7 +2009,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         </span>
         <span>{section.label}</span>
         {section.stage === "beta" ? (
-          <span className="rounded border border-[var(--theme-border-subtle)] px-1.5 py-0.5 text-[9px] font-semibold uppercase text-[var(--theme-text-muted)]">
+          <span className="rounded border border-[var(--theme-border-subtle)] px-1.5 py-0.5 text-[0.5625rem] font-semibold uppercase text-[var(--theme-text-muted)]">
             Beta
           </span>
         ) : null}
@@ -2495,7 +2514,7 @@ function SectionHeading({
     >
       <span>{label}</span>
       {stage === "beta" ? (
-        <span className="rounded border border-[var(--theme-border-subtle)] px-1.5 py-0.5 text-[9px] font-semibold text-[var(--theme-text-muted)]">
+        <span className="rounded border border-[var(--theme-border-subtle)] px-1.5 py-0.5 text-[0.5625rem] font-semibold text-[var(--theme-text-muted)]">
           Beta
         </span>
       ) : null}

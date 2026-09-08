@@ -2,6 +2,32 @@
 
 > **Status:** 🚧 In Progress (the official SQLite WebAssembly engine, exact schema identity, single-worker OPFS runtime, normalized checkpoint import, product mutation entrypoints, bounded product queries, follower transport, recovery UI, selective content, and IndexedDB Library deletion are implemented; physical iPhone acceptance remains open)
 
+The mobile demo opens its full-screen welcome on every fresh load and uses only
+welcome and minimized-tab states. Newsletter entry stays inside the welcome.
+Presentation settings remain editable for the current demo session; existing
+theme and welcome persistence is unchanged. Mobile cards retain side margins
+and expose the same density controls as wider layouts.
+
+Mobile Friends details use evenly inset back controls; the overview has a close
+control to reveal the graph. Suggested cards reuse friend overview content and
+offer a dismiss control, with a separate All friends or Matching friends section.
+Account orbits and avatars share world-space sizing so zoom preserves clearance.
+
+Marketing demo links carry the selected theme in a `theme` query parameter.
+Demo startup validates it against the shared theme IDs, commits it through the
+device theme preference, then removes that parameter with history replacement.
+Other query parameters, the hash, and history state remain intact. Later theme
+choices are not overridden on reload. A failed preference write leaves the
+parameter available for a later load; invalid theme values are discarded.
+
+YouTube content opens with a paused privacy-enhanced embed, without a separate
+load card. The owner approved this provider contact on September 7, 2026.
+Completion and player errors remove the embed; replay remains explicit.
+The release showcase now covers four desktop views and three phone-framed
+mobile views, including wide and selected Friends views. All frames exclude
+the demo download banner and local preview badge. Release verification remains
+pending until the exact tagged assets are published and checked.
+
 > **Architecture:** The PWA runs official SQLite WebAssembly over OPFS in
 > one worker. It uses the same schema catalog, named SQL, result DTOs, mutation
 > intent codecs, normalized checkpoint records, and conformance vectors as the
@@ -12,6 +38,13 @@
 > **Dependencies:** Phase 4 (Sync Layer), Phase 5 (Desktop App)
 
 ## Current SQLite PWA work
+
+The reader consolidates original-post navigation into its provider button and
+keeps theme, zoom, and Focus controls available in the toolbar menu. Synthetic
+items omit reply controls. Demo Focus changes remain document-local and do not
+invoke the enrolled follower mutation path. Failed feed queries show recovery
+controls rather than the empty-Library prompt. Physical Safari viewport and
+gesture acceptance remains separate from the automated browser checks.
 
 The shared checkpoint parser reuses only its own deeply frozen validated
 records. Incoming OPFS and transport values still receive full validation, and
@@ -819,7 +852,7 @@ without enabling player loading or changing provider requests.
 
 The production demo CSP admits exact reviewed Commons, NOAA, NPS, FWS, Chandra,
 iNaturalist, Flickr, NASA Science, and YouTube thumbnail hosts. A checkpoint test checks every admitted media and
-avatar origin against the actual HTML policy. Existing click-to-watch playback
+avatar origin against the actual HTML policy. Owner-approved paused playback
 permits the privacy-enhanced YouTube frame and its API script hosts, without
 eager player loading. Showcase capture enables the production CSP on loopback
 and fails on policy violations rather than relying on localhost-only behavior.

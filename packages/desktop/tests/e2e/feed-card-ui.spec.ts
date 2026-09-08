@@ -354,10 +354,12 @@ test("feed card overhaul actions and reader open flow work", async ({ app }) => 
     };
   });
   expect(selectedCardRestingStyle.borderLeftWidth).toBe("2px");
-  expect(selectedCardHoverStyle).toEqual(selectedCardRestingStyle);
+  expect(selectedCardHoverStyle.borderLeftWidth).toBe(selectedCardRestingStyle.borderLeftWidth);
+  expect(selectedCardHoverStyle.borderLeftColor).toBe(selectedCardRestingStyle.borderLeftColor);
+  expect(selectedCardHoverStyle.backgroundColor).not.toBe(selectedCardRestingStyle.backgroundColor);
 
-  const openReaderButton = app.page.getByRole("button", { name: "Open", exact: true }).first();
-  await expect(openReaderButton).toBeVisible();
+  await expect(app.page.getByRole("link", { name: "View original on Facebook" })).toBeVisible();
+  await expect(app.page.getByTestId("workspace-toolbar").getByRole("button", { name: "Open", exact: true })).toHaveCount(0);
 });
 
 test("story grid top padding aligns with the sidebar panel", async ({ app, page }) => {

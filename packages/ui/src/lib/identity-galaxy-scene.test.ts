@@ -153,8 +153,8 @@ describe("compileIdentityGalaxyScene", () => {
     expect(linkedAccountDepth).toBe(famDepth);
   });
 
-  it("tightens automatic planet shells while retaining slots, depth and explicit pins", () => {
-    const parent = node("person:shell", { personId: "shell", careLevel: 4 });
+  it("compacts account orbits without changing their angles, shared depth or explicit pins", () => {
+    const parent = node("person:shell", { personId: "shell", careLevel: 4, radius: 64 });
     const profiles = Array.from({ length: 6 }, (_, index) => {
       const angle = index * Math.PI / 3;
       return node(`account:shell-${index}`, {
@@ -175,10 +175,11 @@ describe("compileIdentityGalaxyScene", () => {
     const repeated = compileIdentityGalaxyScene(input, { quality: "settled", now: 1_000 });
     expect(scene.positions).toEqual(repeated.positions);
     profiles.forEach((profile, index) => {
-      expect(scene.positions[index * 3]).toBeCloseTo(parent.x + (profile.x - parent.x) * 0.3, 4);
-      expect(scene.positions[index * 3 + 1]).toBeCloseTo(-parent.y - (profile.y - parent.y) * 0.3, 4);
-      expect(Math.abs(scene.positions[index * 3 + 2]! - scene.positions[6 * 3 + 2]!))
-        .toBeLessThanOrEqual(3);
+      const dx = scene.positions[index * 3]! - parent.x;
+      const dy = scene.positions[index * 3 + 1]! + parent.y;
+      expect(Math.hypot(dx, dy)).toBeCloseTo(31, 4);
+      expect(Math.atan2(dy, dx)).toBeCloseTo(Math.atan2(parent.y - profile.y, profile.x - parent.x), 4);
+      expect(scene.positions[index * 3 + 2]).toBe(scene.positions[6 * 3 + 2]);
     });
     expect(new Set(profiles.map((_, index) =>
       `${scene.positions[index * 3]},${scene.positions[index * 3 + 1]}`)).size).toBe(6);

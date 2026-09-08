@@ -423,7 +423,7 @@ export function NewsletterSignup({
         ) : null}
       </form>
 
-      <p className={`text-[11px] leading-relaxed text-[var(--theme-text-soft)] ${compact ? "text-center" : ""}`}>
+      <p className={`text-[0.6875rem] leading-relaxed text-[var(--theme-text-soft)] ${compact ? "text-center" : ""}`}>
         Unsubscribe anytime. Your email goes to our newsletter provider and
         nowhere else.
       </p>
