@@ -1,3 +1,4 @@
+import { THEME_DEFINITIONS } from "@freed/shared/themes";
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import { mkdir, readFile, writeFile, rename, copyFile, stat } from 'node:fs/promises';
@@ -5,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const themes = ['ember', 'midas', 'scriptorium', 'starship', 'dark-star', 'neon'];
+const themes = THEME_DEFINITIONS.map(theme => theme.id);
 const args = process.argv.slice(2);
 const value = (name, fallback) => args.includes(name) ? args[args.indexOf(name) + 1] : fallback;
 if (args.includes('--help')) {
@@ -15,17 +16,17 @@ if (args.includes('--help')) {
   node scripts/build-showcase-local.mjs --serve --port 4186
   node scripts/build-showcase-local.mjs --all --url http://localhost:1446
 
-Default: one Midas animated PNG, six ordered screens, desktop 120%, mobile 100%.
+Default: one Midas 1920x1280 quality-90 animated WebP, six ordered screens at three seconds each, desktop 120%, mobile 100%.
 --all explicitly captures every theme. --encode-only reuses existing frames.
 Each encoding retains an immutable local revision. Review at the served URL.
 --desktop-only recaptures desktop while retaining matching mobile frames.
---compare adds lossless and quality-90 WebP alternatives.
+--compare adds lossless WebP and APNG alternatives.
 --output overrides output/showcase. --duration accepts 0.5 to 10 seconds.
-Start the PWA with scripts/worktree-preview.sh before capture. No publication.`);
+Start the PWA with VITE_FREED_DEMO=1 scripts/worktree-preview.sh pwa before capture. No publication.`);
   process.exit(0);
 }
 const output = path.resolve(root, value('--output', 'output/showcase'));
-const duration = Number(value('--duration', '1.8'));
+const duration = Number(value('--duration', '3'));
 if (!Number.isFinite(duration) || duration < 0.5 || duration > 10) throw new Error('Duration must be between 0.5 and 10 seconds');
 const chosen = value('--theme', 'midas');
 if (!themes.includes(chosen)) throw new Error('Unknown theme');
@@ -67,6 +68,7 @@ if (args.includes('--serve')) {
     const manifest = JSON.parse(await readFile(path.join(directory, 'freed-showcase-manifest.json'), 'utf8'));
     if (manifest.captures.some(c => c.theme !== theme) || manifest.captures.length !== 6) throw new Error('Capture theme or screen count mismatch');
     if (manifest.transparentCanvas !== true) throw new Error('Recapture required: saved frames predate transparent canvas support');
+    if ((manifest.sourcePixelWidth ?? 1440) < 1920) throw new Error("Recapture required: 1920px exports need high-density source frames");
     const revision = new Date().toISOString().replace(/[:.]/g, '-');
     const revisionDirectory = path.join(directory, 'revisions', revision);
     await mkdir(revisionDirectory, { recursive: true });
@@ -78,25 +80,27 @@ if (args.includes('--serve')) {
     const order = manifest.gifOrder;
     if (order.length !== manifest.captures.length || new Set(order).size !== order.length || order.some(f => !manifest.captures.some(c => c.file === f))) throw new Error('Invalid frame order');
     await writeFile(path.join(revisionDirectory, 'gif-order.txt'), order.map(f => `file '${f}'\nduration ${duration}`).join('\n') + `\nfile '${order.at(-1)}'\n`);
-    const animation = path.join(revisionDirectory, `freed-showcase-${theme}.apng`);
-    // Full RGBA preserves antialiased device edges and translucent shadows.
-    // Keep six sparse frames, with an explicit final hold and infinite play.
-    await run(process.env.FFMPEG_PATH ?? 'ffmpeg', ['-hide_banner', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', path.join(revisionDirectory, 'gif-order.txt'), '-vf', 'scale=960:-1:flags=lanczos,format=rgba', '-fps_mode', 'passthrough', '-frames:v', String(order.length), '-plays', '0', '-final_delay', `${Math.round(duration * 100)}/100`, '-f', 'apng', animation]);
+    const filename = `freed-showcase-${theme}-quality90.webp`;
+    const animation = path.join(revisionDirectory, filename);
+    const inputArgs = ['-hide_banner', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', path.join(revisionDirectory, 'gif-order.txt')];
+    const webpArgs = ['-vf', 'scale=1920:-1:flags=lanczos,format=bgra', '-fps_mode', 'passthrough', '-frames:v', String(order.length), '-c:v', 'libwebp_anim'];
+    await run(process.env.FFMPEG_PATH ?? 'ffmpeg', [...inputArgs, ...webpArgs, '-lossless', '0', '-quality', '90', '-compression_level', '6', '-loop', '0', animation]);
     const bytes = (await stat(animation)).size;
-    const result = { ...manifest, theme, revision, duration, bytes, format: "apng", animation: `${theme}/revisions/${revision}/freed-showcase-${theme}.apng` };
-    result.variants = [{ label: 'APNG · lossless', url: result.animation, bytes }];
+    const result = { ...manifest, theme, revision, duration, bytes, format: "webp", quality: 90, width: 1920, height: 1280, animation: `${theme}/revisions/${revision}/${filename}` };
+    result.variants = [{ label: 'WebP · quality 90', url: result.animation, bytes }];
     if (args.includes('--compare')) {
-      for (const lossless of [true, false]) {
-        const suffix = lossless ? 'lossless' : 'quality90';
-        const filename = `freed-showcase-${theme}-${suffix}.webp`;
-        const destination = path.join(revisionDirectory, filename);
-        await run(process.env.FFMPEG_PATH ?? 'ffmpeg', ['-hide_banner', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', path.join(revisionDirectory, 'gif-order.txt'), '-vf', 'scale=960:-1:flags=lanczos,format=bgra', '-fps_mode', 'passthrough', '-frames:v', String(order.length), '-c:v', 'libwebp_anim', '-lossless', lossless ? '1' : '0', '-quality', lossless ? '100' : '90', '-compression_level', '6', '-loop', '0', destination]);
-        result.variants.push({ label: lossless ? 'WebP · lossless' : 'WebP · quality 90', url: `${theme}/revisions/${revision}/${filename}`, bytes: (await stat(destination)).size });
-      }
+      const losslessName = `freed-showcase-${theme}-lossless.webp`;
+      const losslessPath = path.join(revisionDirectory, losslessName);
+      await run(process.env.FFMPEG_PATH ?? 'ffmpeg', [...inputArgs, ...webpArgs, '-lossless', '1', '-quality', '100', '-compression_level', '6', '-loop', '0', losslessPath]);
+      result.variants.push({ label: 'WebP · lossless', url: `${theme}/revisions/${revision}/${losslessName}`, bytes: (await stat(losslessPath)).size });
+      const apngName = `freed-showcase-${theme}.apng`;
+      const apngPath = path.join(revisionDirectory, apngName);
+      await run(process.env.FFMPEG_PATH ?? 'ffmpeg', [...inputArgs, '-vf', 'scale=1920:-1:flags=lanczos,format=rgba', '-fps_mode', 'passthrough', '-frames:v', String(order.length), '-plays', '0', '-final_delay', `${Math.round(duration * 100)}/100`, '-f', 'apng', apngPath]);
+      result.variants.push({ label: 'APNG · lossless', url: `${theme}/revisions/${revision}/${apngName}`, bytes: (await stat(apngPath)).size });
     }
     await writeFile(path.join(revisionDirectory, 'manifest.json'), JSON.stringify(result, null, 2));
-    await copyFile(animation, path.join(directory, `.freed-showcase-${theme}.apng.pending`));
-    await rename(path.join(directory, `.freed-showcase-${theme}.apng.pending`), path.join(directory, `freed-showcase-${theme}.apng`));
+    await copyFile(animation, path.join(directory, `.freed-showcase-${theme}.webp.pending`));
+    await rename(path.join(directory, `.freed-showcase-${theme}.webp.pending`), path.join(directory, `freed-showcase-${theme}.webp`));
     await writeFile(path.join(directory, 'latest.json'), JSON.stringify(result, null, 2));
     console.log(`Built ${theme}: ${(bytes / 1024 / 1024).toFixed(1)} MB, ${duration.toLocaleString()} seconds per screen`);
   }

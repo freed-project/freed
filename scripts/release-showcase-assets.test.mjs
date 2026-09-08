@@ -225,14 +225,14 @@ test("local showcase rejects invalid themes and preserves the last animation on 
   await mkdir(themeDirectory);
   const captures = Array.from({ length: 6 }, (_, index) => ({ theme: "midas", file: `frame-${index}.png` }));
   for (const capture of captures) await writeFile(path.join(themeDirectory, capture.file), "fixture frame");
-  await writeFile(path.join(themeDirectory, "freed-showcase-manifest.json"), JSON.stringify({ transparentCanvas: true, captures, gifOrder: captures.map(c => c.file) }));
-  await writeFile(path.join(themeDirectory, "freed-showcase-midas.apng"), "reviewed GIF");
+  await writeFile(path.join(themeDirectory, "freed-showcase-manifest.json"), JSON.stringify({ transparentCanvas: true, sourcePixelWidth: 2880, captures, gifOrder: captures.map(c => c.file) }));
+  await writeFile(path.join(themeDirectory, "freed-showcase-midas.webp"), "reviewed WebP");
   await writeFile(path.join(themeDirectory, "latest.json"), "reviewed manifest");
   const failed = spawnSync(process.execPath, ["scripts/build-showcase-local.mjs", "--theme", "midas", "--encode-only", "--output", directory], {
     encoding: "utf8", env: { ...process.env, FFMPEG_PATH: path.join(directory, "missing-encoder") },
   });
   assert.notEqual(failed.status, 0);
-  assert.equal(await readFile(path.join(themeDirectory, "freed-showcase-midas.apng"), "utf8"), "reviewed GIF");
+  assert.equal(await readFile(path.join(themeDirectory, "freed-showcase-midas.webp"), "utf8"), "reviewed WebP");
   assert.equal(await readFile(path.join(themeDirectory, "latest.json"), "utf8"), "reviewed manifest");
 });
 
@@ -259,7 +259,7 @@ test("local export publishes a usable review index and immutable source frames",
   await mkdir(themeDirectory);
   const captures = Array.from({ length: 6 }, (_, index) => ({ theme: "midas", file: `frame-${index}.png` }));
   for (const capture of captures) await writeFile(path.join(themeDirectory, capture.file), "reviewed frame");
-  await writeFile(path.join(themeDirectory, "freed-showcase-manifest.json"), JSON.stringify({ transparentCanvas: true, captures, gifOrder: captures.map(c => c.file) }));
+  await writeFile(path.join(themeDirectory, "freed-showcase-manifest.json"), JSON.stringify({ transparentCanvas: true, sourcePixelWidth: 2880, captures, gifOrder: captures.map(c => c.file) }));
   const encoder = path.join(directory, "encoder");
   await writeFile(encoder, `#!${process.execPath}\nrequire('node:fs').writeFileSync(process.argv.at(-1), 'encoded fixture');\n`);
   await chmod(encoder, 0o755);
@@ -268,6 +268,11 @@ test("local export publishes a usable review index and immutable source frames",
   });
   assert.equal(result.status, 0, result.stderr);
   const [published] = JSON.parse(await readFile(path.join(directory, "index.json"), "utf8"));
+  assert.equal(published.format, "webp");
+  assert.equal(published.quality, 90);
+  assert.equal(published.width, 1920);
+  assert.equal(published.height, 1280);
+  assert.equal(published.variants[0].url, published.animation);
   assert.equal(await readFile(path.join(directory, published.animation), "utf8"), "encoded fixture");
   assert.equal(await readFile(path.join(directory, "index.html"), "utf8"), await readFile("scripts/showcase-local-preview.html", "utf8"));
   await writeFile(path.join(themeDirectory, captures[0].file), "later capture");
