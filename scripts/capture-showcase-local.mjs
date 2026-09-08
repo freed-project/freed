@@ -61,7 +61,13 @@ async function waitForShowcase(page) {
   });
 }
 
+async function openNavigation(page) {
+  const menu = page.getByRole("button", { name: "Open menu", exact: true });
+  if (await menu.isVisible()) await menu.click();
+}
+
 async function selectView(page, view) {
+  await openNavigation(page);
   if (view === "unified") {
     await page.getByRole("button", { name: "Unified Feed", exact: true }).click();
     return;
@@ -80,6 +86,7 @@ async function selectView(page, view) {
 }
 
 async function selectTheme(page, theme) {
+  await openNavigation(page);
   // Demo presentation storage is intentionally document-local. Select through
   // the real UI after loading instead of writing a preference before reload.
   await page.getByRole("button", { name: "Settings", exact: true }).click();
@@ -124,8 +131,15 @@ async function waitForVisibleImages(page) {
 }
 
 await mkdir(outputDirectory, { recursive: true });
-const browser = await chromium.launch({ headless: true });
+// Headless defaults can hide WebGPU and silently select the reduced WebGL path.
+// Metal exposes the hardware adapter on macOS; other hosts must still pass the
+// renderer proof below before a Friends frame can become a reviewed artifact.
+const browser = await chromium.launch({
+  headless: true,
+  args: ['--enable-unsafe-webgpu', ...(process.platform === 'darwin' ? ['--use-angle=metal'] : [])],
+});
 const context = await browser.newContext({
+  deviceScaleFactor: 2,
   locale: "en-US",
   reducedMotion: "reduce",
   viewport: { width: 1440, height: 960 },
@@ -136,6 +150,10 @@ if (useMemorySqlite) {
   });
 }
 const page = await context.newPage();
+const emulation = await context.newCDPSession(page);
+const desktopUserAgent = await page.evaluate(() => navigator.userAgent);
+const browserVersion = /(?:Headless)?Chrome\/([\d.]+)/.exec(desktopUserAgent)?.[1];
+if (!browserVersion) throw new Error("Cannot identify capture browser version");
 await page.addInitScript(() => {
   window.__freedShowcasePolicyViolations = [];
   window.__freedShowcaseImageFailures = [];
@@ -190,6 +208,11 @@ try {
       capture.retainedFromCapture = retainedManifest.generatedAt;
       continue;
     }
+    // Emulate device identity as well as width for the application's phone layout.
+    await emulation.send("Emulation.setUserAgentOverride", {
+      userAgent: capture.mobile ? `Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${browserVersion} Mobile Safari/537.36` : desktopUserAgent,
+      userAgentMetadata: { brands: [], fullVersion: browserVersion, platform: capture.mobile ? "Android" : "macOS", platformVersion: "", architecture: "", model: "", mobile: Boolean(capture.mobile) },
+    });
     await page.setViewportSize({ width: 1440, height: 960 });
     // Exercise the real production demo policy even on a loopback build server.
     const captureUrl = new URL(baseUrl);
@@ -256,6 +279,23 @@ try {
         '[data-testid="friend-graph-viewport"]',
       )?.getAttribute("data-ready-renderer-label-count")) > 0);
     }
+    if (capture.view === "friends") {
+      const diagnostics = await page.getByTestId("friend-graph-viewport").evaluate(element => ({
+        renderer: element.dataset.graphRenderer,
+        decorativeStarCount: Number(element.dataset.graphDecorativeStarCount),
+      }));
+      if (diagnostics.renderer !== "raw-webgpu" || !(diagnostics.decorativeStarCount > 0)) {
+        throw new Error(`Friends capture requires WebGPU background stars: ${JSON.stringify(diagnostics)}`);
+      }
+      capture.rendererDiagnostics = diagnostics;
+    }
+    if (capture.view === "friends" && !capture.detail) {
+      const graph = page.getByTestId("friend-graph-viewport");
+      await graph.hover();
+      await page.mouse.wheel(0, -220);
+      await page.waitForTimeout(1_200);
+      capture.graphZoomWheelDelta = -220;
+    }
     if (capture.detail) {
       // Search through the real directory so this located sample friend is
       // mounted regardless of the current activity ordering or virtualization.
@@ -281,6 +321,18 @@ try {
       await page.getByTestId("reader-article").waitFor();
     }
     await waitForVisibleImages(page);
+    if (capture.mobile) {
+      capture.mobileLayout = await page.evaluate(() => ({
+        deviceMobile: navigator.userAgentData?.mobile === true,
+        storyColumns: [...document.querySelectorAll('[style*="grid-template-columns"]')]
+          .filter(element => element.querySelector('[data-feed-item-id]'))
+          .map(element => getComputedStyle(element).gridTemplateColumns.split(" ").length),
+      }));
+      if (!capture.mobileLayout.deviceMobile || (capture.view === "stories" &&
+          (!capture.mobileLayout.storyColumns.length || capture.mobileLayout.storyColumns.some(columns => columns > 2)))) {
+        throw new Error(`Incorrect mobile showcase layout: ${JSON.stringify(capture.mobileLayout)}`);
+      }
+    }
     process.stdout.write(`Captured ${capture.theme}: ${capture.file}\n`);
     const policyViolations = await page.evaluate(() => window.__freedShowcasePolicyViolations);
     if (policyViolations.length > 0) {
@@ -290,33 +342,69 @@ try {
     if (imageFailures.length > 0) {
       throw new Error(`Showcase images failed in ${capture.view}: ${JSON.stringify(imageFailures)}`);
     }
-    if (capture.mobile) {
-      const screen = await page.screenshot({ animations: "disabled", omitBackground: true, type: "png" });
-      const frame = await context.newPage();
-      await frame.setViewportSize({ width: 1440, height: 960 });
-      await frame.setContent(`<html><body style="margin:0;width:1440px;height:960px;background:transparent;display:grid;place-items:center"><div style="padding:12px;background:#202124;border:2px solid #737578;border-radius:48px;box-shadow:0 18px 42px #20212440"><img alt="Freed mobile screen" src="data:image/png;base64,${screen.toString("base64")}" style="display:block;width:390px;height:844px;border-radius:36px" /></div></body></html>`);
-      await frame.locator("img").evaluate((img) => img.decode());
-      await frame.screenshot({ path: path.join(outputDirectory, capture.file), omitBackground: true, type: "png" });
-      await frame.close();
-    } else {
-      // Match marketing card tokens at the 960px export width. Capture at
-      // 1440px, so multiply fixed-pixel decoration by the export scale.
-      const decoration = await page.evaluate(() => {
-        const styles = getComputedStyle(document.documentElement);
-        const radius = Number.parseFloat(styles.getPropertyValue("--card-radius"));
-        const borderColor = styles.getPropertyValue("--theme-border-strong").trim();
-        if (!Number.isFinite(radius) || !borderColor) throw new Error("Missing marketing card tokens");
-        const scale = 1440 / 960;
-        const border = document.createElement("div");
-        border.dataset.showcaseDesktopBorder = "true";
-        border.style.cssText = `position:fixed;inset:0;z-index:2147483647;pointer-events:none;box-sizing:border-box;border:${2 * scale}px solid ${borderColor};border-radius:${radius * scale}px;`;
-        document.body.appendChild(border);
-        return { radius, borderColor, borderWidth: 2, captureRadius: radius * scale };
-      });
-      capture.desktopDecoration = decoration;
-      await page.addStyleTag({ content: `html { background: transparent !important; clip-path: inset(0 round ${decoration.captureRadius}px); } body { background: transparent !important; }` });
-      await page.screenshot({ animations: "disabled", path: path.join(outputDirectory, capture.file), omitBackground: true, type: "png" });
+    // Resolve the active theme once so both frame types share the same tint.
+    const framePalette = await page.evaluate(() => {
+      const styles = getComputedStyle(document.documentElement);
+      const accent = styles.getPropertyValue("--theme-accent-primary").trim();
+      if (!accent) throw new Error("Missing theme frame accent");
+      const secondary = styles.getPropertyValue("--theme-accent-secondary").trim();
+      const theme = document.documentElement.dataset.theme;
+      if (!secondary) throw new Error("Missing secondary frame accent");
+      if (theme === "midas") {
+        return { accent: secondary, shell: `color-mix(in srgb, ${secondary} 50%, #33281b)`, edge: `color-mix(in srgb, ${secondary} 75%, #33281b)` };
+      }
+      if (theme === "scriptorium") {
+        return { accent, shell: `color-mix(in srgb, ${accent} 60%, #ffffff)`, edge: `color-mix(in srgb, ${secondary} 70%, #f4ead7)` };
+      }
+      if (theme === "neon") {
+        return { accent: secondary, shell: `color-mix(in srgb, ${secondary} 30%, #160d22)`, edge: `color-mix(in srgb, ${secondary} 55%, #21112f)` };
+      }
+      if (theme === "dark-star") {
+        return { accent, shell: `color-mix(in srgb, ${accent} 20%, #080a0f)`, edge: `color-mix(in srgb, ${accent} 35%, #171b23)` };
+      }
+      return {
+        accent,
+        shell: `color-mix(in srgb, ${accent} 35%, #202124)`,
+        edge: `color-mix(in srgb, ${accent} 70%, #737578)`,
+      };
+    });
+    // Frame a completed screenshot on a separate transparent canvas. Decoration
+    // never enters the app's layout or overlays its toolbar and controls.
+    // Shared radii in capture-canvas CSS pixels, independent of theme.
+    const outerRadius = capture.mobile ? 44 : 20;
+    const screen = await page.screenshot({ animations: "disabled", omitBackground: true, type: "png" });
+    const frame = await context.newPage();
+    await frame.setViewportSize({ width: 1440, height: 960 });
+    const thickness = 7;
+    const edge = 1;
+    // Uniformly fit the desktop screenshot inside its external frame. Mobile
+    // retains its approved dimensions; neither screenshot is stretched/cropped.
+    const height = capture.mobile ? 844 : 960 - thickness * 2;
+    const width = capture.mobile ? 390 : height * 1440 / 960;
+    const innerRadius = outerRadius - thickness;
+    await frame.setContent(`<html><body style="margin:0;width:1440px;height:960px;background:transparent;display:grid;place-items:center"><div data-showcase-frame style="padding:${thickness - edge}px;background:${framePalette.shell};border:${edge}px solid ${framePalette.edge};border-radius:${outerRadius}px;${capture.mobile ? "box-shadow:0 18px 42px #20212440" : ""}"><img alt="Freed ${capture.mobile ? "mobile" : "desktop"} screen" src="data:image/png;base64,${screen.toString("base64")}" style="display:block;width:${width}px;height:${height}px;border-radius:${innerRadius}px" /></div></body></html>`);
+    await frame.locator("img").evaluate((img) => img.decode());
+    const geometry = await frame.evaluate(() => {
+      const box = document.querySelector('[data-showcase-frame]').getBoundingClientRect();
+      const content = document.querySelector('img').getBoundingClientRect();
+      return {
+        left: content.left - box.left, right: box.right - content.right,
+        top: content.top - box.top, bottom: box.bottom - content.bottom,
+        contentWidth: content.width, contentHeight: content.height,
+      };
+    });
+    if ([geometry.left, geometry.right, geometry.top, geometry.bottom].some(value => Math.abs(value - thickness) > 0.05)) {
+      throw new Error("Showcase frame must sit completely outside screenshot content");
     }
+    const decoration = {
+      ...framePalette, placement: "outside-content", geometry,
+      captureBorderWidth: thickness, borderWidth: thickness * 1920 / 1440,
+      captureRadius: outerRadius, frameWidthRatio: 1,
+    };
+    if (capture.mobile) capture.mobileDecoration = decoration;
+    else capture.desktopDecoration = decoration;
+    await frame.screenshot({ path: path.join(outputDirectory, capture.file), omitBackground: true, type: "png" });
+    await frame.close();
   }
 } finally {
   await browser.close();
@@ -332,7 +420,7 @@ const gifOrder = captures.map(({ file }) => file);
 contentCounts.regular = contentCounts.total - contentCounts.stories;
 await writeFile(
   path.join(outputDirectory, "gif-order.txt"),
-  `${gifOrder.map((file) => `file '${file}'\nduration 1.8`).join("\n")}\nfile '${gifOrder.at(-1)}'\n`,
+  `${gifOrder.map((file) => `file '${file}'\nduration 3`).join("\n")}\nfile '${gifOrder.at(-1)}'\n`,
 );
 await writeFile(
   path.join(outputDirectory, "freed-showcase-manifest.json"),
@@ -345,6 +433,9 @@ await writeFile(
       baseUrl,
       generatedAt: new Date().toISOString(),
       transparentCanvas: true,
+      sourcePixelWidth: 2880,
+      sourcePixelHeight: 1920,
+      deviceScaleFactor: 2,
       desktopZoom: 120,
       mobileZoom: 100,
       captures,

@@ -473,7 +473,8 @@ test("production releases publish an exact-tag PWA showcase with reviewed media"
   assert.match(showcaseJob, /FREED_BUILD_CHANNEL:\s*"production"/);
   assert.match(showcaseJob, /VITE_FREED_DEMO:\s*"1"/);
   assert.match(showcaseJob, /capture-release-showcase\.mjs/);
-  assert.match(showcaseJob, /release-showcase\/\*\.\{png,webp,json\}/);
+  assert.match(showcaseJob, /release-showcase\/\*\.\{webp,json\}/);
+  assert.match(showcaseJob, /name: release-showcase-source/);
   assert.doesNotMatch(showcaseJob, /--clobber/);
   assert.match(showcaseJob, /gh release upload "\$TAG"/);
   assert.match(

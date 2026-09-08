@@ -37,7 +37,7 @@ for (const theme of SHOWCASE_THEME_IDS) {
   }
   await run(process.env.FFMPEG_PATH ?? "ffmpeg", [
     "-hide_banner", "-loglevel", "error", "-f", "concat", "-safe", "0",
-    "-i", path.join(directory, "gif-order.txt"), "-vf", "scale=960:640:flags=lanczos,format=bgra",
+    "-i", path.join(directory, "gif-order.txt"), "-vf", "scale=1920:1280:flags=lanczos,format=bgra",
     "-fps_mode", "passthrough", "-frames:v", "6", "-c:v", "libwebp_anim",
     "-lossless", "0", "-quality", "90", "-compression_level", "6", "-loop", "0",
     path.join(directory, `freed-showcase-${theme}.webp`),
@@ -60,13 +60,13 @@ try {
       for (let index = 0; index < 6; index++) {
         const { image } = await decoder.decode({ frameIndex: index });
         try {
-          if (image.displayWidth !== 960 || image.displayHeight !== 640 || image.duration !== 1_800_000) throw new Error("Showcase dimensions or timing changed");
-          const canvas = new OffscreenCanvas(960, 640);
+          if (image.displayWidth !== 1920 || image.displayHeight !== 1280 || image.duration !== 3_000_000) throw new Error("Showcase dimensions or timing changed");
+          const canvas = new OffscreenCanvas(1920, 1280);
           const context = canvas.getContext("2d");
           context.drawImage(image, 0, 0);
           if (context.getImageData(0, 0, 1, 1).data[3] !== 0) throw new Error("Showcase corner lost transparency");
-          if (index >= 4 && context.getImageData(50, 320, 1, 1).data[3] !== 0) throw new Error("Desktop frame leaked into mobile canvas");
-          if (context.getImageData(480, 320, 1, 1).data[3] === 0) throw new Error("Showcase frame is empty");
+          if (index >= 4 && context.getImageData(100, 640, 1, 1).data[3] !== 0) throw new Error("Desktop frame leaked into mobile canvas");
+          if (context.getImageData(960, 640, 1, 1).data[3] === 0) throw new Error("Showcase frame is empty");
         } finally { image.close(); }
       }
       decoder.close();
@@ -91,7 +91,7 @@ for (const theme of SHOWCASE_THEME_IDS) {
 await writeFile(path.join(output, "freed-showcase-manifest.json"), JSON.stringify({
   ...first, releaseTag: identity.tag,
   captures: manifests.flatMap(manifest => manifest.captures), gifOrder: undefined,
-  encoding: { format: "webp", quality: 90, width: 960, height: 640, loop: 0, durationMs: 1800 },
+  encoding: { format: "webp", quality: 90, width: 1920, height: 1280, loop: 0, durationMs: 3000 },
   remoteMediaUrls: [...new Set(manifests.flatMap(manifest => manifest.remoteMediaUrls))].sort(),
 }, null, 2) + "\n");
 console.log(`Captured and decoded ${SHOWCASE_THEME_IDS.length} theme animations. Source PNGs: ${staging}`);

@@ -26,9 +26,11 @@ import {
   SUITE_NAMES,
   suiteTestFiles,
 } from "./lib/tooling-smoke-suites.mjs";
-import { extractTopLevelTestUnits } from "./run-tooling-smoke-shard.mjs";
+import { extractToolingSmokeTestUnits } from "./run-tooling-smoke-shard.mjs";
 
 export function parseArgs(argv) {
+  let repeatSpecified = false;
+  let suitesSpecified = false;
   const parsed = {
     aggregate: "",
     outputDir: "",
@@ -52,8 +54,10 @@ export function parseArgs(argv) {
     } else if (argument.startsWith("--shard-count=")) {
       parsed.shardCount = Number(argument.slice("--shard-count=".length));
     } else if (argument.startsWith("--repeat=")) {
+      repeatSpecified = true;
       parsed.repeat = Number(argument.slice("--repeat=".length));
     } else if (argument.startsWith("--suites=")) {
+      suitesSpecified = true;
       parsed.suites = argument
         .slice("--suites=".length)
         .split(",")
@@ -77,10 +81,11 @@ export function parseArgs(argv) {
       parsed.suite ||
       parsed.shardIndex !== null ||
       parsed.shardCount !== null ||
-      parsed.write
+      repeatSpecified ||
+      (suitesSpecified && !parsed.write)
     ) {
       throw new Error(
-        "--aggregate cannot be combined with shard or write options.",
+        "--aggregate cannot be combined with shard measurement options.",
       );
     }
     return parsed;
@@ -130,21 +135,60 @@ function decodeXmlAttribute(value) {
     .replaceAll("&amp;", "&");
 }
 
+function xmlAttribute(tag, name) {
+  const match = tag.match(new RegExp(`\\b${name}="([^"]*)"`, "u"));
+  return match ? decodeXmlAttribute(match[1]) : "";
+}
+
+function junitRepoPath(absoluteFile, repoRoot) {
+  const normalizedFile = absoluteFile.replaceAll(path.sep, "/");
+  const normalizedRoot = path.resolve(repoRoot).replaceAll(path.sep, "/");
+  if (normalizedFile.startsWith(`${normalizedRoot}/`)) {
+    return normalizedFile.slice(normalizedRoot.length + 1);
+  }
+  const scriptsIndex = normalizedFile.lastIndexOf("/scripts/");
+  if (scriptsIndex >= 0) return normalizedFile.slice(scriptsIndex + 1);
+  return path.relative(repoRoot, absoluteFile).replaceAll(path.sep, "/");
+}
+
 export function parseJUnitTestCases(xml, repoRoot = REPO_ROOT) {
   const testCases = [];
-  const pattern =
-    /<testcase\s+name="([^"]*)"\s+time="([^"]*)"\s+classname="[^"]*"\s+file="([^"]*)"[^>]*>/g;
-  for (const match of xml.matchAll(pattern)) {
-    const seconds = Number(match[2]);
-    if (!Number.isFinite(seconds) || seconds < 0) continue;
-    const absoluteFile = decodeXmlAttribute(match[3]);
-    testCases.push({
-      name: decodeXmlAttribute(match[1]),
-      file: path.relative(repoRoot, absoluteFile).replaceAll(path.sep, "/"),
-      seconds,
-    });
+  const suites = [];
+  const tags = /<testsuite\b[^>]*>|<\/testsuite>|<testcase\b[^>]*>/gu;
+  for (const match of xml.matchAll(tags)) {
+    const tag = match[0];
+    if (tag === "</testsuite>") {
+      const completed = suites.pop();
+      if (completed && suites.length === 0) testCases.push(completed);
+      continue;
+    }
+    const seconds = Number(xmlAttribute(tag, "time"));
+    if (tag.startsWith("<testsuite")) {
+      suites.push({
+        name: xmlAttribute(tag, "name"),
+        file: "",
+        seconds,
+      });
+      continue;
+    }
+    const absoluteFile = xmlAttribute(tag, "file");
+    const file = junitRepoPath(absoluteFile, repoRoot);
+    for (const suite of suites) {
+      if (suite.file === "") suite.file = file;
+    }
+    if (suites.length === 0 && Number.isFinite(seconds) && seconds >= 0) {
+      testCases.push({
+        name: xmlAttribute(tag, "name"),
+        file,
+        seconds,
+      });
+    }
   }
-  return testCases;
+  if (suites.length > 0) throw new Error("JUnit report is incomplete.");
+  return testCases.filter(
+    ({ name, file, seconds }) =>
+      name !== "" && file !== "" && Number.isFinite(seconds) && seconds >= 0,
+  );
 }
 
 export function unitDurationsForSuite(
@@ -163,7 +207,7 @@ export function unitDurationsForSuite(
   } else {
     const testFile = SHARDED_TEST_FILES[suite];
     const source = readFileSync(path.join(repoRoot, testFile), "utf8");
-    const units = extractTopLevelTestUnits(source, testFile);
+    const units = extractToolingSmokeTestUnits(suite, source, testFile);
     for (const testCase of testCases.filter(
       (entry) => entry.file === testFile,
     )) {
@@ -218,6 +262,7 @@ export function measureShard(
     );
     let units = {};
     let junitOk = false;
+    let evidenceError = "";
     try {
       const xml = readFileSync(junitSource, "utf8");
       units = unitDurationsForSuite(suite, parseJUnitTestCases(xml, repoRoot), {
@@ -225,9 +270,13 @@ export function measureShard(
       });
       renameSync(junitSource, junitDestination);
       junitOk = Object.keys(units).length > 0;
-    } catch {
+      if (!junitOk) {
+        evidenceError = "JUnit report contained no attributable timing units.";
+      }
+    } catch (error) {
       // A runner failure before JUnit creation is still an attributable failed
       // attempt. The receipt preserves it and the matrix job remains red.
+      evidenceError = error instanceof Error ? error.message : String(error);
     }
     const ok =
       result.error === undefined &&
@@ -239,7 +288,11 @@ export function measureShard(
       ok,
       seconds: Number(seconds.toFixed(1)),
       units,
+      ...(evidenceError === "" ? {} : { evidenceError }),
     });
+    if (evidenceError !== "") {
+      process.stderr.write(`  JUnit evidence error: ${evidenceError}\n`);
+    }
     process.stderr.write(
       `  ${suite} shard ${shardIndex.toLocaleString()}/${shardCount.toLocaleString()} attempt ${attempt.toLocaleString()}/${repeat.toLocaleString()}: ${seconds.toFixed(1)}s ${ok ? "pass" : "FAIL"}\n`,
     );
@@ -396,9 +449,119 @@ export function aggregateShardedMeasurements(receipts) {
 export function aggregateReceiptDirectory(directory) {
   return aggregateShardedMeasurements(
     receiptFiles(directory).map((file) =>
-      JSON.parse(readFileSync(file, "utf8")),
+      receiptWithRetainedJUnit(file),
     ),
   );
+}
+
+export function receiptWithRetainedJUnit(
+  file,
+  { repoRoot = REPO_ROOT } = {},
+) {
+  const receipt = JSON.parse(readFileSync(file, "utf8"));
+  return {
+    ...receipt,
+    runs: receipt.runs.map((run) => {
+      const junitPath = path.join(
+        path.dirname(file),
+        `${receipt.suite}-${receipt.shardIndex}-of-${receipt.shardCount}-attempt-${run.attempt}.xml`,
+      );
+      try {
+        const units = unitDurationsForSuite(
+          receipt.suite,
+          parseJUnitTestCases(readFileSync(junitPath, "utf8"), repoRoot),
+          { repoRoot },
+        );
+        return Object.keys(units).length > 0 ? { ...run, units } : run;
+      } catch {
+        return run;
+      }
+    }),
+  };
+}
+
+export function expectedMeasurementUnits(
+  suite,
+  { repoRoot = REPO_ROOT } = {},
+) {
+  if (suite === "general") {
+    return suiteTestFiles(suite, repoRoot).sort();
+  }
+  const testFile = SHARDED_TEST_FILES[suite];
+  const source = readFileSync(path.join(repoRoot, testFile), "utf8");
+  return extractToolingSmokeTestUnits(suite, source, testFile)
+    .map(({ name }) => name)
+    .sort();
+}
+
+export function selectStableCatalogMeasurements(
+  measured,
+  suites,
+  { repoRoot = REPO_ROOT } = {},
+) {
+  const selected = {};
+  for (const suite of suites) {
+    const measurement = measured?.suites?.[suite];
+    if (
+      !measurement ||
+      !Number.isSafeInteger(measurement.runs) ||
+      measurement.runs < 2 ||
+      measurement.failures !== 0 ||
+      measurement.flaky !== false
+    ) {
+      throw new Error(
+        `Tooling smoke ${suite} measurement is not a stable repeated result.`,
+      );
+    }
+    const expected = expectedMeasurementUnits(suite, { repoRoot });
+    const actual = Object.keys(measurement.units ?? {}).sort();
+    if (
+      actual.length !== expected.length ||
+      actual.some((name, index) => name !== expected[index])
+    ) {
+      throw new Error(
+        `Tooling smoke ${suite} measurement unit coverage is incomplete.`,
+      );
+    }
+    for (const name of expected) {
+      const unit = measurement.units[name];
+      if (
+        !unit ||
+        !Number.isFinite(unit.seconds) ||
+        unit.seconds < 0 ||
+        unit.runs !== measurement.runs
+      ) {
+        throw new Error(
+          `Tooling smoke ${suite} measurement unit coverage is incomplete.`,
+        );
+      }
+    }
+    selected[suite] = measurement;
+  }
+  return selected;
+}
+
+function mergeDurationCatalog(suites) {
+  const absolute = path.join(REPO_ROOT, DURATIONS_FILE);
+  let existing = { schemaVersion: 1, suites: {} };
+  try {
+    existing = JSON.parse(readFileSync(absolute, "utf8"));
+  } catch {
+    // First run writes the file.
+  }
+  return {
+    schemaVersion: 1,
+    suites: { ...existing.suites, ...suites },
+  };
+}
+
+function writeDurationCatalog(suites) {
+  const absolute = path.join(REPO_ROOT, DURATIONS_FILE);
+  writeFileSync(
+    absolute,
+    `${JSON.stringify(mergeDurationCatalog(suites), null, 2)}\n`,
+  );
+  process.stderr.write(`Wrote ${DURATIONS_FILE}.\n`);
 }
 
 function runSuiteOnce(suite) {
@@ -482,9 +645,14 @@ export function measureSuites(suites, repeat) {
 function main(argv) {
   const options = parseArgs(argv);
   if (options.aggregate) {
-    process.stdout.write(
-      `${JSON.stringify(aggregateReceiptDirectory(options.aggregate), null, 2)}\n`,
-    );
+    const measured = aggregateReceiptDirectory(options.aggregate);
+    if (options.write) {
+      writeDurationCatalog(
+        selectStableCatalogMeasurements(measured, options.suites),
+      );
+    } else {
+      process.stdout.write(`${JSON.stringify(measured, null, 2)}\n`);
+    }
     return;
   }
   if (options.suite) {
@@ -497,27 +665,17 @@ function main(argv) {
     `Measuring ${suites.length.toLocaleString()} tooling smoke suites, ${repeat.toLocaleString()} run(s) each.\n`,
   );
   const measured = measureSuites(suites, repeat);
+  const merged = mergeDurationCatalog(measured);
 
-  const absolute = path.join(REPO_ROOT, DURATIONS_FILE);
-  let existing = { schemaVersion: 1, suites: {} };
-  try {
-    existing = JSON.parse(readFileSync(absolute, "utf8"));
-  } catch {
-    // First run writes the file.
-  }
-  const merged = {
-    schemaVersion: 1,
-    suites: { ...existing.suites, ...measured },
-  };
-  const serialized = `${JSON.stringify(merged, null, 2)}\n`;
   if (write) {
-    writeFileSync(absolute, serialized);
-    process.stderr.write(`Wrote ${DURATIONS_FILE}.\n`);
+    writeDurationCatalog(measured);
   } else {
-    process.stdout.write(serialized);
+    process.stdout.write(`${JSON.stringify(merged, null, 2)}\n`);
   }
 
-  const flaky = Object.entries(merged.suites).filter(([, v]) => v.flaky);
+  const flaky = Object.entries(merged.suites).filter(
+    ([, value]) => value.flaky,
+  );
   if (flaky.length > 0) {
     process.stderr.write(
       `Flaky suites: ${flaky.map(([name]) => name).join(", ")}\n`,

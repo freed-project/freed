@@ -8,10 +8,7 @@ export const SHOWCASE_THEME_IDS = Object.freeze(THEME_DEFINITIONS.map(theme => t
 export const SHOWCASE_FRAME_IDS = Object.freeze([
   "unified", "map", "friends", "friend-detail", "stories", "reader",
 ]);
-export const SHOWCASE_ASSET_FILENAMES = Object.freeze(SHOWCASE_THEME_IDS.flatMap(theme => [
-  ...SHOWCASE_FRAME_IDS.map(frame => `freed-showcase-${frame}-${theme}.png`),
-  `freed-showcase-${theme}.webp`,
-]));
+export const SHOWCASE_ASSET_FILENAMES = Object.freeze(SHOWCASE_THEME_IDS.map(theme => `freed-showcase-${theme}.webp`));
 export const SHOWCASE_MANIFEST_FILENAME = "freed-showcase-manifest.json";
 export const MAX_SHOWCASE_ASSET_BYTES = 64 * 1024 * 1024;
 export const DEFAULT_SHOWCASE_DOWNLOAD_TIMEOUT_MS = 15_000;
@@ -160,8 +157,9 @@ function validateCaptureContract(manifest) {
   if (manifest.sourceDirty !== false || manifest.transparentCanvas !== true ||
       manifest.desktopZoom !== 120 || manifest.mobileZoom !== 100 ||
       manifest.encoding?.format !== "webp" || manifest.encoding?.quality !== 90 ||
-      manifest.encoding?.width !== 960 || manifest.encoding?.height !== 640 ||
-      manifest.encoding?.loop !== 0 || manifest.encoding?.durationMs !== 1800) {
+      manifest.deviceScaleFactor !== 2 ||
+      manifest.encoding?.width !== 1920 || manifest.encoding?.height !== 1280 ||
+      manifest.encoding?.loop !== 0 || manifest.encoding?.durationMs !== 3000) {
     throw new Error("Showcase requires a clean source, transparent canvas, reviewed zoom and quality-90 WebP encoding.");
   }
   if (!Array.isArray(manifest.captures) || manifest.captures.length !== SHOWCASE_THEME_IDS.length * SHOWCASE_FRAME_IDS.length) {
@@ -172,10 +170,13 @@ function validateCaptureContract(manifest) {
     for (const frame of SHOWCASE_FRAME_IDS) {
       const capture = manifest.captures[index++];
       const mobile = frame === "stories" || frame === "reader";
+      const decoration = mobile ? capture?.mobileDecoration : capture?.desktopDecoration;
       if (capture?.theme !== theme || capture.file !== `freed-showcase-${frame}-${theme}.png` ||
           Boolean(capture.mobile) !== mobile || capture.retainedFromCapture ||
-          (!mobile && (!Number.isFinite(capture.desktopDecoration?.radius) ||
-            !capture.desktopDecoration?.borderColor || capture.desktopDecoration?.borderWidth !== 2))) {
+          decoration?.placement !== "outside-content" || decoration.captureBorderWidth !== 7 ||
+          decoration.captureRadius !== (mobile ? 44 : 20) ||
+          ((frame === "friends" || frame === "friend-detail") &&
+            (capture.rendererDiagnostics?.renderer !== "raw-webgpu" || !(capture.rendererDiagnostics?.decorativeStarCount > 0)))) {
         throw new Error("Showcase frame identity, ordering or desktop decoration is invalid.");
       }
     }
