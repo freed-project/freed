@@ -6,6 +6,17 @@ interface IconProps {
 }
 
 /** Overlapping sheets for copy actions. */
+/** Provider mark for compact labels that already include the provider name. */
+export function PlatformIcon({ platform, className = "w-4 h-4" }: { platform: string; className?: string }) {
+  const Icon = {
+    x: XIcon, rss: RssIcon, youtube: YoutubeIcon, reddit: RedditIcon,
+    mastodon: MastodonIcon, github: GithubIcon, facebook: FacebookIcon,
+    instagram: InstagramIcon, linkedin: LinkedInIcon, substack: SubstackIcon,
+    medium: MediumIcon, saved: BookmarkIcon,
+  }[platform];
+  return Icon ? <span aria-hidden="true" className="inline-flex shrink-0"><Icon className={className} /></span> : null;
+}
+
 export function CopyIcon({ className = "w-4 h-4", style }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className={className} style={style} aria-hidden="true">

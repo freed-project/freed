@@ -13,12 +13,16 @@ export const STRANGE_WILD_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
     "platform": "instagram",
     "location": {
       "name": "Bukit Timah forest, Singapore",
-      "coordinates": { "lat": 1.354, "lng": 103.776 }
+      "coordinates": {
+        "lat": 1.354,
+        "lng": 103.776
+      }
     },
     "episodes": [
       {
         "subject": "Galeopterus variegatus",
         "platform": "instagram",
+        "classification": "conversation",
         "mediaSha1": "66f413e28dcd1fc172084d8128ae086916b5c47d",
         "theme": "social",
         "title": "A small wave",
@@ -28,10 +32,21 @@ export const STRANGE_WILD_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
         "subject": "Galeopterus variegatus",
         "platform": "facebook",
         "contentType": "story",
+        "classification": "event",
         "mediaSha1": "7ed862b12de0299b5ba39d095c0f1d7ac5cfecef",
         "theme": "movement",
         "title": "The others disagreed",
         "body": "I let go with one foot to prove I wasn't scared. The remaining feet are being unnecessarily sincere."
+      },
+      {
+        "subject": "Galeopterus variegatus",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "family",
+        "title": "The part in between",
+        "body": "When I was small, I leaned out from Mother's fur to watch the trees. The moment she let go, I hid my face. When I looked again we had arrived. I wanted her to go back.",
+        "classification": "personal",
+        "mediaSha1": "93a1216858e9f3456b728dbaa7152d0fa722c1b0"
       }
     ]
   },
@@ -42,12 +57,16 @@ export const STRANGE_WILD_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
     "platform": "rss",
     "location": {
       "name": "Bukit Timah forest, Singapore",
-      "coordinates": { "lat": 1.354, "lng": 103.776 }
+      "coordinates": {
+        "lat": 1.354,
+        "lng": 103.776
+      }
     },
     "episodes": [
       {
         "subject": "Galeopterus variegatus",
         "platform": "rss",
+        "classification": "event",
         "mediaSha1": "55ffd1d7f455bf3169a24ceef7e4dbc88f355915",
         "theme": "movement",
         "title": "The extra journey",
@@ -62,12 +81,16 @@ export const STRANGE_WILD_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
     "platform": "instagram",
     "location": {
       "name": "Forest edge near Mananara, Madagascar",
-      "coordinates": { "lat": -16.25, "lng": 49.73 }
+      "coordinates": {
+        "lat": -16.25,
+        "lng": 49.73
+      }
     },
     "episodes": [
       {
         "subject": "Daubentonia madagascariensis",
         "platform": "instagram",
+        "classification": "inspiring",
         "mediaSha1": "7da4a4206ac49800bd46353893b059b839b6ca29",
         "theme": "feeding",
         "title": "Reach",
@@ -76,6 +99,7 @@ export const STRANGE_WILD_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "Daubentonia madagascariensis",
         "platform": "rss",
+        "classification": "conversation",
         "mediaSha1": "49907b5b38094f7b79791abdf17cea305094243d",
         "theme": "social",
         "title": "The other tapping",
@@ -84,6 +108,7 @@ export const STRANGE_WILD_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "Daubentonia madagascariensis",
         "platform": "instagram",
+        "classification": "inspiring",
         "mediaSha1": "06385ff2c5463afc8b270f872917b448f0ff8b75",
         "theme": "wonder",
         "title": "The forest at night",
@@ -98,12 +123,16 @@ export const STRANGE_WILD_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
     "platform": "instagram",
     "location": {
       "name": "Stepnoi Sanctuary steppe, Russia",
-      "coordinates": { "lat": 46.15, "lng": 46.7 }
+      "coordinates": {
+        "lat": 46.15,
+        "lng": 46.7
+      }
     },
     "episodes": [
       {
         "subject": "Saiga tatarica tatarica",
         "platform": "rss",
+        "classification": "personal",
         "mediaSha1": "2afe33f36ad8c104bbe503e123512af517df9a45",
         "theme": "family",
         "title": "The waiting",
@@ -112,6 +141,7 @@ export const STRANGE_WILD_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "Saiga tatarica tatarica",
         "platform": "instagram",
+        "classification": "personal",
         "mediaSha1": "53ec7831697a3718c9997e03d364575127b51f09",
         "theme": "family",
         "title": "Excellent concealment",
@@ -121,6 +151,7 @@ export const STRANGE_WILD_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
         "subject": "Saiga tatarica tatarica",
         "platform": "instagram",
         "contentType": "story",
+        "classification": "conversation",
         "mediaSha1": "f58bdc57b1ad250c6c480a91e6608065e5fc52ab",
         "theme": "social",
         "title": "A wet attachment",

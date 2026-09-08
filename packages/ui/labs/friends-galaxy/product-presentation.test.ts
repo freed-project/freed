@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { FriendsGalaxyProductPresentationIndex } from "../../src/lib/friends-galaxy-product-presentation.js";
+import { selectFriendsGalaxyLabels } from "../../src/lib/friends-galaxy-presentation.js";
 import {
   FRIENDS_GALAXY_PRODUCT_WORKER_PROTOCOL_VERSION,
   type FriendsGalaxyProductWorkerPresentationRequest,
@@ -38,6 +39,27 @@ function presentationRequest(): FriendsGalaxyProductWorkerPresentationRequest {
 }
 
 describe("Friends Galaxy product presentation", () => {
+  it("defers a newly selected identity label until its metadata is admitted", () => {
+    const service = new FriendsGalaxyProductWorkerService();
+    const source = buildSource(service);
+    const initial = service.handle(presentationRequest());
+    if (initial.kind !== "presentation-ready") throw new Error("Expected presentation.");
+    const admitted = new Set(initial.atlas.nodes.map(node => node.id));
+    const selected = source.rendererScene.scene.nodeIds.find(id => id.startsWith("person:") && !admitted.has(id));
+    expect(selected).toBeDefined();
+    const index = new FriendsGalaxyProductPresentationIndex();
+    const scene = { ...source.rendererScene, atlas: initial.atlas, presentationCandidateSource: "atlas" as const };
+    const before = selectFriendsGalaxyLabels(scene, index.resolve, false, "close", selected!);
+    expect(before.some(label => label.nodeId === selected)).toBe(false);
+    const request = presentationRequest();
+    request.viewport.selectedAccountId = null;
+    request.viewport.selectedPersonId = selected!.slice("person:".length);
+    const response = service.handle(request);
+    if (response.kind !== "presentation-ready") throw new Error("Expected presentation.");
+    const after = selectFriendsGalaxyLabels({ ...scene, atlas: response.atlas }, index.resolve, false, "close", selected!);
+    expect(after.some(label => label.nodeId === selected)).toBe(true);
+  });
+
   it("admits a distant hovered identity without displacing selection or exceeding metadata budgets", () => {
     const service = new FriendsGalaxyProductWorkerService();
     const source = buildSource(service);

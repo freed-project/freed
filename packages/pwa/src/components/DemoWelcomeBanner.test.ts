@@ -95,7 +95,7 @@ describe("DemoWelcomeBanner", () => {
 
     expect(container.textContent).toContain("Take back your feed.");
     expect(container.querySelectorAll('[data-testid="demo-welcome-desktop"] a')).toHaveLength(0);
-    expect(container.querySelectorAll('[data-testid="demo-welcome-desktop"] button')).toHaveLength(1);
+    expect(container.querySelectorAll('[data-testid="demo-welcome-desktop"] button')).toHaveLength(2);
     const exploreButton = findButton(container, "Explore Freed Demo");
     expect(exploreButton).toBeInstanceOf(HTMLButtonElement);
     expect(exploreButton?.className).toContain("min-h-14");
@@ -151,12 +151,19 @@ describe("DemoWelcomeBanner", () => {
   });
 
   it("docks the mobile tab on the right, clamps vertical dragging, and distinguishes dragging from restoring", async () => {
+    vi.useFakeTimers();
     vi.stubGlobal("innerWidth", 390);
     vi.stubGlobal("innerHeight", 844);
     localStorage.setItem("freed.demo.welcome-state.v1", "minimized");
     const container = document.createElement("div");
     const root = createRoot(container);
     await act(async () => root.render(createElement(DemoWelcomeBanner, { downloadUrl: "https://freed.wtf/get" })));
+    // Mobile always welcomes a fresh load, even when the previous visit was minimized.
+    expect(container.querySelector('[role="dialog"]')).not.toBeNull();
+    await act(async () => {
+      findButton(container, "Explore Freed Demo")!.click();
+      await vi.advanceTimersByTimeAsync(700);
+    });
     const tab = container.querySelector<HTMLButtonElement>('[data-testid="demo-welcome-tab"]')!;
     Object.defineProperty(tab, "offsetWidth", { value: 288 });
     expect(tab.style.transform).toContain("rotate(-90deg)");
@@ -175,11 +182,18 @@ describe("DemoWelcomeBanner", () => {
     await pointer("pointerdown", 156);
     await pointer("pointerup", 156);
     await act(async () => tab.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 })));
-    expect(localStorage.getItem("freed.demo.welcome-state.v1")).toBe("banner");
+    expect(localStorage.getItem("freed.demo.welcome-state.v1")).toBe("modal");
+    expect(container.querySelector('[role="dialog"]')).not.toBeNull();
+    await act(async () => {
+      findButton(container, "Explore Freed Demo")!.click();
+      await vi.advanceTimersByTimeAsync(700);
+    });
     vi.stubGlobal("innerWidth", 1024);
     await act(async () => window.dispatchEvent(new Event("resize")));
-    expect(tab.style.transform).not.toContain("rotate");
-    expect(tab.style.top).toBe("");
+    await act(async () => { await vi.advanceTimersByTimeAsync(700); });
+    const horizontalTab = container.querySelector<HTMLButtonElement>('[data-testid="demo-welcome-tab"]')!;
+    expect(horizontalTab.style.transform).not.toContain("rotate");
+    expect(horizontalTab.style.top).toBe("");
     await act(async () => root.unmount());
   });
 

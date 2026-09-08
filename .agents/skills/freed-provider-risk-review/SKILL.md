@@ -31,16 +31,9 @@ Include:
 - Approval scope, expiry condition, and owner approval reference
 - Owner decision reference and expiry condition
 
-Stop before code until the owner explicitly approves the named observable
-behavior after seeing its provider, fingerprinting risk, and lower-profile
-alternative. Record a stable task and decision reference. A later implementing
-task may reuse that decision only when it loads and cites the exact reference,
-the decision has no expiry or has not expired, and the provider, contact
-frequency, timing, and observable flow remain inside its stated scope. Never
-infer reusable authority from roadmap prose or general permission to proceed
-with a plan, program, or broad batch. This Gate 1 decision authorizes
-implementation only within the described behavior. It is not live provider
-traffic, merge, release, or install authority.
+Follow the root numbered authorization rule. Before code, describe the provider, observable behavior, risk, and lowest-profile alternative. If existing Level 5 or higher covers the described task-scoped behavior, record that authority and warning and proceed without asking for a second confirmation. Otherwise request the required numbered level before dependent work. Preserve an explicit owner review checkpoint.
+
+Record a stable task and decision reference with the behavior scope and expiry. Reuse an existing decision only when the provider, cadence, and observable flow remain within that scope. For a material deviation, repeat the review and warning; ask only if it exceeds existing task authority or leaves consequential scope unresolved. Roadmap prose, a log entry, and general background actor permissions do not grant provider authority. Runtime leases, actor capabilities, CODEOWNER requirements, and separate durable-data activation gates still apply.
 
 ## Record the reviewed behavior
 
@@ -59,8 +52,8 @@ the current classified diff. The artifact approves the described behavior, not
 one exact byte diff. A materially different observable behavior returns to
 Gate 1 before implementation continues.
 
-For unattended publication, use a signed `control-task` approval record outside
-the repository. Bind its digest to the provider-only diff, set provider
+When the host uses broker-backed unattended publication, require its signed
+`control-task` approval record outside the repository. Bind its digest to the provider-only diff, set provider
 authority to `approved`, and preserve the owner capability event. Broker
 provisioning is optional and does not change the behavior-approval rule.
 
@@ -84,7 +77,7 @@ judgment is uncertain, return to Gate 1 before code.
 
 ## Approval rules
 
-- General permission to improve stability, build a feature, or "proceed with everything" is not a substitute for scoped behavior approval.
+- Numbered task authority is reused as described above; unnumbered permission or authority for a different task is not scoped provider approval.
 - Behavior approval applies only to the described contact frequency, timing,
   provider, paths, and observable flow.
 - Do not contact a provider while preparing the artifact or review comment.

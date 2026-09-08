@@ -458,13 +458,14 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
           onClearSelection?.();
           return;
         }
-        const node = engineRef.current?.metadata(nodeId);
-        if (node?.personId) {
-          onSelectPersonId(node.personId);
+        // Normalized graph nodes remain selectable before optional label
+        // metadata is available. The canonical node ID is the selection key.
+        if (nodeId.startsWith("person:")) {
+          onSelectPersonId(nodeId.slice(7));
           return;
         }
-        if (node?.accountId) {
-          onSelectAccountId(node.accountId);
+        if (nodeId.startsWith("account:")) {
+          onSelectAccountId(nodeId.slice(8));
         } else if (nodeId.startsWith("feed:")) {
           onSelectFeedUrl?.(nodeId.slice(5));
         }

@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { AuthorIdentityLink } from "../AuthorIdentityLink.js";
 import { LoadingState } from "../LoadingState.js";
-import { parseYouTubeVideoUrl, type FeedItem as FeedItemType, type FocusOptions } from "@freed/shared";
+import { PLATFORM_LABELS, isSampleFeedItem, parseYouTubeVideoUrl, type FeedItem as FeedItemType, type FocusOptions } from "@freed/shared";
 import {
   useAppStore,
   usePlatform,
@@ -21,7 +21,7 @@ import {
 } from "../../lib/native-drag-region.js";
 import { Tooltip } from "../Tooltip.js";
 import { toast } from "../Toast.js";
-import { ExternalLinkIcon, TrashIcon } from "../icons.js";
+import { ExternalLinkIcon, PlatformIcon, TrashIcon } from "../icons.js";
 import { FocusText } from "./FocusText.js";
 import { YouTubeFocusPlayer } from "./YouTubeFocusPlayer.js";
 import { useDeviceDisplayPreferences } from "../../lib/device-display-preferences.js";
@@ -401,6 +401,7 @@ export function ReaderView({
       : offlinePlaylistState;
 
   const articleUrl = item.content.linkPreview?.url;
+  const originalPostUrl = item.sourceUrl || articleUrl;
   const youtubeReference = useMemo(
     () =>
       [item.sourceUrl, item.content.linkPreview?.url]
@@ -417,6 +418,11 @@ export function ReaderView({
   const displayMediaUrls = readerMediaUrls ?? item.content.mediaUrls;
   const displayMediaTypes = readerMediaTypes ?? item.content.mediaTypes;
   const isStory = item.contentType === "story";
+  // Demo attribution is separate metadata, never part of the character voice.
+  const sampleImageCredit = item.sampleDataFingerprint &&
+    item.content.linkPreview?.description?.startsWith("Photograph by ")
+    ? item.content.linkPreview.description
+    : null;
   const canOpenSource = Boolean(onOpenUrl && item.sourceUrl);
   const handleOpenSource = useCallback(() => {
     if (!onOpenUrl || !item.sourceUrl) return;
@@ -457,6 +463,7 @@ export function ReaderView({
     }
   }, [item.globalId, item.userState.saved, toggleSaved, visibleOfflinePlaylistState.status, youtube, youtubeReference]);
   const supportsThreadHydration =
+    !isSampleFeedItem(item) &&
     !isStory &&
     (item.platform === "x" || item.platform === "facebook" || item.platform === "instagram");
   const replyPlatformLabel = REPLY_PLATFORM_LABELS[item.platform] ?? "the platform";
@@ -668,7 +675,7 @@ export function ReaderView({
   ]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLoadThreadReplies = useCallback(async () => {
-    if (interactionMode === "read-only" || !hydrateReaderItem || !navigator.onLine || isThreadLoading) return;
+    if (!supportsThreadHydration || interactionMode === "read-only" || !hydrateReaderItem || !navigator.onLine || isThreadLoading) return;
 
     setHasRequestedThreadReplies(true);
     setThreadReplyMessage(null);
@@ -710,15 +717,16 @@ export function ReaderView({
     } finally {
       setIsThreadLoading(false);
     }
-  }, [interactionMode, hydrateReaderItem, isThreadLoading, item, replyPlatformLabel]);
+  }, [supportsThreadHydration, interactionMode, hydrateReaderItem, isThreadLoading, item, replyPlatformLabel]);
 
   const handleToggleSaved = useCallback(() => {
     toggleSaved(item.globalId);
   }, [toggleSaved, item.globalId]);
 
   const handleToggleArchived = useCallback(() => {
-    toggleArchived(item.globalId);
-    if (!item.userState.archived) onClose();
+    void toggleArchived(item.globalId).then(() => {
+      if (!item.userState.archived) onClose();
+    }, () => {}); // The store reports failed writes; keep the reader open.
   }, [toggleArchived, item.globalId, item.userState.archived, onClose]);
 
   const prefTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -792,7 +800,7 @@ export function ReaderView({
       className={
         inline
           ? "flex-1 min-w-0 overflow-auto bg-transparent"
-          : "reader-overlay theme-scroll-fade-y fixed inset-0 z-50 overflow-auto bg-[var(--theme-bg-root)]"
+          : "reader-overlay fixed inset-0 z-50 overflow-auto bg-[var(--theme-bg-root)]"
       }
     >
       {!inline && (
@@ -839,14 +847,14 @@ export function ReaderView({
 
             {contentSource === "cache" && (
               <Tooltip label="Served from your device cache">
-                <span className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">
+                <span className="px-2 py-0.5 text-[0.625rem] font-medium rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">
                   Offline
                 </span>
               </Tooltip>
             )}
-            {contentSource === "text" && (
+            {contentSource === "text" && !item.sampleDataFingerprint && (
               <Tooltip label="Full content will load when online">
-                <span className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/20">
+                <span className="px-2 py-0.5 text-[0.625rem] font-medium rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/20">
                   Summary
                 </span>
               </Tooltip>
@@ -914,17 +922,6 @@ export function ReaderView({
               </button>
             </Tooltip>
 
-            {onOpenUrl && item.sourceUrl && (
-              <button
-                onClick={() => onOpenUrl(item.sourceUrl!)}
-                className="theme-subtle-button inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm"
-                style={headerDragRegion ? noDrag : undefined}
-                aria-label="Open"
-              >
-                <ExternalLinkIcon className="w-4 h-4" />
-                <span>Open</span>
-              </button>
-            )}
 
             <Tooltip label={dualColumn ? "Single column" : "Dual column"}>
               <button
@@ -950,6 +947,7 @@ export function ReaderView({
       <article
         data-testid="reader-article"
         className="mx-auto w-full max-w-3xl max-[959px]:max-w-none px-5 py-6 sm:py-8 min-[960px]:px-6"
+        style={{ paddingBottom: "calc(25dvh + env(safe-area-inset-bottom, 0px))" }}
       >
         {/* Meta */}
         <div className="mb-6">
@@ -963,28 +961,39 @@ export function ReaderView({
                 <span>{item.preservedContent.readingTime} min read</span>
               </>
             )}
+            {originalPostUrl && interactionMode !== "read-only" && !isSampleFeedItem(item) ? (
+              <a
+                href={originalPostUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={`View original on ${PLATFORM_LABELS[item.platform]}`}
+                className="theme-accent-tag ml-auto inline-flex shrink-0 items-center gap-1 rounded-full px-3 py-1 text-xs font-medium transition-colors hover:bg-[rgb(var(--theme-accent-secondary-rgb)/0.24)]"
+                onClick={(event) => {
+                  const openExternal = onOpenUrl ?? platformOpenUrl;
+                  if (openExternal && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
+                    event.preventDefault();
+                    openExternal(originalPostUrl);
+                  }
+                }}
+              >
+                <PlatformIcon platform={item.platform} className="h-3 w-3" />
+                {PLATFORM_LABELS[item.platform]}
+                <ExternalLinkIcon className="h-3 w-3" />
+              </a>
+            ) : (
+              <span className="theme-accent-tag ml-auto inline-flex items-center gap-1 shrink-0 rounded-full px-3 py-1 text-xs font-medium">
+                <PlatformIcon platform={item.platform} className="h-3 w-3" />
+                {PLATFORM_LABELS[item.platform]}
+              </span>
+            )}
           </div>
 
           <h1 className="theme-display-large text-2xl sm:text-3xl font-bold mb-4 leading-tight">
             {readerPresentation.title}
           </h1>
 
-          {(articleUrl || (item.platform === "saved" && updateSavedContent)) && (
+          {item.platform === "saved" && updateSavedContent && (
             <div className="flex flex-wrap items-center gap-3">
-              {articleUrl && (
-                <a
-                  href={articleUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-sm font-medium text-[var(--theme-accent-secondary)] transition-colors hover:opacity-80"
-                >
-                  View original
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                  </svg>
-                </a>
-              )}
-              {item.platform === "saved" && updateSavedContent && (
                 <button
                   type="button"
                   onClick={() => openSavedContentEditor(item)}
@@ -992,7 +1001,6 @@ export function ReaderView({
                 >
                   Edit save
                 </button>
-              )}
             </div>
           )}
         </div>
@@ -1056,7 +1064,7 @@ export function ReaderView({
           </div>
         )}
 
-        {hydrationMessage && (
+        {hydrationMessage && !(isSampleFeedItem(item) && hydrationMessage === STORY_REPLY_MESSAGE) && (
           <div
             className={`mb-6 rounded-xl border px-4 py-3 text-sm ${
               hydrationStatus === "expired" || hydrationStatus === "auth_required"
@@ -1109,6 +1117,14 @@ export function ReaderView({
           </div>
         )}
 
+        {!youtubeReference && sampleImageCredit && (
+          <aside aria-label="Image credit" className="mt-8 border-t border-[var(--theme-border-subtle)] pt-4">
+            <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-[var(--theme-text-muted)]">
+              {sampleImageCredit}
+            </p>
+          </aside>
+        )}
+
         {supportsThreadHydration && (
           <ReplyActions
             platformLabel={replyPlatformLabel}
@@ -1121,7 +1137,7 @@ export function ReaderView({
           />
         )}
 
-        {(threadReplies.length > 0 || isThreadLoading || threadReplyMessage) && (
+        {supportsThreadHydration && (threadReplies.length > 0 || isThreadLoading || threadReplyMessage) && (
           <ThreadReplies
             replies={threadReplies}
             loading={isThreadLoading}
@@ -1308,7 +1324,7 @@ function ReplyActions({
           className="btn-secondary inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
         >
           <span>{loading ? "Loading replies" : hasRequestedReplies ? "Reload replies inline" : "Load replies inline"}</span>
-          <span className="rounded-full border border-[var(--theme-border-subtle)] px-1.5 py-0.5 text-[10px] font-semibold uppercase text-[var(--theme-text-muted)]">
+          <span className="rounded-full border border-[var(--theme-border-subtle)] px-1.5 py-0.5 text-[0.625rem] font-semibold uppercase text-[var(--theme-text-muted)]">
             Beta
           </span>
         </button>

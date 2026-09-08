@@ -1,0 +1,85 @@
+{
+  "status": "Bounded source review complete; zero prose proposals, no admissions or runtime changes",
+  "counts": {
+    "exactOriginalsOpened": 1,
+    "publishedVariantsOpened": 1,
+    "deniedOriginalRequests": 1,
+    "proposals": 0,
+    "newIdentities": 0
+  },
+  "proposals": [],
+  "holds": [
+    {
+      "candidateId": "66-H1",
+      "characterId": "hester-sweetlip",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/998410a4-d5aa-4ceb-b9ad-77f31a42aa46",
+      "sourceLocal": "/tmp/botanical66/shadow-source.html",
+      "creator": "NPS / Scott Sharaga",
+      "license": "Public domain",
+      "rightsEvidence": "Public domain:Full Granting Rights",
+      "sourceCaption": "The shadowy shape of an insect is visible inside a pitcher plant.",
+      "exactSpeciesEvidence": "Big Thicket Pitcher Plant Trail source context, pale upright pitchers and local Sarracenia alata identification support established Hester; no different genus or red flower imported.",
+      "visualReview": "Original and published hires opened individually. Excellent portrait with sharp pale-green rim, hood and branching red veins. The insect is only a diffuse dark patch in the lower-middle pitcher, with no readable legs or distinct silhouette. The scene-specific object is much weaker than the surrounding portrait. Hold for central scene legibility, not general photographic quality.",
+      "prose": "None written. Do not infer species of insect, active movement, death, escape, precise size or a successful completed meal.",
+      "files": [
+        {
+          "imageUrl": "https://npgallery.nps.gov/GetAsset/998410a4-d5aa-4ceb-b9ad-77f31a42aa46/original.jpg?",
+          "localFile": "/tmp/botanical66/shadow-original.jpg",
+          "bytes": 1521101,
+          "sha1": "628958ed21b232f1c495357ba3d86eea1a62f667",
+          "sha256": "6d21a3c005c9e883371ef33c4765d1afb73ebd94001e756c01a92b5be62c0226",
+          "dimensions": [
+            3094,
+            4640
+          ],
+          "seconds": 7.504,
+          "status": 200
+        },
+        {
+          "imageUrl": "https://npgallery.nps.gov/GetAsset/998410a4-d5aa-4ceb-b9ad-77f31a42aa46/proxyhires.jpg?",
+          "localFile": "/tmp/botanical66/shadow-display.jpg",
+          "bytes": 381334,
+          "sha1": "276c46f682f113e7bf172fe0bda7b4ab8dc6d7f5",
+          "sha256": "d432887f9eccf51217c2fe7e68497782a044ec3933d7e9e5734bac1497e85c84",
+          "dimensions": [
+            1333,
+            1999
+          ],
+          "seconds": 1.225,
+          "status": 200
+        }
+      ]
+    },
+    {
+      "candidateId": "66-H2",
+      "characterId": "lionel-fringe",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File:Shaggy_Ink_Caps_busting_through_asphalt.jpg",
+      "creator": "Mr Barndoor",
+      "license": "CC BY-SA 4.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "sourceEvidence": "Photographer own-work declaration explicitly identifies Coprinus comatus growing through asphalt in Leeds, 1 October2015. Metadata-only inspection.",
+      "download": {
+        "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/4/4d/Shaggy_Ink_Caps_busting_through_asphalt.jpg",
+        "status": "blocked",
+        "error": "HTTP Error 403: Forbidden",
+        "retried": false
+      },
+      "visualReview": "Not inspected. Original403, no retry, mirror or thumbnail bypass. No image-quality judgment.",
+      "canon": "Would require explicit recollection before the existing mature dissolving cap, and review of the compatible Michigan setting rather than moving Lionel to Leeds. No such episode written."
+    }
+  ],
+  "metadataOnlyLeads": [
+    {
+      "subject": "Hester controlled burn",
+      "disposition": "Album fire caption describes a firefighter beside boardwalk; metadata alone does not establish visible individual pitcher response. No photo downloaded or prose written."
+    },
+    {
+      "subject": "Ivo snow-covered fronds",
+      "disposition": "Search did not resolve an exact licensed scene for Polystichum setiferum. No download or draft."
+    },
+    {
+      "subject": "Ambrose lightning",
+      "disposition": "NPS homepage source found, but no new verified exposure established against held32. Existing held prose left untouched."
+    }
+  ]
+}

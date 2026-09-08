@@ -148,8 +148,8 @@ case "${TARGET}" in
         "VITE_FREED_FEATURE_PREVIEW=1"
         "VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL}"
       )
-      RUN_ARGS=("${NPM_BIN}" "run" "dev" "--" "--port" "${PORT}" "--strictPort")
-      COMMAND_DISPLAY="cd packages/desktop && PATH=${ROOT_BIN_DIR}:\$PATH VITE_TEST_TAURI=1 VITE_FREED_FEATURE_PREVIEW=1 VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL} npm run dev -- --port ${PORT} --strictPort"
+      RUN_ARGS=("${NPM_BIN}" "run" "dev" "--" "--config" "vite.config.ts" "--port" "${PORT}" "--strictPort")
+      COMMAND_DISPLAY="cd packages/desktop && PATH=${ROOT_BIN_DIR}:\$PATH VITE_TEST_TAURI=1 VITE_FREED_FEATURE_PREVIEW=1 VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL} npm run dev -- --config vite.config.ts --port ${PORT} --strictPort"
       URL="http://localhost:${PORT}"
     fi
     ;;

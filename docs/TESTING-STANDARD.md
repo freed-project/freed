@@ -145,3 +145,11 @@ A test that accepts success, failure, timeout, or continued loading detects no d
 | Tag to published artifacts | Under about 40 minutes                  |
 
 No UI-only pull request runs control-plane suites.
+
+## Validation reuse
+
+Ordinary PRs run the changed-path feature gate locally and require exact-head CI checks before merge. Full integration runs on the resulting dev push. Do not automatically run full local integration after a passing feature gate for every PR. Run it locally when the change crosses package contracts, a failure remains unexplained, or the release workflow requires it. Record the reason and relevant inputs.
+
+Reuse passing evidence only while the tested files, transitive dependencies, toolchain, configuration, fixtures, environment assumptions, and requested contract remain unchanged. A changed input invalidates its affected checks; a different Git SHA alone neither proves nor disproves equivalence. Never reuse an earlier CI head as the required current-head result. Preserve the full post-merge integration and release receipt requirements.
+
+Run focused tests during iteration, then one final applicable gate. Broaden or repeat only for changed inputs, new failures, or unresolved risks. A blocked remote queue is not a reason to repeat passing local tests. Never skip a required check by calling it redundant; change its maintained routing with equivalent contract coverage instead.

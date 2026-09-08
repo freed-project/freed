@@ -186,6 +186,22 @@ export function recordFacebookGroupDiscoveryUpdate(input: {
   });
 }
 
+/** Aggregate Facebook admission decisions without recording provider content. */
+export function recordFacebookAdmissionSummary(input: {
+  ruleVersion: string;
+  inspectedPlacements: number;
+  observationCount: number;
+  excludedAdvertising: number;
+  deferredAdvertising: number;
+  detectorErrors: number;
+}): void {
+  recordRuntimeHealthEvent({
+    event: "facebook_admission_summary",
+    provider: "facebook",
+    ...input,
+  });
+}
+
 /** One privacy-safe event immediately before each RSS HTTP pull. */
 export function recordRssPullAttempt(input: { trigger: RssPullTrigger }): void {
   recordRuntimeHealthEvent({ event: "rss_pull_attempt", ...input });

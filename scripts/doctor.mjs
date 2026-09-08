@@ -509,7 +509,9 @@ function shellQuote(value) {
 
 function automationKernelGuardCutoverRemediation(stateDir) {
   return [
-    "Keep every automation actor PAUSED and stop every old control-plane process.",
+    "Scope: automation control-plane operations only. This finding does not block ordinary builds, GitHub-authenticated PR publication, or the dedicated release tag publisher.",
+    "Do not migrate the host merely to ship a release. Repair is required before using the affected automation control plane.",
+    "For an authorized cutover, keep every automation actor PAUSED and stop every old control-plane process.",
     "Plan command:",
     `npm run --silent automation:cutover-kernel-guards -- plan --task-id <task-id> --plan-file <absolute-plan-file> --state-root ${shellQuote(stateDir)}`,
     "Apply command:",

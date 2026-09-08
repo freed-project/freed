@@ -34,7 +34,7 @@ export function UpdateNotification({
 
   return (
     <div className="fixed bottom-4 right-4 z-[120] max-w-sm animate-slide-up">
-      <div className="rounded-2xl bg-[var(--freed-surface)] p-4 shadow-lg border border-[rgba(139,92,246,0.3)]">
+      <div className="rounded-2xl bg-[var(--freed-surface)] p-4 shadow-lg border border-[var(--theme-border-strong)]">
         <div className="flex items-start gap-3">
           <div className="shrink-0 mt-0.5">
             <UpdateIcon phase={state.phase} />
@@ -69,7 +69,7 @@ export function UpdateNotification({
         {state.phase === "downloading" && (
           <UpdateProgressBar
             percent={state.percent}
-            trackClassName="mt-3 h-1.5 overflow-hidden rounded-full bg-[rgba(255,255,255,0.08)]"
+            trackClassName="mt-3 h-1.5 overflow-hidden rounded-full bg-[var(--theme-bg-muted)]"
             fillClassName="h-full rounded-full bg-gradient-to-r from-[var(--glow-blue)] to-[var(--glow-purple)]"
           />
         )}
@@ -136,7 +136,7 @@ function UpdateContent({
           })()}
           <button
             onClick={onInstall}
-            className="mt-2 text-xs font-semibold px-3 py-1.5 rounded-md bg-gradient-to-r from-[var(--glow-blue)] to-[var(--glow-purple)] text-white hover:brightness-110 transition-all"
+            className="mt-2 text-xs font-semibold px-3 py-1.5 rounded-md [background:var(--theme-button-primary-background)] text-[var(--theme-button-primary-text)] hover:brightness-110 transition-all"
           >
             Download &amp; Install
           </button>
@@ -159,7 +159,7 @@ function UpdateContent({
           </p>
           <button
             onClick={onRelaunch}
-            className="mt-2 text-xs font-semibold px-3 py-1.5 rounded-md bg-gradient-to-r from-[var(--glow-blue)] to-[var(--glow-purple)] text-white hover:brightness-110 transition-all"
+            className="mt-2 text-xs font-semibold px-3 py-1.5 rounded-md [background:var(--theme-button-primary-background)] text-[var(--theme-button-primary-text)] hover:brightness-110 transition-all"
           >
             Restart Now
           </button>
@@ -167,7 +167,7 @@ function UpdateContent({
       );
     case "error":
       return (
-        <p className="text-sm text-red-400">
+        <p className="text-sm theme-icon-danger">
           Update failed: {state.message}
         </p>
       );

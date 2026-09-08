@@ -687,6 +687,26 @@ test("app loads and renders without crashing", async ({ app }) => {
   await expect(app.page.locator("main")).toBeVisible();
 });
 
+// Deliberately omit the app fixture: this protects the actual preview URL,
+// whose backend must work without Playwright installing IPC handlers.
+test("standalone preview app loads and renders without crashing", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("console", (message) => {
+    if (message.type() === "error" && message.text().includes("[desktop:initialize]")) {
+      errors.push(message.text());
+    }
+  });
+  await page.goto("/");
+  await acceptLegalGate(page);
+  await expect(page.locator("main")).toBeVisible();
+  await expect(page.getByText("Freed Desktop hit a fatal error", { exact: true })).toHaveCount(0);
+  expect(errors).toEqual([]);
+  await page.reload();
+  await expect(page.locator("main")).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
 test("locked macOS session defers full desktop startup", async ({ app }) => {
   await app.page.addInitScript(() => {
     window.localStorage.setItem(
@@ -1065,31 +1085,26 @@ test("desktop layout controls fill the toolbar hitbox and center their icons", a
   expect(geometry?.preview.iconCenterY).toBe(geometry?.toolbarCenterY);
 });
 
-test("narrow desktop viewports keep the desktop compact rail instead of switching to the mobile drawer", async ({ app, page }) => {
+test("narrow desktop viewports use the mobile drawer and document scrolling", async ({ app, page }) => {
   await page.setViewportSize({ width: 700, height: 900 });
   await app.goto();
   await app.waitForReady();
 
-  const sidebarToggle = page.getByTestId("desktop-sidebar-toggle");
-  await expect(sidebarToggle).toBeVisible();
-  await expect(sidebarToggle).toHaveAttribute("aria-label", "Hide sidebar");
-  await expect(page.getByTestId("app-sidebar")).toBeVisible();
-  await expect(page.getByTestId("app-sidebar").getByTestId("compact-sidebar-search-trigger")).toBeVisible();
-  await expect(page.getByTestId("app-sidebar-mobile")).toHaveCount(0);
-  await expect(page.getByLabel("Open menu")).toHaveCount(0);
-
-  await sidebarToggle.click();
-  await expect(sidebarToggle).toHaveAttribute("aria-label", "Show sidebar");
-  await expectDesktopSidebarClosed(page, 1_000);
-
-  await sidebarToggle.click();
-  await expect(sidebarToggle).toHaveAttribute("aria-label", "Hide sidebar");
-  await expect.poll(async () => (await readDesktopSidebarGeometry(page)).sidebarWidth, {
-    timeout: 1_000,
-  }).toBeGreaterThanOrEqual(46);
+  await expect(page.getByTestId("desktop-sidebar-toggle")).toHaveCount(0);
+  await page.getByLabel("Open menu", { exact: true }).click();
+  await expect(page.getByTestId("app-sidebar-mobile")).toBeVisible();
+  await page.getByLabel("Close menu", { exact: true }).click();
+  await app.injectRssItems(30);
+  await expect(page.locator("[data-feed-item-id]").first()).toBeVisible();
+  await page.mouse.move(350, 600);
+  await page.mouse.wheel(0, 500);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+  await page.setViewportSize({ width: 1200, height: 900 });
+  await expect(page.getByTestId("desktop-sidebar-toggle")).toBeVisible();
+  await expect(page.getByLabel("Open menu", { exact: true })).toHaveCount(0);
 });
 
-test("narrow desktop reader mode keeps the compact sidebar accessible and collapses the reader rail", async ({ app, page }) => {
+test("narrow desktop reader mode uses the mobile drawer and collapses the reader rail", async ({ app, page }) => {
   await page.setViewportSize({ width: 700, height: 900 });
   await app.goto();
   await app.waitForReady();
@@ -1097,16 +1112,15 @@ test("narrow desktop reader mode keeps the compact sidebar accessible and collap
 
   await page.locator("[data-feed-item-id]").first().click();
   await expect(page.getByTestId("workspace-toolbar-reader-title-block")).toBeVisible();
-  await expect(page.getByTestId("app-sidebar").getByTestId("compact-sidebar-search-trigger")).toBeVisible();
+  await expect(page.getByLabel("Open menu", { exact: true })).toBeVisible();
 
   const readerRailWidth = await page.evaluate(() =>
     window.getComputedStyle(document.documentElement).getPropertyValue("--freed-reader-rail-width").trim(),
   );
   expect(readerRailWidth).toBe("0px");
 
-  const trigger = page.getByTestId("app-sidebar").getByTestId("compact-sidebar-search-trigger");
-  await trigger.click();
-  await expect(page.getByTestId("compact-sidebar-search-palette")).toBeVisible();
+  await page.getByLabel("Open menu", { exact: true }).click();
+  await expect(page.getByTestId("app-sidebar-mobile")).toBeVisible();
 });
 
 test("desktop sidebar snaps to compact and closed, then reopens at the default expanded width", async ({ app, page }) => {
@@ -1492,7 +1506,7 @@ test("reader toolbar keeps back button clickable while title text is a drag targ
   await expect(page.locator("[data-feed-item-id]")).toHaveCount(8);
 });
 
-test("reader toolbar keeps the Focus toggle text vertically centered", async ({ app, page }) => {
+test("reader view settings provides Focus without feed classification", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
@@ -1502,26 +1516,11 @@ test("reader toolbar keeps the Focus toggle text vertically centered", async ({ 
   await expect.poll(async () => {
     return page.evaluate(() => document.documentElement.classList.contains("feed-layout-transition"));
   }).toBe(false);
-  const focusButton = page.getByRole("button", { name: "Toggle focus reading mode" });
-  await expect(focusButton).toBeVisible({ timeout: 5_000 });
-
-  const geometry = await focusButton.evaluate((button) => {
-    const label = button.querySelector("[aria-hidden='true']") as HTMLElement | null;
-    if (!label) throw new Error("Focus toggle label is missing");
-
-    const buttonRect = button.getBoundingClientRect();
-    const labelRect = label.getBoundingClientRect();
-    return {
-      buttonHeight: Math.round(buttonRect.height),
-      centerDelta: Math.abs(
-        (labelRect.top + labelRect.height / 2) -
-        (buttonRect.top + buttonRect.height / 2),
-      ),
-    };
-  });
-
-  expect(geometry.buttonHeight).toBe(36);
-  expect(geometry.centerDelta).toBeLessThanOrEqual(1);
+  await page.getByRole("button", { name: "View settings", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Focus off", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Focus on", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Focus on", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("menuitemcheckbox", { name: /Everything/ })).toHaveCount(0);
 });
 
 test("mobile reader uses one toolbar and keeps reader actions in overflow", async ({ app, page }) => {
@@ -1542,12 +1541,14 @@ test("mobile reader uses one toolbar and keeps reader actions in overflow", asyn
   await expect(page.getByTestId("workspace-toolbar-logo-drag-region")).toBeHidden();
   await expect(page.getByText("No richer reader content is available for this item yet.")).toBeVisible();
   await page.getByRole("button", { name: "More actions", exact: true }).click();
-  await expect(page.getByRole("menuitem", { name: "Open original", exact: true })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Open original", exact: true })).toHaveCount(0);
   await expect(page.getByRole("menuitem", { name: "Archive", exact: true })).toBeVisible();
-  await page.getByRole("menuitem", { name: "Enable focus mode", exact: true }).click();
   await page.getByRole("button", { name: "More actions", exact: true }).click();
-  await expect(page.getByRole("menuitem", { name: "Disable focus mode", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "More actions", exact: true }).click();
+  await page.getByRole("button", { name: "View settings", exact: true }).click();
+  await page.getByRole("button", { name: "Focus on", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Focus on", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "View settings", exact: true }).click();
+  await expect(page.getByRole("link", { name: "View original on RSS" })).toBeVisible();
   await page.getByTestId("workspace-toolbar-reader-back").click();
   await expect(page.getByTestId("workspace-toolbar-reader-back")).toHaveCount(0);
 });
@@ -2090,7 +2091,7 @@ test("settings nav highlight follows scroll position", async ({ app, page }) => 
     hasText: /^Appearance$/,
   });
   const syncButton = dialog.locator('button[data-active="true"]').filter({
-    hasText: /^Sync$/,
+    hasText: /^Cloud Sync$/,
   });
 
   await expect(appearanceButton).toHaveCount(1);
@@ -2597,7 +2598,7 @@ test("narrow reader toolbar moves hidden actions into the overflow menu", async 
 
   await overflowButton.click();
   const overflowMenu = page.getByTestId("toolbar-overflow-menu");
-  await expect(overflowMenu.getByRole("menuitem", { name: "Enable focus mode" })).toBeVisible();
+  await expect(overflowMenu.getByRole("menuitem", { name: "Enable focus mode" })).toHaveCount(0);
   await expect(overflowMenu.getByRole("menuitem", { name: "Bookmark" })).toBeVisible();
   await expect(overflowMenu.getByRole("menuitem", { name: "Archive" })).toBeVisible();
 });
@@ -4439,6 +4440,8 @@ test("mobile Friends toolbar switches between graph lenses and Details mode", as
   await expect(page.getByTestId("friends-toolbar-lens")).toBeHidden();
   await expect(page.getByTestId("friend-graph-viewport")).toBeVisible({ timeout: 5_000 });
   await waitForGraphNodeScreenPoint(page, { personId: "friend-ada" });
+  const beforeDetails = await readGraphDebug(page);
+  expect(beforeDetails).not.toBeNull();
   await page.evaluate(() => {
     const store = (window as Record<string, unknown>).__FREED_STORE__ as
       | { getState: () => { setSelectedPerson: (personId: string | null) => void } }
@@ -4460,13 +4463,7 @@ test("mobile Friends toolbar switches between graph lenses and Details mode", as
   await expect(lens.getByRole("button", { name: "Friends" })).toBeVisible({ timeout: 5_000 });
   await expect(lens.getByRole("button", { name: "All content" })).toBeVisible({ timeout: 5_000 });
   await expect(lens.getByRole("button", { name: "Details" })).toBeVisible({ timeout: 5_000 });
-  await expect(page.getByTestId("friends-sidebar")).toHaveCount(0);
-  const beforeDetails = await readGraphDebug(page);
-  expect(beforeDetails).not.toBeNull();
-
-  await lens.getByRole("button", { name: "Details" }).evaluate((element) => {
-    (element as HTMLButtonElement).click();
-  });
+  // Canonical selection automatically reveals the matching mobile detail.
   await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
   const suspendedViewport = page.getByTestId("friend-graph-viewport");
   await expect(suspendedViewport).toHaveCount(1);
@@ -4865,7 +4862,7 @@ test("account detail promote upgrades a linked connection instead of opening a d
   });
 });
 
-test("care stars map selected people across Connection, Friend, and Fam", async ({ app, page }) => {
+test("closeness slider maps selected people across Connection, Friend, and Fam", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
@@ -4896,11 +4893,11 @@ test("care stars map selected people across Connection, Friend, and Fam", async 
     store.getState().setSelectedPerson("tier-slider-person");
   });
 
-  const control = page.getByTestId("friends-sidebar").getByRole("group", { name: /^Care level/ });
+  const control = page.getByTestId("friends-sidebar").getByRole("slider", { name: "Relationship closeness" });
   await expect(control).toBeVisible({ timeout: 10_000 });
-  await control.getByRole("button", { name: "Set Friend: 3 of 5 stars" }).evaluate((element) => {
-    (element as HTMLButtonElement).click();
-  });
+  await control.fill("3");
+  await control.dispatchEvent("pointerup");
+  await expect(control).toHaveAttribute("aria-valuetext", "Friend, position 3 of 5");
 
   await expect.poll(async () =>
     page.evaluate(() => {
@@ -4911,9 +4908,10 @@ test("care stars map selected people across Connection, Friend, and Fam", async 
     }),
   ).toMatchObject({ relationshipStatus: "friend", careLevel: 3 });
 
-  await control.getByRole("button", { name: "Set Fam: 5 of 5 stars" }).evaluate((element) => {
-    (element as HTMLButtonElement).click();
-  });
+  await expect(control).toBeEnabled();
+  await control.fill("5");
+  await control.dispatchEvent("pointerup");
+  await expect(control).toHaveAttribute("aria-valuetext", "Fam, position 5 of 5");
   await expect.poll(async () =>
     page.evaluate(() => {
       const sqlite = (window as Record<string, unknown>).__TAURI_MOCK_SQLITE_LIBRARY__ as {
@@ -4923,9 +4921,10 @@ test("care stars map selected people across Connection, Friend, and Fam", async 
     }),
   ).toMatchObject({ relationshipStatus: "friend", careLevel: 5 });
 
-  await control.getByRole("button", { name: "Set Connection: 1 of 5 stars" }).evaluate((element) => {
-    (element as HTMLButtonElement).click();
-  });
+  await expect(control).toBeEnabled();
+  await control.fill("1");
+  await control.dispatchEvent("pointerup");
+  await expect(control).toHaveAttribute("aria-valuetext", "Connection, position 1 of 5");
   await expect.poll(async () =>
     page.evaluate(() => {
       const sqlite = (window as Record<string, unknown>).__TAURI_MOCK_SQLITE_LIBRARY__ as {

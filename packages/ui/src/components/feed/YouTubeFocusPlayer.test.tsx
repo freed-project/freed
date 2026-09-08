@@ -72,13 +72,13 @@ describe("YouTubeFocusPlayer", () => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
   });
 
-  it("does not contact YouTube until the user loads the player", async () => {
+  it("loads the selected video immediately and preserves its external action", async () => {
     const onPlayInYouTube = vi.fn();
     const { container, root } = await renderPlayer(
       <YouTubeFocusPlayer videoUrl={VIDEO_URL} onPlayInYouTube={onPlayInYouTube} />,
     );
 
-    expect(container.querySelector("iframe")).toBeNull();
+    expect(container.querySelector("iframe")).toBeInstanceOf(HTMLIFrameElement);
     expect(document.querySelector(`script[src="https://www.youtube.com/iframe_api"]`)).toBeNull();
     expect(container.querySelector("img")).toBeNull();
 
@@ -86,7 +86,7 @@ describe("YouTubeFocusPlayer", () => {
     expect(onPlayInYouTube).toHaveBeenCalledWith(
       `https://www.youtube.com/watch?v=${VIDEO_ID}`,
     );
-    expect(container.querySelector("iframe")).toBeNull();
+    expect(container.querySelector("iframe")).toBeInstanceOf(HTMLIFrameElement);
 
     await act(async () => root.unmount());
   });
@@ -95,8 +95,6 @@ describe("YouTubeFocusPlayer", () => {
     const { container, root } = await renderPlayer(
       <YouTubeFocusPlayer videoUrl={VIDEO_URL} title="A focused lesson" onPlayInYouTube={() => {}} />,
     );
-
-    await clickButton(container, "Watch here in Focus Mode");
 
     const iframe = container.querySelector("iframe");
     expect(iframe).toBeInstanceOf(HTMLIFrameElement);
@@ -114,12 +112,12 @@ describe("YouTubeFocusPlayer", () => {
     await act(async () => root.unmount());
   });
 
-  it("requires a fresh user click when the selected video changes", async () => {
+  it("loads the new selected video without autoplay or stale completion events", async () => {
     const { container, root } = await renderPlayer(
       <YouTubeFocusPlayer videoUrl={VIDEO_URL} onPlayInYouTube={() => {}} />,
     );
 
-    await clickButton(container, "Watch here in Focus Mode");
+    const previousEvents = playerEvents;
     expect(container.querySelector("iframe")).toBeInstanceOf(HTMLIFrameElement);
 
     await act(async () => {
@@ -131,8 +129,9 @@ describe("YouTubeFocusPlayer", () => {
       );
     });
 
-    expect(container.querySelector("iframe")).toBeNull();
-    expect(container.textContent).toContain("Watch here in Focus Mode");
+    expect(container.querySelector("iframe")?.getAttribute("src")).toContain("/embed/M7lc1UVf-VE");
+    await act(async () => previousEvents?.onStateChange({ data: 0 }));
+    expect(container.querySelector("iframe")).toBeInstanceOf(HTMLIFrameElement);
 
     await act(async () => root.unmount());
   });
@@ -143,7 +142,6 @@ describe("YouTubeFocusPlayer", () => {
       <YouTubeFocusPlayer videoUrl={VIDEO_URL} onPlayInYouTube={() => {}} onEnded={onEnded} />,
     );
 
-    await clickButton(container, "Watch here in Focus Mode");
     expect(playerEvents).not.toBeNull();
 
     await act(async () => {
@@ -167,7 +165,6 @@ describe("YouTubeFocusPlayer", () => {
       <YouTubeFocusPlayer videoUrl={VIDEO_URL} onPlayInYouTube={onPlayInYouTube} />,
     );
 
-    await clickButton(container, "Watch here in Focus Mode");
     await act(async () => {
       playerEvents?.onError();
     });
@@ -189,7 +186,6 @@ describe("YouTubeFocusPlayer", () => {
       <YouTubeFocusPlayer videoUrl={VIDEO_URL} onPlayInYouTube={() => {}} />,
     );
 
-    await clickButton(container, "Watch here in Focus Mode");
     const script = document.getElementById("freed-youtube-iframe-api");
     expect(script).toBeInstanceOf(HTMLScriptElement);
     await act(async () => {
@@ -224,7 +220,6 @@ describe("YouTubeFocusPlayer", () => {
       <YouTubeFocusPlayer videoUrl={VIDEO_URL} onPlayInYouTube={() => {}} />,
     );
 
-    await clickButton(container, "Watch here in Focus Mode");
     await act(async () => {
       await vi.advanceTimersByTimeAsync(10_000);
     });

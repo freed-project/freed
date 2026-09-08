@@ -49,6 +49,7 @@ import {
   appendOutcomeControlEvent,
   automationControlPaths,
   bindPublisherLeaseHead as bindPublisherLeaseHeadLive,
+  completedDarwinLeaseHistoricalDevices,
   conservativeLeaseCleanupArchiveReservation,
   consumeLeaseArchiveHelperInvocationCountForTest,
   consumeLeaseCleanupRequirementsForTest,
@@ -135,6 +136,64 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CLI_PATH = path.join(__dirname, "automation-control.mjs");
 const ACTOR_CONTROL_PATH = path.join(__dirname, "automation-actor-control.mjs");
+
+test("completed Darwin lease history admits only state-root device evidence", () => {
+  const stateRoot = "/private/state";
+  const target = {
+    phase: "complete",
+    tokenDigest: "a".repeat(64),
+    capability: null,
+  };
+  const related = [
+    {
+      phase: "complete",
+      tokenDigest: target.tokenDigest,
+      capability: {
+        sourceDevice: "16777234",
+        sourcePath: `${stateRoot}/confirmations/owner.json`,
+      },
+    },
+    {
+      phase: "complete",
+      tokenDigest: "b".repeat(64),
+      capability: {
+        sourceDevice: "23",
+        sourcePath: `${stateRoot}/other.json`,
+      },
+    },
+    {
+      phase: "complete",
+      tokenDigest: target.tokenDigest,
+      capability: {
+        sourceDevice: "24",
+        sourcePath: "/private/unrelated/owner.json",
+      },
+    },
+  ];
+
+  assert.deepEqual(
+    completedDarwinLeaseHistoricalDevices(target, related, {
+      platform: "darwin",
+      stateRoot,
+    }),
+    ["16777234"],
+  );
+  assert.deepEqual(
+    completedDarwinLeaseHistoricalDevices(target, related, {
+      platform: "linux",
+      stateRoot,
+    }),
+    [],
+  );
+  assert.deepEqual(
+    completedDarwinLeaseHistoricalDevices(
+      { ...target, phase: "prepared" },
+      related,
+      { platform: "darwin", stateRoot },
+    ),
+    [],
+  );
+});
 
 function acquireLeaseLive(options) {
   const policy = AUTOMATION_ACTOR_POLICIES[options.owner];

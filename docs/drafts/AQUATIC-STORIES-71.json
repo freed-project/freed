@@ -1,0 +1,343 @@
+{
+  "batch": "AQUATIC-STORIES-71",
+  "status": "admitted_by_root",
+  "worktree": "/Users/aubreyfalconer/dev/freed-editorial-isolated",
+  "profiles": [],
+  "proposals": [
+    {
+      "id": "aquatic-stories-71-01",
+      "characterId": "hugo-rim",
+      "platform": "instagram",
+      "contentType": "story",
+      "subject": "Limulus polyphemus",
+      "theme": "danger",
+      "title": "I had not meant to leave",
+      "body": "My tail kept finding sand that would not hold. I pushed, rolled a little, and came back onto my shell.\n\nThen something took hold of my rim.\n\nFolded my legs tight. I had been trying to turn over, but I had not meant to leave the beach.\n\nThe sand came back under my feet. The grip was gone.\n\nPut one foot down. Then all the others. I kept expecting another lift. Got all the way into the water on my own feet.",
+      "media": {
+        "index": 3,
+        "observationId": 28410755,
+        "photoId": 44287499,
+        "sourcePage": "https://www.inaturalist.org/observations/28410755",
+        "sourceMetadataUrl": "https://www.inaturalist.org/observations/28410755.json",
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/44287499/large.jpg",
+        "localPath": "/tmp/freed-aquatic-stories-71/source-03.jpg",
+        "width": 1024,
+        "height": 768,
+        "originalDimensions": [
+          2048,
+          1536
+        ],
+        "sha1": "f123b0c3c60da5113932903b19cb2089166bdc8d",
+        "sha256": "bd10ecca3140ee77c64c17453ec31c364b13bf1391de76935472c2b54c5aeaad",
+        "byteLength": 361657,
+        "license": "CC-BY-SA",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attribution": "(c) Nova Patch, some rights reserved (CC BY-SA), uploaded by Nova Patch",
+        "sourceDescription": "stranded upside-down horseshoe crab, which I flipped over and then it proceeded to walk toward the water",
+        "sourcePlace": "601\u2013699 Boardwalk, , NJ, US",
+        "sourceTaxon": "Limulus polyphemus",
+        "individuallyOpened": true,
+        "originalOpened": false,
+        "originalHash": null,
+        "deliveryKind": "Explicit source-published large_url from primary observation JSON",
+        "hashMeaning": "Hashes identify the exact published large delivery, not the original upload. Original dimensions are source metadata.",
+        "decision": "propose_for_independent_review",
+        "reason": "Selected narrative frame. Entire overturned body, folded appendages, telson and exposed underside are legible. Observer documents rescuing this stranded animal and its return toward water.",
+        "observedOn": "2019-07-03",
+        "sourceCoordinates": {
+          "latitude": 39.2758116667,
+          "longitude": -74.5666366667
+        },
+        "qualityGrade": "research",
+        "rightsVerifiedAt": "2026-09-05"
+      },
+      "alt": "An Atlantic horseshoe crab lies upside down on wet sand, with folded dark legs, its broad underside and long straight tail visible.",
+      "authorDecision": "propose_for_independent_review",
+      "independentLeadDecision": "pass_exact",
+      "fictionBoundary": "The primary observer reports finding the animal stranded upside down, turning it over, and seeing it walk toward water. Images show both orientations. The failed tail push, handling by the rim, defensive folding timing, fear of being carried away, incremental first steps and entering the water are fictional elaborations. Neither hands nor the lift is visible in the selected frame. The observer documents movement toward water, not final entry.",
+      "continuity": "Existing adult male Hugo, as established by AQUATIC-VISUAL-30-ADMISSION.md, rather than the older unassigned-sex26 proposal. Source03 has rounded, enlarged anterior grasping appendages consistent with adult male claspers; source does not explicitly identify sex. No sex proof is claimed from body size. Source is southern New Jersey, not Jamaica Bay. This casts a same-species Atlantic coastal animal in a compatible shoreline scene and does not establish a real migration or photographed New York locality.",
+      "placement": "Final lead decision: before Unwilling passengers and Finding the rim; preserve both bodies and adult profile/avatar. Earlier rescue source precedes heavier attached shells without inventing lost companions.",
+      "narrativeAssessment": "A failed effort to regain control is interrupted by an alarming lift. Being set down restores agency, but relief arrives one step at a time. This develops Hugo\u2019s fear of restraint through an actual source-documented rescue, without another passenger complaint or mating grip.",
+      "reviewFlags": [
+        "Same-coast regional casting requires lead acceptance; source location is explicitly New Jersey.",
+        "Lead should independently check male-compatible anterior appendages.",
+        "Only source03 is proposed as Story media. Sources01/02 corroborate the same incident and are not separate stories."
+      ]
+    }
+  ],
+  "sourceReviews": [
+    {
+      "index": 1,
+      "observationId": 28410755,
+      "photoId": 44287396,
+      "sourcePage": "https://www.inaturalist.org/observations/28410755",
+      "sourceMetadataUrl": "https://www.inaturalist.org/observations/28410755.json",
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/44287396/large.jpg",
+      "localPath": "/tmp/freed-aquatic-stories-71/source-01.jpg",
+      "width": 1024,
+      "height": 768,
+      "originalDimensions": [
+        2048,
+        1536
+      ],
+      "sha1": "fcd882259274eedc7b27be2ff4a2ffa98e414d54",
+      "sha256": "9546e7c3a3e68b56d11bc0498466ba934798f7d39ccf7969ac814ee058311875",
+      "byteLength": 297835,
+      "license": "CC-BY-SA",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "attribution": "(c) Nova Patch, some rights reserved (CC BY-SA), uploaded by Nova Patch",
+      "sourceDescription": "stranded upside-down horseshoe crab, which I flipped over and then it proceeded to walk toward the water",
+      "sourcePlace": "601\u2013699 Boardwalk, , NJ, US",
+      "sourceTaxon": "Limulus polyphemus",
+      "individuallyOpened": true,
+      "originalOpened": false,
+      "originalHash": null,
+      "deliveryKind": "Explicit source-published large_url from primary observation JSON",
+      "hashMeaning": "Hashes identify the exact published large delivery, not the original upload. Original dimensions are source metadata.",
+      "decision": "hold",
+      "reason": "Sharp upright view from the same rescue observation. Useful corroboration, not a second event.",
+      "observedOn": "2019-07-03",
+      "sourceCoordinates": {
+        "latitude": 39.2758116667,
+        "longitude": -74.5666366667
+      },
+      "qualityGrade": "research",
+      "rightsVerifiedAt": "2026-09-05"
+    },
+    {
+      "index": 2,
+      "observationId": 28410755,
+      "photoId": 44287434,
+      "sourcePage": "https://www.inaturalist.org/observations/28410755",
+      "sourceMetadataUrl": "https://www.inaturalist.org/observations/28410755.json",
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/44287434/large.jpg",
+      "localPath": "/tmp/freed-aquatic-stories-71/source-02.jpg",
+      "width": 788,
+      "height": 1024,
+      "originalDimensions": [
+        1576,
+        2048
+      ],
+      "sha1": "dd80895263ce9b2170b818218215efa04d794cca",
+      "sha256": "56341660bc13e10b5fe30c3e0572549923394ad91ec02f223e8236779d51603e",
+      "byteLength": 350692,
+      "license": "CC-BY-SA",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "attribution": "(c) Nova Patch, some rights reserved (CC BY-SA), uploaded by Nova Patch",
+      "sourceDescription": "stranded upside-down horseshoe crab, which I flipped over and then it proceeded to walk toward the water",
+      "sourcePlace": "601\u2013699 Boardwalk, , NJ, US",
+      "sourceTaxon": "Limulus polyphemus",
+      "individuallyOpened": true,
+      "originalOpened": false,
+      "originalHash": null,
+      "deliveryKind": "Explicit source-published large_url from primary observation JSON",
+      "hashMeaning": "Hashes identify the exact published large delivery, not the original upload. Original dimensions are source metadata.",
+      "decision": "hold",
+      "reason": "Upright full telson and incoming surf from the same observation. Useful corroboration, not a second event.",
+      "observedOn": "2019-07-03",
+      "sourceCoordinates": {
+        "latitude": 39.2758116667,
+        "longitude": -74.5666366667
+      },
+      "qualityGrade": "research",
+      "rightsVerifiedAt": "2026-09-05"
+    },
+    {
+      "index": 3,
+      "observationId": 28410755,
+      "photoId": 44287499,
+      "sourcePage": "https://www.inaturalist.org/observations/28410755",
+      "sourceMetadataUrl": "https://www.inaturalist.org/observations/28410755.json",
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/44287499/large.jpg",
+      "localPath": "/tmp/freed-aquatic-stories-71/source-03.jpg",
+      "width": 1024,
+      "height": 768,
+      "originalDimensions": [
+        2048,
+        1536
+      ],
+      "sha1": "f123b0c3c60da5113932903b19cb2089166bdc8d",
+      "sha256": "bd10ecca3140ee77c64c17453ec31c364b13bf1391de76935472c2b54c5aeaad",
+      "byteLength": 361657,
+      "license": "CC-BY-SA",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "attribution": "(c) Nova Patch, some rights reserved (CC BY-SA), uploaded by Nova Patch",
+      "sourceDescription": "stranded upside-down horseshoe crab, which I flipped over and then it proceeded to walk toward the water",
+      "sourcePlace": "601\u2013699 Boardwalk, , NJ, US",
+      "sourceTaxon": "Limulus polyphemus",
+      "individuallyOpened": true,
+      "originalOpened": false,
+      "originalHash": null,
+      "deliveryKind": "Explicit source-published large_url from primary observation JSON",
+      "hashMeaning": "Hashes identify the exact published large delivery, not the original upload. Original dimensions are source metadata.",
+      "decision": "propose_for_independent_review",
+      "reason": "Selected narrative frame. Entire overturned body, folded appendages, telson and exposed underside are legible. Observer documents rescuing this stranded animal and its return toward water.",
+      "observedOn": "2019-07-03",
+      "sourceCoordinates": {
+        "latitude": 39.2758116667,
+        "longitude": -74.5666366667
+      },
+      "qualityGrade": "research",
+      "rightsVerifiedAt": "2026-09-05"
+    },
+    {
+      "index": 4,
+      "observationId": 74544155,
+      "photoId": 121842969,
+      "sourcePage": "https://www.inaturalist.org/observations/74544155",
+      "sourceMetadataUrl": "https://www.inaturalist.org/observations/74544155.json",
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/121842969/large.jpg",
+      "localPath": "/tmp/freed-aquatic-stories-71/source-04.jpg",
+      "width": 1024,
+      "height": 768,
+      "originalDimensions": [
+        2048,
+        1536
+      ],
+      "sha1": "c755d6564a7d4889f129413bf578df1c4e6842ae",
+      "sha256": "4eb5f236bcf5cc191678287b77f3b530db0bd4c899d29b281538bc09025b6c76",
+      "byteLength": 519236,
+      "license": "CC0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "attribution": "no rights reserved, uploaded by Allen Browne",
+      "sourceDescription": "Atlantic Horseshoe Crab - Limulus polyphemus - upside down & a mating pair.",
+      "sourcePlace": "Kent County, DE, USA",
+      "sourceTaxon": "Limulus polyphemus",
+      "individuallyOpened": true,
+      "originalOpened": false,
+      "originalHash": null,
+      "deliveryKind": "Explicit source-published large_url from primary observation JSON",
+      "hashMeaning": "Hashes identify the exact published large delivery, not the original upload. Original dimensions are source metadata.",
+      "decision": "hold",
+      "reason": "Clear overturned horseshoe crab, but this observation combines overturned animals and a mating pair. No rescue or outcome documented for this exact individual; selected source03 has stronger incident attribution.",
+      "observedOn": "2011-05-30",
+      "sourceCoordinates": {
+        "latitude": 39.1368941836,
+        "longitude": -75.4090612999
+      },
+      "qualityGrade": "research",
+      "rightsVerifiedAt": "2026-09-05"
+    },
+    {
+      "index": 5,
+      "observationId": 74544155,
+      "photoId": 121843465,
+      "sourcePage": "https://www.inaturalist.org/observations/74544155",
+      "sourceMetadataUrl": "https://www.inaturalist.org/observations/74544155.json",
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/121843465/large.jpg",
+      "localPath": "/tmp/freed-aquatic-stories-71/source-05.jpg",
+      "width": 1024,
+      "height": 768,
+      "originalDimensions": [
+        2048,
+        1536
+      ],
+      "sha1": "6fa1b63bdca763f98d2d85822f9b236c05ecf68a",
+      "sha256": "58f72ccd982d47c180b7d2c753aacdf1c5e0aa07c0a382643700752926626433",
+      "byteLength": 547545,
+      "license": "CC0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "attribution": "no rights reserved, uploaded by Allen Browne",
+      "sourceDescription": "Atlantic Horseshoe Crab - Limulus polyphemus - upside down & a mating pair.",
+      "sourcePlace": "Kent County, DE, USA",
+      "sourceTaxon": "Limulus polyphemus",
+      "individuallyOpened": true,
+      "originalOpened": false,
+      "originalHash": null,
+      "deliveryKind": "Explicit source-published large_url from primary observation JSON",
+      "hashMeaning": "Hashes identify the exact published large delivery, not the original upload. Original dimensions are source metadata.",
+      "decision": "hold",
+      "reason": "Second overturned animal, with more sand covering its underside. No independent incident earned and individual outcome unspecified.",
+      "observedOn": "2011-05-30",
+      "sourceCoordinates": {
+        "latitude": 39.1368941836,
+        "longitude": -75.4090612999
+      },
+      "qualityGrade": "research",
+      "rightsVerifiedAt": "2026-09-05"
+    },
+    {
+      "index": 6,
+      "observationId": 74544155,
+      "photoId": 121843751,
+      "sourcePage": "https://www.inaturalist.org/observations/74544155",
+      "sourceMetadataUrl": "https://www.inaturalist.org/observations/74544155.json",
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/121843751/large.jpg",
+      "localPath": "/tmp/freed-aquatic-stories-71/source-06.jpg",
+      "width": 768,
+      "height": 1024,
+      "originalDimensions": [
+        1536,
+        2048
+      ],
+      "sha1": "4ff3eb42928eab2425d8459bcd9ea100e110e251",
+      "sha256": "c781f263727745ce47cfeef72e2373e6fda685559a1aed8e882d50f74a80ae78",
+      "byteLength": 601460,
+      "license": "CC0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "attribution": "no rights reserved, uploaded by Allen Browne",
+      "sourceDescription": "Atlantic Horseshoe Crab - Limulus polyphemus - upside down & a mating pair.",
+      "sourcePlace": "Kent County, DE, USA",
+      "sourceTaxon": "Limulus polyphemus",
+      "individuallyOpened": true,
+      "originalOpened": false,
+      "originalHash": null,
+      "deliveryKind": "Explicit source-published large_url from primary observation JSON",
+      "hashMeaning": "Hashes identify the exact published large delivery, not the original upload. Original dimensions are source metadata.",
+      "decision": "hold",
+      "reason": "Clear mating pair but repeats Hugo\u2019s already admitted clasping and digging event.",
+      "observedOn": "2011-05-30",
+      "sourceCoordinates": {
+        "latitude": 39.1368941836,
+        "longitude": -75.4090612999
+      },
+      "qualityGrade": "research",
+      "rightsVerifiedAt": "2026-09-05"
+    }
+  ],
+  "canonProposal": {
+    "characterId": "hugo-rim",
+    "sex": "Preserve adult male established by admission30.",
+    "avatarChange": false,
+    "approvedProseChange": false,
+    "placement": "Insert first episode, Instagram Story; earlier sparse shell cover precedes later passengers.",
+    "placementBeforeTitle": "Unwilling passengers",
+    "placementBeforeMediaSha1": "f5db5d8e75988e126e6fd5a2ff720a834634f0a6"
+  },
+  "biologySources": [
+    {
+      "url": "https://www.nps.gov/articles/ncbn-species-spotlight-atlantic-horseshoe-crab.htm",
+      "supports": "Atlantic horseshoe crab at Jamaica Bay; tail used for righting; anatomical body sections."
+    },
+    {
+      "url": "https://dnr.maryland.gov/ccs/Pages/horseshoecrab-anatomy.aspx",
+      "supports": "Telson can right an inverted animal; mature male anterior walking appendages have enlarged hooklike claspers."
+    }
+  ],
+  "discoverySummary": {
+    "exactImagesOpened": 6,
+    "observationsReviewed": 2,
+    "newIdentityCount": 0,
+    "runtimeEdits": false,
+    "networkBoundary": "Healthy primary iNaturalist observation endpoints and government biology pages only. No denied endpoint retry.",
+    "metadataOnlyHolds": [
+      "Molt query mostly returned detached shells or uncertain dead animals, so no molt event proposed.",
+      "Other upside-down observations lacked source locality fit or repeated held mechanisms."
+    ]
+  },
+  "independentLeadReview": {
+    "sourceIndexesOpened": [
+      3
+    ],
+    "imageDecision": "pass",
+    "proseDecision": "pass_exact",
+    "anatomyDecision": "Enlarged front claspers compatible with male casting.",
+    "placementDecision": "Final lead decision: before Unwilling passengers and Finding the rim; preserve both bodies and adult profile/avatar. Earlier rescue source precedes heavier attached shells without inventing lost companions.",
+    "provenanceDecision": "Keep actual New Jersey photo provenance separate from Jamaica Bay fictional home."
+  },
+  "finalPlacement": "Final lead decision: before Unwilling passengers and Finding the rim; preserve both bodies and adult profile/avatar. Earlier rescue source precedes heavier attached shells without inventing lost companions.",
+  "runtimeIntegration": {
+    "writer": "root",
+    "existingEpisodesPreserved": true
+  }
+}

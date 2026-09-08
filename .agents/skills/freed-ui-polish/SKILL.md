@@ -11,6 +11,7 @@ The reviewer inspects rendered results. Only the owner moves a commit or publica
 ## Prepare the surface
 
 Read [visual-contracts.md](references/visual-contracts.md) before changing UI. Apply those contracts to every package touched by the batch.
+When populating the review surface, follow [sample thumbnail proof](../freed-build-feature/references/sample-thumbnail-proof.md). A fallback tile does not prove that its image loaded.
 
 ## Run the review loop
 

@@ -273,6 +273,56 @@ test("parsePsTable and buildSample split app, WebContent, and other WebKit proce
   assert.equal(tsv.trim().split("\t").length, METRICS_COLUMNS.length);
 });
 
+test("soak collector excludes itself and descendants from app identity", () => {
+  const appBinary = "Freed Preview.app/Contents/MacOS/freed-desktop";
+  const rows = [
+    {
+      pid: 24584,
+      ppid: 1,
+      rssKb: 1_000,
+      command: "/Users/test/.nvm/bin/node",
+      arguments: `node soak-collect.mjs --app-binary ${appBinary}`,
+    },
+    {
+      pid: 24585,
+      ppid: 24584,
+      rssKb: 2_000,
+      command: `/Applications/${appBinary}`,
+    },
+    {
+      pid: 59726,
+      ppid: 1,
+      rssKb: 500_000,
+      command: `/Applications/${appBinary}`,
+    },
+  ];
+
+  const sample = buildSample(rows, {
+    appBinary,
+    collectorPid: 24584,
+    tsMs: 1_700_000_000_000,
+  });
+  assert.equal(sample.appPid, 59726);
+  assert.equal(sample.appRssKb, 500_000);
+
+  assert.throws(
+    () =>
+      buildSample(
+        [
+          ...rows,
+          {
+            pid: 59727,
+            ppid: 1,
+            rssKb: 400_000,
+            command: `/Volumes/Test/${appBinary}`,
+          },
+        ],
+        { appBinary, collectorPid: 24584, tsMs: 1_700_000_000_000 },
+      ),
+    /process identity is ambiguous/,
+  );
+});
+
 test("soak-collect parseArgs derives a soaks dir under ~/.freed/automation", () => {
   const args = parseCollectArgs([], new Date("2026-07-02T10:00:00Z"));
   assert.ok(args.soakDir.includes(path.join(".freed", "automation", "soaks")));
@@ -2585,7 +2635,7 @@ test("buildVerdict produces a machine-readable verdict with real numbers", () =>
   assert.equal(verdict.schemaVersion, 1);
   assert.equal(verdict.windowStart, new Date(measurementStartMs).toISOString());
   assert.equal(verdict.windowEnd, new Date(measurementEndMs).toISOString());
-  assert.equal(verdict.metricRegistryVersion, 9);
+  assert.equal(verdict.metricRegistryVersion, 10);
   assert.equal(verdict.pass, true);
   assert.equal(verdict.status, "pass");
   assert.equal(verdict.failures, 0);
