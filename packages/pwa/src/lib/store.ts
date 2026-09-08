@@ -537,7 +537,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set,
       "pwa:toggleArchived",
       () => enqueuePwaLibraryCoreUserStateToggle(id, "archived"),
-      { allowLibraryCoreIntent: true, waitForPersistence: false },
+      { allowLibraryCoreIntent: true },
     );
   },
 

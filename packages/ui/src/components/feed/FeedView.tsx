@@ -519,9 +519,13 @@ export function FeedView() {
       patchBoundedItems((candidate) =>
         candidate.globalId === item.globalId ? null : candidate,
       );
-      return toggleArchived(item.globalId);
+      return toggleArchived(item.globalId).catch(() => {
+        // The store records the error. Restore authoritative rows rather than
+        // leaving the optimistic removal visible after a rejected write.
+        retryBoundedFeed();
+      });
     },
-    [patchBoundedItems, toggleArchived],
+    [patchBoundedItems, retryBoundedFeed, toggleArchived],
   );
   const handleItemLike = useCallback(
     (item: FeedItem) => {

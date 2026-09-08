@@ -999,7 +999,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     await runStoreMutation(
       "desktop:toggleArchived",
       () => toggleLibraryItemArchived(id),
-      { waitForPersistence: false },
     );
   },
 

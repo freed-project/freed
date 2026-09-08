@@ -877,10 +877,9 @@ export function Header({
   const handleToggleReaderArchived = useCallback(() => {
     if (!selectedItem) return;
     const wasArchived = selectedItem.userState.archived;
-    toggleArchived(selectedItem.globalId);
-    if (!wasArchived) {
-      setSelectedItem(null);
-    }
+    void toggleArchived(selectedItem.globalId).then(() => {
+      if (!wasArchived) setSelectedItem(null);
+    }, () => {}); // The store reports failed writes; keep the reader open.
   }, [selectedItem, setSelectedItem, toggleArchived]);
 
   const handleToggleFocusMode = useCallback(() => {

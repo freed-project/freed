@@ -608,8 +608,18 @@ export function FeedList({
     committedLayoutRef.current = rowLayoutKey;
     const oldScope = committedAnchorScopeRef.current;
     committedAnchorScopeRef.current = anchorScope;
+    const establishReadBaseline = () => {
+      if (oldLayout === rowLayoutKey) return;
+      // Commit geometry before the next user scroll, including the first page
+      // where no previous card exists to restore as an anchor.
+      processReadOnScroll(
+        isMobile ? windowVirtualizer : elementVirtualizer,
+        isMobile ? "window" : "element",
+      );
+    };
     if (oldScope !== anchorScope) {
       pendingBoundedAnchorRef.current = null;
+      establishReadBaseline();
       return;
     }
     if (
@@ -620,13 +630,19 @@ export function FeedList({
 
     const anchor = pendingBoundedAnchorRef.current;
     pendingBoundedAnchorRef.current = null;
-    if (!anchor || anchor.windowStartIndex !== previousWindowStart) return;
+    if (!anchor || anchor.windowStartIndex !== previousWindowStart) {
+      establishReadBaseline();
+      return;
+    }
     const anchorRowIndex = rows.findIndex((row) =>
       row.type === "item"
         ? row.item.globalId === anchor.itemId
         : row.items.some((item) => item.globalId === anchor.itemId),
     );
-    if (anchorRowIndex < 0) return;
+    if (anchorRowIndex < 0) {
+      establishReadBaseline();
+      return;
+    }
 
     if (anchor.source === "window" && isMobile) {
       restoringAnchorRef.current = true;
@@ -654,6 +670,7 @@ export function FeedList({
     boundedWindowStartIndex,
     elementVirtualizer,
     isMobile,
+    processReadOnScroll,
     rows,
     windowVirtualizer,
   ]);
