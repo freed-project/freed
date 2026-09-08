@@ -21,7 +21,7 @@ concurrency:
 jobs:
   capture:
     name: Showcase capture smoke
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -31,8 +31,6 @@ jobs:
           cache: npm
       - name: Install dependencies and browser
         run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb xauth libvulkan1 mesa-vulkan-drivers
           npm ci --ignore-scripts
           npx playwright install --with-deps chromium
       - name: Build production demo
@@ -61,7 +59,7 @@ jobs:
           FREED_SHOWCASE_OUTPUT: /tmp/freed-showcase-smoke
           FREED_SHOWCASE_SQLITE_MEMORY: '1'
           FREED_SHOWCASE_THEME: ember
-        run: xvfb-run -a node scripts/capture-showcase-local.mjs
+        run: node scripts/capture-showcase-local.mjs
       - name: Retain capture evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
