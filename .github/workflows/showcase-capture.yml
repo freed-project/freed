@@ -9,6 +9,7 @@ on:
       - 'scripts/*showcase*.mjs'
       - 'scripts/lib/release-showcase-assets.mjs'
       - 'packages/ui/src/components/friends/**'
+      - 'packages/ui/src/lib/friends-galaxy-*.ts'
       - 'packages/ui/src/index.css'
 
 permissions:

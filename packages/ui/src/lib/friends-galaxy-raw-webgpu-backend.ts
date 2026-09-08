@@ -12,6 +12,7 @@ import {
 } from "./friends-galaxy-renderer.js";
 import type { FriendsGalaxyActivityScenePatchBatch } from "./friends-galaxy-activity-patches.js";
 import { FriendsGalaxyBackendHealth } from "./friends-galaxy-backend-health.js";
+import { createFriendsGalaxyGpuBuffer as createBuffer } from "./friends-galaxy-gpu-buffer.js";
 import type { FriendsGalaxyAvatarAtlas } from "./friends-galaxy-avatar-atlas.js";
 import { projectFriendsGalaxyWorldPoint } from "./friends-galaxy-projection.js";
 import {
@@ -457,17 +458,6 @@ function adapterLabel(adapter: GPUAdapter): string {
   return [info.vendor, info.architecture, info.device, info.description]
     .filter((value): value is string => Boolean(value))
     .join(" ") || "WebGPU adapter";
-}
-
-function createBuffer(device: GPUDevice, data: Float32Array, usage: GPUBufferUsageFlags): GPUBuffer {
-  const buffer = device.createBuffer({
-    size: Math.max(Float32Array.BYTES_PER_ELEMENT, data.byteLength),
-    usage,
-    mappedAtCreation: true,
-  });
-  new Float32Array(buffer.getMappedRange()).set(data);
-  buffer.unmap();
-  return buffer;
 }
 
 export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
