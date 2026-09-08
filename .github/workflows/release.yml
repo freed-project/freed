@@ -552,7 +552,7 @@ jobs:
     name: Capture PWA Showcase
     needs: [notes, validation, create-release]
     if: needs.notes.outputs.release_channel == 'production'
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     permissions:
       contents: write
     steps:
@@ -569,8 +569,7 @@ jobs:
         run: |
           npm ci --ignore-scripts
           npx playwright install --with-deps chromium
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg
+          command -v ffmpeg >/dev/null || brew install ffmpeg
 
       - name: Build exact release PWA
         working-directory: packages/pwa
@@ -613,11 +612,14 @@ jobs:
           gh release upload "$TAG" release-showcase/*.{webp,json}
 
       - name: Retain showcase source evidence
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-showcase-source
-          path: release-showcase/
-          if-no-files-found: error
+          path: |
+            release-showcase/
+            /tmp/freed-release-showcase-*/
+          if-no-files-found: warn
 
   # After all platform builds succeed, promote the draft to a published release
   publish:
