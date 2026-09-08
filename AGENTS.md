@@ -62,6 +62,7 @@ The maintenance model and enforced budgets live in [docs/AGENT-INSTRUCTIONS.md](
 
 - Never edit or commit task changes directly on `www`, `dev`, or `main`. Use a task branch in an isolated worktree. A shipping workflow may use a clean lane checkout for read-only proof and post-merge operations.
 - Preserve user changes. Do not clean, reset, overwrite, or incorporate unrelated work.
+- Automation guard failures do not block ordinary publication. Prove a dependency in the requested workflow before proposing host migration or repair.
 - Use the Node toolchain pinned by `.nvmrc`. `node`, `npm`, and `npx` must come from the same installation.
 - Gather available evidence yourself. Ask the owner to run a diagnostic only when the required account, hardware, or live state is outside your access.
 - Keep the active delivery bounded. Fix blockers. Record adjacent deferrable debt once, then resume. Drop speculative findings.
