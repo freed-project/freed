@@ -150,6 +150,7 @@ if (useMemorySqlite) {
   });
 }
 const page = await context.newPage();
+await context.tracing.start({ screenshots: true, snapshots: true });
 const emulation = await context.newCDPSession(page);
 const desktopUserAgent = await page.evaluate(() => navigator.userAgent);
 const browserVersion = /(?:Headless)?Chrome\/([\d.]+)/.exec(desktopUserAgent)?.[1];
@@ -408,6 +409,24 @@ try {
     await frame.screenshot({ path: path.join(outputDirectory, capture.file), omitBackground: true, type: "png" });
     await frame.close();
   }
+} catch (error) {
+  // The demo contains synthetic data. Preserve the failed UI before closing
+  // Chromium so CI selection and rendering failures remain diagnosable.
+  await page.screenshot({ path: path.join(outputDirectory, "failure.png") }).catch(() => {});
+  const state = await page.evaluate(() => ({
+    url: location.href,
+    theme: document.documentElement.dataset.theme,
+    sidebar: document.querySelector('[data-testid="friends-sidebar"]')?.textContent?.slice(0, 20_000),
+    focusedElement: document.activeElement?.outerHTML.slice(0, 2_000),
+    rows: [...document.querySelectorAll('[data-testid="friend-overview-virtual-row"]')]
+      .slice(0, 20).map(row => row.textContent?.slice(0, 1_000)),
+  })).catch(() => null);
+  await writeFile(path.join(outputDirectory, "failure.json"), JSON.stringify({
+    releaseTag, releaseSha, sourceDirty,
+    error: error instanceof Error ? error.message : String(error), state,
+  }, null, 2) + "\n").catch(() => {});
+  await context.tracing.stop({ path: path.join(outputDirectory, "failure-trace.zip") }).catch(() => {});
+  throw error;
 } finally {
   await browser.close();
 }

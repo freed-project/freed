@@ -1,0 +1,69 @@
+name: Showcase capture
+
+on:
+  pull_request:
+    branches: [dev, main]
+    paths:
+      - '.github/workflows/showcase-capture.yml'
+      - '.github/workflows/release.yml'
+      - 'scripts/*showcase*.mjs'
+      - 'scripts/lib/release-showcase-assets.mjs'
+      - 'packages/ui/src/components/friends/**'
+      - 'packages/ui/src/index.css'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: showcase-capture-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  capture:
+    name: Showcase capture smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install dependencies and browser
+        run: |
+          npm ci --ignore-scripts
+          npx playwright install --with-deps chromium
+      - name: Build production demo
+        working-directory: packages/pwa
+        env:
+          FREED_BUILD_KIND: release
+          FREED_BUILD_CHANNEL: production
+          VITE_FREED_DEMO: '1'
+          VITE_FREED_PWA_SQLITE_MEMORY_E2E: '1'
+        run: npm run build
+      - name: Start production demo
+        working-directory: packages/pwa
+        run: npm run preview -- --host 127.0.0.1 --port 4173 > /tmp/freed-showcase-preview.log 2>&1 &
+      - name: Wait for production demo
+        run: |
+          for attempt in {1..60}; do
+            if curl --fail --silent http://127.0.0.1:4173 >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/freed-showcase-preview.log
+          exit 1
+      - name: Capture all six views in one representative theme
+        env:
+          FREED_SHOWCASE_URL: http://127.0.0.1:4173/?freed-demo=1
+          FREED_SHOWCASE_OUTPUT: /tmp/freed-showcase-smoke
+          FREED_SHOWCASE_SQLITE_MEMORY: '1'
+          FREED_SHOWCASE_THEME: ember
+        run: node scripts/capture-showcase-local.mjs
+      - name: Retain capture evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: showcase-capture-evidence
+          path: /tmp/freed-showcase-smoke/
+          retention-days: 7
+          if-no-files-found: warn
