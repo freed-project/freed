@@ -133,7 +133,7 @@ describe("SQLite editable follower mutations", () => {
       }
       if (command === "query_normalized_library") {
         const request = (
-          args as { request: { queryId: string; schemaVersion: number } }
+          args as { request: { queryId: string; schemaVersion: number; globalId?: string } }
         ).request;
         const source = {
           generationId: "bc".repeat(32),
@@ -191,7 +191,7 @@ describe("SQLite editable follower mutations", () => {
           return {
             queryId: request.queryId,
             schemaVersion: 1,
-            globalId: (request as { globalId: string }).globalId,
+            globalId: request.globalId,
             source,
             tags: [],
             highlights: [],
