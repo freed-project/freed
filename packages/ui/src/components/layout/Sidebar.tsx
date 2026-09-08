@@ -186,7 +186,7 @@ function SidebarNavRow({
       <span data-sidebar-icon-slot="true">{icon}</span>
       {afterLabel ? (
         <span className="flex min-w-0 flex-1 items-center gap-1">
-          <span className={labelClass}>{label}</span>
+          <span className={labelClass} style={{ flex: "0 1 auto" }}>{label}</span>
           {afterLabel}
         </span>
       ) : (
@@ -281,7 +281,7 @@ function SidebarSection({
           {title}
         </span>
         {!open && count !== undefined && count > 0 && (
-          <span className="text-[10px] tabular-nums text-[color:var(--theme-text-soft)] mr-1.5">{count}</span>
+          <span className="text-[0.625rem] tabular-nums text-[color:var(--theme-text-soft)] mr-1.5">{count}</span>
         )}
         <svg
           className={`w-3 h-3 text-[color:var(--theme-text-soft)] transition-transform shrink-0 ${open ? "rotate-90" : ""}`}
@@ -429,8 +429,8 @@ function FeedContextMenu({
       <div className="theme-dialog-divider border-b px-3 py-2.5">
         <div className="flex items-center gap-2">
           <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${syncDotClass(feed.lastFetched)}`} />
-          <span className="text-[11px] text-[color:var(--theme-text-muted)]">{syncStatusLabel(feed.lastFetched)}</span>
-          <span className="ml-auto text-[11px] text-[color:var(--theme-text-soft)]">{formatLastSync(feed.lastFetched)}</span>
+          <span className="text-[0.6875rem] text-[color:var(--theme-text-muted)]">{syncStatusLabel(feed.lastFetched)}</span>
+          <span className="ml-auto text-[0.6875rem] text-[color:var(--theme-text-soft)]">{formatLastSync(feed.lastFetched)}</span>
         </div>
       </div>
 
@@ -521,8 +521,8 @@ function SourceContextMenu({
     >
       <div className="theme-dialog-divider border-b px-3 py-2.5">
         <div className="flex items-center gap-2">
-          <span className="truncate text-[11px] font-medium text-[color:var(--theme-text-primary)]">{sourceLabel}</span>
-          <span className="ml-auto text-[11px] text-[color:var(--theme-text-soft)]">{totalLabel}</span>
+          <span className="truncate text-[0.6875rem] font-medium text-[color:var(--theme-text-primary)]">{sourceLabel}</span>
+          <span className="ml-auto text-[0.6875rem] text-[color:var(--theme-text-soft)]">{totalLabel}</span>
         </div>
       </div>
 
@@ -540,7 +540,7 @@ function SourceContextMenu({
             </span>
           </div>
           {status.detail ? (
-            <p className="mt-1.5 text-[11px] leading-4 text-[color:var(--theme-text-muted)]">
+            <p className="mt-1.5 text-[0.6875rem] leading-4 text-[color:var(--theme-text-muted)]">
               {status.detail}
             </p>
           ) : null}
@@ -613,10 +613,10 @@ function FriendsContextMenu({
       testId="friends-context-menu"
     >
       <div className="theme-dialog-divider flex items-center border-b px-3 py-2.5">
-        <span className="truncate text-[11px] font-medium text-[color:var(--theme-text-primary)]">
+        <span className="truncate text-[0.6875rem] font-medium text-[color:var(--theme-text-primary)]">
           Friends
         </span>
-        <span className="ml-auto text-[11px] text-[color:var(--theme-text-soft)]">
+        <span className="ml-auto text-[0.6875rem] text-[color:var(--theme-text-soft)]">
           {friendLabel}
         </span>
       </div>
@@ -918,7 +918,7 @@ export function Sidebar({
   const rowTextClass = isMobileViewport ? "text-base" : "text-sm";
   const rowVerticalPaddingClass = isMobileViewport ? "py-2" : "py-1.5";
   const feedRowVerticalPaddingClass = "py-2";
-  const countTextClass = isMobileViewport ? "text-xs" : "text-[10px]";
+  const countTextClass = isMobileViewport ? "text-xs" : "text-[0.625rem]";
   const inlineSearchGapPx = isMobileViewport ? sidebarPaddingBlockPx + 8 : sidebarPaddingBlockPx;
   const desktopShellTransition = animationIntensity === "none" || (dragWidth !== null && !snapPreviewActive)
     ? "none"
@@ -1775,15 +1775,15 @@ export function Sidebar({
                                 )}
                               </>
                             ) : rssFeedPage.loading ? (
-                              <p className={`${rowPaddingClass} py-2 text-[11px] text-[color:var(--theme-text-muted)]`}>
+                              <p className={`${rowPaddingClass} py-2 text-[0.6875rem] text-[color:var(--theme-text-muted)]`}>
                                 Loading feeds...
                               </p>
                             ) : rssFeedPage.error ? (
-                              <p className={`${rowPaddingClass} py-2 text-[11px] text-[color:var(--theme-text-muted)]`}>
+                              <p className={`${rowPaddingClass} py-2 text-[0.6875rem] text-[color:var(--theme-text-muted)]`}>
                                 Feed list unavailable.
                               </p>
                             ) : (
-                              <p className={`${rowPaddingClass} py-2 text-[11px] text-[color:var(--theme-text-muted)]`}>
+                              <p className={`${rowPaddingClass} py-2 text-[0.6875rem] text-[color:var(--theme-text-muted)]`}>
                                 {deferredSidebarSearchInput.trim()
                                   ? <>No feeds match &ldquo;{deferredSidebarSearchInput.trim()}&rdquo;.</>
                                   : <>No feeds subscribed yet.</>}
@@ -1811,7 +1811,7 @@ export function Sidebar({
                       )}
                       label={source.label}
                       afterLabel={source.stage === "beta" ? (
-                        <span className="shrink-0 rounded border border-[color:var(--theme-border-subtle)] px-1 py-0.5 text-[8px] font-semibold uppercase leading-none text-[color:var(--theme-text-muted)]">
+                        <span className="shrink-0 rounded border border-[color:var(--theme-border-subtle)] px-1 py-0.5 text-[0.5rem] font-semibold uppercase leading-none text-[color:var(--theme-text-muted)]">
                           Beta
                         </span>
                       ) : null}

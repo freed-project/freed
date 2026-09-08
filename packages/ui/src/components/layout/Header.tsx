@@ -492,8 +492,7 @@ export function Header({
     showSocialContentControls && !collapseToolbarViewControls;
   const showFeedCardDensityControl =
     activeView === "feed" &&
-    !readerActive &&
-    !isMobile;
+    !readerActive;
   const hideMobileDrawerToolbarActions = mobileSidebarOpen;
   const showCollapsedToolbarFilterMenu =
     !hideMobileDrawerToolbarActions;
@@ -882,11 +881,9 @@ export function Header({
   }, [display.reading.focusMode, updatePreferences]);
 
   const handleToggleDualColumn = useCallback(() => {
-    runFeedLayoutTransition(() => {
-      if (!setDeviceDisplay({ dualColumnMode: !deviceDisplay.dualColumnMode })) {
-        toast.error("Freed could not save the reader layout on this device.");
-      }
-    });
+    if (!setDeviceDisplay({ dualColumnMode: !deviceDisplay.dualColumnMode })) {
+      toast.error("Freed could not save the reader layout on this device.");
+    }
   }, [deviceDisplay.dualColumnMode, setDeviceDisplay]);
 
   const [deleteConfirmArmed, setDeleteConfirmArmed] = useState(false);
@@ -1149,7 +1146,7 @@ export function Header({
   const toolbarContainerStyle = {
     ...(headerDragRegion ? dragStyle : {}),
     // Keep narrow-screen controls clear of rounded device edges and safe areas.
-    ...(isMobileDevice && !headerDragRegion ? {
+    ...(isMobile && !headerDragRegion ? {
       paddingLeft: "max(12px, var(--safe-area-left, env(safe-area-inset-left, 0px)))",
       paddingRight: "max(12px, var(--safe-area-right, env(safe-area-inset-right, 0px)))",
     } : {}),

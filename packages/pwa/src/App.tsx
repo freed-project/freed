@@ -60,6 +60,8 @@ import {
   PwaInstagramSettings,
   PwaLinkedInSettings,
   PwaYouTubeSettings,
+  PwaSubstackSettings,
+  PwaMediumSettings,
   PwaXSettings,
 } from "./components/PwaSocialProviderSettings";
 import { PwaLegalSettingsSection } from "./components/PwaLegalSettingsSection";
@@ -579,8 +581,8 @@ function App() {
       FacebookSettingsContent: PwaFacebookSettings,
       InstagramSettingsContent: PwaInstagramSettings,
       LinkedInSettingsContent: PwaLinkedInSettings,
-      SubstackSettingsContent: null,
-      MediumSettingsContent: null,
+      SubstackSettingsContent: PwaSubstackSettings,
+      MediumSettingsContent: PwaMediumSettings,
       YouTubeSettingsContent: PwaYouTubeSettings,
       GoogleContactsSettingsContent: PwaGoogleContactsSettings,
       checkForUpdates: IS_DEMO ? undefined : checkForUpdates,

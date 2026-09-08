@@ -519,13 +519,13 @@ function buildPopupContent(
 
   const title = document.createElement("div");
   title.textContent = popupTitle(marker);
-  title.style.cssText = "font-size:15px;font-weight:700;color:var(--theme-text-primary);letter-spacing:-0.03em;line-height:1.08;";
+  title.style.cssText = "font-size: 0.9375rem;font-weight:700;color:var(--theme-text-primary);letter-spacing:-0.03em;line-height:1.08;";
   header.appendChild(title);
 
   if (marker.label) {
     const location = document.createElement("div");
     location.textContent = marker.label;
-    location.style.cssText = "font-size:12px;font-weight:500;color:var(--theme-accent-secondary);line-height:1.5;max-width:34ch;";
+    location.style.cssText = "font-size: 0.75rem;font-weight:500;color:var(--theme-accent-secondary);line-height:1.5;max-width:34ch;";
     header.appendChild(location);
   }
   const identity = document.createElement("div");
@@ -554,7 +554,7 @@ function buildPopupContent(
 
     const snippet = document.createElement("p");
     snippet.textContent = snippetText;
-    snippet.style.cssText = "margin:0;font-size:12px;line-height:1.5;color:var(--theme-text-secondary);";
+    snippet.style.cssText = "margin:0;font-size: 0.75rem;line-height:1.5;color:var(--theme-text-secondary);";
     snippetCard.appendChild(snippet);
     root.appendChild(snippetCard);
   }
@@ -566,13 +566,13 @@ function buildPopupContent(
   time.textContent = popupRelativeTime(marker.seenAt);
   meta.append(providerSlot, time);
   meta.title = popupAbsoluteTime(marker.seenAt);
-  meta.style.cssText = "display:flex;align-items:center;flex-wrap:wrap;gap:6px;font-size:11px;color:var(--theme-text-muted);";
+  meta.style.cssText = "display:flex;align-items:center;flex-wrap:wrap;gap:6px;font-size: 0.6875rem;color:var(--theme-text-muted);";
   header.appendChild(meta);
 
   if (marker.groupCount > 1) {
     const more = document.createElement("div");
     more.textContent = `${marker.groupCount.toLocaleString()} updates from this spot`;
-    more.style.cssText = "font-size:11px;color:var(--theme-accent-secondary);";
+    more.style.cssText = "font-size: 0.6875rem;color:var(--theme-accent-secondary);";
     root.appendChild(more);
   }
 
@@ -587,7 +587,7 @@ function buildPopupContent(
     friendButton.style.cssText = [
       "padding:7px 9px",
       "border-radius:8px",
-      "font-size:12px",
+      "font-size: 0.75rem",
       "font-weight:600",
       "cursor:pointer",
       "width:100%",
@@ -605,7 +605,7 @@ function buildPopupContent(
     promoteButton.style.cssText = [
       "padding:7px 9px",
       "border-radius:8px",
-      "font-size:12px",
+      "font-size: 0.75rem",
       "font-weight:600",
       "cursor:pointer",
       "width:100%",
@@ -623,7 +623,7 @@ function buildPopupContent(
     linkButton.style.cssText = [
       "padding:7px 9px",
       "border-radius:8px",
-      "font-size:12px",
+      "font-size: 0.75rem",
       "font-weight:600",
       "cursor:pointer",
       "width:100%",
@@ -641,7 +641,7 @@ function buildPopupContent(
     postButton.style.cssText = [
       "padding:7px 9px",
       "border-radius:8px",
-      "font-size:12px",
+      "font-size: 0.75rem",
       "font-weight:600",
       "cursor:pointer",
       "width:100%",
@@ -1319,6 +1319,7 @@ export function MapSurface({
     const lifecycleId = mapLifecycleRef.current + 1;
     mapLifecycleRef.current = lifecycleId;
     let cancelled = false;
+    let removeTrackpadPan: (() => void) | undefined;
     setShellMoving(false);
     setMapReady(false);
     setMapTilesReady(false);
@@ -1363,6 +1364,19 @@ export function MapSurface({
           attributionControl: false,
         });
         mapRef.current = map;
+        if (interactive) {
+          const canvasContainer = map.getCanvasContainer();
+          const panWithTrackpad = (event: globalThis.WheelEvent) => {
+            // Trackpad scrolling is pixel-based; pinch gestures carry Ctrl.
+            // Capture before MapLibre treats a two-finger swipe as zoom.
+            if (event.ctrlKey || event.metaKey || event.shiftKey || event.deltaMode !== 0) return;
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            map.panBy([event.deltaX, event.deltaY], { duration: 0 });
+          };
+          canvasContainer.addEventListener("wheel", panWithTrackpad, { capture: true, passive: false });
+          removeTrackpadPan = () => canvasContainer.removeEventListener("wheel", panWithTrackpad, true);
+        }
         appliedMapThemeRef.current = initialThemeId;
         const setMoving = () => {
           setMapTilesReady(false);
@@ -1408,6 +1422,7 @@ export function MapSurface({
     return () => {
       cancelled = true;
       mapLifecycleRef.current += 1;
+      removeTrackpadPan?.();
       mapStyleRequestRef.current += 1;
       appliedMapThemeRef.current = null;
       closeActivePopup();
@@ -1681,7 +1696,7 @@ export function MapSurface({
                   useDenseMarkers,
                   focusedMarkerKey,
                 )}
-                className="freed-map-marker absolute -translate-x-1/2 -translate-y-1/2 rounded-full px-2.5 py-1.5 text-[11px] text-[color:var(--theme-text-primary)]"
+                className="freed-map-marker absolute -translate-x-1/2 -translate-y-1/2 rounded-full px-2.5 py-1.5 text-[0.6875rem] text-[color:var(--theme-text-primary)]"
                 style={{
                   ...position,
                   border: "1px solid color-mix(in oklab, var(--theme-border-strong) 78%, transparent)",

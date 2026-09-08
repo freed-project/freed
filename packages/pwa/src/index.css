@@ -70,7 +70,7 @@ html[data-theme="neon"] .demo-freed-logo {
     min-height: 36px;
     padding: 6px;
     /* Override the general mobile button enlargement below for this compact panel. */
-    font-size: 12px !important;
+    font-size: 0.75rem !important;
     line-height: 1.25;
   }
 }
@@ -203,6 +203,7 @@ body {
 /* Use the same device classification as AppShell and FeedList. A phone in
    landscape still owns document scrolling, even above the desktop breakpoint. */
 html:has(.app-theme-shell[data-mobile-device="true"]) {
+  scrollbar-width: none;
   background-color: var(--theme-bg-root);
   background-image: var(--theme-shell-background);
   background-repeat: no-repeat;
@@ -237,8 +238,12 @@ body:has(.app-theme-shell[data-mobile-device="true"]) {
 
 /* Keep the reading width inset while the shell and toolbar paint edge to edge. */
 .app-theme-shell > .app-content-frame {
-  padding-left: var(--safe-area-left);
-  padding-right: var(--safe-area-right);
+  padding-left: max(var(--feed-card-gap, 8px), var(--safe-area-left, 0px));
+  padding-right: max(var(--feed-card-gap, 8px), var(--safe-area-right, 0px));
+}
+
+html:has(.app-theme-shell[data-mobile-device="true"])::-webkit-scrollbar {
+  display: none;
 }
 
 #root {
@@ -261,10 +266,10 @@ body:has(.app-theme-shell[data-mobile-device="true"]) {
 @media (max-width: 640px) {
   /* Apple HIG mobile text scale:
      caption 13px · secondary 15px · body 17px · subhead 20px */
-  .text-xs { font-size: 13px !important; }
-  .text-sm { font-size: 15px !important; }
-  .text-base { font-size: 17px !important; }
-  .text-lg { font-size: 20px !important; }
+  .text-xs { font-size: 0.8125rem !important; }
+  .text-sm { font-size: 0.9375rem !important; }
+  .text-base { font-size: 1.0625rem !important; }
+  .text-lg { font-size: 1.25rem !important; }
 
   .feed-card {
     padding: 14px;
@@ -275,7 +280,7 @@ body:has(.app-theme-shell[data-mobile-device="true"]) {
   .btn-primary,
   .btn-secondary {
     min-height: 50px;
-    font-size: 17px !important;
+    font-size: 1.0625rem !important;
     padding: 14px 20px;
   }
 
@@ -283,7 +288,7 @@ body:has(.app-theme-shell[data-mobile-device="true"]) {
   textarea,
   select {
     /* Prevents iOS auto-zoom on focus */
-    font-size: 16px !important;
+    font-size: 1rem !important;
   }
 
   .hide-scrollbar::-webkit-scrollbar {

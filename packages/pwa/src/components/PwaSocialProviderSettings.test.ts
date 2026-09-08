@@ -140,7 +140,7 @@ describe("PWA source provider settings", () => {
     );
 
     expect(container.textContent).toContain("Connections are off in the demo");
-    expect(container.textContent).toContain("Download Freed Desktop free to configure your own sources.");
+    expect(container.textContent).toContain("Download Freed Desktop to configure your own sources.");
     expect(container.textContent).toContain("Download Freed Desktop to configure");
     expect(container.querySelector('[data-testid="demo-provider-disabled"]')).not.toBeNull();
     expect(container.textContent).not.toContain("Connect Facebook");

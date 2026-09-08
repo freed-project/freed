@@ -8,6 +8,8 @@ import test from "node:test";
 
 import {
   SHOWCASE_ASSET_FILENAMES,
+  SHOWCASE_THEME_IDS,
+  SHOWCASE_FRAME_IDS,
   SHOWCASE_MANIFEST_FILENAME,
   MAX_SHOWCASE_ASSET_BYTES,
   finalizeShowcaseManifest,
@@ -19,6 +21,15 @@ import {
 const repository = "freed-project/freed";
 const tag = "v26.9.0500";
 const checkoutSha = "a".repeat(40);
+const captureContract = {
+  sourceDirty: false, transparentCanvas: true, desktopZoom: 120, mobileZoom: 100,
+  encoding: { format: "webp", quality: 90, width: 960, height: 640, loop: 0, durationMs: 1800 },
+  captures: SHOWCASE_THEME_IDS.flatMap(theme => SHOWCASE_FRAME_IDS.map(frame => ({
+    theme, file: `freed-showcase-${frame}-${theme}.png`,
+    mobile: frame === "stories" || frame === "reader",
+    desktopDecoration: { radius: 16, borderColor: "#123456", borderWidth: 2 },
+  }))),
+};
 
 test("showcase media admission follows exact reviewed catalog URLs", async (t) => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "freed-showcase-catalog-"));
@@ -37,7 +48,7 @@ async function fixture(t, manifestOverrides = {}) {
   t.after(() => rm(directory, { recursive: true, force: true }));
   await writeFile(
     path.join(directory, SHOWCASE_MANIFEST_FILENAME),
-    `${JSON.stringify({ schemaVersion: 1, captures: [], releaseTag: tag, releaseSha: checkoutSha, contentCounts: { total: 500, regular: 397, stories: 103 }, ...manifestOverrides })}\n`,
+    `${JSON.stringify({ schemaVersion: 1, ...captureContract, releaseTag: tag, releaseSha: checkoutSha, contentCounts: { total: 500, regular: 397, stories: 103 }, ...manifestOverrides })}\n`,
   );
   for (const [index, filename] of SHOWCASE_ASSET_FILENAMES.entries()) {
     await writeFile(path.join(directory, filename), `${filename}:${index}`);
@@ -70,7 +81,7 @@ test("finalizes only the exact regular showcase assets with release and latest U
     checkoutSha,
   });
 
-  assert.equal(finalized.assets.length, 8);
+  assert.equal(finalized.assets.length, SHOWCASE_THEME_IDS.length * 7);
   assert.equal(finalized.corpusStage, "complete");
   assert.deepEqual(finalized.assets.map((asset) => asset.filename), SHOWCASE_ASSET_FILENAMES);
   for (const asset of finalized.assets) {
@@ -140,6 +151,19 @@ test("finalization rejects symlinked assets and mismatched capture identity", as
   );
 });
 
+test("release manifests reject missing themes, reordered frames and stale capture settings", async (t) => {
+  for (const override of [
+    { sourceDirty: true }, { transparentCanvas: false }, { desktopZoom: 100 },
+    { encoding: { ...captureContract.encoding, quality: 80 } },
+    { captures: captureContract.captures.slice(6) },
+    { captures: [...captureContract.captures].reverse() },
+    { captures: captureContract.captures.map((capture, index) => index === 0 ? { ...capture, retainedFromCapture: "earlier" } : capture) },
+  ]) {
+    const directory = await fixture(t, override);
+    await assert.rejects(finalizeShowcaseManifest({ outputDirectory: directory, repository, tag, ref: `refs/tags/${tag}`, checkoutSha }), /Showcase/);
+  }
+});
+
 test("functional releases retain truthful interim counts and cannot claim corpus completion", async (t) => {
   const contentCounts = { total: 241, regular: 202, stories: 39 };
   const directory = await fixture(t, { contentCounts });
@@ -174,9 +198,9 @@ test("public verifier checks both URL variants and rejects bounded or mismatched
       return streamResponse(bytesByUrl.get(url));
     },
   });
-  assert.equal(result.assetsVerified, 8);
-  assert.equal(result.downloadsVerified, 16);
-  assert.equal(requested.length, 16);
+  assert.equal(result.assetsVerified, SHOWCASE_ASSET_FILENAMES.length);
+  assert.equal(result.downloadsVerified, SHOWCASE_ASSET_FILENAMES.length * 2);
+  assert.equal(requested.length, SHOWCASE_ASSET_FILENAMES.length * 2);
   let incompleteFetches = 0;
   await assert.rejects(verifyPublishedShowcaseAssets({
     manifest: { ...manifest, contentCounts: { total: 1_000, regular: 1_000, stories: 0 } },

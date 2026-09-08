@@ -473,7 +473,8 @@ test("production releases publish an exact-tag PWA showcase with reviewed media"
   assert.match(showcaseJob, /FREED_BUILD_CHANNEL:\s*"production"/);
   assert.match(showcaseJob, /VITE_FREED_DEMO:\s*"1"/);
   assert.match(showcaseJob, /capture-release-showcase\.mjs/);
-  assert.match(showcaseJob, /freed-showcase\.gif/);
+  assert.match(showcaseJob, /release-showcase\/\*\.\{png,webp,json\}/);
+  assert.doesNotMatch(showcaseJob, /--clobber/);
   assert.match(showcaseJob, /gh release upload "\$TAG"/);
   assert.match(
     showcaseJob,
@@ -488,10 +489,15 @@ test("production releases publish an exact-tag PWA showcase with reviewed media"
     /release-showcase-assets\.mjs verify-public --directory release-showcase/,
   );
   assert.match(publishJob, /needs\.showcase-assets\.result == 'success'/);
-  const capture = readFileSync(
+  const runner = readFileSync(
     path.join(scriptsDir, "capture-release-showcase.mjs"),
     "utf8",
   );
+  assert.match(runner, /for \(const theme of SHOWCASE_THEME_IDS\)/);
+  assert.match(runner, /capture-showcase-local\.mjs/);
+  assert.match(runner, /ImageDecoder/);
+  assert.match(runner, /releaseSha !== sha/);
+  const capture = readFileSync(path.join(scriptsDir, "capture-showcase-local.mjs"), "utf8");
   assert.match(capture, /Explore Freed Demo/);
   assert.match(capture, /await selectTheme\(page, capture.theme\)/);
   assert.doesNotMatch(capture, /page\.reload\(/);

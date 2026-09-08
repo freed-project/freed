@@ -164,12 +164,14 @@ export function FriendDetailPanel({
             <p className="text-base font-semibold text-text-primary truncate">
               {safeText(friend.name, "Unnamed friend")}
             </p>
-            <CareRating level={friend.careLevel} onChange={onCareLevelChange} />
-            {friend.bio && (
-              <ProfileDescription key={`${friend.id}:${friend.bio}`} text={friend.bio} />
-            )}
           </div>
         </div>
+        <div className="mt-3">
+          <CareRating level={friend.careLevel} onChange={onCareLevelChange} />
+        </div>
+        {friend.bio && (
+          <ProfileDescription key={`${friend.id}:${friend.bio}`} text={friend.bio} />
+        )}
 
         {/* Linked profiles */}
         {friend.sources.length > 0 && (

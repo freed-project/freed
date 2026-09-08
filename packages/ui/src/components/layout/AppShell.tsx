@@ -23,6 +23,7 @@ import { ContactSyncModal } from "../friends/ContactSyncModal.js";
 import { useContactSync } from "../../hooks/useContactSync.js";
 import { ContactSyncContext } from "../../context/ContactSyncContext.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
+import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import { useSettingsStore } from "../../lib/settings-store.js";
 import {
   type Account,
@@ -99,6 +100,8 @@ export function AppShell({ children }: AppShellProps) {
   const [friendsMobileSurface, setFriendsMobileSurface] =
     useState<FriendsMobileSurface>("graph");
   const isMobileViewport = useIsMobile();
+  const isMobileDevice = useIsMobileDevice();
+  const usesDocumentScroll = isMobileViewport || isMobileDevice;
   const debugVisible = useDebugStore((s) => s.visible);
   const toggleDebug = useDebugStore((s) => s.toggle);
   const activeView = useAppStore((s) => s.activeView);
@@ -504,7 +507,7 @@ export function AppShell({ children }: AppShellProps) {
     <ContactSyncContext.Provider value={{ ...contactSync, openReview }}>
       {/* On mobile layouts, the layout flows naturally in the document so
           Safari can collapse its address bar when the feed scrolls. Wide layouts keep the fixed-height shell. */}
-      <div data-mobile-device={isMobileViewport} className={`app-theme-shell relative flex min-w-0 flex-1 flex-col ${isMobileViewport ? "" : "min-h-0"}`}>
+      <div data-mobile-device={usesDocumentScroll} className={`app-theme-shell relative flex min-w-0 flex-1 flex-col ${usesDocumentScroll ? "" : "min-h-0"}`}>
         {showAtmosphere ? <BackgroundAtmosphere /> : null}
         <Header
           mobileSidebarOpen={mobileSidebarOpen}
@@ -524,7 +527,7 @@ export function AppShell({ children }: AppShellProps) {
           ref={contentFrameRef}
           data-testid="workspace-content-frame"
           className={`app-content-frame relative z-10 flex flex-1 ${contentFrameSpacingClass} ${
-            isMobileViewport ? "" : "min-h-0 overflow-hidden"
+            usesDocumentScroll ? "" : "min-h-0 overflow-hidden"
           }`}
         >
           {activeView === "friends" ? (

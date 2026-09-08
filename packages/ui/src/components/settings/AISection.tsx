@@ -246,7 +246,7 @@ function ProviderSelector({
                 <span className="text-sm font-semibold text-[var(--theme-text-primary)]">
                   {option.label}
                 </span>
-                <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                <span className={`rounded-full px-2 py-0.5 text-[0.625rem] font-medium ${
                   selected
                     ? "bg-[color:color-mix(in_srgb,var(--theme-accent-secondary)_18%,transparent)] text-[var(--theme-accent-secondary)]"
                     : "bg-[var(--theme-bg-muted)] text-[var(--theme-text-soft)]"
@@ -315,23 +315,23 @@ function LocalModelCard({
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-sm font-semibold text-[var(--theme-text-primary)]">{model.manifest.title}</p>
-            <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${statusTone(model.state.status)}`}>
+            <span className={`rounded-full px-2 py-0.5 text-[0.6875rem] font-medium ${statusTone(model.state.status)}`}>
               {statusLabel(model)}
             </span>
             {selected ? (
-              <span className="rounded-full bg-[color:color-mix(in_srgb,var(--theme-accent-secondary)_18%,transparent)] px-2 py-0.5 text-[11px] font-medium text-[var(--theme-accent-secondary)]">
+              <span className="rounded-full bg-[color:color-mix(in_srgb,var(--theme-accent-secondary)_18%,transparent)] px-2 py-0.5 text-[0.6875rem] font-medium text-[var(--theme-accent-secondary)]">
                 Selected
               </span>
             ) : null}
             {recommended ? (
-              <span className="rounded-full bg-[rgb(var(--theme-feedback-success-rgb)/0.12)] px-2 py-0.5 text-[11px] font-medium text-[rgb(var(--theme-feedback-success-rgb))]">
+              <span className="rounded-full bg-[rgb(var(--theme-feedback-success-rgb)/0.12)] px-2 py-0.5 text-[0.6875rem] font-medium text-[rgb(var(--theme-feedback-success-rgb))]">
                 Recommended
               </span>
             ) : null}
           </div>
           <p className="mt-1 text-xs leading-5 text-[var(--theme-text-muted)]">{model.manifest.description}</p>
         </div>
-        <p className="shrink-0 rounded-full bg-[var(--theme-bg-muted)] px-2 py-0.5 text-[11px] text-[var(--theme-text-muted)]">
+        <p className="shrink-0 rounded-full bg-[var(--theme-bg-muted)] px-2 py-0.5 text-[0.6875rem] text-[var(--theme-text-muted)]">
           {model.manifest.capability}
         </p>
       </div>
@@ -363,7 +363,7 @@ function LocalModelCard({
               style={{ width: `${progress}%` }}
             />
           </div>
-          <p className="mt-1 text-[11px] text-[var(--theme-text-muted)]">
+          <p className="mt-1 text-[0.6875rem] text-[var(--theme-text-muted)]">
             {formatBytes(model.state.downloadedBytes)} of {formatBytes(progressTotal)}
           </p>
         </div>
@@ -803,7 +803,7 @@ export function AISection() {
           AI
         </h3>
         <span
-          className="shrink-0 rounded-full bg-[var(--theme-bg-muted)] px-2.5 py-1 text-[11px] font-medium text-[var(--theme-text-secondary)]"
+          className="shrink-0 rounded-full bg-[var(--theme-bg-muted)] px-2.5 py-1 text-[0.6875rem] font-medium text-[var(--theme-text-secondary)]"
           data-testid="ai-provider-sharing-label"
         >
           {getAIProviderSharingLabel(displayedAI.provider)}
@@ -918,7 +918,7 @@ export function AISection() {
                 setApiKey={secureStorage.setApiKey}
                 clearApiKey={secureStorage.clearApiKey}
               />
-              <p className="mt-1 text-[11px] text-[var(--theme-text-soft)]">
+              <p className="mt-1 text-[0.6875rem] text-[var(--theme-text-soft)]">
                 Stored encrypted on this device. Never synced.
               </p>
             </div>

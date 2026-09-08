@@ -1424,7 +1424,7 @@ html[data-theme="scriptorium"] .theme-tooltip-panel {
   align-items: center;
   justify-content: center;
   gap: 0.35rem;
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 600;
   line-height: 1.25;
   letter-spacing: 0.01em;
@@ -1438,7 +1438,7 @@ html[data-theme="scriptorium"] .theme-tooltip-panel {
   display: block;
   margin-top: 0.1rem;
   text-align: center;
-  font-size: 12px;
+  font-size: 0.75rem;
   line-height: 1.5;
   color: var(--theme-text-secondary);
 }
@@ -1453,7 +1453,7 @@ html[data-theme="scriptorium"] .theme-tooltip-panel {
     );
   background: color-mix(in oklab, var(--theme-bg-card) 90%, transparent);
   padding: 0.12rem 0.4rem;
-  font-size: 10px;
+  font-size: 0.625rem;
   font-weight: 600;
   line-height: 1;
   color: var(--theme-text-muted);
@@ -1477,7 +1477,7 @@ html[data-theme="scriptorium"] .theme-tooltip-panel {
     );
   background: color-mix(in oklab, var(--theme-bg-card-hover) 94%, transparent);
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08);
-  font-size: 10px;
+  font-size: 0.625rem;
   line-height: 1;
 }
 
@@ -2208,6 +2208,58 @@ html:is([data-theme="midas"], [data-theme="scriptorium"], [data-theme="starship"
   cursor: pointer;
   accent-color: var(--theme-accent-secondary);
 }
+
+.friend-closeness-control { position: relative; height: 2rem; width: 100%; }
+.friend-closeness-handle {
+  box-sizing: border-box;
+  border: 1px solid var(--theme-accent-secondary);
+  border-radius: 0.6rem;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.6875rem;
+  line-height: 1rem;
+  white-space: nowrap;
+  text-align: center;
+  color: var(--theme-text-primary);
+  background: var(--theme-bg-elevated);
+  pointer-events: none;
+}
+.friend-closeness-measure { position: absolute; visibility: hidden; width: max-content; }
+.friend-closeness-position {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: var(--care-handle-width);
+  left: calc((100% - var(--care-handle-width)) * var(--care-position));
+}
+/* Reserve half the longest label at each end, including at the endpoint stops. */
+.friend-closeness-track {
+  position: absolute;
+  inset-inline: calc(var(--care-handle-width) / 2);
+  top: calc(50% - 0.11rem);
+  height: 0.22rem;
+  background: var(--theme-border-subtle);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.friend-closeness-track > span { width: 0.22rem; height: 0.22rem; border-radius: 50%; background: var(--theme-text-soft); }
+.friend-closeness-slider {
+  appearance: none;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  background: transparent;
+  cursor: grab;
+  touch-action: pan-y;
+}
+.friend-closeness-slider:active { cursor: grabbing; }
+.friend-closeness-slider:focus-visible { outline: 2px solid var(--theme-accent-secondary); outline-offset: 2px; border-radius: 0.6rem; }
+.friend-closeness-slider::-webkit-slider-runnable-track { height: 2rem; background: transparent; }
+.friend-closeness-slider::-moz-range-track { height: 2rem; background: transparent; }
+.friend-closeness-slider::-webkit-slider-thumb { appearance: none; width: var(--care-handle-width); height: 2rem; border: 0; background: transparent; }
+.friend-closeness-slider::-moz-range-thumb { width: var(--care-handle-width); height: 2rem; border: 0; background: transparent; }
 
 .theme-toolbar-density-slider:focus-visible {
   outline: 2px solid rgb(var(--theme-accent-secondary-rgb) / 0.65);

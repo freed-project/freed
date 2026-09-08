@@ -1,6 +1,5 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { formatDistanceToNow } from "date-fns";
-import { AuthorIdentityLink } from "../AuthorIdentityLink.js";
 import { PLATFORM_LABELS, type FeedItem as FeedItemType } from "@freed/shared";
 import { usePlatform } from "../../context/PlatformContext.js";
 import type { FeedCardDensity } from "../../lib/feed-card-density.js";
@@ -24,7 +23,6 @@ import {
   MastodonIcon,
   BookmarkIcon,
   TrashIcon,
-  ExternalLinkIcon,
 } from "../icons.js";
 
 interface FeedItemProps {
@@ -69,7 +67,6 @@ const feedActionIconClass = "block h-4 w-4 shrink-0";
 const feedActionStatusIconClass = "block h-2.5 w-2.5 shrink-0";
 const SWIPE_THRESHOLD = 72;
 const EVENT_CHIP_THRESHOLD = 0.7;
-const STORY_CARD_TEXT_LIMIT = 240;
 const COMPACT_CARD_TEXT_LIMIT = 500;
 const COMPACT_CARD_WORD_LIMIT = 45;
 const FIXED_CARD_TEXT_LIMIT = 900;
@@ -235,7 +232,6 @@ export const FeedItem = memo(function FeedItem({
   onSave,
   onArchive,
   onLike,
-  onOpenCommentUrl,
   density = "comfortable",
   storyHeight = 288,
   fixedHeight,
@@ -257,10 +253,27 @@ export const FeedItem = memo(function FeedItem({
   const reactions = PLATFORM_REACTIONS[item.platform] ?? [];
   const hasReactionPalette = reactions.length > 1;
   const likeCount = formatEngagementCount(item.engagement?.likes);
-  const commentCount = formatEngagementCount(item.engagement?.comments);
   const semanticLabel = semanticChip(item);
   const firstMediaUrl = item.content.mediaUrls[0];
-  const storyPreviewText = cardPreviewText(item.content.text, STORY_CARD_TEXT_LIMIT);
+  const photoCardRef = useRef<HTMLElement>(null);
+  const [showPhotoTime, setShowPhotoTime] = useState(false);
+  const [photoSizing, setPhotoSizing] = useState({ padding: 8, avatar: 16 });
+  useLayoutEffect(() => {
+    const card = photoCardRef.current;
+    if (!card) return;
+    const measure = () => {
+      const shortSide = Math.min(card.clientWidth, card.clientHeight);
+      setShowPhotoTime(card.clientHeight >= 220);
+      setPhotoSizing({
+        padding: Math.max(4, Math.min(20, shortSide * 0.06)),
+        avatar: Math.max(16, Math.min(40, shortSide * 0.14)),
+      });
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(card);
+    return () => observer.disconnect();
+  }, [compact, item.contentType]);
   const compactPreview = cardPreviewText(item.content.text, COMPACT_CARD_TEXT_LIMIT);
   const compactWords = compactPreview?.split(/\s+/) ?? [];
   const compactPreviewText = compactWords.length > COMPACT_CARD_WORD_LIMIT
@@ -270,7 +283,7 @@ export const FeedItem = memo(function FeedItem({
   const [compactTextLines, setCompactTextLines] = useState(0);
   useLayoutEffect(() => {
     const area = compactTextAreaRef.current;
-    if (!compact || !area) return;
+    if ((!compact && item.contentType !== "story") || !area) return;
     let disposed = false;
     const measure = () => {
       if (disposed) return;
@@ -281,7 +294,10 @@ export const FeedItem = memo(function FeedItem({
         const title = area.querySelector("h3");
         const titleStyle = title ? getComputedStyle(title) : null;
         const titleHeight = title ? title.offsetHeight + Number.parseFloat(titleStyle!.marginTop) + Number.parseFloat(titleStyle!.marginBottom) : 0;
-        setCompactTextLines(Math.max(0, Math.floor((area.clientHeight - titleHeight) / lineHeight)));
+        const areaStyle = getComputedStyle(area);
+        const padding = Number.parseFloat(areaStyle.paddingTop) + Number.parseFloat(areaStyle.paddingBottom);
+        // Only allocate complete lines inside the content box, never its padding.
+        setCompactTextLines(Math.max(0, Math.floor((area.clientHeight - padding - titleHeight) / lineHeight)));
       }
     };
     measure();
@@ -297,7 +313,7 @@ export const FeedItem = memo(function FeedItem({
       observer.disconnect();
       document.fonts.removeEventListener("loadingdone", measure);
     };
-  }, [compact, narrow, item.globalId, compactPreviewText, item.content.linkPreview?.title]);
+  }, [compact, narrow, item.globalId, item.contentType, compactPreviewText, item.content.linkPreview?.title]);
   const fixedPreviewText = cardPreviewText(item.content.text, FIXED_CARD_TEXT_LIMIT);
   const fullPreviewText = cardPreviewText(item.content.text, FULL_CARD_TEXT_LIMIT);
 
@@ -310,24 +326,24 @@ export const FeedItem = memo(function FeedItem({
       headerGap: "gap-2 mb-2",
       avatarSize: 32,
       author: "text-sm",
-      meta: "text-[11px]",
+      meta: "text-[0.6875rem]",
       title: "mb-1 line-clamp-1 text-base leading-snug",
       body: "mb-2 line-clamp-2 text-sm leading-relaxed",
       chipWrap: "mb-2 gap-1.5",
-      chip: "px-2 py-0.5 text-[11px]",
+      chip: "px-2 py-0.5 text-[0.6875rem]",
       mediaWrap: "mt-2 rounded-lg",
       media: "h-36 sm:h-40",
       tagWrap: "mt-2 gap-1.5",
     },
     comfortable: {
       article: "",
-      padding: undefined,
+      padding: "20px",
       headerGap: "gap-3 mb-3",
       avatarSize: 40,
       author: "",
       meta: "text-xs",
       title: "mb-1.5 line-clamp-2 text-lg leading-snug",
-      body: "mb-3 line-clamp-3 leading-relaxed",
+      body: "mb-3 line-clamp-3 text-sm leading-[1.6]",
       chipWrap: "mb-3 gap-2",
       chip: "px-2.5 py-1 text-xs",
       mediaWrap: "mt-3 rounded-xl",
@@ -335,14 +351,14 @@ export const FeedItem = memo(function FeedItem({
       tagWrap: "mt-3 gap-2",
     },
     expansive: {
-      article: "p-5",
-      padding: "20px",
+      article: "p-6",
+      padding: "24px",
       headerGap: "gap-3.5 mb-4",
       avatarSize: 44,
-      author: "text-[17px]",
+      author: "text-[1.0625rem]",
       meta: "text-sm",
       title: "mb-2 line-clamp-3 text-xl leading-snug",
-      body: "mb-4 line-clamp-5 text-[15px] leading-7",
+      body: "mb-4 line-clamp-5 text-sm leading-[1.6]",
       chipWrap: "mb-4 gap-2",
       chip: "px-3 py-1.5 text-xs",
       mediaWrap: "mt-4 rounded-xl",
@@ -352,24 +368,25 @@ export const FeedItem = memo(function FeedItem({
   }[density];
   const fixedCardDensity = {
     compact: {
-      article: "p-2.5",
+      article: "!p-0",
+      contentPadding: "p-4",
       gap: "gap-2.5",
       headerGap: "mb-1.5 gap-2",
       avatarSize: 28,
-      author: "text-[13px]",
+      author: "text-[0.8125rem]",
       handle: "text-xs",
-      meta: "text-[11px]",
+      meta: "text-[0.6875rem]",
       title: "mb-0.5 line-clamp-1 text-sm leading-snug",
       bodyWithMedia: "line-clamp-1 text-xs leading-relaxed",
       bodyWithoutMedia: "line-clamp-2 text-xs leading-relaxed",
       chipWrap: "gap-1 pt-1.5",
-      chip: "px-2 py-0.5 text-[11px]",
-      mediaWell: "w-[32%] min-w-[112px] max-w-[160px] rounded-lg",
+      chip: "px-2 py-0.5 text-[0.6875rem]",
       tagLimitWithMedia: 0,
       tagLimitWithoutMedia: 1,
     },
     comfortable: {
-      article: "p-4",
+      article: "!p-0",
+      contentPadding: "p-5",
       gap: "gap-4",
       headerGap: "mb-3 gap-3",
       avatarSize: 40,
@@ -377,28 +394,27 @@ export const FeedItem = memo(function FeedItem({
       handle: "text-sm",
       meta: "text-xs",
       title: "mb-1.5 line-clamp-2 text-lg leading-snug",
-      bodyWithMedia: "line-clamp-3 leading-relaxed",
-      bodyWithoutMedia: "line-clamp-4 leading-relaxed",
+      bodyWithMedia: "line-clamp-3 text-sm leading-[1.6]",
+      bodyWithoutMedia: "line-clamp-4 text-sm leading-[1.6]",
       chipWrap: "gap-2 pt-3",
       chip: "px-2.5 py-1 text-xs",
-      mediaWell: "w-[42%] min-w-[190px] max-w-[260px] rounded-xl",
       tagLimitWithMedia: 2,
       tagLimitWithoutMedia: 4,
     },
     expansive: {
-      article: "p-5",
+      article: "!p-0",
+      contentPadding: "p-6",
       gap: "gap-5",
       headerGap: "mb-4 gap-3.5",
       avatarSize: 44,
-      author: "text-[17px]",
+      author: "text-[1.0625rem]",
       handle: "text-sm",
       meta: "text-sm",
       title: "mb-2 line-clamp-3 text-xl leading-snug",
-      bodyWithMedia: "line-clamp-5 text-[15px] leading-7",
-      bodyWithoutMedia: "line-clamp-6 text-[15px] leading-7",
+      bodyWithMedia: "line-clamp-5 text-sm leading-[1.6]",
+      bodyWithoutMedia: "line-clamp-6 text-sm leading-[1.6]",
       chipWrap: "gap-2 pt-4",
       chip: "px-3 py-1.5 text-xs",
-      mediaWell: "w-[44%] min-w-[220px] max-w-[300px] rounded-xl",
       tagLimitWithMedia: 3,
       tagLimitWithoutMedia: 6,
     },
@@ -456,159 +472,34 @@ export const FeedItem = memo(function FeedItem({
     onClick?.();
   };
 
-  if (item.contentType === "story" && !compact) {
-    const bg = firstMediaUrl;
-    const firstMediaType = item.content.mediaTypes[0];
-    const showStoryMedia = showInlineMedia && bg && !mediaFailed;
-    const isIg = item.platform === "instagram";
-    const gradientFallback = isIg
-      ? "from-[var(--theme-media-rss)] via-[var(--theme-media-instagram)] to-[var(--theme-accent-secondary)]"
-      : "from-[var(--theme-media-facebook)] to-[var(--theme-media-linkedin)]";
-
-    return (
-      <div
-        className={`relative overflow-hidden rounded-[var(--feed-card-radius)] ${focused || selected ? "ring-2 ring-[var(--theme-accent-primary)]" : ""}`}
-        style={sharedTransitionStyle}
-      >
-        <div
-          data-feed-item-id={item.globalId}
-          data-focused={focused ? "true" : "false"}
-          data-selected={selected ? "true" : "false"}
-          data-feed-card-density={density}
-          className={`relative overflow-hidden rounded-[var(--feed-card-radius)] cursor-pointer select-none w-full transition-opacity ${quickActionsEnabled ? "group" : ""} ${readVisualClass}`}
-          style={{ height: storyHeight }}
-          onClick={handleActivateClick}
-          onMouseEnter={onMouseEnter}
-          role="button"
-          tabIndex={0}
-          onKeyDown={handleActivateKeyDown}
-        >
-          {showStoryMedia && firstMediaType === "video" ? (
-            <video
-              src={bg}
-              muted
-              playsInline
-              controls
-              preload="metadata"
-              onClick={(event) => event.stopPropagation()}
-              onError={() => setMediaFailed(true)}
-              className="absolute inset-0 w-full h-full object-cover"
-            />
-          ) : showStoryMedia ? (
-            <img
-              src={bg}
-              alt=""
-              loading="lazy"
-              decoding="async"
-              onError={() => setMediaFailed(true)}
-              className={`absolute inset-0 w-full h-full object-cover ${quickActionsEnabled ? "transition-transform duration-300 group-hover:scale-[1.03]" : ""}`}
-            />
-          ) : (
-            <div className={`absolute inset-0 bg-gradient-to-br ${gradientFallback}`} />
-          )}
-
-          <div className="absolute inset-0 bg-gradient-to-b from-black/65 via-black/10 to-black/55 pointer-events-none" />
-
-          <div className="absolute top-0 left-0 right-0 p-3 flex items-center gap-2">
-            {!narrow && <ChannelAvatar
-              name={item.author.displayName}
-              avatarUrl={showAvatarImages ? item.author.avatarUrl : null}
-              size={28}
-              className={`bg-gradient-to-br ${gradientFallback} text-[11px] font-bold text-white ring-2 ring-white/50`}
-              imageClassName="ring-0"
-            />}
-            <div className="flex-1 min-w-0">
-              <span className="text-[11px] font-semibold text-white drop-shadow truncate block leading-tight">
-                {item.author.displayName}
-              </span>
-              <span className="block truncate text-[10px] text-white/70 leading-none">{timeAgo}</span>
-            </div>
-            {!narrow && <span className="shrink-0 px-1.5 py-0.5 rounded-full bg-white/20 backdrop-blur-sm text-[10px] text-white font-medium">
-              Story
-            </span>}
-          </div>
-
-          <div className="absolute bottom-0 left-0 right-0 p-3 flex items-end gap-2">
-            {!narrow && <div className="flex items-center gap-1.5 shrink-0 text-white/75">
-              {platformIcons[item.platform] ?? <span className="text-xs">📄</span>}
-            </div>}
-
-            <div className="flex-1 min-w-0">
-              {storyPreviewText && (
-                <p className="text-[11px] text-white/90 drop-shadow line-clamp-1 leading-tight mb-1">
-                  {storyPreviewText}
-                </p>
-              )}
-              {item.location?.name && (
-                <span className="inline-flex items-center gap-1 text-[10px] text-white/80 bg-[rgb(var(--theme-thumbnail-tint-rgb)/0.35)] backdrop-blur-sm rounded-full px-2 py-0.5">
-                  <svg className="w-2.5 h-2.5 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                    <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
-                  </svg>
-                  {item.location.name}
-                </span>
-              )}
-            </div>
-
-            {quickActionsEnabled && (onSave || onArchive) && (
-              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                {onSave && (
-                  <Tooltip label={item.userState.saved ? "Remove bookmark" : "Bookmark"} side="top">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onSave(e); }}
-                      aria-label={item.userState.saved ? "Remove bookmark" : "Bookmark"}
-                      className={`p-1.5 rounded-lg bg-[rgb(var(--theme-thumbnail-tint-rgb)/0.35)] backdrop-blur-sm transition-colors ${
-                        item.userState.saved ? "text-[var(--theme-accent-secondary)]" : "text-white/70 hover:text-[var(--theme-accent-secondary)]"
-                      }`}
-                    >
-                      <svg className="w-3.5 h-3.5" fill={item.userState.saved ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-                      </svg>
-                    </button>
-                  </Tooltip>
-                )}
-                {onArchive && (
-                  <Tooltip label="Archive" side="top">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onArchive(e); }}
-                      aria-label="Archive"
-                      className="p-1.5 rounded-lg bg-[rgb(var(--theme-thumbnail-tint-rgb)/0.35)] backdrop-blur-sm text-white/70 hover:text-[rgb(var(--theme-feedback-success-rgb))] transition-colors"
-                    >
-                      <TrashIcon className="w-3.5 h-3.5" />
-                    </button>
-                  </Tooltip>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (compact) {
+  if (compact || item.contentType === "story") {
     const showCompactMedia = showInlineMedia && firstMediaUrl && !mediaFailed;
-    const thumbnailTitle = item.content.linkPreview?.title || (item.contentType === "story" ? storyPreviewText : "");
+    const thumbnailTitle = item.content.linkPreview?.title || "";
 
     return (
       <div className="relative overflow-hidden rounded-[var(--feed-card-radius)]" style={sharedTransitionStyle}>
         <article
+          ref={photoCardRef}
           data-feed-item-id={item.globalId}
           data-focused={focused ? "true" : "false"}
           data-selected={selected ? "true" : "false"}
-          className={`feed-card group relative min-w-0 cursor-pointer aspect-square overflow-hidden !p-[6%] !pb-[calc(9%+24px)] flex flex-col transition-colors ${
+          className={`feed-card group relative min-w-0 cursor-pointer ${compact ? "aspect-square" : ""} overflow-hidden flex flex-col transition-colors ${
             selected
               ? "border-l-2 border-l-[var(--theme-accent-secondary)] bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.12)]"
               : quickActionsEnabled
                 ? "hover:bg-[var(--theme-bg-muted)]"
                 : ""
           } ${readVisualClass}`}
-          style={FEED_CARD_LAYOUT_CONTAINMENT_STYLE}
+          style={{ ...FEED_CARD_LAYOUT_CONTAINMENT_STYLE, height: compact ? undefined : storyHeight, padding: photoSizing.padding / 2 }}
           onClick={handleActivateClick}
           onMouseEnter={onMouseEnter}
           role="button"
           tabIndex={0}
           onKeyDown={handleActivateKeyDown}
         >
+          {!showCompactMedia && item.contentType === "story" && (
+            <div className={`absolute inset-0 bg-gradient-to-br ${item.platform === "instagram" ? "from-[var(--theme-media-rss)] via-[var(--theme-media-instagram)] to-[var(--theme-accent-secondary)]" : "from-[var(--theme-media-facebook)] to-[var(--theme-media-linkedin)]"}`} />
+          )}
           {showCompactMedia && (
             <>
               {item.content.mediaTypes[0] === "video" ? (
@@ -616,6 +507,8 @@ export const FeedItem = memo(function FeedItem({
                   src={firstMediaUrl}
                   muted
                   playsInline
+                  controls={!compact}
+                  onClick={(event) => { if (!compact) event.stopPropagation(); }}
                   preload="metadata"
                   onError={() => setMediaFailed(true)}
                   className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.03] motion-reduce:transform-none motion-reduce:transition-none"
@@ -640,33 +533,41 @@ export const FeedItem = memo(function FeedItem({
               <ChannelAvatar
                 name={item.author.displayName}
                 avatarUrl={showAvatarImages ? item.author.avatarUrl : null}
-                size={16}
+                size={photoSizing.avatar}
                 className={`text-xs ring-1 ${showCompactMedia ? "ring-white/40" : "ring-white/10"}`}
               />
               <div className="flex-1 min-w-0">
-                <span className={`font-medium text-xs truncate block ${showCompactMedia ? "text-white drop-shadow" : ""}`}>{item.author.displayName}</span>
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className={`truncate font-medium ${compact ? "text-xs" : fixedCardDensity.author} ${showCompactMedia ? "text-white drop-shadow" : ""}`}>{item.author.displayName}</span>
+                </div>
+                {showPhotoTime && (
+                  <div className={`flex min-w-0 items-center gap-2 text-xs ${showCompactMedia ? "text-white/70" : "text-[var(--theme-text-muted)]"}`}>
+                    <span className="flex shrink-0 items-center">{platformIcon}</span>
+                    <span className="min-w-0 truncate">{timeAgo}</span>
+                  </div>
+                )}
               </div>
+
             </div>
           )}
 
-          <div ref={compactTextAreaRef} className="relative flex min-h-0 min-w-0 flex-1 flex-col justify-center text-center">
+          <div ref={compactTextAreaRef} className="relative flex min-h-0 min-w-0 flex-1 flex-col justify-end overflow-hidden" style={{ padding: photoSizing.padding / 2 }}>
           {thumbnailTitle && (
-            <h3 title={thumbnailTitle} className={`relative my-[3%] min-w-0 shrink-0 truncate font-semibold leading-normal ${showCompactMedia ? "text-white drop-shadow transition-[opacity,transform] duration-300 ease-out group-hover:opacity-0 group-hover:scale-[1.03] motion-reduce:transform-none motion-reduce:transition-none" : ""} ${narrow ? "text-xs" : "text-sm"}`}>
+            <h3 title={thumbnailTitle} className={`relative m-0 min-w-0 shrink-0 truncate font-semibold leading-[1.6] ${showCompactMedia ? "text-white drop-shadow transition-[opacity,transform] duration-300 ease-out group-hover:opacity-0 group-hover:scale-[1.03] motion-reduce:transform-none motion-reduce:transition-none" : ""} ${compact ? (narrow ? "text-xs" : "text-sm") : "text-sm"}`}>
               {thumbnailTitle}
             </h3>
           )}
 
           {compactPreviewText && compactPreviewText !== thumbnailTitle && (
-            <p style={{ display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: Math.max(1, compactTextLines), visibility: compactTextLines ? "visible" : "hidden" }} className={`m-0 min-w-0 overflow-hidden break-words ${showCompactMedia ? "text-white/85 drop-shadow transition-[opacity,transform] duration-300 ease-out group-hover:opacity-0 group-hover:scale-[1.03] motion-reduce:transform-none motion-reduce:transition-none" : "text-[var(--theme-text-secondary)]"} leading-relaxed ${narrow ? "text-[10px]" : "text-xs"}`}>
+            <p style={{ display: compactTextLines ? "-webkit-box" : "none", WebkitBoxOrient: "vertical", WebkitLineClamp: Math.max(1, Math.min(2, compactTextLines)), visibility: compactTextLines ? "visible" : "hidden" }} className={`m-0 min-w-0 shrink-0 overflow-hidden break-words ${showCompactMedia ? "text-white/85 drop-shadow transition-[opacity,transform] duration-300 ease-out group-hover:opacity-0 group-hover:scale-[1.03] motion-reduce:transform-none motion-reduce:transition-none" : "text-[var(--theme-text-secondary)]"} ${compact ? (narrow ? "text-[0.625rem]" : "text-xs") : "text-sm"} leading-[1.6]`}>
               {compactPreviewText}
             </p>
           )}
           </div>
 
-          <div className={`absolute bottom-[6%] left-[6%] right-[6%] flex min-w-0 items-center gap-[6.818182%] ${showCompactMedia ? "text-white/85 drop-shadow" : "text-[var(--theme-text-muted)]"}`}>
-            <span className="flex h-4 w-4 shrink-0 items-center justify-center">{platformIcon}</span>
+          <div className={`relative flex min-w-0 shrink-0 items-center gap-3 ${showCompactMedia ? "text-white/85 drop-shadow" : "text-[var(--theme-text-muted)]"}`}>
             {item.location?.name && (
-              <span title={item.location.name} className={`ml-auto flex min-w-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] ${showCompactMedia ? "bg-[rgb(var(--theme-thumbnail-tint-rgb)/0.35)]" : "bg-[var(--theme-bg-muted)]"}`}>
+              <span title={item.location.name} className={`ml-auto flex min-w-0 whitespace-nowrap items-center gap-1 rounded-full px-2 py-0.5 text-[0.625rem] ${showCompactMedia ? "bg-[rgb(var(--theme-thumbnail-tint-rgb)/0.35)]" : "bg-[var(--theme-bg-muted)]"}`}>
                 <svg className="h-2.5 w-2.5 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                   <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
                 </svg>
@@ -712,10 +613,11 @@ export const FeedItem = memo(function FeedItem({
         )}
 
         <article
+          ref={photoCardRef}
           data-feed-item-id={item.globalId}
           data-focused={focused ? "true" : "false"}
           data-feed-card-density={density}
-          className={`feed-card ${quickActionsEnabled ? "group" : ""} min-w-0 cursor-pointer active:scale-[0.99] transition-transform ${fixedCardDensity.article} ${readVisualClass}`}
+          className={`feed-card group overflow-hidden min-w-0 cursor-pointer active:scale-[0.99] transition-transform ${fixedCardDensity.article} ${readVisualClass}`}
           style={{
             ...FEED_CARD_LAYOUT_CONTAINMENT_STYLE,
             height: fixedHeight,
@@ -732,19 +634,18 @@ export const FeedItem = memo(function FeedItem({
           tabIndex={0}
           onKeyDown={handleActivateKeyDown}
         >
-          <div className={`flex h-full min-h-0 min-w-0 ${fixedCardDensity.gap} ${showFixedMedia ? "items-stretch" : "items-start"}`}>
-            <div className="flex min-w-0 flex-1 flex-col">
-              <div className={`flex min-w-0 items-start ${fixedCardDensity.headerGap}`}>
+          <div className={`flex h-full min-h-0 min-w-0 transition-colors group-hover:bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.12)] ${showFixedMedia ? "items-stretch" : "items-start"}`}>
+            <div className="flex min-w-0 flex-1 flex-col" style={{ padding: photoSizing.padding / 2 }}>
+              <div className={`flex min-w-0 items-center ${fixedCardDensity.headerGap}`}>
                 <ChannelAvatar
                   name={item.author.displayName}
                   avatarUrl={showAvatarImages ? item.author.avatarUrl : null}
-                  size={fixedCardDensity.avatarSize}
+                  size={photoSizing.avatar}
                   className="text-lg ring-1 ring-white/10"
                 />
-                <div className="min-w-0 flex-1">
+                <div className="min-w-0 flex-1 -translate-y-0.5 leading-tight">
                   <div className="flex min-w-0 items-center gap-2">
-                    <AuthorIdentityLink item={item} showProfileTooltip={false} className={`truncate font-medium ${fixedCardDensity.author}`} />
-                    <span className={`truncate text-[var(--theme-text-muted)] ${fixedCardDensity.handle}`}>@{item.author.handle}</span>
+                    <span className={`truncate font-medium ${fixedCardDensity.author}`}>{item.author.displayName}</span>
                   </div>
                   <div className={`flex min-w-0 items-center gap-2 ${fixedCardDensity.meta} text-[var(--theme-text-muted)]`}>
                     <span>{platformIcon}</span>
@@ -814,21 +715,6 @@ export const FeedItem = memo(function FeedItem({
                       </div>
                     )}
 
-                    {onOpenCommentUrl && item.sourceUrl && (
-                      <Tooltip label={`Comment on ${PLATFORM_LABELS[item.platform] ?? item.platform}`} side="top">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); onOpenCommentUrl(item.sourceUrl!); }}
-                          aria-label={`Comment on ${PLATFORM_LABELS[item.platform] ?? item.platform}`}
-                          className={`${feedActionButtonClass} text-[var(--theme-text-soft)] hover:text-[var(--theme-text-secondary)] opacity-0 group-hover:opacity-100`}
-                        >
-                          <svg className={feedActionIconClass} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                          </svg>
-                          {showEngagement && commentCount !== null && <span>{commentCount}</span>}
-                        </button>
-                      </Tooltip>
-                    )}
-
                     {onSave && (
                       <Tooltip label={item.userState.saved ? "Remove bookmark" : "Bookmark"} side="top">
                         <button
@@ -858,22 +744,11 @@ export const FeedItem = memo(function FeedItem({
                         </button>
                       </Tooltip>
                     )}
-
-                    {onOpenCommentUrl && item.sourceUrl && (
-                      <Tooltip label="Open" side="top">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); onOpenCommentUrl(item.sourceUrl!); }}
-                          aria-label="Open"
-                          className={`${feedIconActionButtonClass} text-[var(--theme-text-soft)] hover:text-[var(--theme-text-secondary)] opacity-0 group-hover:opacity-100`}
-                        >
-                          <ExternalLinkIcon className={feedActionIconClass} />
-                        </button>
-                      </Tooltip>
-                    )}
                   </div>
                 ) : null}
               </div>
 
+              <div className="flex min-h-0 flex-1 flex-col justify-center" style={{ padding: photoSizing.padding / 2 }}>
               {item.content.linkPreview?.title && (
                 <h3 className={`min-w-0 break-words font-semibold ${fixedCardDensity.title}`}>
                   {item.content.linkPreview.title}
@@ -885,6 +760,7 @@ export const FeedItem = memo(function FeedItem({
                   {fixedPreviewText}
                 </p>
               )}
+              </div>
 
               {(semanticLabel || visibleTags.length > 0) && (
                 <div className={`mt-auto flex min-w-0 flex-wrap overflow-hidden ${fixedCardDensity.chipWrap}`}>
@@ -906,15 +782,33 @@ export const FeedItem = memo(function FeedItem({
             </div>
 
             {showFixedMedia && (
-              <div className={`h-full shrink-0 overflow-hidden ring-1 ring-white/5 ${fixedCardDensity.mediaWell}`}>
+              <div
+                className="relative h-full max-w-[50%] shrink-0"
+                style={{
+                  width: fixedHeight * 4 / 3,
+                }}
+              >
+                <div className="absolute inset-y-0 -left-6 right-0 overflow-hidden" style={{
+                  // Fade the media itself so every theme's actual card surface
+                  // shows through, including its hover and read states.
+                  maskImage: "linear-gradient(to right, transparent, black 48%)",
+                  WebkitMaskImage: "linear-gradient(to right, transparent, black 48%)",
+                }}>
                 <img
                   src={firstMediaUrl}
                   alt=""
                   loading="lazy"
                   decoding="async"
                   onError={() => setMediaFailed(true)}
-                  className="h-full w-full bg-white/5 object-cover"
+                  className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03] motion-reduce:transform-none"
                 />
+                <div aria-hidden="true" className="pointer-events-none absolute inset-y-0 left-0 w-[48%] opacity-20 mix-blend-soft-light" style={{
+                  backgroundImage: "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 160 160' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.82' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E\")",
+                  backgroundSize: "160px 160px",
+                  maskImage: "linear-gradient(to right, black, transparent)",
+                  WebkitMaskImage: "linear-gradient(to right, black, transparent)",
+                }} />
+                </div>
               </div>
             )}
           </div>
@@ -944,13 +838,14 @@ export const FeedItem = memo(function FeedItem({
       )}
 
       <article
+        ref={photoCardRef}
         data-feed-item-id={item.globalId}
         data-focused={focused ? "true" : "false"}
         data-feed-card-density={density}
-        className={`feed-card ${quickActionsEnabled ? "group" : ""} min-w-0 cursor-pointer active:scale-[0.99] transition-transform ${fullCardDensity.article} ${readVisualClass}`}
+        className={`feed-card group hover:!bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.12)] min-w-0 cursor-pointer active:scale-[0.99] transition-transform ${fullCardDensity.article} ${readVisualClass}`}
         style={{
           ...FEED_CARD_LAYOUT_CONTAINMENT_STYLE,
-          padding: fullCardDensity.padding,
+          padding: photoSizing.padding / 2,
           transform: swipeX !== 0 ? `translateX(${swipeX}px)` : undefined,
           transition: swipeX === 0 ? "transform 0.25s ease" : undefined,
           willChange: swipeX !== 0 ? "transform" : undefined,
@@ -973,8 +868,7 @@ export const FeedItem = memo(function FeedItem({
           />
           <div className="flex-1 min-w-0">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <AuthorIdentityLink item={item} showProfileTooltip={false} className={`font-medium truncate ${fullCardDensity.author}`} />
-              <span className="min-w-0 truncate text-sm text-[var(--theme-text-muted)]">@{item.author.handle}</span>
+              <span className={`font-medium truncate ${fullCardDensity.author}`}>{item.author.displayName}</span>
             </div>
             <div className={`flex min-w-0 items-center gap-2 ${fullCardDensity.meta} text-[var(--theme-text-muted)]`}>
               <span>{platformIcon}</span>
@@ -1044,21 +938,6 @@ export const FeedItem = memo(function FeedItem({
                 </div>
               )}
 
-              {onOpenCommentUrl && item.sourceUrl && (
-                <Tooltip label={`Comment on ${PLATFORM_LABELS[item.platform] ?? item.platform}`} side="top">
-                  <button
-                    onClick={(e) => { e.stopPropagation(); onOpenCommentUrl(item.sourceUrl!); }}
-                    aria-label={`Comment on ${PLATFORM_LABELS[item.platform] ?? item.platform}`}
-                    className={`${feedActionButtonClass} text-[var(--theme-text-soft)] hover:text-[var(--theme-text-secondary)] opacity-0 group-hover:opacity-100`}
-                  >
-                    <svg className={feedActionIconClass} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                    </svg>
-                    {showEngagement && commentCount !== null && <span>{commentCount}</span>}
-                  </button>
-                </Tooltip>
-              )}
-
               {onSave && (
                 <Tooltip label={item.userState.saved ? "Remove bookmark" : "Bookmark"} side="top">
                   <button
@@ -1088,30 +967,18 @@ export const FeedItem = memo(function FeedItem({
                   </button>
                 </Tooltip>
               )}
-
-              {onOpenCommentUrl && item.sourceUrl && (
-                <Tooltip label="Open" side="top">
-                  <button
-                    onClick={(e) => { e.stopPropagation(); onOpenCommentUrl(item.sourceUrl!); }}
-                    aria-label="Open"
-                    className={`${feedIconActionButtonClass} text-[var(--theme-text-soft)] hover:text-[var(--theme-text-secondary)] opacity-0 group-hover:opacity-100`}
-                  >
-                    <ExternalLinkIcon className={feedActionIconClass} />
-                  </button>
-                </Tooltip>
-              )}
             </div>
           ) : null}
         </div>
 
         {item.content.linkPreview?.title && (
-          <h3 className={`min-w-0 break-words font-semibold ${fullCardDensity.title}`}>
+          <h3 style={{ paddingInline: photoSizing.padding / 2 }} className={`min-w-0 break-words font-semibold ${fullCardDensity.title}`}>
             {item.content.linkPreview.title}
           </h3>
         )}
 
         {fullPreviewText && (
-          <p className={`min-w-0 break-words ${fullCardDensity.body} text-[var(--theme-text-secondary)]`}>
+          <p style={{ paddingInline: photoSizing.padding / 2 }} className={`min-w-0 break-words ${fullCardDensity.body} text-[var(--theme-text-secondary)]`}>
             {fullPreviewText}
           </p>
         )}

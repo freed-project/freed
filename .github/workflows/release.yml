@@ -727,10 +727,6 @@ jobs:
           FREED_SHOWCASE_SQLITE_MEMORY: "1"
         run: |
           node scripts/capture-release-showcase.mjs
-          ffmpeg -hide_banner -loglevel error \
-            -f concat -safe 0 -i release-showcase/gif-order.txt \
-            -vf "fps=12,scale=960:-1:flags=lanczos,split[s0][s1];[s0]palettegen=max_colors=160[p];[s1][p]paletteuse=dither=bayer" \
-            -loop 0 release-showcase/freed-showcase.gif
           node scripts/lib/release-showcase-assets.mjs finalize --directory release-showcase
 
       - name: Upload immutable and stable showcase assets
@@ -738,7 +734,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
-          gh release upload "$TAG" release-showcase/*.{png,gif,json} --clobber
+          gh release upload "$TAG" release-showcase/*.{png,webp,json}
 
   # After all platform builds succeed, promote the draft to a published release
   publish:

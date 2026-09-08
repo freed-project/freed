@@ -15,6 +15,7 @@ import { useReadOnScrollTracker } from "./useReadOnScrollTracker.js";
 import type { FeedItem as FeedItemType } from "@freed/shared";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
+import { useIsMobile } from "../../hooks/useIsMobile.js";
 import {
   DESKTOP_FEED_CARD_HEIGHT_BY_DENSITY,
   useFeedCardDensity,
@@ -297,7 +298,9 @@ export function FeedList({
   const windowListRef = useRef<HTMLDivElement>(null);
 
   // Scroll ownership must survive rotation, just like AppShell's layout mode.
-  const isMobile = useIsMobileDevice();
+  const isMobileDevice = useIsMobileDevice();
+  const isMobileViewport = useIsMobile();
+  const isMobile = isMobileDevice || isMobileViewport;
   const feedCardHorizontalGutter = isMobile
     ? 0
     : DESKTOP_FEED_CARD_HORIZONTAL_GUTTER;
@@ -353,6 +356,7 @@ export function FeedList({
   // Keep mobile story cards readable with at most two columns; desktop allows three.
   // Inner width = containerWidth minus the feed-card gutter on each side.
   const maxCols = useMemo(() => {
+    if (isMobile) return 2;
     const inner = Math.max(
       Math.min(containerWidth, MAX_CONTENT_W) - feedCardHorizontalGutter * 2,
       0,
@@ -419,7 +423,7 @@ export function FeedList({
       const nc = row.numCols;
       const tileWidth = nc > 1 ? (inner - (nc - 1) * TILE_GAP) / nc : inner;
       const tileHeight = Math.min(
-        tileWidth * storyHeightRatio(nc),
+        tileWidth * storyHeightRatio(nc) * ({ compact: 0.8, comfortable: 1, expansive: 1.25 }[cardDensity]),
         MAX_TILE_H_BY_DENSITY[cardDensity],
       );
       return Math.round(
@@ -889,7 +893,7 @@ export function FeedList({
                         nc > 1 ? (inner - (nc - 1) * TILE_GAP) / nc : inner;
                       const th = Math.round(
                         Math.min(
-                          tw * storyHeightRatio(nc),
+                          tw * storyHeightRatio(nc) * ({ compact: 0.8, comfortable: 1, expansive: 1.25 }[cardDensity]),
                           MAX_TILE_H_BY_DENSITY[cardDensity],
                         ),
                       );

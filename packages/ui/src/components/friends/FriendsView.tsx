@@ -8,7 +8,7 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 import { LoadingState } from "../LoadingState.js";
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { PlatformIcon } from "../icons.js";
 import type {
   Account,
   DeviceContact,
@@ -90,7 +90,6 @@ const SORT_OPTIONS: Array<{ id: FriendOverviewSort; label: string }> = [
 
 const BUTTON_CHROME = "btn-secondary rounded-lg px-3 py-1.5 text-xs";
 const FRIENDS_SIDEBAR_SECTION = "theme-dialog-divider border-b px-4 py-3";
-const FRIEND_OVERVIEW_ROW_ESTIMATE = 104;
 const MAP_SURFACE_COMMIT_RETRY_MS = 150;
 
 const unavailableLibraryCoreQuery: LibraryCoreNormalizedQueryExecutor =
@@ -324,7 +323,7 @@ function FriendSuggestionEvidence({
         {suggestion.reasons.map((reason) => (
           <span
             key={reason.code}
-            className="theme-chip rounded-full px-2 py-0.5 text-[11px]"
+            className="theme-chip rounded-full px-2 py-0.5 text-[0.6875rem]"
           >
             {reason.label}
           </span>
@@ -342,19 +341,30 @@ function FriendSuggestionEvidence({
   );
 }
 
+function SuggestedProviderIcon({ accountId }: { accountId: string }) {
+  const version = useAppStore(state => state.searchCorpusVersion);
+  const account = useLibraryAccountDetail(accountId, version).value;
+  return account ? <span title={account.provider}><PlatformIcon platform={account.provider} className="h-3 w-3" /></span> : null;
+}
+
 function FriendCandidateRow({
   suggestion,
   selected,
   onSelect,
   onDismiss,
   overview,
+  onCareLevelChange,
 }: {
   suggestion: FriendCandidateSuggestion;
   selected: boolean;
   onSelect: () => void;
   onDismiss: (suggestionId: string) => void;
   overview?: LibraryCoreFriendsDirectoryRowV1;
+  onCareLevelChange: (person: Person | null, accountId: string | undefined, level: CareLevel) => Promise<void>;
 }) {
+  const sourceVersion = useAppStore(state => state.searchCorpusVersion);
+  const account = useLibraryAccountDetail(overview ? null : suggestion.accountIds[0] ?? null, sourceVersion).value;
+  const person = useLibraryPersonDetail(overview ? null : suggestion.personId ?? account?.personId ?? null, sourceVersion).value;
   return (
     <div
       data-testid="friend-candidate-suggestion"
@@ -364,14 +374,20 @@ function FriendCandidateRow({
           : ""
       }`}
     >
-      <button type="button" onClick={onSelect} className="w-full pr-7 text-left">
+      <div role="button" tabIndex={0} onClick={onSelect} onKeyDown={event => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onSelect(); } }} className="w-full text-left">
         <FriendOverview
           {...overview}
+          id={suggestion.personId ?? account?.personId}
+          accountId={suggestion.accountIds[0]}
+          bio={overview?.bio ?? person?.bio}
+          careLevel={overview?.careLevel ?? person?.careLevel ?? 1}
+          onCareLevelChange={level => onCareLevelChange(person ?? null, suggestion.accountIds[0], level)}
           name={safeText(suggestion.displayName, "Unnamed friend")}
-          avatarUrl={overview?.latestAvatarUrl ?? overview?.avatarUrl}
+          avatarUrl={overview?.latestAvatarUrl ?? overview?.avatarUrl ?? person?.avatarUrl ?? account?.avatarUrl}
           latestActivityAt={suggestion.lastActivityAt}
         />
-      </button>
+      </div>
+      <div className="absolute right-8 top-3 flex gap-1">{suggestion.accountIds.map(id => <SuggestedProviderIcon key={id} accountId={id} />)}</div>
         <button
           type="button"
           onClick={() => onDismiss(suggestion.id)}
@@ -484,6 +500,9 @@ export function FriendsView({
   const setSelectedPerson = useAppStore((s) => s.setSelectedPerson);
   const setSelectedAccount = useAppStore((s) => s.setSelectedAccount);
   const setActiveView = useAppStore((s) => s.setActiveView);
+  const setFilter = useAppStore((s) => s.setFilter);
+  const setFeedSearchQuery = useAppStore((s) => s.setSearchQuery);
+  const setSelectedItem = useAppStore((s) => s.setSelectedItem);
   const openMapForPerson = useAppStore((s) => s.openMapForPerson);
   const pendingMatchCount = useAppStore((s) => s.pendingMatchCount);
   const [deviceDisplay, setDeviceDisplay] = useDeviceDisplayPreferences();
@@ -684,22 +703,6 @@ export function FriendsView({
       )[0] ?? null
     );
   }, [friendsGraphRequest.recentWindow.endMs, nativeActivity, selectedFriend]);
-  const friendOverviewVirtualizer = useVirtualizer({
-    count: friendsDirectory.rows.length,
-    getScrollElement: () => friendOverviewScrollRef.current,
-    estimateSize: () => FRIEND_OVERVIEW_ROW_ESTIMATE,
-    overscan: 8,
-    getItemKey: (index) => friendsDirectory.rows[index]?.id ?? index,
-  });
-
-  useEffect(() => {
-    friendOverviewVirtualizer.measure();
-  }, [
-    friendsDirectory.rows.length,
-    friendOverviewVirtualizer,
-    searchQuery,
-    sortBy,
-  ]);
 
   useEffect(() => {
     if (
@@ -1050,7 +1053,7 @@ export function FriendsView({
   );
 
   const handleSelectFriendCandidate = useCallback(
-    (suggestion: FriendCandidateSuggestion) => {
+    async (suggestion: FriendCandidateSuggestion) => {
       if (suggestion.personId) {
         setSelectedPerson(suggestion.personId);
         focusGraphNode(`person:${suggestion.personId}`);
@@ -1058,11 +1061,22 @@ export function FriendsView({
       }
       const accountId = suggestion.accountIds[0];
       if (accountId) {
-        setSelectedAccount(accountId);
-        focusGraphNode(`account:${accountId}`);
+        const account = await readLibraryAccountDetail?.(accountId);
+        if (!account) { toast.error("Freed could not open this profile."); return; }
+        setSelectedAccount(null);
+        if (account.personId) {
+          setSelectedPerson(account.personId);
+          focusGraphNode(`person:${account.personId}`);
+        } else {
+          setSelectedPerson(null);
+          setSelectedItem(null);
+          setFeedSearchQuery("");
+          setFilter({ platform: account.provider as FriendSource["platform"], authorId: account.externalId });
+          setActiveView("feed");
+        }
       }
     },
-    [focusGraphNode, setSelectedAccount, setSelectedPerson],
+    [focusGraphNode, readLibraryAccountDetail, setSelectedAccount, setSelectedPerson, setSelectedItem, setFeedSearchQuery, setFilter, setActiveView],
   );
 
   const handleOpenSyncModal = useCallback(async () => {
@@ -1201,13 +1215,13 @@ export function FriendsView({
               >
                 {openingSyncModal ? "Syncing..." : "Import Contacts"}
                 {pendingMatchCount > 0 && (
-                  <span className="ml-2 rounded-full bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.24)] px-1.5 py-0.5 text-[10px] font-semibold text-[color:var(--theme-text-primary)]">
+                  <span className="ml-2 rounded-full bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.24)] px-1.5 py-0.5 text-[0.625rem] font-semibold text-[color:var(--theme-text-primary)]">
                     {pendingMatchCount.toLocaleString()}
                   </span>
                 )}
               </button>
             ) : pendingMatchCount > 0 ? (
-              <span className="rounded-full bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.18)] px-2 py-1 text-[10px] font-semibold text-[color:var(--theme-text-primary)]">
+              <span className="rounded-full bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.18)] px-2 py-1 text-[0.625rem] font-semibold text-[color:var(--theme-text-primary)]">
                 {pendingMatchCount.toLocaleString()} contact review
               </span>
             ) : null}
@@ -1290,6 +1304,14 @@ export function FriendsView({
                   }
                   onSelect={() => handleSelectFriendCandidate(suggestion)}
                   onDismiss={handleDismissFriendSuggestion}
+                  onCareLevelChange={async (person, accountId, level) => {
+                    const identity = person ?? (suggestion.personId ? await readLibraryPersonDetail?.(suggestion.personId) : null);
+                    if (identity) await handleSetPersonRelationshipLevel(identity, level);
+                    else if (accountId) {
+                      const account = await readLibraryAccountDetail?.(accountId);
+                      if (account) setEditorState({ kind: "new", draft: { ...friendDraftFromAccount(account), ...relationshipPatchForLevel(level) } });
+                    }
+                  }}
                   overview={friendsDirectory.rows.find(row => row.id === suggestion.personId)}
                 />
               ))}
@@ -1313,19 +1335,15 @@ export function FriendsView({
           <div
             data-testid="friends-overview-list"
             className="relative"
-            style={{ height: friendOverviewVirtualizer.getTotalSize() }}
+
           >
-            {friendOverviewVirtualizer.getVirtualItems().map((virtualItem) => {
-              const row = friendsDirectory.rows[virtualItem.index];
+            {friendsDirectory.rows.map((row) => {
               if (!row) return null;
               return (
                 <div
-                  key={virtualItem.key}
-                  ref={friendOverviewVirtualizer.measureElement}
-                  data-index={virtualItem.index}
+                  key={row.id}
                   data-testid="friend-overview-virtual-row"
-                  className="absolute left-0 top-0 w-full pb-3"
-                  style={{ transform: `translateY(${virtualItem.start}px)` }}
+                  className="w-full pb-3"
                 >
                   <FriendListRow
                     row={row}
@@ -1491,7 +1509,7 @@ export function FriendsView({
                     </p>
                   </div>
                   <span
-                    className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] ${
+                    className={`rounded-full px-2 py-0.5 text-[0.625rem] font-semibold uppercase tracking-[0.12em] ${
                       suggestion.confidence === "high"
                         ? "bg-[color:rgb(var(--theme-feedback-success-rgb)/0.18)] text-[color:rgb(var(--theme-feedback-success-rgb))]"
                         : "bg-[color:rgb(var(--theme-feedback-warning-rgb)/0.18)] text-[color:rgb(var(--theme-feedback-warning-rgb))]"
@@ -1524,17 +1542,13 @@ export function FriendsView({
             timelineTotalCount={friendsRows.timelineTotalCount}
             onLoadMoreTimeline={friendsRows.loadMoreTimeline}
             onShowNewestTimeline={friendsRows.showNewestTimeline}
-            onSelectSource={async (source) => {
-              try {
-                if (!queryLibraryCore) throw new Error("Library query unavailable");
-                const scope = await queryLibraryCore({ queryId: "filter_scope_summary_v1", schemaVersion: 1,
-                  platform: source.platform, authorId: source.authorId, feedUrl: null });
-                if (!scope.accountId) throw new Error("Linked profile missing from the Library");
-                setSelectedFeedUrl(null);
-                setSelectedAccount(scope.accountId);
-              } catch {
-                toast.error("Freed could not open this linked profile. Please try again.");
-              }
+            onSelectSource={(source) => {
+              setSelectedFeedUrl(null);
+              setSelectedAccount(null);
+              setSelectedItem(null);
+              setFeedSearchQuery("");
+              setFilter({ platform: source.platform, authorId: source.authorId });
+              setActiveView("feed");
             }}
             onOpenMap={() => {
               handleOpenMapForPerson(selectedPerson.id);
@@ -1786,12 +1800,12 @@ export function FriendsView({
                   {selectedFriend.sources.length.toLocaleString()} channel
                   {selectedFriend.sources.length === 1 ? "" : "s"}
                 </span>
-                {selectedOverviewEntry?.hasLocation ? (
+                {friendsRows.locationItems.some(item => item.location?.name) ? (
                   <>
                     <span>•</span>
-                    <span className="inline-flex items-center gap-1 text-[color:var(--theme-accent-secondary)]">
-                      <MapPinIcon className="h-3 w-3" />
-                      Has location
+                    <span className="ml-auto inline-flex min-w-0 items-center gap-1 whitespace-nowrap text-[color:var(--theme-accent-secondary)]">
+                      <MapPinIcon className="h-3 w-3 shrink-0" />
+                      <span className="truncate">{friendsRows.locationItems.find(item => item.location?.name)?.location?.name}</span>
                     </span>
                   </>
                 ) : null}
@@ -1891,9 +1905,36 @@ export function FriendsView({
             selectedPersonId={selectedPersonId}
             selectedAccountId={selectedAccountId}
             selectedFeedUrl={selectedFeedUrl}
-            onSelectFeedUrl={(url) => { setSelectedPerson(null); setSelectedAccount(null); setSelectedFeedUrl(url); onFriendsSidebarOpenChange(true); }}
+            onSelectFeedUrl={(url) => {
+              setSelectedPerson(null);
+              setSelectedAccount(null);
+              setSelectedFeedUrl(null);
+              setSelectedItem(null);
+              setFeedSearchQuery("");
+              setFilter({ platform: "rss", feedUrl: url });
+              setActiveView("feed");
+            }}
             onSelectPersonId={(personId) => { setSelectedFeedUrl(null); setSelectedPerson(personId); onFriendsSidebarOpenChange(true); }}
-            onSelectAccountId={(accountId) => { setSelectedFeedUrl(null); setSelectedAccount(accountId); onFriendsSidebarOpenChange(true); }}
+            onSelectAccountId={async (accountId) => {
+              try {
+                const account = await readLibraryAccountDetail?.(accountId);
+                if (!account) throw new Error("Profile unavailable");
+                setSelectedFeedUrl(null);
+                setSelectedAccount(null);
+                if (account.personId) {
+                  setSelectedPerson(account.personId);
+                  onFriendsSidebarOpenChange(true);
+                } else {
+                  setSelectedPerson(null);
+                  setSelectedItem(null);
+                  setFeedSearchQuery("");
+                  setFilter({ platform: account.provider as FriendSource["platform"], authorId: account.externalId });
+                  setActiveView("feed");
+                }
+              } catch {
+                toast.error("Freed could not open this profile. Please try again.");
+              }
+            }}
             onSourceCounts={(counts) => {
               setGraphSourceCounts({ ...counts, mode: effectiveMode });
             }}
@@ -1966,9 +2007,7 @@ export function FriendsView({
               }
               return null;
             }}
-            onClearSelection={
-              showCollapsedSelectionCard ? handleClearSelection : undefined
-            }
+            onClearSelection={handleClearSelection}
             onLinkAccountToPerson={handleLinkAccountToPerson}
             onPinPersonPosition={handlePinPersonPosition}
             onPinAccountPosition={handlePinAccountPosition}

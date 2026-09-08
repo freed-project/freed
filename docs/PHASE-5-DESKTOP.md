@@ -7,6 +7,10 @@ autoplay disabled. Completion removes the iframe until an explicit replay;
 API errors and timeouts also close it. The owner approved this additional
 provider contact on September 7, 2026. Capture and refresh cadence are unchanged.
 
+Shared feed cards scale text with interface zoom, use consistent content insets,
+and blend images over the full-card hover background. Preview rails hide
+immediately. Desktop map trackpad swipes pan without changing pinch zoom.
+
 Drive dev-trigger diagnostics preserve a running publication's result when the
 social background-job slot is idle. That slot does not track Drive publication
 and cannot prove renderer recovery. Existing bridge settlement and keepalive

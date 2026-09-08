@@ -470,6 +470,7 @@ export function SearchJumpField({
         hasYouTube: !!YouTubeSettingsContent,
         hasUpdateChecks: !!checkForUpdates,
         hasFactoryReset: !!factoryReset,
+        hasLegal: !readOnly,
       }),
     [
       FacebookSettingsContent,
@@ -489,6 +490,7 @@ export function SearchJumpField({
       secureStorage,
       ShortcutsSettingsContent,
       exportFeedsAsOPML,
+      readOnly,
     ],
   );
   const currentSourceId = useMemo<Platform | null>(() => {
@@ -1051,7 +1053,7 @@ export function SearchJumpField({
               >
                 {actionSections.map((section) => (
                   <div key={section.section} className="pb-3 last:pb-0">
-                    <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-soft)]">
+                    <p className="px-2 pb-1 text-[0.625rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-soft)]">
                       {section.section}
                     </p>
                     <div className="space-y-1">
@@ -1080,7 +1082,7 @@ export function SearchJumpField({
                             <PaletteLineIcon>{actionIcon}</PaletteLineIcon>
                             <span className="min-w-0 flex-1 truncate">{action.title}</span>
                             {action.confirm ? (
-                              <span className="shrink-0 rounded-md border border-[var(--theme-border-subtle)] px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--theme-text-soft)]">
+                              <span className="shrink-0 rounded-md border border-[var(--theme-border-subtle)] px-1.5 py-0.5 text-[0.625rem] font-medium uppercase tracking-[0.14em] text-[var(--theme-text-soft)]">
                                 Confirm
                               </span>
                             ) : null}

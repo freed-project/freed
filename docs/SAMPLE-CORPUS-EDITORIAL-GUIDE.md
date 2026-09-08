@@ -167,6 +167,8 @@ Visual showmanship and embodied demonstration. The episode should reveal motion,
 
 ### RSS and saved reading
 
+Give every character's RSS publication a distinct, playful title grounded in their name, species, habits, or personality. Write it individually. Never append a stock suffix such as "Field Notes" to every name. Vary the phrasing across the roster and keep titles short enough for the feed sidebar. Maintain the authored titles in `DEMO_RSS_PUBLICATION_TITLES` in `packages/shared/src/demo-data.ts`; new RSS characters require an entry. The feed record and every item's RSS source title must agree. Review publication names alongside the character's biography and episodes.
+
 Quiet, attentive field reporting. Measurement and astonishment can coexist, but named philosophers and quotation riffs stay out of these channels.
 
 ## Philosophers and invented quotations

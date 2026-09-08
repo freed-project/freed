@@ -71,18 +71,18 @@ function ActiveRow({ activity, now }: { activity: BackgroundActivityRecord; now:
           {activity.label}
         </span>
         <span
-          className="shrink-0 text-[10px] tabular-nums text-[var(--theme-text-soft)]"
+          className="shrink-0 text-[0.625rem] tabular-nums text-[var(--theme-text-soft)]"
           aria-label={`Elapsed ${elapsed}`}
         >
           {elapsed}
         </span>
         {progress ? (
-          <span className="shrink-0 text-[10px] tabular-nums text-[var(--theme-text-soft)]">
+          <span className="shrink-0 text-[0.625rem] tabular-nums text-[var(--theme-text-soft)]">
             {progress}
           </span>
         ) : null}
       </div>
-      <p className="mt-1 truncate text-[11px] text-[var(--theme-text-muted)]">
+      <p className="mt-1 truncate text-[0.6875rem] text-[var(--theme-text-muted)]">
         {activity.message}
       </p>
     </div>
@@ -92,7 +92,7 @@ function ActiveRow({ activity, now }: { activity: BackgroundActivityRecord; now:
 function LogRow({ entry }: { entry: BackgroundActivityLogEntry }) {
   const progress = progressLabel(entry.progress);
   return (
-    <div className="grid grid-cols-[3.25rem_4.75rem_minmax(0,1fr)] gap-2 rounded-md px-2 py-1.5 text-[11px] leading-4 hover:bg-[var(--theme-bg-muted)]">
+    <div className="grid grid-cols-[3.25rem_4.75rem_minmax(0,1fr)] gap-2 rounded-md px-2 py-1.5 text-[0.6875rem] leading-4 hover:bg-[var(--theme-bg-muted)]">
       <span className="font-mono text-[var(--theme-text-soft)]">{formatClockTime(entry.ts)}</span>
       <span className={`truncate font-medium ${levelClass(entry.level)}`}>
         {activityScopeLabel(entry)}
@@ -216,7 +216,7 @@ export function BackgroundActivityPopover({
           <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--theme-text-muted)]">
             Background Activity
           </h2>
-          <p className="mt-1 text-[11px] text-[var(--theme-text-soft)]">
+          <p className="mt-1 text-[0.6875rem] text-[var(--theme-text-soft)]">
             {activeRecords.length.toLocaleString()} active, {log.length.toLocaleString()} recent
           </p>
         </div>
@@ -244,7 +244,7 @@ export function BackgroundActivityPopover({
 
         {channelActivities.length > 0 ? (
           <section className="mt-3 space-y-2" aria-label="Running channel syncs">
-            <p className="text-[10px] uppercase tracking-[0.14em] text-[var(--theme-text-soft)]">
+            <p className="text-[0.625rem] uppercase tracking-[0.14em] text-[var(--theme-text-soft)]">
               Channel Syncs
             </p>
             {channelActivities.map((activity) => (
@@ -255,7 +255,7 @@ export function BackgroundActivityPopover({
 
         {jobActivities.length > 0 ? (
           <section className="mt-3 space-y-2" aria-label="Running background jobs">
-            <p className="text-[10px] uppercase tracking-[0.14em] text-[var(--theme-text-soft)]">
+            <p className="text-[0.625rem] uppercase tracking-[0.14em] text-[var(--theme-text-soft)]">
               Jobs
             </p>
             {jobActivities.map((activity) => (
@@ -265,7 +265,7 @@ export function BackgroundActivityPopover({
         ) : null}
 
         <section className="mt-3" aria-label="Activity log">
-          <p className="text-[10px] uppercase tracking-[0.14em] text-[var(--theme-text-soft)]">
+          <p className="text-[0.625rem] uppercase tracking-[0.14em] text-[var(--theme-text-soft)]">
             Live Log
           </p>
           <div
