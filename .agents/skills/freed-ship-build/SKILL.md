@@ -20,6 +20,7 @@ Read the applicable references before the corresponding action:
 - For every Desktop release, first read [candidate-proof.md](references/candidate-proof.md) and [source-and-activation.md](references/source-and-activation.md). They govern local proof, immutable source selection, provider approvals, and Library Core activation decisions.
 - To prepare, validate, publish, or tag a dev or production release, read [prepare-and-publish.md](references/prepare-and-publish.md). Use its channel-specific commands. Production defaults must never silently select the dev lane.
 - To repair a failed release pipeline, read the candidate, source, and publication references. Diagnose the failing step, repair it through the correct lane, and publish a new version when required. Never move or reuse a failed tag.
+- For every production version, read [the showcase release contract](../../../docs/RELEASE-SHOWCASE.md) before preparation and again at closeout. Require all themes, the Scriptorium README asset, and verified marketing delivery.
 - Before installation and release closeout, read [installed-verification.md](references/installed-verification.md). It owns artifact identity, issue verification, soaks, reverse integration, and website handoff.
 
 A release can need several references. Load each before its action; do not load installation detail merely to diagnose an early build failure.

@@ -914,3 +914,13 @@ The same continuation classifies all 500 accepted posts by human editorial
 review and writes one bounded manual signal pair per post into the anonymous
 demo checkpoint. The five feed classifications are all represented. Runtime
 model inference is not used for demo content.
+
+## Bounded story presentation
+
+Nearby stories share consecutive grid rows after the canonical feed sort. A group can bridge up to five ordinary posts, with a five-position movement limit for ordinary items and non-opening stories. When a mixed feed has a story among its first ten items, the earliest story moves to the first row so it is visible above the fold. That opening story is the single exception to the movement limit. Existing uninterrupted story runs remain intact; newly assembled groups contain at most six stories. Retained groups stay closed across reader page changes. Keyboard and reader navigation use the displayed sequence at every width. Desktop and mobile reuse the same row builder; the compact reader rail repacks the shared sequence at its own width.
+
+Read-on-scroll refreshes replace the complete resident window atomically, avoiding a temporary first-page list that clamps the scroll position. Deep windows resume from an ordering bookmark through fresh source-fenced queries. Ranking, durable state, filter validation, and stale-cursor rejection remain in the Library layer. Geometry changes establish a fresh read-on-scroll baseline and preserve the visible card anchor, including the compact rail's first-row padding.
+
+Local feature previews replace marked sample records once per page load through the same shared curated population used by the public demo, including its authored timelines, relationships and fresh randomized presentation seed. Browser previews retain remote image URLs; mocked Desktop uses inline media and bypasses its unavailable native avatar cache. Ordinary test fixtures retain explicit population control.
+
+The Populate sample data action in every build uses that same curated generator and fresh randomized posting times. Manual population remains additive in Libraries containing real records; only explicit sample cleanup or local-preview replacement removes marked sample records. Settings counts describe the shared population, including people who are connections rather than friends.

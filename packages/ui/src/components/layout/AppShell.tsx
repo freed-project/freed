@@ -502,9 +502,9 @@ export function AppShell({ children }: AppShellProps) {
 
   return (
     <ContactSyncContext.Provider value={{ ...contactSync, openReview }}>
-      {/* Narrow viewports use document scrolling on every platform. Wide
-          viewports keep the fixed-height shell and independently scrolling panels. */}
-      <div className={`app-theme-shell relative flex min-w-0 flex-1 flex-col ${isMobileViewport ? "" : "min-h-0"}`}>
+      {/* On mobile layouts, the layout flows naturally in the document so
+          Safari can collapse its address bar when the feed scrolls. Wide layouts keep the fixed-height shell. */}
+      <div data-mobile-device={isMobileViewport} className={`app-theme-shell relative flex min-w-0 flex-1 flex-col ${isMobileViewport ? "" : "min-h-0"}`}>
         {showAtmosphere ? <BackgroundAtmosphere /> : null}
         <Header
           mobileSidebarOpen={mobileSidebarOpen}
@@ -522,7 +522,8 @@ export function AppShell({ children }: AppShellProps) {
 
         <div
           ref={contentFrameRef}
-          className={`relative z-10 flex flex-1 ${contentFrameSpacingClass} ${
+          data-testid="workspace-content-frame"
+          className={`app-content-frame relative z-10 flex flex-1 ${contentFrameSpacingClass} ${
             isMobileViewport ? "" : "min-h-0 overflow-hidden"
           }`}
         >

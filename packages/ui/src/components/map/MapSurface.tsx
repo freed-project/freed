@@ -7,6 +7,8 @@ import {
   type PointerEvent,
   type WheelEvent,
 } from "react";
+import { createPortal } from "react-dom";
+import { ProviderChip } from "../ProviderChip.js";
 import { formatDistanceToNow } from "date-fns";
 import {
   arrow,
@@ -33,8 +35,6 @@ type DisposableMapInstance = Pick<MapInstance, "getCanvas" | "remove" | "stop">;
 type MapMarkerMovingPriority = "primary" | "deferred";
 interface MapMarkerRecord {
   marker: MarkerInstance;
-  priority: MapMarkerMovingPriority;
-  attached: boolean;
 }
 
 type MapLibreModule = typeof import("maplibre-gl");
@@ -73,13 +73,13 @@ const popupDateFormatter = new Intl.DateTimeFormat(undefined, {
   hour: "numeric",
   minute: "2-digit",
 });
-const MAP_POPUP_MAX_WIDTH = 560;
+const MAP_POPUP_MAX_WIDTH = 360;
 const MAP_POPUP_VIEWPORT_MARGIN = 40;
 const MAP_FLOATING_PANEL_GAP_PX = 12;
 const MAP_POPUP_ARROW_ALIGNMENT_TOLERANCE_PX = 1;
 const MAP_FLOATING_CONTROL_SELECTOR = "[data-map-floating-control]";
 const MAP_DOM_MARKER_LIMIT = 160;
-const MAP_MOVING_MARKER_PAINT_LIMIT = 24;
+const MAP_MOVING_MARKER_COMPOSITOR_LIMIT = 24;
 const MAP_DENSE_MARKER_RESTORE_DELAY_MS = 420;
 const MAP_CAMERA_PADDING_PX = 72;
 const MAP_CLUSTER_MAX_ZOOM = 7.5;
@@ -322,6 +322,10 @@ function setupMapFloatingPanelLayout({
     panel.style.left = `${Math.round(result.x)}px`;
     panel.style.top = `${Math.round(result.y)}px`;
     panel.style.visibility = "visible";
+    if (panel.dataset.focusOnOpen === "true") {
+      delete panel.dataset.focusOnOpen;
+      panel.focus({ preventScroll: true });
+    }
     panel.dataset.placement = result.placement.split("-")[0];
 
     if (popupArrow) {
@@ -450,22 +454,12 @@ function popupSnippet(text?: string | null): string | null {
   return text.length > 132 ? `${text.slice(0, 132)}...` : text;
 }
 
-function popupKicker(marker: LocationMarkerSummary): string {
-  if (marker.friend?.relationshipStatus === "friend") return "Linked Friend";
-  if (marker.friend) return "Linked Person";
-  return marker.item.contentType === "story" ? "Story Update" : "Location Update";
-}
-
 function popupTitle(marker: LocationMarkerSummary): string {
   return marker.friend?.name ?? marker.item.author.displayName;
 }
 
 function hasConfirmedFriend(marker: LocationMarkerSummary): boolean {
   return marker.friend?.relationshipStatus === "friend";
-}
-
-function popupMeta(marker: LocationMarkerSummary): string {
-  return `${popupRelativeTime(marker.seenAt)} · ${popupAbsoluteTime(marker.seenAt)}`;
 }
 
 function loadMapLibre(): Promise<MapLibreModule> {
@@ -502,96 +496,78 @@ function buildPopupContent(
   onOpenFriend?: (marker: LocationMarkerSummary) => void,
   onPromoteAccount?: (marker: LocationMarkerSummary) => void,
   onLinkAccount?: (marker: LocationMarkerSummary) => void,
-  onOpenPost?: (marker: LocationMarkerSummary) => void
+  onOpenPost?: (marker: LocationMarkerSummary) => void,
+  avatar?: HTMLImageElement | null,
 ): HTMLElement {
   const confirmedFriend = hasConfirmedFriend(marker);
   const root = document.createElement("div");
   root.style.cssText = [
     "display:flex",
     "flex-direction:column",
-    "gap:16px",
+    "gap:10px",
     `width:min(${MAP_POPUP_MAX_WIDTH}px,calc(100vw - ${MAP_POPUP_VIEWPORT_MARGIN}px))`,
-    `min-width:min(420px,calc(100vw - ${MAP_POPUP_VIEWPORT_MARGIN}px))`,
+    `min-width:min(280px,calc(100vw - ${MAP_POPUP_VIEWPORT_MARGIN}px))`,
     "max-width:100%",
-    "padding:20px",
+    "padding:14px",
     "color:var(--theme-text-primary)",
     "font-family:system-ui,sans-serif",
     "box-sizing:border-box",
   ].join(";");
 
-  const badgeRow = document.createElement("div");
-  badgeRow.style.cssText = "display:flex;align-items:flex-start;justify-content:space-between;gap:14px;";
-
-  const eyebrow = document.createElement("div");
-  eyebrow.textContent = popupKicker(marker);
-  eyebrow.style.cssText = [
-    "display:inline-flex",
-    "align-items:center",
-    "padding:5px 9px",
-    "border-radius:999px",
-    "border:1px solid var(--theme-border-strong)",
-    "background:color-mix(in oklab,var(--theme-accent-secondary) 16%,var(--theme-bg-surface))",
-    "font-size:10px",
-    "font-weight:700",
-    "text-transform:uppercase",
-    "letter-spacing:0.14em",
-    "color:var(--theme-text-primary)",
-  ].join(";");
-  badgeRow.appendChild(eyebrow);
-
-  const meta = document.createElement("div");
-  meta.textContent = popupMeta(marker);
-  meta.style.cssText = "font-size:11px;color:var(--theme-text-muted);white-space:nowrap;text-align:right;padding-top:6px;";
-  badgeRow.appendChild(meta);
-  root.appendChild(badgeRow);
-
   const header = document.createElement("div");
-  header.style.cssText = "display:flex;flex-direction:column;gap:8px;";
+  header.style.cssText = "display:flex;flex-direction:column;gap:3px;";
 
   const title = document.createElement("div");
   title.textContent = popupTitle(marker);
-  title.style.cssText = "font-size:22px;font-weight:700;color:var(--theme-text-primary);letter-spacing:-0.03em;line-height:1.08;";
+  title.style.cssText = "font-size:15px;font-weight:700;color:var(--theme-text-primary);letter-spacing:-0.03em;line-height:1.08;";
   header.appendChild(title);
 
   if (marker.label) {
     const location = document.createElement("div");
     location.textContent = marker.label;
-    location.style.cssText = "font-size:14px;font-weight:600;color:var(--theme-accent-secondary);line-height:1.5;max-width:34ch;";
+    location.style.cssText = "font-size:12px;font-weight:500;color:var(--theme-accent-secondary);line-height:1.5;max-width:34ch;";
     header.appendChild(location);
   }
-  root.appendChild(header);
+  const identity = document.createElement("div");
+  identity.style.cssText = "display:flex;align-items:center;gap:10px;";
+  if (avatar) {
+    const portrait = avatar.cloneNode(false) as HTMLImageElement;
+    portrait.removeAttribute("class");
+    portrait.style.cssText = "width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0;";
+    identity.appendChild(portrait);
+  }
+  header.style.minWidth = "0";
+  header.style.overflowWrap = "anywhere";
+  identity.appendChild(header);
+  root.appendChild(identity);
 
   const snippetText = popupSnippet(marker.item.content.text);
   if (snippetText) {
     const snippetCard = document.createElement("div");
     snippetCard.style.cssText = [
-      "padding:12px 14px",
-      "border-radius:16px",
-      "border:1px solid var(--theme-border-subtle)",
-      "background:var(--theme-bg-card)",
+      "padding:0",
+      "border-radius:0",
+      "border:0",
+      "background:transparent",
       "box-shadow:inset 0 1px 0 rgb(255 255 255 / 0.04)",
     ].join(";");
 
     const snippet = document.createElement("p");
     snippet.textContent = snippetText;
-    snippet.style.cssText = "margin:0;font-size:14px;line-height:1.65;color:var(--theme-text-secondary);";
+    snippet.style.cssText = "margin:0;font-size:12px;line-height:1.5;color:var(--theme-text-secondary);";
     snippetCard.appendChild(snippet);
     root.appendChild(snippetCard);
   }
 
-  const facts = document.createElement("div");
-  facts.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;";
-
-  const updateFact = document.createElement("div");
-  updateFact.style.cssText = "padding:10px 12px;border-radius:14px;background:var(--theme-bg-card);border:1px solid var(--theme-border-subtle);";
-  updateFact.innerHTML = `<div style="font-size:10px;text-transform:uppercase;letter-spacing:0.14em;color:var(--theme-text-muted);margin-bottom:6px;">Seen</div><div style="font-size:13px;font-weight:600;color:var(--theme-text-primary);">${popupRelativeTime(marker.seenAt)}</div>`;
-  facts.appendChild(updateFact);
-
-  const sourceFact = document.createElement("div");
-  sourceFact.style.cssText = "padding:10px 12px;border-radius:14px;background:var(--theme-bg-card);border:1px solid var(--theme-border-subtle);";
-  sourceFact.innerHTML = `<div style="font-size:10px;text-transform:uppercase;letter-spacing:0.14em;color:var(--theme-text-muted);margin-bottom:6px;">Source</div><div style="font-size:13px;font-weight:600;color:var(--theme-text-primary);text-transform:capitalize;">${marker.item.platform}</div>`;
-  facts.appendChild(sourceFact);
-  root.appendChild(facts);
+  const meta = document.createElement("div");
+  const providerSlot = document.createElement("span");
+  providerSlot.dataset.mapProviderChip = "true";
+  const time = document.createElement("span");
+  time.textContent = popupRelativeTime(marker.seenAt);
+  meta.append(providerSlot, time);
+  meta.title = popupAbsoluteTime(marker.seenAt);
+  meta.style.cssText = "display:flex;align-items:center;flex-wrap:wrap;gap:6px;font-size:11px;color:var(--theme-text-muted);";
+  header.appendChild(meta);
 
   if (marker.groupCount > 1) {
     const more = document.createElement("div");
@@ -609,8 +585,8 @@ function buildPopupContent(
     friendButton.textContent = "Open Friend";
     friendButton.className = "btn-primary";
     friendButton.style.cssText = [
-      "padding:10px 14px",
-      "border-radius:12px",
+      "padding:7px 9px",
+      "border-radius:8px",
       "font-size:12px",
       "font-weight:600",
       "cursor:pointer",
@@ -627,8 +603,8 @@ function buildPopupContent(
     promoteButton.textContent = "Promote to friend";
     promoteButton.className = "btn-primary";
     promoteButton.style.cssText = [
-      "padding:10px 14px",
-      "border-radius:12px",
+      "padding:7px 9px",
+      "border-radius:8px",
       "font-size:12px",
       "font-weight:600",
       "cursor:pointer",
@@ -645,8 +621,8 @@ function buildPopupContent(
     linkButton.textContent = "Link to existing friend";
     linkButton.className = "btn-secondary";
     linkButton.style.cssText = [
-      "padding:10px 14px",
-      "border-radius:12px",
+      "padding:7px 9px",
+      "border-radius:8px",
       "font-size:12px",
       "font-weight:600",
       "cursor:pointer",
@@ -663,8 +639,8 @@ function buildPopupContent(
     postButton.textContent = "Open Post";
     postButton.className = "btn-secondary";
     postButton.style.cssText = [
-      "padding:10px 14px",
-      "border-radius:12px",
+      "padding:7px 9px",
+      "border-radius:8px",
       "font-size:12px",
       "font-weight:600",
       "cursor:pointer",
@@ -700,36 +676,38 @@ function mapStyles(interactive: boolean) {
     }
 
     .freed-map-popup {
+      --map-popup-background: color-mix(in oklab, var(--theme-bg-surface) 94%, black);
       z-index: 70;
+      outline: none;
       max-width: min(${MAP_POPUP_MAX_WIDTH}px, calc(100vw - ${MAP_POPUP_VIEWPORT_MARGIN}px));
       pointer-events: none;
     }
 
+    html[data-theme="scriptorium"] .freed-map-popup {
+      --map-popup-background: color-mix(in oklab, var(--theme-bg-surface) 96%, black);
+    }
+
     .freed-map-popup .maplibregl-popup-content {
       width: min(${MAP_POPUP_MAX_WIDTH}px, calc(100vw - ${MAP_POPUP_VIEWPORT_MARGIN}px));
-      min-width: min(420px, calc(100vw - ${MAP_POPUP_VIEWPORT_MARGIN}px));
+      min-width: min(280px, calc(100vw - ${MAP_POPUP_VIEWPORT_MARGIN}px));
       max-width: none;
       padding: 0;
-      background:
-        color-mix(in oklab, var(--theme-bg-elevated) 96%, transparent);
-      border: 1px solid var(--theme-border-strong);
-      border-radius: 24px;
-      box-shadow:
-        var(--theme-map-popup-shadow),
-        0 0 0 1px var(--theme-border-subtle);
-      backdrop-filter: blur(18px);
-      overflow: hidden;
+      position: relative;
+      border-radius: 14px;
+      text-align: left;
+      overflow: auto;
       pointer-events: auto;
     }
 
     .freed-map-popup-arrow {
       position: absolute;
-      z-index: 0;
+      /* Cover the card border at the join, above the tooltip panel (z-index 400). */
+      z-index: 401;
       width: 10px;
       height: 10px;
       box-sizing: border-box;
-      background: color-mix(in oklab, var(--theme-bg-elevated) 96%, transparent);
-      border: 1px solid var(--theme-border-strong);
+      background: var(--map-popup-background);
+      border: 1px solid color-mix(in oklab, var(--theme-border-strong) 48%, var(--theme-border-subtle));
       transform: rotate(45deg);
       pointer-events: none;
     }
@@ -763,6 +741,7 @@ function mapStyles(interactive: boolean) {
       transition: box-shadow 160ms ease, border-color 160ms ease, filter 160ms ease, scale 160ms ease;
     }
 
+    /* Simplify paint during motion without removing geographic context. */
     .freed-map-shell[data-map-moving="true"] .freed-map-marker-body {
       transition: none;
       box-shadow: 0 0 0 1px var(--theme-border-subtle);
@@ -771,10 +750,6 @@ function mapStyles(interactive: boolean) {
 
     .freed-map-shell[data-map-moving="true"] .freed-map-marker[data-map-moving-priority="primary"] {
       will-change: transform;
-    }
-
-    .freed-map-shell[data-map-moving="true"] .freed-map-marker[data-map-moving-priority="deferred"] {
-      display: none;
     }
 
     .freed-map-shell[data-map-moving="true"] .freed-map-marker[data-map-marker-simplified="true"] [data-avatar-fallback] {
@@ -842,7 +817,7 @@ function fallbackLabel(marker: LocationMarkerSummary) {
 }
 
 function mapMovingPriority(markerIndex: number, useDenseMarkers: boolean): MapMarkerMovingPriority {
-  return useDenseMarkers && markerIndex >= MAP_MOVING_MARKER_PAINT_LIMIT
+  return useDenseMarkers && markerIndex >= MAP_MOVING_MARKER_COMPOSITOR_LIMIT
     ? "deferred"
     : "primary";
 }
@@ -1120,14 +1095,16 @@ export function MapSurface({
   const mapStyleRequestRef = useRef(0);
   const desiredMapThemeRef = useRef(resolvedThemeId);
   const appliedMapThemeRef = useRef<ThemeId | null>(null);
-  const useDenseMarkersRef = useRef(false);
   const [mapReady, setMapReady] = useState(false);
   const [mapTilesReady, setMapTilesReady] = useState(false);
   const [mapGeneration, setMapGeneration] = useState(0);
   const [loadFailed, setLoadFailed] = useState(false);
-  const [fallbackMoving, setFallbackMoving] = useState(false);
   const [surfaceSize, setSurfaceSize] = useState<MapSurfaceSize>({ width: 900, height: 560 });
   const [selectedFallbackMarkerKey, setSelectedFallbackMarkerKey] = useState<string | null>(null);
+  const [providerChip, setProviderChip] = useState<{
+    target: HTMLElement;
+    provider: LocationMarkerSummary["item"]["platform"];
+  } | null>(null);
   const activePopupRef = useRef<PopupInstance | null>(null);
   const activePopupKeyRef = useRef<string | null>(null);
   const activePopupMarkerElementRef = useRef<HTMLElement | null>(null);
@@ -1162,18 +1139,8 @@ export function MapSurface({
   );
   // Loading is not a failure: do not flash fallback labels before native pins.
   const showFallback = loadFailed;
-  const fallbackRenderedMarkers = useMemo(() => {
-    if (!showFallback || !fallbackMoving || !useDenseMarkers) return renderedMarkers;
-    return renderedMarkers.filter((marker, markerIndex) => {
-      return getMapMovingPriority(
-        markerIndex,
-        marker.key,
-        true,
-        focusedMarkerKey,
-      ) === "primary";
-    });
-  }, [fallbackMoving, focusedMarkerKey, renderedMarkers, showFallback, useDenseMarkers]);
   const closeActivePopup = useCallback(() => {
+    setProviderChip(null);
     activePopupLayoutCleanupRef.current?.();
     activePopupLayoutCleanupRef.current = null;
     activePopupRef.current?.remove();
@@ -1192,13 +1159,51 @@ export function MapSurface({
     );
     if (!anchor) return;
 
-    return setupMapFloatingPanelLayout({
+    const handlers = actionHandlersRef.current;
+    const content = buildPopupContent(selectedFallbackMarker,
+      handlers.onOpenFriend, handlers.onPromoteAccount,
+      handlers.onLinkAccount, handlers.onOpenPost, anchor.querySelector("img"));
+    content.classList.add("maplibregl-popup-content", "theme-tooltip-panel");
+    panel.prepend(content);
+    setProviderChip({ target: content.querySelector<HTMLElement>("[data-map-provider-chip]")!,
+      provider: selectedFallbackMarker.item.platform });
+    panel.dataset.focusOnOpen = "true";
+    const cleanup = setupMapFloatingPanelLayout({
       panel,
       anchor,
       shell,
       getViewportInsets: () => viewportInsetsRef.current,
     });
+    return () => { cleanup(); content.remove(); };
   }, [selectedFallbackMarker, viewportInsets]);
+  // Both renderers share dismissal rules; moving within the card retains focus.
+  useEffect(() => {
+    const dismiss = (event: Event) => {
+      const panel = activePopupRef.current ?? fallbackPopupRef.current;
+      if (!panel) return;
+      const target = event.target;
+      if (target instanceof Node && (panel.contains(target) ||
+          activePopupMarkerElementRef.current?.contains(target))) return;
+      closeActivePopup();
+      setSelectedFallbackMarkerKey(null);
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      const anchor = activePopupMarkerElementRef.current;
+      closeActivePopup();
+      setSelectedFallbackMarkerKey(null);
+      anchor?.focus({ preventScroll: true });
+    };
+    document.addEventListener("pointerdown", dismiss, true);
+    document.addEventListener("focusin", dismiss);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("pointerdown", dismiss, true);
+      document.removeEventListener("focusin", dismiss);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [closeActivePopup]);
+
   const clearFallbackMovingTimeout = useCallback(() => {
     if (fallbackMovingTimeoutRef.current === null || typeof window === "undefined") return;
     window.clearTimeout(fallbackMovingTimeoutRef.current);
@@ -1208,30 +1213,6 @@ export function MapSurface({
     if (nativeMarkerRestoreTimeoutRef.current === null || typeof window === "undefined") return;
     window.clearTimeout(nativeMarkerRestoreTimeoutRef.current);
     nativeMarkerRestoreTimeoutRef.current = null;
-  }, []);
-  const syncNativeMarkerMotionLayer = useCallback((moving: boolean) => {
-    const map = mapRef.current;
-    if (!map) return;
-
-    const shouldCullDeferredMarkers = moving && useDenseMarkersRef.current;
-    for (const record of markersRef.current) {
-      const shouldAttach = !shouldCullDeferredMarkers || record.priority === "primary";
-      if (shouldAttach === record.attached) continue;
-
-      if (shouldAttach) {
-        try {
-          record.marker.addTo(map);
-          record.attached = true;
-        } catch (error) {
-          record.attached = false;
-          console.error("[MapSurface] Failed to restore map marker", error);
-        }
-        continue;
-      }
-
-      record.marker.remove();
-      record.attached = false;
-    }
   }, []);
   const applyMapThemeStyle = useCallback((nextThemeId: ThemeId) => {
     const map = mapRef.current;
@@ -1272,12 +1253,10 @@ export function MapSurface({
   }, []);
   const markFallbackMoving = useCallback(() => {
     if (!showFallback || typeof window === "undefined") return;
-    setFallbackMoving(true);
     setShellMoving(true);
     clearFallbackMovingTimeout();
     fallbackMovingTimeoutRef.current = window.setTimeout(() => {
       fallbackMovingTimeoutRef.current = null;
-      setFallbackMoving(false);
       setShellMoving(false);
     }, MAP_DENSE_MARKER_RESTORE_DELAY_MS);
   }, [clearFallbackMovingTimeout, setShellMoving, showFallback]);
@@ -1291,13 +1270,6 @@ export function MapSurface({
     if (event.pointerType === "mouse" && event.buttons === 0) return;
     markFallbackMoving();
   }, [markFallbackMoving]);
-
-  useEffect(() => {
-    useDenseMarkersRef.current = useDenseMarkers;
-    if (!useDenseMarkers) {
-      syncNativeMarkerMotionLayer(false);
-    }
-  }, [syncNativeMarkerMotionLayer, useDenseMarkers]);
 
   useEffect(() => () => {
     clearFallbackMovingTimeout();
@@ -1331,7 +1303,6 @@ export function MapSurface({
   useEffect(() => {
     if (showFallback) return;
     clearFallbackMovingTimeout();
-    setFallbackMoving(false);
   }, [clearFallbackMovingTimeout, showFallback]);
 
   useEffect(() => {
@@ -1396,14 +1367,12 @@ export function MapSurface({
         const setMoving = () => {
           setMapTilesReady(false);
           clearNativeMarkerRestoreTimeout();
-          syncNativeMarkerMotionLayer(true);
           setShellMoving(true);
         };
         const clearMoving = () => {
           clearNativeMarkerRestoreTimeout();
           nativeMarkerRestoreTimeoutRef.current = window.setTimeout(() => {
             nativeMarkerRestoreTimeoutRef.current = null;
-            syncNativeMarkerMotionLayer(false);
             setShellMoving(false);
           }, MAP_DENSE_MARKER_RESTORE_DELAY_MS);
         };
@@ -1449,7 +1418,7 @@ export function MapSurface({
       mapRef.current = null;
       setShellMoving(false);
     };
-  }, [applyMapThemeStyle, clearNativeMarkerRestoreTimeout, closeActivePopup, interactive, setShellMoving, syncNativeMarkerMotionLayer]);
+  }, [applyMapThemeStyle, clearNativeMarkerRestoreTimeout, closeActivePopup, interactive, setShellMoving]);
 
   useEffect(() => {
     applyMapThemeStyle(resolvedThemeId);
@@ -1525,12 +1494,19 @@ export function MapSurface({
             currentHandlers.onOpenPost
               ? (marker) => actionHandlersRef.current.onOpenPost?.(marker)
               : undefined,
+            element.querySelector("img"),
           );
-          popupContent.classList.add("maplibregl-popup-content");
+          popupContent.classList.add("maplibregl-popup-content", "theme-tooltip-panel");
+          setProviderChip({ target: popupContent.querySelector<HTMLElement>("[data-map-provider-chip]")!,
+            provider: markerData.item.platform });
+          popupElement.tabIndex = -1;
+          popupElement.setAttribute("role", "dialog");
+          popupElement.setAttribute("aria-label", popupTitle(markerData));
           const popupArrow = document.createElement("span");
           popupArrow.className = "freed-map-popup-arrow";
           popupArrow.dataset.mapPopupArrow = "true";
           popupElement.append(popupContent, popupArrow);
+          popupElement.dataset.focusOnOpen = "true";
           document.body.appendChild(popupElement);
           activePopupLayoutCleanupRef.current = setupMapFloatingPanelLayout({
             panel: popupElement,
@@ -1554,7 +1530,7 @@ export function MapSurface({
 
       try {
         marker.addTo(map);
-        markersRef.current.push({ marker, priority, attached: true });
+        markersRef.current.push({ marker });
       } catch (error) {
         marker.remove();
         if (mapRef.current === map && mapLifecycleRef.current === lifecycleId) {
@@ -1601,6 +1577,8 @@ export function MapSurface({
   }, [closeActivePopup, loadFailed, mapReady, stableMarkers, viewportInsets]);
 
   return (
+    <>
+      {providerChip && createPortal(<ProviderChip provider={providerChip.provider} />, providerChip.target)}
     <div
       ref={shellRef}
       data-testid="map-surface"
@@ -1689,7 +1667,7 @@ export function MapSurface({
               )`,
             }}
           />
-          {fallbackRenderedMarkers.map((marker) => {
+          {renderedMarkers.map((marker) => {
             const position = fallbackPosition(marker, viewportInsets, surfaceSize);
             const renderedMarkerIndex = renderedMarkers.findIndex((entry) => entry.key === marker.key);
             return (
@@ -1723,102 +1701,11 @@ export function MapSurface({
               ref={fallbackPopupRef}
               data-testid="map-fallback-popup"
               data-map-floating-panel="popup"
-              className="freed-map-popup theme-dialog-shell fixed p-5"
+              className="freed-map-popup fixed"
+              tabIndex={-1}
+              role="dialog"
+              aria-label={popupTitle(selectedFallbackMarker)}
             >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="theme-card-soft rounded-full border-[color:var(--theme-border-strong)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-primary)]">
-                      {popupKicker(selectedFallbackMarker)}
-                    </span>
-                    <span className="text-[11px] text-[color:var(--theme-text-muted)]">
-                      {popupMeta(selectedFallbackMarker)}
-                    </span>
-                  </div>
-                  <p className="mt-3 text-xl font-semibold tracking-[-0.03em] text-[color:var(--theme-text-primary)]">
-                    {fallbackLabel(selectedFallbackMarker)}
-                  </p>
-                  {selectedFallbackMarker.label && (
-                    <p className="mt-1 text-sm font-medium text-[color:var(--theme-accent-secondary)]">
-                      {selectedFallbackMarker.label}
-                    </p>
-                  )}
-                  {popupSnippet(selectedFallbackMarker.item.content.text) && (
-                    <div className="theme-card-soft mt-4 rounded-2xl p-3">
-                      <p className="text-sm leading-6 text-[color:var(--theme-text-secondary)]">
-                        {popupSnippet(selectedFallbackMarker.item.content.text)}
-                      </p>
-                    </div>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  className="btn-secondary rounded-xl px-2.5 py-1.5 text-[11px]"
-                  onClick={() => setSelectedFallbackMarkerKey(null)}
-                >
-                  Close
-                </button>
-              </div>
-
-              <div className="mt-4 grid grid-cols-2 gap-2">
-                <div className="theme-card-soft rounded-2xl px-3 py-2.5">
-                  <p className="text-[10px] uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">Seen</p>
-                  <p className="mt-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">
-                    {popupRelativeTime(selectedFallbackMarker.seenAt)}
-                  </p>
-                </div>
-                <div className="theme-card-soft rounded-2xl px-3 py-2.5">
-                  <p className="text-[10px] uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">Source</p>
-                  <p className="mt-1 text-sm font-semibold capitalize text-[color:var(--theme-text-primary)]">
-                    {selectedFallbackMarker.item.platform}
-                  </p>
-                </div>
-              </div>
-
-              {selectedFallbackMarker.groupCount > 1 && (
-                <p className="mt-3 text-xs text-[color:var(--theme-accent-secondary)]">
-                  {selectedFallbackMarker.groupCount.toLocaleString()} updates from this spot
-                </p>
-              )}
-
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                {hasConfirmedFriend(selectedFallbackMarker) && onOpenFriend && (
-                  <button
-                    type="button"
-                    className="btn-primary w-full rounded-xl px-3.5 py-2 text-xs"
-                    onClick={() => onOpenFriend(selectedFallbackMarker)}
-                  >
-                    Open Friend
-                  </button>
-                )}
-                {!hasConfirmedFriend(selectedFallbackMarker) && onPromoteAccount && (
-                  <button
-                    type="button"
-                    className="btn-primary w-full rounded-xl px-3.5 py-2 text-xs"
-                    onClick={() => onPromoteAccount(selectedFallbackMarker)}
-                  >
-                    Promote to friend
-                  </button>
-                )}
-                {!hasConfirmedFriend(selectedFallbackMarker) && onLinkAccount && (
-                  <button
-                    type="button"
-                    className="btn-secondary w-full rounded-xl px-3.5 py-2 text-xs"
-                    onClick={() => onLinkAccount(selectedFallbackMarker)}
-                  >
-                    Link to existing friend
-                  </button>
-                )}
-                {onOpenPost && (
-                  <button
-                    type="button"
-                    className="btn-secondary w-full rounded-xl px-3.5 py-2 text-xs"
-                    onClick={() => onOpenPost(selectedFallbackMarker)}
-                  >
-                    Open Post
-                  </button>
-                )}
-              </div>
               <span
                 className="freed-map-popup-arrow"
                 data-map-popup-arrow="true"
@@ -1849,5 +1736,6 @@ export function MapSurface({
         )}
       </div>
     </div>
+    </>
   );
 }

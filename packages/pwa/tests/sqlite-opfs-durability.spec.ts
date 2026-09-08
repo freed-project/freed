@@ -11,12 +11,12 @@ import {
   type Page,
 } from "@playwright/test";
 import {
-  SAMPLE_SHOWCASE_FEED_COUNT,
-  SAMPLE_SHOWCASE_FRIEND_COUNT,
-  SAMPLE_SHOWCASE_ITEM_COUNT,
-  SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT,
+  generateDemoLibraryData,
 } from "@freed/shared";
 import { pwaOpfsE2eBaseUrl } from "./opfs-e2e-settings";
+const previewPopulation = generateDemoLibraryData({ batchId: "preview-test", generatedAt: 1_788_800_000_000, presentationSeed: 42 });
+const previewCounts = { feeds: previewPopulation.feeds.length, accounts: previewPopulation.accounts.length, items: previewPopulation.items.length, persons: previewPopulation.persons.length };
+
 
 let testOrigin = pwaOpfsE2eBaseUrl;
 let originServer: Server | null = null;
@@ -25,7 +25,7 @@ const openedProfiles = new Set<string>();
 // A fresh profile alone does not reliably isolate macOS WebKit OPFS. Keep a
 // distinct origin for each case, but preserve it across that case's restarts
 // and tabs so the durability and exclusive-writer assertions stay meaningful.
-test.beforeEach(async () => {
+async function startTestOrigin(): Promise<void> {
   const target = new URL(pwaOpfsE2eBaseUrl);
   const server = createServer((incoming, outgoing) => {
     const upstream = request(
@@ -55,7 +55,9 @@ test.beforeEach(async () => {
   if (!address || typeof address === "string")
     throw new Error("Test origin unavailable");
   testOrigin = `http://127.0.0.1:${address.port}`;
-});
+}
+
+test.beforeEach(startTestOrigin);
 
 test.afterEach(async () => {
   const server = originServer;
@@ -103,16 +105,19 @@ async function readFacetSummary(page: Page) {
 async function expectShowcaseSampleData(
   page: Page,
   baseline: Awaited<ReturnType<typeof readFacetSummary>>,
+  counts = previewCounts,
 ): Promise<void> {
+  // A reload may still expose the previous complete batch during replacement.
+  await expect(page.getByRole("status").filter({ hasText: /^Loading ·/ })).toHaveCount(0, { timeout: 90_000 });
   await expect
     .poll(() => readFacetSummary(page), { timeout: 90_000 })
     .toMatchObject({
-      rssFeedCount: SAMPLE_SHOWCASE_FEED_COUNT,
-      sampleAccountCount: SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT,
-      sampleFeedCount: SAMPLE_SHOWCASE_FEED_COUNT,
-      sampleItemCount: SAMPLE_SHOWCASE_ITEM_COUNT,
-      samplePersonCount: SAMPLE_SHOWCASE_FRIEND_COUNT,
-      totalCount: baseline.totalCount + SAMPLE_SHOWCASE_ITEM_COUNT,
+      rssFeedCount: counts.feeds,
+      sampleAccountCount: counts.accounts,
+      sampleFeedCount: counts.feeds,
+      sampleItemCount: counts.items,
+      samplePersonCount: counts.persons,
+      totalCount: baseline.totalCount + counts.items,
     });
 }
 
@@ -161,6 +166,7 @@ async function openLibrary(page: Page): Promise<void> {
 async function launchPersistentLibraryContext(
   profileRoot: string,
   baseURL = testOrigin,
+  originAttempt = 0,
 ): Promise<BrowserContext> {
   const iphone = devices["iPhone 14"];
   const context = await webkit.launchPersistentContext(profileRoot, {
@@ -183,6 +189,19 @@ async function launchPersistentLibraryContext(
         for await (const name of root.keys()) names.push(name);
         return names;
       });
+      // macOS WebKit can retain OPFS beyond a temporary profile's lifetime.
+      // An OS-assigned port may therefore name an old test origin. Before any
+      // app code runs, retry with another origin instead of deleting that data.
+      if (entries.length > 0 && openedProfiles.size === 0 && originAttempt < 3) {
+        await context.close();
+        const server = originServer!;
+        server.closeAllConnections();
+        await new Promise<void>((resolve, reject) => {
+          server.close(error => error ? reject(error) : resolve());
+        });
+        await startTestOrigin();
+        return launchPersistentLibraryContext(profileRoot, testOrigin, originAttempt + 1);
+      }
       expect(
         entries,
         "a fresh test Library must not inherit another profile's OPFS",
@@ -495,8 +514,8 @@ test("iPhone WebKit persists, clears, and rebuilds the local sample Library", as
     const populated = await readFacetSummary(page);
     const baseline = {
       ...populated,
-      rssFeedCount: populated.rssFeedCount - SAMPLE_SHOWCASE_FEED_COUNT,
-      totalCount: populated.totalCount - SAMPLE_SHOWCASE_ITEM_COUNT,
+      rssFeedCount: populated.rssFeedCount - previewCounts.feeds,
+      totalCount: populated.totalCount - previewCounts.items,
     };
     await openDangerZone(page);
     await expect(
@@ -580,8 +599,8 @@ test("iPhone WebKit completes interrupted sample population after restart", asyn
       opened.page.getByRole("status").filter({ hasText: /^Loading · \d+%$/ }),
     ).toBeVisible({ timeout: 90_000 });
     await expect.poll(() => readFacetSummary(opened.page)).toMatchObject({
-      rssFeedCount: SAMPLE_SHOWCASE_FEED_COUNT,
-      sampleFeedCount: SAMPLE_SHOWCASE_FEED_COUNT,
+      rssFeedCount: previewCounts.feeds,
+      sampleFeedCount: previewCounts.feeds,
       sampleItemCount: 0,
       samplePersonCount: 0,
     });
@@ -757,6 +776,10 @@ test("iPhone WebKit reads pinned reader content after restart without its source
           if (!item) throw new Error("sample reader item is unavailable");
           const readerItem = {
             ...item,
+            globalId: "rss:offline-reader-real-record",
+            contentType: "article" as const,
+            sampleDataFingerprint: undefined,
+            contentSignals: undefined,
             content: {
               ...item.content,
               linkPreview: {
@@ -769,8 +792,11 @@ test("iPhone WebKit reads pinned reader content after restart without its source
             },
             sourceUrl: articleUrl,
           };
+          const store = await import("/src/lib/store.ts");
+          await store.useAppStore.getState().addItems([readerItem]);
+          await runtime.settlePwaLibraryCoreLocalSampleState();
           await readerCache.pinReaderItemInPwa(readerItem);
-          return { globalId: item.globalId };
+          return { globalId: readerItem.globalId };
         } finally {
           await reader.close();
         }
@@ -789,6 +815,7 @@ test("iPhone WebKit reads pinned reader content after restart without its source
     await reopened.goto(`/?item=${encodeURIComponent(pinned.globalId)}`);
     await acceptLegalGate(reopened);
     await waitForLibrary(reopened);
+    await expectShowcaseSampleData(reopened, { totalCount: 1 } as Awaited<ReturnType<typeof readFacetSummary>>);
     const sourceUnavailable = await reopened.evaluate((articleUrl) =>
       fetch(articleUrl)
         .then(() => false)

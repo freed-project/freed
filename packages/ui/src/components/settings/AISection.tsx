@@ -39,7 +39,7 @@ const DEFAULT_MODELS: Record<AIProvider, string> = {
   none: "",
   integrated: "",
   ollama: "qwen2.5:1.5b",
-  openai: "gpt-4o-mini",
+  openai: "gpt-6-astra",
   anthropic: "claude-haiku-4-5",
   gemini: "gemini-2.0-flash",
 };

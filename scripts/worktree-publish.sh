@@ -1084,6 +1084,13 @@ if ${PRINT_PROVIDER_SUBDIFF} && has_worktree_changes; then
   exit 1
 fi
 
+# Check before staging, committing, or pushing private local decisions.
+if ! ${PRINT_PROVIDER_SUBDIFF}; then
+  DECISION_ARGS=(check --worktree "$("${GIT_BIN}" rev-parse --show-toplevel)" --base "origin/${BASE_BRANCH}" --git-bin "${GIT_BIN}")
+  ${READY_FOR_REVIEW} && DECISION_ARGS+=(--required)
+  "${NODE_BIN}" "${SCRIPT_DIR}/task-decisions.mjs" "${DECISION_ARGS[@]}"
+fi
+
 if has_worktree_changes; then
   UNTRACKED_FILES="$(list_untracked_files)"
   if [[ -n "${UNTRACKED_FILES}" ]] && ! ${INCLUDE_UNTRACKED}; then
@@ -1198,6 +1205,7 @@ revalidate_provider_approval
 revalidate_provider_review_artifact
 ensure_provider_pr_draft_before_push
 verify_canonical_base
+"${NODE_BIN}" "${SCRIPT_DIR}/task-decisions.mjs" "${DECISION_ARGS[@]}"
 "${GIT_BIN}" push -u origin "${PUBLISH_HEAD}:refs/heads/${BRANCH_NAME}"
 verify_remote_head
 verify_provider_pr_draft_after_push

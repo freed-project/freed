@@ -1,0 +1,71 @@
+{
+  "kind": "local-preview",
+  "theme": "scriptorium",
+  "sourceCommit": "4b56963e168c12d5e7b5170655f7d68049470f41",
+  "sourceDirty": true,
+  "generatedAt": "2026-09-07T21:05:53.890Z",
+  "revision": "2026-09-07T21-05-53-908Z",
+  "encoding": "WebP quality 90",
+  "sha256": "07cfcf08a553a896f2aa884d7a6b69c0809d91c1c57091ef64d2471a69a35e72",
+  "byteSize": 277700,
+  "captures": [
+    {
+      "file": "freed-showcase-unified-scriptorium.png",
+      "theme": "scriptorium",
+      "view": "unified",
+      "desktopDecoration": {
+        "radius": 8,
+        "borderColor": "rgb(132 100 68 / 0.28)",
+        "borderWidth": 2,
+        "captureRadius": 12
+      }
+    },
+    {
+      "file": "freed-showcase-map-scriptorium.png",
+      "theme": "scriptorium",
+      "view": "map",
+      "desktopDecoration": {
+        "radius": 8,
+        "borderColor": "rgb(132 100 68 / 0.28)",
+        "borderWidth": 2,
+        "captureRadius": 12
+      }
+    },
+    {
+      "file": "freed-showcase-friends-scriptorium.png",
+      "theme": "scriptorium",
+      "view": "friends",
+      "desktopDecoration": {
+        "radius": 8,
+        "borderColor": "rgb(132 100 68 / 0.28)",
+        "borderWidth": 2,
+        "captureRadius": 12
+      }
+    },
+    {
+      "file": "freed-showcase-friend-detail-scriptorium.png",
+      "theme": "scriptorium",
+      "view": "friends",
+      "detail": true,
+      "desktopDecoration": {
+        "radius": 8,
+        "borderColor": "rgb(132 100 68 / 0.28)",
+        "borderWidth": 2,
+        "captureRadius": 12
+      }
+    },
+    {
+      "file": "freed-showcase-stories-scriptorium.png",
+      "theme": "scriptorium",
+      "view": "stories",
+      "mobile": true
+    },
+    {
+      "file": "freed-showcase-reader-scriptorium.png",
+      "theme": "scriptorium",
+      "view": "instagram",
+      "mobile": true,
+      "reader": true
+    }
+  ]
+}

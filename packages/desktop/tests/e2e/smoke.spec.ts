@@ -687,6 +687,26 @@ test("app loads and renders without crashing", async ({ app }) => {
   await expect(app.page.locator("main")).toBeVisible();
 });
 
+// Deliberately omit the app fixture: this protects the actual preview URL,
+// whose backend must work without Playwright installing IPC handlers.
+test("standalone preview app loads and renders without crashing", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("console", (message) => {
+    if (message.type() === "error" && message.text().includes("[desktop:initialize]")) {
+      errors.push(message.text());
+    }
+  });
+  await page.goto("/");
+  await acceptLegalGate(page);
+  await expect(page.locator("main")).toBeVisible();
+  await expect(page.getByText("Freed Desktop hit a fatal error", { exact: true })).toHaveCount(0);
+  expect(errors).toEqual([]);
+  await page.reload();
+  await expect(page.locator("main")).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
 test("locked macOS session defers full desktop startup", async ({ app }) => {
   await app.page.addInitScript(() => {
     window.localStorage.setItem(

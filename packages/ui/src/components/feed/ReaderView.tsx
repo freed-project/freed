@@ -724,8 +724,9 @@ export function ReaderView({
   }, [toggleSaved, item.globalId]);
 
   const handleToggleArchived = useCallback(() => {
-    toggleArchived(item.globalId);
-    if (!item.userState.archived) onClose();
+    void toggleArchived(item.globalId).then(() => {
+      if (!item.userState.archived) onClose();
+    }, () => {}); // The store reports failed writes; keep the reader open.
   }, [toggleArchived, item.globalId, item.userState.archived, onClose]);
 
   const prefTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);

@@ -19,6 +19,7 @@ var __spreadArray = (this && this.__spreadArray) || function (to, from, pack) {
     return to.concat(ar || Array.prototype.slice.call(from));
 };
 import { defineConfig } from "vitest/config";
+import { tauriInitScript } from "./src/__mocks__/tauri-init.js";
 import react from "@vitejs/plugin-react";
 import wasm from "vite-plugin-wasm";
 import topLevelAwait from "vite-plugin-top-level-await";
@@ -101,12 +102,21 @@ export default defineConfig({
             topLevelAwait(),
         ]; },
     },
-    plugins: [
+    plugins: __spreadArray(__spreadArray([], (process.env.VITE_TEST_TAURI
+        ? [{
+                name: "desktop-mock-bootstrap",
+                transformIndexHtml: function () { return [{
+                        tag: "script",
+                        children: tauriInitScript(),
+                        injectTo: "head-prepend",
+                    }]; },
+            }]
+        : []), true), [
         rejectRetiredDesktopLibraryAssets,
         wasm(),
         topLevelAwait(),
         react(),
-    ],
+    ], false),
     optimizeDeps: {
         exclude: __spreadArray(__spreadArray([], tauriMockExclude, true), [
             "maplibre-gl/dist/maplibre-gl-worker.mjs",
