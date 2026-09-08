@@ -26,6 +26,8 @@ const SCROLL_FRAME_P95_MS_BUDGET = 50;
 const SCROLL_DROPPED_FRAME_BUDGET = 10;
 
 async function readyFeedScrollContainer(page: Page) {
+  // External preview URLs must not silently benchmark development React.
+  await expect(page.locator('meta[name="freed-e2e-render-mode"]')).toHaveAttribute("content", "production");
   const container = page.getByTestId("feed-list-scroll-container");
   await expect(container.locator(".feed-card").first()).toBeVisible();
   // Import completion acknowledges storage and aggregate counts, not painted
@@ -818,6 +820,7 @@ test.describe("FPS harness (rAF-based frame measurement)", () => {
           hardwareConcurrency: navigator.hardwareConcurrency,
           devicePixelRatio: window.devicePixelRatio,
           visibilityState: document.visibilityState,
+          renderMode: document.querySelector('meta[name="freed-e2e-render-mode"]')?.getAttribute("content"),
         })),
         itemCount: ITEM_COUNT_LARGE,
         initialScrollTop,

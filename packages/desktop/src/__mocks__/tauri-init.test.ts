@@ -32,3 +32,34 @@ it("preview cleanup scans the entire showcase with bounded source-bound cursors"
   } while (cursor);
   expect(seen).toEqual(items.map(item => item.globalId).sort());
 });
+
+it("mock transactions preserve current rows across reload without hot-path corpus snapshots", () => {
+  const listeners = new Map<string, () => void>();
+  let snapshotWrites = 0;
+  let snapshot = "";
+  const runtime = {
+    get name() { return snapshot; },
+    set name(value: string) { snapshot = value; snapshotWrites += 1; },
+    addEventListener(type: string, listener: () => void) { listeners.set(type, listener); },
+  } as typeof window & {
+    __TAURI_MOCK_SQLITE_LIBRARY__: { revision: number; persons: Record<string, unknown> };
+    __TAURI_MOCK_HANDLERS__: Record<string, (args: unknown) => unknown>;
+  };
+  new Function("window", tauriInitScript())(runtime);
+  for (const displayName of ["First", "Latest"]) {
+    runtime.__TAURI_MOCK_HANDLERS__.commit_normalized_library_transaction({
+      request: { canonicalEnvelopeJson: [JSON.stringify({
+        operation_type: "person_upsert", entity_id: "person:reload",
+        payload: { person: { id: "person:reload", displayName } },
+      })] },
+    });
+  }
+  expect(snapshotWrites).toBe(0);
+  expect(runtime.__TAURI_MOCK_SQLITE_LIBRARY__.persons["person:reload"]).toEqual({ id: "person:reload", displayName: "Latest" });
+  listeners.get("beforeunload")!();
+  listeners.get("pagehide")!();
+  expect(snapshotWrites).toBe(1);
+  const reloaded = { name: snapshot } as typeof runtime;
+  new Function("window", tauriInitScript())(reloaded);
+  expect(reloaded.__TAURI_MOCK_SQLITE_LIBRARY__).toEqual(runtime.__TAURI_MOCK_SQLITE_LIBRARY__);
+});
