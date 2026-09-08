@@ -1,4 +1,5 @@
 import { formatDistanceToNow } from "date-fns";
+import type { ReactNode } from "react";
 import { FriendAvatar } from "./FriendAvatar.js";
 import { MapPinIcon } from "../icons.js";
 import { CareRating, type CareLevel } from "./CareRating.js";
@@ -15,6 +16,7 @@ export function FriendOverview({
   careLevel,
   latestActivityAt,
   onCareLevelChange,
+  headerActions,
 }: {
   name: string;
   id?: string;
@@ -27,6 +29,7 @@ export function FriendOverview({
   hasLocation?: boolean;
   needsOutreach?: boolean;
   onCareLevelChange?: (level: CareLevel) => void | Promise<void>;
+  headerActions?: ReactNode;
 }) {
   const sourceVersion = useAppStore(state => state.searchCorpusVersion);
   const candidates = useLibraryMapCandidates(sourceVersion);
@@ -35,21 +38,25 @@ export function FriendOverview({
     .sort((a, b) => b.item.publishedAt - a.item.publishedAt)
     .find(candidate => candidate.item.location?.name)?.item.location?.name;
   return (
-    <div className="flex items-start gap-3">
+    <div>
+      <div className="flex items-start gap-3">
       <FriendAvatar name={name} avatarUrl={avatarUrl} size={40} />
       <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-sm font-medium text-[color:var(--theme-text-primary)]">
+        <div className="flex items-start justify-between gap-2">
+          <p className="min-w-0 text-sm leading-tight font-medium text-[color:var(--theme-text-primary)]">
             {name}
           </p>
+          {headerActions}
+        </div>
           {careLevel !== undefined && (
-            <div className="w-full">
+            <div className="mt-1 w-full">
               <CareRating level={careLevel as CareLevel} onChange={onCareLevelChange} />
             </div>
           )}
-        </div>
+      </div>
+      </div>
         {bio && (
-          <p className="mt-1 line-clamp-2 text-xs text-[color:var(--theme-text-muted)]">
+          <p className="mt-2 line-clamp-2 text-xs text-[color:var(--theme-text-muted)]">
             {bio}
           </p>
         )}
@@ -62,13 +69,12 @@ export function FriendOverview({
             </span>
           )}
           {locationName && (
-            <span title={locationName} className="inline-flex w-full min-w-0 items-center gap-1 whitespace-nowrap text-[color:var(--theme-accent-secondary)]">
+            <span title={locationName} className="inline-flex w-full min-w-0 items-center justify-end gap-1 whitespace-nowrap text-right text-[color:var(--theme-accent-secondary)]">
               <MapPinIcon className="h-3 w-3 shrink-0" />
               <span className="truncate">{locationName}</span>
             </span>
           )}
         </div>
-      </div>
     </div>
   );
 }
