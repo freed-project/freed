@@ -501,6 +501,8 @@ test("production releases publish an exact-tag PWA showcase with reviewed media"
   const capture = readFileSync(path.join(scriptsDir, "capture-showcase-local.mjs"), "utf8");
   assert.match(capture, /Explore Freed Demo/);
   assert.match(capture, /await selectTheme\(page, capture.theme\)/);
+  assert.match(capture, /getByText\("Sela Current", \{ exact: true \}\)\.click\(\)/,
+    "friend detail capture must select the title, not the card center containing its slider");
   assert.doesNotMatch(capture, /page\.reload\(/);
   assert.match(capture, /unexpectedRequestUrls\.size > 0/);
   assert.match(capture, /remoteMediaUrls:/);
