@@ -5,6 +5,19 @@ const LIBRARY_DETAIL_RUNTIME_PATH = resolveViteFsModulePath(
   import.meta.url,
 );
 
+const shortcutPlatforms = [
+  { name: "macOS", platform: "MacIntel", shortcut: "Control+Option+Command+S", keycaps: ["⌃", "⌥", "⌘", "S"], recorded: "Control+Option+F", recordedKeycaps: ["⌃", "⌥", "F"] },
+  { name: "Linux", platform: "Linux x86_64", shortcut: "Control+Alt+S", keycaps: ["Control", "Alt", "S"], recorded: "Control+Alt+F", recordedKeycaps: ["Control", "Alt", "F"] },
+  { name: "Windows", platform: "Win32", shortcut: "Control+Alt+S", keycaps: ["Control", "Alt", "S"], recorded: "Control+Alt+F", recordedKeycaps: ["Control", "Alt", "F"] },
+];
+
+async function setShortcutPlatform(page: import("@playwright/test").Page, platform: string): Promise<void> {
+  await page.addInitScript((value) => {
+    Object.defineProperty(navigator, "platform", { configurable: true, value });
+    Object.defineProperty(navigator, "userAgent", { configurable: true, value: `Mozilla/5.0 (${value})` });
+  }, platform);
+}
+
 async function waitForRegisteredShortcut(page: import("@playwright/test").Page): Promise<string> {
   await page.waitForFunction(() => {
     const w = window as unknown as {
@@ -73,25 +86,28 @@ async function expectRecorderOnRight(
   expect(Math.abs(recorderBox.y - labelBox.y)).toBeLessThan(24);
 }
 
-test("global clipboard shortcut opens Save Content with a clipboard URL", async ({ app, page, ipc }) => {
-  await app.goto();
-  await app.waitForReady();
+for (const platform of shortcutPlatforms) {
+  test(`global clipboard shortcut opens Save Content with a clipboard URL on ${platform.name}`, async ({ app, page, ipc }) => {
+    await setShortcutPlatform(page, platform.platform);
+    await app.goto();
+    await app.waitForReady();
 
-  const shortcut = await waitForRegisteredShortcut(page);
-  expect(shortcut).toBe("Control+Option+Command+S");
+    const shortcut = await waitForRegisteredShortcut(page);
+    expect(shortcut).toBe(platform.shortcut);
 
-  await page.evaluate(() => {
-    (window as unknown as { __TAURI_MOCK_CLIPBOARD_TEXT__?: string })
-      .__TAURI_MOCK_CLIPBOARD_TEXT__ = " https://example.com/from-clipboard ";
+    await page.evaluate(() => {
+      (window as unknown as { __TAURI_MOCK_CLIPBOARD_TEXT__?: string })
+        .__TAURI_MOCK_CLIPBOARD_TEXT__ = " https://example.com/from-clipboard ";
+    });
+    await triggerShortcut(page, shortcut);
+
+    await expect(page.getByText("Save Content", { exact: true })).toBeVisible();
+    await expect(page.getByLabel("Article or page URL")).toHaveValue("https://example.com/from-clipboard");
+
+    const invocations = await ipc.invocations();
+    expect(invocations.some((call) => call.cmd === "show_window")).toBe(true);
   });
-  await triggerShortcut(page, shortcut);
-
-  await expect(page.getByText("Save Content", { exact: true })).toBeVisible();
-  await expect(page.getByLabel("Article or page URL")).toHaveValue("https://example.com/from-clipboard");
-
-  const invocations = await ipc.invocations();
-  expect(invocations.some((call) => call.cmd === "show_window")).toBe(true);
-});
+}
 
 test("global clipboard shortcut opens Save Content blank for non-URL clipboard text", async ({ app, page }) => {
   await app.goto();
@@ -244,45 +260,45 @@ test("saving and editing content persists preview details and searchable notes",
   await expect(page.getByText("Saved Reader Transition").first()).toBeVisible();
 });
 
-test("Settings records, disables, and resets the Save Content shortcut", async ({ app, page }) => {
-  await page.setViewportSize({ width: 1492, height: 700 });
-  const settingsDialog = await openSettingsDialog(app, page);
-  await settingsDialog.getByRole("button", { name: "Shortcuts", exact: true }).click();
+for (const platform of shortcutPlatforms) {
+  test(`Settings records, disables, and resets the Save Content shortcut on ${platform.name}`, async ({ app, page }) => {
+    await setShortcutPlatform(page, platform.platform);
+    await page.setViewportSize({ width: 1492, height: 700 });
+    const settingsDialog = await openSettingsDialog(app, page);
+    await settingsDialog.getByRole("button", { name: "Shortcuts", exact: true }).click();
 
-  const recorder = settingsDialog.getByRole("button", { name: "Record Save Content shortcut" });
-  const label = settingsDialog.getByText("Save Content", { exact: true });
-  const card = settingsDialog.getByTestId("settings-shortcuts-save-content-card");
-  await expect(card).toHaveClass(/theme-card-soft/);
-  await expect(card).not.toHaveClass(/border-border|bg-bg-surface/);
-  await expect(recorder).toContainText("⌃⌥⌘S");
-  await expect(recorder.locator("kbd")).toHaveText(["⌃", "⌥", "⌘", "S"]);
-  await expectKeycapsInSingleRow(recorder);
-  await expectRecorderOnRight(label, recorder);
+    const recorder = settingsDialog.getByRole("button", { name: "Record Save Content shortcut" });
+    const label = settingsDialog.getByText("Save Content", { exact: true });
+    const card = settingsDialog.getByTestId("settings-shortcuts-save-content-card");
+    await expect(card).toHaveClass(/theme-card-soft/);
+    await expect(card).not.toHaveClass(/border-border|bg-bg-surface/);
+    await expect(recorder.locator("kbd")).toHaveText(platform.keycaps);
+    await expectKeycapsInSingleRow(recorder);
+    await expectRecorderOnRight(label, recorder);
 
-  await recorder.click();
-  await expect(recorder).toBeFocused();
-  await page.keyboard.press("Control+Alt+F");
-  await expect(recorder).toContainText("⌃⌥F");
-  await expect(recorder.locator("kbd")).toHaveText(["⌃", "⌥", "F"]);
-  await expectKeycapsInSingleRow(recorder);
+    await recorder.click();
+    await expect(recorder).toBeFocused();
+    await page.keyboard.press("Control+Alt+F");
+    await expect(recorder.locator("kbd")).toHaveText(platform.recordedKeycaps);
+    await expectKeycapsInSingleRow(recorder);
 
-  await settingsDialog.getByRole("button", { name: "Disable" }).click();
-  await expect(recorder).toContainText("Disabled");
-  await expect(recorder.locator("kbd")).toHaveCount(0);
+    await settingsDialog.getByRole("button", { name: "Disable" }).click();
+    await expect(recorder).toContainText("Disabled");
+    await expect(recorder.locator("kbd")).toHaveCount(0);
 
-  await settingsDialog.getByRole("button", { name: "Reset to default" }).click();
-  await expect(recorder).toContainText("⌃⌥⌘S");
-  await expect(recorder.locator("kbd")).toHaveText(["⌃", "⌥", "⌘", "S"]);
+    await settingsDialog.getByRole("button", { name: "Reset to default" }).click();
+    await expect(recorder.locator("kbd")).toHaveText(platform.keycaps);
 
-  const calls = await page.evaluate(() => {
-    const w = window as unknown as {
-      __TAURI_MOCK_GLOBAL_SHORTCUT_CALLS__?: Array<{ action: string; shortcut?: string }>;
-    };
-    return w.__TAURI_MOCK_GLOBAL_SHORTCUT_CALLS__ ?? [];
+    const calls = await page.evaluate(() => {
+      const w = window as unknown as {
+        __TAURI_MOCK_GLOBAL_SHORTCUT_CALLS__?: Array<{ action: string; shortcut?: string }>;
+      };
+      return w.__TAURI_MOCK_GLOBAL_SHORTCUT_CALLS__ ?? [];
+    });
+    expect(calls.some((call) => call.action === "register" && call.shortcut === platform.recorded)).toBe(true);
+    expect(calls.some((call) => call.action === "unregister" && call.shortcut === platform.recorded)).toBe(true);
   });
-  expect(calls.some((call) => call.action === "register" && call.shortcut === "Control+Option+F")).toBe(true);
-  expect(calls.some((call) => call.action === "unregister" && call.shortcut === "Control+Option+F")).toBe(true);
-});
+}
 
 test("Settings hides shortcut controls on touch-only devices", async ({ app, page }) => {
   await page.addInitScript(() => {

@@ -1408,6 +1408,9 @@ test("compact sidebar search opens as a floating palette and closes cleanly", as
 });
 
 test("desktop toolbar controls remain clickable no-drag targets", async ({ app, page }) => {
+  await page.addInitScript(() => {
+    (window as unknown as Record<string, unknown>).__TAURI_MOCK_NATIVE__ = true;
+  });
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
@@ -1436,6 +1439,9 @@ test("desktop toolbar controls remain clickable no-drag targets", async ({ app, 
 });
 
 test("desktop passive toolbar targets expose direct native drag attributes", async ({ app, page }) => {
+  await page.addInitScript(() => {
+    (window as unknown as Record<string, unknown>).__TAURI_MOCK_NATIVE__ = true;
+  });
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
@@ -1474,6 +1480,9 @@ test("desktop passive toolbar targets expose direct native drag attributes", asy
 });
 
 test("reader toolbar keeps back button clickable while title text is a drag target", async ({ app, page }) => {
+  await page.addInitScript(() => {
+    (window as unknown as Record<string, unknown>).__TAURI_MOCK_NATIVE__ = true;
+  });
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
@@ -5011,7 +5020,7 @@ test("AI ranked friend suggestion dismiss hides the candidate without deleting t
 
   const row = page.getByTestId("friend-candidate-suggestion").filter({ hasText: "Ida Wells" });
   await expect(row).toBeVisible({ timeout: 10_000 });
-  const dismissButton = row.getByRole("button", { name: "Dismiss" });
+  const dismissButton = row.getByRole("button", { name: "Dismiss suggestion for Ida Wells", exact: true });
   await expect(dismissButton).toBeVisible({ timeout: 10_000 });
   await dismissButton.evaluate((button) => {
     (button as HTMLButtonElement).click();

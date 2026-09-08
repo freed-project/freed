@@ -1794,8 +1794,36 @@ html[data-theme="scriptorium"] .feed-card {
   box-shadow: 0 8px 18px rgb(84 58 35 / 0.03);
 }
 
+@media (hover: hover) and (pointer: fine) {
+  html[data-theme="scriptorium"] .feed-card:hover {
+    background-color: color-mix(in oklab, var(--theme-bg-surface) 94%, var(--theme-accent-secondary) 6%) !important;
+  }
+}
+
 .feed-card[data-focused="true"] {
   border-color: rgb(var(--theme-accent-secondary-rgb) / 0.6);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .feed-card-photo-copy {
+    transform-origin: center bottom;
+    transition: opacity 300ms ease-out, transform 300ms ease-out;
+  }
+
+  .feed-card:hover .feed-card-photo-copy {
+    opacity: 0;
+    transform: scale(1.03);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .feed-card-photo-copy {
+    transition: none;
+  }
+
+  .feed-card:hover .feed-card-photo-copy {
+    transform: none;
+  }
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -2209,12 +2237,12 @@ html:is([data-theme="midas"], [data-theme="scriptorium"], [data-theme="starship"
   accent-color: var(--theme-accent-secondary);
 }
 
-.friend-closeness-control { position: relative; height: 2rem; width: 100%; }
+.friend-closeness-control { position: relative; height: 1.75rem; width: 100%; }
 .friend-closeness-handle {
   box-sizing: border-box;
   border: 1px solid var(--theme-accent-secondary);
   border-radius: 0.6rem;
-  padding: 0.25rem 0.75rem;
+  padding: 0.125rem 0.75rem;
   font-size: 0.6875rem;
   line-height: 1rem;
   white-space: nowrap;
@@ -2256,10 +2284,10 @@ html:is([data-theme="midas"], [data-theme="scriptorium"], [data-theme="starship"
 }
 .friend-closeness-slider:active { cursor: grabbing; }
 .friend-closeness-slider:focus-visible { outline: 2px solid var(--theme-accent-secondary); outline-offset: 2px; border-radius: 0.6rem; }
-.friend-closeness-slider::-webkit-slider-runnable-track { height: 2rem; background: transparent; }
-.friend-closeness-slider::-moz-range-track { height: 2rem; background: transparent; }
-.friend-closeness-slider::-webkit-slider-thumb { appearance: none; width: var(--care-handle-width); height: 2rem; border: 0; background: transparent; }
-.friend-closeness-slider::-moz-range-thumb { width: var(--care-handle-width); height: 2rem; border: 0; background: transparent; }
+.friend-closeness-slider::-webkit-slider-runnable-track { height: 1.75rem; background: transparent; }
+.friend-closeness-slider::-moz-range-track { height: 1.75rem; background: transparent; }
+.friend-closeness-slider::-webkit-slider-thumb { appearance: none; width: var(--care-handle-width); height: 1.75rem; border: 0; background: transparent; }
+.friend-closeness-slider::-moz-range-thumb { width: var(--care-handle-width); height: 1.75rem; border: 0; background: transparent; }
 
 .theme-toolbar-density-slider:focus-visible {
   outline: 2px solid rgb(var(--theme-accent-secondary-rgb) / 0.65);
