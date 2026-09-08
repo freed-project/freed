@@ -107,6 +107,16 @@ function setMemoryPressure(
 }
 
 beforeEach(() => {
+  // JSDOM does not implement the card's browser measurement APIs.
+  vi.stubGlobal("ResizeObserver", class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  });
+  Object.defineProperty(document, "fonts", {
+    configurable: true,
+    value: { ready: Promise.resolve(), addEventListener: vi.fn(), removeEventListener: vi.fn() },
+  });
   useDebugStore.setState({ runtimeMemory: null });
   setMobileNavigator(false);
   setTouchOnlyPointer(false);
@@ -188,6 +198,28 @@ describe("FeedItem read styling", () => {
 });
 
 describe("FeedItem card text previews", () => {
+  it.each([
+    { contentType: "post" as const, compact: false, layout: "split" },
+    { contentType: "story" as const, compact: false, layout: "photo" },
+    { contentType: "post" as const, compact: true, layout: "photo" },
+    { contentType: "story" as const, compact: true, layout: "photo" },
+  ])("shares the card structure for $contentType with compact=$compact", ({ contentType, compact, layout }) => {
+    const html = renderFeedItemToStaticMarkup(makeItem({
+      contentType,
+      location: { name: "Shared location", source: "geo_tag" },
+      content: { linkPreview: { title: "Shared title", url: "https://example.com" } },
+    }), { compact });
+    const container = document.createElement("div");
+    container.innerHTML = html;
+    const card = container.querySelector("article")!;
+    expect(container.querySelectorAll("article")).toHaveLength(1);
+    expect(card.dataset.feedCardLayout).toBe(layout);
+    expect(card.querySelectorAll("h3")).toHaveLength(1);
+    expect(card.textContent).toContain("Shared location");
+    expect(card.style.contain).toBe("layout paint style");
+    expect(compact ? card.classList.contains("aspect-square") : card.style.height !== "").toBe(true);
+  });
+
   it("renders a bounded text preview for long regular posts", () => {
     const longText = `${"Opening sentence ".repeat(120)}needle-tail`;
     const html = renderFeedItemToStaticMarkup(
@@ -240,7 +272,7 @@ describe("FeedItem story media", () => {
       </PlatformProvider>,
     );
     expect(render(sample, true)).toContain("https://example.com/story.jpg");
-    expect(render(sample, true)).not.toContain("data:image/svg+xml,");
+    expect(render(sample, true)).not.toContain('src="data:image/svg+xml,');
     expect(render({
       ...sample,
       globalId: "instagram:sample:preview:author:media",
@@ -377,7 +409,7 @@ describe("FeedItem story media", () => {
     }
   });
 
-  it("renders regular card actions in a shared centered icon box", async () => {
+  it("omits card action buttons even when action callbacks are supplied", async () => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     const container = document.createElement("div");
     document.body.appendChild(container);
@@ -408,18 +440,12 @@ describe("FeedItem story media", () => {
         );
       });
 
-      const actionLabels = ["Like", "Comment on Instagram", "Bookmark", "Archive", "Open"];
+      const actionLabels = ["Like", "Bookmark", "Archive"];
+      expect(container.querySelector('button[aria-label="Comment on Instagram"]')).toBeNull();
+      expect(container.querySelector('button[aria-label="Open"]')).toBeNull();
       for (const label of actionLabels) {
         const button = container.querySelector(`button[aria-label="${label}"]`) as HTMLButtonElement | null;
-        expect(button).toBeInstanceOf(HTMLButtonElement);
-        expect(button?.className).toContain("h-7");
-        expect(button?.className).toContain("items-center");
-        expect(button?.className).toContain("justify-center");
-
-        const icon = button?.querySelector("svg");
-        expect(icon?.getAttribute("class")).toContain("h-4");
-        expect(icon?.getAttribute("class")).toContain("w-4");
-        expect(icon?.getAttribute("class")).toContain("shrink-0");
+        expect(button).toBeNull();
       }
     } finally {
       await act(async () => {

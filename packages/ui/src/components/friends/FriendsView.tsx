@@ -385,19 +385,23 @@ function FriendCandidateRow({
           name={safeText(suggestion.displayName, "Unnamed friend")}
           avatarUrl={overview?.latestAvatarUrl ?? overview?.avatarUrl ?? person?.avatarUrl ?? account?.avatarUrl}
           latestActivityAt={suggestion.lastActivityAt}
+          headerActions={
+            <div className="-mt-1 -mr-1 flex shrink-0 items-center gap-3">
+              <div className="flex items-center gap-1">{suggestion.accountIds.map(id => <SuggestedProviderIcon key={id} accountId={id} />)}</div>
+              <button
+                type="button"
+                onClick={event => { event.stopPropagation(); onDismiss(suggestion.id); }}
+                aria-label={`Dismiss suggestion for ${suggestion.displayName}`}
+                className="rounded-lg p-1 text-[color:var(--theme-text-muted)] hover:text-[color:var(--theme-text-primary)]"
+              >
+                <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
+                  <path d="M5 5l10 10M15 5L5 15" strokeLinecap="round" />
+                </svg>
+              </button>
+            </div>
+          }
         />
       </div>
-      <div className="absolute right-8 top-3 flex gap-1">{suggestion.accountIds.map(id => <SuggestedProviderIcon key={id} accountId={id} />)}</div>
-        <button
-          type="button"
-          onClick={() => onDismiss(suggestion.id)}
-          aria-label={`Dismiss suggestion for ${suggestion.displayName}`}
-          className="absolute right-2 top-2 rounded-lg p-1 text-[color:var(--theme-text-muted)] hover:text-[color:var(--theme-text-primary)]"
-        >
-          <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
-            <path d="M5 5l10 10M15 5L5 15" strokeLinecap="round" />
-          </svg>
-        </button>
     </div>
   );
 }
