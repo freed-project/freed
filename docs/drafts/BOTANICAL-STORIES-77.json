@@ -1,0 +1,194 @@
+{
+  "status": "admitted_by_root",
+  "counts": {
+    "newExactPublishedImagesOpened": 5,
+    "previouslyInspectedExactImageReusedForReview": 1,
+    "proposals": 1,
+    "newIdentities": 0
+  },
+  "proposals": [
+    {
+      "candidateId": "77-01",
+      "characterId": "hester-sweetlip",
+      "identityNameBase": "Hester Sweetlip",
+      "episode": {
+        "subject": "pale pitcher plant",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "social",
+        "title": "One more tremor",
+        "body": "The bee clung to my flower and pushed her head beneath a petal.\n\nThe stem dipped. When she let go, it sprang back.\n\nI mistook the trembling for her feet and waited through another little shiver.",
+        "mediaSha1": "af7dc68e4c03779b60b5fef48f4be4163e1843f2"
+      },
+      "admission": "Lead passed exact image, literal prose, continuity and primary CC0 record; integrated after existing flower episode.",
+      "visualReview": "Exact published frame opened individually. A clearly visible dark bee with pale thorax patch clings at the left edge of the second yellow-green pendant flower. Its feet grip the petal edge and head approaches the petal fold; curved stalk visible above. Several other flowers and upright pitchers supply clear whole-plant context. No insect silhouette guessing.",
+      "fictionBoundary": "Contact is visible; head passing farther under petal, stem dipping, elastic return and bee leaving are plausible fictional sequence, not documented motion. The photograph does not demonstrate special neural sensation or leg-count perception. Female pronoun is fictional characterization, not insect-sex identification. No bee species, pollination, pollen removal, meal or intentional trap closure claimed.",
+      "continuity": "Established Sarracenia alata, rooted Big Thicket wet-pine-savanna home30.6/-94.4 and separate passive pitchers/pendant flowers retained. This occurs after admitted flower-butterfly episode without referring to a tracked insect or same photographed specimen. No new avatar/identity.",
+      "proseReview": "A visitor leaves but the flower continues to move; Hester prolongs the presence through that physical aftereffect. Unlike the butterfly episode, no expected capture or approval of release supplies the turn. Her quiet possessiveness continues. Risk: this may still repeat flower-contact affection too closely; root must judge, and the prior source-only hold is not erased."
+    }
+  ],
+  "media": [
+    {
+      "observationId": 111734634,
+      "photoId": 188658155,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/188658155/large.jpeg",
+      "localFile": "/tmp/botanical77/bee-flower.jpeg",
+      "bytes": 317630,
+      "sha1": "af7dc68e4c03779b60b5fef48f4be4163e1843f2",
+      "sha256": "c6f14e9a294f3e8d5ef10206d1f00f66a8af5720c353e124b0b85fa24c5bb8fc",
+      "dimensions": [
+        1024,
+        577
+      ],
+      "seconds": 0.998,
+      "status": 200,
+      "attribution": "no rights reserved, uploaded by Brady Reed",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "license": "CC0",
+      "sourceUrl": "https://www.inaturalist.org/observations/111734634",
+      "sourceMetadataUrl": "https://www.inaturalist.org/observations/111734634.json",
+      "sourceLocal": "/tmp/botanical77/obs-111734634.json",
+      "id": "botanical77-pitcher-flower-bee",
+      "category": "wildlife",
+      "subject": "pale pitcher plant",
+      "species": "Sarracenia alata",
+      "creator": "Brady Reed",
+      "alt": "A bee grips a pale yellow-green pitcher-plant flower among hanging blossoms and upright pitchers.",
+      "aggregated": true,
+      "rightsEvidence": "Photo188658155 has explicit CC0 license code and https://creativecommons.org/publicdomain/zero/1.0/ in primary observation JSON; photographer/upload attribution Brady Reed. No inference from separate observation-data license.",
+      "taxonEvidence": "Research-grade Sarracenia alata observation with three identification agreements and zero disagreements; pictured pendant pale flowers and upright pitchers agree with established Hester morphology.",
+      "reuseEvidence": "Same source-only held photo as batch73. No prior narrative written or admitted for this photo. This is a new proposal, not a second scene or exposure count."
+    }
+  ],
+  "holds": [
+    {
+      "media": {
+        "observationId": 96348144,
+        "photoId": 160054487,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/160054487/large.jpeg",
+        "localFile": "/tmp/botanical77/96348144.jpg",
+        "bytes": 259389,
+        "sha1": "13a87e9a9673ea14261e7e6bd073edb07a90df1d",
+        "sha256": "769d26f8f22b0fe3c83cacee4b32169091705d6057a2cdd0838e453c74e13737",
+        "dimensions": [
+          594,
+          1024
+        ],
+        "seconds": 0.849,
+        "status": 200,
+        "attribution": "(c) Jan Vr\u0161ovsk\u00fd, some rights reserved (CC BY-SA), uploaded by Jan Vr\u0161ovsk\u00fd",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "license": "CC-BY-SA",
+        "sourceUrl": "https://www.inaturalist.org/observations/96348144",
+        "sourceMetadataUrl": "https://www.inaturalist.org/observations/96348144.json",
+        "sourceLocal": "/tmp/botanical77/obs-96348144.json"
+      },
+      "reason": "A slug is beside the base of a young Coprinus cap. Feeding is not clearly established; any later use needs recollection before maturecap. No predation story written."
+    },
+    {
+      "media": {
+        "observationId": 32749628,
+        "photoId": 51385754,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/51385754/large.jpg",
+        "localFile": "/tmp/botanical77/32749628.jpg",
+        "bytes": 679820,
+        "sha1": "e195d12c4a8a9ddc31fba46ec4d128dbd8f7cb8a",
+        "sha256": "7d59a7f7898f1b7c41f4fe197e7aa57f89e94d0432ff46d4ab9846b47b1c0f2c",
+        "dimensions": [
+          1024,
+          768
+        ],
+        "seconds": 1.029,
+        "status": 200,
+        "attribution": "(c) Jim Morefield, some rights reserved (CC BY), uploaded by Jim Morefield",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "license": "CC-BY",
+        "sourceUrl": "https://www.inaturalist.org/observations/32749628",
+        "sourceMetadataUrl": "https://www.inaturalist.org/observations/32749628.json",
+        "sourceLocal": "/tmp/botanical77/obs-32749628.json"
+      },
+      "reason": "Beautiful broad living bristlecone with bare crown. Repeats existing living-growth/dead-wood coexistence without a new event."
+    },
+    {
+      "media": {
+        "observationId": 184726532,
+        "photoId": 322481675,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/322481675/large.jpg",
+        "localFile": "/tmp/botanical77/184726532.jpg",
+        "bytes": 409370,
+        "sha1": "c5142c5c896774193ad74edc258eddcc337d0e55",
+        "sha256": "326dc1ccf41c7e65d18038e045bc9604e218628d80831a955a133043d5169085",
+        "dimensions": [
+          768,
+          1024
+        ],
+        "seconds": 0.921,
+        "status": 200,
+        "attribution": "(c) John Powers, some rights reserved (CC BY), uploaded by John Powers",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "license": "CC-BY",
+        "sourceUrl": "https://www.inaturalist.org/observations/184726532",
+        "sourceMetadataUrl": "https://www.inaturalist.org/observations/184726532.json",
+        "sourceLocal": "/tmp/botanical77/obs-184726532.json"
+      },
+      "reason": "Beautiful twisted bristlecone with exposed roots and living foliage. A strong portrait, no distinct new event beyond Ansel32."
+    },
+    {
+      "media": {
+        "observationId": 111734634,
+        "photoId": 188658290,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/188658290/large.jpeg",
+        "localFile": "/tmp/botanical77/188658290.jpg",
+        "bytes": 372933,
+        "sha1": "3ec561f40b10f97f8e415088ddf07e37a0646659",
+        "sha256": "665b325287b9c07c1466e3a11f4a30b1f1153f0caf7e855fa15883e991f62a62",
+        "dimensions": [
+          1024,
+          577
+        ],
+        "seconds": 1.077,
+        "status": 200,
+        "attribution": "no rights reserved, uploaded by Brady Reed",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "license": "CC0",
+        "sourceUrl": "https://www.inaturalist.org/observations/111734634",
+        "sourceMetadataUrl": "https://www.inaturalist.org/observations/111734634.json",
+        "sourceLocal": "/tmp/botanical77/obs-111734634.json"
+      },
+      "reason": "Same Hester observation, flowers without the central bee; no separate incident."
+    },
+    {
+      "media": {
+        "observationId": 111734634,
+        "photoId": 189412803,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/189412803/large.jpeg",
+        "localFile": "/tmp/botanical77/189412803.jpg",
+        "bytes": 365177,
+        "sha1": "fb5db0a6b9b85c33ef3dfdb598d067b06d49bb57",
+        "sha256": "8f6032b322b59b80ddb04de112eb379e28c08a24a1527a2a42d17ec56c6216ea",
+        "dimensions": [
+          577,
+          1024
+        ],
+        "seconds": 0.86,
+        "status": 200,
+        "attribution": "no rights reserved, uploaded by Brady Reed",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "license": "CC0",
+        "sourceUrl": "https://www.inaturalist.org/observations/111734634",
+        "sourceMetadataUrl": "https://www.inaturalist.org/observations/111734634.json",
+        "sourceLocal": "/tmp/botanical77/obs-111734634.json"
+      },
+      "reason": "Same Hester observation, upright pitchers without a legible visitor; portrait only."
+    }
+  ],
+  "limitations": [
+    "No full-upload original claim; inspected published large files.",
+    "No actual application relay or rendered Story UI test.",
+    "Hester77 is a fresh prose proposal for an earlier source-only hold; independent overlap decision required."
+  ],
+  "runtimeIntegration": {
+    "writer": "root",
+    "previousBodiesPreserved": true
+  }
+}

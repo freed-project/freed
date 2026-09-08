@@ -38,8 +38,13 @@ test("renders the expected state", async ({ app, ipc }) => {
 The shared `app` fixture injects `tauriInitScript()` with
 `page.addInitScript()` before application JavaScript runs. That script installs
 `window.__TAURI_INTERNALS__`, default IPC handlers, and the mock state used at
-startup. A test that creates its own page setup must inject `tauriInitScript()`
-first and must do so before `page.goto()`.
+startup. Tests that need pre-startup overrides must inject `tauriInitScript()` before
+`page.goto()`. The standalone preview startup test deliberately omits injection
+so it checks the same HTML bootstrap used by a person opening the preview.
+
+The shared implementation lives in `src/__mocks__/tauri-init.js`. Vite inserts
+it before app modules only when `VITE_TEST_TAURI` is enabled. Installation is
+idempotent so loading HTML preserves any handlers or state installed by tests.
 
 ## Running the suite
 
@@ -83,7 +88,7 @@ handler for a module-level plugin call.
 When the app starts invoking a new Tauri command, add a safe default response
 in both places:
 
-1. `tests/e2e/fixtures/tauri-init.ts`, inside the object assigned to
+1. `src/__mocks__/tauri-init.js`, re-exported by the test fixture, inside the object assigned to
    `window.__TAURI_MOCK_HANDLERS__`. This is the reliable pre-page path used by
    the Playwright fixture.
 2. `src/__mocks__/@tauri-apps/api/core.ts`, inside its `handlers` map. This is

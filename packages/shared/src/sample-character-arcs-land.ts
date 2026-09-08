@@ -2,13 +2,32 @@ import type { SampleCharacterArc, SampleCharacterEpisode } from "./sample-charac
 
 type AuthoredEntry = readonly [SampleCharacterEpisode["theme"], string, string, SampleCharacterArc["platform"]?, SampleCharacterEpisode["contentType"]?, string?];
 
+const FEED_PLATFORMS = new Set<SampleCharacterArc["platform"]>([
+  "rss", "linkedin", "medium", "substack", "youtube",
+]);
+
+function legacyClassification(
+  theme: SampleCharacterEpisode["theme"],
+  platform: SampleCharacterArc["platform"],
+): NonNullable<SampleCharacterEpisode["classification"]> {
+  if (theme === "social") return "conversation";
+  if (theme === "courtship" || theme === "family") return "personal";
+  if (theme === "movement" || theme === "weather") return "event";
+  return FEED_PLATFORMS.has(platform) ? "news" : "inspiring";
+}
+
 /** Static prose with intentional text-only defaults and individually reviewed scene bindings. */
-function unbound(subject: string, entries: readonly AuthoredEntry[]): SampleCharacterEpisode[] {
+function unbound(
+  subject: string,
+  defaultPlatform: SampleCharacterArc["platform"],
+  entries: readonly AuthoredEntry[],
+): SampleCharacterEpisode[] {
   return entries.map(([theme, title, body, platform, contentType, mediaSha1]) => ({
     subject,
     ...(platform ? { platform } : {}),
     ...(contentType ? { contentType } : {}),
     mediaSha1: mediaSha1 ?? REVIEWED_SCENE_IMAGES[`${subject}:${title}`] ?? null,
+    classification: legacyClassification(theme, platform ?? defaultPlatform),
     theme,
     title,
     body,
@@ -44,7 +63,7 @@ export const LAND_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
     characterId: "nib-willow", identityNameBase: "Nib Willow", platform: "instagram",
     bio: "A red panda who has found the perfect sleeping branch and would like the sun to stop moving.",
     location: { name: "Singalila montane forest", coordinates: { lat: 27.09, lng: 88.03 } },
-    episodes: unbound("red panda", [
+    episodes: unbound("red panda", "instagram", [
       ["movement", "Face first", "I came down the trunk headfirst, beautifully. Near the bottom I discovered how much of a descent depends on knowing where the bottom is. The last little bit was mostly face."],
       ["family", "The hand underneath", "Mother used to hold the bamboo while I ate. I would pull. She would hold. It was a very satisfactory arrangement.\n\nOne morning she let go.\n\nThe branch came with me. I fell backward with most of breakfast across my face. She waited until I had untangled myself, then put it between my paws.\n\nI dropped it. She put it back. I tried to bite a leaf and dropped it again.\n\nBy the end I was furious with the branch and she had not finished her own meal.\n\nThe next day I could hold it. Not elegantly, but well enough to eat.\n\nShe reached underneath once to help. I let my paw loosen a little. Just enough for her to keep holding.", "rss"],
       ["weather", "Chasing the warm patch", "The sun moved off my stomach. I shifted along the branch. It moved again. After three adjustments I was sleeping with my head lower than my feet, which apparently is what the sun wanted."],
@@ -61,7 +80,7 @@ export const LAND_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
     characterId: "juniper-ears", identityNameBase: "Juniper Ears", platform: "facebook",
     bio: "A fennec fox with exceptional hearing and a long list of noises she would prefer not to have identified.",
     location: { name: "Erg Chebbi dune margin", coordinates: { lat: 31.17, lng: -4.0 } },
-    episodes: unbound("fennec fox", [
+    episodes: unbound("fennec fox", "facebook", [
       ["social","To my face","Say it to my face. It makes very little difference acoustically.","facebook"],
       ["courtship","Together","We slept together. Sleep was the part we were bad at.","instagram"],
       ["movement", "Room for the ears", "Enlarged the tunnel this morning. My shoulders already fitted, but every time I turned my head the ceiling folded an ear. I refuse to spend another day agreeing with both walls."],
@@ -78,13 +97,13 @@ export const LAND_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
     characterId: "sumi-smallhours", identityNameBase: "Sumi Smallhours", platform: "instagram",
     bio: "A pygmy slow loris who leaves early, arrives late, and remembers every useful wound in a tree.",
     location: { name: "Cat Tien lowland forest", coordinates: { lat: 11.42, lng: 107.4 } },
-    episodes: unbound("pygmy slow loris", [
+    episodes: unbound("pygmy slow loris", "instagram", [
       ["feeding", "Lunch on a string", "The gum stretched from the bark to my mouth. I moved my head back to break it. More gum. For a while I was a very small animal on the end of a very long meal."],
       ["movement", "Hand already occupied", "Reached for the next branch. My other hand was holding the branch I needed to let go of, and a foot had joined in. I remained there, considering which part of me had started this."],
       ["weather", "Wet all the way through", "The rain flattened my fur. I looked down at my narrow wet wrist and briefly worried about how little of me had been holding me up. Tightened my grip. The wrist continued doing its job without looking any more reassuring."],
       ["social", "Your branch, briefly", "Another loris came toward me on the same branch. I moved underneath to let her pass. She moved underneath too. We hung nose to nose until she sighed, which I thought was unfair."],
       ["feeding", "The good wound", "The tree had closed the little place where I used to find gum. I worked at the bark until a fresh bead appeared. Licked it. Returned twice to make certain the tree understood what we had agreed."],
-      ["danger", "Hold everything", "Something large moved below. I froze with one hand halfway to my mouth. It passed. My hand remained there a little longer, carrying on with the fear after the rest of me had finished."],
+      ["danger", "Hold everything", "Something large moved below. I froze with one hand halfway to my mouth. It passed. My hand remained there a little longer, carrying on with the fear after the rest of me had finished.", "instagram", "story", "940226d8c28bc9a872ad3dc935ad1d8ee52f746b"],
       ["wonder", "Bloom within reach", "Pushed my face into a flower for nectar. Came out carrying yellow dust. Rubbed my cheek with a hand, then scratched my ear. I have managed to spread the flower considerably farther than I moved."],
       ["feeding", "The clean hand", "Licked the gum off one hand before moving on. Put that hand straight back on the sticky bark to clean the other. I have been taking turns being almost finished for some time."],
       ["social", "No hurry now", "She was at the narrow branch again. I stopped well before it and let her cross. She stopped beside me afterward. We sat there long enough that I could no longer blame the branch for wanting to stay."],
@@ -95,7 +114,7 @@ export const LAND_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
     characterId: "pella-wideawake", identityNameBase: "Pella Wideawake", platform: "x",
     bio: "A Philippine tarsier who sees most things coming and still reacts as though they have insulted her.",
     location: { name: "Bohol forest understory", coordinates: { lat: 9.72, lng: 124.03 } },
-    episodes: unbound("Philippine tarsier", [
+    episodes: unbound("Philippine tarsier", "x", [
       ["social","Nearly concealed","I can put the trunk between us. I cannot get both eyes behind it without becoming someone considerably narrower.","x"],
       ["feeding", "The quieter cricket", "Followed a cricket's call until I was close enough to jump. It stopped. Another began behind me. I turned my whole head to give the first one time to reconsider."],
       ["movement","Potential","I can jump a very long way. This has given people entirely the wrong idea about my willingness to let go.","x"],
@@ -112,7 +131,7 @@ export const LAND_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
     characterId: "orla-reach", identityNameBase: "Orla Reach", platform: "facebook",
     bio: "A short-beaked echidna whose nose keeps making commitments her shoulders cannot honor.",
     location: { name: "Tasmanian dry woodland", coordinates: { lat: -42.5, lng: 147.1 } },
-    episodes: unbound("short-beaked echidna", [
+    episodes: unbound("short-beaked echidna", "facebook", [
       ["feeding", "Further than the rest", "My nose fitted into the rotten log. My tongue fitted farther. My shoulders stopped outside. Ate lunch stretched across the entrance while a perfectly good patch of shade sat just behind my rump."],
       ["social", "From underneath", "I'm soft once you get to know me. You'll have to get to know me from underneath."],
       ["danger", "Too late for conversation", "A heavy footstep. I dug down and presented my spines. It passed. When I came up, I was facing the opposite direction and had forgotten which ants I was after."],
@@ -129,13 +148,14 @@ export const LAND_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
     characterId: "finch-fidget", identityNameBase: "Finch Fidget", platform: "instagram",
     bio: "A quokka who objects to being called cheerful while she is trying to chew.",
     location: { name: "Rottnest Island scrub", coordinates: { lat: -32.0, lng: 115.5 } },
-    episodes: unbound("quokka", [
+    episodes: unbound("quokka", "instagram", [
       ["feeding", "This is my chewing face", "The other quokka took the leaf I was reaching for. I chewed what I had and watched her. My face may have looked friendly. The chewing was extremely pointed."],
       ["movement", "Higher than breakfast", "Climbed into a shrub for a fresh shoot. Ate it, looked down, and discovered that the shoot had been the only part of my plan involving that height."],
       ["weather", "One foot outside", "The shade was just wide enough until the sun moved. Pulled my foot in. The other foot went out. I am beginning to understand why the larger quokka arrived before me."],
       ["social", "Saved you a leaf", "Kept the last leaf near my paw when my neighbor approached. She sniffed it and moved on. I ate it quickly so it would look like that had been my intention."],
       ["feeding", "The tough end", "Started a stem from the wrong end and kept chewing because I had started. My jaw got tired. Put it down with the good end facing me for when I become sensible."],
       ["feeding", "A plant with posture", "I pulled the shoot toward my mouth and it pulled back. Let go. It stood perfectly straight. I have asked plenty of plants to behave like food, but this one seems to want me to sit up first.", "instagram", undefined, "48d1f523316f5c6e88284e388cd209e2d5aad301"],
+      ["social", "The patch she left", "I watched her leave the shadow. Slid into the patch she'd left and shut my eyes before she came back.\n\nSomething touched my shoulder. I let my head droop. Something else stepped on my tail.\n\nI was prepared to sleep very convincingly.\n\nThen a warm flank pressed against me. Another body settled against that one. By the time I opened my eyes, we were all under the bench and I couldn't remember which bit I had stolen.\n\nThe sun reached one foot. I moved it inward. Three quokkas adjusted themselves.\n\nMy foot was in the shade. My other one wasn't.", "facebook", "post", "c36e4f57c0fd6b645c11effd878bbbcb27527aa4"],
       ["social", "An opening appeared", "The big quokka left the cool spot. I moved in before the flattened grass could stand up. She returned almost immediately. I shut my eyes with enormous conviction."],
       ["family","Across my face","She used to fit underneath my chin.\n\nNow she climbs across my face on the way to things. Puts a foot on my cheek, hauls the rest of herself over, and leaves me to work out which way my whiskers used to point.\n\nI could get up. There is plenty of room under the tree. I think about that every time she crosses me.\n\nThis afternoon she went around instead. She had found another place to lie down, a little farther into the shade. I stretched out. Put my head where I wanted it. Nobody stepped on anything.\n\nAfter a while I got up and went to her.\n\nI was aiming to lie alongside. Misjudged the gap. Put my foot on her face.\n\nShe made exactly the noise I make.","rss"],
       ["courtship", "Practicing indifference", "He grazed beside me. I chose a leaf facing away from him and chewed it as if I had never found anything so interesting. When he left, I had eaten the same bare stalk for quite a while."],
@@ -146,7 +166,8 @@ export const LAND_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
     characterId: "sorrel-spring", identityNameBase: "Sorrel Spring", platform: "x",
     bio: "A lesser Egyptian jerboa with too much departure and a developing interest in stopping.",
     location: { name: "Sinai gravel desert", coordinates: { lat: 29.6, lng: 33.9 } },
-    episodes: unbound("lesser Egyptian jerboa", [
+    episodes: unbound("lesser Egyptian jerboa", "x", [
+      ["danger", "Room between them", "The dark thing behind me was very long. The one ahead had ears.\n\nI drew myself down. They both grew smaller.\n\nSat so low my belly touched the ground.\n\nThe light moved away at last. I left in one enormous jump, before either of them could get tall again.", "instagram", "story", "d246b95962720ef2134ad89a651f3ae53a7cee94"],
       ["movement", "Past the seed", "Saw a seed. Hopped toward it. Landed beyond it. Turned, hopped back, landed beyond it again. Approached the third time in small, humiliating increments."],
       ["weather", "Closed for heat", "Plugged my burrow entrance against the day. A loose grain fell on my nose as I settled. Reopened the whole entrance to get it out, then spent the next while restoring my own good decision."],
       ["feeding", "Both hands full", "Picked up a seed in each little hand. An owl called. My legs were ready to leave, but my mouth was still deciding which seed to save."],
@@ -163,7 +184,7 @@ export const LAND_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
     characterId: "tully-tumble", identityNameBase: "Tully Tumble", platform: "linkedin",
     bio: "A rock hyrax whose morning sunning is essential work and whose alarm calls sometimes need correcting.",
     location: { name: "Matobo granite outcrops", coordinates: { lat: -20.55, lng: 28.5 } },
-    episodes: unbound("rock hyrax", [
+    episodes: unbound("rock hyrax", "linkedin", [
       ["weather", "Available after warming", "I reached the sunniest rock first and stretched out across it. Several others joined me. I remained the first to arrive, though very little of me remained in the sun."],
       ["danger", "A very low eagle", "Gave the alarm when a shadow crossed our ledge. Everyone scattered. The shadow belonged to grass above us. I kept watching the sky until it seemed too late to explain."],
       ["social", "The warm side", "A youngster pressed against my side while we rested. I shifted away; he followed. Eventually I stopped moving. When he left, that side got cold, which I had not taken into account."],
@@ -180,7 +201,7 @@ export const LAND_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
     characterId: "wren-boulder", identityNameBase: "Wren Boulder", platform: "instagram",
     bio: "A klipspringer who trusts a rock the size of a mouthful more than a broad patch of grass.",
     location: { name: "Serengeti granite kopjes", coordinates: { lat: -2.58, lng: 34.93 } },
-    episodes: unbound("klipspringer", [
+    episodes: unbound("klipspringer", "instagram", [
       ["movement", "Enough rock", "Landed with all four feet on the tip of a boulder. There was exactly enough room. Sneezed. Needed rather more room for that."],
       ["social", "An afternoon missing", "He said he would watch while I slept. I lay down beneath his rock and tried to keep one ear on him.\n\nThe next thing I heard was him asking whether I was hungry. The shade had moved. My legs were folded into the warm place where it had been.\n\nI had missed an entire afternoon. He was still standing.\n\nTold him to lie down. He lowered himself beside me and was asleep before I had finished saying I would watch.", "facebook", undefined, "e9e3c15490b4084f5801889695c7f9107364e608"],
       ["feeding", "Within reach, almost", "Stretched toward a flower from my narrow perch. It brushed my lips and swung back. I waited for the wind to bring it again. For once, the thing making lunch difficult also delivered it."],
@@ -197,7 +218,7 @@ export const LAND_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
     characterId: "fern-longnose", identityNameBase: "Fern Longnose", platform: "facebook",
     bio: "A white-nosed coati who is following one promising smell and will catch up with everyone in a moment.",
     location: { name: "Corcovado lowland forest", coordinates: { lat: 8.54, lng: -83.57 } },
-    episodes: unbound("white-nosed coati", [
+    episodes: unbound("white-nosed coati", "facebook", [
       ["feeding", "Followed the nose", "Found a wonderful smell under a log. Pushed my nose in, dug beside it, pushed farther. When I looked up, the group had left. The smell had better be wonderful."],
       ["social", "Last again", "Caught up with the others carrying a grub. Ate it before I reached them so nobody could tell me I was late. Arrived late with dirt all over my face and nothing to show for it."],
       ["movement", "The unfinished foot", "I fell asleep halfway through climbing into the fork. Woke with my chin on the branch and a hind foot still looking for somewhere to go. I put the foot down. It found air. So I have gone back to sleep while it thinks of something else.", "instagram", undefined, "f3ae7a54e302fadd0331daabe2f8be0000cceac7"],
@@ -208,13 +229,14 @@ export const LAND_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       ["feeding", "Easy pickings", "A fruit fell while I searched the ground. Jumped sideways before it landed. Went back and ate it, grateful that my fear usually gives things enough time to stop moving."],
       ["social", "She came back", "Got behind the group at the rotten trunk. A familiar nose appeared beside mine. She took the grub I had exposed and left. I followed her, relieved and furious in roughly equal amounts."],
       ["movement", "The smell can wait", "Passed the good log while everyone was moving. Took three more steps before turning back. The smallest coati turned with me. Now there are two of us who will explain the delay badly."],
+      ["feeding", "Two occupied paws", "Pulled the sweet thing closer. It tipped, and a drop ran down my wrist.\n\nLicked my wrist. Lost the rim.\n\nCaught it again. Now both paws are wet and I have to choose between holding breakfast and licking it off myself.", "instagram", "story", "62328b2755b147737effe8278a9e7b6d6fc69b0f"],
     ]),
   },
   {
     characterId: "bramble-shortlegs", identityNameBase: "Bramble Shortlegs", platform: "rss",
     bio: "A common wombat who dug a perfectly good home and is still arguing with the roots.",
     location: { name: "Cradle Mountain grassland edge", coordinates: { lat: -41.65, lng: 145.95 } },
-    episodes: unbound("common wombat", [
+    episodes: unbound("common wombat", "rss", [
       ["movement", "The root won tonight", "I widened the sleeping chamber toward the left. There was a root. Dug under it, found a thicker root, tried above it, and came through into my own entrance tunnel.\n\nSat with my nose sticking out of the hole I had made. Cool air on my face. A decent view of the grass.\n\nSlept in the old chamber. I will decide what the new hole is for when I am less tired."],
       ["feeding", "All mine already", "The other wombat kept edging toward my patch. I ate faster to keep it from him. Now he's on the good grass and I'm full.", "instagram", "story", "1757c43cd78b20048fc5c148a6fc2666c7df2fbf"],
       ["weather", "A small improvement", "Water ran into the new hole during the rain. I woke with one wet flank and blamed the root first, because we had already had a disagreement.\n\nPushed loose earth into the opening. The trickle stopped. More earth. No water. I lay down against the repaired wall and felt pleased with myself.\n\nWoke with one wet flank. Had blocked the water inside with me."],
@@ -231,7 +253,7 @@ export const LAND_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
     characterId: "kit-snowshoe", identityNameBase: "Kit Snowshoe", platform: "rss",
     bio: "An American pika with enough hay for winter and several reasons to fetch one more mouthful.",
     location: { name: "Rocky Mountain alpine talus", coordinates: { lat: 40.4, lng: -105.75 } },
-    episodes: unbound("American pika", [
+    episodes: unbound("American pika", "rss", [
       ["feeding", "Too wide for the doorway", "Cut a beautiful mouthful of stems at the meadow edge. Carried them all the way to my haypile. The stems caught across the gap between the rocks.\n\nPushed harder. They bent. Backed out, dropped them, and took the bundle through in two loads.\n\nIt looked smaller afterward. I went out for more, having learned almost the wrong thing from the whole experience."],
       ["social", "The neighbor's mouthful", "My neighbor came home carrying something greener than anything in my pile. I watched where he went next, waited until he disappeared, and visited the same patch.\n\nThe leaves were tough. Gathered some anyway.\n\nHe watched me bringing them back. I held my head unusually high. We now both have a pile containing leaves I do not especially like, though only one of us knows why."],
       ["wonder", "Something for home", "I wanted flowers beside my sleeping place. Carried a mouthful home, nibbling off the bits that poked my nose. By the time I reached the rocks, I had brought myself a stick.", "facebook", "story", "a7a2c51bbbd043ab9bd2c24cab3afef9cef58d0a"],
@@ -248,10 +270,11 @@ export const LAND_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
     characterId: "mallow-fold", identityNameBase: "Mallow Fold", platform: "rss",
     bio: "A ground pangolin who can close herself completely and is working on the timing of opening again.",
     location: { name: "Kruger savanna woodland", coordinates: { lat: -24.15, lng: 31.55 } },
-    episodes: unbound("ground pangolin", [
+    episodes: unbound("ground pangolin", "rss", [
+      ["danger", "Quiet on the outside", "I closed when the grass moved. Waited for something to touch the scales.\n\nNothing did.\n\nMy stomach growled. I pulled my tail tighter over my face.\n\nIt growled again.\n\nI had made such a good, quiet ball until then.\n\nOpened far enough to put my nose out. The ants were still where I had left them. I could smell them from inside. Stayed like that for a while, with my stomach urging the rest of me forward.", "rss", "article", "1584305662fbcbc600a2d6367d1cd4c72bc88ece"],
       ["danger", "Safe, but facing inward", "A branch snapped behind me and I folded shut. Tail over face, scales outside, everything soft carefully elsewhere.\n\nNothing touched me. Waited longer. Uncurled just enough to smell the air, heard something move, and folded again.\n\nWhen I finally opened, an old dry branch lay across the path. I stepped over it with particular care. It had already taken a good portion of my evening."],
       ["feeding", "The wrong small hole", "Found ants entering a crack and worked my tongue into it. A little food, a little dirt, then nothing. Opened the crack with my claws and discovered a passage turning away where my tongue could not follow.\n\nDug beside it. The ants changed course.\n\nI stood over several excellent holes and very little supper. Followed one ant out of the mess. She knew considerably more about where we should go next."],
-      ["movement", "Claws held clear", "Walked across the hard ground with my front claws tucked up. A small stone shifted beneath one hind foot. Put a forefoot down, steadied myself, lifted it again.\n\nNobody saw. I checked.\n\nThen I crossed the rest of the patch in that dignified, careful posture and immediately used the protected claws to tear apart a mound. They were being saved for something much less delicate than walking."],
+      ["movement", "Claws held clear", "Walked across the hard ground with my front claws tucked up. A small stone shifted beneath one hind foot. Put a forefoot down, steadied myself, lifted it again.\n\nNobody saw. I checked.\n\nThen I crossed the rest of the patch in that dignified, careful posture and immediately used the protected claws to dig open an ant tunnel. They were being saved for something much less delicate than walking.", "rss", "article", "0b7618d57532d0364af4cd5d5819f81e3f449f29"],
       ["weather", "A dry place occupied", "Reached a burrow as the rain started. Sniffed at the entrance. Something old had lived there, but nothing fresh answered my nose.\n\nWent in. The floor was dry and smelled unfamiliar. Turned twice before settling, trying to find a shape that belonged to me.\n\nWoke when my own tail brushed my face. Folded shut in somebody else's empty bedroom. It took a while to feel welcome again."],
       ["wonder", "The mound repaired itself", "Returned to the place I had opened the night before. The hole was smaller. Tiny bodies worked along its edges, putting the wall back.\n\nI sniffed, scratched a little, watched the traffic change.\n\nLeft with food in my stomach and the same strange impression as before: I keep finding dinner inside a thing that does not want to remain broken. By tomorrow I will have to knock the wall down again."],
       ["social", "A nose at the edge", "Another pangolin came along while I was feeding. We stopped close enough to smell each other. She nosed the disturbed earth, then moved past my flank.\n\nI nearly folded. Did not.\n\nShe continued down the path. I stayed where I was, feeling exposed and oddly pleased about having remained the same shape throughout a meeting. Then an ant reached the soft part of my nose and I lost all composure."],
@@ -265,7 +288,8 @@ export const LAND_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
     characterId: "nessa-whisker", identityNameBase: "Nessa Whisker", platform: "rss",
     bio: "An Arctic fox who remembers where she put things, provided the entire ground has not changed overnight.",
     location: { name: "Svalbard tundra coast", coordinates: { lat: 78.15, lng: 15.25 } },
-    episodes: unbound("Arctic fox", [
+    episodes: unbound("Arctic fox", "rss", [
+      ["social", "From down here", "She leapt at me. I ducked.\n\nShe went over my head and landed in the flowers. Came straight back.\n\nDucked again.\n\nI had wanted a chase. Now I'm staying in one place while she does all the running, and I can't make myself spoil it.", "instagram", "story", "a160238d48bc5acdc202e3151f44d8bd0a909fcc"],
       ["feeding", "Under the right stone", "Buried a scrap beside a flat stone and covered it carefully. Walked away. Came back to cover it better.\n\nA gull watched from farther along the shore. I waited for it to look elsewhere before leaving. It waited too.\n\nDug the scrap up and ate it. Spent the walk home much less hungry and still annoyed that the gull had been involved in my decision."],
       ["movement", "The careful approach", "The gull stood beside my buried scrap with its back turned. I lowered myself and crept toward it. Soft feet. No sound. Close enough now to smell the fish on its feathers.\n\nIt stepped aside before I reached it. Flew to a higher rock.\n\nI dug where it had stood and found nothing. Dug where I had actually buried the scrap and found dinner. I had stalked a bird to a place I knew was wrong because it looked so sure."],
       ["weather", "A tail's worth of shelter", "The wind found the gap between my nose and my tail. Curled tighter. It found the gap again.\n\nTurned around in the hollow and tucked my nose beneath the thickest fur. Quiet at last. Warm breath coming back to me.\n\nSlept until a gust dropped snow from the lip of the hollow directly onto my head. There are nights when lying down is most of the work."],
@@ -282,7 +306,7 @@ export const LAND_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
     characterId: "mira-mask", identityNameBase: "Mira Mask", platform: "rss",
     bio: "A raccoon who trusts her hands, distrusts the stream, and keeps going back to ask it questions.",
     location: { name: "Great Smoky Mountains stream forest", coordinates: { lat: 35.62, lng: -83.47 } },
-    episodes: unbound("raccoon", [
+    episodes: unbound("raccoon", "rss", [
       ["feeding", "What my hands knew", "Felt something firm beneath a stone and reached farther in. My fingers found an edge, then a leg, then nothing. Lifted the stone. Empty sand.\n\nLooked at my wet paws as if one of them had failed to pass along a useful detail.\n\nPut them back in. Found a small crayfish farther downstream and held it carefully. My mouth was much less interested in the investigation than my hands had been."],
       ["movement", "A branch with an opinion", "Climbed out along a branch toward a hanging fruit. The branch lowered itself until the fruit was still just beyond my reach, but the ground was very far away.\n\nBacked toward the trunk. The branch rose. Reached again. It lowered.\n\nSat at the fork for a while, looking at the fruit. Eventually climbed down and found one on the ground. It tasted of a much shorter story."],
       ["wonder", "Playing by ear", "I moved a stone and the stream made a lovely hollow note. Moved another. Better. Sat down to listen and stopped the sound with my bottom.\n\nI stood up. There it was.\n\nI have been bobbing up and down for some time. My feet are cold and I know how to play one note.", "facebook", undefined, "09edc781bc141cd69b3ccd00d3a9aaf7bb417b27"],
@@ -294,6 +318,8 @@ export const LAND_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       ["wonder", "Found by touch", "The water dropped and my flat stone reappeared, farther downstream. I stepped onto it. Same dip beneath my paw, same rough edge. Sat there a moment.\n\nThe bank looked different from this angle. A root I had never searched reached into the shallows.\n\nPut my hands under it and felt something move. Forgot about the stone immediately. It had traveled through a flood to remain something I sat on while thinking about dinner."],
       ["movement", "The hollow is occupied", "Went back to the tree where I had hidden from the bear. Climbed to the hollow and sniffed. It smelled of me.\n\nWorked my shoulders inside, turned, tucked my feet close. I could hear the stream below without having to put anything into it.\n\nA scraping noise came from the bark outside. I opened one eye, then the other. A beetle. Reached out and inspected it. Almost settled down. There is always one more thing to check."],
       ["social", "Before either of us", "When I was small, I offered to help another youngster out of the water. He climbed onto my back. I was still working on the part where I got out.", "facebook", "story", "b6a5e6fb20417887db4d0ae2cf91fe862907276a"],
+    ["movement", "Out of reach", "Reached down to see what was under the water. Couldn't find it.\n\nPut the other paw in. Still nothing.\n\nThen the bank began moving past me.\n\nHad to stop looking for the bottom and use both hands to swim back.", "instagram", "story", "26334aa7154b08d652e36cde0a7079782204f1cd"],
+      ["danger", "The quiet part", "Went into the hollow headfirst. The birds kept shouting. Pulled in my feet. Then my tail.\n\nQuiet.\n\nCouldn't turn around in there. Had to go back out bottom first.\n\nThe shouting started before I could see who was still waiting.", "instagram", "story", "1a3e9d48fb945a61507f60f0934b6b958f057b68"],
     ]),
   },
 ];

@@ -1,0 +1,18 @@
+[
+  {
+    "id": "nova74-thermal-light-echo",
+    "subject": "supernova remnant NASA",
+    "identityNameBase": "Nova Remains",
+    "category": "astronomy",
+    "imageUrl": "https://assets.science.nasa.gov/dynamicimage/assets/science/missions/webb/science/2025/01/STScI-01JFGAA7QGJ28JSCXGFFXFG44M.jpg?w=1200&h=675&fit=crop&crop=faces%2Cfocalpoint",
+    "sourceUrl": "https://science.nasa.gov/asset/webb/cassiopeia-a-light-echoes-time-lapse/",
+    "sha1": "3cea93a1a3bf7a2e60405c6fce570ecfac26842f",
+    "creator": "NASA, ESA, CSA, STScI, Jacob Jencson (Caltech/IPAC), Joseph DePasquale (STScI)",
+    "license": "NASA media-use terms: editorial reuse with attribution; no implied endorsement",
+    "licenseUrl": "https://www.nasa.gov/nasa-brand-center/images-and-media/",
+    "width": 1200,
+    "height": 675,
+    "alt": "Processed infrared NIRCam image of red-orange interstellar dust filaments illuminated by the Cassiopeia A light echo, with stars and an August 19, 2024 source date.",
+    "detail": "Processed infrared NIRCam image of red-orange interstellar dust filaments illuminated by the Cassiopeia A light echo, with stars and an August 19, 2024 source date."
+  }
+]

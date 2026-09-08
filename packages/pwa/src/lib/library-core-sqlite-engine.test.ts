@@ -4090,6 +4090,23 @@ describe("PWA Library Core SQLite engine", () => {
       expect(new Set(actual).size).toBe(actual.length);
     }
 
+    // Searching the identity directory must not silently exclude connections.
+    database.exec(`
+      INSERT INTO library_persons
+        (id, name, relationship_status, care_level, created_at, updated_at)
+      VALUES
+        ('search-1', 'Sela Current', 'friend', 5, 10, 100),
+        ('search-2', 'Selma Shore', 'connection', 1, 10, 100),
+        ('search-3', 'Ansel Threadbark', 'connection', 1, 10, 100);
+      UPDATE library_persons SET bio = 'Enjoying himself quietly' WHERE id = 'person-4';
+    `);
+    const searched = engine.query({ ...baseRequest, search: "SEL", sort: "name" });
+    expect(searched.totalCount).toBe(3);
+    expect(searched.rows.map((row) => row.name)).toEqual([
+      "Ansel Threadbark", "Sela Current", "Selma Shore",
+    ]);
+    expect(engine.query({ ...baseRequest, sort: "name" }).totalCount).toBe(5);
+
     const first = engine.query({ ...baseRequest, limit: 1, sort: "name" });
     const decoded = decodeLibraryCoreFriendsDirectoryCursorV1(
       first.nextCursor!,

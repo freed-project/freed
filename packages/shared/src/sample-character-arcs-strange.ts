@@ -24,6 +24,7 @@ export const STRANGE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "peacock butterfly larva",
         "platform": "rss",
+        "classification": "conversation",
         "mediaSha1": "37826d14dcf3f2ae0e14cfbbe1664edd24264efc",
         "theme": "social",
         "title": "The bit with everybody",
@@ -32,6 +33,7 @@ export const STRANGE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "peacock butterfly",
         "platform": "instagram",
+        "classification": "inspiring",
         "mediaSha1": "ed1c91a9b3029546db3d35cdc7e8f498c4ce71a2",
         "theme": "feeding",
         "title": "So many",
@@ -40,6 +42,7 @@ export const STRANGE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "peacock butterfly",
         "platform": "facebook",
+        "classification": "inspiring",
         "mediaSha1": "7b3d0cda60d7434802a964fca311cbf542c52bcb",
         "theme": "feeding",
         "title": "A little closer",
@@ -48,6 +51,7 @@ export const STRANGE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "peacock butterfly",
         "platform": "instagram",
+        "classification": "personal",
         "mediaSha1": "e6395eac1655614883be75bdd33644225d4c88de",
         "theme": "courtship",
         "title": "Beside you",
@@ -56,6 +60,7 @@ export const STRANGE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "peacock butterfly",
         "platform": "rss",
+        "classification": "conversation",
         "mediaSha1": "14af85249f043d127d4fa44d5b8d82712742b355",
         "theme": "social",
         "title": "The quiet leaf",
@@ -64,6 +69,7 @@ export const STRANGE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "peacock butterfly",
         "platform": "instagram",
+        "classification": "inspiring",
         "mediaSha1": "b9c041e993e2e9ae1a0414555908b76e8339817f",
         "theme": "transformation",
         "title": "Still lifting",
@@ -72,6 +78,7 @@ export const STRANGE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "peacock butterfly larva",
         "platform": "instagram",
+        "classification": "conversation",
         "mediaSha1": "b631d286ef54c268912587db2f1ce4b55ba27237",
         "theme": "social",
         "title": "Careful affection",
@@ -80,6 +87,7 @@ export const STRANGE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "peacock butterfly",
         "platform": "x",
+        "classification": "inspiring",
         "mediaSha1": "67ce28a5d90261f49e291e27a788f82bcf2b7704",
         "theme": "wonder",
         "title": "After winter",
@@ -88,6 +96,7 @@ export const STRANGE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "peacock butterfly",
         "platform": "instagram",
+        "classification": "inspiring",
         "mediaSha1": "c8ab37f8214ca3bcefd87472e88be186638d6a32",
         "theme": "wonder",
         "title": "The other appetite",
@@ -97,6 +106,7 @@ export const STRANGE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
         "subject": "peacock butterfly larva",
         "platform": "medium",
         "contentType": "article",
+        "classification": "news",
         "mediaSha1": "c6270ba8717745147c5127ae5b1ce35f555092eb",
         "theme": "transformation",
         "title": "Something worth chewing over",
@@ -120,6 +130,7 @@ export const STRANGE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "pixie's parasol fungus",
         "platform": "instagram",
+        "classification": "inspiring",
         "mediaSha1": "2634e1d85a3b19e9ba5d0196744389b3ea0c653e",
         "theme": "feeding",
         "title": "Delicate",
@@ -128,6 +139,7 @@ export const STRANGE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "pixie's parasol fungus",
         "platform": "facebook",
+        "classification": "conversation",
         "mediaSha1": "972db42dfc3cf7337518b83edbe6cfa5786d4ed2",
         "theme": "social",
         "title": "Something on my head",
@@ -136,6 +148,7 @@ export const STRANGE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "pixie's parasol fungus",
         "platform": "x",
+        "classification": "conversation",
         "mediaSha1": "2111ad243646990e190fd7b9a3db343770869ef8",
         "theme": "social",
         "title": "Below",
@@ -144,6 +157,7 @@ export const STRANGE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "pixie's parasol fungus",
         "platform": "instagram",
+        "classification": "inspiring",
         "mediaSha1": "78f4f9962685a35cd6478c494f467c7802d0bd2c",
         "theme": "transformation",
         "title": "Room for one",
@@ -152,6 +166,7 @@ export const STRANGE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "pixie's parasol fungus",
         "platform": "instagram",
+        "classification": "inspiring",
         "mediaSha1": "da8798bfbdee18c07cbd10cb817ebc21c0a789e1",
         "theme": "transformation",
         "title": "The bend",
@@ -160,6 +175,7 @@ export const STRANGE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "pixie's parasol fungus",
         "platform": "instagram",
+        "classification": "conversation",
         "mediaSha1": "86ae650897db8db31601a8464c602f225261fe0d",
         "theme": "social",
         "title": "The leak",
@@ -168,6 +184,7 @@ export const STRANGE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "pixie's parasol fungus",
         "platform": "rss",
+        "classification": "news",
         "mediaSha1": "3b8eeb035bddf3144db6576bf7005fb40fcf7f25",
         "theme": "wonder",
         "title": "The old weight",
@@ -176,6 +193,7 @@ export const STRANGE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "pixie's parasol fungus",
         "platform": "x",
+        "classification": "inspiring",
         "mediaSha1": "4a25b79d6d2408fae597afceabfbdc97342088d4",
         "theme": "wonder",
         "title": "Blue",
@@ -185,10 +203,21 @@ export const STRANGE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
         "subject": "pixie's parasol fungus",
         "platform": "medium",
         "contentType": "article",
+        "classification": "conversation",
         "mediaSha1": "7f791d06536fffcdede266b60116fdf992d157ed",
         "theme": "social",
         "title": "Please leave me in here",
         "body": "A visitor offered to get me out of the wood.\n\nI had brought a small blue part of myself into the air, and apparently this looked like the beginning of an escape. The visitor asked whether the rest of me was stuck.\n\nI tried to explain that the rest of me was busy. There was a great deal happening inside the wood. I had been branching through the dark for some time, and finding it much more accommodating than it looked from outside.\n\nThe visitor said it must be lonely in there.\n\nI wanted company that could follow me in without first insisting I come out.\n\nHe asked what I did all day.\n\nI told him I was eating the wood. He asked when I would be finished. I said it would take longer if he kept interrupting."
+      },
+      {
+        "subject": "pixie's parasol fungus",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "social",
+        "title": "Before the introductions",
+        "body": "The white mushroom beside me asked if I knew the blue one farther along the log. I said that was me too. He has stopped explaining what happened between them.",
+        "classification": "conversation",
+        "mediaSha1": "36a6e4e1b4acdd785f42ed731ab3fdf1ffb3e40d"
       }
     ]
   },
@@ -208,6 +237,7 @@ export const STRANGE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "Lycogala slime mold",
         "platform": "instagram",
+        "classification": "personal",
         "mediaSha1": "f29f683c701b7d6ef77c875c2de1c4135ea5b6f0",
         "theme": "courtship",
         "title": "Casual",
@@ -216,6 +246,7 @@ export const STRANGE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "Lycogala slime mold",
         "platform": "rss",
+        "classification": "conversation",
         "mediaSha1": "d19e508d51a18cdbc100f216c1834340bb19ff48",
         "theme": "social",
         "title": "They disagreed",
@@ -224,6 +255,7 @@ export const STRANGE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "Lycogala slime mold",
         "platform": "facebook",
+        "classification": "inspiring",
         "mediaSha1": "fb5a21b4b00291ba2039cb5c60e3068d9438a96d",
         "theme": "transformation",
         "title": "In the middle",
@@ -232,6 +264,7 @@ export const STRANGE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "Lycogala slime mold",
         "platform": "rss",
+        "classification": "conversation",
         "mediaSha1": "9017aa14940d9d7601e0e6c5a61476528f93d385",
         "theme": "social",
         "title": "Everybody at once",
@@ -240,6 +273,7 @@ export const STRANGE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "Lycogala slime mold",
         "platform": "instagram",
+        "classification": "personal",
         "mediaSha1": "e0290a639a0be2b17b6feb8121d1c91e39a711b7",
         "theme": "courtship",
         "title": "Over there",
@@ -248,10 +282,31 @@ export const STRANGE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "Lycogala slime mold",
         "platform": "rss",
+        "classification": "news",
         "mediaSha1": "91de00261b047fae2ad164e563f22ce2f35e2637",
         "theme": "transformation",
         "title": "Rosy",
         "body": "I went gray first.\n\nThe one beside me continued being pink in a way I found quite unnecessary. She called me rosy. She meant to be kind. I asked her not to.\n\nThe next morning there was a dull patch on her side. I noticed immediately. Managed not to mention it.\n\nBy the time the pink had gone, I had been behaving very well for what felt like an enormous portion of my life.\n\nWe sat against the damp bark, two gray bodies with very little to conceal from each other.\n\nI called her rosy.\n\nShe has asked me not to. I can see why she found it difficult."
+      },
+      {
+        "subject": "Lycogala slime mold",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "social",
+        "title": "A poor reception",
+        "body": "While I was still pink, a slug came straight toward me. I began to think of something welcoming to say. She stopped, tasted the wood beside me, and turned away. I spent the afternoon being offended on behalf of the log.",
+        "classification": "conversation",
+        "mediaSha1": "9253162de1a7d057faaf8d5e9683493ef1b6dcb0"
+      },
+      {
+        "subject": "Lycogala slime mold",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "transformation",
+        "title": "Before the hand left",
+        "body": "A finger pressed down and a pale cloud burst out of me. I wanted the finger to go away. Then it lifted, carrying some of me on its skin, and I wanted it to wait.",
+        "classification": "inspiring",
+        "mediaSha1": "ecdcaeed543cec9d423065f500bdada9ec77d7ef"
       }
     ]
   }

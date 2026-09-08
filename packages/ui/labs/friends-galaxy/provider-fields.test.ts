@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { providerGalaxyArmCount } from "../../src/lib/identity-galaxy-provider-field.js";
 import {
   createFriendsGalaxyProviderFields,
-  FRIENDS_GALAXY_PROVIDER_FIELD_CULL_SCALE,
   FRIENDS_GALAXY_PROVIDER_FIELD_INSTANCE_FLOATS,
   writeFriendsGalaxyProviderFieldPresentation,
   type FriendsGalaxyFieldStyle,
@@ -133,7 +132,7 @@ describe("Friends Galaxy provider fields", () => {
 
     expect(fields.count).toBe(1);
     expect(Array.from(fields.instanceData).every(Number.isFinite)).toBe(true);
-    expect(Array.from(fields.instanceData.slice(0, 5))).toEqual([0, 0, -310, 1, 1]);
+    expect(Array.from(fields.instanceData.slice(0, 5))).toEqual([0, 0, -310, 0.75, 0.75]);
   });
 
   it("uses the account role for provider keys outside the active palette", () => {
@@ -171,7 +170,14 @@ describe("Friends Galaxy provider fields", () => {
     )).toThrow("provider field storage is malformed");
   });
 
-  it("culls fields only beyond useful close detail", () => {
-    expect(FRIENDS_GALAXY_PROVIDER_FIELD_CULL_SCALE).toBe(1.5);
+  it("sizes fields by unlinked accounts with equal empty fields and a two-to-one range", () => {
+    const regions = [0, 0, 40].map((unlinkedCount, index) => ({
+      ...fixture.atlas.regions[index]!, unlinkedCount,
+    }));
+    const fields = createFriendsGalaxyProviderFields({ positions: fixture.scene.positions, personCount: fixture.personCount, regions });
+    const stride = FRIENDS_GALAXY_PROVIDER_FIELD_INSTANCE_FLOATS;
+    const widths = regions.map((_, index) => fields.instanceData[(index + 1) * stride + 3]!);
+    expect(widths[0]).toBe(widths[1]);
+    expect(widths[2]).toBeCloseTo(widths[0]! * 2, 4);
   });
 });

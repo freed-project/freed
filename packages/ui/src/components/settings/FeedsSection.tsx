@@ -289,7 +289,7 @@ function ManagePane() {
               <p className="truncate text-sm text-[var(--theme-text-primary)]">{feed.title}</p>
               {failingFeed ? (
                 <span
-                  className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] ${
+                  className={`shrink-0 rounded-full px-2 py-0.5 text-[0.625rem] ${
                     showLikelyDead
                       ? "bg-red-500/15 text-red-400"
                       : "bg-amber-500/15 text-amber-400"
@@ -695,12 +695,12 @@ function ImportPane() {
                   <p className="truncate text-xs text-[var(--theme-text-muted)]">{feed.url}</p>
                 </div>
                 {feed.folder && (
-                  <span className="flex-shrink-0 rounded-full bg-[var(--theme-bg-muted)] px-2 py-0.5 text-[10px] text-[var(--theme-text-secondary)]">
+                  <span className="flex-shrink-0 rounded-full bg-[var(--theme-bg-muted)] px-2 py-0.5 text-[0.625rem] text-[var(--theme-text-secondary)]">
                     {feed.folder}
                   </span>
                 )}
                 {isExisting && (
-                  <span className="theme-status-pill-success flex-shrink-0 rounded-full px-2 py-0.5 text-[10px]">
+                  <span className="theme-status-pill-success flex-shrink-0 rounded-full px-2 py-0.5 text-[0.625rem]">
                     subscribed
                   </span>
                 )}
@@ -878,7 +878,7 @@ function ExportPane() {
             </svg>
             <span className="flex-1 truncate text-sm text-[var(--theme-text-primary)]">{feed.title}</span>
             {feed.folder && (
-              <span className="flex-shrink-0 rounded-full bg-[var(--theme-bg-muted)] px-2 py-0.5 text-[10px] text-[var(--theme-text-secondary)]">
+              <span className="flex-shrink-0 rounded-full bg-[var(--theme-bg-muted)] px-2 py-0.5 text-[0.625rem] text-[var(--theme-text-secondary)]">
                 {feed.folder}
               </span>
             )}

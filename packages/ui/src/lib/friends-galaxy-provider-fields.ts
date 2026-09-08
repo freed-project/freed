@@ -11,7 +11,6 @@ import {
 
 export type FriendsGalaxyFieldStyle = "nebula-rings" | "nebula" | "rings";
 
-export const FRIENDS_GALAXY_PROVIDER_FIELD_CULL_SCALE = 1.5;
 export const FRIENDS_GALAXY_PROVIDER_FIELD_INSTANCE_FLOATS = 12;
 export const FRIENDS_GALAXY_PROVIDER_FIELD_INSTANCE_STRIDE =
   FRIENDS_GALAXY_PROVIDER_FIELD_INSTANCE_FLOATS * Float32Array.BYTES_PER_ELEMENT;
@@ -125,19 +124,26 @@ export function createFriendsGalaxyProviderFields(
     x: identityBounds.centerX,
     y: identityBounds.centerY,
     z: -310,
-    halfWidth: identityBounds.halfWidth,
-    halfHeight: identityBounds.halfHeight,
+    halfWidth: identityBounds.halfWidth * 0.75,
+    halfHeight: identityBounds.halfHeight * 0.75,
     seed: 0.618,
     arms: 6,
   });
 
+  const counts = input.regions.map(region => region.unlinkedCount);
+  const minimumCount = Math.min(...counts);
+  const maximumCount = Math.max(...counts);
+  const weights = counts.map(count => maximumCount > minimumCount ? 1 + (count - minimumCount) / (maximumCount - minimumCount) : 1);
+  const meanWeight = weights.reduce((sum, weight) => sum + weight, 0) / Math.max(1, weights.length);
+  const meanWidth = input.regions.reduce((sum, region) => sum + region.radiusX * 1.32, 0) / Math.max(1, counts.length);
+  const meanHeight = input.regions.reduce((sum, region) => sum + region.radiusY * 1.38, 0) / Math.max(1, counts.length);
   input.regions.forEach((region, index) => {
     writeFieldGeometry(instanceData, index + 1, {
       x: region.x,
       y: -region.y,
-      z: -300,
-      halfWidth: region.radiusX * 1.32,
-      halfHeight: region.radiusY * 1.38,
+      z: -100,
+      halfWidth: meanWidth * weights[index]! / meanWeight,
+      halfHeight: meanHeight * weights[index]! / meanWeight,
       seed: providerGalaxySeed(region.provider),
       arms: providerGalaxyArmCount(region.provider),
     });
@@ -164,7 +170,7 @@ export function writeFriendsGalaxyProviderFieldPresentation(
     fields.instanceData,
     0,
     palette.friend,
-    light ? 0.065 : 0.16,
+    light ? 0.26 : 0.64,
     styleCode,
   );
 

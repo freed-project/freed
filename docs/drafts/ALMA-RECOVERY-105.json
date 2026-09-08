@@ -1,0 +1,100 @@
+{
+  "status": "bounded_recovery_review_closed_zero_admissions",
+  "characterId": "alma-eight",
+  "proseChanged": false,
+  "admitted": 0,
+  "reviewedImages": [
+    {
+      "sourceUrl": "https://www.inaturalist.org/observations/181254419",
+      "metadataPath": "/tmp/freed-alma105/181254419.json",
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/343371004/large.png",
+      "localPath": "/tmp/freed-alma105/crab.png",
+      "creator": "Joss Carr",
+      "license": "CC BY 4.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "sha1": "db787ed1fc342cb33ffc688e284bce10784c4ec0",
+      "sha256": "3390705342aadfbcbb795447409777c89038c06e897b1a818f8c35e23693d849",
+      "bytes": 910031,
+      "dimensions": [
+        1024,
+        795
+      ],
+      "individuallyOpened": true,
+      "verdict": "hold_image_quality",
+      "reason": "Primary observer describes crab capture and dragging toward den, but exact image is blurry and strongly green. Octopus discernible, crab not independently legible enough to carry It had hold of me too."
+    },
+    {
+      "sourceUrl": "https://www.inaturalist.org/observations/11308312",
+      "metadataPath": "/tmp/freed-alma105/11308312.json",
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/16095912/large.jpg",
+      "localPath": "/tmp/freed-alma105/shell.jpg",
+      "creator": "Georgina Jones",
+      "license": "CC BY-SA4.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "sha1": "c1cc7db44f92216f25c99a59c14a49f10c490679",
+      "sha256": "816ec664007bbca8cd81ebb8ee6cb4d9246d3ecbf1f6c2385b0561a248a0a40e",
+      "bytes": 48300,
+      "individuallyOpened": true,
+      "verdict": "hold_for_Alma_taxon",
+      "reason": "Source South Africa. Current primary genomic work distinguishes TypeIII from Mediterranean/NE Atlantic O.vulgaris; do not treat older/general iNaturalist identification as proof of Alma taxon. First shell image also lacks preserved incident. Hermit images are sharp associations potentially useful for a different appropriately defined character, not Alma relocation or rewritten protected prose."
+    },
+    {
+      "sourceUrl": "https://www.inaturalist.org/observations/387065950",
+      "metadataPath": "/tmp/freed-alma105/387065950.json",
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/708742048/large.jpg",
+      "localPath": "/tmp/freed-alma105/hermits-1.jpg",
+      "creator": "Georgina Jones",
+      "license": "CC BY-SA4.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "sha1": "2d779c5df52353fdde644e6be2f0cb71b331719f",
+      "sha256": "5ef891147bf85d1759f8cef55f9b4d1600980830770ec18bab5920b6fe342f0a",
+      "bytes": 691546,
+      "individuallyOpened": true,
+      "verdict": "hold_for_Alma_taxon",
+      "reason": "Source South Africa. Current primary genomic work distinguishes TypeIII from Mediterranean/NE Atlantic O.vulgaris; do not treat older/general iNaturalist identification as proof of Alma taxon. First shell image also lacks preserved incident. Hermit images are sharp associations potentially useful for a different appropriately defined character, not Alma relocation or rewritten protected prose."
+    },
+    {
+      "sourceUrl": "https://www.inaturalist.org/observations/387065950",
+      "metadataPath": "/tmp/freed-alma105/387065950.json",
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/708742947/large.jpg",
+      "localPath": "/tmp/freed-alma105/hermits-2.jpg",
+      "creator": "Georgina Jones",
+      "license": "CC BY-SA4.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "sha1": "7209583620ff30cb32fa8bab1849d7dc80b94434",
+      "sha256": "78ddc3b688f3ac8860b13b7fe0cb2739fa01510eefb24c7133aaf70b26dc679d",
+      "bytes": 708453,
+      "individuallyOpened": true,
+      "verdict": "hold_for_Alma_taxon",
+      "reason": "Source South Africa. Current primary genomic work distinguishes TypeIII from Mediterranean/NE Atlantic O.vulgaris; do not treat older/general iNaturalist identification as proof of Alma taxon. First shell image also lacks preserved incident. Hermit images are sharp associations potentially useful for a different appropriately defined character, not Alma relocation or rewritten protected prose."
+    }
+  ],
+  "sourceHolds": [
+    {
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File:Octopus-and-crab.webm",
+      "reason": "Source explicitly identifies generated Sora/OpenAI video, not real wildlife footage. No download or proposal."
+    },
+    {
+      "sourceUrl": "https://www.flickr.com/photos/p_snelling/45888223115/",
+      "reason": "Photo-specific license link is CC BY-NC2.0; outside this corpus permissive-photo policy. No download."
+    }
+  ],
+  "searches": [
+    {
+      "path": "/tmp/freed-alma105/den.json",
+      "query": "taxon49315, permissive-photo licenses, den",
+      "total": 3
+    },
+    {
+      "path": "/tmp/freed-alma105/shell.json",
+      "query": "taxon49315, permissive-photo licenses, shell",
+      "total": 1
+    }
+  ],
+  "biology": {
+    "source": "https://open.uct.ac.za/items/ff5ae92f-67ab-4187-ad7d-5962d2f89557",
+    "finding": "Root read Fee2024 primary thesis abstract: nuclear and morphological evidence delimit South African TypeIII from Mediterranean/NEAtlantic O.vulgaris sensu stricto. No full thesis read claimed.",
+    "relatedSearchResult": "https://pmc.ncbi.nlm.nih.gov/articles/PMC13093632/",
+    "relatedResultLimit": "2026 paper search excerpt also reports divergence, but direct page required a browser challenge. No attempt to bypass and no full-text claim."
+  }
+}

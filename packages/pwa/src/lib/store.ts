@@ -5,6 +5,7 @@
  */
 
 import { create } from "zustand";
+import { isFreedDemoMode } from "./demo-mode";
 import {
   applyFeedSignalModesToFilter,
   assertSupportedUserPreferenceWrite,
@@ -537,7 +538,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set,
       "pwa:toggleArchived",
       () => enqueuePwaLibraryCoreUserStateToggle(id, "archived"),
-      { allowLibraryCoreIntent: true, waitForPersistence: false },
+      { allowLibraryCoreIntent: true },
     );
   },
 
@@ -747,7 +748,6 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // Preference actions
   updatePreferences: async (update) => {
-    assertPwaStoreWritable({ allowLibraryCoreIntent: true });
     const syncedUpdate = assertSupportedUserPreferenceWrite(update);
     if (Object.keys(syncedUpdate).length === 0) return;
     const currentPreferences = get().preferences;
@@ -761,6 +761,14 @@ export const useAppStore = create<AppState>((set, get) => ({
         syncedUpdate.fbCapture,
       );
     }
+    // Demo preferences belong only to this page's store. Never enqueue them
+    // into the real Library or sync them; reload recreates the demo defaults.
+    if (typeof location !== "undefined" &&
+      isFreedDemoMode(location.hostname, undefined, location.search)) {
+      set({ preferences: nextPreferences });
+      return;
+    }
+    assertPwaStoreWritable({ allowLibraryCoreIntent: true });
     set({ preferences: nextPreferences });
     try {
       await runSqliteMutation(

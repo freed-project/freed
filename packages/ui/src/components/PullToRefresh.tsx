@@ -88,10 +88,10 @@ export function PullToRefresh({
           }`}
           style={{
             transform: `rotate(${progress * 360}deg)`,
-            background: `conic-gradient(from 0deg, #8b5cf6 ${progress * 100}%, transparent ${progress * 100}%)`,
+            background: `conic-gradient(from 0deg, var(--theme-accent-secondary) ${progress * 100}%, transparent ${progress * 100}%)`,
           }}
         >
-          <div className="w-6 h-6 rounded-full bg-[#0a0a0a]" />
+          <div className="w-6 h-6 rounded-full bg-[var(--theme-bg-root)]" />
         </div>
       </div>
 

@@ -1,0 +1,220 @@
+{
+  "status": "One tentative Instagram Story; no admission or runtime change",
+  "counts": {
+    "exactPublishedImagesOpened": 7,
+    "proposals": 1,
+    "newIdentities": 0
+  },
+  "proposals": [
+    {
+      "candidateId": "73-01",
+      "characterId": "lionel-fringe",
+      "identityNameBase": "Lionel Fringe",
+      "episode": {
+        "subject": "shaggy mane fungus",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "danger",
+        "title": "The ground went past",
+        "body": "I was letting the edge of my cap go a little at a time.\n\nThen wind came out of a tube. My stalk folded. A leaf caught against me, and we scraped through the grass together.\n\nWhen we stopped, my gills were facing the sky.",
+        "mediaSha1": "7639c1164dc9e735cdbf8200278490724acb149a"
+      },
+      "admission": "Proposed only; independent image/prose/canon review required",
+      "visualReview": "Individually opened exact published large image. Grassy verge is strewn with snapped, bent and fallen pale stems with black mature cap remains. Foreground right shows exposed purple-dark gills; fallen leaves are interspersed. Young white upright mushrooms remain farther back. No leaf blower, person or active gust is pictured; observer description attributes the aftermath to a leaf blower.",
+      "fictionBoundary": "Observer-recorded machine disturbance is factual source context. Lionel, a specific gust folding his stalk, contact with one leaf, joint scraping and the final first-person orientation are fictional reconstruction. The image carries fallen mature mushrooms, leaves and exposed gills, not every motion. No conscious decision to shed tissue, pain measurement or sentient leaf is scientific fact.",
+      "canon": "Later than admitted40 mature dissolving cap. Rooted fungal individual speaks through its physically displaced fruiting body; do not make young remaining caps his renewed body. No whole-mycelium death or regeneration claim. Existing Michigan grassy woodland-margin home preserved with a maintained path edge as fictional setting; real source is a California campus, not his literal travel history.",
+      "proseReview": "A gradual loss of cap becomes sudden displacement; his downward-facing reproductive surface ends facing open sky. No reassurance of younger caps, greater-height vanity, sap generosity, warmth or explicit moral. One leaf is caught debris, not prey or a tenant being accommodated. Disturbance is not used as a suffering punchline.",
+      "reviewRisk": "Wide documentary aftermath rather than isolated macro. Lead must judge whether the foreground exposed gills and scattered stems clear the visual bar; do not approve because the event is unusual alone."
+    }
+  ],
+  "media": [
+    {
+      "observationId": 57304959,
+      "photoId": 91394290,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/91394290/large.jpg",
+      "localFile": "/tmp/botanical73/57304959-91394290.jpg",
+      "bytes": 541836,
+      "sha1": "7639c1164dc9e735cdbf8200278490724acb149a",
+      "sha256": "8073013d46128b57967717d79f8b22fffbc0d5501cff8f4f3771d865ed12953a",
+      "dimensions": [
+        768,
+        1024
+      ],
+      "seconds": 1.217,
+      "status": 200,
+      "attribution": "no rights reserved, uploaded by Emily Langdon-Lassagne",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "license": "CC0",
+      "sourceUrl": "https://www.inaturalist.org/observations/57304959",
+      "sourceMetadataUrl": "https://www.inaturalist.org/observations/57304959.json",
+      "sourceLocal": "/tmp/botanical73/obs-57304959.json",
+      "id": "botanical73-shaggy-mane-leafblower-aftermath",
+      "category": "wildlife",
+      "subject": "shaggy mane fungus",
+      "species": "Coprinus comatus",
+      "creator": "Emily Langdon-Lassagne",
+      "alt": "Broken and fallen shaggy mane mushrooms with dark cap remains and exposed gills lie among leaves on a grassy verge; younger white caps remain upright behind.",
+      "aggregated": false,
+      "rightsEvidence": "Photo91394290 metadata explicitly CC0 with publicdomain/zero/1.0 license URL and Emily Langdon-Lassagne upload attribution; not inferred from observation-data licensing.",
+      "taxonEvidence": "Current research-grade observation Coprinus comatus; all five current identifications match, no recorded identification disagreement.",
+      "sourceCaveat": "Observed-on date2018-11-28 and description December2018 are inconsistent at the observation level. Three photos span intact and disturbed states; exact photo capture dates were not independently established. Narrative therefore uses no calendar date or interval and no before/after ordering from photo array positions."
+    }
+  ],
+  "holds": [
+    {
+      "media": {
+        "observationId": 84219671,
+        "photoId": 138392877,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/138392877/large.jpeg",
+        "localFile": "/tmp/botanical73/84219671.jpg",
+        "bytes": 676156,
+        "sha1": "b7cf8e7e960c16ea885ca886031ec8967a77ed7d",
+        "sha256": "0e296178d6e4703ec8410f6c61b72b2ca008798c7615270933b3144873c4387c",
+        "dimensions": [
+          1024,
+          768
+        ],
+        "seconds": 0.861,
+        "status": 200,
+        "attribution": "(c) Michelle W. \uff08\u937e\u5049\u744b\uff09, some rights reserved (CC BY), uploaded by Michelle W. \uff08\u937e\u5049\u744b\uff09",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "license": "CC-BY",
+        "sourceUrl": "https://www.inaturalist.org/observations/84219671",
+        "sourceMetadataUrl": "https://www.inaturalist.org/observations/84219671.json",
+        "sourceLocal": "/tmp/botanical73/obs-84219671.json"
+      },
+      "reason": "Pitcher clump amid dense grass; no distinctive action and red coloration requires continuity care."
+    },
+    {
+      "media": {
+        "observationId": 111734634,
+        "photoId": 188658155,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/188658155/large.jpeg",
+        "localFile": "/tmp/botanical73/111734634.jpg",
+        "bytes": 317630,
+        "sha1": "af7dc68e4c03779b60b5fef48f4be4163e1843f2",
+        "sha256": "c6f14e9a294f3e8d5ef10206d1f00f66a8af5720c353e124b0b85fa24c5bb8fc",
+        "dimensions": [
+          1024,
+          577
+        ],
+        "seconds": 0.998,
+        "status": 200,
+        "attribution": "no rights reserved, uploaded by Brady Reed",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "license": "CC0",
+        "sourceUrl": "https://www.inaturalist.org/observations/111734634",
+        "sourceMetadataUrl": "https://www.inaturalist.org/observations/111734634.json",
+        "sourceLocal": "/tmp/botanical73/obs-111734634.json"
+      },
+      "reason": "Bee on yellow-green pitcher flower clearly visible, but another floral visitor repeats Hester24; no new body."
+    },
+    {
+      "media": {
+        "observationId": 208923293,
+        "photoId": 369682111,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/369682111/large.jpeg",
+        "localFile": "/tmp/botanical73/208923293.jpg",
+        "bytes": 597362,
+        "sha1": "326c2a6f585d660b259f941268c85f3f33d4010c",
+        "sha256": "1deb708d8ea9149da7e814943a59d5d21f9a0bc9ff042e0529ed6a64482efaf6",
+        "dimensions": [
+          1024,
+          683
+        ],
+        "seconds": 0.82,
+        "status": 200,
+        "attribution": "(c) Reid Hardin, some rights reserved (CC BY), uploaded by Reid Hardin",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "license": "CC-BY",
+        "sourceUrl": "https://www.inaturalist.org/observations/208923293",
+        "sourceMetadataUrl": "https://www.inaturalist.org/observations/208923293.json",
+        "sourceLocal": "/tmp/botanical73/obs-208923293.json"
+      },
+      "reason": "Wide flowering pitcher stand is attractive habitat but offers no specific incident."
+    },
+    {
+      "media": {
+        "observationId": 126662173,
+        "photoId": 214935398,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/214935398/large.jpeg",
+        "localFile": "/tmp/botanical73/126662173.jpg",
+        "bytes": 501009,
+        "sha1": "d82e8b87eaa963ee93dd5f7f8b201f31f84565de",
+        "sha256": "d8ffb081e8a749624d9b5820c73d833c64883873bd2abceed753ce9b84111a8b",
+        "dimensions": [
+          1024,
+          576
+        ],
+        "seconds": 0.853,
+        "status": 200,
+        "attribution": "(c) Joseph Aubert, some rights reserved (CC BY), uploaded by Joseph Aubert",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "license": "CC-BY",
+        "sourceUrl": "https://www.inaturalist.org/observations/126662173",
+        "sourceMetadataUrl": "https://www.inaturalist.org/observations/126662173.json",
+        "sourceLocal": "/tmp/botanical73/obs-126662173.json"
+      },
+      "reason": "Aging pitcher flower with brown curled parts; no separate consequence or relationship established."
+    },
+    {
+      "media": {
+        "observationId": 57304959,
+        "photoId": 91394309,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/91394309/large.jpg",
+        "localFile": "/tmp/botanical73/57304959-91394309.jpg",
+        "bytes": 529096,
+        "sha1": "597ac10bc97255afa30df9be4dc3b35f292d88ea",
+        "sha256": "1d2937ed7209a4c5d2e1d692503c524311c676f84766ef282f5fd19c4f1f2bfc",
+        "dimensions": [
+          768,
+          1024
+        ],
+        "seconds": 0.91,
+        "status": 200,
+        "attribution": "no rights reserved, uploaded by Emily Langdon-Lassagne",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "license": "CC0",
+        "sourceUrl": "https://www.inaturalist.org/observations/57304959",
+        "sourceMetadataUrl": "https://www.inaturalist.org/observations/57304959.json",
+        "sourceLocal": "/tmp/botanical73/obs-57304959.json"
+      },
+      "reason": "Young upright caps and several displaced fragments. Same observation; do not use these young bodies to restore Lionel after mature-cap event."
+    },
+    {
+      "media": {
+        "observationId": 57304959,
+        "photoId": 91394314,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/91394314/large.jpg",
+        "localFile": "/tmp/botanical73/57304959-91394314.jpg",
+        "bytes": 512625,
+        "sha1": "9d243ccdd486aad713d95ea18c615d43560489d4",
+        "sha256": "e212eb1c2fd56a0afb3635e3d8f3fedec1050d0c35ffd137716d3d8e7874ed86",
+        "dimensions": [
+          768,
+          1024
+        ],
+        "seconds": 0.9,
+        "status": 200,
+        "attribution": "no rights reserved, uploaded by Emily Langdon-Lassagne",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "license": "CC0",
+        "sourceUrl": "https://www.inaturalist.org/observations/57304959",
+        "sourceMetadataUrl": "https://www.inaturalist.org/observations/57304959.json",
+        "sourceLocal": "/tmp/botanical73/obs-57304959.json"
+      },
+      "reason": "Standing young caps with scattered leaves and campus context. Establishes compatible species scenery, not the disturbance aftermath chosen for Story. No second episode from same event."
+    }
+  ],
+  "sourceMetadata": "https://www.inaturalist.org/observations/57304959.json",
+  "biologyCanon": [
+    "docs/drafts/BOTANICAL-REGULAR-40-CANON.md",
+    "packages/shared/src/sample-character-arcs-botanical-forty.ts"
+  ],
+  "limitations": [
+    "No source-upload originals inspected; exact published large files opened individually.",
+    "No machine or active blast visible; source observer supplies cause.",
+    "Real source campus location differs from fictional regional home.",
+    "No runtime/image binary/publication changes."
+  ]
+}

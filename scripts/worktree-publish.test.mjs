@@ -192,6 +192,7 @@ async function createPublishFixture(
     0,
   );
   await fs.writeFile(path.join(seed, "README.md"), "seed\n");
+  await fs.writeFile(path.join(seed, ".gitignore"), "TASK-DECISIONS.local.md\n");
   if (seedProviderFile) {
     const providerPath = path.join(
       seed,
@@ -236,6 +237,7 @@ async function createPublishFixture(
     }).status,
     0,
   );
+  await fs.writeFile(path.join(worktree, "TASK-DECISIONS.local.md"), "Synthetic task: no material trade-offs.\n");
   const canonicalOrigin = "https://github.com/freed-project/freed.git";
   assert.equal(
     run("git", ["remote", "set-url", "origin", canonicalOrigin], {
@@ -815,6 +817,20 @@ async function writeProviderReviewArtifact(
   await fs.writeFile(artifactPath, `${JSON.stringify(stored, null, 2)}\n`);
   return { artifact: stored, path: artifactPath };
 }
+
+test("ready publication stops private-log leaks before committing or publishing", async (t) => {
+  const fixture = await createPublishFixture(t);
+  await fs.writeFile(path.join(fixture.worktree, "README.md"), "updated\n");
+  run("git", ["add", "-f", "TASK-DECISIONS.local.md"], { cwd: fixture.worktree });
+  const before = run("git", ["rev-parse", "HEAD"], { cwd: fixture.worktree }).stdout;
+  const result = run("bash", [publishScript, "--title", "chore: fixture", "--ready"], {
+    cwd: fixture.worktree, env: directPublishEnv(fixture),
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Private decision log is tracked or staged/);
+  assert.equal(run("git", ["rev-parse", "HEAD"], { cwd: fixture.worktree }).stdout, before);
+  assert.equal((await readGhLog(fixture.ghLogFile)).some((call) => ["create", "edit", "merge"].includes(call.args[1])), false);
+});
 
 test("provider subdiff query rejects dirty sources without staging, committing, or publishing", async (t) => {
   const fixture = await createPublishFixture(t);

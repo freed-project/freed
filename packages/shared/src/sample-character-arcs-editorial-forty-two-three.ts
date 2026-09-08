@@ -22,6 +22,7 @@ export const EDITORIAL_FORTY_TWO_THREE_CHARACTER_ARCS: readonly SampleCharacterA
         "theme": "social",
         "title": "When we came down",
         "body": "Every time she landed, I wanted to be in the air.\n\nShe bowed. I jumped. Came down while she was rising, and sprang up again before my legs had straightened. The grass brushed my toes. Then my feet hit a hollow and I had to take two quick steps to keep under my wings.\n\nShe landed beside me. We stood breathing, with our wings hanging loose.\n\nI lowered my head. She lowered hers. This time we both jumped. I could see her feet beside mine, clear of the grass.",
+        "classification": "conversation",
         "mediaSha1": "13f721c1311b4ed93e87c65492a69e061ea0657b"
       }
     ]
@@ -46,6 +47,7 @@ export const EDITORIAL_FORTY_TWO_THREE_CHARACTER_ARCS: readonly SampleCharacterA
         "theme": "movement",
         "title": "A little farther up",
         "body": "I came out of the river with a bit of weed caught in the fur under my leg. Rolled onto my back, curled around it and started pulling it loose with my teeth.\n\nThe whole bank began moving uphill.\n\nStraightened out. Dug my feet into the snow. Stopped with my tail hanging over the edge and the weed still attached.\n\nClimbed back up and lay across the slope this time. Got the weed free. Worked through the fur around it, then the other side, without sliding anywhere.\n\nWhen I was finished, I turned downhill and tucked my feet in.",
+        "classification": "event",
         "mediaSha1": "b7e3dadf7a47216fae458ec04cd12826fed9399b"
       }
     ]
@@ -67,6 +69,7 @@ export const EDITORIAL_FORTY_TWO_THREE_CHARACTER_ARCS: readonly SampleCharacterA
         "subject": "pink sundew",
         "platform": "instagram",
         "contentType": "story",
+        "classification": "inspiring",
         "mediaSha1": "9784e816c61948816bbb7f113226a4fa0eebdc70",
         "theme": "feeding",
         "title": "What stayed outside",

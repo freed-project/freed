@@ -51,6 +51,7 @@ function Harness({
   maxResidentPages?: number;
   onReady: (value: {
     feed: BoundedFeedItemsState;
+    retry(): void;
     loadMore(): void;
     loadPrevious(): void;
     patchItems(update: (item: FeedItem) => FeedItem | null): void;
@@ -107,6 +108,49 @@ describe("useBoundedFeedItems", () => {
     document.body.appendChild(container);
     root = createRoot(container);
   }
+
+  it("refreshes an evicted window atomically without publishing page one", async () => {
+    mount();
+    const page = (index: number) => ({
+      items: [item(String(index * 2)), item(String(index * 2 + 1))],
+      previousCursor: index ? `first-${index}` : null,
+      nextCursor: index < 2 ? `next-${index}` : null,
+    });
+    const first: BoundedFeedReader = {
+      totalCount: 6, close: vi.fn(async () => undefined),
+      readNext: async () => page(0).items,
+      readPage: async (cursor) => page(cursor === null ? 0 : Number(cursor.slice(-1)) + 1),
+    };
+    let finish!: (value: ReturnType<typeof page>) => void;
+    const tail = new Promise<ReturnType<typeof page>>((resolve) => { finish = resolve; });
+    const fresh: BoundedFeedReader = {
+      totalCount: 6, close: vi.fn(async () => undefined),
+      readNext: async () => page(0).items,
+      resumePage: vi.fn(async () => page(1)),
+      readPage: async (cursor) => cursor === null ? page(0) : tail,
+    };
+    const openReader = vi.fn().mockResolvedValueOnce(first).mockResolvedValueOnce(fresh);
+    let current!: ReturnType<typeof useBoundedFeedItems>;
+    const observed: string[][] = [];
+    const onReady = (value: typeof current) => {
+      current = value;
+      observed.push(value.feed.items.map((entry) => entry.globalId));
+    };
+    await act(async () => root!.render(<Harness maxPageItems={2} openReader={openReader} onReady={onReady} />));
+    await act(async () => current.loadMore());
+    await act(async () => current.loadMore());
+    expect(current.feed.windowStartIndex).toBe(2);
+    expect(current.feed.items.map((entry) => entry.globalId)).toEqual(["2", "3", "4", "5"]);
+    observed.length = 0;
+    await act(async () => root!.render(<Harness maxPageItems={2} openReader={openReader} sourceVersion={2} onReady={onReady} />));
+    expect(fresh.resumePage).toHaveBeenCalledWith("first-1");
+    expect(current.feed.status).toBe("loading");
+    expect(current.feed.items.map((entry) => entry.globalId)).toEqual(["2", "3", "4", "5"]);
+    await act(async () => { finish(page(2)); await tail; });
+    expect(current.feed.status).toBe("ready");
+    expect(current.feed.windowStartIndex).toBe(2);
+    expect(observed.every((ids) => ids.join() === "2,3,4,5")).toBe(true);
+  });
 
   it("paginates one bounded reader and closes it on unmount", async () => {
     mount();
@@ -166,7 +210,7 @@ describe("useBoundedFeedItems", () => {
     expect(close).toHaveBeenCalledOnce();
   });
 
-  it("closes a reader whose first bounded page fails and exposes legacy fallback", async () => {
+  it("closes a reader whose first bounded page fails without retrying unknown errors", async () => {
     mount();
     const close = vi.fn(async () => undefined);
     const openReader = vi.fn(async () => ({
@@ -193,6 +237,53 @@ describe("useBoundedFeedItems", () => {
     });
     expect(current?.feed.items).toEqual([]);
     expect(close).toHaveBeenCalledOnce();
+  });
+
+  it.each([false, true])("bounds source-race retries and recovers only complete pages (exhausted=%s)", async (exhausted) => {
+    vi.useFakeTimers();
+    mount();
+    const race = new Error("SQLite Library changed while optimistic fields were loading");
+    const openReader = vi.fn<NonNullable<PlatformConfig["openBoundedFeedReader"]>>()
+      .mockRejectedValue(race);
+    if (!exhausted) {
+      openReader.mockRejectedValueOnce(race).mockResolvedValueOnce({
+        totalCount: 1,
+        readNext: async () => [item("complete")],
+        close: async () => undefined,
+      });
+    }
+    let current: ReturnType<typeof useBoundedFeedItems> | null = null;
+    try {
+      await act(async () => {
+        root!.render(<Harness openReader={openReader} onReady={(value) => { current = value; }} />);
+      });
+      expect(current?.feed.status).toBe("loading");
+      await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(500); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
+      expect(openReader).toHaveBeenCalledTimes(exhausted ? 3 : 2);
+      expect(current?.feed.status).toBe(exhausted ? "failed" : "ready");
+      expect(current?.feed.items.map((entry) => entry.globalId)).toEqual(exhausted ? [] : ["complete"]);
+      if (exhausted) {
+        openReader.mockResolvedValue({ totalCount: 0, readNext: async () => [], close: async () => undefined });
+        await act(async () => { current?.retry(); });
+        expect(current?.feed.status).toBe("ready");
+        expect(openReader).toHaveBeenCalledTimes(4);
+      }
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("cancels a scheduled source-race retry on unmount", async () => {
+    vi.useFakeTimers();
+    mount();
+    const openReader = vi.fn().mockRejectedValue(new Error("SQLite Library changed while optimistic fields were loading"));
+    try {
+      await act(async () => { root!.render(<Harness openReader={openReader} onReady={() => undefined} />); });
+      await act(async () => { root!.unmount(); });
+      root = null;
+      await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
+      expect(openReader).toHaveBeenCalledOnce();
+    } finally { vi.useRealTimers(); }
   });
 
   it("replaces and closes the reader when the authoritative source changes", async () => {
