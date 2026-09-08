@@ -11,6 +11,7 @@ export default defineConfig({
   fullyParallel: false,
   forbidOnly: true,
   retries: 0,
+  outputDir: "test-results/pwa-library-corpus-playwright",
   timeout: 3_600_000,
   workers: 1,
   reporter: "line",
@@ -18,7 +19,12 @@ export default defineConfig({
     baseURL: pwaCorpusHardeningBaseUrl,
     browserName: pwaCorpusHardeningBrowser,
     screenshot: "only-on-failure",
-    trace: "retain-on-failure",
+    trace: {
+      mode: "retain-on-failure",
+      screenshots: false,
+      snapshots: true,
+      sources: true,
+    },
   },
   webServer: {
     command: `FREED_PWA_CORPUS_HARDENING=1 npm run dev -- --force --host 127.0.0.1 --port ${pwaCorpusHardeningPort.toLocaleString(

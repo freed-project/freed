@@ -11,11 +11,14 @@ export function AuthorIdentityLink({
   className = "",
   testId,
   onOpen,
+  showProfileTooltip = true,
 }: {
   item: FeedItem;
   className?: string;
   testId?: string;
   onOpen?: (item: FeedItem) => void | Promise<void>;
+  /** Content lists omit profile previews while retaining click navigation. */
+  showProfileTooltip?: boolean;
 }) {
   const platform = usePlatform();
   const key = `${item.platform}:${item.author.id}`;
@@ -62,6 +65,47 @@ export function AuthorIdentityLink({
       if (pending.current?.key === key) pending.current = null;
     });
   };
+  const button = (
+    <button
+      type="button"
+      data-testid={testId}
+      className={`rounded-sm text-left underline-offset-4 transition-colors hover:text-[color:var(--theme-accent-primary)] hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--theme-accent-primary)] ${className}`}
+      onPointerEnter={showProfileTooltip ? warm : undefined}
+      onFocus={showProfileTooltip ? warm : undefined}
+      onKeyDown={(event) => event.stopPropagation()}
+      onClick={async (event) => {
+        event.stopPropagation();
+        try {
+          const result = await resolve();
+          if (latestKey.current !== key) return;
+          if (!result.person && onOpen) {
+            await onOpen(item);
+            return;
+          }
+          if (!result.person && !result.accountId) {
+            setDetail({ key, person: null, failed: true });
+            pending.current = null;
+            return;
+          }
+          const actions = platform.store.getState();
+          actions.setSelectedItem(null);
+          // Each selection action clears the other kind of selection.
+          if (result.person) actions.setSelectedPerson(result.person.id);
+          else actions.setSelectedAccount(result.accountId);
+          actions.setActiveView("friends");
+        } catch {
+          if (latestKey.current !== key) return;
+          pending.current = null;
+          setDetail({ key, person: null, failed: true });
+          if (onOpen) await onOpen(item);
+        }
+      }}
+    >
+      {item.author.displayName}
+    </button>
+  );
+  if (!showProfileTooltip) return button;
+
   const contact = person ? lastReachOutAt(person) : null;
   return (
     <Tooltip
@@ -88,43 +132,7 @@ export function AuthorIdentityLink({
         </div>
       }
     >
-      <button
-        type="button"
-        data-testid={testId}
-        className={`rounded-sm text-left underline-offset-4 transition-colors hover:text-[color:var(--theme-accent-primary)] hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--theme-accent-primary)] ${className}`}
-        onPointerEnter={warm}
-        onFocus={warm}
-        onKeyDown={(event) => event.stopPropagation()}
-        onClick={async (event) => {
-          event.stopPropagation();
-          try {
-            const result = await resolve();
-            if (latestKey.current !== key) return;
-            if (!result.person && onOpen) {
-              await onOpen(item);
-              return;
-            }
-            if (!result.person && !result.accountId) {
-              setDetail({ key, person: null, failed: true });
-              pending.current = null;
-              return;
-            }
-            const actions = platform.store.getState();
-            actions.setSelectedItem(null);
-            // Each selection action clears the other kind of selection.
-            if (result.person) actions.setSelectedPerson(result.person.id);
-            else actions.setSelectedAccount(result.accountId);
-            actions.setActiveView("friends");
-          } catch {
-            if (latestKey.current !== key) return;
-            pending.current = null;
-            setDetail({ key, person: null, failed: true });
-            if (onOpen) await onOpen(item);
-          }
-        }}
-      >
-        {item.author.displayName}
-      </button>
+      {button}
     </Tooltip>
   );
 }

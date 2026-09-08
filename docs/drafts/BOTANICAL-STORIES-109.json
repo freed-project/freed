@@ -1,0 +1,448 @@
+{
+  "status": "two_proposals_pending_independent_root_review",
+  "counts": {
+    "exactImagesOpened": 14,
+    "actualDraftsWritten": 4,
+    "proposals": 2,
+    "heldDrafts": 2,
+    "admitted": 0,
+    "newIdentities": 0
+  },
+  "proposals": [
+    {
+      "candidateId": "109-01",
+      "characterId": "greta-blade",
+      "identityNameBase": "Greta Blade",
+      "episode": {
+        "subject": "Tettigonia viridissima",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "family",
+        "title": "The next egg",
+        "body": "I found sand between the bricks and began to lay. The rain reached my head first. I moved one foot toward shelter, then put it back. There was still an egg on its way.",
+        "mediaSha1": "1481b996534f9ca41260b3149634b30a1b838cb1"
+      },
+      "admission": "pending_independent_root_review",
+      "imageReview": "Pass for independent review. Exact first display opened: green adult female, long folded wings, legs and downward ovipositor entering the sandy brick seam are distinct. Rain droplets are visible on wings and head. Mild grain and shallow focus at the image edges do not hide the organ or substrate. Two further source views were independently opened: reverse side and wider frame with a pointing hand. Neither is a separate proposed episode.",
+      "fictionBoundary": "Observed and explicitly reported by photographer: egg laying in sand between driveway bricks during light rain. Head-first arrival, moved and replaced foot, nearby shelter, a particular egg still in transit and Greta\u2019s deliberation are invented. No egg itself is visible, no measured time or count is asserted, and no later hatching, parental guarding or successful survival is promised.",
+      "canon": "Read all current Greta episodes and strange-canon08. Female great green bush-cricket, Tettigonia viridissima, scrub at Bois de Vincennes48.827/2.463. Adult oviposition follows the explicitly remembered molt; current home, avatar and exact prior bodies remain. German source illustrates the fictional French life without relocation. Adds a bodily commitment during rain rather than another mistaken-weapon joke, straddled stems or delayed molt foot. A single voluntary step differs from a foot physically trapped in an old skin.",
+      "proseAssessment": "The impulse to get dry is interrupted by the task already passing through her body. Ending stays with the egg, without declaring bravery, maternal sacrifice or a lesson. The central action is actually visible and specifically corroborated by the photographer.",
+      "biologySource": "https://orthoptera.org.uk/species/tettigonia-viridissima",
+      "biologyEvidence": "Primary recording-scheme species account independently opened: female long slightly curved ovipositor, long adult wings and eggs laid in the ground. Exact primary observation further reports this substrate and weather."
+    },
+    {
+      "candidateId": "109-02",
+      "characterId": "sylvia-bead",
+      "identityNameBase": "Sylvia Bead",
+      "episode": {
+        "subject": "wrinkled peach mushroom",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "social",
+        "title": "An uneven opening",
+        "body": "The cap beside me pressed against my stem. I waited for an apology. He kept opening until he had lifted one edge of me. Then he asked why I was leaning on him.",
+        "mediaSha1": "00965010dd67bba7bf5c1857d26c972f7ed71ee9"
+      },
+      "admission": "pending_independent_root_review",
+      "imageReview": "Scene is legible, with a material image-quality qualification for lead review. This newly opened wide angle shows a Rhodotus cluster below attached decaying wood: peach gills, curved stems and crowded overlapping caps are clear. It is a different exact frame from the narrower104 image hold. It remains grainy with a cool sky cast and a visible photographer watermark at the bottom. No crop or de-noising applied. Author judges the physical arrangement usable, but root should decide whether the grain meets the visual bar.",
+      "fictionBoundary": "Observed: a compact cluster of gilled mushrooms with bent stems and overlapping caps on wood. Prior growth pressure, actual lifting of an edge, apology expectation and dialogue are fiction, not a documented timelapse or force measurement. Neighbor is a separate fictional voice, not a claimed separate genome, offspring or biological male. No walking, conscious growth control, injury recovery or fruit-body reversal.",
+      "canon": "Read botanical40 runtime and full proposed canon. Existing Rhodotus palmatus on Appalachian dead hardwood near New River Gorge37.9/-81.0. Mature cluster can follow Sylvia\u2019s prior young pink cap and guttation scene; no reset to a young closed cap or changed portrait. Source West Sussex illustrates taxonomy and physical arrangement, not a relocation or same tracked specimen. Her wish for physical composure now collides with another cap\u2019s expansion. This is mutual attribution of pressure, not amber drops as jewelry, an externally falling leaf, a visitor seeking shelter or anyone generously making room.",
+      "proseAssessment": "An expected apology reverses into a complaint aimed at the narrator. Both are reacting to one shared contact. No explanation of who is right or a general moral. Distinct from the104 held leaf-obscures-neighbor opening draft, which remains preserved and unadmitted.",
+      "biologySource": "https://www.nps.gov/articles/so-many-mushrooms.htm",
+      "biologyEvidence": "Primary NPS fungal inventory account independently opened: Rhodotus grows on decaying wood, cap color/netting change with maturity. Exact research-grade observation has two agreeing current Rhodotus palmatus identifications. Neither source documents this fictional mechanical sequence."
+    }
+  ],
+  "media": [
+    {
+      "observationId": 298854288,
+      "photoId": 538367325,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/538367325/large.jpg",
+      "localFile": "/tmp/botanical109/298854288.jpg",
+      "bytes": 420942,
+      "sha1": "1481b996534f9ca41260b3149634b30a1b838cb1",
+      "sha256": "533c1bd0360d1b45cb606aae0c1cf8a178f12b99a3ba8cd627d7d79392069982",
+      "dimensions": [
+        1024,
+        768
+      ],
+      "seconds": 2.282,
+      "status": 200,
+      "attribution": "no rights reserved, uploaded by Anthony Barker",
+      "license": "CC0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/298854288",
+      "sourceLocal": "/tmp/botanical109/obs-298854288.json",
+      "category": "wildlife",
+      "aggregated": false,
+      "creator": "Anthony Barker",
+      "taxon": "Tettigonia viridissima",
+      "sourceTaxonEvidence": "Research grade; two current agreeing species identifications.",
+      "sourceDimensions": [
+        2048,
+        1536
+      ],
+      "originalInspection": "Published explicit large_url individually opened. Full-resolution upload not fetched or inspected; delivery dimensions are decoded from exact downloaded bytes."
+    },
+    {
+      "observationId": 192725181,
+      "photoId": 338393081,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/338393081/large.jpg",
+      "localFile": "/tmp/botanical109/338393081.jpg",
+      "bytes": 996025,
+      "sha1": "00965010dd67bba7bf5c1857d26c972f7ed71ee9",
+      "sha256": "c4efba8a5407d442b1ea50fdeb117559e5a8a68101d4192f9b6e1151b3fb7534",
+      "dimensions": [
+        1024,
+        683
+      ],
+      "seconds": 0.961,
+      "status": 200,
+      "attribution": "(c) Daniel Greenwood, some rights reserved (CC BY), uploaded by Daniel Greenwood",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/192725181",
+      "sourceLocal": "/tmp/botanical109/obs-192725181.json",
+      "category": "wildlife",
+      "aggregated": false,
+      "creator": "Daniel Greenwood",
+      "taxon": "Rhodotus palmatus",
+      "sourceTaxonEvidence": "Research grade; two current agreeing species identifications.",
+      "sourceDimensions": [
+        1500,
+        1000
+      ],
+      "originalInspection": "Published explicit large_url individually opened. Full-resolution upload not fetched or inspected; delivery dimensions are decoded from exact downloaded bytes."
+    }
+  ],
+  "heldDrafts": [
+    {
+      "characterId": "akio-sheen",
+      "title": "A warm patch",
+      "body": "I followed the grain to a round dark patch and tried it with one foot. It was smoother than the wood and much warmer. I went around it. Whatever the tree had swallowed could keep the sunny spot.",
+      "mediaSha1": "03441df5a36992fdeebbb76d4766c7fc4c31eafb",
+      "admission": "held_by_author",
+      "reason": "Actual body assessed against the sharp beetle and beam image. The round feature appears nail-like but exact surface construction and thermal contrast are not sourced. More importantly, the reaction is simple avoidance with no consequential change; it falls below the requested Story bar. Do not admit or count."
+    },
+    {
+      "characterId": "lionel-fringe",
+      "title": "Across the gap",
+      "body": "The wind caught the strip still hanging from my cap. It slapped the stalk beside me. He asked me to keep myself to myself. I would have liked to.",
+      "mediaSha1": "a1cc700a6e348abcb3030287ec36e4d2960ede1b",
+      "admission": "held_by_author",
+      "reason": "Dramatic exact late-stage ink-cap cluster opened, but this turns Lionel\u2019s existing liquefaction and loss of composure into another dripping joke. Strong image retained without new admission; no maturation reversal."
+    }
+  ],
+  "sourceReviewLedger": [
+    {
+      "observationId": 298854288,
+      "photoId": 538367325,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/538367325/large.jpg",
+      "localFile": "/tmp/botanical109/298854288.jpg",
+      "bytes": 420942,
+      "sha1": "1481b996534f9ca41260b3149634b30a1b838cb1",
+      "sha256": "533c1bd0360d1b45cb606aae0c1cf8a178f12b99a3ba8cd627d7d79392069982",
+      "dimensions": [
+        1024,
+        768
+      ],
+      "seconds": 2.282,
+      "status": 200,
+      "attribution": "no rights reserved, uploaded by Anthony Barker",
+      "license": "CC0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/298854288",
+      "sourceLocal": "/tmp/botanical109/obs-298854288.json",
+      "individuallyOpened": true,
+      "review": "Proposed109-01, exact oviposition and wet substrate."
+    },
+    {
+      "observationId": 127266288,
+      "photoId": 216039707,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/216039707/large.jpg",
+      "localFile": "/tmp/botanical109/127266288.jpg",
+      "bytes": 793799,
+      "sha1": "8e108b3e77f1e240d3238d2575f28eaf9f14b351",
+      "sha256": "064b65d10c6f1aaeeea8352152a8bc76538b2c75b6f7767f5ac70c76cb8335d9",
+      "dimensions": [
+        1024,
+        797
+      ],
+      "seconds": 0.808,
+      "status": 200,
+      "attribution": "no rights reserved, uploaded by Andreas Manz",
+      "license": "CC0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/127266288",
+      "sourceLocal": "/tmp/botanical109/obs-127266288.json",
+      "individuallyOpened": true,
+      "review": "Alternate same mechanism, softer pale detail; no second egg-laying Story."
+    },
+    {
+      "observationId": 197351909,
+      "photoId": 347567213,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/347567213/large.jpg",
+      "localFile": "/tmp/botanical109/197351909.jpg",
+      "bytes": 557779,
+      "sha1": "abb7d97b91f19f31091f10e4385eba5dc210851f",
+      "sha256": "8a7ad42c279714aa6a1ce7801af0481a54bee60730dff1097f0fac0878228876",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "seconds": 0.754,
+      "status": 200,
+      "attribution": "(c) Takaaki Hattori, some rights reserved (CC BY), uploaded by Takaaki Hattori",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/197351909",
+      "sourceLocal": "/tmp/botanical109/obs-197351909.json",
+      "individuallyOpened": true,
+      "review": "Species exclusion: detailed current taxon is Chrysochroa alternans, not Akio\u2019s C. fulgidissima, despite search membership."
+    },
+    {
+      "observationId": 125259407,
+      "photoId": 212407739,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/212407739/large.jpeg",
+      "localFile": "/tmp/botanical109/125259407.jpg",
+      "bytes": 579834,
+      "sha1": "03441df5a36992fdeebbb76d4766c7fc4c31eafb",
+      "sha256": "bae90a14c0c8e69333151d5db13041cebab10a6fd08e00a4d23a8dd415244dfe",
+      "dimensions": [
+        768,
+        1024
+      ],
+      "seconds": 0.762,
+      "status": 200,
+      "attribution": "(c) MUNENORI YAMAKAWA, some rights reserved (CC BY), uploaded by MUNENORI YAMAKAWA",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/125259407",
+      "sourceLocal": "/tmp/botanical109/obs-125259407.json",
+      "individuallyOpened": true,
+      "review": "Sharp beetle on manufactured beam; actual draft held."
+    },
+    {
+      "observationId": 58497477,
+      "photoId": 93399510,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/93399510/large.jpeg",
+      "localFile": "/tmp/botanical109/58497477.jpg",
+      "bytes": 700667,
+      "sha1": "fcb2dd7994129fb9160b5f88d481029e97c18222",
+      "sha256": "a271b3d08b3ee956840453652948807ee1dfb98c3389664d9784c4073fe8f252",
+      "dimensions": [
+        768,
+        1024
+      ],
+      "seconds": 0.851,
+      "status": 200,
+      "attribution": "(c) Tom Norton, some rights reserved (CC BY), uploaded by Tom Norton",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/58497477",
+      "sourceLocal": "/tmp/botanical109/obs-58497477.json",
+      "individuallyOpened": true,
+      "review": "Good mature and young Coprinus cluster, repeats established40 maturation comparison."
+    },
+    {
+      "observationId": 214538250,
+      "photoId": 379222802,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/379222802/large.jpg",
+      "localFile": "/tmp/botanical109/214538250.jpg",
+      "bytes": 561358,
+      "sha1": "a1cc700a6e348abcb3030287ec36e4d2960ede1b",
+      "sha256": "587ced50420b4bd70a0312c91ed2af751d7d711a02e94d0d0f82bf02e639843e",
+      "dimensions": [
+        1024,
+        768
+      ],
+      "seconds": 0.773,
+      "status": 200,
+      "attribution": "(c) Thomas Mesaglio, some rights reserved (CC BY), uploaded by Thomas Mesaglio",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/214538250",
+      "sourceLocal": "/tmp/botanical109/obs-214538250.json",
+      "individuallyOpened": true,
+      "review": "Dramatic late deliquescence; actual draft held for mechanism repetition."
+    },
+    {
+      "observationId": 125259407,
+      "photoId": 212408657,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/212408657/large.jpeg",
+      "localFile": "/tmp/botanical109/212408657.jpg",
+      "bytes": 536398,
+      "sha1": "6ac222104faa47c0588859eaa473735091335923",
+      "sha256": "f8ce575b31683289276858682affd4a2642e972027c26ba64973fa031298944e",
+      "dimensions": [
+        768,
+        1024
+      ],
+      "seconds": 0.747,
+      "status": 200,
+      "attribution": "(c) MUNENORI YAMAKAWA, some rights reserved (CC BY), uploaded by MUNENORI YAMAKAWA",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/125259407",
+      "sourceLocal": "/tmp/botanical109/obs-125259407.json",
+      "individuallyOpened": true,
+      "review": "Clear frontal beetle; same observation, no additional event."
+    },
+    {
+      "observationId": 125259407,
+      "photoId": 212409053,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/212409053/large.jpeg",
+      "localFile": "/tmp/botanical109/212409053.jpg",
+      "bytes": 660220,
+      "sha1": "51fb850140e8e4c87c3764f5c817da806bed9a97",
+      "sha256": "3f3452e7b3b187e5e829f2526aff9929b0eab8af6dff19a1d7eca5dc339cfd53",
+      "dimensions": [
+        768,
+        1024
+      ],
+      "seconds": 0.844,
+      "status": 200,
+      "attribution": "(c) MUNENORI YAMAKAWA, some rights reserved (CC BY), uploaded by MUNENORI YAMAKAWA",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/125259407",
+      "sourceLocal": "/tmp/botanical109/obs-125259407.json",
+      "individuallyOpened": true,
+      "review": "Rear beetle view; no distinct new event or asserted injury."
+    },
+    {
+      "observationId": 298854288,
+      "photoId": 538367354,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/538367354/large.jpg",
+      "localFile": "/tmp/botanical109/538367354.jpg",
+      "bytes": 439570,
+      "sha1": "12d98a29b07b3d381c3cf230e79d60498f1349a8",
+      "sha256": "7415f41adcb0b3633a838b18ed344784bb2f5d6252ab100366b107fa5fe5bc97",
+      "dimensions": [
+        1024,
+        768
+      ],
+      "seconds": 0.758,
+      "status": 200,
+      "attribution": "no rights reserved, uploaded by Anthony Barker",
+      "license": "CC0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/298854288",
+      "sourceLocal": "/tmp/botanical109/obs-298854288.json",
+      "individuallyOpened": true,
+      "review": "Reverse oviposition context, individually opened, no independent episode."
+    },
+    {
+      "observationId": 298854288,
+      "photoId": 538367390,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/538367390/large.jpg",
+      "localFile": "/tmp/botanical109/538367390.jpg",
+      "bytes": 537316,
+      "sha1": "01f0a2cc517e2befa924910d9bd94ba6b18c8de7",
+      "sha256": "f85ddf3268138eaab79daefb974a72a4614428de56ffa35c731353a1bed76443",
+      "dimensions": [
+        1024,
+        768
+      ],
+      "seconds": 0.792,
+      "status": 200,
+      "attribution": "no rights reserved, uploaded by Anthony Barker",
+      "license": "CC0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/298854288",
+      "sourceLocal": "/tmp/botanical109/obs-298854288.json",
+      "individuallyOpened": true,
+      "review": "Wide driveway and pointing hand context; too distant for Story main image."
+    },
+    {
+      "observationId": 192725181,
+      "photoId": 338393081,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/338393081/large.jpg",
+      "localFile": "/tmp/botanical109/338393081.jpg",
+      "bytes": 996025,
+      "sha1": "00965010dd67bba7bf5c1857d26c972f7ed71ee9",
+      "sha256": "c4efba8a5407d442b1ea50fdeb117559e5a8a68101d4192f9b6e1151b3fb7534",
+      "dimensions": [
+        1024,
+        683
+      ],
+      "seconds": 0.961,
+      "status": 200,
+      "attribution": "(c) Daniel Greenwood, some rights reserved (CC BY), uploaded by Daniel Greenwood",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/192725181",
+      "sourceLocal": "/tmp/botanical109/obs-192725181.json",
+      "individuallyOpened": true,
+      "review": "Proposed109-02 with explicit grain qualification."
+    },
+    {
+      "observationId": 192725181,
+      "photoId": 338393114,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/338393114/large.jpg",
+      "localFile": "/tmp/botanical109/338393114.jpg",
+      "bytes": 1352364,
+      "sha1": "0565495816216b640501a54fee351c61ecffe276",
+      "sha256": "a42d221dddd7d523abc2c5453a0c518babdb43107dd891ad126cd757ffd4c7b8",
+      "dimensions": [
+        1024,
+        795
+      ],
+      "seconds": 1.108,
+      "status": 200,
+      "attribution": "(c) Daniel Greenwood, some rights reserved (CC BY), uploaded by Daniel Greenwood",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/192725181",
+      "sourceLocal": "/tmp/botanical109/obs-192725181.json",
+      "individuallyOpened": true,
+      "review": "Single gill underside; no contact, not used for cluster story."
+    },
+    {
+      "observationId": 65412681,
+      "photoId": 105277951,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/105277951/large.jpg",
+      "localFile": "/tmp/botanical109/65412681.jpg",
+      "bytes": 129418,
+      "sha1": "0a913ecc119b3478912422508c412ca1b84c12bf",
+      "sha256": "74bc4a87d86052928e6f82575415e252731a2938434d668e8a8332a3af6510fe",
+      "dimensions": [
+        1024,
+        683
+      ],
+      "seconds": 0.74,
+      "status": 200,
+      "attribution": "(c) Dennis Vollmar, some rights reserved (CC BY), uploaded by Dennis Vollmar",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/65412681",
+      "sourceLocal": "/tmp/botanical109/obs-65412681.json",
+      "individuallyOpened": true,
+      "review": "Sharp Phidippus regius portrait, no distinct physical event."
+    },
+    {
+      "observationId": 101602835,
+      "photoId": 169703922,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/169703922/large.jpeg",
+      "localFile": "/tmp/botanical109/101602835.jpg",
+      "bytes": 468000,
+      "sha1": "7c6edaf59a11451555e79736fdfb01c9acaf0aea",
+      "sha256": "3e3de2590c08a41f33491f6279e5fa28e132cdb4bf931e139917cf58bccc6884",
+      "dimensions": [
+        691,
+        841
+      ],
+      "seconds": 0.81,
+      "status": 200,
+      "attribution": "(c) Ben Machado, some rights reserved (CC BY), uploaded by Ben Machado",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/101602835",
+      "sourceLocal": "/tmp/botanical109/obs-101602835.json",
+      "individuallyOpened": true,
+      "review": "Prey contact visible, but severe motion blur. Sex and precise prey species unassigned. Image hold, no fabricated feeding verdict."
+    }
+  ],
+  "scope": "Only109 proposal documents and task-local evidence. No runtime, admitted wording, canon, home or avatar changes. No publication or other-task inspection.",
+  "limits": "Three recommended Stories were sought. Four literal drafts were assessed; two did not earn recommendation. Sylvia requires an explicit root image-quality decision rather than assuming a new angle fixes104 grain.",
+  "validation": "JSON parse, title/body uniqueness and current media-hash duplicate checks. No runtime tests for proposal-only documents."
+}

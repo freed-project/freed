@@ -1,3 +1,5 @@
+> Historical planning for the rejected mixed-media snapshot. The accepted replacement now contains 500 image-led posts. Current authority and counts are in [EDITORIAL-CORPUS-HANDOFF.md](EDITORIAL-CORPUS-HANDOFF.md); the canonical editorial rules are in [SAMPLE-CORPUS-EDITORIAL-GUIDE.md](SAMPLE-CORPUS-EDITORIAL-GUIDE.md).
+
 # Expansion to 500 authored episodes
 
 ## Progress snapshot: September 4

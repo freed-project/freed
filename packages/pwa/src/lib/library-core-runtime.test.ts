@@ -169,12 +169,22 @@ function emptyOptimisticFieldsResponse(
 function mockNormalizedQuery(
   handler: (request: {
     readonly queryId: string;
+    readonly globalId?: string;
   }) => unknown | Promise<unknown>,
 ): void {
   mocks.queryNormalizedLibrary.mockImplementation(async (request) =>
     request.queryId === "optimistic_fields_v1"
       ? emptyOptimisticFieldsResponse()
-      : handler(request),
+      : request.queryId === "item_annotations_v1"
+        ? {
+            queryId: request.queryId,
+            schemaVersion: 1,
+            globalId: request.globalId,
+            source: QUERY_SOURCE,
+            tags: [],
+            highlights: [],
+          }
+        : handler(request),
   );
 }
 

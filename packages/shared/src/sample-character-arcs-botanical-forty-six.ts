@@ -19,10 +19,21 @@ export const BOTANICAL_FORTY_SIX_CHARACTER_ARCS: readonly SampleCharacterArc[] =
         "subject": "eastern skunk cabbage",
         "platform": "facebook",
         "contentType": "post",
+        "classification": "personal",
         "mediaSha1": "8b100bb95d4f3791bd137a3c677c228a1dc67703",
         "theme": "courtship",
         "title": "A different touch",
         "body": "I had been waiting for pollen. Warm inside my folded hood, I imagined it arriving on a visitor's legs. I knew what I wanted from a touch.\n\nThen my anthers began to open.\n\nYellow dust gathered between my little flowers. More anthers unfolded, and the creases filled with my own pollen.\n\nI was still in the same patch of cold ground, holding the same opening. But I had begun to want someone to leave it carrying a little of me.\n\nI had prepared so carefully to receive. I had not rehearsed this part."
+      },
+      {
+        "subject": "eastern skunk cabbage",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "weather",
+        "title": "Winter stopped there",
+        "body": "Before I had pollen to give, snow pressed against my hood. I warmed the flowers inside it, and the white edge began to withdraw.\n\nFor a moment I thought the cold was leaving.\n\nThe hollow widened just enough to show the mud around me. Beyond that, nothing thawed. I kept warming the flowers.",
+        "classification": "event",
+        "mediaSha1": "7fa614646ba5085d6f57b48606e637b65f86d20d"
       }
     ]
   }

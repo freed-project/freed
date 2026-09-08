@@ -1,5 +1,7 @@
 import type { Database, SqlValue } from "@sqlite.org/sqlite-wasm";
 import { CONTENT_SIGNAL_KEYS } from "@freed/shared";
+import { parseLibraryCoreItemAnnotationsRequestV1, parseLibraryCoreItemAnnotationsResponseV1, type LibraryCoreItemAnnotationsRequestV1, type LibraryCoreItemAnnotationsResponseV1 } from "@freed/shared/library-core";
+import { parseLibraryCoreRssItemSummaryRequestV1, parseLibraryCoreRssItemSummaryResponseV1, type LibraryCoreRssItemSummaryRequestV1, type LibraryCoreRssItemSummaryResponseV1 } from "@freed/shared/library-core";
 import {
   LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256,
   LIBRARY_CORE_CONTENT_RANGE_MAP_DIGEST_DOMAIN,
@@ -7773,6 +7775,10 @@ export class PwaLibraryCoreSqliteEngine {
         return this.#queryItemDetail(
           input,
         ) as LibraryCoreSqliteQueryResponseFor<T>;
+      case "item_annotations_v1":
+        return this.#queryItemAnnotations(input) as LibraryCoreSqliteQueryResponseFor<T>;
+      case "rss_item_summary_v1":
+        return this.#queryRssItemSummary(input) as LibraryCoreSqliteQueryResponseFor<T>;
       case "item_reader_body_v1":
         return this.#queryItemReaderBody(
           input,
@@ -9461,6 +9467,57 @@ export class PwaLibraryCoreSqliteEngine {
       totalCount: safeInteger(row.totalCount, "saved total count"),
     };
     const parsed = parseLibraryCoreSavedAnalyticsResponseV2(response);
+    if (!parsed.ok) throw new Error(parsed.error);
+    return parsed.value;
+  }
+
+  #queryRssItemSummary(
+    input: LibraryCoreRssItemSummaryRequestV1,
+  ): LibraryCoreRssItemSummaryResponseV1 {
+    const request = parseLibraryCoreRssItemSummaryRequestV1(input);
+    if (!request.ok) throw new TypeError(request.error);
+    const { generationId, sourceRevision } = this.#querySource();
+    const rows = this.#database.exec({
+      sql: LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.rss_item_summary_v1.sql,
+      rowMode: "object",
+      returnValue: "resultRows",
+    });
+    const parsed = parseLibraryCoreRssItemSummaryResponseV1({
+      ...request.value,
+      ...rows[0],
+      source: { generationId, projectionRevision: sourceRevision, transitionSequence: sourceRevision },
+    });
+    if (!parsed.ok) throw new Error(parsed.error);
+    return parsed.value;
+  }
+
+  #queryItemAnnotations(
+    input: LibraryCoreItemAnnotationsRequestV1,
+  ): LibraryCoreItemAnnotationsResponseV1 {
+    const request = parseLibraryCoreItemAnnotationsRequestV1(input);
+    if (!request.ok) throw new TypeError(request.error);
+    const { generationId, sourceRevision } = this.#querySource();
+    const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.item_annotations_v1;
+    const highlights = this.#database.exec({
+      sql: program.sql,
+      bind: [request.value.globalId],
+      rowMode: "object",
+      returnValue: "resultRows",
+    });
+    const tags = this.#database.exec({
+      sql: program.variants.tags.sql,
+      bind: [request.value.globalId],
+      rowMode: "object",
+      returnValue: "resultRows",
+    });
+    const parsed = parseLibraryCoreItemAnnotationsResponseV1({
+      globalId: input.globalId,
+      highlights,
+      queryId: input.queryId,
+      schemaVersion: 1,
+      source: { generationId, projectionRevision: sourceRevision, transitionSequence: sourceRevision },
+      tags: tags.map(row => row.tag),
+    }, request.value);
     if (!parsed.ok) throw new Error(parsed.error);
     return parsed.value;
   }

@@ -34,6 +34,19 @@ React fences never become storage authority. A successful mutation cannot
 advance navigation counts while leaving an older empty or stale feed window
 selected.
 
+A source refresh prepares the complete resident window before publishing it to
+React. It retains at most the configured page count and never briefly replaces
+a deep window with page one. The shared adapter can interpret a prior leading
+edge as an ordering bookmark after validating its generation and filter (and
+Saved sort mode) against a fresh reader. It constructs a new cursor at the
+fresh revision, reads the predecessor edge, then resumes inclusively from that
+edge. Normal `readPage` calls still reject stale cursors. Every returned page
+and optimistic overlay must pass the current source fence; an intervening
+revision fails closed. This uses bounded keyset reads without scanning to an
+offset or treating the bookmark as storage authority. Traversal offsets in
+React are layout hints after a refresh; cursor edges determine whether either
+side has more rows.
+
 `saved_analytics_v2` is the normalized Saved overview aggregate. One deferred
 SQLite snapshot materializes only each saved row's bounded platform, content
 type, and effective saved time, then returns exact totals, latest time, seven
@@ -43,6 +56,13 @@ request accepts no SQL or arbitrary grouping, the result is one row under
 2 MiB, and source generation or revision movement invalidates the response.
 The historical Saved analytics reader and its document-head source vocabulary
 are not part of this final query.
+
+`rss_item_summary_v1` returns exact total and unread counts for items whose
+platform is RSS or whose source is an RSS feed. The two disjoint SQL branches
+prevent double counting. This scalar aggregate does not return item identities
+or bodies. It is separate from `library_facet_summary_v1`, whose platform totals
+must remain disjoint. RSS-backed Substack and Medium items therefore count in
+Feeds without losing their provider attribution.
 
 `saved_feed_page_v2` is the normalized Saved list query. Its closed sort enum
 selects one of four generated SQL variants for date saved, date published,

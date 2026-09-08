@@ -517,6 +517,7 @@ test("mixed feature plans retain repository configuration coverage", () => {
 test("feature plan routes tooling smoke workflow and helper changes through focused tests", () => {
   const paths = [
     ".github/workflows/ci.yml",
+    ".github/workflows/tooling-nightly.yml",
     "scripts/measure-tooling-smoke.mjs",
     "scripts/measure-tooling-smoke.test.mjs",
     "scripts/run-native-acceptance.mjs",
@@ -950,6 +951,10 @@ test("feature plan isolates pull request publication from tag publisher host sui
   for (const filePath of [
     "scripts/worktree-publish.sh",
     "scripts/worktree-publish.test.mjs",
+    "scripts/task-decisions.mjs",
+    "scripts/task-decisions.test.mjs",
+    "scripts/worktree-add.sh",
+    "scripts/worktree-cleanup.sh",
   ]) {
     assert.equal(isPullRequestPublisherToolingPath(filePath), true, filePath);
     assert.equal(isReleasePublisherToolingPath(filePath), false, filePath);
@@ -960,6 +965,7 @@ test("feature plan isolates pull request publication from tag publisher host sui
     assert.deepEqual(pullRequestSuite?.args, [
       "--test",
       "scripts/worktree-publish.test.mjs",
+      "scripts/task-decisions.test.mjs",
     ]);
     assert.equal(
       plan.some((item) => item.label === "release publisher tests"),

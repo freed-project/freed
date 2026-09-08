@@ -1,0 +1,400 @@
+{
+  "batch": "BOTANICAL-EDITORIAL-146",
+  "status": "one proposal pending root review, zero author admissions",
+  "proposals": [
+    {
+      "candidateId": "146-01",
+      "characterId": "akio-sheen",
+      "identityNameBase": "Akio Sheen",
+      "operation": "append explicit first-flight recollection to existing arc; lead admission required",
+      "admission": "pending independent review",
+      "episode": {
+        "subject": "Chrysochroa fulgidissima",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "movement",
+        "title": "A firm grip",
+        "body": "On my first flight, the trunk dropped away beneath me. I went after it and caught the bark with all six feet. The tree stopped. I stayed there for a while, very pleased with myself.",
+        "mediaSha1": "47b9aabce7a85ff59273d35e2296b76c9eb08685"
+      },
+      "media": {
+        "observationId": 218619511,
+        "photoId": 386877465,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/386877465/large.jpeg",
+        "localFile": "/tmp/botanical146/386877465.jpg",
+        "sourceLocal": "/tmp/botanical146/obs-218619511.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/218619511",
+        "license": "CC-BY-SA",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attribution": "(c) 林孫鋒(Lin Sun Fong), some rights reserved (CC BY-SA), uploaded by 林孫鋒(Lin Sun Fong)",
+        "dimensions": [
+          1024,
+          576
+        ],
+        "originalUploadDimensions": [
+          1365,
+          768
+        ],
+        "bytes": 232704,
+        "sha1": "47b9aabce7a85ff59273d35e2296b76c9eb08685",
+        "sha256": "8109616ea0310d98c2e97faabfe603624a3a282de8081b6aaa2086f41bae84e5",
+        "seconds": 0.741,
+        "status": 200,
+        "category": "wildlife",
+        "aggregated": false,
+        "alt": "An iridescent green jewel beetle on a tree trunk has lifted its striped wing covers and is beating its translucent flight wings. The photographer credit remains visible along the lower edge."
+      },
+      "sourceEvidence": {
+        "currentTaxon": "Chrysochroa fulgidissima",
+        "qualityGrade": "research",
+        "currentMatchingIdentifications": 2,
+        "sourcePlace": "Fuzhoushan Park, Taipei, Taiwan; primary place_guess 台灣台北市福州山公園",
+        "description": "No event caption supplied. Flight readiness is independently visible, not inferred from a caption.",
+        "rights": "Exact photo 386877465 is CC BY-SA 4.0, 林孫鋒(Lin Sun Fong). Embedded credit and license strip retained unchanged. Metadata license read from observation_photos for this photo, not the taxon default image."
+      },
+      "imageReview": "PASS recommendation. Exact 1024 x 576 source-published large image opened individually. Wing covers, segmented abdomen and bark are crisp; translucent wings show motion blur consistent with beating wings. This is deliberate event detail, not overall softness. Foot contact with bark remains visible. Companion 386877466 shows a closed-wing beetle on the trunk but is not used as a second entry or a proven chronological sequence. Original upload metadata 1365 x 768 is recorded separately; no claim that the larger original was downloaded. No crop or image manipulation.",
+      "proseAssessment": "PASS recommendation for independent review. The novice mistakes optic motion during his own flight for the tree moving, returns to its bark, and takes credit for stopping it. This is an embodied error with an immediate action and private satisfaction. It develops his uncertainty about adult experience without another color lecture, praise of his beauty, remembered wood meal or camera encounter. It does not recycle Greta biting after release: Akio acts on apparent movement and believes he has rescued the tree. The final sentence describes his state without explaining the optical error or adding a moral.",
+      "canon": {
+        "home": "Woodland below Mount Takao, Japan, 35.625, 139.251 remains fictional home. Taiwan is the real source locality only.",
+        "chronology": "Explicit On my first flight anchors the vignette in early adulthood, before later confident adult encounters. It can be appended as remembered experience, not a return to larval form. No claim that these source images document the same individual as the existing arc.",
+        "sex": "No sex-specific behavior or new sex assignment.",
+        "appearance": "Metallic green, red-brown longitudinal wing-cover stripes and iridescent shifts agree with current species account and established Akio identity. No body-color transformation asserted.",
+        "avatar": "Keep current approved avatar unchanged.",
+        "read": [
+          "packages/shared/src/sample-character-arcs-strange-eight.ts full Akio arc: Handle with care, The hole I made, Depending on the light",
+          "docs/drafts/strange-canon-08.md Akio complete internal canon",
+          "docs/SAMPLE-CORPUS-EDITORIAL-GUIDE.md current 500 milestone and image/prose contract"
+        ]
+      },
+      "fictionBoundary": {
+        "visible": "A jewel beetle on upright bark with open wing covers and blurred flight wings.",
+        "fiction": "First-ever flight, subsequent departure, apparent downward movement of the tree, return and six-foot grip, belief in a rescue and resulting pleasure. The tree does not actually fall. The still does not document the entire flight or learning sequence.",
+        "biologyLimit": "No claim that a real beetle has this optical misconception, autobiographical memory or rescue intention. No experimental mechanism is attributed to the photographer."
+      },
+      "biologySources": [
+        {
+          "url": "https://www.takao599museum.jp/treasures/insects/タマムシ科/2913/?lang=en",
+          "publisher": "Takao 599 Museum",
+          "review": "Primary local species account opened in this batch. It describes the green body with red-brown longitudinal stripes, iridescent reflected colors, woodland habitat and adult flight. Adult leaf diet and larval wood diet remain intact. Does not establish fictional first-flight confusion."
+        }
+      ]
+    }
+  ],
+  "holds": [
+    {
+      "character": "Peri Bracken",
+      "title": "The last feet",
+      "body": "Before I had wings, Pip climbed over me to reach the next leaf. I meant to complain. By the time his last feet had gone, I was hoping he'd forgotten something.",
+      "verdict": "HOLD repetition. A clear two-larva contact image exists, but the affection after irritation repeats Careful affection and the broader crowded-nettle/longing-for-interruption history. Preserve this attempt without admission.",
+      "photos": [
+        509626419,
+        509626101
+      ],
+      "source": "Observations 283611233 and 283611080 are Aglais io, research grade, Sap-en-Auge, France. First photo has larger spiny larvae touching; second has many younger larvae and webbed food. The q=sap query matched the locality, not adult sap feeding. No sap behavior inferred."
+    },
+    {
+      "character": "Akio Sheen",
+      "photos": [
+        347567213,
+        212408657,
+        156391373,
+        446127034
+      ],
+      "verdict": "HOLD as additional proposals: sharp or serviceable resting portraits on pavement, rail and bark; they offer less distinct action than the selected open-wing image."
+    },
+    {
+      "character": "Akio Sheen",
+      "photos": [
+        43120782
+      ],
+      "body": "I ate along the edge until a back foot found the space I had made. I held still with the other five. Lunch had become considerably more interesting behind me.",
+      "verdict": "HOLD. Leaf hole and dangling leg visible, but attribution of the hole to Akio is fiction and this small feeding/climbing inconvenience has a weaker turn than flight. No additional admission."
+    },
+    {
+      "character": "Akio Sheen",
+      "photos": [
+        22589866
+      ],
+      "verdict": "HOLD. Soft ventral view with curled legs does not establish a living flight event; no recovery invented."
+    },
+    {
+      "character": "Akio Sheen",
+      "photos": [
+        521148475
+      ],
+      "verdict": "HOLD. Leaf overlaps resting beetle in litter, but another tiny leaf/large body incident would repeat the rejected tuber mechanism."
+    }
+  ],
+  "inspection": {
+    "downloaded": 11,
+    "individuallyOpened": 11,
+    "sources": [
+      {
+        "observationId": 197351909,
+        "photoId": 347567213,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/347567213/large.jpg",
+        "localFile": "/tmp/botanical146/347567213.jpg",
+        "sourceLocal": "/tmp/botanical146/obs-197351909.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/197351909",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) Takaaki Hattori, some rights reserved (CC BY), uploaded by Takaaki Hattori",
+        "dimensions": [
+          1024,
+          1024
+        ],
+        "originalUploadDimensions": [
+          2048,
+          2048
+        ],
+        "bytes": 557779,
+        "sha1": "abb7d97b91f19f31091f10e4385eba5dc210851f",
+        "sha256": "8a7ad42c279714aa6a1ce7801af0481a54bee60730dff1097f0fac0878228876",
+        "seconds": 0.836,
+        "status": 200
+      },
+      {
+        "observationId": 27698527,
+        "photoId": 43120782,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/43120782/large.jpeg",
+        "localFile": "/tmp/botanical146/43120782.jpg",
+        "sourceLocal": "/tmp/botanical146/obs-27698527.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/27698527",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) Franz Anthony, some rights reserved (CC BY), uploaded by Franz Anthony",
+        "dimensions": [
+          1024,
+          683
+        ],
+        "originalUploadDimensions": [
+          1500,
+          1000
+        ],
+        "bytes": 227453,
+        "sha1": "3681440ca22108f1150e35d37c53cff2d6886d85",
+        "sha256": "1f016a464e183225a296485df8e3abcd2ce390c2355d028cb8a8febf6732fba4",
+        "seconds": 0.661,
+        "status": 200
+      },
+      {
+        "observationId": 125259407,
+        "photoId": 212408657,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/212408657/large.jpeg",
+        "localFile": "/tmp/botanical146/212408657.jpg",
+        "sourceLocal": "/tmp/botanical146/obs-125259407.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/125259407",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) MUNENORI YAMAKAWA, some rights reserved (CC BY), uploaded by MUNENORI YAMAKAWA",
+        "dimensions": [
+          768,
+          1024
+        ],
+        "originalUploadDimensions": [
+          1536,
+          2048
+        ],
+        "bytes": 536398,
+        "sha1": "6ac222104faa47c0588859eaa473735091335923",
+        "sha256": "f8ce575b31683289276858682affd4a2642e972027c26ba64973fa031298944e",
+        "seconds": 0.777,
+        "status": 200
+      },
+      {
+        "observationId": 94286808,
+        "photoId": 156391373,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/156391373/large.jpeg",
+        "localFile": "/tmp/botanical146/156391373.jpg",
+        "sourceLocal": "/tmp/botanical146/obs-94286808.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/94286808",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) MUNENORI YAMAKAWA, some rights reserved (CC BY), uploaded by MUNENORI YAMAKAWA",
+        "dimensions": [
+          768,
+          1024
+        ],
+        "originalUploadDimensions": [
+          1536,
+          2048
+        ],
+        "bytes": 733071,
+        "sha1": "bd19893343dc4cb8a32d89fa400192585ca28cd1",
+        "sha256": "b85b14247ebf6ff032ad24fd95b7331e840629131e8a3156d3890f53437053d3",
+        "seconds": 0.8,
+        "status": 200
+      },
+      {
+        "observationId": 15118690,
+        "photoId": 22589866,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/22589866/large.jpg",
+        "localFile": "/tmp/botanical146/22589866.jpg",
+        "sourceLocal": "/tmp/botanical146/obs-15118690.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/15118690",
+        "license": "CC-BY-SA",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attribution": "(c) Norio Nomura, some rights reserved (CC BY-SA), uploaded by Norio Nomura",
+        "dimensions": [
+          768,
+          1024
+        ],
+        "originalUploadDimensions": [
+          1535,
+          2048
+        ],
+        "bytes": 284397,
+        "sha1": "adf4756283f657532aec4cb1c1e5802cbcfedd1e",
+        "sha256": "3e1e7534d5b74cbc0a29c2602028e579c479c47cb349a7353945b7fd45cc5678",
+        "seconds": 0.669,
+        "status": 200
+      },
+      {
+        "observationId": 289735023,
+        "photoId": 521148475,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/521148475/large.jpg",
+        "localFile": "/tmp/botanical146/521148475.jpg",
+        "sourceLocal": "/tmp/botanical146/obs-289735023.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/289735023",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) Jay Paroline, some rights reserved (CC BY), uploaded by Jay Paroline",
+        "dimensions": [
+          1024,
+          988
+        ],
+        "originalUploadDimensions": [
+          2048,
+          1975
+        ],
+        "bytes": 797284,
+        "sha1": "eaef4dba546f9486844593785fd6fae6836b8c7c",
+        "sha256": "21a208bdc8dd156db1917c30825e6c0131ccdc29127352684467bfbc4f22e503",
+        "seconds": 0.944,
+        "status": 200
+      },
+      {
+        "observationId": 249556616,
+        "photoId": 446127034,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/446127034/large.jpeg",
+        "localFile": "/tmp/botanical146/446127034.jpg",
+        "sourceLocal": "/tmp/botanical146/obs-249556616.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/249556616",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) 謝鈞諭, some rights reserved (CC BY), uploaded by 謝鈞諭",
+        "dimensions": [
+          768,
+          1024
+        ],
+        "originalUploadDimensions": [
+          1536,
+          2048
+        ],
+        "bytes": 383406,
+        "sha1": "28904d9dfa5d7e9a445f0ba1c309c72d64109311",
+        "sha256": "40c5188eabb1f6640d0321c56fa823171f1f2bb4f144d8a27b3178eae6104d88",
+        "seconds": 2.194,
+        "status": 200
+      },
+      {
+        "observationId": 218619511,
+        "photoId": 386877465,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/386877465/large.jpeg",
+        "localFile": "/tmp/botanical146/386877465.jpg",
+        "sourceLocal": "/tmp/botanical146/obs-218619511.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/218619511",
+        "license": "CC-BY-SA",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attribution": "(c) 林孫鋒(Lin Sun Fong), some rights reserved (CC BY-SA), uploaded by 林孫鋒(Lin Sun Fong)",
+        "dimensions": [
+          1024,
+          576
+        ],
+        "originalUploadDimensions": [
+          1365,
+          768
+        ],
+        "bytes": 232704,
+        "sha1": "47b9aabce7a85ff59273d35e2296b76c9eb08685",
+        "sha256": "8109616ea0310d98c2e97faabfe603624a3a282de8081b6aaa2086f41bae84e5",
+        "seconds": 0.741,
+        "status": 200
+      },
+      {
+        "observationId": 218619511,
+        "photoId": 386877466,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/386877466/large.jpeg",
+        "localFile": "/tmp/botanical146/386877466.jpg",
+        "sourceLocal": "/tmp/botanical146/obs-218619511.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/218619511",
+        "license": "CC-BY-SA",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attribution": "(c) 林孫鋒(Lin Sun Fong), some rights reserved (CC BY-SA), uploaded by 林孫鋒(Lin Sun Fong)",
+        "dimensions": [
+          1024,
+          576
+        ],
+        "originalUploadDimensions": [
+          1365,
+          768
+        ],
+        "bytes": 260474,
+        "sha1": "a8fb4f53c587b4157101705ca072005f1794e6f4",
+        "sha256": "e286f9ba71709ef95a356ecfd769892d29e4766e70afa47bc2184282e4d6c95a",
+        "seconds": 0.795,
+        "status": 200
+      },
+      {
+        "observationId": 283611233,
+        "photoId": 509626419,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/509626419/large.jpg",
+        "localFile": "/tmp/botanical146/509626419.jpg",
+        "sourceLocal": "/tmp/botanical146/obs-283611233.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/283611233",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) Matthieu Le Goïc, some rights reserved (CC BY), uploaded by Matthieu Le Goïc",
+        "dimensions": [
+          768,
+          1024
+        ],
+        "originalUploadDimensions": [
+          1536,
+          2048
+        ],
+        "bytes": 429802,
+        "sha1": "ae2ce8c98b26311d3305570b02a1a59157640356",
+        "sha256": "4975a32f50c9b94e6f7c5cd064bcafeadcb2759b10b7ed79d0bc9cf891f274e7",
+        "seconds": 1.265,
+        "status": 200
+      },
+      {
+        "observationId": 283611080,
+        "photoId": 509626101,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/509626101/large.jpg",
+        "localFile": "/tmp/botanical146/509626101.jpg",
+        "sourceLocal": "/tmp/botanical146/obs-283611080.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/283611080",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) Matthieu Le Goïc, some rights reserved (CC BY), uploaded by Matthieu Le Goïc",
+        "dimensions": [
+          1024,
+          768
+        ],
+        "originalUploadDimensions": [
+          2048,
+          1536
+        ],
+        "bytes": 628919,
+        "sha1": "c64f6659a6a31c438ac83931743558bf1a0206ae",
+        "sha256": "8af88432d4f88e80383abe1a6db97c5d554c3b6c86f05c79b311e9edfebae933",
+        "seconds": 0.893,
+        "status": 200
+      }
+    ],
+    "verification": "All byte counts, SHA-1 and SHA-256 rechecked; source JSON and exact source-published URL retained. No runtime or prior prose edits.",
+    "scope": "Only 146 proposal files and /tmp/botanical146. No publication, merge, other-task inspection/contact, controls, dependency or avatar edits."
+  }
+}

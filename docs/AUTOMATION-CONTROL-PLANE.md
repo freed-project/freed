@@ -568,6 +568,14 @@ revalidates the exact receipt, canonical directory ancestry, owner, mode, link
 count, marker bytes, and locked inode for every operation. A prior doctor run
 is never used as mutation authority.
 
+This migration admits automation control-plane operations, not ordinary product
+builds, GitHub-authenticated PR publication, or the dedicated release tag
+publisher. A failing doctor automation check does not establish a release
+dependency. Trace the requested operation to its actual consumer before
+proposing host repair. An automated soak or lifecycle transition that uses
+this control plane still requires healthy guards; report that specific
+operation separately rather than blocking unrelated release preparation.
+
 The one-time rollout is an explicit quiescent owner operation. All five saved
 actors must be `PAUSED`, every canonical lease must be absent, no older control
 process may be alive, and every source byte named by the read-only plan must
@@ -1649,6 +1657,19 @@ receipt, event, source snapshot, or post-repair ledger fails closed. Any
 prepared, replaced, or audited transaction keeps outcome-ledger health false
 until recovery reaches `complete`, so a crash cannot quietly reopen the global
 behavior slot.
+
+Completed transaction replay permits one Darwin-specific identity transition.
+APFS may renumber its device after a reboot or operating system update while
+preserving the same directories and inodes. A completed repair remains valid
+only when both recorded parent directories shared one device, both current
+parents share one device, and each parent's inode, mode, and owner still match
+exactly. Completed lease evidence uses the same narrow rule: a historical
+device is accepted only from a completed, same-token credential source inside
+the automation state root, while the archived inode, mode, ownership, content,
+and namespace digest remain exact. This exception does not apply to Linux or
+to fenced, prepared, replaced, or audited transactions. Current filesystem
+admission and all active transaction generation checks continue to require one
+exact local device.
 
 Use the dedicated CLI. Plan before acquiring the owner lease:
 

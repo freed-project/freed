@@ -70,14 +70,21 @@ function FirstLookWelcome({
   departing: boolean;
   onExplore: () => void;
 }) {
+  const [newsletterOpen, setNewsletterOpen] = useState(false);
+  const [newsletterVisited, setNewsletterVisited] = useState(false);
+  const newsletterPreviewOnly = import.meta.env.DEV ||
+    isFreedNewsletterPreviewHostname(window.location.hostname);
   return (
     <div
       data-testid="demo-welcome-desktop"
-      className={`demo-welcome-overlay fixed inset-0 z-[150] isolate flex items-center justify-center p-5 ${departing ? "demo-welcome-first-look-backdrop--departing" : ""}`}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Welcome to Freed"
+      className={`demo-welcome-overlay fixed inset-0 z-[150] isolate flex items-center justify-center p-5 max-[640px]:p-0 ${departing ? "demo-welcome-first-look-backdrop--departing" : ""}`}
     >
       <div aria-hidden="true" className="demo-welcome-shade pointer-events-none absolute -z-10 bg-black/55 backdrop-blur-md" />
       <div
-        className={`theme-floating-panel relative w-full max-w-3xl overflow-hidden rounded-[2rem] p-7 text-center shadow-2xl shadow-black/40 sm:p-10 ${departing ? "demo-welcome-first-look-card--departing" : ""}`}
+        className={`theme-floating-panel relative max-h-[100dvh] w-full max-w-3xl overflow-y-auto rounded-[2rem] p-7 text-center shadow-2xl shadow-black/40 sm:p-10 max-[640px]:h-full max-[640px]:!rounded-none max-[640px]:!border-0 ${departing ? "demo-welcome-first-look-card--departing" : "demo-welcome-first-look-card--arriving"}`}
         style={{ background: "var(--theme-bg-elevated)", border: "4px solid var(--theme-border-strong)", borderRadius: "2rem" }}
       >
         <div
@@ -86,7 +93,7 @@ function FirstLookWelcome({
         />
         <div className="relative flex flex-col items-center">
           <FreedLogo className="h-20 w-20 sm:h-24 sm:w-24" />
-          <p className="mt-7 text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--theme-accent-secondary)]">
+          <p className="mt-7 text-[0.6875rem] font-semibold uppercase tracking-[0.22em] text-[var(--theme-accent-secondary)]">
             {copy.eyebrow}
           </p>
           <h1 className="mt-3 max-w-2xl text-4xl font-semibold leading-[1.06] text-[var(--theme-text-primary)] sm:text-5xl">
@@ -97,12 +104,30 @@ function FirstLookWelcome({
           </p>
           <button
             type="button"
-            className="btn-primary demo-primary-action mt-8 inline-flex min-h-14 min-w-[15rem] items-center justify-center px-10 py-4 text-lg"
+            className="btn-primary demo-primary-action mt-8 inline-flex min-h-14 min-w-[15rem] items-center justify-center px-10 py-4 text-lg max-[640px]:w-full max-[640px]:max-w-sm"
             style={{ borderRadius: "2rem" }}
             onClick={onExplore}
           >
             Explore Freed Demo
           </button>
+          <div className="mt-3 w-full max-w-sm min-[641px]:hidden">
+            <div inert={!newsletterOpen} aria-hidden={!newsletterOpen}
+              className="grid transition-[grid-template-rows,opacity,transform,padding] duration-300 ease-in-out motion-reduce:transition-none"
+              style={{ gridTemplateRows: newsletterOpen ? "1fr" : "0fr", opacity: newsletterOpen ? 1 : 0,
+                transform: newsletterOpen ? "translateY(0)" : "translateY(-12px)", paddingBlock: newsletterOpen ? "1rem" : "0" }}>
+              <div className="min-h-0 overflow-hidden">
+                {newsletterVisited && <NewsletterSignup compact previewOnly={newsletterPreviewOnly}
+                  {...(newsletterPreviewOnly ? { siteKey: FREED_NEWSLETTER_TURNSTILE_TEST_SITE_KEY } : {})} />
+                }
+              </div>
+            </div>
+            <button type="button" aria-expanded={newsletterOpen}
+              className="btn-secondary inline-flex !min-h-10 w-full items-center justify-center gap-2 rounded-[2rem] !px-4 !py-2 !text-sm"
+              onClick={() => { setNewsletterVisited(true); setNewsletterOpen(value => !value); }}>
+              {newsletterOpen && <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m6 15 6-6 6 6" /></svg>}
+              {newsletterOpen ? "Back to welcome" : "Join the newsletter"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -120,7 +145,7 @@ function FieldGuideWelcome({
   onMaximize: () => void;
 }) {
   const [newsletterOpen, setNewsletterOpen] = useState(false);
-  const [minimized, updateMinimized] = useState(initialMinimized);
+  const [desktopMinimized, updateMinimized] = useState(initialMinimized);
   const setMinimized = (value: boolean) => {
     updateMinimized(value);
     saveDemoWelcomeState(value ? "minimized" : "banner");
@@ -128,6 +153,31 @@ function FieldGuideWelcome({
   const minimizeRef = useRef<HTMLButtonElement>(null);
   const restoreRef = useRef<HTMLButtonElement>(null);
   const [mobileTab, setMobileTab] = useState(() => window.innerWidth <= 640);
+  const minimized = mobileTab || desktopMinimized;
+  const [requestedMobileTab, setRequestedMobileTab] = useState(mobileTab);
+  const [tabChangingEdge, setTabChangingEdge] = useState(false);
+  useLayoutEffect(() => {
+    if (requestedMobileTab === mobileTab) return;
+    // Leave through the old edge before mounting at the new edge. Remounting
+    // prevents CSS from interpolating the rotation across the page.
+    const timer = window.setTimeout(() => {
+      setTabChangingEdge(true);
+      setMobileTab(requestedMobileTab);
+    }, minimized ? 600 : 0);
+    return () => window.clearTimeout(timer);
+  }, [requestedMobileTab, mobileTab, minimized]);
+  useLayoutEffect(() => {
+    if (requestedMobileTab !== mobileTab) return;
+    let secondFrame = 0;
+    const firstFrame = requestAnimationFrame(() => {
+      secondFrame = requestAnimationFrame(() => setTabChangingEdge(false));
+    });
+    return () => {
+      cancelAnimationFrame(firstFrame);
+      cancelAnimationFrame(secondFrame);
+    };
+  }, [requestedMobileTab, mobileTab]);
+  const tabVisible = minimized && requestedMobileTab === mobileTab && !tabChangingEdge;
   const [tabY, setTabY] = useState<number | null>(null);
   const [tabDragging, setTabDragging] = useState(false);
   const tabDrag = useRef<{ pointerId: number; startY: number; originY: number; moved: boolean } | null>(null);
@@ -142,7 +192,7 @@ function FieldGuideWelcome({
   };
   useLayoutEffect(() => {
     const fitTab = () => {
-      setMobileTab(window.innerWidth <= 640);
+      setRequestedMobileTab(window.innerWidth <= 640);
       setTabY((previous) => clampTabY(previous ??
         (window.visualViewport?.offsetTop ?? 0) + (window.visualViewport?.height ?? window.innerHeight) / 2));
     };
@@ -273,6 +323,7 @@ function FieldGuideWelcome({
   return (
     <>
       <button
+        key={mobileTab ? "vertical-tab" : "horizontal-tab"}
         data-testid="demo-welcome-tab"
         ref={restoreRef}
         type="button"
@@ -283,7 +334,8 @@ function FieldGuideWelcome({
             suppressTabClick.current = false;
             return;
           }
-          setMinimized(false);
+          if (mobileTab) onMaximize();
+          else setMinimized(false);
         }}
         onPointerDown={(event) => {
           if (!mobileTab || event.button !== 0 || !event.isPrimary) return;
@@ -305,23 +357,27 @@ function FieldGuideWelcome({
         onPointerUp={endTabDrag}
         onPointerCancel={endTabDrag}
         onLostPointerCapture={endTabDrag}
-        inert={!minimized}
+        inert={!tabVisible}
         className="demo-banner-morph demo-tab-restore fixed bottom-0 left-1/2 z-[139] w-[min(18rem,calc(100vw-1rem))] cursor-pointer border-0 bg-transparent p-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--theme-accent-primary)]"
         style={{
+          width: "max-content",
           height: mobileTab ? "3rem" : "calc(3rem + var(--safe-area-bottom, 0px))",
-          left: mobileTab ? "calc(100% - 1.5rem)" : undefined,
+          // Percentage positioning follows the layout viewport's scrollbar
+          // gutter. Use viewport width so the rotated tab stays on the physical
+          // right edge when the document starts or stops scrolling.
+          left: mobileTab ? "calc(100vw - 1.5rem)" : undefined,
           top: mobileTab ? (tabY ?? "50%") : undefined,
           bottom: mobileTab ? "auto" : undefined,
           touchAction: mobileTab ? "none" : undefined,
           cursor: mobileTab ? (tabDragging ? "grabbing" : "grab") : undefined,
-          opacity: minimized ? 1 : 0,
-          visibility: minimized ? "visible" : "hidden",
+          opacity: tabVisible ? 1 : 0,
+          visibility: tabVisible ? "visible" : "hidden",
           transform: mobileTab
-            ? `translate(-50%, -50%) rotate(-90deg) translateY(${minimized ? "0" : "100%"}) scale(${minimized ? 1 : 0.85})`
-            : `translateX(-50%) translateY(${minimized ? "0" : "100%"}) scale(${minimized ? 1 : 0.85})`,
+            ? `translate(-50%, -50%) rotate(-90deg) translateY(${tabVisible ? "0" : "100%"})`
+            : `translateX(-50%) translateY(${tabVisible ? "0" : "100%"})`,
           transformOrigin: mobileTab ? "center" : "bottom center",
-          transition: `transform 600ms ease, opacity 600ms ease, visibility 0s ${minimized ? "0s" : "600ms"}`,
-          pointerEvents: minimized ? "auto" : "none",
+          transition: `transform 600ms ease, opacity 600ms ease, visibility 0s ${tabVisible ? "0s" : "600ms"}`,
+          pointerEvents: tabVisible ? "auto" : "none",
         }}
       >
         <svg aria-hidden="true" viewBox="0 0 352 72" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 h-full w-full overflow-visible"
@@ -329,10 +385,10 @@ function FieldGuideWelcome({
           <path d="M0 72 C30 72 30 58 36 36 C42 12 54 4 82 4 H270 C298 4 310 12 316 36 C322 58 322 72 352 72"
             fill="var(--theme-bg-elevated)" stroke="var(--theme-border-strong)" strokeWidth="4" vectorEffect="non-scaling-stroke" />
         </svg>
-        <span className="relative flex h-12 items-center justify-center gap-2 pt-1 text-[var(--theme-text-primary)]">
-          <FreedLogo className="h-6 w-6" />
-          <span className="text-base font-semibold">Freed Demo</span>
-          <span className="demo-banner-control absolute right-9 top-1 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[var(--theme-accent-primary)]">
+        <span className="relative flex h-12 items-center gap-2 pl-10 pr-8 pt-1 text-[var(--theme-text-primary)]">
+          <FreedLogo className="h-6 w-6 translate-x-2" />
+          <span className="translate-x-2 text-base font-semibold">Freed Demo</span>
+          <span className="demo-banner-control ml-2 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[var(--theme-accent-primary)]">
             <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M8 3H3v5m13 13h5v-5M3 3l7 7m11 11-7-7" />
             </svg>
@@ -466,7 +522,7 @@ function saveDemoWelcomeState(state: DemoWelcomeState) {
 }
 
 export function DemoWelcomeBanner({ downloadUrl }: DemoWelcomeBannerProps) {
-  const [initialState] = useState(readDemoWelcomeState);
+  const [initialState] = useState(() => window.innerWidth <= 640 ? "modal" : readDemoWelcomeState());
   const [transitioningToGuide, setTransitioningToGuide] = useState(false);
   const [guideVisible, setGuideVisible] = useState(initialState !== "modal");
   const [initialMinimized, setInitialMinimized] = useState(initialState === "minimized");
@@ -474,8 +530,9 @@ export function DemoWelcomeBanner({ downloadUrl }: DemoWelcomeBannerProps) {
 
   const exploreDemo = () => {
     if (transitioningToGuide || guideVisible) return;
-    saveDemoWelcomeState("banner");
-    setInitialMinimized(false);
+    const mobile = window.innerWidth <= 640;
+    saveDemoWelcomeState(mobile ? "minimized" : "banner");
+    setInitialMinimized(mobile);
     setTransitioningToGuide(true);
     setGuideVisible(true);
     setGuideArriving(true);

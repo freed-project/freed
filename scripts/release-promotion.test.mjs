@@ -154,6 +154,7 @@ function runNode(scriptPath, args) {
 }
 
 test("the promotion control definition preserves itself", () => {
+  assert.ok(PROMOTION_CONTROL_FILES.includes("scripts/prepare-release-promotion.mjs"));
   assert.ok(PROMOTION_CONTROL_FILES.includes("scripts/release-promotion-shared.mjs"));
   assert.ok(PROMOTION_CONTROL_FILES.includes("scripts/deploy-pwa-production-snapshot.sh"));
   assert.ok(PROMOTION_CONTROL_FILES.includes("scripts/release.sh"));
@@ -387,6 +388,8 @@ test("prepare-release-promotion copies the dev product snapshot across squashed 
     "scripts/release-governance.test.mjs",
     "export const releaseLane = 'production';\n",
   );
+  writeRepoFile(cwd, "release-notes/releases/v26.7.700.json", '{"approved":true}\n');
+  writeRepoFile(cwd, "release-notes/releases/v26.7.700.md", "# Published release\n");
   commitAll(cwd, "release: preserve main version");
   updateOriginRef(cwd, "main");
 
@@ -464,6 +467,8 @@ test("prepare-release-promotion copies the dev product snapshot across squashed 
 
   assert.equal(prepared.status, 0, prepared.stderr);
   assert.match(prepared.stdout, /Prepared 9 product paths for promotion/);
+  assert.equal(git(cwd, ["show", ":release-notes/releases/v26.7.700.json"]), '{"approved":true}');
+  assert.equal(git(cwd, ["show", ":release-notes/releases/v26.7.700.md"]), "# Published release");
   assert.equal(
     git(cwd, ["show", ":packages/pwa/src/app.ts"]),
     "export const value = 'next dev snapshot';",
@@ -530,6 +535,15 @@ test("prepare-release-promotion copies the dev product snapshot across squashed 
     "--to-ref=HEAD",
   ]);
   assert.equal(releaseValidated.status, 0, releaseValidated.stderr);
+  // Missing reverse integration must not permit deleting or editing a
+  // production receipt while the product snapshot otherwise matches.
+  for (const change of ["rewrite", "delete"]) {
+    const receipt = "release-notes/releases/v26.7.700.json";
+    if (change === "rewrite") writeRepoFile(cwd, receipt, '{"approved":false}\n');
+    else rmSync(path.join(cwd, receipt));
+    commitAll(cwd, `chore: ${change} production receipt`);
+    assert.deepEqual(listPromotionBranchDiffFiles({ fromRef: "origin/dev", toRef: "HEAD", cwd }), [receipt]);
+  }
 });
 
 test("validate-main-backflow ignores squashed promotion content already in dev history", (t) => {
@@ -1355,7 +1369,7 @@ test("validate-main-pr rejects a promotion whose parent is no longer current mai
   commitAll(cwd, "chore: promote dev into main for production release");
 
   git(cwd, ["checkout", "main"]);
-  writeRepoFile(cwd, "release-notes/releases/v0.0.1.json", "{\n}\n");
+  writeRepoFile(cwd, "packages/pwa/package.json", '{"version":"0.0.1"}\n');
   commitAll(cwd, "release: advance main");
   updateOriginRef(cwd, "main");
   git(cwd, ["checkout", promotionBranch]);

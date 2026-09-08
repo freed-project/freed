@@ -49,6 +49,7 @@ export const PROMOTION_CONTROL_FILES = [
   "scripts/deploy-pwa-production-snapshot.sh",
   "scripts/promote-dev-to-main.sh",
   "scripts/promote-dev-to-main.test.mjs",
+  "scripts/prepare-release-promotion.mjs",
   "scripts/release-promotion-shared.mjs",
   "scripts/release-promotion.test.mjs",
   "scripts/release-workflow-matrix.test.mjs",
@@ -173,7 +174,12 @@ export function listPromotionDiffFiles({ fromRef, toRef, cwd }) {
   );
 }
 
-export function listPromotionBranchDiffFiles({ fromRef, toRef, cwd }) {
+export function listPromotionBranchDiffFiles({
+  fromRef,
+  toRef,
+  baseRef = "origin/main",
+  cwd,
+}) {
   const promotionScopeFiles = listChangedFiles({
     fromRef,
     toRef,
@@ -186,11 +192,18 @@ export function listPromotionBranchDiffFiles({ fromRef, toRef, cwd }) {
     cwd,
     pathspec: PROMOTION_WEBSITE_CONFIG_FILES,
   });
-  const releaseNoteFiles = listChangedFiles({
-    fromRef,
-    toRef,
-    cwd,
-    pathspec: RELEASE_ONLY_PREFIXES,
+  // Production receipts belong to main. A dev snapshot may predate their
+  // reverse integration, but promotion must never erase or rewrite them.
+  const releaseNoteFiles = uniqueSorted([
+    ...listChangedFiles({ fromRef, toRef, cwd, pathspec: RELEASE_ONLY_PREFIXES }),
+    ...listChangedFiles({
+      fromRef: baseRef, toRef, cwd, pathspec: RELEASE_ONLY_PREFIXES,
+    }),
+  ]).filter((filePath) => {
+    const expected =
+      readBlobId(baseRef, filePath, { cwd }) ??
+      readBlobId(fromRef, filePath, { cwd });
+    return readBlobId(toRef, filePath, { cwd }) !== expected;
   });
 
   return uniqueSorted([
@@ -234,7 +247,11 @@ export function listPromotionBranchPatchFiles({ fromRef, toRef, cwd }) {
   ]).filter(
     (filePath) =>
       !BRANCH_SPECIFIC_RELEASE_LANE_FILES.has(filePath) &&
-      !isPromotionControlFile(filePath),
+      !isPromotionControlFile(filePath) &&
+      !(
+        RELEASE_ONLY_PREFIXES.some((prefix) => filePath.startsWith(prefix)) &&
+        readBlobId(toRef, filePath, { cwd })
+      ),
   );
 }
 

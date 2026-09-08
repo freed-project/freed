@@ -17,7 +17,7 @@ Never discard launcher changes to make it fresh. Preserve and report unexpected 
 
 ## Authorization levels
 
-When authorization is required and the owner has not set a level, ask exactly:
+Default to Level 2 (Build). Finish authorized work first. Ask exactly the following only when safe or efficient task completion needs another level:
 
 > What authorization level should this task proceed at?
 >
@@ -31,7 +31,7 @@ When authorization is required and the owner has not set a level, ask exactly:
 >
 > Reply with a number.
 
-Do not request authorization for one isolated action or append exclusions and safety boilerplate.
+Ask for task authority, without isolated permissions, exclusions, or safety boilerplate.
 
 1. **Inspect:** Read-only diagnosis, evidence capture, and planning.
 2. **Build:** Level 1 plus local edits, tests, previews, synthetic fixtures, and reversible local files.
@@ -43,7 +43,7 @@ Do not request authorization for one isolated action or append exclusions and sa
 
 Each level includes lower levels. The newest explicit level controls for the stated task. Do not ask again for included actions. Clarification about ambiguous scope is not an authorization challenge.
 
-Use these numbers in owner-facing authorization requests and status. Internal labels such as `observe-only`, `plan-only`, `pr-only`, and `merge-safe` never replace them.
+Use numbered levels in owner-facing requests and status; internal actor labels never replace them.
 
 ## Load only the applicable instructions
 
@@ -84,7 +84,7 @@ Task skills are discovered from their descriptions. These routes must happen bef
 
 ### Provider fingerprinting stop sign
 
-Before writing code or enabling a feature that could alter behavior visible to X, Facebook, Instagram, LinkedIn, or another provider, stop. This includes authenticated WebView loads, navigation, requests, retries, cadence, cookies, headers, scripted scrolling or clicking, extraction scripts, media loading, login behavior, canvas or WebGL behavior, and fingerprint masking.
+Before writing code or enabling a feature that could alter behavior visible to X, Facebook, Instagram, LinkedIn, or another provider, complete the provider review and warning below. This includes authenticated WebView loads, navigation, requests, retries, cadence, cookies, headers, scripted scrolling or clicking, extraction scripts, media loading, login behavior, canvas or WebGL behavior, and fingerprint masking.
 
 Warn the owner in plain language. Name the provider, describe the observable change, explain how it could increase fingerprinting or detection risk, and offer the lowest-profile alternative. Level 5 or higher covers necessary provider-observable behavior only after that warning. At a lower level, ask for an authorization level. Ordinary permission without a numbered level is not provider approval.
 
@@ -96,7 +96,7 @@ Read and follow [freed-provider-risk-review](.agents/skills/freed-provider-risk-
 
 - The only permitted Vercel scope is `aubreyfs-projects`. Never use a raw Vercel command without `--scope aubreyfs-projects`, never run Vercel from repository root, and never use the argument-free `deploy_to_vercel` tool. Use the repository preview and deployment helpers.
 - Keep browser tests headless. Show visible local previews in the task's built-in Browser. Do not open Chrome, headed Playwright, Playwright UI or debug mode, Computer Use, or another external browser unless the owner explicitly requests that external surface. If the built-in Browser is unavailable, report the preview URL. Keep an approved external window in the background where possible and close only that task's window at closeout.
-- Run `node scripts/doctor.mjs --strict` before loops and CI gates. Treat a surprising Node, npm, npx, GitHub CLI, or credential path as a machine problem.
+- Run `node scripts/doctor.mjs --strict` before gates. Automation guards do not block ordinary publication; prove the dependency before host repair.
 - Before activating a saved Freed automation, run `npm run validate:host-automations`. An ACTIVE actor with drift fails closed. Reconcile it through supported host automation controls and never edit `automation.toml` directly.
 - A private current-task owner confirmation outside the repository may authorize only the exact lifecycle operation it names. It does not authenticate the owner, grant provider traffic, replace provider review, or replace CODEOWNER requirements.
 - Releases require exact source, artifact, branch, installed build, and remote-head evidence. Use the shipping skills and release scripts. Never hand-edit version files or push release commits or tags around those controls.
@@ -134,7 +134,9 @@ Marketing is `https://freed.wtf`, the PWA is `https://app.freed.wtf`, and downlo
 
 ### Autonomous decision review
 
-For a complex task sequence, maintain a worktree-local, Git-ignored `TASK-DECISIONS.local.md` from the first judgment decision or unanswered question. Follow the [decision review contract](docs/AGENT-INSTRUCTIONS.md#local-decision-review). Update it as work proceeds, link it at handoff, and preserve it for owner review before worktree cleanup. Never commit or publish this log. Logging does not replace required clarification or authorization.
+Complete authorized delivery under the [initiative contract](docs/AGENT-INSTRUCTIONS.md#local-decision-review). Follow its decision paths. Skills cannot add approval for included actions. Resume after side questions unless the owner pauses, cancels, or replaces the task.
+
+Record meaningful choices in private `TASK-DECISIONS.local.md` and tell the owner while correction is cheap. Closeout must summarize delivery, trade-offs, and open items, then link the log. Preserve it before cleanup; never publish it. A log link alone is not a decision update.
 
 ### Lanes and local proof
 
@@ -148,15 +150,18 @@ For a complex task sequence, maintain a worktree-local, Git-ignored `TASK-DECISI
 ### Validation and publication
 
 - `npm run validate:feature` is the normal feature-branch gate.
-- `npm run validate:dev` is the full integration gate for merges and pushes to `dev`.
+- `npm run validate:dev` runs full integration on `dev` pushes. PRs require local `validate:feature` and exact-head required CI; follow [validation reuse](docs/TESTING-STANDARD.md#validation-reuse).
 - `npm run validate:release` is the release-preparation gate on `main`.
 - Read [docs/TESTING-STANDARD.md](docs/TESTING-STANDARD.md) before adding, moving, or deleting permanent tests. Use the cheapest deterministic layer that protects a distinct contract. Delete temporary probes before publication.
 - Publish ordinary work through `./scripts/worktree-publish.sh` with existing GitHub authentication. Use `--ready` only for finished work. Missing optional broker configuration does not block the normal authenticated path.
 - Branch names use `feat/`, `fix/`, `chore/`, `docs/`, `refactor/`, `perf/`, or `style/` plus a short kebab-case description. Commit messages and PR titles use the matching Conventional Commit prefix.
 - Squash merge into the PR's destination lane. One PR becomes one commit on that lane. Use the PR title as the squash commit subject.
+- Follow [authorized merge completion](docs/AGENT-INSTRUCTIONS.md#authorized-merge-completion), including enabling and arming squash auto-merge. Preserve checks, reviews, lane authority, and owner holds.
 - After a merge, stop only that worktree's processes, remove its worktree, and delete the local task branch. Never use branch ancestry to infer whether a squash PR merged; query the PR or remote branch state.
 
 ### Promotion
+
+Every new production version must complete [the showcase release contract](docs/RELEASE-SHOWCASE.md), including all themes, the Scriptorium README embed, and verified marketing references.
 
 `dev`, `main`, and `www` are separate lanes. Promote a reviewed immutable `dev` snapshot into `main` only through the release workflow. After a stable production release, reverse-integrate `main` into `dev`. Sync approved `main` changes into `www` only when the website or checked-in changelog needs them.
 

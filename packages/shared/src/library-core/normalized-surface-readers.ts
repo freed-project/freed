@@ -302,6 +302,7 @@ export function libraryCoreNormalizedItemContentDigestsV1(
 export async function readLibraryCoreNormalizedItemContentV1(
   runtime: LibraryCoreNormalizedReaderRuntime,
   globalId: string,
+  includeAnnotations = false,
 ): Promise<LibraryCoreNormalizedItemContentV1 | null> {
   if (!globalId || new TextEncoder().encode(globalId).length > 4_096) {
     throw new Error("Library Core item identity is invalid");
@@ -312,9 +313,35 @@ export async function readLibraryCoreNormalizedItemContentV1(
     schemaVersion: LIBRARY_CORE_ITEM_DETAIL_SCHEMA_VERSION,
   });
   if (response.item === null) return null;
+  const detailItem = libraryCoreFeedCardToItemV1(response.item.card);
+  if (includeAnnotations) {
+    const annotations = await runtime.query({
+      globalId,
+      queryId: "item_annotations_v1",
+      schemaVersion: 1,
+    });
+    if (
+      normalizedSourceToken(annotations.source) !==
+      normalizedSourceToken(response.source)
+    ) {
+      throw new Error("SQLite item annotations source is stale");
+    }
+    detailItem.userState.tags = [...annotations.tags];
+    detailItem.userState.highlights = annotations.highlights.map(
+      (highlight) => {
+        if (highlight.text === null)
+          throw new Error("SQLite annotation text requires blob hydration");
+        return {
+          createdAt: highlight.createdAt,
+          text: highlight.text,
+          ...(highlight.note === null ? {} : { note: highlight.note }),
+        };
+      },
+    );
+  }
   const [item] = await applyLibraryCoreVisibleOptimisticFieldsV1(
     runtime.query,
-    [libraryCoreFeedCardToItemV1(response.item.card)],
+    [detailItem],
     response.source.projectionRevision,
   );
   return Object.freeze({
@@ -330,8 +357,8 @@ export async function readLibraryCoreNormalizedItemDetailV1(
   globalId: string,
 ): Promise<FeedItem | null> {
   return (
-    (await readLibraryCoreNormalizedItemContentV1(runtime, globalId))?.item ??
-    null
+    (await readLibraryCoreNormalizedItemContentV1(runtime, globalId, true))
+      ?.item ?? null
   );
 }
 

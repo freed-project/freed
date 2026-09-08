@@ -1,3 +1,5 @@
+import type { ProviderAdmissionEnvelope } from "@freed/shared";
+
 /**
  * Facebook-specific types for DOM-scraped data
  *
@@ -44,6 +46,8 @@ export interface PlaywrightCookie {
  * Fields are optional because selectors may not always find them.
  */
 export interface RawFbPost {
+  /** Transient placement admission proof. It is validated before normalization. */
+  admission?: ProviderAdmissionEnvelope;
   /** Facebook post ID (from data-pagelet or URL) */
   id: string | null;
 
