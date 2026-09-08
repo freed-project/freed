@@ -2,15 +2,17 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
-import { useLibraryFriendCandidateReview } from "./useLibraryFriendCandidateReview.js";
+import { useLibraryFriendCandidateReview } from "../../ui/src/hooks/useLibraryFriendCandidateReview.js";
 
 const mocks = vi.hoisted(() => ({ queryLibraryCore: vi.fn() }));
-vi.mock("../context/PlatformContext.js", () => ({
+vi.mock("../../ui/src/context/PlatformContext.js", () => ({
   usePlatform: () => mocks,
 }));
 
 it("does not query again for new arrays with unchanged contents", async () => {
-  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  const testGlobal = globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean };
+  const previousActEnvironment = testGlobal.IS_REACT_ACT_ENVIRONMENT;
+  testGlobal.IS_REACT_ACT_ENVIRONMENT = true;
   const container = document.createElement("div");
   const root = createRoot(container);
   let sourceVersion = 1;
@@ -49,5 +51,6 @@ it("does not query again for new arrays with unchanged contents", async () => {
   } finally {
     act(() => root.unmount());
     container.remove();
+    testGlobal.IS_REACT_ACT_ENVIRONMENT = previousActEnvironment;
   }
 });
