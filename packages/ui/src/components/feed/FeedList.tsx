@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { useVirtualizer, useWindowVirtualizer } from "@tanstack/react-virtual";
+import { buildFeedRows } from "./feed-presentation.js";
 import { FeedItem } from "./FeedItem.js";
 import { LoadingState } from "../LoadingState.js";
 import { useReadOnScrollTracker } from "./useReadOnScrollTracker.js";
@@ -53,69 +54,8 @@ function storyHeightRatio(numCols: number): number {
   return numCols === 2 ? 2 / 3 : 4 / 3;
 }
 
-type FeedRow =
-  | { type: "item"; item: FeedItemType; itemIndex: number }
-  | {
-      type: "stories";
-      items: FeedItemType[];
-      itemIndices: number[];
-      numCols: number;
-    };
-
-/**
- * Collapse consecutive story items into grid rows of up to `maxCols` wide,
- * avoiding orphan single-item tail rows where possible.
- *
- * For maxCols=3:
- *   N=1→[1]  N=2→[2]  N=3→[3]  N=4→[2,2]  N=5→[3,2]  N=7→[3,2,2]
- */
-function buildRows(allItems: FeedItemType[], maxCols: number): FeedRow[] {
-  const cols = Math.max(1, maxCols);
-  const rows: FeedRow[] = [];
-  let i = 0;
-
-  while (i < allItems.length) {
-    if (allItems[i].contentType !== "story") {
-      rows.push({ type: "item", item: allItems[i], itemIndex: i });
-      i++;
-      continue;
-    }
-
-    // Collect the full run of consecutive stories.
-    const runStart = i;
-    while (i < allItems.length && allItems[i].contentType === "story") i++;
-    const runLength = i - runStart;
-
-    // Split the run into balanced rows of at most `cols` stories.
-    let offset = runStart;
-    let remaining = runLength;
-    while (remaining > 0) {
-      let rowSize: number;
-      if (remaining <= cols) {
-        rowSize = remaining;
-      } else if (cols > 1 && remaining % cols === 1) {
-        // Greedy fill would eventually leave a 1-item orphan row.
-        // If only cols+1 remain, split evenly. Otherwise keep filling.
-        rowSize = remaining === cols + 1 ? Math.ceil(remaining / 2) : cols;
-      } else {
-        rowSize = cols;
-      }
-      rows.push({
-        type: "stories",
-        items: allItems.slice(offset, offset + rowSize),
-        itemIndices: Array.from({ length: rowSize }, (_, k) => offset + k),
-        numCols: rowSize, // actual column count for this row's CSS grid
-      });
-      offset += rowSize;
-      remaining -= rowSize;
-    }
-  }
-
-  return rows;
-}
-
-
 interface FeedListProps {
+  storyGroups?: ReadonlyMap<string, string>;
   items: FeedItemType[];
   onItemClick?: (item: FeedItemType) => void;
   focusedIndex?: number;
@@ -247,6 +187,9 @@ const FeedItemRow = memo(function FeedItemRow({
 });
 
 interface StoryGroupRowProps {
+  narrow: boolean;
+  focusedIndex: number;
+  onFocusChange?: (index: number) => void;
   storyItems: FeedItemType[];
   itemIndices: number[];
   /** Number of equal-width CSS columns for this row's grid. */
@@ -263,6 +206,10 @@ interface StoryGroupRowProps {
 
 const StoryGroupRow = memo(function StoryGroupRow({
   storyItems,
+  narrow,
+  itemIndices,
+  focusedIndex,
+  onFocusChange,
   numCols,
   tileHeight,
   showEngagement,
@@ -280,12 +227,14 @@ const StoryGroupRow = memo(function StoryGroupRow({
         gridTemplateColumns: `repeat(${numCols}, 1fr)`,
       }}
     >
-      {storyItems.map((item) => (
+      {storyItems.map((item, index) => (
         <FeedItem
           key={item.globalId}
           item={item}
+          narrow={narrow}
           onClick={() => onItemClick?.(item)}
-          focused={false}
+          focused={focusedIndex === itemIndices[index]}
+          onMouseEnter={() => onFocusChange?.(itemIndices[index])}
           showEngagement={showEngagement}
           showReadInGrayscale={showReadInGrayscale}
           density={density}
@@ -314,6 +263,7 @@ const StoryGroupRow = memo(function StoryGroupRow({
 
 export function FeedList({
   items,
+  storyGroups,
   onItemClick,
   focusedIndex = -1,
   focusMoveDirection = 0,
@@ -389,7 +339,7 @@ export function FeedList({
   const [containerWidth, setContainerWidth] = useState(600);
 
   useEffect(() => {
-    const el = scrollElement;
+    const el = isMobile ? windowListRef.current : scrollElement;
     if (!el) return;
     const ro = new ResizeObserver(([entry]) => {
       setContainerWidth(entry.contentRect.width);
@@ -398,7 +348,7 @@ export function FeedList({
     // Fire once immediately so the width is captured before any scroll event.
     setContainerWidth(el.getBoundingClientRect().width);
     return () => ro.disconnect();
-  }, [scrollElement]);
+  }, [scrollElement, isMobile, items.length === 0]);
 
   // Keep mobile story cards readable with at most two columns; desktop allows three.
   // Inner width = containerWidth minus the feed-card gutter on each side.
@@ -417,7 +367,19 @@ export function FeedList({
   }, [containerWidth, feedCardHorizontalGutter, isMobile]);
 
   // Preprocess items into virtual rows, collapsing consecutive stories into grids.
-  const rows = useMemo(() => buildRows(items, maxCols), [items, maxCols]);
+  const rows = useMemo(
+    () => buildFeedRows(items, maxCols, storyGroups),
+    [items, maxCols, storyGroups],
+  );
+  const rowLayoutKey = JSON.stringify([
+    cardDensity,
+    isMobile ? containerWidth : null,
+    rows.map((row) => row.key),
+  ]);
+  const committedLayoutRef = useRef(rowLayoutKey);
+  const restoringAnchorRef = useRef(false);
+  const anchorScope = JSON.stringify([activeFilter, searchQuery]);
+  const committedAnchorScopeRef = useRef(anchorScope);
   const pendingBoundedAnchorRef = useRef<BoundedWindowAnchor | null>(null);
   const previousBoundedWindowStartRef = useRef(boundedWindowStartIndex);
 
@@ -478,10 +440,11 @@ export function FeedList({
     () =>
       JSON.stringify({
         activeFilter,
+        rowLayoutKey,
         boundedWindowStartIndex,
         searchQuery: searchQuery.trim(),
       }),
-    [activeFilter, boundedWindowStartIndex, searchQuery],
+    [activeFilter, boundedWindowStartIndex, searchQuery, rowLayoutKey],
   );
   const getReadScrollMetrics = useCallback(
     (
@@ -508,6 +471,7 @@ export function FeedList({
   const processReadOnScroll = useReadOnScrollTracker({
     surface: isMobile ? "mobile-feed" : "primary-feed",
     listKey,
+    layoutKey: rowLayoutKey,
     rows,
     items,
     markReadOnScroll,
@@ -580,11 +544,20 @@ export function FeedList({
 
   const elementVirtualizer = useVirtualizer({
     count: isMobile ? 0 : rows.length,
+    getItemKey: (index) => rows[index].key,
     getScrollElement: () => (isMobile ? null : parentRef.current),
     estimateSize: estimateRowSize,
     overscan: 5,
     onChange: (instance) => {
       if (!isMobile) {
+        if (restoringAnchorRef.current || committedLayoutRef.current !== rowLayoutKey) return;
+        if (committedLayoutRef.current === rowLayoutKey) {
+          captureBoundedWindowAnchor(
+            instance.getVirtualItems(),
+            "element",
+            instance,
+          );
+        }
         processReadOnScroll(instance, "element");
         requestBoundedWindowShift(
           instance.getVirtualItems(),
@@ -597,6 +570,7 @@ export function FeedList({
 
   const windowVirtualizer = useWindowVirtualizer({
     count: isMobile ? rows.length : 0,
+    getItemKey: (index) => rows[index].key,
     estimateSize: estimateRowSize,
     overscan: 5,
     // Distance from window top to the list container. Accounts for the sticky
@@ -604,6 +578,14 @@ export function FeedList({
     scrollMargin: windowListRef.current?.offsetTop ?? 0,
     onChange: (instance) => {
       if (isMobile) {
+        if (restoringAnchorRef.current || committedLayoutRef.current !== rowLayoutKey) return;
+        if (committedLayoutRef.current === rowLayoutKey) {
+          captureBoundedWindowAnchor(
+            instance.getVirtualItems(),
+            "window",
+            instance,
+          );
+        }
         processReadOnScroll(instance, "window");
         requestBoundedWindowShift(
           instance.getVirtualItems(),
@@ -622,36 +604,73 @@ export function FeedList({
   useLayoutEffect(() => {
     const previousWindowStart = previousBoundedWindowStartRef.current;
     previousBoundedWindowStartRef.current = boundedWindowStartIndex;
-    if (boundedWindowStartIndex === previousWindowStart) return;
+    const oldLayout = committedLayoutRef.current;
+    committedLayoutRef.current = rowLayoutKey;
+    const oldScope = committedAnchorScopeRef.current;
+    committedAnchorScopeRef.current = anchorScope;
+    const establishReadBaseline = () => {
+      if (oldLayout === rowLayoutKey) return;
+      // Commit geometry before the next user scroll, including the first page
+      // where no previous card exists to restore as an anchor.
+      processReadOnScroll(
+        isMobile ? windowVirtualizer : elementVirtualizer,
+        isMobile ? "window" : "element",
+      );
+    };
+    if (oldScope !== anchorScope) {
+      pendingBoundedAnchorRef.current = null;
+      establishReadBaseline();
+      return;
+    }
+    if (
+      boundedWindowStartIndex === previousWindowStart &&
+      oldLayout === rowLayoutKey
+    )
+      return;
 
     const anchor = pendingBoundedAnchorRef.current;
     pendingBoundedAnchorRef.current = null;
-    if (!anchor || anchor.windowStartIndex !== previousWindowStart) return;
+    if (!anchor || anchor.windowStartIndex !== previousWindowStart) {
+      establishReadBaseline();
+      return;
+    }
     const anchorRowIndex = rows.findIndex((row) =>
       row.type === "item"
         ? row.item.globalId === anchor.itemId
         : row.items.some((item) => item.globalId === anchor.itemId),
     );
-    if (anchorRowIndex < 0) return;
+    if (anchorRowIndex < 0) {
+      establishReadBaseline();
+      return;
+    }
 
     if (anchor.source === "window" && isMobile) {
+      restoringAnchorRef.current = true;
       windowVirtualizer.measure();
       windowVirtualizer.scrollToIndex(anchorRowIndex, { align: "start" });
       if (anchor.offset > 0) window.scrollBy({ top: anchor.offset });
+      restoringAnchorRef.current = false;
+      processReadOnScroll(windowVirtualizer, "window");
       return;
     }
 
     if (anchor.source === "element" && !isMobile) {
+      restoringAnchorRef.current = true;
       elementVirtualizer.measure();
       elementVirtualizer.scrollToIndex(anchorRowIndex, { align: "start" });
       if (anchor.offset > 0) {
         parentRef.current?.scrollBy({ top: anchor.offset });
       }
+      restoringAnchorRef.current = false;
+      processReadOnScroll(elementVirtualizer, "element");
     }
   }, [
+    rowLayoutKey,
+    anchorScope,
     boundedWindowStartIndex,
     elementVirtualizer,
     isMobile,
+    processReadOnScroll,
     rows,
     windowVirtualizer,
   ]);
@@ -709,9 +728,7 @@ export function FeedList({
   // Once isLoading flips false, the visible window enters the normal
   // virtualizer path, or the empty state if the query is genuinely empty.
   if (isLoading && items.length === 0) {
-    return (
-      <LoadingState message="Loading feed" className="flex-1 min-h-0" />
-    );
+    return <LoadingState message="Loading feed" className="flex-1 min-h-0" />;
   }
 
   if (items.length === 0) {
@@ -879,6 +896,13 @@ export function FeedList({
                       return (
                         <StoryGroupRow
                           storyItems={row.items}
+                          narrow={
+                            Math.min(containerWidth, MAX_CONTENT_W) /
+                              row.numCols <
+                            160
+                          }
+                          focusedIndex={focusedIndex}
+                          onFocusChange={onFocusChange}
                           itemIndices={row.itemIndices}
                           numCols={nc}
                           tileHeight={th}
@@ -961,6 +985,13 @@ export function FeedList({
                     return (
                       <StoryGroupRow
                         storyItems={row.items}
+                        narrow={
+                          Math.min(containerWidth, MAX_CONTENT_W) /
+                            row.numCols <
+                          160
+                        }
+                        focusedIndex={focusedIndex}
+                        onFocusChange={onFocusChange}
                         itemIndices={row.itemIndices}
                         numCols={row.numCols}
                         tileHeight={desktopFeedCardHeight}

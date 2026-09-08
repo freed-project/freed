@@ -1,9 +1,6 @@
 import {
-  generateSampleLibraryData,
-  SAMPLE_SHOWCASE_FEED_COUNT,
-  SAMPLE_SHOWCASE_FRIEND_COUNT,
-  SAMPLE_SHOWCASE_ITEM_COUNT,
-  SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT,
+  generateDemoLibraryData,
+  DEMO_POPULATION_COUNTS,
 } from "@freed/shared";
 import type {
   BaseAppState,
@@ -88,9 +85,13 @@ export async function refreshSampleLibraryData({
     await initialize();
   }
 
-  await addSampleLibraryData(generateSampleLibraryData({
-    presentationSeed: samplePresentationSeed(),
-  }), onProgress);
+  const presentationSeed = samplePresentationSeed();
+  const data = generateDemoLibraryData({
+    batchId: `sample-${Date.now().toString(36)}-${presentationSeed.toString(36)}`,
+    generatedAt: Date.now(),
+    presentationSeed,
+  });
+  await addSampleLibraryData(data, onProgress);
 
   seedSocialConnections?.();
 }
@@ -114,7 +115,7 @@ export async function populateSampleLibraryDataWithProgressToast(
     });
     toast.update(
       progressToastId,
-      `Sample data added: ${(100).toLocaleString()}%. ${SAMPLE_SHOWCASE_FEED_COUNT.toLocaleString()} feeds, ${SAMPLE_SHOWCASE_ITEM_COUNT.toLocaleString()} items, ${SAMPLE_SHOWCASE_FRIEND_COUNT.toLocaleString()} friends, and ${SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT.toLocaleString()} social identities.`,
+      `Sample data added: ${(100).toLocaleString()}%. ${DEMO_POPULATION_COUNTS.feeds.toLocaleString()} feeds, ${DEMO_POPULATION_COUNTS.items.toLocaleString()} items, ${DEMO_POPULATION_COUNTS.persons.toLocaleString()} people, and ${DEMO_POPULATION_COUNTS.accounts.toLocaleString()} social identities.`,
       "success",
       4000,
     );

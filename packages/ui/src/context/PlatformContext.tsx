@@ -107,6 +107,8 @@ export interface BoundedFeedPage {
 }
 
 export interface BoundedFeedReader {
+  /** Reopen a prior window bookmark at this reader's fresh source revision. */
+  resumePage?(firstEdge: string): Promise<BoundedFeedPage>;
   readonly totalCount: number;
   readNext(): Promise<readonly FeedItem[]>;
   /**

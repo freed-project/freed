@@ -523,6 +523,16 @@ Reward security researchers for responsible disclosure.
 
 Polished, accessible app with AI-powered features and thriving community infrastructure.
 
+## Bounded story presentation
+
+Nearby stories share consecutive grid rows after the canonical feed sort. A group can bridge up to five ordinary posts, with a five-position movement limit for ordinary items and non-opening stories. When a mixed feed has a story among its first ten items, the earliest story moves to the first row so it is visible above the fold. That opening story is the single exception to the movement limit. Existing uninterrupted story runs remain intact; newly assembled groups contain at most six stories. Retained groups stay closed across reader page changes. Keyboard and reader navigation use the displayed sequence at every width. Desktop and mobile reuse the same row builder; the compact reader rail repacks the shared sequence at its own width.
+
+Read-on-scroll refreshes replace the complete resident window atomically, avoiding a temporary first-page list that clamps the scroll position. Deep windows resume from an ordering bookmark through fresh source-fenced queries. Ranking, durable state, filter validation, and stale-cursor rejection remain in the Library layer. Committed geometry establishes a fresh read-on-scroll baseline before the first user scroll and preserve the visible card anchor, including the compact rail's first-row padding.
+
+Failed archive writes restore the bounded feed from authoritative rows; reader archive controls close only after persistence succeeds.
+
+Sample population now shares the public demo's curated generator and randomized posting times across every build. Settings and completion messages use the same population counts and distinguish people from friend relationships. Local previews repopulate on reload and render remote media through browser-compatible URLs.
+
 OpenAI model default reviewed September 7, 2026: new OpenAI selections use
 `gpt-6-astra`. Existing saved models remain unchanged. Astra summaries use low
 reasoning with a bounded completion budget; Ollama retains its local request

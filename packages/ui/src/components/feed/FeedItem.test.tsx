@@ -247,6 +247,16 @@ describe("FeedItem story media", () => {
       author: { ...sample.author, id: "sample:preview:author" },
       sampleDataFingerprint: undefined,
     }, true)).toContain("https://example.com/story.jpg");
+    const curated = {
+      ...sample,
+      globalId: "sample-preview:sample-character:boris-plated:1",
+      author: { ...sample.author, id: "sample-preview:sample-character-boris-plated" },
+      sampleDataFingerprint: undefined,
+    };
+    expect(render(curated, true)).toContain("https://example.com/story.jpg");
+    expect(render(curated, false)).not.toContain("https://example.com/story.jpg");
+    expect(render({ ...curated, author: { ...curated.author, id: "real-author" } }, true))
+      .not.toContain("https://example.com/story.jpg");
     expect(render(sample, false)).not.toContain("https://example.com/story.jpg");
     expect(render(makeItem({ contentType: "post" }), true)).not.toContain("data:image/svg+xml,");
     expect(render(makeItem({ contentType: "post" }), true)).not.toContain("https://example.com/story.jpg");

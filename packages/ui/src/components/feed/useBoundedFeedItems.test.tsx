@@ -109,6 +109,49 @@ describe("useBoundedFeedItems", () => {
     root = createRoot(container);
   }
 
+  it("refreshes an evicted window atomically without publishing page one", async () => {
+    mount();
+    const page = (index: number) => ({
+      items: [item(String(index * 2)), item(String(index * 2 + 1))],
+      previousCursor: index ? `first-${index}` : null,
+      nextCursor: index < 2 ? `next-${index}` : null,
+    });
+    const first: BoundedFeedReader = {
+      totalCount: 6, close: vi.fn(async () => undefined),
+      readNext: async () => page(0).items,
+      readPage: async (cursor) => page(cursor === null ? 0 : Number(cursor.slice(-1)) + 1),
+    };
+    let finish!: (value: ReturnType<typeof page>) => void;
+    const tail = new Promise<ReturnType<typeof page>>((resolve) => { finish = resolve; });
+    const fresh: BoundedFeedReader = {
+      totalCount: 6, close: vi.fn(async () => undefined),
+      readNext: async () => page(0).items,
+      resumePage: vi.fn(async () => page(1)),
+      readPage: async (cursor) => cursor === null ? page(0) : tail,
+    };
+    const openReader = vi.fn().mockResolvedValueOnce(first).mockResolvedValueOnce(fresh);
+    let current!: ReturnType<typeof useBoundedFeedItems>;
+    const observed: string[][] = [];
+    const onReady = (value: typeof current) => {
+      current = value;
+      observed.push(value.feed.items.map((entry) => entry.globalId));
+    };
+    await act(async () => root!.render(<Harness maxPageItems={2} openReader={openReader} onReady={onReady} />));
+    await act(async () => current.loadMore());
+    await act(async () => current.loadMore());
+    expect(current.feed.windowStartIndex).toBe(2);
+    expect(current.feed.items.map((entry) => entry.globalId)).toEqual(["2", "3", "4", "5"]);
+    observed.length = 0;
+    await act(async () => root!.render(<Harness maxPageItems={2} openReader={openReader} sourceVersion={2} onReady={onReady} />));
+    expect(fresh.resumePage).toHaveBeenCalledWith("first-1");
+    expect(current.feed.status).toBe("loading");
+    expect(current.feed.items.map((entry) => entry.globalId)).toEqual(["2", "3", "4", "5"]);
+    await act(async () => { finish(page(2)); await tail; });
+    expect(current.feed.status).toBe("ready");
+    expect(current.feed.windowStartIndex).toBe(2);
+    expect(observed.every((ids) => ids.join() === "2,3,4,5")).toBe(true);
+  });
+
   it("paginates one bounded reader and closes it on unmount", async () => {
     mount();
     const close = vi.fn(async () => undefined);

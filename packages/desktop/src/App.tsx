@@ -525,6 +525,7 @@ function isTouchOnlyInputSurface(): boolean {
 }
 
 function App() {
+  const previewPopulationStarted = useRef(false);
   const initialize = useAppStore((state) => state.initialize);
   const isInitialized = useAppStore((state) => state.isInitialized);
   const error = useAppStore((state) => state.error);
@@ -1414,11 +1415,12 @@ function App() {
   useEffect(() => {
     const shouldAutoSeedPreview =
       IS_FEATURE_PREVIEW || (import.meta.env.DEV && import.meta.env.VITE_TEST_TAURI !== "1");
-    if (!isInitialized || !shouldAutoSeedPreview) return;
+    if (!isInitialized || !shouldAutoSeedPreview || previewPopulationStarted.current) return;
 
     const guardKey = "freed_dev_seeded";
     if (!IS_FEATURE_PREVIEW && sessionStorage.getItem(guardKey)) return;
 
+    previewPopulationStarted.current = true;
     void (async () => {
       const facets = await readLibraryCoreFacetSummary();
       const sampleTotal =
@@ -1426,8 +1428,12 @@ function App() {
         facets.sampleFeedCount +
         facets.sampleItemCount +
         facets.samplePersonCount;
-      if (sampleTotal > 0) return;
+      if (sampleTotal > 0) {
+        if (!IS_FEATURE_PREVIEW) return;
+        await useAppStore.getState().clearSampleData();
+      }
 
+      // The shared showcase generator picks a fresh presentation seed per load.
       await refreshSampleLibraryData({
         ...useAppStore.getState(),
         seedSocialConnections,
@@ -1696,7 +1702,10 @@ function App() {
         tauriRuntimeAvailable && isInitialized
           ? queryNormalizedLibrary
           : undefined,
-      resolveAvatarUrl: tauriRuntimeAvailable && import.meta.env.VITE_TEST_TAURI !== "1" ? resolveDesktopAvatarUrl : undefined,
+      resolveAvatarUrl: tauriRuntimeAvailable && import.meta.env.VITE_TEST_TAURI !== "1"
+        ? resolveDesktopAvatarUrl
+        : undefined,
+
       mutateDeviceGraphLayout:
         tauriRuntimeAvailable && isInitialized
           ? mutateNormalizedDeviceGraphLayout

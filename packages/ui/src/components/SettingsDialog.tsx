@@ -13,10 +13,7 @@ import {
   formatReleaseVersion,
   RELEASE_CHANNEL_LABELS,
   RELEASE_CHANNELS,
-  SAMPLE_SHOWCASE_FEED_COUNT,
-  SAMPLE_SHOWCASE_FRIEND_COUNT,
-  SAMPLE_SHOWCASE_ITEM_COUNT,
-  SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT,
+  DEMO_POPULATION_COUNTS,
   stripReleaseChannelSuffix,
   type AnimationIntensity,
   type ReleaseChannel,
@@ -1907,7 +1904,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                       ? "Durable Library writes are in progress"
                       : hasSampleData
                         ? "Clear the current sample library before populating it again"
-                        : `Adds ${SAMPLE_SHOWCASE_FEED_COUNT.toLocaleString()} RSS feeds, ${SAMPLE_SHOWCASE_ITEM_COUNT.toLocaleString()} items, ${SAMPLE_SHOWCASE_FRIEND_COUNT.toLocaleString()} friends, ${SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT.toLocaleString()} social identities, and location-linked data`}
+                        : `Adds ${DEMO_POPULATION_COUNTS.feeds.toLocaleString()} RSS feeds, ${DEMO_POPULATION_COUNTS.items.toLocaleString()} items, ${DEMO_POPULATION_COUNTS.persons.toLocaleString()} people, ${DEMO_POPULATION_COUNTS.accounts.toLocaleString()} social identities, and location-linked data`}
                   </p>
                 </div>
                 {seeding ? (
