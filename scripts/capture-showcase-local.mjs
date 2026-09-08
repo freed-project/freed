@@ -142,7 +142,7 @@ const browser = await chromium.launch({
     "--enable-unsafe-webgpu",
     ...(process.platform === "darwin" ? ["--use-angle=metal"] : []),
     ...(process.platform === "linux" ? [
-      "--enable-features=Vulkan", "--use-gl=angle", "--use-angle=swiftshader", "--use-vulkan=swiftshader",
+      "--enable-features=Vulkan", "--ozone-platform=x11", "--use-angle=vulkan", "--use-vulkan=swiftshader",
       "--use-webgpu-adapter=swiftshader", "--disable-vulkan-surface",
     ] : []),
   ],
@@ -384,6 +384,8 @@ try {
     // never enters the app's layout or overlays its toolbar and controls.
     // Shared radii in capture-canvas CSS pixels, independent of theme.
     const outerRadius = capture.mobile ? 44 : 20;
+    const graphBounds = capture.view === "friends"
+      ? await page.getByTestId("friend-graph-viewport").boundingBox() : null;
     const screen = await page.screenshot({ animations: "disabled", omitBackground: true, type: "png" });
     const frame = await context.newPage();
     await frame.setViewportSize({ width: 1440, height: 960 });
@@ -396,6 +398,33 @@ try {
     const innerRadius = outerRadius - thickness;
     await frame.setContent(`<html><body style="margin:0;width:1440px;height:960px;background:transparent;display:grid;place-items:center"><div data-showcase-frame style="padding:${thickness - edge}px;background:${framePalette.shell};border:${edge}px solid ${framePalette.edge};border-radius:${outerRadius}px;${capture.mobile ? "box-shadow:0 18px 42px #20212440" : ""}"><img alt="Freed ${capture.mobile ? "mobile" : "desktop"} screen" src="data:image/png;base64,${screen.toString("base64")}" style="display:block;width:${width}px;height:${height}px;border-radius:${innerRadius}px" /></div></body></html>`);
     await frame.locator("img").evaluate((img) => img.decode());
+    if (graphBounds) {
+      // Inspect actual screenshot pixels inside the graph, excluding its edge
+      // controls. Renderer counters can be healthy while the compositor is blank.
+      const pixels = await frame.evaluate((bounds) => {
+        const image = document.querySelector("img");
+        const canvas = document.createElement("canvas");
+        const scale = image.naturalWidth / 1440;
+        canvas.width = Math.floor((bounds.width - 128) * scale);
+        canvas.height = Math.floor((bounds.height - 128) * scale);
+        if (canvas.width <= 0 || canvas.height <= 0) throw new Error("Graph capture is too small");
+        const context = canvas.getContext("2d", { willReadFrequently: true });
+        context.drawImage(image, (bounds.x + 64) * scale, (bounds.y + 64) * scale,
+          canvas.width, canvas.height, 0, 0, canvas.width, canvas.height);
+        const rgba = context.getImageData(0, 0, canvas.width, canvas.height).data;
+        const colors = new Set();
+        for (let index = 0; index < rgba.length; index += 4) {
+          if (rgba[index + 3] < 128) continue;
+          colors.add((rgba[index] >> 4) * 256 + (rgba[index + 1] >> 4) * 16 + (rgba[index + 2] >> 4));
+        }
+        return { quantizedColors: colors.size, width: canvas.width, height: canvas.height };
+      }, graphBounds);
+      capture.rendererDiagnostics.screenshotPixels = pixels;
+      if (pixels.quantizedColors < 64) {
+        await frame.close();
+        throw new Error(`Friends screenshot has no visible graph detail: ${JSON.stringify(pixels)}`);
+      }
+    }
     const geometry = await frame.evaluate(() => {
       const box = document.querySelector('[data-showcase-frame]').getBoundingClientRect();
       const content = document.querySelector('img').getBoundingClientRect();

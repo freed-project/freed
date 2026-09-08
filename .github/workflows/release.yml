@@ -694,7 +694,7 @@ jobs:
           npm ci --ignore-scripts
           npx playwright install --with-deps chromium
           sudo apt-get update
-          sudo apt-get install -y ffmpeg
+          sudo apt-get install -y ffmpeg xvfb xauth libvulkan1 mesa-vulkan-drivers
 
       - name: Build exact release PWA
         working-directory: packages/pwa
@@ -726,7 +726,7 @@ jobs:
           FREED_SHOWCASE_OUTPUT: release-showcase
           FREED_SHOWCASE_SQLITE_MEMORY: "1"
         run: |
-          node scripts/capture-release-showcase.mjs
+          xvfb-run -a node scripts/capture-release-showcase.mjs
           node scripts/lib/release-showcase-assets.mjs finalize --directory release-showcase
 
       - name: Upload immutable and stable showcase assets
