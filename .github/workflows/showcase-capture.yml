@@ -54,6 +54,7 @@ jobs:
           exit 1
       - name: Capture all six views in one representative theme
         env:
+          DEBUG: pw:browser
           FREED_SHOWCASE_URL: http://127.0.0.1:4173/?freed-demo=1
           FREED_SHOWCASE_OUTPUT: /tmp/freed-showcase-smoke
           FREED_SHOWCASE_SQLITE_MEMORY: '1'
