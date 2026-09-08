@@ -35,6 +35,10 @@ test("renders the expected state", async ({ app, ipc }) => {
 });
 ```
 
+Native window-chrome tests explicitly set `window.__TAURI_MOCK_NATIVE__ = true`
+in a pre-navigation init script. The default mock reports a browser preview,
+so native drag-region checks must opt in without changing browser preview spacing.
+
 The shared `app` fixture injects `tauriInitScript()` with
 `page.addInitScript()` before application JavaScript runs. That script installs
 `window.__TAURI_INTERNALS__`, default IPC handlers, and the mock state used at
