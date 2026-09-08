@@ -68,10 +68,8 @@ checks, including the React Profiler case. External benchmark servers must use `
 production render-mode marker; a development preview fails the benchmark
 precondition. No performance limits are relaxed by this routing.
 
-Mock Library transactions update their in-memory fixture immediately. The
-whole-fixture `window.name` reload snapshot is written at navigation, not after
-every scroll-triggered mutation. This is browser-test persistence only; native
-SQLite commit acknowledgments and durability are unchanged.
+Mock Library transactions retain their existing synchronous reload snapshots.
+Native SQLite commit acknowledgments and durability are unchanged.
 
 ## Test-specific state and assertions
 

@@ -43,27 +43,14 @@ export function tauriInitScript() {
       items: {},
       persons: {},
     };
-    var sqliteSnapshotDirty = false;
     function persistSqliteState() {
-      // This mock's rows are authoritative in memory. window.name is only a
-      // same-tab reload fixture, not the native transaction durability path.
-      // Snapshot at navigation instead of copying the corpus on every write.
-      sqliteSnapshotDirty = true;
-    }
-    function flushSqliteReloadSnapshot() {
-      if (!sqliteSnapshotDirty) return;
       try {
         window.name = SQLITE_LIBRARY_WINDOW_PREFIX + JSON.stringify(sqliteState());
-        sqliteSnapshotDirty = false;
       } catch (error) {
         window.__TAURI_MOCK_SQLITE_PERSIST_ERROR__ = String(error);
         // Large performance fixtures may exceed browser storage. They do not
         // rely on reload persistence, so keep their authoritative mock in RAM.
       }
-    }
-    if (typeof window.addEventListener === 'function') {
-      window.addEventListener('beforeunload', flushSqliteReloadSnapshot);
-      window.addEventListener('pagehide', flushSqliteReloadSnapshot);
     }
     function sqliteState() {
       return window.__TAURI_MOCK_SQLITE_LIBRARY__;
