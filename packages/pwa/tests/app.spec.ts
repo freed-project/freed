@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { fileURLToPath } from "node:url";
 
 interface BrowserLibraryFacetSummary {
   readonly platformCounts: readonly {
@@ -1773,3 +1774,74 @@ test.describe("FREED PWA", () => {
   });
 
 });
+
+for (const feedMediaPreviews of ["inline", "reader-only"] as const) {
+  test(`sample post and story thumbnails decode with ${feedMediaPreviews} policy`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 1440, height: 1100 });
+    // Mock image delivery only in this regression test. Preview builds retain
+    // the original public photographs and receive a separate live-image check.
+    await page.route("**/*", (route) => {
+      const url = new URL(route.request().url());
+      if (["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)) return route.continue();
+      if (route.request().resourceType() === "image") {
+        return route.fulfill({ contentType: "image/png", body: Buffer.from(
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1sAAAAASUVORK5CYII=", "base64",
+        ) });
+      }
+      return route.abort();
+    });
+    const imageFailures: string[] = [];
+    await page.exposeFunction("recordSampleImageFailure", (url: string) => imageFailures.push(url));
+    await page.addInitScript(() => {
+      addEventListener("securitypolicyviolation", (event) => {
+        if (event.effectiveDirective.startsWith("img-src")) {
+          void (window as unknown as { recordSampleImageFailure: (url: string) => Promise<void> })
+            .recordSampleImageFailure(`CSP: ${event.blockedURI}`);
+        }
+      });
+      addEventListener("error", (event) => {
+        if (event.target instanceof HTMLImageElement) {
+          void (window as unknown as { recordSampleImageFailure: (url: string) => Promise<void> }).recordSampleImageFailure(event.target.src);
+        }
+      }, true);
+    });
+    await page.goto("/");
+    await acceptLegalGate(page);
+    await waitForPwaReady(page);
+    const expected = await page.evaluate(async ({ modulePath, policy }) => {
+      const { mountSampleThumbnails } = await import(modulePath);
+      return mountSampleThumbnails(policy);
+    }, { modulePath: `/@fs${fileURLToPath(new URL("./fixtures/sample-thumbnails.tsx", import.meta.url))}`, policy: feedMediaPreviews }) as
+      Array<{ id: string; type: string; url: string }>;
+    expect(expected.some((item) => item.type === "post")).toBe(true);
+    expect(expected.some((item) => item.type === "story")).toBe(true);
+    const capturedTypes = new Set<string>();
+    for (const item of expected) {
+      const card = page.locator(`[data-feed-item-id="${item.id}"]`).first();
+      await card.scrollIntoViewIfNeeded();
+      await expect(card).toBeVisible();
+      const image = card.locator(`img[src="${item.url}"]`).first();
+      await expect(image).toBeVisible();
+      await image.evaluate(async (element: HTMLImageElement) => {
+        await element.decode();
+        if (!element.complete || element.naturalWidth === 0 || element.naturalHeight === 0) {
+          throw new Error("Sample thumbnail has no decoded image");
+        }
+      });
+      if (!capturedTypes.has(item.type)) {
+        const screenshotPath = testInfo.outputPath(`sample-${item.type}-thumbnails.png`);
+        await page.screenshot({ path: screenshotPath });
+        await testInfo.attach(`sample-${item.type}-thumbnails`, { path: screenshotPath, contentType: "image/png" });
+        capturedTypes.add(item.type);
+      }
+    }
+    expect(imageFailures).toEqual([]);
+    await testInfo.attach("thumbnail-counts", {
+      body: JSON.stringify({ checked: expected.length,
+        posts: expected.filter((item) => item.type === "post").length,
+        stories: expected.filter((item) => item.type === "story").length,
+        media: "mocked image responses; original corpus URLs preserved" }),
+      contentType: "application/json",
+    });
+  });
+}

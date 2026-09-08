@@ -388,13 +388,25 @@ function requireIdentityRecord(value, label, { allowedModes = [0o600] } = {}) {
   };
 }
 
-function identityMatchesFile(identity, file, expectedBytes, { prefix = false } = {}) {
+export function repairPublicationIdentityMatchesFile(
+  identity,
+  file,
+  expectedBytes,
+  {
+    prefix = false,
+    allowDarwinDeviceRenumbering = false,
+    platform = process.platform,
+  } = {},
+) {
   const contentMatches = prefix
     ? file.bytes.length >= expectedBytes.length &&
       file.bytes.subarray(0, expectedBytes.length).equals(expectedBytes)
     : file.bytes.equals(expectedBytes);
+  const deviceMatches =
+    file.identity.dev === identity.device ||
+    (allowDarwinDeviceRenumbering && platform === "darwin");
   return (
-    file.identity.dev === identity.device &&
+    deviceMatches &&
     file.identity.ino === identity.inode &&
     file.identity.uid === identity.uid &&
     file.identity.mode === identity.mode &&
@@ -838,6 +850,41 @@ function requireBoundEventPlanParent(value, label) {
   return value;
 }
 
+function parentIdentityWithoutDevice(value) {
+  return { ino: value.ino, mode: value.mode, uid: value.uid };
+}
+
+export function repairEventPlanParentsMatch(
+  {
+    recordedHistoryParent,
+    currentHistoryParent,
+    recordedReplacementParent,
+    currentReplacementParent,
+    completedAdmission,
+  },
+  { platform = process.platform } = {},
+) {
+  const historyMatchesExactly =
+    stableJson(recordedHistoryParent) === stableJson(currentHistoryParent);
+  const replacementMatchesExactly =
+    stableJson(recordedReplacementParent) ===
+    stableJson(currentReplacementParent);
+  if (historyMatchesExactly && replacementMatchesExactly) return true;
+  if (!completedAdmission || platform !== "darwin") return false;
+  if (
+    recordedHistoryParent.dev !== recordedReplacementParent.dev ||
+    currentHistoryParent.dev !== currentReplacementParent.dev
+  ) {
+    return false;
+  }
+  return (
+    stableJson(parentIdentityWithoutDevice(recordedHistoryParent)) ===
+      stableJson(parentIdentityWithoutDevice(currentHistoryParent)) &&
+    stableJson(parentIdentityWithoutDevice(recordedReplacementParent)) ===
+      stableJson(parentIdentityWithoutDevice(currentReplacementParent))
+  );
+}
+
 function deterministicRepairEvent(plan, boundary) {
   return {
     schemaVersion: AUTOMATION_CONTROL_SCHEMA_VERSION,
@@ -959,10 +1006,13 @@ function validateBoundRepairEventPlan(plan, candidate, bundle, eventHistory) {
     (!plan.completedAdmission &&
       stableJson(candidate.replacementGeneration) !==
         stableJson(currentReplacementGeneration)) ||
-    stableJson(candidate.replacementParent) !==
-      stableJson(currentReplacementParent) ||
-    stableJson(candidate.historyParent) !==
-      stableJson(currentHistoryParent)
+    !repairEventPlanParentsMatch({
+      recordedHistoryParent: candidate.historyParent,
+      currentHistoryParent,
+      recordedReplacementParent: candidate.replacementParent,
+      currentReplacementParent,
+      completedAdmission: plan.completedAdmission,
+    })
   ) {
     throw new Error("repair event plan authority generations changed");
   }
@@ -1365,7 +1415,12 @@ function validateLedgerPublication(plan, bundle, tree, material, allowed) {
   if (archive !== null) allowed.add(expectedIntent.archiveName);
   const archiveIsSource =
     archive !== null &&
-    identityMatchesFile(predecessor, archive, material.source.bytes);
+    repairPublicationIdentityMatchesFile(
+      predecessor,
+      archive,
+      material.source.bytes,
+      { allowDarwinDeviceRenumbering: plan.completedAdmission },
+    );
   const canonicalIsSource =
     sourceLedger &&
     ledger.identity.dev === predecessor.device &&
@@ -1745,11 +1800,29 @@ function validateTransitionLineage(plan, canonical, tree, allowed) {
     );
     if (archive !== null) allowed.add(expectedIntent.archiveName);
     const archiveIsPredecessor =
-      archive !== null && identityMatchesFile(predecessor, archive, predecessorBytes);
+      archive !== null &&
+      repairPublicationIdentityMatchesFile(
+        predecessor,
+        archive,
+        predecessorBytes,
+        { allowDarwinDeviceRenumbering: plan.completedAdmission },
+      );
     const stagingIsPredecessor =
-      staging !== null && identityMatchesFile(predecessor, staging, predecessorBytes);
+      staging !== null &&
+      repairPublicationIdentityMatchesFile(
+        predecessor,
+        staging,
+        predecessorBytes,
+        { allowDarwinDeviceRenumbering: plan.completedAdmission },
+      );
     const stagingIsSuccessor =
-      staging !== null && identityMatchesFile(successor, staging, successorBytes);
+      staging !== null &&
+      repairPublicationIdentityMatchesFile(
+        successor,
+        staging,
+        successorBytes,
+        { allowDarwinDeviceRenumbering: plan.completedAdmission },
+      );
     if (index < currentIndex - 1) {
       if (!archiveIsPredecessor || staging !== null) {
         throw new Error(`transaction ${toPhase} predecessor is not durably archived`);
@@ -1760,14 +1833,28 @@ function validateTransitionLineage(plan, canonical, tree, allowed) {
       if (!finalized && !postExchange) {
         throw new Error(`transaction ${toPhase} recovery topology is invalid`);
       }
-      if (!identityMatchesFile(successor, canonical, successorBytes)) {
+      if (
+        !repairPublicationIdentityMatchesFile(
+          successor,
+          canonical,
+          successorBytes,
+          { allowDarwinDeviceRenumbering: plan.completedAdmission },
+        )
+      ) {
         throw new Error(`transaction ${toPhase} successor is not canonical`);
       }
     } else if (index === currentIndex) {
       if (archive !== null || !stagingIsSuccessor) {
         throw new Error(`transaction ${toPhase} pre-exchange topology is invalid`);
       }
-      if (!identityMatchesFile(predecessor, canonical, predecessorBytes)) {
+      if (
+        !repairPublicationIdentityMatchesFile(
+          predecessor,
+          canonical,
+          predecessorBytes,
+          { allowDarwinDeviceRenumbering: plan.completedAdmission },
+        )
+      ) {
         throw new Error(`transaction ${toPhase} predecessor is not canonical`);
       }
     } else {

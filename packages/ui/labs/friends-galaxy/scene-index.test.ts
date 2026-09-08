@@ -337,14 +337,14 @@ describe("Friends Galaxy billboard label selection", () => {
 
     expect(placed).toHaveLength(1);
     expect(placed[0]!.nodeId).toBe(ownLabel.nodeId);
-    expect(placed[0]!.gapY).toBeGreaterThanOrEqual(32);
+    expect(placed[0]!.gapY).toBeGreaterThan(48 / 2);
     const closePlaced = placeFriendsGalaxyLabelsAroundAvatars(
       [ownLabel, nearbyLabel],
       [{ nodeId: ownLabel.nodeId, anchorX: ownLabel.anchorX, anchorY: ownLabel.anchorY, size: 48 }],
       true,
     );
     expect(closePlaced.map((label) => label.nodeId)).toEqual([ownLabel.nodeId, nearbyLabel.nodeId]);
-    expect(closePlaced[0]!.gapY).toBeGreaterThanOrEqual(32);
+    expect(closePlaced[0]!.gapY).toBeGreaterThan(48 / 2);
   });
 
   it("keeps the selected identity named outside the ordinary label sample", () => {

@@ -1,4 +1,83 @@
+# Archived running handoff
+
+**Owner stopped authoring for PR transfer. Start with [current continuity transfer](../EDITORIAL-CORPUS-HANDOFF.md). Everything below is chronological history, not active instructions.**
+
 # Editorial task handoff
+
+## Owner milestone revision: stop at 500
+
+The owner now requests exactly 500 accepted, high-quality demo entries with matching reviewed media. Stop authoring and admission at 500 and report the verified milestone for the owner to publish a new demo release. The remaining 500 entries and a more token-efficient generation approach are deferred until afterward. This supersedes the earlier 1,000-entry delivery target and the 900 regular / 100 Story split for the current milestone. Retain the newer Instagram format guidance, first-person YouTube requirements, protected passages, independent review and isolated-worktree boundaries. No publication or merge is authorized.
+
+At this revision there are 372 accepted entries: 285 regular and 87 Stories. Exactly 128 additional accepted entries are required. Drafts and media catalog rows do not count.
+
+
+## Current owner instructions, superseding all history below
+
+Latest isolated checkpoint after166: 787 drafts, 391 illustrated entries, 288 regular entries, 103 Stories, 396 excluded drafts, 134 identities and 2,176 catalog records. Instagram has 83 Stories and 92 posts. All 391 pairs have author and independent review decisions. See AQUATIC-EDITORIAL-159-ADMISSION.md, LAND-EDITORIAL-161-ADMISSION.md and BOTANICAL-EDITORIAL-160-ADMISSION.md. There are 109 accepted entries left to the 500 milestone. Full gates and live media delivery remain unverified.
+
+The independent generator correction is implemented here. Both shared showcase generation and anonymous demo checkpoint construction now consume the accepted corpus: 391 items, 103 Stories, 133 represented characters, 237 accounts and 64 disabled sample subscriptions. The 134 editorial identities include held-only characters who are not padded into displayed counts. See EDITORIAL-GENERATOR-INTEGRATION.md for exact scope and evidence. Forty-six focused tests across six suites pass. The actual reader markup and repository CSS also pass offline desktop/mobile visual review; see YOUTUBE-READER-FORMATTING-ISOLATED.md. Database activation, browser React hydration, playback and full gates are not claimed.
+
+Proposals 86, 87 and 88 are admitted. Continue new authoring, prioritizing Instagram Stories. Offline YouTube reader paragraph verification is complete; evidence is saved under output/playwright/editorial-reader. Title-only corrections for Oswin, Edith and Hugo are recorded in EDITORIAL-TITLE-CORRECTIONS-89.md; all three bodies are unchanged.
+
+Batches90,91,92 closed with documented source holds and no proposals. Root-authored Sela93 passed independent review and is admitted. Maud94 and Botanical95 passed root review and are admitted. Mina96 is admitted after root review. LAND-STORIES-97 and BOTANICAL-STORIES-98 are admitted. LAND-STORIES-100, Luna101 and Sela103 are admitted. Edmund101 is admitted with the reviewed108 replacement image. BOTANICAL-STORIES-104 is admitted. AQUATIC-STORIES-102 produced holds only. Alma105 closed with four individually reviewed image holds and no admission; primary taxonomy excludes South African TypeIII images from Alma. Continue her NEAtlantic/Mediterranean recovery search. LAND106 is admitted. LAND111, BOTANICAL109, AQUATIC110, Alma112 and Alma113 are admitted. BOTANICAL104 and AQUATIC-REGULAR107 are admitted. AQUATIC-YOUTUBE-99 produced source holds only. Existing editorial subagents own proposal documents only; root integrates. No other Codex task is involved.
+
+The isolated ReaderView formatting patch restores YouTube newline display on the fresh base. See YOUTUBE-READER-FORMATTING-ISOLATED.md for its behavior-neutral classification and remaining publication requirements.
+
+Resume editorial work exclusively in `/Users/aubreyfalconer/dev/freed-editorial-isolated`, branch `feat/editorial-corpus-isolated`, based on fetched `origin/dev`. The source worktree is read-only. Do not contact, coordinate with, monitor, interrupt, or change DEMO LAUNCH. Do not share its dependencies or processes. No merge back without the owner's explicit approval. No publication or release.
+
+The isolated snapshot contains 712 drafts, 307 illustrated entries, 265 regular entries, 42 Stories, and 132 identities. Instagram has 89 posts and 22 Stories; Facebook has 59 posts and 20 Stories. These counts were recomputed from the isolated runtime source. Prior validation on another base does not validate this worktree.
+
+Instagram now targets 60% Stories and 40% posts. The older 100-Story cap conflicts with retaining 89 Instagram posts and awaits owner reconciliation. Prioritize new Instagram Stories while preserving approved passages. See PLATFORM-FORMAT-BALANCE.md for research and counting rules.
+
+The stored goal is active again. Its objective still contains the obsolete path and coordination instruction. This document and the owner's latest messages govern resumed work. Do not follow the obsolete coordination clause. The unresolved final format split and shared full-validation failure do not block independent authoring; do not stop at a batch checkpoint on either basis.
+
+Reader follow-up is complete: all accepted samples carry complete preserved text; sample Stories do not invoke the hydrator or show Summary. Separate photo/source/license footer passes 390px offline rendered inspection. Evidence: output/playwright/editorial-reader/mobile-story-credit.png. All46 focused tests and shared generator typecheck pass. Task-owned browser and HTTP server are closed.
+
+Alma112 and113 passed independent review and are admitted. Current turn made eight admissions, including one recovered original slot. Continue new authoring; no final-count blocker prevents progress. Existing editorial agents now own BOTANICAL-EDITORIAL115, AQUATIC-EDITORIAL120 and LAND-EDITORIAL117, each targeting two regular entries plus two Instagram Stories. Root independently reviews and integrates. All46 focused tests and current shared typecheck pass.
+
+Nova118 closes as a source mismatch only, no admission or prose change. The new candidate caption describes progenitor-shed gas and cannot establish the preserved passage’s never-inside-the-star claim. See NOVA-RECOVERY-118.md/json. Existing115/117 agents confirmed running;116 and119 admitted;120 assigned; continue their independent reviews when ready.
+
+Admission121 integrates five unchanged proposals from115/117/120. Current source is359 accepted,276 regular and83 Stories; all46 focused tests, shared generator typecheck and git diff check pass. Source/platform counts independently recomputed. See EDITORIAL-129-130-132-ADMISSION.md. Existing editorial agents are authoring122 botanical,123 land and124 aquatic proposals; root reviews and integrates. No task is blocked. Continue substantive authoring and review without contacting any other task.
+
+Silas124 is admitted unchanged after root review. The current checkpoint is360 accepted items,277 regular and83 Stories from763 drafts;2,145 catalog rows. All46 focused tests, shared generator typecheck and git diff check pass after124. Generator retains125 represented characters,226 accounts and61 disabled feeds. Alma125 is a documented source hold only. Existing aquatic agent now owns126; botanical122 and land123 remain underway.
+
+Root FAYE-STORY127 is a new pending proposal using the unused117 carrying-material image. LAND agent received the independent review request for after123. No127 admission yet. Alma125 records correct broad taxon search and excluded incompatible locations; no media downloaded. Continue122/123/126 review and127 independent result.
+
+Admission128 and126 complete: five new accepted pairs this turn, including one recovered original Moss slot, with three new represented characters. Current source:365 accepted,280 regular,85 Stories,767 drafts,402 excluded,2,154 catalog records. Generator:128 characters,230 accounts,62 disabled feeds. Instagram65 Stories/89 posts. All46 focused tests, shared generator typecheck and git diff check pass after Nellie126. Existing editorial agents own129 botanical,130 land,131 aquatic proposals. Faye127 is admitted after independent review; no pending127 work. Continue authoring and review, with no merge/publication or other-task contact.
+
+Root ADA-RECOVERY132 proposes original Fold until invisible unchanged. Three exact sleeping-frog images opened; chosen365252754 is sharp, other two held. Independent botanical review requested after129; no132 runtime admission yet. Source records and hashes in /tmp/freed-ada132. Existing129/130/131 agents confirmed running this turn.
+
+Latest continuation: Ada130, Ada129, Ludo129, Ada132 and Dot131 are admitted, five accepted additions or original recoveries. All 46 focused tests and shared generator typecheck pass after131. Existing editorial agents own LAND134, BOTANICAL135 and AQUATIC136 proposal work; root independently reviews and integrates. The 15-minute editorial-corpus-continuity heartbeat is ACTIVE and was verified through its supported view and saved configuration. Continue substantive authoring; no merge, publication or other-task contact.
+
+Continuation134: Mallow regular and Sorrel Instagram Story are admitted unchanged, adding two first represented characters. All46 focused tests and shared generator typecheck pass. ADA-SOURCE137 and AQUATIC136 contain source holds only. Existing agents now own LAND138, BOTANICAL135 and AQUATIC139. Continue their independent reviews and new authoring; no new agent or other task is involved.
+
+Latest135 review: root opened the candidate and all three current Hugo images; Beneath the moth is held for a material dorsal-color continuity mismatch. See BOTANICAL-EDITORIAL-135-ROOT-REVIEW.md. No admission; accepted count remains372. LAND138 and AQUATIC139 workers terminated with usage-limit errors before saving proposal documents. They are not running work merely because older assignments exist. Do not reset usage or purchase credits without explicit owner authorization. Continue any available local source review and authoring, preserving independent review before admission.
+
+Root140 proposes original Mallow Claws held clear with exact saved walking image621140647. Passage remains unchanged and unbound pending independent land review, including the scope of its mound-excavation wording. LAND138 resumed through the existing worker after the usage failure and is reviewing140 first; BOTANICAL141 was assigned to the existing completed botanical worker. No new agents or usage resets. Counts remain372 accepted.
+
+Current140 disposition: admitted after independent revised-body PASS, with only the specified factual phrase changed. All46 focused tests pass at373accepted. LAND138 and BOTANICAL141 remain the existing proposal assignments. Stop at500, not the obsolete stored goal count.
+
+Continuation138: Berta Story admitted unchanged; all46 focused tests pass at374accepted. AQUATIC139 and VELVET142 contain holds only. Existing workers now own LAND143, BOTANICAL141 and AQUATIC144. Root reviews and admits within the500 cap.
+
+Continuation141: Greta admitted unchanged, all46 focused tests pass at375accepted. Root FENN-STORY145 is pending independent aquatic review after144; no145 admission. Existing workers own LAND143, AQUATIC144 plus145review, BOTANICAL146. Continue toward500 and stop there.
+
+Continuation144/145: two Stories admitted unchanged, all46 focused tests pass at377accepted. LAND143 closed with holds only. Existing proposal workers now own BOTANICAL146, AQUATIC147 and LAND148. No pending145 review; it is admitted. Continue to500 and stop there.
+
+Continuation146: Akio Story admitted unchanged; all46 focused tests pass at378accepted. Existing workers own AQUATIC147, LAND148 and BOTANICAL149. Continue root review within500 cap; no completed milestone or publication claimed.
+
+## Archived history, not operational instructions
+
+Isolated source validation on September 5: Node 24.14.1 imported the complete
+catalog and arcs, resolved every admitted media binding, and counted 2,090
+catalog records and 307 illustrated entries. Direct assertions passed for
+all five YouTube descriptions: exact narrative preservation, a blank line
+before Original video, and separate uploader/source lines. All five titles
+are first person. This is source validation, not rendered UI verification or
+the full repository gate. `git diff --check` passed.
+
+`doctor.mjs --strict` passes toolchain checks but fails on pre-existing missing
+machine automation guard files. Do not repair those controls or stop other
+processes from this task. No dependencies were installed or shared.
 
 The owner requested a separate task sharing this existing worktree. Product
 behavior and final release coordination stay in task
@@ -157,7 +236,7 @@ Eight Stories and two reviewed profiles admitted. See BOTANICAL-VISUAL-27-ADMISS
 
 ## Recovery28 delivery
 
-Two regular entries and Maud’s profile admitted. See LAND-RECOVERY-28-ADMISSION.md. Maud’s article is her first admitted event, independent of her held pursuit scene. Existing NPS delivery scope applies. Full target remains 900 regular entries and 100 Stories. Product has received the consolidated source-host and large-image dependencies; do not repeat notifications or send batch progress.
+Two regular entries and Maud’s profile admitted. See LAND-RECOVERY-28-ADMISSION.md. Maud’s article is her first admitted event, independent of her held pursuit scene. Existing NPS delivery scope applies. Historical target was 900 regular entries and 100 Stories; the current500 milestone supersedes it. Product has received the consolidated source-host and large-image dependencies; do not repeat notifications or send batch progress.
 
 
 Validation after admissions26/27/28: 15 shared corpus and YouTube tests pass. Shared tsc --noEmit passes after mapping draft fear/concealment themes to the supported danger value. Git diff --check passes. These checks do not establish full browser delivery. Continued proposal work is assigned as AQUATIC-VISUAL-30, LAND-REGULAR-31 and BOTANICAL-REGULAR-32. No routine product notification sent.
@@ -218,3 +297,30 @@ Product resolved Botanical46: exact USGS image host added to its scoped policies
 
 
 Botanical50 admits Lucille's unchanged Story body as A little give after resolving duplicate title Still attached. Two media records and one reviewed profile. See BOTANICAL-VISUAL-50-ADMISSION.md. Nestor52 and Sylvia53 source-published variants pass independent lead full-image and220/48 review and now serve both existing posts and portraits. Original catalog evidence remains. Both exact repairs sent to DEMO LAUNCH for unchanged-bound relay proof. Typecheck and15 shared tests passed at18:37. Runtime counts above include these changes; delivery proof remains pending product response.
+
+## Isolated checkpoint assertion correction
+
+After admission 65, remaining stale uniqueness and media-count expectations in
+sample-corpus.test.ts were updated to 716 drafts and 311 curated images from
+2,096 catalog records. Native Node 24.14.1 assertions passed for normalized
+whole-corpus title/body uniqueness, curated ID/hash/URL uniqueness, the unchanged
+171 RSS drafts, and preservation of a two-paragraph YouTube narrative. These
+were direct source assertions, not a run of the Vitest suite. No shared machine
+controls or dependencies were changed.
+
+
+## Latest isolated source verification
+
+After71 and74, native Node24.14.1 assertions passed the 719-draft,314-image,49-Story checkpoint, exact curated ordering, normalized title/body uniqueness, media ID/hash/URL uniqueness, Hugo and Nova insertion order, and all five first-person YouTube titles and paragraph-preserving descriptions. git diff --check passed. These are direct assertions, not a Vitest suite or rendered app proof. No dependencies, shared machine controls, commits, merges or other tasks were changed.
+
+Continuation148: Sumi’s original Hold everything admitted unchanged as an Instagram Story, first accepted entry for this identity. Current total379. Aquatic147 held for washed-out photograph. Existing workers continue150,151,152. No release or completed milestone.
+
+Goal-control discrepancy verified after158: get_goal reports the obsolete 1,000-entry objective as blocked, despite the latest owner instruction to resume toward500. create_goal with the current500 objective was rejected because the old goal is unfinished. The available update_goal operation cannot resume or change objectives. Do not falsely mark the old goal complete. Continue authorized authoring under the owner's500 instruction and the already updated15-minute heartbeat. Current work is not waiting for owner input.
+
+Root-authored RHEA-STORY-153 is pending independent review from visual_land_next after151. Ocean150 hit selected-model capacity, not an editorial evidence blocker; other existing workers151/152 continue.
+
+Continuation153 checkpoint:381 accepted,779 authored,398 excluded,286 regular,101 Stories,Instagram81 Stories/91 posts,2,172 catalog rows. Runtime projection133 represented characters/237 accounts/64 feeds. All46 focused tests, shared typecheck and whitespace checks pass. Owner milestone500 leaves119. Worker visual_land_next now owns source-led LARK-STORY-154 from root-discovered parent/chicks photo281392747; botanical152 running; ocean150 retriggered once after a capacity failure, no retry loop. Root opened four Lark images, holding distant261952336 and forwarding three excellent family frames. No new Lark body or admission yet.
+
+Continuation158 checkpoint:387 accepted,785 authored,398 excluded,286 regular,101 Stories,Instagram81 Stories/91 posts,2,172 catalog rows. Projection133 represented characters/237 accounts/64 feeds (237 last directly counted at384; subsequent admissions use existing accounts). All46 focused tests, shared typecheck and whitespace checks pass. The source additions this continuation are Sumi148,Maud151,Rhea153,Lark154,Pippa152,Rue150,Oona156,Mira155,Ines158. See individual admissions. Worker assignments now AQUATIC159,BOTANICAL160,LAND161. Root source-led Sable162 nest query ongoing under/tmp/freed-sable162.
+
+Continuation159/160/161: 390 accepted,787 authored,397 excluded,287 regular,103 Stories. Instagram83 Stories/92 posts. Direct runtime projection390 items/133 represented characters/237 accounts/64 feeds. All46 focused tests, shared TypeScript and whitespace checks pass. Manny160 subject registration mismatch was corrected before passing validation. Existing workers own AQUATIC163,LAND164,BOTANICAL165; root source-led Flora166 childhood recovery is under review and not admitted. Stop at500;110 accepted entries remain.

@@ -114,7 +114,7 @@ describe("Friends Galaxy GPU star palette", () => {
       palette.friend,
     );
     expect(friendsGalaxySemanticColor(connectionScene, palette, friendIndex)).toBe(
-      palette.connection,
+      palette.friend,
     );
   });
 

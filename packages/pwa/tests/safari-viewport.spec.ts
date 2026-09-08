@@ -214,6 +214,76 @@ test.describe("Safari viewport layout — iPhone 14 / WebKit", () => {
     await acceptLegalGateIfPresent(page);
   });
 
+  test("rotation retains document scrolling and safe-area toolbar", async ({ page }, testInfo) => {
+    // Crossing 767px must not replace the feed's scroll owner.
+    await page.waitForFunction(() => {
+      const store = (window as unknown as Record<string, unknown>).__FREED_STORE__ as
+        { getState: () => { isInitialized: boolean } } | undefined;
+      return store?.getState().isInitialized;
+    });
+    await page.evaluate(async () => {
+      const library = (window as unknown as Record<string, unknown>).__FREED_LIBRARY_CORE__ as
+        { addItems: (items: unknown[]) => Promise<void> };
+      const now = Date.now();
+      const items = Array.from({ length: 40 }, (_, index) => ({
+        globalId: `rss:rotation:${index}`, platform: "rss", contentType: "article",
+        capturedAt: now, publishedAt: now - index * 60000,
+        author: { id: "rotation", handle: "rotation", displayName: "Rotation Fixture" },
+        content: {
+          text: `Rotation article ${index}. ` + "Local synthetic content for checking phone scrolling. ".repeat(10),
+          mediaUrls: [], mediaTypes: [],
+        },
+        userState: { hidden: false, saved: false, archived: false, tags: [] },
+        topics: [], sourceUrl: `https://example.com/rotation/${index}`,
+      }));
+      for (const item of items) await library.addItems([item]);
+    });
+    await expect(page.locator("[data-feed-row-index]").first()).toBeVisible();
+    const originalList = await page.locator("[data-feed-row-index]").first().evaluateHandle(
+      element => element.parentElement!.parentElement!,
+    );
+    for (const viewport of [{ width: 844, height: 390 }, { width: 390, height: 844 }]) {
+      await page.setViewportSize(viewport);
+      // Emulation has no hardware insets. Supply landscape safe-area geometry.
+      await page.evaluate(({ width }) => {
+        document.documentElement.style.setProperty("--safe-area-left", width > 767 ? "47px" : "0px");
+        document.documentElement.style.setProperty("--safe-area-right", width > 767 ? "47px" : "0px");
+      }, viewport);
+      await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).overflowY)).toBe("visible");
+      expect(await originalList.evaluate(element => element.isConnected)).toBe(true);
+      const geometry = await page.evaluate(() => {
+        const toolbar = document.querySelector('[data-testid="workspace-toolbar"]')!;
+        const frame = document.querySelector('[data-testid="workspace-content-frame"]')!;
+        const rect = toolbar.getBoundingClientRect();
+        return {
+          left: rect.left, right: rect.right,
+          toolbarPadding: parseFloat(getComputedStyle(toolbar).paddingLeft),
+          contentPadding: parseFloat(getComputedStyle(frame).paddingLeft),
+          smooth: getComputedStyle(document.documentElement).scrollBehavior,
+          overflow: document.documentElement.scrollWidth > innerWidth,
+        };
+      });
+      expect(geometry.left).toBe(0);
+      expect(geometry.right).toBe(viewport.width);
+      expect(geometry.contentPadding).toBe(viewport.width > 767 ? 47 : 0);
+      expect(geometry.toolbarPadding).toBe(viewport.width > 767 ? 47 : 12);
+      expect(geometry.smooth).toBe("auto");
+      expect(geometry.overflow).toBe(false);
+      await page.evaluate(() => window.scrollTo({ top: 600, behavior: "instant" }));
+      await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(600);
+      const positions = await page.evaluate(async () => {
+        const samples: number[] = [];
+        for (let i = 0; i < 12; i++) {
+          await new Promise(requestAnimationFrame);
+          samples.push(scrollY);
+        }
+        return samples;
+      });
+      expect(Math.max(...positions) - Math.min(...positions)).toBeLessThanOrEqual(1);
+      await page.screenshot({ path: testInfo.outputPath(`rotation-${viewport.width}.png`) });
+    }
+  });
+
   test("dvh and lvh resolve to non-zero pixel values", async ({ page }) => {
     const m = await getLayoutMetrics(page);
     expect(m.dvhPx).toBeGreaterThan(400);

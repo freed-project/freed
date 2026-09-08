@@ -18,7 +18,7 @@ const PLATFORMS = [
 
 const WIKIMEDIA_IMAGE_HOSTS = new Set(["thumb.wikimedia.org", "upload.wikimedia.org"]);
 
-const EXPECTED_CURATED_MEDIA_SHA1S = [
+const EXPECTED_CURATED_MEDIA_SHA1S: readonly string[] = [
   // Manny Tis
   "d67cc98af34b60d6e8b2e7aa586aa9e05de4d3fd",
   // Frogbert Angler
@@ -30,6 +30,7 @@ const EXPECTED_CURATED_MEDIA_SHA1S = [
   "78cee6949fb8cd5308c53c9725de02cea1c64a62",
   "3dbe7e0c03e5de95816b0cec07171d1915c27199",
   "129c619a92dfef320bf5e9fb98b05742b3e36a7b",
+  "34f2a4da704222a48592ad20bb8d1c645a105c70",
   "d47c50dd9dc91166939340307b3560a3ea9d032e",
   "628d8aba303ab7799dd78292023cdddb8194baf7",
   // Cygnus Shy
@@ -41,6 +42,7 @@ const EXPECTED_CURATED_MEDIA_SHA1S = [
   "d7db5d3f032ac43eb40c19d527e79ea12e4a6ac8",
   // Nova Remains
   "c447255ad8fe6aab3c24c59dde232234cce6c490",
+  "3cea93a1a3bf7a2e60405c6fce570ecfac26842f",
   // Alma Eight
   // Mora Grey
   "591383436276e3a2ce2539a8d71b2ed7bab14c6d",
@@ -77,16 +79,16 @@ describe("sample corpus", () => {
     for (const hostname of ["commons.wikimedia.org", "oceanexplorer.noaa.gov"]) {
       const asset = SAMPLE_CURATED_DEMO_MEDIA.find((candidate) => new URL(candidate.sourceUrl).hostname === hostname)!;
       expect(asset, hostname).toBeDefined();
-      expect(sampleCorpusAttribution(asset)).toBe(`Photograph by ${asset.creator}, ${asset.license}. Source: ${asset.sourceUrl}`);
+      expect(sampleCorpusAttribution(asset)).toBe(`Photograph by ${asset.creator}, ${asset.license}.\nSource: ${asset.sourceUrl}${asset.licenseUrl ? `\nLicense: ${asset.licenseUrl}` : ""}`);
     }
   });
-  it("tracks the intermediate 712-entry rebuild across 132 located characters", () => {
+  it("tracks the 896-entry source corpus across 134 located characters", () => {
     const episodes = SAMPLE_CHARACTER_ARCS.flatMap((arc) => arc.episodes);
     const normalize = (value: string) => value.trim().toLocaleLowerCase().replace(/\s+/g, " ");
-    expect(episodes).toHaveLength(712);
-    expect(new Set(episodes.map((episode) => normalize(episode.title))).size).toBe(712);
-    expect(new Set(episodes.map((episode) => normalize(episode.body))).size).toBe(712);
-    expect(SAMPLE_CHARACTER_ARCS.flatMap((arc) => arc.episodes.filter((episode) => (episode.platform ?? arc.platform) === "rss"))).toHaveLength(171);
+    expect(episodes).toHaveLength(896);
+    expect(new Set(episodes.map((episode) => normalize(episode.title))).size).toBe(896);
+    expect(new Set(episodes.map((episode) => normalize(episode.body))).size).toBe(896);
+    expect(SAMPLE_CHARACTER_ARCS.flatMap((arc) => arc.episodes.filter((episode) => (episode.platform ?? arc.platform) === "rss"))).toHaveLength(196);
     for (const arc of SAMPLE_CHARACTER_ARCS) {
       if (arc.characterId === "nova-remains") continue; // A supernova has no Earth coordinate.
       expect(arc.location, arc.characterId).toBeDefined();
@@ -95,11 +97,11 @@ describe("sample corpus", () => {
     }
   });
   it("keeps every curated image attributable and uniquely addressable", () => {
-    expect(SAMPLE_CORPUS_MEDIA).toHaveLength(2_090);
-    expect(SAMPLE_CURATED_DEMO_MEDIA).toHaveLength(307);
-    expect(new Set(SAMPLE_CURATED_DEMO_MEDIA.map((asset) => asset.id)).size).toBe(307);
-    expect(new Set(SAMPLE_CURATED_DEMO_MEDIA.map((asset) => asset.sha1)).size).toBe(307);
-    expect(new Set(SAMPLE_CURATED_DEMO_MEDIA.map((asset) => asset.imageUrl)).size).toBe(307);
+    expect(SAMPLE_CORPUS_MEDIA).toHaveLength(2_177);
+    expect(SAMPLE_CURATED_DEMO_MEDIA).toHaveLength(500);
+    expect(new Set(SAMPLE_CURATED_DEMO_MEDIA.map((asset) => asset.id)).size).toBe(500);
+    expect(new Set(SAMPLE_CURATED_DEMO_MEDIA.map((asset) => asset.sha1)).size).toBe(500);
+    expect(new Set(SAMPLE_CURATED_DEMO_MEDIA.map((asset) => asset.imageUrl)).size).toBe(500);
     expect(SAMPLE_CURATED_DEMO_MEDIA.every((asset) => asset.creator.trim().length > 0)).toBe(true);
     expect(SAMPLE_CURATED_DEMO_MEDIA.every((asset) => asset.license.trim().length > 0)).toBe(true);
     expect(SAMPLE_CURATED_DEMO_MEDIA.every((asset) => asset.alt.trim().length > 0)).toBe(true);
@@ -125,9 +127,9 @@ describe("sample corpus", () => {
     const authoredSha1s = episodes.map((episode) => episode.mediaSha1!);
     const curatedSha1s = SAMPLE_CURATED_DEMO_MEDIA.map((asset) => asset.sha1);
 
-    expect(allEpisodes).toHaveLength(712);
-    expect(allEpisodes.filter((episode) => episode.mediaSha1 === null)).toHaveLength(405);
-    expect(authoredSha1s.slice(0, EXPECTED_CURATED_MEDIA_SHA1S.length)).toEqual(EXPECTED_CURATED_MEDIA_SHA1S);
+    expect(allEpisodes).toHaveLength(896);
+    expect(allEpisodes.filter((episode) => episode.mediaSha1 === null)).toHaveLength(396);
+    expect(authoredSha1s.filter((sha1) => EXPECTED_CURATED_MEDIA_SHA1S.includes(sha1))).toEqual(EXPECTED_CURATED_MEDIA_SHA1S);
     expect(curatedSha1s).toEqual(authoredSha1s);
     expect(new Set(authoredSha1s).size).toBe(authoredSha1s.length);
     expect(authoredSha1s.every((sha1) => /^[0-9a-f]{40}$/.test(sha1))).toBe(true);
@@ -137,17 +139,37 @@ describe("sample corpus", () => {
     expect(curatedSha1s.filter((sha1) => KNOWN_BAD_CURATED_MEDIA_SHA1S.has(sha1))).toEqual([]);
   });
 
+  it("assigns one human editorial classification to every accepted post", () => {
+    const accepted = SAMPLE_CHARACTER_ARCS.flatMap((arc) =>
+      arc.episodes.filter((episode) => episode.mediaSha1 !== null)
+    );
+    const counts = accepted.reduce<Record<string, number>>((result, episode) => {
+      const classification = episode.classification ?? "missing";
+      result[classification] = (result[classification] ?? 0) + 1;
+      return result;
+    }, {});
+
+    expect(accepted.every((episode) => episode.classification !== undefined)).toBe(true);
+    expect(counts).toEqual({
+      inspiring: 115,
+      conversation: 155,
+      personal: 106,
+      event: 72,
+      news: 52,
+    });
+  });
+
   it("keeps courtship as one strand of a much larger life", () => {
     const episodes = SAMPLE_CHARACTER_ARCS.flatMap((arc) => arc.episodes);
     const intimateThemes = new Set(["courtship", "family"]);
 
-    expect(episodes).toHaveLength(712);
+    expect(episodes).toHaveLength(896);
     // The 1,000-entry brief supersedes the old per-character two-entry cap.
     // Relationships may develop within an arc without dominating the whole feed.
     expect(episodes.filter((episode) => intimateThemes.has(episode.theme)).length).toBeLessThan(episodes.length / 2);
 
     const flora = SAMPLE_CHARACTER_ARCS.find((arc) => arc.characterId === "flora-mingo");
-    expect(flora?.episodes).toHaveLength(4);
+    expect(flora?.episodes).toHaveLength(5);
     expect(flora?.episodes.filter((episode) => intimateThemes.has(episode.theme))).toHaveLength(1);
   });
 
@@ -169,10 +191,10 @@ describe("sample corpus", () => {
     const placeIds = new Set(SAMPLE_CORPUS_PLACES.map((place) => place.id));
 
     expect(SAMPLE_CORPUS_MEDIA.every((asset) =>
-      [...WIKIMEDIA_IMAGE_HOSTS, "i.ytimg.com", "oceanexplorer.noaa.gov", "archive.oceanexplorer.noaa.gov", "chandra.harvard.edu", "www.fisheries.noaa.gov", "npgallery.nps.gov", "www.nps.gov", "www.fws.gov", "media.fisheries.noaa.gov", "d9-wret.s3.us-west-2.amazonaws.com"].includes(new URL(sampleCorpusMediaUrl(asset)).hostname)
+      [...WIKIMEDIA_IMAGE_HOSTS, "live.staticflickr.com", "inaturalist-open-data.s3.amazonaws.com", "assets.science.nasa.gov", "i.ytimg.com", "oceanexplorer.noaa.gov", "archive.oceanexplorer.noaa.gov", "chandra.harvard.edu", "www.fisheries.noaa.gov", "npgallery.nps.gov", "www.nps.gov", "www.fws.gov", "media.fisheries.noaa.gov", "d9-wret.s3.us-west-2.amazonaws.com"].includes(new URL(sampleCorpusMediaUrl(asset)).hostname)
     )).toBe(true);
     expect(SAMPLE_CORPUS_MEDIA.every((asset) =>
-      ["commons.wikimedia.org", "oceanexplorer.noaa.gov", "archive.oceanexplorer.noaa.gov", "chandra.harvard.edu", "www.fisheries.noaa.gov", "npgallery.nps.gov", "www.nps.gov", "www.fws.gov", "media.fisheries.noaa.gov", "www.usgs.gov"].includes(new URL(sampleCorpusSourceUrl(asset)).hostname)
+      ["commons.wikimedia.org", "www.flickr.com", "www.inaturalist.org", "science.nasa.gov", "oceanexplorer.noaa.gov", "archive.oceanexplorer.noaa.gov", "chandra.harvard.edu", "www.fisheries.noaa.gov", "npgallery.nps.gov", "www.nps.gov", "www.fws.gov", "media.fisheries.noaa.gov", "www.usgs.gov"].includes(new URL(sampleCorpusSourceUrl(asset)).hostname)
     )).toBe(true);
     expect(SAMPLE_CORPUS_MEDIA.every((asset) => !asset.placeId || placeIds.has(asset.placeId))).toBe(true);
   });
@@ -194,8 +216,8 @@ describe("sample corpus", () => {
     );
     expect(new Set(curatedTitles).size).toBe(curatedTitles.length);
     expect(SAMPLE_CURATED_DEMO_MEDIA.every((asset, index) =>
-      // The owner-approved "grey." deliberately repeats its one-word title.
-      curatedTitles[index] === "grey." || !asset.fieldNote.includes(curatedTitles[index]!)
+      // A title may quote the narrative, but must not be prepended as a label.
+      curatedTitles[index] === "grey." || !asset.fieldNote.startsWith(`${curatedTitles[index]}\n`)
     )).toBe(true);
   });
 
@@ -204,8 +226,8 @@ describe("sample corpus", () => {
 
     expect(names.every((name, index) => name === SAMPLE_CURATED_DEMO_MEDIA[index]!.identityNameBase)).toBe(true);
     expect(names.every((name) => !containsEditorialLocation(name))).toBe(true);
-    expect(SAMPLE_CHARACTER_ARCS).toHaveLength(132);
-    expect(new Set(SAMPLE_CHARACTER_ARCS.map((arc) => arc.identityNameBase)).size).toBe(132);
+    expect(SAMPLE_CHARACTER_ARCS).toHaveLength(134);
+    expect(new Set(SAMPLE_CHARACTER_ARCS.map((arc) => arc.identityNameBase)).size).toBe(134);
   });
 
   it("reserves invented locations for rare status jokes", () => {
@@ -239,7 +261,7 @@ describe("sample corpus", () => {
       sampleCorpusAuthoredText(asset, "instagram", index).split(";")[0]!.trim()
     );
 
-    expect(frogfish).toHaveLength(4);
+    expect(frogfish).toHaveLength(9);
     expect(new Set(openings).size).toBe(frogfish.length);
   });
 });

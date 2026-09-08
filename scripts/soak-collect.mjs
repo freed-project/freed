@@ -113,7 +113,7 @@ Options:
   --soak-dir <path>          Soak directory. Defaults to ~/.freed/automation/soaks/<timestamp>.
   --pointer <path>           Active-soak pointer file. Defaults to ~/.freed/automation/current-soak-dir.
   --app-data <path>          App data dir holding runtime-health.jsonl. Defaults to the installed Freed Desktop dir.
-  --app-binary <substring>   Main process match. Defaults to "Freed.app/Contents/MacOS".
+  --app-binary <substring>   Main executable path match. Defaults to "Freed.app/Contents/MacOS".
   --artifact-digest <sha256> Optional installed artifact digest to bind into evidence.
   --scenario <name>           Workload scenario for measured baseline comparability.
   --provider-cohort <id>      Provider cohort for measured baseline comparability.
@@ -242,7 +242,9 @@ export function parseArgs(argv, now = new Date()) {
   return args;
 }
 
-// Parses `ps axo pid=,ppid=,rss=,command=` output into rows.
+// Parses `ps axo pid=,ppid=,rss=,comm=` output into rows. `comm` is the
+// executable path, not the argument vector, so collector arguments cannot
+// impersonate the installed application.
 export function parsePsTable(psOutput) {
   return String(psOutput ?? "")
     .split("\n")
@@ -263,9 +265,37 @@ export function parsePsTable(psOutput) {
     .filter(Boolean);
 }
 
+export function collectorProcessTreePids(psRows, collectorPid) {
+  const excluded = new Set([collectorPid]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const row of psRows) {
+      if (!excluded.has(row.pid) && excluded.has(row.ppid)) {
+        excluded.add(row.pid);
+        changed = true;
+      }
+    }
+  }
+  return excluded;
+}
+
 // Builds one metrics row (plus the WebKit process sub-table) from a ps table.
-export function buildSample(psRows, { appBinary, tsMs }) {
-  const appRow = psRows.find((row) => row.command.includes(appBinary)) ?? null;
+export function buildSample(
+  psRows,
+  { appBinary, tsMs, collectorPid = process.pid },
+) {
+  const excludedPids = collectorProcessTreePids(psRows, collectorPid);
+  const appRows = psRows.filter(
+    (row) =>
+      !excludedPids.has(row.pid) && row.command.includes(appBinary),
+  );
+  if (appRows.length > 1) {
+    throw new Error(
+      `Freed Desktop process identity is ambiguous for ${appBinary}.`,
+    );
+  }
+  const appRow = appRows[0] ?? null;
   const webContent = psRows.filter((row) =>
     row.command.includes("com.apple.WebKit.WebContent"),
   );
@@ -996,7 +1026,7 @@ function waitForDetachedAcceptance(collectorLock, args) {
 function takeSample(args, cursor, now = Date.now()) {
   let psOutput = "";
   try {
-    psOutput = execFileSync("ps", ["axo", "pid=,ppid=,rss=,command="], {
+    psOutput = execFileSync("ps", ["axo", "pid=,ppid=,rss=,comm="], {
       encoding: "utf8",
       maxBuffer: 32 * 1024 * 1024,
     });

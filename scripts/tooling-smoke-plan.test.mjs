@@ -33,6 +33,18 @@ const COMPLETED = {
   },
 };
 
+test("the nightly 40-job plan fits two attempts with the observed imbalance margin", () => {
+  const plan = buildToolingSmokeMatrix({ changedFiles: [], maxJobs: 40 });
+  assert.equal(plan.jobCount, 40);
+  assert.deepEqual(plan.overrunSuites, []);
+  for (const projection of plan.projection) {
+    assert.ok(
+      projection.perShardSeconds * 2 * 1.5 <= DEFAULT_SHARD_TIMEOUT_SECONDS,
+      `${projection.suite} does not fit two attempts with the 1.5x imbalance margin`,
+    );
+  }
+});
+
 test("a capped duration is not treated as a measurement", () => {
   const capped = suiteWeights({ durations: CAPPED }).get(
     "outcome-ledger-repair",

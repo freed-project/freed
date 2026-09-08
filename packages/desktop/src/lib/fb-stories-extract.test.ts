@@ -123,6 +123,35 @@ describe("fb-stories-extract.js", () => {
       mediaUrls: ["https://scontent.example/story-frame.jpg"],
       postType: "story",
       strategy: "story-viewer",
+      admission: expect.objectContaining({
+        decision: "admit",
+        surface: "story",
+      }),
     });
+  });
+
+  it("excludes a sponsored story frame before reading its media", () => {
+    window.history.replaceState({}, "", "/stories/brand.example/PAID123/");
+    document.body.innerHTML = `
+      <div role="dialog">
+        <header>
+          <h3><a href="https://www.facebook.com/brand.example">Brand Example</a></h3>
+          <span aria-label="Sponsored">Sponsored</span>
+        </header>
+        <img src="https://scontent.example/sponsored-story.jpg" alt="story" />
+      </div>
+    `;
+    const dialog = document.querySelector('[role="dialog"]') as HTMLElement;
+    setReadonlyNumber(dialog, "offsetHeight", 800);
+    const payloads = installTauriCapture<Array<{
+      posts: unknown[];
+      rejected: { advertising: number };
+    }>[number]>();
+
+    window.eval(script);
+
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0].posts).toEqual([]);
+    expect(payloads[0].rejected.advertising).toBe(1);
   });
 });

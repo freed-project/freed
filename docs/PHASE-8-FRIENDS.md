@@ -7,6 +7,13 @@
 
 ## Overview
 
+Galaxy and sidebar selection share canonical person and account IDs. Directory
+search includes matching connections as well as friends, using identity names
+and account fields rather than incidental biography substrings. The sidebar
+keeps search, count, and sort above one divider, with results scrolling below.
+Contact tracking, outreach, and reconnection controls are withheld until the
+underlying feature is available.
+
 Care levels map to Connection at one or two, Friend at three or four, and Fam
 at five. Editable identity details, directory cards, collapsed selection cards,
 and the identity editor share a keyboard-accessible rating control with category
@@ -24,8 +31,8 @@ known identity fields; it does not infer latest identity activity from one post.
 Stars and planets are internal design shorthand only. Interface copy uses
 identity, profile, account, or feed, including tooltips and accessibility labels.
 
-Star and linked planet detail panels dock a non-interactive map preview at the
-bottom right when a known location exists. The entire preview opens Map with
+Person and linked account detail panels place a full-width map preview above
+recent activity in the scrolling sidebar when a known location exists. The entire preview opens Map with
 the parent identity selected. It uses the shared map surface and theme, retains
 the demo's local geographic mode, and does not invent locations for empty records.
 
@@ -894,7 +901,9 @@ The product Friends view now fixes decorative dust to the 100,000-star Raw WebGP
 - [x] Galaxy compilation indexes accounts by person once instead of scanning the full account library for every identity
 - [x] Mobile pinch hands directly to one-finger pan when either touch lifts
 - [x] iPhone pan and pinch use native non-passive touch events instead of WebKit pointer capture, preserve the pinch midpoint, recover after touch cancellation, and leave browser zoom unchanged
-- [x] Billboard labels render through one instanced glyph-atlas draw and use active theme colors. Close detail names every admitted visible identity and profile without requiring selection or suppressing labels for collisions. Overview and middle views retain density controls. The product worker prioritizes candidates visible through the actual 3D camera, not only the flat atlas viewport, while retaining the 192-node and 120-preselected-label metadata budgets. Complete small-source metadata fits within those same budgets; larger scenes narrow their visible candidate set through zoom.
+- [x] Billboard labels render through one instanced glyph-atlas draw and use active theme colors. Close detail names admitted visible identities and profiles without requiring selection; nearby competing labels fade around an emphasized identity. Overview and middle views retain density controls. The product worker prioritizes candidates visible through the actual 3D camera, not only the flat atlas viewport, while retaining the 192-node and 120-preselected-label metadata budgets. Complete small-source metadata fits within those same budgets; larger scenes narrow their visible candidate set through zoom.
+- [x] Cards and profile details share a five-stop relationship slider with its category inside the draggable handle. Detail descriptions span the panel below the avatar row. Provider tiles open identity-filtered reader lists; graph selection and the sidebar use one identity selection.
+- [x] Close views retain every visible admitted avatar without a ranked twelve-avatar cutoff. Account orbits sit near identity avatars while preserving explicit pins. Provider fields scale by unlinked account counts across a two-to-one range; zoom is capped and field opacity remains nonzero.
 - [x] Mac Safari trackpad pinch uses native gesture events, preserves its focal point, leaves browser page zoom unchanged, and synchronizes only bounded presentation metadata during movement
 - [x] Friends uses the same vertical sidebar inset as every other workspace while its pointer-free Galaxy background continues beneath the sidebar to the full content-frame bounds
 - [x] Provider sectors use deterministic spiral placement and theme-aware nebula fields, with Nebula as the default treatment and no idle identity-to-account links
@@ -919,3 +928,10 @@ The product Friends view now fixes decorative dust to the 100,000-star Raw WebGP
 - Nominatim queries go only to `nominatim.openstreetmap.org` (no Freed servers)
 - Device contact import is one-shot; no live OS contacts sync
 - Reach-out events sync through signed SQLite operations and normalized typed checkpoints. The UI projects the latest bounded event window from SQLite.
+
+
+### Isolated editorial showcase correction, September 6, 2026
+
+The shared showcase generator now projects admitted character episodes, reviewed portraits and authored platform identities directly. Null-media drafts and synthetic stress fixtures are excluded from showcase counts. YouTube uses verified video sources and preserves narrative paragraphs and separate credit lines. Sample feed URLs retain the non-fetching sentinel domain. The explicit stress mode remains separate, with bounded text-collision fallback. This is an isolated source implementation; rendered preview and full repository verification remain outstanding, and no deployment or merge is claimed. See [integration evidence](drafts/EDITORIAL-GENERATOR-INTEGRATION.md).
+
+Isolated editorial follow-up on September 6: accepted sample Stories now carry complete local preserved text and display separate photo credits in the reader. The shared reader omits the misleading Summary label for complete sample entries. Focused tests and offline mobile rendering pass; deployment and full integration remain unverified.

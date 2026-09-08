@@ -1,0 +1,58 @@
+{
+  "status": "held",
+  "characterId": "penny-focus",
+  "sourceReviews": [
+    {
+      "photoId": 360815292,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/360815292/large.jpg",
+      "sourceUrl": "https://www.inaturalist.org/observations/204156165",
+      "localPath": "/tmp/freed-penny78/0.jpg",
+      "creator": "(c) Eldritch, some rights reserved (CC BY), uploaded by Eldritch",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "originalDimensionsMetadata": [
+        1536,
+        2048
+      ],
+      "deliveryBytes": 199686,
+      "deliverySha1": "15e1247c70adad36046571b3ae1dc78cf51ece50",
+      "individuallyOpened": true,
+      "decision": "hold"
+    },
+    {
+      "photoId": 360815597,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/360815597/large.jpg",
+      "sourceUrl": "https://www.inaturalist.org/observations/204156165",
+      "localPath": "/tmp/freed-penny78/15.jpg",
+      "creator": "(c) Eldritch, some rights reserved (CC BY), uploaded by Eldritch",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "originalDimensionsMetadata": [
+        1536,
+        2048
+      ],
+      "deliveryBytes": 256331,
+      "deliverySha1": "e2ad294a0a7a9e06fbb7556fae0120e8df31eb1c",
+      "individuallyOpened": true,
+      "decision": "hold"
+    },
+    {
+      "photoId": 360815827,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/360815827/large.jpg",
+      "sourceUrl": "https://www.inaturalist.org/observations/204156165",
+      "localPath": "/tmp/freed-penny78/27.jpg",
+      "creator": "(c) Eldritch, some rights reserved (CC BY), uploaded by Eldritch",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "originalDimensionsMetadata": [
+        1536,
+        2048
+      ],
+      "deliveryBytes": 431634,
+      "deliverySha1": "776123ed75fc3317199e27a14cd37e459da3a336",
+      "individuallyOpened": true,
+      "decision": "hold"
+    }
+  ],
+  "runtimeChanges": false
+}

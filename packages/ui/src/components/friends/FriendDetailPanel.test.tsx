@@ -14,7 +14,10 @@ import {
 } from "vitest";
 import type { FeedItem, Friend } from "@freed/shared";
 import { FriendDetailPanel } from "./FriendDetailPanel.js";
-vi.mock("../../context/PlatformContext.js", () => ({ usePlatform: () => ({ store: { getState: () => ({}) } }) }));
+vi.mock("../../context/PlatformContext.js", () => ({
+  usePlatform: () => ({ store: { getState: () => ({}) } }),
+  useAvatarSource: (url: string | undefined) => url,
+}));
 
 vi.mock("../map/MiniFriendMapCard.js", () => ({
   MiniFriendMapCard: ({ feedItems }: { feedItems: readonly FeedItem[] }) => (

@@ -15104,6 +15104,77 @@ function leaseStateDirectoryGenerationDigest(
   });
 }
 
+function identityWithDevice(identity, device) {
+  return Object.freeze({ ...identity, dev: BigInt(device) });
+}
+
+function pathIsWithinRoot(filePath, rootPath) {
+  if (typeof filePath !== "string" || !path.isAbsolute(filePath)) return false;
+  const relative = path.relative(rootPath, filePath);
+  return (
+    relative === "" ||
+    (!relative.startsWith("..") && !path.isAbsolute(relative))
+  );
+}
+
+export function completedDarwinLeaseHistoricalDevices(
+  transaction,
+  relatedTransactions = [],
+  { platform = process.platform, stateRoot } = {},
+) {
+  if (
+    platform !== "darwin" ||
+    transaction?.phase !== "complete" ||
+    typeof stateRoot !== "string" ||
+    !path.isAbsolute(stateRoot)
+  ) {
+    return Object.freeze([]);
+  }
+  const tokenDigest = transaction.tokenDigest;
+  const devices = new Set();
+  for (const candidate of [transaction, ...relatedTransactions]) {
+    const capability = candidate?.capability;
+    if (
+      candidate?.phase !== "complete" ||
+      candidate?.tokenDigest !== tokenDigest ||
+      capability === null ||
+      capability === undefined ||
+      !/^\d+$/.test(String(capability.sourceDevice ?? "")) ||
+      !pathIsWithinRoot(capability.sourcePath, stateRoot)
+    ) {
+      continue;
+    }
+    devices.add(String(capability.sourceDevice));
+  }
+  return Object.freeze([...devices].sort());
+}
+
+function leaseStateDirectoryGenerationNameMatches(
+  entryName,
+  namespace,
+  paths,
+  transaction,
+  purpose,
+  directoryIdentity,
+  descriptor,
+  historicalDevices = [],
+) {
+  const devices = [
+    directoryIdentity.dev.toString(),
+    ...historicalDevices.map(String),
+  ];
+  return [...new Set(devices)].some((device) => {
+    const digest = leaseStateDirectoryGenerationDigest(
+      paths,
+      transaction,
+      purpose,
+      identityWithDevice(directoryIdentity, device),
+      descriptor,
+    );
+    return entryName === `${namespace}.${digest}.lease`;
+  });
+}
+
 function readBoundedLeaseDirectoryEntries(
   directoryPath,
   {
@@ -18150,6 +18221,7 @@ function admitParsedLeaseCleanupEvidence(
   archiveScope,
   directory,
   selected,
+  historicalDevices = [],
 ) {
   const snapshot = privateBatchFileSnapshot(selected);
   const quarantinePath = path.join(directory.path, selected.name);
@@ -18168,6 +18240,7 @@ function admitParsedLeaseCleanupEvidence(
       quarantinePath,
       specification,
       snapshot,
+      historicalDevices,
     ),
   );
   if (atomicMatches.length > 1) {
@@ -18248,6 +18321,7 @@ function admitParsedLeaseCleanupEvidence(
         quarantinePath,
         originalPath,
         snapshot,
+        historicalDevices,
       )
     ) {
       throw new AutomationControlError(
@@ -18285,6 +18359,7 @@ function admitParsedLeaseCleanupEvidence(
       quarantinePath,
       spec.filePath,
       snapshot,
+      historicalDevices,
     ),
   );
   if (matches.length !== 1) {
@@ -19003,6 +19078,21 @@ function inspectLeaseTransactionEventHistoryInternal({
         transaction,
       ]),
     );
+    const relatedTransactions = validatedTransactions.map(
+      (entry) => entry.transaction,
+    );
+    const historicalDevicesByOperationId = new Map(
+      validatedTransactions.map(({ transaction }) => [
+        transaction.operationId,
+        completedDarwinLeaseHistoricalDevices(
+          transaction,
+          relatedTransactions,
+          {
+            stateRoot: paths.stateRoot,
+          },
+        ),
+      ]),
+    );
     const admittedParsedCleanupEvidence = new Map();
     if (topologyReady && pendingTransactionArtifactCount === 0) {
       for (const archiveScope of ["transaction", "receipt"]) {
@@ -19040,6 +19130,7 @@ function inspectLeaseTransactionEventHistoryInternal({
                   archiveScope,
                   directory,
                   selected,
+                  historicalDevicesByOperationId.get(operationId) ?? [],
                 );
                 const operationEvidence =
                   admittedParsedCleanupEvidence.get(operationId) ?? [];
@@ -19112,14 +19203,18 @@ function inspectLeaseTransactionEventHistoryInternal({
           recordDigest: candidate.record?.digest ?? null,
           recordSize: Number(candidate.record?.size ?? 0),
         });
-        const expectedDigest = leaseStateDirectoryGenerationDigest(
-          paths,
-          transaction,
-          "release",
-          privateBatchDirectoryIdentity(candidate),
-          descriptor,
-        );
-        if (candidate.name !== `${namespace}.${expectedDigest}.lease`) {
+        if (
+          !leaseStateDirectoryGenerationNameMatches(
+            candidate.name,
+            namespace,
+            paths,
+            transaction,
+            "release",
+            privateBatchDirectoryIdentity(candidate),
+            descriptor,
+            historicalDevicesByOperationId.get(transaction.operationId) ?? [],
+          )
+        ) {
           issues.push(
             `lease transaction receipt ${transaction.operationId} retired authority directory changed generation`,
           );
@@ -30678,21 +30773,37 @@ function leaseCleanupQuarantinePathMatches(
   filePath,
   cleanupOperationId,
   snapshot,
+  historicalDevices = [],
 ) {
-  if (
-    leaseCleanupQuarantinePath(filePath, cleanupOperationId, snapshot) ===
-    archivePath
-  ) {
-    return true;
+  for (const device of [
+    snapshot.identity.dev.toString(),
+    ...historicalDevices.map(String),
+  ]) {
+    const candidate = Object.freeze({
+      ...snapshot,
+      identity: identityWithDevice(snapshot.identity, device),
+    });
+    if (
+      leaseCleanupQuarantinePath(filePath, cleanupOperationId, candidate) ===
+      archivePath
+    ) {
+      return true;
+    }
+    const legacyDigest = legacyLeaseCleanupGenerationDigest(
+      filePath,
+      candidate,
+    );
+    if (
+      legacyDigest !== null &&
+      path.join(
+        leaseCleanupQuarantineDirectory(filePath),
+        `${cleanupOperationId}.${legacyDigest}.json`,
+      ) === archivePath
+    ) {
+      return true;
+    }
   }
-  const legacyDigest = legacyLeaseCleanupGenerationDigest(filePath, snapshot);
-  return (
-    legacyDigest !== null &&
-    path.join(
-      leaseCleanupQuarantineDirectory(filePath),
-      `${cleanupOperationId}.${legacyDigest}.json`,
-    ) === archivePath
-  );
+  return false;
 }
 
 function leaseAtomicArchiveSpecifications(paths, transaction, archiveScope) {
@@ -30806,31 +30917,44 @@ function leaseAtomicArchiveSpecificationMatches(
   archivePath,
   specification,
   snapshot,
+  historicalDevices = [],
 ) {
   const archiveDirectory = path.dirname(archivePath);
-  const currentDigest = leaseCleanupGenerationDigest(
-    specification.temporaryPath,
-    snapshot,
-  );
-  if (
-    path.join(
-      archiveDirectory,
-      `${specification.selectionPrefix}.${currentDigest}.json`,
-    ) === archivePath
-  ) {
-    return true;
+  for (const device of [
+    snapshot.identity.dev.toString(),
+    ...historicalDevices.map(String),
+  ]) {
+    const candidate = Object.freeze({
+      ...snapshot,
+      identity: identityWithDevice(snapshot.identity, device),
+    });
+    const currentDigest = leaseCleanupGenerationDigest(
+      specification.temporaryPath,
+      candidate,
+    );
+    if (
+      path.join(
+        archiveDirectory,
+        `${specification.selectionPrefix}.${currentDigest}.json`,
+      ) === archivePath
+    ) {
+      return true;
+    }
+    const legacyDigest = legacyLeaseCleanupGenerationDigest(
+      specification.temporaryPath,
+      candidate,
+    );
+    if (
+      legacyDigest !== null &&
+      path.join(
+        archiveDirectory,
+        `${specification.selectionPrefix}.${legacyDigest}.json`,
+      ) === archivePath
+    ) {
+      return true;
+    }
   }
-  const legacyDigest = legacyLeaseCleanupGenerationDigest(
-    specification.temporaryPath,
-    snapshot,
-  );
-  return (
-    legacyDigest !== null &&
-    path.join(
-      archiveDirectory,
-      `${specification.selectionPrefix}.${legacyDigest}.json`,
-    ) === archivePath
-  );
+  return false;
 }
 
 function leaseCleanupArchivePrefixes(paths, transaction, archiveScope) {
@@ -30851,6 +30975,7 @@ function leaseCleanupQuarantinePathMatchesTransaction(
   archivePath,
   filePath,
   snapshot,
+  historicalDevices = [],
 ) {
   if (
     leaseCleanupQuarantinePathMatches(
@@ -30858,6 +30983,7 @@ function leaseCleanupQuarantinePathMatchesTransaction(
       filePath,
       transaction.operationId,
       snapshot,
+      historicalDevices,
     )
   ) {
     return true;
@@ -30880,7 +31006,12 @@ function leaseCleanupQuarantinePathMatchesTransaction(
   ).find((candidate) => candidate.target === "wal" && candidate.kind === "WAL");
   return (
     specification !== undefined &&
-    leaseAtomicArchiveSpecificationMatches(archivePath, specification, snapshot)
+    leaseAtomicArchiveSpecificationMatches(
+      archivePath,
+      specification,
+      snapshot,
+      historicalDevices,
+    )
   );
 }
 

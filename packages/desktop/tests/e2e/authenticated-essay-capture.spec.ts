@@ -1,4 +1,9 @@
-import { test, expect } from "./fixtures/app";
+import { test, expect, resolveViteFsModulePath } from "./fixtures/app";
+
+const LIBRARY_DETAIL_RUNTIME_PATH = resolveViteFsModulePath(
+  "../../src/lib/library-core-item-detail-runtime.ts",
+  import.meta.url,
+);
 
 type EssayProvider = "substack" | "medium";
 
@@ -46,9 +51,12 @@ async function openSettingsSection(
   }
 
   const settingsDialog = page.locator(".fixed.inset-0.z-50").last();
-  const section = settingsDialog.locator("button").filter({
-    has: page.getByText(PROVIDERS[provider].label, { exact: true }),
-  }).last();
+  const section = settingsDialog
+    .locator("button")
+    .filter({
+      has: page.getByText(PROVIDERS[provider].label, { exact: true }),
+    })
+    .last();
   await expect(section).toBeVisible({ timeout: 5_000 });
   await expect(section).toContainText("Beta");
   await section.click();
@@ -72,7 +80,10 @@ async function setAuthenticated(
     store.setState({
       [`${nextProvider}Auth`]: auth,
     });
-    window.localStorage.setItem(`${nextProvider}_auth_state`, JSON.stringify(auth));
+    window.localStorage.setItem(
+      `${nextProvider}_auth_state`,
+      JSON.stringify(auth),
+    );
   }, provider);
 }
 
@@ -140,12 +151,13 @@ async function installCaptureSequence(
     sequence.delayMs = 0;
     return new Promise((resolve) => {
       setTimeout(() => {
-        const listeners = (
-          window as unknown as Record<
-            string,
-            Record<string, Array<(event: { payload: unknown }) => void>>
-          >
-        ).__TAURI_EVENT_LISTENERS__ ?? {};
+        const listeners =
+          (
+            window as unknown as Record<
+              string,
+              Record<string, Array<(event: { payload: unknown }) => void>>
+            >
+          ).__TAURI_EVENT_LISTENERS__ ?? {};
         const extractionPayload = { ...(payload as Record<string, unknown>) };
         delete extractionPayload.done;
         for (const listener of listeners[sequence.eventName] ?? []) {
@@ -172,91 +184,47 @@ async function assertImportedConnection(
   page: import("@playwright/test").Page,
   expected: {
     accountId: string;
+    authorId: string;
     itemId: string;
     personName: string;
     provider: EssayProvider;
     contentType: "article" | "post";
   },
 ): Promise<void> {
-  await page.waitForFunction(
-    ({ accountId, itemId, personName, provider, contentType }) => {
-      const store = (window as Record<string, unknown>).__FREED_STORE__ as {
-        getState: () => {
-          accounts: Record<
-            string,
-            { discoveredFrom?: string; provider?: string; externalId?: string }
-          >;
-          items: Array<{
-            globalId: string;
-            platform: string;
-            contentType: string;
-          }>;
-          persons: Record<
-            string,
-            { name?: string; relationshipStatus?: string }
-          >;
-        };
-      };
-      const state = store.getState();
-      return (
-        state.accounts[accountId]?.discoveredFrom === "follow_roster" &&
-        state.items.find((item) => item.globalId === itemId)?.platform === provider &&
-        state.items.some(
-          (item) =>
-            item.globalId === itemId &&
-            item.platform === provider &&
-            item.contentType === contentType,
-        ) &&
-        Object.values(state.persons).some(
-          (person) =>
-            person.name === personName &&
-            person.relationshipStatus === "connection",
-        )
-      );
-    },
-    expected,
-    { timeout: 15_000 },
-  );
-
-  const hasFriend = await page.evaluate((personName) => {
-    const store = (window as Record<string, unknown>).__FREED_STORE__ as {
-      getState: () => {
-        persons: Record<
-          string,
-          { name?: string; relationshipStatus?: string }
-        >;
-      };
-    };
-    return Object.values(store.getState().persons).some(
-      (person) =>
-        person.name === personName && person.relationshipStatus === "friend",
-    );
-  }, expected.personName);
-  expect(hasFriend).toBe(false);
-
-  const identityCount = await page.evaluate(
-    ({ accountId, itemId, provider }) => {
-      const store = (window as Record<string, unknown>).__FREED_STORE__ as {
-        getState: () => {
-          accounts: Record<string, { provider?: string; externalId?: string }>;
-          items: Array<{ globalId: string; author: { id: string } }>;
-        };
-      };
-      const state = store.getState();
-      const authorId = state.items.find((item) => item.globalId === itemId)?.author.id;
-      return {
-        matchingAccounts: Object.values(state.accounts).filter(
-          (account) => account.provider === provider && account.externalId === authorId,
-        ).length,
-        rosterMatchesAuthor: state.accounts[accountId]?.externalId === authorId,
-      };
-    },
-    expected,
-  );
-  expect(identityCount).toEqual({
-    matchingAccounts: 1,
-    rosterMatchesAuthor: true,
-  });
+  await expect
+    .poll(async () =>
+      page.evaluate(
+        async ({ detailPath, expected }) => {
+          const runtime = await import(detailPath);
+          const account = await runtime.readLibraryCoreAccountDetail(
+            expected.accountId,
+          );
+          const item = await runtime.readLibraryCoreItemDetail(expected.itemId);
+          const person = account?.personId
+            ? await runtime.readLibraryCorePersonDetail(account.personId)
+            : null;
+          return {
+            accountDiscoveredFrom: account?.discoveredFrom ?? null,
+            accountExternalId: account?.externalId ?? null,
+            itemAuthorId: item?.author.id ?? null,
+            itemContentType: item?.contentType ?? null,
+            itemPlatform: item?.platform ?? null,
+            personName: person?.name ?? null,
+            relationshipStatus: person?.relationshipStatus ?? null,
+          };
+        },
+        { detailPath: LIBRARY_DETAIL_RUNTIME_PATH, expected },
+      ),
+    )
+    .toEqual({
+      accountDiscoveredFrom: "follow_roster",
+      accountExternalId: expected.authorId,
+      itemAuthorId: expected.authorId,
+      itemContentType: expected.contentType,
+      itemPlatform: expected.provider,
+      personName: expected.personName,
+      relationshipStatus: "connection",
+    });
 }
 
 test("Substack and Medium are beta sources with gated login", async ({
@@ -273,9 +241,9 @@ test("Substack and Medium are beta sources with gated login", async ({
   for (const provider of ["substack", "medium"] as const) {
     await openSettingsSection(page, provider);
     await expect(page.getByTestId(`provider-status-${provider}`)).toBeVisible();
-    await expect(page.getByTestId(`provider-connect-${provider}`)).toContainText(
-      `Log in with ${PROVIDERS[provider].label}`,
-    );
+    await expect(
+      page.getByTestId(`provider-connect-${provider}`),
+    ).toContainText(`Log in with ${PROVIDERS[provider].label}`);
     await page.getByTestId(`provider-check-auth-${provider}`).last().click();
     const riskDialog = page.getByTestId(`provider-risk-dialog-${provider}`);
     await expect(riskDialog).toBeVisible({ timeout: 5_000 });
@@ -308,16 +276,18 @@ test("disconnect stays disconnected after restart", async ({ app }) => {
   for (const provider of ["substack", "medium"] as const) {
     await setAuthenticated(page, provider);
     await openSettingsSection(page, provider);
-    await expect(page.getByTestId(`provider-connect-${provider}`)).toContainText(
-      `Reconnect ${PROVIDERS[provider].label}`,
-    );
+    await expect(
+      page.getByTestId(`provider-connect-${provider}`),
+    ).toContainText(`Reconnect ${PROVIDERS[provider].label}`);
 
     await page.getByTestId(`provider-disconnect-${provider}`).click();
     await expect
       .poll(async () =>
         page.evaluate((nextProvider) => {
           const raw = window.localStorage.getItem(`${nextProvider}_auth_state`);
-          return raw ? (JSON.parse(raw) as { isAuthenticated?: boolean }).isAuthenticated : null;
+          return raw
+            ? (JSON.parse(raw) as { isAuthenticated?: boolean }).isAuthenticated
+            : null;
         }, provider),
       )
       .toBe(false);
@@ -325,9 +295,9 @@ test("disconnect stays disconnected after restart", async ({ app }) => {
     await page.reload();
     await app.waitForReady();
     await openSettingsSection(page, provider);
-    await expect(page.getByTestId(`provider-connect-${provider}`)).toContainText(
-      `Log in with ${PROVIDERS[provider].label}`,
-    );
+    await expect(
+      page.getByTestId(`provider-connect-${provider}`),
+    ).toContainText(`Log in with ${PROVIDERS[provider].label}`);
   }
 });
 
@@ -338,26 +308,44 @@ test("provider RSS essays count under Feeds as well as their provider", async ({
   await app.waitForReady();
 
   const { page } = app;
-  await page.evaluate(() => {
-    const store = (window as Record<string, unknown>).__FREED_STORE__ as {
-      setState: (partial: Record<string, unknown>) => void;
+  await page.evaluate(async () => {
+    const libraryCore = (window as Record<string, unknown>)
+      .__FREED_LIBRARY_CORE__ as {
+      importLibraryItems: (items: unknown[]) => Promise<unknown>;
     };
-    store.setState({
-      feeds: {
-        "https://letters.example/feed": {
-          url: "https://letters.example/feed",
-          title: "Letters",
-          enabled: true,
-          trackUnread: false,
+    const now = Date.now();
+    const base = {
+      platform: "substack",
+      contentType: "article",
+      capturedAt: now,
+      author: { id: "letters", handle: "letters", displayName: "Letters" },
+      content: { text: "Provider RSS essay", mediaUrls: [], mediaTypes: [] },
+      topics: [],
+      rssSource: {
+        feedUrl: "https://letters.example/feed",
+        feedTitle: "Letters",
+      },
+    };
+    await libraryCore.importLibraryItems([
+      {
+        ...base,
+        globalId: "substack:rss:letters-unread",
+        publishedAt: now,
+        userState: { hidden: false, saved: false, archived: false, tags: [] },
+      },
+      {
+        ...base,
+        globalId: "substack:rss:letters-read",
+        publishedAt: now - 1,
+        userState: {
+          hidden: false,
+          saved: false,
+          archived: false,
+          readAt: now,
+          tags: [],
         },
       },
-      feedUnreadCounts: { "https://letters.example/feed": 1 },
-      feedTotalCounts: { "https://letters.example/feed": 2 },
-      unreadCountByPlatform: { substack: 1 },
-      itemCountByPlatform: { substack: 2 },
-      totalUnreadCount: 1,
-      totalItemCount: 2,
-    });
+    ]);
   });
 
   await expect(page.getByTestId("source-counts-rss")).toHaveText("1/2");
@@ -432,6 +420,7 @@ test("Substack capture imports connections and visible activity", async ({
   ).toBeVisible({ timeout: 5_000 });
   await assertImportedConnection(page, {
     accountId: "social:substack:user-1",
+    authorId: "user-1",
     itemId: "substack:note:note-1",
     personName: "Grace Hopper",
     provider: "substack",
@@ -520,17 +509,15 @@ test("Medium capture imports connections and linked essays", async ({
   await page.getByTestId("provider-sync-action-medium").click();
   await assertImportedConnection(page, {
     accountId: "social:medium:user-2",
-    itemId:
-      "medium:story:https%3A%2F%2Fmedium.com%2F%40ada%2Fstory-1",
+    authorId: "user-2",
+    itemId: "medium:story:https%3A%2F%2Fmedium.com%2F%40ada%2Fstory-1",
     personName: "Ada Lovelace",
     provider: "medium",
     contentType: "article",
   });
 
   const commands = (await ipc.invocations()).map((call) => call.cmd);
-  expect(commands).toEqual(
-    expect.arrayContaining(PROVIDERS.medium.commands),
-  );
+  expect(commands).toEqual(expect.arrayContaining(PROVIDERS.medium.commands));
   await page.getByTestId("settings-close-button-sidebar").click();
   await page.getByTestId("source-row-medium").click();
   await expect(page.getByText("Medium story")).toBeVisible({

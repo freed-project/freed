@@ -1,12 +1,19 @@
 /** @vitest-environment jsdom */
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CareRating, careLevelLabel } from "./CareRating.js";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 describe("care rating", () => {
+  beforeEach(() => {
+    vi.stubGlobal("ResizeObserver", class {
+      observe() {}
+      disconnect() {}
+    });
+  });
+  afterEach(() => vi.unstubAllGlobals());
   it("uses the confirmed five-level category mapping", () => {
     expect([1, 2, 3, 4, 5].map(careLevelLabel)).toEqual([
       "Connection",
@@ -17,7 +24,7 @@ describe("care rating", () => {
     ]);
   });
 
-  it("commits the exact clicked level, blocks duplicate writes and reports failures", async () => {
+  it("commits the released slider level, blocks duplicate writes and reports failures", async () => {
     const container = document.createElement("div");
     document.body.append(container);
     const root = createRoot(container);
@@ -32,26 +39,24 @@ describe("care rating", () => {
       await act(async () =>
         root.render(<CareRating level={5} onChange={onChange} />),
       );
-      const button = container.querySelectorAll("button")[1]!;
-      expect(button.getAttribute("aria-label")).toBe(
-        "Set Connection: 2 of 5 stars",
-      );
+      const slider = container.querySelector("input")!;
+      expect(slider.type).toBe("range");
+      expect([slider.min, slider.max, slider.step]).toEqual(["1", "5", "1"]);
+      expect(slider.getAttribute("aria-valuetext")).toBe("Fam, position 5 of 5");
       await act(async () => {
-        button.click();
-        button.click();
+        slider.value = "2";
+        slider.dispatchEvent(new Event("pointerup", { bubbles: true }));
+        slider.dispatchEvent(new Event("pointerup", { bubbles: true }));
       });
       expect(onChange).toHaveBeenCalledExactlyOnceWith(2);
-      expect(button.disabled).toBe(true);
+      expect(slider.disabled).toBe(true);
       await act(async () => reject(new Error("unavailable")));
       expect(container.querySelector('[role="alert"]')?.textContent).toContain(
         "Could not save",
       );
-      expect(button.disabled).toBe(false);
-      expect(
-        container
-          .querySelector('[aria-pressed="true"]')
-          ?.getAttribute("aria-label"),
-      ).toBe("Set Fam: 5 of 5 stars");
+      expect(slider.disabled).toBe(false);
+      expect(slider.value).toBe("5");
+      expect(slider.getAttribute("aria-valuetext")).toBe("Fam, position 5 of 5");
     } finally {
       await act(async () => root.unmount());
       container.remove();
