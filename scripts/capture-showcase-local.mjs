@@ -131,12 +131,21 @@ async function waitForVisibleImages(page) {
 }
 
 await mkdir(outputDirectory, { recursive: true });
-// Headless defaults can hide WebGPU and silently select the reduced WebGL path.
-// Metal exposes the hardware adapter on macOS; other hosts must still pass the
-// renderer proof below before a Friends frame can become a reviewed artifact.
+// Use full Chromium's headless compositor. The separate Linux headless shell
+// cannot back the shared WebGPU canvas image and loses the device on selection.
+// Linux CI has no hardware adapter, so keep ANGLE and WebGPU on SwiftShader's
+// Vulkan path. Every host must still pass the renderer and star-count proof.
 const browser = await chromium.launch({
   headless: true,
-  args: ['--enable-unsafe-webgpu', ...(process.platform === 'darwin' ? ['--use-angle=metal'] : [])],
+  channel: "chromium",
+  args: [
+    "--enable-unsafe-webgpu",
+    ...(process.platform === "darwin" ? ["--use-angle=metal"] : []),
+    ...(process.platform === "linux" ? [
+      "--enable-features=Vulkan", "--use-angle=vulkan", "--use-vulkan=swiftshader",
+      "--use-webgpu-adapter=swiftshader", "--disable-vulkan-surface",
+    ] : []),
+  ],
 });
 const context = await browser.newContext({
   deviceScaleFactor: 2,
