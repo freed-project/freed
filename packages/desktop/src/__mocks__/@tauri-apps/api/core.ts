@@ -670,7 +670,7 @@ tauriInternals.invoke = async <T = unknown>(
 };
 
 export function isTauri(): boolean {
-  return false;
+  return (window as unknown as Record<string, unknown>).__TAURI_MOCK_NATIVE__ === true;
 }
 
 export function convertFileSrc(filePath: string, protocol = "asset"): string {
