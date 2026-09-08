@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { Tooltip } from "../Tooltip.js";
 
 export type CareLevel = 1 | 2 | 3 | 4 | 5;
 
@@ -37,6 +38,7 @@ export function CareRating({ level, onChange }: {
   };
   return (
     <div className="w-full min-w-0" onClick={event => event.stopPropagation()} onKeyDown={event => event.stopPropagation()}>
+      <Tooltip label="Importance in My Life" side="top" className="block w-full">
       <div className="friend-closeness-control" style={{
         "--care-handle-width": handleWidth ? `${handleWidth}px` : "7rem",
         "--care-position": ((preview ?? level) - 1) / 4,
@@ -58,6 +60,7 @@ export function CareRating({ level, onChange }: {
         onBlur={event => void commit(Number(event.currentTarget.value) as CareLevel)}
       />
       </div>
+      </Tooltip>
       {error && <p role="alert" className="text-xs theme-feedback-text-warning">Could not save the relationship setting. Please try again.</p>}
     </div>
   );

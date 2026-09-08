@@ -15,12 +15,14 @@ vi.mock("../../context/PlatformContext.js", () => ({ usePlatform: () => ({
 
 // Tier 1: catches inert activity rows, crossed hit targets, and lost reader scope.
 it("opens the same post in unified or account-scoped reader without nested buttons", async () => {
+  vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
   const item = { globalId: "post-1", platform: "rss", author: { id: "author-1", displayName: "Romy" },
-    publishedAt: Date.now(), content: { text: "Field notes" }, rssSource: { feedUrl: "https://example.test/feed" } } as FeedItem;
+    publishedAt: Date.now(), content: { text: "Field notes", mediaUrls: [], mediaTypes: [] },
+    userState: { tags: [] }, rssSource: { feedUrl: "https://example.test/feed" } } as FeedItem;
   const host = document.createElement("div");
   const root = createRoot(host);
   await act(async () => root.render(<RecentActivityCard item={item} />));
-  const buttons = host.querySelectorAll("button");
+  const buttons = host.querySelectorAll<HTMLElement>('button, [role="button"]');
   expect(buttons).toHaveLength(2);
   expect(host.querySelector("button button")).toBeNull();
   await act(async () => buttons[0]!.click());
@@ -35,4 +37,5 @@ it("opens the same post in unified or account-scoped reader without nested butto
   expect(opened).toHaveBeenCalledWith(item);
   expect(actions.markAsRead).not.toHaveBeenCalled();
   await act(async () => root.unmount());
+  vi.unstubAllGlobals();
 });
