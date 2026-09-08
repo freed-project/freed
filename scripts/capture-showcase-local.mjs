@@ -142,7 +142,7 @@ const browser = await chromium.launch({
     "--enable-unsafe-webgpu",
     ...(process.platform === "darwin" ? ["--use-angle=metal"] : []),
     ...(process.platform === "linux" ? [
-      "--enable-features=Vulkan", "--use-angle=vulkan", "--use-vulkan=swiftshader",
+      "--enable-features=Vulkan", "--use-gl=angle", "--use-angle=swiftshader", "--use-vulkan=swiftshader",
       "--use-webgpu-adapter=swiftshader", "--disable-vulkan-surface",
     ] : []),
   ],
