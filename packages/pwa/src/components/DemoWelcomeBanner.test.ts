@@ -191,6 +191,7 @@ describe("DemoWelcomeBanner", () => {
     vi.stubGlobal("innerWidth", 1024);
     await act(async () => window.dispatchEvent(new Event("resize")));
     const departingTab = container.querySelector<HTMLButtonElement>('[data-testid="demo-welcome-tab"]')!;
+    expect(departingTab.hasAttribute("inert")).toBe(true);
     expect(departingTab.style.opacity).toBe("0");
     expect(departingTab.style.transform).toContain("rotate(-90deg)");
     await act(async () => { await vi.advanceTimersByTimeAsync(599); });

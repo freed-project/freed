@@ -357,7 +357,7 @@ function FieldGuideWelcome({
         onPointerUp={endTabDrag}
         onPointerCancel={endTabDrag}
         onLostPointerCapture={endTabDrag}
-        inert={!minimized}
+        inert={!tabVisible}
         className="demo-banner-morph demo-tab-restore fixed bottom-0 left-1/2 z-[139] w-[min(18rem,calc(100vw-1rem))] cursor-pointer border-0 bg-transparent p-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--theme-accent-primary)]"
         style={{
           width: "max-content",
