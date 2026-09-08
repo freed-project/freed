@@ -1,17 +1,18 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import { generateSampleLibraryData } from "@freed/shared";
+import { generateDemoLibraryData } from "@freed/shared";
 import { FeedItem } from "../../../ui/src/components/feed/FeedItem";
 import { PlatformProvider, type PlatformConfig } from "../../../ui/src/context/PlatformContext";
 
 /** Browser-only rendering proof. Never imports or mutates the user's Library. */
 export function mountSampleThumbnails(feedMediaPreviews: "inline" | "reader-only") {
-  const sample = generateSampleLibraryData({ batchId: "thumbnail-proof", seed: 17 });
+  const sample = generateDemoLibraryData({ batchId: "thumbnail-proof", generatedAt: Date.now(), presentationSeed: 17 });
   const selected = [...new Map(sample.items
     .filter((item) => ["post", "story"].includes(item.contentType))
     .map((item) => [`${item.platform}:${item.contentType}`, item])).values()];
   const items = selected.map((item, index) => ({
     ...item,
+    sampleDataFingerprint: undefined,
     publishedAt: Date.now() - index * 1000,
     author: { ...item.author, avatarUrl: undefined },
     userState: { hidden: false, saved: false, archived: false, tags: [] },
