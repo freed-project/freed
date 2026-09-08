@@ -2,13 +2,17 @@
   "channel": "production",
   "dayKey": "26.9.8",
   "date": "2026-09-08",
-  "preferredDeck": null,
+  "preferredDeck": "Unified feed cards, clearer Friends views, and a welcoming mobile demo.",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
     "Demote internal cleanup unless it clearly changes the shipped product."
   ],
-  "pinnedHighlights": [],
+  "pinnedHighlights": [
+    "Explore the 500-post demo with a full-screen mobile welcome, editable session settings, and character-specific feeds.",
+    "Select friends consistently across the galaxy and sidebar, adjust connection strength with a five-stop slider, and open provider-filtered reading lists.",
+    "Read unified story and post cards with consistent spacing, textured image fades, interface zoom, and paused YouTube playback."
+  ],
   "editorialNotes": [],
-  "updatedAt": "2026-09-08T10:21:37.673Z"
+  "updatedAt": "2026-09-08T21:10:35.524Z"
 }
