@@ -1,0 +1,62 @@
+{
+  "tag": "v26.9.800",
+  "version": "26.9.800",
+  "channel": "production",
+  "dayKey": "26.9.8",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-09-08T10:21:37.673Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "production",
+    "previousPublishedTag": "v26.9.602",
+    "previousPublishedDayTag": "v26.9.602",
+    "compareRef": "HEAD",
+    "productCommitSha": "834c10377c9de0a64b36dfcd6ea56cb7a6cba858",
+    "promotedDevCommitSha": "a54f2ceb70b12e48917d19947bc2550d11daf8e7",
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "production",
+        "previousPublishedTag": "v26.9.602",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "c7b6cc4315df47e202cca3c2ab27feff4d1bddc6",
+        "toInclusiveProductCommitSha": "834c10377c9de0a64b36dfcd6ea56cb7a6cba858"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:709197038cc687ff0889d7e28497c08704b0a1f7096f4348479ea36bf5896ccb",
+        "currentDigest": "sha256:709197038cc687ff0889d7e28497c08704b0a1f7096f4348479ea36bf5896ccb"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:bdc8c9c00ef24635a52791fa9dcd3a1a5cf779f3dc8b6898a1fe383af3936d69",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.9.800"
+    ],
+    "relatedBuildTags": [
+      "v26.9.800"
+    ],
+    "prNumbers": [
+      1893
+    ],
+    "commitSubjects": [
+      "chore: promote dev into main for production release (#1893)"
+    ]
+  },
+  "release": {
+    "deck": "Promote dev into main for production release",
+    "features": [],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.9.800\n\nPromote dev into main for production release\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
