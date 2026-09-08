@@ -68,8 +68,11 @@ checks, including the React Profiler case. External benchmark servers must use `
 production render-mode marker; a development preview fails the benchmark
 precondition. No performance limits are relaxed by this routing.
 
-Mock Library transactions retain their existing synchronous reload snapshots.
-Native SQLite commit acknowledgments and durability are unchanged.
+Mock Library writes are serialized and save the same complete reload snapshot
+before acknowledging a mutation. Encoding yields between bounded work slices so
+full-fixture serialization does not monopolize the renderer during scrolling.
+No snapshot is deferred until navigation. Native SQLite commit acknowledgments
+and durability are unchanged.
 
 ## Test-specific state and assertions
 
