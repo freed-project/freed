@@ -165,14 +165,38 @@ export function tauriInitScript() {
         state: 'pending',
       };
     }
+    function decodeFractionalNumbers(value) {
+      if (value && value.codec === 'ieee754_binary64_hex_v1' && typeof value.bits === 'string') {
+        return sqliteFiniteNumber(value);
+      }
+      if (Array.isArray(value)) return value.map(decodeFractionalNumbers);
+      if (value && typeof value === 'object') {
+        var decoded = {};
+        Object.keys(value).forEach(function(key) { decoded[key] = decodeFractionalNumbers(value[key]); });
+        return decoded;
+      }
+      return value;
+    }
+    function mergePreferencePatch(current, patch) {
+      var result = Object.assign({}, current || {});
+      Object.keys(patch).forEach(function(key) {
+        var value = patch[key];
+        result[key] = value && typeof value === 'object' && !Array.isArray(value)
+          ? mergePreferencePatch(result[key], value)
+          : value;
+      });
+      return result;
+    }
     function applyNormalizedEnvelope(envelope) {
       var state = sqliteState();
-      var payload = envelope.payload || {};
+      var payload = decodeFractionalNumbers(envelope.payload || {});
       var item = state.items[envelope.entity_id];
       var user = item && (item.userState || (item.userState = {}));
       switch (envelope.operation_type) {
         case 'feed_item_capture_upsert':
-          state.items[envelope.entity_id] = JSON.parse(JSON.stringify(payload.item));
+          var captured = JSON.parse(JSON.stringify(payload.item));
+          if (user) captured.userState = Object.assign({}, captured.userState, user);
+          state.items[envelope.entity_id] = captured;
           break;
         case 'feed_item_annotations_replace':
           if (user) {
@@ -291,6 +315,15 @@ export function tauriInitScript() {
         case 'person_upsert':
           state.persons[envelope.entity_id] = JSON.parse(JSON.stringify(payload.person));
           break;
+        case 'friend_replace':
+          state.persons[envelope.entity_id] = JSON.parse(JSON.stringify(payload.person));
+          Object.values(state.accounts).forEach(function(account) {
+            if (account.personId === envelope.entity_id) delete account.personId;
+          });
+          payload.accounts.forEach(function(account) {
+            state.accounts[account.id] = JSON.parse(JSON.stringify(account));
+          });
+          break;
         case 'person_reach_out_append':
           if (state.persons[envelope.entity_id]) {
             var person = state.persons[envelope.entity_id];
@@ -322,7 +355,7 @@ export function tauriInitScript() {
           delete state.accounts[envelope.entity_id];
           break;
         case 'preferences_leaf_assignment':
-          state.preferences = Object.assign({}, state.preferences || {}, payload.updates || {});
+          state.preferences = mergePreferencePatch(state.preferences, payload.updates || {});
           break;
       }
     }
@@ -398,7 +431,8 @@ export function tauriInitScript() {
         if (!!user.archived !== !!filter.archivedOnly) return false;
         if (!filter.showHidden && !!user.hidden) return false;
         if (filter.savedOnly && !user.saved) return false;
-        if (filter.platform && item.platform !== filter.platform) return false;
+        if (filter.platform && item.platform !== filter.platform &&
+            !(filter.platform === 'rss' && item.rssSource && item.rssSource.feedUrl)) return false;
         if (filter.authorId && (!item.author || item.author.id !== filter.authorId)) return false;
         if (filter.feedUrl && (!item.rssSource || item.rssSource.feedUrl !== filter.feedUrl)) return false;
         var tags = user.tags || [];
@@ -977,6 +1011,12 @@ export function tauriInitScript() {
           source: source,
         };
       }
+      if (request.queryId === 'rss_item_summary_v1') {
+        var rssItems = Object.values(state.items).filter(function(item) {
+          return item && !item.__deleted && (item.platform === 'rss' || item.rssSource && item.rssSource.feedUrl);
+        });
+        return { queryId: request.queryId, schemaVersion: 1, source: source, totalCount: rssItems.length, unreadCount: rssItems.filter(function(item) { return sqliteItemState(item).readAt == null; }).length };
+      }
       if (request.queryId === 'preferences_snapshot_v1') {
         return {
           queryId: request.queryId,
@@ -1462,6 +1502,20 @@ export function tauriInitScript() {
           source: source,
         };
       }
+      if (request.queryId === 'item_annotations_v1') {
+        var annotatedItem = state.items[request.globalId];
+        var annotations = annotatedItem && !annotatedItem.__deleted ? sqliteItemState(annotatedItem) : {};
+        return {
+          globalId: request.globalId,
+          highlights: (annotations.highlights || []).map(function(highlight) {
+            return { createdAt: highlight.createdAt, note: highlight.note == null ? null : highlight.note, text: highlight.text == null ? null : highlight.text, textBlobDigest: highlight.textBlobDigest || null };
+          }),
+          queryId: request.queryId,
+          schemaVersion: 1,
+          source: source,
+          tags: (annotations.tags || []).slice().sort(),
+        };
+      }
       if (request.queryId === 'item_detail_v1') {
         var item = state.items[request.globalId];
         return {
@@ -1587,6 +1641,29 @@ export function tauriInitScript() {
         return null;
       }
       var candidates = sqliteQueryItems(request);
+      if (request.queryId === 'saved_feed_page_v2') {
+        source.transitionSequence = source.projectionRevision;
+        candidates = candidates.filter(function(item) { return !!sqliteItemState(item).saved; });
+        candidates.sort(function(left, right) {
+          var leftUser = sqliteItemState(left);
+          var rightUser = sqliteItemState(right);
+          var order = 0;
+          if (request.sortMode === 'date_saved') {
+            order = (rightUser.savedAt == null ? (rightUser.readAt == null ? right.capturedAt : rightUser.readAt) : rightUser.savedAt) -
+              (leftUser.savedAt == null ? (leftUser.readAt == null ? left.capturedAt : leftUser.readAt) : leftUser.savedAt);
+          } else if (request.sortMode === 'shortest_read') {
+            var leftTime = left.preservedContent && left.preservedContent.readingTime;
+            var rightTime = right.preservedContent && right.preservedContent.readingTime;
+            order = (Number.isSafeInteger(leftTime) && leftTime >= 0 ? leftTime : Infinity) -
+              (Number.isSafeInteger(rightTime) && rightTime >= 0 ? rightTime : Infinity);
+          } else {
+            if (request.sortMode === 'recommended') order = Math.round(right.priority || 0) - Math.round(left.priority || 0);
+            order = order || (right.publishedAt == null ? right.capturedAt : right.publishedAt) -
+              (left.publishedAt == null ? left.capturedAt : left.publishedAt);
+          }
+          return order || (left.globalId < right.globalId ? -1 : left.globalId > right.globalId ? 1 : 0);
+        });
+      }
       var limit = request.limit || 128;
       var startIndex = 0;
       var endIndex = Math.min(candidates.length, limit);

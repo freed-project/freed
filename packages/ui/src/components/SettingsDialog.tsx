@@ -1228,6 +1228,11 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     };
 
     const scheduleActiveSectionUpdate = () => {
+      // Preserve the current offset before a resize can restore the anchor.
+      // Only the navigation highlight waits for scrolling to settle.
+      if (!isScrollingProgrammatically.current) {
+        updateScrollAnchorFromPosition();
+      }
       suppressSettingsScrollportDescendantsDuringScroll();
       clearTimeout(scrollIdleTimer);
       scrollIdleTimer = setTimeout(() => {

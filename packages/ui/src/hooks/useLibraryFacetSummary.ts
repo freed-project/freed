@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { LibraryCoreRssItemSummaryResponseV1 } from "@freed/shared/library-core";
 import {
   usePlatform,
   type LibraryFacetSummary,
@@ -22,6 +23,21 @@ interface VersionedFacetSummary {
 }
 
 let facetCache: CachedFacetSummary | null = null;
+
+/** Count RSS-backed items without losing their original provider attribution. */
+export function useLibraryRssItemSummary(sourceVersion: number): LibraryCoreRssItemSummaryResponseV1 | null {
+  const { queryLibraryCore } = usePlatform();
+  const [result, setResult] = useState<{ version: number; reader: typeof queryLibraryCore; summary: LibraryCoreRssItemSummaryResponseV1 } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    if (!queryLibraryCore) return;
+    void queryLibraryCore({ queryId: "rss_item_summary_v1", schemaVersion: 1 })
+      .then(summary => { if (!cancelled) setResult({ version: sourceVersion, reader: queryLibraryCore, summary }); })
+      .catch(() => { if (!cancelled) setResult(null); });
+    return () => { cancelled = true; };
+  }, [queryLibraryCore, sourceVersion]);
+  return result?.version === sourceVersion && result.reader === queryLibraryCore ? result.summary : null;
+}
 const EMPTY_FACET_SUMMARY: LibraryFacetSummary = Object.freeze({
   archivedCount: 0,
   archivableCount: 0,

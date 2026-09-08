@@ -137,7 +137,7 @@ test("settings keeps the next desktop section out of view for short sections", a
     await app.goto();
     await app.waitForReady();
 
-    await openSettingsTo(page, "sync", "Sync");
+    await openSettingsTo(page, "sync", "Cloud Sync");
     await expectHeadingTopNear(page, "sync", 20);
     await expectSectionFillsScrollport(page, "sync");
     await expectSectionHeadingBelowScrollport(page, "saved");

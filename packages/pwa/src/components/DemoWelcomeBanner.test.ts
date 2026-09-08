@@ -189,15 +189,21 @@ describe("DemoWelcomeBanner", () => {
       await vi.advanceTimersByTimeAsync(700);
     });
     vi.stubGlobal("innerWidth", 1024);
-    const leavingTab = container.querySelector<HTMLButtonElement>('[data-testid="demo-welcome-tab"]')!;
     await act(async () => window.dispatchEvent(new Event("resize")));
-    expect(leavingTab.hasAttribute("inert")).toBe(true);
-    expect(leavingTab.style.transform).toContain("rotate(-90deg)");
-    await act(async () => { await vi.advanceTimersByTimeAsync(700); });
+    const departingTab = container.querySelector<HTMLButtonElement>('[data-testid="demo-welcome-tab"]')!;
+    expect(departingTab.hasAttribute("inert")).toBe(true);
+    expect(departingTab.style.opacity).toBe("0");
+    expect(departingTab.style.transform).toContain("rotate(-90deg)");
+    await act(async () => { await vi.advanceTimersByTimeAsync(599); });
+    expect(container.querySelector('[data-testid="demo-welcome-tab"]')).toBe(departingTab);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
     const horizontalTab = container.querySelector<HTMLButtonElement>('[data-testid="demo-welcome-tab"]')!;
-    expect(horizontalTab).not.toBe(leavingTab);
+    expect(horizontalTab).not.toBe(departingTab);
+    expect(horizontalTab.style.opacity).toBe("0");
     expect(horizontalTab.style.transform).not.toContain("rotate");
     expect(horizontalTab.style.top).toBe("");
+    await act(async () => { await vi.advanceTimersByTimeAsync(40); });
+    expect(horizontalTab.style.opacity).toBe("1");
     await act(async () => root.unmount());
   });
 

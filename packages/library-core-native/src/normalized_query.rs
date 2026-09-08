@@ -460,6 +460,8 @@ pub enum NormalizedQueryRequestV1 {
     FriendCandidateReview(NormalizedFriendCandidateReviewRequestV1),
     FriendsDirectoryPage(NormalizedFriendsDirectoryPageRequestV1),
     ItemDetail(NormalizedItemDetailRequestV1),
+    ItemAnnotations(NormalizedItemDetailRequestV1),
+    RssItemSummary(NormalizedFacetSummaryRequestV1),
     ItemReaderBody(NormalizedItemReaderBodyRequestV1),
     ItemScan(NormalizedItemScanRequestV1),
     ContentFetchPage(NormalizedContentFetchPageRequestV1),
@@ -993,6 +995,36 @@ pub struct NormalizedItemDetailResponseV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedItemAnnotationV1 {
+    pub created_at: i64,
+    pub note: Option<String>,
+    pub text: Option<String>,
+    pub text_blob_digest: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedItemAnnotationsResponseV1 {
+    pub global_id: String,
+    pub highlights: Vec<NormalizedItemAnnotationV1>,
+    pub query_id: String,
+    pub schema_version: u32,
+    pub source: NormalizedFeedPageSourceV1,
+    pub tags: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedRssItemSummaryResponseV1 {
+    pub query_id: String,
+    pub schema_version: u32,
+    pub source: NormalizedFeedPageSourceV1,
+    pub total_count: i64,
+    pub unread_count: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedPersonReachOutV1 {
     pub channel: Option<String>,
     pub logged_at: i64,
@@ -1399,6 +1431,8 @@ pub enum NormalizedQueryResponseV1 {
     FriendCandidateReview(NormalizedFriendCandidateReviewResponseV1),
     FriendsDirectoryPage(NormalizedFriendsDirectoryPageResponseV1),
     ItemDetail(Box<NormalizedItemDetailResponseV1>),
+    ItemAnnotations(NormalizedItemAnnotationsResponseV1),
+    RssItemSummary(NormalizedRssItemSummaryResponseV1),
     ItemReaderBody(NormalizedItemReaderBodyResponseV1),
     ItemScan(NormalizedItemScanResponseV1),
     ContentFetchPage(NormalizedContentFetchPageResponseV1),
@@ -6178,6 +6212,130 @@ fn query_rss_feed_page(
     Ok(response)
 }
 
+fn query_rss_item_summary(
+    connection: &mut Connection,
+    request: NormalizedFacetSummaryRequestV1,
+) -> Result<NormalizedRssItemSummaryResponseV1, NormalizedSqliteError> {
+    if request.schema_version != 1 {
+        return Err(invalid("normalized RSS summary version is invalid"));
+    }
+    let program = SQLITE_QUERY_PROGRAMS
+        .iter()
+        .find(|program| program.query_id == "rss_item_summary_v1")
+        .ok_or(invalid("normalized RSS summary program is missing"))?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    let (generation_id, source_revision) = query_source(&transaction)?;
+    let (total_count, unread_count): (i64, i64) =
+        transaction.query_row(program.sql, [], |row| {
+            Ok((row.get("totalCount")?, row.get("unreadCount")?))
+        })?;
+    if !valid_safe_integer(total_count)
+        || !valid_safe_integer(unread_count)
+        || unread_count > total_count
+    {
+        return Err(invalid("normalized RSS summary counts are invalid"));
+    }
+    transaction.commit()?;
+    Ok(NormalizedRssItemSummaryResponseV1 {
+        query_id: "rss_item_summary_v1".to_owned(),
+        schema_version: 1,
+        source: NormalizedFeedPageSourceV1 {
+            generation_id,
+            projection_revision: source_revision,
+            transition_sequence: source_revision,
+        },
+        total_count,
+        unread_count,
+    })
+}
+
+fn query_item_annotations(
+    connection: &mut Connection,
+    request: NormalizedItemDetailRequestV1,
+) -> Result<NormalizedItemAnnotationsResponseV1, NormalizedSqliteError> {
+    if request.schema_version != 1
+        || request.global_id.is_empty()
+        || request.global_id.len() > 2_048
+    {
+        return Err(invalid("normalized item annotations identity is invalid"));
+    }
+    let program = SQLITE_QUERY_PROGRAMS
+        .iter()
+        .find(|program| program.query_id == "item_annotations_v1")
+        .ok_or(invalid("normalized item annotations program is missing"))?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    let (generation_id, source_revision) = query_source(&transaction)?;
+    let highlights = transaction
+        .prepare(program.sql)?
+        .query_map(params![request.global_id], |row| {
+            Ok(NormalizedItemAnnotationV1 {
+                created_at: row.get("createdAt")?,
+                note: row.get("note")?,
+                text: row.get("text")?,
+                text_blob_digest: row.get("textBlobDigest")?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    let tags_program = program
+        .variants
+        .iter()
+        .find(|variant| variant.variant_id == "tags")
+        .ok_or(invalid(
+            "normalized item annotation tags program is missing",
+        ))?;
+    let tags = transaction
+        .prepare(tags_program.sql)?
+        .query_map(params![request.global_id], |row| row.get::<_, String>(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+    if highlights.len() > 64
+        || tags.len() > 64
+        || tags.iter().any(|tag| tag.is_empty() || tag.len() > 1_024)
+        || highlights.iter().any(|highlight| {
+            !valid_safe_integer(highlight.created_at)
+                || highlight
+                    .note
+                    .as_ref()
+                    .is_some_and(|note| note.len() > 8_192)
+                || highlight
+                    .text
+                    .as_ref()
+                    .is_some_and(|text| text.is_empty() || text.len() > 65_536)
+                || highlight.text.is_some() == highlight.text_blob_digest.is_some()
+                || highlight.text_blob_digest.as_ref().is_some_and(|digest| {
+                    digest.len() != 64
+                        || !digest
+                            .bytes()
+                            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+                })
+        })
+    {
+        return Err(invalid("normalized item annotations exceed their bounds"));
+    }
+    let response = NormalizedItemAnnotationsResponseV1 {
+        global_id: request.global_id,
+        highlights,
+        query_id: "item_annotations_v1".to_owned(),
+        schema_version: 1,
+        source: NormalizedFeedPageSourceV1 {
+            generation_id,
+            projection_revision: source_revision,
+            transition_sequence: source_revision,
+        },
+        tags,
+    };
+    if serde_json::to_vec(&response)
+        .map_err(|_| invalid("normalized annotations encoding failed"))?
+        .len()
+        > 1_048_576
+    {
+        return Err(invalid(
+            "normalized item annotations exceed their byte bound",
+        ));
+    }
+    transaction.commit()?;
+    Ok(response)
+}
+
 fn query_item_detail(
     connection: &mut Connection,
     request: NormalizedItemDetailRequestV1,
@@ -6464,6 +6622,14 @@ pub fn query_normalized_v1(
         NormalizedQueryRequestV1::ItemDetail(request) => Ok(NormalizedQueryResponseV1::ItemDetail(
             Box::new(query_item_detail(connection, request)?),
         )),
+        NormalizedQueryRequestV1::ItemAnnotations(request) => {
+            Ok(NormalizedQueryResponseV1::ItemAnnotations(
+                query_item_annotations(connection, request)?,
+            ))
+        }
+        NormalizedQueryRequestV1::RssItemSummary(request) => Ok(
+            NormalizedQueryResponseV1::RssItemSummary(query_rss_item_summary(connection, request)?),
+        ),
         NormalizedQueryRequestV1::ItemReaderBody(request) => Ok(
             NormalizedQueryResponseV1::ItemReaderBody(query_item_reader_body(connection, request)?),
         ),
@@ -6618,6 +6784,8 @@ pub fn query_normalized_json_v1(
             )
         }
         "item_detail_v1" => decode_request!(NormalizedItemDetailRequestV1, ItemDetail),
+        "item_annotations_v1" => decode_request!(NormalizedItemDetailRequestV1, ItemAnnotations),
+        "rss_item_summary_v1" => decode_request!(NormalizedFacetSummaryRequestV1, RssItemSummary),
         "item_reader_body_v1" => {
             decode_request!(NormalizedItemReaderBodyRequestV1, ItemReaderBody)
         }
@@ -6698,6 +6866,8 @@ pub fn query_normalized_json_v1(
         NormalizedQueryResponseV1::FriendCandidateReview(response) => encode_response!(response),
         NormalizedQueryResponseV1::FriendsDirectoryPage(response) => encode_response!(response),
         NormalizedQueryResponseV1::ItemDetail(response) => encode_response!(response),
+        NormalizedQueryResponseV1::ItemAnnotations(response) => encode_response!(response),
+        NormalizedQueryResponseV1::RssItemSummary(response) => encode_response!(response),
         NormalizedQueryResponseV1::ItemReaderBody(response) => encode_response!(response),
         NormalizedQueryResponseV1::ItemScan(response) => encode_response!(response),
         NormalizedQueryResponseV1::ContentFetchPage(response) => encode_response!(response),
@@ -8782,6 +8952,64 @@ mod tests {
         assert!(!serde_json::to_string(&item)
             .expect("json")
             .contains("preservedText"));
+    }
+
+    #[test]
+    fn native_annotations_and_rss_summary_preserve_selected_item_state() {
+        let mut connection = Connection::open_in_memory().expect("database");
+        install_normalized_schema_v1(&connection).expect("schema");
+        connection.execute_batch(&format!(
+            "INSERT INTO library_meta (singleton_id, library_id, schema_version, authority_epoch, source_revision, updated_at)
+             VALUES (1, '{}', 1, 'epoch-1', 7, 1000);
+             INSERT INTO library_materialization_generation SELECT 1, library_id FROM library_meta;
+             UPDATE library_change_state SET revision = 7 WHERE singleton_id = 1;
+             INSERT INTO library_feed_items (global_id, platform, content_type, captured_at, published_at, author_id, author_handle, author_display_name, hidden, saved, archived, updated_at, rss_feed_url, read_at)
+             VALUES ('rss-1', 'rss', 'article', 100, 100, 'a', 'a', 'Ada', 0, 0, 0, 100, NULL, NULL),
+                    ('rss-2', 'rss', 'article', 100, 100, 'a', 'a', 'Ada', 0, 0, 0, 100, 'https://example.com/feed', 100),
+                    ('substack-1', 'substack', 'article', 100, 100, 'a', 'a', 'Ada', 0, 0, 0, 100, 'https://example.com/feed', NULL),
+                    ('x-1', 'x', 'post', 100, 100, 'a', 'a', 'Ada', 0, 0, 0, 100, NULL, NULL);
+             INSERT INTO library_feed_item_tags (global_id, tag) VALUES ('rss-1', 'favorite');
+             INSERT INTO library_feed_item_highlights (global_id, ordinal, created_at, note, text_value, text_blob_digest)
+             VALUES ('rss-1', 0, 123, 'Keep this', 'Quoted text', NULL);", "a".repeat(64))).expect("fixture");
+        let summary = query_rss_item_summary(
+            &mut connection,
+            NormalizedFacetSummaryRequestV1 { schema_version: 1 },
+        )
+        .expect("RSS summary");
+        assert_eq!((summary.total_count, summary.unread_count), (3, 2));
+        assert_eq!(summary.source.projection_revision, 7);
+        let request = NormalizedItemDetailRequestV1 {
+            global_id: "rss-1".to_owned(),
+            schema_version: 1,
+        };
+        let annotations =
+            query_item_annotations(&mut connection, request.clone()).expect("annotations");
+        assert_eq!(annotations.tags, vec!["favorite"]);
+        assert_eq!(annotations.highlights[0].note.as_deref(), Some("Keep this"));
+        assert_eq!(
+            annotations.highlights[0].text.as_deref(),
+            Some("Quoted text")
+        );
+        assert_eq!(annotations.source.projection_revision, 7);
+        connection
+            .execute(
+                "UPDATE library_feed_item_highlights SET note = ?1",
+                ["x".repeat(8193)],
+            )
+            .expect("oversized fixture");
+        assert!(query_item_annotations(&mut connection, request).is_err());
+        connection
+            .execute(
+                "DELETE FROM library_feed_items WHERE global_id = 'substack-1'",
+                [],
+            )
+            .expect("delete");
+        let summary = query_rss_item_summary(
+            &mut connection,
+            NormalizedFacetSummaryRequestV1 { schema_version: 1 },
+        )
+        .expect("updated summary");
+        assert_eq!((summary.total_count, summary.unread_count), (2, 1));
     }
 
     #[test]

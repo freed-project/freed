@@ -15,6 +15,7 @@ const QUERY_SOURCE = Object.freeze({
 function mockSurfaceQuery(
   handler: (request: {
     readonly queryId: string;
+    readonly globalId?: string;
   }) => unknown | Promise<unknown>,
 ): void {
   mocks.queryNormalizedLibrary.mockImplementation(async (request) =>
@@ -25,7 +26,23 @@ function mockSurfaceQuery(
           schemaVersion: 1,
           source: QUERY_SOURCE,
         }
-      : handler(request),
+      : request.queryId === "item_annotations_v1"
+        ? {
+            queryId: request.queryId,
+            schemaVersion: 1,
+            globalId: request.globalId,
+            source: QUERY_SOURCE,
+            tags: ["favorite"],
+            highlights: [
+              {
+                createdAt: 20,
+                note: "Keep this",
+                text: "A quotation",
+                textBlobDigest: null,
+              },
+            ],
+          }
+        : handler(request),
   );
 }
 
@@ -145,7 +162,15 @@ describe("Freed Desktop normalized surface readers", () => {
     });
 
     await expect(readLibraryCoreItemDetail("x:item-1")).resolves.toEqual(
-      expect.objectContaining({ globalId: "x:item-1" }),
+      expect.objectContaining({
+        globalId: "x:item-1",
+        userState: expect.objectContaining({
+          tags: ["favorite"],
+          highlights: [
+            { createdAt: 20, note: "Keep this", text: "A quotation" },
+          ],
+        }),
+      }),
     );
     await expect(readLibraryCoreFacetSummary()).resolves.toEqual(
       expect.objectContaining({ totalCount: 6 }),
@@ -169,11 +194,51 @@ describe("Freed Desktop normalized surface readers", () => {
       ),
     ).toEqual([
       "item_detail_v1",
+      "item_annotations_v1",
       "optimistic_fields_v1",
       "library_facet_summary_v1",
       "saved_analytics_v2",
     ]);
   });
+
+  it.each(["stale source", "blob-backed text"])(
+    "rejects incomplete annotations with %s before a caller can replace them",
+    async (failure) => {
+      mocks.queryNormalizedLibrary.mockImplementation(async (request) => {
+        if (request.queryId === "item_annotations_v1")
+          return {
+            source:
+              failure === "stale source"
+                ? { ...QUERY_SOURCE, projectionRevision: 8 }
+                : QUERY_SOURCE,
+            tags: [],
+            highlights: [
+              {
+                createdAt: 20,
+                note: "Retain",
+                text: null,
+                textBlobDigest: "b".repeat(64),
+              },
+            ],
+          };
+        return {
+          item: {
+            card: feedCard,
+            contentBody: { blobDigest: null, storage: "inline" },
+            mediaBlobDigests: [],
+            preservedBody: { blobDigest: null, storage: "none" },
+          },
+          source: QUERY_SOURCE,
+        };
+      });
+      await expect(readLibraryCoreItemDetail("x:item-1")).rejects.toThrow(
+        failure === "stale source"
+          ? "source is stale"
+          : "requires blob hydration",
+      );
+      expect(mocks.queryNormalizedLibrary.mock.calls).toHaveLength(2);
+    },
+  );
 
   it("pins distinct selected-item blob descriptors through native SQLite", async () => {
     const bodyDigest = "a".repeat(64);

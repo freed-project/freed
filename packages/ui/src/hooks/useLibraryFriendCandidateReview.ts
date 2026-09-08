@@ -78,11 +78,16 @@ export function useLibraryFriendCandidateReview({
         cancelled = true;
       };
     }
+    const [
+      requestContactAccountIds,
+      requestContactPersonIds,
+      requestDismissedIds,
+    ] = JSON.parse(attemptKey) as [string[], string[], string[], number];
     void queryLibraryCore({
       cancellationId: operationId("friend-candidate-query"),
-      contactAccountIds,
-      contactPersonIds,
-      dismissedSuggestionIds: boundedDismissedSuggestionIds,
+      contactAccountIds: requestContactAccountIds,
+      contactPersonIds: requestContactPersonIds,
+      dismissedSuggestionIds: requestDismissedIds,
       limit: MAXIMUM_CANDIDATES,
       nowMs: Date.now(),
       queryId: "friend_candidate_review_v1",
@@ -104,13 +109,7 @@ export function useLibraryFriendCandidateReview({
     return () => {
       cancelled = true;
     };
-  }, [
-    attemptKey,
-    boundedDismissedSuggestionIds,
-    contactAccountIds,
-    contactPersonIds,
-    queryLibraryCore,
-  ]);
+  }, [attemptKey, queryLibraryCore]);
 
   return result?.attemptKey === attemptKey ? result.rows : [];
 }
