@@ -8,6 +8,7 @@ import { useDebugStore, type RuntimeMemorySnapshot } from "../../lib/debug-store
 import { useHasTouchOnlyPointer } from "../../hooks/useHasTouchOnlyPointer.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import { ChannelAvatar } from "../ChannelAvatar.js";
+import { isSamplePreviewItem } from "../../lib/sample-preview-media.js";
 import { Tooltip } from "../Tooltip.js";
 import {
   RssIcon,
@@ -238,8 +239,9 @@ export const FeedItem = memo(function FeedItem({
   storyHeight = 288,
   fixedHeight,
 }: FeedItemProps) {
-  const { feedMediaPreviews = "inline" } = usePlatform();
-  const feedMediaPreviewMode = item.contentType === "story" ? "inline" : feedMediaPreviews;
+  const { feedMediaPreviews = "inline", sampleMediaPreviews } = usePlatform();
+  const showSampleMedia = sampleMediaPreviews === "inline" && isSamplePreviewItem(item);
+  const feedMediaPreviewMode = item.contentType === "story" || showSampleMedia ? "inline" : feedMediaPreviews;
   const { showInlineMedia, showAvatarImages } = useFeedImageBudget(feedMediaPreviewMode);
   const isTouchMobileDevice = useIsMobileDevice();
   const hasTouchOnlyPointer = useHasTouchOnlyPointer();

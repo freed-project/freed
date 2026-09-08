@@ -227,6 +227,31 @@ describe("FeedItem card text previews", () => {
 });
 
 describe("FeedItem story media", () => {
+  it("limits sample thumbnail overrides to samples and explicit preview mode", () => {
+    const sample = makeItem({
+      contentType: "post",
+      sampleDataFingerprint: {
+        marker: "freed.sample-data.v1", batchId: "preview", generatedAt: NOW, generatorVersion: 12,
+      },
+    });
+    const render = (item: FeedItemType, local: boolean) => renderToStaticMarkup(
+      <PlatformProvider value={{ ...readerOnlyPlatformConfig, sampleMediaPreviews: local ? "inline" : undefined }}>
+        <FeedItem item={item} fixedHeight={220} />
+      </PlatformProvider>,
+    );
+    expect(render(sample, true)).toContain("https://example.com/story.jpg");
+    expect(render(sample, true)).not.toContain("data:image/svg+xml,");
+    expect(render({
+      ...sample,
+      globalId: "instagram:sample:preview:author:media",
+      author: { ...sample.author, id: "sample:preview:author" },
+      sampleDataFingerprint: undefined,
+    }, true)).toContain("https://example.com/story.jpg");
+    expect(render(sample, false)).not.toContain("https://example.com/story.jpg");
+    expect(render(makeItem({ contentType: "post" }), true)).not.toContain("data:image/svg+xml,");
+    expect(render(makeItem({ contentType: "post" }), true)).not.toContain("https://example.com/story.jpg");
+  });
+
   it("shares the feed card view transition name in primary story tiles", () => {
     const html = renderFeedItemToStaticMarkup(makeItem({ globalId: "ig:story/transition proof" }));
 

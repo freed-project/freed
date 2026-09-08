@@ -109,6 +109,7 @@ export default defineConfig({
             children: tauriInitScript(),
             injectTo: "head-prepend" as const,
           }],
+
         }]
       : []),
     rejectRetiredDesktopLibraryAssets,

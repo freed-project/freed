@@ -1750,7 +1750,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       case "sync":
         return (
           <div className="flex flex-col flex-1">
-            <SectionHeading label="Sync" />
+            <SectionHeading label="Cloud Sync" />
             {SettingsExtraSections && <SettingsExtraSections />}
           </div>
         );

@@ -93,7 +93,7 @@ export const BASE_SECTION_METAS: readonly SectionMeta[] = [
   },
   {
     id: "sync",
-    label: "Sync",
+    label: "Cloud Sync",
     keywords: ["cloud", "dropbox", "google drive", "gdrive", "backup", "provider", "connect"],
   },
   {

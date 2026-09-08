@@ -1451,7 +1451,8 @@ function App() {
   const platform: PlatformConfig = useMemo(
     () => ({
       store: useAppStore,
-      feedMediaPreviews: IS_FEATURE_PREVIEW ? "inline" : "reader-only",
+      feedMediaPreviews: "reader-only",
+      sampleMediaPreviews: IS_FEATURE_PREVIEW ? "inline" : undefined,
       addRssFeed,
       importOPMLFeeds,
       exportFeedsAsOPML,
@@ -1704,6 +1705,7 @@ function App() {
       resolveAvatarUrl: tauriRuntimeAvailable && import.meta.env.VITE_TEST_TAURI !== "1"
         ? resolveDesktopAvatarUrl
         : undefined,
+
       mutateDeviceGraphLayout:
         tauriRuntimeAvailable && isInitialized
           ? mutateNormalizedDeviceGraphLayout
