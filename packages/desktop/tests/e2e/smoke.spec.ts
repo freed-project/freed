@@ -2091,7 +2091,7 @@ test("settings nav highlight follows scroll position", async ({ app, page }) => 
     hasText: /^Appearance$/,
   });
   const syncButton = dialog.locator('button[data-active="true"]').filter({
-    hasText: /^Sync$/,
+    hasText: /^Cloud Sync$/,
   });
 
   await expect(appearanceButton).toHaveCount(1);
@@ -4862,7 +4862,7 @@ test("account detail promote upgrades a linked connection instead of opening a d
   });
 });
 
-test("care stars map selected people across Connection, Friend, and Fam", async ({ app, page }) => {
+test("closeness slider maps selected people across Connection, Friend, and Fam", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
@@ -4893,11 +4893,11 @@ test("care stars map selected people across Connection, Friend, and Fam", async 
     store.getState().setSelectedPerson("tier-slider-person");
   });
 
-  const control = page.getByTestId("friends-sidebar").getByRole("group", { name: /^Care level/ });
+  const control = page.getByTestId("friends-sidebar").getByRole("slider", { name: "Relationship closeness" });
   await expect(control).toBeVisible({ timeout: 10_000 });
-  await control.getByRole("button", { name: "Set Friend: 3 of 5 stars" }).evaluate((element) => {
-    (element as HTMLButtonElement).click();
-  });
+  await control.fill("3");
+  await control.dispatchEvent("pointerup");
+  await expect(control).toHaveAttribute("aria-valuetext", "Friend, position 3 of 5");
 
   await expect.poll(async () =>
     page.evaluate(() => {
@@ -4908,9 +4908,10 @@ test("care stars map selected people across Connection, Friend, and Fam", async 
     }),
   ).toMatchObject({ relationshipStatus: "friend", careLevel: 3 });
 
-  await control.getByRole("button", { name: "Set Fam: 5 of 5 stars" }).evaluate((element) => {
-    (element as HTMLButtonElement).click();
-  });
+  await expect(control).toBeEnabled();
+  await control.fill("5");
+  await control.dispatchEvent("pointerup");
+  await expect(control).toHaveAttribute("aria-valuetext", "Fam, position 5 of 5");
   await expect.poll(async () =>
     page.evaluate(() => {
       const sqlite = (window as Record<string, unknown>).__TAURI_MOCK_SQLITE_LIBRARY__ as {
@@ -4920,9 +4921,10 @@ test("care stars map selected people across Connection, Friend, and Fam", async 
     }),
   ).toMatchObject({ relationshipStatus: "friend", careLevel: 5 });
 
-  await control.getByRole("button", { name: "Set Connection: 1 of 5 stars" }).evaluate((element) => {
-    (element as HTMLButtonElement).click();
-  });
+  await expect(control).toBeEnabled();
+  await control.fill("1");
+  await control.dispatchEvent("pointerup");
+  await expect(control).toHaveAttribute("aria-valuetext", "Connection, position 1 of 5");
   await expect.poll(async () =>
     page.evaluate(() => {
       const sqlite = (window as Record<string, unknown>).__TAURI_MOCK_SQLITE_LIBRARY__ as {

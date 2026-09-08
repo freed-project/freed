@@ -277,7 +277,7 @@ test("feed card overhaul actions and reader open flow work", async ({ app }) => 
   const facebookCard = app.page.locator("article").filter({ hasText: FACEBOOK_TITLE }).first();
   await expect(facebookCard).toBeVisible();
   await expect(facebookCard).toContainText("1,234");
-  await expect(facebookCard).toContainText("45");
+  await expect(facebookCard.locator('button[aria-label="Comment"]')).toHaveCount(0);
   await expect(facebookCard).toHaveClass(/grayscale/);
   await expect(facebookCard.locator('button[aria-label="Archive"]').first()).toBeVisible();
   const facebookImage = facebookCard.locator(`img[src="${FACEBOOK_MEDIA_URL}"]`).first();
@@ -319,7 +319,7 @@ test("feed card overhaul actions and reader open flow work", async ({ app }) => 
   await rssCard.hover();
   await expect(rssCard.locator('button[aria-label="Love"]')).toHaveCount(0);
 
-  await expect(facebookCard.locator('button[aria-label="Open"]')).toBeVisible();
+  await expect(facebookCard.locator('button[aria-label="Open"]')).toHaveCount(0);
 
   await setShowEngagementCounts(app.page, false);
   await expect(facebookCard).not.toContainText("1,234");
