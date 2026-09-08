@@ -676,7 +676,7 @@ jobs:
     name: Capture PWA Showcase
     needs: [notes, validation, create-release]
     if: needs.notes.outputs.release_channel == 'production'
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     permissions:
       contents: write
     steps:
@@ -693,8 +693,7 @@ jobs:
         run: |
           npm ci --ignore-scripts
           npx playwright install --with-deps chromium
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg xvfb xauth libvulkan1 mesa-vulkan-drivers
+          command -v ffmpeg >/dev/null || brew install ffmpeg
 
       - name: Build exact release PWA
         working-directory: packages/pwa
@@ -726,7 +725,7 @@ jobs:
           FREED_SHOWCASE_OUTPUT: release-showcase
           FREED_SHOWCASE_SQLITE_MEMORY: "1"
         run: |
-          xvfb-run -a node scripts/capture-release-showcase.mjs
+          node scripts/capture-release-showcase.mjs
           node scripts/lib/release-showcase-assets.mjs finalize --directory release-showcase
 
       - name: Upload immutable and stable showcase assets

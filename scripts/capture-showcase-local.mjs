@@ -131,20 +131,14 @@ async function waitForVisibleImages(page) {
 }
 
 await mkdir(outputDirectory, { recursive: true });
-// Use full Chromium's headless compositor. The separate Linux headless shell
-// cannot back the shared WebGPU canvas image and loses the device on selection.
-// Linux CI has no hardware adapter, so keep ANGLE and WebGPU on SwiftShader's
-// Vulkan path. Every host must still pass the renderer and star-count proof.
+// Use full headless Chromium on the release runner. Metal presents the actual
+// WebGPU canvas to screenshots; renderer counters alone cannot prove this.
 const browser = await chromium.launch({
   headless: true,
   channel: "chromium",
   args: [
     "--enable-unsafe-webgpu",
     ...(process.platform === "darwin" ? ["--use-angle=metal"] : []),
-    ...(process.platform === "linux" ? [
-      "--enable-features=Vulkan", "--ozone-platform=x11", "--use-angle=vulkan", "--use-vulkan=swiftshader",
-      "--use-webgpu-adapter=swiftshader", "--disable-vulkan-surface",
-    ] : []),
   ],
 });
 const context = await browser.newContext({
