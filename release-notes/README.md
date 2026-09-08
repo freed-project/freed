@@ -87,7 +87,7 @@ Freed Desktop update prompts use the deck line only. They do not render bullet l
 ## Environment
 
 - `OPENAI_API_KEY`: optional, used to generate stronger draft notes
-- `OPENAI_RELEASE_NOTES_MODEL`: optional, defaults to `gpt-5.4`
+- `OPENAI_RELEASE_NOTES_MODEL`: optional, defaults to `gpt-6-astra`
 - `OPENAI_RELEASE_NOTES_TIMEOUT_MS`: optional, defaults to `20000`
 - `RELEASE_NOTES_GITHUB_TIMEOUT_MS`: optional, defaults to `15000`
 - `RELEASE_NOTES_MAX_PR_DETAILS`: optional, defaults to `60`

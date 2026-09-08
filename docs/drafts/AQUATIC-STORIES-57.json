@@ -1,0 +1,278 @@
+{
+  "batch": "AQUATIC-STORIES-57",
+  "status": "admitted_in_isolated_editorial_worktree",
+  "worktree": "/Users/aubreyfalconer/dev/freed-editorial-isolated",
+  "profiles": [
+    {
+      "characterId": "mabel-lowwater",
+      "identityNameBase": "Mabel Lowwater",
+      "species": "American alligator",
+      "scientificName": "Alligator mississippiensis",
+      "platform": "instagram",
+      "bio": "Fresh water, warm banks, and the smallest ones first.",
+      "home": {
+        "name": "Everglades, Florida",
+        "latitude": 25.4,
+        "longitude": -80.6,
+        "coordinateStatus": "Fictional approximate home within suitable freshwater habitat; not photo geolocation"
+      },
+      "sex": "female",
+      "sexEvidence": "Fictional casting. Neither source identifies sex; imagery is compatible without proving it.",
+      "lifeStage": "Adult profile; Story is an explicit juvenile memory.",
+      "body": "Broad snout, four legs, armored scales and muscular tail. Juvenile yellow bands fade with maturity; adult portrait is gray.",
+      "voice": "Brief admissions, physical details, dry self-awareness. She notices the smaller animal before she admits her own fear. Avoid universal protector speeches.",
+      "history": [
+        "As a juvenile, another smaller juvenile rested across her shoulders by the water. The Story invents a rustle, her attempt to hide and her decision to stay facing the reeds.",
+        "Present-day adult in the Everglades. No mating, nest, offspring or exact age is established."
+      ],
+      "continuity": "The juvenile and adult photographs cast a fictional individual across life stages, not a documented longitudinal subject. The smaller juvenile is an unnamed companion, not an established sibling, mate or child. Do not infer actual sex or a biological tendency for juveniles to guard one another from this fictional incident.",
+      "biologySources": [
+        {
+          "url": "https://www.nps.gov/ever/learn/nature/alligator.htm",
+          "supports": "Scientific name; Everglades freshwater habitat; juvenile yellow cross-bands fading with maturity; juveniles form pods that may include multiple nests."
+        }
+      ],
+      "avatar": {
+        "media": {
+          "index": 2,
+          "sourceId": "bd7a36ff-193c-407d-bce5-ca5a8e6349ff",
+          "sourcePage": "https://www.nps.gov/media/photo/gallery-item.htm?gid=36568D01-8704-4602-A1EF-738199486E6C&id=bd7a36ff-193c-407d-bce5-ca5a8e6349ff",
+          "sourceTitle": "Alligator in the Water",
+          "sourceCaption": "An alligator floats in the water with its head poking out above the water, looking directly at the camera.",
+          "attribution": "NPS photo by Federico Acevedo",
+          "rightsEvidence": {
+            "Constraint": "Public domain",
+            "GrantingRights": "Full"
+          },
+          "imageUrl": "https://www.nps.gov/npgallery/GetAsset/bd7a36ff-193c-407d-bce5-ca5a8e6349ff",
+          "localPath": "/tmp/freed-aquatic-stories-57/source-02.jpg",
+          "width": 5060,
+          "height": 3373,
+          "byteLength": 1235964,
+          "sha1": "e7305047582704112f4e8007a5185cc6f9fd00f6",
+          "sha256": "5016d72813260609b1b6a2c178969da8635c5ba0f3b9c371dcb813bb868b178a",
+          "sourceFileInfo": {
+            "Original": {
+              "Kind": "Original",
+              "FileType": "jpg",
+              "Size": 837123,
+              "Width": 5060,
+              "Height": 3373
+            },
+            "ProxyHiRes": {
+              "Kind": "ProxyHiRes",
+              "FileType": "jpg",
+              "Size": 1089299,
+              "Width": 2530,
+              "Height": 1686
+            },
+            "ProxyMdRes": {
+              "Kind": "ProxyMdRes",
+              "FileType": "jpg",
+              "Size": 237882,
+              "Width": 1265,
+              "Height": 843
+            },
+            "ProxyLoRes": {
+              "Kind": "ProxyLoRes",
+              "FileType": "jpg",
+              "Size": 85887,
+              "Width": 632,
+              "Height": 421
+            },
+            "ThumbXLarge": {
+              "Kind": "ThumbXLarge",
+              "FileType": "png",
+              "Size": 85141,
+              "Width": 200,
+              "Height": 133
+            },
+            "ThumbLarge": {
+              "Kind": "ThumbLarge",
+              "FileType": "png",
+              "Size": 45769,
+              "Width": 135,
+              "Height": 89
+            },
+            "ThumbMedium": {
+              "Kind": "ThumbMedium",
+              "FileType": "png",
+              "Size": 31182,
+              "Width": 100,
+              "Height": 66
+            },
+            "ThumbSmall": {
+              "Kind": "ThumbSmall",
+              "FileType": "png",
+              "Size": 23287,
+              "Width": 75,
+              "Height": 49
+            }
+          },
+          "license": "Public domain",
+          "licenseUrl": "https://www.nps.gov/media/photo/gallery-item.htm?gid=36568D01-8704-4602-A1EF-738199486E6C&id=bd7a36ff-193c-407d-bce5-ca5a8e6349ff",
+          "rightsMetadataUrl": "https://www.nps.gov/npgallery/api/search/execute/albumid/36568D01-8704-4602-A1EF-738199486E6C?pagesize=500&primarytype=image",
+          "originalDimensions": [
+            5060,
+            3373
+          ],
+          "individuallyOpened": true,
+          "deliveryKind": "source-published original",
+          "dimensionsMeaning": "Measured exact original JPEG bytes. API Original.Size differs from downloaded encoding; measured byteLength and hashes govern. No resized delivery is substituted.",
+          "rightsVerifiedAt": "2026-09-05",
+          "alt": "An adult American alligator faces the camera at the surface of green water, with both eyes, its broad snout and nostrils visible."
+        },
+        "crop": {
+          "x": 0.51,
+          "y": 0.55,
+          "zoom": 1.8
+        },
+        "proofPath": "/tmp/freed-aquatic-stories-57/avatar-circles.png",
+        "proofMethod": "Pillow reproduces min(width,height)/zoom square crop centered at x,y, clamped to image; resampled through 256 pixels to actual 220 and 48 pixel circular examples. This is independent mathematical proof, not a runtime UI screenshot.",
+        "authorDecision": "pass",
+        "leadDecision": "pass",
+        "selectedProofColumn": "right"
+      }
+    }
+  ],
+  "proposals": [
+    {
+      "id": "aquatic-stories-57-01",
+      "characterId": "mabel-lowwater",
+      "identityNameBase": "Mabel Lowwater",
+      "subject": "Alligator mississippiensis",
+      "platform": "instagram",
+      "contentType": "story",
+      "theme": "social",
+      "title": "I was going to hide",
+      "content": "I was still small when an even smaller one climbed onto my back at a rustle in the reeds.\n\nI had been trying to get behind him.\n\nHeld myself up on my front feet until the reeds were quiet. Then he slid off and went to sleep.\n\nI lay down facing the reeds.",
+      "chronology": "Juvenile memory before current adult profile.",
+      "media": {
+        "index": 1,
+        "sourceId": "9dc0789b-f0a1-4e63-9f0a-d68d28551512",
+        "sourcePage": "https://www.nps.gov/media/photo/gallery-item.htm?gid=36568D01-8704-4602-A1EF-738199486E6C&id=9dc0789b-f0a1-4e63-9f0a-d68d28551512",
+        "sourceTitle": "Alligator Hatchlings",
+        "sourceCaption": "An alligator hatchling lays on the back of an older alligator. The older gator is laying on a pile of vegetation near some water.",
+        "attribution": "NPS photo by Federico Acevedo",
+        "rightsEvidence": {
+          "Constraint": "Public domain",
+          "GrantingRights": "Full"
+        },
+        "imageUrl": "https://www.nps.gov/npgallery/GetAsset/9dc0789b-f0a1-4e63-9f0a-d68d28551512",
+        "localPath": "/tmp/freed-aquatic-stories-57/source-01.jpg",
+        "width": 6240,
+        "height": 4160,
+        "byteLength": 1341811,
+        "sha1": "af1e4035f4389c16ed06a7a83b70c668c4589f1e",
+        "sha256": "e8f6dfa428e214e08f52e1fe2fc00dafefd38d5493461ee9b2095f28ec89c59f",
+        "sourceFileInfo": {
+          "Original": {
+            "Kind": "Original",
+            "FileType": "jpg",
+            "Size": 955324,
+            "Width": 6240,
+            "Height": 4160
+          },
+          "ProxyHiRes": {
+            "Kind": "ProxyHiRes",
+            "FileType": "jpg",
+            "Size": 1361302,
+            "Width": 3120,
+            "Height": 2080
+          },
+          "ProxyMdRes": {
+            "Kind": "ProxyMdRes",
+            "FileType": "jpg",
+            "Size": 380381,
+            "Width": 1560,
+            "Height": 1040
+          },
+          "ProxyLoRes": {
+            "Kind": "ProxyLoRes",
+            "FileType": "jpg",
+            "Size": 152027,
+            "Width": 780,
+            "Height": 520
+          },
+          "ThumbXLarge": {
+            "Kind": "ThumbXLarge",
+            "FileType": "png",
+            "Size": 94763,
+            "Width": 200,
+            "Height": 133
+          },
+          "ThumbLarge": {
+            "Kind": "ThumbLarge",
+            "FileType": "png",
+            "Size": 54194,
+            "Width": 135,
+            "Height": 90
+          },
+          "ThumbMedium": {
+            "Kind": "ThumbMedium",
+            "FileType": "png",
+            "Size": 38261,
+            "Width": 100,
+            "Height": 66
+          },
+          "ThumbSmall": {
+            "Kind": "ThumbSmall",
+            "FileType": "png",
+            "Size": 30299,
+            "Width": 75,
+            "Height": 50
+          }
+        },
+        "license": "Public domain",
+        "licenseUrl": "https://www.nps.gov/media/photo/gallery-item.htm?gid=36568D01-8704-4602-A1EF-738199486E6C&id=9dc0789b-f0a1-4e63-9f0a-d68d28551512",
+        "rightsMetadataUrl": "https://www.nps.gov/npgallery/api/search/execute/albumid/36568D01-8704-4602-A1EF-738199486E6C?pagesize=500&primarytype=image",
+        "originalDimensions": [
+          6240,
+          4160
+        ],
+        "individuallyOpened": true,
+        "deliveryKind": "source-published original",
+        "dimensionsMeaning": "Measured exact original JPEG bytes. API Original.Size differs from downloaded encoding; measured byteLength and hashes govern. No resized delivery is substituted.",
+        "rightsVerifiedAt": "2026-09-05",
+        "alt": "A small yellow-banded alligator lies across a larger young alligator's shoulders beside the water. The larger animal holds its chest above the reeds on a planted forefoot."
+      },
+      "imageDecision": "pass_author_and_independent_lead_review",
+      "proseDecision": "pass_author_and_independent_lead_review",
+      "decision": "admitted_by_lead",
+      "fictionBoundary": "Visible contact, differently sized juvenile bodies, reeds and a planted forefoot support the central scene. Rustle, attempted hiding, the departure and sleep, and protective intent are fiction; the photograph does not document that sequence.",
+      "leadReview": "Lead independently opened exact Story and portrait originals plus 220/48 proof. Accepted literal prose unchanged, female casting as fiction, and adult/juvenile chronology. Runtime admission remains lead-owned."
+    }
+  ],
+  "holds": [
+    {
+      "source": "/tmp/freed-aquatic-54/source-01.jpg",
+      "reason": "Mother with hatchling is a strong image, but no distinct incident earns a second Story beyond maternal body-as-place scenes already spent.",
+      "individuallyOpenedInEarlierBatch": true,
+      "reopenedIn57": false
+    },
+    {
+      "source": "/tmp/freed-aquatic-54/source-04.jpg",
+      "reason": "Individually reopened; solitary hatchling swimming is a portrait without an earned new incident.",
+      "reopenedIn57": true
+    },
+    {
+      "source": "/tmp/freed-aquatic-54/source-05.jpg",
+      "reason": "Individually reopened; hatchling sleeping on reeds is attractive but a second quiet-resting episode would pad the batch.",
+      "reopenedIn57": true
+    }
+  ],
+  "discoveryNotes": [
+    "NOAA hunting-octopus record 11280 duplicates bound Elspeth imagery; excluded before another download.",
+    "NOAA crab-eating record 16074 lacks exact taxon compatibility with established Rufus and repeats feeding mechanisms; no candidate authored.",
+    "NPS Point Reyes molting-seal image is geographically incompatible with established Kenai Fenn; not downloaded."
+  ],
+  "validation": {
+    "uniqueAgainstIsolatedRuntime": true,
+    "sha1AndSha256Recomputed": true,
+    "sourceMetadataLiveChecked": true,
+    "noRuntimeWrites": false,
+    "noPublication": true,
+    "runtimeWriter": "root, after independent review and exact byte verification",
+    "admissionRecord": "AQUATIC-STORIES-57-ADMISSION.md"
+  }
+}

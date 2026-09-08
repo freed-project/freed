@@ -313,6 +313,12 @@ export function extractTopLevelTestUnits(
   return units;
 }
 
+export function extractToolingSmokeTestUnits(suite, source, testFile) {
+  return extractTopLevelTestUnits(source, testFile, {
+    allowTransparentLocalWrapper: suite === "nightly-self-improve",
+  });
+}
+
 export function extractTopLevelTestNames(source, label = "test source") {
   return extractTopLevelTestUnits(source, label).map(({ name }) => name);
 }
@@ -433,9 +439,7 @@ export function buildToolingSmokeShardPlan(
   }
   const testFile = SHARDED_TEST_FILES[suite];
   const source = readFileSync(path.join(repoRoot, testFile), "utf8");
-  const extractedUnits = extractTopLevelTestUnits(source, testFile, {
-    allowTransparentLocalWrapper: suite === "nightly-self-improve",
-  });
+  const extractedUnits = extractToolingSmokeTestUnits(suite, source, testFile);
   const measuredWeights = completeMeasuredUnitWeights(
     recorded,
     suite,

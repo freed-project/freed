@@ -25,7 +25,10 @@ An installed soak observes a real Freed Desktop build over hours using terminal 
   collector, recovers only a safely identified stale owner, and releases only
   its own lock token. It samples the app process, the machine-wide WebKit
   process table, and `runtime-health.jsonl` into a soak directory under
-  `~/.freed/automation/soaks/`. Each saved cursor binds the physical file
+  `~/.freed/automation/soaks/`. `--app-binary` matches the operating system
+  executable path, never its argument vector. The collector excludes its own
+  process tree and treats multiple matching application processes as a sample
+  error instead of guessing. Each saved cursor binds the physical file
   generation and a SHA-256 digest of the complete source prefix, so daily
   replacement or truncate-regrow cannot skip new records when the new file is
   already as large as the old offset. The collector points

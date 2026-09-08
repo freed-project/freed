@@ -36,6 +36,25 @@ body {
   background: color-mix(in oklab, var(--theme-bg-root) 78%, transparent);
 }
 
+/* Match useIsMobile: the narrow feed uses the document scroll viewport,
+   including when a desktop window is resized below the breakpoint. */
+@media (max-width: 767px) {
+  html,
+  body {
+    height: auto;
+    overflow: visible;
+    overflow-x: clip;
+  }
+
+  #root {
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    overflow: visible;
+    overflow-x: clip;
+  }
+}
+
 .startup-recovery-scroll {
   height: 100vh;
   overflow-y: auto;

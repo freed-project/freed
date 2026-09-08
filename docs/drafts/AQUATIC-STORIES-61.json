@@ -1,0 +1,208 @@
+{
+  "batch": "AQUATIC-STORIES-61",
+  "status": "closed_no_admission",
+  "worktree": "/Users/aubreyfalconer/dev/freed-editorial-isolated",
+  "proposals": [],
+  "profiles": [],
+  "sourceReviews": [
+    {
+      "index": 1,
+      "url": "https://oceanexplorer.noaa.gov/wp-content/uploads/2021/12/20211212-hires.jpg",
+      "localPath": "/tmp/freed-aquatic-stories-61/source-01.jpg",
+      "bytes": 752177,
+      "sha1": "0775c0e422a38594ee9c0ca16c6faf44827a4cde",
+      "sha256": "3a7643690b72db7942072ea3703fc4590fd3eea9fec4b851513fa250d3b30b66",
+      "dimensions": [
+        1920,
+        1080
+      ],
+      "sourcePage": "https://oceanexplorer.noaa.gov/multimedia/daily-image-media-20211212/",
+      "sourceRecordId": 12925,
+      "sourceTitle": "Sea Cucumber",
+      "attribution": "NOAA Ocean Exploration, 2019 Southeastern U.S. Deep-sea Exploration",
+      "imageUrl": "https://oceanexplorer.noaa.gov/wp-content/uploads/2021/12/20211212-hires.jpg",
+      "width": 1920,
+      "height": 1080,
+      "byteLength": 752177,
+      "originalDimensions": [
+        1920,
+        1080
+      ],
+      "license": "Public domain",
+      "licenseUrl": "https://oceanexplorer.noaa.gov/faqs/",
+      "rightsEvidence": "NOAA Ocean Exploration source credit; no separate copyright notice; current FAQ identifies site materials as public domain unless otherwise noted. Preserve source credit and embedded metadata.",
+      "individuallyOpened": true,
+      "decision": "hold",
+      "review": "Small, dim swimming sea cucumber with transparent gut visible. No visible companion or distinct relationship incident. Not compatible with a glass-sponge or other established body."
+    },
+    {
+      "index": 2,
+      "url": "https://oceanexplorer.noaa.gov/wp-content/uploads/2021/09/20211006-hires.jpg",
+      "localPath": "/tmp/freed-aquatic-stories-61/source-02.jpg",
+      "bytes": 855602,
+      "sha1": "e552ed00882125998e41062860fbaeba6eb51c29",
+      "sha256": "849b39729a1b97db8ce40585584e8f3627b7a9561f9da88bc87252816a002ada",
+      "dimensions": [
+        1920,
+        1080
+      ],
+      "sourcePage": "https://oceanexplorer.noaa.gov/multimedia/daily-image-media-20211006/",
+      "sourceRecordId": 11688,
+      "sourceTitle": "Crinoid",
+      "attribution": "NOAA Ocean Exploration, Exploring Deep-sea Habitats off Puerto Rico and the U.S. Virgin Islands",
+      "imageUrl": "https://oceanexplorer.noaa.gov/wp-content/uploads/2021/09/20211006-hires.jpg",
+      "width": 1920,
+      "height": 1080,
+      "byteLength": 855602,
+      "originalDimensions": [
+        1920,
+        1080
+      ],
+      "license": "Public domain",
+      "licenseUrl": "https://oceanexplorer.noaa.gov/faqs/",
+      "rightsEvidence": "NOAA Ocean Exploration source credit; no separate copyright notice; current FAQ identifies site materials as public domain unless otherwise noted. Preserve source credit and embedded metadata.",
+      "individuallyOpened": true,
+      "decision": "hold",
+      "review": "A yellow feather star is visibly swimming above a blurred seabed. Locomotion is clear but the image supplies no new consequential interaction; no identity created for a swimming portrait."
+    },
+    {
+      "index": 3,
+      "url": "https://oceanexplorer.noaa.gov/wp-content/uploads/2025/05/anemone-hires-2.jpg",
+      "localPath": "/tmp/freed-aquatic-stories-61/source-03.jpg",
+      "bytes": 1272043,
+      "sha1": "b806a235807cc78c42d7a8480bc57c37aab3d56e",
+      "sha256": "2ad0defeeb3022d72f8c9eeb8a386e1a7ad931ed0705cf38f4d7317de3a0b2ae",
+      "dimensions": [
+        1920,
+        1080
+      ],
+      "sourcePage": "https://oceanexplorer.noaa.gov/multimedia/okeanos-explorations-ex2104-dives-dive15-media-anemone/",
+      "sourceRecordId": 12356,
+      "sourceTitle": "Cerianthid Anemone",
+      "attribution": "NOAA Ocean Exploration, 2021 North Atlantic Stepping Stones",
+      "imageUrl": "https://oceanexplorer.noaa.gov/wp-content/uploads/2025/05/anemone-hires-2.jpg",
+      "width": 1920,
+      "height": 1080,
+      "byteLength": 1272043,
+      "originalDimensions": [
+        1920,
+        1080
+      ],
+      "license": "Public domain",
+      "licenseUrl": "https://oceanexplorer.noaa.gov/faqs/",
+      "rightsEvidence": "NOAA Ocean Exploration source credit; no separate copyright notice; current FAQ identifies site materials as public domain unless otherwise noted. Preserve source credit and embedded metadata.",
+      "individuallyOpened": true,
+      "decision": "hold",
+      "review": "A dark cerianthid anemone has long outer tentacles and a short inner ring. Source labels this regrowth, but no source-grounded personal injury history or distinct relationship incident was established. Hold injury-based fiction."
+    },
+    {
+      "index": 4,
+      "url": "https://oceanexplorer.noaa.gov/wp-content/uploads/2021/10/20211029-hires.jpg",
+      "localPath": "/tmp/freed-aquatic-stories-61/source-04.jpg",
+      "bytes": 1215470,
+      "sha1": "9d3abf991c4a0c0ff7a1431dc51f887bb08fadcb",
+      "sha256": "a5012370f56d0837bb3634497a66b14adafd0b09134037225cd98118ba3d1b4e",
+      "dimensions": [
+        1920,
+        1080
+      ],
+      "sourcePage": "https://oceanexplorer.noaa.gov/multimedia/daily-image-media-20211029/",
+      "sourceRecordId": 12887,
+      "sourceTitle": "Hermit Crab and Fish",
+      "attribution": "NOAA Ocean Exploration, Gulf of Mexico 2018",
+      "imageUrl": "https://oceanexplorer.noaa.gov/wp-content/uploads/2021/10/20211029-hires.jpg",
+      "width": 1920,
+      "height": 1080,
+      "byteLength": 1215470,
+      "originalDimensions": [
+        1920,
+        1080
+      ],
+      "license": "Public domain",
+      "licenseUrl": "https://oceanexplorer.noaa.gov/faqs/",
+      "rightsEvidence": "NOAA Ocean Exploration source credit; no separate copyright notice; current FAQ identifies site materials as public domain unless otherwise noted. Preserve source credit and embedded metadata.",
+      "individuallyOpened": true,
+      "decision": "hold",
+      "review": "Lead held the exact frame and every avatar crop for softness and video texture. Fish facial detail and crab are weak; sediment dominates. The distance-adjustment premise is promising, but five-step withdrawal and re-emergence are offscreen reconstruction requiring stronger media or actual footage."
+    }
+  ],
+  "heldWriting": [
+    {
+      "sourceIndex": 4,
+      "title": "I waited for sorry",
+      "content": "He bumped my cheek and pulled his claws inside.\n\nI leaned closer. His eyes disappeared too.\n\nI waited for sorry. He stayed in there.\n\nBacked away in disgust. Out came his feelers, then his eyes.\n\nI tried hello from there. He came all the way out.",
+      "platform": "instagram",
+      "contentType": "story",
+      "theme": "social",
+      "tentativeName": "Cyril Finesand",
+      "taxon": "Centrodraco sp.",
+      "identityStatus": "Name and body concept only. No new canonical identity or avatar admitted.",
+      "homeConcept": "Deep seafloor off Pourtales Terrace, Florida, approximately 310 meters in the source. Do not convert to tropical reef or infer exact species, sex or life history.",
+      "imageDecision": "hold_independent_lead_review",
+      "proseDecision": "hold_for_stronger_media_or_actual_footage",
+      "visiblePremise": "Pink-and-yellow slope dragonet beside a hermit crab; source records a bump.",
+      "fictionBoundary": "The withdrawal, leaning closer, waiting, backing away, re-emergence, dialogue and motives are fictional. The photograph does not establish the five-step sequence.",
+      "avatar": {
+        "proofPath": "/tmp/freed-aquatic-stories-61/avatar-circles.png",
+        "crops": [
+          {
+            "x": 0.44,
+            "y": 0.67,
+            "zoom": 2.4
+          },
+          {
+            "x": 0.44,
+            "y": 0.67,
+            "zoom": 2.8
+          },
+          {
+            "x": 0.44,
+            "y": 0.67,
+            "zoom": 3.2
+          }
+        ],
+        "sizes": [
+          220,
+          48
+        ],
+        "method": "Independent Pillow square-crop calculation, resampled through 256 pixels, with actual circular 220/48 examples. Not a runtime screenshot.",
+        "decision": "hold_all_crops",
+        "leadReason": "Soft facial detail and video texture; insufficient portrait quality."
+      }
+    }
+  ],
+  "discoveryHolds": [
+    {
+      "sourceRecordIds": [
+        12202,
+        14085,
+        14504
+      ],
+      "reason": "Squid embrace identified as possible predation or mating; do not rewrite uncertain biology as courtship."
+    },
+    {
+      "sourceRecordId": 11280,
+      "reason": "Already bound Elspeth image."
+    },
+    {
+      "sourceRecordId": 14121,
+      "reason": "Already bound Nestor mating grip."
+    },
+    {
+      "source": "https://sanctuaries.noaa.gov/earthisblue/sanctuary-life-2016.html",
+      "reason": "Tobin-compatible kelping geography, but source credits a contest photographer and specific reuse rights were not established. Not downloaded."
+    }
+  ],
+  "evidenceDirectory": "/tmp/freed-aquatic-stories-61",
+  "validation": {
+    "exactImagesOpened": 4,
+    "sourceMetadataRead": true,
+    "sourceRightsChecked": true,
+    "noRuntimeWrites": true,
+    "noPublication": true,
+    "leadReviewedSourceIndexes": [
+      4
+    ],
+    "leadReviewedAvatarProof": true
+  }
+}

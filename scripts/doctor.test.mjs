@@ -1045,6 +1045,9 @@ test("automation state preflight rejects a missing cutover receipt", () => {
   assert.equal(result.status, "fail");
   assert.match(result.detail, /kernel-guard-cutover\.json.*safely readable/);
   assert.match(result.remediation, /automation:cutover-kernel-guards/);
+  assert.match(result.remediation, /Scope: automation control-plane operations only/);
+  assert.match(result.remediation, /does not block ordinary builds, GitHub-authenticated PR publication, or the dedicated release tag publisher/);
+  assert.match(result.remediation, /Do not migrate the host merely to ship a release/);
 });
 
 test("automation state preflight rejects a zero-byte writer sentinel", () => {

@@ -1,0 +1,42 @@
+{
+  "status": "pending independent review; no admission",
+  "characterId": "cygnus-shy",
+  "operation": "recover original null media binding only, preserve Instagram regular format and all words",
+  "episode": {
+    "subject": "swan",
+    "title": "The missing one",
+    "body": "Counted eight cygnets. Heard the ninth behind me. Turned around. Still behind me. I swam two circles before a small head came out from under my wing to complain about the ride.",
+    "theme": "family",
+    "platform": "instagram",
+    "mediaSha1": "f6d2e1155cc6d6daab8714a97934078f3f3bf25b"
+  },
+  "media": {
+    "observationId": 163743160,
+    "photo": {
+      "id": 283242966,
+      "license_code": "cc-by",
+      "original_dimensions": {
+        "width": 2048,
+        "height": 1536
+      },
+      "url": "https://inaturalist-open-data.s3.amazonaws.com/photos/283242966/square.jpg",
+      "attribution": "(c) Laura Mae, some rights reserved (CC BY)",
+      "flags": [],
+      "moderator_actions": [],
+      "hidden": false
+    },
+    "url": "https://inaturalist-open-data.s3.amazonaws.com/photos/283242966/large.jpg",
+    "localPath": "/tmp/freed-cygnus167/283242966.jpg",
+    "bytes": 177724,
+    "sha1": "f6d2e1155cc6d6daab8714a97934078f3f3bf25b",
+    "width": 1024,
+    "height": 768,
+    "sha256": "1e9c68920d4597e2099ce16f5adbd89bf726ecf3e28f0acec425ae8360990369",
+    "sourceUrl": "https://www.inaturalist.org/observations/163743160",
+    "sourceMetadataLocal": "/tmp/freed-cygnus167/obs-163743160.json",
+    "creator": "Laura Mae",
+    "license": "CC BY 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/"
+  },
+  "rootReview": "Root read all eight current Cygnus episodes, preserving female adult and existing nine-cygnet brood. Exact photo shows one cygnet emerging between folded white feathers behind foreground adult neck and another beside it, with second adult behind. Soft sunrise gives clear faces and feather detail against dark water, attractive intimate composition. Carrying posture directly supports the original payoff. Photo does not establish nine chicks, counting, circling or complaint; existing fictional brood count is retained without claiming the whole family appears. Background adult remains unnamed companion. Source Apsley St, Hudson, MA, US is provenance only and does not move Thames home. Observer speculation about brood evolution and mortality is excluded. Other three exact downloads were individually opened: two overexposed backs and a distant sleeping pair are held."
+}

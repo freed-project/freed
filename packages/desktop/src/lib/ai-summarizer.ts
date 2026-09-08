@@ -44,6 +44,7 @@ async function callOpenAICompatible(
   text: string,
   authHeader: string,
   signal?: AbortSignal,
+  useAstra = false,
 ): Promise<string> {
   const resp = await fetch(`${baseUrl}/chat/completions`, {
     method: "POST",
@@ -57,8 +58,11 @@ async function callOpenAICompatible(
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: text.slice(0, 8_000) },
       ],
-      temperature: 0.3,
-      max_tokens: 512,
+      // Astra requires reasoning-compatible parameters. Keep Ollama and
+      // explicitly selected legacy models on their existing request contract.
+      ...(useAstra
+        ? { reasoning_effort: "low", max_completion_tokens: 4_096 }
+        : { temperature: 0.3, max_tokens: 512 }),
     }),
     signal,
   });
@@ -205,6 +209,7 @@ export async function summarize(
           text,
           `Bearer ${apiKey}`,
           options.signal,
+          model === "gpt-6-astra",
         );
         break;
       }

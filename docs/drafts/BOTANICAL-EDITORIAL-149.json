@@ -1,0 +1,623 @@
+{
+  "batch": "BOTANICAL-EDITORIAL-149",
+  "status": "source/prose holds only; zero proposed admissions",
+  "proposals": [],
+  "heldDrafts": [
+    {
+      "characterId": "lucette-vein",
+      "title": "The loop",
+      "body": "I tried to clean one antenna with a front foot. It came down in a loop. For a moment I had less idea where the flower was than before I started. I put the foot down and waited for my sense of direction to straighten out.",
+      "photoId": 102153565,
+      "verdict": "HOLD image and biology. Exact image has conspicuous looped appendages but is soft, with glare and unclear contact. It does not establish grooming, a freely reversible loop, or a sensory impairment. The attempted fictional consequence depends too much on an unverified physical condition. Do not admit or interpret the image as a documented grooming sequence.",
+      "canon": "Read complete Lucette runtime arc and strange-canon-08. Existing Chrysoperla carnea group, adult diet, Denmark home and avatar retained. No new nose/antenna goodbye beat."
+    },
+    {
+      "characterId": "ivo-softshield",
+      "title": "After the shower",
+      "body": "The rain stopped. A drop struck my youngest frond. Then another. Above me, the rock was still letting go of the storm. I began to miss the part when I had known where the next drop would land.",
+      "photoId": 371176240,
+      "verdict": "HOLD scene evidence and prose. Fern and enclosing rocks are visible, but no drops or distinctive rainfall contact. A hypothetical dripping overhang supplies nearly all the event, while the final thought is weaker than the existing wind-and-spider relationship. Does not earn a new pairing.",
+      "canon": "Read full Ivo arc: unrolling, taller versus smaller shoots, spores, primitive/map, spider web in wind. Retain Polystichum setiferum, Coimbra home and rootstock embodiment. This is an unused attempt, not a change to prior prose."
+    },
+    {
+      "characterId": "ottilie-hook",
+      "title": "Across the green",
+      "body": "The stem bent beneath me and touched another. May stepped across before it sprang back. I stayed on my side, wanting to ask whether she had meant to leave or had merely found the moment convenient.",
+      "photoId": 279117482,
+      "verdict": "HOLD image/event. Sharp eye and rostrum with forefeet against plant surfaces, but no second weevil or visible changing gap. The image is a good portrait, not a sufficiently specific bridge-crossing encounter. This also approaches rejected shelter/route logistics. Do not replace May canon or invent that the source depicts her.",
+      "canon": "Read Ottilie full five-episode runtime arc, strange-canon-05 and main-canon warning against more nose jokes. Retain Curculio glandium, May relationship, English oak home, approved adult avatar and earlier larval recollection."
+    }
+  ],
+  "otherHolds": [
+    {
+      "photoIds": [
+        375558747,
+        295768805,
+        227995431,
+        160041513,
+        602768384,
+        190868980,
+        492167878
+      ],
+      "verdict": "Mostly weevil portraits, with one acorn-hole scene. Several portraits are sharp; none depicts acorn drilling or oviposition. The acorn holes repeat the existing larval-exit subject without showing a new encounter. Smaller 295768805 and overexposed 602768384 fail visual quality. No source taxonomy is inferred solely from the search query."
+    },
+    {
+      "photoIds": [
+        79560054,
+        531844101,
+        627362237
+      ],
+      "verdict": "Resting lacewing portraits on pale surface, plant and fabric. One flower scene is small/soft. No source event strong enough to justify another sweetness, flower rivalry or width joke."
+    },
+    {
+      "photoIds": [
+        386811789
+      ],
+      "verdict": "Healthy fern overview. No distinct physical contact or new action; no generic growth wisdom written around it."
+    },
+    {
+      "photoIds": [
+        3141721,
+        4710587,
+        26210878,
+        94520980,
+        103247767,
+        109995709
+      ],
+      "verdict": "Rejected from primary taxonomy before visual review. These are Greta oto butterfly search results, not Lucette's Chrysoperla carnea group. Downloaded in error; explicitly NOT individually opened or visually reviewed. No body or license claim transferred to Lucette."
+    }
+  ],
+  "blockedSource": {
+    "url": "https://www.mdpi.com/1424-2818/14/11/922",
+    "result": "HTTP 429 in web open. Stopped immediately, no retry, alternate host, guessed image or bypass. No new biological claim taken from an unread paper."
+  },
+  "inspection": {
+    "downloaded": 20,
+    "individuallyOpened": 14,
+    "taxonomyExcludedBeforeOpening": 6,
+    "sourceEvidence": [
+      {
+        "observationId": 212517983,
+        "photoId": 375558747,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/375558747/large.jpg",
+        "localFile": "/tmp/botanical149/375558747.jpg",
+        "sourceLocal": "/tmp/botanical149/obs-212517983.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/212517983",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) Victor Heng, some rights reserved (CC BY), uploaded by Victor Heng",
+        "dimensions": [
+          1024,
+          695
+        ],
+        "originalUploadDimensions": [
+          1954,
+          1326
+        ],
+        "bytes": 475307,
+        "sha1": "d9cf779f98779e88065e6efb96f1f14d7489f51e",
+        "sha256": "3de71bbcc5e8b5287bbe90aeb0f9a51f499bb4c7504f9e15a603641eaeb39b86",
+        "seconds": 0.772,
+        "status": 200,
+        "individuallyOpened": true,
+        "primaryCurrentTaxon": "Curculio glandium",
+        "primaryQualityGrade": "research"
+      },
+      {
+        "observationId": 170523483,
+        "photoId": 295768805,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/295768805/large.jpeg",
+        "localFile": "/tmp/botanical149/295768805.jpg",
+        "sourceLocal": "/tmp/botanical149/obs-170523483.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/170523483",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) M Funnell, some rights reserved (CC BY), uploaded by M Funnell",
+        "dimensions": [
+          600,
+          450
+        ],
+        "originalUploadDimensions": [
+          600,
+          450
+        ],
+        "bytes": 129247,
+        "sha1": "8f6c77f41c4c2dc4ef0c0be299d993e7eb59fde2",
+        "sha256": "27c4855900474833d4cf0e49c7954b5da81e1bca0cb2a3fa1562001fd5a84d80",
+        "seconds": 0.621,
+        "status": 200,
+        "individuallyOpened": true,
+        "primaryCurrentTaxon": "Curculio glandium",
+        "primaryQualityGrade": "research"
+      },
+      {
+        "observationId": 133817709,
+        "photoId": 227995431,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/227995431/large.jpg",
+        "localFile": "/tmp/botanical149/227995431.jpg",
+        "sourceLocal": "/tmp/botanical149/obs-133817709.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/133817709",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) Cosimo Costanzia di Costigliole, some rights reserved (CC BY), uploaded by Cosimo Costanzia di Costigliole",
+        "dimensions": [
+          769,
+          1024
+        ],
+        "originalUploadDimensions": [
+          1537,
+          2048
+        ],
+        "bytes": 245901,
+        "sha1": "7aa22a52d507cde65dc7198410061ae65bb30da6",
+        "sha256": "db94c140e70912c97e8be731e7ff6c49eee040f19ce5678ae3e6388d5382c0f5",
+        "seconds": 0.653,
+        "status": 200,
+        "individuallyOpened": true,
+        "primaryCurrentTaxon": "Curculio glandium",
+        "primaryQualityGrade": "needs_id"
+      },
+      {
+        "observationId": 161494145,
+        "photoId": 279117482,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/279117482/large.jpg",
+        "localFile": "/tmp/botanical149/279117482.jpg",
+        "sourceLocal": "/tmp/botanical149/obs-161494145.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/161494145",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) Josh Boe, some rights reserved (CC BY), uploaded by Josh Boe",
+        "dimensions": [
+          867,
+          1024
+        ],
+        "originalUploadDimensions": [
+          1103,
+          1303
+        ],
+        "bytes": 272506,
+        "sha1": "cd63dc0f7d8d63eb9996993b31b4e2a0ac4c5c0e",
+        "sha256": "071238fdd4b780a13f9a79af467f873d865983de746b7528be300c4f1b8a4506",
+        "seconds": 0.673,
+        "status": 200,
+        "individuallyOpened": true,
+        "primaryCurrentTaxon": "Curculio glandium",
+        "primaryQualityGrade": "needs_id"
+      },
+      {
+        "observationId": 96340819,
+        "photoId": 160041513,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/160041513/large.jpeg",
+        "localFile": "/tmp/botanical149/160041513.jpg",
+        "sourceLocal": "/tmp/botanical149/obs-96340819.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/96340819",
+        "license": "CC0",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "attribution": "no rights reserved, uploaded by Daria",
+        "dimensions": [
+          1024,
+          668
+        ],
+        "originalUploadDimensions": [
+          2048,
+          1336
+        ],
+        "bytes": 270724,
+        "sha1": "987940bd34e84a1b3c9f23d4c169ce7dc2be34f5",
+        "sha256": "58d592551e3ad5397690aeba4c56dd750127506460183271d25ef1eb590bcf62",
+        "seconds": 0.647,
+        "status": 200,
+        "individuallyOpened": true,
+        "primaryCurrentTaxon": "Curculio glandium",
+        "primaryQualityGrade": "research"
+      },
+      {
+        "observationId": 332179107,
+        "photoId": 602768384,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/602768384/large.jpg",
+        "localFile": "/tmp/botanical149/602768384.jpg",
+        "sourceLocal": "/tmp/botanical149/obs-332179107.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/332179107",
+        "license": "CC-BY-SA",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attribution": "(c) Lucas Benaiche, some rights reserved (CC BY-SA), uploaded by Lucas Benaiche",
+        "dimensions": [
+          921,
+          831
+        ],
+        "originalUploadDimensions": [
+          921,
+          831
+        ],
+        "bytes": 374796,
+        "sha1": "1c67be9a834c903b20df38c1a8f54e2b2d4b7a6c",
+        "sha256": "85a5157582d30b8823ebee928bca07cf33de9052bef7e7ca8248b8020274abcd",
+        "seconds": 0.816,
+        "status": 200,
+        "individuallyOpened": true,
+        "primaryCurrentTaxon": "Curculio glandium",
+        "primaryQualityGrade": "research"
+      },
+      {
+        "observationId": 112973621,
+        "photoId": 190868980,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/190868980/large.jpeg",
+        "localFile": "/tmp/botanical149/190868980.jpg",
+        "sourceLocal": "/tmp/botanical149/obs-112973621.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/112973621",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) carnifex, some rights reserved (CC BY), uploaded by carnifex",
+        "dimensions": [
+          1024,
+          838
+        ],
+        "originalUploadDimensions": [
+          2048,
+          1676
+        ],
+        "bytes": 542209,
+        "sha1": "de68d2617ace3f512b49715d1bb8d78e7c6306e2",
+        "sha256": "feec426d6092907c5ff9d9f0dbdeb0d1a2048a7e90ab2f2f1f4b8449c3e1b977",
+        "seconds": 0.887,
+        "status": 200,
+        "individuallyOpened": true,
+        "primaryCurrentTaxon": "Curculio glandium",
+        "primaryQualityGrade": "needs_id"
+      },
+      {
+        "observationId": 273694139,
+        "photoId": 492167878,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/492167878/large.jpeg",
+        "localFile": "/tmp/botanical149/492167878.jpg",
+        "sourceLocal": "/tmp/botanical149/obs-273694139.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/273694139",
+        "license": "CC-BY-SA",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attribution": "(c) Micha Baum, some rights reserved (CC BY-SA), uploaded by Micha Baum",
+        "dimensions": [
+          1024,
+          966
+        ],
+        "originalUploadDimensions": [
+          1862,
+          1756
+        ],
+        "bytes": 386159,
+        "sha1": "82184d0f3e9b402fe49ec1d2ae4c7f4b2927a8ff",
+        "sha256": "7795b93ca6f398af99ea59844f86c0ad89fea9f8ba5311f6398b690c74a3368c",
+        "seconds": 0.665,
+        "status": 200,
+        "individuallyOpened": true,
+        "primaryCurrentTaxon": "Curculio glandium",
+        "primaryQualityGrade": "research"
+      },
+      {
+        "observationId": 3989817,
+        "photoId": 4710587,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/4710587/large.jpg",
+        "localFile": "/tmp/botanical149/4710587.jpg",
+        "sourceLocal": "/tmp/botanical149/obs-3989817.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/3989817",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) Jason Eckberg, some rights reserved (CC BY), uploaded by Jason Eckberg",
+        "dimensions": [
+          1024,
+          922
+        ],
+        "originalUploadDimensions": [
+          2048,
+          1843
+        ],
+        "bytes": 91006,
+        "sha1": "630151f0dc1df2b95e65ebc53c712fdb9e81e955",
+        "sha256": "04c8ed08a2ff33e7cbb3d8a616737a021cea6ae7a6b662195f92ccf6891075fd",
+        "seconds": 0.631,
+        "status": 200,
+        "individuallyOpened": false,
+        "primaryCurrentTaxon": "Greta morgane oto",
+        "primaryQualityGrade": "research"
+      },
+      {
+        "observationId": 59167673,
+        "photoId": 94520980,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/94520980/large.jpg",
+        "localFile": "/tmp/botanical149/94520980.jpg",
+        "sourceLocal": "/tmp/botanical149/obs-59167673.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/59167673",
+        "license": "CC-BY-SA",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attribution": "(c) Matteo Cassella, some rights reserved (CC BY-SA), uploaded by Matteo Cassella",
+        "dimensions": [
+          1024,
+          879
+        ],
+        "originalUploadDimensions": [
+          2048,
+          1758
+        ],
+        "bytes": 135849,
+        "sha1": "d9655827123d659c231d0e2d3606b4c9264af7a5",
+        "sha256": "cae4188c6a5baa0eacf6f9460397046d51651fb68e95a65586322b4aa5e8d6a8",
+        "seconds": 0.578,
+        "status": 200,
+        "individuallyOpened": false,
+        "primaryCurrentTaxon": "Greta morgane oto",
+        "primaryQualityGrade": "research"
+      },
+      {
+        "observationId": 64241440,
+        "photoId": 103247767,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/103247767/large.jpeg",
+        "localFile": "/tmp/botanical149/103247767.jpg",
+        "sourceLocal": "/tmp/botanical149/obs-64241440.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/64241440",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) Nora Jácome, some rights reserved (CC BY), uploaded by Nora Jácome",
+        "dimensions": [
+          1024,
+          576
+        ],
+        "originalUploadDimensions": [
+          2048,
+          1152
+        ],
+        "bytes": 400549,
+        "sha1": "3518bab2437eeb8b52970bf8dc582a7344a70e96",
+        "sha256": "69afe84075cfa59d880da9e455fff2e82de0041ae91857c7d51f53c811a98217",
+        "seconds": 0.728,
+        "status": 200,
+        "individuallyOpened": false,
+        "primaryCurrentTaxon": "Greta morgane oto",
+        "primaryQualityGrade": "research"
+      },
+      {
+        "observationId": 67993477,
+        "photoId": 109995709,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/109995709/large.jpeg",
+        "localFile": "/tmp/botanical149/109995709.jpg",
+        "sourceLocal": "/tmp/botanical149/obs-67993477.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/67993477",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) Alexis López Hernández, some rights reserved (CC BY), uploaded by Alexis López Hernández",
+        "dimensions": [
+          1024,
+          768
+        ],
+        "originalUploadDimensions": [
+          2048,
+          1536
+        ],
+        "bytes": 376291,
+        "sha1": "5de9d78eeaf161be630b41a9751c0f997f24d2a6",
+        "sha256": "75d62c4c654f5cd82434aedb747c8e35b2bb140d5d3b5a61742fc46dc6aa22d6",
+        "seconds": 0.704,
+        "status": 200,
+        "individuallyOpened": false,
+        "primaryCurrentTaxon": "Greta morgane oto",
+        "primaryQualityGrade": "research"
+      },
+      {
+        "observationId": 2773908,
+        "photoId": 3141721,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/3141721/large.jpg",
+        "localFile": "/tmp/botanical149/3141721.jpg",
+        "sourceLocal": "/tmp/botanical149/obs-2773908.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/2773908",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) Claudio Cantú Muñiz, some rights reserved (CC BY), uploaded by Claudio Cantú Muñiz",
+        "dimensions": [
+          1024,
+          681
+        ],
+        "originalUploadDimensions": [
+          2048,
+          1361
+        ],
+        "bytes": 555228,
+        "sha1": "479bd5f4a703ece08785b96130e0e2720c811ac0",
+        "sha256": "104bc92942438d084e396adffa5fa31a961a5c5873238ec0633733603563064f",
+        "seconds": 0.813,
+        "status": 200,
+        "individuallyOpened": false,
+        "primaryCurrentTaxon": "Greta morgane oto",
+        "primaryQualityGrade": "research"
+      },
+      {
+        "observationId": 17276688,
+        "photoId": 26210878,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/26210878/large.jpeg",
+        "localFile": "/tmp/botanical149/26210878.jpg",
+        "sourceLocal": "/tmp/botanical149/obs-17276688.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/17276688",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) Roger Rittmaster, some rights reserved (CC BY), uploaded by Roger Rittmaster",
+        "dimensions": [
+          1024,
+          820
+        ],
+        "originalUploadDimensions": [
+          2048,
+          1639
+        ],
+        "bytes": 295684,
+        "sha1": "eb827d0e21a58be3f7630b8fb05649c62a6c556d",
+        "sha256": "f2a7c4c5c32597269b76829a2f68936b56f3f2bb52fa09d92e22707c228d11fe",
+        "seconds": 0.659,
+        "status": 200,
+        "individuallyOpened": false,
+        "primaryCurrentTaxon": "Greta morgane oto",
+        "primaryQualityGrade": "research"
+      },
+      {
+        "observationId": 63629701,
+        "photoId": 102153565,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/102153565/large.jpg",
+        "localFile": "/tmp/botanical149/102153565.jpg",
+        "sourceLocal": "/tmp/botanical149/obs-63629701.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/63629701",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) Doruk Ege Aksu, some rights reserved (CC BY), uploaded by Doruk Ege Aksu",
+        "dimensions": [
+          768,
+          1024
+        ],
+        "originalUploadDimensions": [
+          1536,
+          2048
+        ],
+        "bytes": 163827,
+        "sha1": "7ad2e743afe1a532d123a3690f6022f3d0448d79",
+        "sha256": "4e1b7157de72b89e9b37d913404b93f1807fd2059db1234ae3dab8a3c8881ff0",
+        "seconds": 0.695,
+        "status": 200,
+        "individuallyOpened": true,
+        "primaryCurrentTaxon": "Chrysoperla carnea",
+        "primaryQualityGrade": "research"
+      },
+      {
+        "observationId": 50104603,
+        "photoId": 79560054,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/79560054/large.jpg",
+        "localFile": "/tmp/botanical149/79560054.jpg",
+        "sourceLocal": "/tmp/botanical149/obs-50104603.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/50104603",
+        "license": "CC0",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "attribution": "no rights reserved, uploaded by Andreas Manz",
+        "dimensions": [
+          1024,
+          711
+        ],
+        "originalUploadDimensions": [
+          2048,
+          1421
+        ],
+        "bytes": 166456,
+        "sha1": "2034174c32c0af6422ffe952c4d9afa2bc7a5aa6",
+        "sha256": "11881c38d6490a5934fe9ac10df2ef43e904bf5e4b7e3f435bfec6a5f7a067dd",
+        "seconds": 0.64,
+        "status": 200,
+        "individuallyOpened": true,
+        "primaryCurrentTaxon": "Chrysoperla carnea",
+        "primaryQualityGrade": "research"
+      },
+      {
+        "observationId": 295431077,
+        "photoId": 531844101,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/531844101/large.jpg",
+        "localFile": "/tmp/botanical149/531844101.jpg",
+        "sourceLocal": "/tmp/botanical149/obs-295431077.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/295431077",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) E. A., some rights reserved (CC BY), uploaded by E. A.",
+        "dimensions": [
+          555,
+          756
+        ],
+        "originalUploadDimensions": [
+          555,
+          756
+        ],
+        "bytes": 78559,
+        "sha1": "d32a7f74bc7806f59156168aa699d5bebb277736",
+        "sha256": "1000f2ebc50a2806fd86035557132dd1b68173cb08d597ba304e961612922317",
+        "seconds": 0.519,
+        "status": 200,
+        "individuallyOpened": true,
+        "primaryCurrentTaxon": "Chrysoperla carnea",
+        "primaryQualityGrade": "research"
+      },
+      {
+        "observationId": 344324222,
+        "photoId": 627362237,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/627362237/large.jpg",
+        "localFile": "/tmp/botanical149/627362237.jpg",
+        "sourceLocal": "/tmp/botanical149/obs-344324222.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/344324222",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) Brandon Johnson, some rights reserved (CC BY), uploaded by Brandon Johnson",
+        "dimensions": [
+          1019,
+          1024
+        ],
+        "originalUploadDimensions": [
+          2037,
+          2048
+        ],
+        "bytes": 415321,
+        "sha1": "e482224394cae5f5f74e4b87175bc2c6e9dc6baa",
+        "sha256": "a071b36cefdd5480f2d07c2697639cf2247ba76d276f7eeaf388b5513d1dcf68",
+        "seconds": 0.825,
+        "status": 200,
+        "individuallyOpened": true,
+        "primaryCurrentTaxon": "Chrysoperla carnea",
+        "primaryQualityGrade": "needs_id"
+      },
+      {
+        "observationId": 209788964,
+        "photoId": 371176240,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/371176240/large.jpg",
+        "localFile": "/tmp/botanical149/371176240.jpg",
+        "sourceLocal": "/tmp/botanical149/obs-209788964.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/209788964",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) Flavien Saboureau, some rights reserved (CC BY), uploaded by Flavien Saboureau",
+        "dimensions": [
+          1024,
+          683
+        ],
+        "originalUploadDimensions": [
+          1500,
+          1000
+        ],
+        "bytes": 108170,
+        "sha1": "0b97c11e7344cf8a20216bc86e1beb3e64941e86",
+        "sha256": "7017e81136d632281d0060aa670233dda905cbdfc9ef2687c3e6c2e1e010891e",
+        "seconds": 0.596,
+        "status": 200,
+        "individuallyOpened": true,
+        "primaryCurrentTaxon": "Polystichum sinense",
+        "primaryQualityGrade": "research"
+      },
+      {
+        "observationId": 218580733,
+        "photoId": 386811789,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/386811789/large.jpeg",
+        "localFile": "/tmp/botanical149/386811789.jpg",
+        "sourceLocal": "/tmp/botanical149/obs-218580733.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/218580733",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) Clément Maouche, some rights reserved (CC BY), uploaded by Clément Maouche",
+        "dimensions": [
+          1024,
+          683
+        ],
+        "originalUploadDimensions": [
+          2048,
+          1365
+        ],
+        "bytes": 461745,
+        "sha1": "d09f7abe4361777ebaa8d3360c12e81b2f9ce444",
+        "sha256": "ac5dce61dc67ad328435e324526fa1129e6f88b561fdd3e81f3f1e6b848027a7",
+        "seconds": 0.76,
+        "status": 200,
+        "individuallyOpened": true,
+        "primaryCurrentTaxon": "Polystichum setiferum",
+        "primaryQualityGrade": "research"
+      }
+    ],
+    "checks": "All 20 exact local byte sizes, SHA-1 and SHA-256 verified. Photo-specific rights and source-published delivery URLs retained in each record. No specimen/sex/behavior guaranteed merely by a search hit.",
+    "scope": "Only BOTANICAL-EDITORIAL-149.md/.json and /tmp/botanical149. No runtime, avatar, accepted prose, publication, merge, other-task contact/inspection, controls or dependencies changed."
+  }
+}

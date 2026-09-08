@@ -115,7 +115,7 @@ test("Vite worktree previews fail instead of moving to an untracked port", () =>
   );
   assert.match(
     script,
-    /cd packages\/desktop .*npm run dev -- --port \$\{PORT\} --strictPort/,
+    /cd packages\/desktop .*npm run dev -- --config vite\.config\.ts --port \$\{PORT\} --strictPort/,
   );
   assert.match(
     script,

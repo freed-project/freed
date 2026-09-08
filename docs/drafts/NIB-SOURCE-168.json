@@ -1,0 +1,44 @@
+{
+  "media": {
+    "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/6/6e/Red_Panda_Yawn_2_%2815514313705%29.jpg",
+    "localPath": "/tmp/freed-nib168/yawn.jpg",
+    "bytes": 4030146,
+    "sha1": "2821c07bb6dff2a9b1c78c1129bcec0364714e34",
+    "sha256": "1209c4999e5bb9836920c17b9e82c7a00bdb56832ab840a8fc677039893f3202"
+  },
+  "sleeping": [
+    {
+      "index": 0,
+      "page": "https://commons.wikimedia.org/wiki/File:Sleepy_panda.jpg",
+      "thumbnail": "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/27/Sleepy_panda.jpg/120px-Sleepy_panda.jpg?utm_source=commons.wikimedia.org&utm_campaign=parser&utm_content=thumbnail",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/2/27/Sleepy_panda.jpg",
+      "localPath": "/tmp/freed-nib168/sleep-0.jpg",
+      "bytes": 131788,
+      "sha1": "9d9b89a987177e528d10016195545f8910318551"
+    },
+    {
+      "index": 1,
+      "page": "https://commons.wikimedia.org/wiki/File:Bristol.zoo.red.panda.arp.jpg",
+      "thumbnail": "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/26/Bristol.zoo.red.panda.arp.jpg/120px-Bristol.zoo.red.panda.arp.jpg?utm_source=commons.wikimedia.org&utm_campaign=parser&utm_content=thumbnail",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/2/26/Bristol.zoo.red.panda.arp.jpg",
+      "localPath": "/tmp/freed-nib168/sleep-1.jpg",
+      "bytes": 867178,
+      "sha1": "52e1afdb3a1f0845f1ea6b2e4ef45164af37e218"
+    },
+    {
+      "index": 2,
+      "page": "https://commons.wikimedia.org/wiki/File:Ailurus_fulgens_red_panda.jpg",
+      "thumbnail": "https://thumb.wikimedia.org/wikipedia/commons/thumb/8/8b/Ailurus_fulgens_red_panda.jpg/120px-Ailurus_fulgens_red_panda.jpg?utm_source=commons.wikimedia.org&utm_campaign=parser&utm_content=thumbnail"
+    },
+    {
+      "index": 3,
+      "page": "https://commons.wikimedia.org/wiki/File:Firefox_2005-07-06.jpg",
+      "thumbnail": "https://thumb.wikimedia.org/wikipedia/commons/thumb/4/46/Firefox_2005-07-06.jpg/120px-Firefox_2005-07-06.jpg?utm_source=commons.wikimedia.org&utm_campaign=parser&utm_content=thumbnail"
+    },
+    {
+      "index": 4,
+      "page": "https://commons.wikimedia.org/wiki/File:Ailurus_fulgens_prague_zoo_sleeping.jpg",
+      "thumbnail": "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d0/Ailurus_fulgens_prague_zoo_sleeping.jpg/120px-Ailurus_fulgens_prague_zoo_sleeping.jpg?utm_source=commons.wikimedia.org&utm_campaign=parser&utm_content=thumbnail"
+    }
+  ]
+}

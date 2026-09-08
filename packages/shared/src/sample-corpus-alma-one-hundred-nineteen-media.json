@@ -1,0 +1,18 @@
+[
+  {
+    "id": "alma119-not-empty",
+    "subject": "octopus underwater",
+    "category": "wildlife",
+    "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/285264344/large.jpg",
+    "sourceUrl": "https://www.inaturalist.org/observations/164842609",
+    "creator": "Donald Davesne",
+    "license": "CC BY 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+    "sha1": "8a723a73f4877b300ec621959412dd7ac517b7cd",
+    "width": 1024,
+    "height": 768,
+    "identityNameBase": "Alma Eight",
+    "alt": "A hermit crab extends its eyes, claws and legs from a striped shell among pebbles.",
+    "detail": "A hermit crab extends its eyes, claws and legs from a striped shell among pebbles."
+  }
+]

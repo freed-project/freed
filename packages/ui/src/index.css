@@ -5,6 +5,7 @@
 
 :root,
 html[data-theme="neon"] {
+  --theme-thumbnail-tint-rgb: 18 14 36;
   --font-body: "Manrope", system-ui, -apple-system, sans-serif;
   --font-logo: "Space Grotesk", system-ui, sans-serif;
   --font-display: "Space Grotesk", "Manrope", system-ui, sans-serif;
@@ -165,6 +166,7 @@ html[data-theme="neon"] {
 }
 
 html[data-theme="midas"] {
+  --theme-thumbnail-tint-rgb: 38 28 17;
   --font-body:
     "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
   --font-logo: "Baskerville", "Didot", "Bodoni 72", "Times New Roman", serif;
@@ -280,6 +282,7 @@ html[data-theme="midas"] {
 }
 
 html[data-theme="ember"] {
+  --theme-thumbnail-tint-rgb: 40 19 13;
   --font-body:
     "Optima", "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
   --font-logo: "Impact", "Arial Black", "Avenir Next Condensed", sans-serif;
@@ -392,6 +395,7 @@ html[data-theme="ember"] {
 }
 
 html[data-theme="scriptorium"] {
+  --theme-thumbnail-tint-rgb: 48 34 21;
   --font-body:
     "Manrope", "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   --font-logo: "Baskerville", "Hoefler Text", "Iowan Old Style", Georgia, serif;
@@ -523,6 +527,7 @@ html[data-theme="scriptorium"] {
 }
 
 html[data-theme="starship"] {
+  --theme-thumbnail-tint-rgb: 22 22 58;
   --font-body: "Barlow", "Avenir Next", "Segoe UI", sans-serif;
   --font-logo: "Barlow Condensed", "Arial Narrow", sans-serif;
   --font-display: "Barlow Condensed", "Arial Narrow", sans-serif;
@@ -652,6 +657,7 @@ html[data-theme="starship"] {
 }
 
 html[data-theme="dark-star"] {
+  --theme-thumbnail-tint-rgb: 19 22 28;
   --font-body: "Barlow", "Avenir Next", "Segoe UI", sans-serif;
   --font-logo: "Barlow Condensed", "Arial Narrow", sans-serif;
   --font-display: "Barlow Condensed", "Arial Narrow", sans-serif;
@@ -1418,7 +1424,7 @@ html[data-theme="scriptorium"] .theme-tooltip-panel {
   align-items: center;
   justify-content: center;
   gap: 0.35rem;
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 600;
   line-height: 1.25;
   letter-spacing: 0.01em;
@@ -1432,7 +1438,7 @@ html[data-theme="scriptorium"] .theme-tooltip-panel {
   display: block;
   margin-top: 0.1rem;
   text-align: center;
-  font-size: 12px;
+  font-size: 0.75rem;
   line-height: 1.5;
   color: var(--theme-text-secondary);
 }
@@ -1447,7 +1453,7 @@ html[data-theme="scriptorium"] .theme-tooltip-panel {
     );
   background: color-mix(in oklab, var(--theme-bg-card) 90%, transparent);
   padding: 0.12rem 0.4rem;
-  font-size: 10px;
+  font-size: 0.625rem;
   font-weight: 600;
   line-height: 1;
   color: var(--theme-text-muted);
@@ -1471,7 +1477,7 @@ html[data-theme="scriptorium"] .theme-tooltip-panel {
     );
   background: color-mix(in oklab, var(--theme-bg-card-hover) 94%, transparent);
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08);
-  font-size: 10px;
+  font-size: 0.625rem;
   line-height: 1;
 }
 
@@ -2114,9 +2120,14 @@ html.freed-mobile-sidebar-open body {
   padding: 0;
   border: 1px solid transparent;
   background: transparent;
-  color: var(--theme-text-muted);
+  color: var(--theme-reader-layout-idle-color, var(--theme-text-muted));
   line-height: 1;
   transition: color 0.18s ease;
+}
+
+/* These palettes need quieter resting icons; keep the shared hover color. */
+html:is([data-theme="midas"], [data-theme="scriptorium"], [data-theme="starship"], [data-theme="dark-star"]) .theme-toolbar-reader-layout-button {
+  --theme-reader-layout-idle-color: var(--theme-border-subtle);
 }
 
 .theme-toolbar-reader-layout-button:hover {
@@ -2197,6 +2208,58 @@ html.freed-mobile-sidebar-open body {
   cursor: pointer;
   accent-color: var(--theme-accent-secondary);
 }
+
+.friend-closeness-control { position: relative; height: 2rem; width: 100%; }
+.friend-closeness-handle {
+  box-sizing: border-box;
+  border: 1px solid var(--theme-accent-secondary);
+  border-radius: 0.6rem;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.6875rem;
+  line-height: 1rem;
+  white-space: nowrap;
+  text-align: center;
+  color: var(--theme-text-primary);
+  background: var(--theme-bg-elevated);
+  pointer-events: none;
+}
+.friend-closeness-measure { position: absolute; visibility: hidden; width: max-content; }
+.friend-closeness-position {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: var(--care-handle-width);
+  left: calc((100% - var(--care-handle-width)) * var(--care-position));
+}
+/* Reserve half the longest label at each end, including at the endpoint stops. */
+.friend-closeness-track {
+  position: absolute;
+  inset-inline: calc(var(--care-handle-width) / 2);
+  top: calc(50% - 0.11rem);
+  height: 0.22rem;
+  background: var(--theme-border-subtle);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.friend-closeness-track > span { width: 0.22rem; height: 0.22rem; border-radius: 50%; background: var(--theme-text-soft); }
+.friend-closeness-slider {
+  appearance: none;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  background: transparent;
+  cursor: grab;
+  touch-action: pan-y;
+}
+.friend-closeness-slider:active { cursor: grabbing; }
+.friend-closeness-slider:focus-visible { outline: 2px solid var(--theme-accent-secondary); outline-offset: 2px; border-radius: 0.6rem; }
+.friend-closeness-slider::-webkit-slider-runnable-track { height: 2rem; background: transparent; }
+.friend-closeness-slider::-moz-range-track { height: 2rem; background: transparent; }
+.friend-closeness-slider::-webkit-slider-thumb { appearance: none; width: var(--care-handle-width); height: 2rem; border: 0; background: transparent; }
+.friend-closeness-slider::-moz-range-thumb { width: var(--care-handle-width); height: 2rem; border: 0; background: transparent; }
 
 .theme-toolbar-density-slider:focus-visible {
   outline: 2px solid rgb(var(--theme-accent-secondary-rgb) / 0.65);
@@ -2400,11 +2463,11 @@ html.freed-mobile-sidebar-open body {
   gap: 0;
 }
 
-.theme-toolbar-cluster > .theme-toolbar-slot + .theme-toolbar-slot {
+.theme-toolbar-cluster > .theme-toolbar-slot-visible ~ .theme-toolbar-slot-visible {
   margin-inline-start: 0.75rem;
 }
 
-.theme-toolbar-cluster-tight > .theme-toolbar-slot + .theme-toolbar-slot {
+.theme-toolbar-cluster-tight > .theme-toolbar-slot-visible ~ .theme-toolbar-slot-visible {
   margin-inline-start: 0.5rem;
 }
 
@@ -2886,9 +2949,28 @@ html[data-theme="scriptorium"] .btn-primary:hover {
   background: var(--theme-button-secondary-hover);
 }
 
-.theme-canvas-control,
-.theme-canvas-control:hover {
-  background: var(--theme-bg-elevated);
+.theme-canvas-control {
+  background: var(--theme-header-background);
+  border-color: var(--theme-header-border);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05), var(--theme-header-shadow);
+  backdrop-filter: blur(18px);
+  transition: color 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.theme-canvas-control:hover:not(:disabled),
+.theme-canvas-control:focus-visible {
+  background: var(--theme-header-background);
+  color: var(--theme-accent-secondary);
+  border-color: var(--theme-accent-secondary);
+  box-shadow: inset 0 0 0 999px rgb(var(--theme-accent-secondary-rgb) / 0.12), var(--theme-header-shadow);
+}
+
+html[data-theme="scriptorium"] .theme-canvas-control {
+  backdrop-filter: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-canvas-control { transition: none; }
 }
 
 .theme-input {
@@ -3418,6 +3500,37 @@ input[type="radio"]:focus-visible {
   100% {
     opacity: 1;
     transform: scale(1);
+  }
+}
+
+/* Touch navigation must not reveal a new click target on the first tap.
+   Reserve separate space for options and counts rather than swapping them. */
+@media (hover: none), (pointer: coarse), (max-width: 767px) {
+  [data-sidebar-row] .sidebar-nav-action-slot-with-menu {
+    box-sizing: content-box;
+    padding-right: 28px;
+  }
+
+  [data-sidebar-row] .sidebar-nav-menu-button {
+    top: 50%;
+    bottom: auto;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    transform: translateY(-50%) !important;
+  }
+
+  [data-sidebar-row] .sidebar-nav-action-slot-with-menu[data-sidebar-has-count="false"] {
+    width: 0 !important;
+  }
+
+  [data-sidebar-row] .sidebar-nav-action-slot-with-menu [data-sidebar-count-slot] {
+    right: 28px;
+    opacity: 1 !important;
+    pointer-events: none !important;
+    transform: none !important;
   }
 }
 

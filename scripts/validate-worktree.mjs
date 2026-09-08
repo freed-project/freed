@@ -150,12 +150,17 @@ const RELEASE_PUBLISHER_TEST_FILES = [
 const PULL_REQUEST_PUBLISHER_TOOLING_PATHS = new Set([
   "scripts/worktree-publish.sh",
   "scripts/worktree-publish.test.mjs",
+  "scripts/task-decisions.mjs",
+  "scripts/task-decisions.test.mjs",
+  "scripts/worktree-add.sh",
+  "scripts/worktree-cleanup.sh",
 ]);
 
-const PULL_REQUEST_PUBLISHER_TEST_FILES = ["scripts/worktree-publish.test.mjs"];
+const PULL_REQUEST_PUBLISHER_TEST_FILES = ["scripts/worktree-publish.test.mjs", "scripts/task-decisions.test.mjs"];
 
 const TOOLING_SMOKE_RUNNER_PATHS = new Set([
   ".github/workflows/ci.yml",
+  ".github/workflows/tooling-nightly.yml",
   "scripts/lib/tooling-smoke-plan.mjs",
   "scripts/measure-tooling-smoke.mjs",
   "scripts/measure-tooling-smoke.test.mjs",

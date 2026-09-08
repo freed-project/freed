@@ -1,5 +1,4 @@
-import { useRef, useState } from "react";
-import { Tooltip } from "../Tooltip.js";
+import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 
 export type CareLevel = 1 | 2 | 3 | 4 | 5;
 
@@ -7,11 +6,8 @@ export function careLevelLabel(level: number): string {
   return level <= 2 ? "Connection" : level <= 4 ? "Friend" : "Fam";
 }
 
-/** One rating control for identity details and editing, with keyboard parity. */
-export function CareRating({
-  level,
-  onChange,
-}: {
+/** Five-stop closeness control using the existing stored relationship values. */
+export function CareRating({ level, onChange }: {
   level: CareLevel;
   onChange?: (level: CareLevel) => void | Promise<void>;
 }) {
@@ -19,71 +15,50 @@ export function CareRating({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState(false);
   const writing = useRef(false);
+  const measure = useRef<HTMLSpanElement>(null);
+  const [handleWidth, setHandleWidth] = useState(0);
+  useLayoutEffect(() => {
+    const element = measure.current;
+    if (!element) return;
+    const update = () => setHandleWidth(element.getBoundingClientRect().width);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  const commit = async (value: CareLevel) => {
+    if (!onChange || writing.current) return;
+    if (value === level) { setPreview(null); return; }
+    writing.current = true;
+    setPending(true);
+    setError(false);
+    try { await onChange(value); } catch { setError(true); }
+    finally { writing.current = false; setPending(false); setPreview(null); }
+  };
   return (
-    <div>
-      <div
-        className="inline-flex items-center gap-0.5"
-        role="group"
-        aria-label={`Care level ${level.toLocaleString()} of 5: ${careLevelLabel(level)}`}
-        onPointerLeave={() => setPreview(null)}
-        onBlur={(event) => {
-          if (!event.currentTarget.contains(event.relatedTarget))
-            setPreview(null);
-        }}
-      >
-        {([1, 2, 3, 4, 5] as const).map((value) => {
-          const label = `Set ${careLevelLabel(value)}: ${value.toLocaleString()} of 5 stars`;
-          const icon = (
-            <svg
-              viewBox="0 0 12 12"
-              aria-hidden="true"
-              className={`h-4 w-4 transition-colors ${value <= (preview ?? level) ? "text-[color:var(--theme-accent-secondary)]" : "text-[color:var(--theme-border-strong)]"}`}
-              fill="currentColor"
-            >
-              <path d="M6 1l1.5 3H11L8.5 6l1 3L6 7.5 2.5 9l1-3L1 4h3.5z" />
-            </svg>
-          );
-          return onChange ? (
-            <Tooltip key={value} label={label}>
-              <button
-                type="button"
-                aria-label={label}
-                aria-pressed={level === value}
-                disabled={pending}
-                className="flex h-7 w-7 items-center justify-center rounded-full transition-transform duration-150 hover:scale-110 active:scale-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--theme-accent-primary)] disabled:opacity-60 motion-reduce:transform-none"
-                onPointerEnter={() => setPreview(value)}
-                onFocus={() => setPreview(value)}
-                onKeyDown={(event) => event.stopPropagation()}
-                onClick={async (event) => {
-                  event.stopPropagation();
-                  if (writing.current) return;
-                  writing.current = true;
-                  setPending(true);
-                  setError(false);
-                  try {
-                    await onChange(value);
-                  } catch {
-                    setError(true);
-                  } finally {
-                    writing.current = false;
-                    setPending(false);
-                    setPreview(null);
-                  }
-                }}
-              >
-                {icon}
-              </button>
-            </Tooltip>
-          ) : (
-            <span key={value}>{icon}</span>
-          );
-        })}
+    <div className="w-full min-w-0" onClick={event => event.stopPropagation()} onKeyDown={event => event.stopPropagation()}>
+      <div className="friend-closeness-control" style={{
+        "--care-handle-width": handleWidth ? `${handleWidth}px` : "7rem",
+        "--care-position": ((preview ?? level) - 1) / 4,
+      } as CSSProperties}>
+      <span ref={measure} className="friend-closeness-handle friend-closeness-measure" aria-hidden="true">Connection</span>
+      <div className="friend-closeness-track" aria-hidden="true">
+        {[1, 2, 3, 4, 5].map(stop => <span key={stop} />)}
       </div>
-      {error && (
-        <p role="alert" className="text-xs theme-feedback-text-warning">
-          Could not save the care level. Please try again.
-        </p>
-      )}
+      <span className="friend-closeness-handle friend-closeness-position" aria-hidden="true">{careLevelLabel(preview ?? level)}</span>
+      <input type="range" min={1} max={5} step={1}
+        className="friend-closeness-slider"
+        aria-label="Relationship closeness"
+        aria-valuetext={careLevelLabel(preview ?? level) + ", position " + (preview ?? level).toLocaleString() + " of 5"}
+        value={preview ?? level} disabled={!onChange || pending}
+        onChange={event => setPreview(Number(event.target.value) as CareLevel)}
+        onPointerUp={event => void commit(Number(event.currentTarget.value) as CareLevel)}
+        onPointerCancel={() => setPreview(null)}
+        onKeyUp={event => { event.stopPropagation(); void commit(Number(event.currentTarget.value) as CareLevel); }}
+        onBlur={event => void commit(Number(event.currentTarget.value) as CareLevel)}
+      />
+      </div>
+      {error && <p role="alert" className="text-xs theme-feedback-text-warning">Could not save the relationship setting. Please try again.</p>}
     </div>
   );
 }

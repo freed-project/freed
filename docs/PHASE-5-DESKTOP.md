@@ -2,6 +2,15 @@
 
 > **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, Windows signing plan scaffolded, legal consent gate shipped, tri-state sidebar chrome shipped, public-safe bug reporting shipped, runtime memory telemetry shipped, native startup recovery shipped, bundled recovery updater flow shipped, permanent local social media vault shipped, desktop hot-path side-effect scheduling shipped, bounded SQLite user mutations and queries shipped, visible-scope bulk actions shipped, background runtime coordination shipped, renderer recovery safe mode shipped, deep local WebKit diagnostics shipped, adaptive high-memory scrape budgets shipped, explicit local-only primary Library authority shipped, normalized sample-data accounting, Story Wall candidates, Saved analytics, full-library native search, bounded scheduled RSS refresh, Google Drive checkpoint publication, follower intents, global background activity monitoring, and native terminal sync soaks shipped)
 
+YouTube reader content loads the privacy-enhanced player immediately with
+autoplay disabled. Completion removes the iframe until an explicit replay;
+API errors and timeouts also close it. The owner approved this additional
+provider contact on September 7, 2026. Capture and refresh cadence are unchanged.
+
+Shared feed cards scale text with interface zoom, use consistent content insets,
+and blend images over the full-card hover background. Preview rails hide
+immediately. Desktop map trackpad swipes pan without changing pinch zoom.
+
 Drive dev-trigger diagnostics preserve a running publication's result when the
 social background-job slot is idle. That slot does not track Drive publication
 and cannot prove renderer recovery. Existing bridge settlement and keepalive
@@ -26,6 +35,11 @@ not relax native persistence validation or change provider cadence.
 > **Priority:** 🎯 HIGHEST — Universal liberation tool
 
 ## Current SQLite Desktop work
+
+The shared shell selects its mobile layout by viewport width, including narrow
+Freed Desktop windows. Narrow layouts use document scrolling. Reader controls,
+thumbnail text fitting, theme hover states, and Friends selection use the same
+shared components across Desktop and PWA.
 
 - [x] Complete extraction of Library semantics into
       `packages/library-core-native` so Freed Desktop and the headless Primary
@@ -995,3 +1009,25 @@ tokio = { version = "1", features = ["full"] }
   }
 }
 ```
+
+
+### Isolated editorial showcase correction, September 6, 2026
+
+The shared showcase generator now projects admitted character episodes, reviewed portraits and authored platform identities directly. Null-media drafts and synthetic stress fixtures are excluded from showcase counts. YouTube uses verified video sources and preserves narrative paragraphs and separate credit lines. Sample feed URLs retain the non-fetching sentinel domain. The explicit stress mode remains separate, with bounded text-collision fallback. This is an isolated source implementation; rendered preview and full repository verification remain outstanding, and no deployment or merge is claimed. See [integration evidence](drafts/EDITORIAL-GENERATOR-INTEGRATION.md).
+
+Isolated editorial follow-up on September 6: accepted sample Stories now carry complete local preserved text and display separate photo credits in the reader. The shared reader omits the misleading Summary label for complete sample entries. Focused tests and offline mobile rendering pass; deployment and full integration remain unverified.
+
+The shared editorial source now requires one human `inspiring`, `event`,
+`personal`, `conversation`, or `news` classification for every accepted sample
+post. Shared sample generation writes the corresponding existing content signal
+with method `manual`; it never calls the normal model or rules classifier.
+
+## Bounded story presentation
+
+Nearby stories share consecutive grid rows after the canonical feed sort. A group can bridge up to five ordinary posts, with a five-position movement limit for ordinary items and non-opening stories. When a mixed feed has a story among its first ten items, the earliest story moves to the first row so it is visible above the fold. That opening story is the single exception to the movement limit. Existing uninterrupted story runs remain intact; newly assembled groups contain at most six stories. Retained groups stay closed across reader page changes. Keyboard and reader navigation use the displayed sequence at every width. Desktop and mobile reuse the same row builder; the compact reader rail repacks the shared sequence at its own width.
+
+Read-on-scroll refreshes replace the complete resident window atomically, avoiding a temporary first-page list that clamps the scroll position. Deep windows resume from an ordering bookmark through fresh source-fenced queries. Ranking, durable state, filter validation, and stale-cursor rejection remain in the Library layer. Geometry changes establish a fresh read-on-scroll baseline and preserve the visible card anchor, including the compact rail's first-row padding.
+
+Local feature previews replace marked sample records once per page load through the same shared curated population used by the public demo, including its authored timelines, relationships and fresh randomized presentation seed. Browser previews retain remote image URLs; mocked Desktop uses inline media and bypasses its unavailable native avatar cache. Ordinary test fixtures retain explicit population control.
+
+The Populate sample data action in every build uses that same curated generator and fresh randomized posting times. Manual population remains additive in Libraries containing real records; only explicit sample cleanup or local-preview replacement removes marked sample records. Settings counts describe the shared population, including people who are connections rather than friends.

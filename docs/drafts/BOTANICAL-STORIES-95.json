@@ -1,0 +1,82 @@
+{
+  "status": "proposal_pending_independent_root_review",
+  "counts": {
+    "cachedExactImagesReopened": 1,
+    "newImagesDownloaded": 0,
+    "actualDraftsWritten": 1,
+    "proposals": 1,
+    "admitted": 0,
+    "newIdentities": 0
+  },
+  "proposals": [
+    {
+      "candidateId": "95-01",
+      "characterId": "ivo-softshield",
+      "identityNameBase": "Ivo Softshield",
+      "episode": {
+        "subject": "soft shield fern",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "social",
+        "title": "A steadier place",
+        "body": "The spider finished her web between my fronds just before the wind rose. Each time I bent, another thread broke. She kept coming back with more silk. I wanted to be the stone beside me.",
+        "mediaSha1": "4822caf37d69cdaedda9696e9910b86f3b6a48c8"
+      },
+      "admission": "pending_independent_root_review",
+      "visualReview": "Exact frame reopened individually. Green pinna with crisp divided pinnules spans the frame; fine diagonal silk is visible across the dark upper background and close to the leaf. This is a beautiful fern image with subtle web evidence, not a conspicuous complete orb. No identifiable spider or insect appears. Root should judge whether silk is legible enough for the central scene.",
+      "fictionBoundary": "Fern and fine silk visible. Web completion, connections between two fronds, wind, breaking threads, repeated spider visits and Ivo's wish are invented prior sequence. No observer recorded those actions. No spider species, sex identification, unique web architecture, measured load or plant nervous system claimed. Female pronoun is fiction. Frond bending is passive wind loading, not deliberate rapid plant movement.",
+      "continuity": "Existing Polystichum setiferum in shaded woodland near Coimbra40.19/-8.35. Current arcs Not yet, The tall one, Underneath and Primitive read in full. Mature fronds after unfurling require no reverse stage. The nearby stone is already in The tall one. Source Craig Lodge undercliff is provenance, not fictional relocation. Whole fern speaks; fronds remain parts of one organism, no new identity or avatar.",
+      "proseAssessment": "Actual 35-word draft assessed after inspecting image and canon. Ivo becomes distressed by the consequence of his own flexible body for another creature's repeated work. The final wish is specific and impossible without pretending that he transforms into stone. The scene contains a changed desire, not an explanation of empathy or resilience. It does not repeat the tall-frond rivalry, waiting to unfold, underside embarrassment, a vanished visitor felt in residual movement, or helpful large plant accepting tiny carers.",
+      "recommendation": "Recommend independent review of exact body; preserve if accepted. Primary uncertainty is thin-web visual prominence, not absence of a photographed time sequence."
+    }
+  ],
+  "media": [
+    {
+      "observationId": 246030415,
+      "photoId": 439131872,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/439131872/large.jpg",
+      "localFile": "/tmp/botanical92/246030415.jpg",
+      "bytes": 186886,
+      "sha1": "4822caf37d69cdaedda9696e9910b86f3b6a48c8",
+      "sha256": "6eb6be20e1c8376c0c220c8b3d75184c3b0bdf5aaa01a92a004054d7e98d22ce",
+      "dimensions": [
+        1024,
+        680
+      ],
+      "seconds": 0.639,
+      "status": 200,
+      "attribution": "(c) Ben Mitchell, some rights reserved (CC BY), uploaded by Ben Mitchell",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/246030415",
+      "sourceLocal": "/tmp/botanical92/obs-246030415.json",
+      "id": "botanical95-fern-fine-silk",
+      "category": "wildlife",
+      "subject": "soft shield fern",
+      "species": "Polystichum setiferum",
+      "creator": "Ben Mitchell",
+      "sourceMetadataUrl": "https://www.inaturalist.org/observations/246030415.json",
+      "aggregated": false,
+      "alt": "A divided green soft shield fern leaf lies beneath fine silk strands against shaded foliage.",
+      "rightsEvidence": "Detailed primary observation photo439131872 explicitly supplies CC-BY, BY4.0 URL and Ben Mitchell attribution. Real source credit is separate from Ivo.",
+      "taxonEvidence": "Current primary taxon Polystichum setiferum, research grade; both current identifications agree at species level. An older withdrawn genus identification is preserved in metadata. Rounded detail agrees with fern morphology, with primary identification carrying exact species.",
+      "deliveryEvidence": "Exact published large_url reopened individually without a fresh image download;1024×680 delivery. Upload1200×797 recorded but not inspected. Recomputed SHA1, SHA256 and byte length match92."
+    }
+  ],
+  "biology": {
+    "sourceUrl": "https://huskiecommons.lib.niu.edu/allgraduate-thesesdissertations/6688/",
+    "sourceType": "Primary experimental thesis abstract, William Thomas Jinks1966",
+    "support": "Independently opened institutional abstract: laboratory Araneus diadematus responded to web damage by leaving, repair or destruction. Minimal repair used non-viscid dragline silk; damaged radii, sticky spirals and hub threads were not replaced. This supports broad plausibility of repair, not identification of the unseen fictional spider or universal replacement behavior. The body says coming back with more silk and does not specify repairing every original thread in kind.",
+    "limitations": "Institutional abstract read, not full thesis. ScienceDirect article page returned403; not retried or bypassed. No figure or copyrighted thesis image reused."
+  },
+  "priorDraftsPreserved": [
+    "BOTANICAL-STORIES-92.md",
+    "BOTANICAL-STORIES-92.json"
+  ],
+  "limitations": [
+    "A subtle web is the principal image-fit risk.",
+    "No photograph is claimed to document prior movement or fictional intent.",
+    "Only published delivery reopened, not original upload.",
+    "No application relay/render test or runtime changes."
+  ]
+}
