@@ -277,7 +277,7 @@ test("feed card overhaul actions and reader open flow work", async ({ app }) => 
   const facebookCard = app.page.locator("article").filter({ hasText: FACEBOOK_TITLE }).first();
   await expect(facebookCard).toBeVisible();
   await expect(facebookCard).toContainText("1,234");
-  await expect(facebookCard).toContainText("45");
+  await expect(facebookCard.locator('button[aria-label="Comment"]')).toHaveCount(0);
   await expect(facebookCard).toHaveClass(/grayscale/);
   await expect(facebookCard.locator('button[aria-label="Archive"]').first()).toBeVisible();
   const facebookImage = facebookCard.locator(`img[src="${FACEBOOK_MEDIA_URL}"]`).first();
@@ -286,6 +286,13 @@ test("feed card overhaul actions and reader open flow work", async ({ app }) => 
   const storyTile = app.page.locator('[data-feed-item-id="test-instagram-story-thumbnail"]');
   const storyImage = storyTile.locator(`img[src="${STORY_MEDIA_URL}"]`).first();
   await expect(storyImage).toBeVisible();
+  // A visible img can still be broken. Prove that the local fixture decoded.
+  await storyImage.evaluate(async (image: HTMLImageElement) => {
+    await image.decode();
+    if (!image.complete || image.naturalWidth === 0 || image.naturalHeight === 0) {
+      throw new Error("Story thumbnail did not decode");
+    }
+  });
 
   const brokenCard = app.page.locator('[data-feed-item-id="test-broken-thumbnail-fallback"]');
   const brokenImage = brokenCard.locator("img").first();
@@ -312,7 +319,7 @@ test("feed card overhaul actions and reader open flow work", async ({ app }) => 
   await rssCard.hover();
   await expect(rssCard.locator('button[aria-label="Love"]')).toHaveCount(0);
 
-  await expect(facebookCard.locator('button[aria-label="Open"]')).toBeVisible();
+  await expect(facebookCard.locator('button[aria-label="Open"]')).toHaveCount(0);
 
   await setShowEngagementCounts(app.page, false);
   await expect(facebookCard).not.toContainText("1,234");
@@ -347,10 +354,12 @@ test("feed card overhaul actions and reader open flow work", async ({ app }) => 
     };
   });
   expect(selectedCardRestingStyle.borderLeftWidth).toBe("2px");
-  expect(selectedCardHoverStyle).toEqual(selectedCardRestingStyle);
+  expect(selectedCardHoverStyle.borderLeftWidth).toBe(selectedCardRestingStyle.borderLeftWidth);
+  expect(selectedCardHoverStyle.borderLeftColor).toBe(selectedCardRestingStyle.borderLeftColor);
+  expect(selectedCardHoverStyle.backgroundColor).not.toBe(selectedCardRestingStyle.backgroundColor);
 
-  const openReaderButton = app.page.getByRole("button", { name: "Open", exact: true }).first();
-  await expect(openReaderButton).toBeVisible();
+  await expect(app.page.getByRole("link", { name: "View original on Facebook" })).toBeVisible();
+  await expect(app.page.getByTestId("workspace-toolbar").getByRole("button", { name: "Open", exact: true })).toHaveCount(0);
 });
 
 test("story grid top padding aligns with the sidebar panel", async ({ app, page }) => {
@@ -1119,4 +1128,32 @@ test("feed cards show compact event metadata from semantic enrichment", async ({
   const eventCard = app.page.locator("article").filter({ hasText: "Semantic Event Card" }).first();
   await expect(eventCard).toBeVisible();
   await expect(eventCard).toContainText(/Event/);
+});
+
+
+test("failed feed refresh shows a retry action instead of an empty Library", async ({ app }) => {
+  await app.goto();
+  await app.waitForReady();
+  await injectCardUiItems(app.page);
+  await expect(app.page.locator("article").first()).toBeVisible();
+  await app.page.evaluate(() => {
+    const w = window as Record<string, unknown>;
+    const handlers = w.__TAURI_MOCK_HANDLERS__ as Record<string, (args: any) => unknown>;
+    const original = handlers.query_normalized_library;
+    w.__RESTORE_FEED_QUERY__ = () => { handlers.query_normalized_library = original; };
+    handlers.query_normalized_library = (args) => {
+      if (args.request?.queryId === "feed_browse_page_v3") throw new Error("forced feed failure");
+      return original(args);
+    };
+    const store = w.__FREED_STORE__ as { getState(): { setFilter(filter: unknown): void } };
+    store.getState().setFilter({ platform: "facebook" });
+  });
+  await expect(app.page.getByRole("alert")).toContainText("Unable to load this feed.");
+  await expect(app.page.getByText("Welcome to Freed", { exact: true })).toHaveCount(0);
+  await app.page.evaluate(() => {
+    ((window as Record<string, unknown>).__RESTORE_FEED_QUERY__ as () => void)();
+  });
+  await app.page.getByRole("button", { name: "Try again", exact: true }).click();
+  await expect(app.page.getByRole("alert")).toHaveCount(0);
+  await expect(app.page.locator("article").filter({ hasText: FACEBOOK_TITLE }).first()).toBeVisible();
 });

@@ -17,6 +17,7 @@ export const LAND_TWELVE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
     "episodes": [
       {
         "subject": "North American beaver",
+        "classification": "inspiring",
         "mediaSha1": "c5f1f42732cda03122a9331dc013cf34a1aebc06",
         "theme": "wonder",
         "title": "Under my arm",
@@ -26,10 +27,31 @@ export const LAND_TWELVE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
         "subject": "Castor canadensis",
         "platform": "facebook",
         "contentType": "post",
+        "classification": "event",
         "mediaSha1": "44099524fe01bdb1ce34abb5820e28e19c648ea2",
         "theme": "movement",
         "title": "The hard surface",
         "body": "Came up where I had breathed yesterday and met ice. Pushed higher. It held.\n\nI put both forepaws against it and swam along underneath. Kept trying to lift my head before I had found the end. Each time I did, I stopped moving.\n\nHad to lower my face to go on. Then one paw reached into nothing. Turned toward it and came up breathing.\n\nThe opening was wider than I was. I swam around its edge before going under again."
+      },
+      {
+        "subject": "Castor canadensis",
+        "classification": "inspiring",
+        "mediaSha1": "85f84f546e1dbc8c1bfbcb55aeadeb4557119bf4",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "danger",
+        "title": "Almost through",
+        "body": "The tree creaked. I stopped chewing and backed away.\n\nWaited. Nothing fell.\n\nCame round the other side to finish the bite I'd left. It creaked there too.\n\nNow I'm in the water, watching a tree I would very much like to have down, hoping I haven't left it one bite short."
+      },
+      {
+        "subject": "Castor canadensis",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "wonder",
+        "title": "A smaller disturbance",
+        "body": "Slapped the water and went under. Came up to see how much of the pond I'd moved. Only rings.\n\nTried again. Missed it again.\n\nThe third time I hardly lifted my tail. A little plop. I saw all of that.",
+        "classification": "inspiring",
+        "mediaSha1": "f532390e2064c16bb35a2932d5e7a57b5430c472"
       }
     ]
   },
@@ -48,6 +70,7 @@ export const LAND_TWELVE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
     "episodes": [
       {
         "subject": "African savanna elephant",
+        "classification": "personal",
         "mediaSha1": "ae5af086e878a74d982f3a867c0db49d496e59df",
         "theme": "family",
         "title": "Nearly winning",
@@ -55,6 +78,7 @@ export const LAND_TWELVE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       },
       {
         "subject": "African savanna elephant",
+        "classification": "personal",
         "mediaSha1": "29034ef03b1a3fad42633bef558b64323b458ffa",
         "theme": "family",
         "title": "Across him",
@@ -62,6 +86,7 @@ export const LAND_TWELVE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       },
       {
         "subject": "African savanna elephant",
+        "classification": "inspiring",
         "mediaSha1": "2a3106cc7373d45427dc7db28c943fca7bed059d",
         "theme": "wonder",
         "title": "Another throw",
@@ -71,6 +96,7 @@ export const LAND_TWELVE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
         "subject": "African savanna elephant",
         "platform": "facebook",
         "contentType": "story",
+        "classification": "conversation",
         "mediaSha1": "2ebfb85de97a45470694a242f0bd79c8cfdf4683",
         "theme": "social",
         "title": "Not crossing",
@@ -80,6 +106,7 @@ export const LAND_TWELVE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
         "subject": "African savanna elephant",
         "platform": "instagram",
         "contentType": "story",
+        "classification": "conversation",
         "mediaSha1": "f594e89894203781618e3a8d004f65b6edbd8658",
         "theme": "social",
         "title": "More tusk",
@@ -102,6 +129,7 @@ export const LAND_TWELVE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
     "episodes": [
       {
         "subject": "Alpine ibex",
+        "classification": "conversation",
         "mediaSha1": "d058cc048fb94e4c13ae6f2c24db0d27dbd3e399",
         "theme": "social",
         "title": "Higher ground",
@@ -109,6 +137,7 @@ export const LAND_TWELVE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       },
       {
         "subject": "Alpine ibex",
+        "classification": "inspiring",
         "mediaSha1": "68fdc0c384b3d2747f582d024fb179510e3271f7",
         "theme": "danger",
         "title": "The last step",
@@ -116,6 +145,7 @@ export const LAND_TWELVE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       },
       {
         "subject": "Alpine ibex",
+        "classification": "inspiring",
         "mediaSha1": "c6dbda1d7b68ef2fe7395ede38cd887ffecd7b75",
         "theme": "wonder",
         "title": "The rough side",
@@ -123,6 +153,7 @@ export const LAND_TWELVE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       },
       {
         "subject": "Alpine ibex",
+        "classification": "conversation",
         "mediaSha1": "1c45c2a9ca64f536e8423d0037fb8515f79cfb9d",
         "theme": "social",
         "title": "Who lets go",
@@ -132,6 +163,7 @@ export const LAND_TWELVE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
         "subject": "Alpine ibex",
         "platform": "facebook",
         "contentType": "story",
+        "classification": "inspiring",
         "mediaSha1": "ab46b2b7e5cb37c8c73fca7f8a16a57f080d8bbc",
         "theme": "feeding",
         "title": "Higher tastes",
@@ -154,6 +186,7 @@ export const LAND_TWELVE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
     "episodes": [
       {
         "subject": "red fox",
+        "classification": "personal",
         "mediaSha1": "18d07990d715cb5c37f92e4cfd67a2b1c2a6d1f9",
         "theme": "family",
         "title": "Over him",
@@ -161,6 +194,7 @@ export const LAND_TWELVE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       },
       {
         "subject": "red fox",
+        "classification": "personal",
         "mediaSha1": "27bfd356b7b08df4e0ea0af2d17617a85ccb1ee4",
         "theme": "family",
         "title": "Staying down",
@@ -170,6 +204,7 @@ export const LAND_TWELVE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
         "subject": "red fox",
         "platform": "instagram",
         "contentType": "story",
+        "classification": "personal",
         "mediaSha1": "16e68f030cde8647c9874e324233053a1e791560",
         "theme": "family",
         "title": "Brief objection",
@@ -179,6 +214,7 @@ export const LAND_TWELVE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
         "subject": "red fox",
         "platform": "facebook",
         "contentType": "story",
+        "classification": "inspiring",
         "mediaSha1": "fa1a15f845d5b1a2aa2ca8ed9b8c6413f38f3803",
         "theme": "feeding",
         "title": "Sideways was available",
@@ -188,6 +224,7 @@ export const LAND_TWELVE_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
         "subject": "red fox",
         "platform": "facebook",
         "contentType": "story",
+        "classification": "inspiring",
         "mediaSha1": "9742d99138da19c726e275883d22a29daef7aa18",
         "theme": "feeding",
         "title": "Carefully unhelpful",

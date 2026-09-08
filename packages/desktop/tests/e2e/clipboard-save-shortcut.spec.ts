@@ -1,4 +1,9 @@
-import { test, expect } from "./fixtures/app";
+import { test, expect, resolveViteFsModulePath } from "./fixtures/app";
+
+const LIBRARY_DETAIL_RUNTIME_PATH = resolveViteFsModulePath(
+  "../../src/lib/library-core-item-detail-runtime.ts",
+  import.meta.url,
+);
 
 async function waitForRegisteredShortcut(page: import("@playwright/test").Page): Promise<string> {
   await page.waitForFunction(() => {
@@ -191,22 +196,21 @@ test("saving and editing content persists preview details and searchable notes",
       && state.selectedItemId.startsWith("saved:");
   });
 
-  const savedState = await page.evaluate(() => {
+  const savedState = await page.evaluate(async (libraryDetailRuntimePath) => {
     const root = window as Record<string, unknown>;
-    const selectedItemId = (root.__FREED_STORE__ as {
-      getState: () => { selectedItemId: string | null };
-    }).getState().selectedItemId;
-    const library = root.__TAURI_MOCK_SQLITE_LIBRARY__ as {
-      items: Record<string, {
-        content: { linkPreview: { title: string; url: string } };
-        userState: { highlights?: Array<{ note?: string }> };
-      }>;
-    };
+    const selectedItemId = (
+      root.__FREED_STORE__ as {
+        getState: () => { selectedItemId: string | null };
+      }
+    ).getState().selectedItemId;
+    const runtime = await import(libraryDetailRuntimePath);
     return {
-      item: selectedItemId ? library.items[selectedItemId] : null,
+      item: selectedItemId
+        ? await runtime.readLibraryCoreItemDetail(selectedItemId)
+        : null,
       selectedItemId,
     };
-  });
+  }, LIBRARY_DETAIL_RUNTIME_PATH);
   expect(savedState.item?.content.linkPreview.title).toBe("Saved Reader Transition");
   expect(savedState.item?.userState.highlights?.[0]?.note).toBe("Updated comet note");
 

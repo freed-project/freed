@@ -1,19 +1,33 @@
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
-import { lstat, open, writeFile } from "node:fs/promises";
+import { lstat, open, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { THEME_DEFINITIONS } from "../../packages/shared/src/themes.ts";
 
-export const SHOWCASE_ASSET_FILENAMES = Object.freeze([
-  "freed-showcase-unified-midas.png",
-  "freed-showcase-stories-ember.png",
-  "freed-showcase-instagram-neon.png",
-  "freed-showcase-map-scriptorium.png",
-  "freed-showcase-friends-dark-star.png",
-  "freed-showcase.gif",
+export const SHOWCASE_THEME_IDS = Object.freeze(THEME_DEFINITIONS.map(theme => theme.id));
+export const SHOWCASE_FRAME_IDS = Object.freeze([
+  "unified", "map", "friends", "friend-detail", "stories", "reader",
 ]);
+export const SHOWCASE_ASSET_FILENAMES = Object.freeze(SHOWCASE_THEME_IDS.map(theme => `freed-showcase-${theme}.webp`));
 export const SHOWCASE_MANIFEST_FILENAME = "freed-showcase-manifest.json";
 export const MAX_SHOWCASE_ASSET_BYTES = 64 * 1024 * 1024;
 export const DEFAULT_SHOWCASE_DOWNLOAD_TIMEOUT_MS = 15_000;
+
+/** Exact checked-in media URLs, including extensionless NPS and new image hosts. */
+export async function readShowcaseMediaCatalog(directory) {
+  const urls = new Set();
+  for (const filename of await readdir(directory)) {
+    if (!/^sample-corpus-[a-z0-9-]+-media\.json$/.test(filename)) continue;
+    const entries = JSON.parse(await readFile(path.join(directory, filename), "utf8"));
+    if (!Array.isArray(entries)) throw new Error(`Invalid showcase media catalog: ${filename}`);
+    for (const entry of entries) {
+      if (typeof entry.imageUrl === "string" && entry.imageUrl.startsWith("https://")) {
+        urls.add(entry.imageUrl);
+      }
+    }
+  }
+  return urls;
+}
 
 const REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const TAG_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
@@ -129,13 +143,44 @@ async function readManifest(directory) {
 function showcaseCorpusStage(manifest) {
   const counts = manifest?.contentCounts;
   if (!counts || ![counts.total, counts.regular, counts.stories].every(Number.isSafeInteger) ||
-      counts.regular < 1 || counts.regular > 900 || counts.stories < 1 || counts.stories > 100 ||
+      counts.regular < 1 || counts.regular > 397 || counts.stories < 1 || counts.stories > 103 ||
       counts.total !== counts.regular + counts.stories) {
-    throw new Error("Showcase counts must be consistent positive integers within the 900 regular entries and 100 visual Stories target.");
+    throw new Error("Showcase counts must be consistent positive integers within the 397 regular entries and 103 visual Stories target.");
   }
   // Functional releases may precede editorial completion. Never label those
   // snapshots complete, and never infer completion from the total alone.
-  return counts.regular === 900 && counts.stories === 100 ? "complete" : "interim";
+  return counts.regular === 397 && counts.stories === 103 ? "complete" : "interim";
+}
+
+/** Fail closed on partial themes, old mixed GIFs, retained frames or wrong ordering. */
+function validateCaptureContract(manifest) {
+  if (manifest.sourceDirty !== false || manifest.transparentCanvas !== true ||
+      manifest.desktopZoom !== 120 || manifest.mobileZoom !== 100 ||
+      manifest.encoding?.format !== "webp" || manifest.encoding?.quality !== 90 ||
+      manifest.deviceScaleFactor !== 2 ||
+      manifest.encoding?.width !== 1920 || manifest.encoding?.height !== 1280 ||
+      manifest.encoding?.loop !== 0 || manifest.encoding?.durationMs !== 3000) {
+    throw new Error("Showcase requires a clean source, transparent canvas, reviewed zoom and quality-90 WebP encoding.");
+  }
+  if (!Array.isArray(manifest.captures) || manifest.captures.length !== SHOWCASE_THEME_IDS.length * SHOWCASE_FRAME_IDS.length) {
+    throw new Error("Showcase requires six ordered frames for every registered theme.");
+  }
+  let index = 0;
+  for (const theme of SHOWCASE_THEME_IDS) {
+    for (const frame of SHOWCASE_FRAME_IDS) {
+      const capture = manifest.captures[index++];
+      const mobile = frame === "stories" || frame === "reader";
+      const decoration = mobile ? capture?.mobileDecoration : capture?.desktopDecoration;
+      if (capture?.theme !== theme || capture.file !== `freed-showcase-${frame}-${theme}.png` ||
+          Boolean(capture.mobile) !== mobile || capture.retainedFromCapture ||
+          decoration?.placement !== "outside-content" || decoration.captureBorderWidth !== 7 ||
+          decoration.captureRadius !== (mobile ? 44 : 20) ||
+          ((frame === "friends" || frame === "friend-detail") &&
+            (capture.rendererDiagnostics?.renderer !== "raw-webgpu" || !(capture.rendererDiagnostics?.decorativeStarCount > 0)))) {
+        throw new Error("Showcase frame identity, ordering or desktop decoration is invalid.");
+      }
+    }
+  }
 }
 
 export async function finalizeShowcaseManifest({
@@ -159,6 +204,7 @@ export async function finalizeShowcaseManifest({
     throw new Error("Showcase manifest releaseSha must match the checkout SHA.");
   }
   const corpusStage = showcaseCorpusStage(manifest);
+  validateCaptureContract(manifest);
   if (manifest.corpusStage !== undefined && manifest.corpusStage !== corpusStage) {
     throw new Error("Showcase corpusStage does not match its content counts.");
   }
@@ -189,6 +235,7 @@ export async function finalizeShowcaseManifest({
 }
 
 function validatedManifestAssets(manifest) {
+  validateCaptureContract(manifest);
   if (manifest?.corpusStage !== showcaseCorpusStage(manifest)) {
     throw new Error("Showcase corpusStage does not match its content counts.");
   }

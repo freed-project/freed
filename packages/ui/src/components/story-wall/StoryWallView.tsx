@@ -120,7 +120,7 @@ function ToggleButton({
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className={CARD_CLASS}>
-      <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--theme-text-muted)]">{label}</div>
+      <div className="text-[0.6875rem] font-semibold uppercase tracking-[0.14em] text-[var(--theme-text-muted)]">{label}</div>
       <div className="mt-1 text-2xl font-semibold text-[var(--theme-text-primary)]">{value}</div>
     </div>
   );

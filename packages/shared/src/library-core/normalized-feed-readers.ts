@@ -9,6 +9,8 @@ import {
   LIBRARY_CORE_FEED_BROWSE_PAGE_V3_QUERY_ID,
   LIBRARY_CORE_FEED_BROWSE_PAGE_V3_SCHEMA_VERSION,
   LIBRARY_CORE_FEED_BROWSE_FRIENDS_PREDICATE_SCHEMA_VERSION,
+  decodeLibraryCoreFeedBrowsePageCursorV2,
+  encodeLibraryCoreFeedBrowsePageCursorV2,
   type LibraryCoreFeedBrowseDirectionV3,
   type LibraryCoreFeedBrowseIdentityModeV2,
 } from "./feed-browse-page-contracts.js";
@@ -41,6 +43,8 @@ import { applyLibraryCoreVisibleOptimisticFieldsV1 } from "./optimistic-field-co
 import {
   LIBRARY_CORE_SAVED_FEED_PAGE_V2_QUERY_ID,
   LIBRARY_CORE_SAVED_FEED_PAGE_V2_SCHEMA_VERSION,
+  decodeLibraryCoreSavedFeedPageCursorV2,
+  encodeLibraryCoreSavedFeedPageCursorV2,
   type LibraryCoreSavedFeedCardV1,
 } from "./saved-feed-page-contracts.js";
 import type {
@@ -79,6 +83,8 @@ export interface LibraryCoreNormalizedFeedPage {
 }
 
 export interface LibraryCoreNormalizedFeedReader {
+  /** Resume a prior window's ordering bookmark using fresh, source-fenced reads. */
+  resumePage(firstEdge: string): Promise<LibraryCoreNormalizedFeedPage>;
   readonly totalCount: number;
   readNext(): Promise<readonly FeedItem[]>;
   readPage(
@@ -489,6 +495,32 @@ export async function openLibraryCoreNormalizedFeedReaderV1(
   const initial = await queryPage(null, "next");
   return {
     totalCount: initial.totalCount,
+    async resumePage(firstEdge) {
+      if (closed) throw new Error("SQLite Library reader is closed");
+      // A bookmark supplies only the old ordering key. Never replay its source
+      // fence: derive a new cursor from this reader's validated initial page.
+      const old = decodeLibraryCoreFeedBrowsePageCursorV2(firstEdge);
+      const edge = initial.nextCursor ?? initial.previousCursor;
+      if (!old.ok) throw new Error("Invalid feed window bookmark");
+      if (edge === null) return initial; // The entire new feed fits one page.
+      const fresh = decodeLibraryCoreFeedBrowsePageCursorV2(edge);
+      if (!fresh.ok || old.value.generationId !== fresh.value.generationId ||
+          old.value.filterDigest !== fresh.value.filterDigest) {
+        throw new Error("Feed window bookmark belongs to another source or filter");
+      }
+      const bookmark = encodeLibraryCoreFeedBrowsePageCursorV2({
+        ...old.value,
+        projectionRevision: fresh.value.projectionRevision,
+        transitionSequence: fresh.value.transitionSequence,
+      });
+      // Cursors are exclusive. Read the predecessor edge so the reopened page
+      // includes the bookmarked row, rather than dropping it on each refresh.
+      const before = await queryPage(bookmark, "previous");
+      if (before.items.length === 0) return initial;
+      return before.nextCursor === null
+        ? before
+        : queryPage(before.nextCursor, "next");
+    },
     async readNext() {
       if (closed) throw new Error("SQLite Library reader is closed");
       if (!started) {
@@ -574,6 +606,31 @@ export async function openLibraryCoreNormalizedSavedFeedReaderV1(
   const initial = await queryPage(null, "next");
   return {
     totalCount: initial.totalCount,
+    async resumePage(firstEdge) {
+      if (closed) throw new Error("SQLite Library reader is closed");
+      // A bookmark supplies only the old ordering key. Never replay its source
+      // fence: derive a new cursor from this reader's validated initial page.
+      const old = decodeLibraryCoreSavedFeedPageCursorV2(firstEdge);
+      const edge = initial.nextCursor ?? initial.previousCursor;
+      if (!old.ok) throw new Error("Invalid feed window bookmark");
+      if (edge === null) return initial; // The entire new feed fits one page.
+      const fresh = decodeLibraryCoreSavedFeedPageCursorV2(edge);
+      if (!fresh.ok || old.value.generationId !== fresh.value.generationId ||
+          old.value.filterDigest !== fresh.value.filterDigest || old.value.sortMode !== fresh.value.sortMode) {
+        throw new Error("Feed window bookmark belongs to another source or filter");
+      }
+      const bookmark = encodeLibraryCoreSavedFeedPageCursorV2({
+        ...old.value,
+        sourceRevision: fresh.value.sourceRevision,
+      });
+      // Cursors are exclusive. Read the predecessor edge so the reopened page
+      // includes the bookmarked row, rather than dropping it on each refresh.
+      const before = await queryPage(bookmark, "previous");
+      if (before.items.length === 0) return initial;
+      return before.nextCursor === null
+        ? before
+        : queryPage(before.nextCursor, "next");
+    },
     async readNext() {
       if (closed) throw new Error("SQLite Library reader is closed");
       if (!started) {

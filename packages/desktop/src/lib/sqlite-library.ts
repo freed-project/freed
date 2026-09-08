@@ -5,6 +5,7 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import {
   buildDiscoveredAccountsFromItems,
+  buildConnectionPersonDraftFromAccounts,
   sanitizeAccountWrite,
   sanitizeFeedItemCaptureWrite,
   sanitizePersonRootWrite,
@@ -1528,7 +1529,7 @@ async function maybeSubmitPreferences(
         transaction_member_count: 1,
         entity_id: "preferences",
         payload: {
-          updates: synchronized as unknown as Record<
+          updates: encodeLibraryCoreFractionalNumbersV1(synchronized) as Record<
             string,
             LibraryCoreCanonicalValue
           >,
@@ -2614,6 +2615,25 @@ export async function dispatchSqliteMutation(
       );
       for (const account of message.accounts) {
         const existing = await readNormalizedAccount(account.id);
+        if (
+          !existing &&
+          !account.personId &&
+          message.type === "RECONCILE_FOLLOW_ROSTER_CAPTURE"
+        ) {
+          const person = buildConnectionPersonDraftFromAccounts(
+            { [account.id]: account },
+            [account.id],
+            timestamp,
+          );
+          // Recapture must not reuse a prior draft to replace an edited Person
+          // or reattach an Account the owner previously removed.
+          if (person && !(await readNormalizedPerson(person.id))) {
+            const linked = { ...account, personId: person.id };
+            await replaceSqliteLibraryFriend(person, [linked], timestamp);
+            reconciled.set(account.id, linked);
+            continue;
+          }
+        }
         reconciled.set(
           account.id,
           existing ? { ...existing, ...account } : account,

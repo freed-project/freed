@@ -1,0 +1,50 @@
+[
+  {
+    "sourceUrl": "https://www.inaturalist.org/observations/104672689",
+    "sha1": "85f84f546e1dbc8c1bfbcb55aeadeb4557119bf4",
+    "width": 1024,
+    "height": 683,
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+    "alt": "Heavily gnawed standing forked tree, exposed pale wood, chips, stony bank and stream. No beaver appears in frame.",
+    "id": "land106-berta-bank",
+    "subject": "Castor canadensis",
+    "category": "wildlife",
+    "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/175441051/large.jpeg",
+    "creator": "Dennis Eckhart",
+    "license": "CC BY 4.0",
+    "identityNameBase": "Berta Bank",
+    "detail": "Heavily gnawed standing forked tree, exposed pale wood, chips, stony bank and stream. No beaver appears in frame."
+  },
+  {
+    "sourceUrl": "https://www.inaturalist.org/observations/10064753",
+    "sha1": "df9f51135123877410a7dd79e49e56db7f41df02",
+    "width": 1024,
+    "height": 815,
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+    "alt": "Four people look through optics toward reed beds beside a paved path. A brownish young mute swan stands close among them, neck extended. No duck is visible.",
+    "id": "land106-cygnus-shy",
+    "subject": "mute swan",
+    "category": "wildlife",
+    "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/13855998/large.jpg",
+    "creator": "carnifex",
+    "license": "CC BY 4.0",
+    "identityNameBase": "Cygnus Shy",
+    "detail": "Four people look through optics toward reed beds beside a paved path. A brownish young mute swan stands close among them, neck extended. No duck is visible."
+  },
+  {
+    "sourceUrl": "https://www.inaturalist.org/observations/255739212",
+    "sha1": "932e005ea793c0bf1080dcbd3c5e924c0c41ceb8",
+    "width": 1000,
+    "height": 861,
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+    "alt": "Adult-plumaged Inca tern bends its head back toward its feathers on a rock ledge, with spread feather tips and tail extending behind. Red bill and white facial plumes are clear.",
+    "id": "land106-ines-inkcap",
+    "subject": "Inca tern",
+    "category": "wildlife",
+    "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/458371004/large.jpg",
+    "creator": "avocat",
+    "license": "CC BY 4.0",
+    "identityNameBase": "Ines Inkcap",
+    "detail": "Adult-plumaged Inca tern bends its head back toward its feathers on a rock ledge, with spread feather tips and tail extending behind. Red bill and white facial plumes are clear."
+  }
+]

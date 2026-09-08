@@ -14,6 +14,8 @@
 :root {
   --safe-area-top: env(safe-area-inset-top, 0px);
   --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-left: env(safe-area-inset-left, 0px);
+  --safe-area-right: env(safe-area-inset-right, 0px);
 
   /* Updated by JS in main.tsx to track the area above the software keyboard.
      Used by BottomSheet and any other overlay that must stay fully visible
@@ -68,7 +70,7 @@ html[data-theme="neon"] .demo-freed-logo {
     min-height: 36px;
     padding: 6px;
     /* Override the general mobile button enlargement below for this compact panel. */
-    font-size: 12px !important;
+    font-size: 0.75rem !important;
     line-height: 1.25;
   }
 }
@@ -119,6 +121,10 @@ html[data-theme="neon"] .demo-freed-logo {
   to { opacity: 1; }
 }
 
+.demo-welcome-first-look-card--arriving {
+  animation: demo-welcome-shade-in 600ms ease-out both;
+}
+
 .demo-welcome-shade {
   animation: demo-welcome-shade-in 600ms ease-out both;
   left: 0;
@@ -152,6 +158,7 @@ html[data-theme="neon"] .demo-freed-logo {
 
 @media (prefers-reduced-motion: reduce) {
   .demo-welcome-shade,
+  .demo-welcome-first-look-card--arriving,
   .demo-welcome-first-look-backdrop--departing,
   .demo-welcome-first-look-card--departing,
   .demo-welcome-field-guide--arriving {
@@ -181,8 +188,6 @@ body {
   -moz-osx-font-smoothing: grayscale;
   line-height: 1.6;
   overscroll-behavior: none;
-  padding-left: env(safe-area-inset-left);
-  padding-right: env(safe-area-inset-right);
   width: 100%;
   max-width: 100%;
 }
@@ -195,32 +200,50 @@ body {
    lets feed content spill past that boundary into the document so window
    scroll works. html/body are set to overflow:visible so the window can
    actually scroll the overflowed content. Desktop layout is unchanged. */
-@media (max-width: 767px) {
-  html {
-    height: auto;
-    overflow: visible;
-    overflow-x: clip;
-    /* Must be on html (not just body) — iOS Safari applies the pull-to-refresh
-       gesture at the root element level when overflow:visible is set here. */
-    overscroll-behavior: none;
-  }
+/* Use the same device classification as AppShell and FeedList. A phone in
+   landscape still owns document scrolling, even above the desktop breakpoint. */
+html:has(.app-theme-shell[data-mobile-device="true"]) {
+  scrollbar-width: none;
+  background-color: var(--theme-bg-root);
+  background-image: var(--theme-shell-background);
+  background-repeat: no-repeat;
+  background-size: 100% 100lvh;
+  height: auto;
+  overflow: visible;
+  overflow-x: clip;
+  /* Must be on html (not just body) — iOS Safari applies the pull-to-refresh
+     gesture at the root element level when overflow:visible is set here. */
+  overscroll-behavior: none;
+  /* Virtualizer corrections must settle immediately, never animate. */
+  scroll-behavior: auto;
+}
 
-  body {
-    height: auto;
-    overflow: visible;
-    overflow-x: clip;
-    overscroll-behavior: none;
-  }
+body:has(.app-theme-shell[data-mobile-device="true"]) {
+  background: transparent;
+  height: auto;
+  overflow: visible;
+  overflow-x: clip;
+  overscroll-behavior: none;
+}
 
-  #root {
-    /* Definite height lets flex children fill the viewport (no color gap).
-       overflow:visible lets feed content extend past 100dvh into the
-       document so window scroll fires and the address bar can collapse. */
-    height: 100svh;
-    height: 100dvh;
-    overflow: visible;
-    overflow-x: clip;
-  }
+#root:has(.app-theme-shell[data-mobile-device="true"]) {
+  /* Definite height lets flex children fill the viewport (no color gap).
+     overflow:visible lets feed content extend past 100dvh into the
+     document so window scroll fires and the address bar can collapse. */
+  height: 100svh;
+  height: 100dvh;
+  overflow: visible;
+  overflow-x: clip;
+}
+
+/* Keep the reading width inset while the shell and toolbar paint edge to edge. */
+.app-theme-shell > .app-content-frame {
+  padding-left: max(var(--feed-card-gap, 8px), var(--safe-area-left, 0px));
+  padding-right: max(var(--feed-card-gap, 8px), var(--safe-area-right, 0px));
+}
+
+html:has(.app-theme-shell[data-mobile-device="true"])::-webkit-scrollbar {
+  display: none;
 }
 
 #root {
@@ -243,10 +266,10 @@ body {
 @media (max-width: 640px) {
   /* Apple HIG mobile text scale:
      caption 13px · secondary 15px · body 17px · subhead 20px */
-  .text-xs { font-size: 13px !important; }
-  .text-sm { font-size: 15px !important; }
-  .text-base { font-size: 17px !important; }
-  .text-lg { font-size: 20px !important; }
+  .text-xs { font-size: 0.8125rem !important; }
+  .text-sm { font-size: 0.9375rem !important; }
+  .text-base { font-size: 1.0625rem !important; }
+  .text-lg { font-size: 1.25rem !important; }
 
   .feed-card {
     padding: 14px;
@@ -257,7 +280,7 @@ body {
   .btn-primary,
   .btn-secondary {
     min-height: 50px;
-    font-size: 17px !important;
+    font-size: 1.0625rem !important;
     padding: 14px 20px;
   }
 
@@ -265,7 +288,7 @@ body {
   textarea,
   select {
     /* Prevents iOS auto-zoom on focus */
-    font-size: 16px !important;
+    font-size: 1rem !important;
   }
 
   .hide-scrollbar::-webkit-scrollbar {

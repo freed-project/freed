@@ -80,7 +80,7 @@ function SyncDiagnosticCell({
 }) {
   return (
     <div className="rounded-lg bg-[var(--theme-bg-muted)] px-3 py-2">
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--theme-text-soft)]">
+      <p className="text-[0.625rem] font-semibold uppercase tracking-wider text-[var(--theme-text-soft)]">
         {label}
       </p>
       <p
@@ -158,7 +158,7 @@ export function PwaDemoSyncSettings() {
           <div className="rounded-xl bg-[var(--theme-bg-muted)] p-3 text-[var(--theme-accent-secondary)]"><ProviderLogo /></div>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold text-[var(--theme-text-primary)]">Sync is off in this demo</p>
-            <p className="mt-1 text-xs leading-relaxed text-[var(--theme-text-muted)]">This showcase resets on refresh and never connects to a cloud account. Download Freed Desktop free to create a private Library and configure sync.</p>
+            <p className="mt-1 text-xs leading-relaxed text-[var(--theme-text-muted)]">This showcase resets on refresh and never connects to a cloud account. Download Freed Desktop to create a private Library and configure sync.</p>
           </div>
         </div>
         <a href={websiteGetUrl} target="_blank" rel="noopener noreferrer" className="theme-accent-button mt-5 inline-flex items-center justify-center rounded-lg px-4 py-2 text-xs">
@@ -386,7 +386,7 @@ export function PwaSyncSettings() {
             </span>
           </div>
           {lastSyncTime && (
-            <p className="mt-1 text-[11px] tabular-nums text-[var(--theme-text-soft)]">
+            <p className="mt-1 text-[0.6875rem] tabular-nums text-[var(--theme-text-soft)]">
               Last synced {formatRelativeTime(lastSyncTime)}
             </p>
           )}
@@ -421,7 +421,7 @@ export function PwaSyncSettings() {
           </div>
           <div className="flex shrink-0 flex-col items-end gap-2 sm:flex-row sm:items-center">
             {cloudProviderState?.stage && (
-              <span className="rounded-full bg-[var(--theme-bg-muted)] px-2 py-1 text-[11px] font-medium text-[var(--theme-text-muted)]">
+              <span className="rounded-full bg-[var(--theme-bg-muted)] px-2 py-1 text-[0.6875rem] font-medium text-[var(--theme-text-muted)]">
                 {cloudProviderState.stage}
               </span>
             )}
@@ -637,7 +637,7 @@ export function PwaSyncSettings() {
 
         {cloudProviderState?.events && cloudProviderState.events.length > 0 && (
           <div className="mt-3 space-y-2">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--theme-text-soft)]">
+            <p className="text-[0.625rem] font-semibold uppercase tracking-wider text-[var(--theme-text-soft)]">
               Activity
             </p>
             <div data-testid="pwa-cloud-sync-activity" className="space-y-1.5">
@@ -650,11 +650,11 @@ export function PwaSyncSettings() {
                     <p className="truncate text-[var(--theme-text-secondary)]">
                       {event.message}
                     </p>
-                    <p className="mt-0.5 text-[10px] uppercase tracking-wider text-[var(--theme-text-soft)]">
+                    <p className="mt-0.5 text-[0.625rem] uppercase tracking-wider text-[var(--theme-text-soft)]">
                       {event.kind}, {event.stage}
                     </p>
                   </div>
-                  <div className="shrink-0 text-right font-mono text-[10px] text-[var(--theme-text-muted)]">
+                  <div className="shrink-0 text-right font-mono text-[0.625rem] text-[var(--theme-text-muted)]">
                     <p>{formatDiagnosticTime(event.ts)}</p>
                     {typeof event.bytes === "number" && (
                       <p>{formatBytes(event.bytes)}</p>

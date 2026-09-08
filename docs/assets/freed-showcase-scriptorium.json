@@ -1,0 +1,188 @@
+{
+  "kind": "local-preview",
+  "theme": "scriptorium",
+  "sourceCommit": "2cca73b16d54ba0c21f66f76a8f90ed75b2d4b06",
+  "sourceDirty": true,
+  "generatedAt": "2026-09-08T01:23:10.914Z",
+  "revision": "2026-09-08T01-23-10-942Z",
+  "encoding": "WebP quality 90",
+  "width": 1920,
+  "height": 1280,
+  "seconds": 18,
+  "sha256": "8c2b2c24ebfdcf12be96496135109cba45d00348143ebc510b1c464d622127a6",
+  "byteSize": 831300,
+  "captures": [
+    {
+      "file": "freed-showcase-unified-scriptorium.png",
+      "theme": "scriptorium",
+      "view": "unified",
+      "desktopDecoration": {
+        "accent": "#86684a",
+        "shell": "color-mix(in srgb, #86684a 60%, #ffffff)",
+        "edge": "color-mix(in srgb, #b08a61 70%, #f4ead7)",
+        "placement": "outside-content",
+        "geometry": {
+          "left": 7,
+          "right": 7,
+          "top": 7,
+          "bottom": 7,
+          "contentWidth": 1419,
+          "contentHeight": 946
+        },
+        "captureBorderWidth": 7,
+        "borderWidth": 9.333333333333334,
+        "captureRadius": 20,
+        "frameWidthRatio": 1
+      }
+    },
+    {
+      "file": "freed-showcase-map-scriptorium.png",
+      "theme": "scriptorium",
+      "view": "map",
+      "desktopDecoration": {
+        "accent": "#86684a",
+        "shell": "color-mix(in srgb, #86684a 60%, #ffffff)",
+        "edge": "color-mix(in srgb, #b08a61 70%, #f4ead7)",
+        "placement": "outside-content",
+        "geometry": {
+          "left": 7,
+          "right": 7,
+          "top": 7,
+          "bottom": 7,
+          "contentWidth": 1419,
+          "contentHeight": 946
+        },
+        "captureBorderWidth": 7,
+        "borderWidth": 9.333333333333334,
+        "captureRadius": 20,
+        "frameWidthRatio": 1
+      }
+    },
+    {
+      "file": "freed-showcase-friends-scriptorium.png",
+      "theme": "scriptorium",
+      "view": "friends",
+      "rendererDiagnostics": {
+        "renderer": "raw-webgpu",
+        "decorativeStarCount": 100000
+      },
+      "graphZoomWheelDelta": -220,
+      "desktopDecoration": {
+        "accent": "#86684a",
+        "shell": "color-mix(in srgb, #86684a 60%, #ffffff)",
+        "edge": "color-mix(in srgb, #b08a61 70%, #f4ead7)",
+        "placement": "outside-content",
+        "geometry": {
+          "left": 7,
+          "right": 7,
+          "top": 7,
+          "bottom": 7,
+          "contentWidth": 1419,
+          "contentHeight": 946
+        },
+        "captureBorderWidth": 7,
+        "borderWidth": 9.333333333333334,
+        "captureRadius": 20,
+        "frameWidthRatio": 1
+      }
+    },
+    {
+      "file": "freed-showcase-friend-detail-scriptorium.png",
+      "theme": "scriptorium",
+      "view": "friends",
+      "detail": true,
+      "rendererDiagnostics": {
+        "renderer": "raw-webgpu",
+        "decorativeStarCount": 100000
+      },
+      "desktopDecoration": {
+        "accent": "#86684a",
+        "shell": "color-mix(in srgb, #86684a 60%, #ffffff)",
+        "edge": "color-mix(in srgb, #b08a61 70%, #f4ead7)",
+        "placement": "outside-content",
+        "geometry": {
+          "left": 7,
+          "right": 7,
+          "top": 7,
+          "bottom": 7,
+          "contentWidth": 1419,
+          "contentHeight": 946
+        },
+        "captureBorderWidth": 7,
+        "borderWidth": 9.333333333333334,
+        "captureRadius": 20,
+        "frameWidthRatio": 1
+      }
+    },
+    {
+      "file": "freed-showcase-stories-scriptorium.png",
+      "theme": "scriptorium",
+      "view": "stories",
+      "mobile": true,
+      "mobileLayout": {
+        "deviceMobile": true,
+        "storyColumns": [
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2
+        ]
+      },
+      "mobileDecoration": {
+        "accent": "#86684a",
+        "shell": "color-mix(in srgb, #86684a 60%, #ffffff)",
+        "edge": "color-mix(in srgb, #b08a61 70%, #f4ead7)",
+        "placement": "outside-content",
+        "geometry": {
+          "left": 7,
+          "right": 7,
+          "top": 7,
+          "bottom": 7,
+          "contentWidth": 390,
+          "contentHeight": 844
+        },
+        "captureBorderWidth": 7,
+        "borderWidth": 9.333333333333334,
+        "captureRadius": 44,
+        "frameWidthRatio": 1
+      }
+    },
+    {
+      "file": "freed-showcase-reader-scriptorium.png",
+      "theme": "scriptorium",
+      "view": "instagram",
+      "mobile": true,
+      "reader": true,
+      "mobileLayout": {
+        "deviceMobile": true,
+        "storyColumns": []
+      },
+      "mobileDecoration": {
+        "accent": "#86684a",
+        "shell": "color-mix(in srgb, #86684a 60%, #ffffff)",
+        "edge": "color-mix(in srgb, #b08a61 70%, #f4ead7)",
+        "placement": "outside-content",
+        "geometry": {
+          "left": 7,
+          "right": 7,
+          "top": 7,
+          "bottom": 7,
+          "contentWidth": 390,
+          "contentHeight": 844
+        },
+        "captureBorderWidth": 7,
+        "borderWidth": 9.333333333333334,
+        "captureRadius": 44,
+        "frameWidthRatio": 1
+      }
+    }
+  ]
+}

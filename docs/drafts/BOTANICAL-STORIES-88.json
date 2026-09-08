@@ -1,0 +1,221 @@
+{
+  "status": "proposal_pending_independent_root_review",
+  "counts": {
+    "exactPublishedImagesOpened": 6,
+    "proposals": 1,
+    "admitted": 0,
+    "newIdentities": 0
+  },
+  "proposals": [
+    {
+      "candidateId": "88-01",
+      "characterId": "dora-dew",
+      "identityNameBase": "Dora Dew",
+      "episode": {
+        "subject": "round-leaved sundew",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "feeding",
+        "title": "Too close together",
+        "body": "My first fly this spring pulled two of my leaves together trying to get free. Now they're stuck to each other, and every time he struggles I tug on myself.",
+        "mediaSha1": "a9ab2bb90150d0a85f07e3208a2f5d91b3d3ae48"
+      },
+      "admission": "pending_independent_root_review",
+      "visualReview": "Individually opened published frame. Large curled green leaf with red glands occupies center-right. At left, a winged insect is visibly caught among neighboring glandular leaves; wings, dark body and legs are legible. Some peripheral leaves and moss are out of focus; the central curled leaf and insect remain distinct. No ruler or other human object. Image passes author visual bar.",
+      "fictionBoundary": "Curled leaves, adhesive tentacles and insect among them are visible. Fly pulling leaves together, leaves adhering to each other, ongoing movement, first spring capture and bodily sensation are fictional, not recorded by observer or established by a single still. No insect species/sex is identified; he is fictional. No snapping trap, instantaneous voluntary curling, digestive endpoint or eaten shell claimed.",
+      "continuity": "Existing rooted Drosera rotundifolia in Rhön bog50.5193/10.0625, not relocation to source Otsego CountyNY. Explicit this-spring opening places active leaves after Expansion plans winter bud. Further research and You come here retained exactly. Private social self-consciousness becomes an immediate feeding predicament without another failed compliment or visitor-on-flower beat. Avatar unchanged.",
+      "proseReview": "Two sentences remain inside an unfinished physical inconvenience. Capturing the fly gives Dora a pull from another part of her own body. No triumphant predation punchline or moral; the joke falls on her unintended self-entanglement. Root should judge whether the fictional mutual adhesion is plausible and sufficiently supported by the crowded curled-leaf frame. This is a proposal, not an approved biological observation."
+    }
+  ],
+  "media": [
+    {
+      "observationId": 202366574,
+      "photoId": 357375957,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/357375957/large.jpeg",
+      "localFile": "/tmp/botanical88/202366574.jpg",
+      "bytes": 312026,
+      "sha1": "a9ab2bb90150d0a85f07e3208a2f5d91b3d3ae48",
+      "sha256": "53d9f51a84504b6a29579e80865f8035a22e6b8c4c36677a991d82ecea093ba7",
+      "dimensions": [
+        1024,
+        684
+      ],
+      "seconds": 0.748,
+      "status": 200,
+      "attribution": "(c) Dominic McLean, some rights reserved (CC BY), uploaded by Dominic McLean",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/202366574",
+      "sourceLocal": "/tmp/botanical88/obs-202366574.json",
+      "id": "botanical88-sundew-curled-leaves-fly",
+      "category": "wildlife",
+      "subject": "round-leaved sundew",
+      "species": "Drosera rotundifolia",
+      "creator": "Dominic McLean",
+      "sourceMetadataUrl": "https://www.inaturalist.org/observations/202366574.json",
+      "aggregated": false,
+      "alt": "A winged insect lies among curled round sundew leaves with red sticky tentacles and green moss.",
+      "rightsEvidence": "Photo357375957 explicitly records CC-BY and BY4.0 license URL in primary observation JSON. Credit Dominic McLean separately from fictional Dora Dew.",
+      "taxonEvidence": "Research-grade Drosera rotundifolia, three current exact-taxon identifications, two agreements and zero disagreements. Rounded leaf blades and red glandular tentacles visible.",
+      "deliveryEvidence": "Published large_url individually opened,1024×684. Source upload dimensions2048×1368 recorded but full upload not downloaded or claimed inspected."
+    }
+  ],
+  "holds": [
+    {
+      "media": {
+        "observationId": 157391696,
+        "photoId": 272142290,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/272142290/large.jpg",
+        "localFile": "/tmp/botanical88/157391696.jpg",
+        "bytes": 424020,
+        "sha1": "ae17cc30b5a9c96052229dfc7495f63cac7f59c7",
+        "sha256": "7aad1354ef0985ce6983bbeece4b47a3a07e57155466b22f17f57080ba0c92c2",
+        "dimensions": [
+          768,
+          1024
+        ],
+        "seconds": 0.869,
+        "status": 200,
+        "attribution": "no rights reserved, uploaded by Jade Fortnash",
+        "license": "CC0",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "sourceUrl": "https://www.inaturalist.org/observations/157391696",
+        "sourceLocal": "/tmp/botanical88/obs-157391696.json",
+        "species": "Drosera capillaris",
+        "qualityGrade": "research",
+        "identificationAgreements": 2,
+        "identificationDisagreements": 0,
+        "aggregated": false
+      },
+      "reason": "Exact capillaris rosette sharp enough for identification but cluttered with dry stems. No distinctive new event; retained unspent without prose.",
+      "prose": null
+    },
+    {
+      "media": {
+        "observationId": 98812690,
+        "photoId": 164600271,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/164600271/large.jpg",
+        "localFile": "/tmp/botanical88/98812690.jpg",
+        "bytes": 561962,
+        "sha1": "3987691a287f6385bafa72485d61e6b5e1ca2914",
+        "sha256": "23197c079cb365d4a42116c77c2d63c35e331ff824c77570af4584fe87efd711",
+        "dimensions": [
+          768,
+          1024
+        ],
+        "seconds": 0.861,
+        "status": 200,
+        "attribution": "no rights reserved, uploaded by Liz F",
+        "license": "CC0",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "sourceUrl": "https://www.inaturalist.org/observations/98812690",
+        "sourceLocal": "/tmp/botanical88/obs-98812690.json",
+        "species": "Drosera capillaris",
+        "qualityGrade": "research",
+        "identificationAgreements": 2,
+        "identificationDisagreements": 0,
+        "aggregated": false
+      },
+      "reason": "Small capillaris rosette beside prominent measuring tape; subject too small for the visual Story bar.",
+      "prose": null
+    },
+    {
+      "media": {
+        "observationId": 121963050,
+        "photoId": 206444602,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/206444602/large.jpg",
+        "localFile": "/tmp/botanical88/121963050.jpg",
+        "bytes": 375926,
+        "sha1": "812491603b9c4333f3498e71bf6de57ddf519708",
+        "sha256": "0b4bcba0839594919f0721c5067348e62c8462bef0553cec5b9b20dd735b277c",
+        "dimensions": [
+          768,
+          1024
+        ],
+        "seconds": 0.694,
+        "status": 200,
+        "attribution": "(c) william_hoyer, some rights reserved (CC BY)",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "sourceUrl": "https://www.inaturalist.org/observations/121963050",
+        "sourceLocal": "/tmp/botanical88/obs-121963050.json",
+        "species": "Drosera rotundifolia",
+        "qualityGrade": "research",
+        "identificationAgreements": 1,
+        "identificationDisagreements": 0,
+        "aggregated": false
+      },
+      "reason": "Exact rotundifolia rosette with a ruler filling lower frame. Useful scale evidence but not selected for visual Story quality.",
+      "prose": null
+    },
+    {
+      "media": {
+        "observationId": 218580733,
+        "photoId": 386807202,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/386807202/large.jpeg",
+        "localFile": "/tmp/botanical88/218580733.jpg",
+        "bytes": 574229,
+        "sha1": "dda4aaa8d1cd8ed133190877c1f9a40ad6322767",
+        "sha256": "f267a880db61a3c946c373607f85798bedebd2e5801bb386da197f003aefbd43",
+        "dimensions": [
+          1024,
+          768
+        ],
+        "seconds": 0.769,
+        "status": 200,
+        "attribution": "(c) Clément Maouche, some rights reserved (CC BY), uploaded by Clément Maouche",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "sourceUrl": "https://www.inaturalist.org/observations/218580733",
+        "sourceLocal": "/tmp/botanical88/obs-218580733.json",
+        "species": "Polystichum setiferum",
+        "qualityGrade": "research",
+        "identificationAgreements": 1,
+        "identificationDisagreements": 0,
+        "aggregated": false
+      },
+      "reason": "Exact setiferum frond underside with overlapping green pinnae. Decorative portrait; no distinct incident found.",
+      "prose": null
+    },
+    {
+      "media": {
+        "observationId": 327260143,
+        "photoId": 592856382,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/592856382/large.jpg",
+        "localFile": "/tmp/botanical88/327260143.jpg",
+        "bytes": 471286,
+        "sha1": "cf2ed761c7da1b4fed75d27b46e57d1430149da5",
+        "sha256": "d0f4f3e5bc57e9333c5370c56b96d67076fb115bbefa3dc95b4f947670dfa7cf",
+        "dimensions": [
+          768,
+          1024
+        ],
+        "seconds": 0.812,
+        "status": 200,
+        "attribution": "(c) Mary E. Macaulay, P.Eng., some rights reserved (CC BY), uploaded by Mary E. Macaulay, P.Eng.",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "sourceUrl": "https://www.inaturalist.org/observations/327260143",
+        "sourceLocal": "/tmp/botanical88/obs-327260143.json",
+        "species": "Polystichum setiferum",
+        "qualityGrade": "research",
+        "identificationAgreements": 2,
+        "identificationDisagreements": 0,
+        "aggregated": false
+      },
+      "reason": "Exact setiferum on path edge amid several other ferns. Broad contextual frame lacks a singular compelling interaction.",
+      "prose": null
+    }
+  ],
+  "biology": {
+    "sourceUrl": "https://darwin-online.org.uk/content/contentblock?basepage=1&itemID=F1217&viewtype=text",
+    "support": "Primary experimental account Insectivorous Plants1875 opened. Supports adhesive glandular leaves and inward tentacle/leaf movements in Drosera rotundifolia; does not directly document this proposed two-leaf accident. Mutual adhesion is plausible fictional mechanics, explicitly subject to independent review.",
+    "accessLimits": "Kew species page returned403; no retry. USFS PDF tool reported non-retryable unsafe-open error; no bypass. Darwin primary text independently opened successfully."
+  },
+  "limitations": [
+    "Published large files individually opened, not full uploads.",
+    "No application relay or rendered Story test.",
+    "Primary photo metadata supports identity and rights, not fictional sequence.",
+    "Only88 draft files written; no runtime or prior prose changes."
+  ]
+}

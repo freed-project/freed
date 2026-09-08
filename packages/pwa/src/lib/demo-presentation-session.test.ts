@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { installDemoPresentationSession } from "./demo-presentation-session";
+import { installDemoPresentationSession, isDemoFocusPreferenceUpdate } from "./demo-presentation-session";
 
 function memoryStorage(): Storage {
   const values = new Map<string, string>();
@@ -18,6 +18,16 @@ function documentWindow(localStorage = memoryStorage(), sessionStorage = memoryS
 }
 
 describe("demo presentation document isolation", () => {
+  it("admits only a boolean Focus presentation assignment", () => {
+    for (const focusMode of [true, false]) {
+      expect(isDemoFocusPreferenceUpdate({ display: { reading: { focusMode } } })).toBe(true);
+    }
+    for (const update of [null, {}, { display: { reading: { focusMode: "true" } } },
+      { display: { reading: { focusMode: true, fontSize: 20 } } },
+      { display: { reading: { focusMode: true } }, fbCapture: {} }]) {
+      expect(isDemoFocusPreferenceUpdate(update)).toBe(false);
+    }
+  });
   it("leaves the real app's storage and events unchanged", () => {
     const win = documentWindow();
     const native = win.localStorage;

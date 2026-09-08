@@ -1,3 +1,4 @@
+import { generateEditorialSampleData, SAMPLE_EDITORIAL_COUNTS } from "./sample-editorial-data.js";
 /**
  * Sample data generator for regression testing.
  *
@@ -335,27 +336,15 @@ export interface SampleDataOptions {
   unlinkedIdentityRatio?: number;
 }
 
-export const SAMPLE_SHOWCASE_FEED_COUNT = 15;
-export const SAMPLE_SHOWCASE_FRIEND_COUNT = 250;
+export const SAMPLE_SHOWCASE_FEED_COUNT = SAMPLE_EDITORIAL_COUNTS.feeds;
+export const SAMPLE_SHOWCASE_FRIEND_COUNT = SAMPLE_EDITORIAL_COUNTS.persons;
+/** @deprecated Showcase identities follow authored platforms; synthetic custom graphs use five. */
 export const SAMPLE_SHOWCASE_IDENTITIES_PER_FRIEND = 5;
-export const SAMPLE_SHOWCASE_LINKED_SOCIAL_IDENTITY_COUNT =
-  SAMPLE_SHOWCASE_FRIEND_COUNT * SAMPLE_SHOWCASE_IDENTITIES_PER_FRIEND;
-export const SAMPLE_SHOWCASE_UNLINKED_SOCIAL_IDENTITY_COUNT =
-  Math.round(SAMPLE_SHOWCASE_LINKED_SOCIAL_IDENTITY_COUNT * 0.2);
-export const SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT =
-  SAMPLE_SHOWCASE_LINKED_SOCIAL_IDENTITY_COUNT + SAMPLE_SHOWCASE_UNLINKED_SOCIAL_IDENTITY_COUNT;
+export const SAMPLE_SHOWCASE_LINKED_SOCIAL_IDENTITY_COUNT = SAMPLE_EDITORIAL_COUNTS.accounts;
+export const SAMPLE_SHOWCASE_UNLINKED_SOCIAL_IDENTITY_COUNT = 0;
+export const SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT = SAMPLE_EDITORIAL_COUNTS.accounts;
 const SAMPLE_LOCATION_WINDOW_ITEM_COUNT = 6;
-export const SAMPLE_SHOWCASE_ITEM_COUNT =
-  SAMPLE_SHOWCASE_FEED_COUNT * 8 +
-  20 +
-  10 +
-  10 +
-  10 +
-  10 +
-  8 +
-  7 +
-  SAMPLE_LOCATION_WINDOW_ITEM_COUNT +
-  SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT;
+export const SAMPLE_SHOWCASE_ITEM_COUNT = SAMPLE_EDITORIAL_COUNTS.items;
 export const SAMPLE_STRESS_FRIEND_COUNT = 1_000;
 export const SAMPLE_STRESS_IDENTITIES_PER_FRIEND = 5;
 export const SAMPLE_STRESS_LINKED_SOCIAL_IDENTITY_COUNT =
@@ -365,7 +354,7 @@ export const SAMPLE_STRESS_UNLINKED_SOCIAL_IDENTITY_COUNT =
 export const SAMPLE_STRESS_SOCIAL_IDENTITY_COUNT =
   SAMPLE_STRESS_LINKED_SOCIAL_IDENTITY_COUNT + SAMPLE_STRESS_UNLINKED_SOCIAL_IDENTITY_COUNT;
 export const SAMPLE_DATA_FINGERPRINT = "freed.sample-data.v1" as const;
-export const SAMPLE_DATA_GENERATOR_VERSION = 11;
+export const SAMPLE_DATA_GENERATOR_VERSION = 12;
 export const SAMPLE_DATA_CORPUS_VERSION = SAMPLE_CORPUS_VERSION;
 
 interface ResolvedSampleDataOptions {
@@ -407,7 +396,8 @@ function makeBatchId(): string {
 
 function resolveSampleDataOptions(options?: SampleDataOptions): ResolvedSampleDataOptions {
   const batchId = options?.batchId ?? makeBatchId();
-  const scale = options?.scale ?? "showcase";
+  const customGraph = options?.friendCount !== undefined || options?.identitiesPerFriend !== undefined || options?.unlinkedIdentityRatio !== undefined;
+  const scale = options?.scale ?? (customGraph ? "stress" : "showcase");
   const friendCount = options?.friendCount ??
     (scale === "stress" ? SAMPLE_STRESS_FRIEND_COUNT : SAMPLE_SHOWCASE_FRIEND_COUNT);
   const identitiesPerFriend = options?.identitiesPerFriend ??
@@ -435,10 +425,28 @@ function sampleDataFingerprint(options: ResolvedSampleDataOptions): SampleDataFi
   };
 }
 
+function editorialData(options: ResolvedSampleDataOptions): SampleLibraryData {
+  return generateEditorialSampleData({
+    batchId: options.batchId,
+    generatedAt: options.generatedAt,
+    seed: options.presentationSeed ?? options.seed,
+    fingerprint: sampleDataFingerprint(options),
+    ...(options.previousTopItemId ? { previousTopItemId: options.previousTopItemId } : {}),
+  });
+}
+
 export function hasSampleDataFingerprint(
   record: Pick<FeedItem | RssFeed | Person | Account, "sampleDataFingerprint"> | null | undefined,
 ): boolean {
   return record?.sampleDataFingerprint?.marker === SAMPLE_DATA_FINGERPRINT;
+}
+
+/** Compact reader cards omit fingerprints but retain the generator's namespaced IDs. */
+export function isSampleFeedItem(
+  item: Pick<FeedItem, "globalId" | "sampleDataFingerprint">,
+): boolean {
+  return hasSampleDataFingerprint(item) ||
+    /(?:^|:)sample-(?:character|rss|saved|x|facebook|instagram|linkedin|ig-story|fb-story|location-window|graph|unlinked-graph):/.test(item.globalId);
 }
 
 function rotateArray<T>(values: T[], offset: number): T[] {
@@ -668,8 +676,6 @@ function authorEntireSampleCorpus(
       if (scale !== "stress") {
         throw new Error("Sample showcase text pool exhausted; supply distinct authored content");
       }
-      // Explicitly synthetic benchmark data, never a substitute for curated
-      // showcase prose. The item index is unique within this generated batch.
       text = `${text}\n\n[Synthetic benchmark entry ${(index + 1).toLocaleString("en-US")}]`;
     }
     usedText.add(text);
@@ -822,6 +828,7 @@ const SAMPLE_FEED_URL_PREFIX = "https://sample.freed.wtf/";
  */
 export function generateSampleFeeds(options?: SampleDataOptions): RssFeed[] {
   const resolvedOptions = resolveSampleDataOptions(options);
+  if (resolvedOptions.scale === "showcase") return editorialData(resolvedOptions).feeds;
   const { batchId, seed } = resolvedOptions;
   const fingerprint = sampleDataFingerprint(resolvedOptions);
   const batchLabel = batchId.slice(-4).toUpperCase();
@@ -881,7 +888,10 @@ function generateSamplePeopleGraph(
 }
 
 export function generateSampleAccounts(options?: SampleDataOptions): Account[] {
-  return generateSamplePeopleGraph(resolveSampleDataOptions(options)).accounts;
+  const resolvedOptions = resolveSampleDataOptions(options);
+  return resolvedOptions.scale === "showcase"
+    ? editorialData(resolvedOptions).accounts
+    : generateSamplePeopleGraph(resolvedOptions).accounts;
 }
 
 export interface SampleLibraryData {
@@ -893,6 +903,7 @@ export interface SampleLibraryData {
 
 export function generateSampleLibraryData(options?: SampleDataOptions): SampleLibraryData {
   const resolvedOptions = resolveSampleDataOptions(options);
+  if (resolvedOptions.scale === "showcase") return editorialData(resolvedOptions);
   const people = generateSamplePeopleGraph(resolvedOptions);
   return {
     feeds: generateSampleFeeds(resolvedOptions),
@@ -916,6 +927,7 @@ export function generateSampleLibraryData(options?: SampleDataOptions): SampleLi
  */
 export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
   const resolvedOptions = resolveSampleDataOptions(options);
+  if (resolvedOptions.scale === "showcase") return editorialData(resolvedOptions).items;
   const { batchId, seed } = resolvedOptions;
   const fingerprint = sampleDataFingerprint(resolvedOptions);
   const rand = mulberry32(seed);

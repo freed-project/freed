@@ -703,10 +703,12 @@ test("friends graph controls align and its sidebar menu follows shared nav behav
     .locator("button")
     .evaluateAll((buttons) => buttons.map((button) => getComputedStyle(button).backgroundColor));
   expect(controlBackgrounds).toHaveLength(1);
+  const sidebarBackground = await page.getByTestId("friends-sidebar")
+    .evaluate((sidebar) => getComputedStyle(sidebar).backgroundColor);
   for (const background of controlBackgrounds) {
     expect(background).not.toBe("transparent");
     expect(background).not.toBe("rgba(0, 0, 0, 0)");
-    expect(background).not.toMatch(/^rgba\(/);
+    expect(background).toBe(sidebarBackground);
   }
   await expect(page.getByTestId("friend-graph-viewport")).toHaveAttribute(
     "data-graph-renderer",

@@ -19,6 +19,7 @@ export const BOTANICAL_TWENTY_FOUR_CHARACTER_ARCS: readonly SampleCharacterArc[]
         "subject": "pale pitcher plant",
         "platform": "medium",
         "contentType": "article",
+        "classification": "news",
         "mediaSha1": "a2c2c97ca23c34848048b35258da3018dfb26a6d",
         "theme": "feeding",
         "title": "The useful edge",
@@ -28,10 +29,21 @@ export const BOTANICAL_TWENTY_FOUR_CHARACTER_ARCS: readonly SampleCharacterArc[]
         "subject": "pale pitcher plant",
         "platform": "instagram",
         "contentType": "post",
+        "classification": "conversation",
         "mediaSha1": "26daa17f47a6bcdb65bcb488a684c579ac0271d0",
         "theme": "social",
         "title": "A different part of me",
         "body": "A butterfly settled on my flower. Six feet, almost no weight. I waited for the familiar satisfaction of having caught something.\n\nIt stayed. Nothing was caught.\n\nA small gust moved us together, and for once I was pleased that the part it had chosen was good at letting go."
+      },
+      {
+        "subject": "pale pitcher plant",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "social",
+        "title": "One more tremor",
+        "body": "The bee clung to my flower and pushed her head beneath a petal.\n\nThe stem dipped. When she let go, it sprang back.\n\nI mistook the trembling for her feet and waited through another little shiver.",
+        "classification": "conversation",
+        "mediaSha1": "af7dc68e4c03779b60b5fef48f4be4163e1843f2"
       }
     ]
   },
@@ -52,6 +64,7 @@ export const BOTANICAL_TWENTY_FOUR_CHARACTER_ARCS: readonly SampleCharacterArc[]
         "subject": "saguaro cactus",
         "platform": "facebook",
         "contentType": "story",
+        "classification": "event",
         "mediaSha1": "fc19350615d9b7218a7082d4507f048811c2d5d0",
         "theme": "weather",
         "title": "Before the arms",
@@ -61,6 +74,7 @@ export const BOTANICAL_TWENTY_FOUR_CHARACTER_ARCS: readonly SampleCharacterArc[]
         "subject": "saguaro cactus",
         "platform": "facebook",
         "contentType": "post",
+        "classification": "inspiring",
         "mediaSha1": "531d1c1c4da5b074699c55bddff586c2e5d2fa26",
         "theme": "transformation",
         "title": "Not even an arm yet",
@@ -70,6 +84,7 @@ export const BOTANICAL_TWENTY_FOUR_CHARACTER_ARCS: readonly SampleCharacterArc[]
         "subject": "saguaro cactus",
         "platform": "facebook",
         "contentType": "post",
+        "classification": "conversation",
         "mediaSha1": "4bd48d69adbb238bde0b87fb505d6dfbbc16b832",
         "theme": "social",
         "title": "The point of arms",
@@ -82,6 +97,7 @@ export const BOTANICAL_TWENTY_FOUR_CHARACTER_ARCS: readonly SampleCharacterArc[]
         "title": "Above the flowers",
         "body": "They arrived with a pole and began extending it beside me.\n\nI was used to people looking up. This appeared to be an unusually elaborate version of the same thing. One held the bottom, the others stayed close, and the little black object at the far end rose past my arm.\n\nThen it kept going.\n\nI had put the flowers at the top. That had seemed a perfectly satisfactory height for flowers. A bird could reach them. A bee could reach them. The people had apparently decided that they, too, should have a view straight into the middle.\n\nThe camera tilted down. I could not rearrange a single blossom. The buds that weren't ready stayed shut; the flowers that were open stayed open. There was nothing to do about the awkward small arm behind the large one.\n\nFor a moment I wanted them to take the picture from farther away, where I looked more like an impressive cactus.\n\nThey took it from here. All the crowded buds, the open cups, the spines around them. I had spent decades growing tall enough to be looked up to. It was strangely intimate to be looked down into.",
         "subject": "saguaro cactus",
+        "classification": "conversation",
         "mediaSha1": "488c41b52d00c67bbf68074bfbfee7857e98d657"
       },
       {
@@ -91,10 +107,29 @@ export const BOTANICAL_TWENTY_FOUR_CHARACTER_ARCS: readonly SampleCharacterArc[]
         "title": "His ribs",
         "body": "The old cactus fell. Over time the green flesh went, and his wooden ribs lay open in the grass.\n\nI had known the outline of his arms for so long that I kept trying to put it back around what remained. There was more of him on the ground than I could fit inside my memory.\n\nI had never thought much about the wood inside me. For a while, every arm felt heavy.",
         "subject": "saguaro cactus",
+        "classification": "personal",
         "mediaSha1": "1eeaca70d29889c6ec645c82a3a9eae9d25af627"
       },
-      {"subject": "saguaro cactus", "platform": "facebook", "contentType": "post", "theme": "social", "title": "The sticks stayed", "body": "A stick lodged between my arms. Then another. I blamed the wind until the sticks began crossing one another in a rather deliberate way.\n\nBy the time the nest was finished, there was more dead wood between those arms than I had ever intended to hold. Loose ends stuck out on every side.\n\nThe wind came back.\n\nI had been waiting for it to clear the mess away. Now I wanted each badly placed twig to stay exactly where it was.", "mediaSha1": "7d7f8371da22478535bbe2fd10f1c6fb82d95d8f"},
-      {"subject": "saguaro cactus", "platform": "facebook", "contentType": "post", "theme": "social", "title": "Entirely my own", "body": "The mesquite put a branch between my arms when there was still plenty of room. We both kept growing.\n\nNow her leaves are among my spines, and a woody twig lies across the ribs I had considered entirely my own. I have spent several seasons being offended by her poor sense of distance.\n\nA nub of mine has come up on the other side of the branch. Her leaves are caught around that, too.\n\nI was about to blame her for this arrangement. Then I reached the part where I had grown around her.", "mediaSha1": "8c88cdf3e67ea0eaf9af4aaa660c2f45a9354a2c"}
+      {
+        "subject": "saguaro cactus",
+        "platform": "facebook",
+        "contentType": "post",
+        "theme": "social",
+        "title": "The sticks stayed",
+        "body": "A stick lodged between my arms. Then another. I blamed the wind until the sticks began crossing one another in a rather deliberate way.\n\nBy the time the nest was finished, there was more dead wood between those arms than I had ever intended to hold. Loose ends stuck out on every side.\n\nThe wind came back.\n\nI had been waiting for it to clear the mess away. Now I wanted each badly placed twig to stay exactly where it was.",
+        "classification": "conversation",
+        "mediaSha1": "7d7f8371da22478535bbe2fd10f1c6fb82d95d8f"
+      },
+      {
+        "subject": "saguaro cactus",
+        "platform": "facebook",
+        "contentType": "post",
+        "theme": "social",
+        "title": "Entirely my own",
+        "body": "The mesquite put a branch between my arms when there was still plenty of room. We both kept growing.\n\nNow her leaves are among my spines, and a woody twig lies across the ribs I had considered entirely my own. I have spent several seasons being offended by her poor sense of distance.\n\nA nub of mine has come up on the other side of the branch. Her leaves are caught around that, too.\n\nI was about to blame her for this arrangement. Then I reached the part where I had grown around her.",
+        "classification": "conversation",
+        "mediaSha1": "8c88cdf3e67ea0eaf9af4aaa660c2f45a9354a2c"
+      }
     ]
   }
 ];

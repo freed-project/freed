@@ -17,13 +17,33 @@ export const AQUATIC_TWENTY_SIX_CHARACTER_ARCS: readonly SampleCharacterArc[] = 
     "episodes": [
       {
         "subject": "Limulus polyphemus",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "danger",
+        "title": "I wanted the sand back",
+        "body": "My tail kept finding sand that would not hold. I pushed, rolled a little, and came back onto my shell.\n\nThen something took hold of my rim.\n\nFolded my legs tight. I had been trying to turn over, but I had not meant to leave the beach.\n\nThe sand came back under my feet. The grip was gone.\n\nPut one foot down. Then all the others. I kept expecting another lift. Got all the way into the water on my own feet.",
+        "classification": "inspiring",
+        "mediaSha1": "f123b0c3c60da5113932903b19cb2089166bdc8d"
+      },
+      {
+        "subject": "Limulus polyphemus",
         "platform": "facebook",
+        "classification": "conversation",
         "mediaSha1": "f5db5d8e75988e126e6fd5a2ff720a834634f0a6",
         "theme": "social",
         "title": "Unwilling passengers",
         "body": "The water thinned over my back and all the little mouths shut. I had been trying to get away from the waves. Now I am following one out with everybody closed."
       },
-      {"subject": "Limulus polyphemus", "platform": "facebook", "contentType": "story", "mediaSha1": "4828ba837a7939956737cfa355c7ed1769fd27ce", "theme": "courtship", "title": "Finding the rim", "body": "There were shells on her shell. I tried to hold her and caught one of those instead.\n\nShe kept moving. I let go, scrambled after her, and found the edge underneath. This time I could feel her moving through my grip.\n\nThen she began to dig. Sand came back against my face. I shifted a little, expecting to be shaken off.\n\nShe dug deeper. I held on."}
+      {
+        "subject": "Limulus polyphemus",
+        "platform": "facebook",
+        "contentType": "story",
+        "classification": "personal",
+        "mediaSha1": "4828ba837a7939956737cfa355c7ed1769fd27ce",
+        "theme": "courtship",
+        "title": "Finding the rim",
+        "body": "There were shells on her shell. I tried to hold her and caught one of those instead.\n\nShe kept moving. I let go, scrambled after her, and found the edge underneath. This time I could feel her moving through my grip.\n\nThen she began to dig. Sand came back against my face. I shifted a little, expecting to be shaken off.\n\nShe dug deeper. I held on."
+      }
     ]
   },
   {
@@ -42,6 +62,7 @@ export const AQUATIC_TWENTY_SIX_CHARACTER_ARCS: readonly SampleCharacterArc[] = 
       {
         "subject": "Chaceon sp.",
         "platform": "facebook",
+        "classification": "conversation",
         "mediaSha1": "679caae9ccfb5b7f97eaaee2b15837f3b68832e6",
         "theme": "social",
         "title": "Under the other claw",
@@ -50,6 +71,7 @@ export const AQUATIC_TWENTY_SIX_CHARACTER_ARCS: readonly SampleCharacterArc[] = 
       {
         "subject": "Chaceon sp.",
         "platform": "facebook",
+        "classification": "conversation",
         "mediaSha1": "93bda793c901beaca03412b845af095f13ebe54d",
         "theme": "social",
         "title": "Still touching",
@@ -73,10 +95,21 @@ export const AQUATIC_TWENTY_SIX_CHARACTER_ARCS: readonly SampleCharacterArc[] = 
       {
         "subject": "Muusoctopus sp.",
         "platform": "instagram",
+        "classification": "inspiring",
         "mediaSha1": "27a9c772c25196b33bebe7513e6dff59dd136543",
         "theme": "danger",
         "title": "The arms underneath",
         "body": "Raised four arms to make myself enormous. The others kept hold of the mud. I would like whoever is coming to believe I can afford to let go."
+      },
+      {
+        "subject": "Muusoctopus sp.",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "social",
+        "title": "I meant that to stay inside",
+        "body": "The light came closer. I kept my arms folded in front of me and tried to look as though I had been busy.\n\nWent red instead.\n\nI could feel myself going pale before I had decided what to do about the red.\n\nUncurled one arm. Then another. Whoever it was had waited through both, and I still wanted a closer look.",
+        "classification": "conversation",
+        "mediaSha1": "2af16832650020521f89601a0f7959e029543312"
       }
     ]
   },
@@ -96,6 +129,7 @@ export const AQUATIC_TWENTY_SIX_CHARACTER_ARCS: readonly SampleCharacterArc[] = 
       {
         "subject": "Homolidae carrier crab",
         "platform": "x",
+        "classification": "inspiring",
         "mediaSha1": "14468e604f14e1e09075b82d3128a37e24b9af1a",
         "theme": "danger",
         "title": "A better view of me",

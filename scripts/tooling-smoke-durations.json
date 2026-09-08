@@ -1,27 +1,1625 @@
 {
   "schemaVersion": 1,
-  "note": "Measured on ubuntu-latest CI, run 30140909175 / 30143xxxxx (2026-07-25), with outcome-ledger-repair re-measured from run 30166138958 where all 8 of its shards completed. Seconds are per-suite totals summed across that run's shards, so they include per-shard job overhead and read slightly high at low shard counts, which is the safe direction. The former general suite had shards of 41s, 406s, 1,323s, and 4,909s. The 4,909s shard contained only nightly-self-improve.test.mjs, so its observed duration is now assigned to that independently sharded suite and the remaining three shard durations stay with general. Refresh with: node scripts/measure-tooling-smoke.mjs --write, or from CI shard durations.",
   "suites": {
     "general": {
-      "seconds": 1770,
-      "runs": 1,
+      "seconds": 319.1,
+      "runs": 2,
       "failures": 0,
       "flaky": false,
-      "source": "ci-shards 41+406+1323 after nightly-self-improve extraction"
+      "units": {
+        "scripts/automation-actor-linux.test.mjs": {
+          "seconds": 13.47,
+          "runs": 2
+        },
+        "scripts/automation-actors.test.mjs": {
+          "seconds": 3.89,
+          "runs": 2
+        },
+        "scripts/automation-control-docs.test.mjs": {
+          "seconds": 0.005,
+          "runs": 2
+        },
+        "scripts/automation-hosts.test.mjs": {
+          "seconds": 0.047,
+          "runs": 2
+        },
+        "scripts/build-metadata.test.mjs": {
+          "seconds": 0.003,
+          "runs": 2
+        },
+        "scripts/build-outcome-verdict.test.mjs": {
+          "seconds": 1.988,
+          "runs": 2
+        },
+        "scripts/canary-context.test.mjs": {
+          "seconds": 0.136,
+          "runs": 2
+        },
+        "scripts/create-release-github-app.test.mjs": {
+          "seconds": 0.09,
+          "runs": 2
+        },
+        "scripts/deploy-website.test.mjs": {
+          "seconds": 0.299,
+          "runs": 2
+        },
+        "scripts/dev-sync-trigger.test.mjs": {
+          "seconds": 0.018,
+          "runs": 2
+        },
+        "scripts/doctor.test.mjs": {
+          "seconds": 1.944,
+          "runs": 2
+        },
+        "scripts/generate-library-core-contract.test.mjs": {
+          "seconds": 0.045,
+          "runs": 2
+        },
+        "scripts/generate-provider-admission-policy.test.mjs": {
+          "seconds": 0.274,
+          "runs": 2
+        },
+        "scripts/generate-sample-corpus.test.mjs": {
+          "seconds": 0.004,
+          "runs": 2
+        },
+        "scripts/generate-tauri-latest-from-release.test.mjs": {
+          "seconds": 0.009,
+          "runs": 2
+        },
+        "scripts/lease-archive-move.test.mjs": {
+          "seconds": 9.532,
+          "runs": 2
+        },
+        "scripts/lib/git-path-at-ref.test.mjs": {
+          "seconds": 0.464,
+          "runs": 2
+        },
+        "scripts/lib/github-release-publications.test.mjs": {
+          "seconds": 0.011,
+          "runs": 2
+        },
+        "scripts/lib/github-tooling.test.mjs": {
+          "seconds": 0.004,
+          "runs": 2
+        },
+        "scripts/lib/library-core-release-activation.test.mjs": {
+          "seconds": 0.677,
+          "runs": 2
+        },
+        "scripts/lib/provider-visible-paths.test.mjs": {
+          "seconds": 0.363,
+          "runs": 2
+        },
+        "scripts/lib/release-tag-publisher.test.mjs": {
+          "seconds": 0.005,
+          "runs": 2
+        },
+        "scripts/lib/vercel-project-link.test.mjs": {
+          "seconds": 0.02,
+          "runs": 2
+        },
+        "scripts/library-core-release-activation.test.mjs": {
+          "seconds": 0.026,
+          "runs": 2
+        },
+        "scripts/measure-tooling-smoke.test.mjs": {
+          "seconds": 0.015,
+          "runs": 2
+        },
+        "scripts/node-tooling.test.mjs": {
+          "seconds": 0.037,
+          "runs": 2
+        },
+        "scripts/outcome-ledger-repair-contract.test.mjs": {
+          "seconds": 0.199,
+          "runs": 2
+        },
+        "scripts/promote-dev-to-main.test.mjs": {
+          "seconds": 1.081,
+          "runs": 2
+        },
+        "scripts/pwa-vercel-ignore-build.test.mjs": {
+          "seconds": 0.091,
+          "runs": 2
+        },
+        "scripts/record-outcome.test.mjs": {
+          "seconds": 206.904,
+          "runs": 2
+        },
+        "scripts/release-governance.test.mjs": {
+          "seconds": 0.006,
+          "runs": 2
+        },
+        "scripts/release-notes-shared.test.mjs": {
+          "seconds": 0.03,
+          "runs": 2
+        },
+        "scripts/release-promotion.test.mjs": {
+          "seconds": 8.127,
+          "runs": 2
+        },
+        "scripts/release-receipt.test.mjs": {
+          "seconds": 0.006,
+          "runs": 2
+        },
+        "scripts/release-showcase-assets.test.mjs": {
+          "seconds": 0.119,
+          "runs": 2
+        },
+        "scripts/release-tag-publisher-install.test.mjs": {
+          "seconds": 0.077,
+          "runs": 2
+        },
+        "scripts/release-version.test.mjs": {
+          "seconds": 0.113,
+          "runs": 2
+        },
+        "scripts/release-workflow-matrix.test.mjs": {
+          "seconds": 0.004,
+          "runs": 2
+        },
+        "scripts/repository-config.test.mjs": {
+          "seconds": 0.001,
+          "runs": 2
+        },
+        "scripts/run-native-acceptance.test.mjs": {
+          "seconds": 0.067,
+          "runs": 2
+        },
+        "scripts/run-tooling-smoke-shard.test.mjs": {
+          "seconds": 1.767,
+          "runs": 2
+        },
+        "scripts/run-workspace-fanout.test.mjs": {
+          "seconds": 0.055,
+          "runs": 2
+        },
+        "scripts/soak.test.mjs": {
+          "seconds": 11.252,
+          "runs": 2
+        },
+        "scripts/social-scrape-loop.test.mjs": {
+          "seconds": 0.011,
+          "runs": 2
+        },
+        "scripts/stability-artifact.test.mjs": {
+          "seconds": 0.028,
+          "runs": 2
+        },
+        "scripts/stability-metrics.test.mjs": {
+          "seconds": 0.007,
+          "runs": 2
+        },
+        "scripts/stability-ops.test.mjs": {
+          "seconds": 0.417,
+          "runs": 2
+        },
+        "scripts/stability-status.test.mjs": {
+          "seconds": 1.409,
+          "runs": 2
+        },
+        "scripts/sync-github-rulesets.test.mjs": {
+          "seconds": 0.082,
+          "runs": 2
+        },
+        "scripts/tooling-smoke-plan.test.mjs": {
+          "seconds": 0.244,
+          "runs": 2
+        },
+        "scripts/triage.test.mjs": {
+          "seconds": 0.818,
+          "runs": 2
+        },
+        "scripts/validate-agent-instructions.test.mjs": {
+          "seconds": 0.031,
+          "runs": 2
+        },
+        "scripts/validate-automation-specs.test.mjs": {
+          "seconds": 0.006,
+          "runs": 2
+        },
+        "scripts/validate-dev-integration-receipt.test.mjs": {
+          "seconds": 0.116,
+          "runs": 2
+        },
+        "scripts/validate-host-automations.test.mjs": {
+          "seconds": 0.23,
+          "runs": 2
+        },
+        "scripts/validate-instruction-routing.test.mjs": {
+          "seconds": 0.013,
+          "runs": 2
+        },
+        "scripts/validate-release-identity.test.mjs": {
+          "seconds": 2.704,
+          "runs": 2
+        },
+        "scripts/validate-release-tag-authority.test.mjs": {
+          "seconds": 0.002,
+          "runs": 2
+        },
+        "scripts/validate-retired-automerge-runtime.test.mjs": {
+          "seconds": 0.009,
+          "runs": 2
+        },
+        "scripts/validate-roadmap-status.test.mjs": {
+          "seconds": 0.006,
+          "runs": 2
+        },
+        "scripts/validate-skills.test.mjs": {
+          "seconds": 0.035,
+          "runs": 2
+        },
+        "scripts/validate-worktree.test.mjs": {
+          "seconds": 0.026,
+          "runs": 2
+        },
+        "scripts/vitest-config.test.mjs": {
+          "seconds": 0.513,
+          "runs": 2
+        },
+        "scripts/worktree-preview.test.mjs": {
+          "seconds": 0.023,
+          "runs": 2
+        },
+        "scripts/worktree-publish.test.mjs": {
+          "seconds": 291.216,
+          "runs": 2
+        }
+      }
     },
     "automation-control": {
-      "seconds": 8689,
-      "runs": 1,
+      "seconds": 6395,
+      "runs": 2,
       "failures": 0,
       "flaky": false,
-      "source": "ci-shards 3985+4704"
+      "units": {
+        "CLI accepts a current-task owner confirmation without a broker token": {
+          "seconds": 10.918,
+          "runs": 2
+        },
+        "CLI cannot mint freed-owner without an approved owner source": {
+          "seconds": 0.108,
+          "runs": 2
+        },
+        "CLI computes the canonical owner governance intent digest": {
+          "seconds": 0.051,
+          "runs": 2
+        },
+        "CLI emits structured JSON for task and lease operations": {
+          "seconds": 21.333,
+          "runs": 2
+        },
+        "a SIGKILL process loss releases the kernel guard for one recovery": {
+          "seconds": 0.07,
+          "runs": 2
+        },
+        "a completed lease transaction cannot predate its preparation": {
+          "seconds": 7.45,
+          "runs": 2
+        },
+        "a coordinated completed release rewrite fails exact WAL lineage": {
+          "seconds": 12.355,
+          "runs": 2
+        },
+        "a different owner operation cannot clean a completed governance transaction": {
+          "seconds": 3.318,
+          "runs": 2
+        },
+        "a digest-only completed receipt and WAL rewrite fails canonical request admission": {
+          "seconds": 15.344,
+          "runs": 2
+        },
+        "a foreign pending event stage cannot publish an exact current-operation pre-WAL temporary": {
+          "seconds": 2.785,
+          "runs": 2
+        },
+        "a foreign pending event stage preserves one-use capability paths before pre-WAL recovery": {
+          "seconds": 2.71,
+          "runs": 2
+        },
+        "a forged settled control-event stage is rejected before the next append": {
+          "seconds": 8.459,
+          "runs": 2
+        },
+        "a forged settled task-manifest stage is rejected before the next task mutation": {
+          "seconds": 18.433,
+          "runs": 2
+        },
+        "a fresh trusted acquisition finishes completed release cleanup after process loss": {
+          "seconds": 22.425,
+          "runs": 2
+        },
+        "a live kernel guard blocks a contender without changing its inode": {
+          "seconds": 0.097,
+          "runs": 2
+        },
+        "a new exact-token release finishes completed acquisition cleanup after response loss": {
+          "seconds": 12.387,
+          "runs": 2
+        },
+        "a ninth-old heartbeat retry fails cleanly without leaving an active WAL": {
+          "seconds": 84.405,
+          "runs": 2
+        },
+        "a pending task transaction recovers once and rejects stale resurrection": {
+          "seconds": 15.808,
+          "runs": 2
+        },
+        "a persisted lease request digest drift fails exact event binding": {
+          "seconds": 7.571,
+          "runs": 2
+        },
+        "a prepared lease cannot adopt its predicted partial event stage before credential consumption": {
+          "seconds": 1.416,
+          "runs": 2
+        },
+        "a ready control-event stage blocks a later lease before mutation": {
+          "seconds": 1.362,
+          "runs": 2
+        },
+        "a retained lease receipt rejects a duplicate exact event ID": {
+          "seconds": 6.357,
+          "runs": 2
+        },
+        "a retained lease receipt rejects a missing exact event": {
+          "seconds": 7.541,
+          "runs": 2
+        },
+        "a transactional heartbeat after the pinned legacy acquire still binds private state": {
+          "seconds": 16.582,
+          "runs": 2
+        },
+        "acquire recovery derives takeover claims from exact before staging": {
+          "seconds": 3.421,
+          "runs": 2
+        },
+        "active WAL cleanup rejects a raw replacement against the held source inode": {
+          "seconds": 5.659,
+          "runs": 2
+        },
+        "active WAL recovery preflights every sibling before cleanup": {
+          "seconds": 6.995,
+          "runs": 2
+        },
+        "actor policies enforce lifecycle ownership and fresh-evidence reopening": {
+          "seconds": 154.91,
+          "runs": 2
+        },
+        "all four lease mutations recover post-state failure with one exact event": {
+          "seconds": 45.376,
+          "runs": 2
+        },
+        "all four lease mutations recover the final native WAL exchange window": {
+          "seconds": 44.979,
+          "runs": 2
+        },
+        "already-bound publisher head records and replays every durable phase": {
+          "seconds": 104.49,
+          "runs": 2
+        },
+        "an authenticated actor upgrades only its own exact expired legacy lease": {
+          "seconds": 9.462,
+          "runs": 2
+        },
+        "an event-first task transaction recovers against its settled manifest witness": {
+          "seconds": 26.128,
+          "runs": 2
+        },
+        "an unexpected top-level lease receipt sibling is unhealthy": {
+          "seconds": 7.855,
+          "runs": 2
+        },
+        "approved provider tasks require and retain an owner approval reference at creation": {
+          "seconds": 11.987,
+          "runs": 2
+        },
+        "atomic lease writer preserves a replacement temporary generation": {
+          "seconds": 1.275,
+          "runs": 2
+        },
+        "audited lease operations never reinterpret missing replay receipts": {
+          "seconds": 31.051,
+          "runs": 2
+        },
+        "authority publication never mistakes a same-content foreign destination for recovery": {
+          "seconds": 0.263,
+          "runs": 2
+        },
+        "authority stage creation writes bounded chunks before publication": {
+          "seconds": 1.433,
+          "runs": 2
+        },
+        "authority stage retries preserve a foreign final-window generation": {
+          "seconds": 4.79,
+          "runs": 2
+        },
+        "authority temp namespace binds predecessor content on the same inode": {
+          "seconds": 1.603,
+          "runs": 2
+        },
+        "authority temp namespace binds the full predecessor generation": {
+          "seconds": 1.569,
+          "runs": 2
+        },
+        "automation planning directory-name cache invalidates an added private entry": {
+          "seconds": 1.377,
+          "runs": 2
+        },
+        "automation planning lease history cache invalidates a new pending transaction": {
+          "seconds": 8.681,
+          "runs": 2
+        },
+        "automation planning read bundle exposes only frozen plain values and expires every admission": {
+          "seconds": 1.372,
+          "runs": 2
+        },
+        "automation planning result accessors run before terminal generation proof": {
+          "seconds": 1.167,
+          "runs": 2
+        },
+        "automation planning results reject executable values": {
+          "seconds": 0.939,
+          "runs": 2
+        },
+        "behavioral classification and the installed soak slot are immutable control invariants": {
+          "seconds": 121.03,
+          "runs": 2
+        },
+        "caller operation identity and acquire token are mandatory": {
+          "seconds": 0.005,
+          "runs": 2
+        },
+        "capacity injected after target admission prevents its rename": {
+          "seconds": 4.97,
+          "runs": 2
+        },
+        "complete lease WAL recovery validates retained state before cleanup": {
+          "seconds": 16.661,
+          "runs": 2
+        },
+        "completed Darwin lease history admits only state-root device evidence": {
+          "seconds": 0.004,
+          "runs": 2
+        },
+        "completed acquire and bind receipts replay after later heartbeats": {
+          "seconds": 42.266,
+          "runs": 2
+        },
+        "completed actor acquisition receipt replay survives credential rotation": {
+          "seconds": 6.051,
+          "runs": 2
+        },
+        "completed lease receipt recovery binds the exact retained staged state": {
+          "seconds": 16.555,
+          "runs": 2
+        },
+        "completed receipt generation stays pinned through cleanup and return": {
+          "seconds": 6.365,
+          "runs": 2
+        },
+        "completed receipt validation precedes every staging cleanup mutation": {
+          "seconds": 30.841,
+          "runs": 2
+        },
+        "completed takeover replay rejects a control event that contradicts the audited predecessor": {
+          "seconds": 15.479,
+          "runs": 2
+        },
+        "completed task WAL retirement recovers without new retirement headroom": {
+          "seconds": 16.215,
+          "runs": 2
+        },
+        "completed task WALs are retired without destruction": {
+          "seconds": 12.625,
+          "runs": 2
+        },
+        "concurrent direct CLI acquisition cannot bypass the trusted actor launcher": {
+          "seconds": 0.28,
+          "runs": 2
+        },
+        "continuous lease health binds final authority to exact content and one leases root generation": {
+          "seconds": 10.964,
+          "runs": 2
+        },
+        "control event append preserves history when its private parent becomes unsafe": {
+          "seconds": 6.783,
+          "runs": 2
+        },
+        "control event append rechecks real lease expiry after waiting for the event guard": {
+          "seconds": 7.802,
+          "runs": 2
+        },
+        "control event appends atomically preserve exact existing bytes and newline boundaries": {
+          "seconds": 8.188,
+          "runs": 2
+        },
+        "control mutations fail closed before touching a state root without a cutover receipt": {
+          "seconds": 0.005,
+          "runs": 2
+        },
+        "create-only cross-process retry fails closed after consuming its inode witness": {
+          "seconds": 1.424,
+          "runs": 2
+        },
+        "current lease acquisition events require exact credential-specific structure": {
+          "seconds": 25.953,
+          "runs": 2
+        },
+        "current mutation admission rejects a not-yet-active lease without mutation": {
+          "seconds": 6.725,
+          "runs": 2
+        },
+        "current-task owner confirmation acquires one exact audited governance lease": {
+          "seconds": 33.122,
+          "runs": 2
+        },
+        "current-task owner confirmation rejects stale, forged, and permissive records": {
+          "seconds": 1.432,
+          "runs": 2
+        },
+        "dangling active lease transaction symlinks fail closed before authority": {
+          "seconds": 5.568,
+          "runs": 2
+        },
+        "deleted authorization fields never create a current lease upgrade path": {
+          "seconds": 6.872,
+          "runs": 2
+        },
+        "descriptor-bound authority reads reject timed parent substitution": {
+          "seconds": 0.261,
+          "runs": 2
+        },
+        "descriptor-held bounded lease directory scans reject path swaps and add/remove races": {
+          "seconds": 0.21,
+          "runs": 2
+        },
+        "descriptor-relative archive ancestry rejects a swapped held parent without outside writes": {
+          "seconds": 0.405,
+          "runs": 2
+        },
+        "descriptor-relative archive ancestry rejects symlinked intermediate directories": {
+          "seconds": 0.248,
+          "runs": 2
+        },
+        "direct control, outcome, and repair audit paths reject lease clock boundaries byte-stably": {
+          "seconds": 32.509,
+          "runs": 2
+        },
+        "durable archive ancestry repairs EEXIST parent syncs on retry": {
+          "seconds": 14.826,
+          "runs": 2
+        },
+        "empty and partial ready authority witnesses fail closed unchanged": {
+          "seconds": 2.293,
+          "runs": 2
+        },
+        "empty and partial same-operation authority temps recover only while provisional": {
+          "seconds": 2.81,
+          "runs": 2
+        },
+        "empty revision zero manifest has exact empty history parity": {
+          "seconds": 0.001,
+          "runs": 2
+        },
+        "event history witness repair admits one exact stranded task manifest witness": {
+          "seconds": 35.252,
+          "runs": 2
+        },
+        "event history witness repair rejects task witness drift after planning": {
+          "seconds": 29.534,
+          "runs": 2
+        },
+        "every lease mutation and completed replay fails closed on unrelated invalid lease history": {
+          "seconds": 89.135,
+          "runs": 2
+        },
+        "every outcome state rejects direct transition before mutation": {
+          "seconds": 669.922,
+          "runs": 2
+        },
+        "exact history admits only the installed missing-state acquisition bridge": {
+          "seconds": 0.002,
+          "runs": 2
+        },
+        "exact lifecycle history admits only the pinned legacy lease acquisition bridge": {
+          "seconds": 0.001,
+          "runs": 2
+        },
+        "exact lifecycle history indexes one shared lease acquisition in linear time": {
+          "seconds": 0.827,
+          "runs": 2
+        },
+        "exact lifecycle history rejects a missing physical prefix and misplaced legacy credential compatibility": {
+          "seconds": 17.241,
+          "runs": 2
+        },
+        "exact lifecycle history rejects physically preceding future acquisitions": {
+          "seconds": 25,
+          "runs": 2
+        },
+        "expired lease takeover is safe and old tokens cannot touch the replacement": {
+          "seconds": 16.696,
+          "runs": 2
+        },
+        "expired leases cannot be revived by heartbeat": {
+          "seconds": 7.07,
+          "runs": 2
+        },
+        "exported acquisition cannot persist caller-controlled future authority time": {
+          "seconds": 6.817,
+          "runs": 2
+        },
+        "exported archive inspection is read-only when archive storage is missing": {
+          "seconds": 0.001,
+          "runs": 2
+        },
+        "exported heartbeat cannot revive a lease expired on the live clock": {
+          "seconds": 7.553,
+          "runs": 2
+        },
+        "exported publisher head binding rejects live lease expiry": {
+          "seconds": 7.21,
+          "runs": 2
+        },
+        "factory claim freshness covers trusted launcher transit and stays bounded": {
+          "seconds": 69.855,
+          "runs": 2
+        },
+        "fenced outcome repair recovers exact owner lease state published before its WAL phase": {
+          "seconds": 104.065,
+          "runs": 2
+        },
+        "final global capacity check rejects post-rename archive consumption": {
+          "seconds": 7.558,
+          "runs": 2
+        },
+        "freed-owner outcome event and finalization steps require one composite guard": {
+          "seconds": 34.485,
+          "runs": 2
+        },
+        "general actor public acquisition always requires the trusted launcher": {
+          "seconds": 0.004,
+          "runs": 2
+        },
+        "generic authority publication never invokes destructive durable primitives": {
+          "seconds": 0.003,
+          "runs": 2
+        },
+        "governance and failure states return through conservative reconciliation paths": {
+          "seconds": 0,
+          "runs": 2
+        },
+        "heartbeat bind and release replay exact results after response loss": {
+          "seconds": 38.727,
+          "runs": 2
+        },
+        "heartbeat rechecks live expiry after waiting for the event guard": {
+          "seconds": 6.964,
+          "runs": 2
+        },
+        "heartbeat recovers finalized pre-WAL staging with regenerated timestamps": {
+          "seconds": 17.133,
+          "runs": 2
+        },
+        "historical credential paths are lexical while prepared recovery rejects symlinks": {
+          "seconds": 21.323,
+          "runs": 2
+        },
+        "historical publisher scope validation is path-independent and enforces binding order": {
+          "seconds": 22.782,
+          "runs": 2
+        },
+        "identical-state heartbeat recovery follows its durable phase and event": {
+          "seconds": 12.939,
+          "runs": 2
+        },
+        "installed legacy backfill requires the exact canonical installed identity": {
+          "seconds": 96.942,
+          "runs": 2
+        },
+        "kernel guard callbacks must be synchronous": {
+          "seconds": 0.014,
+          "runs": 2
+        },
+        "kernel guard cutover admits only an explicit local filesystem type": {
+          "seconds": 0.083,
+          "runs": 2
+        },
+        "kernel guard cutover rejects extra entries inside a canonical guard directory": {
+          "seconds": 0.011,
+          "runs": 2
+        },
+        "kernel guard filesystem resolver admits supported macOS APFS registrations and explicit Linux types": {
+          "seconds": 0.013,
+          "runs": 2
+        },
+        "kernel guards preserve the old directory sentinel and lock the permanent inner file": {
+          "seconds": 0.162,
+          "runs": 2
+        },
+        "lease acquisition binds file-backed authorization to one admitted inode": {
+          "seconds": 0.582,
+          "runs": 2
+        },
+        "lease acquisition recovers every durable checkpoint without exposing its token": {
+          "seconds": 46.384,
+          "runs": 2
+        },
+        "lease acquisition recovers real process loss at atomic and canonical state windows": {
+          "seconds": 135.845,
+          "runs": 2
+        },
+        "lease archive capacity counts retained lease directories and record bytes": {
+          "seconds": 0.262,
+          "runs": 2
+        },
+        "lease authority brackets its record read with exactly two pending transaction scans": {
+          "seconds": 6.66,
+          "runs": 2
+        },
+        "lease authority cache invalidates a same-inode record rewrite": {
+          "seconds": 6.245,
+          "runs": 2
+        },
+        "lease authority cache invalidates when a pending transaction appears": {
+          "seconds": 5.553,
+          "runs": 2
+        },
+        "lease cleanup archive accounting enforces count, bytes, age, local device, and free headroom": {
+          "seconds": 1.175,
+          "runs": 2
+        },
+        "lease cleanup archive capacity fails before any new transaction staging": {
+          "seconds": 0.944,
+          "runs": 2
+        },
+        "lease cleanup consumes 100,000 staged generations through indexed queues": {
+          "seconds": 0.297,
+          "runs": 2
+        },
+        "lease cleanup descriptor readback rejects a same-name destination inode replacement": {
+          "seconds": 4.395,
+          "runs": 2
+        },
+        "lease cleanup generation digests preserve bigint device and inode identity": {
+          "seconds": 0.003,
+          "runs": 2
+        },
+        "lease cleanup no-overwrite archive preserves a destination created after admission": {
+          "seconds": 5.748,
+          "runs": 2
+        },
+        "lease cleanup pins source and destination directory generations across the full plan": {
+          "seconds": 8.158,
+          "runs": 2
+        },
+        "lease cleanup preflights every mixed current-operation archive before mutation": {
+          "seconds": 23.903,
+          "runs": 2
+        },
+        "lease cleanup preserves a replacement installed after terminal archive validation": {
+          "seconds": 82.165,
+          "runs": 2
+        },
+        "lease cleanup quarantine crash retries exactly and preserves unrelated generations": {
+          "seconds": 9.335,
+          "runs": 2
+        },
+        "lease cleanup rejects a wrong-operation receipt archive before mutation": {
+          "seconds": 81.26,
+          "runs": 2
+        },
+        "lease cleanup rejects a wrong-side staging archive before mutation": {
+          "seconds": 12.853,
+          "runs": 2
+        },
+        "lease cleanup rejects same-inode byte drift before native rename": {
+          "seconds": 4.968,
+          "runs": 2
+        },
+        "lease cleanup retries every rename and directory sync crash idempotently": {
+          "seconds": 53.404,
+          "runs": 2
+        },
+        "lease cleanup syncs destination before source and rejects post-plan archives": {
+          "seconds": 11.209,
+          "runs": 2
+        },
+        "lease cleanup writes exact bigint archive generation names": {
+          "seconds": 6.641,
+          "runs": 2
+        },
+        "lease directory scan fails at the first entry beyond its exact bound": {
+          "seconds": 14.912,
+          "runs": 2
+        },
+        "lease health rejects unrelated duplicate conflicting and malformed reserved events": {
+          "seconds": 6.554,
+          "runs": 2
+        },
+        "lease heartbeat extends a live lease and release is token checked": {
+          "seconds": 23.872,
+          "runs": 2
+        },
+        "lease inspection and CLI show reject dangling and special canonical lease entries": {
+          "seconds": 0.51,
+          "runs": 2
+        },
+        "lease mutation authority cannot escape or continue asynchronously": {
+          "seconds": 7.009,
+          "runs": 2
+        },
+        "lease mutation authority rechecks real expiry after waiting for its guard": {
+          "seconds": 7.795,
+          "runs": 2
+        },
+        "lease receipt pruning preserves a replacement installed after final descriptor close": {
+          "seconds": 84.647,
+          "runs": 2
+        },
+        "lease receipt pruning preserves the current retry under tied mtimes": {
+          "seconds": 67.477,
+          "runs": 2
+        },
+        "lease receipt retention rejects hostile entries before any authority mutation": {
+          "seconds": 127.701,
+          "runs": 2
+        },
+        "lease receipt terminal archive recovers after rename": {
+          "seconds": 84.427,
+          "runs": 2
+        },
+        "lease root inventory separates pinned legacy history from active transactions": {
+          "seconds": 31.345,
+          "runs": 2
+        },
+        "lease state publication rechecks expiry after canonical temporary sync": {
+          "seconds": 12.543,
+          "runs": 2
+        },
+        "lease transaction history converts storage probe failures into unhealthy results": {
+          "seconds": 0.009,
+          "runs": 2
+        },
+        "lease transaction history detects a same-inode same-length retained staging rewrite": {
+          "seconds": 16.289,
+          "runs": 2
+        },
+        "lease transaction history detects a same-inode same-length terminal receipt rewrite": {
+          "seconds": 15.111,
+          "runs": 2
+        },
+        "lease transaction history requires one complete private storage topology": {
+          "seconds": 0.384,
+          "runs": 2
+        },
+        "lease transaction rejects launcher and event contract drift": {
+          "seconds": 2.715,
+          "runs": 2
+        },
+        "lease validation rejects a permissive bearer record": {
+          "seconds": 6.863,
+          "runs": 2
+        },
+        "lease validation rejects a permissive lease directory": {
+          "seconds": 6.689,
+          "runs": 2
+        },
+        "legacy backfill finalization rejects a tampered reservation event ID": {
+          "seconds": 63.798,
+          "runs": 2
+        },
+        "legacy lease upgrade rejects unauthenticated, cross-actor, and token-reuse attempts": {
+          "seconds": 0.724,
+          "runs": 2
+        },
+        "legacy outcome backfill rejects inexact lifecycle history before mutation": {
+          "seconds": 69.698,
+          "runs": 2
+        },
+        "low-level kernel guards reject missing and inexact permanent markers": {
+          "seconds": 0.005,
+          "runs": 2
+        },
+        "malformed canonical lease receipts return unhealthy without throwing": {
+          "seconds": 15.217,
+          "runs": 2
+        },
+        "missing current lease state requires explicit repair before reacquisition": {
+          "seconds": 6.916,
+          "runs": 2
+        },
+        "missing legacy lease state acquires through an audited credential upgrade": {
+          "seconds": 16.275,
+          "runs": 2
+        },
+        "missing live legacy lease state fails before lease authority mutation": {
+          "seconds": 0.286,
+          "runs": 2
+        },
+        "missing-state takeover recovery binds its predecessor before mutation": {
+          "seconds": 1.461,
+          "runs": 2
+        },
+        "named leases are exclusive and inspection redacts the token": {
+          "seconds": 7.476,
+          "runs": 2
+        },
+        "new writes reject release authority while legacy records downgrade to merge-safe": {
+          "seconds": 6.835,
+          "runs": 2
+        },
+        "one-use capability and expired takeover roll back before state commit": {
+          "seconds": 25.043,
+          "runs": 2
+        },
+        "one-use credential and release intermediates recover real process loss": {
+          "seconds": 110.864,
+          "runs": 2
+        },
+        "one-use lease capability rollback requires exclusive source identity": {
+          "seconds": 1.879,
+          "runs": 2
+        },
+        "only the exact caller plan may recover a pending lease transaction": {
+          "seconds": 8.341,
+          "runs": 2
+        },
+        "only the frozen actor-credential outcome bundle crosses the legacy history bridge": {
+          "seconds": 0.012,
+          "runs": 2
+        },
+        "outcome finalization admits canonical ledger and event snapshots safely": {
+          "seconds": 526.357,
+          "runs": 2
+        },
+        "outcome finalization rejects inexact history without mutating the manifest": {
+          "seconds": 98.852,
+          "runs": 2
+        },
+        "outcome ledger repair audit requires one exact preceding owner acquisition": {
+          "seconds": 19.798,
+          "runs": 2
+        },
+        "outcome ledger repair event preflight is deterministic and read-only": {
+          "seconds": 18.384,
+          "runs": 2
+        },
+        "outcome ledger repair event preflight rejects conflicting and duplicate identities": {
+          "seconds": 42.326,
+          "runs": 2
+        },
+        "outcome ledger repair preauthorization binds one exact receipt to the owner lease": {
+          "seconds": 19.572,
+          "runs": 2
+        },
+        "outcome ledger repair preauthorization rejects noncanonical receipt parameters": {
+          "seconds": 18.374,
+          "runs": 2
+        },
+        "outcome recording guard helpers cannot escape their synchronous scope": {
+          "seconds": 7.456,
+          "runs": 2
+        },
+        "outcome recording guards reserve nonverification transitions until durable": {
+          "seconds": 56.816,
+          "runs": 2
+        },
+        "outcome repair finalization guard rejects a missing canonical transaction before callback": {
+          "seconds": 17.965,
+          "runs": 2
+        },
+        "outcome reservation and finalization events stay inside the lease window": {
+          "seconds": 65.628,
+          "runs": 2
+        },
+        "outcome writer runtime preserves its permanent marker and requires the cutover receipt": {
+          "seconds": 0.09,
+          "runs": 2
+        },
+        "outcome writer snapshot cache invalidates a same-inode rewrite": {
+          "seconds": 0.306,
+          "runs": 2
+        },
+        "owner capability signature is bound to task, intent, state root, and lease token": {
+          "seconds": 0.008,
+          "runs": 2
+        },
+        "owner lease lifetime cannot outlive its fixed limit": {
+          "seconds": 15.666,
+          "runs": 2
+        },
+        "owner recovery completes only an expired committed trusted-launcher acquisition": {
+          "seconds": 9.193,
+          "runs": 2
+        },
+        "owner-confirmation heartbeats cannot outlive their confirmation": {
+          "seconds": 6.6,
+          "runs": 2
+        },
+        "pending canonical lease transaction artifacts make continuous history unhealthy": {
+          "seconds": 11.069,
+          "runs": 2
+        },
+        "pending lease WAL blocks another lease and preserves exact recovery headroom": {
+          "seconds": 11.812,
+          "runs": 2
+        },
+        "planned stale receipt age is admitted before staging": {
+          "seconds": 61.458,
+          "runs": 2
+        },
+        "post-exchange retry rejects a same-content foreign canonical generation": {
+          "seconds": 1.652,
+          "runs": 2
+        },
+        "post-state acquisition recovery does not depend on mutable capability storage": {
+          "seconds": 14.649,
+          "runs": 2
+        },
+        "prepared WAL permanently binds its caller operation identity": {
+          "seconds": 11.009,
+          "runs": 2
+        },
+        "private batch selection partitions 100,000 names with one template and one request per chunk": {
+          "seconds": 0.084,
+          "runs": 2
+        },
+        "private lease readers reject FIFOs symlinks unsafe ancestry and invalid UTF-8": {
+          "seconds": 0.093,
+          "runs": 2
+        },
+        "production lease event publication rejects destination and parent swaps": {
+          "seconds": 25.807,
+          "runs": 2
+        },
+        "production lease recovery rejects destination and parent swaps": {
+          "seconds": 17.04,
+          "runs": 2
+        },
+        "production task WAL cleanup preserves a swapped canonical generation": {
+          "seconds": 16.361,
+          "runs": 2
+        },
+        "production task manifest publication rejects destination and parent swaps": {
+          "seconds": 24.638,
+          "runs": 2
+        },
+        "provider approval requires a reference and authority changes are audited": {
+          "seconds": 32.539,
+          "runs": 2
+        },
+        "provider-required tasks cannot enter implementation before owner authorization": {
+          "seconds": 53.982,
+          "runs": 2
+        },
+        "publisher acquisition rejects reusable credentials, tampering, permissive files, and replay": {
+          "seconds": 16.848,
+          "runs": 2
+        },
+        "publisher capability binds the caller-owned lease operation and token digest": {
+          "seconds": 7.87,
+          "runs": 2
+        },
+        "publisher lease has a fixed absolute lifetime": {
+          "seconds": 24.125,
+          "runs": 2
+        },
+        "publisher receipts, retired authority, health, and exact replay survive worktree cleanup": {
+          "seconds": 27.083,
+          "runs": 2
+        },
+        "publisher scope binds distinct governed main modes": {
+          "seconds": 12.072,
+          "runs": 2
+        },
+        "random task pre-WAL authority temps are bounded and cannot wedge later mutation": {
+          "seconds": 37.598,
+          "runs": 2
+        },
+        "receipt pruning keeps nonempty quarantine healthy and counts only canonical receipts": {
+          "seconds": 91.721,
+          "runs": 2
+        },
+        "receipt-only lease recovery is not continuous health evidence without its completed WAL": {
+          "seconds": 13.017,
+          "runs": 2
+        },
+        "recordless lease authority requires explicit repair regardless of age": {
+          "seconds": 14.952,
+          "runs": 2
+        },
+        "release and replacement wait until the authorized mutation scope commits": {
+          "seconds": 21.288,
+          "runs": 2
+        },
+        "release replay requires its exact retained authority directory": {
+          "seconds": 14.424,
+          "runs": 2
+        },
+        "retained completed lease receipts bind continuous health to exact events": {
+          "seconds": 17.039,
+          "runs": 2
+        },
+        "retained release receipts remain healthy and replayable after a later acquire": {
+          "seconds": 33.96,
+          "runs": 2
+        },
+        "retained release replay follows a later publisher bind transaction": {
+          "seconds": 33.565,
+          "runs": 2
+        },
+        "same operation pre-WAL sibling namespace drift fails closed": {
+          "seconds": 1.499,
+          "runs": 2
+        },
+        "same-UID owner bootstrap files cannot authenticate governance": {
+          "seconds": 0.38,
+          "runs": 2
+        },
+        "same-operation lease recovery rewrites its partial provisional event stage": {
+          "seconds": 15.938,
+          "runs": 2
+        },
+        "same-operation task recovery rewrites its partial provisional manifest stage": {
+          "seconds": 18.398,
+          "runs": 2
+        },
+        "shared outcome history enforces exact records, evidence, ledger identity, policy, and scope": {
+          "seconds": 0.015,
+          "runs": 2
+        },
+        "staging cleanup rejects a swapped WAL generation against the held source inode": {
+          "seconds": 8.732,
+          "runs": 2
+        },
+        "state root defaults under the user automation directory and supports explicit roots": {
+          "seconds": 0.003,
+          "runs": 2
+        },
+        "stored lease timestamps must use the canonical ISO representation": {
+          "seconds": 6.936,
+          "runs": 2
+        },
+        "stored task authority is a lifecycle ceiling": {
+          "seconds": 81.751,
+          "runs": 2
+        },
+        "stranded event history witness planning rejects settled and ambiguous witnesses": {
+          "seconds": 38.36,
+          "runs": 2
+        },
+        "stranded event history witness repair fails closed on changed durable authorization": {
+          "seconds": 23.962,
+          "runs": 2
+        },
+        "stranded event history witness repair fails closed on changed generations and owner intent": {
+          "seconds": 89.417,
+          "runs": 2
+        },
+        "stranded event history witness repair records durable authority before exact idempotent recovery": {
+          "seconds": 29.314,
+          "runs": 2
+        },
+        "stranded task manifest witness planning is read-only and exact repair is audited": {
+          "seconds": 32.386,
+          "runs": 2
+        },
+        "stranded task manifest witness planning rejects a still-owned or nondrifted witness": {
+          "seconds": 20.135,
+          "runs": 2
+        },
+        "stranded task manifest witness repair fails closed on changed generations": {
+          "seconds": 52.381,
+          "runs": 2
+        },
+        "task creation and same-state transition retries are idempotent": {
+          "seconds": 38.533,
+          "runs": 2
+        },
+        "task creation rechecks real lease expiry after waiting for the task guard": {
+          "seconds": 8.122,
+          "runs": 2
+        },
+        "task lifecycle events stay inside their exact lease authority window": {
+          "seconds": 25.324,
+          "runs": 2
+        },
+        "task lifecycle history owns behavioral classification and exact manifest parity": {
+          "seconds": 18.398,
+          "runs": 2
+        },
+        "task mutations atomically replace one sorted current manifest and append versioned events": {
+          "seconds": 21.471,
+          "runs": 2
+        },
+        "task mutations require policy-bound leases and new tasks start observed": {
+          "seconds": 6.526,
+          "runs": 2
+        },
+        "task recovery admits manifest and transaction authority files safely": {
+          "seconds": 138.882,
+          "runs": 2
+        },
+        "task transaction recovery rejects conflicting and duplicate audit events before mutation": {
+          "seconds": 27.758,
+          "runs": 2
+        },
+        "task transitions reject skipped states and stale revisions": {
+          "seconds": 18.844,
+          "runs": 2
+        },
+        "task-scoped factory claims survive retries, fence custody, and release exactly": {
+          "seconds": 78.12,
+          "runs": 2
+        },
+        "the complete installed legacy control history is byte pinned and drift sensitive": {
+          "seconds": 0.027,
+          "runs": 2
+        },
+        "the first control event may create history but record 100,001 is rejected byte-stably": {
+          "seconds": 12.16,
+          "runs": 2
+        },
+        "transactional lease events require their newest retained receipts": {
+          "seconds": 7.283,
+          "runs": 2
+        },
+        "trusted launcher leases enforce a 30-minute absolute lifetime": {
+          "seconds": 42.224,
+          "runs": 2
+        },
+        "trusted launcher response-loss recovery admits a fresh channel session": {
+          "seconds": 6.921,
+          "runs": 2
+        },
+        "unexplained transaction entries fail closed before staging": {
+          "seconds": 7.88,
+          "runs": 2
+        },
+        "writeJsonAtomic never repairs a drifted expected-snapshot parent": {
+          "seconds": 0.212,
+          "runs": 2
+        },
+        "wrong authority cannot mutate prepared or successor WAL temporaries": {
+          "seconds": 20.317,
+          "runs": 2
+        }
+      }
     },
     "kernel-guard-cutover": {
-      "seconds": 4800,
-      "runs": 1,
+      "seconds": 4014.4,
+      "runs": 2,
       "failures": 0,
       "flaky": false,
-      "source": "ci-shard 4800 (single shard, 80 min, observed 2026-07-25). Replaces 3648s, which was a third low and left this suite one shard away from the 90 minute cap."
+      "units": {
+        "CLI plans and applies one exact owner-confirmed cutover": {
+          "seconds": 24.922,
+          "runs": 2
+        },
+        "a delayed old directory stale decision cannot cross the live claim proof": {
+          "seconds": 12.029,
+          "runs": 2
+        },
+        "a delayed old writer stale decision cannot cross the live claim proof": {
+          "seconds": 11.909,
+          "runs": 2
+        },
+        "activation checkpoints cannot publish after callback tampering": {
+          "seconds": 63.717,
+          "runs": 2
+        },
+        "callback pathname swaps preserve foreign generations and fail closed": {
+          "seconds": 143.592,
+          "runs": 2
+        },
+        "caller-owned plan mutation after transaction durability cannot redirect cutover": {
+          "seconds": 25.859,
+          "runs": 2
+        },
+        "caller-owned supersede plan mutation cannot redirect transaction retirement": {
+          "seconds": 15.347,
+          "runs": 2
+        },
+        "claim theft and fast protected-state mutation both block every PID 1 marker": {
+          "seconds": 16.534,
+          "runs": 2
+        },
+        "claims-installed supersede restores every exact planned legacy byte": {
+          "seconds": 34.224,
+          "runs": 2
+        },
+        "completed cutover retry is unchanged and does not require actor reactivation state": {
+          "seconds": 30.495,
+          "runs": 2
+        },
+        "completed supersede recovery rejects a renamed guard entry without authorization": {
+          "seconds": 14.304,
+          "runs": 2
+        },
+        "completed supersede recovery rejects every ambiguous authoritative temporary": {
+          "seconds": 46.757,
+          "runs": 2
+        },
+        "completed supersede response-loss recovery needs no live confirmation or unchanged task": {
+          "seconds": 14.439,
+          "runs": 2
+        },
+        "descriptor-bound snapshot rejects a same-inode growth without allocating its bytes": {
+          "seconds": 0.303,
+          "runs": 2
+        },
+        "empty quarantine recovery stays bound to its held directory across a path swap": {
+          "seconds": 7.106,
+          "runs": 2
+        },
+        "every retry records changed raw confirmation bytes and source path": {
+          "seconds": 22.824,
+          "runs": 2
+        },
+        "exact write-ahead and evidence filesystem admission is read-only": {
+          "seconds": 4.736,
+          "runs": 2
+        },
+        "existing legacy guard directory keeps its inode and blocks old stale takeover": {
+          "seconds": 25.489,
+          "runs": 2
+        },
+        "existing stale writer conversion never overwrites a replacement live old writer": {
+          "seconds": 6.867,
+          "runs": 2
+        },
+        "expected-missing guard never overwrites an old contender that wins mkdir": {
+          "seconds": 6.979,
+          "runs": 2
+        },
+        "foreign private cutover temporary bytes fail closed without deletion": {
+          "seconds": 8.005,
+          "runs": 2
+        },
+        "fresh retry authorization is recorded and becomes exact receipt attribution": {
+          "seconds": 24.286,
+          "runs": 2
+        },
+        "guard mode changes never follow a final-window path swap": {
+          "seconds": 13.761,
+          "runs": 2
+        },
+        "held directory generations contain every native publication boundary": {
+          "seconds": 7.574,
+          "runs": 2
+        },
+        "initial transaction recovers authorization evidence after process loss": {
+          "seconds": 26.905,
+          "runs": 2
+        },
+        "invalid owner confirmation leaves every canonical cutover path absent": {
+          "seconds": 1.238,
+          "runs": 2
+        },
+        "lease quiescence stays bound to the held lease root across a path swap": {
+          "seconds": 1.419,
+          "runs": 2
+        },
+        "linked initial authorization evidence recovers on the exact transaction": {
+          "seconds": 63.52,
+          "runs": 2
+        },
+        "linked prepared authorization from the pre-transaction layout remains recoverable": {
+          "seconds": 32.476,
+          "runs": 2
+        },
+        "marker link recovery reauthorizes before removing its exact temporary link": {
+          "seconds": 26.064,
+          "runs": 2
+        },
+        "native final-window swaps cannot redirect retained hard-link retirement": {
+          "seconds": 1.153,
+          "runs": 2
+        },
+        "old readers that arrive after claims see one live owner and cannot take over": {
+          "seconds": 31.202,
+          "runs": 2
+        },
+        "old writer wx fails after cutover and inner kernel contention survives SIGKILL": {
+          "seconds": 30.63,
+          "runs": 2
+        },
+        "one aggregate plan bound governs creation, private reads, and evidence": {
+          "seconds": 1.174,
+          "runs": 2
+        },
+        "oversized same-inode rewrite is rejected before initial recovery allocation": {
+          "seconds": 25.744,
+          "runs": 2
+        },
+        "oversized same-inode rewrite is rejected before pinned revalidation allocation": {
+          "seconds": 25.329,
+          "runs": 2
+        },
+        "owner confirmation revocation or expiry stops every permanent mutation boundary": {
+          "seconds": 242.156,
+          "runs": 2
+        },
+        "owner-confirmed prepared supersede recovers drift and admits one fresh cutover": {
+          "seconds": 43.256,
+          "runs": 2
+        },
+        "plan uses a real taskId and survives the required private file round trip": {
+          "seconds": 1.899,
+          "runs": 2
+        },
+        "planning rejects a malformed matching canonical task without mutation": {
+          "seconds": 0.648,
+          "runs": 2
+        },
+        "planning rejects a recursively snapshotted root swap without admitting a hybrid tree": {
+          "seconds": 0.397,
+          "runs": 2
+        },
+        "plans bind every directory to one canonical native tree digest": {
+          "seconds": 0.748,
+          "runs": 2
+        },
+        "prepared retry rejects malformed canonical task state before markers": {
+          "seconds": 1.035,
+          "runs": 2
+        },
+        "prepared transaction rejects duplicate and unbounded retry identities": {
+          "seconds": 4.688,
+          "runs": 2
+        },
+        "prepared transaction rejects noncanonical and impossible timestamp sequences": {
+          "seconds": 7.321,
+          "runs": 2
+        },
+        "private cutover admission rejects static mode drift and post-open swaps": {
+          "seconds": 6.202,
+          "runs": 2
+        },
+        "real SIGKILL across every remaining durable migration edge is recoverable": {
+          "seconds": 276.935,
+          "runs": 2
+        },
+        "real SIGKILL at every claim and marker boundary resumes the same plan exactly once": {
+          "seconds": 253.48,
+          "runs": 2
+        },
+        "real SIGKILL recovers every journaled in-place rewrite edge on the same inode": {
+          "seconds": 745.128,
+          "runs": 2
+        },
+        "real SIGKILL recovers every journaled quarantine deletion edge": {
+          "seconds": 389.406,
+          "runs": 2
+        },
+        "real SIGKILL recovers every journaled supersede restore edge on the same inode": {
+          "seconds": 439.143,
+          "runs": 2
+        },
+        "real SIGKILL supersede recovery is exact before and after transaction retirement": {
+          "seconds": 47.449,
+          "runs": 2
+        },
+        "real SIGKILL supersede write-ahead temp recovers under the exact plan": {
+          "seconds": 41.966,
+          "runs": 2
+        },
+        "real SIGKILL transaction temp blocks supersede and recovers through the original apply": {
+          "seconds": 30.466,
+          "runs": 2
+        },
+        "receipt-prepared activation rejects exact protected-state drift and residue": {
+          "seconds": 146.765,
+          "runs": 2
+        },
+        "receipt-prepared recovery completes a partially durable lease runtime scaffold without the source confirmation": {
+          "seconds": 30.457,
+          "runs": 2
+        },
+        "receipt-prepared recovery no longer depends on the source confirmation": {
+          "seconds": 29.853,
+          "runs": 2
+        },
+        "replacement creation resumes every admitted prefix after process loss": {
+          "seconds": 7.315,
+          "runs": 2
+        },
+        "retained directory creation is recoverable on both sides of parent fsync": {
+          "seconds": 2.442,
+          "runs": 2
+        },
+        "retained hard-link publication recovers after every native mutation": {
+          "seconds": 3.143,
+          "runs": 2
+        },
+        "second quiescence detects an old directory contender staged after the first proof": {
+          "seconds": 11.297,
+          "runs": 2
+        },
+        "second quiescence detects an old writer staged after the first proof": {
+          "seconds": 8.223,
+          "runs": 2
+        },
+        "snapshot admission stops at its entry, depth, and aggregate byte limits": {
+          "seconds": 1.083,
+          "runs": 2
+        },
+        "supersede callbacks cannot retire after the plan-bound task changes": {
+          "seconds": 17.283,
+          "runs": 2
+        },
+        "supersede completion must remain inside its embedded confirmation window": {
+          "seconds": 11.338,
+          "runs": 2
+        },
+        "supersede planning rejects ambiguous authoritative temporary residue byte-stably": {
+          "seconds": 3.712,
+          "runs": 2
+        },
+        "supersede preserves retired file and directory generations": {
+          "seconds": 44.7,
+          "runs": 2
+        },
+        "supersede protected retirement rejects transaction temporary residue under the bootstrap guard": {
+          "seconds": 5.323,
+          "runs": 2
+        },
+        "supersede receipt link rejects a replacement live confirmation": {
+          "seconds": 17.484,
+          "runs": 2
+        },
+        "supersede receipt preserves raw owner confirmation across retry and rejects tampering": {
+          "seconds": 17.704,
+          "runs": 2
+        },
+        "supersede recovery preserves a canonical write-ahead predecessor": {
+          "seconds": 42.947,
+          "runs": 2
+        },
+        "supersede refuses every permanent target marker": {
+          "seconds": 9.249,
+          "runs": 2
+        },
+        "supersede rejects a malformed canonical task before bootstrap mutation": {
+          "seconds": 1.608,
+          "runs": 2
+        },
+        "supersede rejects an apply-scoped write-ahead record until same-plan recovery": {
+          "seconds": 33.895,
+          "runs": 2
+        },
+        "supersede rejects task and transaction tampering without retiring evidence": {
+          "seconds": 4.104,
+          "runs": 2
+        },
+        "supersede response-loss recovery cannot bypass unfinished retirement authorization": {
+          "seconds": 12.854,
+          "runs": 2
+        },
+        "supersede write-ahead temp recovery requires live exact authority": {
+          "seconds": 31.378,
+          "runs": 2
+        },
+        "the maximum valid authorization transaction remains writable and readable": {
+          "seconds": 3.758,
+          "runs": 2
+        },
+        "transaction-first retry recovers authorization evidence before a replacement confirmation": {
+          "seconds": 111.168,
+          "runs": 2
+        },
+        "unsafe exact authorization evidence fails before bootstrap mutation": {
+          "seconds": 1.033,
+          "runs": 2
+        },
+        "write-ahead recovery rejects journal, inode, and partial-byte tampering": {
+          "seconds": 20.499,
+          "runs": 2
+        }
+      }
     },
     "nightly-self-improve": {
       "seconds": 4909,
@@ -31,11 +1629,452 @@
       "source": "former general shard 4/4, which contained only scripts/nightly-self-improve.test.mjs"
     },
     "outcome-ledger-repair": {
-      "seconds": 17266,
-      "runs": 1,
+      "seconds": 12677,
+      "runs": 2,
       "failures": 0,
       "flaky": false,
-      "source": "ci-shards 1957+1732+3115+1752+2637+1427+2341+2305 (run 30166138958, all 8 completed). Replaces the 5415s floor from a killed shard, which understated the suite by 3.2x and kept the planner under-sharding it. The suite is still ~4.8 hours of work; that cost is issue #1147, not this number."
+      "units": {
+        "FIFO admission is bounded in a child process": {
+          "seconds": 20.904,
+          "runs": 2
+        },
+        "SIGKILL after an ordinary ledger append recovers one complete outcome": {
+          "seconds": 97.307,
+          "runs": 2
+        },
+        "SIGKILL after transaction replacement releases guards and repairs exactly once": {
+          "seconds": 84.303,
+          "runs": 2
+        },
+        "`SIGKILL inside native ${move.label} at ${pause} recovers without loss`": {
+          "seconds": 552.691,
+          "runs": 2
+        },
+        "`SIGKILL inside native transaction exchange at ${pause} recovers the phase chain`": {
+          "seconds": 292.811,
+          "runs": 2
+        },
+        "`committed prepared event plan rejects ${scenario.name} before lease mutation`": {
+          "seconds": 226.931,
+          "runs": 2
+        },
+        "`ordinary outcome append fails closed after ${checkpointName}`": {
+          "seconds": 316.993,
+          "runs": 2
+        },
+        "`ordinary outcome retry is exact after ${checkpointName}`": {
+          "seconds": 392.511,
+          "runs": 2
+        },
+        "`owner expiry at ${checkpointName} cannot publish a later repair phase`": {
+          "seconds": 150.829,
+          "runs": 2
+        },
+        "`owner lease recovery commits ${scenario.name} before its lifecycle event`": {
+          "seconds": 283.253,
+          "runs": 2
+        },
+        "`pending repair audit rejects ${variant.name} before receipt publication`": {
+          "seconds": 111.42,
+          "runs": 2
+        },
+        "`recovers idempotently after ${checkpointName}`": {
+          "seconds": 1782.258,
+          "runs": 2
+        },
+        "a byte-identical inode swap after final classification is preserved": {
+          "seconds": 41.117,
+          "runs": 2
+        },
+        "a canonical ledger replacement before final classification is preserved": {
+          "seconds": 42.787,
+          "runs": 2
+        },
+        "a completed repair event cannot outlive its canonical transaction": {
+          "seconds": 58.254,
+          "runs": 2
+        },
+        "a completed transaction rejects a traversal task ID before artifact path use": {
+          "seconds": 58.185,
+          "runs": 2
+        },
+        "a conflicting deterministic event suffix before replacement preserves the canonical ledger": {
+          "seconds": 87.566,
+          "runs": 2
+        },
+        "a conflicting deterministic suffix after replacement cannot become audited": {
+          "seconds": 108.846,
+          "runs": 2
+        },
+        "a fenced repair rejects legacy temps without exact lineage byte-stably": {
+          "seconds": 33.627,
+          "runs": 2
+        },
+        "a foreign digest-named immutable temp fails before intent publication": {
+          "seconds": 36.496,
+          "runs": 2
+        },
+        "a foreign later preparation temp prevents every repair mutation": {
+          "seconds": 37.94,
+          "runs": 2
+        },
+        "a malformed matching transaction temp fails before canonical mutation": {
+          "seconds": 32.093,
+          "runs": 2
+        },
+        "a near-expiry repair waiter cannot inherit authority for completed state": {
+          "seconds": 54.196,
+          "runs": 2
+        },
+        "a pending repair for one task blocks a second task without corrupting the first": {
+          "seconds": 90.54,
+          "runs": 2
+        },
+        "a post-fence foreign exact final blocks preparation before publication": {
+          "seconds": 52.177,
+          "runs": 2
+        },
+        "a post-fence foreign sibling blocks preparation without mutation": {
+          "seconds": 62.375,
+          "runs": 2
+        },
+        "a prepared repair rejects a live legacy receipt temporary": {
+          "seconds": 53.892,
+          "runs": 2
+        },
+        "a prepared transaction refuses a missing immutable archive": {
+          "seconds": 41.106,
+          "runs": 2
+        },
+        "a repair waiter reacquires completed state under the writer lock": {
+          "seconds": 63.363,
+          "runs": 2
+        },
+        "a valid append-only event suffix above 16 MiB stays accepted below 128 MiB": {
+          "seconds": 99.035,
+          "runs": 2
+        },
+        "aggregate repair admission exhaustion is sticky across admission kinds": {
+          "seconds": 17.9,
+          "runs": 2
+        },
+        "an empty source ledger completes through the transaction-bound audit": {
+          "seconds": 54.834,
+          "runs": 2
+        },
+        "an exact digest-named immutable temp recovers before intent publication": {
+          "seconds": 48.316,
+          "runs": 2
+        },
+        "an exact raw 0xff event suffix is rejected by nightly and completed retry": {
+          "seconds": 38.949,
+          "runs": 2
+        },
+        "an existing ledger with an interior blank and 100,001 physical lines is unhealthy and blocks append": {
+          "seconds": 72.959,
+          "runs": 2
+        },
+        "an installed identity version above the outcome ledger line cap fails before task transition mutation": {
+          "seconds": 58.237,
+          "runs": 2
+        },
+        "an installed outcome id above the control event line cap fails before mutation": {
+          "seconds": 91.288,
+          "runs": 2
+        },
+        "an orphan outcome writer lock candidate cannot block a new repair writer": {
+          "seconds": 52.953,
+          "runs": 2
+        },
+        "an unrelated transaction temp without exact lineage is rejected byte-identically": {
+          "seconds": 24.68,
+          "runs": 2
+        },
+        "audited repair recovers under a new same-intent owner lease without duplicating its event": {
+          "seconds": 63.059,
+          "runs": 2
+        },
+        "byte-identical replacement recovery rejects a foreign canonical inode before classification": {
+          "seconds": 101.091,
+          "runs": 2
+        },
+        "byte-identical replacement recovery retains its published inode and audits once": {
+          "seconds": 124.158,
+          "runs": 2
+        },
+        "cleanup preserves a replacement swapped onto the quarantine path": {
+          "seconds": 40.147,
+          "runs": 2
+        },
+        "completed Darwin repair replay admits only coherent device renumbering": {
+          "seconds": 0.003,
+          "runs": 2
+        },
+        "completed repair audit rejects exact owner confirmation provenance corruption": {
+          "seconds": 79.774,
+          "runs": 2
+        },
+        "completed repair canonical event history requires exact private mode in replay and health": {
+          "seconds": 119.16,
+          "runs": 2
+        },
+        "completed repair canonical ledger requires exact private mode in replay and health": {
+          "seconds": 125.685,
+          "runs": 2
+        },
+        "completed repair health fails closed for missing or reformatted evidence": {
+          "seconds": 302.315,
+          "runs": 2
+        },
+        "completed repair retires actionable root replacement residue": {
+          "seconds": 127.185,
+          "runs": 2
+        },
+        "completed repair retry and nightly health reject bound event prefix drift": {
+          "seconds": 63.012,
+          "runs": 2
+        },
+        "completed repair retry and nightly health reject redirected or public ancestors": {
+          "seconds": 136.12,
+          "runs": 2
+        },
+        "completed repair transactions require exact private mode in replay and health": {
+          "seconds": 79.902,
+          "runs": 2
+        },
+        "control CLI exposes read-only plan and owner-governed repair": {
+          "seconds": 117.697,
+          "runs": 2
+        },
+        "dedicated repair CLI top-level help succeeds": {
+          "seconds": 0.093,
+          "runs": 2
+        },
+        "event recovery accepts a fresh exact owner lease without duplicating audit": {
+          "seconds": 48.987,
+          "runs": 2
+        },
+        "exact-operation transaction, artifact, replacement, and quarantine temp prefixes recover": {
+          "seconds": 112.67,
+          "runs": 2
+        },
+        "failed owner authority creates no repair artifacts or replacement": {
+          "seconds": 20.299,
+          "runs": 2
+        },
+        "final temporary admission rejects new hard links before publication": {
+          "seconds": 79.487,
+          "runs": 2
+        },
+        "missing canonical recovery rejects a foreign authority witness before mutation": {
+          "seconds": 44.998,
+          "runs": 2
+        },
+        "missing canonical recovery retires an exact authority witness once": {
+          "seconds": 60.471,
+          "runs": 2
+        },
+        "native bounded directory listing enforces both caps before output": {
+          "seconds": 0.362,
+          "runs": 2
+        },
+        "native durable directory retirement is exclusive and generation bound": {
+          "seconds": 0.556,
+          "runs": 2
+        },
+        "native exchange rejects two names for the same inode": {
+          "seconds": 0.067,
+          "runs": 2
+        },
+        "native exchange revalidates both descriptors before and after the syscall": {
+          "seconds": 105.628,
+          "runs": 2
+        },
+        "native rename revalidates source bytes after the pre-syscall pause": {
+          "seconds": 51.684,
+          "runs": 2
+        },
+        "new repair rejects unmatched operation-directory residue before its fence": {
+          "seconds": 36.687,
+          "runs": 2
+        },
+        "nightly health rejects raw 0xff inside an otherwise complete transaction": {
+          "seconds": 54.173,
+          "runs": 2
+        },
+        "nightly summary rejects canonical outcome and event FIFOs without hanging": {
+          "seconds": 29.271,
+          "runs": 2
+        },
+        "nightly summary rejects canonical outcome and event symlinks without following them": {
+          "seconds": 41.86,
+          "runs": 2
+        },
+        "outcome append accepts the exact aggregate byte cap and rejects the next entry": {
+          "seconds": 0.026,
+          "runs": 2
+        },
+        "outcome append accepts the exact event cap and preflight failure is byte-stable": {
+          "seconds": 71.534,
+          "runs": 2
+        },
+        "outcome append at the exact physical line cap fails before mutation": {
+          "seconds": 0.019,
+          "runs": 2
+        },
+        "outcome repair selection preserves its admitted retirement directory": {
+          "seconds": 16.303,
+          "runs": 2
+        },
+        "owner expiry before single-link temp quarantine preserves every admitted byte": {
+          "seconds": 38.905,
+          "runs": 2
+        },
+        "owner expiry inside a busy events kernel guard leaves no repair mutation": {
+          "seconds": 82.621,
+          "runs": 2
+        },
+        "owner lease expiry while waiting on a live outcome writer lock leaves no repair state": {
+          "seconds": 31.487,
+          "runs": 2
+        },
+        "owner lease revocation at replacement sync preserves the canonical ledger": {
+          "seconds": 44.155,
+          "runs": 2
+        },
+        "owner repair preserves a planned event prefix without a trailing newline": {
+          "seconds": 50.032,
+          "runs": 2
+        },
+        "pinned legacy actor-credential outcome requires one exact ledger row": {
+          "seconds": 433.741,
+          "runs": 2
+        },
+        "plan and repair reject a nonexistent canonical task without writes": {
+          "seconds": 21.732,
+          "runs": 2
+        },
+        "plans a 0644 legacy ledger without mutating canonical state": {
+          "seconds": 21.773,
+          "runs": 2
+        },
+        "pre-hardening ordinary outcome remains trusted and byte exact through repair": {
+          "seconds": 103.516,
+          "runs": 2
+        },
+        "prepared repair publication reauthorizes after every checkpoint": {
+          "seconds": 1401.231,
+          "runs": 2
+        },
+        "repair and completed recovery keep lease helper work inside a finite budget": {
+          "seconds": 53.754,
+          "runs": 2
+        },
+        "repair artifacts reject every hard-link alias byte-stably": {
+          "seconds": 210.331,
+          "runs": 2
+        },
+        "repair audit capacity is preflighted before ledger transaction or event mutation": {
+          "seconds": 51.39,
+          "runs": 2
+        },
+        "repair audit event raw bytes use the shared parameter order": {
+          "seconds": 59.253,
+          "runs": 2
+        },
+        "repair is exactly idempotent for a completed legacy-only operation": {
+          "seconds": 43.689,
+          "runs": 2
+        },
+        "repair normalizes unchanged trusted and empty ledgers to private mode": {
+          "seconds": 349.569,
+          "runs": 2
+        },
+        "repair planning accepts the exact physical line boundary matrix": {
+          "seconds": 32.438,
+          "runs": 2
+        },
+        "repair planning rejects an interior whitespace line at the exact cap byte-stably": {
+          "seconds": 19.78,
+          "runs": 2
+        },
+        "repair planning rejects corrupted owner transition provenance before mutation": {
+          "seconds": 113.385,
+          "runs": 2
+        },
+        "repair preserves exact physical source and rejected bytes": {
+          "seconds": 55.455,
+          "runs": 2
+        },
+        "repair rejects a foreign outcome authority witness before ledger mutation": {
+          "seconds": 33.696,
+          "runs": 2
+        },
+        "repair retains authenticated lines byte for byte and later appends survive retry": {
+          "seconds": 134.303,
+          "runs": 2
+        },
+        "repair staged writers preserve foreign temporary replacements": {
+          "seconds": 117.474,
+          "runs": 2
+        },
+        "repair tree planning pins every private physical ancestor generation": {
+          "seconds": 65.144,
+          "runs": 2
+        },
+        "replaced repair accepts its exact same-intent owner heartbeat before audit": {
+          "seconds": 70.511,
+          "runs": 2
+        },
+        "replaced repair fences an unrelated actor lease before mutation or audit": {
+          "seconds": 38.025,
+          "runs": 2
+        },
+        "replacement and phase archives retain exact distinct inode generations": {
+          "seconds": 47.558,
+          "runs": 2
+        },
+        "safe source admission rejects symlinks, writable files, oversize files, and invalid bytes": {
+          "seconds": 184.601,
+          "runs": 2
+        },
+        "source digest and event history drift fail before replacement": {
+          "seconds": 66.865,
+          "runs": 2
+        },
+        "source ledger mode admission accepts only the explicit compatibility matrix": {
+          "seconds": 81.36,
+          "runs": 2
+        },
+        "temporary cleanup keeps the listed directory generation through native move": {
+          "seconds": 30.923,
+          "runs": 2
+        },
+        "the append call recovers a pending task transaction and records one outcome": {
+          "seconds": 88.446,
+          "runs": 2
+        },
+        "the repair event guard excludes a concurrent suffix writer through transaction audit": {
+          "seconds": 56.865,
+          "runs": 2
+        },
+        "transaction-bound repair audit authenticates every prepared artifact": {
+          "seconds": 181.722,
+          "runs": 2
+        },
+        "transaction-bound repair audit helpers are synchronous and expire with their guard": {
+          "seconds": 85.829,
+          "runs": 2
+        },
+        "transaction-bound repair audit invalidates a rewritten pending event stage": {
+          "seconds": 38.502,
+          "runs": 2
+        },
+        "transaction-bound repair audit rejects missing prepared artifacts before callback": {
+          "seconds": 45.161,
+          "runs": 2
+        }
+      }
     }
   }
 }

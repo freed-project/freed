@@ -14,6 +14,7 @@ export * from "./library-core/feed-browse-filter-contract";
 // Re-export local content signal inference (browser-safe, no deps)
 export * from "./content-signals";
 export * from "./feed-signal-filters";
+export * from "./provider-admission";
 export * from "./preferences";
 export * from "./sync-write-policy";
 export * from "./local-ai";
@@ -43,6 +44,7 @@ export * from "./location";
 export * from "./sample-data";
 export * from "./sample-corpus";
 export * from "./sample-character-arcs";
+export * from "./sample-editorial-data";
 
 // Re-export shared theme metadata (browser-safe, no deps)
 export * from "./themes";
@@ -58,3 +60,5 @@ export * from "./story-wall";
 export * from "./youtube";
 export * from "./sample-youtube";
 export * from "./saved-item-note";
+
+export * from "./demo-data.js";

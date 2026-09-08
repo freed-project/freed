@@ -63,6 +63,7 @@ export interface SettingsSectionAvailability {
   hasYouTube?: boolean;
   hasUpdateChecks: boolean;
   hasFactoryReset: boolean;
+  hasLegal?: boolean;
 }
 
 /** Sections always present, regardless of platform capabilities. */
@@ -93,7 +94,7 @@ export const BASE_SECTION_METAS: readonly SectionMeta[] = [
   },
   {
     id: "sync",
-    label: "Sync",
+    label: "Cloud Sync",
     keywords: ["cloud", "dropbox", "google drive", "gdrive", "backup", "provider", "connect"],
   },
   {
@@ -223,7 +224,7 @@ export function buildSettingsSectionMetas(
     ...(availability.hasAISettings ? [AI_SECTION_META] : []),
     ...(availability.hasUpdateChecks ? [UPDATES_SECTION_META] : []),
     ...(availability.hasNewsletterSignup ? [baseSectionById.newsletter] : []),
-    baseSectionById.legal,
+    ...(availability.hasLegal !== false ? [baseSectionById.legal] : []),
     ...(availability.hasFactoryReset ? [DANGER_SECTION_META] : []),
   ].map((section) =>
     section.id === "feeds" && availability.hasFeedManagement

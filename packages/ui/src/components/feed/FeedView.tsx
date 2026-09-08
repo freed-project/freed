@@ -9,11 +9,12 @@ import {
 } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { toast } from "../Toast.js";
+import { buildFeedRows } from "./feed-presentation.js";
+import { useFeedPresentation } from "./useFeedPresentation.js";
 import { FeedList } from "./FeedList.js";
 import { ReaderView } from "./ReaderView.js";
 import { FeedItem as FeedItemCard } from "./FeedItem.js";
 import { useReadOnScrollTracker } from "./useReadOnScrollTracker.js";
-import { buildReadTrackListKey } from "./read-on-scroll.js";
 import { useBoundedFeedItems } from "./useBoundedFeedItems.js";
 import {
   resolveBoundedReaderRankingClock,
@@ -33,12 +34,10 @@ import { useSearchResults } from "../../hooks/useSearchResults.js";
 import { useLibraryFacetSummary } from "../../hooks/useLibraryFacetSummary.js";
 import { useLibraryItemDetail } from "../../hooks/useLibraryItemDetail.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
-import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import { type FeedItem } from "@freed/shared";
 import { runFeedLayoutTransition } from "../../lib/view-transitions.js";
 import {
   animationAwareScrollBehavior,
-  resolveAnimationIntensity,
 } from "../../lib/animation-preferences.js";
 import { useDeviceDisplayPreferences } from "../../lib/device-display-preferences.js";
 
@@ -62,6 +61,7 @@ const PAGED_FEED_PAGE_SIZE = 128;
 const PAGED_FEED_RESIDENT_PAGE_LIMIT = 2;
 
 interface CompactFeedPanelProps {
+  storyGroups: ReadonlyMap<string, string>;
   items: FeedItem[];
   selectedId: string;
   selectionMoveDirection?: -1 | 0 | 1;
@@ -78,14 +78,9 @@ interface CompactFeedPanelProps {
   boundedWindowStartIndex?: number;
 }
 
-interface CompactBoundedWindowAnchor {
-  readonly itemId: string;
-  readonly offset: number;
-  readonly windowStartIndex: number;
-}
-
 const CompactFeedPanel = memo(function CompactFeedPanel({
   items,
+  storyGroups,
   selectedId,
   selectionMoveDirection = 0,
   onItemClick,
@@ -101,225 +96,132 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
   boundedWindowStartIndex = 0,
 }: CompactFeedPanelProps) {
   const parentRef = useRef<HTMLDivElement>(null);
-  const scrollAnchorRef = useRef<{ index: number; offset: number } | null>(
-    null,
-  );
-  const pendingBoundedAnchorRef = useRef<CompactBoundedWindowAnchor | null>(
-    null,
-  );
-  const previousBoundedWindowStartRef = useRef(boundedWindowStartIndex);
-  const boundedWindowDidShift =
-    boundedWindowStartIndex !== previousBoundedWindowStartRef.current;
-  const prevWidthRef = useRef(width);
-
   const cardHeight = width - CARD_H_PAD;
-  const itemHeight = cardHeight + CARD_V_GAP;
-  const firstItemHeight = itemHeight + CARD_V_GAP;
-  // Story tiles use the same square dimensions as regular cards in the sidebar.
-  const storyTileH = cardHeight;
-  const storyItemHeight = storyTileH + CARD_V_GAP;
-
-  // Capture the top-visible item before the width change propagates to layout.
-  // Runs during render (synchronously) so we can read the pre-update scroll state.
-  if (prevWidthRef.current !== width && parentRef.current && items.length > 0) {
-    const scrollTop = parentRef.current.scrollTop;
-    const oldCard = prevWidthRef.current - CARD_H_PAD;
-    const oldItem = oldCard + CARD_V_GAP;
-    const oldFirst = oldItem + CARD_V_GAP;
-
-    let idx: number;
-    let offset: number;
-    if (scrollTop < oldFirst) {
-      idx = 0;
-      offset = scrollTop;
-    } else {
-      const past = scrollTop - oldFirst;
-      idx = 1 + Math.floor(past / oldItem);
-      offset = scrollTop - (oldFirst + (idx - 1) * oldItem);
-    }
-    scrollAnchorRef.current = {
-      index: Math.min(idx, items.length - 1),
-      offset,
-    };
-    prevWidthRef.current = width;
-  }
-
-  const estimateItemSize = useCallback(
-    (index: number) => {
-      const isStory = items[index]?.contentType === "story";
-      const baseH = isStory ? storyItemHeight : itemHeight;
-      return index === 0 ? baseH + CARD_V_GAP : baseH;
-    },
-    [items, itemHeight, storyItemHeight],
+  const columns = Math.max(
+    1,
+    Math.min(3, Math.floor((cardHeight + CARD_V_GAP) / 88)),
   );
-  const readListKey = useMemo(() => buildReadTrackListKey(items), [items]);
-  const getReadScrollMetrics = useCallback(
+  // The reader receives the same flattened display sequence as keyboard
+  // navigation. Resizing only changes geometry; it never ranks that sequence.
+  const rows = useMemo(
+    () => buildFeedRows(items, columns, storyGroups),
+    [items, columns, storyGroups],
+  );
+  const rowHeight = useCallback(
+    (index: number) => {
+      const row = rows[index];
+      if (row.type === "item" || row.numCols === 1) return cardHeight;
+      const tileWidth =
+        (cardHeight - (row.numCols - 1) * CARD_V_GAP) / row.numCols;
+      return Math.min(cardHeight, (tileWidth * 4) / 3);
+    },
+    [rows, cardHeight],
+  );
+  const estimateItemSize = useCallback(
+    (index: number) =>
+      rowHeight(index) + CARD_V_GAP + (index === 0 ? CARD_V_GAP : 0),
+    [rowHeight],
+  );
+  const layoutKey = JSON.stringify([width, rows.map((row) => row.key)]);
+  const readListKey = JSON.stringify([boundedWindowStartIndex, layoutKey]);
+  const getScrollMetrics = useCallback(
     () => ({
       rawScrollTop: parentRef.current?.scrollTop ?? 0,
       viewportHeight: parentRef.current?.clientHeight ?? 0,
-      scrollMargin: 0,
     }),
     [],
   );
   const processReadOnScroll = useReadOnScrollTracker({
     surface: "compact-feed",
     listKey: readListKey,
-    rows: items,
+    layoutKey,
+    rows,
     items,
     markReadOnScroll,
-    getScrollMetrics: getReadScrollMetrics,
+    getScrollMetrics,
     markItemsAsRead,
   });
-  // Pin the top-visible card before the resident window shifts so the restore
-  // below can put it back under the same pixel.
-  const captureBoundedAnchor = useCallback(
-    (
-      virtualItems: readonly { index: number; start: number; end: number }[],
-    ) => {
-      const scrollTop = parentRef.current?.scrollTop ?? 0;
-      const firstVisible =
-        virtualItems.find((virtualItem) => virtualItem.end > scrollTop) ??
-        virtualItems[0];
-      const anchorItem = firstVisible ? items[firstVisible.index] : undefined;
-      if (!firstVisible || !anchorItem) return;
-      pendingBoundedAnchorRef.current = {
-        itemId: anchorItem.globalId,
-        offset: Math.max(0, scrollTop - firstVisible.start),
-        windowStartIndex: boundedWindowStartIndex,
-      };
-    },
-    [boundedWindowStartIndex, items],
-  );
-  const requestBoundedWindowShift = useCallback(
-    (
-      virtualItems: readonly { index: number; start: number; end: number }[],
-    ) => {
-      if (items.length === 0 || virtualItems.length === 0) return;
-      const finalVisible = virtualItems[virtualItems.length - 1];
-      if (
-        hasMore &&
-        onLoadMore &&
-        finalVisible &&
-        finalVisible.index >= Math.max(0, items.length - 5)
-      ) {
-        captureBoundedAnchor(virtualItems);
-        onLoadMore();
-        return;
-      }
-      const firstRendered = virtualItems[0];
-      if (hasPrevious && onLoadPrevious && firstRendered.index <= 4) {
-        captureBoundedAnchor(virtualItems);
-        onLoadPrevious();
-      }
-    },
-    [
-      captureBoundedAnchor,
-      hasMore,
-      hasPrevious,
-      items.length,
-      onLoadMore,
-      onLoadPrevious,
-    ],
-  );
-
+  const committedLayoutKey = useRef(layoutKey);
+  const restoringAnchor = useRef(false);
   const virtualizer = useVirtualizer({
-    count: items.length,
+    count: rows.length,
+    getItemKey: (index) => rows[index].key,
     getScrollElement: () => parentRef.current,
     estimateSize: estimateItemSize,
     overscan: 3,
     onChange: (instance) => {
+      if (restoringAnchor.current || committedLayoutKey.current !== layoutKey) return;
       processReadOnScroll(instance, "element");
-      requestBoundedWindowShift(instance.getVirtualItems());
+      const visible = instance.getVirtualItems();
+      if (!visible.length) return;
+      if (
+        hasMore &&
+        visible[visible.length - 1].index >= Math.max(0, rows.length - 5)
+      ) {
+        onLoadMore?.();
+      } else if (hasPrevious && visible[0].index <= 4) {
+        onLoadPrevious?.();
+      }
     },
   });
-
-  // Restore scroll after DOM updates with new card sizes (runs before paint).
+  const anchorRef = useRef<{ id: string; offset: number } | null>(null);
+  // Cleanup captures old geometry; setup restores against the newly packed
+  // rows. This covers width changes, page shifts and optimistic removals.
   useLayoutEffect(() => {
-    const anchor = scrollAnchorRef.current;
-    if (!anchor) return;
-    scrollAnchorRef.current = null;
-
+    restoringAnchor.current = true;
+    committedLayoutKey.current = layoutKey;
     virtualizer.measure();
-
-    // Estimate scroll position based on item types (story vs regular).
-    let newStart = 0;
-    if (anchor.index > 0) {
-      newStart = firstItemHeight; // first item
-      for (let i = 1; i < anchor.index; i++) {
-        newStart +=
-          items[i]?.contentType === "story" ? storyItemHeight : itemHeight;
+    const anchor = anchorRef.current;
+    if (anchor && parentRef.current) {
+      let start = 0;
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const members = row.type === "item" ? [row.item] : row.items;
+        if (members.some((item) => item.globalId === anchor.id)) {
+          parentRef.current.scrollTop =
+            start + (i === 0 ? CARD_V_GAP : 0) + Math.min(anchor.offset, rowHeight(i) - 1);
+          break;
+        }
+        start += estimateItemSize(i);
       }
     }
+    restoringAnchor.current = false;
+    processReadOnScroll(virtualizer, "element");
+    return () => {
+      const scrollTop = parentRef.current?.scrollTop ?? 0;
+      let start = 0;
+      for (let i = 0; i < rows.length; i++) {
+        const end = start + estimateItemSize(i);
+        if (end > scrollTop) {
+          const row = rows[i];
+          anchorRef.current = {
+            id: row.type === "item" ? row.item.globalId : row.items[0].globalId,
+            offset: scrollTop - start - (i === 0 ? CARD_V_GAP : 0),
+          };
+          break;
+        }
+        start = end;
+      }
+    };
+  }, [layoutKey, width, virtualizer]);
 
-    const el = parentRef.current;
-    if (el) el.scrollTop = newStart + anchor.offset;
-  }); // intentionally no deps: only fires work when anchor ref is set
-
-  useLayoutEffect(() => {
-    const previousWindowStart = previousBoundedWindowStartRef.current;
-    previousBoundedWindowStartRef.current = boundedWindowStartIndex;
-    if (boundedWindowStartIndex === previousWindowStart) return;
-
-    const anchor = pendingBoundedAnchorRef.current;
-    pendingBoundedAnchorRef.current = null;
-    if (!anchor || anchor.windowStartIndex !== previousWindowStart) return;
-    const anchorIndex = items.findIndex(
-      (item) => item.globalId === anchor.itemId,
-    );
-    if (anchorIndex < 0) return;
-
-    virtualizer.measure();
-    virtualizer.scrollToIndex(anchorIndex, { align: "start" });
-    if (anchor.offset > 0) {
-      parentRef.current?.scrollBy({ top: anchor.offset });
-    }
-  }, [boundedWindowStartIndex, items, virtualizer]);
-
-  // Auto-scroll to the selected item on selection change.
-  const selectedIndex = useMemo(
-    () => items.findIndex((it) => it.globalId === selectedId),
-    [items, selectedId],
-  );
   const didInitialScroll = useRef(false);
   useLayoutEffect(() => {
-    if (boundedWindowDidShift) return;
-    if (selectedIndex < 0) return;
-    const behavior = animationAwareScrollBehavior(
-      didInitialScroll.current ? "smooth" : "auto",
+    const selectedIndex = rows.findIndex((row) =>
+      row.type === "item"
+        ? row.item.globalId === selectedId
+        : row.items.some((item) => item.globalId === selectedId),
     );
-
-    if (selectionMoveDirection === 0) {
-      virtualizer.scrollToIndex(selectedIndex, {
-        align: "center",
-        behavior,
-      });
-      didInitialScroll.current = true;
-      return;
-    }
-
-    const el = parentRef.current;
-    if (!el) return;
-
-    const lookaheadIndex =
-      selectionMoveDirection > 0
-        ? Math.min(selectedIndex + 1, items.length - 1)
-        : Math.max(selectedIndex - 1, 0);
-    virtualizer.scrollToIndex(lookaheadIndex, {
-      align: selectionMoveDirection > 0 ? "end" : "start",
-      behavior: "auto",
+    if (selectedIndex < 0) return;
+    virtualizer.scrollToIndex(selectedIndex, {
+      align: selectionMoveDirection === 0 ? "center" : "auto",
+      behavior: animationAwareScrollBehavior(
+        didInitialScroll.current ? "smooth" : "auto",
+      ),
     });
-
     didInitialScroll.current = true;
-  }, [
-    firstItemHeight,
-    boundedWindowDidShift,
-    itemHeight,
-    items,
-    items.length,
-    selectedIndex,
-    selectionMoveDirection,
-    virtualizer,
-  ]);
+    // Only a selection move should recenter the reader, never a page append.
+  }, [selectedId, selectionMoveDirection, virtualizer]);
 
   return (
     <div
@@ -333,7 +235,8 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
         className="relative w-full"
       >
         {virtualizer.getVirtualItems().map((vi) => {
-          const item = items[vi.index];
+          const row = rows[vi.index];
+          const members = row.type === "item" ? [row.item] : row.items;
           return (
             <div
               key={vi.key}
@@ -349,24 +252,32 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
             >
               <div
                 style={{
-                  paddingLeft: `${COMPACT_CARD_LEFT_PAD}px`,
-                  paddingRight: `${COMPACT_CARD_RIGHT_PAD}px`,
-                  paddingBottom: `${COMPACT_CARD_GAP}px`,
-                  paddingTop:
-                    vi.index === 0 ? `${COMPACT_CARD_GAP}px` : undefined,
+                  paddingLeft: COMPACT_CARD_LEFT_PAD,
+                  paddingRight: COMPACT_CARD_RIGHT_PAD,
+                  paddingBottom: CARD_V_GAP,
+                  paddingTop: vi.index === 0 ? CARD_V_GAP : undefined,
                 }}
               >
-                <FeedItemCard
-                  item={item}
-                  compact
-                  narrow={width < NARROW_THRESHOLD}
-                  selected={item.globalId === selectedId}
-                  showReadInGrayscale={showReadInGrayscale}
-                  onClick={() => onItemClick(item)}
-                  storyHeight={
-                    item.contentType === "story" ? storyTileH : undefined
-                  }
-                />
+                <div
+                  style={{
+                    display: "grid",
+                    gap: CARD_V_GAP,
+                    gridTemplateColumns: `repeat(${members.length}, minmax(0, 1fr))`,
+                  }}
+                >
+                  {members.map((item) => (
+                    <FeedItemCard
+                      key={item.globalId}
+                      item={item}
+                      compact
+                      narrow={cardHeight / members.length < NARROW_THRESHOLD}
+                      selected={item.globalId === selectedId}
+                      showReadInGrayscale={showReadInGrayscale}
+                      onClick={() => onItemClick(item)}
+                      storyHeight={rowHeight(vi.index)}
+                    />
+                  ))}
+                </div>
               </div>
             </div>
           );
@@ -473,6 +384,7 @@ export function FeedView() {
   );
 
   const [addFeedOpen, setAddFeedOpen] = useState(false);
+  const readerGroupWindow = useRef<ReadonlyMap<string, string>>(new Map());
   const [readerWindow, setReaderWindow] = useState<readonly FeedItem[] | null>(
     null,
   );
@@ -565,6 +477,7 @@ export function FeedView() {
   ]);
   const {
     feed: boundedFeed,
+    retry: retryBoundedFeed,
     loadMore: loadMoreBoundedItems,
     loadPrevious: loadPreviousBoundedItems,
     patchItems: patchBoundedItems,
@@ -604,9 +517,13 @@ export function FeedView() {
       patchBoundedItems((candidate) =>
         candidate.globalId === item.globalId ? null : candidate,
       );
-      return toggleArchived(item.globalId);
+      return toggleArchived(item.globalId).catch(() => {
+        // The store records the error. Restore authoritative rows rather than
+        // leaving the optimistic removal visible after a rejected write.
+        retryBoundedFeed();
+      });
     },
-    [patchBoundedItems, toggleArchived],
+    [patchBoundedItems, retryBoundedFeed, toggleArchived],
   );
   const handleItemLike = useCallback(
     (item: FeedItem) => {
@@ -648,7 +565,7 @@ export function FeedView() {
     friendsMode,
     libraryItemVersion,
   );
-  const visibleItems = useMemo(() => {
+  const rankedItems = useMemo(() => {
     if (boundedFeedPresentationIsAvailable) return boundedFeed.items;
     return isSearching ? filteredItems : EMPTY_FEED_ITEMS;
   }, [
@@ -657,6 +574,12 @@ export function FeedView() {
     filteredItems,
     isSearching,
   ]);
+  const presentation = useFeedPresentation(
+    rankedItems,
+    JSON.stringify([boundedSelectionIdentity, searchQuery]),
+    boundedFeed.windowStartIndex === 0,
+  );
+  const visibleItems = presentation.items;
   useEffect(() => {
     if (boundedFeedPresentationIsAvailable) {
       setVisibleFeedTotalCount(boundedFeed.totalCount);
@@ -676,23 +599,30 @@ export function FeedView() {
   const showReadInGrayscale = useAppStore(
     (s) => s.preferences.display.reading.showReadInGrayscale,
   );
-  const animationIntensity = useAppStore((s) =>
-    resolveAnimationIntensity(s.preferences.display.animationIntensity),
-  );
   const isMobileViewport = useIsMobile();
-  const isMobileDevice = useIsMobileDevice();
-  const autoCollapseReaderRail = !isMobileDevice && isMobileViewport;
-  const canShowInlineReader = !isMobileDevice;
+  const autoCollapseReaderRail = isMobileViewport;
+  const canShowInlineReader = !isMobileViewport;
   const showInlineReader = !!selectedItemId && canShowInlineReader;
   const showDualColumn =
     dualColumnMode && canShowInlineReader && !autoCollapseReaderRail;
   const desktopSidebarMode = deviceDisplay.sidebarMode;
   const compactRailLeadingOffset =
-    !isMobileDevice && desktopSidebarMode !== "closed"
+    !isMobileViewport && desktopSidebarMode !== "closed"
       ? `-${COMPACT_CARD_LEFT_PAD}px`
       : undefined;
 
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
+  const previousVisibleItems = useRef(visibleItems);
+  useLayoutEffect(() => {
+    if (previousVisibleItems.current !== visibleItems) {
+      const focusedId = previousVisibleItems.current[focusedIndex]?.globalId;
+      if (focusedId)
+        setFocusedIndex(
+          visibleItems.findIndex((item) => item.globalId === focusedId),
+        );
+      previousVisibleItems.current = visibleItems;
+    }
+  }, [visibleItems, focusedIndex]);
   const [keyboardFocusDirection, setKeyboardFocusDirection] = useState<
     -1 | 0 | 1
   >(0);
@@ -751,7 +681,10 @@ export function FeedView() {
       : null;
   // A cold deep link can name an item outside the resident feed pages. Read
   // exactly that row without expanding the bounded feed or selecting a neighbor.
-  const selectedItemDetail = useLibraryItemDetail(selectedItemId, libraryItemVersion);
+  const selectedItemDetail = useLibraryItemDetail(
+    selectedItemId,
+    libraryItemVersion,
+  );
   const selectedItem =
     residentSelectedItem ??
     (boundedFeedEligible ? currentSelectedItemPin : null) ??
@@ -830,6 +763,18 @@ export function FeedView() {
     visibleItems,
   ]);
 
+  const readerStoryGroups = useMemo(() => {
+    const groups = new Map<string, string>();
+    for (const item of readerItems) {
+      const group = readerWindow
+        ? (readerGroupWindow.current.get(item.globalId) ??
+          presentation.groupById.get(item.globalId))
+        : presentation.groupById.get(item.globalId);
+      if (group) groups.set(item.globalId, group);
+    }
+    return groups;
+  }, [readerItems, readerWindow, presentation.groupById]);
+
   const openItem = useCallback(
     (item: FeedItem) => {
       const selectItem = () => {
@@ -854,6 +799,7 @@ export function FeedView() {
         // SQLite mutations may refresh the underlying reader while the rail is
         // open. Retaining this visible window prevents those refreshes from
         // collapsing keyboard navigation to the selected row alone.
+        readerGroupWindow.current = presentation.groupById;
         setReaderWindow([...visibleItems]);
         runFeedLayoutTransition(selectItem);
         return;
@@ -865,6 +811,7 @@ export function FeedView() {
       markAsRead,
       patchBoundedItems,
       platform.onReadOnlyItemOpened,
+      presentation.groupById,
       readOnly,
       runFeedLayoutTransition,
       selectedItemId,
@@ -1029,45 +976,11 @@ export function FeedView() {
   // ─── Dual-column drag-resize ───────────────────────────────────────────────
 
   const [panelWidth, setPanelWidth] = useState(DEFAULT_PANEL_WIDTH);
-  const [railMounted, setRailMounted] = useState(showDualColumn);
-  const [railExpanded, setRailExpanded] = useState(showDualColumn);
+  const railMounted = showDualColumn;
+  const railExpanded = showDualColumn;
   const isDraggingRef = useRef(false);
   const dragStartXRef = useRef(0);
   const dragStartWidthRef = useRef(0);
-  const previousShowDualColumnRef = useRef(showDualColumn);
-  const railMotionDisabled = animationIntensity === "none";
-
-  useEffect(() => {
-    const wasShowingDualColumn = previousShowDualColumnRef.current;
-    previousShowDualColumnRef.current = showDualColumn;
-
-    if (showDualColumn) {
-      setRailMounted(true);
-
-      if (
-        railMotionDisabled ||
-        wasShowingDualColumn ||
-        typeof window === "undefined"
-      ) {
-        setRailExpanded(true);
-        return;
-      }
-
-      setRailExpanded(false);
-      const frameId = window.requestAnimationFrame(() => {
-        setRailExpanded(true);
-      });
-
-      return () => window.cancelAnimationFrame(frameId);
-    }
-
-    setRailExpanded(false);
-
-    if (railMotionDisabled) {
-      setRailMounted(false);
-    }
-  }, [railMotionDisabled, showDualColumn]);
-
   useLayoutEffect(() => {
     if (typeof document === "undefined") return;
     document.documentElement.style.setProperty(
@@ -1076,12 +989,6 @@ export function FeedView() {
     );
   }, [panelWidth, showDualColumn]);
 
-  const railTransition =
-    railMotionDisabled || isDraggingRef.current
-      ? "none"
-      : animationIntensity === "light"
-        ? "width 140ms ease-out, margin-inline-start 140ms ease-out, opacity 120ms ease-out"
-        : "width 220ms ease, margin-inline-start 220ms ease, opacity 180ms ease";
   const railWidth = railExpanded
     ? panelWidth + COMPACT_PANEL_RESIZE_HANDLE_WIDTH
     : 0;
@@ -1090,7 +997,7 @@ export function FeedView() {
     marginInlineStart: railExpanded ? compactRailLeadingOffset : undefined,
     opacity: railExpanded ? 1 : 0,
     pointerEvents: railExpanded ? undefined : "none",
-    transition: railTransition,
+    transition: "none",
   } satisfies React.CSSProperties;
   const railContentStyle = {
     width: `${panelWidth + COMPACT_PANEL_RESIZE_HANDLE_WIDTH}px`,
@@ -1100,16 +1007,6 @@ export function FeedView() {
       "calc(100% - var(--feed-card-gap, 8px) - var(--feed-card-gap, 8px))",
     marginTop: "var(--feed-card-gap, 8px)",
   } satisfies React.CSSProperties;
-
-  const handleRailTransitionEnd = useCallback(
-    (e: React.TransitionEvent<HTMLDivElement>) => {
-      if (e.target !== e.currentTarget || e.propertyName !== "width") return;
-      if (!showDualColumn && !railExpanded) {
-        setRailMounted(false);
-      }
-    },
-    [railExpanded, showDualColumn],
-  );
 
   const handleDragStart = useCallback(
     (e: React.PointerEvent) => {
@@ -1152,11 +1049,11 @@ export function FeedView() {
               data-testid="compact-feed-panel-rail"
               className="flex-none overflow-hidden"
               style={railSlotStyle}
-              onTransitionEnd={handleRailTransitionEnd}
             >
               <div className="flex" style={railContentStyle}>
                 <CompactFeedPanel
                   items={readerItems}
+                  storyGroups={readerStoryGroups}
                   selectedId={selectedItem.globalId}
                   selectionMoveDirection={compactSelectionDirection}
                   onItemClick={openItemDirect}
@@ -1204,33 +1101,57 @@ export function FeedView() {
 
   return (
     <div className="h-full flex flex-col">
-      {!selectedItem && <FeedList
-        items={visibleItems}
-        onItemClick={openItemDirect}
-        focusedIndex={focusedIndex}
-        focusMoveDirection={keyboardFocusDirection}
-        onFocusChange={handleFocusChange}
-        onAddFeed={canAddFeeds ? () => setAddFeedOpen(true) : undefined}
-        hasFeedsSubscribed={libraryFacets.rssFeedCount > 0}
-        onItemSave={readOnly ? undefined : handleItemSave}
-        onItemArchive={
-          readOnly || activeFilter.archivedOnly ? undefined : handleItemArchive
-        }
-        onItemLike={!readOnly && toggleLiked ? handleItemLike : undefined}
-        onOpenCommentUrl={handleOpenCommentUrl}
-        isSearching={isSearching}
-        loading={
-          boundedFeedEligible &&
-          (!boundedFeedStatusIsCurrent || boundedFeed.status === "loading")
-        }
-        searchQuery={searchQuery}
-        onLoadMore={loadMoreBoundedItems}
-        hasMore={boundedFeedReadyIsCurrent && boundedFeed.hasMore}
-        onLoadPrevious={loadPreviousBoundedItems}
-        hasPrevious={boundedFeedReadyIsCurrent && boundedFeed.hasPrevious}
-        boundedWindowStartIndex={boundedFeed.windowStartIndex}
-        markItemsAsReadOverride={markBoundedItemsAsRead}
-      />}
+      {!selectedItem &&
+      boundedFeedEligible &&
+      boundedFeedStatusIsCurrent &&
+      boundedFeed.status === "failed" ? (
+        <div
+          role="alert"
+          className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center"
+        >
+          <p>Unable to load this feed.</p>
+          <button
+            type="button"
+            className="theme-accent-button rounded-xl px-5 py-2.5 text-sm font-medium"
+            onClick={retryBoundedFeed}
+          >
+            Try again
+          </button>
+        </div>
+      ) : (
+        !selectedItem && (
+          <FeedList
+            items={visibleItems}
+            storyGroups={presentation.groupById}
+            onItemClick={openItemDirect}
+            focusedIndex={focusedIndex}
+            focusMoveDirection={keyboardFocusDirection}
+            onFocusChange={handleFocusChange}
+            onAddFeed={canAddFeeds ? () => setAddFeedOpen(true) : undefined}
+            hasFeedsSubscribed={libraryFacets.rssFeedCount > 0}
+            onItemSave={readOnly ? undefined : handleItemSave}
+            onItemArchive={
+              readOnly || activeFilter.archivedOnly
+                ? undefined
+                : handleItemArchive
+            }
+            onItemLike={!readOnly && toggleLiked ? handleItemLike : undefined}
+            onOpenCommentUrl={handleOpenCommentUrl}
+            isSearching={isSearching}
+            loading={
+              boundedFeedEligible &&
+              (!boundedFeedStatusIsCurrent || boundedFeed.status === "loading")
+            }
+            searchQuery={searchQuery}
+            onLoadMore={loadMoreBoundedItems}
+            hasMore={boundedFeedReadyIsCurrent && boundedFeed.hasMore}
+            onLoadPrevious={loadPreviousBoundedItems}
+            hasPrevious={boundedFeedReadyIsCurrent && boundedFeed.hasPrevious}
+            boundedWindowStartIndex={boundedFeed.windowStartIndex}
+            markItemsAsReadOverride={markBoundedItemsAsRead}
+          />
+        )
+      )}
 
       {selectedItem && (
         <ReaderView

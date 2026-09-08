@@ -273,9 +273,6 @@ export function MobileSyncTab() {
   return (
     <>
       <section id="mobile-sync-section">
-        <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-[var(--theme-text-muted)]">
-          Mobile Sync
-        </h3>
         <div className="mb-4 space-y-3">
           <div
             data-testid="library-core-desktop-role"
