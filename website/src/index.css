@@ -169,3 +169,9 @@ html[data-theme="scriptorium"] .btn-primary:hover {
     background: rgb(var(--theme-accent-primary-rgb) / 0.08);
   }
 }
+
+.demo-showcase-reduced-motion { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .demo-showcase { display: none; }
+  .demo-showcase-reduced-motion { display: block; width: fit-content; margin-inline: auto; padding: 12px 24px; }
+}

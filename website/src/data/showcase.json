@@ -1,321 +1,36 @@
 {
   "kind": "reviewed-showcase",
-  "sourceCommit": "4b56963e168c12d5e7b5170655f7d68049470f41",
+  "sourceCommit": "2cca73b16d54ba0c21f66f76a8f90ed75b2d4b06",
   "sourceDirty": true,
+  "width": 1920,
+  "height": 1280,
+  "quality": 90,
   "themes": {
-    "ember": {
-      "revision": "2026-09-07T21-13-35-641Z",
-      "generatedAt": "2026-09-07T21:13:35.623Z",
-      "captures": [
-        {
-          "file": "freed-showcase-unified-ember.png",
-          "theme": "ember",
-          "view": "unified",
-          "desktopDecoration": {
-            "radius": 8,
-            "borderColor": "rgb(193 90 46 / 0.32)",
-            "borderWidth": 2,
-            "captureRadius": 12
-          }
-        },
-        {
-          "file": "freed-showcase-map-ember.png",
-          "theme": "ember",
-          "view": "map",
-          "desktopDecoration": {
-            "radius": 8,
-            "borderColor": "rgb(193 90 46 / 0.32)",
-            "borderWidth": 2,
-            "captureRadius": 12
-          }
-        },
-        {
-          "file": "freed-showcase-friends-ember.png",
-          "theme": "ember",
-          "view": "friends",
-          "desktopDecoration": {
-            "radius": 8,
-            "borderColor": "rgb(193 90 46 / 0.32)",
-            "borderWidth": 2,
-            "captureRadius": 12
-          }
-        },
-        {
-          "file": "freed-showcase-friend-detail-ember.png",
-          "theme": "ember",
-          "view": "friends",
-          "detail": true,
-          "desktopDecoration": {
-            "radius": 8,
-            "borderColor": "rgb(193 90 46 / 0.32)",
-            "borderWidth": 2,
-            "captureRadius": 12
-          }
-        },
-        {
-          "file": "freed-showcase-stories-ember.png",
-          "theme": "ember",
-          "view": "stories",
-          "mobile": true
-        },
-        {
-          "file": "freed-showcase-reader-ember.png",
-          "theme": "ember",
-          "view": "instagram",
-          "mobile": true,
-          "reader": true
-        }
-      ],
-      "seconds": 10.8,
-      "animation": {
-        "url": "/showcase/freed-showcase-ember-animation-64f0c10d10e2.webp",
-        "sha256": "64f0c10d10e2b909659986f6a982490f5ee57880364b7542c34eca079e9e74b9",
-        "bytes": 276328
-      },
-      "poster": {
-        "url": "/showcase/freed-showcase-ember-poster-b4cb69d7dbea.png",
-        "sha256": "b4cb69d7dbeabd40634ac53672e050cbe02df634dea98f2ec7ea5ef12be6983d",
-        "bytes": 1338344
-      }
-    },
-    "midas": {
-      "revision": "2026-09-07T21-02-51-770Z",
-      "generatedAt": "2026-09-07T21:02:51.750Z",
-      "captures": [
-        {
-          "file": "freed-showcase-unified-midas.png",
-          "theme": "midas",
-          "view": "unified",
-          "desktopDecoration": {
-            "radius": 8,
-            "borderColor": "rgb(176 138 72 / 0.34)",
-            "borderWidth": 2,
-            "captureRadius": 12
-          }
-        },
-        {
-          "file": "freed-showcase-map-midas.png",
-          "theme": "midas",
-          "view": "map",
-          "desktopDecoration": {
-            "radius": 8,
-            "borderColor": "rgb(176 138 72 / 0.34)",
-            "borderWidth": 2,
-            "captureRadius": 12
-          }
-        },
-        {
-          "file": "freed-showcase-friends-midas.png",
-          "theme": "midas",
-          "view": "friends",
-          "desktopDecoration": {
-            "radius": 8,
-            "borderColor": "rgb(176 138 72 / 0.34)",
-            "borderWidth": 2,
-            "captureRadius": 12
-          }
-        },
-        {
-          "file": "freed-showcase-friend-detail-midas.png",
-          "theme": "midas",
-          "view": "friends",
-          "detail": true,
-          "desktopDecoration": {
-            "radius": 8,
-            "borderColor": "rgb(176 138 72 / 0.34)",
-            "borderWidth": 2,
-            "captureRadius": 12
-          }
-        },
-        {
-          "file": "freed-showcase-stories-midas.png",
-          "theme": "midas",
-          "view": "stories",
-          "mobile": true
-        },
-        {
-          "file": "freed-showcase-reader-midas.png",
-          "theme": "midas",
-          "view": "instagram",
-          "mobile": true,
-          "reader": true
-        }
-      ],
-      "seconds": 10.8,
-      "animation": {
-        "url": "/showcase/freed-showcase-midas-animation-04bba8a4e720.webp",
-        "sha256": "04bba8a4e720f303b06ef368ed145f62b7cdce9fb64b907b0c3fb616c9c3284f",
-        "bytes": 284472
-      },
-      "poster": {
-        "url": "/showcase/freed-showcase-midas-poster-f5b5621f38d0.png",
-        "sha256": "f5b5621f38d0b1a7807423101bde7c1157c30ab278e8dbd13f47eaa006769e9f",
-        "bytes": 1447081
-      }
-    },
-    "scriptorium": {
-      "revision": "2026-09-07T21-05-53-908Z",
-      "generatedAt": "2026-09-07T21:05:53.890Z",
-      "captures": [
-        {
-          "file": "freed-showcase-unified-scriptorium.png",
-          "theme": "scriptorium",
-          "view": "unified",
-          "desktopDecoration": {
-            "radius": 8,
-            "borderColor": "rgb(132 100 68 / 0.28)",
-            "borderWidth": 2,
-            "captureRadius": 12
-          }
-        },
-        {
-          "file": "freed-showcase-map-scriptorium.png",
-          "theme": "scriptorium",
-          "view": "map",
-          "desktopDecoration": {
-            "radius": 8,
-            "borderColor": "rgb(132 100 68 / 0.28)",
-            "borderWidth": 2,
-            "captureRadius": 12
-          }
-        },
-        {
-          "file": "freed-showcase-friends-scriptorium.png",
-          "theme": "scriptorium",
-          "view": "friends",
-          "desktopDecoration": {
-            "radius": 8,
-            "borderColor": "rgb(132 100 68 / 0.28)",
-            "borderWidth": 2,
-            "captureRadius": 12
-          }
-        },
-        {
-          "file": "freed-showcase-friend-detail-scriptorium.png",
-          "theme": "scriptorium",
-          "view": "friends",
-          "detail": true,
-          "desktopDecoration": {
-            "radius": 8,
-            "borderColor": "rgb(132 100 68 / 0.28)",
-            "borderWidth": 2,
-            "captureRadius": 12
-          }
-        },
-        {
-          "file": "freed-showcase-stories-scriptorium.png",
-          "theme": "scriptorium",
-          "view": "stories",
-          "mobile": true
-        },
-        {
-          "file": "freed-showcase-reader-scriptorium.png",
-          "theme": "scriptorium",
-          "view": "instagram",
-          "mobile": true,
-          "reader": true
-        }
-      ],
-      "seconds": 10.8,
-      "animation": {
-        "url": "/showcase/freed-showcase-scriptorium-animation-07cfcf08a553.webp",
-        "sha256": "07cfcf08a553a896f2aa884d7a6b69c0809d91c1c57091ef64d2471a69a35e72",
-        "bytes": 277700
-      },
-      "poster": {
-        "url": "/showcase/freed-showcase-scriptorium-poster-981cd857a5f8.png",
-        "sha256": "981cd857a5f8829d3e15b0b0b557b9455d9377b5ed54a323e6af000f8bd363d4",
-        "bytes": 1199102
-      }
-    },
-    "starship": {
-      "revision": "2026-09-07T21-07-33-533Z",
-      "generatedAt": "2026-09-07T21:07:33.513Z",
-      "captures": [
-        {
-          "file": "freed-showcase-unified-starship.png",
-          "theme": "starship",
-          "view": "unified",
-          "desktopDecoration": {
-            "radius": 18,
-            "borderColor": "rgb(41 151 255 / 0.28)",
-            "borderWidth": 2,
-            "captureRadius": 27
-          }
-        },
-        {
-          "file": "freed-showcase-map-starship.png",
-          "theme": "starship",
-          "view": "map",
-          "desktopDecoration": {
-            "radius": 18,
-            "borderColor": "rgb(41 151 255 / 0.28)",
-            "borderWidth": 2,
-            "captureRadius": 27
-          }
-        },
-        {
-          "file": "freed-showcase-friends-starship.png",
-          "theme": "starship",
-          "view": "friends",
-          "desktopDecoration": {
-            "radius": 18,
-            "borderColor": "rgb(41 151 255 / 0.28)",
-            "borderWidth": 2,
-            "captureRadius": 27
-          }
-        },
-        {
-          "file": "freed-showcase-friend-detail-starship.png",
-          "theme": "starship",
-          "view": "friends",
-          "detail": true,
-          "desktopDecoration": {
-            "radius": 18,
-            "borderColor": "rgb(41 151 255 / 0.28)",
-            "borderWidth": 2,
-            "captureRadius": 27
-          }
-        },
-        {
-          "file": "freed-showcase-stories-starship.png",
-          "theme": "starship",
-          "view": "stories",
-          "mobile": true
-        },
-        {
-          "file": "freed-showcase-reader-starship.png",
-          "theme": "starship",
-          "view": "instagram",
-          "mobile": true,
-          "reader": true
-        }
-      ],
-      "seconds": 10.8,
-      "animation": {
-        "url": "/showcase/freed-showcase-starship-animation-99724019df42.webp",
-        "sha256": "99724019df429590dff6c80217a17a783d2f25a3ac40cc6c5fed8ebc349d5919",
-        "bytes": 295946
-      },
-      "poster": {
-        "url": "/showcase/freed-showcase-starship-poster-7fee9c70e178.png",
-        "sha256": "7fee9c70e178d7c0f3c0e4e0ab1056ec3e4228196ba36917345187f46a0c6793",
-        "bytes": 620767
-      }
-    },
     "dark-star": {
-      "revision": "2026-09-07T21-08-59-119Z",
-      "generatedAt": "2026-09-07T21:08:59.089Z",
+      "revision": "2026-09-08T01-24-30-316Z",
+      "generatedAt": "2026-09-08T01:24:30.288Z",
       "captures": [
         {
           "file": "freed-showcase-unified-dark-star.png",
           "theme": "dark-star",
           "view": "unified",
           "desktopDecoration": {
-            "radius": 18,
-            "borderColor": "rgb(41 151 255 / 0.52)",
-            "borderWidth": 2,
-            "captureRadius": 27
+            "accent": "#2997ff",
+            "shell": "color-mix(in srgb, #2997ff 20%, #080a0f)",
+            "edge": "color-mix(in srgb, #2997ff 35%, #171b23)",
+            "placement": "outside-content",
+            "geometry": {
+              "left": 7,
+              "right": 7,
+              "top": 7,
+              "bottom": 7,
+              "contentWidth": 1419,
+              "contentHeight": 946
+            },
+            "captureBorderWidth": 7,
+            "borderWidth": 9.333333333333334,
+            "captureRadius": 20,
+            "frameWidthRatio": 1
           }
         },
         {
@@ -323,21 +38,50 @@
           "theme": "dark-star",
           "view": "map",
           "desktopDecoration": {
-            "radius": 18,
-            "borderColor": "rgb(41 151 255 / 0.52)",
-            "borderWidth": 2,
-            "captureRadius": 27
+            "accent": "#2997ff",
+            "shell": "color-mix(in srgb, #2997ff 20%, #080a0f)",
+            "edge": "color-mix(in srgb, #2997ff 35%, #171b23)",
+            "placement": "outside-content",
+            "geometry": {
+              "left": 7,
+              "right": 7,
+              "top": 7,
+              "bottom": 7,
+              "contentWidth": 1419,
+              "contentHeight": 946
+            },
+            "captureBorderWidth": 7,
+            "borderWidth": 9.333333333333334,
+            "captureRadius": 20,
+            "frameWidthRatio": 1
           }
         },
         {
           "file": "freed-showcase-friends-dark-star.png",
           "theme": "dark-star",
           "view": "friends",
+          "rendererDiagnostics": {
+            "renderer": "raw-webgpu",
+            "decorativeStarCount": 100000
+          },
+          "graphZoomWheelDelta": -220,
           "desktopDecoration": {
-            "radius": 18,
-            "borderColor": "rgb(41 151 255 / 0.52)",
-            "borderWidth": 2,
-            "captureRadius": 27
+            "accent": "#2997ff",
+            "shell": "color-mix(in srgb, #2997ff 20%, #080a0f)",
+            "edge": "color-mix(in srgb, #2997ff 35%, #171b23)",
+            "placement": "outside-content",
+            "geometry": {
+              "left": 7,
+              "right": 7,
+              "top": 7,
+              "bottom": 7,
+              "contentWidth": 1419,
+              "contentHeight": 946
+            },
+            "captureBorderWidth": 7,
+            "borderWidth": 9.333333333333334,
+            "captureRadius": 20,
+            "frameWidthRatio": 1
           }
         },
         {
@@ -345,52 +89,500 @@
           "theme": "dark-star",
           "view": "friends",
           "detail": true,
+          "rendererDiagnostics": {
+            "renderer": "raw-webgpu",
+            "decorativeStarCount": 100000
+          },
           "desktopDecoration": {
-            "radius": 18,
-            "borderColor": "rgb(41 151 255 / 0.52)",
-            "borderWidth": 2,
-            "captureRadius": 27
+            "accent": "#2997ff",
+            "shell": "color-mix(in srgb, #2997ff 20%, #080a0f)",
+            "edge": "color-mix(in srgb, #2997ff 35%, #171b23)",
+            "placement": "outside-content",
+            "geometry": {
+              "left": 7,
+              "right": 7,
+              "top": 7,
+              "bottom": 7,
+              "contentWidth": 1419,
+              "contentHeight": 946
+            },
+            "captureBorderWidth": 7,
+            "borderWidth": 9.333333333333334,
+            "captureRadius": 20,
+            "frameWidthRatio": 1
           }
         },
         {
           "file": "freed-showcase-stories-dark-star.png",
           "theme": "dark-star",
           "view": "stories",
-          "mobile": true
+          "mobile": true,
+          "mobileLayout": {
+            "deviceMobile": true,
+            "storyColumns": [
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2
+            ]
+          },
+          "mobileDecoration": {
+            "accent": "#2997ff",
+            "shell": "color-mix(in srgb, #2997ff 20%, #080a0f)",
+            "edge": "color-mix(in srgb, #2997ff 35%, #171b23)",
+            "placement": "outside-content",
+            "geometry": {
+              "left": 7,
+              "right": 7,
+              "top": 7,
+              "bottom": 7,
+              "contentWidth": 390,
+              "contentHeight": 844
+            },
+            "captureBorderWidth": 7,
+            "borderWidth": 9.333333333333334,
+            "captureRadius": 44,
+            "frameWidthRatio": 1
+          }
         },
         {
           "file": "freed-showcase-reader-dark-star.png",
           "theme": "dark-star",
           "view": "instagram",
           "mobile": true,
-          "reader": true
+          "reader": true,
+          "mobileLayout": {
+            "deviceMobile": true,
+            "storyColumns": []
+          },
+          "mobileDecoration": {
+            "accent": "#2997ff",
+            "shell": "color-mix(in srgb, #2997ff 20%, #080a0f)",
+            "edge": "color-mix(in srgb, #2997ff 35%, #171b23)",
+            "placement": "outside-content",
+            "geometry": {
+              "left": 7,
+              "right": 7,
+              "top": 7,
+              "bottom": 7,
+              "contentWidth": 390,
+              "contentHeight": 844
+            },
+            "captureBorderWidth": 7,
+            "borderWidth": 9.333333333333334,
+            "captureRadius": 44,
+            "frameWidthRatio": 1
+          }
         }
       ],
-      "seconds": 10.8,
+      "seconds": 18,
       "animation": {
-        "url": "/showcase/freed-showcase-dark-star-animation-94cabea11c49.webp",
-        "sha256": "94cabea11c4906168955b264af1e10b8aab483194db64c8d59835cc8c543df46",
-        "bytes": 291978
-      },
-      "poster": {
-        "url": "/showcase/freed-showcase-dark-star-poster-528c03711e27.png",
-        "sha256": "528c03711e27590d086f06446a05117a006362155154ac21ee4b99c88fbce4f5",
-        "bytes": 809711
+        "url": "/showcase/freed-showcase-dark-star-animation-9308f3cd1d05.webp",
+        "sha256": "9308f3cd1d056662c2ac91cf4b3201c5fe4051fbe260a2f33d55eeb82472f8d3",
+        "bytes": 916128
+      }
+    },
+    "ember": {
+      "revision": "2026-09-08T01-25-58-129Z",
+      "generatedAt": "2026-09-08T01:25:58.092Z",
+      "captures": [
+        {
+          "file": "freed-showcase-unified-ember.png",
+          "theme": "ember",
+          "view": "unified",
+          "desktopDecoration": {
+            "accent": "#7a2f1f",
+            "shell": "color-mix(in srgb, #7a2f1f 35%, #202124)",
+            "edge": "color-mix(in srgb, #7a2f1f 70%, #737578)",
+            "placement": "outside-content",
+            "geometry": {
+              "left": 7,
+              "right": 7,
+              "top": 7,
+              "bottom": 7,
+              "contentWidth": 1419,
+              "contentHeight": 946
+            },
+            "captureBorderWidth": 7,
+            "borderWidth": 9.333333333333334,
+            "captureRadius": 20,
+            "frameWidthRatio": 1
+          }
+        },
+        {
+          "file": "freed-showcase-map-ember.png",
+          "theme": "ember",
+          "view": "map",
+          "desktopDecoration": {
+            "accent": "#7a2f1f",
+            "shell": "color-mix(in srgb, #7a2f1f 35%, #202124)",
+            "edge": "color-mix(in srgb, #7a2f1f 70%, #737578)",
+            "placement": "outside-content",
+            "geometry": {
+              "left": 7,
+              "right": 7,
+              "top": 7,
+              "bottom": 7,
+              "contentWidth": 1419,
+              "contentHeight": 946
+            },
+            "captureBorderWidth": 7,
+            "borderWidth": 9.333333333333334,
+            "captureRadius": 20,
+            "frameWidthRatio": 1
+          }
+        },
+        {
+          "file": "freed-showcase-friends-ember.png",
+          "theme": "ember",
+          "view": "friends",
+          "rendererDiagnostics": {
+            "renderer": "raw-webgpu",
+            "decorativeStarCount": 100000
+          },
+          "graphZoomWheelDelta": -220,
+          "desktopDecoration": {
+            "accent": "#7a2f1f",
+            "shell": "color-mix(in srgb, #7a2f1f 35%, #202124)",
+            "edge": "color-mix(in srgb, #7a2f1f 70%, #737578)",
+            "placement": "outside-content",
+            "geometry": {
+              "left": 7,
+              "right": 7,
+              "top": 7,
+              "bottom": 7,
+              "contentWidth": 1419,
+              "contentHeight": 946
+            },
+            "captureBorderWidth": 7,
+            "borderWidth": 9.333333333333334,
+            "captureRadius": 20,
+            "frameWidthRatio": 1
+          }
+        },
+        {
+          "file": "freed-showcase-friend-detail-ember.png",
+          "theme": "ember",
+          "view": "friends",
+          "detail": true,
+          "rendererDiagnostics": {
+            "renderer": "raw-webgpu",
+            "decorativeStarCount": 100000
+          },
+          "desktopDecoration": {
+            "accent": "#7a2f1f",
+            "shell": "color-mix(in srgb, #7a2f1f 35%, #202124)",
+            "edge": "color-mix(in srgb, #7a2f1f 70%, #737578)",
+            "placement": "outside-content",
+            "geometry": {
+              "left": 7,
+              "right": 7,
+              "top": 7,
+              "bottom": 7,
+              "contentWidth": 1419,
+              "contentHeight": 946
+            },
+            "captureBorderWidth": 7,
+            "borderWidth": 9.333333333333334,
+            "captureRadius": 20,
+            "frameWidthRatio": 1
+          }
+        },
+        {
+          "file": "freed-showcase-stories-ember.png",
+          "theme": "ember",
+          "view": "stories",
+          "mobile": true,
+          "mobileLayout": {
+            "deviceMobile": true,
+            "storyColumns": [
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2
+            ]
+          },
+          "mobileDecoration": {
+            "accent": "#7a2f1f",
+            "shell": "color-mix(in srgb, #7a2f1f 35%, #202124)",
+            "edge": "color-mix(in srgb, #7a2f1f 70%, #737578)",
+            "placement": "outside-content",
+            "geometry": {
+              "left": 7,
+              "right": 7,
+              "top": 7,
+              "bottom": 7,
+              "contentWidth": 390,
+              "contentHeight": 844
+            },
+            "captureBorderWidth": 7,
+            "borderWidth": 9.333333333333334,
+            "captureRadius": 44,
+            "frameWidthRatio": 1
+          }
+        },
+        {
+          "file": "freed-showcase-reader-ember.png",
+          "theme": "ember",
+          "view": "instagram",
+          "mobile": true,
+          "reader": true,
+          "mobileLayout": {
+            "deviceMobile": true,
+            "storyColumns": []
+          },
+          "mobileDecoration": {
+            "accent": "#7a2f1f",
+            "shell": "color-mix(in srgb, #7a2f1f 35%, #202124)",
+            "edge": "color-mix(in srgb, #7a2f1f 70%, #737578)",
+            "placement": "outside-content",
+            "geometry": {
+              "left": 7,
+              "right": 7,
+              "top": 7,
+              "bottom": 7,
+              "contentWidth": 390,
+              "contentHeight": 844
+            },
+            "captureBorderWidth": 7,
+            "borderWidth": 9.333333333333334,
+            "captureRadius": 44,
+            "frameWidthRatio": 1
+          }
+        }
+      ],
+      "seconds": 18,
+      "animation": {
+        "url": "/showcase/freed-showcase-ember-animation-4127a5c82a0b.webp",
+        "sha256": "4127a5c82a0b78dade6d2bdb317aa122e723190fa87163d067e4b61e38525a79",
+        "bytes": 899880
+      }
+    },
+    "midas": {
+      "revision": "2026-09-08T01-23-13-683Z",
+      "generatedAt": "2026-09-08T01:23:13.660Z",
+      "captures": [
+        {
+          "file": "freed-showcase-unified-midas.png",
+          "theme": "midas",
+          "view": "unified",
+          "desktopDecoration": {
+            "accent": "#b08a48",
+            "shell": "color-mix(in srgb, #b08a48 50%, #33281b)",
+            "edge": "color-mix(in srgb, #b08a48 75%, #33281b)",
+            "placement": "outside-content",
+            "geometry": {
+              "left": 7,
+              "right": 7,
+              "top": 7,
+              "bottom": 7,
+              "contentWidth": 1419,
+              "contentHeight": 946
+            },
+            "captureBorderWidth": 7,
+            "borderWidth": 9.333333333333334,
+            "captureRadius": 20,
+            "frameWidthRatio": 1
+          }
+        },
+        {
+          "file": "freed-showcase-map-midas.png",
+          "theme": "midas",
+          "view": "map",
+          "desktopDecoration": {
+            "accent": "#b08a48",
+            "shell": "color-mix(in srgb, #b08a48 50%, #33281b)",
+            "edge": "color-mix(in srgb, #b08a48 75%, #33281b)",
+            "placement": "outside-content",
+            "geometry": {
+              "left": 7,
+              "right": 7,
+              "top": 7,
+              "bottom": 7,
+              "contentWidth": 1419,
+              "contentHeight": 946
+            },
+            "captureBorderWidth": 7,
+            "borderWidth": 9.333333333333334,
+            "captureRadius": 20,
+            "frameWidthRatio": 1
+          }
+        },
+        {
+          "file": "freed-showcase-friends-midas.png",
+          "theme": "midas",
+          "view": "friends",
+          "rendererDiagnostics": {
+            "renderer": "raw-webgpu",
+            "decorativeStarCount": 100000
+          },
+          "graphZoomWheelDelta": -220,
+          "desktopDecoration": {
+            "accent": "#b08a48",
+            "shell": "color-mix(in srgb, #b08a48 50%, #33281b)",
+            "edge": "color-mix(in srgb, #b08a48 75%, #33281b)",
+            "placement": "outside-content",
+            "geometry": {
+              "left": 7,
+              "right": 7,
+              "top": 7,
+              "bottom": 7,
+              "contentWidth": 1419,
+              "contentHeight": 946
+            },
+            "captureBorderWidth": 7,
+            "borderWidth": 9.333333333333334,
+            "captureRadius": 20,
+            "frameWidthRatio": 1
+          }
+        },
+        {
+          "file": "freed-showcase-friend-detail-midas.png",
+          "theme": "midas",
+          "view": "friends",
+          "detail": true,
+          "rendererDiagnostics": {
+            "renderer": "raw-webgpu",
+            "decorativeStarCount": 100000
+          },
+          "desktopDecoration": {
+            "accent": "#b08a48",
+            "shell": "color-mix(in srgb, #b08a48 50%, #33281b)",
+            "edge": "color-mix(in srgb, #b08a48 75%, #33281b)",
+            "placement": "outside-content",
+            "geometry": {
+              "left": 7,
+              "right": 7,
+              "top": 7,
+              "bottom": 7,
+              "contentWidth": 1419,
+              "contentHeight": 946
+            },
+            "captureBorderWidth": 7,
+            "borderWidth": 9.333333333333334,
+            "captureRadius": 20,
+            "frameWidthRatio": 1
+          }
+        },
+        {
+          "file": "freed-showcase-stories-midas.png",
+          "theme": "midas",
+          "view": "stories",
+          "mobile": true,
+          "mobileLayout": {
+            "deviceMobile": true,
+            "storyColumns": [
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2
+            ]
+          },
+          "mobileDecoration": {
+            "accent": "#b08a48",
+            "shell": "color-mix(in srgb, #b08a48 50%, #33281b)",
+            "edge": "color-mix(in srgb, #b08a48 75%, #33281b)",
+            "placement": "outside-content",
+            "geometry": {
+              "left": 7,
+              "right": 7,
+              "top": 7,
+              "bottom": 7,
+              "contentWidth": 390,
+              "contentHeight": 844
+            },
+            "captureBorderWidth": 7,
+            "borderWidth": 9.333333333333334,
+            "captureRadius": 44,
+            "frameWidthRatio": 1
+          }
+        },
+        {
+          "file": "freed-showcase-reader-midas.png",
+          "theme": "midas",
+          "view": "instagram",
+          "mobile": true,
+          "reader": true,
+          "mobileLayout": {
+            "deviceMobile": true,
+            "storyColumns": []
+          },
+          "mobileDecoration": {
+            "accent": "#b08a48",
+            "shell": "color-mix(in srgb, #b08a48 50%, #33281b)",
+            "edge": "color-mix(in srgb, #b08a48 75%, #33281b)",
+            "placement": "outside-content",
+            "geometry": {
+              "left": 7,
+              "right": 7,
+              "top": 7,
+              "bottom": 7,
+              "contentWidth": 390,
+              "contentHeight": 844
+            },
+            "captureBorderWidth": 7,
+            "borderWidth": 9.333333333333334,
+            "captureRadius": 44,
+            "frameWidthRatio": 1
+          }
+        }
+      ],
+      "seconds": 18,
+      "animation": {
+        "url": "/showcase/freed-showcase-midas-animation-2b4706e4984a.webp",
+        "sha256": "2b4706e4984ae27dcca50fb343056c266b15ce6cf37cdd7b46f90a7d36453985",
+        "bytes": 865466
       }
     },
     "neon": {
-      "revision": "2026-09-07T21-11-17-309Z",
-      "generatedAt": "2026-09-07T21:11:17.287Z",
+      "revision": "2026-09-08T01-24-30-190Z",
+      "generatedAt": "2026-09-08T01:24:30.167Z",
       "captures": [
         {
           "file": "freed-showcase-unified-neon.png",
           "theme": "neon",
           "view": "unified",
           "desktopDecoration": {
-            "radius": 8,
-            "borderColor": "rgba(139, 92, 246, 0.24)",
-            "borderWidth": 2,
-            "captureRadius": 12
+            "accent": "#8b5cf6",
+            "shell": "color-mix(in srgb, #8b5cf6 30%, #160d22)",
+            "edge": "color-mix(in srgb, #8b5cf6 55%, #21112f)",
+            "placement": "outside-content",
+            "geometry": {
+              "left": 7,
+              "right": 7,
+              "top": 7,
+              "bottom": 7,
+              "contentWidth": 1419,
+              "contentHeight": 946
+            },
+            "captureBorderWidth": 7,
+            "borderWidth": 9.333333333333334,
+            "captureRadius": 20,
+            "frameWidthRatio": 1
           }
         },
         {
@@ -398,21 +590,50 @@
           "theme": "neon",
           "view": "map",
           "desktopDecoration": {
-            "radius": 8,
-            "borderColor": "rgba(139, 92, 246, 0.24)",
-            "borderWidth": 2,
-            "captureRadius": 12
+            "accent": "#8b5cf6",
+            "shell": "color-mix(in srgb, #8b5cf6 30%, #160d22)",
+            "edge": "color-mix(in srgb, #8b5cf6 55%, #21112f)",
+            "placement": "outside-content",
+            "geometry": {
+              "left": 7,
+              "right": 7,
+              "top": 7,
+              "bottom": 7,
+              "contentWidth": 1419,
+              "contentHeight": 946
+            },
+            "captureBorderWidth": 7,
+            "borderWidth": 9.333333333333334,
+            "captureRadius": 20,
+            "frameWidthRatio": 1
           }
         },
         {
           "file": "freed-showcase-friends-neon.png",
           "theme": "neon",
           "view": "friends",
+          "rendererDiagnostics": {
+            "renderer": "raw-webgpu",
+            "decorativeStarCount": 100000
+          },
+          "graphZoomWheelDelta": -220,
           "desktopDecoration": {
-            "radius": 8,
-            "borderColor": "rgba(139, 92, 246, 0.24)",
-            "borderWidth": 2,
-            "captureRadius": 12
+            "accent": "#8b5cf6",
+            "shell": "color-mix(in srgb, #8b5cf6 30%, #160d22)",
+            "edge": "color-mix(in srgb, #8b5cf6 55%, #21112f)",
+            "placement": "outside-content",
+            "geometry": {
+              "left": 7,
+              "right": 7,
+              "top": 7,
+              "bottom": 7,
+              "contentWidth": 1419,
+              "contentHeight": 946
+            },
+            "captureBorderWidth": 7,
+            "borderWidth": 9.333333333333334,
+            "captureRadius": 20,
+            "frameWidthRatio": 1
           }
         },
         {
@@ -420,37 +641,473 @@
           "theme": "neon",
           "view": "friends",
           "detail": true,
+          "rendererDiagnostics": {
+            "renderer": "raw-webgpu",
+            "decorativeStarCount": 100000
+          },
           "desktopDecoration": {
-            "radius": 8,
-            "borderColor": "rgba(139, 92, 246, 0.24)",
-            "borderWidth": 2,
-            "captureRadius": 12
+            "accent": "#8b5cf6",
+            "shell": "color-mix(in srgb, #8b5cf6 30%, #160d22)",
+            "edge": "color-mix(in srgb, #8b5cf6 55%, #21112f)",
+            "placement": "outside-content",
+            "geometry": {
+              "left": 7,
+              "right": 7,
+              "top": 7,
+              "bottom": 7,
+              "contentWidth": 1419,
+              "contentHeight": 946
+            },
+            "captureBorderWidth": 7,
+            "borderWidth": 9.333333333333334,
+            "captureRadius": 20,
+            "frameWidthRatio": 1
           }
         },
         {
           "file": "freed-showcase-stories-neon.png",
           "theme": "neon",
           "view": "stories",
-          "mobile": true
+          "mobile": true,
+          "mobileLayout": {
+            "deviceMobile": true,
+            "storyColumns": [
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2
+            ]
+          },
+          "mobileDecoration": {
+            "accent": "#8b5cf6",
+            "shell": "color-mix(in srgb, #8b5cf6 30%, #160d22)",
+            "edge": "color-mix(in srgb, #8b5cf6 55%, #21112f)",
+            "placement": "outside-content",
+            "geometry": {
+              "left": 7,
+              "right": 7,
+              "top": 7,
+              "bottom": 7,
+              "contentWidth": 390,
+              "contentHeight": 844
+            },
+            "captureBorderWidth": 7,
+            "borderWidth": 9.333333333333334,
+            "captureRadius": 44,
+            "frameWidthRatio": 1
+          }
         },
         {
           "file": "freed-showcase-reader-neon.png",
           "theme": "neon",
           "view": "instagram",
           "mobile": true,
-          "reader": true
+          "reader": true,
+          "mobileLayout": {
+            "deviceMobile": true,
+            "storyColumns": []
+          },
+          "mobileDecoration": {
+            "accent": "#8b5cf6",
+            "shell": "color-mix(in srgb, #8b5cf6 30%, #160d22)",
+            "edge": "color-mix(in srgb, #8b5cf6 55%, #21112f)",
+            "placement": "outside-content",
+            "geometry": {
+              "left": 7,
+              "right": 7,
+              "top": 7,
+              "bottom": 7,
+              "contentWidth": 390,
+              "contentHeight": 844
+            },
+            "captureBorderWidth": 7,
+            "borderWidth": 9.333333333333334,
+            "captureRadius": 44,
+            "frameWidthRatio": 1
+          }
         }
       ],
-      "seconds": 10.8,
+      "seconds": 18,
       "animation": {
-        "url": "/showcase/freed-showcase-neon-animation-b715682e81a9.webp",
-        "sha256": "b715682e81a980159e32b0cdaa413359972cdd2f5c5bb1db66b70755a45a84be",
-        "bytes": 296408
-      },
-      "poster": {
-        "url": "/showcase/freed-showcase-neon-poster-47a8e75734d2.png",
-        "sha256": "47a8e75734d23d40a235748bfd3068d41322bc4cba622d85aecde76d8344b748",
-        "bytes": 1667327
+        "url": "/showcase/freed-showcase-neon-animation-e0d43221db0d.webp",
+        "sha256": "e0d43221db0d8709d832d3ed074b6556e6ff45ce6c7596ada59c078f04128923",
+        "bytes": 921980
+      }
+    },
+    "scriptorium": {
+      "revision": "2026-09-08T01-23-10-942Z",
+      "generatedAt": "2026-09-08T01:23:10.914Z",
+      "captures": [
+        {
+          "file": "freed-showcase-unified-scriptorium.png",
+          "theme": "scriptorium",
+          "view": "unified",
+          "desktopDecoration": {
+            "accent": "#86684a",
+            "shell": "color-mix(in srgb, #86684a 60%, #ffffff)",
+            "edge": "color-mix(in srgb, #b08a61 70%, #f4ead7)",
+            "placement": "outside-content",
+            "geometry": {
+              "left": 7,
+              "right": 7,
+              "top": 7,
+              "bottom": 7,
+              "contentWidth": 1419,
+              "contentHeight": 946
+            },
+            "captureBorderWidth": 7,
+            "borderWidth": 9.333333333333334,
+            "captureRadius": 20,
+            "frameWidthRatio": 1
+          }
+        },
+        {
+          "file": "freed-showcase-map-scriptorium.png",
+          "theme": "scriptorium",
+          "view": "map",
+          "desktopDecoration": {
+            "accent": "#86684a",
+            "shell": "color-mix(in srgb, #86684a 60%, #ffffff)",
+            "edge": "color-mix(in srgb, #b08a61 70%, #f4ead7)",
+            "placement": "outside-content",
+            "geometry": {
+              "left": 7,
+              "right": 7,
+              "top": 7,
+              "bottom": 7,
+              "contentWidth": 1419,
+              "contentHeight": 946
+            },
+            "captureBorderWidth": 7,
+            "borderWidth": 9.333333333333334,
+            "captureRadius": 20,
+            "frameWidthRatio": 1
+          }
+        },
+        {
+          "file": "freed-showcase-friends-scriptorium.png",
+          "theme": "scriptorium",
+          "view": "friends",
+          "rendererDiagnostics": {
+            "renderer": "raw-webgpu",
+            "decorativeStarCount": 100000
+          },
+          "graphZoomWheelDelta": -220,
+          "desktopDecoration": {
+            "accent": "#86684a",
+            "shell": "color-mix(in srgb, #86684a 60%, #ffffff)",
+            "edge": "color-mix(in srgb, #b08a61 70%, #f4ead7)",
+            "placement": "outside-content",
+            "geometry": {
+              "left": 7,
+              "right": 7,
+              "top": 7,
+              "bottom": 7,
+              "contentWidth": 1419,
+              "contentHeight": 946
+            },
+            "captureBorderWidth": 7,
+            "borderWidth": 9.333333333333334,
+            "captureRadius": 20,
+            "frameWidthRatio": 1
+          }
+        },
+        {
+          "file": "freed-showcase-friend-detail-scriptorium.png",
+          "theme": "scriptorium",
+          "view": "friends",
+          "detail": true,
+          "rendererDiagnostics": {
+            "renderer": "raw-webgpu",
+            "decorativeStarCount": 100000
+          },
+          "desktopDecoration": {
+            "accent": "#86684a",
+            "shell": "color-mix(in srgb, #86684a 60%, #ffffff)",
+            "edge": "color-mix(in srgb, #b08a61 70%, #f4ead7)",
+            "placement": "outside-content",
+            "geometry": {
+              "left": 7,
+              "right": 7,
+              "top": 7,
+              "bottom": 7,
+              "contentWidth": 1419,
+              "contentHeight": 946
+            },
+            "captureBorderWidth": 7,
+            "borderWidth": 9.333333333333334,
+            "captureRadius": 20,
+            "frameWidthRatio": 1
+          }
+        },
+        {
+          "file": "freed-showcase-stories-scriptorium.png",
+          "theme": "scriptorium",
+          "view": "stories",
+          "mobile": true,
+          "mobileLayout": {
+            "deviceMobile": true,
+            "storyColumns": [
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2
+            ]
+          },
+          "mobileDecoration": {
+            "accent": "#86684a",
+            "shell": "color-mix(in srgb, #86684a 60%, #ffffff)",
+            "edge": "color-mix(in srgb, #b08a61 70%, #f4ead7)",
+            "placement": "outside-content",
+            "geometry": {
+              "left": 7,
+              "right": 7,
+              "top": 7,
+              "bottom": 7,
+              "contentWidth": 390,
+              "contentHeight": 844
+            },
+            "captureBorderWidth": 7,
+            "borderWidth": 9.333333333333334,
+            "captureRadius": 44,
+            "frameWidthRatio": 1
+          }
+        },
+        {
+          "file": "freed-showcase-reader-scriptorium.png",
+          "theme": "scriptorium",
+          "view": "instagram",
+          "mobile": true,
+          "reader": true,
+          "mobileLayout": {
+            "deviceMobile": true,
+            "storyColumns": []
+          },
+          "mobileDecoration": {
+            "accent": "#86684a",
+            "shell": "color-mix(in srgb, #86684a 60%, #ffffff)",
+            "edge": "color-mix(in srgb, #b08a61 70%, #f4ead7)",
+            "placement": "outside-content",
+            "geometry": {
+              "left": 7,
+              "right": 7,
+              "top": 7,
+              "bottom": 7,
+              "contentWidth": 390,
+              "contentHeight": 844
+            },
+            "captureBorderWidth": 7,
+            "borderWidth": 9.333333333333334,
+            "captureRadius": 44,
+            "frameWidthRatio": 1
+          }
+        }
+      ],
+      "seconds": 18,
+      "animation": {
+        "url": "/showcase/freed-showcase-scriptorium-animation-8c2b2c24ebfd.webp",
+        "sha256": "8c2b2c24ebfdcf12be96496135109cba45d00348143ebc510b1c464d622127a6",
+        "bytes": 831300
+      }
+    },
+    "starship": {
+      "revision": "2026-09-08T01-26-09-011Z",
+      "generatedAt": "2026-09-08T01:26:08.991Z",
+      "captures": [
+        {
+          "file": "freed-showcase-unified-starship.png",
+          "theme": "starship",
+          "view": "unified",
+          "desktopDecoration": {
+            "accent": "#2997ff",
+            "shell": "color-mix(in srgb, #2997ff 35%, #202124)",
+            "edge": "color-mix(in srgb, #2997ff 70%, #737578)",
+            "placement": "outside-content",
+            "geometry": {
+              "left": 7,
+              "right": 7,
+              "top": 7,
+              "bottom": 7,
+              "contentWidth": 1419,
+              "contentHeight": 946
+            },
+            "captureBorderWidth": 7,
+            "borderWidth": 9.333333333333334,
+            "captureRadius": 20,
+            "frameWidthRatio": 1
+          }
+        },
+        {
+          "file": "freed-showcase-map-starship.png",
+          "theme": "starship",
+          "view": "map",
+          "desktopDecoration": {
+            "accent": "#2997ff",
+            "shell": "color-mix(in srgb, #2997ff 35%, #202124)",
+            "edge": "color-mix(in srgb, #2997ff 70%, #737578)",
+            "placement": "outside-content",
+            "geometry": {
+              "left": 7,
+              "right": 7,
+              "top": 7,
+              "bottom": 7,
+              "contentWidth": 1419,
+              "contentHeight": 946
+            },
+            "captureBorderWidth": 7,
+            "borderWidth": 9.333333333333334,
+            "captureRadius": 20,
+            "frameWidthRatio": 1
+          }
+        },
+        {
+          "file": "freed-showcase-friends-starship.png",
+          "theme": "starship",
+          "view": "friends",
+          "rendererDiagnostics": {
+            "renderer": "raw-webgpu",
+            "decorativeStarCount": 100000
+          },
+          "graphZoomWheelDelta": -220,
+          "desktopDecoration": {
+            "accent": "#2997ff",
+            "shell": "color-mix(in srgb, #2997ff 35%, #202124)",
+            "edge": "color-mix(in srgb, #2997ff 70%, #737578)",
+            "placement": "outside-content",
+            "geometry": {
+              "left": 7,
+              "right": 7,
+              "top": 7,
+              "bottom": 7,
+              "contentWidth": 1419,
+              "contentHeight": 946
+            },
+            "captureBorderWidth": 7,
+            "borderWidth": 9.333333333333334,
+            "captureRadius": 20,
+            "frameWidthRatio": 1
+          }
+        },
+        {
+          "file": "freed-showcase-friend-detail-starship.png",
+          "theme": "starship",
+          "view": "friends",
+          "detail": true,
+          "rendererDiagnostics": {
+            "renderer": "raw-webgpu",
+            "decorativeStarCount": 100000
+          },
+          "desktopDecoration": {
+            "accent": "#2997ff",
+            "shell": "color-mix(in srgb, #2997ff 35%, #202124)",
+            "edge": "color-mix(in srgb, #2997ff 70%, #737578)",
+            "placement": "outside-content",
+            "geometry": {
+              "left": 7,
+              "right": 7,
+              "top": 7,
+              "bottom": 7,
+              "contentWidth": 1419,
+              "contentHeight": 946
+            },
+            "captureBorderWidth": 7,
+            "borderWidth": 9.333333333333334,
+            "captureRadius": 20,
+            "frameWidthRatio": 1
+          }
+        },
+        {
+          "file": "freed-showcase-stories-starship.png",
+          "theme": "starship",
+          "view": "stories",
+          "mobile": true,
+          "mobileLayout": {
+            "deviceMobile": true,
+            "storyColumns": [
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2
+            ]
+          },
+          "mobileDecoration": {
+            "accent": "#2997ff",
+            "shell": "color-mix(in srgb, #2997ff 35%, #202124)",
+            "edge": "color-mix(in srgb, #2997ff 70%, #737578)",
+            "placement": "outside-content",
+            "geometry": {
+              "left": 7,
+              "right": 7,
+              "top": 7,
+              "bottom": 7,
+              "contentWidth": 390,
+              "contentHeight": 844
+            },
+            "captureBorderWidth": 7,
+            "borderWidth": 9.333333333333334,
+            "captureRadius": 44,
+            "frameWidthRatio": 1
+          }
+        },
+        {
+          "file": "freed-showcase-reader-starship.png",
+          "theme": "starship",
+          "view": "instagram",
+          "mobile": true,
+          "reader": true,
+          "mobileLayout": {
+            "deviceMobile": true,
+            "storyColumns": []
+          },
+          "mobileDecoration": {
+            "accent": "#2997ff",
+            "shell": "color-mix(in srgb, #2997ff 35%, #202124)",
+            "edge": "color-mix(in srgb, #2997ff 70%, #737578)",
+            "placement": "outside-content",
+            "geometry": {
+              "left": 7,
+              "right": 7,
+              "top": 7,
+              "bottom": 7,
+              "contentWidth": 390,
+              "contentHeight": 844
+            },
+            "captureBorderWidth": 7,
+            "borderWidth": 9.333333333333334,
+            "captureRadius": 44,
+            "frameWidthRatio": 1
+          }
+        }
+      ],
+      "seconds": 18,
+      "animation": {
+        "url": "/showcase/freed-showcase-starship-animation-9eee60f66cf1.webp",
+        "sha256": "9eee60f66cf147235822f2a30cbbf544aa7c4eba8fa7ff104e236691edd469bf",
+        "bytes": 938152
       }
     }
   }
