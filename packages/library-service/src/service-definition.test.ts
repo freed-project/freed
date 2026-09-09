@@ -44,9 +44,10 @@ describe("installed Library service definitions", () => {
     );
   });
 
-  it("builds one hardened deterministic Linux user unit with exact writable roots", () => {
+  it("builds one hardened deterministic Linux system unit with exact writable roots", () => {
     const definition = createLibraryServiceDefinitionV1({
       platform: "linux",
+      userId: 1000,
       nodeExecutable: "/opt/freed $channel/node",
       cliExecutable: "/opt/freed %release/freed-library.js",
       configPath: "/home/freed/.config/freed/library service.json",
@@ -59,13 +60,16 @@ describe("installed Library service definitions", () => {
       service: "freed-library",
       role: "primary",
       platform: "linux",
-      format: "systemd-user-unit-v1",
+      format: "systemd-system-unit-v1",
       fileName: LIBRARY_SERVICE_SYSTEMD_UNIT,
     });
     expect(definition.contents).toContain(
       'ExecStart="/opt/freed $$channel/node" "/opt/freed %%release/freed-library.js" "serve" "--config" "/home/freed/.config/freed/library service.json"',
     );
     expect(definition.contents).toContain("Type=exec");
+    expect(definition.contents).toContain("User=1000");
+    expect(definition.contents).not.toContain("PrivateUsers=true");
+    expect(definition.contents).toContain("PrivateDevices=true");
     expect(definition.contents).toContain("ProtectSystem=strict");
     expect(definition.contents).toContain("ProtectHome=read-only");
     expect(definition.contents).toContain(
@@ -82,6 +86,7 @@ describe("installed Library service definitions", () => {
   it("rejects ambiguous paths and unsupported platforms", () => {
     const valid = {
       platform: "linux" as const,
+      userId: 1000,
       nodeExecutable: "/opt/freed/node",
       cliExecutable: "/opt/freed/freed-library.js",
       configPath: "/etc/freed/library.json",
@@ -89,6 +94,9 @@ describe("installed Library service definitions", () => {
       stateRoot: "/var/lib/freed/state",
     };
 
+    expect(() =>
+      createLibraryServiceDefinitionV1({ ...valid, userId: 0 }),
+    ).toThrow("non-root user ID");
     expect(() =>
       createLibraryServiceDefinitionV1({
         ...valid,
@@ -116,7 +124,8 @@ describe("installed Library service definitions", () => {
         platform: "darwin",
         nodeExecutable: "/opt/freed/node",
         cliExecutable: "/opt/freed/freed-library.js",
-        configPath: "/Users/freed/Library/Application Support/Freed/config.json",
+        configPath:
+          "/Users/freed/Library/Application Support/Freed/config.json",
         dataRoot: "/Users/freed/Library/Application Support/Freed/data",
         stateRoot: "/Users/freed/Library/Application Support/Freed/state",
       });

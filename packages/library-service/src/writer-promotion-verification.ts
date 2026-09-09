@@ -22,6 +22,7 @@ export async function verifyPreparedWriterCheckpoint(input: {
   pointer: LibraryCoreControlPointerV1;
   signal: AbortSignal;
   subtle: SubtleCrypto;
+  requireGenerationZero?: boolean;
 }) {
   input.signal.throwIfAborted();
   const pointer = parseLibraryCoreControlPointerV1(input.pointer);
@@ -29,7 +30,7 @@ export async function verifyPreparedWriterCheckpoint(input: {
     await input.native.execute("begin_checkpoint_export_v2", {}),
   );
   if (
-    pointer.generation !== 0 ||
+    (input.requireGenerationZero !== false && pointer.generation !== 0) ||
     String(pointer.libraryId) !== snapshot.libraryId ||
     String(pointer.storageEpoch) !== snapshot.authorityEpoch ||
     String(pointer.writerId) !== snapshot.writerId ||

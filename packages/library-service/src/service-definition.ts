@@ -10,6 +10,7 @@ export type LibraryServiceDefinitionPlatformV1 = "darwin" | "linux";
 
 export interface LibraryServiceDefinitionInputV1 {
   readonly platform: LibraryServiceDefinitionPlatformV1;
+  readonly userId?: number;
   readonly nodeExecutable: string;
   readonly cliExecutable: string;
   readonly configPath: string;
@@ -22,7 +23,7 @@ export interface LibraryServiceDefinitionV1 {
   readonly service: "freed-library";
   readonly role: "primary";
   readonly platform: LibraryServiceDefinitionPlatformV1;
-  readonly format: "launchd-plist-v1" | "systemd-user-unit-v1";
+  readonly format: "launchd-plist-v1" | "systemd-system-unit-v1";
   readonly fileName:
     | `${typeof LIBRARY_SERVICE_LAUNCHD_LABEL}.plist`
     | typeof LIBRARY_SERVICE_SYSTEMD_UNIT;
@@ -110,6 +111,7 @@ function launchdDefinition(input: {
 }
 
 function systemdDefinition(input: {
+  readonly userId: number;
   readonly nodeExecutable: string;
   readonly cliExecutable: string;
   readonly configPath: string;
@@ -135,6 +137,7 @@ function systemdDefinition(input: {
     "",
     "[Service]",
     "Type=exec",
+    `User=${input.userId}`,
     `ExecStart=${command}`,
     "WorkingDirectory=/",
     "Restart=on-failure",
@@ -159,7 +162,7 @@ function systemdDefinition(input: {
     "SystemCallArchitectures=native",
     "",
     "[Install]",
-    "WantedBy=default.target",
+    "WantedBy=multi-user.target",
     "",
   ].join("\n");
 }
@@ -170,7 +173,16 @@ export function createLibraryServiceDefinitionV1(
   if (input.platform !== "darwin" && input.platform !== "linux") {
     throw new TypeError("service definition platform is unsupported");
   }
+  if (
+    input.platform === "linux" &&
+    (!Number.isSafeInteger(input.userId) ||
+      input.userId! <= 0 ||
+      input.userId! > 0xffff_fffe)
+  ) {
+    throw new TypeError("Linux service requires a non-root user ID");
+  }
   const exact = {
+    userId: input.userId ?? 0,
     nodeExecutable: exactAbsolutePath(input.nodeExecutable, "Node executable"),
     cliExecutable: exactAbsolutePath(input.cliExecutable, "CLI executable"),
     configPath: exactAbsolutePath(input.configPath, "config path"),
@@ -187,7 +199,9 @@ export function createLibraryServiceDefinitionV1(
     role: "primary",
     platform: input.platform,
     format:
-      input.platform === "darwin" ? "launchd-plist-v1" : "systemd-user-unit-v1",
+      input.platform === "darwin"
+        ? "launchd-plist-v1"
+        : "systemd-system-unit-v1",
     fileName:
       input.platform === "darwin"
         ? `${LIBRARY_SERVICE_LAUNCHD_LABEL}.plist`

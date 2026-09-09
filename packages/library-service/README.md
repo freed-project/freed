@@ -8,6 +8,8 @@ the Library SQLite database or acquires its data-root lease.
 The compiled `freed-library` CLI currently provides five commands:
 
 ```text
+freed-library import-checkpoint --config /physical/path/service.json --request /physical/path/import.json --objects /physical/path/objects
+freed-library promote-writer --config /physical/path/service.json --request /physical/path/promotion.json
 freed-library doctor --config /physical/path/service.json
 freed-library drive-auth --config /physical/path/service.json
 freed-library service-definition --config /physical/path/service.json
@@ -24,14 +26,20 @@ network listener.
 deterministic, digest-bound service-manager definition. macOS receives a
 LaunchAgent plist with exact argument elements, mode `0077`, background
 restart policy, and no shell or environment fields. Linux receives a systemd
-user unit with exact quoted arguments, mode `0077`, a read-only home and system
+system unit running as the verified non-root user with exact quoted arguments, mode `0077`, a read-only home and system
 view except for the configured data and state roots, process-group shutdown,
 bounded restart policy, and no shell. The command does not write, install,
 load, enable, or start the definition. Windows fails closed until its native
 service-account handle and named-pipe ACL contract is implemented.
 
+Linux definitions are installed with the system manager, not `systemctl --user`.
+The generated `User=` binds the verified configuration owner and rejects root.
+System-manager namespace setup preserves the root ownership needed by executable
+and ACL verification. Unprivileged user namespaces map root-owned paths to an
+unknown owner and are incompatible with those checks.
+
 The Linux unit also creates a private mode `0700` runtime directory beneath
-`/run/user/<uid>`. Long state-root paths use its `actor.sock` endpoint, outside
+`/run`. Long state-root paths use its `actor.sock` endpoint, outside
 the service's private `/tmp` namespace. A manually launched Linux service with
 a long state-root path requires the same directory to exist with verified
 ownership and permissions. The service fails closed instead of falling back
@@ -272,3 +280,47 @@ and waits on fd8. The supervisor exposes only the private local actor socket,
 not a public listener. SQLite, WAL,
 SHM, rollback journals, and backups stay beneath the descriptor-bound data
 root and never enter service state or transport.
+
+## Checkpoint import and explicit writer promotion
+
+Stop the service before maintenance. `import-checkpoint` accepts one private
+request file and a private directory of immutable objects named by content
+digest. The request contains `libraryId`, `storageEpoch`, `generation`,
+`manifest`, `controlRevision`, `installedAt`, and `installationWitness`.
+The manifest is the exact immutable reference from the source control pointer.
+All files must be mode `0600`, single-link regular files; the object directory
+must be mode `0700`. The importer verifies bounded logical records and returns
+the native activation receipt. It grants no writer authority. Reuse the same
+request after interruption or a lost response.
+
+`promote-writer` requires configured Google Drive custody and one private JSON
+request with exactly these fields:
+
+- `sourceControl`: the complete accepted control pointer, including its exact
+  immutable manifest reference.
+- `expectedRevision`: the remote control revision observed with that pointer.
+- `controlFileId`: the existing Drive control object identifier.
+- `installationWitness`: the witness already configured for this installation.
+- `acceptedAtMs`: the fixed nonnegative request timestamp, reused on retry.
+
+The source checkpoint must already be imported. The command verifies complete
+source content before native preparation, retains the exact request under the
+Library data-root lease, and asks native SQLite to prepare the signed successor
+epoch. Immutable checkpoint publication precedes the expected-revision control
+update. A lost response reuses the retained certificate. Before recording
+success, the command verifies the remote checkpoint against the prepared local
+records and rereads the complete control pointer and revision. A competitor or
+changed retry input fails closed.
+
+The private `writer-promotion-<source-epoch>.json` file is recovery input.
+Retain it with this installation. Do not edit or delete it to bypass a refusal.
+A partially written publication receipt can be repaired by rerunning the exact
+promotion command; ordinary startup remains fenced until a valid receipt exists.
+After maintenance completes, start the service with `serve`. Startup clears
+prior-process writer admission before reading current cloud authority. A changed
+remote revision requires complete checkpoint verification and another control
+read before admission. Scheduled inbound work keeps the existing cadence.
+
+Both maintenance commands have a 30-minute deadline and settle the native
+process before returning. Failure preserves staged input and accepted Library
+state. Neither command copies SQLite, WAL, SHM, or journal files through Drive.

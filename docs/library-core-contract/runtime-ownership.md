@@ -110,7 +110,7 @@ socket ownership and identity, removes only an owned private stale socket, and
 never replaces a foreign path. A state root whose path exceeds the Unix socket
 limit uses a stable owner-specific endpoint derived from the canonical
 state-root identity. macOS uses `/tmp`. Linux uses the systemd-created mode
-`0700` directory `/run/user/<uid>/freed-library-<state-root-hash>`, so
+`0700` directory `/run/freed-library-<state-root-hash>`, so
 `PrivateTmp=true` does not hide the endpoint from external actors. Linux
 holds verified directory descriptors through listener shutdown and performs
 socket creation and cleanup through the runtime directory descriptor. Missing,
@@ -124,7 +124,7 @@ verifiable service-account ACL.
 
 The installed host derives its service-manager definition from the same
 already-bound configuration it will serve. The compiled CLI emits one
-digest-bound macOS LaunchAgent plist or Linux systemd user unit with exact
+digest-bound macOS LaunchAgent plist or Linux systemd system unit running as the verified non-root user with exact
 Node, CLI, and config arguments. Both definitions run without a shell, apply
 mode `0077`, and bind lifecycle settlement to the service process group.
 Linux grants writes only to the configured data and state roots. Definition

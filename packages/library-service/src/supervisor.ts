@@ -557,7 +557,10 @@ export class LibraryServiceSupervisor {
 
   /** Run one lease-bound operation without starting actor ingress or cloud work. */
   async runMaintenance<T>(
-    operation: (native: LibraryCoreNativeCommandClientV1) => Promise<T>,
+    operation: (
+      native: LibraryCoreNativeCommandClientV1,
+      bound: BoundLibraryServiceConfiguration,
+    ) => Promise<T>,
     signal?: AbortSignal,
   ): Promise<T> {
     const result = await this.#start(signal, operation);
@@ -569,8 +572,13 @@ export class LibraryServiceSupervisor {
 
   async #start<T>(
     signal?: AbortSignal,
-    maintenance?: (native: LibraryCoreNativeCommandClientV1) => Promise<T>,
-  ): Promise<LibraryServiceStartResult | { phase: "maintenance_complete"; value: T }> {
+    maintenance?: (
+      native: LibraryCoreNativeCommandClientV1,
+      bound: BoundLibraryServiceConfiguration,
+    ) => Promise<T>,
+  ): Promise<
+    LibraryServiceStartResult | { phase: "maintenance_complete"; value: T }
+  > {
     if (this.#state !== "idle") {
       throw new LibraryServiceFailure("already_started");
     }
@@ -738,7 +746,10 @@ export class LibraryServiceSupervisor {
       await inspectNormalizedCommandStorage(commandClient);
       if (maintenance !== undefined) {
         throwIfAborted(signal);
-        const value = await raceWithAbort(maintenance(commandClient), signal);
+        const value = await raceWithAbort(
+          maintenance(commandClient, bound),
+          signal,
+        );
         throwIfAborted(signal);
         if (!child.isRunning()) {
           throw new LibraryServiceFailure("sidecar_exited");
@@ -776,7 +787,10 @@ export class LibraryServiceSupervisor {
             fileSystem: this.#fileSystem,
             clock: this.#clock,
             native: commandClient,
-            credentialStore: createBoundDriveCredentialStore(bound, this.#aclProof),
+            credentialStore: createBoundDriveCredentialStore(
+              bound,
+              this.#aclProof,
+            ),
           });
         } catch (error) {
           throw toFailure(error, "cloud_runtime_failed");

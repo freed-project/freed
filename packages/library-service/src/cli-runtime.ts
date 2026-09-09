@@ -22,17 +22,55 @@ import { openCheckpointBootstrapInput } from "./checkpoint-bootstrap-input.js";
 import { createBoundDriveCredentialStore } from "./bound-drive-credential-store.js";
 import { createLinuxDriveConsentPresenter } from "./linux-drive-consent.js";
 
+import { promoteLibraryServiceWriter } from "./writer-promotion.js";
+import {
+  readWriterPromotionRequest,
+  retainWriterPromotionRequest,
+} from "./writer-promotion-input.js";
+import { createNodeGoogleDriveTokenPortV1 } from "./node-google-drive-token.js";
+import { createGoogleDriveLibraryCoreAdapterV1 } from "@freed/sync/cloud/library-core";
+import { createBoundGoogleDrivePublicationStatePortV1 } from "./google-drive-publication.js";
+
 interface ParsedArguments {
-  command: "serve" | "status" | "doctor" | "service-definition" | "drive-auth" | "import-checkpoint";
+  command:
+    | "serve"
+    | "status"
+    | "doctor"
+    | "service-definition"
+    | "drive-auth"
+    | "import-checkpoint"
+    | "promote-writer";
   configPath: string;
   requestPath?: string;
   objectsPath?: string;
 }
 
 function parseArguments(argv: readonly string[]): ParsedArguments {
-  if (argv[0] === "import-checkpoint" && argv.length === 7 &&
-    argv[1] === "--config" && argv[3] === "--request" && argv[5] === "--objects") {
-    return { command: "import-checkpoint", configPath: argv[2], requestPath: argv[4], objectsPath: argv[6] };
+  if (
+    argv[0] === "promote-writer" &&
+    argv.length === 5 &&
+    argv[1] === "--config" &&
+    argv[3] === "--request"
+  ) {
+    return {
+      command: "promote-writer",
+      configPath: argv[2],
+      requestPath: argv[4],
+    };
+  }
+  if (
+    argv[0] === "import-checkpoint" &&
+    argv.length === 7 &&
+    argv[1] === "--config" &&
+    argv[3] === "--request" &&
+    argv[5] === "--objects"
+  ) {
+    return {
+      command: "import-checkpoint",
+      configPath: argv[2],
+      requestPath: argv[4],
+      objectsPath: argv[6],
+    };
   }
   if (argv.length !== 3 || argv[1] !== "--config") {
     throw new LibraryServiceFailure("config_invalid");
@@ -168,6 +206,7 @@ async function writeServiceDefinition(configPath: string): Promise<number> {
     writeStandardReport(
       createLibraryServiceDefinitionV1({
         platform: process.platform,
+        userId: ports.identity.currentUserId() ?? undefined,
         nodeExecutable,
         cliExecutable,
         configPath: bound.configFile.path,
@@ -232,6 +271,78 @@ export async function runLibraryServiceCli(
   try {
     const parsed = parseArguments(argv);
     const ports = createNodeLibraryServicePorts();
+    if (parsed.command === "promote-writer") {
+      const abort = new AbortController();
+      const cancel = () => abort.abort();
+      const deadline = setTimeout(cancel, 30 * 60 * 1000);
+      process.on("SIGINT", cancel);
+      process.on("SIGTERM", cancel);
+      try {
+        const request = await readWriterPromotionRequest(
+          parsed.requestPath!,
+          ports,
+        );
+        const supervisor = new LibraryServiceSupervisor({
+          ...ports,
+          configPath: parsed.configPath,
+        });
+        const result = await supervisor.runMaintenance(
+          async (native, bound) => {
+            if (
+              bound.config.cloud === null ||
+              bound.cloudState === null ||
+              bound.config.cloud.installationWitness !==
+                request.installationWitness
+            )
+              throw new LibraryServiceFailure("config_invalid");
+            const credentialStore = createBoundDriveCredentialStore(
+              bound,
+              ports.aclProof,
+            );
+            const token = createNodeGoogleDriveTokenPortV1(
+              bound.config.cloud.credentialRecordId,
+              credentialStore ?? {},
+            );
+            const accessToken = await token.accessToken(abort.signal);
+            const adapter = createGoogleDriveLibraryCoreAdapterV1({
+              accessToken,
+              libraryId: request.sourceControl.libraryId,
+              controlFileId: request.controlFileId,
+              signal: abort.signal,
+            });
+            return promoteLibraryServiceWriter(request, {
+              native,
+              adapter,
+              signal: abort.signal,
+              state: createBoundGoogleDrivePublicationStatePortV1(
+                bound.cloudState,
+                ports.fileSystem,
+              ),
+              retainRequest: (text) =>
+                retainWriterPromotionRequest(
+                  bound.bindings.dataRoot,
+                  text,
+                  ports,
+                ),
+            });
+          },
+          abort.signal,
+        );
+        writeStandardReport({
+          schemaVersion: 1,
+          service: "freed-library",
+          ok: true,
+          role: null,
+          phase: "writer-promoted",
+          receipt: result,
+        });
+        return 0;
+      } finally {
+        clearTimeout(deadline);
+        process.removeListener("SIGINT", cancel);
+        process.removeListener("SIGTERM", cancel);
+      }
+    }
     if (parsed.command === "import-checkpoint") {
       const abort = new AbortController();
       const cancel = () => abort.abort();
@@ -241,18 +352,33 @@ export async function runLibraryServiceCli(
       process.on("SIGTERM", cancel);
       try {
         const source = await openCheckpointBootstrapInput(
-          parsed.requestPath!, parsed.objectsPath!, ports, abort.signal,
+          parsed.requestPath!,
+          parsed.objectsPath!,
+          ports,
+          abort.signal,
         );
         try {
-          const supervisor = new LibraryServiceSupervisor({ ...ports, configPath: parsed.configPath });
+          const supervisor = new LibraryServiceSupervisor({
+            ...ports,
+            configPath: parsed.configPath,
+          });
           const result = await supervisor.runMaintenance(
-            (native) => importLibraryServiceCheckpoint(source.input, {
-              native, adapter: source.adapter, signal: abort.signal, subtle: crypto.subtle,
-            }), abort.signal,
+            (native) =>
+              importLibraryServiceCheckpoint(source.input, {
+                native,
+                adapter: source.adapter,
+                signal: abort.signal,
+                subtle: crypto.subtle,
+              }),
+            abort.signal,
           );
           writeStandardReport({
-            schemaVersion: 1, service: "freed-library", ok: true,
-            role: null, phase: "checkpoint-imported", activationReceipt: result.activationReceipt,
+            schemaVersion: 1,
+            service: "freed-library",
+            ok: true,
+            role: null,
+            phase: "checkpoint-imported",
+            activationReceipt: result.activationReceipt,
           });
           return 0;
         } finally {

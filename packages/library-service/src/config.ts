@@ -224,11 +224,12 @@ async function openVerifiedPath(
   context: ValidationContext,
   preOpen: LibraryServiceFileMetadata,
   failureCode: LibraryServiceFailureCode,
+  access: "read" | "read-write" = "read",
 ): Promise<LibraryServiceBoundPath> {
   throwIfAborted(context.signal);
   let bound: LibraryServiceBoundPath;
   try {
-    bound = await context.fileSystem.openBoundPath(filePath);
+    bound = await context.fileSystem.openBoundPath(filePath, access);
   } catch {
     throw new LibraryServiceFailure(failureCode);
   }
@@ -250,6 +251,7 @@ async function bindPrivateFile(
   context: ValidationContext,
   missingCode: LibraryServiceFailureCode,
   privateCode: LibraryServiceFailureCode,
+  access: "read" | "read-write" = "read",
 ): Promise<LibraryServiceBoundPath> {
   const metadata = await inspect(filePath, context, missingCode);
   if (
@@ -262,7 +264,7 @@ async function bindPrivateFile(
   }
   await requireCanonicalPath(filePath, context, privateCode);
   await requireSafeHierarchy(filePath, context, privateCode);
-  return openVerifiedPath(filePath, context, metadata, privateCode);
+  return openVerifiedPath(filePath, context, metadata, privateCode, access);
 }
 
 async function bindPrivateDirectory(
@@ -737,6 +739,7 @@ export async function bindLibraryServiceConfig(
             context,
             "cloud_state_missing",
             "cloud_state_not_private",
+            "read-write",
           );
     if (cloudState !== null) {
       opened.push(cloudState);

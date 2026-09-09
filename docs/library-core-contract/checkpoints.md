@@ -126,3 +126,13 @@ The verified checkpoint digest becomes the local materialization generation
 ID. Every bounded query cursor binds to that generation ID, never to the human
 Library ID. The generation metadata is local and is not included in checkpoint
 records, which keeps the checkpoint digest acyclic.
+
+Headless promotion is a separate maintenance operation after import. Its private
+retry record binds the complete source control pointer, expected remote revision,
+control locator, installation witness, and fixed request time before native
+preparation. Restart reuses the same signed successor certificate. The host
+compares complete prepared and remote canonical checkpoint streams, including
+authority records, then rereads exact control after verification. Matching writer
+and epoch labels alone never resolve an ambiguous transfer. Publication receipts
+use an explicitly writable, descriptor-bound private file; other service inputs
+remain read-only. Ordinary startup cannot substitute for incomplete promotion.

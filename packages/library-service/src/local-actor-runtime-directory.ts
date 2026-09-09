@@ -23,14 +23,13 @@ export async function bindLocalActorRuntimeDirectory(input: {
     input.userId > 0xffff_ffff
   )
     throw new Error("local_actor_runtime_directory_invalid");
-  const userRoot = `/run/user/${input.userId}`;
-  const runtimePath = `${userRoot}/${localActorRuntimeDirectoryName(input.stateRootPath)}`;
+  const runtimePath = `/run/${localActorRuntimeDirectoryName(input.stateRootPath)}`;
   const bindings: LibraryServiceBoundPath[] = [];
   const close = async () => {
     await Promise.all(bindings.splice(0).map((bound) => bound.close()));
   };
   const assertStable = async () => {
-    if (bindings.length !== 4)
+    if (bindings.length !== 2)
       throw new Error("local_actor_runtime_directory_closed");
     for (const bound of bindings) {
       await bound.assertStable();
@@ -46,11 +45,10 @@ export async function bindLocalActorRuntimeDirectory(input: {
     );
   };
   try {
-    for (const directory of ["/run", "/run/user", userRoot, runtimePath]) {
+    for (const directory of ["/run", runtimePath]) {
       const bound = await input.fileSystem.openBoundPath(directory);
       bindings.push(bound);
-      const privateDirectory =
-        directory === userRoot || directory === runtimePath;
+      const privateDirectory = directory === runtimePath;
       const metadata = bound.metadata;
       if (
         metadata.kind !== "directory" ||

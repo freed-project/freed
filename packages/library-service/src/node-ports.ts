@@ -274,9 +274,12 @@ class NodeLibraryServiceFileSystem implements LibraryServiceFileSystemPort {
     );
   }
 
-  async openBoundPath(filePath: string): Promise<LibraryServiceBoundPath> {
+  async openBoundPath(
+    filePath: string,
+    access: "read" | "read-write" = "read",
+  ): Promise<LibraryServiceBoundPath> {
     const flags =
-      constants.O_RDONLY |
+      (access === "read-write" ? constants.O_RDWR : constants.O_RDONLY) |
       (constants.O_NOFOLLOW ?? 0) |
       (constants.O_NONBLOCK ?? 0);
     const handle = await open(filePath, flags);

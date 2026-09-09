@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   assertLibraryServiceBindingsStable,
@@ -58,6 +58,7 @@ describe("loadLibraryServiceConfig", () => {
 
   it("binds and closes OAuth custody and detects same-size key changes", async () => {
     const { fileSystem, raw, keyFile } = linuxCloudFixture();
+    const openBound = vi.spyOn(fileSystem, "openBoundPath");
     const bound = await bindLibraryServiceConfig(
       "/safe/config.json",
       fileSystem,
@@ -65,6 +66,11 @@ describe("loadLibraryServiceConfig", () => {
       new FakeAclProof(),
     );
     expect(bound.config.cloud).toEqual(raw.cloud);
+    expect(openBound).toHaveBeenCalledWith(
+      raw.cloud.publicationStateFile,
+      "read-write",
+    );
+    expect(openBound).toHaveBeenCalledWith(keyFile, "read");
     expect(bound.driveCredentialStore?.directory.path).toBe(
       raw.cloud.credentialStore.directory,
     );

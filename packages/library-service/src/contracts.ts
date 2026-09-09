@@ -183,7 +183,10 @@ export interface LibraryServiceBoundPath {
 export interface LibraryServiceFileSystemPort {
   canonicalPath(filePath: string): Promise<string>;
   inspect(filePath: string): Promise<LibraryServiceFileMetadata>;
-  openBoundPath(filePath: string): Promise<LibraryServiceBoundPath>;
+  openBoundPath(
+    filePath: string,
+    access?: "read" | "read-write",
+  ): Promise<LibraryServiceBoundPath>;
   openPrivateStatusFile(
     stateRoot: LibraryServiceBoundPath,
     stateRootPath: string,
