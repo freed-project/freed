@@ -2168,7 +2168,7 @@ html.freed-mobile-sidebar-open body {
 }
 
 /* These palettes need quieter resting icons; keep the shared hover color. */
-html:is([data-theme="midas"], [data-theme="scriptorium"], [data-theme="starship"], [data-theme="dark-star"]) .theme-toolbar-reader-layout-button {
+html:is([data-theme="midas"], [data-theme="starship"], [data-theme="dark-star"]) .theme-toolbar-reader-layout-button {
   --theme-reader-layout-idle-color: var(--theme-border-subtle);
 }
 

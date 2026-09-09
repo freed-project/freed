@@ -1,4 +1,4 @@
-import type { Database, SqlValue } from "@sqlite.org/sqlite-wasm";
+import type { Database, PreparedStatement, SqlValue } from "@sqlite.org/sqlite-wasm";
 import { CONTENT_SIGNAL_KEYS } from "@freed/shared";
 import { parseLibraryCoreItemAnnotationsRequestV1, parseLibraryCoreItemAnnotationsResponseV1, type LibraryCoreItemAnnotationsRequestV1, type LibraryCoreItemAnnotationsResponseV1 } from "@freed/shared/library-core";
 import { parseLibraryCoreRssItemSummaryRequestV1, parseLibraryCoreRssItemSummaryResponseV1, type LibraryCoreRssItemSummaryRequestV1, type LibraryCoreRssItemSummaryResponseV1 } from "@freed/shared/library-core";
@@ -900,7 +900,15 @@ export class PwaLibraryCoreSqliteEngine {
       returnValue: "resultRows",
     });
     if (integrity.length !== 1 || integrity[0] !== "ok") {
-      throw new Error("PWA Library SQLite quick check failed");
+      // Expose only bounded schema identifiers, never arbitrary database text.
+      const result = integrity[0];
+      const detail = typeof result === "string" && result.length <= 200 &&
+        /^(CHECK constraint failed in|NULL value in) library_[a-z0-9_]+(?:\.[a-z0-9_]+)?$/.test(result)
+        ? result
+        : typeof result === "string" && result.startsWith("*** in database main ***")
+          ? "database structure check failed"
+          : "unexpected integrity result";
+      throw new Error(`PWA Library SQLite quick check failed: ${detail}`);
     }
     this.#connectionGeneration += 1;
     return this.status();
@@ -1458,6 +1466,7 @@ export class PwaLibraryCoreSqliteEngine {
 
   activateNormalizedCheckpointStage(
     input: LibraryCoreActivateNormalizedCheckpointStageV2,
+    onProgress?: (completedRecords: number, totalRecords: number) => void,
   ): LibraryCoreNormalizedCheckpointActivationReceiptV2 {
     const activation =
       parseLibraryCoreActivateNormalizedCheckpointStageV2(input);
@@ -1492,6 +1501,7 @@ export class PwaLibraryCoreSqliteEngine {
         stage[4],
         "checkpoint canonical bytes",
       );
+      onProgress?.(0, expectedRecordCount);
       if (replaceExisting) {
         const unresolvedLocalOperations = safeInteger(
           this.#database.exec({
@@ -1618,6 +1628,8 @@ export class PwaLibraryCoreSqliteEngine {
          WHERE stage_id = ?1 ORDER BY registry_key, primary_key_canonical;`,
       );
       let recordCount = 0;
+      let importStatement: PreparedStatement | null = null;
+      let importRegistryKey: string | null = null;
       try {
         statement.bind([stageId]);
         while (statement.step()) {
@@ -1650,23 +1662,31 @@ export class PwaLibraryCoreSqliteEngine {
           if (program.hasChunkBytes) {
             bind.push(decodeLibraryCoreContentChunkBytesV1(record));
           }
-          this.#database.exec({ sql: program.sql, bind });
+          // Staging is ordered by registry. Retain one compiled program and one
+          // record, rather than compiling identical SQL for every retained receipt.
+          if (importRegistryKey !== record.registryKey) {
+            importStatement?.finalize();
+            importStatement = this.#database.prepare(program.sql);
+            importRegistryKey = record.registryKey;
+          }
+          importStatement!.bind(bind).step();
           const changes = safeInteger(
-            this.#database.exec({
-              sql: "SELECT changes();",
-              rowMode: 0,
-              returnValue: "resultRows",
-            })[0],
+            this.#database.changes(),
             "checkpoint import changes",
           );
+          importStatement!.reset(true);
           if (changes !== 1) {
             throw new Error(
               "checkpoint payload identity does not match its primary key",
             );
           }
           recordCount += 1;
+          if (recordCount % 1_024 === 0 || recordCount === expectedRecordCount) {
+            onProgress?.(recordCount, expectedRecordCount);
+          }
         }
       } finally {
+        importStatement?.finalize();
         statement.finalize();
       }
       const checkpointDigest = digest.digestLowerHex();
