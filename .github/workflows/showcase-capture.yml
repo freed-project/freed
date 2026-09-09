@@ -65,7 +65,10 @@ jobs:
           FREED_SHOWCASE_SQLITE_MEMORY: '1'
         # Exercise release formatting with a synthetic tag. This read-only job
         # preserves the real checkout SHA and never creates or publishes a tag.
-        run: GITHUB_REF=refs/tags/v0.1.100 GITHUB_REF_NAME=v0.1.100 node scripts/capture-release-showcase.mjs
+        run: |
+          export GITHUB_REF=refs/tags/v0.1.100 GITHUB_REF_NAME=v0.1.100
+          node scripts/capture-release-showcase.mjs
+          node scripts/lib/release-showcase-assets.mjs finalize --directory "$FREED_SHOWCASE_OUTPUT"
       - name: Retain capture evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
