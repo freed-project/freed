@@ -7,7 +7,7 @@ import {
   type RssFeed,
   type SidebarMode,
 } from "@freed/shared";
-import { useAppStore, usePlatform, type SidebarSourceStatusSummary } from "../../context/PlatformContext.js";
+import { useAppStore, usePlatform, usePlatformCapabilities, type SidebarSourceStatusSummary } from "../../context/PlatformContext.js";
 import { ProviderStatusIndicator } from "../ProviderStatusIndicator.js";
 import { SettingsDialog } from "../SettingsDialog.js";
 import { toast } from "../Toast.js";
@@ -666,6 +666,7 @@ export function Sidebar({
     getSourceStatus,
     interactionMode,
   } = usePlatform();
+  const capabilities = usePlatformCapabilities();
   const readOnly = interactionMode === "read-only";
   const isMobileViewport = useIsMobile();
   const activeFilter = useAppStore((s) => s.activeFilter);
@@ -1566,7 +1567,7 @@ export function Sidebar({
                   icon={renderSidebarRowIcon(<UsersIcon />, pendingFriendsBadge)}
                   label="Friends"
                   labelClass={sidebarLabelClass}
-                  menu={renderRowMenu("friends", "Friends", true)}
+                  menu={renderRowMenu("friends", "Friends", capabilities.diagnostics)}
                   menuOpen={openMenuSourceKey === "friends"}
                   onClick={() => {
                     setActiveView("friends");
@@ -2062,7 +2063,7 @@ export function Sidebar({
         />
       )}
 
-      {openMenuSourceKey === "friends" && sourceMenuAnchorRect ? (
+      {capabilities.diagnostics && openMenuSourceKey === "friends" && sourceMenuAnchorRect ? (
         <FriendsContextMenu
           anchorRect={sourceMenuAnchorRect}
           anchorElement={sourceMenuAnchorElement}

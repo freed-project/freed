@@ -86,7 +86,7 @@ export function useLibrarySocialChannelPage({
   readonly query: string;
   readonly sourceVersion: number;
 }): LibrarySocialChannelPageState {
-  const { queryLibraryCore } = usePlatform();
+  const { queryLibraryCore, readLibraryPersonDetail } = usePlatform();
   const terms = useMemo(() => normalizedTerms(query), [query]);
   const queryKey = JSON.stringify({ enabled, sourceVersion, terms });
   const [channels, setChannels] = useState<readonly SocialChannelDestination[]>([]);
@@ -131,7 +131,12 @@ export function useLibrarySocialChannelPage({
         for (const row of page.rows) {
           const account = toCommandAccount(row);
           if (!account || !matches(account, row.personName, terms)) continue;
+          const person = account.personId && readLibraryPersonDetail
+            ? await readLibraryPersonDetail(account.personId)
+            : undefined;
+          if (cancelled) return Object.freeze([]);
           matchesPage.push(Object.freeze({
+            person: person ?? undefined,
             account,
             personName: row.personName ?? undefined,
           }));
@@ -157,7 +162,7 @@ export function useLibrarySocialChannelPage({
     return () => {
       cancelled = true;
     };
-  }, [queryKey, queryLibraryCore, terms]);
+  }, [queryKey, queryLibraryCore, readLibraryPersonDetail, terms]);
 
   return { channels, error, loading };
 }

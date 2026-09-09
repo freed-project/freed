@@ -181,6 +181,20 @@ describe("ReaderView cache-first hydration", () => {
     await act(async () => root.unmount());
   });
 
+  it("shows a demo YouTube thumbnail without embedding a player and keeps text when the image fails", async () => {
+    const { container, root } = await renderReaderView({ ...basePlatformConfig, interactionMode: "read-only" },
+      makeArticleItem({ platform: "youtube", sourceUrl: "https://www.youtube.com/watch?v=dQw4w9WgXc",
+        content: { text: "Sample video description", mediaUrls: ["https://example.com/thumbnail.jpg"], mediaTypes: ["image"] } }));
+    expect(container.querySelector("iframe")).toBeNull();
+    expect(container.textContent).not.toContain("Play in YouTube");
+    const image = container.querySelector("img");
+    expect(image).not.toBeNull();
+    await act(async () => image!.dispatchEvent(new Event("error")));
+    expect(container.textContent).toContain("You can still read this post.");
+    expect(container.textContent).toContain("Sample video description");
+    await act(async () => root.unmount());
+  });
+
   it("does not run live hydration when full cached content is already available", async () => {
     Object.defineProperty(window.navigator, "onLine", { configurable: true, value: true });
     const hydrateReaderItem = vi.fn(async () => ({

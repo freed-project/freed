@@ -1377,7 +1377,9 @@ html[data-theme="scriptorium"] .phase-card-complete {
   box-shadow: 0 8px 18px rgb(84 58 35 / 0.045);
 }
 
-.theme-tooltip-panel {
+/* Keep map cards themed when MapLibre's lazy stylesheet loads after this file. */
+.theme-tooltip-panel,
+.freed-map-popup .theme-tooltip-panel {
   position: fixed;
   z-index: 400;
   pointer-events: none;
@@ -1770,7 +1772,8 @@ html[data-theme="scriptorium"] .theme-tooltip-arrow {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .theme-tooltip-panel {
+  .theme-tooltip-panel,
+  .freed-map-popup .theme-tooltip-panel {
     animation: none;
   }
 }
@@ -2120,6 +2123,20 @@ html.freed-mobile-sidebar-open body {
   }
 }
 
+/* Mobile toolbars use unboxed icons in every state, including selected and hover. */
+@media (max-width: 767px) {
+  :is(.theme-topbar, .theme-attached-topbar) .theme-toolbar-icon-button {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+  }
+
+  :is(.theme-topbar, .theme-attached-topbar) .theme-toolbar-icon-button:focus-visible {
+    outline: 2px solid var(--theme-accent-secondary);
+    outline-offset: 2px;
+  }
+}
+
 .theme-toolbar-icon-button {
   display: inline-flex;
   box-sizing: border-box;
@@ -2154,7 +2171,7 @@ html.freed-mobile-sidebar-open body {
 }
 
 /* These palettes need quieter resting icons; keep the shared hover color. */
-html:is([data-theme="midas"], [data-theme="scriptorium"], [data-theme="starship"], [data-theme="dark-star"]) .theme-toolbar-reader-layout-button {
+html:is([data-theme="midas"], [data-theme="starship"], [data-theme="dark-star"]) .theme-toolbar-reader-layout-button {
   --theme-reader-layout-idle-color: var(--theme-border-subtle);
 }
 

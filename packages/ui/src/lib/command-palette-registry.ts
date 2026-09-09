@@ -41,6 +41,7 @@ export interface SocialChannelDestination {
 }
 
 interface BuildCommandPaletteActionsOptions {
+  allowPersonCreation?: boolean;
   query: string;
   activeView: "feed" | "friends" | "map" | "storyWall";
   activeFilter: FilterOptions;
@@ -142,6 +143,7 @@ export function buildCommandPaletteActions({
   navigateToMap,
   navigateToSocialProfileFriends,
   navigateToSocialProfileMap,
+  allowPersonCreation = true,
   promoteSocialProfile,
   applyFeedSearch,
   openAddFeedDialog,
@@ -341,7 +343,7 @@ export function buildCommandPaletteActions({
         });
       }
 
-      if (navigateToSocialProfileMap) {
+      if (navigateToSocialProfileMap && (personId || allowPersonCreation)) {
         actions.push({
           id: `go-profile-map-${account.id}`,
           title: `${profileLabel} on Map`,
@@ -360,7 +362,7 @@ export function buildCommandPaletteActions({
         });
       }
 
-      if (promoteSocialProfile) {
+      if (promoteSocialProfile && (personId || allowPersonCreation)) {
         const alreadyFriend = person?.relationshipStatus === "friend";
         const alreadyCloseFriend = alreadyFriend && person.careLevel >= 5;
         if (!alreadyFriend) {

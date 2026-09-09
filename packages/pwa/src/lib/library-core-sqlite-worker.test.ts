@@ -30,6 +30,30 @@ describe("demo worker storage isolation", () => {
   });
   afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
+  it("serializes a read behind asynchronous database opening", async () => {
+    let finishReconcile!: () => void;
+    storage.reconcile.mockReturnValueOnce(new Promise<void>(resolve => { finishReconcile = resolve; }));
+    vi.stubGlobal("navigator", {});
+    vi.stubGlobal("location", new URL("https://demo.freed.wtf/"));
+    vi.stubGlobal("name", "freed-library-core-sqlite-demo");
+    vi.stubGlobal("onmessage", null);
+    const replies: { requestId: string; ok: boolean }[] = [];
+    vi.stubGlobal("postMessage", (reply: { requestId: string; ok: boolean }) => replies.push(reply));
+    await import("./library-core-sqlite-worker");
+    const send = (kind: "open" | "status") =>
+      (globalThis.onmessage as unknown as (event: MessageEvent) => void)({
+        data: createLibraryCoreSqliteWorkerRequest(kind, kind),
+        isTrusted: true, source: null, origin: "https://demo.freed.wtf",
+      } as MessageEvent);
+    send("open"); send("status");
+    await vi.waitFor(() => expect(storage.reconcile).toHaveBeenCalledOnce());
+    expect(replies).toEqual([]);
+    finishReconcile();
+    await vi.waitFor(() => expect(replies).toHaveLength(2));
+    expect(replies).toMatchObject([{requestId: "open", ok: true}, {requestId: "status", ok: true}]);
+    expect(storage.memoryOpen).toHaveBeenCalledOnce();
+  });
+
   it.each([
     ["demo.freed.wtf", "freed-library-core-sqlite-demo", true],
     ["preview.vercel.app", "freed-library-core-sqlite-demo", true],

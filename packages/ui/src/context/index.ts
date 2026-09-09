@@ -1,6 +1,8 @@
 export {
   PlatformProvider,
   usePlatform,
+  getPlatformCapabilities,
+  usePlatformCapabilities,
   useAppStore,
   MACOS_TRAFFIC_LIGHT_INSET,
   type ContactSyncActions,

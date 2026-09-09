@@ -1413,6 +1413,17 @@ describe("SQLite Library Google Drive production wiring", () => {
     ).rejects.toThrow(
       "read local SQLite revision failed: SQLite Library could not read its authority key",
     );
+
+    for (const [operation, stage] of [
+      [mocks.setWriterAdmission, "persist verified writer admission"],
+      [mocks.discoverEnrollmentRequests, "discover follower enrollment requests"],
+      [mocks.beginNormalizedExport, "prepare checkpoint snapshot"],
+    ] as const) {
+      operation.mockRejectedValueOnce("diagnostic boundary failure");
+      await expect(
+        publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token" }),
+      ).rejects.toThrow(`${stage} failed: diagnostic boundary failure`);
+    }
   });
 
   it("coalesces overlapping publication requests before opening the singleton native export", async () => {

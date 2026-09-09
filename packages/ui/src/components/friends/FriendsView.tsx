@@ -1,3 +1,4 @@
+import { usePlatformCapabilities } from "../../context/PlatformContext.js";
 import {
   useState,
   useCallback,
@@ -562,13 +563,13 @@ export function FriendsView({
     replaceLibraryFriend,
     upsertLibraryPerson,
     onReadOnlyPersonCareChange,
-    interactionMode,
     approvedDemoAvatarUrls,
     approvedDemoAvatarDeliveryUrls,
     approvedDemoAvatarFocalPoints,
     resolveAvatarUrl,
   } = usePlatform();
-  const readOnly = interactionMode === "read-only";
+  const capabilities = usePlatformCapabilities();
+  const readOnly = !capabilities.libraryEdits;
   const graphSqliteQuery = queryLibraryCore ?? unavailableLibraryCoreQuery;
   const contactSync = useContactSyncContext();
   const friendCount = libraryFacets.friendPersonCount;
@@ -1027,6 +1028,7 @@ export function FriendsView({
         await handleSetPersonRelationshipLevel(linkedPerson, level);
         return;
       }
+      if (!capabilities.createPerson) return;
       setSelectedAccount(account.id);
       setEditorState({
         kind: "new",
@@ -1034,6 +1036,7 @@ export function FriendsView({
       });
     },
     [
+      capabilities.createPerson,
       handleSetPersonRelationshipLevel,
       readLibraryAccountDetail,
       readLibraryPersonDetail,
@@ -2012,9 +2015,9 @@ export function FriendsView({
               return null;
             }}
             onClearSelection={handleClearSelection}
-            onLinkAccountToPerson={handleLinkAccountToPerson}
-            onPinPersonPosition={handlePinPersonPosition}
-            onPinAccountPosition={handlePinAccountPosition}
+            onLinkAccountToPerson={capabilities.linkAccounts ? handleLinkAccountToPerson : undefined}
+            onPinPersonPosition={capabilities.pinGraph ? handlePinPersonPosition : undefined}
+            onPinAccountPosition={capabilities.pinGraph ? handlePinAccountPosition : undefined}
             onDropNodeToRelationshipTier={handleDropGraphNodeToRelationshipTier}
             themeId={themeId}
             presentationVisible={showGraphSurface}

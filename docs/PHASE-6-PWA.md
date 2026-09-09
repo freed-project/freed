@@ -2,6 +2,26 @@
 
 > **Status:** 🚧 In Progress (the official SQLite WebAssembly engine, exact schema identity, single-worker OPFS runtime, normalized checkpoint import, product mutation entrypoints, bounded product queries, follower transport, recovery UI, selective content, and IndexedDB Library deletion are implemented; physical iPhone acceptance remains open)
 
+Sync now joins an active automatic refresh instead of starting an overlapping
+Library import. Stopping sync invalidates that shared pass. Deterministic
+lifecycle tests cover settlement, failure, and stop/restart isolation; live
+production acceptance remains open.
+
+PWA startup reports bounded schema identifiers for failed SQLite integrity
+checks. Storage timeouts identify the closed worker command kind without its
+payload. Arbitrary database text stays out of diagnostics. A failed check still
+refuses initialization and preserves the database for investigation; it does not
+trigger deletion or automatic repair.
+
+Checkpoint activation reuses one compiled import program at a time and reports
+bounded, monotonic record progress. Real progress renews the worker's 30-second
+stall deadline, including queued readers, with a ten-minute total request cap.
+The worker serializes commands through asynchronous verification. Its exclusive
+SAH pool corrects the reserved-lock response before the first database read so
+SQLite can roll back an interrupted transaction from its retained journal.
+Integrity checks remain mandatory. WebKit fault injection covers worker loss
+with uncommitted pages already written to persistent storage.
+
 Local sample results include the optimistic care fields required for settlement.
 A specifically rejected, uncommitted sample result from v26.9.803 can be retired
 and rebuilt from its retained intent after restart. Connected Library results
@@ -946,3 +966,11 @@ Read-on-scroll refreshes replace the complete resident window atomically, avoidi
 Local feature previews replace marked sample records once per page load through the same shared curated population used by the public demo, including its authored timelines, relationships and fresh randomized presentation seed. Browser previews retain remote image URLs; mocked Desktop uses inline media and bypasses its unavailable native avatar cache. Ordinary test fixtures retain explicit population control.
 
 The Populate sample data action in every build uses that same curated generator and fresh randomized posting times. Manual population remains additive in Libraries containing real records; only explicit sample cleanup or local-preview replacement removes marked sample records. Settings counts describe the shared population, including people who are connections rather than friends.
+
+## Demo capability audit, September 9, 2026
+
+The public demo exposes presentation controls and session-only relationship and graph-pin changes. Shared capability checks hide durable Library edits, account linking, offline caching, archive maintenance, publishing, imports, and diagnostics. Unsupported actions are fenced at their handlers as well as their visible entry points. Reload restores the curated session. Startup recovery offers a plain reload action without SQLite internals or local-data replacement.
+
+Empty demo scopes offer a return to the sample feed; connection and sample-data population or deletion controls remain hidden.
+
+Vercel demo links retain their accepted demo parameter through navigation and reload, preserving memory-only session behavior after the router canonicalizes a route. Other hosts cannot enable demo mode through this parameter.

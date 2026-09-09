@@ -74,6 +74,11 @@ let cloudGeneration = 0;
 let cloudAbort: AbortController | null = null;
 let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 let refreshPromise: Promise<string | null> | null = null;
+let syncFlight: {
+  generation: number;
+  signal: AbortSignal;
+  promise: Promise<void>;
+} | null = null;
 
 function notifyStatus(): void {
   for (const listener of statusListeners) listener(cloudConnected);
@@ -196,9 +201,9 @@ function isGoogleAuthenticationFailure(error: unknown): boolean {
 async function syncGoogleDriveWithFreshCredentials(
   accessToken: string,
   signal: AbortSignal,
-): Promise<void> {
+): Promise<Awaited<ReturnType<typeof syncPwaLibraryCoreFromGoogleDrive>>> {
   try {
-    await syncPwaLibraryCoreFromGoogleDrive({ accessToken, signal,
+    return await syncPwaLibraryCoreFromGoogleDrive({ accessToken, signal,
       libraryId: localStorage.getItem(CLOUD_LIBRARY_KEY) ?? undefined });
   } catch (error) {
     if (!isGoogleAuthenticationFailure(error)) throw error;
@@ -216,7 +221,7 @@ async function syncGoogleDriveWithFreshCredentials(
         "Google Drive authorization expired. Reconnect Google Drive to continue sync.",
       );
     }
-    await syncPwaLibraryCoreFromGoogleDrive({
+    return await syncPwaLibraryCoreFromGoogleDrive({
       accessToken: refreshedAccessToken,
       libraryId: localStorage.getItem(CLOUD_LIBRARY_KEY) ?? undefined,
       signal,
@@ -224,7 +229,25 @@ async function syncGoogleDriveWithFreshCredentials(
   }
 }
 
-async function syncGoogleDriveOnce(
+function syncGoogleDriveOnce(
+  generation: number,
+  signal: AbortSignal,
+): Promise<void> {
+  if (syncFlight?.generation === generation && syncFlight.signal === signal) {
+    return syncFlight.promise;
+  }
+  const promise = performGoogleDriveSync(generation, signal);
+  const flight = { generation, signal, promise };
+  syncFlight = flight;
+  const release = () => {
+    if (syncFlight === flight) syncFlight = null;
+  };
+  // Both outcomes release the slot without creating an unhandled rejection.
+  void promise.then(release, release);
+  return promise;
+}
+
+async function performGoogleDriveSync(
   generation: number,
   signal: AbortSignal,
 ): Promise<void> {
@@ -237,8 +260,9 @@ async function syncGoogleDriveOnce(
     statusMessage: "Refreshing the SQLite Library checkpoint.",
     error: undefined,
   });
+  let syncResult: Awaited<ReturnType<typeof syncGoogleDriveWithFreshCredentials>>;
   try {
-    await syncGoogleDriveWithFreshCredentials(accessToken, signal);
+    syncResult = await syncGoogleDriveWithFreshCredentials(accessToken, signal);
   } catch (error) {
     if (generation !== cloudGeneration || signal.aborted) throw error;
     if (error instanceof GoogleDriveLibrarySelectionRequiredError) {
@@ -267,6 +291,7 @@ async function syncGoogleDriveOnce(
   }
   if (generation !== cloudGeneration || signal.aborted) return;
   const now = Date.now();
+  const enrollmentPending = syncResult.followerEnrollmentState !== "enrolled";
   setCloudLibraryChoices(emptyLibraryChoices);
   updateCloudProvider("gdrive", {
     status: "connected",
@@ -275,14 +300,20 @@ async function syncGoogleDriveOnce(
     lastSyncAt: now,
     lastDownloadAt: now,
     lastMergeAt: now,
-    statusMessage: "SQLite Library synchronized.",
-    pendingReason: "Waiting for the next checkpoint, intent, or result change.",
+    statusMessage: enrollmentPending
+      ? "Library downloaded. Device enrollment pending."
+      : "SQLite Library synchronized.",
+    pendingReason: enrollmentPending
+      ? "Open the Primary Freed Desktop and resolve any Drive sync error so this device can sync edits."
+      : "Waiting for the next checkpoint, intent, or result change.",
     error: undefined,
   });
   recordCloudProviderEvent("gdrive", {
-    kind: "success",
+    kind: enrollmentPending ? "waiting" : "success",
     stage: "idle",
-    message: "Synchronized the SQLite Library and follower state.",
+    message: enrollmentPending
+      ? "Library downloaded; waiting for device enrollment before syncing edits."
+      : "Synchronized the SQLite Library and follower state.",
   });
 }
 
@@ -385,6 +416,7 @@ export async function startCloudSync(
 
 export function stopCloudSync(): void {
   cloudGeneration += 1;
+  syncFlight = null;
   cloudAbort?.abort();
   cloudAbort = null;
   if (refreshTimer) clearTimeout(refreshTimer);

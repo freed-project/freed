@@ -1,3 +1,4 @@
+import { usePlatformCapabilities } from "../../context/PlatformContext.js";
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { lockBodyScroll } from "../../lib/body-scroll-lock.js";
 import { formatDistanceToNow } from "date-fns";
@@ -401,14 +402,15 @@ export function ReaderView({
       ? { status: "idle" }
       : offlinePlaylistState;
 
+  const capabilities = usePlatformCapabilities();
   const articleUrl = item.content.linkPreview?.url;
   const originalPostUrl = item.sourceUrl || articleUrl;
   const youtubeReference = useMemo(
     () =>
-      [item.sourceUrl, item.content.linkPreview?.url]
+      (capabilities.liveVideo ? [item.sourceUrl, item.content.linkPreview?.url] : [])
         .map((url) => parseYouTubeVideoUrl(url))
         .find((reference) => reference !== null) ?? null,
-    [item.content.linkPreview?.url, item.sourceUrl],
+    [capabilities.liveVideo, item.content.linkPreview?.url, item.sourceUrl],
   );
   const pendingSavedUrlDetails =
     item.platform === "saved" &&
@@ -814,7 +816,7 @@ export function ReaderView({
           >
             <button
               onClick={onClose}
-              className="group -ml-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg px-2 py-2 transition-colors hover:bg-[var(--theme-bg-muted)]"
+              className="group -ml-1 theme-toolbar-icon-button theme-toolbar-button-ghost rounded-lg"
               style={headerDragRegion ? noDrag : undefined}
               aria-label="Back"
             >
@@ -866,10 +868,10 @@ export function ReaderView({
             <Tooltip label={focusOptions.enabled ? "Disable focus mode" : "Enable focus mode"}>
               <button
                 onClick={toggleFocus}
-                className={`p-2 rounded-lg transition-colors text-sm font-bold ${
+                className={`h-9 px-2 rounded-lg text-sm font-bold ${
                   focusOptions.enabled
-                    ? "theme-accent-button"
-                    : "theme-subtle-button hover:bg-[var(--theme-bg-muted)]"
+                    ? "theme-toolbar-button-active"
+                    : "theme-toolbar-button-neutral"
                 }`}
                 style={headerDragRegion ? noDrag : undefined}
                 aria-pressed={focusOptions.enabled}
@@ -885,13 +887,14 @@ export function ReaderView({
             <Tooltip label={item.userState.saved ? "Remove bookmark" : "Bookmark"}>
               <button
                 onClick={handleToggleSaved}
-                className={`p-2 rounded-lg transition-colors ${
+                className={`theme-toolbar-icon-button rounded-lg ${
                   item.userState.saved
-                    ? "theme-accent-button"
-                    : "theme-subtle-button hover:bg-[var(--theme-bg-muted)]"
+                    ? "theme-toolbar-button-active"
+                    : "theme-toolbar-button-neutral"
                 }`}
                 style={headerDragRegion ? noDrag : undefined}
                 aria-label={item.userState.saved ? "Unsave" : "Save"}
+                aria-pressed={item.userState.saved}
               >
                 <svg
                   className="w-5 h-5"
@@ -907,13 +910,14 @@ export function ReaderView({
             <Tooltip label={item.userState.archived ? "Unarchive" : "Archive"}>
               <button
                 onClick={handleToggleArchived}
-                className={`p-2 rounded-lg transition-colors ${
+                className={`theme-toolbar-icon-button rounded-lg ${
                   item.userState.archived
-                    ? "theme-status-pill-success hover:bg-[rgb(var(--theme-feedback-success-rgb)/0.18)]"
-                    : "theme-subtle-button hover:bg-[var(--theme-bg-muted)]"
+                    ? "theme-toolbar-button-success-active"
+                    : "theme-toolbar-button-neutral"
                 }`}
                 style={headerDragRegion ? noDrag : undefined}
                 aria-label={item.userState.archived ? "Unarchive" : "Archive"}
+                aria-pressed={item.userState.archived}
               >
                 <TrashIcon className="w-5 h-5" />
               </button>
@@ -923,7 +927,7 @@ export function ReaderView({
             <Tooltip label={dualColumn ? "Single column" : "Dual column"}>
               <button
                 onClick={toggleDualColumn}
-                className="theme-toolbar-button-ghost hidden rounded-lg p-2 md:flex"
+                className="theme-toolbar-icon-button theme-toolbar-button-ghost rounded-lg"
                 style={headerDragRegion ? noDrag : undefined}
                 aria-pressed={dualColumn}
                 aria-label="Toggle dual column layout"
@@ -1006,7 +1010,7 @@ export function ReaderView({
         {youtubeReference ? null : isStory && displayMediaUrls.length > 0 ? (
           <StoryMediaGallery urls={displayMediaUrls} types={displayMediaTypes} />
         ) : !isStory && readerPresentation.leadImage ? (
-          <img
+          <ReaderImage
             src={readerPresentation.leadImage.src}
             alt={readerPresentation.leadImage.alt}
             loading="lazy"
@@ -1190,7 +1194,7 @@ function ArticleContent({ blocks }: { blocks: ContentBlock[] }) {
           case "image":
             return (
               <figure key={i}>
-                <img
+                <ReaderImage
                   src={block.src}
                   alt={block.alt}
                   className="w-full rounded-xl bg-white/5 ring-1 ring-white/5"
@@ -1269,7 +1273,7 @@ function StoryMediaGallery({
                 className="max-h-[70vh] w-full bg-black object-contain"
               />
             ) : (
-              <img
+              <ReaderImage
                 src={url}
                 alt=""
                 loading="lazy"
@@ -1443,7 +1447,7 @@ function ReplyMediaGrid({
                 className="aspect-video w-full bg-black object-contain"
               />
             ) : (
-              <img
+              <ReaderImage
                 src={url}
                 alt=""
                 loading="lazy"
@@ -1503,4 +1507,15 @@ async function liveFetch(
   } catch {
     onError?.();
   }
+}
+
+/** Preserve readable content when a remote image cannot be delivered. */
+function ReaderImage(props: React.ComponentProps<"img">) {
+  const [failedSource, setFailedSource] = useState<string | null>(null);
+  if (props.src && failedSource === props.src) return (
+    <div className={props.className} role="img" aria-label={props.alt || "Image unavailable"}>
+      <span className="block p-4 text-center text-sm text-[var(--theme-text-muted)]">Image unavailable. You can still read this post.</span>
+    </div>
+  );
+  return <img {...props} onError={() => setFailedSource(typeof props.src === "string" ? props.src : null)} />;
 }

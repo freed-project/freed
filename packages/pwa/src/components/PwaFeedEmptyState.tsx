@@ -1,3 +1,5 @@
+import { usePlatformCapabilities } from "@freed/ui/context";
+import { navigateToFeedView } from "@freed/ui/lib/workspace-navigation";
 import { useAppStore } from "../lib/store";
 import { LoadingState } from "@freed/ui/components/LoadingState";
 import { useDebugStore } from "@freed/ui/lib/debug-store";
@@ -11,6 +13,7 @@ const openSyncSettings = () =>
   window.dispatchEvent(new CustomEvent("freed:open-settings", { detail: { scrollTo: "sync" } }));
 
 export function PwaFeedEmptyState() {
+  const { demo } = usePlatformCapabilities();
   const syncActive = useAppStore((s) => s.syncConnected);
   const syncConnected = syncActive || getCloudProvider() === "gdrive";
   const isSyncing = useAppStore((s) => s.isSyncing);
@@ -46,6 +49,20 @@ export function PwaFeedEmptyState() {
     return (
       <>
         <LoadingState message={`Loading · ${samplePopulationPercent.toLocaleString()}%`} />
+      </>
+    );
+  }
+
+  if (demo) {
+    return (
+      <>
+        <p className="mb-2 text-lg font-medium">No sample content in this view</p>
+        <p className="max-w-xs text-sm text-[var(--theme-text-muted)]">Try another filter or return to the sample feed.</p>
+        <button type="button" className="theme-accent-button mt-4 rounded-xl px-5 py-2.5 text-sm font-medium" onClick={() => {
+          const state = useAppStore.getState();
+          state.setSearchQuery("");
+          navigateToFeedView(state, {});
+        }}>Return to feed</button>
       </>
     );
   }

@@ -31,13 +31,18 @@ describe("author identity links", () => {
         setSelectedPerson: vi.fn(),
         setActiveView: vi.fn(),
       };
+      const state = { ...actions, searchCorpusVersion: 0 };
+      const store = Object.assign(
+        (selector: (value: typeof state) => unknown) => selector(state),
+        { getState: () => state },
+      );
       const config = {
         queryLibraryCore: query,
         readLibraryAccountDetail: vi
           .fn()
           .mockResolvedValue({ personId: person.id }),
         readLibraryPersonDetail: vi.fn().mockResolvedValue(person),
-        store: { getState: () => actions },
+        store,
       } as unknown as PlatformConfig;
       const item = {
         platform: provider,

@@ -40,6 +40,7 @@
     "./lib/bug-report": "./src/lib/bug-report.ts",
     "./lib/build-info": "./src/lib/build-info.ts",
     "./lib/clipboard": "./src/lib/clipboard.ts",
+    "./lib/workspace-navigation": "./src/lib/workspace-navigation.ts",
     "./lib/command-surface-store": "./src/lib/command-surface-store.ts",
     "./lib/date-format": "./src/lib/date-format.ts",
     "./lib/device-ai-preferences": "./src/lib/device-ai-preferences.ts",
@@ -87,5 +88,8 @@
     "@types/three": "^0.185.1",
     "@webgpu/types": "^0.1.71",
     "typescript": "~5.9.3"
+  },
+  "scripts": {
+    "test": "node ../../node_modules/vitest/vitest.mjs run --maxWorkers=1"
   }
 }

@@ -1,3 +1,4 @@
+import { usePlatformCapabilities } from "../context/PlatformContext.js";
 /**
  * SettingsDialog — unified two-column settings experience.
  *
@@ -71,6 +72,7 @@ import { StoryWallView } from "./story-wall/StoryWallView.js";
 import { SettingsToggle } from "./SettingsToggle.js";
 import { ReportComposer } from "./report/ReportComposer.js";
 import { SearchField } from "./SearchField.js";
+import { COMPACT_MACOS_TRAFFIC_LIGHT_INSET_PX } from "./layout/layoutConstants.js";
 import { ThemePreviewButton } from "./ThemePreviewButton.js";
 import {
   FeedCardDensitySlider,
@@ -511,6 +513,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const themeBlurRestoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollOptimizationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const capabilities = usePlatformCapabilities();
   const [readerOfflineCacheMode, setReaderOfflineCacheMode] = useReaderOfflineCacheMode();
   const [feedCardDensity, setFeedCardDensity] = useFeedCardDensity();
   const [interfaceZoom, setInterfaceZoom] = useInterfaceZoom();
@@ -1608,6 +1611,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   ))}
                 </div>
               </div>
+              {capabilities.maintenance && <>
               <div className="flex items-center justify-between gap-4">
                 <div className="min-w-0">
                   <p className="text-sm text-text-primary">Offline reader cache</p>
@@ -1644,6 +1648,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   <option value={0}>Never</option>
                 </select>
               </div>
+              </>}
             </div>
           </>
         );
@@ -2114,7 +2119,10 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
           <div
             className="flex shrink-0 items-center justify-between px-4 pb-1.5 pt-2 sm:hidden"
-            style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.5rem)" }}
+            style={{
+              paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.5rem)",
+              paddingLeft: headerDragRegion ? COMPACT_MACOS_TRAFFIC_LIGHT_INSET_PX : undefined,
+            }}
           >
             <h2 className="text-base font-semibold text-text-primary">Freed Settings</h2>
             <CloseButton
@@ -2172,12 +2180,16 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         >
           <div
             className="theme-dialog-divider sm:hidden flex shrink-0 items-center justify-between gap-3 border-b px-4 pb-2 pt-2"
-            style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.5rem)" }}
+            style={{
+              paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.5rem)",
+              paddingLeft: headerDragRegion ? COMPACT_MACOS_TRAFFIC_LIGHT_INSET_PX : undefined,
+            }}
           >
             <button
               onClick={() => setMobileView("nav")}
               className="-ml-1 flex min-w-0 items-center gap-1.5 rounded-lg px-1.5 py-1.5 text-text-secondary transition-colors hover:bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_72%,transparent)] hover:text-text-primary"
               aria-label="Back to settings"
+              style={{ marginLeft: headerDragRegion ? 0 : undefined }}
             >
               <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />

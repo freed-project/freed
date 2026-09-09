@@ -276,6 +276,12 @@ test("native dependency setup sanitizes unstable runner sources before apt updat
     aptSourceSanitizer,
     /\/etc\/apt\/sources\.list\.d\/azure-cli\.list/,
   );
+  for (const extension of ["list", "sources"]) {
+    assert.ok(
+      aptSourceSanitizer.includes(`/etc/apt/sources.list.d/google-chrome.${extension}`),
+      `unused Chrome ${extension} source is removed before apt update`,
+    );
+  }
   assert.match(aptSourceSanitizer, /\/etc\/apt\/apt-mirrors\.txt/);
   const archiveAssignment = aptSourceSanitizer
     .split("\n")
@@ -292,13 +298,13 @@ test("native dependency setup sanitizes unstable runner sources before apt updat
 
   for (const [name, workflow, expectedCount] of [
     ["CI", ciWorkflow, 2],
-    ["production validation", mainReleaseValidationWorkflow, 1],
-    ["release", releaseWorkflow, 1],
+    ["production validation", mainReleaseValidationWorkflow, 0],
+    ["release", releaseWorkflow, 0],
   ]) {
     const blocks = workflow.match(
       /- name: Install native Linux dependencies[\s\S]*?(?=\n      - name:)/g,
     );
-    assert.equal(blocks?.length, expectedCount, `${name} native setup count`);
+    assert.equal(blocks?.length ?? 0, expectedCount, `${name} native setup count`);
     for (const block of blocks ?? []) {
       const sourceSanitizer = block.indexOf(
         "bash scripts/ci-sanitize-apt-sources.sh",
@@ -353,31 +359,15 @@ test("dev tag validation inherits the exact successful dev integration receipt",
   assert.match(validationJob, /npm run validate:production/);
 });
 
-test("production validation runs OPFS durability on macOS WebKit", () => {
-  const releaseValidationJob = releaseWorkflow.slice(
-    releaseWorkflow.indexOf("\n  validation:"),
-    releaseWorkflow.indexOf("\n  pwa-opfs-acceptance:"),
-  );
-  const releaseOpfsJob = releaseWorkflow.slice(
-    releaseWorkflow.indexOf("\n  pwa-opfs-acceptance:"),
-    releaseWorkflow.indexOf("\n  create-release:"),
-  );
-
-  assert.match(
-    mainReleaseValidationWorkflow,
-    /FREED_SKIP_PWA_OPFS_DURABILITY: "true"/,
-  );
-  assert.match(mainReleaseValidationWorkflow, /runs-on: macos-latest/);
-  assert.match(mainReleaseValidationWorkflow, /playwright install webkit/);
-  assert.match(mainReleaseValidationWorkflow, /npm run test:e2e:opfs/);
-  assert.match(releaseValidationJob, /FREED_SKIP_PWA_OPFS_DURABILITY: "true"/);
-  assert.match(releaseOpfsJob, /runs-on: macos-latest/);
-  assert.match(releaseOpfsJob, /playwright install webkit/);
-  assert.match(releaseOpfsJob, /npm run test:e2e:opfs/);
-  assert.match(
-    releaseWorkflow,
-    /needs: \[notes, validation, pwa-opfs-acceptance\]/,
-  );
+test("production reuses admitted OPFS proof and leaves its execution in dev integration", () => {
+  assert.match(mainReleaseValidationWorkflow, /actions:\s*read/);
+  assert.match(mainReleaseValidationWorkflow, /npm run validate:production/);
+  assert.doesNotMatch(mainReleaseValidationWorkflow, /playwright install|npm run test:e2e:opfs|Install Rust/);
+  const validation = releaseWorkflow.slice(releaseWorkflow.indexOf("\n  validation:"), releaseWorkflow.indexOf("\n  create-release:"));
+  assert.doesNotMatch(validation, /playwright install|npm run test:e2e:opfs|Install Rust/);
+  assert.match(ciWorkflow, /PWA OPFS durability \(macOS WebKit\)/);
+  assert.match(ciWorkflow, /npm run test:e2e:opfs/);
+  assert.match(releaseWorkflow, /needs: \[notes, validation\]/);
 });
 
 test("draft release assets and publication use the exact release ID", () => {
@@ -463,6 +453,11 @@ test("dev releases publish a signed isolated Apple Silicon verifier without upda
 });
 
 test("production releases publish an exact-tag PWA showcase with reviewed media", () => {
+  const websiteJobHeader = releaseWorkflow.slice(
+    releaseWorkflow.indexOf("\n  publish-website:"),
+    releaseWorkflow.indexOf("\n  publish-pwa:"),
+  ).split("    steps:")[0];
+  assert.match(websiteJobHeader, /if: needs\.notes\.outputs\.release_channel == 'production'/);
   const showcaseJob = releaseWorkflow.slice(
     releaseWorkflow.indexOf("\n  showcase-assets:"),
     releaseWorkflow.indexOf("\n  # After all platform builds succeed"),

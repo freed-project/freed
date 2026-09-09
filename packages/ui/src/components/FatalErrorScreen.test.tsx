@@ -4,6 +4,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { PlatformProvider, type PlatformConfig } from "../context/PlatformContext";
 import { FatalErrorScreen } from "./FatalErrorScreen";
 
 vi.mock("./report/ReportComposer.js", () => ({
@@ -60,6 +61,26 @@ describe("FatalErrorScreen recovery confirmation", () => {
         IS_REACT_ACT_ENVIRONMENT?: boolean;
       }
     ).IS_REACT_ACT_ENVIRONMENT = false;
+  });
+
+  it("offers only reload in the demo without exposing errors or data replacement", async () => {
+    const container = document.createElement("div");
+    const root = createRoot(container);
+    const retry = vi.fn();
+    const replace = vi.fn();
+    await act(async () => root.render(
+      <PlatformProvider value={{ interactionMode: "read-only" } as PlatformConfig}>
+        <FatalErrorScreen error={{ message: "private SQLite failure" }} productName="Freed" onRetry={retry} onSecondaryAction={replace} secondaryActionLabel="Replace local Library" />
+      </PlatformProvider>,
+    ));
+    expect(container.textContent).toContain("The demo needs a fresh start");
+    expect(container.textContent).not.toContain("SQLite");
+    expect(container.textContent).not.toContain("Replace local Library");
+    expect(container.querySelectorAll("button")).toHaveLength(1);
+    await act(async () => buttonByText(container, "Reload demo").click());
+    expect(retry).toHaveBeenCalledOnce();
+    expect(replace).not.toHaveBeenCalled();
+    await act(async () => root.unmount());
   });
 
   it("requires an explicit second action before replacing local data", async () => {

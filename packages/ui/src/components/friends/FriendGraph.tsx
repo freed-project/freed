@@ -1,3 +1,4 @@
+import { usePlatformCapabilities } from "../../context/PlatformContext.js";
 import {
   forwardRef,
   useCallback,
@@ -351,6 +352,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
     },
     ref,
   ) {
+    const capabilities = usePlatformCapabilities();
     const viewportRef = useRef<HTMLDivElement>(null);
     const contextMenuRef = useRef<HTMLDivElement>(null);
     const engineRef = useRef<FriendsGalaxyProductEngine | null>(null);
@@ -1109,6 +1111,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
     );
 
     const handleCopyDiagnostics = useCallback(async () => {
+      if (!capabilities.diagnostics) return;
       const engine = engineRef.current;
       const controller = controllerRef.current;
       const receipt = diagnosticsRef.current.sourceReceipt;
@@ -1184,6 +1187,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
         setGraphStatus("Clipboard unavailable");
       }
     }, [
+      capabilities.diagnostics,
       activitySummaries,
       backgroundStarCount,
       channelCount,
@@ -1414,7 +1418,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
                   </button>
                 ) : null}
                 {onDropNodeToRelationshipTier &&
-                (contextMenu.node.personId || contextMenu.node.accountId) ? (
+                (contextMenu.node.personId || capabilities.createPerson && contextMenu.node.accountId) ? (
                   <>
                     <button
                       type="button"
