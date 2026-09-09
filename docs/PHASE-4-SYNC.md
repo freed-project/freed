@@ -2,6 +2,11 @@
 
 > **Status:** 🚧 In Progress
 
+PWA first-launch presentation distinguishes Google Drive connection from an
+accepted Library. Before checkpoint selection, setup stays available without
+mounting Library-backed routes or the Saved overview. Sync errors link back to
+Settings. This does not change discovery, import verification, or cadence.
+
 PWA manual sync joins an automatic Google Drive refresh already in flight.
 One lifecycle generation runs at most one import at a time; success and failure
 release the slot, and a stopped generation cannot clear its successor.

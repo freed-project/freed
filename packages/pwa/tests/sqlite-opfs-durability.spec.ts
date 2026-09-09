@@ -497,6 +497,69 @@ async function verifyDurableOpfsLibrary(profileRoot: string): Promise<void> {
   }
 }
 
+test("iPhone WebKit keeps a fresh device in setup until a Library is selected", async () => {
+  test.setTimeout(180_000);
+  const profileRoot = await mkdtemp(join(tmpdir(), "freed-pwa-first-library-"));
+  let context: BrowserContext | null = null;
+  try {
+    context = await launchPersistentLibraryContext(profileRoot);
+    await context.route("**/src/App.tsx*", async route => {
+      const response = await route.fetch();
+      const body = (await response.text()).replace(
+        /const IS_FEATURE_PREVIEW = [^;]+;/,
+        "const IS_FEATURE_PREVIEW = false;",
+      );
+      await route.fulfill({ response, body });
+    });
+    const page = context.pages()[0] ?? await context.newPage();
+    await page.goto("/");
+    await expect(page.getByTestId("legal-gate-accept")).toBeVisible();
+    await acceptLegalGate(page);
+    await waitForLibrary(page);
+    await expect(page.getByTestId("pwa-library-setup")).toBeVisible();
+    await expect(page.getByText("Unable to load this feed")).toHaveCount(0);
+    for (const activeView of ["map", "friends", "feed"]) {
+      await page.evaluate(view => {
+        const store = (window as unknown as {
+          __FREED_STORE__: { getState(): { setActiveView(view: string): void } };
+        }).__FREED_STORE__;
+        store.getState().setActiveView(view);
+      }, activeView);
+      await expect(page.getByTestId("pwa-library-setup")).toBeVisible();
+      await expect(page.getByTestId("map-view-loading")).toHaveCount(0);
+      await expect(page.getByTestId("friends-view-loading")).toHaveCount(0);
+    }
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent(
+      "freed:open-settings", { detail: { scrollTo: "saved" } },
+    )));
+    await expect(page.getByRole("button", { name: "Close settings", exact: true })).toBeVisible();
+    await expect(page.getByTestId("pwa-library-setup")).toHaveCount(2);
+    await expect(page.getByText("Loading saved overview...")).toHaveCount(0);
+    await page.getByRole("button", { name: "Close settings", exact: true }).click();
+    const receipt = await page.evaluate(async () => {
+      const runtime = await import("/src/lib/library-core-sqlite-runtime.ts");
+      return (await runtime.readPwaNormalizedCheckpointReceipt()).receipt;
+    });
+    expect(receipt).toBeNull();
+    await openDangerZone(page);
+    await page.getByRole("button", { name: /Populate sample data Adds/ }).click();
+    // Selection can remount Settings after the first durable sample batch.
+    // A disabled sample button then proves presence, not completed population.
+    await expect(page.getByRole("status").filter({ hasText: /^Sample data added: 100%/ }))
+      .toBeVisible({ timeout: 90_000 });
+    await page.getByRole("button", { name: "Close settings", exact: true }).click();
+    await expect(page.getByTestId("pwa-library-setup")).toHaveCount(0);
+    await expect(page.locator("[data-feed-item-id]").first()).toBeVisible();
+    await page.reload();
+    await waitForLibrary(page);
+    await expect(page.getByTestId("pwa-library-setup")).toHaveCount(0);
+    await expect(page.locator("[data-feed-item-id]").first()).toBeVisible();
+  } finally {
+    await context?.close();
+    await rm(profileRoot, { recursive: true, force: true });
+  }
+});
+
 test("iPhone WebKit persists, clears, and rebuilds the local sample Library", async () => {
   test.setTimeout(240_000);
   const profileRoot = await mkdtemp(join(tmpdir(), "freed-pwa-sample-webkit-"));

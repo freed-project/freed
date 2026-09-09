@@ -141,7 +141,13 @@ type LibraryCoreStateListener = (
 
 const listeners = new Set<LibraryCoreStateListener>();
 let lastState: LibraryCoreRuntimeStateV1 | null = null;
+let selectedLibraryAvailable = false;
 let lastLocalChangeSequence = 0;
+
+/** Presentation readiness from the last receipt-verified Library state. */
+export function hasSelectedPwaLibraryCore(): boolean {
+  return selectedLibraryAvailable;
+}
 
 const NORMALIZED_READER_RUNTIME = Object.freeze({
   query: queryPwaNormalizedLibrary,
@@ -255,8 +261,10 @@ async function readSelectedState(): Promise<LibraryCoreRuntimeStateV1 | null> {
 function publishState(
   state: LibraryCoreRuntimeStateV1,
   localChange?: PwaLibraryCoreLocalChangeV1,
+  hasSelectedLibrary = true,
 ): void {
   lastState = state;
+  selectedLibraryAvailable = hasSelectedLibrary;
   for (const listener of listeners) listener(state, localChange);
 }
 
@@ -341,13 +349,13 @@ export function subscribePwaLibraryCoreState(
 }
 
 export async function initializePwaLibraryCoreState(): Promise<LibraryCoreRuntimeStateV1> {
-  const state =
-    (await readSelectedState()) ?? createEmptyLibraryCoreRuntimeStateV1();
+  const selectedState = await readSelectedState();
+  const state = selectedState ?? createEmptyLibraryCoreRuntimeStateV1();
   lastLocalChangeSequence =
     state.searchCorpusVersion === 0
       ? 0
       : await readPwaLocalChangeSequence(state.searchCorpusVersion);
-  publishState(state);
+  publishState(state, undefined, selectedState !== null);
   return state;
 }
 
@@ -1376,6 +1384,7 @@ registerPwaFactoryResetQuiesceHandler(
   async () => {
     await closePwaNormalizedLibrary();
     lastState = null;
+    selectedLibraryAvailable = false;
     lastLocalChangeSequence = 0;
   },
   25,
