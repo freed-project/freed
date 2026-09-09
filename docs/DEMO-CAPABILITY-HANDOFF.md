@@ -41,7 +41,44 @@ Pin preservation uses bounded graph pages of 128 identities with a 1,000-identit
 
 Full offline maps, mirroring the photograph corpus, a media proxy, full demo library editing, account linking, sync or remote StoryWall publishing would be materially larger projects. None is part of this implementation or recommended for closing this audit.
 
-## Validation already completed
+## Map lifecycle refinement, September 9 continuation
+
+[PR #1973](https://github.com/freed-project/freed/pull/1973), candidate `fa85ffb08a839a900c20fb633657115c370759f1`, refines the already merged map fallback. It does not replace the location grid, change remote photographs, add requests or retries, or add dependencies, tiles or geographic assets. The criteria below supersede the blanket MapLibre-error fallback in #1966. They describe the candidate, not a production deployment.
+
+### Failure criteria
+
+- Keep the live map for ordinary tile, glyph, sprite and other resource errors. MapLibre's generic `error` event does not establish that the renderer is unusable. No error-message matching, error-count threshold or loading timeout decides fallback.
+- Keep MapLibre's existing context-loss/restoration lifecycle. A temporary `webglcontextlost` event alone is not fatal.
+- Use the existing location grid when module or themed-style preparation rejects, construction or setup throws, the initial scheduled resize throws, or construction returns without a painter. MapLibre 6.0.0 can return a partial instance after GPU creation fails before application listeners attach.
+- An explicit `GPUInitializationError` after listener attachment also activates the demo fallback. Ordinary resource errors cannot take this path.
+- A failed remote style fetch already falls back to an existing built-in style definition in `map-style.ts`. That is not itself a failure of themed-style preparation, and a working map survives it.
+- Keep the existing forced local-showcase mode and marker-attachment guards. `mapReady` still permits marker placement; `idle` and `loaded()` determine settled tile readiness. Slow or incomplete resources alone do not prove a fatal renderer failure.
+
+These decisions follow the installed MapLibre 6.0.0 lifecycle and its [event contract](https://maplibre.org/maplibre-gl-js/docs/API/type-aliases/MapEventType/). No new policy for retrying failed network resources is introduced.
+
+### Ownership and focused proof
+
+The component cancels its scheduled initial resize, detaches its map and trackpad listeners, clears popups and markers, and relinquishes its map ref before disposal. Late preparation failures cannot affect a replacement lifecycle. Partial constructor DOM is cleared even if MapLibre teardown throws. Cleanup attempts to dispose each owned instance once; this is component ownership coverage, not a vendor-wide memory-soak claim.
+
+Seven component tests cover recoverable errors with preserved canvas and pan handling, preparation rejection, constructor failure, partial-renderer teardown, explicit GPU failure, cancellation of queued resize and obsolete async rejection. Together with the existing nine MapSurface tests, all 16 focused tests pass. The existing changed-path UI suite runs these tests. No new public exports or test-only product hooks were added.
+
+Headless Chromium against the candidate's local PWA preview established:
+
+- Aborted real OpenFreeMap tile requests produced MapLibre errors while the same canvas stayed mounted and rendered additional frames. Restoring normal requests and returning to the previous viewport displayed geography. Trackpad panning still changed the camera. Navigating away left zero MapLibre canvases.
+- Blocking only the remote style document preserved the map through its existing style-definition fallback.
+- Returning no WebGL2 context for MapLibre initialization activated the existing 129-marker location grid, with zero MapLibre canvases and zero user alerts. Navigating away still left zero canvases.
+
+The browser injected network and GPU failures outside product code. It did not replace the application bundle. Screenshots and full local evidence remain in the implementation worktree's `output/playwright/` directory. Production still requires Level 6 and verification of the deployed artifact.
+
+### Hosted candidate evidence
+
+Both map cases also passed in headless Chromium on the [actual candidate preview](https://freed-a58zfxkmx-aubreyfs-projects.vercel.app/map?freed-demo=1). Vercel inspection in `aubreyfs-projects` reported deployment `dpl_28SDRtSHrvk8VSi5MKyZs6GkNAD5` as Ready for `freed-pwa`. The served `assets/App-YHu0AUdw.js` contains the full candidate SHA above. No local bundle or document was substituted.
+
+Real aborted tile requests preserved the same canvas and produced 32 further render events before inspection. Normal requests restored rendered geography, wheel panning changed the camera, and leaving Map removed its canvas. Blocking MapLibre's WebGL2 initialization produced 129 grid markers, zero map canvases and zero user alerts; leaving Map still left zero canvases. Screenshots `hosted-recoverable-map.png` and `hosted-fatal-map-initialization.png` are retained with the local browser evidence.
+
+The candidate passed the feature gate: root typechecks, 520 UI tests, the PWA production build and typecheck, 452 PWA tests, 874 Desktop tests and nine Desktop browser smoke checks. The final focused component rerun passed all 16 MapSurface tests. The documentation-only feature gate also passed. A supplemental standalone UI TypeScript invocation still reports pre-existing test and Vite ambient-type errors; it is not claimed as passing. GitHub exact-head Feature validation and Tooling smoke are queued as of this evidence capture, so merge eligibility is not yet established.
+
+## Original implementation validation
 
 The implementation passed `npm run validate:feature`, package typechecks, the PWA build, artifact policy and roadmap validation. Reported package runs were UI: 90 files and 513 tests; PWA: 58 files and 452 tests; Desktop: 135 files and 874 tests. Additional focused checks overlap these totals. Required Feature validation and Tooling smoke checks passed on the final PR head before merge.
 
@@ -59,7 +96,14 @@ The last preview-origin check served the final local compiled bundle through hea
 
 Phase 6, 8, 10 and 12 documents and `docs/roadmap-status.json` were updated in the product commit. This handoff does not change phase status.
 
-## Remaining work and timing
+## Preview-filter continuation
+
+The #1968 invocation-directory repair is published separately in [PR #1972](https://github.com/freed-project/freed/pull/1972), candidate `17b66db2cc861c93507ac936e7c9e91dc696c5fc`. It is open, not merged. This receiving machine verified access to `aubreyfs-projects/freed-pwa` and completed browser acceptance on its [actual hosted preview](https://freed-2sa630nom-aubreyfs-projects.vercel.app/?freed-demo=1). Vercel reported a completed deployment and its served application contained the candidate SHA. That evidence resolves the earlier hosting-access limitation on this machine; it does not deploy either candidate to production.
+
+## Original remaining-work record
+
+The following paragraphs record the source-machine handoff before the continuations above.
+
 
 [Issue #1968](https://github.com/freed-project/freed/issues/1968) tracks the one known code blocker to reliable preview delivery. `scripts/pwa-vercel-ignore-build.mjs` passes repository-relative pathspecs to Git while running from `packages/pwa`. Against an available prior deployment, Git can incorrectly report no relevant changes and cancel a required build.
 
@@ -75,9 +119,9 @@ The remaining code repair is bounded. Review, that repair and targeted verificat
 
 1. Fetch and read the current `origin/dev:AGENTS.md`. Verify the merge above is present in the current lane. Read the build skill and scoped instructions before changing files. Use the pinned Node toolchain and an isolated worktree from fresh `origin/dev`.
 2. Review PR #1966 and this inventory. Preserve the existing real photographs and simplified-map design. Do not rebuild merged features or expand the demo into a full writable library.
-3. Reproduce #1968, apply the bounded path-resolution repair, add the cheapest deterministic regression coverage and run the required local publication gate. Publish that repair separately; this documentation PR remains the handoff record.
+3. Review the separate #1968 repair in #1972 and the map lifecycle refinement above. Preserve their exact candidate identities and required CI. This documentation PR remains the draft handoff record.
 4. Verify Vercel project access in `aubreyfs-projects` using repository helpers. Build a hosted preview of the actual candidate. Confirm its source commit and actual completed deployment, not merely a green canceled-build status.
-5. Repeat the browser acceptance scenarios above against that hosted preview. Also force a reader photo failure and confirm readable text and fallback; exercise safe newsletter failures without submitting a real address. Check hidden actions through search, menus and keyboard paths as well as visible buttons.
+5. Repeat the browser acceptance scenarios above against that hosted preview, using both recoverable-resource and fatal-initialization map cases instead of expecting every resource error to activate the grid. Also force a reader photo failure and confirm readable text and fallback; exercise safe newsletter failures without submitting a real address. Check hidden actions through search, menus and keyboard paths as well as visible buttons.
 6. The last granted task level was 5. Production deployment requires Level 6 under the repository policy. Obtain that level on the receiving machine before production publication, then follow the applicable deployment workflow. The source machine will not deploy or resume implementation.
 7. Verify the public demo serves the approved artifact and repeat the core promotion, pin, navigation, image and map checks. Record exact source and deployment identities and any remaining limitations. Do not claim that every possible network failure is eliminated; the contract is supported demo actions and graceful failure handling.
 
