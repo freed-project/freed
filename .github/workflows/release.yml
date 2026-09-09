@@ -693,7 +693,11 @@ jobs:
         run: |
           npm ci --ignore-scripts
           npx playwright install --with-deps chromium
-          command -v ffmpeg >/dev/null || brew install ffmpeg
+          brew install ffmpeg-full
+          encoder="$(brew --prefix ffmpeg-full)/bin/ffmpeg"
+          "$encoder" -hide_banner -encoders > /tmp/freed-showcase-encoders.txt
+          grep -w libwebp_anim /tmp/freed-showcase-encoders.txt
+          echo "FFMPEG_PATH=$encoder" >> "$GITHUB_ENV"
 
       - name: Build exact release PWA
         working-directory: packages/pwa
@@ -721,6 +725,7 @@ jobs:
 
       - name: Capture release showcase
         env:
+          TMPDIR: ${{ runner.temp }}
           FREED_SHOWCASE_URL: http://127.0.0.1:4173/?freed-demo=1
           FREED_SHOWCASE_OUTPUT: release-showcase
           FREED_SHOWCASE_SQLITE_MEMORY: "1"
@@ -742,7 +747,7 @@ jobs:
           name: release-showcase-source
           path: |
             release-showcase/
-            /tmp/freed-release-showcase-*/
+            ${{ runner.temp }}/freed-release-showcase-*/
           if-no-files-found: warn
 
   # After all platform builds succeed, promote the draft to a published release
