@@ -2,6 +2,7 @@ import sqlite3InitModule from "@sqlite.org/sqlite-wasm";
 import { isFreedDemoMode } from "./demo-mode";
 import {
   parseLibraryCoreSqliteWorkerRequest,
+  LIBRARY_CORE_SQLITE_WORKER_MAXIMUM_PENDING_REQUESTS,
   type LibraryCoreSqliteWorkerRequest,
   type LibraryCoreSqliteWorkerResponse,
   type LibraryCoreSqliteWorkerResult,
@@ -11,7 +12,7 @@ import {
   PwaLibraryCoreOpfsContentVault,
   type PwaContentRangeStorageV1,
 } from "./library-core-opfs-content-vault";
-import { installPwaLibraryCoreOpfsSahPool } from "./library-core-sqlite-opfs-bootstrap";
+import { configurePwaExclusiveOpfsRecovery, installPwaLibraryCoreOpfsSahPool } from "./library-core-sqlite-opfs-bootstrap";
 import {
   PWA_LIBRARY_CORE_SQLITE_DATABASE_FILENAME,
   PWA_LIBRARY_CORE_SQLITE_OWNERSHIP_LOCK,
@@ -34,6 +35,7 @@ const useDemoMemoryStorage = scope.name === "freed-library-core-sqlite-demo" &&
 const useMemoryStorage = useMemoryE2eStorage || useDemoMemoryStorage;
 let engine: PwaLibraryCoreSqliteEngine | null = null;
 let contentVault: PwaLibraryCoreOpfsContentVault | null = null;
+let releaseRecovery: (() => void) | null = null;
 let opfsPool: { pauseVfs(): unknown } | null = null;
 let releaseOwnership: (() => void) | null = null;
 let ownershipTask: Promise<unknown> | null = null;
@@ -115,6 +117,14 @@ async function open(): Promise<PwaLibraryCoreSqliteEngine> {
     const database = pool
       ? new pool.OpfsSAHPoolDb(PWA_LIBRARY_CORE_SQLITE_DATABASE_FILENAME)
       : new sqlite3.oo1.DB(":memory:", "c");
+    if (pool) {
+      try {
+        releaseRecovery = configurePwaExclusiveOpfsRecovery(sqlite3, database);
+      } catch (error) {
+        database.close();
+        throw error;
+      }
+    }
     openingStage = "initialize the normalized schema";
     const next = new PwaLibraryCoreSqliteEngine(
       database,
@@ -134,6 +144,8 @@ async function open(): Promise<PwaLibraryCoreSqliteEngine> {
     return next;
   } catch (error) {
     openingEngine?.close();
+    releaseRecovery?.();
+    releaseRecovery = null;
     opfsPool?.pauseVfs();
     opfsPool = null;
     releaseOwnership?.();
@@ -245,6 +257,8 @@ async function executeClose(
   // Closing the DB retains the pool's SyncAccessHandles. Explicitly release
   // them before acknowledging quiescence or allowing another tab to open.
   // Worker termination alone does not synchronously release handles in WebKit.
+  releaseRecovery?.();
+  releaseRecovery = null;
   opfsPool?.pauseVfs();
   opfsPool = null;
   releaseOwnership?.();
@@ -263,7 +277,10 @@ async function executeActivateCheckpoint(
   );
   return result(
     request.requestId,
-    active.activateNormalizedCheckpointStage(request.activation),
+    active.activateNormalizedCheckpointStage(request.activation, (completedRecords, totalRecords) => {
+      scope.postMessage({ kind: "checkpoint_activation_progress", requestId: request.requestId,
+        completedRecords, totalRecords });
+    }),
   );
 }
 
@@ -730,18 +747,32 @@ function compileCommand(
   }
 }
 
+// Keep asynchronous verification and storage work in the same bounded command
+// order. Another request must never enter a transaction owned by an earlier one.
+let commandFlight = Promise.resolve();
+let queuedCommands = 0;
 scope.onmessage = (event) => {
   if (!isAcceptedWorkerMessage(event)) return;
-  void (async () => {
-    let requestId = "invalid";
-    try {
-      const request = parseLibraryCoreSqliteWorkerRequest(event.data);
-      const command = compileCommand(request);
-      requestId = command.requestId;
-      scope.postMessage(await command.execute());
-      if (command.closeAfterResponse) scope.close();
-    } catch (error) {
-      scope.postMessage(failure(requestId, error));
+  let requestId = "invalid";
+  try {
+    const request = parseLibraryCoreSqliteWorkerRequest(event.data);
+    requestId = request.requestId;
+    if (queuedCommands >= LIBRARY_CORE_SQLITE_WORKER_MAXIMUM_PENDING_REQUESTS) {
+      throw new Error("PWA Library SQLite worker queue is full");
     }
-  })();
+    const command = compileCommand(request);
+    queuedCommands += 1;
+    commandFlight = commandFlight.then(async () => {
+      try {
+        scope.postMessage(await command.execute());
+        if (command.closeAfterResponse) scope.close();
+      } catch (error) {
+        scope.postMessage(failure(command.requestId, error));
+      } finally {
+        queuedCommands -= 1;
+      }
+    });
+  } catch (error) {
+    scope.postMessage(failure(requestId, error));
+  }
 };
