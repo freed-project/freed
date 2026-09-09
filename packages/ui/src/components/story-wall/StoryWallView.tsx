@@ -1,3 +1,4 @@
+import { usePlatformCapabilities } from "../../context/PlatformContext.js";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
   buildStoryWallManifest,
@@ -322,6 +323,7 @@ export function StoryWallView({
   const preferences = useAppStore((s) => s.preferences);
   const updatePreferences = useAppStore((s) => s.updatePreferences);
   const platform = usePlatform();
+  const capabilities = usePlatformCapabilities();
   const archiveInputRef = useRef<HTMLInputElement | null>(null);
   const storyWall = preferences.storyWall;
   const [archiveSummaries, setArchiveSummaries] = useState<StoryWallArchiveSummary[]>([]);
@@ -430,13 +432,15 @@ export function StoryWallView({
     persistStoryWall({ hiddenItemIds: Array.from(ids) });
   };
 
+  const openArchiveGuide = () => setArchiveGuideOpen(true);
+
   const openArchivePicker = () => {
     setArchiveGuideOpen(false);
     window.setTimeout(() => archiveInputRef.current?.click(), 0);
   };
 
   const handleArchiveImport = async (files: FileList | null) => {
-    if (!files || files.length === 0 || !platform.importInstagramStoryWallArchive) return;
+    if (!files || files.length === 0 || !capabilities.importStoryWall || !platform.importInstagramStoryWallArchive) return;
     setArchiveBusy(true);
     setArchiveMessage(null);
     try {
@@ -456,7 +460,7 @@ export function StoryWallView({
   };
 
   const handlePublish = async () => {
-    if (!platform.publishStoryWall) {
+    if (!capabilities.publishStoryWall || !platform.publishStoryWall) {
       setPublishMessage("Publishing is available in Freed Desktop.");
       return;
     }
@@ -513,7 +517,7 @@ export function StoryWallView({
                 Your year, rebuilt from your own archive
               </h1>
               <p className="text-sm leading-6 text-[var(--theme-text-secondary)]">
-                Start with Freed history, import an Instagram archive for older stories, then publish a static memory wall you control. Older Instagram stories require an archive import. Future captured stories can update the wall after you connect and publish.
+                {capabilities.demo ? "Preview a Story Wall with the sample Library. Download Freed Desktop to build and publish your own." : "Start with Freed history, import an Instagram archive for older stories, then publish a static memory wall you control. Older Instagram stories require an archive import. Future captured stories can update the wall after you connect and publish."}
               </p>
             </div>
           </header>
@@ -527,10 +531,10 @@ export function StoryWallView({
                   Private setup
                 </p>
                 <h2 className="mt-2 text-xl font-semibold leading-tight text-[var(--theme-text-primary)]">
-                  Build a Story Wall from your own media
+                  {capabilities.demo ? "Preview a Story Wall" : "Build a Story Wall from your own media"}
                 </h2>
                 <p className="mt-3 max-w-3xl text-sm leading-6 text-[var(--theme-text-secondary)]">
-                  Start with photos and videos already in Freed, import older Instagram stories from an archive export, then review the wall before anything is published.
+                  {capabilities.demo ? "Try the layout and appearance with sample photos. Your changes reset when you reload." : "Start with photos and videos already in Freed, import older Instagram stories from an archive export, then review the wall before anything is published."}
                 </p>
                 <div className="mt-4 grid gap-3 md:grid-cols-3">
                   <div className="border-t border-[color:var(--theme-border-subtle)] pt-3">
@@ -539,7 +543,7 @@ export function StoryWallView({
                   </div>
                   <div className="border-t border-[color:var(--theme-border-subtle)] pt-3">
                     <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--theme-text-muted)]">Review</div>
-                    <p className="mt-1 text-sm text-[var(--theme-text-secondary)]">Nothing publishes until you enable, preview, and choose a target.</p>
+                    <p className="mt-1 text-sm text-[var(--theme-text-secondary)]">{capabilities.demo ? "Explore the preview without publishing anything." : "Nothing publishes until you enable, preview, and choose a target."}</p>
                   </div>
                   <div className="border-t border-[color:var(--theme-border-subtle)] pt-3">
                     <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--theme-text-muted)]">History</div>
@@ -562,14 +566,14 @@ export function StoryWallView({
                   >
                     Enable Story Wall
                   </button>
-                  <button
+                  {capabilities.importStoryWall ? <button
                     type="button"
                     className="btn-secondary rounded-lg px-3 py-2 text-sm"
-                    onClick={() => setArchiveGuideOpen(true)}
-                    disabled={archiveBusy || !platform.importInstagramStoryWallArchive}
+                    onClick={openArchiveGuide}
+                    disabled={archiveBusy || !capabilities.importStoryWall}
                   >
                     {archiveBusy ? "Importing" : "Import Instagram archive"}
-                  </button>
+                  </button> : <p className="text-sm text-[var(--theme-text-muted)]">Import archives in Freed Desktop.</p>}
                   <input
                     ref={archiveInputRef}
                     type="file"
@@ -599,14 +603,14 @@ export function StoryWallView({
                 <ToggleButton active={storyWall.enabled} onClick={() => persistStoryWall({ enabled: true })}>
                   Use existing Freed history
                 </ToggleButton>
-                <button
+                {capabilities.importStoryWall ? <button
                   type="button"
                   className="btn-secondary rounded-lg px-3 py-2 text-sm"
-                  onClick={() => setArchiveGuideOpen(true)}
-                  disabled={archiveBusy || !platform.importInstagramStoryWallArchive}
+                  onClick={openArchiveGuide}
+                  disabled={archiveBusy || !capabilities.importStoryWall}
                 >
                   {archiveBusy ? "Importing" : "Import Instagram archive"}
-                </button>
+                </button> : <p className="text-sm text-[var(--theme-text-muted)]">Import archives in Freed Desktop.</p>}
                 <input
                   ref={archiveInputRef}
                   type="file"
@@ -615,9 +619,9 @@ export function StoryWallView({
                   className="hidden"
                   onChange={(event) => void handleArchiveImport(event.currentTarget.files)}
                 />
-                <ToggleButton active={storyWall.publishTarget.provider === "github_pages"} onClick={() => persistStoryWall({ publishTarget: { provider: "github_pages" } })}>
+                {capabilities.publishStoryWall && <ToggleButton active={storyWall.publishTarget.provider === "github_pages"} onClick={() => persistStoryWall({ publishTarget: { provider: "github_pages" } })}>
                   Publish to GitHub Pages
-                </ToggleButton>
+                </ToggleButton>}
               </div>
               {archiveMessage ? (
                 <p className="mt-3 text-sm text-[var(--theme-text-secondary)]">{archiveMessage}</p>
@@ -791,7 +795,7 @@ export function StoryWallView({
               ) : null}
             </div>
 
-            <div className={PANEL_CLASS}>
+            {capabilities.publishStoryWall ? <div className={PANEL_CLASS}>
               <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
                 <div className="grid flex-1 gap-3 sm:grid-cols-3">
                   <label className="block">
@@ -851,7 +855,9 @@ export function StoryWallView({
                   Latest site: {storyWall.publishTarget.pagesUrl}
                 </p>
               ) : null}
-            </div>
+            </div> : <p className="theme-card-soft rounded-xl p-4 text-sm text-[var(--theme-text-secondary)]">
+              Download Freed Desktop to import archives and publish your own Story Wall.
+            </p>}
               </main>
             </section>
           </>

@@ -1,3 +1,4 @@
+import { usePlatformCapabilities } from "../context/PlatformContext.js";
 /**
  * SettingsDialog — unified two-column settings experience.
  *
@@ -512,6 +513,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const themeBlurRestoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollOptimizationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const capabilities = usePlatformCapabilities();
   const [readerOfflineCacheMode, setReaderOfflineCacheMode] = useReaderOfflineCacheMode();
   const [feedCardDensity, setFeedCardDensity] = useFeedCardDensity();
   const [interfaceZoom, setInterfaceZoom] = useInterfaceZoom();
@@ -1609,6 +1611,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   ))}
                 </div>
               </div>
+              {capabilities.maintenance && <>
               <div className="flex items-center justify-between gap-4">
                 <div className="min-w-0">
                   <p className="text-sm text-text-primary">Offline reader cache</p>
@@ -1645,6 +1648,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   <option value={0}>Never</option>
                 </select>
               </div>
+              </>}
             </div>
           </>
         );

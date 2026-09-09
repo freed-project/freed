@@ -537,3 +537,7 @@ OpenAI model default reviewed September 7, 2026: new OpenAI selections use
 `gpt-6-astra`. Existing saved models remain unchanged. Astra summaries use low
 reasoning with a bounded completion budget; Ollama retains its local request
 parameters. Live output quality and account access require API validation.
+
+## Demo error prevention
+
+The demo keeps appearance, filters, reader navigation, relationship controls, graph pins, and Story Wall previews. Story Wall publishing credentials and archive imports require Freed Desktop. Unavailable maintenance and diagnostic controls are hidden, including overflow menus and command-triggered dialogs. Failed reader photographs retain readable content with a placeholder. Map loading errors switch to the simplified view without new retries. Newsletter failures preserve the form and show recoverable public copy rather than raw backend errors.

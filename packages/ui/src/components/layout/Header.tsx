@@ -1,3 +1,4 @@
+import { usePlatformCapabilities } from "../../context/PlatformContext.js";
 import {
   useState,
   useEffect,
@@ -330,9 +331,9 @@ export function Header({
     saveUrl,
     importMarkdown,
     exportMarkdown,
-    interactionMode,
   } = usePlatform();
-  const readOnly = interactionMode === "read-only";
+  const capabilities = usePlatformCapabilities();
+  const readOnly = !capabilities.libraryEdits;
   const isMobile = useIsMobile();
   const isMobileDevice = useIsMobileDevice();
   const visibleDesktopSidebarMode = desktopSidebarDisplayMode ?? desktopSidebarMode;
@@ -475,7 +476,7 @@ export function Header({
   const showFeedBulkActions = activeView === "feed" && !readOnly;
   const showFeedSignalFilter = activeView === "feed" && !readerActive;
   const showSavedSortControl = showFeedSignalFilter && activeFilter.savedOnly === true;
-  const showArchivedToolbar = activeView === "feed" && activeFilter.archivedOnly === true;
+  const showArchivedToolbar = !readOnly && activeView === "feed" && activeFilter.archivedOnly === true;
   const showArchivedDeleteAction =
     !readOnly && showArchivedToolbar && (display.archivePruneDays ?? 30) > 0;
   const showSocialContentControls =

@@ -8,6 +8,10 @@ import {
 import {
   createLibraryCoreNormalizedCheckpointRecordV2,
   type LibraryCoreCheckpointRegistryKey,
+  type LibraryCoreDeviceGraphLayoutMutationV1,
+  type LibraryCoreDeviceGraphPositionSetV1,
+  type LibraryCorePersonGraphPageResponseV1,
+  type LibraryCoreAccountGraphPageResponseV1,
   type LibraryCoreCanonicalValue,
   type LibraryCoreNormalizedCheckpointPrimaryKeyV2,
   type LibraryCoreNormalizedCheckpointRecordV2,
@@ -17,6 +21,7 @@ import {
   appendPwaNormalizedCheckpointStagePage,
   beginPwaNormalizedCheckpointStage,
   queryPwaNormalizedLibrary,
+  mutatePwaDeviceGraphLayout,
 } from "./library-core-sqlite-runtime";
 import { isFreedDemoMode } from "./demo-mode";
 
@@ -342,6 +347,51 @@ let demoCareTask = Promise.resolve();
 let pendingCareChanges = 0;
 let demoCareUnavailable = false;
 
+/** Pin only within the isolated demo, serialized with checkpoint replacement. */
+export async function mutateFreedDemoGraphLayout(mutation: LibraryCoreDeviceGraphLayoutMutationV1) {
+  if (!isFreedDemoMode(location.hostname, undefined, location.search)) {
+    throw new Error("Demo graph changes are unavailable outside the demo.");
+  }
+  const change = demoCareTask.then(async () => {
+    if (!demoInstallTask || demoCareUnavailable) throw new Error("Reload the demo before changing its layout.");
+    await demoInstallTask;
+    return mutatePwaDeviceGraphLayout(mutation);
+  });
+  demoCareTask = change.then(() => undefined, () => undefined);
+  return change;
+}
+
+/** Short-lived, bounded layout snapshot; SQLite remains the session's row store. */
+async function readDemoPins(): Promise<LibraryCoreDeviceGraphPositionSetV1[]> {
+  const pins: LibraryCoreDeviceGraphPositionSetV1[] = [];
+  let count = 0;
+  for (const queryId of ["person_graph_page_v1", "account_graph_page_v1"] as const) {
+    let cursor: string | null = null;
+    const readerSessionId = crypto.randomUUID();
+    do {
+      const request: { schemaVersion: 1; cursor: string | null; limit: number; readerSessionId: string; cancellationId: string } = { schemaVersion: 1 as const, cursor, limit: 128,
+        readerSessionId, cancellationId: crypto.randomUUID() };
+      const page: LibraryCorePersonGraphPageResponseV1 | LibraryCoreAccountGraphPageResponseV1 =
+        queryId === "person_graph_page_v1"
+          ? await queryPwaNormalizedLibrary({ ...request, queryId: "person_graph_page_v1" })
+          : await queryPwaNormalizedLibrary({ ...request, queryId: "account_graph_page_v1" });
+      count += page.rows.length;
+      if (count > 1_000) throw new Error("Demo identity limit exceeded.");
+      for (const row of page.rows) {
+        if (row.graphPinned && row.graphX !== null && row.graphY !== null && row.graphUpdatedAt !== null) {
+          pins.push({
+            entityId: row.id, graphX: row.graphX, graphY: row.graphY,
+            updatedAt: row.graphUpdatedAt, schemaVersion: 1,
+            mutationId: queryId === "person_graph_page_v1" ? "person_graph_position_set_v1" : "account_graph_position_set_v1",
+          });
+        }
+      }
+      cursor = page.nextCursor;
+    } while (cursor !== null);
+  }
+  return pins;
+}
+
 /** Replace only the isolated demo fixture, never submit a durable Library edit. */
 export async function setFreedDemoPersonCare(
   personId: string,
@@ -370,8 +420,10 @@ export async function setFreedDemoPersonCare(
     }
     // Activation validates and atomically replaces the memory database. Its new
     // checkpoint digest fences old cursors; no synthetic writer or SQL bypass.
+    const pins = await readDemoPins();
     try {
       await activateDemoCheckpoint(records);
+      for (const pin of pins) await mutatePwaDeviceGraphLayout(pin);
     } catch (error) {
       // A failed or ambiguous activation requires a fresh isolated document.
       // Do not accumulate abandoned stages or replay a possibly accepted edit.
