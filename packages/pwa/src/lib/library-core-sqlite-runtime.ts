@@ -47,6 +47,7 @@ import {
   PwaLibraryCoreSqliteClient,
 } from "./library-core-sqlite-client";
 import { deletePwaLibraryCoreSqliteStorage } from "./library-core-sqlite-storage";
+import { isFactoryResetInProgress } from "@freed/ui/lib/factory-reset";
 
 interface ClientGeneration {
   readonly client: PwaLibraryCoreSqliteClient;
@@ -54,6 +55,13 @@ interface ClientGeneration {
 }
 
 let clientGeneration: ClientGeneration | null = null;
+let resetTask: Promise<void> | null = null;
+
+function assertLibraryAvailable(): void {
+  if (resetTask || isFactoryResetInProgress()) {
+    throw new Error("PWA Library SQLite is unavailable while this device resets");
+  }
+}
 
 function clearClientGeneration(active: PwaLibraryCoreSqliteClient): void {
   if (clientGeneration?.client === active) clientGeneration = null;
@@ -81,8 +89,10 @@ function createClientGeneration(): ClientGeneration {
 }
 
 async function openClient(): Promise<PwaLibraryCoreSqliteClient> {
+  assertLibraryAvailable();
   const generation = clientGeneration ?? createClientGeneration();
   await generation.openTask;
+  assertLibraryAvailable();
   return generation.client;
 }
 
@@ -286,7 +296,7 @@ export async function installPwaFollowerActorEnrollment(
   return active.installFollowerActorEnrollment(install);
 }
 
-async function closePwaNormalizedLibrary(): Promise<void> {
+export async function closePwaNormalizedLibrary(): Promise<void> {
   const active = clientGeneration?.client ?? null;
   clientGeneration = null;
   if (!active) return;
@@ -303,6 +313,14 @@ async function closePwaNormalizedLibrary(): Promise<void> {
 }
 
 export async function resetPwaNormalizedLibrary(): Promise<void> {
-  await closePwaNormalizedLibrary();
-  await deletePwaLibraryCoreSqliteStorage();
+  if (resetTask) return resetTask;
+  resetTask = (async () => {
+    await closePwaNormalizedLibrary();
+    await deletePwaLibraryCoreSqliteStorage();
+  })();
+  try {
+    await resetTask;
+  } finally {
+    resetTask = null;
+  }
 }

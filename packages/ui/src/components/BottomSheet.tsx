@@ -1,5 +1,6 @@
 import { useRef, useCallback, useEffect, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { lockBodyScroll } from "../lib/body-scroll-lock.js";
 
 interface BottomSheetProps {
   open: boolean;
@@ -34,12 +35,7 @@ export function BottomSheet({
 
   // Lock body scroll while open
   useEffect(() => {
-    if (open) {
-      document.body.style.overflow = "hidden";
-    }
-    return () => {
-      document.body.style.overflow = "";
-    };
+    if (open) return lockBodyScroll();
   }, [open]);
 
   useEffect(() => {
