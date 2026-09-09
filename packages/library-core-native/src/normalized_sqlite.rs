@@ -1579,10 +1579,7 @@ mod tests {
         assert_eq!(snapshot.library_id, library_id);
         assert_eq!(snapshot.authority_epoch, epoch_id);
         assert_eq!(snapshot.writer_id, actor_id);
-        assert_eq!(
-            snapshot.causal_frontier_digest,
-            "1".repeat(64)
-        );
+        assert_eq!(snapshot.causal_frontier_digest, "1".repeat(64));
         assert_eq!(snapshot.record_count, 4);
         let first = export
             .read_page(&PinnedNormalizedCheckpointExportRequestV2 {
