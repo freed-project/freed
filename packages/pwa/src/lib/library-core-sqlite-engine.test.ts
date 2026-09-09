@@ -5873,6 +5873,11 @@ describe("PWA Library Core SQLite engine", () => {
       }),
     ).toThrow(/replay changed its bytes/);
     expect(engine.beginNormalizedCheckpointStage(stage)).toEqual(complete);
+    expect(engine.beginNormalizedCheckpointStage({ ...stage, createdAt: 2_000 })).toEqual(complete);
+    expect(database.exec({
+      sql: "SELECT created_at FROM library_checkpoint_stages WHERE stage_id = ?1;",
+      bind: [stage.stageId], rowMode: 0, returnValue: "resultRows",
+    })).toEqual([1_000]);
     expect(() =>
       engine.beginNormalizedCheckpointStage({ ...stage, sourceRevision: 8 }),
     ).toThrow(/replay changed its identity/);
