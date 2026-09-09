@@ -773,6 +773,43 @@ test("iPhone WebKit reopens the accepted OPFS Library after worker loss", async 
       .poll(() => trackedLibrarySqliteWorkerCount(page), { timeout: 5_000 })
       .toBe(firstGenerationCount + 1);
     await expect(recoveredSummary).resolves.toEqual(expectedSummary);
+
+    // Force dirty pages to spill while the transaction is still uncommitted.
+    // This catches a VFS that reports a reserved writer after termination and
+    // therefore suppresses SQLite's hot-journal rollback on the next open.
+    const engineRoute = "**/src/lib/library-core-sqlite-engine.ts*";
+    await context.route(engineRoute, async (route) => {
+      const response = await route.fetch();
+      const body = await response.text();
+      const marker = "mutateDeviceContactSync(input) {";
+      expect(body).toContain(marker);
+      await route.fulfill({ response, body: body.replace(marker, `${marker}
+        this.#database.exec("PRAGMA cache_size = 1; BEGIN IMMEDIATE; UPDATE library_feed_items SET archived = 1, content_text = 'interrupted write';");
+        globalThis.postMessage({ faultBoundary: 'uncommitted-pages-spilled' });
+        for (;;) {}
+      `) });
+    });
+    await stopActiveLibrarySqliteWorker(page);
+    await expect(readFacetSummary(page)).resolves.toEqual(expectedSummary);
+    await page.evaluate(() => {
+      const current = window as unknown as Record<string, unknown>;
+      const workers = current.__FREED_OPFS_TEST_SQLITE_WORKERS__ as Worker[];
+      current.__FREED_OPFS_WRITE_SPILLED__ = false;
+      workers.at(-1)!.addEventListener("message", event => {
+        if (event.data?.faultBoundary === "uncommitted-pages-spilled") {
+          current.__FREED_OPFS_WRITE_SPILLED__ = true;
+        }
+      });
+    });
+    const interruptedWrite = setContactSyncError(page);
+    const refusedWrite = expect(interruptedWrite).rejects.toThrow();
+    await page.waitForFunction(() =>
+      (window as unknown as Record<string, unknown>).__FREED_OPFS_WRITE_SPILLED__ === true);
+    await context.unroute(engineRoute);
+    await stopActiveLibrarySqliteWorker(page);
+    await refusedWrite;
+    await expect(readFacetSummary(page)).resolves.toEqual(expectedSummary);
+
   } finally {
     await context?.close();
     await rm(profileRoot, { force: true, recursive: true });
