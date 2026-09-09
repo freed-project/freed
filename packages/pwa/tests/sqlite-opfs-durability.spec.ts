@@ -600,6 +600,9 @@ test("iPhone WebKit recovers a rejected v26.9.803 sample result after restart", 
     const page = context.pages()[0] ?? await context.newPage();
     await openLibrary(page);
     await expect.poll(() => readFacetSummary(page), { timeout: 90_000 }).toMatchObject({ sampleItemCount: previewCounts.items });
+    // Item rows become durable before sample startup finishes publishing UI state.
+    await expect(page.getByRole("status").filter({ hasText: /^Loading ·/ }))
+      .toHaveCount(0, { timeout: 90_000 });
     const item = page.locator("[data-feed-item-id]").first();
     await expect(item).toBeVisible();
     const itemId = await item.getAttribute("data-feed-item-id");
