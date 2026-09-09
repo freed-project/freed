@@ -543,7 +543,10 @@ test("iPhone WebKit keeps a fresh device in setup until a Library is selected", 
     expect(receipt).toBeNull();
     await openDangerZone(page);
     await page.getByRole("button", { name: /Populate sample data Adds/ }).click();
-    await expect(page.getByRole("button", { name: /Sample data populated/ })).toBeDisabled({ timeout: 90_000 });
+    // Selection can remount Settings after the first durable sample batch.
+    // A disabled sample button then proves presence, not completed population.
+    await expect(page.getByRole("status").filter({ hasText: /^Sample data added: 100%/ }))
+      .toBeVisible({ timeout: 90_000 });
     await page.getByRole("button", { name: "Close settings", exact: true }).click();
     await expect(page.getByTestId("pwa-library-setup")).toHaveCount(0);
     await expect(page.locator("[data-feed-item-id]").first()).toBeVisible();
