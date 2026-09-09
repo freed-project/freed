@@ -301,15 +301,19 @@ freed-library doctor
 ```
 
 `service-definition` is implemented. It emits a digest-bound macOS LaunchAgent
-plist or Linux systemd system unit running as the verified non-root user from one fully verified service configuration.
+plist or Linux systemd system unit running as the verified non-root user,
+from one fully verified service configuration.
 It uses exact argument elements without a shell, applies mode `0077`, contains
 the service process group, and grants Linux writes only to the configured data
 and state roots. It does not install, load, enable, or start a service. Windows
 continues to fail closed until its service-account named pipe and inherited
 handle contract is complete.
 
-`promote` requires the exact expected cloud control revision, manifest digest,
-source receipt, and owner confirmation. It creates a new writer epoch. It
+`import-checkpoint` installs the pinned logical source and returns its native
+receipt. The explicit `promote-writer` command requires that exact source control
+pointer and revision, the installation witness, and a fixed request timestamp.
+It retains those inputs before preparing a signed successor epoch. Recovery
+reuses that certificate and verifies the complete committed checkpoint. It
 never adopts an old local database as the cloud head.
 
 ### Secrets

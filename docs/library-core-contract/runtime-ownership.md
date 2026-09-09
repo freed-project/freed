@@ -124,8 +124,8 @@ verifiable service-account ACL.
 
 The installed host derives its service-manager definition from the same
 already-bound configuration it will serve. The compiled CLI emits one
-digest-bound macOS LaunchAgent plist or Linux systemd system unit running as the verified non-root user with exact
-Node, CLI, and config arguments. Both definitions run without a shell, apply
+digest-bound macOS LaunchAgent plist or Linux systemd system unit running as
+the verified non-root user with exact Node, CLI, and config arguments. Both definitions run without a shell, apply
 mode `0077`, and bind lifecycle settlement to the service process group.
 Linux grants writes only to the configured data and state roots. Definition
 generation never installs, loads, enables, or starts a service. Windows emits
