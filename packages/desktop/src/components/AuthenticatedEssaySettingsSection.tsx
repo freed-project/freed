@@ -19,6 +19,7 @@ import { ProviderHealthSectionSummary } from "./ProviderHealthSectionSummary";
 import { ProviderSyncCadenceControl } from "./ProviderSyncCadenceControl";
 import { ProviderSyncActionButton } from "./ProviderSyncActionButton";
 import { ScraperWindowModeControl } from "./ScraperWindowModeControl";
+import { ProviderAdvancedSettings } from "./ProviderAdvancedSettings";
 import { SyncProviderSectionSurface } from "./SyncProviderSectionSurface";
 import { rescheduleProviderAfterExternalSettlement } from "../lib/provider-sync-schedule-state";
 
@@ -300,7 +301,6 @@ function AuthenticatedEssaySettingsSection({
           </button>
         </div>
 
-        <ScraperWindowModeControl mode={mode} onChange={updateMode} sourceLabel={copy.label} />
         {reconnect && (auth.lastCaptureError ?? actionError) ? (
           <p className="text-xs text-[rgb(var(--theme-feedback-warning-rgb))]">
             {formatProviderReconnectMessage(copy.label, auth.lastCaptureError ?? actionError)}
@@ -308,6 +308,9 @@ function AuthenticatedEssaySettingsSection({
         ) : null}
         <ProviderSyncCadenceControl provider={provider} />
         <ProviderHealthSectionSummary provider={provider} />
+        <ProviderAdvancedSettings>
+          <ScraperWindowModeControl mode={mode} onChange={updateMode} sourceLabel={copy.label} />
+        </ProviderAdvancedSettings>
       </div>
     </SyncProviderSectionSurface>
   );

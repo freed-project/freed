@@ -26,6 +26,7 @@
 /packages/desktop/src/components/MobileSyncTab.tsx @AubreyF
 /packages/desktop/src/components/ProviderSyncActionButton.tsx @AubreyF
 /packages/desktop/src/components/ProviderSyncCadenceControl.tsx @AubreyF
+/packages/desktop/src/components/ProviderAdvancedSettings.tsx @AubreyF
 /packages/desktop/src/components/ScraperWindowModeControl.tsx @AubreyF
 /packages/desktop/src/components/SyncProviderSectionSurface.tsx @AubreyF
 /packages/desktop/src/components/XFeedEmptyState.tsx @AubreyF

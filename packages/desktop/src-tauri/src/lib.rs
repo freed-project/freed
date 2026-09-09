@@ -8461,8 +8461,8 @@ async fn wait_for_ig_feed_state(
 /// The window uses the "fb-login" label and shares the Facebook scraper data
 /// store, so login cookies remain available to feed scraping.
 ///
-/// An `on_navigation` handler detects when the user completes login
-/// (URL leaves /login) and emits `fb-auth-result`.
+/// A bounded, document-local probe after page load verifies session completion.
+/// It never navigates or emits logged-out results while login is in progress.
 #[tauri::command]
 async fn fb_show_login(
     app: tauri::AppHandle,
@@ -8492,10 +8492,6 @@ async fn fb_show_login(
         return Ok(());
     }
 
-    let app_handle = app.clone();
-    let auth_emitted = Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let auth_emitted_for_nav = auth_emitted.clone();
-
     let login_window = WebviewWindowBuilder::new(
         &app,
         "fb-login",
@@ -8517,26 +8513,16 @@ async fn fb_show_login(
     )
     .center()
     .visible(true)
-    .on_navigation(move |url| {
-        let path = url.path();
-        let host = url.host_str().unwrap_or("");
-
-        // Detect likely login completion, then verify with page evidence.
-        if host.contains("facebook.com")
-            && path != "/login"
-            && path != "/login/"
-            && !auth_emitted_for_nav.swap(true, std::sync::atomic::Ordering::SeqCst)
+    .on_page_load(move |window, payload| {
+        let host = payload.url().host_str().unwrap_or("");
+        if payload.event() == tauri::webview::PageLoadEvent::Finished
+            && payload.url().scheme() == "https"
+            && (host == "facebook.com" || host.ends_with(".facebook.com"))
         {
-            let check_app = app_handle.clone();
-            tauri::async_runtime::spawn(async move {
-                tokio::time::sleep(Duration::from_millis(1800)).await;
-                if let Some(w) = check_app.get_webview_window("fb-login") {
-                    let _ = w.eval(fb_auth_result_script());
-                }
-            });
+            if let Err(error) = window.eval(include_str!("fb-login-auth.js")) {
+                warn!("[FB] login completion probe could not start: {}", error);
+            }
         }
-
-        true
     })
     .build()
     .map_err(|e| e.to_string())?;

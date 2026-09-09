@@ -814,7 +814,7 @@ export function ReaderView({
           >
             <button
               onClick={onClose}
-              className="group -ml-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg px-2 py-2 transition-colors hover:bg-[var(--theme-bg-muted)]"
+              className="group -ml-1 theme-toolbar-icon-button theme-toolbar-button-ghost rounded-lg"
               style={headerDragRegion ? noDrag : undefined}
               aria-label="Back"
             >
@@ -866,10 +866,10 @@ export function ReaderView({
             <Tooltip label={focusOptions.enabled ? "Disable focus mode" : "Enable focus mode"}>
               <button
                 onClick={toggleFocus}
-                className={`p-2 rounded-lg transition-colors text-sm font-bold ${
+                className={`h-9 px-2 rounded-lg text-sm font-bold ${
                   focusOptions.enabled
-                    ? "theme-accent-button"
-                    : "theme-subtle-button hover:bg-[var(--theme-bg-muted)]"
+                    ? "theme-toolbar-button-active"
+                    : "theme-toolbar-button-neutral"
                 }`}
                 style={headerDragRegion ? noDrag : undefined}
                 aria-pressed={focusOptions.enabled}
@@ -885,13 +885,14 @@ export function ReaderView({
             <Tooltip label={item.userState.saved ? "Remove bookmark" : "Bookmark"}>
               <button
                 onClick={handleToggleSaved}
-                className={`p-2 rounded-lg transition-colors ${
+                className={`theme-toolbar-icon-button rounded-lg ${
                   item.userState.saved
-                    ? "theme-accent-button"
-                    : "theme-subtle-button hover:bg-[var(--theme-bg-muted)]"
+                    ? "theme-toolbar-button-active"
+                    : "theme-toolbar-button-neutral"
                 }`}
                 style={headerDragRegion ? noDrag : undefined}
                 aria-label={item.userState.saved ? "Unsave" : "Save"}
+                aria-pressed={item.userState.saved}
               >
                 <svg
                   className="w-5 h-5"
@@ -907,13 +908,14 @@ export function ReaderView({
             <Tooltip label={item.userState.archived ? "Unarchive" : "Archive"}>
               <button
                 onClick={handleToggleArchived}
-                className={`p-2 rounded-lg transition-colors ${
+                className={`theme-toolbar-icon-button rounded-lg ${
                   item.userState.archived
-                    ? "theme-status-pill-success hover:bg-[rgb(var(--theme-feedback-success-rgb)/0.18)]"
-                    : "theme-subtle-button hover:bg-[var(--theme-bg-muted)]"
+                    ? "theme-toolbar-button-success-active"
+                    : "theme-toolbar-button-neutral"
                 }`}
                 style={headerDragRegion ? noDrag : undefined}
                 aria-label={item.userState.archived ? "Unarchive" : "Archive"}
+                aria-pressed={item.userState.archived}
               >
                 <TrashIcon className="w-5 h-5" />
               </button>
@@ -923,7 +925,7 @@ export function ReaderView({
             <Tooltip label={dualColumn ? "Single column" : "Dual column"}>
               <button
                 onClick={toggleDualColumn}
-                className="theme-toolbar-button-ghost hidden rounded-lg p-2 md:flex"
+                className="theme-toolbar-icon-button theme-toolbar-button-ghost rounded-lg"
                 style={headerDragRegion ? noDrag : undefined}
                 aria-pressed={dualColumn}
                 aria-label="Toggle dual column layout"
