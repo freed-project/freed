@@ -12,7 +12,6 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { getWebsiteHostForChannel } from "@freed/shared";
 import { usePlatform } from "@freed/ui/context";
-import { useLibraryFacetSummary } from "@freed/ui/hooks/useLibraryFacetSummary";
 import {
   useDebugStore,
   type CloudProviderDebugState,
@@ -177,8 +176,6 @@ export function PwaSyncSettings() {
   const { releaseChannel } = usePlatform();
   const syncConnected = useAppStore((s) => s.syncConnected);
   const isSyncing = useAppStore((s) => s.isSyncing);
-  const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
-  const libraryFacets = useLibraryFacetSummary(searchCorpusVersion);
   const librarySnapshot = useDebugStore((s) => s.librarySnapshot);
   const cloudProviders = useDebugStore((s) => s.cloudProviders);
   const [manualSyncingProvider, setManualSyncingProvider] = useState<
@@ -197,10 +194,9 @@ export function PwaSyncSettings() {
     useState(false);
   const websiteGetUrl = `https://${getWebsiteHostForChannel(releaseChannel ?? "production")}/get`;
 
-  const lastSyncTime = libraryFacets.latestRssFeedFetchedAt;
-
   const { label, provider } = getProviderInfo(configuredCloudProvider);
   const cloudProviderState = provider ? cloudProviders?.gdrive : null;
+  const lastSyncTime = cloudProviderState?.lastSuccessfulAt;
   const activeCloudProvider = provider;
   const cloudActivity = useCloudSyncActivity(cloudProviderState);
   const isManualSyncing = manualSyncingProvider !== null;
