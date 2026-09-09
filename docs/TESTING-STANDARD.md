@@ -58,7 +58,11 @@ The planner fails closed. Any change under `scripts/` or `automation/` that cann
 
 Phase documents, `docs/roadmap-status.json`, and the roadmap validator have an explicit focused route. They run the manifest validator and its unit test. They do not launch general tooling shards or assert that one named phase must remain current forever.
 
-Shard budget is distributed across the selected suites by highest averages. Within each suite, complete per-file or per-test timings from `scripts/tooling-smoke-durations.json` replace source-size weights. Partial timing sets are ignored rather than mixing seconds with bytes. Every shard uploads JUnit timings so a completed integration run can refresh the exact units that need balancing.
+Shard budget is distributed across the selected suites by highest averages.
+The cap is a maximum: stop adding shards to a completed measurement once its
+predicted work fits five minutes per shard. Unknown or capped timings retain
+the available budget. This prevents a five-minute general suite from launching
+16 copies of dependency setup. Within each suite, complete per-file or per-test timings from `scripts/tooling-smoke-durations.json` replace source-size weights. Partial timing sets are ignored rather than mixing seconds with bytes. Every shard uploads JUnit timings so a completed integration run can refresh the exact units that need balancing.
 
 ## Platform routing
 
