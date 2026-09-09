@@ -75,6 +75,11 @@ or local sample activation, including an empty Library. Missing storage does
 not become a successful query result or a fabricated checkpoint. WebKit covers
 setup, sample activation, and reopening the selected Library after reload.
 
+Worker restart allows a bounded three-second wait for the previous browser lock
+to release, while another live tab still retains exclusive ownership. Checkpoint
+replacement retains same-epoch enrollment and follower replay records. Settings
+coalesces status reads and no longer exports the Library on each refresh.
+
 The reader consolidates original-post navigation into its provider button and
 keeps theme, zoom, and Focus controls available in the toolbar menu. Synthetic
 items omit reply controls. Demo Focus changes remain document-local and do not

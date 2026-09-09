@@ -7,6 +7,11 @@ accepted Library. Before checkpoint selection, setup stays available without
 mounting Library-backed routes or the Saved overview. Sync errors link back to
 Settings. This does not change discovery, import verification, or cadence.
 
+Replacing a PWA checkpoint for the same Library and authority epoch preserves
+the exact local enrollment request and settled intent/result transport history
+inside the activation transaction. Failed activation leaves the previous state
+intact. Periodic status reads use bounded receipts without exporting the Library.
+
 PWA manual sync joins an automatic Google Drive refresh already in flight.
 One lifecycle generation runs at most one import at a time; success and failure
 release the slot, and a stopped generation cannot clear its successor.
