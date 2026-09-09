@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { motion, useInView } from "framer-motion";
 import type { CSSProperties, MouseEvent } from "react";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ParsedRelease } from "@/content/changelog";
 import { PlanProofLink } from "@/components/PlanProofLink";
 import type { ChangelogMode } from "./pagination";
@@ -62,14 +62,27 @@ function PaginationNav({
   smoothScrollOnNavigate?: boolean;
 }) {
   const router = useRouter();
+  const [compactPages, setCompactPages] = useState(true);
+  useEffect(() => {
+    const query = matchMedia("(max-width: 639px)");
+    const update = () => setCompactPages(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
   const toggleHref = mode === "all" ? "/changelog/prod" : "/changelog";
   const toggleLabel = mode === "all" ? "Hide dev releases" : "Show dev releases";
   // Keep both ends reachable while reserving four slots around the active page.
   const windowStart = Math.max(4, Math.min(currentPage - 1, totalPages - 6));
-  const pages = totalPages <= 10
+  const desktopPages = totalPages <= 10
     ? Array.from({ length: totalPages }, (_, index) => index + 1)
     : [1, 2, 3, ...Array.from({ length: 4 }, (_, index) => windowStart + index),
       totalPages - 2, totalPages - 1, totalPages];
+  // At most five numbers and two ellipses on narrow screens.
+  const compactStart = Math.max(2, Math.min(currentPage - 1, totalPages - 3));
+  const pages = compactPages
+    ? [...new Set([1, ...Array.from({ length: Math.min(3, Math.max(0, totalPages - 2)) }, (_, index) => compactStart + index), totalPages])].sort((a, b) => a - b)
+    : desktopPages;
   const pageEntries = pages.flatMap((page, index): Array<number | string> =>
     index > 0 && page > pages[index - 1]! + 1
       ? [`gap-${page}`, page]
@@ -80,7 +93,7 @@ function PaginationNav({
       aria-label="Updates pagination"
       className={`text-sm text-text-muted ${className}`.trim()}
     >
-      <div className="flex flex-wrap items-center justify-center gap-x-0.5 gap-y-2">
+      <div className="flex flex-col items-center justify-center gap-2">
         <Link
           href={toggleHref}
           scroll={!smoothScrollOnNavigate}
@@ -105,6 +118,7 @@ function PaginationNav({
         >
           {toggleLabel}
         </Link>
+        <div className="flex flex-nowrap items-center justify-center gap-x-0.5 whitespace-nowrap">
         {pageEntries.map((page) => {
           if (typeof page === "string") {
             return <span key={page} className="px-1.5 py-1" aria-label="Skipped pages">…</span>;
@@ -159,6 +173,7 @@ function PaginationNav({
             </span>
           );
         })}
+        </div>
       </div>
     </nav>
   );

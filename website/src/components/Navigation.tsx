@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import DemoLink from "./DemoLink";
+import { FaPlay } from "react-icons/fa6";
 import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useRef, useLayoutEffect } from "react";
@@ -207,8 +208,9 @@ export default function Navigation() {
         />
       )}
 
-      <div className="flex items-center gap-4 text-sm">
-      <DemoLink className="font-medium text-[var(--theme-accent-primary)] hover:underline underline-offset-4 whitespace-nowrap">
+      <div className="flex items-center gap-6 text-sm">
+      <DemoLink className="inline-flex items-center gap-2 text-sm font-medium text-text-secondary hover:text-text-primary transition-colors whitespace-nowrap">
+        <FaPlay aria-hidden="true" className="h-2.5 w-2.5 shrink-0" />
         Live Demo
       </DemoLink>
       <button onClick={() => openModal()} className="btn-primary px-6 py-3 whitespace-nowrap">
@@ -295,15 +297,16 @@ export default function Navigation() {
         >
           <div className="flex items-center justify-between">
             {logoElement}
-            <div className="flex shrink-0 items-center gap-1.5">
-              <div className="flex items-center gap-2 text-xs">
-              <DemoLink className="font-medium text-[var(--theme-accent-primary)] hover:underline underline-offset-4 whitespace-nowrap">
+            <div className="flex shrink-0 items-center gap-4">
+              {!mobileMenuOpen && <div className="flex items-center gap-4 text-xs">
+              <DemoLink className="inline-flex items-center gap-1.5 font-medium text-text-secondary hover:text-text-primary transition-colors whitespace-nowrap">
+                <FaPlay aria-hidden="true" className="h-2.5 w-2.5 shrink-0" />
                 Live Demo
               </DemoLink>
-              <button onClick={() => openModal()} className="btn-primary px-3 py-2 whitespace-nowrap">
+              <button onClick={() => openModal()} className="btn-primary whitespace-nowrap" style={{ padding: ".5rem .75rem" }}>
                 Get Freed
               </button>
-              </div>
+              </div>}
               {mobileHamburger}
             </div>
           </div>
@@ -364,9 +367,10 @@ export default function Navigation() {
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.2, duration: 0.15 }}
-                  className="flex items-center gap-4 text-sm mt-4"
+                  className="flex flex-col items-center gap-8 text-sm mt-4"
                 >
-                  <DemoLink onClick={() => setMobileMenuOpen(false)} className="font-medium text-[var(--theme-accent-primary)] hover:underline underline-offset-4 whitespace-nowrap">
+                  <DemoLink onClick={() => setMobileMenuOpen(false)} className="inline-flex items-center gap-2 text-[1.238rem] font-medium text-text-secondary hover:text-text-primary transition-colors whitespace-nowrap">
+                    <FaPlay aria-hidden="true" className="h-3 w-3 shrink-0" />
                     Live Demo
                   </DemoLink>
                   <button onClick={() => { openModal(); setMobileMenuOpen(false); }} className="btn-primary px-6 py-3 whitespace-nowrap">
