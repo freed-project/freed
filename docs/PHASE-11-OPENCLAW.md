@@ -1,6 +1,6 @@
 # Phase 11: Headless Library Authority and Agent Integrations
 
-> **Status:** 🚧 In Progress (the shared transport-neutral Primary scheduler, normalized native SQLite authority, local process lease, native and PWA actor capability enforcement with separate signed mutation and query grants, authority-signed actor enrollment and retirement, fail-closed service supervisor, descriptor-bound normalized sidecar startup, bounded checkpoint and query ingress, native mutation and signed agent query admission, exact local writer reassignment, production macOS and Linux ACL proofs, deterministic service definitions, macOS Drive PKCE and Keychain custody, installed immutable checkpoint publication, and provider-neutral bounded enrollment, intent, and result orchestration have landed; installed inbound transport binding, Linux and Windows Drive secret custody, Windows service transport, and capture workers remain open)
+> **Status:** 🚧 In Progress. Native SQLite authority, bounded commands, actor capabilities, the service supervisor, platform ACL proofs, macOS Drive credentials, and checkpoint publication are implemented. The default inbound Drive transport and staged-intent recovery have offline coverage. Installed bidirectional acceptance, Linux and Windows Drive secret custody, Windows service transport, and capture workers remain open.
 
 > **Architecture:** The headless Primary and Freed Desktop consume the
 > same extracted native Rust Library Core and the same stock SQLite contract.
@@ -84,8 +84,8 @@ The current product already provides the protocol foundation:
   enrollment, intent, and result coordinators. They verify exact immutable
   descriptors, canonical segment chains, actor and epoch identity, native
   counter advancement, result-head compare and swap, and publication readback.
-  The installed Google Drive discovery and publication adapter remains open and
-  requires its exact provider behavior approval before it can add live traffic.
+  The default Google Drive adapter is implemented; installed acceptance remains
+  open before this path can be described as production verified.
 - `@freed/library-service` binds those coordinators to the generated native
   command channel without keeping authority or transport cursors in Node. A
   sequence-bound result export command resolves the prior result digest inside
@@ -95,8 +95,11 @@ The current product already provides the protocol foundation:
   identity from native SQLite, processes one bounded enrollment page, then one
   bounded intent and result page per discovered actor. Actor discovery carries
   a bounded in-memory continuation between passes and restarts safely from the
-  beginning. The default Google Drive host does not inject this transport yet,
-  so this composition adds no live provider requests or cadence change.
+  beginning. The default Google Drive host now supplies this transport after
+  checking the remote writer and epoch. It reuses that pass's credential and
+  cancellation signal, then rereads the native revision after inbound work.
+  The existing schedule is unchanged. Nonempty installed round-trip acceptance
+  remains open.
 - Freed Desktop is the production consumer of that shared coordinator.
 - Freed Desktop performs one immediate publication attempt, checks local
   revisions every 15 seconds, and refreshes inbound actor work every 60
@@ -136,8 +139,8 @@ existing immutable checkpoint protocol, and persists only the committed
 control receipt through an already-bound private state-file descriptor. The
 coordinator stops before service settlement. A missing token, changed Library
 identity, cloud writer conflict, malformed response, or unavailable secret
-backend fails closed. Linux sealed credential custody and complete inbound
-enrollment, intent, and result processing remain open.
+backend fails closed. Linux sealed credential custody and installed inbound
+enrollment, intent, and result acceptance remain open.
 
 The native sidecar acquires the
 data-root lease before opening only the final normalized SQLite catalog in the
@@ -547,7 +550,7 @@ review before implementation.
 | 11.3  | Complete    | Extract the reusable native SQLite authority package without changing Tauri behavior                                                                                                                                                                                                                                                                                                                                               |
 | 11.4  | Complete    | Add the headless service supervisor, explicit role config, and fail-closed startup                                                                                                                                                                                                                                                                                                                                                 |
 | 11.5  | In Progress | macOS `drive-auth` now uses PKCE through the existing OAuth proxy, requests only Library Core Drive scopes, stores only the refresh token in Keychain, and keeps access tokens memory-only. Complete the versioned Linux sealed credential store and Windows vault adapter next.                                                                                                                                                   |
-| 11.6  | In Progress | Open final normalized SQLite behind the descriptor-bound sidecar and provide generated bounded checkpoint, atomic pinned export begin, registered query, Primary signing, canonical commit, authority-signed follower enrollment, follower-intent admission, actor state, and result export commands. The installed service now composes one bounded provider-neutral enrollment, intent, and result pass on the existing inbound hook when a transport is injected. Complete the Google Drive transport adapter after its exact behavior approval.              |
+| 11.6  | In Progress | Provide normalized SQLite through the descriptor-bound sidecar and bounded generated commands. The default Drive host now composes enrollment, intent and result processing after checking remote writer authority. Complete nonempty installed bidirectional acceptance. |
 | 11.7  | In Progress | Apply exact writer promotion through the generated native sidecar command and bind the shared 15-second revision plus 60-second inbound schedule to native actor and checkpoint identity. The installed macOS service now starts and stops that scheduler with immutable Drive checkpoint publication and durable exact control receipts. Complete installed promotion and competing-Primary acceptance next.                      |
 | 11.8  | Complete    | Prove actor capability certificates and the frozen transition policy in native SQLite. Phase 6 carries the same proof into PWA SQLite before activation.                                                                                                                                                                                                                                                                           |
 | 11.9  | Complete    | Apply authority-signed actor retirement atomically, return exact replay receipts, and verify the normalized retirement record during native and PWA checkpoint activation                                                                                                                                                                                                                                                          |

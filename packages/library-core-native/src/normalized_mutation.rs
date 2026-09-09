@@ -422,11 +422,22 @@ pub fn normalized_primary_follower_actor_transport_state_v1(
     let state = connection
         .query_row(
             "SELECT actor.actor_id, meta.library_id, active.epoch_id,
-                    MAX(actor.accepted_counter + 1, COALESCE((
+                    COALESCE((
+                      SELECT MIN(member.actor_counter)
+                      FROM library_primary_intent_stage_members AS member
+                      JOIN library_primary_intent_stage_transactions AS staged
+                        ON staged.transaction_id = member.transaction_id
+                      WHERE member.actor_id = actor.actor_id
+                        AND staged.received_count = staged.member_count
+                        AND NOT EXISTS (
+                          SELECT 1 FROM library_follower_result_outbox AS result
+                          WHERE result.transaction_id = staged.transaction_id
+                        )
+                    ), MAX(actor.accepted_counter + 1, COALESCE((
                       SELECT MAX(member.actor_counter) + 1
                       FROM library_primary_intent_stage_members AS member
                       WHERE member.actor_id = actor.actor_id
-                    ), actor.accepted_counter + 1))
+                    ), actor.accepted_counter + 1)))
              FROM library_meta AS meta
              JOIN library_active_authority AS active
                ON active.library_id = meta.library_id
@@ -3328,6 +3339,18 @@ pub(crate) mod tests {
         assert!(error
             .to_string()
             .contains("injected staged authority fault"));
+        // Reopen the durable fixture before asking where transport should
+        // resume. The old connection cannot supply a hidden recovery cursor.
+        let directory = tempfile::tempdir().expect("recovery fixture directory");
+        let database_path = directory.path().join("recovery.sqlite");
+        connection
+            .backup(rusqlite::DatabaseName::Main, &database_path, None)
+            .expect("persist failed staging fixture");
+        drop(connection);
+        let mut connection = Connection::open(&database_path).expect("reopen recovery fixture");
+        connection
+            .execute_batch("PRAGMA foreign_keys = ON;")
+            .expect("restore connection constraints");
         assert_eq!(
             connection
                 .query_row(
@@ -3348,6 +3371,16 @@ pub(crate) mod tests {
                 .expect("rolled back authority transaction"),
             0
         );
+        assert_eq!(
+            normalized_primary_follower_actor_transport_state_v1(
+                &connection,
+                &enrollment.actor_id,
+            )
+            .expect("complete unresolved transaction remains retryable")
+            .next_actor_counter,
+            records[0].actor_counter,
+            "cloud resume must revisit staged work that has no canonical result",
+        );
         connection
             .execute_batch("DROP TRIGGER fail_staged_authority_operation;")
             .expect("remove fault trigger");
@@ -3360,6 +3393,15 @@ pub(crate) mod tests {
         .expect("resume complete transaction");
         assert_eq!(resumed.exact_retries, 2);
         assert_eq!(resumed.resolved_transactions, 1);
+        let resolved: (String, i64, i64) = connection
+            .query_row(
+                "SELECT status, result_sequence, authoritative_source_revision
+                 FROM library_follower_result_outbox;",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("durable accepted result after restart");
+        assert_eq!(resolved, ("accepted".to_owned(), 1, 1));
         assert_eq!(
             connection
                 .query_row(

@@ -247,9 +247,18 @@ protocol version 2 intent records. It countersigns each discovered enrollment
 request through the selected normalized authority, publishes the resulting
 immutable certificate, and derives the actor set from typed certificate
 identities for the active Library and storage epoch. For each actor, one native
-query returns the next unprocessed counter as the greater of the accepted
-authority tip plus one and the greatest durable staged member plus one. This
-frontier never reads a follower device's local intent outbox cursor.
+query returns the earliest member of a complete unresolved staged transaction
+when one exists. Otherwise it returns the greater of the accepted authority tip
+plus one and the greatest durable staged member plus one. This distinction keeps
+late authority failures retryable without starving incomplete transactions of
+their remaining pages. Resolved staging cleanup remnants do not rewind the
+cursor. This frontier never reads a follower device's local intent outbox cursor.
+
+A retry counter may fall inside a committed immutable segment. Transport returns
+that complete segment and its exact first counter and predecessor. The coordinator
+verifies its bytes, digest and chain, requires the segment to contain the pending
+counter, then replays its members through native exact-retry admission. A segment
+entirely behind the pending counter cannot authorize progress.
 
 Before staging any remote intent record, the coordinator locates the exact
 immutable segment committed by the normalized v2 intent head. It validates the

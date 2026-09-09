@@ -21,7 +21,7 @@
     {
       "id": 4,
       "status": "current",
-      "reviewedAt": "2026-09-05",
+      "reviewedAt": "2026-09-06",
       "source": "docs/PHASE-4-SYNC.md"
     },
     {
@@ -62,6 +62,7 @@
     {
       "id": 11,
       "status": "current",
+      "reviewedAt": "2026-09-06",
       "source": "docs/PHASE-11-OPENCLAW.md"
     },
     {
