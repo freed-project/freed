@@ -108,8 +108,13 @@ On macOS and Linux, the service binds an owner-only mode `0600` Unix socket.
 It proves the descriptor-bound state root before and after binding, validates
 socket ownership and identity, removes only an owned private stale socket, and
 never replaces a foreign path. A state root whose path exceeds the Unix socket
-limit uses a stable owner-specific endpoint under `/tmp`, derived from the
-canonical state-root identity and protected by the same ownership checks.
+limit uses a stable owner-specific endpoint derived from the canonical
+state-root identity. macOS uses `/tmp`. Linux uses the systemd-created mode
+`0700` directory `/run/user/<uid>/freed-library-<state-root-hash>`, so
+`PrivateTmp=true` does not hide the endpoint from external actors. Linux
+holds verified directory descriptors through listener shutdown and performs
+socket creation and cleanup through the runtime directory descriptor. Missing,
+foreign, writable-by-others, or extended-ACL runtime directories fail closed.
 Shutdown closes every connection and removes only the exact socket inode it
 created. Listener failure fences the Primary and kills the native sidecar.
 The private service status record reports the active endpoint while the

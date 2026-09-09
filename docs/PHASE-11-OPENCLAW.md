@@ -465,6 +465,13 @@ supervisor proves the state root around socket creation, refuses foreign path
 replacement, removes only its exact owned socket, and fences the Primary if
 the listener fails.
 
+Linux long-path endpoints now use a verified private systemd runtime directory
+outside the unit's private `/tmp` namespace. Directory descriptors remain held
+through socket cleanup. Synthetic Linux tests prove external-process
+reachability, ownership and ACL refusal, and cleanup after directory replacement
+without deleting the replacement path. Actual systemd user-service activation
+remains an installed acceptance requirement; these tests do not establish it.
+
 Windows remains fail closed. Task 11.14 supplies the service-account named
 pipe and proves its ACL before the shared protocol processor can accept a
 request. Signature verification does not replace those transport controls.

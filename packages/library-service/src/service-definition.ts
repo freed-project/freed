@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import path from "node:path";
+import { localActorRuntimeDirectoryName } from "./local-actor-runtime-directory.js";
 
 export const LIBRARY_SERVICE_DEFINITION_SCHEMA_VERSION = 1 as const;
 export const LIBRARY_SERVICE_LAUNCHD_LABEL = "wtf.freed.library" as const;
@@ -144,6 +145,8 @@ function systemdDefinition(input: {
     "UMask=0077",
     "NoNewPrivileges=true",
     "PrivateTmp=true",
+    `RuntimeDirectory=${localActorRuntimeDirectoryName(input.stateRoot)}`,
+    "RuntimeDirectoryMode=0700",
     "PrivateDevices=true",
     "ProtectSystem=strict",
     "ProtectHome=read-only",
@@ -168,10 +171,7 @@ export function createLibraryServiceDefinitionV1(
     throw new TypeError("service definition platform is unsupported");
   }
   const exact = {
-    nodeExecutable: exactAbsolutePath(
-      input.nodeExecutable,
-      "Node executable",
-    ),
+    nodeExecutable: exactAbsolutePath(input.nodeExecutable, "Node executable"),
     cliExecutable: exactAbsolutePath(input.cliExecutable, "CLI executable"),
     configPath: exactAbsolutePath(input.configPath, "config path"),
     dataRoot: exactAbsolutePath(input.dataRoot, "data root"),
@@ -187,9 +187,7 @@ export function createLibraryServiceDefinitionV1(
     role: "primary",
     platform: input.platform,
     format:
-      input.platform === "darwin"
-        ? "launchd-plist-v1"
-        : "systemd-user-unit-v1",
+      input.platform === "darwin" ? "launchd-plist-v1" : "systemd-user-unit-v1",
     fileName:
       input.platform === "darwin"
         ? `${LIBRARY_SERVICE_LAUNCHD_LABEL}.plist`
