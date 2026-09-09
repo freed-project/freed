@@ -1,6 +1,7 @@
 /** PWA Library Core synchronization and OAuth credential lifecycle. */
 
 import type { CloudProvider } from "@freed/sync/cloud/library-core";
+import { GoogleDriveLibrarySelectionRequiredError } from "@freed/sync/cloud/library-core";
 import {
   recordCloudProviderEvent,
   updateCloudProvider,
@@ -19,6 +20,31 @@ import { syncPwaLibraryCoreFromGoogleDrive } from "./library-core-runtime";
 export type { CloudProvider };
 
 const CLOUD_PROVIDER_KEY = "freed_cloud_provider";
+const CLOUD_LIBRARY_KEY = "freed_cloud_library_gdrive";
+const emptyLibraryChoices: readonly string[] = Object.freeze([]);
+let libraryChoices = emptyLibraryChoices;
+const libraryChoiceListeners = new Set<() => void>();
+
+export function getCloudLibraryChoices(): readonly string[] { return libraryChoices; }
+export function subscribeCloudLibraryChoices(listener: () => void): () => void {
+  libraryChoiceListeners.add(listener);
+  return () => { libraryChoiceListeners.delete(listener); };
+}
+function setCloudLibraryChoices(choices: readonly string[]): void {
+  libraryChoices = Object.freeze([...choices]);
+  for (const listener of libraryChoiceListeners) listener();
+}
+
+/** Persist an explicit first-import choice; SQLite still verifies its authority. */
+export async function selectCloudLibrary(libraryId: string): Promise<void> {
+  if (!libraryChoices.includes(libraryId)) {
+    throw new Error("Refresh Google Drive before choosing this Library");
+  }
+  stopCloudSync();
+  localStorage.setItem(CLOUD_LIBRARY_KEY, libraryId);
+  setCloudLibraryChoices(emptyLibraryChoices);
+  await syncCloudProviderNow("gdrive");
+}
 const CLOUD_TOKEN_KEY = (provider: CloudProvider) =>
   `freed_cloud_token_${provider}`;
 const CLOUD_TOKEN_META_KEY = (provider: CloudProvider) =>
@@ -172,7 +198,8 @@ async function syncGoogleDriveWithFreshCredentials(
   signal: AbortSignal,
 ): Promise<void> {
   try {
-    await syncPwaLibraryCoreFromGoogleDrive({ accessToken, signal });
+    await syncPwaLibraryCoreFromGoogleDrive({ accessToken, signal,
+      libraryId: localStorage.getItem(CLOUD_LIBRARY_KEY) ?? undefined });
   } catch (error) {
     if (!isGoogleAuthenticationFailure(error)) throw error;
 
@@ -191,6 +218,7 @@ async function syncGoogleDriveWithFreshCredentials(
     }
     await syncPwaLibraryCoreFromGoogleDrive({
       accessToken: refreshedAccessToken,
+      libraryId: localStorage.getItem(CLOUD_LIBRARY_KEY) ?? undefined,
       signal,
     });
   }
@@ -213,6 +241,9 @@ async function syncGoogleDriveOnce(
     await syncGoogleDriveWithFreshCredentials(accessToken, signal);
   } catch (error) {
     if (generation !== cloudGeneration || signal.aborted) throw error;
+    if (error instanceof GoogleDriveLibrarySelectionRequiredError) {
+      setCloudLibraryChoices(error.libraryIds);
+    }
     const message = error instanceof Error ? error.message : String(error);
     const isWaitingForPrimary = message === MISSING_PUBLISHED_LIBRARY_ERROR;
     updateCloudProvider("gdrive", {
@@ -236,6 +267,7 @@ async function syncGoogleDriveOnce(
   }
   if (generation !== cloudGeneration || signal.aborted) return;
   const now = Date.now();
+  setCloudLibraryChoices(emptyLibraryChoices);
   updateCloudProvider("gdrive", {
     status: "connected",
     stage: "idle",
@@ -317,6 +349,8 @@ export function getCloudProvider(): CloudProvider | null {
 
 export function clearCloudSync(provider: CloudProvider): void {
   stopCloudSync();
+  localStorage.removeItem(CLOUD_LIBRARY_KEY);
+  setCloudLibraryChoices(emptyLibraryChoices);
   localStorage.removeItem(CLOUD_TOKEN_KEY(provider));
   localStorage.removeItem(CLOUD_TOKEN_META_KEY(provider));
   if (getCloudProvider() === provider) localStorage.removeItem(CLOUD_PROVIDER_KEY);
