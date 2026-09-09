@@ -8,6 +8,7 @@ import {
 } from "@freed/shared";
 import { useSelectedLibraryItemValidity } from "@freed/ui/hooks/useSelectedLibraryItemValidity";
 import { readPwaLibraryCoreItemDetail } from "./library-core-runtime";
+import { preserveFreedDemoNavigationUrl } from "./demo-mode";
 import { useAppStore } from "./store";
 
 function currentPathWithSearch(): string {
@@ -37,6 +38,7 @@ export function useBrowserNavigationHistory(enabled: boolean): void {
     setSelectedItem,
   });
 
+  const entryUrlRef = useRef(window.location.href);
   const bootstrappedRef = useRef(false);
   const skipWriteRef = useRef(false);
   const writeTimerRef = useRef<number | null>(null);
@@ -50,7 +52,7 @@ export function useBrowserNavigationHistory(enabled: boolean): void {
       activeFilter: parsed.activeFilter,
       selectedItemId: parsed.selectedItemId,
     });
-    window.history.replaceState(window.history.state, "", serializeNavigationState(parsed));
+    window.history.replaceState(window.history.state, "", preserveFreedDemoNavigationUrl(serializeNavigationState(parsed), entryUrlRef.current));
     bootstrappedRef.current = true;
   }, [enabled]);
 
@@ -83,7 +85,7 @@ export function useBrowserNavigationHistory(enabled: boolean): void {
 
       const rawState = snapshotNavigationState();
       const canonicalState = canonicalizeNavigationState(rawState);
-      const nextUrl = serializeNavigationState(canonicalState);
+      const nextUrl = preserveFreedDemoNavigationUrl(serializeNavigationState(canonicalState), entryUrlRef.current);
       const currentUrl = currentPathWithSearch();
 
       if (skipWriteRef.current) {

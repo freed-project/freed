@@ -66,7 +66,7 @@ import {
   readNormalizedLibraryFollowerTransportContext,
   reassignNormalizedLibraryWriterEpoch,
   recordNormalizedLibraryFollowerIntentTransportPublication,
-  setSqliteLibraryCloudWriterAdmission,
+  setSqliteLibraryCloudWriterAdmission as setNativeWriterAdmission,
   type NormalizedLibraryCloudIdentity,
   type SqliteLibraryPersistedCloudIdentity,
 } from "./sqlite-library";
@@ -373,6 +373,13 @@ function controlPointersEqual(
   return leftBytes.every((byte, index) => byte === rightBytes[index]);
 }
 
+function setSqliteLibraryCloudWriterAdmission(
+  input: Parameters<typeof setNativeWriterAdmission>[0],
+): ReturnType<typeof setNativeWriterAdmission> {
+  return tracedPublicationStage("persist verified writer admission", () =>
+    setNativeWriterAdmission(input));
+}
+
 async function persistVerifiedWriterAdmission(input: {
   readonly localWriterId: string;
   readonly pointer: LibraryCoreControlPointerV1;
@@ -585,20 +592,23 @@ async function acceptPendingNormalizedFollowerEnrollments(input: {
   readonly signal?: AbortSignal;
 }): Promise<readonly string[]> {
   const requests =
-    await discoverGoogleDriveLibraryCoreActorEnrollmentRequestsV1(input);
+    await tracedPublicationStage("discover follower enrollment requests", () =>
+      discoverGoogleDriveLibraryCoreActorEnrollmentRequestsV1(input));
   for (const request of requests) {
     const canonical = new TextDecoder("utf-8", { fatal: true }).decode(
       request.bytes,
     );
     const enrollment =
-      await countersignNormalizedLibraryFollowerActorRequest(canonical);
-    await publishNormalizedActorEnrollment({
+      await tracedPublicationStage("countersign follower enrollment", () =>
+        countersignNormalizedLibraryFollowerActorRequest(canonical));
+    await tracedPublicationStage("publish follower enrollment", () => publishNormalizedActorEnrollment({
       adapter: input.adapter,
       enrollment,
-    });
+    }));
   }
   const certificates =
-    await discoverGoogleDriveLibraryCoreActorEnrollmentsV1(input);
+    await tracedPublicationStage("discover accepted follower enrollments", () =>
+      discoverGoogleDriveLibraryCoreActorEnrollmentsV1(input));
   const actorIds = new Set<string>();
   for (const certificate of certificates) {
     const identity = normalizedEnrollmentIdentity(certificate.bytes);
@@ -1145,7 +1155,7 @@ async function publishCurrentSqliteLibraryToGoogleDriveInternal(input: {
     libraryId: state.libraryId,
     signal: input.signal,
   });
-  await ingestPendingNormalizedFollowerIntents({
+  await tracedPublicationStage("ingest follower intents", () => ingestPendingNormalizedFollowerIntents({
     accessToken: input.accessToken,
     actorIds,
     controlFileId: provisioned.controlFileId,
@@ -1153,8 +1163,8 @@ async function publishCurrentSqliteLibraryToGoogleDriveInternal(input: {
     googleFetch: input.googleFetch,
     libraryId: state.libraryId,
     signal: input.signal,
-  });
-  await flushNormalizedFollowerResults({
+  }));
+  await tracedPublicationStage("publish follower results", () => flushNormalizedFollowerResults({
     accessToken: input.accessToken,
     actorIds,
     controlFileId: provisioned.controlFileId,
@@ -1162,11 +1172,12 @@ async function publishCurrentSqliteLibraryToGoogleDriveInternal(input: {
     googleFetch: input.googleFetch,
     libraryId: state.libraryId,
     signal: input.signal,
-  });
+  }));
   throwIfPublicationCanceled(input.signal);
   return withCheckpointExport(async () => {
     const normalizedCheckpoint =
-      await beginNormalizedLibraryCheckpointExport();
+      await tracedPublicationStage("prepare checkpoint snapshot", () =>
+        beginNormalizedLibraryCheckpointExport());
     throwIfPublicationCanceled(input.signal);
     if (
       normalizedCheckpoint.libraryId !== state.libraryId ||

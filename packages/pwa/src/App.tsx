@@ -154,7 +154,7 @@ import {
   runCoordinatedPwaFactoryReset,
 } from "./lib/factory-reset-coordinator";
 import {
-  installFreedDemoCheckpoint,
+  installFreedDemoCheckpoint, mutateFreedDemoGraphLayout,
   setFreedDemoPersonCare,
 } from "./lib/demo-checkpoint";
 import {
@@ -680,7 +680,7 @@ function App() {
       upsertLibraryAccount: IS_DEMO ? undefined : upsertPwaLibraryCoreAccount,
       readLibraryAccountDetail: readPwaLibraryCoreAccountDetail,
       queryLibraryCore: queryPwaNormalizedLibrary,
-      mutateDeviceGraphLayout: IS_DEMO ? undefined : mutatePwaDeviceGraphLayout,
+      mutateDeviceGraphLayout: IS_DEMO ? mutateFreedDemoGraphLayout : mutatePwaDeviceGraphLayout,
       mutateDeviceContacts: IS_DEMO ? undefined : mutatePwaDeviceContactSync,
       queryDeviceContacts: queryPwaDeviceContacts,
       readLibraryPersonTimeline: readPwaLibraryCorePersonTimeline,

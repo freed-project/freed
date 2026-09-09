@@ -45,7 +45,7 @@
     {
       "id": 8,
       "status": "current",
-      "reviewedAt": "2026-09-07",
+      "reviewedAt": "2026-09-09",
       "source": "docs/PHASE-8-FRIENDS.md"
     },
     {
@@ -56,7 +56,7 @@
     {
       "id": 10,
       "status": "upcoming",
-      "reviewedAt": "2026-09-07",
+      "reviewedAt": "2026-09-09",
       "source": "docs/PHASE-10-POLISH.md"
     },
     {
@@ -68,7 +68,7 @@
     {
       "id": 12,
       "status": "current",
-      "reviewedAt": "2026-09-06",
+      "reviewedAt": "2026-09-09",
       "source": "docs/PHASE-12-ADDITIONAL-PLATFORMS.md"
     },
     {
