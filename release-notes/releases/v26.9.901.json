@@ -1,0 +1,78 @@
+{
+  "tag": "v26.9.901",
+  "version": "26.9.901",
+  "channel": "production",
+  "dayKey": "26.9.9",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-09-09T19:33:51.855Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "production",
+    "previousPublishedTag": "v26.9.900",
+    "previousPublishedDayTag": "v26.9.803",
+    "compareRef": "HEAD",
+    "productCommitSha": "1eee19543a53c3069c19e56a5f1724f6b9844767",
+    "promotedDevCommitSha": "f885b24bf92e22ecc110d7fe0bfdec355ad63781",
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "production",
+        "previousPublishedTag": "v26.9.900",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "9c9fa771778abba36a7c46c289caf0f3998ca31c",
+        "toInclusiveProductCommitSha": "1eee19543a53c3069c19e56a5f1724f6b9844767"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:709197038cc687ff0889d7e28497c08704b0a1f7096f4348479ea36bf5896ccb",
+        "currentDigest": "sha256:709197038cc687ff0889d7e28497c08704b0a1f7096f4348479ea36bf5896ccb"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:57c6db801da144ed6d9442399b82be167e5e978419486e340890a1b27716b04d",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.9.900",
+      "v26.9.901"
+    ],
+    "relatedBuildTags": [
+      "v26.9.900",
+      "v26.9.901"
+    ],
+    "prNumbers": [
+      1941,
+      1947,
+      1961
+    ],
+    "commitSubjects": [
+      "chore: promote dev into main for production release (#1961)",
+      "chore: prepare v26.9.900",
+      "chore: promote dev into main for production release (#1947)",
+      "chore: promote dev into main for production release",
+      "chore: promote dev into main for production release (#1941)",
+      "chore: promote dev into main for production release"
+    ]
+  },
+  "release": {
+    "deck": "Facebook login recognition, reliable Saved views, and PWA recovery fixes, recognize completed Facebook logins and close the login window after healthy capture startup, and show the full Saved collection after browsing Friends and keep bookmarking accessible in narrow reader toolbars",
+    "features": [],
+    "fixes": [
+      "Keep provider Advanced settings available, label Focus mode clearly, and make background activity status less distracting",
+      "Improve mobile welcome and Settings scrolling, stabilize menu panes, and correct Scriptorium icon contrast",
+      "Preserve the previous accepted PWA database after interrupted checkpoint imports and distinguish progressing large imports from stalled workers",
+      "Close participating PWA storage workers before device reset, recover rejected local sample startup results, and offer an explicit choice when Drive contains multiple Libraries",
+      "Report bounded SQLite integrity and worker-timeout diagnostics while retaining failed databases for investigation",
+      "Resume identical PWA checkpoint stages across later retry attempts while retaining the original staging timestamp"
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.9.901\n\nFacebook login recognition, reliable Saved views, and PWA recovery fixes, recognize completed Facebook logins and close the login window after healthy capture startup, and show the full Saved collection after browsing Friends and keep bookmarking accessible in narrow reader toolbars\n\n### Fixes\n\n- Keep provider Advanced settings available, label Focus mode clearly, and make background activity status less distracting\n- Improve mobile welcome and Settings scrolling, stabilize menu panes, and correct Scriptorium icon contrast\n- Preserve the previous accepted PWA database after interrupted checkpoint imports and distinguish progressing large imports from stalled workers\n- Close participating PWA storage workers before device reset, recover rejected local sample startup results, and offer an explicit choice when Drive contains multiple Libraries\n- Report bounded SQLite integrity and worker-timeout diagnostics while retaining failed databases for investigation\n- Resume identical PWA checkpoint stages across later retry attempts while retaining the original staging timestamp\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
