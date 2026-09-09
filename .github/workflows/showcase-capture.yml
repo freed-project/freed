@@ -63,7 +63,9 @@ jobs:
           FREED_SHOWCASE_URL: http://127.0.0.1:4173/?freed-demo=1
           FREED_SHOWCASE_OUTPUT: ${{ runner.temp }}/freed-showcase-smoke
           FREED_SHOWCASE_SQLITE_MEMORY: '1'
-        run: node scripts/capture-release-showcase.mjs
+        # Exercise release formatting with a synthetic tag. This read-only job
+        # preserves the real checkout SHA and never creates or publishes a tag.
+        run: GITHUB_REF=refs/tags/v0.1.100 GITHUB_REF_NAME=v0.1.100 node scripts/capture-release-showcase.mjs
       - name: Retain capture evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
