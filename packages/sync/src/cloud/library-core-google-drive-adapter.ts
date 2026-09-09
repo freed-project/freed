@@ -796,13 +796,25 @@ export async function discoverGoogleDriveLibraryCoreControlV1(input: {
   return Object.freeze({ controlFileId: file.id });
 }
 
+/** Distinct published Libraries require an explicit first-import choice. */
+export class GoogleDriveLibrarySelectionRequiredError extends Error {
+  readonly libraryIds: readonly string[];
+
+  constructor(libraryIds: readonly string[]) {
+    super("Choose which Library to sync from Google Drive");
+    this.name = "GoogleDriveLibrarySelectionRequiredError";
+    this.libraryIds = Object.freeze([...libraryIds].sort());
+  }
+}
+
 /**
- * Discover the sole published Library Core control available to a fresh PWA.
- * The control body supplies the library identity. App properties only narrow
- * discovery to the protocol and object kind, and never establish authority.
+ * Discover one published control, optionally narrowed to a selected Library.
+ * The control body supplies the Library identity. App properties only narrow
+ * discovery and never establish authority.
  */
 export async function discoverPublishedGoogleDriveLibraryCoreControlV1(input: {
   readonly accessToken: string;
+  readonly libraryId?: string;
   readonly googleFetch?: GoogleDriveFetch;
   readonly signal?: AbortSignal;
 }): Promise<PublishedGoogleDriveLibraryCoreControlV1 | null> {
@@ -812,9 +824,13 @@ export async function discoverPublishedGoogleDriveLibraryCoreControlV1(input: {
     MAX_ACCESS_TOKEN_BYTES,
   );
   const googleFetch = input.googleFetch ?? defaultGoogleDriveFetch();
+  if (input.libraryId !== undefined) assertLibraryId(input.libraryId);
   const expectedProperties = Object.freeze({
     freedProtocol: PROTOCOL_PROPERTY,
     freedObjectKind: "control",
+    ...(input.libraryId === undefined ? {} : {
+      freedLibraryDigest: await libraryIdentityDigest(input.libraryId),
+    }),
   });
   const files = await listDriveFilesByProperties({
     accessToken: input.accessToken,
@@ -823,7 +839,7 @@ export async function discoverPublishedGoogleDriveLibraryCoreControlV1(input: {
     signal: input.signal,
     maxFiles: MAX_CONTROL_DISCOVERY_CANDIDATES,
   });
-  let discovered: PublishedGoogleDriveLibraryCoreControlV1 | null = null;
+  const discovered = new Map<string, PublishedGoogleDriveLibraryCoreControlV1>();
   for (const file of files) {
     assertExpectedProperties(
       file.appProperties,
@@ -847,18 +863,24 @@ export async function discoverPublishedGoogleDriveLibraryCoreControlV1(input: {
       new TextDecoder("utf-8", { fatal: true }).decode(controlBytes),
     );
     const pointer = parseLibraryCoreControlPointerV1(decoded);
-    if (discovered !== null) {
+    if (input.libraryId !== undefined && pointer.libraryId !== input.libraryId) {
+      throw new Error("Published Drive control does not match the selected Library");
+    }
+    if (discovered.has(pointer.libraryId)) {
       throw new Error(
-        "Drive contains more than one published Library Core control",
+        "Drive contains more than one published Library Core control for the same Library",
       );
     }
-    discovered = Object.freeze({
+    discovered.set(pointer.libraryId, Object.freeze({
       controlFileId: file.id,
       control: Object.freeze({ bytes: controlBytes }),
       libraryId: pointer.libraryId,
-    });
+    }));
   }
-  return discovered;
+  if (discovered.size > 1) {
+    throw new GoogleDriveLibrarySelectionRequiredError([...discovered.keys()]);
+  }
+  return discovered.values().next().value ?? null;
 }
 
 /**

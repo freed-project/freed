@@ -102,6 +102,7 @@ import {
   appendPwaLibraryCorePersonReachOut,
   assignPwaLibraryCoreAccountToPerson,
   ensurePwaLibraryCoreLocalSampleState,
+  clearPwaLibraryCoreLocalDataForFactoryReset,
   executePwaLibraryCoreScopeAction,
   openPwaLibraryCoreFeedReader,
   openPwaLibraryCoreFriendsFeedReader,
@@ -480,7 +481,7 @@ function App() {
               resetInterfaceZoom,
               resetThemePreference,
             ],
-            clearLocalData: [],
+            clearLocalData: [clearPwaLibraryCoreLocalDataForFactoryReset],
             clearProviderDataAndConnections: async () => {
               stopCloudSync();
               await clearStoredCloudDataForFactoryReset(deleteFromCloud);
@@ -514,7 +515,7 @@ function App() {
       reset: async () => {
         beginFactoryResetBoundary();
         stopCloudSync();
-        await runCoordinatedPwaFactoryReset(async () => {});
+        await runCoordinatedPwaFactoryReset(clearPwaLibraryCoreLocalDataForFactoryReset);
       },
       reload: () => {
         preparePwaFactoryResetReload();
