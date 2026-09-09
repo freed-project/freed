@@ -240,6 +240,12 @@ test("Substack and Medium are beta sources with gated login", async ({
 
   for (const provider of ["substack", "medium"] as const) {
     await openSettingsSection(page, provider);
+    const advanced = page.locator(".fixed.inset-0.z-50").last().locator("details").filter({ hasText: `Choose how the ${PROVIDERS[provider].label} browser window behaves` });
+    await advanced.locator("summary").click();
+    await expect(advanced.getByRole("radio", { name: /^Shown/ })).toBeVisible();
+    expect((await ipc.invocations()).some((call) =>
+      call.cmd === `${provider}_show_login` || PROVIDERS[provider].commands.includes(call.cmd),
+    )).toBe(false);
     await expect(page.getByTestId(`provider-status-${provider}`)).toBeVisible();
     await expect(
       page.getByTestId(`provider-connect-${provider}`),
@@ -276,6 +282,7 @@ test("disconnect stays disconnected after restart", async ({ app }) => {
   for (const provider of ["substack", "medium"] as const) {
     await setAuthenticated(page, provider);
     await openSettingsSection(page, provider);
+    await expect(page.locator(".fixed.inset-0.z-50").last().locator("details").filter({ hasText: `Choose how the ${PROVIDERS[provider].label} browser window behaves` }).locator("summary")).toBeVisible();
     await expect(
       page.getByTestId(`provider-connect-${provider}`),
     ).toContainText(`Reconnect ${PROVIDERS[provider].label}`);

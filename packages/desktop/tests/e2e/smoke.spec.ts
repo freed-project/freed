@@ -2583,7 +2583,7 @@ test("desktop hide previews skips the compact reader rail transition when animat
   await expect(rail).toHaveCount(0);
 });
 
-test("narrow reader toolbar moves hidden actions into the overflow menu", async ({ app, page }) => {
+test("narrow reader toolbar keeps bookmarking inline and archive in the overflow menu", async ({ app, page }) => {
   await page.setViewportSize({ width: 900, height: 900 });
   await app.goto();
   await app.waitForReady();
@@ -2596,13 +2596,19 @@ test("narrow reader toolbar moves hidden actions into the overflow menu", async 
     return page.evaluate(() => document.documentElement.classList.contains("feed-layout-transition"));
   }).toBe(false);
   await expect(page.getByRole("button", { name: "Hide Previews" })).toBeVisible({ timeout: 5_000 });
+  const toolbar = page.getByRole("banner");
+  const bookmark = toolbar.getByRole("button", { name: "Save", exact: true });
+  await expect(bookmark).toBeVisible();
+  await bookmark.click();
+  await expect(toolbar.getByRole("button", { name: "Unsave", exact: true }))
+    .toHaveAttribute("aria-pressed", "true");
   const overflowButton = page.getByTestId("toolbar-overflow-button");
   await expect(overflowButton).toBeVisible({ timeout: 5_000 });
 
   await overflowButton.click();
   const overflowMenu = page.getByTestId("toolbar-overflow-menu");
   await expect(overflowMenu.getByRole("menuitem", { name: "Enable focus mode" })).toHaveCount(0);
-  await expect(overflowMenu.getByRole("menuitem", { name: "Bookmark" })).toBeVisible();
+  await expect(overflowMenu.getByRole("menuitem", { name: /bookmark/i })).toHaveCount(0);
   await expect(overflowMenu.getByRole("menuitem", { name: "Archive" })).toBeVisible();
 });
 

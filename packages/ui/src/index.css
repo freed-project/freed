@@ -2120,6 +2120,20 @@ html.freed-mobile-sidebar-open body {
   }
 }
 
+/* Mobile toolbars use unboxed icons in every state, including selected and hover. */
+@media (max-width: 767px) {
+  :is(.theme-topbar, .theme-attached-topbar) .theme-toolbar-icon-button {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+  }
+
+  :is(.theme-topbar, .theme-attached-topbar) .theme-toolbar-icon-button:focus-visible {
+    outline: 2px solid var(--theme-accent-secondary);
+    outline-offset: 2px;
+  }
+}
+
 .theme-toolbar-icon-button {
   display: inline-flex;
   box-sizing: border-box;
