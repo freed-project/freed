@@ -179,6 +179,25 @@ describe("PwaSyncSettings cloud diagnostics", () => {
     ).IS_REACT_ACT_ENVIRONMENT = false;
   });
 
+  it("keeps receipt refresh single flight and stops after unmount", async () => {
+    let release!: (value: Awaited<ReturnType<typeof mocks.readCloudReceipt>>) => void;
+    const receipt = await mocks.readCloudReceipt();
+    mocks.readCloudReceipt.mockClear();
+    mocks.readCloudReceipt.mockImplementationOnce(() => new Promise((resolve) => {
+      release = resolve;
+    }));
+    const { root } = renderWithPlatform(createElement(PwaSyncSettings));
+    await act(async () => { await Promise.resolve(); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+    expect(mocks.readCloudReceipt).toHaveBeenCalledTimes(1);
+    await act(async () => { release(receipt); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
+    expect(mocks.readCloudReceipt).toHaveBeenCalledTimes(2);
+    act(() => root.unmount());
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+    expect(mocks.readCloudReceipt).toHaveBeenCalledTimes(2);
+  });
+
   it("requires an explicit Library choice and forwards the exact identity", async () => {
     mocks.libraryChoices = Object.freeze(["11".repeat(32), "22".repeat(32)]);
     const { container, root } = renderWithPlatform(createElement(PwaSyncSettings));

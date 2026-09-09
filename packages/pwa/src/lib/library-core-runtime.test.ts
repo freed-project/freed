@@ -443,16 +443,10 @@ describe("PWA Library Core bounded scanner", () => {
         nextIntentActorCounter: 4,
         nextResultSequence: 3,
       }),
-      localExport: LOCAL_EXPORT,
     });
 
-    mocks.describeNormalizedCheckpointExport.mockRejectedValueOnce(
-      new Error("normalized checkpoint export has unresolved local intents"),
-    );
-    await expect(readPwaLibraryCoreCloudReceiptV2()).resolves.toMatchObject({
-      checkpoint: SELECTED_RECEIPT,
-      localExport: null,
-    });
+    expect(mocks.describeNormalizedCheckpointExport).not.toHaveBeenCalled();
+    expect(mocks.readNormalizedCheckpointExportPage).not.toHaveBeenCalled();
 
     mocks.readFollowerTransportContext.mockResolvedValueOnce({
       actorId: "89".repeat(32),
