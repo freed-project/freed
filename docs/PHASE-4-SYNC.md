@@ -2,6 +2,13 @@
 
 > **Status:** 🚧 In Progress
 
+Drive discovery distinguishes separate Libraries from duplicate controls for the
+same Library. When several Libraries are published, the PWA offers an explicit
+Library ID choice and pins later discovery to the imported checkpoint identity.
+It never chooses by modification time or deletes competing controls. Duplicate
+controls for one identity remain an integrity error. Authenticated production
+acceptance remains open.
+
 Checkpoint publication separates a five-minute no-progress deadline from a
 fixed total budget. After the native snapshot is known, the budget is five
 minutes plus ten seconds per estimated 4,096-record page, capped at two hours

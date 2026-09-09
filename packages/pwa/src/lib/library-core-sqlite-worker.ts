@@ -34,6 +34,7 @@ const useDemoMemoryStorage = scope.name === "freed-library-core-sqlite-demo" &&
 const useMemoryStorage = useMemoryE2eStorage || useDemoMemoryStorage;
 let engine: PwaLibraryCoreSqliteEngine | null = null;
 let contentVault: PwaLibraryCoreOpfsContentVault | null = null;
+let opfsPool: { pauseVfs(): unknown } | null = null;
 let releaseOwnership: (() => void) | null = null;
 let ownershipTask: Promise<unknown> | null = null;
 
@@ -107,13 +108,13 @@ async function open(): Promise<PwaLibraryCoreSqliteEngine> {
     openingStage = useMemoryStorage
       ? "open the isolated memory database"
       : "install the OPFS SAH pool VFS";
-    const database = useMemoryStorage
-      ? new sqlite3.oo1.DB(":memory:", "c")
-      : new (
-          await installPwaLibraryCoreOpfsSahPool((options) =>
-            sqlite3.installOpfsSAHPoolVfs(options),
-          )
-        ).OpfsSAHPoolDb(PWA_LIBRARY_CORE_SQLITE_DATABASE_FILENAME);
+    const pool = useMemoryStorage ? null : await installPwaLibraryCoreOpfsSahPool(
+      (options) => sqlite3.installOpfsSAHPoolVfs(options),
+    );
+    opfsPool = pool;
+    const database = pool
+      ? new pool.OpfsSAHPoolDb(PWA_LIBRARY_CORE_SQLITE_DATABASE_FILENAME)
+      : new sqlite3.oo1.DB(":memory:", "c");
     openingStage = "initialize the normalized schema";
     const next = new PwaLibraryCoreSqliteEngine(
       database,
@@ -133,6 +134,8 @@ async function open(): Promise<PwaLibraryCoreSqliteEngine> {
     return next;
   } catch (error) {
     openingEngine?.close();
+    opfsPool?.pauseVfs();
+    opfsPool = null;
     releaseOwnership?.();
     releaseOwnership = null;
     await ownershipTask?.catch(() => undefined);
@@ -239,6 +242,11 @@ async function executeClose(
   contentVault = null;
   active.close();
   engine = null;
+  // Closing the DB retains the pool's SyncAccessHandles. Explicitly release
+  // them before acknowledging quiescence or allowing another tab to open.
+  // Worker termination alone does not synchronously release handles in WebKit.
+  opfsPool?.pauseVfs();
+  opfsPool = null;
   releaseOwnership?.();
   releaseOwnership = null;
   await ownershipTask?.catch(() => undefined);

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { lockBodyScroll } from "../../lib/body-scroll-lock.js";
 import { formatDistanceToNow } from "date-fns";
 import { AuthorIdentityLink } from "../AuthorIdentityLink.js";
 import { LoadingState } from "../LoadingState.js";
@@ -788,11 +789,7 @@ export function ReaderView({
 
   useEffect(() => {
     if (inline) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
+    return lockBodyScroll();
   }, [inline]);
 
   return (

@@ -19,6 +19,7 @@ export const PROMOTION_SCOPE_PATHS = [
   "bunfig.toml",
   "tsconfig.json",
   "tsconfig.base.json",
+  "vitest.config.ts",
 ];
 
 export const RELEASE_ONLY_FILES = [

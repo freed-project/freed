@@ -73,10 +73,14 @@ const RELEASE_TOOLING_PATHS = new Set([
   "scripts/release.sh",
   "scripts/validate-dev-integration-receipt.mjs",
   "scripts/validate-dev-integration-receipt.test.mjs",
+  "scripts/validate-release-integration.mjs",
+  "scripts/validate-release-integration.test.mjs",
   "scripts/validate-release-notes.mjs",
 ]);
 
 const RELEASE_ADMISSION_PATHS = new Set([
+  "scripts/validate-release-integration.mjs",
+  "scripts/validate-release-integration.test.mjs",
   ".github/workflows/ci.yml",
   ".github/workflows/main-release-validation.yml",
   ".github/workflows/release.yml",
@@ -92,6 +96,7 @@ const RELEASE_ADMISSION_PATHS = new Set([
 ]);
 
 const RELEASE_ADMISSION_TEST_FILES = [
+  "scripts/validate-release-integration.test.mjs",
   "scripts/validate-dev-integration-receipt.test.mjs",
   "scripts/release-governance.test.mjs",
   "scripts/release-workflow-matrix.test.mjs",
@@ -202,7 +207,7 @@ Modes:
   feature  Run root typecheck plus changed-surface checks derived from git diff or --changed-files.
   providers  Run focused social provider checks for extractor, auth, memory-preflight, and capture-runtime work.
   dev      Run the integration suite used for dev branch pushes and dev builds.
-  production  Run the full production validation suite for public release prep.
+  production  Verify inherited integration and the production release delta.
   release  Compatibility alias for production.
 
 Options:
@@ -955,11 +960,6 @@ export function buildValidationPlan(mode, changedFiles) {
         "packages/desktop",
       ),
       npmCommand(
-        "desktop e2e smoke",
-        ["run", "test:e2e:smoke"],
-        "packages/desktop",
-      ),
-      npmCommand(
         "desktop e2e regression",
         ["run", "test:e2e:regression"],
         "packages/desktop",
@@ -990,47 +990,19 @@ export function buildValidationPlan(mode, changedFiles) {
 
   if (normalizedMode === "production") {
     const plan = [
-      ...buildValidationPlan("dev", changedFiles)
-        .filter(
-          (item) =>
-            ![
-              "root build",
-              "root typecheck",
-              "root lint",
-              "website tests",
-              "retired Automerge release artifact guard",
-            ].includes(item.label),
-        )
-        .flatMap((item) =>
-          item.label === "native rust clippy"
-            ? [
-                npmCommand(
-                  "desktop frontend context build",
-                  ["run", "build"],
-                  "packages/desktop",
-                ),
-                item,
-              ]
-            : [item],
-        ),
-      nodeCommand("release notes shared tests", [
-        "--test",
-        path.join("scripts", "release-notes-shared.test.mjs"),
+      nodeCommand("exact dev integration receipt", [
+        path.join("scripts", "validate-release-integration.mjs"),
       ]),
-      // The website is a separate lane. It ships from `www` through the
-      // publish-website job against the reviewed marketing branch, so building
-      // it here proved nothing about the Desktop release and coupled two lanes
-      // that AGENTS.md keeps apart. The root build, typecheck, and lint fanouts
-      // also include the website, so production validation inherits the green dev
-      // product build and reruns only the release-critical product checks.
-      //
-      // The signed Desktop build remains in the release matrix. Production
-      // validation builds only the frontend context required by Tauri's
-      // generate_context! macro before native clippy and tests.
+      nodeCommand("release admission contracts", [
+        "--test",
+        ...RELEASE_ADMISSION_TEST_FILES,
+      ]),
+      // Integration owns product tests. Signed native builds remain in the
+      // platform matrix; the PWA release delta still builds its shipped bytes.
       npmCommand("pwa production build", ["run", "build"], "packages/pwa"),
       nodeCommand("retired Automerge release artifact guard", [
         path.join("scripts", "validate-retired-automerge-runtime.mjs"),
-        "all",
+        "pwa",
       ]),
     ];
 

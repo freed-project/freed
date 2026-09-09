@@ -170,7 +170,11 @@ function openKeyDatabase(): Promise<IDBDatabase> {
       },
       { once: true },
     );
-    request.addEventListener("success", () => resolve(request.result), {
+    request.addEventListener("success", () => {
+      const database = request.result;
+      database.addEventListener("versionchange", () => database.close());
+      resolve(database);
+    }, {
       once: true,
     });
     request.addEventListener(
@@ -512,6 +516,24 @@ export async function preparePwaLibraryCoreLocalSampleResult(
       preparedResult: validatePreparedResult(preparedResult),
     });
   });
+}
+
+/** Retire only the exact local result SQLite has rejected before admission. */
+export async function discardRejectedPwaLibraryCoreLocalSampleResult(
+  libraryId: LibraryCoreLowercaseHex64,
+  resultDigest: LibraryCoreLowercaseHex64,
+): Promise<PwaLibraryCoreLocalSampleAuthority> {
+  const stored = await updateStoredLocalSampleAuthority((current) => {
+    if (
+      current.libraryId !== libraryId ||
+      current.status !== "ready" ||
+      current.preparedResult?.previousResultDigest !== resultDigest
+    ) {
+      throw new Error("PWA rejected local sample result changed");
+    }
+    return Object.freeze({ ...current, preparedResult: null });
+  });
+  return publicLocalSampleAuthority(stored);
 }
 
 export async function commitPwaLibraryCoreLocalSampleResult(
