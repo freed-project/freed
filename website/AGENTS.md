@@ -29,6 +29,7 @@ These rules apply to `website/**`. Read the root `AGENTS.md` and use [freed-buil
 ## Roadmap and changelog
 
 - Roadmap presentation must come from canonical `docs/roadmap-status.json` at an approved product source commit. Record the file digest. Run `node scripts/validate-roadmap-status.mjs` inside that exact product checkout before transfer. Map statuses and descriptions from the validated source exactly. Do not infer state from phase prose, commit messages, or visual cues.
+- Whenever the primary roadmap page is reviewed or updated, review the scrolling vision roadmap in `src/app/vision/VisionMilestones.tsx` in the same task. Refresh `src/app/vision/roadmap-source.json` from the same validated product source when source data changes, preserving its commit and digest. Update milestone selection, completed achievements, descriptions, and status presentation where appropriate so the two surfaces agree. Keep the vision summary concise and retain representative completed milestones alongside current and upcoming work. Record why no vision change is needed when leaving it unchanged, and verify both pages at mobile and desktop widths when rendered content changes.
 - Changelog presentation must remain bound to the approved published release, tag, channel, source commit, and release-note artifact.
 - Record source identity in the task and pull request. Never merge `dev` into `www` to move roadmap or changelog content.
 

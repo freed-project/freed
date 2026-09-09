@@ -1,0 +1,142 @@
+.section {
+  border-top: 1px solid var(--theme-border-subtle);
+  padding: 3.5rem 0;
+  min-width: 0;
+  scroll-margin-top: 6rem;
+}
+.heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 2rem;
+  align-items: end;
+  margin-bottom: 2rem;
+}
+.heading p {
+  margin-top: 1rem;
+}
+.roadmapLink:focus-visible,
+.rail:focus-visible {
+  outline: 2px solid var(--theme-heading-accent);
+  outline-offset: 4px;
+}
+.rail {
+  /* The scroll viewport reaches both page edges. Padding belongs to the list
+     so the first card starts on the content rail and then scrolls out of it. */
+  --rail-inset: max(clamp(1.5rem, 4vw, 3rem), calc((100vw - 76rem) / 2 + 3rem));
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  scroll-padding-left: var(--rail-inset);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: thin;
+  scrollbar-color: var(--theme-border-strong) transparent;
+  padding-bottom: 1rem;
+}
+.list {
+  display: flex;
+  gap: 1.25rem;
+  list-style: none;
+  margin: 0;
+  padding: 0 var(--rail-inset);
+  width: max-content;
+  min-width: 100%;
+}
+.list > li {
+  flex: 0 0 18rem;
+  scroll-snap-align: start;
+}
+.card {
+  height: 100%;
+  padding: 1.25rem 1.4rem 1.6rem;
+  border: 1px solid var(--theme-border-subtle);
+  border-radius: 0.8rem;
+  background: color-mix(in srgb, var(--theme-bg-surface) 75%, transparent);
+}
+.illustration {
+  position: relative;
+  height: 8rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid var(--theme-border-subtle);
+  padding-bottom: 1.25rem;
+}
+.illustration > span {
+  font-size: 4.3rem;
+  letter-spacing: -0.06em;
+  line-height: 1;
+  font-family: var(--font-space-grotesk), sans-serif;
+  color: var(--theme-text-muted);
+  opacity: 0.6;
+}
+.iconFrame {
+  width: 3.5rem;
+  height: 3.5rem;
+  display: grid;
+  place-items: center;
+  color: var(--theme-heading-accent);
+}
+.iconFrame > svg {
+  width: 2.3rem;
+  height: 2.3rem;
+}
+.status {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  font-size: 0.75rem;
+  color: var(--theme-text-secondary);
+  margin-bottom: 0.75rem;
+}
+.status i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+}
+.card[data-status="complete"] .status i {
+  background: var(--theme-heading-accent);
+  border-color: var(--theme-heading-accent);
+}
+.card[data-status="current"] .status i {
+  background: var(--theme-text-secondary);
+}
+.section .card h3 {
+  font-size: 1.5rem;
+  line-height: 1.15;
+  max-width: 16ch;
+  min-height: 3.5rem;
+}
+.section .card p {
+  margin-top: 1rem;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+.roadmapLink {
+  flex-shrink: 0;
+}
+@media (max-width: 760px) {
+  .section {
+    padding: 2.5rem 0;
+  }
+  .heading {
+    gap: 1rem;
+    align-items: center;
+  }
+  .heading p {
+    font-size: 0.95rem;
+    max-width: 26ch;
+  }
+  .list > li {
+    flex-basis: min(17rem, 80vw);
+  }
+  .heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .section .heading h2 {
+    font-size: 2rem;
+  }
+}

@@ -91,6 +91,7 @@ For every new production application version, follow [the showcase release contr
 Public roadmap and changelog updates must remain attributable to an approved source:
 
 - For roadmap presentation, use canonical `docs/roadmap-status.json` from an approved product source checkout. Record the source commit and file digest. Run `node scripts/validate-roadmap-status.mjs` inside that exact approved product checkout before transferring the validated data. Map it exactly. Do not infer status from phase prose, commit messages, or unchecked assumptions.
+- Review both public roadmap surfaces together using the [website roadmap maintenance rules](website/AGENTS.md#roadmap-and-changelog).
 - For changelog presentation, record the published release, tag, channel, source commit, and approved release-note artifact.
 - Put the relevant source identity in the task and pull request. Do not merge a product branch into `www` to transfer one presentation change.
 
