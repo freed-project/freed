@@ -41,6 +41,8 @@ Local regression coverage does not automatically become a permanent universal re
 | 3. Release delta    | Tag and promotion    | Version, notes, identity, build, packaging, artifacts                                                          |
 | 4. Exhaustive       | Nightly and dispatch | Stress, fault injection, full visual and performance matrices, long control-plane simulations, flake discovery |
 
+Full integration explicitly runs the shared UI, sync, and every capture package with a declared test script. Desktop and PWA test discovery does not include these package suites. Shared-schema changes also run these consumers. UI component tests use an inert layout observer in jsdom; real geometry remains a browser-test responsibility.
+
 A test may be release-critical through an exact inherited receipt without rerunning inside the release workflow.
 
 ## How tier 1 is computed

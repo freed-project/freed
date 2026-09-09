@@ -68,6 +68,12 @@ test("feature plan for shared changes covers both desktop and pwa surfaces", () 
     "desktop social provider unit tests",
     "desktop social provider e2e",
     "shared unit tests",
+    "packages/capture-medium tests",
+    "packages/capture-rss tests",
+    "packages/capture-substack tests",
+    "packages/capture-youtube tests",
+    "ui unit tests",
+    "sync unit tests",
     "pwa production build",
     "pwa typecheck",
     "pwa unit tests",
@@ -174,6 +180,7 @@ test("feature plan for feed UI changes leaves raw timing checks to nightly", () 
 
   assert.deepEqual(labels, [
     "root typecheck",
+    "ui unit tests",
     "pwa production build",
     "pwa typecheck",
     "pwa unit tests",
@@ -191,6 +198,7 @@ test("feature plan for Friends UI changes leaves raw timing checks to nightly", 
 
   assert.deepEqual(labels, [
     "root typecheck",
+    "ui unit tests",
     "pwa production build",
     "pwa typecheck",
     "pwa unit tests",
@@ -208,6 +216,7 @@ test("feature plan for sidebar UI changes leaves raw timing checks to nightly", 
 
   assert.deepEqual(labels, [
     "root typecheck",
+    "ui unit tests",
     "pwa production build",
     "pwa typecheck",
     "pwa unit tests",
@@ -407,6 +416,11 @@ test("workspace checks run inside each workspace without root dispatch flags", (
     );
   }
 
+  for (const name of ["medium", "rss", "substack", "youtube"]) {
+    assert.ok(plan.some((item) => item.label === `packages/capture-${name} tests`));
+  }
+  assert.ok(plan.some((item) => item.label === "ui unit tests"));
+  assert.ok(plan.some((item) => item.label === "sync unit tests"));
   const websiteTests = plan.find((item) => item.label === "website tests");
   const desktopTests = plan.find((item) => item.label === "desktop unit tests");
   assert.match(websiteTests.cwd, /\/website$/);

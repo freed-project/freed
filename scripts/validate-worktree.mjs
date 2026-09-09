@@ -667,6 +667,15 @@ function shouldRunPwaOpfsDurability() {
   return process.env.FREED_SKIP_PWA_OPFS_DURABILITY !== "true";
 }
 
+function captureTestCommands() {
+  return readdirSync(path.join(REPO_ROOT, "packages"))
+    .filter((name) => name.startsWith("capture-"))
+    .sort()
+    .map((name) => `packages/${name}`)
+    .filter((workspace) => workspaceHasScript(workspace, "test"))
+    .map((workspace) => npmCommand(`${workspace} tests`, ["run", "test"], workspace));
+}
+
 function addCaptureWorkspaceChecks(plan, workspacePath) {
   if (workspaceHasScript(workspacePath, "test")) {
     addCommand(
@@ -930,6 +939,9 @@ export function buildValidationPlan(mode, changedFiles) {
       npmCommand("skill validation", ["run", "validate:skills"]),
       npmCommand("website tests", ["run", "test"], "website"),
       npmCommand("shared unit tests", ["run", "test"], "packages/shared"),
+      npmCommand("ui unit tests", ["run", "test"], "packages/ui"),
+      npmCommand("sync unit tests", ["run", "test"], "packages/sync"),
+      ...captureTestCommands(),
       npmCommand(
         "library service tests",
         ["run", "test"],
@@ -1087,6 +1099,9 @@ export function buildValidationPlan(mode, changedFiles) {
   const sharedPackageChanged = productFiles.some((filePath) =>
     filePath.startsWith("packages/shared/"),
   );
+  const uiPackageChanged = productFiles.some((filePath) =>
+    filePath.startsWith("packages/ui/"),
+  );
   const syncPackageChanged = productFiles.some((filePath) =>
     filePath.startsWith("packages/sync/"),
   );
@@ -1212,7 +1227,15 @@ export function buildValidationPlan(mode, changedFiles) {
     );
   }
 
-  if (syncPackageChanged) {
+  if (sharedPackageChanged) {
+    for (const check of captureTestCommands()) addCommand(plan, check);
+  }
+
+  if (uiPackageChanged || sharedPackageChanged) {
+    addCommand(plan, npmCommand("ui unit tests", ["run", "test"], "packages/ui"));
+  }
+
+  if (syncPackageChanged || sharedPackageChanged) {
     addCommand(
       plan,
       npmCommand("sync unit tests", ["run", "test"], "packages/sync"),
