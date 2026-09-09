@@ -1,5 +1,71 @@
 [
   {
+    "version": "26.9.803",
+    "tagName": "v26.9.803",
+    "channel": "production",
+    "date": "2026-09-09T03:53:46Z",
+    "deck": "Unified feed cards, clearer Friends views, and a welcoming mobile demo.",
+    "features": [
+      {
+        "text": "Explore the 500-post demo with a full-screen mobile welcome, editable session settings, and character-specific feeds."
+      },
+      {
+        "text": "Select friends consistently across the galaxy and sidebar, adjust connection strength with a five-stop slider, and open provider-filtered reading lists."
+      },
+      {
+        "text": "Read unified story and post cards with consistent spacing, textured image fades, interface zoom, and paused YouTube playback."
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Align author details and card spacing across feeds and recent activity; improve Friends controls and light-theme galaxies."
+      },
+      {
+        "text": "Pan and zoom the map with desktop trackpad gestures and momentum."
+      },
+      {
+        "text": "Keep galaxy avatars visible at maximum zoom and make selected star systems easier to see."
+      },
+      {
+        "text": "Last-seen maps are visible again, and recent activity includes provider icons."
+      },
+      {
+        "text": "Reader previews disappear instantly; transitioning demo tabs cannot intercept input."
+      },
+      {
+        "text": "Mobile cards retain horizontal margins, and landscape layouts scroll within the viewport."
+      },
+      {
+        "text": "Sample thumbnails load correctly, and the PWA starts with the demo corpus."
+      },
+      {
+        "text": "Preserve the Google sign-in redirect URI and show PWA installation guidance in Chrome on iOS."
+      },
+      {
+        "text": "Exclude Facebook advertisements from captured posts."
+      },
+      {
+        "text": "Stop feed reloads from restarting ranking."
+      }
+    ],
+    "followUps": [],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.9.803",
+    "prNumbers": [
+      1893,
+      1897
+    ],
+    "builds": [
+      "26.9.803"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.9.803",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.9.803",
+        "channel": "production"
+      }
+    ]
+  },
+  {
     "version": "26.9.602",
     "tagName": "v26.9.602",
     "channel": "production",

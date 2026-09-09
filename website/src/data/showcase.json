@@ -1,14 +1,17 @@
 {
-  "kind": "reviewed-showcase",
-  "sourceCommit": "2cca73b16d54ba0c21f66f76a8f90ed75b2d4b06",
-  "sourceDirty": true,
+  "kind": "release-showcase",
+  "sourceCommit": "2d1c8e49a213d9b856d3e437e3c65a203f3a0081",
+  "sourceDirty": false,
+  "releaseId": 385205186,
+  "releaseTag": "v26.9.803",
+  "manifestSha256": "dece48ef367bb5039bca87c78ddd9cc8c7523042b03bf1fbab30ab43c6852736",
   "width": 1920,
   "height": 1280,
   "quality": 90,
   "themes": {
     "dark-star": {
-      "revision": "2026-09-08T01-24-30-316Z",
-      "generatedAt": "2026-09-08T01:24:30.288Z",
+      "revision": "v26.9.803",
+      "generatedAt": "2026-09-09T03:28:14.888Z",
       "captures": [
         {
           "file": "freed-showcase-unified-dark-star.png",
@@ -62,7 +65,12 @@
           "view": "friends",
           "rendererDiagnostics": {
             "renderer": "raw-webgpu",
-            "decorativeStarCount": 100000
+            "decorativeStarCount": 100000,
+            "screenshotPixels": {
+              "quantizedColors": 461,
+              "width": 1201,
+              "height": 1540
+            }
           },
           "graphZoomWheelDelta": -220,
           "desktopDecoration": {
@@ -91,7 +99,12 @@
           "detail": true,
           "rendererDiagnostics": {
             "renderer": "raw-webgpu",
-            "decorativeStarCount": 100000
+            "decorativeStarCount": 100000,
+            "screenshotPixels": {
+              "quantizedColors": 348,
+              "width": 1201,
+              "height": 1540
+            }
           },
           "desktopDecoration": {
             "accent": "#2997ff",
@@ -183,16 +196,16 @@
           }
         }
       ],
-      "seconds": 18,
+      "seconds": 3,
       "animation": {
-        "url": "/showcase/freed-showcase-dark-star-animation-9308f3cd1d05.webp",
-        "sha256": "9308f3cd1d056662c2ac91cf4b3201c5fe4051fbe260a2f33d55eeb82472f8d3",
-        "bytes": 916128
+        "url": "/showcase/freed-showcase-dark-star-animation-8408e3ed73e3.webp",
+        "sha256": "8408e3ed73e379b782c921e8125cd591a090041793397bca4c07056e8344fb97",
+        "bytes": 912738
       }
     },
     "ember": {
-      "revision": "2026-09-08T01-25-58-129Z",
-      "generatedAt": "2026-09-08T01:25:58.092Z",
+      "revision": "v26.9.803",
+      "generatedAt": "2026-09-09T03:28:14.888Z",
       "captures": [
         {
           "file": "freed-showcase-unified-ember.png",
@@ -246,7 +259,12 @@
           "view": "friends",
           "rendererDiagnostics": {
             "renderer": "raw-webgpu",
-            "decorativeStarCount": 100000
+            "decorativeStarCount": 100000,
+            "screenshotPixels": {
+              "quantizedColors": 369,
+              "width": 1201,
+              "height": 1540
+            }
           },
           "graphZoomWheelDelta": -220,
           "desktopDecoration": {
@@ -275,7 +293,12 @@
           "detail": true,
           "rendererDiagnostics": {
             "renderer": "raw-webgpu",
-            "decorativeStarCount": 100000
+            "decorativeStarCount": 100000,
+            "screenshotPixels": {
+              "quantizedColors": 338,
+              "width": 1201,
+              "height": 1540
+            }
           },
           "desktopDecoration": {
             "accent": "#7a2f1f",
@@ -367,16 +390,16 @@
           }
         }
       ],
-      "seconds": 18,
+      "seconds": 3,
       "animation": {
-        "url": "/showcase/freed-showcase-ember-animation-4127a5c82a0b.webp",
-        "sha256": "4127a5c82a0b78dade6d2bdb317aa122e723190fa87163d067e4b61e38525a79",
-        "bytes": 899880
+        "url": "/showcase/freed-showcase-ember-animation-e6cb533ba86b.webp",
+        "sha256": "e6cb533ba86b78ed6a6455eabe6d039f2eca396b0941370152cc49a7bdb82e34",
+        "bytes": 831848
       }
     },
     "midas": {
-      "revision": "2026-09-08T01-23-13-683Z",
-      "generatedAt": "2026-09-08T01:23:13.660Z",
+      "revision": "v26.9.803",
+      "generatedAt": "2026-09-09T03:28:14.888Z",
       "captures": [
         {
           "file": "freed-showcase-unified-midas.png",
@@ -430,7 +453,12 @@
           "view": "friends",
           "rendererDiagnostics": {
             "renderer": "raw-webgpu",
-            "decorativeStarCount": 100000
+            "decorativeStarCount": 100000,
+            "screenshotPixels": {
+              "quantizedColors": 425,
+              "width": 1201,
+              "height": 1540
+            }
           },
           "graphZoomWheelDelta": -220,
           "desktopDecoration": {
@@ -459,7 +487,12 @@
           "detail": true,
           "rendererDiagnostics": {
             "renderer": "raw-webgpu",
-            "decorativeStarCount": 100000
+            "decorativeStarCount": 100000,
+            "screenshotPixels": {
+              "quantizedColors": 386,
+              "width": 1201,
+              "height": 1540
+            }
           },
           "desktopDecoration": {
             "accent": "#b08a48",
@@ -551,16 +584,16 @@
           }
         }
       ],
-      "seconds": 18,
+      "seconds": 3,
       "animation": {
-        "url": "/showcase/freed-showcase-midas-animation-2b4706e4984a.webp",
-        "sha256": "2b4706e4984ae27dcca50fb343056c266b15ce6cf37cdd7b46f90a7d36453985",
-        "bytes": 865466
+        "url": "/showcase/freed-showcase-midas-animation-1de36206848d.webp",
+        "sha256": "1de36206848d55128ab19854fc60a156ffb101e109bceb6c682ed2dda91101d4",
+        "bytes": 839824
       }
     },
     "neon": {
-      "revision": "2026-09-08T01-24-30-190Z",
-      "generatedAt": "2026-09-08T01:24:30.167Z",
+      "revision": "v26.9.803",
+      "generatedAt": "2026-09-09T03:28:14.888Z",
       "captures": [
         {
           "file": "freed-showcase-unified-neon.png",
@@ -614,7 +647,12 @@
           "view": "friends",
           "rendererDiagnostics": {
             "renderer": "raw-webgpu",
-            "decorativeStarCount": 100000
+            "decorativeStarCount": 100000,
+            "screenshotPixels": {
+              "quantizedColors": 554,
+              "width": 1201,
+              "height": 1540
+            }
           },
           "graphZoomWheelDelta": -220,
           "desktopDecoration": {
@@ -643,7 +681,12 @@
           "detail": true,
           "rendererDiagnostics": {
             "renderer": "raw-webgpu",
-            "decorativeStarCount": 100000
+            "decorativeStarCount": 100000,
+            "screenshotPixels": {
+              "quantizedColors": 449,
+              "width": 1201,
+              "height": 1540
+            }
           },
           "desktopDecoration": {
             "accent": "#8b5cf6",
@@ -735,16 +778,16 @@
           }
         }
       ],
-      "seconds": 18,
+      "seconds": 3,
       "animation": {
-        "url": "/showcase/freed-showcase-neon-animation-e0d43221db0d.webp",
-        "sha256": "e0d43221db0d8709d832d3ed074b6556e6ff45ce6c7596ada59c078f04128923",
-        "bytes": 921980
+        "url": "/showcase/freed-showcase-neon-animation-1c6091a6091a.webp",
+        "sha256": "1c6091a6091a63013cffd23d47a3f5b4d03f42ae65f27617e6c2ee5c0b1f5c95",
+        "bytes": 932440
       }
     },
     "scriptorium": {
-      "revision": "2026-09-08T01-23-10-942Z",
-      "generatedAt": "2026-09-08T01:23:10.914Z",
+      "revision": "v26.9.803",
+      "generatedAt": "2026-09-09T03:28:14.888Z",
       "captures": [
         {
           "file": "freed-showcase-unified-scriptorium.png",
@@ -798,7 +841,12 @@
           "view": "friends",
           "rendererDiagnostics": {
             "renderer": "raw-webgpu",
-            "decorativeStarCount": 100000
+            "decorativeStarCount": 100000,
+            "screenshotPixels": {
+              "quantizedColors": 310,
+              "width": 1201,
+              "height": 1540
+            }
           },
           "graphZoomWheelDelta": -220,
           "desktopDecoration": {
@@ -827,7 +875,12 @@
           "detail": true,
           "rendererDiagnostics": {
             "renderer": "raw-webgpu",
-            "decorativeStarCount": 100000
+            "decorativeStarCount": 100000,
+            "screenshotPixels": {
+              "quantizedColors": 300,
+              "width": 1201,
+              "height": 1540
+            }
           },
           "desktopDecoration": {
             "accent": "#86684a",
@@ -919,16 +972,16 @@
           }
         }
       ],
-      "seconds": 18,
+      "seconds": 3,
       "animation": {
-        "url": "/showcase/freed-showcase-scriptorium-animation-8c2b2c24ebfd.webp",
-        "sha256": "8c2b2c24ebfdcf12be96496135109cba45d00348143ebc510b1c464d622127a6",
-        "bytes": 831300
+        "url": "/showcase/freed-showcase-scriptorium-animation-d0291753de63.webp",
+        "sha256": "d0291753de630f482d539d9ceb3fc6b8a7b90a26380aaaf723fb93fcee027788",
+        "bytes": 889028
       }
     },
     "starship": {
-      "revision": "2026-09-08T01-26-09-011Z",
-      "generatedAt": "2026-09-08T01:26:08.991Z",
+      "revision": "v26.9.803",
+      "generatedAt": "2026-09-09T03:28:14.888Z",
       "captures": [
         {
           "file": "freed-showcase-unified-starship.png",
@@ -982,7 +1035,12 @@
           "view": "friends",
           "rendererDiagnostics": {
             "renderer": "raw-webgpu",
-            "decorativeStarCount": 100000
+            "decorativeStarCount": 100000,
+            "screenshotPixels": {
+              "quantizedColors": 329,
+              "width": 1201,
+              "height": 1540
+            }
           },
           "graphZoomWheelDelta": -220,
           "desktopDecoration": {
@@ -1011,7 +1069,12 @@
           "detail": true,
           "rendererDiagnostics": {
             "renderer": "raw-webgpu",
-            "decorativeStarCount": 100000
+            "decorativeStarCount": 100000,
+            "screenshotPixels": {
+              "quantizedColors": 301,
+              "width": 1201,
+              "height": 1540
+            }
           },
           "desktopDecoration": {
             "accent": "#2997ff",
@@ -1103,11 +1166,11 @@
           }
         }
       ],
-      "seconds": 18,
+      "seconds": 3,
       "animation": {
-        "url": "/showcase/freed-showcase-starship-animation-9eee60f66cf1.webp",
-        "sha256": "9eee60f66cf147235822f2a30cbbf544aa7c4eba8fa7ff104e236691edd469bf",
-        "bytes": 938152
+        "url": "/showcase/freed-showcase-starship-animation-3fdb99a682e4.webp",
+        "sha256": "3fdb99a682e4027336af8310ae457a26b627b9eb2d3fd2858f645d32dec17ce8",
+        "bytes": 980738
       }
     }
   }
