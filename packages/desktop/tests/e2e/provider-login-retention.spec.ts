@@ -120,6 +120,13 @@ for (const providerCase of providers) {
     await ipc.setHandler(providerCase.scrapeCommand, () => null);
 
     await openSettingsSection(page, providerCase.label);
+    const advanced = settingsDialog(page).locator("details").filter({ hasText: `Choose how the ${providerCase.label} browser window behaves` });
+    await advanced.locator("summary").click();
+    await expect(advanced.getByRole("radio", { name: /^Shown/ })).toBeVisible();
+    // Local troubleshooting preferences never initiate login or capture.
+    expect((await ipc.invocations()).some((call) =>
+      call.cmd === providerCase.showCommand || call.cmd === providerCase.scrapeCommand,
+    )).toBe(false);
     await page.getByText(providerCase.loginButton).click();
     await app.acceptProviderRiskIfPresent(providerCase.provider);
     await expect.poll(async () => (await ipc.invocations()).some(
@@ -166,6 +173,7 @@ for (const providerCase of providers) {
       (call) => call.cmd === providerCase.hideCommand,
     ), { timeout: 7_000 }).toBe(true);
     await expect(page.getByText(providerCase.healthyCopy)).toBeHidden({ timeout: 7_000 });
+    await expect(advanced.locator("summary")).toBeVisible();
   });
 
   test(`${providerCase.label} failed scrape startup leaves login prompt open`, async ({

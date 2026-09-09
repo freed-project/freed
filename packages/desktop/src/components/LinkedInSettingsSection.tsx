@@ -33,6 +33,7 @@ import {
 } from "../lib/provider-auth-errors";
 import { useProviderRiskGate } from "../hooks/useProviderRiskGate";
 import { ScraperWindowModeControl } from "./ScraperWindowModeControl";
+import { ProviderAdvancedSettings } from "./ProviderAdvancedSettings";
 import { ProviderHealthSectionSummary } from "./ProviderHealthSectionSummary";
 import { ProviderSyncCadenceControl } from "./ProviderSyncCadenceControl";
 import { ProviderSyncActionButton } from "./ProviderSyncActionButton";
@@ -230,6 +231,19 @@ export function LinkedInSettingsSection({
   const isPaused = !!healthSnapshot?.pause && healthSnapshot.pause.pausedUntil > Date.now();
   // ── Connected state ──────────────────────────────────────────────────────
 
+  const advancedSettings = (
+    <ProviderAdvancedSettings>
+      <ScraperWindowModeControl
+        sourceLabel="LinkedIn"
+        mode={windowMode}
+        onChange={(nextMode) => {
+          setWindowMode(nextMode);
+          setLiScraperWindowMode(nextMode);
+        }}
+      />
+    </ProviderAdvancedSettings>
+  );
+
   if (liAuth.isAuthenticated) {
     const statusLine = (() => {
       if (!lastDiag) return null;
@@ -336,22 +350,7 @@ export function LinkedInSettingsSection({
 
           {lastDiag && <LiDiagPanel diag={lastDiag} />}
 
-          <details className="group">
-            <summary className="text-xs text-[#52525b] hover:text-[#71717a] cursor-pointer select-none list-none flex items-center gap-1">
-              <span className="group-open:rotate-90 transition-transform inline-block">›</span>
-              Advanced
-            </summary>
-            <div className="mt-3 pl-3 border-l border-white/10">
-              <ScraperWindowModeControl
-                sourceLabel="LinkedIn"
-                mode={windowMode}
-                onChange={(nextMode) => {
-                  setWindowMode(nextMode);
-                  setLiScraperWindowMode(nextMode);
-                }}
-              />
-            </div>
-          </details>
+          {advancedSettings}
 
           <p className="text-xs text-[#52525b] leading-relaxed">
             {copy.connectedInfo}
@@ -401,6 +400,7 @@ export function LinkedInSettingsSection({
           provider="linkedin"
           showMessages={surface === "debug-card" && !actionError}
         />
+        {advancedSettings}
       </div>
     </SyncProviderSectionSurface>
     {dialog}
