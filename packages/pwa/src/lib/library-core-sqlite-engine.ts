@@ -1206,7 +1206,7 @@ export class PwaLibraryCoreSqliteEngine {
     });
     const matches = this.#database.exec({
       sql: `SELECT library_id = ?2 AND authority_epoch = ?3 AND source_revision = ?4
-                   AND expected_record_count = ?5 AND created_at = ?6
+                   AND expected_record_count = ?5
             FROM library_checkpoint_stages WHERE stage_id = ?1;`,
       bind: [
         stage.stageId,
@@ -1214,7 +1214,6 @@ export class PwaLibraryCoreSqliteEngine {
         stage.authorityEpoch,
         stage.sourceRevision,
         stage.expectedRecordCount,
-        stage.createdAt,
       ],
       rowMode: 0,
       returnValue: "resultRows",
