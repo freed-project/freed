@@ -198,6 +198,9 @@ const ALL_PROVIDER_SCOPES = Object.freeze([
 ]);
 
 export const PROVIDER_VISIBLE_EXACT_SCOPES = new Map([
+  ["packages/desktop/src-tauri/src/fb-login-auth.js", ["facebook"]],
+  ["packages/desktop/src-tauri/capabilities/fb-login.json", ["facebook"]],
+  ["packages/desktop/src/components/ProviderAdvancedSettings.tsx", ["facebook", "instagram", "linkedin", "medium", "substack"]],
   ["packages/desktop/src-tauri/src/facebook-admission-collector.source.js", ["facebook"]],
   ["packages/desktop/src-tauri/src/facebook-admission-policy.generated.js", ["facebook"]],
   ["packages/shared/src/provider-admission.ts", ["facebook"]],

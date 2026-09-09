@@ -7,6 +7,17 @@
 
 ## Overview
 
+Facebook, Instagram, LinkedIn, Substack and Medium share an Advanced disclosure
+for their existing scraper-window preferences, including while disconnected or
+awaiting reconnect. Opening it does not check auth, start capture or change the
+saved window mode. X and YouTube retain their adapter-specific connection controls.
+
+Facebook login completion uses a bounded, read-only probe after page load and a
+login-window capability limited to event emission. It preserves rendered-feed
+evidence when cookies are not script-readable, excludes challenge pages, retries
+failed IPC within the bound, and emits no logged-out event during login. Successful
+verification resumes the existing post-login sync and healthy-start window closure.
+
 Facebook normalization emits a video type only for an existing first media
 URL. An unavailable video URL therefore leaves both media arrays empty, and
 duplicate URLs retain their original positional types. Instagram already

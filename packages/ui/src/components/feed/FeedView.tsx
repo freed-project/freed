@@ -333,7 +333,8 @@ export function FeedView() {
   const toggleLiked = useAppStore((s) => s.toggleLiked);
   const libraryFacets = useLibraryFacetSummary(searchCorpusVersion);
   const [deviceDisplay] = useDeviceDisplayPreferences();
-  const friendsMode = deviceDisplay.friendsMode;
+  // Saved is the whole bookmark collection, independent of the feed's identity filter.
+  const friendsMode = activeFilter.savedOnly ? "all_content" : deviceDisplay.friendsMode;
   const savedContentSortMode = deviceDisplay.savedContentSortMode;
 
   const handleOpenCommentUrl = useCallback(
