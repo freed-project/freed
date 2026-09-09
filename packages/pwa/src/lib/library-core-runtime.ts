@@ -23,7 +23,6 @@ import {
   LIBRARY_CORE_LOCAL_CHANGE_FEED_QUERY_ID,
   LIBRARY_CORE_OPTIMISTIC_FIELDS_QUERY_ID,
   LIBRARY_CORE_OPTIMISTIC_FIELDS_SCHEMA_VERSION,
-  LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES,
   readLibraryCoreNormalizedAccountDetailV1,
   openLibraryCoreNormalizedFeedReaderV1,
   openLibraryCoreNormalizedSavedFeedReaderV1,
@@ -59,7 +58,6 @@ import {
   type LibraryCoreFollowerTransportContextV2,
   type LibraryCoreLocalChangeFeedResponseV1,
   type LibraryCoreSelectedNormalizedCheckpointReceiptV2,
-  type LibraryCoreNormalizedCheckpointExportDescriptorV2,
   type LibraryCoreRssFeedScopeActionKindV1,
   type LibraryCoreScopeActionRequestV1,
   type LibraryCoreScopeActionReceiptV1,
@@ -87,8 +85,6 @@ import {
   pagePwaScopeActionStage,
   queryPwaNormalizedLibrary,
   mutatePwaContentPolicy,
-  describePwaNormalizedCheckpointExport,
-  readPwaNormalizedCheckpointExportPage,
   readPwaFollowerTransportContext,
   readPwaNormalizedCheckpointReceipt,
   resetPwaNormalizedLibrary,
@@ -161,7 +157,6 @@ export async function readPwaLibraryCoreSelectedCheckpointReceipt(): Promise<Lib
 export interface PwaLibraryCoreCloudReceiptV2 {
   readonly checkpoint: LibraryCoreSelectedNormalizedCheckpointReceiptV2 | null;
   readonly follower: LibraryCoreFollowerTransportContextV2 | null;
-  readonly localExport: LibraryCoreNormalizedCheckpointExportDescriptorV2 | null;
 }
 
 /** Read one bounded local view of checkpoint and follower cloud progress. */
@@ -171,46 +166,7 @@ export async function readPwaLibraryCoreCloudReceiptV2(): Promise<PwaLibraryCore
     return Object.freeze({
       checkpoint: null,
       follower: null,
-      localExport: null,
     });
-  }
-  let localExport: LibraryCoreNormalizedCheckpointExportDescriptorV2 | null;
-  try {
-    localExport = await describePwaNormalizedCheckpointExport();
-    if (
-      localExport.libraryId !== checkpoint.libraryId ||
-      localExport.authorityEpoch !== checkpoint.authorityEpoch ||
-      localExport.writerId !== checkpoint.writerActorId
-    ) {
-      throw new Error("PWA local checkpoint export crosses Library authority");
-    }
-    const firstPage = await readPwaNormalizedCheckpointExportPage({
-      page: {
-        after: null,
-        maximumRecords: 1,
-        maximumResponseBytes: LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES,
-      },
-      snapshot: localExport,
-    });
-    const header = firstPage.records[0];
-    if (
-      header?.registryKey !== "00_checkpoint_header" ||
-      header.payload.libraryId !== localExport.libraryId ||
-      header.payload.authorityEpoch !== localExport.authorityEpoch ||
-      header.payload.sourceRevision !== localExport.sourceRevision
-    ) {
-      throw new Error("PWA local checkpoint export header is invalid");
-    }
-  } catch (error) {
-    if (
-      error instanceof Error &&
-      error.message ===
-        "normalized checkpoint export has unresolved local intents"
-    ) {
-      localExport = null;
-    } else {
-      throw error;
-    }
   }
   let follower: LibraryCoreFollowerTransportContextV2 | null;
   try {
@@ -231,7 +187,7 @@ export async function readPwaLibraryCoreCloudReceiptV2(): Promise<PwaLibraryCore
   ) {
     throw new Error("PWA follower cloud receipt crosses Library authority");
   }
-  return Object.freeze({ checkpoint, follower, localExport });
+  return Object.freeze({ checkpoint, follower });
 }
 
 async function readSelectedState(): Promise<LibraryCoreRuntimeStateV1 | null> {
