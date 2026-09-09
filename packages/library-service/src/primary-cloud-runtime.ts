@@ -28,6 +28,10 @@ export interface LibraryServicePrimaryCloudPortV1 {
     readonly fileSystem: LibraryServiceFileSystemPort;
     readonly clock: LibraryServiceClockPort;
     readonly native: LibraryCoreNativeCommandClientV1;
+    readonly credentialStore?: {
+      readCredential(recordId: string): Promise<string>;
+      credentialRevision?(recordId: string): Promise<string>;
+    };
   }): Promise<LibraryServicePrimaryRuntimeV1<{ readonly status: string }>>;
 }
 
@@ -77,6 +81,12 @@ export function createNodeLibraryServicePrimaryCloudPortV1(
         ),
         token: createNodeGoogleDriveTokenPortV1(
           input.config.credentialRecordId,
+          input.credentialStore === undefined
+            ? {}
+            : {
+                readCredential: input.credentialStore.readCredential,
+                credentialRevision: input.credentialStore.credentialRevision,
+              },
         ),
       });
       const runtime = createLibraryServicePrimaryRuntimeV1({

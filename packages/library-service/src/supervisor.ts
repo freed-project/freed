@@ -36,6 +36,7 @@ import {
   type LibraryCoreNativeCommandClientV1,
 } from "./native-command.js";
 import { createLibraryServiceNormalizedPrimaryNativeRuntimeV2 } from "./normalized-primary-native-runtime.js";
+import { createBoundDriveCredentialStore } from "./bound-drive-credential-store.js";
 import {
   createLibraryServiceLocalActorProcessorV1,
   type LibraryServiceLocalActorIngressPortV1,
@@ -281,6 +282,7 @@ export class LibraryServiceSupervisor {
   #statusTail: Promise<void> = Promise.resolve();
   #localActor: LibraryServiceLocalActorListenerV1 | null = null;
   #cloudState: LibraryServiceBoundPath | null = null;
+  #driveCredentialBindings: readonly LibraryServiceBoundPath[] = [];
   #primaryRuntime: LibraryServicePrimaryRuntimeV1<{
     readonly status: string;
   }> | null = null;
@@ -365,13 +367,18 @@ export class LibraryServiceSupervisor {
     const stateRoot = this.#stateRoot;
     const statusFile = this.#statusFile;
     const cloudState = this.#cloudState;
+    const driveCredentialBindings = this.#driveCredentialBindings;
     this.#stateRoot = null;
     this.#statusFile = null;
     this.#cloudState = null;
+    this.#driveCredentialBindings = [];
     await Promise.all([
       stateRoot?.close().catch(() => undefined),
       statusFile?.close().catch(() => undefined),
       cloudState?.close().catch(() => undefined),
+      ...driveCredentialBindings.map((bound) =>
+        bound.close().catch(() => undefined),
+      ),
     ]);
   }
 
@@ -596,6 +603,13 @@ export class LibraryServiceSupervisor {
       this.#config = bound.config;
       this.#stateRoot = bound.bindings.stateRoot;
       this.#cloudState = bound.cloudState;
+      this.#driveCredentialBindings =
+        bound.driveCredentialStore === undefined
+          ? []
+          : [
+              bound.driveCredentialStore.directory,
+              bound.driveCredentialStore.wrappingKey,
+            ];
       this.#startedAt = new Date(this.#clock.nowMs()).toISOString();
       throwIfAborted(signal);
       const statusBindingPromise = bindLibraryServiceStatusFile(
@@ -762,6 +776,7 @@ export class LibraryServiceSupervisor {
             fileSystem: this.#fileSystem,
             clock: this.#clock,
             native: commandClient,
+            credentialStore: createBoundDriveCredentialStore(bound, this.#aclProof),
           });
         } catch (error) {
           throw toFailure(error, "cloud_runtime_failed");
@@ -891,6 +906,7 @@ export class LibraryServiceSupervisor {
           await bound.close().catch(() => undefined);
           this.#stateRoot = null;
           this.#cloudState = null;
+          this.#driveCredentialBindings = [];
           await this.#statusFile?.close().catch(() => undefined);
           this.#statusFile = null;
         }
