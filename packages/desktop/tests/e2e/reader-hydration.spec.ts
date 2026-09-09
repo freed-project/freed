@@ -15,6 +15,15 @@ const IG_REPLY_TEXT = "This reply belongs in the Freed reader.";
 const IG_REPLY_MEDIA = "https://cdninstagram.example/comment-frame.jpg";
 const STORY_REPLY_MESSAGE = "Story replies are private on this platform. Open the story to reply there.";
 
+test.beforeEach(async ({ page }) => {
+  for (const url of [X_REPLY_MEDIA + ":large", FB_REPLY_MEDIA, IG_REPLY_MEDIA]) {
+    await page.route(url, (route) => route.fulfill({
+      contentType: "image/svg+xml",
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect width="40" height="40" fill="blue"/></svg>',
+    }));
+  }
+});
+
 async function injectItems(page: import("@playwright/test").Page): Promise<void> {
   await page.evaluate(
     async ({ articleTitle, articleUrl, storyAuthor, xTitle, fbTitle, igTitle }) => {
