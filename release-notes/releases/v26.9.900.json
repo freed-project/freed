@@ -3,7 +3,7 @@
   "version": "26.9.900",
   "channel": "production",
   "dayKey": "26.9.9",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-09-09T16:42:02.333Z",
   "model": "heuristic",
@@ -57,10 +57,19 @@
     ]
   },
   "release": {
-    "deck": "Promote dev into main for production release",
+    "deck": "Facebook login recognition, reliable Saved views, and PWA recovery fixes",
     "features": [],
-    "fixes": [],
+    "fixes": [
+      "Recognize completed Facebook logins and close the login window after healthy capture startup.",
+      "Show the full Saved collection after browsing Friends and keep bookmarking accessible in narrow reader toolbars.",
+      "Keep provider Advanced settings available, label Focus mode clearly, and make background activity status less distracting.",
+      "Improve mobile welcome and Settings scrolling, stabilize menu panes, and correct Scriptorium icon contrast.",
+      "Preserve the previous accepted PWA database after interrupted checkpoint imports and distinguish progressing large imports from stalled workers.",
+      "Close participating PWA storage workers before device reset, recover rejected local sample startup results, and offer an explicit choice when Drive contains multiple Libraries.",
+      "Report bounded SQLite integrity and worker-timeout diagnostics while retaining failed databases for investigation.",
+      "Resume identical PWA checkpoint stages across later retry attempts while retaining the original staging timestamp."
+    ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.9.900\n\nPromote dev into main for production release\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.9.900\n\nFacebook login recognition, reliable Saved views, and PWA recovery fixes\n\n### Fixes\n\n- Recognize completed Facebook logins and close the login window after healthy capture startup\n- Show the full Saved collection after browsing Friends and keep bookmarking accessible in narrow reader toolbars\n- Keep provider Advanced settings available, label Focus mode clearly, and make background activity status less distracting\n- Improve mobile welcome and Settings scrolling, stabilize menu panes, and correct Scriptorium icon contrast\n- Preserve the previous accepted PWA database after interrupted checkpoint imports and distinguish progressing large imports from stalled workers\n- Close participating PWA storage workers before device reset, recover rejected local sample startup results, and offer an explicit choice when Drive contains multiple Libraries\n- Report bounded SQLite integrity and worker-timeout diagnostics while retaining failed databases for investigation\n- Resume identical PWA checkpoint stages across later retry attempts while retaining the original staging timestamp\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
