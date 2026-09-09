@@ -185,6 +185,66 @@ describe("PWA SQLite worker response boundary", () => {
     expect(onUnavailable).toHaveBeenCalledOnce();
   });
 
+  it("keeps queued reads alive only while checkpoint records advance", async () => {
+    vi.useFakeTimers();
+    const client = new PwaLibraryCoreSqliteClient();
+    const activation = client.activateNormalizedCheckpointStage({
+      followerReceipt: null, replaceExisting: false, stageId: "progress-test",
+    });
+    const activationFailure = expect(activation).rejects.toThrow("timed out");
+    const worker = activeWorker();
+    const activationId = requestId(worker);
+    const read = client.status();
+    const readId = requestId(worker);
+    for (let completedRecords = 0; completedRecords < 3; completedRecords += 1) {
+      await vi.advanceTimersByTimeAsync(20_000);
+      worker.respond({ kind: "checkpoint_activation_progress", requestId: activationId,
+        completedRecords, totalRecords: 100 });
+      expect(worker.terminateCount).toBe(0);
+    }
+    worker.respond({ ok: true, requestId: readId, status: validStatus() });
+    await expect(read).resolves.toEqual(validStatus());
+    await vi.advanceTimersByTimeAsync(30_000);
+    await activationFailure;
+    expect(worker.terminateCount).toBe(1);
+  });
+
+  it("caps checkpoint work even when valid progress never stops", async () => {
+    vi.useFakeTimers();
+    const client = new PwaLibraryCoreSqliteClient();
+    const activation = client.activateNormalizedCheckpointStage({
+      followerReceipt: null, replaceExisting: false, stageId: "deadline-test",
+    });
+    const failure = expect(activation).rejects.toThrow("timed out");
+    const worker = activeWorker();
+    for (let completedRecords = 0; completedRecords < 30; completedRecords += 1) {
+      worker.respond({ kind: "checkpoint_activation_progress", requestId: requestId(worker),
+        completedRecords, totalRecords: 100 });
+      await vi.advanceTimersByTimeAsync(20_000);
+    }
+    await failure;
+    expect(worker.terminateCount).toBe(1);
+  });
+
+  it.each([
+    { completedRecords: 1, totalRecords: 100 },
+    { completedRecords: 0, totalRecords: 100 },
+    { completedRecords: 2, totalRecords: 101 },
+    { completedRecords: 2, totalRecords: 100, extra: true },
+  ])("rejects nonmonotonic or open checkpoint progress: %j", async (invalid) => {
+    const client = new PwaLibraryCoreSqliteClient();
+    const activation = client.activateNormalizedCheckpointStage({
+      followerReceipt: null, replaceExisting: false, stageId: "invalid-progress-test",
+    });
+    const failure = expect(activation).rejects.toThrow("checkpoint progress is invalid");
+    const worker = activeWorker();
+    const envelope = { kind: "checkpoint_activation_progress", requestId: requestId(worker) };
+    worker.respond({ ...envelope, completedRecords: 1, totalRecords: 100 });
+    worker.respond({ ...envelope, ...invalid });
+    await failure;
+    expect(worker.terminateCount).toBe(1);
+  });
+
   it("accepts only the exact typed status for a status request", async () => {
     const client = new PwaLibraryCoreSqliteClient();
     const pending = client.status();
