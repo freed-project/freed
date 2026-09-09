@@ -864,7 +864,7 @@ export class PwaLibraryCoreSqliteClient {
       const timeout = setTimeout(() => {
         this.#retireUnavailable(
           new PwaLibraryCoreSqliteWorkerUnavailableError(
-            "PWA Library SQLite request timed out",
+            `PWA Library SQLite request timed out (${request.kind})`,
           ),
         );
       }, REQUEST_TIMEOUT_MS);
