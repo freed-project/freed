@@ -2,6 +2,11 @@
 
 > **Status:** 🚧 In Progress
 
+PWA first-launch presentation distinguishes Google Drive connection from an
+accepted Library. Before checkpoint selection, setup stays available without
+mounting Library-backed routes or the Saved overview. Sync errors link back to
+Settings. This does not change discovery, import verification, or cadence.
+
 Checkpoint publication separates a five-minute no-progress deadline from a
 fixed total budget. After the native snapshot is known, the budget is five
 minutes plus ten seconds per estimated 4,096-record page, capped at two hours

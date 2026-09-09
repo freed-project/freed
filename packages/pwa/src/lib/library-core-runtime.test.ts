@@ -128,6 +128,7 @@ import {
   clearPwaLibraryCoreSampleData,
   drainPwaLibraryCoreLocalChanges,
   initializePwaLibraryCoreState,
+  hasSelectedPwaLibraryCore,
   openPwaLibraryCoreFriendsFeedReader,
   pinPwaLibraryCoreItemContent,
   readPwaLibraryCoreItemDetail,
@@ -571,6 +572,12 @@ describe("PWA Library Core bounded scanner", () => {
     expect(mocks.syncFollower).toHaveBeenCalledWith({}, { signal: undefined });
   });
 
+  it("keeps a fresh device in setup without querying a missing materialization", async () => {
+    await initializePwaLibraryCoreState();
+    expect(hasSelectedPwaLibraryCore()).toBe(false);
+    expect(mocks.queryNormalizedLibrary).not.toHaveBeenCalled();
+  });
+
   it("binds search identity to the selected checkpoint instead of stale shell state", async () => {
     mocks.readNormalizedCheckpointReceipt.mockResolvedValue({
       receipt: SELECTED_RECEIPT,
@@ -595,6 +602,7 @@ describe("PWA Library Core bounded scanner", () => {
     const state = await initializePwaLibraryCoreState();
 
     expect(state.searchCorpusVersion).toBe(SELECTED_RECEIPT.sourceRevision);
+    expect(hasSelectedPwaLibraryCore()).toBe(true);
   });
 
   it("hydrates synchronized preferences from SQLite instead of the shell", async () => {

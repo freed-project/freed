@@ -118,6 +118,7 @@ export function AppShell({ children }: AppShellProps) {
   const setActiveView = useAppStore((s) => s.setActiveView);
   const {
     queryLibraryCore,
+    LibrarySetupState,
     readLibraryAccountDetail,
     readLibraryPersonDetail,
     replaceLibraryFriend,
@@ -536,7 +537,7 @@ export function AppShell({ children }: AppShellProps) {
               data-testid="friends-background-layer"
             />
           ) : null}
-          {activeView === "map" ? (
+          {activeView === "map" && !LibrarySetupState ? (
             <div
               className="absolute inset-0 z-0"
               data-testid="map-background-layer"
@@ -558,11 +559,11 @@ export function AppShell({ children }: AppShellProps) {
           </div>
           <main
             ref={mainRef}
-            className={`relative min-w-0 flex-1 ${activeView === "friends" ? "z-0" : "z-10"} ${activeView === "map" ? "pointer-events-none" : ""} ${
+            className={`relative min-w-0 flex-1 ${activeView === "friends" ? "z-0" : "z-10"} ${activeView === "map" && !LibrarySetupState ? "pointer-events-none" : ""} ${
               isMobileViewport ? "" : activeView === "friends" ? "min-h-0 overflow-visible" : "min-h-0 overflow-hidden"
             }`}
           >
-            {activeView === "friends"
+            {LibrarySetupState ? <LibrarySetupState /> : activeView === "friends"
               ? (
                 <Suspense fallback={<div className="h-full min-h-0" data-testid="friends-view-loading" />}>
                   <LazyFriendsView
