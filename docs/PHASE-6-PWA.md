@@ -965,3 +965,5 @@ The Populate sample data action in every build uses that same curated generator 
 The public demo exposes presentation controls and session-only relationship and graph-pin changes. Shared capability checks hide durable Library edits, account linking, offline caching, archive maintenance, publishing, imports, and diagnostics. Unsupported actions are fenced at their handlers as well as their visible entry points. Reload restores the curated session. Startup recovery offers a plain reload action without SQLite internals or local-data replacement.
 
 Empty demo scopes offer a return to the sample feed; connection and sample-data population or deletion controls remain hidden.
+
+Vercel demo links retain their accepted demo parameter through navigation and reload, preserving memory-only session behavior after the router canonicalizes a route. Other hosts cannot enable demo mode through this parameter.
