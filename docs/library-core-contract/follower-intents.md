@@ -242,6 +242,15 @@ transaction and no partial Library state. Acceptance or signed rejection
 deletes staging after the authoritative transaction commits. Replayed records
 then resolve against the immutable result outbox instead of recreating staging.
 
+Enrollment verification uses the request's exact known causal snapshot, not
+an equality check against the Primary's latest actor tips. Every requested tip
+must match an accepted operation, actor tip, or immutable authority frontier in
+the active epoch. The snapshot must include or advance every immutable authority
+frontier anchor. New local writes therefore do not invalidate a retained signed
+request. Unknown tips, missing authority anchors, changed epochs, and invalid
+signatures still fail closed. Native verification and enrollment persistence
+share one immediate SQLite transaction.
+
 The Primary cloud coordinator accepts only normalized actor certificates and
 protocol version 2 intent records. It countersigns each discovered enrollment
 request through the selected normalized authority, publishes the resulting

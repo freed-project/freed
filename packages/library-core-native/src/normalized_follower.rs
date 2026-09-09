@@ -603,15 +603,84 @@ fn enrollment_response(
     })
 }
 
+// Enrollment requests survive newer writes. Accept only a frontier whose exact
+// tips are known in this epoch and which includes its immutable authority fence.
+fn enrollment_authority_at_known_frontier(
+    connection: &Connection,
+    canonical_certificate: &[u8],
+) -> Result<crate::normalized_authority::NormalizedAuthorityStateV2, NormalizedSqliteError> {
+    let (mut authority, _, _, _) = current_authority(connection)?;
+    let decoded = crate::library_core_canonical::decode_canonical_value(
+        canonical_certificate,
+        crate::normalized_protocol_limits::MAX_TRANSACTION_ENVELOPE_BYTES,
+    )
+    .map_err(|_| invalid("normalized enrollment canonical certificate is invalid"))?;
+    let certificate = decoded.into_value();
+    let frontier_value = certificate
+        .pointer("/certificate_body/actor_enrollment_body/observed_frontier")
+        .ok_or(invalid("normalized enrollment frontier is missing"))?;
+    let frontier = crate::normalized_enrollment_verifier::parse_causal_tips(frontier_value)
+        .map_err(|_| invalid("normalized enrollment frontier is invalid"))?;
+    for tip in &frontier {
+        let known: bool = connection.query_row(
+            "SELECT EXISTS(
+                SELECT 1 FROM library_authority_frontier
+                WHERE epoch_id = ?1 AND actor_id = ?2 AND accepted_counter = ?3
+                  AND accepted_operation_id = ?4 AND accepted_chain_digest = ?5
+                UNION ALL
+                SELECT 1 FROM library_operations AS operation
+                JOIN library_transactions AS tx ON tx.transaction_id = operation.transaction_id
+                WHERE tx.authority_epoch = ?1 AND tx.library_id = ?6
+                  AND operation.actor_id = ?2 AND operation.actor_counter = ?3
+                  AND operation.operation_id = ?4 AND operation.actor_chain_digest = ?5
+                UNION ALL
+                SELECT 1 FROM library_actors
+                WHERE authority_epoch_id = ?1 AND actor_id = ?2 AND accepted_counter = ?3
+                  AND accepted_operation_id = ?4 AND accepted_chain_digest = ?5
+            );",
+            params![
+                authority.epoch_id,
+                tip.actor_id,
+                tip.sequence,
+                tip.operation_id,
+                tip.chain_digest,
+                authority.library_id
+            ],
+            |row| row.get(0),
+        )?;
+        if !known {
+            return Err(invalid("normalized enrollment frontier is unknown"));
+        }
+    }
+    let mut statement = connection.prepare(
+        "SELECT actor_id, accepted_counter FROM library_authority_frontier WHERE epoch_id = ?1;",
+    )?;
+    let anchors = statement.query_map([&authority.epoch_id], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+    })?;
+    for anchor in anchors {
+        let (actor_id, sequence) = anchor?;
+        if !frontier
+            .iter()
+            .any(|tip| tip.actor_id == actor_id && tip.sequence >= sequence)
+        {
+            return Err(invalid("normalized enrollment frontier precedes authority"));
+        }
+    }
+    authority.observed_frontier = frontier;
+    Ok(authority)
+}
+
 pub fn install_normalized_follower_actor_enrollment_v2(
     connection: &mut Connection,
     canonical_enrollment_certificate: &[u8],
 ) -> Result<NormalizedFollowerActorEnrollmentV2, NormalizedSqliteError> {
-    let (authority, _, _, _) = current_authority(connection)?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let authority =
+        enrollment_authority_at_known_frontier(&transaction, canonical_enrollment_certificate)?;
     let enrollment =
         verify_actor_enrollment_certificate(canonical_enrollment_certificate, &authority)
             .map_err(|_| invalid("normalized follower enrollment certificate is invalid"))?;
-    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let request = actor_request(&transaction, &authority.library_id, &authority.epoch_id)?
         .ok_or(invalid("normalized follower actor request is missing"))?;
     if request.actor_id != enrollment.actor_id
@@ -674,14 +743,14 @@ pub fn countersign_normalized_follower_actor_request_v2(
     if accepted_at < 0 {
         return Err(invalid("normalized follower enrollment time is invalid"));
     }
-    normalized_primary_mutation_context_v1(connection)?;
-    let (authority, _, _, _) = current_authority(connection)?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    normalized_primary_mutation_context_v1(&transaction)?;
     let canonical_certificate =
         countersign_actor_enrollment_request_bytes(canonical_enrollment_request, authority_store)
             .map_err(|_| invalid("normalized follower actor countersignature failed"))?;
+    let authority = enrollment_authority_at_known_frontier(&transaction, &canonical_certificate)?;
     let enrollment = verify_actor_enrollment_certificate(&canonical_certificate, &authority)
         .map_err(|_| invalid("normalized follower enrollment request is invalid"))?;
-    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let inserted = install_verified_actor(&transaction, &enrollment)?;
     if inserted {
         let previous_revision: i64 = transaction.query_row(
@@ -2699,6 +2768,20 @@ mod tests {
                 .imported_result_count,
             1
         );
+        // A valid request and its certificate remain replayable after newer
+        // Primary writes. This fixture advances the accepted actor tip only.
+        connection.execute(
+            "UPDATE library_actors SET accepted_counter = 1, accepted_operation_id = 'primary:advanced', accepted_chain_digest = ?1 WHERE actor_id = ?2",
+            params!["a".repeat(64), checkpoint.writer_id],
+        ).expect("advance Primary frontier");
+        assert_eq!(
+            install_normalized_follower_actor_enrollment_v2(
+                &mut connection,
+                accepted.canonical_enrollment_certificate_json.as_bytes(),
+            )
+            .expect("install retained certificate after newer writes"),
+            accepted
+        );
         let replay = countersign_normalized_follower_actor_request_v2(
             &mut connection,
             request.canonical_enrollment_request_json.as_bytes(),
@@ -2707,6 +2790,51 @@ mod tests {
         )
         .expect("countersign replay");
         assert_eq!(replay, accepted);
+        // Frontier syntax alone is insufficient: future or fabricated tips fail.
+        let mut claimed: Value =
+            serde_json::from_str(&accepted.canonical_enrollment_certificate_json)
+                .expect("certificate JSON");
+        claimed["certificate_body"]["actor_enrollment_body"]["observed_frontier"] = json!([{
+            "actor_id": checkpoint.writer_id,
+            "sequence": 2,
+            "operation_id": "primary:future",
+            "chain_digest": "b".repeat(64),
+        }]);
+        let unknown = encode_canonical_value(&claimed, 65_536).expect("canonical unknown frontier");
+        assert!(matches!(
+            enrollment_authority_at_known_frontier(&connection, &unknown),
+            Err(NormalizedSqliteError::InvalidRequest(
+                "normalized enrollment frontier is unknown"
+            ))
+        ));
+        claimed["certificate_body"]["actor_enrollment_body"]["observed_frontier"][0]["sequence"] =
+            json!(1);
+        claimed["certificate_body"]["actor_enrollment_body"]["observed_frontier"][0]
+            ["operation_id"] = json!("primary:advanced");
+        claimed["certificate_body"]["actor_enrollment_body"]["observed_frontier"][0]
+            ["chain_digest"] = json!("a".repeat(64));
+        let known_but_unsigned =
+            encode_canonical_value(&claimed, 65_536).expect("canonical known frontier");
+        enrollment_authority_at_known_frontier(&connection, &known_but_unsigned)
+            .expect("exact accepted tip is known");
+        assert!(
+            install_normalized_follower_actor_enrollment_v2(&mut connection, &known_but_unsigned)
+                .is_err(),
+            "known history does not bypass signature verification"
+        );
+        connection.execute(
+            "INSERT INTO library_authority_frontier (epoch_id, ordinal, actor_id, accepted_counter, accepted_operation_id, accepted_chain_digest) VALUES (?1, 0, ?2, 1, 'primary:advanced', ?3)",
+            params![checkpoint.authority_epoch, checkpoint.writer_id, "a".repeat(64)],
+        ).expect("authority anchor");
+        assert!(matches!(
+            enrollment_authority_at_known_frontier(
+                &connection,
+                accepted.canonical_enrollment_certificate_json.as_bytes()
+            ),
+            Err(NormalizedSqliteError::InvalidRequest(
+                "normalized enrollment frontier precedes authority"
+            ))
+        ));
         assert_eq!(
             connection
                 .query_row(
