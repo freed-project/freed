@@ -1310,7 +1310,9 @@ export async function syncPwaLibraryCoreFromGoogleDrive(input: {
   readonly accessToken: string;
   readonly libraryId?: string;
   readonly signal?: AbortSignal;
-}): Promise<LibraryCoreRuntimeStateV1> {
+}): Promise<LibraryCoreRuntimeStateV1 & {
+  readonly followerEnrollmentState: Awaited<ReturnType<typeof syncPwaLibraryCoreFollowerV2>>["enrollmentState"];
+}> {
   const selected = await readPwaNormalizedCheckpointReceipt();
   const retainedLibraryId = selected.receipt &&
     !selected.receipt.controlRevision.startsWith("preview:")
@@ -1354,7 +1356,7 @@ export async function syncPwaLibraryCoreFromGoogleDrive(input: {
       writerActorId: pointer.writerId,
     }),
   });
-  await syncPwaLibraryCoreFollowerV2(
+  const followerReceipt = await syncPwaLibraryCoreFollowerV2(
     createGoogleDriveLibraryCoreNormalizedFollowerTransportV2({
       accessToken: input.accessToken,
       controlFileId: discovered.controlFileId,
@@ -1363,7 +1365,10 @@ export async function syncPwaLibraryCoreFromGoogleDrive(input: {
     }),
     { signal: input.signal },
   );
-  return publishSelectedStateAfterLibraryCoreSync();
+  return Object.freeze({
+    ...await publishSelectedStateAfterLibraryCoreSync(),
+    followerEnrollmentState: followerReceipt.enrollmentState,
+  });
 }
 
 registerPwaFactoryResetQuiesceHandler(
