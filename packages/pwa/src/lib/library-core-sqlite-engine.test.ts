@@ -5961,87 +5961,306 @@ describe("PWA Library Core SQLite engine", () => {
     ).toEqual([0]);
   });
 
-  it("atomically replaces canonical rows and installs the exact follower receipt", () => {
-    const engine = new PwaLibraryCoreSqliteEngine(
-      database,
-      sqlite3.version.libVersion,
-    );
-    engine.initialize();
-    database.exec(
-      `INSERT INTO library_preferences (path, value_type, updated_at)
+  it.each(["same", "other-library", "other-epoch"])(
+    "atomically replaces canonical rows and fences enrollment: %s",
+    (identity) => {
+      const sameEpoch = identity == "same";
+      const engine = new PwaLibraryCoreSqliteEngine(
+        database,
+        sqlite3.version.libVersion,
+      );
+      engine.initialize();
+      database.exec(
+        `INSERT INTO library_preferences (path, value_type, updated_at)
        VALUES ('v:$.old', 'null', 1);
        INSERT INTO library_follower_actor_request
          (singleton_id, library_id, authority_epoch_id, actor_id,
           actor_public_key, enrollment_request_digest,
           canonical_enrollment_request, created_at)
-       VALUES (1, 'old-library', 'old-epoch', '${"a".repeat(64)}',
+       VALUES (1, '${identity == "other-library" ? "old-library" : "library-1"}', '${identity == "other-epoch" ? "old-epoch" : "epoch-1"}', '${"a".repeat(64)}',
                '${"b".repeat(64)}', '${"c".repeat(64)}', '{}', 1);`,
-    );
-    const records = [checkpointHeader(), ...authorityRecords()];
-    stageRecords(engine, records, "replacement");
-    const receipt = engine.activateNormalizedCheckpointStage({
-      followerReceipt: {
-        checkpointGeneration: 9,
-        controlRevision: "control-revision-1",
-        installedAt: 2_000,
-        manifestContentDigest: lowercaseHex64("9".repeat(64)),
-        manifestObjectKey: "manifest-key",
-        manifestTransportObjectId: "drive-object-1",
-        writerActorId: "actor-1",
-      },
-      replaceExisting: true,
-      stageId: "replacement",
-    });
-    expect(
-      database.exec({
-        sql: "SELECT count(*) FROM library_preferences;",
-        rowMode: 0,
+      );
+      database.exec(`INSERT INTO library_meta
+      (singleton_id, library_id, schema_version, authority_epoch, source_revision, updated_at)
+      VALUES (1, 'library-1', 1, 'epoch-1', 6, 1);`);
+      const previousEnrollment = database.exec({
+        sql: "SELECT * FROM library_follower_actor_request;",
+        rowMode: "array",
         returnValue: "resultRows",
-      }),
-    ).toEqual([0]);
-    expect(
-      database.exec({
-        sql: "SELECT count(*) FROM library_follower_actor_request;",
-        rowMode: 0,
-        returnValue: "resultRows",
-      }),
-    ).toEqual([0]);
-    expect(
-      database.exec({
-        sql: `SELECT checkpoint_generation, source_revision,
+      });
+      const records = [checkpointHeader(), ...authorityRecords()];
+      stageRecords(engine, records, "replacement");
+      const receipt = engine.activateNormalizedCheckpointStage({
+        followerReceipt: {
+          checkpointGeneration: 9,
+          controlRevision: "control-revision-1",
+          installedAt: 2_000,
+          manifestContentDigest: lowercaseHex64("9".repeat(64)),
+          manifestObjectKey: "manifest-key",
+          manifestTransportObjectId: "drive-object-1",
+          writerActorId: "actor-1",
+        },
+        replaceExisting: true,
+        stageId: "replacement",
+      });
+      expect(
+        database.exec({
+          sql: "SELECT count(*) FROM library_preferences;",
+          rowMode: 0,
+          returnValue: "resultRows",
+        }),
+      ).toEqual([0]);
+      expect(
+        database.exec({
+          sql: "SELECT * FROM library_follower_actor_request;",
+          rowMode: "array",
+          returnValue: "resultRows",
+        }),
+      ).toEqual(sameEpoch ? previousEnrollment : []);
+      expect(
+        database.exec({
+          sql: `SELECT checkpoint_generation, source_revision,
                      checkpoint_digest, writer_actor_id,
                      manifest_transport_object_id, control_revision
               FROM library_follower_checkpoint_receipt
               WHERE singleton_id = 1;`,
-        rowMode: "array",
-        returnValue: "resultRows",
-      }),
-    ).toEqual([
-      [
-        9,
-        7,
-        receipt.checkpointDigest,
-        "actor-1",
-        "drive-object-1",
-        "control-revision-1",
-      ],
-    ]);
-    expect(engine.readNormalizedCheckpointReceipt()).toEqual({
-      receipt: {
-        authorityEpoch: "epoch-1",
-        checkpointDigest: receipt.checkpointDigest,
-        checkpointGeneration: 9,
-        controlRevision: "control-revision-1",
-        installedAt: 2_000,
-        libraryId: "library-1",
-        manifestContentDigest: "9".repeat(64),
-        manifestObjectKey: "manifest-key",
-        manifestTransportObjectId: "drive-object-1",
-        sourceRevision: 7,
-        writerActorId: "actor-1",
-      },
-    });
-  });
+          rowMode: "array",
+          returnValue: "resultRows",
+        }),
+      ).toEqual([
+        [
+          9,
+          7,
+          receipt.checkpointDigest,
+          "actor-1",
+          "drive-object-1",
+          "control-revision-1",
+        ],
+      ]);
+      expect(engine.readNormalizedCheckpointReceipt()).toEqual({
+        receipt: {
+          authorityEpoch: "epoch-1",
+          checkpointDigest: receipt.checkpointDigest,
+          checkpointGeneration: 9,
+          controlRevision: "control-revision-1",
+          installedAt: 2_000,
+          libraryId: "library-1",
+          manifestContentDigest: "9".repeat(64),
+          manifestObjectKey: "manifest-key",
+          manifestTransportObjectId: "drive-object-1",
+          sourceRevision: 7,
+          writerActorId: "actor-1",
+        },
+      });
+    },
+  );
+
+  it.each([false, true])(
+    "retains settled follower replay state atomically across checkpoints, fault: %s",
+    (failActivation) => {
+      const engine = new PwaLibraryCoreSqliteEngine(
+        database,
+        sqlite3.version.libVersion,
+      );
+      engine.initialize();
+      const actorId = "a".repeat(64);
+      const digest = "7".repeat(64);
+      const records = [checkpointHeader(), ...authorityRecords()].map(
+        (record) =>
+          createLibraryCoreNormalizedCheckpointRecordV2(
+            JSON.parse(
+              JSON.stringify(record).replaceAll('"actor-1"', `"${actorId}"`),
+            ),
+          ),
+      );
+      stageRecords(engine, records, "original");
+      engine.activateNormalizedCheckpointStage({
+        followerReceipt: null,
+        replaceExisting: false,
+        stageId: "original",
+      });
+      const blob = new Uint8Array([123, 125]);
+      const localRows: Record<
+        string,
+        Record<string, string | number | Uint8Array | null>
+      > = {
+        library_follower_actor_request: {
+          singleton_id: 1,
+          library_id: "library-1",
+          authority_epoch_id: "epoch-1",
+          actor_id: actorId,
+          actor_public_key: "f".repeat(64),
+          enrollment_request_digest: "1".repeat(64),
+          canonical_enrollment_request: "{}",
+          created_at: 1,
+          enrollment_certificate_digest: "1".repeat(64),
+          canonical_enrollment_certificate: "{}",
+          actor_chain_genesis: "2".repeat(64),
+          enrolled_at: 2,
+        },
+        library_intent_actors: {
+          actor_id: actorId,
+          next_counter: 4,
+          previous_operation_id: "rejected-3",
+          previous_chain_digest: digest,
+        },
+        library_intent_transactions: {
+          transaction_id: "rejected",
+          transaction_digest: digest,
+          actor_id: actorId,
+          intent_epoch: 1,
+          intent_epoch_id: "epoch-1",
+          member_count: 1,
+          first_counter: 3,
+          last_counter: 3,
+          previous_operation_id: "operation-2",
+          previous_chain_digest: "3".repeat(64),
+          ending_operation_id: "rejected-3",
+          ending_chain_digest: digest,
+          canonical_member_bytes: 2,
+          canonical_transaction: blob,
+          state: "rejected",
+          created_at: 3,
+          published_at: 4,
+          resolved_at: 5,
+        },
+        library_intent_members: {
+          transaction_id: "rejected",
+          actor_id: actorId,
+          member_index: 0,
+          operation_id: "rejected-3",
+          actor_counter: 3,
+          mutation_id: "feed_item_read_assignment",
+          entity_type: "FeedItem",
+          entity_id: "item-1",
+          canonical_member: blob,
+          member_digest: digest,
+        },
+        library_intent_results: {
+          transaction_id: "rejected",
+          actor_id: actorId,
+          authority_epoch_id: "epoch-1",
+          intent_epoch_id: "epoch-1",
+          result_sequence: 1,
+          previous_result_digest: null,
+          result_digest: digest,
+          status: "rejected",
+          authoritative_source_revision: 7,
+          canonical_result: blob,
+          received_at: 5,
+        },
+        library_intent_result_cursors: {
+          actor_id: actorId,
+          next_result_sequence: 2,
+          previous_result_digest: digest,
+        },
+        library_intent_transport_heads: {
+          actor_id: actorId,
+          library_id: "library-1",
+          storage_epoch_id: "epoch-1",
+          next_actor_counter: 4,
+          latest_segment_digest: digest,
+        },
+        library_intent_transport_segments: {
+          actor_id: actorId,
+          first_actor_counter: 1,
+          last_actor_counter: 3,
+          previous_segment_digest: null,
+          semantic_segment_digest: digest,
+          stored_segment_digest: digest,
+          object_key: "intent-key",
+          transport_object_id: "intent-object",
+          published_at: 4,
+          published_transaction_count: 1,
+        },
+        library_result_transport_heads: {
+          actor_id: actorId,
+          library_id: "library-1",
+          storage_epoch_id: "epoch-1",
+          next_result_sequence: 2,
+          latest_segment_digest: digest,
+        },
+        library_result_transport_segments: {
+          actor_id: actorId,
+          first_result_sequence: 1,
+          last_result_sequence: 1,
+          previous_segment_digest: null,
+          semantic_segment_digest: digest,
+          stored_segment_digest: digest,
+          object_key: "result-key",
+          transport_object_id: "result-object",
+          received_at: 5,
+          result_count: 1,
+          accepted_transaction_count: 0,
+          rejected_transaction_count: 1,
+        },
+      };
+      for (const [table, row] of Object.entries(localRows)) {
+        database.exec({
+          sql: `INSERT INTO ${table} (${Object.keys(row).join(",")}) VALUES (${Object.keys(
+            row,
+          )
+            .map(() => "?")
+            .join(",")});`,
+          bind: Object.values(row),
+        });
+      }
+      const snapshot = () =>
+        Object.fromEntries(
+          Object.keys(localRows).map((table) => [
+            table,
+            database.exec({
+              sql: `SELECT * FROM ${table};`,
+              rowMode: "array",
+              returnValue: "resultRows",
+            }),
+          ]),
+        );
+      const before = snapshot();
+      stageRecords(engine, records, "next-checkpoint");
+      if (failActivation) {
+        database.exec(`CREATE TEMP TRIGGER fail_checkpoint_receipt BEFORE INSERT ON library_follower_checkpoint_receipt
+        BEGIN SELECT RAISE(ABORT, 'injected checkpoint receipt fault'); END;`);
+      }
+      const activate = () =>
+        engine.activateNormalizedCheckpointStage({
+          followerReceipt: {
+            checkpointGeneration: 10,
+            controlRevision: "control-10",
+            installedAt: 2000,
+            manifestContentDigest: lowercaseHex64("9".repeat(64)),
+            manifestObjectKey: "manifest-10",
+            manifestTransportObjectId: "drive-10",
+            writerActorId: actorId,
+          },
+          replaceExisting: true,
+          stageId: "next-checkpoint",
+        });
+      if (failActivation)
+        expect(activate).toThrow(/injected checkpoint receipt fault/);
+      else expect(activate()).toMatchObject({ sourceRevision: 7 });
+      expect(snapshot()).toEqual(before);
+      expect(
+        database.exec({
+          sql: "SELECT name FROM sqlite_schema WHERE name LIKE 'checkpoint_retained_%';",
+          rowMode: 0,
+          returnValue: "resultRows",
+        }),
+      ).toEqual([]);
+      expect(
+        database.exec({
+          sql: "PRAGMA foreign_key_check;",
+          rowMode: "array",
+          returnValue: "resultRows",
+        }),
+      ).toEqual([]);
+      if (failActivation) {
+        database.exec("DROP TRIGGER fail_checkpoint_receipt;");
+        expect(activate()).toMatchObject({ sourceRevision: 7 });
+        expect(snapshot()).toEqual(before);
+      }
+    },
+  );
 
   it("preserves the accepted database when replacement has unresolved local work", () => {
     const engine = new PwaLibraryCoreSqliteEngine(
