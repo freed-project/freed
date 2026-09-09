@@ -5,7 +5,10 @@ use crate::normalized_checkpoint::{
     checked_record, decode_fractional_payload, NormalizedCheckpointRecordV2,
 };
 use crate::normalized_operation::VerifiedActorEnrollment;
-use crate::normalized_sqlite::{describe_normalized_checkpoint_export_v2, NormalizedSqliteError};
+use crate::normalized_sqlite::{
+    describe_normalized_checkpoint_export_v2, export_normalized_checkpoint_page_v2,
+    NormalizedCheckpointExportRequestV2, NormalizedSqliteError,
+};
 use crate::normalized_writer_certificate::WriterEpochReassignment;
 use crate::sqlite_contract_generated::{
     CONTENT_RANGE_MAP_DIGEST_DOMAIN, SQLITE_LOCAL_RECONCILIATION_PROGRAMS,
@@ -991,6 +994,87 @@ fn install_normalized_restore_transition_v1(
     Ok(())
 }
 
+/// Prove current canonical state, not just a remembered digest, after response loss.
+// A lost activation response may cause the same immutable checkpoint to be staged
+// again. Prove its current canonical bytes, not just its revision or row count,
+// before returning success without replacing data or advancing invalidations.
+fn recover_exact_checkpoint_activation(
+    transaction: &Transaction<'_>,
+    stage_id: &str,
+    stage: &(String, String, i64, i64, i64),
+) -> Result<NormalizedCheckpointActivationReceiptV2, NormalizedSqliteError> {
+    let identity_matches: bool = transaction.query_row(
+        "SELECT EXISTS(SELECT 1 FROM library_meta
+         WHERE singleton_id = 1 AND library_id = ?1 AND authority_epoch = ?2
+         AND source_revision = ?3);",
+        params![stage.0, stage.1, stage.2],
+        |row| row.get(0),
+    )?;
+    if !identity_matches {
+        return Err(invalid("checkpoint activation retry identity changed"));
+    }
+    assert_checkpoint_replacement_has_no_local_overlay(transaction)?;
+    let mut staged = NormalizedCheckpointDigestAccumulatorV2::new();
+    let mut statement = transaction.prepare(
+        "SELECT record_canonical FROM library_checkpoint_stage_records
+         WHERE stage_id = ?1 ORDER BY registry_key, primary_key_canonical;",
+    )?;
+    let mut rows = statement.query([stage_id])?;
+    while let Some(row) = rows.next()? {
+        let canonical: Vec<u8> = row.get(0)?;
+        staged.push(&record_from_canonical(&canonical)?)?;
+    }
+    let expected = staged.finish();
+    if expected.1 != u64::try_from(stage.3).map_err(|_| invalid("invalid stage count"))?
+        || expected.2 != u64::try_from(stage.4).map_err(|_| invalid("invalid stage bytes"))?
+    {
+        return Err(invalid("checkpoint activation retry stage changed"));
+    }
+    let generation: Option<String> = transaction
+        .query_row(
+            "SELECT generation_id FROM library_materialization_generation WHERE singleton_id = 1;",
+            [],
+            |row| row.get(0),
+        )
+        .optional()?;
+    if generation.as_deref() != Some(expected.0.as_str()) {
+        return Err(invalid("checkpoint activation retry generation changed"));
+    }
+    let mut current = NormalizedCheckpointDigestAccumulatorV2::new();
+    let mut request = NormalizedCheckpointExportRequestV2::default();
+    loop {
+        let page = export_normalized_checkpoint_page_v2(transaction, &request)?;
+        for record in &page.records {
+            current.push(record)?;
+        }
+        if page.done {
+            break;
+        }
+        if page.records.is_empty() || page.next_cursor.is_none() {
+            return Err(invalid(
+                "checkpoint activation retry export did not advance",
+            ));
+        }
+        request.after = page.next_cursor;
+    }
+    if current.finish() != expected {
+        return Err(invalid(
+            "checkpoint activation retry materialization changed",
+        ));
+    }
+    verify_blob_rows(transaction)?;
+    verify_authority_rows(transaction, &stage.0, &stage.1)?;
+    Ok(NormalizedCheckpointActivationReceiptV2 {
+        stage_id: stage_id.into(),
+        library_id: stage.0.clone(),
+        authority_epoch: stage.1.clone(),
+        source_revision: u64::try_from(stage.2).map_err(|_| invalid("invalid stage revision"))?,
+        record_count: usize::try_from(expected.1).map_err(|_| invalid("invalid stage count"))?,
+        canonical_bytes: usize::try_from(expected.2).map_err(|_| invalid("invalid stage bytes"))?,
+        checkpoint_digest: expected.0,
+    })
+}
+
 fn activate_normalized_checkpoint_stage_v2(
     connection: &mut Connection,
     stage_id: &str,
@@ -1067,9 +1151,13 @@ fn activate_normalized_checkpoint_stage_v2(
         |row| row.get(0),
     )?;
     if existing_rows != 0 {
-        return Err(invalid(
-            "normalized checkpoint activation target is not empty",
-        ));
+        let recovered = recover_exact_checkpoint_activation(&transaction, stage_id, &stage)?;
+        transaction.execute(
+            "DELETE FROM library_checkpoint_stages WHERE stage_id = ?1;",
+            [stage_id],
+        )?;
+        transaction.commit()?;
+        return Ok(recovered);
     }
 
     let mut digest = Sha256::new();

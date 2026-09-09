@@ -16,8 +16,10 @@ import {
   type GoogleDriveFetch,
   type LibraryCoreControlReadV1,
   type LibraryCoreImmutablePublicationAdapterV1,
+  type LibraryCoreImmutableReadAdapterV1,
 } from "@freed/sync/cloud/library-core";
 
+import { verifyPreparedWriterCheckpoint } from "./writer-promotion-verification.js";
 import { LibraryServiceFailure } from "./contracts.js";
 import {
   LIBRARY_SERVICE_MAX_DESCRIPTOR_BYTES,
@@ -73,7 +75,8 @@ interface GoogleDrivePublicationTransportV1 {
     readonly controlFileId: string;
     readonly libraryId: string;
     readonly signal: AbortSignal;
-  }): LibraryCoreImmutablePublicationAdapterV1<Uint8Array>;
+  }): LibraryCoreImmutablePublicationAdapterV1<Uint8Array> &
+    LibraryCoreImmutableReadAdapterV1;
 }
 
 export interface LibraryServiceGoogleDrivePublicationOptionsV1 {
@@ -81,6 +84,14 @@ export interface LibraryServiceGoogleDrivePublicationOptionsV1 {
   readonly state: LibraryServiceGoogleDrivePublicationStatePortV1;
   readonly token: LibraryServiceGoogleDriveTokenPortV1;
   readonly transport?: GoogleDrivePublicationTransportV1;
+  readonly refreshInbound?: (
+    input: Readonly<{
+      accessToken: string;
+      controlFileId: string;
+      descriptor: LibraryCoreNormalizedCheckpointExportDescriptorV2;
+      signal: AbortSignal;
+    }>,
+  ) => Promise<void>;
 }
 
 export function createBoundGoogleDrivePublicationStatePortV1(
@@ -189,7 +200,7 @@ function exactDescriptor(
   }
 }
 
-async function* checkpointRecords(
+export async function* checkpointRecords(
   native: LibraryCoreNativeCommandClientV1,
   snapshot: LibraryCoreNormalizedCheckpointExportDescriptorV2,
 ): AsyncIterable<LibraryCoreNormalizedCheckpointRecordV2> {
@@ -286,6 +297,7 @@ export function createLibraryServiceGoogleDrivePublicationV1(
     },
     async publish({
       native,
+      reason,
       signal,
     }: {
       readonly native: LibraryCoreNativeCommandClientV1;
@@ -293,105 +305,218 @@ export function createLibraryServiceGoogleDrivePublicationV1(
       readonly signal: AbortSignal;
     }): Promise<LibraryServiceGoogleDrivePublicationResultV1> {
       if (signal.aborted) throw new LibraryServiceFailure("startup_cancelled");
-      const descriptor = exactDescriptor(
-        await native.execute("describe_checkpoint_export_v2", {}),
-      );
-      const persisted = closedState(await options.state.read());
-      if (persisted !== null && !sameAuthority(persisted, descriptor)) {
-        throw new LibraryServiceFailure("authority_not_primary");
-      }
-      const accessToken = await options.token.accessToken(signal);
-      if (
-        typeof accessToken !== "string" ||
-        accessToken.length === 0 ||
-        accessToken.length > 16_384
-      ) {
-        throw new LibraryServiceFailure("credential_descriptor_invalid");
-      }
-      const provisioned = await transport.provision({
-        accessToken,
-        libraryId: descriptor.libraryId,
-        signal,
-      });
-      const adapter = transport.adapter({
-        accessToken,
-        controlFileId: provisioned.controlFileId,
-        libraryId: descriptor.libraryId,
-        signal,
-      });
-      const controlRead = await adapter.readControl();
-      const pointer = parseControl(controlRead);
-      if (
-        pointer !== null &&
-        (String(pointer.writerId) !== String(descriptor.writerId) ||
-          String(pointer.storageEpoch) !== String(descriptor.authorityEpoch))
-      ) {
-        return Object.freeze({
-          status: "ownership_required" as const,
-          currentWriterId: pointer.writerId,
+      const clearAdmission = async () => {
+        const receipt = await native.execute("cloud_writer_clear_v1", {});
+        if (JSON.stringify(receipt) !== '{"allowed":false}') {
+          throw new LibraryServiceFailure("command_response_invalid");
+        }
+      };
+      const observe = async (
+        descriptor: LibraryCoreNormalizedCheckpointExportDescriptorV2,
+        pointer: LibraryCoreControlPointerV1,
+        revision: string | null,
+      ) => {
+        if (revision === null)
+          throw new LibraryServiceFailure("command_response_invalid");
+        const receipt = await native.execute("cloud_writer_observe_v1", {
+          libraryId: pointer.libraryId,
           localWriterId: descriptor.writerId,
+          activeWriterId: pointer.writerId,
+          storageEpoch: pointer.storageEpoch,
+          controlRevision: revision,
+          verifiedAtMs: Date.now(),
         });
-      }
-      if (
-        pointer !== null &&
-        pointer.causalFrontierDigest === descriptor.causalFrontierDigest &&
-        persisted?.lastPublishedRevision === descriptor.sourceRevision &&
-        persisted.controlFileId === provisioned.controlFileId &&
-        persisted.controlRevision === controlRead.revision
-      ) {
-        return Object.freeze({
-          status: "current" as const,
-          revision: descriptor.sourceRevision,
-        });
-      }
-      const exportDescriptor = exactDescriptor(
-        await native.execute("begin_checkpoint_export_v2", {}),
-      );
-      if (
-        exportDescriptor.libraryId !== descriptor.libraryId ||
-        exportDescriptor.authorityEpoch !== descriptor.authorityEpoch ||
-        exportDescriptor.writerId !== descriptor.writerId
-      ) {
-        throw new LibraryServiceFailure("authority_not_primary");
-      }
-      const result = await publishLibraryCoreNormalizedCheckpointV2({
-        activeTransport: "google_drive_app_data_v1",
-        adapter,
-        descriptor: exportDescriptor,
-        expectedControl: { revision: controlRead.revision, pointer },
-        generation: pointer === null ? 0 : pointer.generation + 1,
-        records: checkpointRecords(native, exportDescriptor),
-        subtle: crypto.subtle,
-      });
-      if (result.status === "conflict") {
         if (
-          result.currentControlPointer !== null &&
-          String(result.currentControlPointer.writerId) !==
-            String(exportDescriptor.writerId)
+          receipt === null ||
+          typeof receipt !== "object" ||
+          Array.isArray(receipt) ||
+          Object.keys(receipt).join(",") !== "allowed" ||
+          typeof (receipt as { allowed: unknown }).allowed !== "boolean"
+        ) {
+          throw new LibraryServiceFailure("command_response_invalid");
+        }
+        return (receipt as { allowed: boolean }).allowed;
+      };
+      try {
+        await clearAdmission();
+        const descriptor = exactDescriptor(
+          await native.execute("describe_checkpoint_export_v2", {}),
+        );
+        const persisted = closedState(await options.state.read());
+        if (persisted !== null && !sameAuthority(persisted, descriptor)) {
+          throw new LibraryServiceFailure("authority_not_primary");
+        }
+        const accessToken = await options.token.accessToken(signal);
+        if (
+          typeof accessToken !== "string" ||
+          accessToken.length === 0 ||
+          accessToken.length > 16_384
+        ) {
+          throw new LibraryServiceFailure("credential_descriptor_invalid");
+        }
+        const provisioned = await transport.provision({
+          accessToken,
+          libraryId: descriptor.libraryId,
+          signal,
+        });
+        const adapter = transport.adapter({
+          accessToken,
+          controlFileId: provisioned.controlFileId,
+          libraryId: descriptor.libraryId,
+          signal,
+        });
+        const controlRead = await adapter.readControl();
+        const pointer = parseControl(controlRead);
+        if (
+          reason === "initial" &&
+          pointer !== null &&
+          persisted !== null &&
+          sameAuthority(persisted, descriptor) &&
+          String(pointer.writerId) === descriptor.writerId &&
+          String(pointer.storageEpoch) === descriptor.authorityEpoch &&
+          persisted.controlRevision !== controlRead.revision
+        ) {
+          await verifyPreparedWriterCheckpoint({
+            native,
+            adapter,
+            pointer,
+            signal,
+            subtle: crypto.subtle,
+            requireGenerationZero: false,
+          });
+          const confirmed = await adapter.readControl();
+          if (
+            confirmed.revision !== controlRead.revision ||
+            JSON.stringify(parseControl(confirmed)) !== JSON.stringify(pointer)
+          ) {
+            throw new LibraryServiceFailure("authority_not_primary");
+          }
+        }
+        const admitted =
+          pointer !== null &&
+          (await observe(descriptor, pointer, controlRead.revision));
+        if (
+          pointer !== null &&
+          (String(pointer.writerId) !== String(descriptor.writerId) ||
+            String(pointer.storageEpoch) !== String(descriptor.authorityEpoch))
         ) {
           return Object.freeze({
             status: "ownership_required" as const,
-            currentWriterId: result.currentControlPointer.writerId,
-            localWriterId: exportDescriptor.writerId,
+            currentWriterId: pointer.writerId,
+            localWriterId: descriptor.writerId,
           });
         }
-        throw new LibraryServiceFailure("command_channel_failed");
+        // Imported or locally prepared authority has no completed publication receipt.
+        // Only the explicit promotion command may establish its first admission.
+        if (pointer !== null && persisted === null) {
+          throw new LibraryServiceFailure("authority_not_primary");
+        }
+        if (pointer !== null && !admitted) {
+          throw new LibraryServiceFailure("authority_not_primary");
+        }
+        if (
+          reason === "inbound_refresh" &&
+          pointer !== null &&
+          options.refreshInbound
+        ) {
+          signal.throwIfAborted();
+          await options.refreshInbound({
+            accessToken,
+            controlFileId: provisioned.controlFileId,
+            descriptor,
+            signal,
+          });
+          signal.throwIfAborted();
+        }
+        const currentDescriptor =
+          reason === "inbound_refresh" && options.refreshInbound
+            ? exactDescriptor(
+                await native.execute("describe_checkpoint_export_v2", {}),
+              )
+            : descriptor;
+        if (
+          currentDescriptor.libraryId !== descriptor.libraryId ||
+          currentDescriptor.authorityEpoch !== descriptor.authorityEpoch ||
+          currentDescriptor.writerId !== descriptor.writerId
+        ) {
+          throw new LibraryServiceFailure("authority_not_primary");
+        }
+        if (
+          pointer !== null &&
+          pointer.causalFrontierDigest ===
+            currentDescriptor.causalFrontierDigest &&
+          persisted?.lastPublishedRevision ===
+            currentDescriptor.sourceRevision &&
+          persisted.controlFileId === provisioned.controlFileId &&
+          persisted.controlRevision === controlRead.revision
+        ) {
+          return Object.freeze({
+            status: "current" as const,
+            revision: currentDescriptor.sourceRevision,
+          });
+        }
+        const exportDescriptor = exactDescriptor(
+          await native.execute("begin_checkpoint_export_v2", {}),
+        );
+        if (
+          exportDescriptor.libraryId !== descriptor.libraryId ||
+          exportDescriptor.authorityEpoch !== descriptor.authorityEpoch ||
+          exportDescriptor.writerId !== descriptor.writerId
+        ) {
+          throw new LibraryServiceFailure("authority_not_primary");
+        }
+        const result = await publishLibraryCoreNormalizedCheckpointV2({
+          activeTransport: "google_drive_app_data_v1",
+          adapter,
+          descriptor: exportDescriptor,
+          expectedControl: { revision: controlRead.revision, pointer },
+          generation: pointer === null ? 0 : pointer.generation + 1,
+          records: checkpointRecords(native, exportDescriptor),
+          subtle: crypto.subtle,
+        });
+        if (result.status === "conflict") {
+          await clearAdmission();
+          if (
+            result.currentControlPointer !== null &&
+            String(result.currentControlPointer.writerId) !==
+              String(exportDescriptor.writerId)
+          ) {
+            return Object.freeze({
+              status: "ownership_required" as const,
+              currentWriterId: result.currentControlPointer.writerId,
+              localWriterId: exportDescriptor.writerId,
+            });
+          }
+          throw new LibraryServiceFailure("command_channel_failed");
+        }
+        await options.state.write(
+          Object.freeze({
+            schemaVersion: 1 as const,
+            libraryId: exportDescriptor.libraryId,
+            authorityEpoch: exportDescriptor.authorityEpoch,
+            writerId: exportDescriptor.writerId,
+            controlFileId: provisioned.controlFileId,
+            controlRevision: result.revision,
+            lastPublishedRevision: exportDescriptor.sourceRevision,
+          }),
+        );
+        if (
+          !(await observe(
+            exportDescriptor,
+            result.controlPointer,
+            result.revision,
+          ))
+        ) {
+          throw new LibraryServiceFailure("authority_not_primary");
+        }
+        return Object.freeze({
+          status: "published" as const,
+          revision: exportDescriptor.sourceRevision,
+        });
+      } catch (error) {
+        await clearAdmission();
+        throw error;
       }
-      await options.state.write(
-        Object.freeze({
-          schemaVersion: 1 as const,
-          libraryId: exportDescriptor.libraryId,
-          authorityEpoch: exportDescriptor.authorityEpoch,
-          writerId: exportDescriptor.writerId,
-          controlFileId: provisioned.controlFileId,
-          controlRevision: result.revision,
-          lastPublishedRevision: exportDescriptor.sourceRevision,
-        }),
-      );
-      return Object.freeze({
-        status: "published" as const,
-        revision: exportDescriptor.sourceRevision,
-      });
     },
   });
 }

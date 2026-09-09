@@ -36,6 +36,7 @@ import {
   type LibraryCoreNativeCommandClientV1,
 } from "./native-command.js";
 import { createLibraryServiceNormalizedPrimaryNativeRuntimeV2 } from "./normalized-primary-native-runtime.js";
+import { createBoundDriveCredentialStore } from "./bound-drive-credential-store.js";
 import {
   createLibraryServiceLocalActorProcessorV1,
   type LibraryServiceLocalActorIngressPortV1,
@@ -281,6 +282,7 @@ export class LibraryServiceSupervisor {
   #statusTail: Promise<void> = Promise.resolve();
   #localActor: LibraryServiceLocalActorListenerV1 | null = null;
   #cloudState: LibraryServiceBoundPath | null = null;
+  #driveCredentialBindings: readonly LibraryServiceBoundPath[] = [];
   #primaryRuntime: LibraryServicePrimaryRuntimeV1<{
     readonly status: string;
   }> | null = null;
@@ -365,13 +367,18 @@ export class LibraryServiceSupervisor {
     const stateRoot = this.#stateRoot;
     const statusFile = this.#statusFile;
     const cloudState = this.#cloudState;
+    const driveCredentialBindings = this.#driveCredentialBindings;
     this.#stateRoot = null;
     this.#statusFile = null;
     this.#cloudState = null;
+    this.#driveCredentialBindings = [];
     await Promise.all([
       stateRoot?.close().catch(() => undefined),
       statusFile?.close().catch(() => undefined),
       cloudState?.close().catch(() => undefined),
+      ...driveCredentialBindings.map((bound) =>
+        bound.close().catch(() => undefined),
+      ),
     ]);
   }
 
@@ -541,6 +548,37 @@ export class LibraryServiceSupervisor {
   }
 
   async start(signal?: AbortSignal): Promise<LibraryServiceStartResult> {
+    const result = await this.#start<never>(signal);
+    if (result.phase !== "running") {
+      throw new LibraryServiceFailure("command_response_invalid");
+    }
+    return result;
+  }
+
+  /** Run one lease-bound operation without starting actor ingress or cloud work. */
+  async runMaintenance<T>(
+    operation: (
+      native: LibraryCoreNativeCommandClientV1,
+      bound: BoundLibraryServiceConfiguration,
+    ) => Promise<T>,
+    signal?: AbortSignal,
+  ): Promise<T> {
+    const result = await this.#start(signal, operation);
+    if (result.phase !== "maintenance_complete") {
+      throw new LibraryServiceFailure("command_response_invalid");
+    }
+    return result.value;
+  }
+
+  async #start<T>(
+    signal?: AbortSignal,
+    maintenance?: (
+      native: LibraryCoreNativeCommandClientV1,
+      bound: BoundLibraryServiceConfiguration,
+    ) => Promise<T>,
+  ): Promise<
+    LibraryServiceStartResult | { phase: "maintenance_complete"; value: T }
+  > {
     if (this.#state !== "idle") {
       throw new LibraryServiceFailure("already_started");
     }
@@ -573,6 +611,13 @@ export class LibraryServiceSupervisor {
       this.#config = bound.config;
       this.#stateRoot = bound.bindings.stateRoot;
       this.#cloudState = bound.cloudState;
+      this.#driveCredentialBindings =
+        bound.driveCredentialStore === undefined
+          ? []
+          : [
+              bound.driveCredentialStore.directory,
+              bound.driveCredentialStore.wrappingKey,
+            ];
       this.#startedAt = new Date(this.#clock.nowMs()).toISOString();
       throwIfAborted(signal);
       const statusBindingPromise = bindLibraryServiceStatusFile(
@@ -699,12 +744,58 @@ export class LibraryServiceSupervisor {
         this.#entropy,
       );
       await inspectNormalizedCommandStorage(commandClient);
+      if (maintenance !== undefined) {
+        throwIfAborted(signal);
+        const value = await raceWithAbort(
+          maintenance(commandClient, bound),
+          signal,
+        );
+        throwIfAborted(signal);
+        if (!child.isRunning()) {
+          throw new LibraryServiceFailure("sidecar_exited");
+        }
+        // Settlement proves the native process and its lease are gone before
+        // the caller may acknowledge an import or start another lifecycle.
+        this.#state = "stopping";
+        await this.#settleAfterTerm(
+          child,
+          this.#requireConfig().sidecar.shutdownTimeoutMs,
+        );
+        this.#settledExit = child.exit;
+        this.#state = "settled";
+        await this.#writeStatusBounded("stopped", "requested_stop");
+        return { phase: "maintenance_complete", value };
+      }
       const normalizedPrimaryNative =
         createLibraryServiceNormalizedPrimaryNativeRuntimeV2({
           native: commandClient,
           now: () => this.#clock.nowMs(),
           subtle: crypto.subtle,
         });
+      throwIfAborted(signal);
+
+      // A prepared writer epoch is not proof that cloud ownership transferred.
+      // Do not expose local actors while the initial cloud check is pending.
+      if (bound.config.cloud !== null) {
+        if (this.#primaryCloud === null || bound.cloudState === null) {
+          throw new LibraryServiceFailure("cloud_runtime_failed");
+        }
+        try {
+          this.#primaryRuntime = await this.#primaryCloud.start({
+            config: bound.config.cloud,
+            stateFile: bound.cloudState,
+            fileSystem: this.#fileSystem,
+            clock: this.#clock,
+            native: commandClient,
+            credentialStore: createBoundDriveCredentialStore(
+              bound,
+              this.#aclProof,
+            ),
+          });
+        } catch (error) {
+          throw toFailure(error, "cloud_runtime_failed");
+        }
+      }
       throwIfAborted(signal);
 
       const expectedUserId = this.#identity.currentUserId();
@@ -746,24 +837,6 @@ export class LibraryServiceSupervisor {
         child.closeLifetime();
         await this.#writeStatusBounded("failed", "local_actor_failed");
       });
-      throwIfAborted(signal);
-
-      if (bound.config.cloud !== null) {
-        if (this.#primaryCloud === null || bound.cloudState === null) {
-          throw new LibraryServiceFailure("cloud_runtime_failed");
-        }
-        try {
-          this.#primaryRuntime = await this.#primaryCloud.start({
-            config: bound.config.cloud,
-            stateFile: bound.cloudState,
-            fileSystem: this.#fileSystem,
-            clock: this.#clock,
-            native: commandClient,
-          });
-        } catch (error) {
-          throw toFailure(error, "cloud_runtime_failed");
-        }
-      }
       throwIfAborted(signal);
 
       this.#state = "running";
@@ -847,6 +920,7 @@ export class LibraryServiceSupervisor {
           await bound.close().catch(() => undefined);
           this.#stateRoot = null;
           this.#cloudState = null;
+          this.#driveCredentialBindings = [];
           await this.#statusFile?.close().catch(() => undefined);
           this.#statusFile = null;
         }

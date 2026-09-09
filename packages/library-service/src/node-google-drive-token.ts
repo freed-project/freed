@@ -28,6 +28,7 @@ export interface NodeGoogleDriveTokenDependenciesV1 {
   readonly platform?: NodeJS.Platform;
   readonly nowMs?: () => number;
   readonly readCredential?: (recordId: string) => Promise<string>;
+  readonly credentialRevision?: (recordId: string) => Promise<string>;
   readonly fetch?: typeof fetch;
 }
 
@@ -122,9 +123,34 @@ export function createNodeGoogleDriveTokenPortV1(
     readonly expiresAt: number;
   } | null = null;
   let pending: Promise<string> | null = null;
+  let pinnedRevision: string | null = null;
+  let credentialInvalidated = false;
+  const assertCredential = async (signal: AbortSignal) => {
+    if (signal.aborted) throw new LibraryServiceFailure("startup_cancelled");
+    if (credentialInvalidated)
+      throw new LibraryServiceFailure("drive_credential_unavailable");
+    if (dependencies.credentialRevision !== undefined) {
+      try {
+        const revision = await dependencies.credentialRevision(recordId);
+        if (
+          !/^[a-f0-9]{64}$/u.test(revision) ||
+          (pinnedRevision !== null && revision !== pinnedRevision)
+        ) {
+          throw new Error("credential revision changed");
+        }
+        pinnedRevision = revision;
+      } catch {
+        cached = null;
+        credentialInvalidated = true;
+        throw new LibraryServiceFailure("drive_credential_unavailable");
+      }
+    }
+    if (signal.aborted) throw new LibraryServiceFailure("startup_cancelled");
+  };
 
   return Object.freeze({
     async accessToken(signal: AbortSignal): Promise<string> {
+      await assertCredential(signal);
       const currentTime = now();
       if (
         cached !== null &&
@@ -140,6 +166,7 @@ export function createNodeGoogleDriveTokenPortV1(
         const credential = parseStoredCredential(
           await readCredential(recordId),
         );
+        await assertCredential(signal);
         let response: Response;
         try {
           response = await googleFetch(TOKEN_PROXY_URL, {
@@ -164,6 +191,7 @@ export function createNodeGoogleDriveTokenPortV1(
         } catch {
           throw new LibraryServiceFailure("drive_auth_failed");
         }
+        await assertCredential(signal);
         cached = parseAccessToken(payload, now());
         return cached.accessToken;
       })().finally(() => {
