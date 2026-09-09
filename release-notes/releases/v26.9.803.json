@@ -3,7 +3,7 @@
   "version": "26.9.803",
   "channel": "production",
   "dayKey": "26.9.8",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-09-09T02:23:30.845Z",
   "model": "heuristic",
@@ -60,17 +60,25 @@
     ]
   },
   "release": {
-    "deck": "Unified feed cards, clearer Friends views, and a welcoming mobile demo",
-    "features": [],
-    "fixes": [
-      "Explore the 500-post demo with a full-screen mobile welcome, editable session settings, and character-specific feeds",
-      "Select friends consistently across the galaxy and sidebar, adjust connection strength with a five-stop slider, and open provider-filtered reading lists",
-      "Read unified story and post cards with consistent spacing, textured image fades, interface zoom, and paused YouTube playback"
+    "deck": "Unified feed cards, clearer Friends views, and a welcoming mobile demo.",
+    "features": [
+      "Explore the 500-post demo with a full-screen mobile welcome, editable session settings, and character-specific feeds.",
+      "Select friends consistently across the galaxy and sidebar, adjust connection strength with a five-stop slider, and open provider-filtered reading lists.",
+      "Read unified story and post cards with consistent spacing, textured image fades, interface zoom, and paused YouTube playback."
     ],
-    "followUps": [
-      "Promote dev into main for production release",
-      "Prepare v26.9.802"
-    ]
+    "fixes": [
+      "Align author details and card spacing across feeds and recent activity; improve Friends controls and light-theme galaxies.",
+      "Pan and zoom the map with desktop trackpad gestures and momentum.",
+      "Keep galaxy avatars visible at maximum zoom and make selected star systems easier to see.",
+      "Last-seen maps are visible again, and recent activity includes provider icons.",
+      "Reader previews disappear instantly; transitioning demo tabs cannot intercept input.",
+      "Mobile cards retain horizontal margins, and landscape layouts scroll within the viewport.",
+      "Sample thumbnails load correctly, and the PWA starts with the demo corpus.",
+      "Preserve the Google sign-in redirect URI and show PWA installation guidance in Chrome on iOS.",
+      "Exclude Facebook advertisements from captured posts.",
+      "Stop feed reloads from restarting ranking."
+    ],
+    "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.9.803\n\nUnified feed cards, clearer Friends views, and a welcoming mobile demo\n\n### Fixes\n\n- Explore the 500-post demo with a full-screen mobile welcome, editable session settings, and character-specific feeds\n- Select friends consistently across the galaxy and sidebar, adjust connection strength with a five-stop slider, and open provider-filtered reading lists\n- Read unified story and post cards with consistent spacing, textured image fades, interface zoom, and paused YouTube playback\n\n### Follow-ups\n\n- Promote dev into main for production release\n- Prepare v26.9.802\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.9.803\n\nUnified feed cards, clearer Friends views, and a welcoming mobile demo\n\n### Features\n\n- Explore the 500-post demo with a full-screen mobile welcome, editable session settings, and character-specific feeds\n- Select friends consistently across the galaxy and sidebar, adjust connection strength with a five-stop slider, and open provider-filtered reading lists\n- Read unified story and post cards with consistent spacing, textured image fades, interface zoom, and paused YouTube playback\n\n### Fixes\n\n- Align author details and card spacing across feeds and recent activity; improve Friends controls and light-theme galaxies\n- Pan and zoom the map with desktop trackpad gestures and momentum\n- Keep galaxy avatars visible at maximum zoom and make selected star systems easier to see\n- Last-seen maps are visible again, and recent activity includes provider icons\n- Reader previews disappear instantly; transitioning demo tabs cannot intercept input\n- Mobile cards retain horizontal margins, and landscape layouts scroll within the viewport\n- Sample thumbnails load correctly, and the PWA starts with the demo corpus\n- Preserve the Google sign-in redirect URI and show PWA installation guidance in Chrome on iOS\n- Exclude Facebook advertisements from captured posts\n- Stop feed reloads from restarting ranking\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
