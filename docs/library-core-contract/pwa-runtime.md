@@ -3,7 +3,16 @@
 The PWA SQLite worker serializes database access and owns one OPFS database
 generation. Interface tabs communicate through bounded messages. Worker loss,
 suspension, tab replacement, and process eviction reopen the accepted database
-generation and replay only durable local intents.
+generation and replay only durable local intents. Checkpoint activation sends
+closed, monotonic record progress at bounded intervals. Verified progress renews
+a 30-second worker stall budget for queued commands; every request retains a
+ten-minute total cap. Progress never acknowledges an accepted checkpoint.
+
+The single-connection SAH pool must report no other reserved writer before the
+first database read. Its exclusive access handles and origin ownership remain
+held during recovery, allowing SQLite to replay a hot rollback journal after
+worker termination. Integrity checks run after SQLite recovery. No recovery
+path deletes a journal, ignores integrity errors, or selects partial staging.
 
 The supported iPhone floor must prove:
 

@@ -145,6 +145,7 @@ import {
 } from "@freed/shared/library-core";
 
 const REQUEST_TIMEOUT_MS = 30_000;
+const CHECKPOINT_TOTAL_TIMEOUT_MS = 10 * 60_000;
 const WORKER_ERROR_MAXIMUM_UTF8_BYTES = 4_096;
 const textEncoder = new TextEncoder();
 
@@ -240,7 +241,12 @@ interface PendingRequest<T = unknown> {
   readonly parse: (value: unknown) => T;
   readonly reject: (error: Error) => void;
   readonly resolve: (value: T) => void;
-  readonly timeout: ReturnType<typeof setTimeout>;
+  timeout: ReturnType<typeof setTimeout>;
+  readonly kind: LibraryCoreSqliteWorkerRequest["kind"];
+  readonly deadline: number;
+  readonly onTimeout: () => void;
+  completedRecords: number;
+  totalRecords: number | null;
 }
 
 export class PwaLibraryCoreSqliteClient {
@@ -861,15 +867,21 @@ export class PwaLibraryCoreSqliteClient {
     const requestId = crypto.randomUUID();
     const request = createRequest(requestId);
     return new Promise<T>((resolve, reject) => {
-      const timeout = setTimeout(() => {
+      const onTimeout = () => {
         this.#retireUnavailable(
           new PwaLibraryCoreSqliteWorkerUnavailableError(
             `PWA Library SQLite request timed out (${request.kind})`,
           ),
         );
-      }, REQUEST_TIMEOUT_MS);
+      };
+      const timeout = setTimeout(onTimeout, REQUEST_TIMEOUT_MS);
       this.#pending.set(requestId, {
         field,
+        kind: request.kind,
+        deadline: Date.now() + CHECKPOINT_TOTAL_TIMEOUT_MS,
+        onTimeout,
+        completedRecords: -1,
+        totalRecords: null,
         parse,
         reject,
         resolve: resolve as PendingRequest["resolve"],
@@ -899,6 +911,10 @@ export class PwaLibraryCoreSqliteClient {
     }
     const pending = this.#pending.get(response.requestId);
     if (!pending) return;
+    if (response.kind === "checkpoint_activation_progress") {
+      this.#receiveCheckpointProgress(response, pending);
+      return;
+    }
     this.#pending.delete(response.requestId);
     clearTimeout(pending.timeout);
     try {
@@ -945,6 +961,34 @@ export class PwaLibraryCoreSqliteClient {
       pending.reject(error);
     }
     this.#pending.clear();
+  }
+
+  #receiveCheckpointProgress(response: Record<string, unknown>, pending: PendingRequest): void {
+    const completed = response.completedRecords;
+    const total = response.totalRecords;
+    if (
+      pending.kind !== "activate_normalized_checkpoint_stage" ||
+      !exactResponseKeys(response, ["kind", "requestId", "completedRecords", "totalRecords"]) ||
+      typeof completed !== "number" || !Number.isSafeInteger(completed) ||
+      completed < 0 || completed <= pending.completedRecords ||
+      typeof total !== "number" || !Number.isSafeInteger(total) || total < 1 ||
+      completed > total || (pending.totalRecords !== null && pending.totalRecords !== total)
+    ) {
+      this.#retireUnavailable(new PwaLibraryCoreSqliteWorkerUnavailableError(
+        "PWA Library SQLite checkpoint progress is invalid",
+      ));
+      return;
+    }
+    pending.completedRecords = completed;
+    pending.totalRecords = total;
+    // Real monotonic work renews the stall budget for this worker generation,
+    // including reads queued behind its atomic activation. A hard deadline
+    // still bounds every request, even when progress continues indefinitely.
+    for (const request of this.#pending.values()) {
+      clearTimeout(request.timeout);
+      request.timeout = setTimeout(request.onTimeout,
+        Math.max(0, Math.min(REQUEST_TIMEOUT_MS, request.deadline - Date.now())));
+    }
   }
 
   #retireUnavailable(
