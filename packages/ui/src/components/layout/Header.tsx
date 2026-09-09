@@ -76,6 +76,7 @@ import {
   noDragRegionStyle as noDrag,
 } from "../../lib/native-drag-region.js";
 import {
+  COMPACT_MACOS_TRAFFIC_LIGHT_INSET_PX,
   PRIMARY_SIDEBAR_GAP_WIDTH_PX,
   TOP_TOOLBAR_HEIGHT_PX,
   TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX,
@@ -1100,7 +1101,7 @@ export function Header({
     handleIdentityModeChange,
   ]);
   const macosTrafficLightInsetStyle = headerDragRegion
-    ? ({ paddingLeft: `${MACOS_TRAFFIC_LIGHT_INSET}px` } as CSSProperties)
+    ? ({ paddingLeft: `${COMPACT_MACOS_TRAFFIC_LIGHT_INSET_PX}px` } as CSSProperties)
     : undefined;
   const sidebarHandleCenterline = "var(--freed-sidebar-handle-centerline, 264px)";
   const toolbarBoundaryWidth = `calc(${sidebarHandleCenterline} + ${px(toolbarGapHalfPx)})`;
@@ -1484,7 +1485,7 @@ export function Header({
           style={toolbarContainerStyle}
         >
           <div
-            className={`theme-toolbar-cluster theme-toolbar-cluster-tight flex h-full shrink-0 items-center ${isMobile ? "pl-2" : ""}`}
+            className={`theme-toolbar-cluster theme-toolbar-cluster-tight flex h-full shrink-0 items-center ${isMobile && !headerDragRegion ? "pl-2" : ""}`}
           >
             <div
               ref={layoutControlHostRef}
