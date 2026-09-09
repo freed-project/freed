@@ -1,7 +1,7 @@
 {
-  "sourceCommit": "2d1c8e49a213d9b856d3e437e3c65a203f3a0081",
-  "release": "v26.9.803",
-  "manifestSha256": "7130ca135cd617f49d9b4a0327e39f2855f8e7246347c09c34ee72684b5e39f4",
+  "sourceCommit": "341e4ad82cc85bc708808333dc4416601cf0a5d3",
+  "release": "v26.9.900",
+  "manifestSha256": "47e07850c76ead4a66bb14cabdbd50ebb3f4132009925350f62ef2239538ed0a",
   "manifest": {
     "schemaVersion": 1,
     "phases": [
@@ -25,7 +25,7 @@
       {
         "id": 4,
         "status": "current",
-        "reviewedAt": "2026-09-05",
+        "reviewedAt": "2026-09-09",
         "source": "docs/PHASE-4-SYNC.md"
       },
       {
@@ -37,13 +37,13 @@
       {
         "id": 6,
         "status": "current",
-        "reviewedAt": "2026-09-07",
+        "reviewedAt": "2026-09-09",
         "source": "docs/PHASE-6-PWA.md"
       },
       {
         "id": 7,
         "status": "current",
-        "reviewedAt": "2026-09-06",
+        "reviewedAt": "2026-09-09",
         "source": "docs/PHASE-7-SOCIAL-CAPTURE.md"
       },
       {
