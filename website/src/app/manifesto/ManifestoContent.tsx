@@ -6,7 +6,6 @@ import { MarketingPageShell } from "@/components/MarketingPageShell";
 
 export default function ManifestoContent() {
   const { openModal } = useNewsletter();
-
   return (
     <MarketingPageShell>
         <motion.article
@@ -201,14 +200,14 @@ export default function ManifestoContent() {
             transition={{ delay: 0.4 }}
             className="pt-24 pb-8 text-center"
           >
-            <motion.button
+            <motion.a
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
-              onClick={() => openModal()}
+              href="/vision"
               className="btn-primary text-base px-8 py-3"
             >
               Share the Vision
-            </motion.button>
+            </motion.a>
           </motion.div>
         </motion.article>
     </MarketingPageShell>
