@@ -24,7 +24,6 @@ import { THEME_DEFINITIONS, type ThemeId } from "@freed/shared/themes";
 import { Tooltip } from "../Tooltip.js";
 import { toast } from "../Toast.js";
 import { BackgroundActivityPopover } from "../BackgroundActivityPopover.js";
-import { ProviderStatusIndicator } from "../ProviderStatusIndicator.js";
 import { ThemePreviewButton } from "../ThemePreviewButton.js";
 import {
   ArchiveIcon,
@@ -430,14 +429,14 @@ export function Header({
   const backgroundActivityActive = activeBackgroundActivityCount > 0;
   const [activityPopoverOpen, setActivityPopoverOpen] = useState(false);
   const activityButtonRef = useRef<HTMLButtonElement | null>(null);
-  const backgroundActivityStatus = backgroundActivityActive
-    ? { label: "Syncing", tone: "healthy" as const }
-    : latestBackgroundActivityLevel === "error"
-      ? { label: "Last activity failed", tone: "critical" as const }
-      : latestBackgroundActivityLevel === "warning"
-        ? { label: "Last activity needs attention", tone: "warning" as const }
+  const backgroundActivityStatus = latestBackgroundActivityLevel === "error"
+    ? { label: "Last activity failed", tone: "critical" as const }
+    : latestBackgroundActivityLevel === "warning"
+      ? { label: "Last activity needs attention", tone: "warning" as const }
+      : backgroundActivityActive
+        ? { label: "Syncing", tone: "idle" as const }
         : latestBackgroundActivityLevel === "success"
-          ? { label: "Last activity succeeded", tone: "healthy" as const }
+          ? { label: "Last activity succeeded", tone: "idle" as const }
           : { label: "No recent activity", tone: "idle" as const };
 
   const scopeLabel = useMemo(() => {
@@ -1674,23 +1673,20 @@ export function Header({
                   aria-expanded={activityPopoverOpen}
                   aria-label={`Background activity: ${backgroundActivityStatus.label}`}
                 >
-                  {backgroundActivityStatus.tone === "idle" ? (
-                    <span
-                      className="inline-flex h-4 w-4 items-center justify-center"
-                      data-testid="background-activity-status"
-                      aria-label={backgroundActivityStatus.label}
-                      title={backgroundActivityStatus.label}
-                    >
-                      <RefreshIcon />
-                    </span>
-                  ) : (
-                    <ProviderStatusIndicator
-                      tone={backgroundActivityStatus.tone}
-                      syncing={backgroundActivityActive}
-                      label={backgroundActivityStatus.label}
-                      testId="background-activity-status"
-                    />
-                  )}
+                  <span
+                    className={`inline-flex h-4 w-4 items-center justify-center ${
+                      backgroundActivityStatus.tone === "critical"
+                        ? "text-[rgb(var(--theme-feedback-danger-rgb))]"
+                        : backgroundActivityStatus.tone === "warning"
+                          ? "text-[rgb(var(--theme-feedback-warning-rgb))]"
+                          : "text-[var(--theme-text-muted)]"
+                    }`}
+                    data-testid="background-activity-status"
+                    aria-label={backgroundActivityStatus.label}
+                    title={backgroundActivityStatus.label}
+                  >
+                    <RefreshIcon />
+                  </span>
                 </button>
               </Tooltip> : null}
             </ToolbarAnimatedSlot>
