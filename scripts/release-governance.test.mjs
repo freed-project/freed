@@ -276,6 +276,12 @@ test("native dependency setup sanitizes unstable runner sources before apt updat
     aptSourceSanitizer,
     /\/etc\/apt\/sources\.list\.d\/azure-cli\.list/,
   );
+  for (const extension of ["list", "sources"]) {
+    assert.ok(
+      aptSourceSanitizer.includes(`/etc/apt/sources.list.d/google-chrome.${extension}`),
+      `unused Chrome ${extension} source is removed before apt update`,
+    );
+  }
   assert.match(aptSourceSanitizer, /\/etc\/apt\/apt-mirrors\.txt/);
   const archiveAssignment = aptSourceSanitizer
     .split("\n")
