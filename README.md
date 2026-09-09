@@ -6,7 +6,7 @@ Capture your social/rss/newsletter feeds locally. Tune the ranking algo yourself
 
 [Freed.wtf](https://freed.wtf)
 
-![Freed in Scriptorium: Unified Feed, Map, Friends, friend details, mobile Stories, and mobile reader](docs/assets/freed-showcase-scriptorium.webp)
+![Freed in Scriptorium](https://github.com/freed-project/freed/releases/latest/download/freed-showcase-scriptorium.webp)
 
 ---
 
