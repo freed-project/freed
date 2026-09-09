@@ -1,19 +1,19 @@
 {
-  "tag": "v26.9.802",
-  "version": "26.9.802",
+  "tag": "v26.9.803",
+  "version": "26.9.803",
   "channel": "production",
   "dayKey": "26.9.8",
   "approved": true,
   "editorialNotes": [],
-  "generatedAt": "2026-09-09T00:20:13.179Z",
+  "generatedAt": "2026-09-09T02:23:30.845Z",
   "model": "heuristic",
   "source": {
     "channel": "production",
     "previousPublishedTag": "v26.9.602",
     "previousPublishedDayTag": "v26.9.602",
     "compareRef": "HEAD",
-    "productCommitSha": "f1864242bd9c2e367167c7bb0d76ba5b1ce0598d",
-    "promotedDevCommitSha": "4ff3c201b44bceb1a4dc40ad3acb0d26eab1b73c",
+    "productCommitSha": "1744d4346fb2500d0b11cbe30088362039c107e1",
+    "promotedDevCommitSha": "96a5c381263d67eedad3507bab9e4f084b123c5c",
     "libraryCoreActivation": {
       "schemaVersion": 1,
       "range": {
@@ -21,7 +21,7 @@
         "previousPublishedTag": "v26.9.602",
         "startMode": "previous_product_commit",
         "fromExclusiveCommitSha": "c7b6cc4315df47e202cca3c2ab27feff4d1bddc6",
-        "toInclusiveProductCommitSha": "f1864242bd9c2e367167c7bb0d76ba5b1ce0598d"
+        "toInclusiveProductCommitSha": "1744d4346fb2500d0b11cbe30088362039c107e1"
       },
       "manifest": {
         "path": "docs/library-core-activation-manifest.json",
@@ -30,7 +30,7 @@
         "currentDigest": "sha256:709197038cc687ff0889d7e28497c08704b0a1f7096f4348479ea36bf5896ccb"
       },
       "transitions": [],
-      "inspectionDigest": "sha256:95d81812882eb7904b285481e9986d6ed12858eb80b46cf20dae56574410a9d9",
+      "inspectionDigest": "sha256:bb26b4c8f548398f837642dbb52a3dc33cc089f7f799111d580c8cb414e2dc6f",
       "decision": {
         "state": "no_activation_declared",
         "ownerApprovalReference": null,
@@ -40,16 +40,18 @@
     },
     "isLatestOfDay": true,
     "sameDayTagsIncluded": [
-      "v26.9.802"
+      "v26.9.803"
     ],
     "relatedBuildTags": [
-      "v26.9.802"
+      "v26.9.803"
     ],
     "prNumbers": [
       1893,
       1897
     ],
     "commitSubjects": [
+      "chore: promote dev into main for production release",
+      "chore: prepare v26.9.802",
       "chore: promote dev into main for production release",
       "chore: prepare v26.9.801",
       "chore: promote dev into main for production release",
@@ -78,5 +80,5 @@
     ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.9.802\n\nUnified feed cards, clearer Friends views, and a welcoming mobile demo\n\n### Features\n\n- Explore the 500-post demo with a full-screen mobile welcome, editable session settings, and character-specific feeds\n- Select friends consistently across the galaxy and sidebar, adjust connection strength with a five-stop slider, and open provider-filtered reading lists\n- Read unified story and post cards with consistent spacing, textured image fades, interface zoom, and paused YouTube playback\n\n### Fixes\n\n- Align author details and card spacing across feeds and recent activity; improve Friends controls and light-theme galaxies\n- Pan and zoom the map with desktop trackpad gestures and momentum\n- Keep galaxy avatars visible at maximum zoom and make selected star systems easier to see\n- Last-seen maps are visible again, and recent activity includes provider icons\n- Reader previews disappear instantly; transitioning demo tabs cannot intercept input\n- Mobile cards retain horizontal margins, and landscape layouts scroll within the viewport\n- Sample thumbnails load correctly, and the PWA starts with the demo corpus\n- Preserve the Google sign-in redirect URI and show PWA installation guidance in Chrome on iOS\n- Exclude Facebook advertisements from captured posts\n- Stop feed reloads from restarting ranking\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.9.803\n\nUnified feed cards, clearer Friends views, and a welcoming mobile demo\n\n### Features\n\n- Explore the 500-post demo with a full-screen mobile welcome, editable session settings, and character-specific feeds\n- Select friends consistently across the galaxy and sidebar, adjust connection strength with a five-stop slider, and open provider-filtered reading lists\n- Read unified story and post cards with consistent spacing, textured image fades, interface zoom, and paused YouTube playback\n\n### Fixes\n\n- Align author details and card spacing across feeds and recent activity; improve Friends controls and light-theme galaxies\n- Pan and zoom the map with desktop trackpad gestures and momentum\n- Keep galaxy avatars visible at maximum zoom and make selected star systems easier to see\n- Last-seen maps are visible again, and recent activity includes provider icons\n- Reader previews disappear instantly; transitioning demo tabs cannot intercept input\n- Mobile cards retain horizontal margins, and landscape layouts scroll within the viewport\n- Sample thumbnails load correctly, and the PWA starts with the demo corpus\n- Preserve the Google sign-in redirect URI and show PWA installation guidance in Chrome on iOS\n- Exclude Facebook advertisements from captured posts\n- Stop feed reloads from restarting ranking\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
