@@ -1,5 +1,55 @@
 [
   {
+    "version": "26.9.900",
+    "tagName": "v26.9.900",
+    "channel": "production",
+    "date": "2026-09-09T17:25:35Z",
+    "deck": "Facebook login recognition, reliable Saved views, and PWA recovery fixes",
+    "features": [],
+    "fixes": [
+      {
+        "text": "Recognize completed Facebook logins and close the login window after healthy capture startup."
+      },
+      {
+        "text": "Show the full Saved collection after browsing Friends and keep bookmarking accessible in narrow reader toolbars."
+      },
+      {
+        "text": "Keep provider Advanced settings available, label Focus mode clearly, and make background activity status less distracting."
+      },
+      {
+        "text": "Improve mobile welcome and Settings scrolling, stabilize menu panes, and correct Scriptorium icon contrast."
+      },
+      {
+        "text": "Preserve the previous accepted PWA database after interrupted checkpoint imports and distinguish progressing large imports from stalled workers."
+      },
+      {
+        "text": "Close participating PWA storage workers before device reset, recover rejected local sample startup results, and offer an explicit choice when Drive contains multiple Libraries."
+      },
+      {
+        "text": "Report bounded SQLite integrity and worker-timeout diagnostics while retaining failed databases for investigation."
+      },
+      {
+        "text": "Resume identical PWA checkpoint stages across later retry attempts while retaining the original staging timestamp."
+      }
+    ],
+    "followUps": [],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.9.900",
+    "prNumbers": [
+      1941,
+      1947
+    ],
+    "builds": [
+      "26.9.900"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.9.900",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.9.900",
+        "channel": "production"
+      }
+    ]
+  },
+  {
     "version": "26.9.803",
     "tagName": "v26.9.803",
     "channel": "production",

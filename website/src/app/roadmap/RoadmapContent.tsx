@@ -732,7 +732,7 @@ const phases: Phase[] = [
     number: 4,
     title: "Sync Layer",
     description:
-      `The Library Core sync path is in active release validation. Freed Desktop keeps ${Number(24).toLocaleString()} closed SQLite backups on the device that created them. Google Drive carries immutable logical checkpoints and never receives SQLite, WAL, SHM, or rollback journal files. Complete off-device backup is still in progress and will combine logical checkpoints with content-addressed media. Dropbox remains gated while its provider work finishes, and iCloud remains open.`,
+      `The Library Core sync path is in active release validation. Freed Desktop keeps ${Number(24).toLocaleString()} closed SQLite backups on the device that created them. Google Drive carries immutable logical checkpoints and never receives SQLite, WAL, SHM, or rollback journal files. Complete off-device backup is still in progress and will combine logical checkpoints with content-addressed media. Drive now offers an explicit choice between Libraries and retains accepted data after interrupted checkpoint imports. Authenticated import and edit verification remains open. Dropbox remains gated while its provider work finishes, and iCloud remains open.`,
     status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-4-SYNC.md",
@@ -751,7 +751,7 @@ const phases: Phase[] = [
     number: 6,
     title: "PWA Reader",
     description:
-      "The mobile reader is live at app.freed.wtf, with legal gating, URL-backed navigation, offline reading, bug reporting, production or dev update channels, an anonymous read only showcase with a pre-generated Library, visible sample Library maintenance progress, and fail-closed OPFS SQLite recovery.",
+      "The mobile reader is live at app.freed.wtf, with legal gating, URL-backed navigation, offline reading, bug reporting, production or dev update channels, an anonymous read only showcase with a pre-generated Library, visible sample Library maintenance progress, and fail-closed OPFS SQLite recovery. Large imports report progress, interrupted imports retain the accepted database, and resets close participating storage workers. Physical iPhone acceptance remains open.",
     status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-6-PWA.md",
@@ -760,7 +760,7 @@ const phases: Phase[] = [
     number: 7,
     title: "Facebook + Instagram",
     description:
-      "Facebook and Instagram capture run through guarded Freed Desktop sessions, with feed pollution filtering, story capture, group controls, provider health, and sync backoff.",
+      "Facebook and Instagram capture run through guarded Freed Desktop sessions, with feed pollution filtering, story capture, group controls, provider health, and sync backoff. Facebook login recognition has been repaired; signed-build login and sustained capture verification remain open.",
     status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-7-SOCIAL-CAPTURE.md",
