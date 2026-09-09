@@ -72,10 +72,11 @@ export function describeInstalledBuild(
   }
 
   if (metadata.buildKind === "snapshot") {
+    const production = metadata.commitRef === "main";
     return {
-      badgeLabel: "Dev snapshot",
+      badgeLabel: production ? "Production snapshot" : "Dev snapshot",
       detail: joinDetailParts([
-        "Built after the latest dev release",
+        production ? "Built from the production branch" : "Built after the latest dev release",
         shortSha,
         formattedTimestamp,
       ]),
