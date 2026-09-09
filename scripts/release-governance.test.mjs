@@ -447,6 +447,11 @@ test("dev releases publish a signed isolated Apple Silicon verifier without upda
 });
 
 test("production releases publish an exact-tag PWA showcase with reviewed media", () => {
+  const websiteJobHeader = releaseWorkflow.slice(
+    releaseWorkflow.indexOf("\n  publish-website:"),
+    releaseWorkflow.indexOf("\n  publish-pwa:"),
+  ).split("    steps:")[0];
+  assert.match(websiteJobHeader, /if: needs\.notes\.outputs\.release_channel == 'production'/);
   const showcaseJob = releaseWorkflow.slice(
     releaseWorkflow.indexOf("\n  showcase-assets:"),
     releaseWorkflow.indexOf("\n  # After all platform builds succeed"),
