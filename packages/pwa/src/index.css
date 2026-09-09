@@ -151,6 +151,13 @@ html[data-theme="neon"] .demo-freed-logo {
   transform-origin: center bottom;
 }
 
+@media (max-width: 640px) {
+  /* The fullscreen card fades with its overlay; keep its position and size fixed. */
+  .demo-welcome-first-look-card--departing {
+    animation: none;
+  }
+}
+
 .demo-welcome-field-guide--arriving {
   animation: demo-welcome-field-guide-in 900ms linear both;
   transform-origin: center bottom;

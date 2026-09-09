@@ -45,6 +45,7 @@ import { useLibraryFilterScopeSummary } from "../../hooks/useLibraryFilterScopeS
 import { useLibraryItemDetail } from "../../hooks/useLibraryItemDetail.js";
 import { useLibraryCommandPaletteReader } from "../../hooks/useLibraryCommandPaletteReader.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
+import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import { useBackgroundActivityStore } from "../../lib/background-activity-store.js";
 import { useCommandSurfaceStore } from "../../lib/command-surface-store.js";
 import {
@@ -335,6 +336,7 @@ export function Header({
   } = usePlatform();
   const readOnly = interactionMode === "read-only";
   const isMobile = useIsMobile();
+  const isMobileDevice = useIsMobileDevice();
   const visibleDesktopSidebarMode = desktopSidebarDisplayMode ?? desktopSidebarMode;
   const desktopSidebarToggleLabel = visibleDesktopSidebarMode === "closed"
     ? "Show sidebar"
@@ -1146,7 +1148,7 @@ export function Header({
   const toolbarContainerStyle = {
     ...(headerDragRegion ? dragStyle : {}),
     // Keep narrow-screen controls clear of rounded device edges and safe areas.
-    ...(isMobile && !headerDragRegion ? {
+    ...((isMobile || isMobileDevice) && !headerDragRegion ? {
       paddingLeft: "max(6px, var(--safe-area-left, env(safe-area-inset-left, 0px)))",
       paddingRight: "max(6px, var(--safe-area-right, env(safe-area-inset-right, 0px)))",
     } : {}),

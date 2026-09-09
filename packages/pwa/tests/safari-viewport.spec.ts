@@ -265,8 +265,8 @@ test.describe("Safari viewport layout — iPhone 14 / WebKit", () => {
       });
       expect(geometry.left).toBe(0);
       expect(geometry.right).toBe(viewport.width);
-      expect(geometry.contentPadding).toBe(viewport.width > 767 ? 47 : 0);
-      expect(geometry.toolbarPadding).toBe(viewport.width > 767 ? 47 : 12);
+      expect(geometry.contentPadding).toBe(viewport.width > 767 ? 47 : 8);
+      expect(geometry.toolbarPadding).toBe(viewport.width > 767 ? 47 : 6);
       expect(geometry.smooth).toBe("auto");
       expect(geometry.overflow).toBe(false);
       await page.evaluate(() => window.scrollTo({ top: 600, behavior: "instant" }));
@@ -565,5 +565,19 @@ test.describe("BottomSheet / drawer viewport", () => {
     expect(box!.y).toBeGreaterThanOrEqual(0);
     // Panel top must be below the header (not covering it entirely).
     expect(box!.y).toBeLessThan(viewportHeight * 0.5);
+
+    await page.getByRole("button", { name: "Appearance", exact: true }).click();
+    const scrollport = page.locator(".theme-settings-scrollport");
+    await expect(scrollport).toBeVisible();
+    const scrollHeight = await scrollport.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+      return element.clientHeight;
+    });
+    expect(scrollHeight).toBeGreaterThan(0);
+    expect(scrollHeight).toBeLessThan(viewportHeight);
+    await expect.poll(() => scrollport.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
+    await page.getByRole("button", { name: "Close settings", exact: true }).click();
+    await expect(panel).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => document.body.style.overflow)).toBe("");
   });
 });

@@ -24,6 +24,7 @@ import {
   discoverGoogleDriveLibraryCoreIntentHeadV1,
   discoverGoogleDriveLibraryCoreIntentSegmentsV1,
   discoverPublishedGoogleDriveLibraryCoreControlV1,
+  GoogleDriveLibrarySelectionRequiredError,
   provisionGoogleDriveLibraryCoreControlV1,
   provisionGoogleDriveLibraryCoreIntentHeadV1,
   provisionGoogleDriveLibraryCoreNormalizedIntentHeadV2,
@@ -583,6 +584,32 @@ describe("Google Drive Library Core immutable adapter", () => {
         googleFetch: fake.fetch,
       }),
     ).rejects.toThrow("more than one published Library Core control");
+  });
+
+  it("offers distinct Libraries and isolates later discovery to the chosen identity", async () => {
+    const fake = new FakeGoogleDrive();
+    fake.addControl("control-1", publishedControlBytes());
+    const second = fake.addControl("control-2", publishedControlBytes("library-2"));
+    second.appProperties.freedLibraryDigest = libraryDigest("library-2");
+    const discovery = { accessToken: "test-token", googleFetch: fake.fetch };
+    await expect(discoverPublishedGoogleDriveLibraryCoreControlV1(discovery))
+      .rejects.toMatchObject({
+        name: GoogleDriveLibrarySelectionRequiredError.name,
+        libraryIds: ["library-1", "library-2"],
+      });
+    await expect(discoverPublishedGoogleDriveLibraryCoreControlV1({
+      ...discovery, libraryId: "library-2",
+    })).resolves.toMatchObject({ libraryId: "library-2", controlFileId: "control-2" });
+    const lastQuery = fake.requests.filter((request) => new URL(request.url).searchParams.has("q")).at(-1);
+    expect(lastQuery?.url).toContain("freedLibraryDigest");
+  });
+
+  it("rejects selected controls whose body changes Library identity", async () => {
+    const fake = new FakeGoogleDrive();
+    fake.addControl("control-1", publishedControlBytes("library-2"));
+    await expect(discoverPublishedGoogleDriveLibraryCoreControlV1({
+      accessToken: "test-token", googleFetch: fake.fetch, libraryId: "library-1",
+    })).rejects.toThrow("does not match the selected Library");
   });
 
   it("fails closed when a control body is malformed", async () => {

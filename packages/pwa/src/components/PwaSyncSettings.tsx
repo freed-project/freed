@@ -9,7 +9,7 @@
  *   last-synced time, and a Disconnect action.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { getWebsiteHostForChannel } from "@freed/shared";
 import { usePlatform } from "@freed/ui/context";
 import { useLibraryFacetSummary } from "@freed/ui/hooks/useLibraryFacetSummary";
@@ -24,6 +24,9 @@ import {
   clearCloudSync,
   stopCloudSync,
   syncCloudProviderNow,
+  getCloudLibraryChoices,
+  subscribeCloudLibraryChoices,
+  selectCloudLibrary,
 } from "../lib/sync";
 import { PwaCloudSyncConnect } from "./PwaCloudSyncConnect";
 import { useCloudSyncActivity } from "./cloudSyncActivity";
@@ -170,6 +173,7 @@ export function PwaDemoSyncSettings() {
 }
 
 export function PwaSyncSettings() {
+  const libraryChoices = useSyncExternalStore(subscribeCloudLibraryChoices, getCloudLibraryChoices);
   const { releaseChannel } = usePlatform();
   const syncConnected = useAppStore((s) => s.syncConnected);
   const isSyncing = useAppStore((s) => s.isSyncing);
@@ -373,6 +377,36 @@ export function PwaSyncSettings() {
 
   return (
     <div className="space-y-4">
+      {libraryChoices.length > 0 && (
+        <div className="theme-card-soft rounded-xl p-4" data-testid="pwa-library-choice">
+          <p className="text-sm font-semibold">Choose your Library</p>
+          <p className="mt-1 text-xs text-text-muted">Google Drive contains several Libraries. Match the Library ID shown in Freed Desktop. Other Libraries remain untouched.</p>
+          <div className="mt-3 space-y-2">
+            {libraryChoices.map((libraryId) => (
+              <button
+                key={libraryId}
+                type="button"
+                disabled={isManualSyncing}
+                className="btn-secondary block w-full rounded-lg px-3 py-2 text-sm"
+                onClick={async () => {
+                  setManualSyncingProvider("gdrive");
+                  setManualSyncError(null);
+                  try {
+                    await selectCloudLibrary(libraryId);
+                    await refreshSelectedCheckpoint();
+                  } catch (error) {
+                    setManualSyncError(error instanceof Error ? error.message : "Library connection failed.");
+                  } finally {
+                    setManualSyncingProvider(null);
+                  }
+                }}
+              >
+                Sync Library {formatIdentityTail(libraryId)}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="flex items-center gap-4 rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] px-4 py-4">
         {provider && <ProviderLogo />}
         <div className="min-w-0 flex-1">
