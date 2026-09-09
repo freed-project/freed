@@ -87,5 +87,8 @@
     "@types/three": "^0.185.1",
     "@webgpu/types": "^0.1.71",
     "typescript": "~5.9.3"
+  },
+  "scripts": {
+    "test": "node ../../node_modules/vitest/vitest.mjs run --maxWorkers=1"
   }
 }
