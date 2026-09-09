@@ -7,6 +7,8 @@ import { useAppStore } from "../lib/store";
 import { PwaDemoSyncSettings, PwaSyncSettings } from "./PwaSyncSettings";
 
 const mocks = vi.hoisted(() => ({
+  libraryChoices: Object.freeze([]) as readonly string[],
+  selectCloudLibrary: vi.fn(async () => {}),
   clipboardWrite: vi.fn(async () => {}),
   clearCloudSync: vi.fn(),
   getCloudProvider: vi.fn<() => "gdrive" | null>(() => "gdrive"),
@@ -63,6 +65,9 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../lib/sync", () => ({
+  getCloudLibraryChoices: () => mocks.libraryChoices,
+  subscribeCloudLibraryChoices: () => () => {},
+  selectCloudLibrary: mocks.selectCloudLibrary,
   clearCloudSync: mocks.clearCloudSync,
   getCloudProvider: mocks.getCloudProvider,
   stopCloudSync: mocks.stopCloudSync,
@@ -119,6 +124,7 @@ describe("PwaSyncSettings cloud diagnostics", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-09T12:00:30Z"));
     vi.clearAllMocks();
+    mocks.libraryChoices = Object.freeze([]);
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: { writeText: mocks.clipboardWrite },
@@ -170,6 +176,19 @@ describe("PwaSyncSettings cloud diagnostics", () => {
     (
       globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
     ).IS_REACT_ACT_ENVIRONMENT = false;
+  });
+
+  it("requires an explicit Library choice and forwards the exact identity", async () => {
+    mocks.libraryChoices = Object.freeze(["11".repeat(32), "22".repeat(32)]);
+    const { container, root } = renderWithPlatform(createElement(PwaSyncSettings));
+    await act(async () => { await Promise.resolve(); });
+    expect(mocks.selectCloudLibrary).not.toHaveBeenCalled();
+    const choices = container.querySelectorAll<HTMLButtonElement>("[data-testid='pwa-library-choice'] button");
+    expect(choices).toHaveLength(2);
+    expect(choices[1]!.textContent).toContain("...22222222");
+    await act(async () => { choices[1]!.click(); });
+    expect(mocks.selectCloudLibrary).toHaveBeenCalledWith("22".repeat(32));
+    act(() => root.unmount());
   });
 
   it("explains a missing upload and lets the user run sync now", async () => {
