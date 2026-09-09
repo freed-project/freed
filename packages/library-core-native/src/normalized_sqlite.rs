@@ -518,6 +518,7 @@ fn checkpoint_frontier_digest_v2(
          ORDER BY actor_id;",
     )?;
     let mut rows = statement.query([authority_epoch])?;
+    let mut has_accepted_operations = false;
     while let Some(row) = rows.next()? {
         let actor_id: String = row.get(0)?;
         let accepted_counter: i64 = row.get(1)?;
@@ -528,6 +529,12 @@ fn checkpoint_frontier_digest_v2(
                 "normalized checkpoint actor counter is invalid".into(),
             ));
         }
+        // Enrollment alone does not advance causality. A newly transferred
+        // epoch carries the source frontier unchanged until it accepts work.
+        if accepted_counter == 0 {
+            continue;
+        }
+        has_accepted_operations = true;
         for value in [&actor_id, &accepted_chain_digest] {
             let length = u64::try_from(value.len()).map_err(|_| {
                 NormalizedSqliteError::Transport(
@@ -552,7 +559,11 @@ fn checkpoint_frontier_digest_v2(
             None => digest.update([0]),
         }
     }
-    Ok(lower_hex(&digest.finalize()))
+    if has_accepted_operations {
+        Ok(lower_hex(&digest.finalize()))
+    } else {
+        Ok(carried_frontier_digest)
+    }
 }
 
 fn checkpoint_hex_identity(value: &str) -> bool {
@@ -1570,7 +1581,7 @@ mod tests {
         assert_eq!(snapshot.writer_id, actor_id);
         assert_eq!(
             snapshot.causal_frontier_digest,
-            "c2dac23e022015df7e5bee715cf2904e7c9737afadca0d87f7040f7383d8e446"
+            "1".repeat(64)
         );
         assert_eq!(snapshot.record_count, 4);
         let first = export
@@ -1966,7 +1977,7 @@ mod tests {
             .expect("stage records");
         let error = finalize_normalized_checkpoint_stage_v2(&mut connection, "stage-nonempty")
             .expect_err("nonempty target");
-        assert!(error.to_string().contains("target is not empty"));
+        assert!(error.to_string().contains("retry identity changed"));
         let preferences: i64 = connection
             .query_row("SELECT count(*) FROM library_preferences;", [], |row| {
                 row.get(0)
@@ -2355,5 +2366,39 @@ mod tests {
             )
             .expect("staged rows");
         assert_eq!(staged_rows, 0);
+
+        // A lost response may cause the importer to restage the same immutable
+        // checkpoint. Recover only after comparing the complete current export.
+        begin_stage(&target, "stage-activation", &page.records);
+        append_normalized_checkpoint_stage_page_v2(&mut target, "stage-activation", &page.records)
+            .expect("restage after response loss");
+        let replay = finalize_normalized_checkpoint_stage_v2(&mut target, "stage-activation")
+            .expect("recover exact activation");
+        assert_eq!(replay, receipt);
+        assert_eq!(
+            target
+                .query_row("SELECT count(*) FROM library_invalidations;", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+
+        // A same-count edit must fail even when somebody leaves the generation
+        // identity and source revision untouched.
+        target
+            .execute("UPDATE library_feed_items SET read_at = 123456;", [])
+            .expect("tamper current materialization");
+        begin_stage(&target, "stage-activation", &page.records);
+        append_normalized_checkpoint_stage_page_v2(&mut target, "stage-activation", &page.records)
+            .expect("stage retry against changed target");
+        let error = finalize_normalized_checkpoint_stage_v2(&mut target, "stage-activation")
+            .expect_err("reject changed materialization");
+        assert!(error.to_string().contains("materialization changed"));
+        assert_eq!(
+            stage_status(&target, "stage-activation")
+                .unwrap()
+                .staged_record_count,
+            page.records.len()
+        );
     }
 }

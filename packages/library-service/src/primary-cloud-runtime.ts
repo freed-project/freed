@@ -4,6 +4,7 @@ import type {
   LibraryServiceFileSystemPort,
   LibraryServiceGoogleDriveConfig,
 } from "./contracts.js";
+import { LibraryServiceFailure } from "./contracts.js";
 import {
   createBoundGoogleDrivePublicationStatePortV1,
   createLibraryServiceGoogleDrivePublicationV1,
@@ -85,7 +86,15 @@ export function createNodeLibraryServicePrimaryCloudPortV1(
           },
         },
       });
-      await runtime.start();
+      try {
+        const initial = await runtime.start();
+        if (initial.status !== "published" && initial.status !== "current") {
+          throw new LibraryServiceFailure("authority_not_primary");
+        }
+      } catch (error) {
+        runtime.stop();
+        throw error;
+      }
       return runtime;
     },
   });

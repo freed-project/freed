@@ -4,6 +4,7 @@ import {
   createLibraryCoreNormalizedCheckpointRecordV2,
   encodeLibraryCoreNormalizedCheckpointRecordV2,
   parseLibraryCoreImmutableObjectDescriptorV1,
+  parseLibraryCoreControlPointerV1,
   type LibraryCoreImmutableObjectDescriptorV1,
 } from "@freed/shared/library-core";
 import type {
@@ -16,6 +17,7 @@ import type {
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import type { LibraryCoreNativeCommandClientV1 } from "./native-command.js";
+import { verifyPreparedWriterCheckpoint } from "./writer-promotion-verification.js";
 import {
   createLibraryServiceGoogleDrivePublicationV1,
   type LibraryServiceGoogleDrivePublicationStateV1,
@@ -114,18 +116,20 @@ class MemoryAdapter implements LibraryCoreImmutablePublicationAdapterV1<Uint8Arr
   }
 }
 
-function native(checkpoint = descriptor()): LibraryCoreNativeCommandClientV1 {
+function native(checkpoint = descriptor(), exportedRecord = record): LibraryCoreNativeCommandClientV1 {
   return {
     execute: vi.fn(async (commandId: string) => {
+      if (commandId === "cloud_writer_clear_v1") return { allowed: false };
+      if (commandId === "cloud_writer_observe_v1") return { allowed: true };
       if (commandId === "describe_checkpoint_export_v2") return checkpoint;
       if (commandId === "begin_checkpoint_export_v2") return checkpoint;
       if (commandId === "export_checkpoint_page_v2") {
         return {
           canonicalRecordBytes:
-            encodeLibraryCoreNormalizedCheckpointRecordV2(record).byteLength,
+            encodeLibraryCoreNormalizedCheckpointRecordV2(exportedRecord).byteLength,
           done: true,
           nextCursor: null,
-          records: [record],
+          records: [exportedRecord],
         };
       }
       throw new Error(`unexpected command ${commandId}`);
@@ -134,6 +138,20 @@ function native(checkpoint = descriptor()): LibraryCoreNativeCommandClientV1 {
 }
 
 describe("headless Google Drive checkpoint publication", () => {
+  it("clears native admission before token work and leaves it cleared after failure", async () => {
+    const client = native();
+    const publication = createLibraryServiceGoogleDrivePublicationV1({
+      state: { read: async () => null, write: async () => undefined },
+      token: { accessToken: async () => { throw new Error("token unavailable"); } },
+    });
+    await expect(publication.publish({
+      native: client, reason: "initial", signal: new AbortController().signal,
+    })).rejects.toThrow("token unavailable");
+    expect(vi.mocked(client.execute).mock.calls.map(([command]) => command)).toEqual([
+      "cloud_writer_clear_v1", "describe_checkpoint_export_v2", "cloud_writer_clear_v1",
+    ]);
+  });
+
   it("publishes bounded native records and persists only the committed receipt", async () => {
     const adapter = new MemoryAdapter();
     let state: LibraryServiceGoogleDrivePublicationStateV1 | null = null;
@@ -175,11 +193,57 @@ describe("headless Google Drive checkpoint publication", () => {
         ([commandId]) => commandId,
       ),
     ).toEqual([
+      "cloud_writer_clear_v1",
       "describe_checkpoint_export_v2",
       "begin_checkpoint_export_v2",
       "export_checkpoint_page_v2",
+      "cloud_writer_observe_v1",
     ]);
     await expect(publication.lastPublishedRevision()).resolves.toBe(7);
+
+    // A matching writer and epoch cannot substitute for exact transferred content.
+    const verification = {
+      adapter: {
+        async readImmutable(reference: LibraryCorePublishedImmutableObjectReceiptV1) {
+          const stored = adapter.objects.get(reference.transportObjectId);
+          if (stored === undefined) throw new Error("missing object");
+          return stored.bytes.slice();
+        },
+      },
+      pointer: parseLibraryCoreControlPointerV1(JSON.parse(
+        new TextDecoder().decode(adapter.control.bytes!),
+      )),
+      signal: new AbortController().signal,
+      subtle: webcrypto.subtle as SubtleCrypto,
+    };
+    await expect(verifyPreparedWriterCheckpoint({ ...verification, native: client }))
+      .resolves.toMatchObject({ recordCount: 1 });
+    const changedRecord = createLibraryCoreNormalizedCheckpointRecordV2({
+      registryKey: record.registryKey,
+      primaryKey: record.primaryKey,
+      payload: { ...record.payload, createdAtMs: 1_001 },
+    });
+    await expect(verifyPreparedWriterCheckpoint({
+      ...verification, native: native(descriptor(), changedRecord),
+    })).rejects.toMatchObject({ code: "bound_input_changed" });
+
+    const drifting = native();
+    const stableExecute = vi.mocked(drifting.execute).getMockImplementation()!;
+    vi.mocked(drifting.execute).mockImplementation(async (command, payload) => {
+      if (command === "describe_checkpoint_export_v2") {
+        return { ...descriptor(), sourceRevision: 8 };
+      }
+      return stableExecute(command, payload);
+    });
+    await expect(verifyPreparedWriterCheckpoint({
+      ...verification, native: drifting,
+    })).rejects.toMatchObject({ code: "bound_input_changed" });
+
+    const cancelled = native();
+    await expect(verifyPreparedWriterCheckpoint({
+      ...verification, native: cancelled, signal: AbortSignal.abort(),
+    })).rejects.toThrow();
+    expect(cancelled.execute).not.toHaveBeenCalled();
   });
 
   it("returns ownership_required without exporting when Drive names another writer", async () => {
@@ -219,7 +283,7 @@ describe("headless Google Drive checkpoint publication", () => {
       currentWriterId: "f".repeat(64),
       localWriterId: writerId,
     });
-    expect(client.execute).toHaveBeenCalledTimes(1);
+    expect(client.execute).toHaveBeenCalledTimes(3);
     expect(adapter.objects.size).toBe(objectCountAfterRemotePublication);
   });
 });

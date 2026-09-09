@@ -165,8 +165,7 @@ describe("PWA Library Core SQLite engine", () => {
     const snapshot = engine.describeNormalizedCheckpointExport();
     expect(snapshot).toMatchObject({
       authorityEpoch: epochId,
-      causalFrontierDigest:
-        "c2dac23e022015df7e5bee715cf2904e7c9737afadca0d87f7040f7383d8e446",
+      causalFrontierDigest: "1".repeat(64),
       itemCount: 0,
       libraryId,
       recordCount: 6,

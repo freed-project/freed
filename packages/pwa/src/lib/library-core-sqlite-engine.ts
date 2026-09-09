@@ -995,6 +995,7 @@ export class PwaLibraryCoreSqliteEngine {
       rowMode: "array",
       returnValue: "resultRows",
     });
+    let hasAcceptedOperations = false;
     for (const actorRow of actorRows) {
       const actorId = text(actorRow[0], "checkpoint actor identity");
       const acceptedCounter = safeInteger(
@@ -1012,6 +1013,9 @@ export class PwaLibraryCoreSqliteEngine {
       if (acceptedCounter < 0) {
         throw new Error("normalized checkpoint actor counter is invalid");
       }
+      // Keep the carried frontier exact until this epoch accepts an operation.
+      if (acceptedCounter === 0) continue;
+      hasAcceptedOperations = true;
       for (const value of [actorId, acceptedChainDigest]) {
         const encoded = textEncoder.encode(value);
         digest.update(lengthBytes(encoded.byteLength));
@@ -1045,7 +1049,7 @@ export class PwaLibraryCoreSqliteEngine {
     );
     return Object.freeze({
       authorityEpoch,
-      causalFrontierDigest: digest.digestLowerHex(),
+      causalFrontierDigest: hasAcceptedOperations ? digest.digestLowerHex() : carriedFrontier,
       format: LIBRARY_CORE_NORMALIZED_CHECKPOINT_EXPORT_FORMAT,
       libraryId,
       itemCount,
