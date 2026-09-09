@@ -49,8 +49,8 @@ describe("useLibraryCommandPaletteReader", () => {
       archiveItems: vi.fn(),
       persons: {},
       searchCorpusVersion: 7,
-      totalArchivableCount: 12,
-      totalUnreadCount: 34,
+      totalArchivableCount: 999,
+      totalUnreadCount: 777,
       unreadCountByPlatform: {},
     } as unknown as BaseAppState;
     const store = ((selector: (value: BaseAppState) => unknown) => selector(state)) as
@@ -59,7 +59,7 @@ describe("useLibraryCommandPaletteReader", () => {
     const openBoundedFeedReader = vi.fn();
     const readLibraryFacetSummary = vi.fn(async () => ({
       archivedCount: 8,
-      archivableCount: 0,
+      archivableCount: 12,
       contactAccountCount: 0,
       contactLinkedPersonCount: 0,
       enabledRssFeedCount: 0,
@@ -68,12 +68,12 @@ describe("useLibraryCommandPaletteReader", () => {
       latestRssFeedFetchedAt: null,
       platformCounts: [
         {
-          archivableCount: 0,
+          archivableCount: 12,
           latestCapturedAt: 1,
           latestPublishedAt: 1,
           platform: "rss",
           totalCount: 20_000,
-          unreadCount: 0,
+          unreadCount: 34,
         },
       ],
       rssFeedCount: 0,
@@ -87,7 +87,7 @@ describe("useLibraryCommandPaletteReader", () => {
       socialAccountCount: 0,
       tags: ["favorite"],
       totalCount: 20_000,
-      unreadCount: 0,
+      unreadCount: 34,
     }));
     let latest: ReturnType<typeof useLibraryCommandPaletteReader> | null = null;
     const config = {

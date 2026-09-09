@@ -20,6 +20,7 @@ import {
 } from "@freed/shared";
 import { THEME_DEFINITIONS, type ThemeId } from "@freed/shared/themes";
 import { createPortal } from "react-dom";
+import { lockBodyScroll } from "../lib/body-scroll-lock.js";
 import {
   useAppStore,
   usePlatform,
@@ -1398,12 +1399,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
   // Body scroll lock
   useEffect(() => {
-    if (open) {
-      document.body.style.overflow = "hidden";
-    }
-    return () => {
-      document.body.style.overflow = "";
-    };
+    if (open) return lockBodyScroll();
   }, [open]);
 
   if (!open) return null;
@@ -2170,7 +2166,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         {/* ── Right column ────────────────────────────────────────────────── */}
         <div
           className={`
-            flex-1 flex flex-col overflow-hidden
+            min-h-0 flex-1 flex flex-col overflow-hidden
             ${mobileView === "nav" ? "hidden sm:flex" : "flex"}
           `}
         >
@@ -2223,7 +2219,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           <div
             ref={scrollRef}
             data-testid="settings-scroll-container"
-            className="theme-settings-scrollport flex-1 overflow-y-auto px-4 pt-2 text-base sm:px-6 sm:pt-6 sm:text-sm sm:[&>section+section]:mt-24 [&>section+section]:mt-6"
+            className="theme-settings-scrollport min-h-0 flex-1 overflow-y-auto px-4 pt-2 text-base sm:px-6 sm:pt-6 sm:text-sm sm:[&>section+section]:mt-24 [&>section+section]:mt-6"
             style={{
               paddingBottom: scrollContainerBottomPadding,
             }}

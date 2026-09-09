@@ -889,6 +889,12 @@ export type LibraryCoreSqliteWorkerResult =
 
 export type LibraryCoreSqliteWorkerResponse =
   | Readonly<{
+      kind: "checkpoint_activation_progress";
+      requestId: string;
+      completedRecords: number;
+      totalRecords: number;
+    }>
+  | Readonly<{
       ok: true;
       requestId: string;
       status: LibraryCoreSqliteWorkerStatus;

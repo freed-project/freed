@@ -528,6 +528,18 @@ test("iPhone WebKit persists, clears, and rebuilds the local sample Library", as
     context = opened.context;
     const reopened = opened.page;
     await expectShowcaseSampleData(reopened, baseline);
+    // Scrolling the feed queues read assignments before Settings clears the
+    // samples. Those signed results must include their sparse replacements.
+    const item = reopened.locator("[data-feed-item-id]").first();
+    await expect(item).toBeVisible();
+    const itemId = await item.getAttribute("data-feed-item-id");
+    expect(itemId).toBeTruthy();
+    await reopened.evaluate(async (itemId) => {
+      const store = (window as unknown as {
+        __FREED_STORE__: { getState(): { markAsRead(id: string): Promise<void> } };
+      }).__FREED_STORE__;
+      await store.getState().markAsRead(itemId!);
+    }, itemId);
     await openDangerZone(reopened);
     await expect(
       reopened.getByRole("button", { name: /Sample data populated/ }),
@@ -566,6 +578,113 @@ test("iPhone WebKit persists, clears, and rebuilds the local sample Library", as
     await context.close();
     context = null;
     await verifyDurableOpfsLibrary(profileRoot);
+  } finally {
+    await context?.close();
+    await rm(profileRoot, { force: true, recursive: true });
+  }
+});
+
+test("iPhone WebKit recovers a rejected v26.9.803 sample result after restart", async () => {
+  test.setTimeout(180_000);
+  const profileRoot = await mkdtemp(join(tmpdir(), "freed-pwa-rejected-sample-webkit-"));
+  let context: BrowserContext | null = null;
+  try {
+    context = await launchPersistentLibraryContext(profileRoot);
+    await context.route("**/src/lib/library-core-preview-bootstrap.ts*", async (route) => {
+      const response = await route.fetch();
+      const body = await response.text();
+      const projection = /replacement_fields: members\.flatMap\([\s\S]*?resolved_at_ms:/;
+      expect(body).toMatch(projection);
+      await route.fulfill({ response, body: body.replace(projection, "replacement_fields: [], resolved_at_ms:") });
+    });
+    const page = context.pages()[0] ?? await context.newPage();
+    await openLibrary(page);
+    await expect.poll(() => readFacetSummary(page), { timeout: 90_000 }).toMatchObject({ sampleItemCount: previewCounts.items });
+    // Item rows become durable before sample startup finishes publishing UI state.
+    await expect(page.getByRole("status").filter({ hasText: /^Loading ·/ }))
+      .toHaveCount(0, { timeout: 90_000 });
+    const item = page.locator("[data-feed-item-id]").first();
+    await expect(item).toBeVisible();
+    const itemId = await item.getAttribute("data-feed-item-id");
+    expect(await page.evaluate(async (id) => {
+      const store = (window as unknown as { __FREED_STORE__: { getState(): {
+        markAsRead(id: string): Promise<void>;
+        clearSampleData(): Promise<void>;
+      } } }).__FREED_STORE__.getState();
+      await store.markAsRead(id!);
+      try { await store.clearSampleData(); return null; }
+      catch (error) { return String(error); }
+    }, itemId)).toContain("follower result replacement projection is incomplete");
+    await context.close();
+    context = null;
+    const opened = await openPersistentLibrary(profileRoot);
+    context = opened.context;
+    await expect.poll(() => readFacetSummary(opened.page), { timeout: 90_000 }).toMatchObject({ sampleItemCount: previewCounts.items });
+    await opened.page.evaluate(async () => {
+      await (window as unknown as { __FREED_STORE__: { getState(): {
+        clearSampleData(): Promise<void>;
+      } } }).__FREED_STORE__.getState().clearSampleData();
+    });
+    await expect.poll(() => readFacetSummary(opened.page)).toMatchObject({ sampleItemCount: 0, sampleFeedCount: 0, samplePersonCount: 0 });
+  } finally {
+    await context?.close();
+    await rm(profileRoot, { force: true, recursive: true });
+  }
+});
+
+test("iPhone WebKit resets populated storage after every open tab quiesces", async () => {
+  test.setTimeout(180_000);
+  const profileRoot = await mkdtemp(join(tmpdir(), "freed-pwa-reset-webkit-"));
+  let context: BrowserContext | null = null;
+  try {
+    context = await launchPersistentLibraryContext(profileRoot);
+    const resetErrors: string[] = [];
+    context.on("console", message => { if (message.text().startsWith("RESET_TEST_FAILURE")) resetErrors.push(message.text()); });
+    // Exercise ordinary startup. The feature-preview server must not silently
+    // repopulate the emptied Library on the reset navigation.
+    await context.route("**/src/App.tsx*", async (route) => {
+      const response = await route.fetch();
+      const body = await response.text();
+      expect(body).toMatch(/const IS_FEATURE_PREVIEW = [^;]+;/);
+      await route.fulfill({ response, body: body.replace(/const IS_FEATURE_PREVIEW = [^;]+;/, "const IS_FEATURE_PREVIEW = false;").replace("onFailure: (error) => {", 'onFailure: (error) => { console.error("RESET_TEST_FAILURE", error);') });
+    });
+    const page = context.pages()[0] ?? await context.newPage();
+    await page.goto("/");
+    await expect(page.getByTestId("legal-gate-accept")).toBeVisible();
+    await acceptLegalGate(page);
+    await waitForLibrary(page);
+    await openDangerZone(page);
+    await page.getByRole("button", { name: /Populate sample data Adds/ }).click();
+    await expect(page.getByRole("button", { name: /Sample data populated/ })).toBeDisabled({ timeout: 90_000 });
+    const peer = await context.newPage();
+    await peer.goto("/");
+    await expect(peer.getByText(/another app window|another Freed window|another tab/).first()).toBeVisible({ timeout: 30_000 });
+    await page.getByRole("button", { name: /Reset this device Wipes/ }).click();
+    await Promise.all([
+      page.waitForEvent("domcontentloaded"),
+      page.getByRole("button", { name: "Reset Device", exact: true }).click(),
+    ]);
+    await expect(page.getByRole("button", { name: "Reset Device", exact: true })).toHaveCount(0, { timeout: 30_000 });
+    expect(resetErrors).toEqual([]);
+    await peer.close();
+    const retry = page.getByRole("button", { name: "Retry here", exact: true });
+    await expect(retry.or(page.getByRole("button", { name: "Open menu" }))).toBeVisible();
+    if (await retry.isVisible()) {
+      await Promise.all([page.waitForEvent("domcontentloaded"), retry.click()]);
+    }
+    await waitForLibrary(page);
+    await expect.poll(() => page.evaluate(async () => {
+      const modulePath = "/src/lib/library-core-sqlite-runtime.ts";
+      const runtime = await import(modulePath);
+      return runtime.readPwaNormalizedCheckpointReceipt();
+    }), { timeout: 30_000 }).toEqual({ receipt: null });
+    await page.reload();
+    await waitForLibrary(page);
+    expect(await page.evaluate(async () => {
+      const modulePath = "/src/lib/library-core-sqlite-runtime.ts";
+      const runtime = await import(modulePath);
+      return runtime.readPwaNormalizedCheckpointReceipt();
+    })).toEqual({ receipt: null });
   } finally {
     await context?.close();
     await rm(profileRoot, { force: true, recursive: true });
@@ -654,6 +773,43 @@ test("iPhone WebKit reopens the accepted OPFS Library after worker loss", async 
       .poll(() => trackedLibrarySqliteWorkerCount(page), { timeout: 5_000 })
       .toBe(firstGenerationCount + 1);
     await expect(recoveredSummary).resolves.toEqual(expectedSummary);
+
+    // Force dirty pages to spill while the transaction is still uncommitted.
+    // This catches a VFS that reports a reserved writer after termination and
+    // therefore suppresses SQLite's hot-journal rollback on the next open.
+    const engineRoute = "**/src/lib/library-core-sqlite-engine.ts*";
+    await context.route(engineRoute, async (route) => {
+      const response = await route.fetch();
+      const body = await response.text();
+      const marker = "mutateDeviceContactSync(input) {";
+      expect(body).toContain(marker);
+      await route.fulfill({ response, body: body.replace(marker, `${marker}
+        this.#database.exec("PRAGMA cache_size = 1; BEGIN IMMEDIATE; UPDATE library_feed_items SET archived = 1, content_text = 'interrupted write';");
+        globalThis.postMessage({ faultBoundary: 'uncommitted-pages-spilled' });
+        for (;;) {}
+      `) });
+    });
+    await stopActiveLibrarySqliteWorker(page);
+    await expect(readFacetSummary(page)).resolves.toEqual(expectedSummary);
+    await page.evaluate(() => {
+      const current = window as unknown as Record<string, unknown>;
+      const workers = current.__FREED_OPFS_TEST_SQLITE_WORKERS__ as Worker[];
+      current.__FREED_OPFS_WRITE_SPILLED__ = false;
+      workers.at(-1)!.addEventListener("message", event => {
+        if (event.data?.faultBoundary === "uncommitted-pages-spilled") {
+          current.__FREED_OPFS_WRITE_SPILLED__ = true;
+        }
+      });
+    });
+    const interruptedWrite = setContactSyncError(page);
+    const refusedWrite = expect(interruptedWrite).rejects.toThrow();
+    await page.waitForFunction(() =>
+      (window as unknown as Record<string, unknown>).__FREED_OPFS_WRITE_SPILLED__ === true);
+    await context.unroute(engineRoute);
+    await stopActiveLibrarySqliteWorker(page);
+    await refusedWrite;
+    await expect(readFacetSummary(page)).resolves.toEqual(expectedSummary);
+
   } finally {
     await context?.close();
     await rm(profileRoot, { force: true, recursive: true });
