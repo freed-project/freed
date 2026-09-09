@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { GoogleDriveLibrarySelectionRequiredError } from "@freed/sync/cloud/library-core";
 import {
   beginFactoryResetBoundary,
   resetFactoryResetStateForTests,
@@ -27,6 +28,8 @@ import {
   stopCloudSync,
   storeCloudToken,
   syncCloudProviderNow,
+  getCloudLibraryChoices,
+  selectCloudLibrary,
 } from "./sync";
 
 function deferred<T>(): {
@@ -64,6 +67,20 @@ describe("PWA Library Core sync lifecycle", () => {
     resetFactoryResetStateForTests();
     vi.unstubAllGlobals();
     vi.useRealTimers();
+  });
+
+  it("retains an explicit discovered Library choice across sync passes", async () => {
+    mocks.syncLibraryCore.mockRejectedValueOnce(new GoogleDriveLibrarySelectionRequiredError(["library-a", "library-b"]));
+    await expect(startCloudSync("gdrive", "stored-token")).rejects.toThrow("Choose which Library");
+    expect(getCloudLibraryChoices()).toEqual(["library-a", "library-b"]);
+    await expect(selectCloudLibrary("unknown")).rejects.toThrow("Refresh Google Drive");
+    await selectCloudLibrary("library-b");
+    expect(mocks.syncLibraryCore).toHaveBeenLastCalledWith(expect.objectContaining({ libraryId: "library-b" }));
+    await syncCloudProviderNow("gdrive");
+    expect(mocks.syncLibraryCore).toHaveBeenLastCalledWith(expect.objectContaining({ libraryId: "library-b" }));
+    expect(getCloudLibraryChoices()).toEqual([]);
+    clearCloudSync("gdrive");
+    expect(localStorage.getItem("freed_cloud_library_gdrive")).toBeNull();
   });
 
   it("surfaces an initial failure and lets Sync now restore the live session", async () => {

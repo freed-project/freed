@@ -559,7 +559,7 @@ export function AppShell({ children }: AppShellProps) {
           <main
             ref={mainRef}
             className={`relative min-w-0 flex-1 ${activeView === "friends" ? "z-0" : "z-10"} ${activeView === "map" ? "pointer-events-none" : ""} ${
-              isMobileViewport ? "" : activeView === "friends" ? "min-h-0 overflow-visible" : "min-h-0 overflow-hidden"
+              usesDocumentScroll ? "" : activeView === "friends" ? "min-h-0 overflow-visible" : "min-h-0 overflow-hidden"
             }`}
           >
             {activeView === "friends"
