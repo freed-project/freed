@@ -2,6 +2,15 @@
 
 > **Status:** 🚧 In Progress (the official SQLite WebAssembly engine, exact schema identity, single-worker OPFS runtime, normalized checkpoint import, product mutation entrypoints, bounded product queries, follower transport, recovery UI, selective content, and IndexedDB Library deletion are implemented; physical iPhone acceptance remains open)
 
+Local sample results include the optimistic care fields required for settlement.
+A specifically rejected, uncommitted sample result from v26.9.803 can be retired
+and rebuilt from its retained intent after restart. Connected Library results
+and accepted result identities are never rewritten. Device reset closes every
+participating tab's storage worker before the initiating tab deletes storage;
+reads cannot reopen the worker during reset. Shared overlay scroll locks retain
+ownership until the last overlay closes, and mobile Settings uses bounded flex
+scroll containers. Physical iPhone touch acceptance remains open.
+
 The mobile demo opens its full-screen welcome on every fresh load and uses only
 welcome and minimized-tab states. Newsletter entry stays inside the welcome.
 Presentation settings remain editable for the current demo session; existing

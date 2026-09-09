@@ -105,6 +105,7 @@ vi.mock("./library-core-sqlite-runtime", () => ({
   readPwaNormalizedCheckpointExportPage:
     mocks.readNormalizedCheckpointExportPage,
   resetPwaNormalizedLibrary: mocks.resetNormalizedLibrary,
+  closePwaNormalizedLibrary: vi.fn(async () => {}),
 }));
 
 import {
@@ -570,6 +571,15 @@ describe("PWA Library Core bounded scanner", () => {
       signal: undefined,
     });
     expect(mocks.syncFollower).toHaveBeenCalledWith({}, { signal: undefined });
+    expect(mocks.discoverControl).toHaveBeenCalledWith(expect.objectContaining({ libraryId }));
+  });
+
+  it("refuses to replace a retained Library through a different connection choice", async () => {
+    mocks.readNormalizedCheckpointReceipt.mockResolvedValue({ receipt: SELECTED_RECEIPT });
+    await expect(syncPwaLibraryCoreFromGoogleDrive({ accessToken: "test-token", libraryId: "another-library" }))
+      .rejects.toThrow("Reset this device before connecting a different Library");
+    expect(mocks.discoverControl).not.toHaveBeenCalled();
+    expect(mocks.importCheckpoint).not.toHaveBeenCalled();
   });
 
   it("keeps a fresh device in setup without querying a missing materialization", async () => {
