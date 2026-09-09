@@ -681,12 +681,6 @@ const DEBUG_STORE_PATH = resolveViteFsModulePath(
 // App initialization
 // ---------------------------------------------------------------------------
 
-test("app loads and renders without crashing", async ({ app }) => {
-  await app.goto();
-  await app.waitForReady();
-  await expect(app.page.locator("main")).toBeVisible();
-});
-
 // Deliberately omit the app fixture: this protects the actual preview URL,
 // whose backend must work without Playwright installing IPC handlers.
 test("standalone preview app loads and renders without crashing", async ({ page }) => {

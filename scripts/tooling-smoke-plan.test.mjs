@@ -8,7 +8,19 @@ import {
   selectApplicableSuites,
   selectNativeAcceptance,
   suiteWeights,
+  allocateShardBudget,
 } from "./lib/tooling-smoke-plan.mjs";
+
+test("short measured suites do not consume the entire runner budget", () => {
+  const weights = new Map([["general", { weight: 319.1, measured: true }]]);
+  assert.deepEqual(allocateShardBudget(["general"], 16, weights), [
+    { suite: "general", shardCount: 2 },
+  ]);
+  weights.set("general", { weight: 319.1, measured: false, capped: true });
+  assert.deepEqual(allocateShardBudget(["general"], 16, weights), [
+    { suite: "general", shardCount: 16 },
+  ]);
+});
 
 // The planner decides how every tooling smoke job is allocated and had no
 // coverage at all. What follows pins the specific failure that motivated it:

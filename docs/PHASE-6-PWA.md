@@ -2,6 +2,21 @@
 
 > **Status:** 🚧 In Progress (the official SQLite WebAssembly engine, exact schema identity, single-worker OPFS runtime, normalized checkpoint import, product mutation entrypoints, bounded product queries, follower transport, recovery UI, selective content, and IndexedDB Library deletion are implemented; physical iPhone acceptance remains open)
 
+PWA startup reports bounded schema identifiers for failed SQLite integrity
+checks. Storage timeouts identify the closed worker command kind without its
+payload. Arbitrary database text stays out of diagnostics. A failed check still
+refuses initialization and preserves the database for investigation; it does not
+trigger deletion or automatic repair.
+
+Checkpoint activation reuses one compiled import program at a time and reports
+bounded, monotonic record progress. Real progress renews the worker's 30-second
+stall deadline, including queued readers, with a ten-minute total request cap.
+The worker serializes commands through asynchronous verification. Its exclusive
+SAH pool corrects the reserved-lock response before the first database read so
+SQLite can roll back an interrupted transaction from its retained journal.
+Integrity checks remain mandatory. WebKit fault injection covers worker loss
+with uncommitted pages already written to persistent storage.
+
 Local sample results include the optimistic care fields required for settlement.
 A specifically rejected, uncommitted sample result from v26.9.803 can be retired
 and rebuilt from its retained intent after restart. Connected Library results
