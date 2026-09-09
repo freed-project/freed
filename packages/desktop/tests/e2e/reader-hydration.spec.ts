@@ -405,6 +405,11 @@ test("X post reader offers native replies first and loads inline replies on beta
 });
 
 test("Facebook post reader offers native replies first and loads inline comments on beta action", async ({ app, ipc }) => {
+  await app.page.route(FB_REPLY_MEDIA, (route) => route.fulfill({
+    status: 200,
+    contentType: "image/svg+xml",
+    body: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><rect width="16" height="16" fill="#888"/></svg>',
+  }));
   await app.goto();
   await app.waitForReady();
   await ipc.setHandler("fb_scrape_comments", () => ({
@@ -441,7 +446,11 @@ test("Facebook post reader offers native replies first and loads inline comments
     .toBe(true);
   await expect(app.page.getByRole("heading", { name: "Replies" })).toBeVisible();
   await expect(app.page.getByText(FB_REPLY_TEXT)).toBeVisible();
-  await expect(app.page.locator(`img[src="${FB_REPLY_MEDIA}"]`)).toBeVisible();
+  const replyImage = app.page.locator(`img[src="${FB_REPLY_MEDIA}"]`);
+  await expect(replyImage).toBeVisible();
+  await expect.poll(() => replyImage.evaluate((image: HTMLImageElement) =>
+    image.complete && image.naturalWidth > 0,
+  )).toBe(true);
 });
 
 test("Instagram reader offers native replies first and loads inline comments on beta action", async ({ app, ipc }) => {
