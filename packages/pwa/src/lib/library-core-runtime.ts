@@ -92,6 +92,7 @@ import {
   readPwaFollowerTransportContext,
   readPwaNormalizedCheckpointReceipt,
   resetPwaNormalizedLibrary,
+  closePwaNormalizedLibrary,
 } from "./library-core-sqlite-runtime";
 import { createPwaNormalizedCheckpointWriter } from "./library-core-pwa-normalized-checkpoint-writer";
 import { PWA_LIBRARY_CORE_KEY_DATABASE_NAME } from "./library-core-browser-key-vault";
@@ -1307,10 +1308,19 @@ async function publishSelectedStateAfterLibraryCoreSync(): Promise<LibraryCoreRu
 /** Import the published normalized Desktop checkpoint into OPFS SQLite. */
 export async function syncPwaLibraryCoreFromGoogleDrive(input: {
   readonly accessToken: string;
+  readonly libraryId?: string;
   readonly signal?: AbortSignal;
 }): Promise<LibraryCoreRuntimeStateV1> {
+  const selected = await readPwaNormalizedCheckpointReceipt();
+  const retainedLibraryId = selected.receipt &&
+    !selected.receipt.controlRevision.startsWith("preview:")
+      ? selected.receipt.libraryId : undefined;
+  if (retainedLibraryId && input.libraryId && retainedLibraryId !== input.libraryId) {
+    throw new Error("Reset this device before connecting a different Library");
+  }
   const discovered = await discoverPublishedGoogleDriveLibraryCoreControlV1({
     accessToken: input.accessToken,
+    libraryId: retainedLibraryId ?? input.libraryId,
     signal: input.signal,
   });
   if (!discovered) {
@@ -1359,29 +1369,36 @@ export async function syncPwaLibraryCoreFromGoogleDrive(input: {
 registerPwaFactoryResetQuiesceHandler(
   "library-core-storage",
   async () => {
-    await resetPwaNormalizedLibrary();
+    await closePwaNormalizedLibrary();
     lastState = null;
     lastLocalChangeSequence = 0;
-    const deleteDatabase = (databaseName: string) =>
-      new Promise<void>((resolve, reject) => {
-        const request = globalThis.indexedDB.deleteDatabase(databaseName);
-        request.addEventListener("success", () => resolve(), { once: true });
-        request.addEventListener(
-          "error",
-          () =>
-            reject(request.error ?? new Error("SQLite Library reset failed")),
-          { once: true },
-        );
-        request.addEventListener(
-          "blocked",
-          () =>
-            reject(
-              new Error("SQLite Library reset was blocked by another tab"),
-            ),
-          { once: true },
-        );
-      });
-    await deleteDatabase(PWA_LIBRARY_CORE_KEY_DATABASE_NAME);
   },
   25,
 );
+
+/** Delete storage only after every peer has released its worker and handles. */
+export async function clearPwaLibraryCoreLocalDataForFactoryReset(): Promise<void> {
+  await resetPwaNormalizedLibrary();
+  const deleteDatabase = (databaseName: string) =>
+    new Promise<void>((resolve, reject) => {
+      const request = globalThis.indexedDB.deleteDatabase(databaseName);
+      const timeout = setTimeout(() => reject(
+        new Error("SQLite Library reset was blocked by another tab"),
+      ), 10_000);
+      request.addEventListener("success", () => {
+        clearTimeout(timeout);
+        resolve();
+      }, { once: true });
+      request.addEventListener(
+        "error",
+        () => {
+          clearTimeout(timeout);
+          reject(request.error ?? new Error("SQLite Library reset failed"));
+        },
+        { once: true },
+      );
+      // A blocked notification can precede success while a peer processes its
+      // versionchange event. Bound that wait instead of aborting on notification.
+    });
+  await deleteDatabase(PWA_LIBRARY_CORE_KEY_DATABASE_NAME);
+}

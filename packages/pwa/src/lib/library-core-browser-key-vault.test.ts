@@ -8,6 +8,7 @@ import {
 
 import {
   commitPwaLibraryCoreLocalSampleResult,
+  discardRejectedPwaLibraryCoreLocalSampleResult,
   createPwaLibraryCoreLocalSampleAuthority,
   markPwaLibraryCoreLocalSampleAuthorityReady,
   PwaLibraryCoreLegacyLocalSampleAuthorityError,
@@ -276,6 +277,19 @@ describe("PWA Library Core browser key vault", () => {
       previousResultDigest: resultDigest,
       sourceRevision: 1,
     });
+  });
+
+  it("retires only the rejected prepared result without advancing its cursors", async () => {
+    const created = await createPwaLibraryCoreLocalSampleAuthority();
+    const ready = await markPwaLibraryCoreLocalSampleAuthorityReady(created.libraryId, lowercaseHex64("55".repeat(32)));
+    const resultDigest = lowercaseHex64("66".repeat(32));
+    await preparePwaLibraryCoreLocalSampleResult(created.libraryId, {
+      canonicalResultBytes: Uint8Array.of(4, 5, 6), nextActorCounter: 2,
+      nextResultSequence: 2, previousResultDigest: resultDigest, sourceRevision: 1,
+    });
+    await expect(discardRejectedPwaLibraryCoreLocalSampleResult(created.libraryId, lowercaseHex64("77".repeat(32)))).rejects.toThrow("rejected local sample result changed");
+    await expect(discardRejectedPwaLibraryCoreLocalSampleResult(created.libraryId, resultDigest)).resolves.toEqual(ready);
+    await expect(discardRejectedPwaLibraryCoreLocalSampleResult(created.libraryId, resultDigest)).rejects.toThrow("rejected local sample result changed");
   });
 
   it("identifies the retired WebKit sample authority for bounded recovery", async () => {
