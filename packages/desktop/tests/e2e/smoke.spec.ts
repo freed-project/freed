@@ -10,6 +10,7 @@
  */
 
 import type { Locator, Page } from "@playwright/test";
+import { createRequire } from "node:module";
 import {
   test,
   expect,
@@ -3284,6 +3285,32 @@ test("Map view popup exposes friend actions and supports post navigation", async
   const popup = page.locator("[data-map-floating-panel]");
   const marker = page.locator('.freed-map-marker[aria-label="Ada Lovelace"]:visible').first();
   const popupArrow = popup.locator("[data-map-popup-arrow]");
+  // MapLibre loads its stylesheet lazily in the online renderer. Exercise that
+  // cascade even when this smoke fixture uses the offline map fallback.
+  await page.addStyleTag({
+    path: createRequire(import.meta.url).resolve("maplibre-gl/dist/maplibre-gl.css"),
+  });
+  const originalTheme = await page.locator("html").getAttribute("data-theme");
+  for (const theme of ["ember", "midas", "scriptorium", "starship", "dark-star", "neon"]) {
+    await page.locator("html").evaluate((element, value) => { element.dataset.theme = value; }, theme);
+    const surface = await popup.evaluate((element) => {
+      const panel = element.querySelector(".theme-tooltip-panel")!;
+      const arrow = element.querySelector("[data-map-popup-arrow]")!;
+      return {
+        panel: getComputedStyle(panel).backgroundColor,
+        arrow: getComputedStyle(arrow).backgroundColor,
+      };
+    });
+    expect(surface.panel, `${theme} popup must retain its themed surface after MapLibre CSS loads`).toBe(surface.arrow);
+    expect(surface.panel).not.toBe("rgba(0, 0, 0, 0)");
+  }
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(popup.locator(".theme-tooltip-panel")).toHaveCSS("animation-name", "none");
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.locator("html").evaluate((element, value) => {
+    if (value === null) delete element.dataset.theme;
+    else element.dataset.theme = value;
+  }, originalTheme);
   const popupBox = await popup.boundingBox();
   const markerBox = await marker.boundingBox();
   const popupArrowBox = await popupArrow.boundingBox();

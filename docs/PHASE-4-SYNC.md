@@ -2,6 +2,11 @@
 
 > **Status:** 🚧 In Progress
 
+PWA manual sync joins an automatic Google Drive refresh already in flight.
+One lifecycle generation runs at most one import at a time; success and failure
+release the slot, and a stopped generation cannot clear its successor.
+The automatic refresh interval remains 60 seconds.
+
 Drive discovery distinguishes separate Libraries from duplicate controls for the
 same Library. When several Libraries are published, the PWA offers an explicit
 Library ID choice and pins later discovery to the imported checkpoint identity.

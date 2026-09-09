@@ -1377,7 +1377,9 @@ html[data-theme="scriptorium"] .phase-card-complete {
   box-shadow: 0 8px 18px rgb(84 58 35 / 0.045);
 }
 
-.theme-tooltip-panel {
+/* Keep map cards themed when MapLibre's lazy stylesheet loads after this file. */
+.theme-tooltip-panel,
+.freed-map-popup .theme-tooltip-panel {
   position: fixed;
   z-index: 400;
   pointer-events: none;
@@ -1770,7 +1772,8 @@ html[data-theme="scriptorium"] .theme-tooltip-arrow {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .theme-tooltip-panel {
+  .theme-tooltip-panel,
+  .freed-map-popup .theme-tooltip-panel {
     animation: none;
   }
 }

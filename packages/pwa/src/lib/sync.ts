@@ -74,6 +74,11 @@ let cloudGeneration = 0;
 let cloudAbort: AbortController | null = null;
 let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 let refreshPromise: Promise<string | null> | null = null;
+let syncFlight: {
+  generation: number;
+  signal: AbortSignal;
+  promise: Promise<void>;
+} | null = null;
 
 function notifyStatus(): void {
   for (const listener of statusListeners) listener(cloudConnected);
@@ -224,7 +229,25 @@ async function syncGoogleDriveWithFreshCredentials(
   }
 }
 
-async function syncGoogleDriveOnce(
+function syncGoogleDriveOnce(
+  generation: number,
+  signal: AbortSignal,
+): Promise<void> {
+  if (syncFlight?.generation === generation && syncFlight.signal === signal) {
+    return syncFlight.promise;
+  }
+  const promise = performGoogleDriveSync(generation, signal);
+  const flight = { generation, signal, promise };
+  syncFlight = flight;
+  const release = () => {
+    if (syncFlight === flight) syncFlight = null;
+  };
+  // Both outcomes release the slot without creating an unhandled rejection.
+  void promise.then(release, release);
+  return promise;
+}
+
+async function performGoogleDriveSync(
   generation: number,
   signal: AbortSignal,
 ): Promise<void> {
@@ -385,6 +408,7 @@ export async function startCloudSync(
 
 export function stopCloudSync(): void {
   cloudGeneration += 1;
+  syncFlight = null;
   cloudAbort?.abort();
   cloudAbort = null;
   if (refreshTimer) clearTimeout(refreshTimer);
