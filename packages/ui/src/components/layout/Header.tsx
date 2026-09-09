@@ -24,7 +24,6 @@ import { THEME_DEFINITIONS, type ThemeId } from "@freed/shared/themes";
 import { Tooltip } from "../Tooltip.js";
 import { toast } from "../Toast.js";
 import { BackgroundActivityPopover } from "../BackgroundActivityPopover.js";
-import { ProviderStatusIndicator } from "../ProviderStatusIndicator.js";
 import { ThemePreviewButton } from "../ThemePreviewButton.js";
 import {
   ArchiveIcon,
@@ -122,7 +121,8 @@ const DEFAULT_LAYOUT_CONTROL_RESERVED_WIDTH_PX = 280;
 const COLLAPSED_LAYOUT_CONTROL_EXTRA_WIDTH_PX = 72;
 const TOOLBAR_SLOT_WIDTH_CONTENT = "max-content";
 const TOOLBAR_COLLAPSE_BREAKPOINT_PX = 1200;
-const READER_BOOKMARK_INLINE_MIN_WIDTH_PX = 980;
+const READER_COUNT_MIN_WIDTH_PX = 640;
+const READER_BOOKMARK_INLINE_MIN_WIDTH_PX = 360;
 const SAVED_SORT_OPTIONS: Array<{ value: SavedContentSortMode; label: string }> = [
   { value: "date_saved", label: "Date saved" },
   { value: "date_published", label: "Date published" },
@@ -142,21 +142,18 @@ function parsePixelValue(value: string, fallback: number): number {
 function ToolbarAnimatedSlot({
   visible,
   width,
-  flushStartMargin = false,
   className = "",
   style,
   children,
 }: {
   visible: boolean;
   width: string;
-  flushStartMargin?: boolean;
   className?: string;
   style?: CSSProperties;
   children: ReactNode;
 }) {
   const slotStyle = {
     ["--toolbar-slot-width" as string]: width,
-    ...(flushStartMargin ? { marginInlineStart: 0 } : {}),
     ...style,
   } as CSSProperties;
 
@@ -379,6 +376,9 @@ export function Header({
   const setFilter = useAppStore((s) => s.setFilter);
   const display = useAppStore((s) => s.preferences.display);
   const [deviceDisplay, setDeviceDisplay] = useDeviceDisplayPreferences();
+  const effectiveFriendsMode = activeView === "feed" && activeFilter.savedOnly
+    ? "all_content"
+    : deviceDisplay.friendsMode;
   const [themeId, setThemePreference] = useThemePreference();
   const activeSearchQuery = searchQuery.trim();
   const [feedCardDensity, setFeedCardDensity] = useFeedCardDensity();
@@ -391,7 +391,7 @@ export function Header({
     searchQuery,
     activeFilter,
     searchCorpusVersion,
-    deviceDisplay.friendsMode,
+    effectiveFriendsMode,
     libraryItemVersion,
   );
   const {
@@ -407,7 +407,7 @@ export function Header({
       isLibraryInitialized &&
       activeView === "feed" &&
       selectedItemId === null,
-    identityMode: deviceDisplay.friendsMode,
+    identityMode: effectiveFriendsMode,
     inputValue: searchQuery,
     searchQuery,
     selectedItemId: null,
@@ -430,14 +430,14 @@ export function Header({
   const backgroundActivityActive = activeBackgroundActivityCount > 0;
   const [activityPopoverOpen, setActivityPopoverOpen] = useState(false);
   const activityButtonRef = useRef<HTMLButtonElement | null>(null);
-  const backgroundActivityStatus = backgroundActivityActive
-    ? { label: "Syncing", tone: "healthy" as const }
-    : latestBackgroundActivityLevel === "error"
-      ? { label: "Last activity failed", tone: "critical" as const }
-      : latestBackgroundActivityLevel === "warning"
-        ? { label: "Last activity needs attention", tone: "warning" as const }
+  const backgroundActivityStatus = latestBackgroundActivityLevel === "error"
+    ? { label: "Last activity failed", tone: "critical" as const }
+    : latestBackgroundActivityLevel === "warning"
+      ? { label: "Last activity needs attention", tone: "warning" as const }
+      : backgroundActivityActive
+        ? { label: "Syncing", tone: "idle" as const }
         : latestBackgroundActivityLevel === "success"
-          ? { label: "Last activity succeeded", tone: "healthy" as const }
+          ? { label: "Last activity succeeded", tone: "idle" as const }
           : { label: "No recent activity", tone: "idle" as const };
 
   const scopeLabel = useMemo(() => {
@@ -458,17 +458,19 @@ export function Header({
     mappedFriendCount,
     mappedAllContentCount,
   );
-  const effectiveFriendsMode = deviceDisplay.friendsMode;
   const [isBelowLargeToolbar, setIsBelowLargeToolbar] = useState(
     () => typeof window !== "undefined" && window.innerWidth < TOOLBAR_COLLAPSE_BREAKPOINT_PX,
   );
-  const [isBelowReaderBookmarkToolbar, setIsBelowReaderBookmarkToolbar] = useState(
-    () => typeof window !== "undefined" && window.innerWidth < READER_BOOKMARK_INLINE_MIN_WIDTH_PX,
+  const [toolbarViewportWidth, setToolbarViewportWidth] = useState(
+    () => typeof window !== "undefined" ? window.innerWidth : 0,
   );
+  // Give bookmarking priority over the count, including at enlarged interface sizes.
+  const showReaderItemCount = toolbarViewportWidth >= scaleInterfaceChromePx(READER_COUNT_MIN_WIDTH_PX, interfaceZoom);
+  const isBelowReaderBookmarkToolbar = toolbarViewportWidth < scaleInterfaceChromePx(READER_BOOKMARK_INLINE_MIN_WIDTH_PX, interfaceZoom);
   const showWorkspaceIdentityControls =
     activeView === "friends" ||
     activeView === "map" ||
-    (activeView === "feed" && !readerActive);
+    (activeView === "feed" && !readerActive && !activeFilter.savedOnly);
   const showFeedBulkActions = activeView === "feed" && !readOnly;
   const showFeedSignalFilter = activeView === "feed" && !readerActive;
   const showSavedSortControl = showFeedSignalFilter && activeFilter.savedOnly === true;
@@ -1204,7 +1206,7 @@ export function Header({
   useEffect(() => {
     const updateToolbarBreakpoints = () => {
       setIsBelowLargeToolbar(window.innerWidth < TOOLBAR_COLLAPSE_BREAKPOINT_PX);
-      setIsBelowReaderBookmarkToolbar(window.innerWidth < READER_BOOKMARK_INLINE_MIN_WIDTH_PX);
+      setToolbarViewportWidth(window.innerWidth);
     };
 
     updateToolbarBreakpoints();
@@ -1606,18 +1608,22 @@ export function Header({
                     {...getPassiveDragRegionProps(headerDragRegion)}
                   >
                     {contextualListTitle}
-                    <span
-                      className="mx-1.5 font-normal text-[var(--theme-text-muted)]"
-                      {...getPassiveDragRegionProps(headerDragRegion)}
-                    >
-                      •
-                    </span>
-                    <span
-                      className="font-normal text-[var(--theme-text-muted)]"
-                      {...getPassiveDragRegionProps(headerDragRegion)}
-                    >
-                      {currentListSubtitle}
-                    </span>
+                    {showReaderItemCount ? (
+                      <>
+                        <span
+                          className="mx-1.5 font-normal text-[var(--theme-text-muted)]"
+                          {...getPassiveDragRegionProps(headerDragRegion)}
+                        >
+                          •
+                        </span>
+                        <span
+                          className="font-normal text-[var(--theme-text-muted)]"
+                          {...getPassiveDragRegionProps(headerDragRegion)}
+                        >
+                          {currentListSubtitle}
+                        </span>
+                      </>
+                    ) : null}
                   </p>
                 </div>
               </button>
@@ -1674,23 +1680,20 @@ export function Header({
                   aria-expanded={activityPopoverOpen}
                   aria-label={`Background activity: ${backgroundActivityStatus.label}`}
                 >
-                  {backgroundActivityStatus.tone === "idle" ? (
-                    <span
-                      className="inline-flex h-4 w-4 items-center justify-center"
-                      data-testid="background-activity-status"
-                      aria-label={backgroundActivityStatus.label}
-                      title={backgroundActivityStatus.label}
-                    >
-                      <RefreshIcon />
-                    </span>
-                  ) : (
-                    <ProviderStatusIndicator
-                      tone={backgroundActivityStatus.tone}
-                      syncing={backgroundActivityActive}
-                      label={backgroundActivityStatus.label}
-                      testId="background-activity-status"
-                    />
-                  )}
+                  <span
+                    className={`inline-flex h-4 w-4 items-center justify-center ${
+                      backgroundActivityStatus.tone === "critical"
+                        ? "text-[rgb(var(--theme-feedback-danger-rgb))]"
+                        : backgroundActivityStatus.tone === "warning"
+                          ? "text-[rgb(var(--theme-feedback-warning-rgb))]"
+                          : "text-[var(--theme-text-muted)]"
+                    }`}
+                    data-testid="background-activity-status"
+                    aria-label={backgroundActivityStatus.label}
+                    title={backgroundActivityStatus.label}
+                  >
+                    <RefreshIcon />
+                  </span>
                 </button>
               </Tooltip> : null}
             </ToolbarAnimatedSlot>
@@ -1718,6 +1721,7 @@ export function Header({
                             : "theme-toolbar-button-neutral"
                         }`}
                         aria-label={selectedItem.userState.saved ? "Unsave" : "Save"}
+                        aria-pressed={selectedItem.userState.saved}
                       >
                         <svg
                           className="h-5 w-5"
@@ -1735,7 +1739,6 @@ export function Header({
                 <ToolbarAnimatedSlot
                   visible={showToolbarOverflowMenuButton}
                   width={TOOLBAR_ICON_BUTTON_SIZE}
-                  flushStartMargin={isBelowLargeToolbar && !showInlineReaderBookmark}
                   style={{ order: 98 }}
                 >
                   {showToolbarOverflowMenuButton ? (
@@ -1771,6 +1774,7 @@ export function Header({
                           : "theme-toolbar-button-neutral"
                       }`}
                       aria-label={selectedItem.userState.archived ? "Unarchive" : "Archive"}
+                      aria-pressed={selectedItem.userState.archived}
                     >
                       <ArchiveIcon className="h-5 w-5" />
                     </button>
@@ -2121,6 +2125,35 @@ export function Header({
 
           {readerActive ? (
             <div className="px-3 pb-3">
+              <div className="mb-2 flex items-center justify-between gap-3 px-1">
+                <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
+                  Focus mode
+                </p>
+                <Tooltip
+                  label="Focus mode"
+                  description="Bolds word beginnings to help guide your eyes through the text."
+                  side="top"
+                >
+                  <button
+                    type="button"
+                    aria-label="About focus mode"
+                    className="flex h-5 w-5 items-center justify-center rounded text-[var(--theme-text-muted)] hover:text-[var(--theme-text-primary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--theme-accent-primary)]"
+                  >
+                    <svg
+                      className="h-4 w-4"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={1.5}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </button>
+                </Tooltip>
+              </div>
               <ToolbarToggleGroup
                 dataTestId="reader-focus-toggle"
                 options={[{ value: "off", label: "Focus off" }, { value: "on", label: "Focus on" }]}

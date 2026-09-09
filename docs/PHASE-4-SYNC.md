@@ -14,6 +14,13 @@ It never chooses by modification time or deletes competing controls. Duplicate
 controls for one identity remain an integrity error. Authenticated production
 acceptance remains open.
 
+PWA checkpoint imports distinguish advancing local materialization from a
+stalled worker. A bounded progress signal keeps large receipt histories moving
+without extending network cadence. Worker interruption recovers the previous
+accepted database through SQLite's rollback journal before integrity checks.
+Authenticated import and edit round-trip verification remain release evidence,
+not a consequence of synthetic tests passing.
+
 Checkpoint publication separates a five-minute no-progress deadline from a
 fixed total budget. After the native snapshot is known, the budget is five
 minutes plus ten seconds per estimated 4,096-record page, capped at two hours

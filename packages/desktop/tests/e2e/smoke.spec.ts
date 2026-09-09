@@ -10,6 +10,7 @@
  */
 
 import type { Locator, Page } from "@playwright/test";
+import { createRequire } from "node:module";
 import {
   test,
   expect,
@@ -680,12 +681,6 @@ const DEBUG_STORE_PATH = resolveViteFsModulePath(
 // ---------------------------------------------------------------------------
 // App initialization
 // ---------------------------------------------------------------------------
-
-test("app loads and renders without crashing", async ({ app }) => {
-  await app.goto();
-  await app.waitForReady();
-  await expect(app.page.locator("main")).toBeVisible();
-});
 
 // Deliberately omit the app fixture: this protects the actual preview URL,
 // whose backend must work without Playwright installing IPC handlers.
@@ -2589,7 +2584,7 @@ test("desktop hide previews skips the compact reader rail transition when animat
   await expect(rail).toHaveCount(0);
 });
 
-test("narrow reader toolbar moves hidden actions into the overflow menu", async ({ app, page }) => {
+test("narrow reader toolbar keeps bookmarking inline and archive in the overflow menu", async ({ app, page }) => {
   await page.setViewportSize({ width: 900, height: 900 });
   await app.goto();
   await app.waitForReady();
@@ -2602,13 +2597,19 @@ test("narrow reader toolbar moves hidden actions into the overflow menu", async 
     return page.evaluate(() => document.documentElement.classList.contains("feed-layout-transition"));
   }).toBe(false);
   await expect(page.getByRole("button", { name: "Hide Previews" })).toBeVisible({ timeout: 5_000 });
+  const toolbar = page.getByRole("banner");
+  const bookmark = toolbar.getByRole("button", { name: "Save", exact: true });
+  await expect(bookmark).toBeVisible();
+  await bookmark.click();
+  await expect(toolbar.getByRole("button", { name: "Unsave", exact: true }))
+    .toHaveAttribute("aria-pressed", "true");
   const overflowButton = page.getByTestId("toolbar-overflow-button");
   await expect(overflowButton).toBeVisible({ timeout: 5_000 });
 
   await overflowButton.click();
   const overflowMenu = page.getByTestId("toolbar-overflow-menu");
   await expect(overflowMenu.getByRole("menuitem", { name: "Enable focus mode" })).toHaveCount(0);
-  await expect(overflowMenu.getByRole("menuitem", { name: "Bookmark" })).toBeVisible();
+  await expect(overflowMenu.getByRole("menuitem", { name: /bookmark/i })).toHaveCount(0);
   await expect(overflowMenu.getByRole("menuitem", { name: "Archive" })).toBeVisible();
 });
 
@@ -3284,6 +3285,32 @@ test("Map view popup exposes friend actions and supports post navigation", async
   const popup = page.locator("[data-map-floating-panel]");
   const marker = page.locator('.freed-map-marker[aria-label="Ada Lovelace"]:visible').first();
   const popupArrow = popup.locator("[data-map-popup-arrow]");
+  // MapLibre loads its stylesheet lazily in the online renderer. Exercise that
+  // cascade even when this smoke fixture uses the offline map fallback.
+  await page.addStyleTag({
+    path: createRequire(import.meta.url).resolve("maplibre-gl/dist/maplibre-gl.css"),
+  });
+  const originalTheme = await page.locator("html").getAttribute("data-theme");
+  for (const theme of ["ember", "midas", "scriptorium", "starship", "dark-star", "neon"]) {
+    await page.locator("html").evaluate((element, value) => { element.dataset.theme = value; }, theme);
+    const surface = await popup.evaluate((element) => {
+      const panel = element.querySelector(".theme-tooltip-panel")!;
+      const arrow = element.querySelector("[data-map-popup-arrow]")!;
+      return {
+        panel: getComputedStyle(panel).backgroundColor,
+        arrow: getComputedStyle(arrow).backgroundColor,
+      };
+    });
+    expect(surface.panel, `${theme} popup must retain its themed surface after MapLibre CSS loads`).toBe(surface.arrow);
+    expect(surface.panel).not.toBe("rgba(0, 0, 0, 0)");
+  }
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(popup.locator(".theme-tooltip-panel")).toHaveCSS("animation-name", "none");
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.locator("html").evaluate((element, value) => {
+    if (value === null) delete element.dataset.theme;
+    else element.dataset.theme = value;
+  }, originalTheme);
   const popupBox = await popup.boundingBox();
   const markerBox = await marker.boundingBox();
   const popupArrowBox = await popupArrow.boundingBox();

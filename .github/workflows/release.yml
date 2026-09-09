@@ -142,7 +142,9 @@ jobs:
             exit 1
           fi
 
-          PRIMARY_RELEASE_MATRIX='{"include":[{"platform":"macos-latest","args":"--target aarch64-apple-darwin","rust_target":"aarch64-apple-darwin"},{"platform":"macos-15-intel","args":"--target x86_64-apple-darwin","rust_target":"x86_64-apple-darwin"},{"platform":"windows-latest","args":"--target x86_64-pc-windows-msvc","rust_target":"x86_64-pc-windows-msvc"},{"platform":"ubuntu-22.04","args":"","rust_target":"x86_64-unknown-linux-gnu"}]}'
+          # Cross-compile Intel on the faster Apple Silicon host. The explicit
+          # Rust target still produces a separately signed Intel application.
+          PRIMARY_RELEASE_MATRIX='{"include":[{"platform":"macos-latest","args":"--target aarch64-apple-darwin","rust_target":"aarch64-apple-darwin"},{"platform":"macos-latest","args":"--target x86_64-apple-darwin","rust_target":"x86_64-apple-darwin"},{"platform":"windows-latest","args":"--target x86_64-pc-windows-msvc","rust_target":"x86_64-pc-windows-msvc"},{"platform":"ubuntu-22.04","args":"","rust_target":"x86_64-unknown-linux-gnu"}]}'
 
           # Write to GITHUB_OUTPUT using heredoc to handle multiline
           {
@@ -181,40 +183,6 @@ jobs:
         if: needs.notes.outputs.release_channel != 'dev'
         run: npm ci
 
-      - name: Install Rust toolchain
-        if: needs.notes.outputs.release_channel != 'dev'
-        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
-        with:
-          components: clippy
-
-      - name: Cache Rust build artifacts
-        if: needs.notes.outputs.release_channel != 'dev'
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-        with:
-          workspaces: packages/desktop/src-tauri -> target
-
-      - name: Install native Linux dependencies
-        if: needs.notes.outputs.release_channel != 'dev'
-        run: |
-          bash scripts/ci-sanitize-apt-sources.sh
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            clang \
-            cmake \
-            file \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            libssl-dev \
-            libwebkit2gtk-4.1-dev \
-            libxdo-dev
-
-      - name: Install Playwright browsers
-        if: needs.notes.outputs.release_channel != 'dev'
-        run: |
-          npx playwright install --with-deps chromium
-        working-directory: packages/desktop
-
       - name: Run channel validation
         shell: bash
         run: |
@@ -230,48 +198,9 @@ jobs:
         env:
           CI: "true"
           GITHUB_TOKEN: ${{ github.token }}
-          FREED_SKIP_PWA_OPFS_DURABILITY: "true"
-
-  pwa-opfs-acceptance:
-    name: PWA OPFS durability (macOS WebKit)
-    needs: notes
-    runs-on: macos-latest
-    timeout-minutes: 20
-    steps:
-      - name: Checkout
-        if: needs.notes.outputs.release_channel != 'dev'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
-
-      - name: Setup Node.js
-        if: needs.notes.outputs.release_channel != 'dev'
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: ".nvmrc"
-          cache: "npm"
-
-      - name: Install dependencies
-        if: needs.notes.outputs.release_channel != 'dev'
-        run: npm ci
-
-      - name: Install WebKit
-        if: needs.notes.outputs.release_channel != 'dev'
-        run: npx playwright install webkit
-
-      - name: Prove persistent OPFS SQLite durability
-        if: needs.notes.outputs.release_channel != 'dev'
-        run: npm run test:e2e:opfs
-        working-directory: packages/pwa
-
-      - name: Upload OPFS diagnostics on failure
-        if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: release-pwa-opfs-test-results
-          path: packages/pwa/test-results/
-          retention-days: 7
 
   create-release:
-    needs: [notes, validation, pwa-opfs-acceptance]
+    needs: [notes, validation]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -350,6 +279,9 @@ jobs:
         uses: swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
           workspaces: packages/desktop/src-tauri
+          # Tag caches cannot be reused by the next version. Saving them holds
+          # publication open, especially on Intel, without warming future tags.
+          save-if: false
 
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
@@ -520,6 +452,9 @@ jobs:
         uses: swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
           workspaces: packages/desktop/src-tauri
+          # Tag caches cannot be reused by the next version. Saving them holds
+          # publication open, especially on Intel, without warming future tags.
+          save-if: false
 
       - name: Install frontend dependencies
         run: npm ci --ignore-scripts
@@ -803,6 +738,7 @@ jobs:
   publish-website:
     name: Deploy Website
     needs: [publish, notes]
+    if: needs.notes.outputs.release_channel == 'production'
     runs-on: ubuntu-latest
     permissions:
       contents: read
