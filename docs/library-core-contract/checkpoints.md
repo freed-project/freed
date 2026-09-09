@@ -67,6 +67,13 @@ The cloud publisher stores the typed records directly under dataset schema
 `library_core_normalized_checkpoint_v2`. It does not wrap them in logical rows,
 whole FeedItem values, or a Library shell.
 
+The causal frontier digest carries accepted work, not actor enrollment. Actors
+with accepted counter zero do not contribute a tip. Until an epoch accepts its
+first operation, its exported frontier is exactly its carried checkpoint
+frontier. Rust and PWA use the same rule. A writer transfer therefore preserves
+the source frontier while enrolling the successor, and the publisher still
+rejects a transfer across a different frontier.
+
 Desktop cloud coordination reads that normalized descriptor together with one
 installation-local actor ID derived by the native key store. The descriptor's
 `writerId` is the actor currently admitted by SQLite. The local actor ID names

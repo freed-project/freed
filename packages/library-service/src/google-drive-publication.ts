@@ -189,7 +189,7 @@ function exactDescriptor(
   }
 }
 
-async function* checkpointRecords(
+export async function* checkpointRecords(
   native: LibraryCoreNativeCommandClientV1,
   snapshot: LibraryCoreNormalizedCheckpointExportDescriptorV2,
 ): AsyncIterable<LibraryCoreNormalizedCheckpointRecordV2> {
@@ -293,6 +293,32 @@ export function createLibraryServiceGoogleDrivePublicationV1(
       readonly signal: AbortSignal;
     }): Promise<LibraryServiceGoogleDrivePublicationResultV1> {
       if (signal.aborted) throw new LibraryServiceFailure("startup_cancelled");
+      const clearAdmission = async () => {
+        const receipt = await native.execute("cloud_writer_clear_v1", {});
+        if (JSON.stringify(receipt) !== '{"allowed":false}') {
+          throw new LibraryServiceFailure("command_response_invalid");
+        }
+      };
+      const observe = async (
+        descriptor: LibraryCoreNormalizedCheckpointExportDescriptorV2,
+        pointer: LibraryCoreControlPointerV1,
+        revision: string | null,
+      ) => {
+        if (revision === null) throw new LibraryServiceFailure("command_response_invalid");
+        const receipt = await native.execute("cloud_writer_observe_v1", {
+          libraryId: pointer.libraryId, localWriterId: descriptor.writerId,
+          activeWriterId: pointer.writerId, storageEpoch: pointer.storageEpoch,
+          controlRevision: revision, verifiedAtMs: Date.now(),
+        });
+        if (receipt === null || typeof receipt !== "object" || Array.isArray(receipt) ||
+          Object.keys(receipt).join(",") !== "allowed" ||
+          typeof (receipt as {allowed:unknown}).allowed !== "boolean") {
+          throw new LibraryServiceFailure("command_response_invalid");
+        }
+        return (receipt as {allowed:boolean}).allowed;
+      };
+      try {
+      await clearAdmission();
       const descriptor = exactDescriptor(
         await native.execute("describe_checkpoint_export_v2", {}),
       );
@@ -321,6 +347,7 @@ export function createLibraryServiceGoogleDrivePublicationV1(
       });
       const controlRead = await adapter.readControl();
       const pointer = parseControl(controlRead);
+      const admitted = pointer !== null && await observe(descriptor, pointer, controlRead.revision);
       if (
         pointer !== null &&
         (String(pointer.writerId) !== String(descriptor.writerId) ||
@@ -331,6 +358,9 @@ export function createLibraryServiceGoogleDrivePublicationV1(
           currentWriterId: pointer.writerId,
           localWriterId: descriptor.writerId,
         });
+      }
+      if (pointer !== null && !admitted) {
+        throw new LibraryServiceFailure("authority_not_primary");
       }
       if (
         pointer !== null &&
@@ -364,6 +394,7 @@ export function createLibraryServiceGoogleDrivePublicationV1(
         subtle: crypto.subtle,
       });
       if (result.status === "conflict") {
+        await clearAdmission();
         if (
           result.currentControlPointer !== null &&
           String(result.currentControlPointer.writerId) !==
@@ -388,10 +419,17 @@ export function createLibraryServiceGoogleDrivePublicationV1(
           lastPublishedRevision: exportDescriptor.sourceRevision,
         }),
       );
+      if (!(await observe(exportDescriptor, result.controlPointer, result.revision))) {
+        throw new LibraryServiceFailure("authority_not_primary");
+      }
       return Object.freeze({
         status: "published" as const,
         revision: exportDescriptor.sourceRevision,
       });
+      } catch (error) {
+        await clearAdmission();
+        throw error;
+      }
     },
   });
 }

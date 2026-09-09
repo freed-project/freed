@@ -17,13 +17,21 @@ import {
 import { createLibraryServiceDefinitionV1 } from "./service-definition.js";
 import { LibraryServiceSupervisor } from "./supervisor.js";
 import { authorizeNodeGoogleDriveV1 } from "./node-google-drive-auth.js";
+import { importLibraryServiceCheckpoint } from "./checkpoint-bootstrap.js";
+import { openCheckpointBootstrapInput } from "./checkpoint-bootstrap-input.js";
 
 interface ParsedArguments {
-  command: "serve" | "status" | "doctor" | "service-definition" | "drive-auth";
+  command: "serve" | "status" | "doctor" | "service-definition" | "drive-auth" | "import-checkpoint";
   configPath: string;
+  requestPath?: string;
+  objectsPath?: string;
 }
 
 function parseArguments(argv: readonly string[]): ParsedArguments {
+  if (argv[0] === "import-checkpoint" && argv.length === 7 &&
+    argv[1] === "--config" && argv[3] === "--request" && argv[5] === "--objects") {
+    return { command: "import-checkpoint", configPath: argv[2], requestPath: argv[4], objectsPath: argv[6] };
+  }
   if (argv.length !== 3 || argv[1] !== "--config") {
     throw new LibraryServiceFailure("config_invalid");
   }
@@ -206,6 +214,38 @@ export async function runLibraryServiceCli(
   try {
     const parsed = parseArguments(argv);
     const ports = createNodeLibraryServicePorts();
+    if (parsed.command === "import-checkpoint") {
+      const abort = new AbortController();
+      const cancel = () => abort.abort();
+      // A maintenance command cannot retain the native writer lease indefinitely.
+      const deadline = setTimeout(cancel, 30 * 60 * 1000);
+      process.on("SIGINT", cancel);
+      process.on("SIGTERM", cancel);
+      try {
+        const source = await openCheckpointBootstrapInput(
+          parsed.requestPath!, parsed.objectsPath!, ports, abort.signal,
+        );
+        try {
+          const supervisor = new LibraryServiceSupervisor({ ...ports, configPath: parsed.configPath });
+          const result = await supervisor.runMaintenance(
+            (native) => importLibraryServiceCheckpoint(source.input, {
+              native, adapter: source.adapter, signal: abort.signal, subtle: crypto.subtle,
+            }), abort.signal,
+          );
+          writeStandardReport({
+            schemaVersion: 1, service: "freed-library", ok: true,
+            role: null, phase: "checkpoint-imported", activationReceipt: result.activationReceipt,
+          });
+          return 0;
+        } finally {
+          await source.close();
+        }
+      } finally {
+        clearTimeout(deadline);
+        process.removeListener("SIGINT", cancel);
+        process.removeListener("SIGTERM", cancel);
+      }
+    }
     if (parsed.command === "doctor") {
       const report = await inspectLibraryServiceReadiness(
         parsed.configPath,
