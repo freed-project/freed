@@ -18,6 +18,7 @@ const destinations = {
 type PlanProofLinkProps = {
   destination: keyof typeof destinations;
   className?: string;
+  label?: string;
 };
 
 function Arrow({ direction }: { direction: "forward" | "back" }) {
@@ -46,6 +47,7 @@ function Arrow({ direction }: { direction: "forward" | "back" }) {
 export function PlanProofLink({
   destination,
   className = "",
+  label,
 }: PlanProofLinkProps) {
   const link = destinations[destination];
 
@@ -59,7 +61,7 @@ export function PlanProofLink({
         <span className="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-text-muted">
           {link.eyebrow}
         </span>
-        <span className="text-sm font-medium">{link.label}</span>
+        <span className="text-sm font-medium">{label ?? link.label}</span>
       </span>
     </Link>
   );

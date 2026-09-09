@@ -1,0 +1,84 @@
+{
+  "sourceCommit": "2d1c8e49a213d9b856d3e437e3c65a203f3a0081",
+  "release": "v26.9.803",
+  "manifestSha256": "7130ca135cd617f49d9b4a0327e39f2855f8e7246347c09c34ee72684b5e39f4",
+  "manifest": {
+    "schemaVersion": 1,
+    "phases": [
+      {
+        "id": 1,
+        "status": "complete",
+        "reviewedAt": "2026-09-07",
+        "source": "docs/PHASE-1-FOUNDATION.md"
+      },
+      {
+        "id": 2,
+        "status": "complete",
+        "reviewedAt": "2026-09-06",
+        "source": "docs/PHASE-2-CAPTURE-SKILLS.md"
+      },
+      {
+        "id": 3,
+        "status": "current",
+        "source": "docs/PHASE-3-SAVE-FOR-LATER.md"
+      },
+      {
+        "id": 4,
+        "status": "current",
+        "reviewedAt": "2026-09-05",
+        "source": "docs/PHASE-4-SYNC.md"
+      },
+      {
+        "id": 5,
+        "status": "current",
+        "reviewedAt": "2026-09-07",
+        "source": "docs/PHASE-5-DESKTOP.md"
+      },
+      {
+        "id": 6,
+        "status": "current",
+        "reviewedAt": "2026-09-07",
+        "source": "docs/PHASE-6-PWA.md"
+      },
+      {
+        "id": 7,
+        "status": "current",
+        "reviewedAt": "2026-09-06",
+        "source": "docs/PHASE-7-SOCIAL-CAPTURE.md"
+      },
+      {
+        "id": 8,
+        "status": "current",
+        "reviewedAt": "2026-09-07",
+        "source": "docs/PHASE-8-FRIENDS.md"
+      },
+      {
+        "id": 9,
+        "status": "upcoming",
+        "source": "docs/PHASE-9-BROWSER-EXTENSION.md"
+      },
+      {
+        "id": 10,
+        "status": "upcoming",
+        "reviewedAt": "2026-09-07",
+        "source": "docs/PHASE-10-POLISH.md"
+      },
+      {
+        "id": 11,
+        "status": "current",
+        "source": "docs/PHASE-11-OPENCLAW.md"
+      },
+      {
+        "id": 12,
+        "status": "current",
+        "reviewedAt": "2026-09-06",
+        "source": "docs/PHASE-12-ADDITIONAL-PLATFORMS.md"
+      },
+      {
+        "id": 13,
+        "status": "upcoming",
+        "source": "docs/PHASE-13-POSSE.md"
+      }
+    ]
+  }
+}

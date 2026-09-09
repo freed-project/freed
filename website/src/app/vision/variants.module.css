@@ -1,0 +1,340 @@
+.page {
+  max-width: 76rem;
+  margin: auto;
+  padding: 10rem clamp(1.5rem, 4vw, 3rem) 5rem;
+  color: var(--theme-text-primary);
+}
+.page h1,
+.page h2,
+.page h3,
+.page p {
+  margin: 0;
+}
+.page h1,
+.page h2,
+.page h3 {
+  font-family: var(--font-space-grotesk), sans-serif;
+  text-wrap: balance;
+}
+.page h1 {
+  font-size: clamp(3rem, 5.7vw, 5.7rem);
+  line-height: 1.02;
+  letter-spacing: -0.06em;
+  font-weight: 600;
+  max-width: 13ch;
+}
+.page h2 {
+  font-size: clamp(2rem, 3.4vw, 3.25rem);
+  letter-spacing: -0.045em;
+  line-height: 1.12;
+  font-weight: 500;
+}
+.page h3 {
+  font-size: 1.35rem;
+  line-height: 1.2;
+  letter-spacing: -0.025em;
+}
+.page p {
+  color: var(--theme-text-secondary);
+  line-height: 1.65;
+}
+.page a {
+  text-underline-offset: 0.25em;
+}
+.page a:focus-visible,
+.page button:focus-visible {
+  outline: 2px solid var(--theme-heading-accent);
+  outline-offset: 5px;
+}
+.hero {
+  display: grid;
+  grid-template-columns: 1.25fr 1fr;
+  align-items: center;
+  gap: 4rem;
+  padding-bottom: 5rem;
+}
+.page .intro {
+  font-size: clamp(1.1rem, 1.8vw, 1.35rem);
+  max-width: 36ch;
+  margin-top: 1.6rem;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 2rem;
+}
+.actions a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 3rem;
+  padding: 0.7rem 1.2rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-decoration: none;
+  border-radius: 0.55rem;
+}
+.page .proof {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  font-size: 0.8rem;
+  margin-top: 1.5rem;
+}
+.proof a {
+  text-decoration: underline;
+}
+.mission {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  gap: 4rem;
+  align-items: center;
+  border-top: 1px solid var(--theme-border-subtle);
+  padding: 3.5rem 0 2.5rem;
+}
+.mission > p {
+  font-size: 1.05rem;
+  max-width: 49ch;
+}
+.principles {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2rem;
+  padding: 1rem 0 3.5rem;
+}
+.principles article {
+  border-left: 2px solid var(--theme-heading-accent);
+  padding-left: 1.2rem;
+}
+.principles p {
+  max-width: 26ch;
+  margin-top: 0.6rem;
+  font-size: 0.95rem;
+}
+.support {
+  border-top: 1px solid var(--theme-border-subtle);
+  padding: 3.5rem 0;
+  display: grid;
+  grid-template-columns: 0.8fr 1.7fr;
+  gap: 4rem;
+  scroll-margin-top: 6rem;
+}
+.support > div > p {
+  margin-top: 1rem;
+  max-width: 32ch;
+}
+.supportPaths {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+}
+.supportPaths p {
+  margin: 0.9rem 0 1rem;
+  font-size: 0.95rem;
+}
+
+@media (max-width: 760px) {
+  .page {
+    padding-top: 7rem;
+    padding-bottom: 5rem;
+  }
+  .hero {
+    grid-template-columns: 1fr;
+    gap: 3rem;
+    padding-bottom: 3rem;
+  }
+  .page h1 {
+    max-width: 15ch;
+  }
+
+  .mission,
+  .support {
+    grid-template-columns: 1fr;
+    gap: 1.25rem;
+    padding: 2.5rem 0;
+  }
+  .principles {
+    gap: 1.4rem;
+    grid-template-columns: 1fr;
+    padding-bottom: 2.5rem;
+  }
+  .principles p {
+    max-width: none;
+  }
+  .supportPaths {
+    gap: 2rem;
+  }
+  .support > div > p {
+    max-width: 45ch;
+  }
+
+
+}
+@media (max-width: 430px) {
+  .supportPaths {
+    grid-template-columns: 1fr;
+  }
+  .page h1 {
+    font-size: 3.15rem;
+  }
+}
+
+.covenant {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  gap: 4rem;
+  align-items: center;
+  padding: 2.5rem 0 3rem;
+  border-top: 1px solid var(--theme-border-subtle);
+}
+.covenant h2 {
+  font-size: clamp(1.8rem, 3vw, 2.6rem);
+}
+.invitation {
+  display: grid;
+  grid-template-columns: 1.35fr 0.7fr;
+  gap: 5rem;
+  align-items: center;
+  padding: 4rem 0 2rem;
+  border-top: 1px solid var(--theme-border-subtle);
+}
+.invitation h2 {
+  font-size: clamp(2.75rem, 4.7vw, 4.8rem);
+  letter-spacing: -0.05em;
+  line-height: 1.04;
+}
+.invitation p {
+  max-width: 48ch;
+  margin-top: 1.5rem;
+}
+.invitationActions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.invitationActions a {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.8rem;
+  min-height: 3.5rem;
+  padding: 1rem 1.25rem;
+  border-radius: 0.55rem;
+  font-weight: 600;
+}
+.invitationActions svg {
+  width: 1.1rem;
+  height: 1.1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+@media (max-width: 760px) {
+  .covenant,
+  .invitation {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+    padding: 2.5rem 0;
+  }
+  .invitationActions {
+    margin-top: 0.5rem;
+  }
+}
+
+.openSource {
+  display: grid;
+  grid-template-columns: 0.8fr 1.7fr;
+  gap: 4rem;
+  border-top: 1px solid var(--theme-border-subtle);
+  padding: 3.5rem 0;
+}
+.openSourceHeading > p {
+  margin-top: 1rem;
+  font-size: 1.15rem;
+  max-width: 19ch;
+}
+.openSourceIntro {
+  font-size: 1.1rem;
+  max-width: 52ch;
+}
+.page .openPromise {
+  margin-top: 1.25rem;
+  border-top: 1px solid var(--theme-border-subtle);
+  padding-top: 1.25rem;
+  font-size: 0.9rem;
+  max-width: 60ch;
+}
+@media (max-width: 760px) {
+  .openSource {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+    padding: 2.5rem 0;
+  }
+  .openSourceHeading > p {
+    max-width: none;
+  }
+}
+
+.page h1 .headlineAccent {
+  color: var(--theme-heading-accent);
+}
+
+.communityActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 2rem;
+}
+.communityActions :is(a, button) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  min-height: 3.25rem;
+  padding: 0.85rem 1.1rem;
+  border-radius: 0.55rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+}
+.communityActions svg {
+  width: 1.1rem;
+  height: 1.1rem;
+  flex-shrink: 0;
+}
+.communityActions button:focus-visible {
+  outline: 2px solid var(--theme-heading-accent);
+  outline-offset: 5px;
+}
+.supportPaths .communityActions {
+  margin-top: 1.25rem;
+}
+.supportPaths .communityActions :is(a, button) {
+  width: 100%;
+  font-size: 0.85rem;
+}
+@media (max-width: 430px) {
+  .communityActions :is(a, button) {
+    width: 100%;
+  }
+}
+
+.invitationActions .communityActions {
+  margin-top: 0;
+  flex-direction: column;
+}
+
+.invitationActions .communityActions svg {
+  fill: currentColor;
+  stroke: none;
+}
+
+@media (max-width: 760px) {
+  .hero { text-align: center; gap: 1.75rem; }
+  .hero h1, .hero .intro { margin-left: auto; margin-right: auto; }
+  .hero .communityActions { justify-content: center; }
+}

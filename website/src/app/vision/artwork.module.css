@@ -1,0 +1,18 @@
+.flight {
+  width: 100%;
+  margin: 0;
+  min-width: 0;
+  color: var(--theme-text-primary);
+}
+.flight svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+@media (max-width: 760px) {
+  .flight {
+    max-width: 18rem;
+    width: 78%;
+    justify-self: center;
+  }
+}
