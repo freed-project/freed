@@ -72,6 +72,27 @@ function FirstLookWelcome({
 }) {
   const [newsletterOpen, setNewsletterOpen] = useState(false);
   const [newsletterVisited, setNewsletterVisited] = useState(false);
+  const welcomeRef = useRef<HTMLDivElement>(null);
+  const [mobileTopSpace, setMobileTopSpace] = useState(0);
+  useLayoutEffect(() => {
+    const content = welcomeRef.current;
+    if (!content) return;
+    const fitWelcome = () => {
+      const panel = content.parentElement!;
+      const form = content.querySelector<HTMLElement>("[data-newsletter-form]");
+      // Center the collapsed group independently so expanding the form cannot move its toggle.
+      const collapsedHeight = content.offsetHeight - (form?.offsetHeight ?? 0);
+      const padding = Number.parseFloat(getComputedStyle(panel).paddingTop) * 2;
+      setMobileTopSpace(window.innerWidth <= 640
+        ? Math.max(0, (panel.clientHeight - padding - collapsedHeight) / 2) : 0);
+    };
+    const observer = new ResizeObserver(fitWelcome);
+    observer.observe(content);
+    observer.observe(content.parentElement!);
+    window.addEventListener("resize", fitWelcome);
+    fitWelcome();
+    return () => { observer.disconnect(); window.removeEventListener("resize", fitWelcome); };
+  }, []);
   const newsletterPreviewOnly = import.meta.env.DEV ||
     isFreedNewsletterPreviewHostname(window.location.hostname);
   return (
@@ -91,7 +112,7 @@ function FirstLookWelcome({
           className="absolute inset-0 bg-[radial-gradient(circle_at_top,var(--theme-accent-glow),transparent_58%)] opacity-60"
           aria-hidden="true"
         />
-        <div className="relative flex flex-col items-center">
+        <div ref={welcomeRef} className="relative flex flex-col items-center" style={{ marginTop: mobileTopSpace }}>
           <FreedLogo className="h-20 w-20 sm:h-24 sm:w-24" />
           <p className="mt-7 text-[0.6875rem] font-semibold uppercase tracking-[0.22em] text-[var(--theme-accent-secondary)]">
             {copy.eyebrow}
@@ -111,22 +132,23 @@ function FirstLookWelcome({
             Explore Freed Demo
           </button>
           <div className="mt-3 w-full max-w-sm min-[641px]:hidden">
-            <div inert={!newsletterOpen} aria-hidden={!newsletterOpen}
-              className="grid transition-[grid-template-rows,opacity,transform,padding] duration-300 ease-in-out motion-reduce:transition-none"
-              style={{ gridTemplateRows: newsletterOpen ? "1fr" : "0fr", opacity: newsletterOpen ? 1 : 0,
-                transform: newsletterOpen ? "translateY(0)" : "translateY(-12px)", paddingBlock: newsletterOpen ? "1rem" : "0" }}>
-              <div className="min-h-0 overflow-hidden">
-                {newsletterVisited && <NewsletterSignup compact previewOnly={newsletterPreviewOnly}
-                  {...(newsletterPreviewOnly ? { siteKey: FREED_NEWSLETTER_TURNSTILE_TEST_SITE_KEY } : {})} />
-                }
-              </div>
-            </div>
             <button type="button" aria-expanded={newsletterOpen}
               className="btn-secondary inline-flex !min-h-10 w-full items-center justify-center gap-2 rounded-[2rem] !px-4 !py-2 !text-sm"
               onClick={() => { setNewsletterVisited(true); setNewsletterOpen(value => !value); }}>
               {newsletterOpen && <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m6 15 6-6 6 6" /></svg>}
-              {newsletterOpen ? "Back to welcome" : "Join the newsletter"}
+              {newsletterOpen ? "Skip the newsletter" : "Join the newsletter"}
             </button>
+            <div data-newsletter-form inert={!newsletterOpen} aria-hidden={!newsletterOpen}
+              className="grid transition-[grid-template-rows,opacity,transform,padding] duration-300 ease-in-out motion-reduce:transition-none"
+              style={{ gridTemplateRows: newsletterOpen ? "1fr" : "0fr", opacity: newsletterOpen ? 1 : 0,
+                transform: newsletterOpen ? "translateY(0)" : "translateY(-12px)", paddingTop: newsletterOpen ? "2rem" : "0" }}>
+              <div className="min-h-0 overflow-hidden">
+                {newsletterVisited && <NewsletterSignup compact previewOnly={newsletterPreviewOnly}
+                  submitLabel="Join the newsletter!" showPrivacyNote={false}
+                  {...(newsletterPreviewOnly ? { siteKey: FREED_NEWSLETTER_TURNSTILE_TEST_SITE_KEY } : {})} />
+                }
+              </div>
+            </div>
           </div>
         </div>
       </div>
