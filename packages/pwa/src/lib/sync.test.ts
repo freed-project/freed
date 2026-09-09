@@ -35,12 +35,15 @@ import {
 function deferred<T>(): {
   promise: Promise<T>;
   resolve: (value: T) => void;
+  reject: (error: Error) => void;
 } {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((resolvePromise) => {
+  let reject!: (error: Error) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
     resolve = resolvePromise;
+    reject = rejectPromise;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 function successfulRefreshResponse() {
@@ -67,6 +70,56 @@ describe("PWA Library Core sync lifecycle", () => {
     resetFactoryResetStateForTests();
     vi.unstubAllGlobals();
     vi.useRealTimers();
+  });
+
+  it.each(["success", "failure"] as const)(
+    "joins a scheduled refresh and permits another manual pass after %s",
+    async (outcome) => {
+      mocks.syncLibraryCore.mockResolvedValueOnce({});
+      await startCloudSync("gdrive", "stored-token");
+      const pending = deferred<unknown>();
+      mocks.syncLibraryCore.mockImplementationOnce(() => pending.promise);
+      await vi.advanceTimersByTimeAsync(60_000);
+      const manual = syncCloudProviderNow("gdrive").then(
+        () => null,
+        (error: Error) => error,
+      );
+      await vi.advanceTimersByTimeAsync(0);
+      expect(mocks.syncLibraryCore).toHaveBeenCalledTimes(2);
+      if (outcome === "failure") pending.reject(new Error("offline"));
+      else pending.resolve({});
+      const result = await manual;
+      expect(result?.message ?? null).toBe(outcome === "failure" ? "offline" : null);
+      mocks.syncLibraryCore.mockResolvedValueOnce({});
+      await syncCloudProviderNow("gdrive");
+      expect(mocks.syncLibraryCore).toHaveBeenCalledTimes(3);
+    },
+  );
+
+  it("keeps a new lifecycle flight when the stopped generation settles", async () => {
+    mocks.syncLibraryCore.mockResolvedValueOnce({});
+    await startCloudSync("gdrive", "stored-token");
+    const oldPass = deferred<unknown>();
+    mocks.syncLibraryCore.mockImplementationOnce(() => oldPass.promise);
+    await vi.advanceTimersByTimeAsync(60_000);
+    const oldSignal = mocks.syncLibraryCore.mock.calls[1][0].signal;
+    stopCloudSync();
+    expect(oldSignal.aborted).toBe(true);
+    mocks.syncLibraryCore.mockResolvedValueOnce({});
+    await startCloudSync("gdrive", "stored-token");
+    const newPass = deferred<unknown>();
+    mocks.syncLibraryCore.mockImplementationOnce(() => newPass.promise);
+    const firstManual = syncCloudProviderNow("gdrive");
+    await vi.advanceTimersByTimeAsync(0);
+    oldPass.resolve({});
+    await vi.advanceTimersByTimeAsync(0);
+    const secondManual = syncCloudProviderNow("gdrive");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mocks.syncLibraryCore).toHaveBeenCalledTimes(4);
+    newPass.resolve({});
+    await Promise.all([firstManual, secondManual]);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(mocks.syncLibraryCore).toHaveBeenCalledTimes(5);
   });
 
   it("retains an explicit discovered Library choice across sync passes", async () => {
