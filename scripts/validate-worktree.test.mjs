@@ -68,6 +68,12 @@ test("feature plan for shared changes covers both desktop and pwa surfaces", () 
     "desktop social provider unit tests",
     "desktop social provider e2e",
     "shared unit tests",
+    "packages/capture-medium tests",
+    "packages/capture-rss tests",
+    "packages/capture-substack tests",
+    "packages/capture-youtube tests",
+    "ui unit tests",
+    "sync unit tests",
     "pwa production build",
     "pwa typecheck",
     "pwa unit tests",
@@ -174,6 +180,7 @@ test("feature plan for feed UI changes leaves raw timing checks to nightly", () 
 
   assert.deepEqual(labels, [
     "root typecheck",
+    "ui unit tests",
     "pwa production build",
     "pwa typecheck",
     "pwa unit tests",
@@ -191,6 +198,7 @@ test("feature plan for Friends UI changes leaves raw timing checks to nightly", 
 
   assert.deepEqual(labels, [
     "root typecheck",
+    "ui unit tests",
     "pwa production build",
     "pwa typecheck",
     "pwa unit tests",
@@ -208,6 +216,7 @@ test("feature plan for sidebar UI changes leaves raw timing checks to nightly", 
 
   assert.deepEqual(labels, [
     "root typecheck",
+    "ui unit tests",
     "pwa production build",
     "pwa typecheck",
     "pwa unit tests",
@@ -407,6 +416,11 @@ test("workspace checks run inside each workspace without root dispatch flags", (
     );
   }
 
+  for (const name of ["medium", "rss", "substack", "youtube"]) {
+    assert.ok(plan.some((item) => item.label === `packages/capture-${name} tests`));
+  }
+  assert.ok(plan.some((item) => item.label === "ui unit tests"));
+  assert.ok(plan.some((item) => item.label === "sync unit tests"));
   const websiteTests = plan.find((item) => item.label === "website tests");
   const desktopTests = plan.find((item) => item.label === "desktop unit tests");
   assert.match(websiteTests.cwd, /\/website$/);
@@ -468,6 +482,7 @@ test("feature plan for release admission changes runs only its contract tests", 
   assert.deepEqual(describePlan(plan), ["release admission tests"]);
   assert.deepEqual(plan[0].args, [
     "--test",
+    "scripts/validate-release-integration.test.mjs",
     "scripts/validate-dev-integration-receipt.test.mjs",
     "scripts/release-governance.test.mjs",
     "scripts/release-workflow-matrix.test.mjs",
@@ -626,7 +641,7 @@ test("dev plan runs deterministic desktop lanes and leaves raw timing to nightly
 
   assert.ok(labels.includes("agent instruction validation"));
   assert.ok(labels.includes("skill validation"));
-  assert.ok(labels.includes("desktop e2e smoke"));
+  assert.ok(!labels.includes("desktop e2e smoke"));
   assert.ok(labels.includes("desktop e2e regression"));
   assert.ok(!labels.includes("desktop e2e perf"));
   assert.ok(labels.includes("desktop e2e visual"));
@@ -640,63 +655,15 @@ test("dev plan runs deterministic desktop lanes and leaves raw timing to nightly
   assert.ok(!labels.includes("desktop e2e full"));
 });
 
-test("production plan includes dev desktop gates without duplicating shipped builds", () => {
+test("production admission inherits integration instead of rerunning unchanged suites", () => {
   const labels = describePlan(buildValidationPlan("production", []));
-
-  assert.ok(labels.includes("agent instruction validation"));
-  assert.ok(labels.includes("skill validation"));
-  assert.ok(labels.includes("desktop e2e smoke"));
-  assert.ok(labels.includes("desktop e2e regression"));
-  assert.ok(!labels.includes("desktop e2e perf"));
-  assert.ok(labels.includes("desktop e2e visual"));
-  assert.ok(!labels.includes("desktop e2e full"));
-
-  // The PWA is not otherwise built by the release workflow, so it stays.
+  assert.equal(labels[0], "exact dev integration receipt");
   assert.ok(labels.includes("pwa production build"));
-  assert.ok(labels.includes("library service tests"));
   assert.ok(labels.includes("retired Automerge release artifact guard"));
-
-  assert.ok(
-    !labels.includes("root build"),
-    "the production promotion must not build the separate website lane",
-  );
-  assert.ok(
-    !labels.includes("root typecheck"),
-    "the production promotion must not typecheck the separate website lane",
-  );
-  assert.ok(
-    !labels.includes("root lint"),
-    "the production promotion must not lint the separate website lane",
-  );
-  assert.ok(
-    !labels.includes("website tests"),
-    "the production promotion must not test the separate website lane",
-  );
-
-  // The release matrix still owns the real signed Desktop build. Native clippy
-  // needs only the frontend context because generate_context! validates the
-  // configured dist path at compile time.
-  assert.ok(
-    !labels.includes("desktop production build"),
-    "the desktop build must not be duplicated ahead of the release matrix",
-  );
-  const frontendContextIndex = labels.indexOf("desktop frontend context build");
-  const nativeClippyIndex = labels.indexOf("native rust clippy");
-  const pwaBuildIndex = labels.indexOf("pwa production build");
-  const artifactGuardIndex = labels.indexOf(
-    "retired Automerge release artifact guard",
-  );
-  assert.ok(frontendContextIndex >= 0);
-  assert.ok(nativeClippyIndex > frontendContextIndex);
-  assert.ok(artifactGuardIndex > pwaBuildIndex);
-
-  // The website ships from `www` through publish-website against the reviewed
-  // marketing branch. Building it in the Desktop release lane couples two
-  // branch lanes that AGENTS.md keeps apart.
-  assert.ok(
-    !labels.includes("website production build"),
-    "the Desktop release lane must not build the website",
-  );
+  for (const label of describePlan(buildValidationPlan("dev", []))) {
+    if (label === "retired Automerge release artifact guard") continue;
+    assert.ok(!labels.includes(label), `release must inherit ${label}`);
+  }
 });
 
 test("release mode remains a compatibility alias for production", () => {

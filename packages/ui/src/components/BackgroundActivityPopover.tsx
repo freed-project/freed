@@ -8,7 +8,7 @@ import {
   type BackgroundActivityRecord,
 } from "../lib/background-activity-store.js";
 import { formatClockTime } from "../lib/date-format.js";
-import { CloseIcon } from "./icons.js";
+import { CloseIcon, RefreshIcon } from "./icons.js";
 
 interface BackgroundActivityPopoverProps {
   anchorElement: HTMLElement | null;
@@ -19,6 +19,11 @@ interface BackgroundActivityPopoverProps {
 const VIEWPORT_PADDING = 12;
 const POPOVER_GAP = 10;
 const POPOVER_MAX_HEIGHT = "min(44rem, calc(100dvh - 1rem))";
+// Reserve equal space even when jobs finish or the log filter has no matches.
+const ACTIVITY_PANE_STYLE: CSSProperties = {
+  height: "clamp(6rem, calc((100dvh - var(--theme-menu-top, 5rem) - 10rem) / 2), 14rem)",
+  scrollbarGutter: "stable",
+};
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
@@ -35,7 +40,6 @@ function activityScopeLabel(
 function levelClass(level: BackgroundActivityLogEntry["level"]): string {
   if (level === "error") return "text-[rgb(var(--theme-feedback-danger-rgb))]";
   if (level === "warning") return "text-[rgb(var(--theme-feedback-warning-rgb))]";
-  if (level === "success") return "text-[rgb(var(--theme-feedback-success-rgb))]";
   return "text-[var(--theme-text-muted)]";
 }
 
@@ -66,7 +70,7 @@ function ActiveRow({ activity, now }: { activity: BackgroundActivityRecord; now:
       className="rounded-lg border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-muted)] px-3 py-2"
     >
       <div className="flex items-center gap-2">
-        <span className="h-3 w-3 shrink-0 animate-spin rounded-full border border-[var(--theme-accent-secondary)] border-t-transparent" />
+        <RefreshIcon className="h-3 w-3 shrink-0 text-[var(--theme-text-muted)]" />
         <span className="min-w-0 flex-1 truncate text-xs font-medium text-[var(--theme-text-primary)]">
           {activity.label}
         </span>
@@ -242,34 +246,47 @@ export function BackgroundActivityPopover({
           />
         </div>
 
-        {channelActivities.length > 0 ? (
-          <section className="mt-3 space-y-2" aria-label="Running channel syncs">
-            <p className="text-[0.625rem] uppercase tracking-[0.14em] text-[var(--theme-text-soft)]">
-              Channel Syncs
-            </p>
-            {channelActivities.map((activity) => (
-              <ActiveRow key={activity.id} activity={activity} now={now} />
-            ))}
-          </section>
-        ) : null}
-
-        {jobActivities.length > 0 ? (
-          <section className="mt-3 space-y-2" aria-label="Running background jobs">
-            <p className="text-[0.625rem] uppercase tracking-[0.14em] text-[var(--theme-text-soft)]">
-              Jobs
-            </p>
-            {jobActivities.map((activity) => (
-              <ActiveRow key={activity.id} activity={activity} now={now} />
-            ))}
-          </section>
-        ) : null}
+        <section className="mt-3" aria-label="Running background jobs">
+          <p className="text-[0.625rem] uppercase tracking-[0.14em] text-[var(--theme-text-soft)]">
+            Jobs
+          </p>
+          <div
+            data-testid="background-activity-jobs"
+            className="mt-2 overflow-y-auto overscroll-contain rounded-lg border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] p-1"
+            style={ACTIVITY_PANE_STYLE}
+          >
+            {channelActivities.length > 0 ? (
+              <section className="space-y-2" aria-label="Running channel syncs">
+                <p className="px-2 text-[0.625rem] uppercase tracking-[0.14em] text-[var(--theme-text-soft)]">
+                  Channel Syncs
+                </p>
+                {channelActivities.map((activity) => (
+                  <ActiveRow key={activity.id} activity={activity} now={now} />
+                ))}
+              </section>
+            ) : null}
+            {jobActivities.length > 0 ? (
+              <div className={`${channelActivities.length > 0 ? "mt-2 " : ""}space-y-2`}>
+                {jobActivities.map((activity) => (
+                  <ActiveRow key={activity.id} activity={activity} now={now} />
+                ))}
+              </div>
+            ) : null}
+            {activeRecords.length === 0 ? (
+              <p className="px-2 py-3 text-xs text-[var(--theme-text-muted)]">
+                No jobs running.
+              </p>
+            ) : null}
+          </div>
+        </section>
 
         <section className="mt-3" aria-label="Activity log">
           <p className="text-[0.625rem] uppercase tracking-[0.14em] text-[var(--theme-text-soft)]">
             Live Log
           </p>
           <div
-            className="mt-2 max-h-[30rem] overflow-y-auto rounded-lg border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] p-1"
+            style={ACTIVITY_PANE_STYLE}
+            className="mt-2 overflow-y-auto overscroll-contain rounded-lg border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] p-1"
             data-testid="background-activity-log"
           >
             {filteredLog.length > 0 ? (

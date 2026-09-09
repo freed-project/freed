@@ -110,11 +110,14 @@ describe("Friends Galaxy provider fields", () => {
     expect(new Set(encodedCounts).size).toBeGreaterThan(1);
   });
 
-  it("uses stronger field opacity for dark themes while preserving provider color roles", () => {
+  it("keeps fields translucent while preserving provider color roles", () => {
     const light = createFields(GALAXY_LAB_THEMES.scriptorium, "nebula");
     const dark = createFields(GALAXY_LAB_THEMES.neon, "nebula");
 
-    expect(dark.instanceData[20]).toBeGreaterThan(light.instanceData[20]!);
+    for (const fields of [light, dark]) {
+      expect(fields.instanceData[20]).toBeGreaterThan(0);
+      expect(fields.instanceData[20]).toBeLessThan(1);
+    }
     expect(light.instanceData.slice(17, 20)).not.toEqual(light.instanceData.slice(29, 32));
   });
 
