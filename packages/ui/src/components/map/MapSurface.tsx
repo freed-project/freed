@@ -1319,7 +1319,45 @@ export function MapSurface({
     const lifecycleId = mapLifecycleRef.current + 1;
     mapLifecycleRef.current = lifecycleId;
     let cancelled = false;
+    let ownedMap: MapInstance | null = null;
+    let resizeTimeout: ReturnType<typeof setTimeout> | undefined;
     let removeTrackpadPan: (() => void) | undefined;
+    let removeMapListeners: (() => void) | undefined;
+    const releaseMap = () => {
+      clearTimeout(resizeTimeout);
+      resizeTimeout = undefined;
+      removeMapListeners?.();
+      removeMapListeners = undefined;
+      removeTrackpadPan?.();
+      removeTrackpadPan = undefined;
+      closeActivePopup();
+      clearNativeMarkerRestoreTimeout();
+      for (const { marker } of markersRef.current) marker.remove();
+      markersRef.current = [];
+      const map = ownedMap;
+      ownedMap = null;
+      if (mapRef.current === map) mapRef.current = null;
+      if (map) {
+        try {
+          disposeMapInstance(map);
+        } catch (error) {
+          // MapLibre can return a partially initialized instance without a
+          // painter. Its remove() can then throw; still release our DOM owner.
+          console.error("[MapSurface] Failed to dispose MapLibre", error);
+        }
+      }
+      // A constructor can append DOM before throwing without returning a map.
+      containerRef.current?.replaceChildren();
+      setShellMoving(false);
+    };
+    const failInitialization = (error: unknown) => {
+      if (cancelled) return;
+      console.error("[MapSurface] Map renderer unavailable", error);
+      releaseMap();
+      setMapReady(false);
+      setMapTilesReady(false);
+      setLoadFailed(true);
+    };
     setShellMoving(false);
     setMapReady(false);
     setMapTilesReady(false);
@@ -1329,12 +1367,7 @@ export function MapSurface({
       setLoadFailed(true);
       return () => {
         cancelled = true;
-        closeActivePopup();
-        clearNativeMarkerRestoreTimeout();
-        for (const { marker } of markersRef.current) marker.remove();
-        markersRef.current = [];
-        if (mapRef.current) disposeMapInstance(mapRef.current);
-        mapRef.current = null;
+        releaseMap();
       };
     }
 
@@ -1363,7 +1396,11 @@ export function MapSurface({
           interactive,
           attributionControl: false,
         });
+        ownedMap = map;
         mapRef.current = map;
+        // MapLibre 6 can report GPU creation failure during its constructor,
+        // before listeners can attach, and return without a renderer.
+        if (!map.painter) throw new Error("MapLibre did not initialize a renderer");
         if (interactive) {
           const canvasContainer = map.getCanvasContainer();
           const panWithTrackpad = (event: globalThis.WheelEvent) => {
@@ -1396,52 +1433,61 @@ export function MapSurface({
         map.on("zoomend", clearMoving);
         // Construction readiness permits marker placement, but does not prove
         // the basemap has rendered. Capture callers need the settled tile state.
-        map.on("error", () => {
-          if (cancelled || interactionMode !== "read-only") return;
-          // Keep the sample locations usable when WebGL, styles, or tiles fail.
-          setLoadFailed(true);
-          setMapReady(false);
-          disposeMapInstance(map);
-          if (mapRef.current === map) mapRef.current = null;
-        });
-        map.on("dataloading", () => {
-          if (!cancelled) setMapTilesReady(false);
-        });
-        map.on("idle", () => {
-          if (!cancelled) setMapTilesReady(map.loaded());
-        });
+        const onError = (event: { error: Error }) => {
+          if (cancelled || ownedMap !== map) return;
+          // Tile, glyph and sprite errors do not imply an unusable map. Only
+          // explicit GPU initialization failure defeats context restoration.
+          if (interactionMode === "read-only" && event.error instanceof maplibre.GPUInitializationError) {
+            failInitialization(event.error);
+          }
+        };
+        const onDataLoading = () => {
+          if (!cancelled && ownedMap === map) setMapTilesReady(false);
+        };
+        const onIdle = () => {
+          if (!cancelled && ownedMap === map) setMapTilesReady(map.loaded());
+        };
+        removeMapListeners = () => {
+          map.off("movestart", setMoving);
+          map.off("zoomstart", setMoving);
+          map.off("moveend", clearMoving);
+          map.off("zoomend", clearMoving);
+          map.off("error", onError);
+          map.off("dataloading", onDataLoading);
+          map.off("idle", onIdle);
+        };
+        map.on("error", onError);
+        map.on("dataloading", onDataLoading);
+        map.on("idle", onIdle);
         setMapGeneration(lifecycleId);
         setMapReady(true);
-        setTimeout(() => map.resize(), 0);
+        resizeTimeout = setTimeout(() => {
+          resizeTimeout = undefined;
+          if (cancelled || ownedMap !== map) return;
+          try {
+            map.resize();
+          } catch (error) {
+            failInitialization(error);
+          }
+        }, 0);
         if (desiredMapThemeRef.current !== initialThemeId) {
           applyMapThemeStyle(desiredMapThemeRef.current);
         }
       } catch (error) {
-        console.error("[MapSurface] Failed to initialize MapLibre", error);
-        if (mapRef.current) disposeMapInstance(mapRef.current);
-        mapRef.current = null;
-        setLoadFailed(true);
+        failInitialization(error);
       }
     }).catch((error) => {
-      console.error("[MapSurface] Failed to load the themed map", error);
-      setLoadFailed(true);
+      failInitialization(error);
     });
 
     return () => {
       cancelled = true;
       mapLifecycleRef.current += 1;
-      removeTrackpadPan?.();
       mapStyleRequestRef.current += 1;
       appliedMapThemeRef.current = null;
-      closeActivePopup();
-      clearNativeMarkerRestoreTimeout();
-      for (const { marker } of markersRef.current) marker.remove();
-      markersRef.current = [];
-      if (mapRef.current) disposeMapInstance(mapRef.current);
-      mapRef.current = null;
-      setShellMoving(false);
+      releaseMap();
     };
-  }, [applyMapThemeStyle, clearNativeMarkerRestoreTimeout, closeActivePopup, interactionMode, interactive, setShellMoving]);
+  }, [applyMapThemeStyle, clearNativeMarkerRestoreTimeout, closeActivePopup, geographicMapMode, interactionMode, interactive, setShellMoving]);
 
   useEffect(() => {
     applyMapThemeStyle(resolvedThemeId);
