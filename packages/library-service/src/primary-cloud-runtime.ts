@@ -10,6 +10,7 @@ import {
   createLibraryServiceGoogleDrivePublicationV1,
 } from "./google-drive-publication.js";
 import type { LibraryCoreNativeCommandClientV1 } from "./native-command.js";
+import { createGoogleDrivePrimaryTransportV2 } from "./google-drive-primary-transport.js";
 import { createNodeGoogleDriveTokenPortV1 } from "./node-google-drive-token.js";
 import {
   createLibraryServicePrimaryRuntimeV1,
@@ -17,7 +18,6 @@ import {
 } from "./primary-runtime.js";
 import {
   createLibraryServiceNormalizedPrimaryOrchestrationV2,
-  createLibraryServiceNormalizedPrimaryPublicationV2,
   type LibraryServiceNormalizedPrimaryTransportV2,
 } from "./normalized-primary-orchestration.js";
 
@@ -45,7 +45,32 @@ export function createNodeLibraryServicePrimaryCloudPortV1(
 ): LibraryServicePrimaryCloudPortV1 {
   return Object.freeze({
     async start(input: PrimaryCloudStartInputV1) {
+      const normalizedPrimary =
+        createLibraryServiceNormalizedPrimaryOrchestrationV2({
+          native: input.native,
+          now: () => input.clock.nowMs(),
+          subtle: crypto.subtle,
+          transport: options.normalizedPrimaryTransport,
+        });
       const publication = createLibraryServiceGoogleDrivePublicationV1({
+        refreshInbound: async ({
+          accessToken,
+          controlFileId,
+          descriptor,
+          signal,
+        }) => {
+          await normalizedPrimary.refresh(
+            signal,
+            options.normalizedPrimaryTransport ??
+              createGoogleDrivePrimaryTransportV2({
+                accessToken,
+                controlFileId,
+                signal,
+                libraryId: descriptor.libraryId,
+                epochId: descriptor.authorityEpoch,
+              }),
+          );
+        },
         state: createBoundGoogleDrivePublicationStatePortV1(
           input.stateFile,
           input.fileSystem,
@@ -54,28 +79,12 @@ export function createNodeLibraryServicePrimaryCloudPortV1(
           input.config.credentialRecordId,
         ),
       });
-      const normalizedPrimary =
-        options.normalizedPrimaryTransport === undefined
-          ? null
-          : createLibraryServiceNormalizedPrimaryOrchestrationV2({
-              native: input.native,
-              now: () => input.clock.nowMs(),
-              subtle: crypto.subtle,
-              transport: options.normalizedPrimaryTransport,
-            });
-      const coordinatedPublication =
-        normalizedPrimary === null
-          ? publication
-          : createLibraryServiceNormalizedPrimaryPublicationV2(
-              publication,
-              normalizedPrimary,
-            );
       const runtime = createLibraryServicePrimaryRuntimeV1({
         clock: { nowMs: () => input.clock.nowMs() },
         diagnostics: { record() {} },
         installationWitness: input.config.installationWitness,
         native: input.native,
-        publication: coordinatedPublication,
+        publication,
         publicationState: publication,
         scheduler: {
           schedule(callback, delayMs) {

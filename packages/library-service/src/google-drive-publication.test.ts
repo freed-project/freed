@@ -61,7 +61,9 @@ function descriptor(writer = writerId) {
   });
 }
 
-class MemoryAdapter implements LibraryCoreImmutablePublicationAdapterV1<Uint8Array> {
+class MemoryAdapter
+  implements LibraryCoreImmutablePublicationAdapterV1<Uint8Array>
+{
   readonly objects = new Map<
     string,
     {
@@ -247,6 +249,7 @@ describe("headless Google Drive checkpoint publication", () => {
   });
 
   it("returns ownership_required without exporting when Drive names another writer", async () => {
+    const refreshInbound = vi.fn();
     const adapter = new MemoryAdapter();
     const remotePublication = createLibraryServiceGoogleDrivePublicationV1({
       state: { read: async () => null, write: async () => undefined },
@@ -263,6 +266,7 @@ describe("headless Google Drive checkpoint publication", () => {
     });
     const objectCountAfterRemotePublication = adapter.objects.size;
     const publication = createLibraryServiceGoogleDrivePublicationV1({
+      refreshInbound,
       state: { read: async () => null, write: async () => undefined },
       token: { accessToken: async () => "access-token" },
       transport: {
@@ -285,5 +289,62 @@ describe("headless Google Drive checkpoint publication", () => {
     });
     expect(client.execute).toHaveBeenCalledTimes(3);
     expect(adapter.objects.size).toBe(objectCountAfterRemotePublication);
+    expect(refreshInbound).not.toHaveBeenCalled();
+  });
+
+  it("checks cloud authority before inbound work and observes its new revision", async () => {
+    const adapter = new MemoryAdapter();
+    let state: LibraryServiceGoogleDrivePublicationStateV1 | null = null;
+    let revision = 7;
+    const refreshInbound = vi.fn(async () => {
+      revision = 8;
+    });
+    const publication = createLibraryServiceGoogleDrivePublicationV1({
+      refreshInbound,
+      state: {
+        read: async () => state,
+        write: async (next) => {
+          state = next;
+        },
+      },
+      token: { accessToken: async () => "access-token" },
+      transport: {
+        provision: async () => ({ controlFileId: "control-file" }),
+        adapter: () => adapter,
+      },
+    });
+    const client = native();
+    const originalExecute = client.execute;
+    client.execute = vi.fn(async (command: string, payload: unknown) => {
+      if (command === "describe_checkpoint_export_v2") {
+        return { ...descriptor(), sourceRevision: revision };
+      }
+      if (command === "begin_checkpoint_export_v2" && revision === 8) {
+        // Stop at the export boundary: the distinct contract here is that a
+        // successful inbound edit cannot take the stale 'current' shortcut.
+        throw new Error("fresh export reached");
+      }
+      return originalExecute(command as never, payload as never);
+    }) as typeof client.execute;
+    await publication.publish({
+      native: client,
+      reason: "initial",
+      signal: new AbortController().signal,
+    });
+    expect(refreshInbound).not.toHaveBeenCalled();
+    const signal = new AbortController().signal;
+    await expect(
+      publication.publish({
+        native: client,
+        reason: "inbound_refresh",
+        signal,
+      }),
+    ).rejects.toThrow("fresh export reached");
+    expect(refreshInbound).toHaveBeenCalledExactlyOnceWith({
+      accessToken: "access-token",
+      controlFileId: "control-file",
+      descriptor: descriptor(),
+      signal,
+    });
   });
 });

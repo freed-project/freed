@@ -81,6 +81,14 @@ export interface LibraryServiceGoogleDrivePublicationOptionsV1 {
   readonly state: LibraryServiceGoogleDrivePublicationStatePortV1;
   readonly token: LibraryServiceGoogleDriveTokenPortV1;
   readonly transport?: GoogleDrivePublicationTransportV1;
+  readonly refreshInbound?: (
+    input: Readonly<{
+      accessToken: string;
+      controlFileId: string;
+      descriptor: LibraryCoreNormalizedCheckpointExportDescriptorV2;
+      signal: AbortSignal;
+    }>,
+  ) => Promise<void>;
 }
 
 export function createBoundGoogleDrivePublicationStatePortV1(
@@ -286,6 +294,7 @@ export function createLibraryServiceGoogleDrivePublicationV1(
     },
     async publish({
       native,
+      reason,
       signal,
     }: {
       readonly native: LibraryCoreNativeCommandClientV1;
@@ -363,15 +372,43 @@ export function createLibraryServiceGoogleDrivePublicationV1(
         throw new LibraryServiceFailure("authority_not_primary");
       }
       if (
+        reason === "inbound_refresh" &&
         pointer !== null &&
-        pointer.causalFrontierDigest === descriptor.causalFrontierDigest &&
-        persisted?.lastPublishedRevision === descriptor.sourceRevision &&
+        options.refreshInbound
+      ) {
+        signal.throwIfAborted();
+        await options.refreshInbound({
+          accessToken,
+          controlFileId: provisioned.controlFileId,
+          descriptor,
+          signal,
+        });
+        signal.throwIfAborted();
+      }
+      const currentDescriptor =
+        reason === "inbound_refresh" && options.refreshInbound
+          ? exactDescriptor(
+              await native.execute("describe_checkpoint_export_v2", {}),
+            )
+          : descriptor;
+      if (
+        currentDescriptor.libraryId !== descriptor.libraryId ||
+        currentDescriptor.authorityEpoch !== descriptor.authorityEpoch ||
+        currentDescriptor.writerId !== descriptor.writerId
+      ) {
+        throw new LibraryServiceFailure("authority_not_primary");
+      }
+      if (
+        pointer !== null &&
+        pointer.causalFrontierDigest ===
+          currentDescriptor.causalFrontierDigest &&
+        persisted?.lastPublishedRevision === currentDescriptor.sourceRevision &&
         persisted.controlFileId === provisioned.controlFileId &&
         persisted.controlRevision === controlRead.revision
       ) {
         return Object.freeze({
           status: "current" as const,
-          revision: descriptor.sourceRevision,
+          revision: currentDescriptor.sourceRevision,
         });
       }
       const exportDescriptor = exactDescriptor(
