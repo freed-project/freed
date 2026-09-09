@@ -86,6 +86,25 @@ describe("PWA Library Core SQLite engine", () => {
     return value;
   }
 
+  it("reports the failed schema check without repairing rejected staging rows", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion);
+    engine.initialize();
+    // Simulate an invalid retained database, not a product write path.
+    database.exec(`PRAGMA ignore_check_constraints = ON;
+      INSERT INTO library_checkpoint_stages
+        (stage_id, library_id, authority_epoch, source_revision, expected_record_count, created_at)
+      VALUES ('invalid-stage', 'library-1', 'epoch-1', 1, -1, 1000);
+      PRAGMA ignore_check_constraints = OFF;`);
+    expect(() => engine.initialize()).toThrow(
+      "PWA Library SQLite quick check failed: CHECK constraint failed in library_checkpoint_stages",
+    );
+    expect(database.exec({
+      sql: "SELECT expected_record_count FROM library_checkpoint_stages;",
+      rowMode: 0,
+      returnValue: "resultRows",
+    })).toEqual([-1]);
+  });
+
   function lowercaseHex64(value: string): LibraryCoreLowercaseHex64 {
     if (!isLibraryCoreLowercaseHex64(value)) {
       throw new TypeError("invalid test lowercase hexadecimal digest");
@@ -5831,6 +5850,9 @@ describe("PWA Library Core SQLite engine", () => {
       records,
       stageId: stage.stageId,
     });
+    expect(database.exec({
+      sql: "PRAGMA quick_check(1);", rowMode: 0, returnValue: "resultRows",
+    })).toEqual(["ok"]);
     expect(complete.complete).toBe(true);
     expect(complete.stagedRecordCount).toBe(records.length);
     expect(complete.stagedCanonicalBytes).toBeGreaterThan(0);

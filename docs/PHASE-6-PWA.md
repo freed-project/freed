@@ -2,6 +2,12 @@
 
 > **Status:** 🚧 In Progress (the official SQLite WebAssembly engine, exact schema identity, single-worker OPFS runtime, normalized checkpoint import, product mutation entrypoints, bounded product queries, follower transport, recovery UI, selective content, and IndexedDB Library deletion are implemented; physical iPhone acceptance remains open)
 
+PWA startup reports bounded schema identifiers for failed SQLite integrity
+checks. Storage timeouts identify the closed worker command kind without its
+payload. Arbitrary database text stays out of diagnostics. A failed check still
+refuses initialization and preserves the database for investigation; it does not
+trigger deletion or automatic repair.
+
 Local sample results include the optimistic care fields required for settlement.
 A specifically rejected, uncommitted sample result from v26.9.803 can be retired
 and rebuilt from its retained intent after restart. Connected Library results
