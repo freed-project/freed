@@ -738,6 +738,7 @@ jobs:
   publish-website:
     name: Deploy Website
     needs: [publish, notes]
+    if: needs.notes.outputs.release_channel == 'production'
     runs-on: ubuntu-latest
     permissions:
       contents: read
