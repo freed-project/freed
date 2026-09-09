@@ -2,6 +2,11 @@
 
 > **Status:** 🚧 In Progress (the official SQLite WebAssembly engine, exact schema identity, single-worker OPFS runtime, normalized checkpoint import, product mutation entrypoints, bounded product queries, follower transport, recovery UI, selective content, and IndexedDB Library deletion are implemented; physical iPhone acceptance remains open)
 
+Sync now joins an active automatic refresh instead of starting an overlapping
+Library import. Stopping sync invalidates that shared pass. Deterministic
+lifecycle tests cover settlement, failure, and stop/restart isolation; live
+production acceptance remains open.
+
 Local sample results include the optimistic care fields required for settlement.
 A specifically rejected, uncommitted sample result from v26.9.803 can be retired
 and rebuilt from its retained intent after restart. Connected Library results
