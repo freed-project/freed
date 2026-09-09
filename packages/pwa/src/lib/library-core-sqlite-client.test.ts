@@ -174,7 +174,7 @@ describe("PWA SQLite worker response boundary", () => {
     const pending = client.status();
     const rejection = expect(pending).rejects.toMatchObject({
       code: "pwa_sqlite_worker_unavailable",
-      message: "PWA Library SQLite request timed out",
+      message: "PWA Library SQLite request timed out (status)",
     });
     const worker = activeWorker();
 

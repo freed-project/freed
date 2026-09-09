@@ -900,7 +900,15 @@ export class PwaLibraryCoreSqliteEngine {
       returnValue: "resultRows",
     });
     if (integrity.length !== 1 || integrity[0] !== "ok") {
-      throw new Error("PWA Library SQLite quick check failed");
+      // Expose only bounded schema identifiers, never arbitrary database text.
+      const result = integrity[0];
+      const detail = typeof result === "string" && result.length <= 200 &&
+        /^(CHECK constraint failed in|NULL value in) library_[a-z0-9_]+(?:\.[a-z0-9_]+)?$/.test(result)
+        ? result
+        : typeof result === "string" && result.startsWith("*** in database main ***")
+          ? "database structure check failed"
+          : "unexpected integrity result";
+      throw new Error(`PWA Library SQLite quick check failed: ${detail}`);
     }
     this.#connectionGeneration += 1;
     return this.status();
