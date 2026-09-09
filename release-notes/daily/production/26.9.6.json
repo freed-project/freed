@@ -2,7 +2,7 @@
   "channel": "production",
   "dayKey": "26.9.6",
   "date": "2026-09-06",
-  "preferredDeck": null,
+  "preferredDeck": "An interactive Freed demo, connected Friends and map views, and a clearer mobile reading experience.",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
@@ -10,5 +10,5 @@
   ],
   "pinnedHighlights": [],
   "editorialNotes": [],
-  "updatedAt": "2026-09-06T16:10:18.341Z"
+  "updatedAt": "2026-09-07T01:25:31.641Z"
 }
