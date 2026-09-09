@@ -218,7 +218,7 @@ export default function Features() {
   return (
     <section
       id="features"
-      className="px-8 py-8 sm:px-6 sm:py-24 lg:px-8 xl:px-12"
+      className="px-8 sm:px-6 lg:px-8 xl:px-12"
     >
       <div className="max-w-6xl mx-auto">
         {/* Feature Grid */}

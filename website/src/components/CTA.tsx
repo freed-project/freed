@@ -7,7 +7,7 @@ import { useNewsletter } from "@/context/NewsletterContext";
 export default function CTA() {
   const { openModal } = useNewsletter();
   return (
-    <section className="px-8 py-8 sm:px-6 sm:py-24 md:px-12 lg:px-8">
+    <section className="px-8 sm:px-6 md:px-12 lg:px-8" style={{ paddingBlock: "var(--landing-section-gap, 3rem)" }}>
       <div className="max-w-4xl mx-auto">
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
