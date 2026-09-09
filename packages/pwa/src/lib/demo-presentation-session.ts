@@ -3,6 +3,7 @@ const PRESENTATION_KEYS = new Set([
   "freed-theme-legacy-migration-v1",
   "freed-device-display-preferences-v1",
   "freed-feed-card-density",
+  "freed.reader.offlineCacheMode",
   "freed-interface-zoom",
   "freed-device-graph-layout-v1",
   "freed.pwa.install.dismissed",

@@ -1,3 +1,4 @@
+import { usePlatformCapabilities } from "../context/PlatformContext.js";
 import { useState } from "react";
 import type { RuntimeErrorSnapshot } from "@freed/shared";
 import { ReportComposer } from "./report/ReportComposer.js";
@@ -25,6 +26,7 @@ export function FatalErrorScreen({
   secondaryActionConfirmation,
   secondaryActionLabel,
 }: FatalErrorScreenProps) {
+  const capabilities = usePlatformCapabilities();
   const [confirmingSecondaryAction, setConfirmingSecondaryAction] =
     useState(false);
   const [secondaryActionPending, setSecondaryActionPending] = useState(false);
@@ -40,6 +42,15 @@ export function FatalErrorScreen({
       });
   };
 
+  if (capabilities.demo) return (
+    <div className="app-theme-shell flex min-h-screen items-center justify-center p-6">
+      <section role="alert" className="theme-card-soft w-full max-w-lg rounded-2xl p-6 text-center">
+        <h1 className="text-xl font-semibold">The demo needs a fresh start</h1>
+        <p className="mt-3 text-sm text-[var(--theme-text-muted)]">Reload to start a fresh demo. If it still cannot open, try another browser.</p>
+        <button type="button" className="btn-primary mt-5 rounded-xl px-4 py-3" onClick={onRetry}>Reload demo</button>
+      </section>
+    </div>
+  );
   return (
     <div className="app-theme-shell h-screen min-h-screen overflow-y-auto px-4 py-8 text-[var(--theme-text-primary)]">
       <div className="mx-auto flex max-w-4xl flex-col gap-6">

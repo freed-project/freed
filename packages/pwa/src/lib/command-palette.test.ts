@@ -834,6 +834,43 @@ describe("command palette", () => {
     expect(document.body.textContent).toContain("https://broken.example/feed.xml");
   });
 
+  it("routes demo promotions through session care and hides creation for unlinked accounts", async () => {
+    const person: Person = { id: "demo-person", name: "Demo Mina", relationshipStatus: "connection", careLevel: 2, createdAt: 1, updatedAt: 1 };
+    const account: Account = { id: "demo-account", personId: person.id, kind: "social", provider: "instagram", externalId: "demo-mina", displayName: person.name, firstSeenAt: 1, lastSeenAt: 1, discoveredFrom: "captured_item", createdAt: 1, updatedAt: 1 };
+    const unlinked: Account = { ...account, id: "unlinked", personId: undefined, externalId: "demo-unlinked", displayName: "Demo Unlinked" };
+    const upsertLibraryPerson = vi.fn();
+    const onReadOnlyPersonCareChange = vi.fn(async () => {});
+    const platform = createPlatform(createTestStore(), {
+      interactionMode: "read-only",
+      queryLibraryCore: identityQueryFixture({ accounts: { linked: account, unlinked }, persons: { [person.id]: person } }),
+      readLibraryPersonDetail: async () => person,
+      upsertLibraryPerson,
+      onReadOnlyPersonCareChange,
+    });
+    const render = renderNode(createElement(PlatformProvider, { value: platform, children: createElement(SearchJumpField) }));
+    cleanups.push(render.cleanup);
+    await flush();
+    const input = document.querySelector<HTMLInputElement>('input[aria-label="Search or run"]')!;
+    act(() => input.focus());
+    changeInput(input, "Demo Mina");
+    await flush();
+    const promotion = Array.from(document.querySelectorAll('[role="option"]')).find((node) => node.textContent?.includes("Promote Demo Mina to friend"));
+    expect(promotion).toBeDefined();
+    click(promotion!);
+    await flush();
+    expect(onReadOnlyPersonCareChange).toHaveBeenCalledWith(person.id, 3);
+    expect(upsertLibraryPerson).not.toHaveBeenCalled();
+    person.relationshipStatus = "friend";
+    person.careLevel = 5;
+    act(() => input.focus());
+    changeInput(input, "Demo");
+    await flush();
+    expect(document.body.textContent).not.toContain("Promote Demo Mina");
+    expect(document.body.textContent).not.toContain("Promote Demo Unlinked");
+    expect(document.body.textContent).not.toContain("Demo Unlinked on Map");
+    expect(document.body.textContent).toContain("Demo Unlinked's Friends view");
+  });
+
   it("archives current scope read items from bounded SQLite pages", async () => {
     const archiveItems = vi.fn(async () => {});
     const executeLibraryScopeAction = vi.fn(async () => ({
