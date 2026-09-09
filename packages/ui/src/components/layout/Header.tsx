@@ -2117,6 +2117,35 @@ export function Header({
 
           {readerActive ? (
             <div className="px-3 pb-3">
+              <div className="mb-2 flex items-center justify-between gap-3 px-1">
+                <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
+                  Focus mode
+                </p>
+                <Tooltip
+                  label="Focus mode"
+                  description="Bolds word beginnings to help guide your eyes through the text."
+                  side="top"
+                >
+                  <button
+                    type="button"
+                    aria-label="About focus mode"
+                    className="flex h-5 w-5 items-center justify-center rounded text-[var(--theme-text-muted)] hover:text-[var(--theme-text-primary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--theme-accent-primary)]"
+                  >
+                    <svg
+                      className="h-4 w-4"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={1.5}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </button>
+                </Tooltip>
+              </div>
               <ToolbarToggleGroup
                 dataTestId="reader-focus-toggle"
                 options={[{ value: "off", label: "Focus off" }, { value: "on", label: "Focus on" }]}
