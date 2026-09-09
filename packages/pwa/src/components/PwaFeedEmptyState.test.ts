@@ -71,6 +71,20 @@ describe("PwaFeedEmptyState", () => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
   });
 
+  it("returns empty demo scopes to the feed without connecting or clearing sample data", () => {
+    useAppStore.setState({ syncConnected: false, activeFilter: { platform: "rss" }, searchQuery: "missing" });
+    const { container, root } = renderWithPlatform(createElement(PwaFeedEmptyState), { interactionMode: "read-only" });
+    expect(container.textContent).toContain("No sample content in this view");
+    expect(container.textContent).not.toContain("Connect");
+    expect(container.textContent).not.toContain("Clear sample data");
+    expect(container.querySelectorAll("button")).toHaveLength(1);
+    act(() => container.querySelector("button")!.click());
+    expect(useAppStore.getState().activeFilter).toEqual({});
+    expect(useAppStore.getState().searchQuery).toBe("");
+    expect(useAppStore.getState().activeView).toBe("feed");
+    act(() => root.unmount());
+  });
+
   it("shows only demo population progress while the empty Library is loading", () => {
     useAppStore.setState({
       syncConnected: false,

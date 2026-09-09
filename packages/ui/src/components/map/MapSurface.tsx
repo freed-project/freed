@@ -1082,7 +1082,7 @@ export function MapSurface({
   emptyBody = "Posts with location data will show up here.",
   showFitAllControl = false,
 }: MapSurfaceProps) {
-  const { geographicMapMode = "online", resolveAvatarUrl } = usePlatform();
+  const { geographicMapMode = "online", resolveAvatarUrl, interactionMode } = usePlatform();
   const resolvedThemeId = themeId ?? DEFAULT_THEME_ID;
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapInstance | null>(null);
@@ -1396,6 +1396,14 @@ export function MapSurface({
         map.on("zoomend", clearMoving);
         // Construction readiness permits marker placement, but does not prove
         // the basemap has rendered. Capture callers need the settled tile state.
+        map.on("error", () => {
+          if (cancelled || interactionMode !== "read-only") return;
+          // Keep the sample locations usable when WebGL, styles, or tiles fail.
+          setLoadFailed(true);
+          setMapReady(false);
+          disposeMapInstance(map);
+          if (mapRef.current === map) mapRef.current = null;
+        });
         map.on("dataloading", () => {
           if (!cancelled) setMapTilesReady(false);
         });
@@ -1433,7 +1441,7 @@ export function MapSurface({
       mapRef.current = null;
       setShellMoving(false);
     };
-  }, [applyMapThemeStyle, clearNativeMarkerRestoreTimeout, closeActivePopup, interactive, setShellMoving]);
+  }, [applyMapThemeStyle, clearNativeMarkerRestoreTimeout, closeActivePopup, interactionMode, interactive, setShellMoving]);
 
   useEffect(() => {
     applyMapThemeStyle(resolvedThemeId);
@@ -1739,11 +1747,13 @@ export function MapSurface({
           >
             <div>
               <p className="text-sm font-medium text-[color:var(--theme-text-primary)]">
-                {loadFailed ? "Map failed to load" : emptyTitle}
+                {loadFailed ? interactionMode === "read-only" ? "Showing the simplified map" : "Map failed to load" : emptyTitle}
               </p>
               <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
                 {loadFailed
-                  ? "This browser could not initialize the live map, so a simplified view is shown instead."
+                  ? interactionMode === "read-only"
+                    ? "Explore the sample locations here. Reload to try the detailed map again."
+                    : "This browser could not initialize the live map, so a simplified view is shown instead."
                   : emptyBody}
               </p>
             </div>

@@ -4,6 +4,7 @@ import type { LibraryCoreNormalizedCheckpointRecordV2 } from "@freed/shared/libr
 const fixture = vi.hoisted(() => ({
   demo: true,
   failActivation: false,
+  pins: new Map<string, { entityId: string; graphX: number; graphY: number; updatedAt: number; mutationId: string }>(),
   staged: [] as LibraryCoreNormalizedCheckpointRecordV2[],
   active: [] as LibraryCoreNormalizedCheckpointRecordV2[],
 }));
@@ -16,10 +17,18 @@ vi.mock("./library-core-sqlite-runtime", () => ({
   activatePwaNormalizedCheckpointStage: vi.fn(async () => {
     if (fixture.failActivation) throw new Error("activation failed");
     fixture.active = fixture.staged;
+    fixture.pins.clear();
   }),
-  queryPwaNormalizedLibrary: vi.fn(async () => ({ summary: {
+  mutatePwaDeviceGraphLayout: vi.fn(async mutation => {
+    if (!fixture.active.some(row => row.primaryKey === mutation.entityId)) throw new Error("unknown entity");
+    fixture.pins.set(mutation.entityId, mutation);
+    return { changed: true, layoutRevision: fixture.pins.size, mutationId: mutation.mutationId, schemaVersion: 1 };
+  }),
+  queryPwaNormalizedLibrary: vi.fn(async request => request.queryId === "library_facet_summary_v1" ? { summary: {
     totalCount: fixture.active.filter(entry => entry.registryKey === "10_feed_item").length,
-  } })),
+  } } : { rows: [...fixture.pins.values()]
+    .filter(pin => pin.mutationId.startsWith(request.queryId.startsWith("person") ? "person" : "account"))
+    .map(pin => ({ id: pin.entityId, graphPinned: true, graphX: pin.graphX, graphY: pin.graphY, graphUpdatedAt: pin.updatedAt })), nextCursor: null }),
 }));
 
 beforeEach(() => {
@@ -28,6 +37,7 @@ beforeEach(() => {
   fixture.failActivation = false;
   fixture.staged = [];
   fixture.active = [];
+  fixture.pins.clear();
 });
 
 describe("demo care session", () => {
@@ -39,6 +49,8 @@ describe("demo care session", () => {
     const first = people[0]!;
     const second = people[1]!;
     expect(people.length).toBeGreaterThan(1);
+    await session.mutateFreedDemoGraphLayout({ entityId: String(first.primaryKey), graphX: 42, graphY: -15,
+      updatedAt: 1, schemaVersion: 1, mutationId: "person_graph_position_set_v1" });
     await Promise.all([
       session.setFreedDemoPersonCare(String(first.primaryKey), 1),
       session.setFreedDemoPersonCare(String(second.primaryKey), 5),
@@ -49,9 +61,11 @@ describe("demo care session", () => {
       .toMatchObject({ careLevel: 5, relationshipStatus: "friend" });
     expect(fixture.active.filter(entry => entry.registryKey !== "30_person"))
       .toEqual(initial.filter(entry => entry.registryKey !== "30_person"));
+    expect(fixture.pins.get(String(first.primaryKey))).toMatchObject({ graphX: 42, graphY: -15 });
     vi.resetModules();
     const reloaded = await import("./demo-checkpoint");
     await reloaded.installFreedDemoCheckpoint();
+    expect(fixture.pins.size).toBe(0);
     const ratings = (entries: typeof people) => entries.map(entry =>
       [entry.primaryKey, entry.payload.careLevel, entry.payload.relationshipStatus]);
     expect(ratings(fixture.active.filter(entry => entry.registryKey === "30_person")))
@@ -66,6 +80,8 @@ describe("demo care session", () => {
     const second = people[1]!;
     fixture.demo = false;
     await expect(session.setFreedDemoPersonCare(String(first.primaryKey), 5)).rejects.toThrow("outside the demo");
+    await expect(session.mutateFreedDemoGraphLayout({ entityId: String(first.primaryKey), graphX: 0, graphY: 0,
+      updatedAt: 1, schemaVersion: 1, mutationId: "person_graph_position_set_v1" })).rejects.toThrow("outside the demo");
     fixture.demo = true;
     await expect(session.setFreedDemoPersonCare("unknown", 3)).rejects.toThrow("not part of this demo");
     fixture.failActivation = true;

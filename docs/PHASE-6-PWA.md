@@ -959,3 +959,11 @@ Read-on-scroll refreshes replace the complete resident window atomically, avoidi
 Local feature previews replace marked sample records once per page load through the same shared curated population used by the public demo, including its authored timelines, relationships and fresh randomized presentation seed. Browser previews retain remote image URLs; mocked Desktop uses inline media and bypasses its unavailable native avatar cache. Ordinary test fixtures retain explicit population control.
 
 The Populate sample data action in every build uses that same curated generator and fresh randomized posting times. Manual population remains additive in Libraries containing real records; only explicit sample cleanup or local-preview replacement removes marked sample records. Settings counts describe the shared population, including people who are connections rather than friends.
+
+## Demo capability audit, September 9, 2026
+
+The public demo exposes presentation controls and session-only relationship and graph-pin changes. Shared capability checks hide durable Library edits, account linking, offline caching, archive maintenance, publishing, imports, and diagnostics. Unsupported actions are fenced at their handlers as well as their visible entry points. Reload restores the curated session. Startup recovery offers a plain reload action without SQLite internals or local-data replacement.
+
+Empty demo scopes offer a return to the sample feed; connection and sample-data population or deletion controls remain hidden.
+
+Vercel demo links retain their accepted demo parameter through navigation and reload, preserving memory-only session behavior after the router canonicalizes a route. Other hosts cannot enable demo mode through this parameter.
