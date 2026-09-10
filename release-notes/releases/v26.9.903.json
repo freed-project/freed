@@ -3,7 +3,7 @@
   "version": "26.9.903",
   "channel": "production",
   "dayKey": "26.9.9",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-09-10T04:57:10.311Z",
   "model": "heuristic",
@@ -76,22 +76,28 @@
     ]
   },
   "release": {
-    "deck": "PWA recovery, persistent device enrollment, and clearer Google Drive sync status",
+    "deck": "Google Drive enrollment recovery and PWA stability",
     "features": [],
     "fixes": [
+      "Keep a conflicting repeat device enrollment from blocking other devices and accepted edits",
+      "Keep device enrollment and completed edit history when refreshing a checkpoint from the same Library",
+      "Recover storage access after a terminated browser worker without stealing another active session",
+      "Show first-device setup until a Library is ready and restore sample content in the public demo",
+      "Keep Settings status reads bounded and prevent overlapping refreshes",
+      "Keep provider Advanced settings available, label Focus mode clearly, and make background activity status less distracting",
+      "Improve mobile welcome and Settings scrolling, stabilize menu panes, and correct Scriptorium icon contrast",
+      "Preserve the previous accepted PWA database after interrupted checkpoint imports and distinguish progressing large imports from stalled workers",
+      "Close participating PWA storage workers before device reset, recover rejected local sample startup results, and offer an explicit choice when Drive contains multiple Libraries",
+      "Report bounded SQLite integrity and worker-timeout diagnostics while retaining failed databases for investigation",
+      "Resume identical PWA checkpoint stages across later retry attempts while retaining the original staging timestamp",
+      "Allow valid device enrollment requests to complete after the Primary Library has advanced, while continuing to reject unknown history and invalid signatures",
+      "Keep compact headers and view transitions consistent when navigating between pages",
       "Recognize completed Facebook logins and close the login window after healthy capture startup",
-      "Reader, feed, and header polish",
-      "Combine overlapping PWA Drive sync requests into one operation",
-      "Show the time of the last successful Drive sync in Settings",
-      "Recover storage access after a terminated browser worker without stealing another active session"
+      "Show the full Saved collection after browsing Friends and keep bookmarking accessible in narrow reader toolbars"
     ],
     "followUps": [
-      "Promote enrollment recovery to production",
-      "Prepare v26.9.902",
-      "Promote dev into main for production release",
-      "Facebook login recognition, reliable Saved views, and PWA recovery fixes",
       "Show pending enrollment accurately and record the stage of stalled Google Drive synchronization"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.9.903\n\nPWA recovery, persistent device enrollment, and clearer Google Drive sync status\n\n### Fixes\n\n- Recognize completed Facebook logins and close the login window after healthy capture startup\n- Reader, feed, and header polish\n- Combine overlapping PWA Drive sync requests into one operation\n- Show the time of the last successful Drive sync in Settings\n- Recover storage access after a terminated browser worker without stealing another active session\n\n### Follow-ups\n\n- Promote enrollment recovery to production\n- Prepare v26.9.902\n- Promote dev into main for production release\n- Facebook login recognition, reliable Saved views, and PWA recovery fixes\n- Show pending enrollment accurately and record the stage of stalled Google Drive synchronization\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.9.903\n\nGoogle Drive enrollment recovery and PWA stability\n\n### Fixes\n\n- Keep a conflicting repeat device enrollment from blocking other devices and accepted edits\n- Keep device enrollment and completed edit history when refreshing a checkpoint from the same Library\n- Recover storage access after a terminated browser worker without stealing another active session\n- Show first-device setup until a Library is ready and restore sample content in the public demo\n- Keep Settings status reads bounded and prevent overlapping refreshes\n- Keep provider Advanced settings available, label Focus mode clearly, and make background activity status less distracting\n- Improve mobile welcome and Settings scrolling, stabilize menu panes, and correct Scriptorium icon contrast\n- Preserve the previous accepted PWA database after interrupted checkpoint imports and distinguish progressing large imports from stalled workers\n- Close participating PWA storage workers before device reset, recover rejected local sample startup results, and offer an explicit choice when Drive contains multiple Libraries\n- Report bounded SQLite integrity and worker-timeout diagnostics while retaining failed databases for investigation\n- Resume identical PWA checkpoint stages across later retry attempts while retaining the original staging timestamp\n- Allow valid device enrollment requests to complete after the Primary Library has advanced, while continuing to reject unknown history and invalid signatures\n- Keep compact headers and view transitions consistent when navigating between pages\n- Recognize completed Facebook logins and close the login window after healthy capture startup\n- Show the full Saved collection after browsing Friends and keep bookmarking accessible in narrow reader toolbars\n\n### Follow-ups\n\n- Show pending enrollment accurately and record the stage of stalled Google Drive synchronization\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
