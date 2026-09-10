@@ -1,211 +1,17 @@
 {
   "kind": "release-showcase",
-  "sourceCommit": "0df95165bdb58f325f042c7f4964694e9a867f89",
+  "sourceCommit": "71cba49642b1881c24a25c57e14f40df5da8bdcf",
   "sourceDirty": false,
-  "releaseId": 385801068,
-  "releaseTag": "v26.9.901",
-  "manifestSha256": "956e991599585c72a4b7002d741416b7fbe8e8ce9b758bf17052ea205bd0d43d",
+  "releaseId": 385980066,
+  "releaseTag": "v26.9.902",
+  "manifestSha256": "648204b39bb74563024e953522eef62d36952df456f899322c72f3349fb68020",
   "width": 1920,
   "height": 1280,
   "quality": 90,
   "themes": {
-    "dark-star": {
-      "revision": "v26.9.901",
-      "generatedAt": "2026-09-09T19:52:01.352Z",
-      "captures": [
-        {
-          "file": "freed-showcase-unified-dark-star.png",
-          "theme": "dark-star",
-          "view": "unified",
-          "desktopDecoration": {
-            "accent": "#2997ff",
-            "shell": "color-mix(in srgb, #2997ff 20%, #080a0f)",
-            "edge": "color-mix(in srgb, #2997ff 35%, #171b23)",
-            "placement": "outside-content",
-            "geometry": {
-              "left": 7,
-              "right": 7,
-              "top": 7,
-              "bottom": 7,
-              "contentWidth": 1419,
-              "contentHeight": 946
-            },
-            "captureBorderWidth": 7,
-            "borderWidth": 9.333333333333334,
-            "captureRadius": 20,
-            "frameWidthRatio": 1
-          }
-        },
-        {
-          "file": "freed-showcase-map-dark-star.png",
-          "theme": "dark-star",
-          "view": "map",
-          "desktopDecoration": {
-            "accent": "#2997ff",
-            "shell": "color-mix(in srgb, #2997ff 20%, #080a0f)",
-            "edge": "color-mix(in srgb, #2997ff 35%, #171b23)",
-            "placement": "outside-content",
-            "geometry": {
-              "left": 7,
-              "right": 7,
-              "top": 7,
-              "bottom": 7,
-              "contentWidth": 1419,
-              "contentHeight": 946
-            },
-            "captureBorderWidth": 7,
-            "borderWidth": 9.333333333333334,
-            "captureRadius": 20,
-            "frameWidthRatio": 1
-          }
-        },
-        {
-          "file": "freed-showcase-friends-dark-star.png",
-          "theme": "dark-star",
-          "view": "friends",
-          "rendererDiagnostics": {
-            "renderer": "raw-webgpu",
-            "decorativeStarCount": 100000,
-            "screenshotPixels": {
-              "quantizedColors": 462,
-              "width": 1201,
-              "height": 1540
-            }
-          },
-          "graphZoomWheelDelta": -220,
-          "desktopDecoration": {
-            "accent": "#2997ff",
-            "shell": "color-mix(in srgb, #2997ff 20%, #080a0f)",
-            "edge": "color-mix(in srgb, #2997ff 35%, #171b23)",
-            "placement": "outside-content",
-            "geometry": {
-              "left": 7,
-              "right": 7,
-              "top": 7,
-              "bottom": 7,
-              "contentWidth": 1419,
-              "contentHeight": 946
-            },
-            "captureBorderWidth": 7,
-            "borderWidth": 9.333333333333334,
-            "captureRadius": 20,
-            "frameWidthRatio": 1
-          }
-        },
-        {
-          "file": "freed-showcase-friend-detail-dark-star.png",
-          "theme": "dark-star",
-          "view": "friends",
-          "detail": true,
-          "rendererDiagnostics": {
-            "renderer": "raw-webgpu",
-            "decorativeStarCount": 100000,
-            "screenshotPixels": {
-              "quantizedColors": 347,
-              "width": 1201,
-              "height": 1540
-            }
-          },
-          "desktopDecoration": {
-            "accent": "#2997ff",
-            "shell": "color-mix(in srgb, #2997ff 20%, #080a0f)",
-            "edge": "color-mix(in srgb, #2997ff 35%, #171b23)",
-            "placement": "outside-content",
-            "geometry": {
-              "left": 7,
-              "right": 7,
-              "top": 7,
-              "bottom": 7,
-              "contentWidth": 1419,
-              "contentHeight": 946
-            },
-            "captureBorderWidth": 7,
-            "borderWidth": 9.333333333333334,
-            "captureRadius": 20,
-            "frameWidthRatio": 1
-          }
-        },
-        {
-          "file": "freed-showcase-stories-dark-star.png",
-          "theme": "dark-star",
-          "view": "stories",
-          "mobile": true,
-          "mobileLayout": {
-            "deviceMobile": true,
-            "storyColumns": [
-              2,
-              2,
-              2,
-              2,
-              2,
-              2,
-              2,
-              2,
-              2,
-              2,
-              2,
-              2
-            ]
-          },
-          "mobileDecoration": {
-            "accent": "#2997ff",
-            "shell": "color-mix(in srgb, #2997ff 20%, #080a0f)",
-            "edge": "color-mix(in srgb, #2997ff 35%, #171b23)",
-            "placement": "outside-content",
-            "geometry": {
-              "left": 7,
-              "right": 7,
-              "top": 7,
-              "bottom": 7,
-              "contentWidth": 390,
-              "contentHeight": 844
-            },
-            "captureBorderWidth": 7,
-            "borderWidth": 9.333333333333334,
-            "captureRadius": 44,
-            "frameWidthRatio": 1
-          }
-        },
-        {
-          "file": "freed-showcase-reader-dark-star.png",
-          "theme": "dark-star",
-          "view": "instagram",
-          "mobile": true,
-          "reader": true,
-          "mobileLayout": {
-            "deviceMobile": true,
-            "storyColumns": []
-          },
-          "mobileDecoration": {
-            "accent": "#2997ff",
-            "shell": "color-mix(in srgb, #2997ff 20%, #080a0f)",
-            "edge": "color-mix(in srgb, #2997ff 35%, #171b23)",
-            "placement": "outside-content",
-            "geometry": {
-              "left": 7,
-              "right": 7,
-              "top": 7,
-              "bottom": 7,
-              "contentWidth": 390,
-              "contentHeight": 844
-            },
-            "captureBorderWidth": 7,
-            "borderWidth": 9.333333333333334,
-            "captureRadius": 44,
-            "frameWidthRatio": 1
-          }
-        }
-      ],
-      "seconds": 3,
-      "animation": {
-        "url": "/showcase/freed-showcase-dark-star-animation-422f446f1ce0.webp",
-        "sha256": "422f446f1ce0721f9312e172664a2d4214d0a869e5eb5c82405d2b5331ee91b0",
-        "bytes": 884964
-      }
-    },
     "ember": {
-      "revision": "v26.9.901",
-      "generatedAt": "2026-09-09T19:52:01.352Z",
+      "revision": "v26.9.902",
+      "generatedAt": "2026-09-10T03:17:40.084Z",
       "captures": [
         {
           "file": "freed-showcase-unified-ember.png",
@@ -261,7 +67,7 @@
             "renderer": "raw-webgpu",
             "decorativeStarCount": 100000,
             "screenshotPixels": {
-              "quantizedColors": 369,
+              "quantizedColors": 370,
               "width": 1201,
               "height": 1540
             }
@@ -295,7 +101,7 @@
             "renderer": "raw-webgpu",
             "decorativeStarCount": 100000,
             "screenshotPixels": {
-              "quantizedColors": 337,
+              "quantizedColors": 338,
               "width": 1201,
               "height": 1540
             }
@@ -392,208 +198,14 @@
       ],
       "seconds": 3,
       "animation": {
-        "url": "/showcase/freed-showcase-ember-animation-f50aa764dbcb.webp",
-        "sha256": "f50aa764dbcb42e02307292bcc2fc5f153e154d7dd9c6a2802c755ed3b86a3f9",
-        "bytes": 847336
-      }
-    },
-    "midas": {
-      "revision": "v26.9.901",
-      "generatedAt": "2026-09-09T19:52:01.352Z",
-      "captures": [
-        {
-          "file": "freed-showcase-unified-midas.png",
-          "theme": "midas",
-          "view": "unified",
-          "desktopDecoration": {
-            "accent": "#b08a48",
-            "shell": "color-mix(in srgb, #b08a48 50%, #33281b)",
-            "edge": "color-mix(in srgb, #b08a48 75%, #33281b)",
-            "placement": "outside-content",
-            "geometry": {
-              "left": 7,
-              "right": 7,
-              "top": 7,
-              "bottom": 7,
-              "contentWidth": 1419,
-              "contentHeight": 946
-            },
-            "captureBorderWidth": 7,
-            "borderWidth": 9.333333333333334,
-            "captureRadius": 20,
-            "frameWidthRatio": 1
-          }
-        },
-        {
-          "file": "freed-showcase-map-midas.png",
-          "theme": "midas",
-          "view": "map",
-          "desktopDecoration": {
-            "accent": "#b08a48",
-            "shell": "color-mix(in srgb, #b08a48 50%, #33281b)",
-            "edge": "color-mix(in srgb, #b08a48 75%, #33281b)",
-            "placement": "outside-content",
-            "geometry": {
-              "left": 7,
-              "right": 7,
-              "top": 7,
-              "bottom": 7,
-              "contentWidth": 1419,
-              "contentHeight": 946
-            },
-            "captureBorderWidth": 7,
-            "borderWidth": 9.333333333333334,
-            "captureRadius": 20,
-            "frameWidthRatio": 1
-          }
-        },
-        {
-          "file": "freed-showcase-friends-midas.png",
-          "theme": "midas",
-          "view": "friends",
-          "rendererDiagnostics": {
-            "renderer": "raw-webgpu",
-            "decorativeStarCount": 100000,
-            "screenshotPixels": {
-              "quantizedColors": 424,
-              "width": 1201,
-              "height": 1540
-            }
-          },
-          "graphZoomWheelDelta": -220,
-          "desktopDecoration": {
-            "accent": "#b08a48",
-            "shell": "color-mix(in srgb, #b08a48 50%, #33281b)",
-            "edge": "color-mix(in srgb, #b08a48 75%, #33281b)",
-            "placement": "outside-content",
-            "geometry": {
-              "left": 7,
-              "right": 7,
-              "top": 7,
-              "bottom": 7,
-              "contentWidth": 1419,
-              "contentHeight": 946
-            },
-            "captureBorderWidth": 7,
-            "borderWidth": 9.333333333333334,
-            "captureRadius": 20,
-            "frameWidthRatio": 1
-          }
-        },
-        {
-          "file": "freed-showcase-friend-detail-midas.png",
-          "theme": "midas",
-          "view": "friends",
-          "detail": true,
-          "rendererDiagnostics": {
-            "renderer": "raw-webgpu",
-            "decorativeStarCount": 100000,
-            "screenshotPixels": {
-              "quantizedColors": 385,
-              "width": 1201,
-              "height": 1540
-            }
-          },
-          "desktopDecoration": {
-            "accent": "#b08a48",
-            "shell": "color-mix(in srgb, #b08a48 50%, #33281b)",
-            "edge": "color-mix(in srgb, #b08a48 75%, #33281b)",
-            "placement": "outside-content",
-            "geometry": {
-              "left": 7,
-              "right": 7,
-              "top": 7,
-              "bottom": 7,
-              "contentWidth": 1419,
-              "contentHeight": 946
-            },
-            "captureBorderWidth": 7,
-            "borderWidth": 9.333333333333334,
-            "captureRadius": 20,
-            "frameWidthRatio": 1
-          }
-        },
-        {
-          "file": "freed-showcase-stories-midas.png",
-          "theme": "midas",
-          "view": "stories",
-          "mobile": true,
-          "mobileLayout": {
-            "deviceMobile": true,
-            "storyColumns": [
-              2,
-              2,
-              2,
-              2,
-              2,
-              2,
-              2,
-              2,
-              2,
-              2,
-              2,
-              2
-            ]
-          },
-          "mobileDecoration": {
-            "accent": "#b08a48",
-            "shell": "color-mix(in srgb, #b08a48 50%, #33281b)",
-            "edge": "color-mix(in srgb, #b08a48 75%, #33281b)",
-            "placement": "outside-content",
-            "geometry": {
-              "left": 7,
-              "right": 7,
-              "top": 7,
-              "bottom": 7,
-              "contentWidth": 390,
-              "contentHeight": 844
-            },
-            "captureBorderWidth": 7,
-            "borderWidth": 9.333333333333334,
-            "captureRadius": 44,
-            "frameWidthRatio": 1
-          }
-        },
-        {
-          "file": "freed-showcase-reader-midas.png",
-          "theme": "midas",
-          "view": "instagram",
-          "mobile": true,
-          "reader": true,
-          "mobileLayout": {
-            "deviceMobile": true,
-            "storyColumns": []
-          },
-          "mobileDecoration": {
-            "accent": "#b08a48",
-            "shell": "color-mix(in srgb, #b08a48 50%, #33281b)",
-            "edge": "color-mix(in srgb, #b08a48 75%, #33281b)",
-            "placement": "outside-content",
-            "geometry": {
-              "left": 7,
-              "right": 7,
-              "top": 7,
-              "bottom": 7,
-              "contentWidth": 390,
-              "contentHeight": 844
-            },
-            "captureBorderWidth": 7,
-            "borderWidth": 9.333333333333334,
-            "captureRadius": 44,
-            "frameWidthRatio": 1
-          }
-        }
-      ],
-      "seconds": 3,
-      "animation": {
-        "url": "/showcase/freed-showcase-midas-animation-ddc7e9d0c0b8.webp",
-        "sha256": "ddc7e9d0c0b8d69135521ca738eddbb16665596ddc6472861f4961bedf1a2e8c",
-        "bytes": 800666
+        "url": "/showcase/freed-showcase-ember-animation-357a617e9179.webp",
+        "sha256": "357a617e91796a2fe7dbbf26e61b50448f2dabdc17b77458f1c20a080b17eff8",
+        "bytes": 881418
       }
     },
     "neon": {
-      "revision": "v26.9.901",
-      "generatedAt": "2026-09-09T19:52:01.352Z",
+      "revision": "v26.9.902",
+      "generatedAt": "2026-09-10T03:17:40.084Z",
       "captures": [
         {
           "file": "freed-showcase-unified-neon.png",
@@ -649,7 +261,7 @@
             "renderer": "raw-webgpu",
             "decorativeStarCount": 100000,
             "screenshotPixels": {
-              "quantizedColors": 558,
+              "quantizedColors": 559,
               "width": 1201,
               "height": 1540
             }
@@ -683,7 +295,7 @@
             "renderer": "raw-webgpu",
             "decorativeStarCount": 100000,
             "screenshotPixels": {
-              "quantizedColors": 449,
+              "quantizedColors": 446,
               "width": 1201,
               "height": 1540
             }
@@ -780,14 +392,208 @@
       ],
       "seconds": 3,
       "animation": {
-        "url": "/showcase/freed-showcase-neon-animation-24b99d485eb6.webp",
-        "sha256": "24b99d485eb62326db73e5af2bf795b4a6a9f45167425762718371be15b5dd8a",
-        "bytes": 929298
+        "url": "/showcase/freed-showcase-neon-animation-8afb2597fce7.webp",
+        "sha256": "8afb2597fce7d2e5902ab20641a57f1a0df2a8f21577e736279b8da8a1628f86",
+        "bytes": 872324
+      }
+    },
+    "midas": {
+      "revision": "v26.9.902",
+      "generatedAt": "2026-09-10T03:17:40.084Z",
+      "captures": [
+        {
+          "file": "freed-showcase-unified-midas.png",
+          "theme": "midas",
+          "view": "unified",
+          "desktopDecoration": {
+            "accent": "#b08a48",
+            "shell": "color-mix(in srgb, #b08a48 50%, #33281b)",
+            "edge": "color-mix(in srgb, #b08a48 75%, #33281b)",
+            "placement": "outside-content",
+            "geometry": {
+              "left": 7,
+              "right": 7,
+              "top": 7,
+              "bottom": 7,
+              "contentWidth": 1419,
+              "contentHeight": 946
+            },
+            "captureBorderWidth": 7,
+            "borderWidth": 9.333333333333334,
+            "captureRadius": 20,
+            "frameWidthRatio": 1
+          }
+        },
+        {
+          "file": "freed-showcase-map-midas.png",
+          "theme": "midas",
+          "view": "map",
+          "desktopDecoration": {
+            "accent": "#b08a48",
+            "shell": "color-mix(in srgb, #b08a48 50%, #33281b)",
+            "edge": "color-mix(in srgb, #b08a48 75%, #33281b)",
+            "placement": "outside-content",
+            "geometry": {
+              "left": 7,
+              "right": 7,
+              "top": 7,
+              "bottom": 7,
+              "contentWidth": 1419,
+              "contentHeight": 946
+            },
+            "captureBorderWidth": 7,
+            "borderWidth": 9.333333333333334,
+            "captureRadius": 20,
+            "frameWidthRatio": 1
+          }
+        },
+        {
+          "file": "freed-showcase-friends-midas.png",
+          "theme": "midas",
+          "view": "friends",
+          "rendererDiagnostics": {
+            "renderer": "raw-webgpu",
+            "decorativeStarCount": 100000,
+            "screenshotPixels": {
+              "quantizedColors": 426,
+              "width": 1201,
+              "height": 1540
+            }
+          },
+          "graphZoomWheelDelta": -220,
+          "desktopDecoration": {
+            "accent": "#b08a48",
+            "shell": "color-mix(in srgb, #b08a48 50%, #33281b)",
+            "edge": "color-mix(in srgb, #b08a48 75%, #33281b)",
+            "placement": "outside-content",
+            "geometry": {
+              "left": 7,
+              "right": 7,
+              "top": 7,
+              "bottom": 7,
+              "contentWidth": 1419,
+              "contentHeight": 946
+            },
+            "captureBorderWidth": 7,
+            "borderWidth": 9.333333333333334,
+            "captureRadius": 20,
+            "frameWidthRatio": 1
+          }
+        },
+        {
+          "file": "freed-showcase-friend-detail-midas.png",
+          "theme": "midas",
+          "view": "friends",
+          "detail": true,
+          "rendererDiagnostics": {
+            "renderer": "raw-webgpu",
+            "decorativeStarCount": 100000,
+            "screenshotPixels": {
+              "quantizedColors": 386,
+              "width": 1201,
+              "height": 1540
+            }
+          },
+          "desktopDecoration": {
+            "accent": "#b08a48",
+            "shell": "color-mix(in srgb, #b08a48 50%, #33281b)",
+            "edge": "color-mix(in srgb, #b08a48 75%, #33281b)",
+            "placement": "outside-content",
+            "geometry": {
+              "left": 7,
+              "right": 7,
+              "top": 7,
+              "bottom": 7,
+              "contentWidth": 1419,
+              "contentHeight": 946
+            },
+            "captureBorderWidth": 7,
+            "borderWidth": 9.333333333333334,
+            "captureRadius": 20,
+            "frameWidthRatio": 1
+          }
+        },
+        {
+          "file": "freed-showcase-stories-midas.png",
+          "theme": "midas",
+          "view": "stories",
+          "mobile": true,
+          "mobileLayout": {
+            "deviceMobile": true,
+            "storyColumns": [
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2
+            ]
+          },
+          "mobileDecoration": {
+            "accent": "#b08a48",
+            "shell": "color-mix(in srgb, #b08a48 50%, #33281b)",
+            "edge": "color-mix(in srgb, #b08a48 75%, #33281b)",
+            "placement": "outside-content",
+            "geometry": {
+              "left": 7,
+              "right": 7,
+              "top": 7,
+              "bottom": 7,
+              "contentWidth": 390,
+              "contentHeight": 844
+            },
+            "captureBorderWidth": 7,
+            "borderWidth": 9.333333333333334,
+            "captureRadius": 44,
+            "frameWidthRatio": 1
+          }
+        },
+        {
+          "file": "freed-showcase-reader-midas.png",
+          "theme": "midas",
+          "view": "instagram",
+          "mobile": true,
+          "reader": true,
+          "mobileLayout": {
+            "deviceMobile": true,
+            "storyColumns": []
+          },
+          "mobileDecoration": {
+            "accent": "#b08a48",
+            "shell": "color-mix(in srgb, #b08a48 50%, #33281b)",
+            "edge": "color-mix(in srgb, #b08a48 75%, #33281b)",
+            "placement": "outside-content",
+            "geometry": {
+              "left": 7,
+              "right": 7,
+              "top": 7,
+              "bottom": 7,
+              "contentWidth": 390,
+              "contentHeight": 844
+            },
+            "captureBorderWidth": 7,
+            "borderWidth": 9.333333333333334,
+            "captureRadius": 44,
+            "frameWidthRatio": 1
+          }
+        }
+      ],
+      "seconds": 3,
+      "animation": {
+        "url": "/showcase/freed-showcase-midas-animation-e5fde52871eb.webp",
+        "sha256": "e5fde52871ebaea63720e4204688adf632b55c5a2cc369fd0739a5d8a8b7e7cb",
+        "bytes": 847498
       }
     },
     "scriptorium": {
-      "revision": "v26.9.901",
-      "generatedAt": "2026-09-09T19:52:01.352Z",
+      "revision": "v26.9.902",
+      "generatedAt": "2026-09-10T03:17:40.084Z",
       "captures": [
         {
           "file": "freed-showcase-unified-scriptorium.png",
@@ -974,14 +780,14 @@
       ],
       "seconds": 3,
       "animation": {
-        "url": "/showcase/freed-showcase-scriptorium-animation-b4e6b0529695.webp",
-        "sha256": "b4e6b052969517bf6aa43603a3f8e30c42a8131703555a9db6df63e15d92ab46",
-        "bytes": 802678
+        "url": "/showcase/freed-showcase-scriptorium-animation-3637ee538c56.webp",
+        "sha256": "3637ee538c56a249ea6280b893bd758129d94083678b2cdb7801d89ffa8834b3",
+        "bytes": 859406
       }
     },
     "starship": {
-      "revision": "v26.9.901",
-      "generatedAt": "2026-09-09T19:52:01.352Z",
+      "revision": "v26.9.902",
+      "generatedAt": "2026-09-10T03:17:40.084Z",
       "captures": [
         {
           "file": "freed-showcase-unified-starship.png",
@@ -1037,7 +843,7 @@
             "renderer": "raw-webgpu",
             "decorativeStarCount": 100000,
             "screenshotPixels": {
-              "quantizedColors": 328,
+              "quantizedColors": 329,
               "width": 1201,
               "height": 1540
             }
@@ -1071,7 +877,7 @@
             "renderer": "raw-webgpu",
             "decorativeStarCount": 100000,
             "screenshotPixels": {
-              "quantizedColors": 300,
+              "quantizedColors": 301,
               "width": 1201,
               "height": 1540
             }
@@ -1168,9 +974,203 @@
       ],
       "seconds": 3,
       "animation": {
-        "url": "/showcase/freed-showcase-starship-animation-61499a5bc2e1.webp",
-        "sha256": "61499a5bc2e12f8e08be3d990104d588bc5efd08070f1780799c70cdcf26b15b",
-        "bytes": 992760
+        "url": "/showcase/freed-showcase-starship-animation-627d7dc25fe5.webp",
+        "sha256": "627d7dc25fe58fb162c7a1534b5ba1415d7c81db40db8e0a05926d9fd48e3645",
+        "bytes": 934426
+      }
+    },
+    "dark-star": {
+      "revision": "v26.9.902",
+      "generatedAt": "2026-09-10T03:17:40.084Z",
+      "captures": [
+        {
+          "file": "freed-showcase-unified-dark-star.png",
+          "theme": "dark-star",
+          "view": "unified",
+          "desktopDecoration": {
+            "accent": "#2997ff",
+            "shell": "color-mix(in srgb, #2997ff 20%, #080a0f)",
+            "edge": "color-mix(in srgb, #2997ff 35%, #171b23)",
+            "placement": "outside-content",
+            "geometry": {
+              "left": 7,
+              "right": 7,
+              "top": 7,
+              "bottom": 7,
+              "contentWidth": 1419,
+              "contentHeight": 946
+            },
+            "captureBorderWidth": 7,
+            "borderWidth": 9.333333333333334,
+            "captureRadius": 20,
+            "frameWidthRatio": 1
+          }
+        },
+        {
+          "file": "freed-showcase-map-dark-star.png",
+          "theme": "dark-star",
+          "view": "map",
+          "desktopDecoration": {
+            "accent": "#2997ff",
+            "shell": "color-mix(in srgb, #2997ff 20%, #080a0f)",
+            "edge": "color-mix(in srgb, #2997ff 35%, #171b23)",
+            "placement": "outside-content",
+            "geometry": {
+              "left": 7,
+              "right": 7,
+              "top": 7,
+              "bottom": 7,
+              "contentWidth": 1419,
+              "contentHeight": 946
+            },
+            "captureBorderWidth": 7,
+            "borderWidth": 9.333333333333334,
+            "captureRadius": 20,
+            "frameWidthRatio": 1
+          }
+        },
+        {
+          "file": "freed-showcase-friends-dark-star.png",
+          "theme": "dark-star",
+          "view": "friends",
+          "rendererDiagnostics": {
+            "renderer": "raw-webgpu",
+            "decorativeStarCount": 100000,
+            "screenshotPixels": {
+              "quantizedColors": 458,
+              "width": 1201,
+              "height": 1540
+            }
+          },
+          "graphZoomWheelDelta": -220,
+          "desktopDecoration": {
+            "accent": "#2997ff",
+            "shell": "color-mix(in srgb, #2997ff 20%, #080a0f)",
+            "edge": "color-mix(in srgb, #2997ff 35%, #171b23)",
+            "placement": "outside-content",
+            "geometry": {
+              "left": 7,
+              "right": 7,
+              "top": 7,
+              "bottom": 7,
+              "contentWidth": 1419,
+              "contentHeight": 946
+            },
+            "captureBorderWidth": 7,
+            "borderWidth": 9.333333333333334,
+            "captureRadius": 20,
+            "frameWidthRatio": 1
+          }
+        },
+        {
+          "file": "freed-showcase-friend-detail-dark-star.png",
+          "theme": "dark-star",
+          "view": "friends",
+          "detail": true,
+          "rendererDiagnostics": {
+            "renderer": "raw-webgpu",
+            "decorativeStarCount": 100000,
+            "screenshotPixels": {
+              "quantizedColors": 348,
+              "width": 1201,
+              "height": 1540
+            }
+          },
+          "desktopDecoration": {
+            "accent": "#2997ff",
+            "shell": "color-mix(in srgb, #2997ff 20%, #080a0f)",
+            "edge": "color-mix(in srgb, #2997ff 35%, #171b23)",
+            "placement": "outside-content",
+            "geometry": {
+              "left": 7,
+              "right": 7,
+              "top": 7,
+              "bottom": 7,
+              "contentWidth": 1419,
+              "contentHeight": 946
+            },
+            "captureBorderWidth": 7,
+            "borderWidth": 9.333333333333334,
+            "captureRadius": 20,
+            "frameWidthRatio": 1
+          }
+        },
+        {
+          "file": "freed-showcase-stories-dark-star.png",
+          "theme": "dark-star",
+          "view": "stories",
+          "mobile": true,
+          "mobileLayout": {
+            "deviceMobile": true,
+            "storyColumns": [
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2,
+              2
+            ]
+          },
+          "mobileDecoration": {
+            "accent": "#2997ff",
+            "shell": "color-mix(in srgb, #2997ff 20%, #080a0f)",
+            "edge": "color-mix(in srgb, #2997ff 35%, #171b23)",
+            "placement": "outside-content",
+            "geometry": {
+              "left": 7,
+              "right": 7,
+              "top": 7,
+              "bottom": 7,
+              "contentWidth": 390,
+              "contentHeight": 844
+            },
+            "captureBorderWidth": 7,
+            "borderWidth": 9.333333333333334,
+            "captureRadius": 44,
+            "frameWidthRatio": 1
+          }
+        },
+        {
+          "file": "freed-showcase-reader-dark-star.png",
+          "theme": "dark-star",
+          "view": "instagram",
+          "mobile": true,
+          "reader": true,
+          "mobileLayout": {
+            "deviceMobile": true,
+            "storyColumns": []
+          },
+          "mobileDecoration": {
+            "accent": "#2997ff",
+            "shell": "color-mix(in srgb, #2997ff 20%, #080a0f)",
+            "edge": "color-mix(in srgb, #2997ff 35%, #171b23)",
+            "placement": "outside-content",
+            "geometry": {
+              "left": 7,
+              "right": 7,
+              "top": 7,
+              "bottom": 7,
+              "contentWidth": 390,
+              "contentHeight": 844
+            },
+            "captureBorderWidth": 7,
+            "borderWidth": 9.333333333333334,
+            "captureRadius": 44,
+            "frameWidthRatio": 1
+          }
+        }
+      ],
+      "seconds": 3,
+      "animation": {
+        "url": "/showcase/freed-showcase-dark-star-animation-c13376f43d97.webp",
+        "sha256": "c13376f43d9737d17d2a82e95a3cd1c21eb20d954ba610dea68d7101731ee42d",
+        "bytes": 886812
       }
     }
   }
