@@ -1,0 +1,97 @@
+{
+  "tag": "v26.9.903",
+  "version": "26.9.903",
+  "channel": "production",
+  "dayKey": "26.9.9",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-09-10T04:57:10.311Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "production",
+    "previousPublishedTag": "v26.9.902",
+    "previousPublishedDayTag": "v26.9.803",
+    "compareRef": "HEAD",
+    "productCommitSha": "aa233e6987dece6d2a68e94041eae692453ea299",
+    "promotedDevCommitSha": "ca2f7d494fb430679bb5e504ebcaa0012a8de355",
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "production",
+        "previousPublishedTag": "v26.9.902",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "f141d13d06ee9839cdc5e514aa6e24e162732655",
+        "toInclusiveProductCommitSha": "aa233e6987dece6d2a68e94041eae692453ea299"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:709197038cc687ff0889d7e28497c08704b0a1f7096f4348479ea36bf5896ccb",
+        "currentDigest": "sha256:709197038cc687ff0889d7e28497c08704b0a1f7096f4348479ea36bf5896ccb"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:0edcfe31b5f063270f47342d609a98b532752a4c6a5c4c9cfe64ddc2fd4cf9e2",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.9.900",
+      "v26.9.901",
+      "v26.9.902",
+      "v26.9.903"
+    ],
+    "relatedBuildTags": [
+      "v26.9.900",
+      "v26.9.901",
+      "v26.9.902",
+      "v26.9.903"
+    ],
+    "prNumbers": [
+      1941,
+      1947,
+      1961,
+      1963,
+      1980,
+      1982,
+      1983,
+      1987
+    ],
+    "commitSubjects": [
+      "chore: promote dev into main for production release (#1987)",
+      "chore: prepare v26.9.902 (#1983)",
+      "chore: promote dev into main for production release (#1982)",
+      "chore: promote dev into main for production release (#1980)",
+      "chore: prepare v26.9.901 (#1963)",
+      "chore: promote dev into main for production release (#1961)",
+      "chore: prepare v26.9.900",
+      "chore: promote dev into main for production release (#1947)",
+      "chore: promote dev into main for production release",
+      "chore: promote dev into main for production release (#1941)",
+      "chore: promote dev into main for production release"
+    ]
+  },
+  "release": {
+    "deck": "PWA recovery, persistent device enrollment, and clearer Google Drive sync status",
+    "features": [],
+    "fixes": [
+      "Recognize completed Facebook logins and close the login window after healthy capture startup",
+      "Reader, feed, and header polish",
+      "Combine overlapping PWA Drive sync requests into one operation",
+      "Show the time of the last successful Drive sync in Settings",
+      "Recover storage access after a terminated browser worker without stealing another active session"
+    ],
+    "followUps": [
+      "Promote enrollment recovery to production",
+      "Prepare v26.9.902",
+      "Promote dev into main for production release",
+      "Facebook login recognition, reliable Saved views, and PWA recovery fixes",
+      "Show pending enrollment accurately and record the stage of stalled Google Drive synchronization"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.9.903\n\nPWA recovery, persistent device enrollment, and clearer Google Drive sync status\n\n### Fixes\n\n- Recognize completed Facebook logins and close the login window after healthy capture startup\n- Reader, feed, and header polish\n- Combine overlapping PWA Drive sync requests into one operation\n- Show the time of the last successful Drive sync in Settings\n- Recover storage access after a terminated browser worker without stealing another active session\n\n### Follow-ups\n\n- Promote enrollment recovery to production\n- Prepare v26.9.902\n- Promote dev into main for production release\n- Facebook login recognition, reliable Saved views, and PWA recovery fixes\n- Show pending enrollment accurately and record the stage of stalled Google Drive synchronization\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
