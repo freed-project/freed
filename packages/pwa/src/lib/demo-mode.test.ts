@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   isFreedDemoHostname,
+  preserveFreedDemoNavigationUrl,
   isFreedDemoMode,
   isFreedNewsletterPreviewHostname,
 } from "./demo-mode";
@@ -38,6 +39,18 @@ describe("demo mode", () => {
     expect(
       isFreedDemoMode("vercel.app.example.com", false, "?freed-demo=1"),
     ).toBe(false);
+  });
+
+  it("keeps accepted preview demo mode through canonical navigation without granting it to other hosts", () => {
+    const entry = "https://freed-preview.vercel.app/?freed-demo=1&theme=ember";
+    for (const path of ["/", "/friends", "/?platform=youtube&item=sample"]) {
+      const next = new URL(preserveFreedDemoNavigationUrl(path, entry), entry);
+      expect(next.searchParams.get("freed-demo")).toBe("1");
+      expect(next.searchParams.has("theme")).toBe(false);
+      expect(isFreedDemoMode(next.hostname, false, next.search)).toBe(true);
+      expect(preserveFreedDemoNavigationUrl(path, "https://app.freed.wtf/?freed-demo=1")).toBe(path);
+      expect(preserveFreedDemoNavigationUrl(path, "https://freed-preview.vercel.app/")).toBe(path);
+    }
   });
 
   it("keeps newsletter submissions inert on Vercel preview hosts", () => {

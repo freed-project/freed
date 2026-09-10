@@ -154,7 +154,7 @@ import {
   runCoordinatedPwaFactoryReset,
 } from "./lib/factory-reset-coordinator";
 import {
-  installFreedDemoCheckpoint,
+  installFreedDemoCheckpoint, mutateFreedDemoGraphLayout,
   setFreedDemoPersonCare,
 } from "./lib/demo-checkpoint";
 import {
@@ -259,6 +259,7 @@ function App() {
   const previewPopulationPercent = useSamplePopulationProgress(state => state.percent);
   const initialize = useAppStore((state) => state.initialize);
   const isInitialized = useAppStore((state) => state.isInitialized);
+  const hasSelectedLibrary = useAppStore((state) => state.hasSelectedLibrary);
   const initializationBlocker = useAppStore(
     (state) => state.initializationBlocker,
   );
@@ -578,6 +579,7 @@ function App() {
       NewsletterSettingsContent: PwaNewsletterSignup,
       LegalSettingsContent: IS_DEMO ? null : PwaLegalSettingsSection,
       FeedEmptyState: PwaFeedEmptyState,
+      LibrarySetupState: hasSelectedLibrary ? undefined : PwaLibrarySetupState,
       XSettingsContent: PwaXSettings,
       FacebookSettingsContent: PwaFacebookSettings,
       InstagramSettingsContent: PwaInstagramSettings,
@@ -644,7 +646,7 @@ function App() {
         ? undefined
         : executePwaLibraryCoreScopeAction,
       readFeedSignalCounts: readPwaLibraryCoreFeedSignalCounts,
-      readLibraryFacetSummary: IS_DEMO
+      readLibraryFacetSummary: !hasSelectedLibrary ? undefined : IS_DEMO
         ? async () =>
             projectDemoFacetReads(await readPwaLibraryCoreFacetSummary())
         : readPwaLibraryCoreFacetSummary,
@@ -679,8 +681,8 @@ function App() {
         : appendPwaLibraryCorePersonReachOut,
       upsertLibraryAccount: IS_DEMO ? undefined : upsertPwaLibraryCoreAccount,
       readLibraryAccountDetail: readPwaLibraryCoreAccountDetail,
-      queryLibraryCore: queryPwaNormalizedLibrary,
-      mutateDeviceGraphLayout: IS_DEMO ? undefined : mutatePwaDeviceGraphLayout,
+      queryLibraryCore: hasSelectedLibrary ? queryPwaNormalizedLibrary : undefined,
+      mutateDeviceGraphLayout: IS_DEMO ? mutateFreedDemoGraphLayout : mutatePwaDeviceGraphLayout,
       mutateDeviceContacts: IS_DEMO ? undefined : mutatePwaDeviceContactSync,
       queryDeviceContacts: queryPwaDeviceContacts,
       readLibraryPersonTimeline: readPwaLibraryCorePersonTimeline,
@@ -695,7 +697,7 @@ function App() {
         : readPwaLibraryCoreItemDetail,
       bugReporting: pwaBugReporting,
     }),
-    [checkForUpdates, handleFactoryReset, releaseChannel, setReleaseChannel],
+    [checkForUpdates, handleFactoryReset, hasSelectedLibrary, releaseChannel, setReleaseChannel],
   );
 
   if (!legalResolved) {
@@ -826,6 +828,14 @@ function App() {
 }
 
 export default OAuthRouter;
+function PwaLibrarySetupState() {
+  const isInitialized = useAppStore((state) => state.isInitialized);
+  return (
+    <div className="flex min-h-64 flex-col items-center justify-center px-4 py-8 text-center" data-testid="pwa-library-setup">
+      {isInitialized ? <PwaFeedEmptyState /> : <LoadingState message="Opening Freed" />}
+    </div>
+  );
+}
 function PwaNewsletterSignup() {
   const previewOnly =
     import.meta.env.DEV ||

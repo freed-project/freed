@@ -1,3 +1,4 @@
+import { usePlatformCapabilities } from "../../context/PlatformContext.js";
 import { createPortal } from "react-dom";
 import {
   useCallback,
@@ -333,7 +334,8 @@ export function SearchJumpField({
     replaceLibraryFriend,
     upsertLibraryPerson,
   } = platform;
-  const readOnly = platform.interactionMode === "read-only";
+  const capabilities = usePlatformCapabilities();
+  const readOnly = !capabilities.libraryEdits;
   const searchPaletteRequestId = useCommandSurfaceStore((s) => s.searchPaletteRequestId);
   const openAddFeedDialog = useCommandSurfaceStore((s) => s.openAddFeedDialog);
   const openSavedContentDialog = useCommandSurfaceStore((s) => s.openSavedContentDialog);
@@ -512,6 +514,7 @@ export function SearchJumpField({
   const ensurePersonForAccount = useCallback(
     async (accountId: string, personId: string | null) => {
       if (personId) return personId;
+      if (!capabilities.createPerson) throw new Error("Choose an existing person in this demo.");
       if (!readLibraryAccountDetail || !replaceLibraryFriend) {
         throw new Error("The Friend SQLite mutation is unavailable.");
       }
@@ -531,13 +534,14 @@ export function SearchJumpField({
       ]);
       return person.id;
     },
-    [readLibraryAccountDetail, replaceLibraryFriend],
+    [readLibraryAccountDetail, replaceLibraryFriend, capabilities.createPerson],
   );
 
   const actions = useMemo(
     () =>
       buildCommandPaletteActions({
         query: inputValue,
+        allowPersonCreation: capabilities.createPerson,
         activeView,
         activeFilter,
         settingsSections,
@@ -595,8 +599,13 @@ export function SearchJumpField({
           setSelectedPerson(resolvedPersonId);
           setActiveView("map");
         },
-        promoteSocialProfile: async (account, level) => {
+        promoteSocialProfile: capabilities.changeCare ? async (account, level) => {
           const resolvedPersonId = await ensurePersonForAccount(account.id, account.personId ?? null);
+          if (readOnly && platform.onReadOnlyPersonCareChange) {
+            await platform.onReadOnlyPersonCareChange(resolvedPersonId, level);
+            setSelectedPerson(resolvedPersonId);
+            return;
+          }
           if (!readLibraryPersonDetail || !upsertLibraryPerson) {
             throw new Error("The Person SQLite mutation is unavailable.");
           }
@@ -609,7 +618,7 @@ export function SearchJumpField({
             updatedAt: Date.now(),
           });
           setSelectedPerson(resolvedPersonId);
-        },
+        } : null,
         applyFeedSearch: (nextQuery: string) =>
           applyFeedSearch(
             {
@@ -628,7 +637,7 @@ export function SearchJumpField({
         openExportLibraryDialog: exportMarkdown
           ? () => openLibraryDialog("export")
           : null,
-        openCurrentItemUrl: selectedItem?.sourceUrl
+        openCurrentItemUrl: capabilities.externalLinks && selectedItem?.sourceUrl
           ? () => {
               if (openUrl) {
                 openUrl(selectedItem.sourceUrl!);
@@ -676,6 +685,10 @@ export function SearchJumpField({
       }),
     [
       activeCloudProviderLabel,
+      capabilities.createPerson,
+      capabilities.changeCare,
+      capabilities.externalLinks,
+      platform.onReadOnlyPersonCareChange,
       activeFilter,
       activeView,
       addRssFeed,

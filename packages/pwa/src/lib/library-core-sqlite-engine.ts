@@ -1500,6 +1500,7 @@ export class PwaLibraryCoreSqliteEngine {
         stage[4],
         "checkpoint canonical bytes",
       );
+      const retainedFollowerTables: string[] = [];
       onProgress?.(0, expectedRecordCount);
       if (replaceExisting) {
         const unresolvedLocalOperations = safeInteger(
@@ -1522,6 +1523,45 @@ export class PwaLibraryCoreSqliteEngine {
           throw new Error(
             "normalized checkpoint replacement has unresolved local operations",
           );
+        }
+        const retainFollower =
+          followerReceipt !== null &&
+          this.#database.exec({
+            sql: `SELECT request.actor_id
+                  FROM library_follower_actor_request AS request
+                  JOIN library_meta AS meta
+                    ON meta.library_id = request.library_id
+                   AND meta.authority_epoch = request.authority_epoch_id
+                  WHERE request.singleton_id = 1 AND meta.singleton_id = 1
+                    AND request.library_id = ?1
+                    AND request.authority_epoch_id = ?2;`,
+            bind: [libraryId, authorityEpoch],
+            rowMode: 0,
+            returnValue: "resultRows",
+          }).length === 1;
+        if (retainFollower) {
+          // Main-database scratch pages share the bounded pager and rollback
+          // transaction. TEMP tables would use this worker's in-memory temp store.
+          // Preserve exact replay history as well as cursors: canonical actor tips
+          // do not describe rejected local intents or transport acknowledgements.
+          for (const table of [
+            "library_follower_actor_request",
+            "library_intent_actors",
+            "library_intent_transactions",
+            "library_intent_members",
+            "library_intent_results",
+            "library_intent_result_cursors",
+            "library_intent_transport_heads",
+            "library_intent_transport_segments",
+            "library_result_transport_heads",
+            "library_result_transport_segments",
+          ]) {
+            this.#database.exec(`CREATE TABLE main.checkpoint_retained_${table}
+              AS SELECT * FROM ${table}
+              WHERE actor_id = (SELECT actor_id FROM library_follower_actor_request
+                                WHERE singleton_id = 1);`);
+            retainedFollowerTables.push(table);
+          }
         }
         this.#database.exec(`DELETE FROM library_optimistic_fields;
           DELETE FROM library_local_invalidations;
@@ -1680,7 +1720,10 @@ export class PwaLibraryCoreSqliteEngine {
             );
           }
           recordCount += 1;
-          if (recordCount % 1_024 === 0 || recordCount === expectedRecordCount) {
+          if (
+            recordCount % 1_024 === 0 ||
+            recordCount === expectedRecordCount
+          ) {
             onProgress?.(recordCount, expectedRecordCount);
           }
         }
@@ -1739,6 +1782,11 @@ export class PwaLibraryCoreSqliteEngine {
       }
       this.#verifyCheckpointContent();
       this.#reconcileLocalContentState();
+      for (const table of retainedFollowerTables) {
+        this.#database.exec(`INSERT INTO ${table}
+          SELECT * FROM main.checkpoint_retained_${table};
+          DROP TABLE main.checkpoint_retained_${table};`);
+      }
       const foreignKeys = this.#database.exec({
         sql: "PRAGMA foreign_key_check;",
         rowMode: "array",
@@ -1804,11 +1852,15 @@ export class PwaLibraryCoreSqliteEngine {
         if (localActors.length === 1) {
           const actorId = text(localActors[0], "local follower actor identity");
           const actorTips = this.#database.exec({
-            sql: `SELECT accepted_counter, accepted_operation_id,
-                         accepted_chain_digest
-                  FROM library_actors
-                  WHERE actor_id = ?1 AND authority_epoch_id = ?2
-                    AND retired_at IS NULL;`,
+            sql: `SELECT actor.accepted_counter, actor.accepted_operation_id,
+                         actor.accepted_chain_digest
+                  FROM library_actors AS actor
+                  JOIN library_follower_actor_request AS request
+                    ON request.actor_id = actor.actor_id
+                   AND request.actor_public_key = actor.public_key
+                   AND request.enrollment_certificate_digest = actor.enrollment_certificate_digest
+                  WHERE actor.actor_id = ?1 AND actor.authority_epoch_id = ?2
+                    AND actor.retired_at IS NULL;`,
             bind: [actorId, authorityEpoch],
             rowMode: "array",
             returnValue: "resultRows",
@@ -1828,7 +1880,11 @@ export class PwaLibraryCoreSqliteEngine {
           this.#database.exec({
             sql: `INSERT INTO library_intent_actors
                     (actor_id, next_counter, previous_operation_id,
-                     previous_chain_digest) VALUES (?1, ?2, ?3, ?4);`,
+                     previous_chain_digest)
+                  SELECT ?1, ?2, ?3, ?4
+                  WHERE NOT EXISTS (
+                    SELECT 1 FROM library_intent_actors WHERE actor_id = ?1
+                  );`,
             bind: [
               actorId,
               acceptedCounter + 1,

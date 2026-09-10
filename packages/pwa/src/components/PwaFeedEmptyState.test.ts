@@ -45,6 +45,7 @@ function renderWithPlatform(
 
 describe("PwaFeedEmptyState", () => {
   beforeEach(() => {
+    localStorage.removeItem("freed_cloud_provider");
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-09T12:00:30Z"));
@@ -59,6 +60,7 @@ describe("PwaFeedEmptyState", () => {
   });
 
   afterEach(() => {
+    localStorage.removeItem("freed_cloud_provider");
     vi.useRealTimers();
     useAppStore.setState({
       syncConnected: false,
@@ -69,6 +71,20 @@ describe("PwaFeedEmptyState", () => {
     useSamplePopulationProgress.setState({ active: false, percent: 0 });
     document.body.innerHTML = "";
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
+  });
+
+  it("returns empty demo scopes to the feed without connecting or clearing sample data", () => {
+    useAppStore.setState({ syncConnected: false, activeFilter: { platform: "rss" }, searchQuery: "missing" });
+    const { container, root } = renderWithPlatform(createElement(PwaFeedEmptyState), { interactionMode: "read-only" });
+    expect(container.textContent).toContain("No sample content in this view");
+    expect(container.textContent).not.toContain("Connect");
+    expect(container.textContent).not.toContain("Clear sample data");
+    expect(container.querySelectorAll("button")).toHaveLength(1);
+    act(() => container.querySelector("button")!.click());
+    expect(useAppStore.getState().activeFilter).toEqual({});
+    expect(useAppStore.getState().searchQuery).toBe("");
+    expect(useAppStore.getState().activeView).toBe("feed");
+    act(() => root.unmount());
   });
 
   it("shows only demo population progress while the empty Library is loading", () => {
@@ -92,6 +108,8 @@ describe("PwaFeedEmptyState", () => {
   });
 
   it("points the blank feed state to Sync settings when cloud sync is blocked", () => {
+    localStorage.setItem("freed_cloud_provider", "gdrive");
+    useAppStore.setState({ syncConnected: false });
     const blockedMessage =
       "Freed blocked a sync merge because it would remove too much feed history. Source: PWA sync. Largest input: 11,238 items. Merged result: 0 items. Potential loss: 11,238 items (100%). Restore from a trusted snapshot or reconnect sync after confirming which copy should win.";
     const openSettings = vi.fn();

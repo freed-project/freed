@@ -60,6 +60,7 @@ describe("PWA Library Core sync lifecycle", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
+    mocks.syncLibraryCore.mockResolvedValue({ followerEnrollmentState: "enrolled" });
     localStorage.clear();
     resetFactoryResetStateForTests();
     stopCloudSync();
@@ -70,6 +71,18 @@ describe("PWA Library Core sync lifecycle", () => {
     resetFactoryResetStateForTests();
     vi.unstubAllGlobals();
     vi.useRealTimers();
+  });
+
+  it("reports pending enrollment until the Primary admits this device", async () => {
+    mocks.syncLibraryCore.mockResolvedValueOnce({ followerEnrollmentState: "pending" });
+    await startCloudSync("gdrive", "stored-token");
+    expect(mocks.updateCloudProvider).toHaveBeenLastCalledWith("gdrive", expect.objectContaining({
+      status: "connected",
+      statusMessage: "Library downloaded. Device enrollment pending.",
+    }));
+    expect(mocks.recordCloudProviderEvent).toHaveBeenLastCalledWith("gdrive", expect.objectContaining({ kind: "waiting" }));
+    await syncCloudProviderNow("gdrive");
+    expect(mocks.recordCloudProviderEvent).toHaveBeenLastCalledWith("gdrive", expect.objectContaining({ kind: "success" }));
   });
 
   it.each(["success", "failure"] as const)(

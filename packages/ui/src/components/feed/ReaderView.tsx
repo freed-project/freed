@@ -1,3 +1,4 @@
+import { usePlatformCapabilities } from "../../context/PlatformContext.js";
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { lockBodyScroll } from "../../lib/body-scroll-lock.js";
 import { formatDistanceToNow } from "date-fns";
@@ -401,14 +402,15 @@ export function ReaderView({
       ? { status: "idle" }
       : offlinePlaylistState;
 
+  const capabilities = usePlatformCapabilities();
   const articleUrl = item.content.linkPreview?.url;
   const originalPostUrl = item.sourceUrl || articleUrl;
   const youtubeReference = useMemo(
     () =>
-      [item.sourceUrl, item.content.linkPreview?.url]
+      (capabilities.liveVideo ? [item.sourceUrl, item.content.linkPreview?.url] : [])
         .map((url) => parseYouTubeVideoUrl(url))
         .find((reference) => reference !== null) ?? null,
-    [item.content.linkPreview?.url, item.sourceUrl],
+    [capabilities.liveVideo, item.content.linkPreview?.url, item.sourceUrl],
   );
   const pendingSavedUrlDetails =
     item.platform === "saved" &&
@@ -1008,7 +1010,7 @@ export function ReaderView({
         {youtubeReference ? null : isStory && displayMediaUrls.length > 0 ? (
           <StoryMediaGallery urls={displayMediaUrls} types={displayMediaTypes} />
         ) : !isStory && readerPresentation.leadImage ? (
-          <img
+          <ReaderImage
             src={readerPresentation.leadImage.src}
             alt={readerPresentation.leadImage.alt}
             loading="lazy"
@@ -1192,7 +1194,7 @@ function ArticleContent({ blocks }: { blocks: ContentBlock[] }) {
           case "image":
             return (
               <figure key={i}>
-                <img
+                <ReaderImage
                   src={block.src}
                   alt={block.alt}
                   className="w-full rounded-xl bg-white/5 ring-1 ring-white/5"
@@ -1271,7 +1273,7 @@ function StoryMediaGallery({
                 className="max-h-[70vh] w-full bg-black object-contain"
               />
             ) : (
-              <img
+              <ReaderImage
                 src={url}
                 alt=""
                 loading="lazy"
@@ -1445,7 +1447,7 @@ function ReplyMediaGrid({
                 className="aspect-video w-full bg-black object-contain"
               />
             ) : (
-              <img
+              <ReaderImage
                 src={url}
                 alt=""
                 loading="lazy"
@@ -1505,4 +1507,15 @@ async function liveFetch(
   } catch {
     onError?.();
   }
+}
+
+/** Preserve readable content when a remote image cannot be delivered. */
+function ReaderImage(props: React.ComponentProps<"img">) {
+  const [failedSource, setFailedSource] = useState<string | null>(null);
+  if (props.src && failedSource === props.src) return (
+    <div className={props.className} role="img" aria-label={props.alt || "Image unavailable"}>
+      <span className="block p-4 text-center text-sm text-[var(--theme-text-muted)]">Image unavailable. You can still read this post.</span>
+    </div>
+  );
+  return <img {...props} onError={() => setFailedSource(typeof props.src === "string" ? props.src : null)} />;
 }
