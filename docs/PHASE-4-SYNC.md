@@ -318,3 +318,12 @@ Drive acceptance remains required before claiming the release effective.
 - Freed Desktop native Library Core from Phase 5
 - PWA OPFS SQLite runtime from Phase 6
 - Existing Google Drive adapter behavior and authenticated app-data storage
+
+### Conflicting enrollment isolation
+
+A native rejection of changed actor enrollment bytes leaves that actor unchanged
+and does not stop independent device requests or accepted actor synchronization.
+The coordinator records a bounded diagnostic and publishes no certificate for the
+rejected request. Other native, authority, cancellation, and transport failures
+still stop the pass. Recovery of a device whose retained request itself conflicts
+with its accepted enrollment remains a separate verification requirement.

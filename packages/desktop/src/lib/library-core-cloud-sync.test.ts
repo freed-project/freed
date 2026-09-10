@@ -598,7 +598,7 @@ describe("SQLite Library Google Drive production wiring", () => {
     stopSqliteLibraryCloudSync();
   });
 
-  it("admits normalized follower transport and publishes signed results without the retired journal", async () => {
+  it.each(["clean", "string conflict", "Error conflict"])("admits normalized follower transport and publishes signed results with %s enrollment discovery", async (scenario) => {
     const libraryId = "ab".repeat(32);
     const storageEpochId = "cd".repeat(32);
     const actorId = "34".repeat(32);
@@ -619,14 +619,23 @@ describe("SQLite Library Google Drive production wiring", () => {
       },
       transportObjectId: "intent-segment-1",
     };
-    mocks.discoverEnrollmentRequests.mockResolvedValue([
-      { bytes: new TextEncoder().encode("enrollment-request") },
-    ]);
-    mocks.countersignNormalizedEnrollment.mockResolvedValue({
-      actorId,
-      authorityEpochId: storageEpochId,
-      canonicalEnrollmentCertificateJson: "{}",
-      libraryId,
+    const requestNames = scenario === "clean"
+      ? ["enrollment-request"]
+      : ["conflict-before", "enrollment-request", "conflict-after"];
+    mocks.discoverEnrollmentRequests.mockResolvedValue(
+      requestNames.map((name) => ({ bytes: new TextEncoder().encode(name) })),
+    );
+    mocks.countersignNormalizedEnrollment.mockImplementation(async (request: string) => {
+      if (request.startsWith("conflict-")) {
+        const message = "normalized follower actor replay changed";
+        throw scenario === "string conflict" ? message : new Error(message);
+      }
+      return {
+        actorId,
+        authorityEpochId: storageEpochId,
+        canonicalEnrollmentCertificateJson: "{}",
+        libraryId,
+      };
     });
     mocks.discoverActorEnrollments.mockResolvedValue([
       {
@@ -1401,6 +1410,27 @@ describe("SQLite Library Google Drive production wiring", () => {
     );
     expect(mocks.publish).not.toHaveBeenCalled();
     expect(mocks.writeNative).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "normalized follower actor countersignature failed",
+    "normalized follower enrollment authority changed concurrently",
+    "database is locked",
+    "normalized follower actor replay changed unexpectedly",
+    Object.assign(new Error("normalized follower actor replay changed"), { name: "AbortError" }),
+  ])("stops enrollment discovery on unrelated refusal: %s", async (reason) => {
+    mocks.discoverEnrollmentRequests.mockResolvedValue([
+      { bytes: new TextEncoder().encode("enrollment-request") },
+      { bytes: new TextEncoder().encode("later-request") },
+    ]);
+    mocks.countersignNormalizedEnrollment.mockRejectedValueOnce(reason);
+    await expect(
+      publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token" }),
+    ).rejects.toThrow(reason instanceof Error ? reason.message : `countersign follower enrollment failed: ${reason}`);
+    expect(mocks.countersignNormalizedEnrollment).toHaveBeenCalledTimes(1);
+    expect(mocks.putImmutable).not.toHaveBeenCalled();
+    expect(mocks.discoverActorEnrollments).not.toHaveBeenCalled();
+    expect(mocks.publish).not.toHaveBeenCalled();
   });
 
   it("preserves a native string rejection with its publication stage", async () => {

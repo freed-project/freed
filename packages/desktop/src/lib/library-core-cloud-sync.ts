@@ -599,8 +599,26 @@ async function acceptPendingNormalizedFollowerEnrollments(input: {
       request.bytes,
     );
     const enrollment =
-      await tracedPublicationStage("countersign follower enrollment", () =>
-        countersignNormalizedLibraryFollowerActorRequest(canonical));
+      await tracedPublicationStage("countersign follower enrollment", async () => {
+        try {
+          return await countersignNormalizedLibraryFollowerActorRequest(canonical);
+        } catch (error) {
+          if (error instanceof Error && error.name === "AbortError") throw error;
+          const detail = error instanceof Error ? error.message : error;
+          if (detail !== "normalized follower actor replay changed") throw error;
+          // Native SQLite rejected this request without changing the enrolled
+          // actor. Keep the immutable conflict, but do not strand other actors.
+          const message = "Conflicting device enrollment rejected; continuing existing Library sync.";
+          log.warn(`[library-core-cloud] ${message}`);
+          recordCloudProviderEvent("gdrive", {
+            kind: "error",
+            stage: "upload",
+            message,
+          });
+          return null;
+        }
+      });
+    if (enrollment === null) continue;
     await tracedPublicationStage("publish follower enrollment", () => publishNormalizedActorEnrollment({
       adapter: input.adapter,
       enrollment,
