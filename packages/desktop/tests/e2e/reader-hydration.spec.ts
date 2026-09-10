@@ -15,6 +15,15 @@ const IG_REPLY_TEXT = "This reply belongs in the Freed reader.";
 const IG_REPLY_MEDIA = "https://cdninstagram.example/comment-frame.jpg";
 const STORY_REPLY_MESSAGE = "Story replies are private on this platform. Open the story to reply there.";
 
+test.beforeEach(async ({ page }) => {
+  const replyMedia = new Set([`${X_REPLY_MEDIA}:large`, FB_REPLY_MEDIA, IG_REPLY_MEDIA]);
+  await page.route((url) => replyMedia.has(url.href), (route) => route.fulfill({
+    status: 200,
+    contentType: "image/svg+xml",
+    body: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><rect width="16" height="16" fill="#888"/></svg>',
+  }));
+});
+
 async function injectItems(page: import("@playwright/test").Page): Promise<void> {
   await page.evaluate(
     async ({ articleTitle, articleUrl, storyAuthor, xTitle, fbTitle, igTitle }) => {
@@ -401,15 +410,14 @@ test("X post reader offers native replies first and loads inline replies on beta
   await app.page.getByRole("button", { name: "Load replies inline, beta" }).click();
   await expect(app.page.getByRole("heading", { name: "Replies" })).toBeVisible();
   await expect(app.page.getByText(X_REPLY_TEXT)).toBeVisible();
-  await expect(app.page.locator(`img[src="${X_REPLY_MEDIA}:large"]`)).toBeVisible();
+  const replyImage = app.page.locator(`img[src="${X_REPLY_MEDIA}:large"]`);
+  await expect(replyImage).toBeVisible();
+  await expect.poll(() => replyImage.evaluate((image: HTMLImageElement) =>
+    image.complete && image.naturalWidth > 0,
+  )).toBe(true);
 });
 
 test("Facebook post reader offers native replies first and loads inline comments on beta action", async ({ app, ipc }) => {
-  await app.page.route(FB_REPLY_MEDIA, (route) => route.fulfill({
-    status: 200,
-    contentType: "image/svg+xml",
-    body: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><rect width="16" height="16" fill="#888"/></svg>',
-  }));
   await app.goto();
   await app.waitForReady();
   await ipc.setHandler("fb_scrape_comments", () => ({
@@ -490,7 +498,11 @@ test("Instagram reader offers native replies first and loads inline comments on 
     .toBe(true);
   await expect(app.page.getByRole("heading", { name: "Replies" })).toBeVisible();
   await expect(app.page.getByText(IG_REPLY_TEXT)).toBeVisible();
-  await expect(app.page.locator(`img[src="${IG_REPLY_MEDIA}"]`)).toBeVisible();
+  const replyImage = app.page.locator(`img[src="${IG_REPLY_MEDIA}"]`);
+  await expect(replyImage).toBeVisible();
+  await expect.poll(() => replyImage.evaluate((image: HTMLImageElement) =>
+    image.complete && image.naturalWidth > 0,
+  )).toBe(true);
 });
 
 test("Facebook and Instagram stories show that story replies stay private", async ({ app, ipc }) => {
