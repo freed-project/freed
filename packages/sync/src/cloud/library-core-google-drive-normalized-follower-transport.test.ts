@@ -57,6 +57,7 @@ function descriptor(digest = "55".repeat(32) as LibraryCoreLowercaseHex64) {
 function certificateBytes(input: {
   readonly actorId: string;
   readonly enrollmentRequestDigest: string;
+  readonly enrollmentBodyDigest?: string;
 }): Uint8Array {
   return encodeLibraryCoreCanonicalValue({
     authority_signature: "66".repeat(64),
@@ -64,9 +65,9 @@ function certificateBytes(input: {
       actor_enrollment_body: {
         actor_id: input.actorId,
       },
-      enrollment_body_digest: input.enrollmentRequestDigest,
+      enrollment_body_digest: input.enrollmentBodyDigest ?? "77".repeat(32),
     },
-    certificate_digest: "77".repeat(32),
+    certificate_digest: input.enrollmentRequestDigest,
   });
 }
 
@@ -113,6 +114,8 @@ describe("Google Drive normalized follower transport", () => {
     const wrongDigest = certificateBytes({
       actorId,
       enrollmentRequestDigest: "88".repeat(32),
+      // Matching only the inner enrollment body must not select this certificate.
+      enrollmentBodyDigest: enrollmentRequestDigest,
     });
     const wrongActor = certificateBytes({
       actorId: "99".repeat(32),

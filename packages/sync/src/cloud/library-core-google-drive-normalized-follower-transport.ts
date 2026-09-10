@@ -61,7 +61,11 @@ function enrollmentCertificateIdentity(bytes: Uint8Array): Readonly<{
   const actorId = (
     enrollmentBody as Readonly<Record<string, LibraryCoreCanonicalValue>>
   ).actor_id;
-  const enrollmentRequestDigest = body.enrollment_body_digest;
+  // The retained request binds the complete capability certificate body,
+  // not the different digest of its nested actor enrollment body.
+  const enrollmentRequestDigest = (
+    value as Readonly<Record<string, LibraryCoreCanonicalValue>>
+  ).certificate_digest;
   return typeof actorId === "string" &&
     typeof enrollmentRequestDigest === "string"
     ? Object.freeze({ actorId, enrollmentRequestDigest })
