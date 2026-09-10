@@ -3,7 +3,7 @@
   "version": "26.9.1001",
   "channel": "production",
   "dayKey": "26.9.10",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-09-10T18:19:19.904Z",
   "model": "heuristic",
@@ -55,10 +55,13 @@
     ]
   },
   "release": {
-    "deck": "Promote dev into main for production release",
+    "deck": "More reliable device enrollment and Google Contacts recovery.",
     "features": [],
-    "fixes": [],
+    "fixes": [
+      "Match Google Drive enrollment certificates to the complete device request so valid certificates can reach verification.",
+      "Recover from the observed expired Google Contacts sync token response with one fresh read, discarding partial results and preserving unrelated errors."
+    ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.9.1001\n\nPromote dev into main for production release\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.9.1001\n\nMore reliable device enrollment and Google Contacts recovery\n\n### Fixes\n\n- Match Google Drive enrollment certificates to the complete device request so valid certificates can reach verification\n- Recover from the observed expired Google Contacts sync token response with one fresh read, discarding partial results and preserving unrelated errors\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
