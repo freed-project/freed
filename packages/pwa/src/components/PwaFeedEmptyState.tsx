@@ -1,3 +1,5 @@
+import { usePlatformCapabilities } from "@freed/ui/context";
+import { navigateToFeedView } from "@freed/ui/lib/workspace-navigation";
 import { useAppStore } from "../lib/store";
 import { LoadingState } from "@freed/ui/components/LoadingState";
 import { useDebugStore } from "@freed/ui/lib/debug-store";
@@ -5,16 +7,15 @@ import { SampleDataTestingSection } from "@freed/ui/components/SampleDataTesting
 import { useLibraryRssFeedDetail } from "@freed/ui/hooks/useLibraryRssFeedDetail";
 import { useCloudSyncActivity } from "./cloudSyncActivity";
 import { useSamplePopulationProgress } from "../lib/sample-population-progress";
+import { getCloudProvider } from "../lib/sync";
 
 const openSyncSettings = () =>
   window.dispatchEvent(new CustomEvent("freed:open-settings", { detail: { scrollTo: "sync" } }));
 
-function isMergeBlocked(message?: string): boolean {
-  return message?.includes("blocked a sync merge") ?? false;
-}
-
 export function PwaFeedEmptyState() {
-  const syncConnected = useAppStore((s) => s.syncConnected);
+  const { demo } = usePlatformCapabilities();
+  const syncActive = useAppStore((s) => s.syncConnected);
+  const syncConnected = syncActive || getCloudProvider() === "gdrive";
   const isSyncing = useAppStore((s) => s.isSyncing);
   const samplePopulationActive = useSamplePopulationProgress((s) => s.active);
   const samplePopulationPercent = useSamplePopulationProgress((s) => s.percent);
@@ -28,7 +29,7 @@ export function PwaFeedEmptyState() {
   const cloudState = cloudProviders?.gdrive ?? null;
   const cloudActivity = useCloudSyncActivity(cloudState);
   const cloudError = cloudState?.error;
-  const syncBlocked = syncConnected && isMergeBlocked(cloudError);
+  const syncBlocked = syncConnected && Boolean(cloudError);
   const cloudStage = cloudState?.stage;
   const cloudTransferRunning =
     syncConnected &&
@@ -48,6 +49,20 @@ export function PwaFeedEmptyState() {
     return (
       <>
         <LoadingState message={`Loading · ${samplePopulationPercent.toLocaleString()}%`} />
+      </>
+    );
+  }
+
+  if (demo) {
+    return (
+      <>
+        <p className="mb-2 text-lg font-medium">No sample content in this view</p>
+        <p className="max-w-xs text-sm text-[var(--theme-text-muted)]">Try another filter or return to the sample feed.</p>
+        <button type="button" className="theme-accent-button mt-4 rounded-xl px-5 py-2.5 text-sm font-medium" onClick={() => {
+          const state = useAppStore.getState();
+          state.setSearchQuery("");
+          navigateToFeedView(state, {});
+        }}>Return to feed</button>
       </>
     );
   }
@@ -113,7 +128,7 @@ export function PwaFeedEmptyState() {
           : cloudTransferRunning && cloudActivity
           ? `${cloudActivity.detailLabel}. Running for ${cloudActivity.elapsedLabel}.`
           : syncConnected
-          ? "Freed Desktop is connected. New feed content will appear here once fetched."
+          ? "Google Drive is connected. Your Library will appear after sync completes."
           : "Connect to Freed Desktop to sync your feeds."}
       </p>
       {(syncBlocked || !syncConnected) && (

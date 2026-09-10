@@ -584,6 +584,9 @@ export interface PlatformConfig {
   /** Replaces default "All caught up" empty state when feeds exist but no items */
   FeedEmptyState: ComponentType | null;
 
+  /** Setup content while this device has no verified Library to query. */
+  LibrarySetupState?: ComponentType;
+
   /**
    * Content rendered in the Settings > Sources > X section.
    * When null, the X section is omitted from settings entirely (e.g. PWA).
@@ -1015,4 +1018,28 @@ export function useAvatarSource(sourceUrl: string | null | undefined): string | 
 export function useAppStore<T>(selector: (state: BaseAppState) => T): T {
   const { store } = usePlatform();
   return store(selector);
+}
+
+/** One capability policy for demo controls and their alternate entry points. */
+export function getPlatformCapabilities(platform: Partial<PlatformConfig>) {
+  const demo = platform.interactionMode === "read-only";
+  return {
+    demo,
+    libraryEdits: !demo,
+    createPerson: !demo && !!platform.replaceLibraryFriend,
+    linkAccounts: !demo && !!platform.assignLibraryAccountToPerson,
+    changeCare: demo ? !!platform.onReadOnlyPersonCareChange : !!platform.upsertLibraryPerson,
+    pinGraph: !!platform.mutateDeviceGraphLayout,
+    externalLinks: !demo,
+    liveVideo: !demo,
+    maintenance: !demo,
+    diagnostics: !demo,
+    publishStoryWall: !demo && !!platform.publishStoryWall,
+    importStoryWall: !demo && !!platform.importInstagramStoryWallArchive,
+  };
+}
+
+export function usePlatformCapabilities() {
+  // Fatal recovery can render before a platform provider is installed.
+  return getPlatformCapabilities(useContext(PlatformCtx) ?? {});
 }

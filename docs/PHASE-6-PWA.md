@@ -68,6 +68,18 @@ pending until the exact tagged assets are published and checked.
 
 ## Current SQLite PWA work
 
+A device with no accepted checkpoint shows setup guidance across Feed, Map,
+Friends, and the Saved overview. Settings and sample population remain usable.
+Receipt-verified runtime state enables the normal pages after the first import
+or local sample activation, including an empty Library. Missing storage does
+not become a successful query result or a fabricated checkpoint. WebKit covers
+setup, sample activation, and reopening the selected Library after reload.
+
+Worker restart allows a bounded three-second wait for the previous browser lock
+to release, while another live tab still retains exclusive ownership. Checkpoint
+replacement retains same-epoch enrollment and follower replay records. Settings
+coalesces status reads and no longer exports the Library on each refresh.
+
 The reader consolidates original-post navigation into its provider button and
 keeps theme, zoom, and Focus controls available in the toolbar menu. Synthetic
 items omit reply controls. Demo Focus changes remain document-local and do not
@@ -959,3 +971,11 @@ Read-on-scroll refreshes replace the complete resident window atomically, avoidi
 Local feature previews replace marked sample records once per page load through the same shared curated population used by the public demo, including its authored timelines, relationships and fresh randomized presentation seed. Browser previews retain remote image URLs; mocked Desktop uses inline media and bypasses its unavailable native avatar cache. Ordinary test fixtures retain explicit population control.
 
 The Populate sample data action in every build uses that same curated generator and fresh randomized posting times. Manual population remains additive in Libraries containing real records; only explicit sample cleanup or local-preview replacement removes marked sample records. Settings counts describe the shared population, including people who are connections rather than friends.
+
+## Demo capability audit, September 9, 2026
+
+The public demo exposes presentation controls and session-only relationship and graph-pin changes. Shared capability checks hide durable Library edits, account linking, offline caching, archive maintenance, publishing, imports, and diagnostics. Unsupported actions are fenced at their handlers as well as their visible entry points. Reload restores the curated session. Startup recovery offers a plain reload action without SQLite internals or local-data replacement.
+
+Empty demo scopes offer a return to the sample feed; connection and sample-data population or deletion controls remain hidden.
+
+Vercel demo links retain their accepted demo parameter through navigation and reload, preserving memory-only session behavior after the router canonicalizes a route. Other hosts cannot enable demo mode through this parameter.

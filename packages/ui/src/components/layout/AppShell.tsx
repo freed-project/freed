@@ -1,3 +1,4 @@
+import { usePlatformCapabilities } from "../../context/PlatformContext.js";
 import {
   Suspense,
   lazy,
@@ -96,13 +97,15 @@ function sameCanvasViewportInsets(
 }
 
 export function AppShell({ children }: AppShellProps) {
+  const capabilities = usePlatformCapabilities();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [friendsMobileSurface, setFriendsMobileSurface] =
     useState<FriendsMobileSurface>("graph");
   const isMobileViewport = useIsMobile();
   const isMobileDevice = useIsMobileDevice();
   const usesDocumentScroll = isMobileViewport || isMobileDevice;
-  const debugVisible = useDebugStore((s) => s.visible);
+  const requestedDebugVisible = useDebugStore((s) => s.visible);
+  const debugVisible = capabilities.diagnostics && requestedDebugVisible;
   const toggleDebug = useDebugStore((s) => s.toggle);
   const activeView = useAppStore((s) => s.activeView);
   const selectedFriendId = useAppStore((s) => s.selectedPersonId);
@@ -118,6 +121,7 @@ export function AppShell({ children }: AppShellProps) {
   const setActiveView = useAppStore((s) => s.setActiveView);
   const {
     queryLibraryCore,
+    LibrarySetupState,
     readLibraryAccountDetail,
     readLibraryPersonDetail,
     replaceLibraryFriend,
@@ -366,14 +370,14 @@ export function AppShell({ children }: AppShellProps) {
         requestSearchPalette();
       } else if (e.key === "D" && e.shiftKey && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
-        toggleDebug();
+        if (capabilities.diagnostics) toggleDebug();
       } else if (e.key === "Escape" && debugVisible) {
-        toggleDebug();
+        if (capabilities.diagnostics) toggleDebug();
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [blockingModalOpen, debugVisible, requestSearchPalette, toggleDebug]);
+  }, [blockingModalOpen, capabilities.diagnostics, debugVisible, requestSearchPalette, toggleDebug]);
 
   useEffect(() => {
     if (!isMobileViewport && mobileSidebarOpen) {
@@ -536,7 +540,7 @@ export function AppShell({ children }: AppShellProps) {
               data-testid="friends-background-layer"
             />
           ) : null}
-          {activeView === "map" ? (
+          {activeView === "map" && !LibrarySetupState ? (
             <div
               className="absolute inset-0 z-0"
               data-testid="map-background-layer"
@@ -558,11 +562,11 @@ export function AppShell({ children }: AppShellProps) {
           </div>
           <main
             ref={mainRef}
-            className={`relative min-w-0 flex-1 ${activeView === "friends" ? "z-0" : "z-10"} ${activeView === "map" ? "pointer-events-none" : ""} ${
+            className={`relative min-w-0 flex-1 ${activeView === "friends" ? "z-0" : "z-10"} ${activeView === "map" && !LibrarySetupState ? "pointer-events-none" : ""} ${
               usesDocumentScroll ? "" : activeView === "friends" ? "min-h-0 overflow-visible" : "min-h-0 overflow-hidden"
             }`}
           >
-            {activeView === "friends"
+            {LibrarySetupState ? <LibrarySetupState /> : activeView === "friends"
               ? (
                 <Suspense fallback={<div className="h-full min-h-0" data-testid="friends-view-loading" />}>
                   <LazyFriendsView
@@ -599,7 +603,7 @@ export function AppShell({ children }: AppShellProps) {
                   onMouseDown={handleDebugDragStart}
                 />
               )}
-              <DebugPanel variant="drawer" />
+              {debugVisible && <DebugPanel variant="drawer" />}
             </div>
           </div>
         </div>
@@ -608,15 +612,15 @@ export function AppShell({ children }: AppShellProps) {
             <DebugPanel variant="overlay" />
           </div>
         )}
-        <AddFeedDialog open={addFeedOpen} onClose={closeAddFeedDialog} />
+        <AddFeedDialog open={capabilities.libraryEdits && addFeedOpen} onClose={closeAddFeedDialog} />
         <SavedContentDialog
-          open={savedContentOpen}
+          open={capabilities.libraryEdits && savedContentOpen}
           initialUrl={savedContentInitialUrl}
           editItem={savedContentEditItem}
           initialError={savedContentError}
           onClose={handleCloseSavedContentDialog}
         />
-        {libraryDialogOpen ? (
+        {capabilities.libraryEdits && libraryDialogOpen ? (
           <LibraryDialog
             onClose={closeLibraryDialog}
             initialTab={libraryDialogTab}
