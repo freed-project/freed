@@ -1,5 +1,37 @@
 [
   {
+    "version": "26.9.1001",
+    "tagName": "v26.9.1001",
+    "channel": "production",
+    "date": "2026-09-10T19:18:25Z",
+    "deck": "More reliable device enrollment and Google Contacts recovery.",
+    "features": [],
+    "fixes": [
+      {
+        "text": "Match Google Drive enrollment certificates to the complete device request so valid certificates can reach verification."
+      },
+      {
+        "text": "Recover from the observed expired Google Contacts sync token response with one fresh read, discarding partial results and preserving unrelated errors."
+      }
+    ],
+    "followUps": [],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.9.1001",
+    "prNumbers": [
+      1992,
+      1994
+    ],
+    "builds": [
+      "26.9.1001"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.9.1001",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.9.1001",
+        "channel": "production"
+      }
+    ]
+  },
+  {
     "version": "26.9.903",
     "tagName": "v26.9.903",
     "channel": "production",
