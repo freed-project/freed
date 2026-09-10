@@ -23,7 +23,6 @@ import {
   LIBRARY_CORE_LOCAL_CHANGE_FEED_QUERY_ID,
   LIBRARY_CORE_OPTIMISTIC_FIELDS_QUERY_ID,
   LIBRARY_CORE_OPTIMISTIC_FIELDS_SCHEMA_VERSION,
-  LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES,
   readLibraryCoreNormalizedAccountDetailV1,
   openLibraryCoreNormalizedFeedReaderV1,
   openLibraryCoreNormalizedSavedFeedReaderV1,
@@ -59,7 +58,6 @@ import {
   type LibraryCoreFollowerTransportContextV2,
   type LibraryCoreLocalChangeFeedResponseV1,
   type LibraryCoreSelectedNormalizedCheckpointReceiptV2,
-  type LibraryCoreNormalizedCheckpointExportDescriptorV2,
   type LibraryCoreRssFeedScopeActionKindV1,
   type LibraryCoreScopeActionRequestV1,
   type LibraryCoreScopeActionReceiptV1,
@@ -87,8 +85,6 @@ import {
   pagePwaScopeActionStage,
   queryPwaNormalizedLibrary,
   mutatePwaContentPolicy,
-  describePwaNormalizedCheckpointExport,
-  readPwaNormalizedCheckpointExportPage,
   readPwaFollowerTransportContext,
   readPwaNormalizedCheckpointReceipt,
   resetPwaNormalizedLibrary,
@@ -141,7 +137,13 @@ type LibraryCoreStateListener = (
 
 const listeners = new Set<LibraryCoreStateListener>();
 let lastState: LibraryCoreRuntimeStateV1 | null = null;
+let selectedLibraryAvailable = false;
 let lastLocalChangeSequence = 0;
+
+/** Presentation readiness from the last receipt-verified Library state. */
+export function hasSelectedPwaLibraryCore(): boolean {
+  return selectedLibraryAvailable;
+}
 
 const NORMALIZED_READER_RUNTIME = Object.freeze({
   query: queryPwaNormalizedLibrary,
@@ -155,7 +157,6 @@ export async function readPwaLibraryCoreSelectedCheckpointReceipt(): Promise<Lib
 export interface PwaLibraryCoreCloudReceiptV2 {
   readonly checkpoint: LibraryCoreSelectedNormalizedCheckpointReceiptV2 | null;
   readonly follower: LibraryCoreFollowerTransportContextV2 | null;
-  readonly localExport: LibraryCoreNormalizedCheckpointExportDescriptorV2 | null;
 }
 
 /** Read one bounded local view of checkpoint and follower cloud progress. */
@@ -165,46 +166,7 @@ export async function readPwaLibraryCoreCloudReceiptV2(): Promise<PwaLibraryCore
     return Object.freeze({
       checkpoint: null,
       follower: null,
-      localExport: null,
     });
-  }
-  let localExport: LibraryCoreNormalizedCheckpointExportDescriptorV2 | null;
-  try {
-    localExport = await describePwaNormalizedCheckpointExport();
-    if (
-      localExport.libraryId !== checkpoint.libraryId ||
-      localExport.authorityEpoch !== checkpoint.authorityEpoch ||
-      localExport.writerId !== checkpoint.writerActorId
-    ) {
-      throw new Error("PWA local checkpoint export crosses Library authority");
-    }
-    const firstPage = await readPwaNormalizedCheckpointExportPage({
-      page: {
-        after: null,
-        maximumRecords: 1,
-        maximumResponseBytes: LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES,
-      },
-      snapshot: localExport,
-    });
-    const header = firstPage.records[0];
-    if (
-      header?.registryKey !== "00_checkpoint_header" ||
-      header.payload.libraryId !== localExport.libraryId ||
-      header.payload.authorityEpoch !== localExport.authorityEpoch ||
-      header.payload.sourceRevision !== localExport.sourceRevision
-    ) {
-      throw new Error("PWA local checkpoint export header is invalid");
-    }
-  } catch (error) {
-    if (
-      error instanceof Error &&
-      error.message ===
-        "normalized checkpoint export has unresolved local intents"
-    ) {
-      localExport = null;
-    } else {
-      throw error;
-    }
   }
   let follower: LibraryCoreFollowerTransportContextV2 | null;
   try {
@@ -225,7 +187,7 @@ export async function readPwaLibraryCoreCloudReceiptV2(): Promise<PwaLibraryCore
   ) {
     throw new Error("PWA follower cloud receipt crosses Library authority");
   }
-  return Object.freeze({ checkpoint, follower, localExport });
+  return Object.freeze({ checkpoint, follower });
 }
 
 async function readSelectedState(): Promise<LibraryCoreRuntimeStateV1 | null> {
@@ -255,8 +217,10 @@ async function readSelectedState(): Promise<LibraryCoreRuntimeStateV1 | null> {
 function publishState(
   state: LibraryCoreRuntimeStateV1,
   localChange?: PwaLibraryCoreLocalChangeV1,
+  hasSelectedLibrary = true,
 ): void {
   lastState = state;
+  selectedLibraryAvailable = hasSelectedLibrary;
   for (const listener of listeners) listener(state, localChange);
 }
 
@@ -341,13 +305,13 @@ export function subscribePwaLibraryCoreState(
 }
 
 export async function initializePwaLibraryCoreState(): Promise<LibraryCoreRuntimeStateV1> {
-  const state =
-    (await readSelectedState()) ?? createEmptyLibraryCoreRuntimeStateV1();
+  const selectedState = await readSelectedState();
+  const state = selectedState ?? createEmptyLibraryCoreRuntimeStateV1();
   lastLocalChangeSequence =
     state.searchCorpusVersion === 0
       ? 0
       : await readPwaLocalChangeSequence(state.searchCorpusVersion);
-  publishState(state);
+  publishState(state, undefined, selectedState !== null);
   return state;
 }
 
@@ -1376,6 +1340,7 @@ registerPwaFactoryResetQuiesceHandler(
   async () => {
     await closePwaNormalizedLibrary();
     lastState = null;
+    selectedLibraryAvailable = false;
     lastLocalChangeSequence = 0;
   },
   25,

@@ -129,6 +129,7 @@ import {
   clearPwaLibraryCoreSampleData,
   drainPwaLibraryCoreLocalChanges,
   initializePwaLibraryCoreState,
+  hasSelectedPwaLibraryCore,
   openPwaLibraryCoreFriendsFeedReader,
   pinPwaLibraryCoreItemContent,
   readPwaLibraryCoreItemDetail,
@@ -443,16 +444,10 @@ describe("PWA Library Core bounded scanner", () => {
         nextIntentActorCounter: 4,
         nextResultSequence: 3,
       }),
-      localExport: LOCAL_EXPORT,
     });
 
-    mocks.describeNormalizedCheckpointExport.mockRejectedValueOnce(
-      new Error("normalized checkpoint export has unresolved local intents"),
-    );
-    await expect(readPwaLibraryCoreCloudReceiptV2()).resolves.toMatchObject({
-      checkpoint: SELECTED_RECEIPT,
-      localExport: null,
-    });
+    expect(mocks.describeNormalizedCheckpointExport).not.toHaveBeenCalled();
+    expect(mocks.readNormalizedCheckpointExportPage).not.toHaveBeenCalled();
 
     mocks.readFollowerTransportContext.mockResolvedValueOnce({
       actorId: "89".repeat(32),
@@ -581,6 +576,12 @@ describe("PWA Library Core bounded scanner", () => {
     expect(mocks.importCheckpoint).not.toHaveBeenCalled();
   });
 
+  it("keeps a fresh device in setup without querying a missing materialization", async () => {
+    await initializePwaLibraryCoreState();
+    expect(hasSelectedPwaLibraryCore()).toBe(false);
+    expect(mocks.queryNormalizedLibrary).not.toHaveBeenCalled();
+  });
+
   it("binds search identity to the selected checkpoint instead of stale shell state", async () => {
     mocks.readNormalizedCheckpointReceipt.mockResolvedValue({
       receipt: SELECTED_RECEIPT,
@@ -605,6 +606,7 @@ describe("PWA Library Core bounded scanner", () => {
     const state = await initializePwaLibraryCoreState();
 
     expect(state.searchCorpusVersion).toBe(SELECTED_RECEIPT.sourceRevision);
+    expect(hasSelectedPwaLibraryCore()).toBe(true);
   });
 
   it("hydrates synchronized preferences from SQLite instead of the shell", async () => {
