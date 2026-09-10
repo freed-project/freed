@@ -2,13 +2,15 @@
   "channel": "production",
   "dayKey": "26.9.9",
   "date": "2026-09-09",
-  "preferredDeck": null,
+  "preferredDeck": "PWA recovery, persistent device enrollment, and clearer Google Drive sync status",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
     "Demote internal cleanup unless it clearly changes the shipped product."
   ],
   "pinnedHighlights": [],
-  "editorialNotes": [],
+  "editorialNotes": [
+    "Describe recovery and enrollment continuity improvements without claiming authenticated bidirectional sync has completed verification."
+  ],
   "updatedAt": "2026-09-10T02:52:07.543Z"
 }
