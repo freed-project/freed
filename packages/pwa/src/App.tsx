@@ -260,6 +260,9 @@ function App() {
   const initialize = useAppStore((state) => state.initialize);
   const isInitialized = useAppStore((state) => state.isInitialized);
   const hasSelectedLibrary = useAppStore((state) => state.hasSelectedLibrary);
+  // The anonymous demo activates its own checked fixture before initialization.
+  // It intentionally has no authenticated follower checkpoint receipt.
+  const canQueryLibrary = hasSelectedLibrary || (IS_DEMO && isInitialized);
   const initializationBlocker = useAppStore(
     (state) => state.initializationBlocker,
   );
@@ -579,7 +582,7 @@ function App() {
       NewsletterSettingsContent: PwaNewsletterSignup,
       LegalSettingsContent: IS_DEMO ? null : PwaLegalSettingsSection,
       FeedEmptyState: PwaFeedEmptyState,
-      LibrarySetupState: hasSelectedLibrary ? undefined : PwaLibrarySetupState,
+      LibrarySetupState: canQueryLibrary ? undefined : PwaLibrarySetupState,
       XSettingsContent: PwaXSettings,
       FacebookSettingsContent: PwaFacebookSettings,
       InstagramSettingsContent: PwaInstagramSettings,
@@ -646,7 +649,7 @@ function App() {
         ? undefined
         : executePwaLibraryCoreScopeAction,
       readFeedSignalCounts: readPwaLibraryCoreFeedSignalCounts,
-      readLibraryFacetSummary: !hasSelectedLibrary ? undefined : IS_DEMO
+      readLibraryFacetSummary: !canQueryLibrary ? undefined : IS_DEMO
         ? async () =>
             projectDemoFacetReads(await readPwaLibraryCoreFacetSummary())
         : readPwaLibraryCoreFacetSummary,
@@ -681,7 +684,7 @@ function App() {
         : appendPwaLibraryCorePersonReachOut,
       upsertLibraryAccount: IS_DEMO ? undefined : upsertPwaLibraryCoreAccount,
       readLibraryAccountDetail: readPwaLibraryCoreAccountDetail,
-      queryLibraryCore: hasSelectedLibrary ? queryPwaNormalizedLibrary : undefined,
+      queryLibraryCore: canQueryLibrary ? queryPwaNormalizedLibrary : undefined,
       mutateDeviceGraphLayout: IS_DEMO ? mutateFreedDemoGraphLayout : mutatePwaDeviceGraphLayout,
       mutateDeviceContacts: IS_DEMO ? undefined : mutatePwaDeviceContactSync,
       queryDeviceContacts: queryPwaDeviceContacts,
@@ -697,7 +700,7 @@ function App() {
         : readPwaLibraryCoreItemDetail,
       bugReporting: pwaBugReporting,
     }),
-    [checkForUpdates, handleFactoryReset, hasSelectedLibrary, releaseChannel, setReleaseChannel],
+    [canQueryLibrary, checkForUpdates, handleFactoryReset, releaseChannel, setReleaseChannel],
   );
 
   if (!legalResolved) {

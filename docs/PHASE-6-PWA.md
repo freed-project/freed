@@ -75,6 +75,10 @@ or local sample activation, including an empty Library. Missing storage does
 not become a successful query result or a fabricated checkpoint. WebKit covers
 setup, sample activation, and reopening the selected Library after reload.
 
+The anonymous demo enables queries after its checked sample checkpoint finishes
+initializing. It does not require an authenticated follower receipt; ordinary
+devices retain the selected-checkpoint guard. App changes run the showcase check.
+
 Worker restart allows a bounded three-second wait for the previous browser lock
 to release, while another live tab still retains exclusive ownership. Checkpoint
 replacement retains same-epoch enrollment and follower replay records. Settings
