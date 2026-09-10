@@ -327,3 +327,10 @@ The coordinator records a bounded diagnostic and publishes no certificate for th
 rejected request. Other native, authority, cancellation, and transport failures
 still stop the pass. Recovery of a device whose retained request itself conflicts
 with its accepted enrollment remains a separate verification requirement.
+
+Google Drive follower certificate discovery matches the retained request against
+the complete certificate digest, not the distinct nested enrollment-body digest.
+Actor identity and request matching remain exact; SQLite still verifies the
+canonical certificate, signatures, capabilities, and current authority before
+enrollment. The transport fixture uses different digest fields to protect this
+boundary.
