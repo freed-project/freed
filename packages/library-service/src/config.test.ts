@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { bindLibraryServiceConfig } from "./config.js";
+import {
+  assertLibraryServiceBindingsStable,
+  bindLibraryServiceConfig,
+} from "./config.js";
 import { LibraryServiceFailure } from "./contracts.js";
 import { inspectLibraryServiceReadiness } from "./diagnostics.js";
 import {
@@ -30,6 +33,90 @@ async function loadLibraryServiceConfig(
 }
 
 describe("loadLibraryServiceConfig", () => {
+  function linuxCloudFixture() {
+    const fileSystem = validConfigFileSystem();
+    const raw = JSON.parse(fileSystem.texts.get("/safe/config.json")!);
+    const keyFile = "/safe/state/oauth-wrapping-key";
+    fileSystem.addFile(keyFile, "k".repeat(32));
+    fileSystem.addDirectory("/safe/state/oauth-records");
+    fileSystem.addFile("/safe/state/drive-state.json", "");
+    raw.cloud = {
+      provider: "google-drive",
+      installationWitness: "e".repeat(64),
+      credentialRecordId: "drive-1",
+      publicationStateFile: "/safe/state/drive-state.json",
+      credentialStore: {
+        backend: "linux-sealed-file-v1",
+        directory: "/safe/state/oauth-records",
+        wrappingKeyFile: keyFile,
+        wrappingKeyDigest: fileSystem.digests.get(keyFile),
+      },
+    };
+    fileSystem.addFile("/safe/config.json", JSON.stringify(raw));
+    return { fileSystem, raw, keyFile };
+  }
+
+  it("binds and closes OAuth custody and detects same-size key changes", async () => {
+    const { fileSystem, raw, keyFile } = linuxCloudFixture();
+    const bound = await bindLibraryServiceConfig(
+      "/safe/config.json",
+      fileSystem,
+      new FakeIdentity(),
+      new FakeAclProof(),
+    );
+    expect(bound.config.cloud).toEqual(raw.cloud);
+    expect(bound.driveCredentialStore?.directory.path).toBe(
+      raw.cloud.credentialStore.directory,
+    );
+    expect(bound.driveCredentialStore?.wrappingKey.path).toBe(keyFile);
+    fileSystem.rewriteFileInPlace(keyFile, "z".repeat(32));
+    await expect(
+      assertLibraryServiceBindingsStable(bound, fileSystem),
+    ).rejects.toThrow("bound_input_changed");
+    await bound.close();
+    expect(fileSystem.opened.every((resource) => resource.closed)).toBe(true);
+  });
+
+  it.each([
+    { directory: "/outside/oauth" },
+    { directory: "/safe/state/mounted-credentials" },
+    { wrappingKeyFile: "/safe/state/oauth-records/key" },
+    { wrappingKeyFile: "/safe/state/mounted-credentials/key" },
+    { backend: "plaintext" },
+    { wrappingKeyDigest: "invalid" },
+    { extra: true },
+  ])(
+    "rejects unsafe or unrecognized OAuth store configuration %j",
+    async (patch) => {
+      const { fileSystem, raw } = linuxCloudFixture();
+      Object.assign(raw.cloud.credentialStore, patch);
+      fileSystem.addFile("/safe/config.json", JSON.stringify(raw));
+      await expect(
+        bindLibraryServiceConfig(
+          "/safe/config.json",
+          fileSystem,
+          new FakeIdentity(),
+          new FakeAclProof(),
+        ),
+      ).rejects.toThrow("config_invalid");
+      expect(fileSystem.opened.every((resource) => resource.closed)).toBe(true);
+    },
+  );
+
+  it("rejects a wrong mounted key before returning bound configuration", async () => {
+    const { fileSystem, keyFile } = linuxCloudFixture();
+    fileSystem.rewriteFileInPlace(keyFile, "x".repeat(32));
+    await expect(
+      bindLibraryServiceConfig(
+        "/safe/config.json",
+        fileSystem,
+        new FakeIdentity(),
+        new FakeAclProof(),
+      ),
+    ).rejects.toThrow("drive_credential_unavailable");
+    expect(fileSystem.opened.every((resource) => resource.closed)).toBe(true);
+  });
+
   it("accepts one explicit Primary with private roots and a pinned sidecar", async () => {
     const fileSystem = validConfigFileSystem();
 

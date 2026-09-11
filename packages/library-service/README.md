@@ -148,9 +148,44 @@ does not prove Drive authentication, OAuth validity, cloud reachability, or
 writer promotion. The sidecar never interprets a Drive token or makes a
 provider request. On macOS, `drive-auth` performs one interactive PKCE flow and
 writes only the refresh token to Keychain. The token is sent to `security`
-through standard input, never an argument or environment value. Linux and
-Windows Drive secret stores remain fail-closed until their platform custody
-contracts land.
+through standard input, never an argument or environment value. Windows Drive
+custody remains fail-closed. Linux requires an explicit sealed-file store in
+the `cloud` configuration:
+
+```json
+"credentialStore": {
+  "backend": "linux-sealed-file-v1",
+  "directory": "/physical/state/oauth-records",
+  "wrappingKeyFile": "/physical/state/oauth-wrapping-key",
+  "wrappingKeyDigest": "<SHA-256 of the mounted 32-byte wrapping key>"
+}
+```
+
+Provision the record directory with mode `0700` and the separate mounted key
+file with mode `0600`, both owned by the service user. Both must be physical
+paths inside `stateRoot`, outside the native `mounted-credentials` signing
+directory. The key cannot be inside the writable record directory. The expected
+digest and paths change the configuration hash and therefore require matching
+service admission. Never pass key bytes in command arguments or environment
+values. Keep the wrapping key out of Library backups and cloud storage.
+
+Linux `drive-auth` prints its consent URL only to an interactive terminal on
+stderr. On a remote host, forward the displayed loopback port through SSH before
+opening the URL in a local browser. The attempt expires after five minutes.
+Redirected output is refused; stdout retains the final JSON result. The existing
+PKCE flow and Drive-only scopes are unchanged.
+
+Authorization and refresh use the same descriptor-bound store. Each bounded
+record uses AES-256-GCM with a random nonce and authenticated record identity.
+Writes fsync a private temporary sealed file, rename it atomically, sync the
+directory, and verify the stored bytes before acknowledging success. Invalid,
+nonprivate or corrupt existing records are preserved rather than overwritten.
+Changing the mounted key without a matching configuration and admission fails
+closed. This does not rotate native signing keys or the Library storage epoch.
+The running service pins the authenticated credential record revision before
+token use. Replacing, removing, or invalidating that record prevents cached
+token reuse and requires a service restart, even if the original file is
+restored. A token returned during a detected credential change is discarded.
 
 The admission record on fd6 is exact-shape JSON. It binds the operator's local
 Primary admission to the start envelope, executable, both inherited root
