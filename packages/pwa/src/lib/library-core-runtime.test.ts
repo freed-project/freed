@@ -559,6 +559,7 @@ describe("PWA Library Core bounded scanner", () => {
       }),
     );
     expect(mocks.createFollowerTransport).toHaveBeenCalledWith({
+      onEnrollmentDiscovery: expect.any(Function),
       accessToken: "test-token",
       controlFileId: "control-runtime-recovery",
       libraryId,

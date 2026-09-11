@@ -334,3 +334,8 @@ Actor identity and request matching remain exact; SQLite still verifies the
 canonical certificate, signatures, capabilities, and current authority before
 enrollment. The transport fixture uses different digest fields to protect this
 boundary.
+
+Pending PWA enrollment diagnostics expose only the device and request identity
+suffixes plus counts from the existing certificate discovery pass. They distinguish
+a missing device certificate from a different request for the same device without
+adding Drive requests or changing enrollment admission.

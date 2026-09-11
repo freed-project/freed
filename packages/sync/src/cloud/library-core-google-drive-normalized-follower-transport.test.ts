@@ -71,11 +71,13 @@ function certificateBytes(input: {
   });
 }
 
-function createTransport(beforeProviderOperation = vi.fn()) {
+function createTransport(beforeProviderOperation = vi.fn(), onEnrollmentDiscovery = vi.fn()) {
   return {
     beforeProviderOperation,
+    onEnrollmentDiscovery,
     transport: createGoogleDriveLibraryCoreNormalizedFollowerTransportV2({
       accessToken: "token",
+      onEnrollmentDiscovery,
       beforeProviderOperation,
       controlFileId: "control-1",
       libraryId,
@@ -127,7 +129,7 @@ describe("Google Drive normalized follower transport", () => {
       { bytes: wrongActor },
       { bytes: exact },
     ]);
-    const { beforeProviderOperation, transport } = createTransport();
+    const { beforeProviderOperation, transport, onEnrollmentDiscovery } = createTransport();
     const source = Uint8Array.of(1, 2, 3);
     const candidate = {
       descriptor: descriptor(),
@@ -162,6 +164,25 @@ describe("Google Drive normalized follower transport", () => {
       source,
     });
     expect(beforeProviderOperation).toHaveBeenCalledTimes(3);
+    expect(onEnrollmentDiscovery).toHaveBeenLastCalledWith({
+      actorSuffix: actorId.slice(-8),
+      requestDigestSuffix: enrollmentRequestDigest.slice(-8),
+      certificateCount: 3,
+      actorMatchCount: 2,
+      exactMatchCount: 1,
+    });
+    mocks.discoverEnrollments.mockResolvedValue([{ bytes: wrongDigest }, { bytes: wrongActor }]);
+    await expect(transport.readEnrollmentCertificate({ actorId, enrollmentRequestDigest, libraryId, storageEpochId })).resolves.toBeNull();
+    expect(onEnrollmentDiscovery).toHaveBeenLastCalledWith({
+      actorSuffix: actorId.slice(-8), requestDigestSuffix: enrollmentRequestDigest.slice(-8),
+      certificateCount: 2, actorMatchCount: 1, exactMatchCount: 0,
+    });
+    mocks.discoverEnrollments.mockResolvedValue([]);
+    await expect(transport.readEnrollmentCertificate({ actorId, enrollmentRequestDigest, libraryId, storageEpochId })).resolves.toBeNull();
+    expect(onEnrollmentDiscovery).toHaveBeenLastCalledWith({
+      actorSuffix: actorId.slice(-8), requestDigestSuffix: enrollmentRequestDigest.slice(-8),
+      certificateCount: 0, actorMatchCount: 0, exactMatchCount: 0,
+    });
   });
 
   it("provisions one normalized intent head and fences every adapter operation", async () => {
