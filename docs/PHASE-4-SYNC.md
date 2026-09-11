@@ -343,3 +343,7 @@ adding Drive requests or changing enrollment admission.
 PWA sync reports its current local-checkpoint, Drive discovery, checkpoint import,
 follower-sync, and view-refresh stage while the pass is running. This keeps an
 unsettled pass attributable without adding provider calls or changing admission.
+
+Checkpoint import progress separates immutable object download and verification,
+local selection comparison, staging, page storage, activation, and cleanup.
+Only bounded counts and byte totals enter the local progress display.
