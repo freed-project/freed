@@ -1311,20 +1311,51 @@ export async function syncPwaLibraryCoreFromGoogleDrive(input: {
     signal: input.signal,
   });
   const controlRevision = sha256LowerHex(discovered.control.bytes);
+  const checkpointWriter = createPwaNormalizedCheckpointWriter({
+    checkpointGeneration: pointer.generation,
+    controlRevision,
+    installedAt: Date.now(),
+    writerActorId: pointer.writerId,
+  });
+  let checkpointObjectCount = 0;
   input.onSyncStage?.("Importing the verified Library checkpoint.");
   await importLibraryCoreNormalizedCheckpointV2({
-    adapter,
+    adapter: {
+      async readImmutable(reference) {
+        checkpointObjectCount += 1;
+        input.onSyncStage?.(`Downloading checkpoint object ${checkpointObjectCount.toLocaleString()} (${reference.descriptor.byteLength.toLocaleString()} bytes).`);
+        const bytes = await adapter.readImmutable(reference);
+        input.onSyncStage?.("Verifying the downloaded checkpoint object.");
+        return bytes;
+      },
+    },
     generation: pointer.generation,
     libraryId: pointer.libraryId,
     manifest: pointer.manifest,
     storageEpoch: pointer.storageEpoch,
     subtle: crypto.subtle,
-    writer: createPwaNormalizedCheckpointWriter({
-      checkpointGeneration: pointer.generation,
-      controlRevision,
-      installedAt: Date.now(),
-      writerActorId: pointer.writerId,
-    }),
+    writer: {
+      async prepareImport(manifest, reference) {
+        input.onSyncStage?.("Comparing the downloaded checkpoint with this device.");
+        return await checkpointWriter.prepareImport?.(manifest, reference) ?? "import";
+      },
+      async beginImport(header) {
+        input.onSyncStage?.("Opening local checkpoint staging.");
+        return await checkpointWriter.beginImport(header);
+      },
+      async appendPage(pageIndex, records) {
+        input.onSyncStage?.(`Storing checkpoint page ${(pageIndex + 1).toLocaleString()} (${records.length.toLocaleString()} records).`);
+        return await checkpointWriter.appendPage(pageIndex, records);
+      },
+      async finalizeImport(receipt) {
+        input.onSyncStage?.("Verifying and activating the staged checkpoint.");
+        return await checkpointWriter.finalizeImport(receipt);
+      },
+      async abortImport() {
+        input.onSyncStage?.("Discarding the incomplete checkpoint stage.");
+        await checkpointWriter.abortImport?.();
+      },
+    },
   });
   let enrollmentDiscovery: LibraryCoreEnrollmentDiscoverySummaryV2 | null = null;
   input.onSyncStage?.("Checking device enrollment and syncing edits.");
