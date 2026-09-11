@@ -71,6 +71,7 @@ import type {
   SearchLibraryItems,
 } from "@freed/ui/context";
 import {
+  type LibraryCoreEnrollmentDiscoverySummaryV2,
   createGoogleDriveLibraryCoreAdapterV1,
   createGoogleDriveLibraryCoreNormalizedFollowerTransportV2,
   discoverPublishedGoogleDriveLibraryCoreControlV1,
@@ -1276,6 +1277,7 @@ export async function syncPwaLibraryCoreFromGoogleDrive(input: {
   readonly signal?: AbortSignal;
 }): Promise<LibraryCoreRuntimeStateV1 & {
   readonly followerEnrollmentState: Awaited<ReturnType<typeof syncPwaLibraryCoreFollowerV2>>["enrollmentState"];
+  readonly enrollmentDiscovery: LibraryCoreEnrollmentDiscoverySummaryV2 | null;
 }> {
   const selected = await readPwaNormalizedCheckpointReceipt();
   const retainedLibraryId = selected.receipt &&
@@ -1320,8 +1322,10 @@ export async function syncPwaLibraryCoreFromGoogleDrive(input: {
       writerActorId: pointer.writerId,
     }),
   });
+  let enrollmentDiscovery: LibraryCoreEnrollmentDiscoverySummaryV2 | null = null;
   const followerReceipt = await syncPwaLibraryCoreFollowerV2(
     createGoogleDriveLibraryCoreNormalizedFollowerTransportV2({
+      onEnrollmentDiscovery: (summary) => { enrollmentDiscovery = summary; },
       accessToken: input.accessToken,
       controlFileId: discovered.controlFileId,
       libraryId: pointer.libraryId,
@@ -1332,6 +1336,7 @@ export async function syncPwaLibraryCoreFromGoogleDrive(input: {
   return Object.freeze({
     ...await publishSelectedStateAfterLibraryCoreSync(),
     followerEnrollmentState: followerReceipt.enrollmentState,
+    enrollmentDiscovery,
   });
 }
 

@@ -292,6 +292,10 @@ async function performGoogleDriveSync(
   if (generation !== cloudGeneration || signal.aborted) return;
   const now = Date.now();
   const enrollmentPending = syncResult.followerEnrollmentState !== "enrolled";
+  const discovery = syncResult.enrollmentDiscovery;
+  const enrollmentDetail = discovery
+    ? `Device ...${discovery.actorSuffix}, request ...${discovery.requestDigestSuffix}. Certificates found: ${discovery.certificateCount.toLocaleString()}; for this device: ${discovery.actorMatchCount.toLocaleString()}; matching this request: ${discovery.exactMatchCount.toLocaleString()}.`
+    : null;
   setCloudLibraryChoices(emptyLibraryChoices);
   updateCloudProvider("gdrive", {
     status: "connected",
@@ -304,7 +308,7 @@ async function performGoogleDriveSync(
       ? "Library downloaded. Device enrollment pending."
       : "SQLite Library synchronized.",
     pendingReason: enrollmentPending
-      ? "Open the Primary Freed Desktop and resolve any Drive sync error so this device can sync edits."
+      ? enrollmentDetail ?? "Open the Primary Freed Desktop and resolve any Drive sync error so this device can sync edits."
       : "Waiting for the next checkpoint, intent, or result change.",
     error: undefined,
   });
