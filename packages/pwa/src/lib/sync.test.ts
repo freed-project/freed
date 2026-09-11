@@ -226,6 +226,7 @@ describe("PWA Library Core sync lifecycle", () => {
     );
     expect(mocks.syncLibraryCore).toHaveBeenNthCalledWith(2, {
       accessToken: "refreshed-access-token",
+      onSyncStage: expect.any(Function),
       signal: expect.any(AbortSignal),
     });
     expect(localStorage.getItem("freed_cloud_token_gdrive")).toBe(
