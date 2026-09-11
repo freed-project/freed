@@ -9,6 +9,7 @@ export const PWA_BUILD_PATHS = Object.freeze([
   "packages/shared",
   "packages/sync",
   "packages/ui",
+  "scripts/pwa-vercel-ignore-build.mjs",
   ".nvmrc",
   "package.json",
   "package-lock.json",
@@ -55,7 +56,8 @@ export function planPwaVercelBuild({
     return Object.freeze({ ignore: false, reason: "deployment baseline is not an ancestor" });
   }
   const diff = git(
-    ["diff", "--quiet", previous, current, "--", ...PWA_BUILD_PATHS],
+    ["diff", "--quiet", previous, current, "--",
+      ...PWA_BUILD_PATHS.map((buildPath) => `:(top)${buildPath}`)],
     cwd,
   );
   if (diff.status === 0) {
