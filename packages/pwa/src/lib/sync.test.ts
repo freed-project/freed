@@ -74,11 +74,15 @@ describe("PWA Library Core sync lifecycle", () => {
   });
 
   it("reports pending enrollment until the Primary admits this device", async () => {
-    mocks.syncLibraryCore.mockResolvedValueOnce({ followerEnrollmentState: "pending" });
+    mocks.syncLibraryCore.mockResolvedValueOnce({
+      followerEnrollmentState: "pending",
+      enrollmentDiscovery: { actorSuffix: "12345678", requestDigestSuffix: "abcdef12", certificateCount: 2, actorMatchCount: 1, exactMatchCount: 0 },
+    });
     await startCloudSync("gdrive", "stored-token");
     expect(mocks.updateCloudProvider).toHaveBeenLastCalledWith("gdrive", expect.objectContaining({
       status: "connected",
       statusMessage: "Library downloaded. Device enrollment pending.",
+      pendingReason: "Device ...12345678, request ...abcdef12. Certificates found: 2; for this device: 1; matching this request: 0.",
     }));
     expect(mocks.recordCloudProviderEvent).toHaveBeenLastCalledWith("gdrive", expect.objectContaining({ kind: "waiting" }));
     await syncCloudProviderNow("gdrive");

@@ -20,7 +20,16 @@ import type {
 } from "./library-core-normalized-follower-sync.js";
 import type { LibraryCoreNormalizedHeadPublicationAdapterV2 } from "./library-core-normalized-segment-publication.js";
 
+export interface LibraryCoreEnrollmentDiscoverySummaryV2 {
+  readonly actorSuffix: string;
+  readonly requestDigestSuffix: string;
+  readonly certificateCount: number;
+  readonly actorMatchCount: number;
+  readonly exactMatchCount: number;
+}
+
 export interface GoogleDriveLibraryCoreNormalizedFollowerTransportOptionsV2 {
+  readonly onEnrollmentDiscovery?: (summary: LibraryCoreEnrollmentDiscoverySummaryV2) => void;
   readonly accessToken: string;
   readonly beforeProviderOperation?: () => void;
   readonly controlFileId: string;
@@ -160,16 +169,26 @@ export function createGoogleDriveLibraryCoreNormalizedFollowerTransportV2(
         libraryId: request.libraryId,
         signal: options.signal,
       });
-      return (
-        enrollments.find((candidate) => {
-          const identity = enrollmentCertificateIdentity(candidate.bytes);
-          return (
-            identity !== null &&
-            identity.actorId === request.actorId &&
-            identity.enrollmentRequestDigest === request.enrollmentRequestDigest
-          );
-        })?.bytes ?? null
-      );
+      let selected: Uint8Array | null = null;
+      let actorMatchCount = 0;
+      let exactMatchCount = 0;
+      for (const candidate of enrollments) {
+        const identity = enrollmentCertificateIdentity(candidate.bytes);
+        if (identity?.actorId !== request.actorId) continue;
+        actorMatchCount += 1;
+        if (identity.enrollmentRequestDigest !== request.enrollmentRequestDigest) continue;
+        exactMatchCount += 1;
+        selected = candidate.bytes;
+        break;
+      }
+      options.onEnrollmentDiscovery?.(Object.freeze({
+        actorSuffix: request.actorId.slice(-8),
+        requestDigestSuffix: request.enrollmentRequestDigest.slice(-8),
+        certificateCount: enrollments.length,
+        actorMatchCount,
+        exactMatchCount,
+      }));
+      return selected;
     },
     async openIntentAdapter(context) {
       beforeProviderOperation();
