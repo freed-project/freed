@@ -339,3 +339,7 @@ Pending PWA enrollment diagnostics expose only the device and request identity
 suffixes plus counts from the existing certificate discovery pass. They distinguish
 a missing device certificate from a different request for the same device without
 adding Drive requests or changing enrollment admission.
+
+PWA sync reports its current local-checkpoint, Drive discovery, checkpoint import,
+follower-sync, and view-refresh stage while the pass is running. This keeps an
+unsettled pass attributable without adding provider calls or changing admission.

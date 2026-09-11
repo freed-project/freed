@@ -1275,10 +1275,12 @@ export async function syncPwaLibraryCoreFromGoogleDrive(input: {
   readonly accessToken: string;
   readonly libraryId?: string;
   readonly signal?: AbortSignal;
+  readonly onSyncStage?: (message: string) => void;
 }): Promise<LibraryCoreRuntimeStateV1 & {
   readonly followerEnrollmentState: Awaited<ReturnType<typeof syncPwaLibraryCoreFollowerV2>>["enrollmentState"];
   readonly enrollmentDiscovery: LibraryCoreEnrollmentDiscoverySummaryV2 | null;
 }> {
+  input.onSyncStage?.("Reading the local Library checkpoint.");
   const selected = await readPwaNormalizedCheckpointReceipt();
   const retainedLibraryId = selected.receipt &&
     !selected.receipt.controlRevision.startsWith("preview:")
@@ -1286,6 +1288,7 @@ export async function syncPwaLibraryCoreFromGoogleDrive(input: {
   if (retainedLibraryId && input.libraryId && retainedLibraryId !== input.libraryId) {
     throw new Error("Reset this device before connecting a different Library");
   }
+  input.onSyncStage?.("Finding the published Library in Google Drive.");
   const discovered = await discoverPublishedGoogleDriveLibraryCoreControlV1({
     accessToken: input.accessToken,
     libraryId: retainedLibraryId ?? input.libraryId,
@@ -1308,6 +1311,7 @@ export async function syncPwaLibraryCoreFromGoogleDrive(input: {
     signal: input.signal,
   });
   const controlRevision = sha256LowerHex(discovered.control.bytes);
+  input.onSyncStage?.("Importing the verified Library checkpoint.");
   await importLibraryCoreNormalizedCheckpointV2({
     adapter,
     generation: pointer.generation,
@@ -1323,6 +1327,7 @@ export async function syncPwaLibraryCoreFromGoogleDrive(input: {
     }),
   });
   let enrollmentDiscovery: LibraryCoreEnrollmentDiscoverySummaryV2 | null = null;
+  input.onSyncStage?.("Checking device enrollment and syncing edits.");
   const followerReceipt = await syncPwaLibraryCoreFollowerV2(
     createGoogleDriveLibraryCoreNormalizedFollowerTransportV2({
       onEnrollmentDiscovery: (summary) => { enrollmentDiscovery = summary; },
@@ -1333,6 +1338,7 @@ export async function syncPwaLibraryCoreFromGoogleDrive(input: {
     }),
     { signal: input.signal },
   );
+  input.onSyncStage?.("Refreshing the local Library view.");
   return Object.freeze({
     ...await publishSelectedStateAfterLibraryCoreSync(),
     followerEnrollmentState: followerReceipt.enrollmentState,

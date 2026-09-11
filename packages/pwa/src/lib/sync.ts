@@ -201,9 +201,10 @@ function isGoogleAuthenticationFailure(error: unknown): boolean {
 async function syncGoogleDriveWithFreshCredentials(
   accessToken: string,
   signal: AbortSignal,
+  onSyncStage: (message: string) => void,
 ): Promise<Awaited<ReturnType<typeof syncPwaLibraryCoreFromGoogleDrive>>> {
   try {
-    return await syncPwaLibraryCoreFromGoogleDrive({ accessToken, signal,
+    return await syncPwaLibraryCoreFromGoogleDrive({ accessToken, signal, onSyncStage,
       libraryId: localStorage.getItem(CLOUD_LIBRARY_KEY) ?? undefined });
   } catch (error) {
     if (!isGoogleAuthenticationFailure(error)) throw error;
@@ -223,6 +224,7 @@ async function syncGoogleDriveWithFreshCredentials(
     }
     return await syncPwaLibraryCoreFromGoogleDrive({
       accessToken: refreshedAccessToken,
+      onSyncStage,
       libraryId: localStorage.getItem(CLOUD_LIBRARY_KEY) ?? undefined,
       signal,
     });
@@ -262,7 +264,10 @@ async function performGoogleDriveSync(
   });
   let syncResult: Awaited<ReturnType<typeof syncGoogleDriveWithFreshCredentials>>;
   try {
-    syncResult = await syncGoogleDriveWithFreshCredentials(accessToken, signal);
+    syncResult = await syncGoogleDriveWithFreshCredentials(accessToken, signal, (message) => {
+      if (generation !== cloudGeneration || signal.aborted) return;
+      updateCloudProvider("gdrive", { statusMessage: message });
+    });
   } catch (error) {
     if (generation !== cloudGeneration || signal.aborted) throw error;
     if (error instanceof GoogleDriveLibrarySelectionRequiredError) {
