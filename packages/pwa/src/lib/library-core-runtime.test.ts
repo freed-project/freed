@@ -543,11 +543,19 @@ describe("PWA Library Core bounded scanner", () => {
       };
     });
 
+    const onSyncStage = vi.fn();
     await expect(
-      syncPwaLibraryCoreFromGoogleDrive({ accessToken: "test-token" }),
+      syncPwaLibraryCoreFromGoogleDrive({ accessToken: "test-token", onSyncStage }),
     ).resolves.toEqual(
       expect.not.objectContaining({ items: expect.anything() }),
     );
+    expect(onSyncStage.mock.calls.map(([message]) => message)).toEqual([
+      "Reading the local Library checkpoint.",
+      "Finding the published Library in Google Drive.",
+      "Importing the verified Library checkpoint.",
+      "Checking device enrollment and syncing edits.",
+      "Refreshing the local Library view.",
+    ]);
     expect(mocks.importCheckpoint).toHaveBeenCalledWith(
       expect.objectContaining({ writer }),
     );
