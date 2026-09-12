@@ -86,7 +86,7 @@ Vercel Git integration is the supported website path. The current manual helper 
 
 ## Source identity
 
-For every new production application version, follow [the showcase release contract](docs/RELEASE-SHOWCASE.md) and verify that every marketing theme references its newly published animation.
+For every new production application version, follow [the showcase release contract](docs/RELEASE-SHOWCASE.md) and verify that every marketing theme references its newly published animation. Whenever showcase screenshots are regenerated or replaced, refresh the social share tile with the latest Ember phone frame in the same website delivery. Follow the [social preview refresh contract](docs/RELEASE-SHOWCASE.md#social-share-preview).
 
 Public roadmap and changelog updates must remain attributable to an approved source:
 

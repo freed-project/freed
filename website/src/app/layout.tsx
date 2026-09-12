@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import socialPreview from "@/data/social-preview.json";
 import {
   Barlow,
   Barlow_Condensed,
@@ -88,6 +89,7 @@ export const metadata: Metadata = {
     },
   },
   openGraph: {
+    images: [{ url: socialPreview.url, width: socialPreview.width, height: socialPreview.height, alt: socialPreview.alt, type: "image/png" }],
     type: "website",
     locale: "en_US",
     url: "https://freed.wtf",
@@ -98,6 +100,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
+    images: [{ url: socialPreview.url, alt: socialPreview.alt }],
     title: "Freed - Take Back Your Feed",
     description:
       "Take back your feed. Freed is open-source software that puts you in control of your social media experience.",

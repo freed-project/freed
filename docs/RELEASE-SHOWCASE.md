@@ -95,6 +95,26 @@ Record the final asset URLs, expected and observed hashes, website theme checks,
 and README source in release closeout. Missing deployment authority leaves the
 website handoff pending; it does not waive verification.
 
+## Social share preview
+
+Every screenshot regeneration or replacement, including local showcase refreshes
+without a new release, must update the social share tile during the same website
+delivery. Embed the latest Ember mobile Stories screenshot from the homepage
+mapping, `website/src/data/showcase.json`. Do not select a source from the historical
+`website/public/showcase/manifest.json`.
+
+Run `npm run generate:social-preview` and `npm run check:social-preview` from
+`website/`. Review the rendered tile at full size and thumbnail size against the
+approved phone positioning, scale, and equal horizontal spacing. Check readable
+labels, correct aspect ratio, and intended edge overflow. Row count is not a fixed
+requirement. The [generator guide](../website/scripts/social-preview/README.md)
+records the composition and source verification.
+
+Commit the generated PNG and metadata with the refreshed showcase mapping. Verify
+that production Open Graph and Twitter metadata reference the new image and that
+its downloaded hash matches `website/src/data/social-preview.json`. A current
+animation paired with a stale social tile is an incomplete website handoff.
+
 ## Local iteration and implementation status
 
 `scripts/build-showcase-local.mjs` supports one-theme generation, explicit

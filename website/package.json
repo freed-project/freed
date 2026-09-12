@@ -8,13 +8,15 @@
   },
   "scripts": {
     "dev": "next dev --turbopack",
-    "build": "npm run generate-changelog && next build && npm run generate-feed",
+    "build": "npm run generate:social-preview && npm run generate-changelog && next build && npm run generate-feed",
     "generate-changelog": "npx tsx scripts/generate-changelog.ts",
     "start": "next start",
     "generate-feed": "npx tsx scripts/generate-feed.ts",
     "lint": "eslint .",
     "test:newsletter": "npx tsx src/app/api/subscribe/newsletter-security.test.ts",
-    "test:e2e": "node ../node_modules/playwright/cli.js test -c playwright.config.ts"
+    "test:e2e": "node ../node_modules/playwright/cli.js test -c playwright.config.ts",
+    "generate:social-preview": "node scripts/generate-social-preview.mjs",
+    "check:social-preview": "node scripts/generate-social-preview.mjs --check"
   },
   "dependencies": {
     "@floating-ui/react": "^0.27.17",
@@ -37,6 +39,7 @@
     "eslint": "^9.39.1",
     "eslint-config-next": "^15.5.15",
     "eslint-plugin-react-hooks": "^7.0.1",
+    "sharp": "0.35.4",
     "tailwindcss": "^4.1.18",
     "typescript": "~5.9.3"
   }
