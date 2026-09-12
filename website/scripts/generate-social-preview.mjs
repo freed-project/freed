@@ -36,8 +36,34 @@ const template = await readFile(resolve(website, "scripts/social-preview/templat
 if (template.split("{{PHONE_IMAGE}}").length !== 2) {
   throw new Error("The social preview template must contain exactly one phone image slot.");
 }
-const svg = template.replace("{{PHONE_IMAGE}}", phone.toString("base64"));
-const png = await sharp(Buffer.from(svg)).png().toBuffer();
+const source = {
+  releaseTag: showcase.releaseTag ?? null,
+  sourceCommit: showcase.sourceCommit,
+  animationUrl: ember.animation.url,
+  animationSha256: ember.animation.sha256,
+  capture: ember.captures[frame].file,
+  frame,
+  crop: framing.crop,
+  templateSha256: hash(template),
+};
+// Native rasterizers can differ by one channel level across CPU architectures.
+// Preserve the reviewed PNG bytes while its verified source and design match.
+// A new screenshot, crop, or template always invalidates this reuse.
+let png;
+try {
+  const previous = await readJson("src/data/social-preview.json");
+  if (JSON.stringify(previous.source) === JSON.stringify(source) &&
+      /^\/social\/freed-[a-f0-9]{12}\.png$/.test(previous.url)) {
+    const candidate = await readFile(resolve(website, "public", previous.url.slice(1)));
+    if (hash(candidate) === previous.sha256) png = candidate;
+  }
+} catch (error) {
+  if (error.code !== "ENOENT") throw error;
+}
+if (!png) {
+  const svg = template.replace("{{PHONE_IMAGE}}", phone.toString("base64"));
+  png = await sharp(Buffer.from(svg)).png().toBuffer();
+}
 const { width, height } = await sharp(png).metadata();
 if (width !== 1200 || height !== 630) throw new Error("Social preview must be 1200 by 630.");
 const digest = hash(png);
@@ -46,16 +72,7 @@ const record = {
   url, width, height,
   alt: "Freed: Take Back Your Feed. Social feeds in one local app. Open source and free forever. Ember phone preview.",
   sha256: digest,
-  source: {
-    releaseTag: showcase.releaseTag ?? null,
-    sourceCommit: showcase.sourceCommit,
-    animationUrl: ember.animation.url,
-    animationSha256: ember.animation.sha256,
-    capture: ember.captures[frame].file,
-    frame,
-    crop: framing.crop,
-    templateSha256: hash(template),
-  },
+  source,
 };
 const output = resolve(website, "public", url.slice(1));
 const recordPath = resolve(website, "src/data/social-preview.json");
