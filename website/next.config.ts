@@ -3,6 +3,7 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   // Disable x-powered-by header
   poweredByHeader: false,
+  allowedDevOrigins: ["aubrey-paseo.tail285f88.ts.net"],
   transpilePackages: ["@freed/shared", "@freed/ui"],
   env: {
     NEXT_PUBLIC_TURNSTILE_SITE_KEY: process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY,

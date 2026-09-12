@@ -90,7 +90,6 @@
   grid-template-columns: 1.15fr 1fr;
   gap: 4rem;
   align-items: center;
-  border-top: 1px solid var(--theme-border-subtle);
   padding: 3.5rem 0 2.5rem;
 }
 .mission > p {
@@ -113,7 +112,6 @@
   font-size: 0.95rem;
 }
 .support {
-  border-top: 1px solid var(--theme-border-subtle);
   padding: 3.5rem 0;
   display: grid;
   grid-template-columns: 0.8fr 1.7fr;
@@ -186,7 +184,6 @@
   gap: 4rem;
   align-items: center;
   padding: 2.5rem 0 3rem;
-  border-top: 1px solid var(--theme-border-subtle);
 }
 .covenant h2 {
   font-size: clamp(1.8rem, 3vw, 2.6rem);
@@ -197,7 +194,6 @@
   gap: 5rem;
   align-items: center;
   padding: 4rem 0 2rem;
-  border-top: 1px solid var(--theme-border-subtle);
 }
 .invitation h2 {
   font-size: clamp(2.75rem, 4.7vw, 4.8rem);
@@ -248,7 +244,6 @@
   display: grid;
   grid-template-columns: 0.8fr 1.7fr;
   gap: 4rem;
-  border-top: 1px solid var(--theme-border-subtle);
   padding: 3.5rem 0;
 }
 .openSourceHeading > p {
@@ -262,7 +257,6 @@
 }
 .page .openPromise {
   margin-top: 1.25rem;
-  border-top: 1px solid var(--theme-border-subtle);
   padding-top: 1.25rem;
   font-size: 0.9rem;
   max-width: 60ch;
@@ -338,3 +332,5 @@
   .hero h1, .hero .intro { margin-left: auto; margin-right: auto; }
   .hero .communityActions { justify-content: center; }
 }
+
+.mission, .invitation { scroll-margin-top: 7rem; }

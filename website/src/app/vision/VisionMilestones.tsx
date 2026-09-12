@@ -5,7 +5,6 @@ import { PlanProofLink } from "@/components/PlanProofLink";
 import {
   FaRss,
   FaCodeBranch,
-  FaXTwitter,
   FaDesktop,
   FaRegUser,
   FaRegBookmark,
@@ -16,28 +15,21 @@ import styles from "./milestones.module.css";
 
 // Selected phases from the validated production manifest. Status is read from
 // the snapshot, never inferred from these concise presentation descriptions.
-// RSS and X are separate delivered milestones within completed phase 2.
+// The combined feed card follows phase 7: broader social capture remains in progress.
 const milestones = [
   {
     phase: 1,
-    title: "Built the foundation",
+    title: "Build the foundation",
     description:
       "An open-source core, a public home for Freed, and the shared library behind the apps.",
     icon: FaCodeBranch,
   },
   {
-    phase: 2,
-    title: "Brought RSS into Freed",
+    phase: 7,
+    title: "Bring your feeds together",
     description:
-      "Feed discovery, article capture, and subscription imports connect readers to the open web.",
+      "Facebook, Instagram, X, RSS, and more in one library. Capture reliability remains active work.",
     icon: FaRss,
-  },
-  {
-    phase: 2,
-    title: "Connected X",
-    description:
-      "Posts from X join the library, with your following feed and controls for choosing accounts.",
-    icon: FaXTwitter,
   },
   {
     phase: 5,
