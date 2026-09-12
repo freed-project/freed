@@ -19,6 +19,10 @@ These rules apply to `website/**`. Read the root `AGENTS.md` and use [freed-buil
 - Keep controls usable at supported mobile and desktop widths. Floating menus and overlays must remain within the viewport and scroll internally when their contents grow.
 - Do not modify product packages from the `www` lane. If a website change needs a shared product primitive changed, stop and route that work through a separate `dev` task.
 
+## Showcase and social preview
+
+Whenever showcase screenshots are regenerated or their active mapping changes, rebuild the social preview with `npm run generate:social-preview` from `website/`. Use the same current Ember asset as the homepage, preserve the approved phone positioning, scale, and equal horizontal spacing, and visually inspect the refreshed tile before publication. Commit its PNG and metadata with the screenshot update. Follow the [social preview refresh contract](../docs/RELEASE-SHOWCASE.md#social-share-preview).
+
 ## Theme Selector contract
 
 - The footer theme selector previews fonts and layout. Render its interactive preview in a fixed layer captured before the theme changes. An inline-only hover preview can reflow the page, move the control out from under the pointer, and create a preview loop.

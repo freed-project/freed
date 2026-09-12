@@ -41,6 +41,10 @@ For every production application release, read [the showcase release contract](.
 3. Map statuses and descriptions into `website/src/app/roadmap/RoadmapContent.tsx` exactly. Do not infer status from phase prose.
 4. Build, review, merge, and verify from `www`. Do not combine this with unrelated product promotion.
 
+## Screenshot refreshes
+
+Whenever showcase screenshots are regenerated or replaced, follow the [social share preview contract](../../../docs/RELEASE-SHOWCASE.md#social-share-preview). Regenerate the tile from the homepage's current Ember phone frame, preserve the approved phone positioning, and verify the generated image and live share metadata before closeout. This also applies to screenshot refreshes without a new application release.
+
 ## Close out
 
 Record the reviewed head, deployed `www` SHA, Vercel deployment ID, deployment time, production URL, build result, and source release or roadmap identity. Verify that the production response belongs to the new deployment. An old healthy URL does not prove the requested commit shipped.
