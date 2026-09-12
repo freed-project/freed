@@ -7,7 +7,6 @@ import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useRef, useLayoutEffect } from "react";
 import { Tooltip } from "@freed/ui/components/Tooltip";
-import { useNewsletter } from "@/context/NewsletterContext";
 import {
   NAV_INDICATOR_SPRING,
   NAV_INDICATOR_THICKNESS,
@@ -58,7 +57,6 @@ function isActive(itemPath: string, pathname: string): boolean {
 
 export default function Navigation() {
   const pathname = usePathname();
-  const { openModal } = useNewsletter();
   const [captionIndex, setCaptionIndex] = useState(0);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
@@ -213,9 +211,6 @@ export default function Navigation() {
         <FaPlay aria-hidden="true" className="h-2.5 w-2.5 shrink-0" />
         Live Demo
       </DemoLink>
-      <button onClick={() => openModal()} className="btn-primary px-6 py-3 whitespace-nowrap">
-        Get Freed
-      </button>
       </div>
     </div>
   );
@@ -303,9 +298,6 @@ export default function Navigation() {
                 <FaPlay aria-hidden="true" className="h-2.5 w-2.5 shrink-0" />
                 Live Demo
               </DemoLink>
-              <button onClick={() => openModal()} className="btn-primary whitespace-nowrap" style={{ padding: ".5rem .75rem" }}>
-                Get Freed
-              </button>
               </div>}
               {mobileHamburger}
             </div>
@@ -373,9 +365,6 @@ export default function Navigation() {
                     <FaPlay aria-hidden="true" className="h-3 w-3 shrink-0" />
                     Live Demo
                   </DemoLink>
-                  <button onClick={() => { openModal(); setMobileMenuOpen(false); }} className="btn-primary px-6 py-3 whitespace-nowrap">
-                    Get Freed
-                  </button>
                 </motion.div>
               </div>
             </motion.div>

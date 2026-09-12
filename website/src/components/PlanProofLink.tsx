@@ -4,13 +4,13 @@ const destinations = {
   plan: {
     href: "/roadmap",
     eyebrow: "Roadmap",
-    label: "See what we intend to build",
+    label: "See what we're building",
     arrowDirection: "forward",
   },
   proof: {
     href: "/changelog",
     eyebrow: "Updates",
-    label: "See what actually shipped",
+    label: "See what we shipped",
     arrowDirection: "back",
   },
 } as const;

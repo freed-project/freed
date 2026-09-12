@@ -1,5 +1,4 @@
 .section {
-  border-top: 1px solid var(--theme-border-subtle);
   padding: 3.5rem 0;
   min-width: 0;
   scroll-margin-top: 6rem;
@@ -20,8 +19,7 @@
   outline-offset: 4px;
 }
 .rail {
-  /* The scroll viewport reaches both page edges. Padding belongs to the list
-     so the first card starts on the content rail and then scrolls out of it. */
+  /* Start at the content inset; end at the last card without trailing space. */
   --rail-inset: max(clamp(1.5rem, 4vw, 3rem), calc((100vw - 76rem) / 2 + 3rem));
   width: 100vw;
   margin-left: calc(50% - 50vw);
@@ -29,8 +27,7 @@
   overflow-x: auto;
   overscroll-behavior-x: contain;
   scroll-snap-type: x mandatory;
-  scrollbar-width: thin;
-  scrollbar-color: var(--theme-border-strong) transparent;
+  scrollbar-width: none;
   padding-bottom: 1rem;
 }
 .list {
@@ -38,7 +35,7 @@
   gap: 1.25rem;
   list-style: none;
   margin: 0;
-  padding: 0 var(--rail-inset);
+  padding: 0 0 0 var(--rail-inset);
   width: max-content;
   min-width: 100%;
 }
@@ -60,7 +57,6 @@
   align-items: center;
   justify-content: space-between;
   margin-bottom: 1.5rem;
-  border-bottom: 1px solid var(--theme-border-subtle);
   padding-bottom: 1.25rem;
 }
 .illustration > span {
@@ -140,3 +136,6 @@
     font-size: 2rem;
   }
 }
+
+/* Hide scroll chrome without disabling touch, trackpad, or keyboard scrolling. */
+.rail::-webkit-scrollbar { display: none; }
