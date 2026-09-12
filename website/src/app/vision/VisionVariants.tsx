@@ -14,8 +14,8 @@ export default function VisionVariants() {
         <section className={styles.hero} aria-labelledby="vision-title">
           <div>
             <h1 id="vision-title">
-              Your feed Your rules{" "}
-              <span className={styles.headlineAccent}>Your life</span>
+              Your feed. Your rules.{" "}
+              <span className={styles.headlineAccent}>Your life.</span>
             </h1>
             <p className={styles.intro}>
               Follow the people and ideas you care about. Decide for yourself what
