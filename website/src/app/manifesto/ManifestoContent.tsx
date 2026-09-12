@@ -204,7 +204,7 @@ export default function ManifestoContent() {
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               href="/vision"
-              className="btn-primary text-base px-8 py-3"
+              className="btn-primary inline-flex items-center justify-center text-base px-8 py-3"
             >
               Share the Vision
             </motion.a>

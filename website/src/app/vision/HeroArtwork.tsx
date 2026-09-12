@@ -1,4 +1,18 @@
+"use client";
+
 import styles from "./artwork.module.css";
+
+function FeedRow({ y, image = false }: { y: number; image?: boolean }) {
+  return (
+    <g transform={`translate(0 ${y})`}>
+      <circle cx="17" cy="10" r="5" fill="var(--theme-heading-accent)" opacity=".55" />
+      <path d="M29 7H66M29 14H52" stroke="var(--theme-text-secondary)" strokeWidth="2" opacity=".55" />
+      <path d={image ? "M12 24H69M12 31H58" : "M12 24H112M12 31H94"}
+        stroke="var(--theme-text-secondary)" strokeWidth="2" opacity=".45" />
+      {image && <rect x="81" y="3" width="31" height="31" rx="3" fill="var(--theme-heading-accent)" opacity=".25" />}
+    </g>
+  );
+}
 
 export default function HeroArtwork() {
   return (
@@ -6,7 +20,7 @@ export default function HeroArtwork() {
       <svg
         viewBox="0 0 500 460"
         role="img"
-        aria-label="Stories fold into paper birds and take flight through an open frame"
+        aria-label="A feed of stories becomes paper airplanes flying through an open frame"
       >
         <defs>
           <linearGradient id="flight-paper" x1="0" y1="0" x2="1" y2="1">
@@ -43,29 +57,17 @@ export default function HeroArtwork() {
           strokeDasharray="3 9"
           opacity=".6"
         />
-        <g transform="translate(55 285) rotate(-14)">
-          <rect
-            width="126"
-            height="88"
-            rx="5"
-            fill="var(--theme-bg-surface)"
-            stroke="var(--theme-border-strong)"
-          />
-          <rect
-            x="13"
-            y="15"
-            width="31"
-            height="27"
-            rx="3"
-            fill="var(--theme-heading-accent)"
-            opacity=".4"
-          />
-          <path
-            d="M55 19H109M55 28H96M55 37H104M13 58H110M13 68H90"
-            stroke="var(--theme-text-secondary)"
-            strokeWidth="3"
-            opacity=".5"
-          />
+        <g transform="translate(55 267) rotate(-14)">
+          <>
+              <rect width="126" height="132" rx="5" fill="var(--theme-bg-surface)" stroke="var(--theme-border-strong)" />
+              <path d="M12 12H44M96 12H113" stroke="var(--theme-heading-accent)" strokeWidth="3" opacity=".6" />
+              <FeedRow y={22} image />
+              <FeedRow y={65} />
+              <g opacity=".3">
+                <circle cx="17" cy="118" r="5" fill="var(--theme-heading-accent)" />
+                <path d="M29 115H66M29 122H99" stroke="var(--theme-text-secondary)" strokeWidth="2" />
+              </g>
+          </>
         </g>
         <g transform="translate(150 226) rotate(-15)">
           <path d="M0 45L135 0L80 100L56 61Z" fill="url(#flight-paper)" />
