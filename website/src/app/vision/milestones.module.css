@@ -19,29 +19,28 @@
   outline-offset: 4px;
 }
 .rail {
-  /* Start at the content inset; end at the last card without trailing space. */
+  /* Match both scroll endpoints to the centered content rail. */
   --rail-inset: max(clamp(1.5rem, 4vw, 3rem), calc((100vw - 76rem) / 2 + 3rem));
   width: 100vw;
   margin-left: calc(50% - 50vw);
-  scroll-padding-left: var(--rail-inset);
+  scroll-padding-inline: var(--rail-inset);
   overflow-x: auto;
   overscroll-behavior-x: contain;
-  scroll-snap-type: x mandatory;
   scrollbar-width: none;
   padding-bottom: 1rem;
 }
 .list {
-  display: flex;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 18rem;
   gap: 1.25rem;
   list-style: none;
   margin: 0;
-  padding: 0 0 0 var(--rail-inset);
+  padding: 0 var(--rail-inset);
   width: max-content;
-  min-width: 100%;
 }
 .list > li {
-  flex: 0 0 18rem;
-  scroll-snap-align: start;
+  min-width: 0;
 }
 .card {
   height: 100%;
@@ -125,8 +124,8 @@
     font-size: 0.95rem;
     max-width: 26ch;
   }
-  .list > li {
-    flex-basis: min(17rem, 80vw);
+  .list {
+    grid-auto-columns: min(17rem, 80vw);
   }
   .heading {
     align-items: flex-start;

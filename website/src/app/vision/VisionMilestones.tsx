@@ -103,7 +103,7 @@ export default function VisionMilestones() {
     >
       <div className={styles.heading}>
         <div>
-          <h2 id="milestones-title">Current status: working software.</h2>
+          <h2 id="milestones-title">Current status: working software</h2>
           <p>
             Read your sources in Freed today. Follow what we’re building next.
           </p>
