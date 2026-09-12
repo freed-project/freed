@@ -2,7 +2,8 @@
 
 Run `npm run generate:social-preview` from `website/` whenever showcase screenshots
 are regenerated or their active mapping changes. The normal website build also
-runs it. `npm run check:social-preview` verifies the checked-in output without
+runs it. Unchanged source and template hashes preserve the reviewed PNG bytes
+across build platforms; refreshed screenshots or design changes regenerate it. `npm run check:social-preview` verifies the checked-in output without
 writing files.
 
 The generator selects the mobile Stories frame from the homepage's active Ember
