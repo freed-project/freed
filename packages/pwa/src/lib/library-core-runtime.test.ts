@@ -558,8 +558,9 @@ describe("PWA Library Core bounded scanner", () => {
     });
 
     const onSyncStage = vi.fn();
+    const googleFetch = vi.fn();
     await expect(
-      syncPwaLibraryCoreFromGoogleDrive({ accessToken: "test-token", onSyncStage }),
+      syncPwaLibraryCoreFromGoogleDrive({ accessToken: "test-token", onSyncStage, googleFetch }),
     ).resolves.toEqual(
       expect.not.objectContaining({ items: expect.anything() }),
     );
@@ -591,12 +592,15 @@ describe("PWA Library Core bounded scanner", () => {
     expect(mocks.createFollowerTransport).toHaveBeenCalledWith({
       onEnrollmentDiscovery: expect.any(Function),
       accessToken: "test-token",
+      googleFetch,
       controlFileId: "control-runtime-recovery",
       libraryId,
       signal: undefined,
     });
     expect(mocks.syncFollower).toHaveBeenCalledWith({}, { signal: undefined });
     expect(mocks.discoverControl).toHaveBeenCalledWith(expect.objectContaining({ libraryId }));
+    expect(mocks.discoverControl).toHaveBeenCalledWith(expect.objectContaining({ googleFetch }));
+    expect(mocks.createCloudAdapter).toHaveBeenCalledWith(expect.objectContaining({ googleFetch }));
   });
 
   it("refuses to replace a retained Library through a different connection choice", async () => {

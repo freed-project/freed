@@ -129,6 +129,8 @@ function persistCloudToken(
   const bundle: CloudTokenBundle = {
     ...input,
     refreshToken: input.refreshToken ?? previous?.refreshToken,
+    expiresAt: input.expiresAt ??
+      (input.accessToken === previous?.accessToken ? previous.expiresAt : undefined),
   };
   localStorage.setItem(CLOUD_TOKEN_KEY(provider), bundle.accessToken);
   localStorage.setItem(CLOUD_TOKEN_META_KEY(provider), JSON.stringify(bundle));
@@ -203,8 +205,26 @@ async function syncGoogleDriveWithFreshCredentials(
   signal: AbortSignal,
   onSyncStage: (message: string) => void,
 ): Promise<Awaited<ReturnType<typeof syncPwaLibraryCoreFromGoogleDrive>>> {
+  const generation = cloudGeneration;
+  const googleFetch: typeof fetch = async (resource, options) => {
+    const assertCurrent = () => {
+      if (signal.aborted || generation !== cloudGeneration) {
+        throw new DOMException("Cloud sync stopped", "AbortError");
+      }
+    };
+    assertCurrent();
+    const token = await getValidCloudToken("gdrive");
+    assertCurrent();
+    if (!token) {
+      throw new Error("Google Drive authorization expired. Reconnect Google Drive to continue sync.");
+    }
+    const headers = new Headers(options?.headers ??
+      (resource instanceof Request ? resource.headers : undefined));
+    headers.set("Authorization", `Bearer ${token}`);
+    return fetch(resource, { ...options, headers });
+  };
   try {
-    return await syncPwaLibraryCoreFromGoogleDrive({ accessToken, signal, onSyncStage,
+    return await syncPwaLibraryCoreFromGoogleDrive({ accessToken, signal, onSyncStage, googleFetch,
       libraryId: localStorage.getItem(CLOUD_LIBRARY_KEY) ?? undefined });
   } catch (error) {
     if (!isGoogleAuthenticationFailure(error)) throw error;
@@ -224,6 +244,7 @@ async function syncGoogleDriveWithFreshCredentials(
     }
     return await syncPwaLibraryCoreFromGoogleDrive({
       accessToken: refreshedAccessToken,
+      googleFetch,
       onSyncStage,
       libraryId: localStorage.getItem(CLOUD_LIBRARY_KEY) ?? undefined,
       signal,
