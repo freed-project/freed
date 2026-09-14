@@ -1,17 +1,17 @@
 {
   "kind": "release-showcase",
-  "sourceCommit": "1fbf48c4f024d0247334bc9ea57a0fb378fce16c",
+  "sourceCommit": "aa56d7e35a510387c089c39f93f04fa39f4ea56f",
   "sourceDirty": false,
-  "releaseId": 386548454,
-  "releaseTag": "v26.9.1001",
-  "manifestSha256": "e84c7279ddfec261959a63a2c90b1e9099edc71e1547caf51e735ea362f10ef1",
+  "releaseId": 388621359,
+  "releaseTag": "v26.9.1400",
+  "manifestSha256": "d43ebf24aab64d93f4b036d078e1a82fd728193beb51b134c23162f19c1d20f1",
   "width": 1920,
   "height": 1280,
   "quality": 90,
   "themes": {
     "ember": {
-      "revision": "v26.9.1001",
-      "generatedAt": "2026-09-10T19:05:57.073Z",
+      "revision": "v26.9.1400",
+      "generatedAt": "2026-09-14T18:33:38.024Z",
       "captures": [
         {
           "file": "freed-showcase-unified-ember.png",
@@ -67,7 +67,7 @@
             "renderer": "raw-webgpu",
             "decorativeStarCount": 100000,
             "screenshotPixels": {
-              "quantizedColors": 371,
+              "quantizedColors": 370,
               "width": 1201,
               "height": 1540
             }
@@ -101,7 +101,7 @@
             "renderer": "raw-webgpu",
             "decorativeStarCount": 100000,
             "screenshotPixels": {
-              "quantizedColors": 338,
+              "quantizedColors": 337,
               "width": 1201,
               "height": 1540
             }
@@ -198,14 +198,14 @@
       ],
       "seconds": 3,
       "animation": {
-        "url": "/showcase/freed-showcase-ember-animation-f7d8c2378dbe.webp",
-        "sha256": "f7d8c2378dbea5479065da3f57f727466502d7e19e6b83e6a57dcbe9439c284e",
-        "bytes": 848850
+        "url": "/showcase/freed-showcase-ember-animation-a93629c1e403.webp",
+        "sha256": "a93629c1e403b8aef1ebcacf88c9e77ec81a4613a3eb09ca95834995854c5e4b",
+        "bytes": 902388
       }
     },
     "neon": {
-      "revision": "v26.9.1001",
-      "generatedAt": "2026-09-10T19:05:57.073Z",
+      "revision": "v26.9.1400",
+      "generatedAt": "2026-09-14T18:33:38.024Z",
       "captures": [
         {
           "file": "freed-showcase-unified-neon.png",
@@ -261,7 +261,7 @@
             "renderer": "raw-webgpu",
             "decorativeStarCount": 100000,
             "screenshotPixels": {
-              "quantizedColors": 556,
+              "quantizedColors": 558,
               "width": 1201,
               "height": 1540
             }
@@ -295,7 +295,7 @@
             "renderer": "raw-webgpu",
             "decorativeStarCount": 100000,
             "screenshotPixels": {
-              "quantizedColors": 449,
+              "quantizedColors": 448,
               "width": 1201,
               "height": 1540
             }
@@ -392,14 +392,14 @@
       ],
       "seconds": 3,
       "animation": {
-        "url": "/showcase/freed-showcase-neon-animation-a58a7612b75f.webp",
-        "sha256": "a58a7612b75fa606c5431cf808b49322688a091c0f9b4cac1fb9047a15818dd0",
-        "bytes": 913250
+        "url": "/showcase/freed-showcase-neon-animation-4f80e6201ba3.webp",
+        "sha256": "4f80e6201ba32b388b9e5ffda4f4d0702840752c2a79a9d69a1d718f4ab6fdfc",
+        "bytes": 908458
       }
     },
     "midas": {
-      "revision": "v26.9.1001",
-      "generatedAt": "2026-09-10T19:05:57.073Z",
+      "revision": "v26.9.1400",
+      "generatedAt": "2026-09-14T18:33:38.024Z",
       "captures": [
         {
           "file": "freed-showcase-unified-midas.png",
@@ -455,7 +455,7 @@
             "renderer": "raw-webgpu",
             "decorativeStarCount": 100000,
             "screenshotPixels": {
-              "quantizedColors": 426,
+              "quantizedColors": 428,
               "width": 1201,
               "height": 1540
             }
@@ -489,7 +489,7 @@
             "renderer": "raw-webgpu",
             "decorativeStarCount": 100000,
             "screenshotPixels": {
-              "quantizedColors": 386,
+              "quantizedColors": 388,
               "width": 1201,
               "height": 1540
             }
@@ -586,14 +586,14 @@
       ],
       "seconds": 3,
       "animation": {
-        "url": "/showcase/freed-showcase-midas-animation-c2a789977c19.webp",
-        "sha256": "c2a789977c19e4fa955b58858ced89bce6a19a6354f1bcc396f2acf2cbe4d071",
-        "bytes": 872404
+        "url": "/showcase/freed-showcase-midas-animation-5eab741c8b2d.webp",
+        "sha256": "5eab741c8b2df4fefe9cc14b3c666eccdd002517badec50594f8bf75da9b7868",
+        "bytes": 857120
       }
     },
     "scriptorium": {
-      "revision": "v26.9.1001",
-      "generatedAt": "2026-09-10T19:05:57.073Z",
+      "revision": "v26.9.1400",
+      "generatedAt": "2026-09-14T18:33:38.024Z",
       "captures": [
         {
           "file": "freed-showcase-unified-scriptorium.png",
@@ -780,14 +780,14 @@
       ],
       "seconds": 3,
       "animation": {
-        "url": "/showcase/freed-showcase-scriptorium-animation-63736730d134.webp",
-        "sha256": "63736730d134d1b75a823547230289fd12046d33fb41512aa1689b7801223042",
-        "bytes": 802838
+        "url": "/showcase/freed-showcase-scriptorium-animation-a5e756555a80.webp",
+        "sha256": "a5e756555a803a5ae0e573d37706ca803e634ed7447bb87d34b1b5c25de6d3d5",
+        "bytes": 837782
       }
     },
     "starship": {
-      "revision": "v26.9.1001",
-      "generatedAt": "2026-09-10T19:05:57.073Z",
+      "revision": "v26.9.1400",
+      "generatedAt": "2026-09-14T18:33:38.024Z",
       "captures": [
         {
           "file": "freed-showcase-unified-starship.png",
@@ -843,7 +843,7 @@
             "renderer": "raw-webgpu",
             "decorativeStarCount": 100000,
             "screenshotPixels": {
-              "quantizedColors": 328,
+              "quantizedColors": 327,
               "width": 1201,
               "height": 1540
             }
@@ -877,7 +877,7 @@
             "renderer": "raw-webgpu",
             "decorativeStarCount": 100000,
             "screenshotPixels": {
-              "quantizedColors": 301,
+              "quantizedColors": 300,
               "width": 1201,
               "height": 1540
             }
@@ -974,14 +974,14 @@
       ],
       "seconds": 3,
       "animation": {
-        "url": "/showcase/freed-showcase-starship-animation-c2c381f66051.webp",
-        "sha256": "c2c381f66051d18f484b53258c9012cbc8cc85d3a03824337eb29e7853a9afa3",
-        "bytes": 934300
+        "url": "/showcase/freed-showcase-starship-animation-2fe11de8a994.webp",
+        "sha256": "2fe11de8a994ac54a16ec1e2076908e459f4378b73f138626aa6e9cd9e1dafc7",
+        "bytes": 967602
       }
     },
     "dark-star": {
-      "revision": "v26.9.1001",
-      "generatedAt": "2026-09-10T19:05:57.073Z",
+      "revision": "v26.9.1400",
+      "generatedAt": "2026-09-14T18:33:38.024Z",
       "captures": [
         {
           "file": "freed-showcase-unified-dark-star.png",
@@ -1037,7 +1037,7 @@
             "renderer": "raw-webgpu",
             "decorativeStarCount": 100000,
             "screenshotPixels": {
-              "quantizedColors": 461,
+              "quantizedColors": 459,
               "width": 1201,
               "height": 1540
             }
@@ -1071,7 +1071,7 @@
             "renderer": "raw-webgpu",
             "decorativeStarCount": 100000,
             "screenshotPixels": {
-              "quantizedColors": 346,
+              "quantizedColors": 347,
               "width": 1201,
               "height": 1540
             }
@@ -1168,9 +1168,9 @@
       ],
       "seconds": 3,
       "animation": {
-        "url": "/showcase/freed-showcase-dark-star-animation-a47c443bebc3.webp",
-        "sha256": "a47c443bebc3b7fe7ff04c1e52680be377f655282cf533f064573311f2dbf96d",
-        "bytes": 857364
+        "url": "/showcase/freed-showcase-dark-star-animation-d40f1bc73ebd.webp",
+        "sha256": "d40f1bc73ebd2a6be27229eb9f78e18ee9f1a8623f2c34642cb0431e6178606d",
+        "bytes": 881964
       }
     }
   }

@@ -1,14 +1,14 @@
 {
-  "url": "/social/freed-286e63e28beb.png",
+  "url": "/social/freed-2a0c0da45526.png",
   "width": 1200,
   "height": 630,
   "alt": "Freed: Take Back Your Feed. Social feeds in one local app. Open source and free forever. Ember phone preview.",
-  "sha256": "286e63e28beb840522f0f0f77bd9539dcc14df9826153a0f027a662ac802f853",
+  "sha256": "2a0c0da455267b73a5e52dbe54b1927804003b71bb69a4eaf70a36c8ed919591",
   "source": {
-    "releaseTag": "v26.9.1001",
-    "sourceCommit": "1fbf48c4f024d0247334bc9ea57a0fb378fce16c",
-    "animationUrl": "/showcase/freed-showcase-ember-animation-f7d8c2378dbe.webp",
-    "animationSha256": "f7d8c2378dbea5479065da3f57f727466502d7e19e6b83e6a57dcbe9439c284e",
+    "releaseTag": "v26.9.1400",
+    "sourceCommit": "aa56d7e35a510387c089c39f93f04fa39f4ea56f",
+    "animationUrl": "/showcase/freed-showcase-ember-animation-a93629c1e403.webp",
+    "animationSha256": "a93629c1e403b8aef1ebcacf88c9e77ec81a4613a3eb09ca95834995854c5e4b",
     "capture": "freed-showcase-stories-ember.png",
     "frame": 4,
     "crop": {

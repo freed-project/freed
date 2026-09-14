@@ -21,7 +21,7 @@ for (const legacyPath of ["/updates", "/updates/why-freed-exists"]) {
 test("internal updates links point directly to the changelog", async ({ page }) => {
   await page.goto("/vision");
   await expect(
-    page.getByRole("link", { name: "Active development", exact: true }),
+    page.getByRole("link", { name: "Updates", exact: true }).first(),
   ).toHaveAttribute("href", "/changelog");
 
   await page.goto("/privacy");
