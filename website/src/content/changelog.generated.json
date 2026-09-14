@@ -1,5 +1,48 @@
 [
   {
+    "version": "26.9.1400",
+    "tagName": "v26.9.1400",
+    "channel": "production",
+    "date": "2026-09-14T18:47:34Z",
+    "deck": "More reliable Google Drive transfers and synchronized edits.",
+    "features": [],
+    "fixes": [
+      {
+        "text": "Checkpoint and operation sync now share the enrolled writer identity, fixing accepted PWA edits blocked by an invalid writer error."
+      },
+      {
+        "text": "Refresh Google Drive credentials during long transfers so checkpoint imports can continue after the original access token expires."
+      },
+      {
+        "text": "Device enrollment now recovers from a verified checkpoint when an older client retained a different local request."
+      },
+      {
+        "text": "Accept the complete saved and archived state returned by Freed Desktop when clearing an optimistic PWA edit."
+      }
+    ],
+    "followUps": [],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.9.1400",
+    "prNumbers": [
+      1999,
+      2001,
+      2003,
+      2010,
+      2012,
+      2014,
+      2018
+    ],
+    "builds": [
+      "26.9.1400"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.9.1400",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.9.1400",
+        "channel": "production"
+      }
+    ]
+  },
+  {
     "version": "26.9.1001",
     "tagName": "v26.9.1001",
     "channel": "production",
