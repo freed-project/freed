@@ -68,12 +68,12 @@
     "deck": "More reliable Google Drive transfers and synchronized edits.",
     "features": [],
     "fixes": [
-      "Use the same enrolled writer identity for checkpoint and operation sync, fixing accepted PWA edits blocked by an invalid writer error.",
+      "Checkpoint and operation sync now share the enrolled writer identity, fixing accepted PWA edits blocked by an invalid writer error.",
       "Refresh Google Drive credentials during long transfers so checkpoint imports can continue after the original access token expires.",
-      "Recover valid device enrollment from a verified checkpoint when an older client retained a different local request.",
+      "Device enrollment now recovers from a verified checkpoint when an older client retained a different local request.",
       "Accept the complete saved and archived state returned by Freed Desktop when clearing an optimistic PWA edit."
     ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.9.1400\n\nMore reliable Google Drive transfers and synchronized edits\n\n### Fixes\n\n- The same enrolled writer identity for checkpoint and operation sync, fixing accepted PWA edits blocked by an invalid writer error. now uses the correct path\n- Refresh Google Drive credentials during long transfers so checkpoint imports can continue after the original access token expires\n- Valid device enrollment from a verified checkpoint now recover when an older client retained a different local request\n- Accept the complete saved and archived state returned by Freed Desktop when clearing an optimistic PWA edit\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.9.1400\n\nMore reliable Google Drive transfers and synchronized edits\n\n### Fixes\n\n- Checkpoint and operation sync now share the enrolled writer identity, fixing accepted PWA edits blocked by an invalid writer error\n- Refresh Google Drive credentials during long transfers so checkpoint imports can continue after the original access token expires\n- Device enrollment now recovers from a verified checkpoint when an older client retained a different local request\n- Accept the complete saved and archived state returned by Freed Desktop when clearing an optimistic PWA edit\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
