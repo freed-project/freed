@@ -1273,6 +1273,7 @@ async function publishSelectedStateAfterLibraryCoreSync(): Promise<LibraryCoreRu
 /** Import the published normalized Desktop checkpoint into OPFS SQLite. */
 export async function syncPwaLibraryCoreFromGoogleDrive(input: {
   readonly accessToken: string;
+  readonly googleFetch?: typeof fetch;
   readonly libraryId?: string;
   readonly signal?: AbortSignal;
   readonly onSyncStage?: (message: string) => void;
@@ -1291,6 +1292,7 @@ export async function syncPwaLibraryCoreFromGoogleDrive(input: {
   input.onSyncStage?.("Finding the published Library in Google Drive.");
   const discovered = await discoverPublishedGoogleDriveLibraryCoreControlV1({
     accessToken: input.accessToken,
+    googleFetch: input.googleFetch,
     libraryId: retainedLibraryId ?? input.libraryId,
     signal: input.signal,
   });
@@ -1306,6 +1308,7 @@ export async function syncPwaLibraryCoreFromGoogleDrive(input: {
   }
   const adapter = createGoogleDriveLibraryCoreAdapterV1({
     accessToken: input.accessToken,
+    googleFetch: input.googleFetch,
     controlFileId: discovered.controlFileId,
     libraryId: pointer.libraryId,
     signal: input.signal,
@@ -1363,6 +1366,7 @@ export async function syncPwaLibraryCoreFromGoogleDrive(input: {
     createGoogleDriveLibraryCoreNormalizedFollowerTransportV2({
       onEnrollmentDiscovery: (summary) => { enrollmentDiscovery = summary; },
       accessToken: input.accessToken,
+      googleFetch: input.googleFetch,
       controlFileId: discovered.controlFileId,
       libraryId: pointer.libraryId,
       signal: input.signal,
