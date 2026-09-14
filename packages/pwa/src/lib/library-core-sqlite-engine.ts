@@ -7495,35 +7495,56 @@ export class PwaLibraryCoreSqliteEngine {
         throw new Error("follower result cursor is not contiguous");
       }
 
-      const optimisticRows = this.#database.exec({
-        sql: `SELECT entity_type, entity_id, field_path
-              FROM library_optimistic_fields
-              WHERE transaction_id = ?1
-              ORDER BY entity_type COLLATE BINARY,
-                       entity_id COLLATE BINARY, field_path COLLATE BINARY;`,
+      // The Primary returns the full coupled register even when the local
+      // optimistic preview changes only part of it (for example, unsave).
+      // Derive the exact allowed projection from durable intent membership.
+      const intentMembers = this.#database.exec({
+        sql: `SELECT mutation_id, entity_type, entity_id
+              FROM library_intent_members WHERE transaction_id = ?1
+              ORDER BY member_index LIMIT 1001;`,
         bind: [envelope.transaction_id],
         rowMode: "array",
         returnValue: "resultRows",
       });
-      const replacements = [...envelope.replacement_fields].sort(
-        (left, right) => {
-          const leftKey = `${left.entity_type}\u0000${left.entity_id}\u0000${left.field_path}`;
-          const rightKey = `${right.entity_type}\u0000${right.entity_id}\u0000${right.field_path}`;
-          return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
-        },
-      );
-      if (
-        optimisticRows.length !== replacements.length ||
-        optimisticRows.some((row, index) => {
-          const replacement = replacements[index]!;
-          return (
-            text(row[0], "optimistic entity type") !==
-              replacement.entity_type ||
-            text(row[1], "optimistic entity ID") !== replacement.entity_id ||
-            text(row[2], "optimistic field path") !== replacement.field_path
-          );
-        })
-      ) {
+      if (intentMembers.length !== memberCount) {
+        throw new Error("follower result intent membership is incomplete");
+      }
+      const expectedFields = new Set<string>();
+      for (const member of intentMembers) {
+        const program = sqliteMutationProgram(text(member[0], "result mutation"));
+        const entityType = text(member[1], "result entity type");
+        const entityId = text(member[2], "result entity ID");
+        let paths: readonly string[];
+        switch (program.optimisticEffectKind) {
+          case "saved_assignment":
+          case "archive_assignment":
+            paths = ["archived", "archived_at", "saved", "saved_at"];
+            break;
+          case "read_assignment":
+            paths = ["read_at"];
+            break;
+          case "like_assignment":
+            paths = ["liked", "liked_at"];
+            break;
+          case "none":
+            paths = [];
+            break;
+        }
+        for (const path of paths) {
+          expectedFields.add(JSON.stringify([entityType, entityId, path]));
+        }
+      }
+      const replacementFields = new Set<string>();
+      for (const replacement of envelope.replacement_fields) {
+        const key = JSON.stringify([
+          replacement.entity_type, replacement.entity_id, replacement.field_path,
+        ]);
+        if (!expectedFields.has(key) || replacementFields.has(key)) {
+          throw new Error("follower result replacement projection is incomplete");
+        }
+        replacementFields.add(key);
+      }
+      if (replacementFields.size !== expectedFields.size) {
         throw new Error("follower result replacement projection is incomplete");
       }
 

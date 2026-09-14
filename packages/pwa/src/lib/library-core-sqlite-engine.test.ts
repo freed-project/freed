@@ -37,6 +37,8 @@ import {
   encodeLibraryCoreSignatureInput,
   finalizeLibraryCoreTransactionV1,
   FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  FEED_ITEM_SAVED_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  FEED_ITEM_ARCHIVE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_ANALYSIS_REPLACE_TRANSACTION_MEMBER_SCHEMA,
   FEED_ITEM_ANNOTATIONS_REPLACE_TRANSACTION_MEMBER_SCHEMA,
@@ -1679,7 +1681,7 @@ describe("PWA Library Core SQLite engine", () => {
     ).rejects.toThrow(/replay changed/);
   });
 
-  it("atomically commits verified follower intents, optimistic fields, and exact retries", async () => {
+  it.each(["saved", "archive"] as const)("atomically settles %s clearing with the complete Primary register and exact retries", async (assignment) => {
     const libraryId = "11".repeat(32);
     const epochId = "22".repeat(32);
     const actorId = "33".repeat(32);
@@ -1783,7 +1785,9 @@ describe("PWA Library Core SQLite engine", () => {
     database.exec({
       sql: `INSERT INTO library_actor_capability_mutations
               (capability_id, mutation_id)
-            VALUES ('capability-1', 'feed_item_read_assignment');`,
+            VALUES ('capability-1', 'feed_item_read_assignment'),
+                   ('capability-1', 'feed_item_saved_assignment'),
+                   ('capability-1', 'feed_item_archive_assignment');`,
     });
     database.exec({
       sql: `INSERT INTO library_feed_items
@@ -2320,7 +2324,9 @@ describe("PWA Library Core SQLite engine", () => {
       BEFORE INSERT ON library_optimistic_fields
       BEGIN SELECT RAISE(ABORT, 'injected optimistic fault'); END;`);
     const secondMember =
-      FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA.construct(
+      (assignment === "saved"
+        ? FEED_ITEM_SAVED_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA
+        : FEED_ITEM_ARCHIVE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA).construct(
         {
           actor_id: actorId,
           actor_sequence: 2,
@@ -2333,7 +2339,7 @@ describe("PWA Library Core SQLite engine", () => {
           hlc_wall_ms: 1_600,
           library_id: libraryId,
           operation_id: "intent-operation-2",
-          payload: { read_at_ms: 1_600 },
+          payload: { assigned: false, assigned_at_ms: 1_600 },
           previous_actor_operation_id: "intent-operation-1",
           transaction_id: "intent-transaction-2",
           transaction_member_count: 1,
@@ -2403,18 +2409,17 @@ describe("PWA Library Core SQLite engine", () => {
       previous_result_digest: resultDigest,
       receipt_ids: [secondFinalized.members[0]!.envelope_digest],
       rejection_reason: null,
-      replacement_fields: [
-        {
-          boolean_value: null,
-          entity_id: "item-1",
-          entity_type: "FeedItem",
-          field_path: "read_at",
-          integer_value: 1_600,
-          real_value: null,
-          text_value: null,
-          value_type: "integer",
-        },
-      ],
+      // Exact native result shape, including the unaffected half of the register.
+      replacement_fields: ["archived", "archived_at", "saved", "saved_at"].map((path) => ({
+        boolean_value: path.endsWith("_at") ? null : false,
+        entity_id: "item-1",
+        entity_type: "FeedItem",
+        field_path: path,
+        integer_value: null,
+        real_value: null,
+        text_value: null,
+        value_type: path.endsWith("_at") ? "null" : "boolean",
+      })),
       resolved_at_ms: 2_100,
       result_body_digest: "0".repeat(64),
       result_sequence: 2,
@@ -2440,6 +2445,24 @@ describe("PWA Library Core SQLite engine", () => {
         authorityKeys.privateKey,
       ).toString("hex"),
     } as unknown as LibraryCoreCanonicalValue);
+    for (const replacements of [
+      unsignedSecondResult.replacement_fields.slice(1),
+      [...unsignedSecondResult.replacement_fields, unsignedSecondResult.replacement_fields[0]!],
+      [...unsignedSecondResult.replacement_fields, {
+        ...unsignedSecondResult.replacement_fields[0]!, entity_id: "other-item",
+      }],
+    ]) {
+      const malformed = { ...unsignedSecondResult, replacement_fields: replacements };
+      const digest = coreDigest("follower-result-body", libraryCoreFollowerResultBodyV1(malformed));
+      const malformedBytes = encodeLibraryCoreCanonicalValue({
+        ...malformed, result_body_digest: digest,
+        signature: sign(null, encodeLibraryCoreSignatureInput("follower-result-envelope", {
+          result_body_digest: digest,
+        }), authorityKeys.privateKey).toString("hex"),
+      } as unknown as LibraryCoreCanonicalValue);
+      await expect(engine.applyFollowerResult({ canonicalResultBytes: malformedBytes }))
+        .rejects.toThrow(/replacement projection is incomplete|replacement field identity is duplicated/);
+    }
     database.exec(`CREATE TEMP TRIGGER fail_follower_result_cursor
       BEFORE UPDATE OF next_result_sequence ON library_intent_result_cursors
       BEGIN SELECT RAISE(ABORT, 'injected result cursor fault'); END;`);
@@ -2462,7 +2485,7 @@ describe("PWA Library Core SQLite engine", () => {
         rowMode: "array",
         returnValue: "resultRows",
       }),
-    ).toEqual([[1_400, 8, 1, 1, "pending", 2]]);
+    ).toEqual([[1_400, 8, 1, 2, "pending", 2]]);
 
     database.exec("DROP TRIGGER fail_follower_result_cursor;");
     await engine.applyFollowerResult({
@@ -2560,7 +2583,7 @@ describe("PWA Library Core SQLite engine", () => {
           entity_id: "item-1",
           entity_type: "FeedItem",
           field_path: "read_at",
-          integer_value: 1_600,
+          integer_value: 1_400,
           real_value: null,
           text_value: null,
           value_type: "integer",

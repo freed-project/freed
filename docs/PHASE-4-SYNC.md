@@ -360,3 +360,9 @@ capability, zero accepted operations, and empty local intent history. Recovery
 retains the pending request as evidence and commits the enrollment receipt and
 intent genesis together. It never replaces the Primary actor or selects a
 certificate merely because Drive discovery found the same actor ID.
+
+PWA result settlement validates the complete operation-owned replacement fields
+instead of requiring equality with sparse optimistic previews. Unsave and
+unarchive can therefore settle the full authoritative saved/archive register.
+Signed-result, identity, cursor, missing-field and atomic rollback checks remain
+mandatory.

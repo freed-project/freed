@@ -48,6 +48,12 @@ previous digest. Reusing a transaction or result identity with changed bytes,
 skipping a sequence, changing the authority, or omitting one optimistic field
 fails before settlement.
 
+Replacement identities come from the registered operations in the durable intent,
+not from the sparse optimistic preview. Saved and archive assignments return the
+complete coupled saved/archive register, including when clearing either state.
+The follower requires the exact deduplicated operation projection and rejects
+missing, duplicate, or unrelated replacement identities before settlement.
+
 The result authority epoch and intent epoch are separate mandatory fields. An
 accepted, already-applied, or ordinary rejected result uses the same epoch for
 both identities. An `epoch_stale` result names the older intent epoch and a
