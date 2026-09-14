@@ -352,3 +352,11 @@ Long PWA Drive transfers retain the expiry of a reused access token and check
 credentials before each existing request. Expiring credentials refresh without
 restarting checkpoint import. Disconnect or lifecycle replacement during refresh
 prevents the pending Drive request from being sent.
+
+PWA enrollment can recover an unused device actor already admitted in the
+verified checkpoint when an older client retained a different local request.
+SQLite verifies the original certificate and active authority, exact key and
+capability, zero accepted operations, and empty local intent history. Recovery
+retains the pending request as evidence and commits the enrollment receipt and
+intent genesis together. It never replaces the Primary actor or selects a
+certificate merely because Drive discovery found the same actor ID.
