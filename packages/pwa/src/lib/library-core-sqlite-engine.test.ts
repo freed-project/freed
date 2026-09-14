@@ -1180,6 +1180,85 @@ describe("PWA Library Core SQLite engine", () => {
       next_actor_sequence: 1,
       previous_actor_chain_digest: certificate.actor_chain_genesis,
     });
+
+    // Reproduce older checkpoint replacement losing the local request while
+    // retaining the same key and the Primary's already admitted certificate.
+    database.exec("DELETE FROM library_intent_actors; DELETE FROM library_follower_actor_request;");
+    // Native checkpoints key capabilities by certificate digest, whereas
+    // fresh browser enrollment may key them by their issuance identity.
+    database.exec("BEGIN; PRAGMA defer_foreign_keys = ON;");
+    for (const table of ["library_actor_capabilities", "library_actor_capability_mutations"]) {
+      database.exec({ sql: `UPDATE ${table} SET capability_id = ?1;`,
+        bind: [certificate.certificate.certificate_digest] });
+    }
+    database.exec("COMMIT;");
+    const laterEnrollment = constructLibraryCoreActorEnrollmentBodyV1({
+      actor_incarnation_nonce: enrollment.body.actor_incarnation_nonce,
+      actor_public_key: actorPublicKey, authority_key_id: authorityKeyId,
+      created_at_ms: 2_000, epoch: 1, epoch_id: epochId,
+      installation_incarnation: enrollment.body.installation_incarnation,
+      library_id: libraryId, observed_frontier: [], operation_id: enrollment.body.operation_id,
+    }, { digest: coreDigest });
+    const laterRequest = await constructLibraryCoreActorCapabilityRequestV2(
+      laterEnrollment, capabilityInput, { digest: coreDigest, signActorProof },
+    );
+    const laterInput = {
+      canonicalRequestBytes: encodeLibraryCoreCanonicalValue(laterRequest.request as unknown as LibraryCoreCanonicalValue),
+      createdAt: 2_000,
+    };
+    await engine.storeFollowerActorRequest(laterInput);
+    database.exec({
+      sql: `INSERT INTO library_authority_frontier
+        (epoch_id, ordinal, actor_id, accepted_counter, accepted_operation_id, accepted_chain_digest)
+        VALUES (?1, 0, ?2, 1, 'operation:checkpoint-test', ?3);`,
+      bind: [epochId, "88".repeat(32), "99".repeat(32)],
+    });
+    const assertPending = () => expect(engine.followerActorEnrollmentContext().request).toMatchObject({
+      state: "pending", enrollmentRequestDigest: laterRequest.request.certificate_digest,
+    });
+    const corruptCertificate = encodeLibraryCoreCanonicalValue({
+      ...certificate.certificate, authority_signature: "00".repeat(64),
+    } as unknown as LibraryCoreCanonicalValue);
+    database.exec({ sql: "UPDATE library_actors SET canonical_enrollment_certificate = ?1;",
+      bind: [new TextDecoder().decode(corruptCertificate)] });
+    await expect(engine.storeFollowerActorRequest(laterInput)).rejects.toThrow();
+    assertPending();
+    database.exec({ sql: "UPDATE library_actors SET canonical_enrollment_certificate = ?1;",
+      bind: [new TextDecoder().decode(canonicalCertificateBytes)] });
+    database.exec({ sql: "UPDATE library_actors SET public_key = ?1;", bind: ["00".repeat(32)] });
+    await expect(engine.storeFollowerActorRequest(laterInput)).rejects.toThrow(/unused active actor/);
+    assertPending();
+    database.exec({ sql: "UPDATE library_actors SET public_key = ?1;", bind: [actorPublicKey] });
+    database.exec("UPDATE library_actors SET retired_at = 2100;");
+    await expect(engine.storeFollowerActorRequest(laterInput)).rejects.toThrow(/unused active actor/);
+    assertPending();
+    database.exec("UPDATE library_actors SET retired_at = NULL;");
+    database.exec("UPDATE library_actors SET accepted_counter = 1, accepted_operation_id = 'operation:existing-edit';");
+    await expect(engine.storeFollowerActorRequest(laterInput)).rejects.toThrow(/unused active actor/);
+    assertPending();
+    database.exec("UPDATE library_actors SET accepted_counter = 0, accepted_operation_id = NULL;");
+    database.exec({
+      sql: "INSERT INTO library_intent_actors VALUES (?1, 1, NULL, ?2);",
+      bind: [enrollment.body.actor_id, certificate.actor_chain_genesis],
+    });
+    await expect(engine.storeFollowerActorRequest(laterInput)).rejects.toThrow(/empty local intent history/);
+    assertPending();
+    database.exec("DELETE FROM library_intent_actors;");
+    database.exec(`CREATE TEMP TRIGGER fail_recovery BEFORE INSERT ON library_intent_actors
+      BEGIN SELECT RAISE(ABORT, 'recovery fault'); END;`);
+    await expect(engine.storeFollowerActorRequest(laterInput)).rejects.toThrow(/recovery fault/);
+    assertPending();
+    database.exec("DROP TRIGGER fail_recovery;");
+    const recovered = await engine.storeFollowerActorRequest(laterInput);
+    expect(recovered).toMatchObject({ state: "enrolled", enrollmentRequestDigest: laterRequest.request.certificate_digest });
+    expect(Array.from(recovered.canonicalRequestBytes)).toEqual(Array.from(laterInput.canonicalRequestBytes));
+    expect(database.exec({ sql: "SELECT enrollment_certificate_digest FROM library_follower_actor_request;",
+      rowMode: 0, returnValue: "resultRows" })).toEqual([certificate.certificate.certificate_digest]);
+    expect(engine.followerMutationContext()).toMatchObject({
+      actor_id: enrollment.body.actor_id, next_actor_sequence: 1,
+      previous_actor_chain_digest: certificate.actor_chain_genesis,
+    });
+    await expect(engine.storeFollowerActorRequest(laterInput)).resolves.toEqual(recovered);
   });
 
   it("stages split normalized operation pages and atomically applies one verified large transaction", async () => {

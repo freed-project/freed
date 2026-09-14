@@ -1,5 +1,18 @@
 ## 7. Follower intents and Primary results
 
+The PWA may recover a pending local enrollment from an unused actor already
+admitted in its verified checkpoint. Exact request replay triggers this bounded
+SQLite recovery. It verifies the stored canonical certificate against the current
+Library, epoch and authority key using the certificate's signed historical
+frontier, then rechecks its exact bytes against the active actor and capability
+rows inside the write transaction. The actor must have the retained request's
+key, a zero accepted counter, an unchanged genesis, a full editor capability,
+and no retirement or local intent history. Recovery stores the admitted
+certificate and local intent genesis atomically without changing any canonical
+actor row. The original pending request bytes and digest remain preserved even
+when they differ from the recovered certificate. Unknown history, conflicting
+grants, changed authority and invalid signatures fail before any recovery write.
+
 A follower edit atomically writes a signed intent transaction and its sparse
 optimistic effect to local SQLite. The intent envelope binds:
 
