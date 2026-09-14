@@ -4110,7 +4110,10 @@ export class PwaLibraryCoreSqliteEngine {
       ) {
         throw new Error("PWA follower actor request replay changed");
       }
-      return context.request;
+      if (context.request.state === "pending") {
+        await this.#recoverCheckpointEnrollment(context);
+      }
+      return this.followerActorEnrollmentContext().request!;
     }
     const decoded = decodeLibraryCoreCanonicalValue(
       request.canonicalRequestBytes,
@@ -4260,6 +4263,120 @@ export class PwaLibraryCoreSqliteEngine {
     return this.followerActorEnrollmentContext().request!;
   }
 
+  async #recoverCheckpointEnrollment(
+    context: LibraryCoreFollowerActorEnrollmentContextV2,
+  ): Promise<void> {
+    const request = context.request!;
+    const actorRows = this.#database.exec({
+      sql: `SELECT canonical_enrollment_certificate FROM library_actors
+            WHERE actor_id = ?1 AND authority_epoch_id = ?2;`,
+      bind: [request.actorId, context.authority.epoch_id],
+      rowMode: "array", returnValue: "resultRows",
+    });
+    if (actorRows.length === 0) return;
+    const canonicalCertificate = text(actorRows[0]![0], "checkpoint actor certificate");
+    const certificateBytes = Uint8Array.from(new TextEncoder().encode(canonicalCertificate));
+    const historical = decodeLibraryCoreCanonicalValue(certificateBytes, { maximumBytes: 65_536 }) as {
+      certificate_body: { actor_enrollment_body: { observed_frontier: LibraryCoreCanonicalValue } };
+    };
+    // This certificate was already admitted into the verified checkpoint.
+    // Its signed historical frontier is anchored by exact stored bytes below.
+    const historicalAuthority = { ...context.authority,
+      observed_frontier: snapshotLibraryCoreCausalFrontier(
+        historical.certificate_body.actor_enrollment_body.observed_frontier,
+        "checkpoint enrollment historical frontier",
+      ),
+    };
+    const verified = await verifyLibraryCoreActorCapabilityCertificateV2(
+      certificateBytes, historicalAuthority,
+      { digest: coreDigest, verifySignature: (verification) =>
+        verifyLibraryCoreEd25519WithWebCrypto(verification, this.#subtle) },
+    );
+    const certificate = verified.certificate;
+    const enrollment = certificate.certificate_body.actor_enrollment_body;
+    const capability = certificate.certificate_body.actor_capability_body;
+    if (enrollment.actor_id !== request.actorId ||
+        enrollment.actor_public_key !== request.actorPublicKey ||
+        capability.actor_class !== "editor" || capability.scope.mode !== "library_wide" ||
+        JSON.stringify(capability.allowed_operation_types) !== JSON.stringify(LIBRARY_CORE_PRIMARY_WRITER_OPERATION_TYPES_V2) ||
+        capability.allowed_query_ids.length !== 0) {
+      throw new Error("Checkpoint enrollment does not match this device");
+    }
+    this.#database.exec("BEGIN IMMEDIATE;");
+    try {
+      const current = this.followerActorEnrollmentContext();
+      if (JSON.stringify(current.authority) !== JSON.stringify(context.authority) ||
+          current.request?.state !== "pending" ||
+          current.request.enrollmentRequestDigest !== request.enrollmentRequestDigest ||
+          current.request.actorId !== request.actorId ||
+          current.request.actorPublicKey !== request.actorPublicKey) {
+        throw new Error("Checkpoint enrollment recovery context changed");
+      }
+      const anchored = this.#database.exec({
+        sql: `SELECT c.capability_id FROM library_actors AS a
+              JOIN library_actor_capabilities AS c ON c.actor_id = a.actor_id
+              WHERE a.actor_id = ?1 AND a.authority_epoch_id = ?2
+                AND a.actor_kind = 'pwa'
+                AND a.public_key = ?3 AND a.enrollment_certificate_digest = ?4
+                AND a.canonical_enrollment_certificate = ?5
+                AND a.chain_genesis_digest = ?6 AND a.accepted_counter = 0
+                AND a.accepted_operation_id IS NULL AND a.accepted_chain_digest = ?6
+                AND a.retired_at IS NULL AND c.retired_at IS NULL
+                AND c.certificate_digest = ?4
+                AND c.canonical_certificate = ?5 AND c.certificate_version = 2
+                AND c.actor_class = 'editor' AND c.scope_mode = 'library_wide'
+                AND c.issuance_identity = ?7 AND c.retirement_identity = ?8
+                AND NOT EXISTS (SELECT 1 FROM library_actor_capabilities AS other
+                  WHERE other.actor_id = a.actor_id AND other.retired_at IS NULL
+                    AND other.capability_id <> c.capability_id);`,
+        bind: [request.actorId, context.authority.epoch_id, request.actorPublicKey,
+          certificate.certificate_digest, canonicalCertificate, verified.actor_chain_genesis,
+          capability.issuance_identity, capability.retirement_identity],
+        rowMode: "array", returnValue: "resultRows",
+      });
+      if (anchored.length !== 1) throw new Error("Checkpoint enrollment recovery requires an unused active actor");
+      const capabilityId = text(anchored[0]![0], "checkpoint capability identity");
+      const grants = this.#database.exec({
+        sql: `SELECT mutation_id FROM library_actor_capability_mutations
+              WHERE capability_id = ?1 ORDER BY mutation_id LIMIT 1000;`,
+        bind: [capabilityId], rowMode: "array", returnValue: "resultRows",
+      }).map((row) => text(row[0], "checkpoint actor grant"));
+      const queries = this.#database.exec({
+        sql: "SELECT 1 FROM library_actor_capability_queries WHERE capability_id = ?1 LIMIT 1;",
+        bind: [capabilityId], rowMode: "array", returnValue: "resultRows",
+      });
+      if (JSON.stringify(grants) !== JSON.stringify(capability.allowed_operation_types) || queries.length) {
+        throw new Error("Checkpoint enrollment recovery capability changed");
+      }
+      for (const table of ["library_intent_actors", "library_intent_transactions",
+        "library_intent_transport_heads", "library_intent_results",
+        "library_intent_result_cursors", "library_result_transport_heads"] as const) {
+        if (this.#database.exec({ sql: `SELECT 1 FROM ${table} LIMIT 1;`,
+          rowMode: "array", returnValue: "resultRows" }).length) {
+          throw new Error("Checkpoint enrollment recovery requires empty local intent history");
+        }
+      }
+      // Keep the original pending request bytes and digest as recovery evidence.
+      this.#database.exec({
+        sql: `UPDATE library_follower_actor_request
+              SET enrollment_certificate_digest = ?1, canonical_enrollment_certificate = ?2,
+                  actor_chain_genesis = ?3, enrolled_at = ?4
+              WHERE singleton_id = 1 AND enrollment_request_digest = ?5;`,
+        bind: [certificate.certificate_digest, canonicalCertificate, verified.actor_chain_genesis,
+          Math.max(Date.now(), request.createdAt), request.enrollmentRequestDigest],
+      });
+      this.#database.exec({
+        sql: `INSERT INTO library_intent_actors
+              (actor_id, next_counter, previous_operation_id, previous_chain_digest)
+              VALUES (?1, 1, NULL, ?2);`,
+        bind: [request.actorId, verified.actor_chain_genesis],
+      });
+      this.#database.exec("COMMIT;");
+    } catch (error) {
+      rollbackPreservingOriginalError(this.#database, error);
+    }
+  }
+
   async installFollowerActorEnrollment(
     input: LibraryCoreInstallFollowerActorEnrollmentV2,
   ): Promise<LibraryCoreFollowerActorEnrollmentReceiptV2> {
@@ -4271,7 +4388,7 @@ export class PwaLibraryCoreSqliteEngine {
     if (context.request.state === "enrolled") {
       const rows = this.#database.exec({
         sql: `SELECT canonical_enrollment_certificate, actor_chain_genesis,
-                     enrolled_at
+                     enrolled_at, enrollment_certificate_digest
               FROM library_follower_actor_request
               WHERE singleton_id = 1 AND actor_id = ?1;`,
         bind: [context.request.actorId],
@@ -4292,6 +4409,10 @@ export class PwaLibraryCoreSqliteEngine {
         rows[0]![2],
         "PWA follower enrollment time",
       );
+      const enrollmentCertificateDigest = text(rows[0]![3], "PWA follower certificate digest");
+      if (!isLibraryCoreLowercaseHex64(enrollmentCertificateDigest)) {
+        throw new Error("PWA follower certificate digest is invalid");
+      }
       if (
         enrolledAt !== install.enrolledAt ||
         canonicalBytes.byteLength !==
@@ -4308,7 +4429,7 @@ export class PwaLibraryCoreSqliteEngine {
         actorId: context.request.actorId,
         actorPublicKey: context.request.actorPublicKey,
         enrolledAt,
-        enrollmentCertificateDigest: context.request.enrollmentRequestDigest,
+        enrollmentCertificateDigest,
       });
     }
     const verified = await verifyLibraryCoreActorCapabilityCertificateV2(
