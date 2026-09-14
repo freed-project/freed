@@ -366,3 +366,7 @@ instead of requiring equality with sparse optimistic previews. Unsave and
 unarchive can therefore settle the full authoritative saved/archive register.
 Signed-result, identity, cursor, missing-field and atomic rollback checks remain
 mandatory.
+
+Operation sync uses the enrolled Primary actor identity already bound by checkpoint
+export. Native export, PWA staging, and accepted-result materialization reject
+missing, retired, or ambiguous writers and recheck admission before committing.
