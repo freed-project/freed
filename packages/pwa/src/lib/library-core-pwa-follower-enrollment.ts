@@ -65,6 +65,11 @@ export async function preparePwaLibraryCoreFollowerEnrollment(
   const context = await runtime.readContext();
   if (context.request?.state === "enrolled") return null;
   if (context.request) {
+    const retained = await runtime.storeRequest({
+      canonicalRequestBytes: context.request.canonicalRequestBytes,
+      createdAt: context.request.createdAt,
+    });
+    if (retained.state === "enrolled") return null;
     return Object.freeze({
       descriptor: Object.freeze({
         byteLength: context.request.canonicalRequestBytes.byteLength,
