@@ -562,9 +562,9 @@ fn checkpoint_hex_identity(value: &str) -> bool {
             .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
 }
 
-pub fn describe_normalized_checkpoint_export_v2(
+pub(crate) fn normalized_writer_identity(
     connection: &Connection,
-) -> Result<NormalizedCheckpointExportDescriptorV2, NormalizedSqliteError> {
+) -> Result<(String, String, String, i64), NormalizedSqliteError> {
     let (library_id, authority_epoch, writer_id, source_revision): (String, String, String, i64) =
         connection.query_row(
             "SELECT meta.library_id, meta.authority_epoch, actor.actor_id,
@@ -586,6 +586,14 @@ pub fn describe_normalized_checkpoint_export_v2(
             [],
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
         )?;
+    Ok((library_id, authority_epoch, writer_id, source_revision))
+}
+
+pub fn describe_normalized_checkpoint_export_v2(
+    connection: &Connection,
+) -> Result<NormalizedCheckpointExportDescriptorV2, NormalizedSqliteError> {
+    let (library_id, authority_epoch, writer_id, source_revision) =
+        normalized_writer_identity(connection)?;
     if !checkpoint_hex_identity(&library_id)
         || !checkpoint_hex_identity(&authority_epoch)
         || !checkpoint_hex_identity(&writer_id)

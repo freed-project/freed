@@ -51,3 +51,9 @@ Authenticated manifests publish the latest checkpoint, operation heads, intent
 heads, result heads, content roots, and authority tuple. Google Drive is a
 transport adapter for these immutable objects. Provider endpoints, headers,
 OAuth behavior, retries, and cadence are outside this contract.
+
+Checkpoint and operation descriptors bind the same enrolled Primary actor. Native
+export and PWA import resolve exactly one nonretired Desktop actor in the active
+SQLite authority epoch. The installation-local writer role is not a transport
+identity. Missing or ambiguous actors block admission, and PWA materialization
+rechecks this identity inside its write transaction after signature verification.

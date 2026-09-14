@@ -351,6 +351,16 @@ import {
 type LibraryCoreSqliteMutationProgram =
   (typeof LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS)[LibraryCoreSqliteMutationProgramId];
 
+// Checkpoints and operation transport bind the enrolled writer actor, not its local role.
+const normalizedActiveWriterJoin = `JOIN library_actors AS writer
+              ON writer.authority_epoch_id = active.epoch_id
+             AND writer.actor_kind = 'desktop'
+             AND writer.retired_at IS NULL
+             AND (SELECT count(*) FROM library_actors AS candidate
+                  WHERE candidate.authority_epoch_id = active.epoch_id
+                    AND candidate.actor_kind = 'desktop'
+                    AND candidate.retired_at IS NULL) = 1`;
+
 const stagedRecordDigestPrefix = Uint8Array.from(
   "freed.library-core.v2/digest-bytes/staged-checkpoint-record\u0000",
   (character) => character.charCodeAt(0),
@@ -955,15 +965,8 @@ export class PwaLibraryCoreSqliteEngine {
              AND active.epoch_id = meta.authority_epoch
             JOIN library_authority_epochs AS epoch
               ON epoch.epoch_id = active.epoch_id
-            JOIN library_actors AS writer
-              ON writer.authority_epoch_id = active.epoch_id
-             AND writer.actor_kind = 'desktop'
-             AND writer.retired_at IS NULL
-            WHERE meta.singleton_id = 1
-              AND (SELECT count(*) FROM library_actors AS candidate
-                   WHERE candidate.authority_epoch_id = active.epoch_id
-                     AND candidate.actor_kind = 'desktop'
-                     AND candidate.retired_at IS NULL) = 1;`,
+            ${normalizedActiveWriterJoin}
+            WHERE meta.singleton_id = 1;`,
       rowMode: "array",
       returnValue: "resultRows",
     });
@@ -6055,7 +6058,7 @@ export class PwaLibraryCoreSqliteEngine {
     );
     const authorityRows = this.#database.exec({
       sql: `SELECT m.library_id, m.authority_epoch, m.source_revision,
-                   changes.revision, active.writer_id
+                   changes.revision, writer.actor_id
             FROM library_meta AS m
             JOIN library_change_state AS changes
               ON changes.singleton_id = m.singleton_id
@@ -6063,6 +6066,7 @@ export class PwaLibraryCoreSqliteEngine {
               ON active.library_id = m.library_id
              AND active.epoch_id = m.authority_epoch
              AND active.active_key = 'active'
+            ${normalizedActiveWriterJoin}
             WHERE m.singleton_id = 1;`,
       rowMode: "array",
       returnValue: "resultRows",
@@ -6095,7 +6099,7 @@ export class PwaLibraryCoreSqliteEngine {
     try {
       const currentRows = this.#database.exec({
         sql: `SELECT m.library_id, m.authority_epoch, m.source_revision,
-                     changes.revision, active.writer_id
+                     changes.revision, writer.actor_id
               FROM library_meta AS m
               JOIN library_change_state AS changes
                 ON changes.singleton_id = m.singleton_id
@@ -6103,6 +6107,7 @@ export class PwaLibraryCoreSqliteEngine {
                 ON active.library_id = m.library_id
                AND active.epoch_id = m.authority_epoch
                AND active.active_key = 'active'
+              ${normalizedActiveWriterJoin}
               WHERE m.singleton_id = 1;`,
         rowMode: "array",
         returnValue: "resultRows",
@@ -6423,7 +6428,7 @@ export class PwaLibraryCoreSqliteEngine {
       const actorRows = this.#database.exec({
         sql: `SELECT m.library_id, e.epoch_number, e.epoch_id,
                      e.authority_key_id, e.authority_public_key,
-                     active.writer_id, actor.actor_id, actor.public_key,
+                     writer.actor_id, actor.actor_id, actor.public_key,
                      actor.accepted_counter, actor.accepted_operation_id,
                      actor.accepted_chain_digest
               FROM library_meta AS m
@@ -6433,6 +6438,7 @@ export class PwaLibraryCoreSqliteEngine {
                 ON active.library_id = m.library_id
                AND active.epoch_id = e.epoch_id
                AND active.active_key = 'active'
+              ${normalizedActiveWriterJoin}
               JOIN library_actors AS actor
                 ON actor.actor_id = ?1
                AND actor.authority_epoch_id = e.epoch_id
@@ -6583,7 +6589,7 @@ export class PwaLibraryCoreSqliteEngine {
       try {
         const current = this.#database.exec({
           sql: `SELECT m.source_revision, changes.revision,
-                       m.library_id, m.authority_epoch, active.writer_id,
+                       m.library_id, m.authority_epoch, writer.actor_id,
                        actor.accepted_counter, actor.accepted_operation_id,
                        actor.accepted_chain_digest
                 FROM library_meta AS m
@@ -6593,6 +6599,7 @@ export class PwaLibraryCoreSqliteEngine {
                   ON active.library_id = m.library_id
                  AND active.epoch_id = m.authority_epoch
                  AND active.active_key = 'active'
+                ${normalizedActiveWriterJoin}
                 JOIN library_actors AS actor
                   ON actor.actor_id = ?1
                  AND actor.authority_epoch_id = m.authority_epoch
@@ -6946,12 +6953,13 @@ export class PwaLibraryCoreSqliteEngine {
     }
     const authorityRows = this.#database.exec({
       sql: `SELECT m.library_id, m.authority_epoch, m.source_revision,
-                   active.writer_id
+                   writer.actor_id
             FROM library_meta AS m
             JOIN library_active_authority AS active
               ON active.library_id = m.library_id
              AND active.epoch_id = m.authority_epoch
              AND active.active_key = 'active'
+            ${normalizedActiveWriterJoin}
             WHERE m.singleton_id = 1;`,
       rowMode: "array",
       returnValue: "resultRows",
