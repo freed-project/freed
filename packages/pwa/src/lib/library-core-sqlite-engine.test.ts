@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   CONTENT_SIGNAL_KEYS,
   normalizeLibraryCoreFeedBrowseFilterV1,
@@ -1097,7 +1097,7 @@ describe("PWA Library Core SQLite engine", () => {
               (active_key, library_id, epoch_id, writer_id,
                accepted_manifest_generation, activated_at)
             VALUES ('active', ?1, ?2,
-                    '6666666666666666666666666666666666666666666666666666666666666666',
+                    'primary:desktop',
                     1, 1);`,
       bind: [libraryId, epochId],
     });
@@ -1269,7 +1269,7 @@ describe("PWA Library Core SQLite engine", () => {
     const actorId = "33".repeat(32);
     const chainGenesis = "44".repeat(32);
     const authorityKeyId = "55".repeat(32);
-    const writerId = "66".repeat(32);
+    const writerId = actorId;
     const actorKeys = generateKeyPairSync("ed25519");
     const authorityKeys = generateKeyPairSync("ed25519");
     const actorPublicKey = actorKeys.publicKey
@@ -1319,7 +1319,7 @@ describe("PWA Library Core SQLite engine", () => {
               (active_key, library_id, epoch_id, writer_id,
                accepted_manifest_generation, activated_at)
             VALUES ('active', ?1, ?2, ?3, 1, 1);`,
-      bind: [libraryId, epochId, writerId],
+      bind: [libraryId, epochId, "primary:desktop"],
     });
     database.exec({
       sql: `INSERT INTO library_actors
@@ -1514,6 +1514,31 @@ describe("PWA Library Core SQLite engine", () => {
       "transaction:future-gap",
       "cc".repeat(32),
     );
+    for (const invalidWriterSql of [
+      "UPDATE library_actors SET retired_at = 2;",
+      "UPDATE library_actors SET actor_kind = 'pwa';",
+      `INSERT INTO library_actors
+         SELECT '${"77".repeat(32)}', authority_epoch_id, actor_kind, public_key,
+                'enroll-ambiguous', '${"78".repeat(32)}',
+                canonical_enrollment_certificate, chain_genesis_digest,
+                accepted_counter, accepted_operation_id, accepted_chain_digest,
+                retired_at, created_at, updated_at FROM library_actors;`,
+    ]) {
+      database.exec("SAVEPOINT invalid_writer;");
+      try {
+        database.exec(invalidWriterSql);
+        await expect(engine.importNormalizedOperationPage({
+          page: page(gapRecord, false), receivedAt: 2_500,
+          snapshot: { ...descriptor, sourceRevision: 2 },
+        })).rejects.toThrow(/authority is unavailable/);
+        expect(database.exec({
+          sql: "SELECT count(*) FROM library_operation_replication_stages;",
+          rowMode: "array", returnValue: "resultRows",
+        })).toEqual([[0]]);
+      } finally {
+        database.exec("ROLLBACK TO invalid_writer; RELEASE invalid_writer;");
+      }
+    }
     const gapReceipt = await engine.importNormalizedOperationPage({
       page: page(gapRecord, false),
       receivedAt: 2_500,
@@ -1622,6 +1647,30 @@ describe("PWA Library Core SQLite engine", () => {
       }),
     ).toEqual([[0, 0, 0, 1]]);
     database.exec("DROP TRIGGER fail_operation_replication_receipt;");
+
+    const verifySignature = crypto.subtle.verify.bind(crypto.subtle);
+    const verificationRace = vi.spyOn(crypto.subtle, "verify").mockImplementationOnce(
+      async (...args) => {
+        const verified = await verifySignature(...args);
+        database.exec("UPDATE library_actors SET retired_at = 3;");
+        return verified;
+      },
+    );
+    try {
+      await expect(engine.importNormalizedOperationPage({
+        page: page(operationRecord, true), receivedAt: 2_600, snapshot: descriptor,
+      })).rejects.toThrow("normalized operation changed during verification");
+      expect(database.exec({
+        sql: `SELECT source_revision,
+                     (SELECT count(*) FROM library_operations)
+              FROM library_meta;`,
+        rowMode: "array", returnValue: "resultRows",
+      })).toEqual([[0, 0]]);
+    } finally {
+      verificationRace.mockRestore();
+      database.exec("UPDATE library_actors SET retired_at = NULL;");
+    }
+
 
     expect(
       await engine.importNormalizedOperationPage({
@@ -1739,7 +1788,7 @@ describe("PWA Library Core SQLite engine", () => {
               (active_key, library_id, epoch_id, writer_id,
                accepted_manifest_generation, activated_at)
             VALUES ('active', ?1, ?2,
-                    '6666666666666666666666666666666666666666666666666666666666666666',
+                    'primary:desktop',
                     1, 1);`,
       bind: [libraryId, epochId],
     });
@@ -1754,6 +1803,16 @@ describe("PWA Library Core SQLite engine", () => {
                     0, NULL, ?5, NULL, 1, 1);`,
       bind: [actorId, epochId, publicKeyHex, "bb".repeat(32), chainGenesis],
     });
+    database.exec(`INSERT INTO library_actors
+        (actor_id, authority_epoch_id, actor_kind, public_key,
+         enrollment_operation_id, enrollment_certificate_digest,
+         canonical_enrollment_certificate, chain_genesis_digest,
+         accepted_counter, accepted_operation_id, accepted_chain_digest,
+         retired_at, created_at, updated_at)
+      SELECT '${"66".repeat(32)}', authority_epoch_id, 'desktop', public_key,
+             'enroll-primary', '${"67".repeat(32)}', '{}', chain_genesis_digest,
+             0, NULL, chain_genesis_digest, NULL, 1, 1
+      FROM library_actors WHERE actor_kind = 'pwa';`);
     database.exec({
       sql: `INSERT INTO library_actor_capabilities
               (capability_id, actor_id, certificate_version, actor_class,
@@ -2702,7 +2761,7 @@ describe("PWA Library Core SQLite engine", () => {
               (active_key, library_id, epoch_id, writer_id,
                accepted_manifest_generation, activated_at)
             VALUES ('active', ?1, ?2,
-                    '6666666666666666666666666666666666666666666666666666666666666666',
+                    'primary:desktop',
                     1, 1);`,
       bind: [libraryId, epochId],
     });
@@ -2717,6 +2776,16 @@ describe("PWA Library Core SQLite engine", () => {
                     0, NULL, ?5, NULL, 1, 1);`,
       bind: [actorId, epochId, actorPublicKey, "bb".repeat(32), chainGenesis],
     });
+    database.exec(`INSERT INTO library_actors
+        (actor_id, authority_epoch_id, actor_kind, public_key,
+         enrollment_operation_id, enrollment_certificate_digest,
+         canonical_enrollment_certificate, chain_genesis_digest,
+         accepted_counter, accepted_operation_id, accepted_chain_digest,
+         retired_at, created_at, updated_at)
+      SELECT '${"66".repeat(32)}', authority_epoch_id, 'desktop', public_key,
+             'enroll-primary', '${"67".repeat(32)}', '{}', chain_genesis_digest,
+             0, NULL, chain_genesis_digest, NULL, 1, 1
+      FROM library_actors WHERE actor_kind = 'pwa';`);
     database.exec({
       sql: `INSERT INTO library_actor_capabilities
               (capability_id, actor_id, certificate_version, actor_class,
@@ -3310,7 +3379,7 @@ describe("PWA Library Core SQLite engine", () => {
               (active_key, library_id, epoch_id, writer_id,
                accepted_manifest_generation, activated_at)
             VALUES ('active', ?1, ?2,
-                    '6666666666666666666666666666666666666666666666666666666666666666',
+                    'primary:desktop',
                     1, 1);`,
       bind: [libraryId, epochId],
     });
@@ -3325,6 +3394,16 @@ describe("PWA Library Core SQLite engine", () => {
                     0, NULL, ?5, NULL, 1, 1);`,
       bind: [actorId, epochId, actorPublicKey, "bb".repeat(32), chainGenesis],
     });
+    database.exec(`INSERT INTO library_actors
+        (actor_id, authority_epoch_id, actor_kind, public_key,
+         enrollment_operation_id, enrollment_certificate_digest,
+         canonical_enrollment_certificate, chain_genesis_digest,
+         accepted_counter, accepted_operation_id, accepted_chain_digest,
+         retired_at, created_at, updated_at)
+      SELECT '${"66".repeat(32)}', authority_epoch_id, 'desktop', public_key,
+             'enroll-primary', '${"67".repeat(32)}', '{}', chain_genesis_digest,
+             0, NULL, chain_genesis_digest, NULL, 1, 1
+      FROM library_actors WHERE actor_kind = 'pwa';`);
     database.exec({
       sql: `INSERT INTO library_actor_capabilities
               (capability_id, actor_id, certificate_version, actor_class,
@@ -3575,7 +3654,7 @@ describe("PWA Library Core SQLite engine", () => {
               (active_key, library_id, epoch_id, writer_id,
                accepted_manifest_generation, activated_at)
             VALUES ('active', ?1, ?2,
-                    '6666666666666666666666666666666666666666666666666666666666666666',
+                    'primary:desktop',
                     1, 1);`,
       bind: [libraryId, epochId],
     });
@@ -3590,6 +3669,16 @@ describe("PWA Library Core SQLite engine", () => {
                     0, NULL, ?5, NULL, 1, 1);`,
       bind: [actorId, epochId, actorPublicKey, "bb".repeat(32), chainGenesis],
     });
+    database.exec(`INSERT INTO library_actors
+        (actor_id, authority_epoch_id, actor_kind, public_key,
+         enrollment_operation_id, enrollment_certificate_digest,
+         canonical_enrollment_certificate, chain_genesis_digest,
+         accepted_counter, accepted_operation_id, accepted_chain_digest,
+         retired_at, created_at, updated_at)
+      SELECT '${"66".repeat(32)}', authority_epoch_id, 'desktop', public_key,
+             'enroll-primary', '${"67".repeat(32)}', '{}', chain_genesis_digest,
+             0, NULL, chain_genesis_digest, NULL, 1, 1
+      FROM library_actors WHERE actor_kind = 'pwa';`);
     database.exec({
       sql: `INSERT INTO library_actor_capabilities
               (capability_id, actor_id, certificate_version, actor_class,
