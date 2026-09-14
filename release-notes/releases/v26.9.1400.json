@@ -1,0 +1,74 @@
+{
+  "tag": "v26.9.1400",
+  "version": "26.9.1400",
+  "channel": "production",
+  "dayKey": "26.9.14",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-09-14T18:05:47.133Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "production",
+    "previousPublishedTag": "v26.9.1001",
+    "previousPublishedDayTag": "v26.9.1001",
+    "compareRef": "HEAD",
+    "productCommitSha": "56e154c16c508e3acaf7556b95b0cd58883b1a84",
+    "promotedDevCommitSha": "9bac970c9b109ef1db7c18862bdb41ffbffdc7e8",
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "production",
+        "previousPublishedTag": "v26.9.1001",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "1375a149dadc604784be48ff61cf579e3f703505",
+        "toInclusiveProductCommitSha": "56e154c16c508e3acaf7556b95b0cd58883b1a84"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:709197038cc687ff0889d7e28497c08704b0a1f7096f4348479ea36bf5896ccb",
+        "currentDigest": "sha256:709197038cc687ff0889d7e28497c08704b0a1f7096f4348479ea36bf5896ccb"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:815489aef79269885abe85980d0b43033185c906421a1232e93ee02155a23d19",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.9.1400"
+    ],
+    "relatedBuildTags": [
+      "v26.9.1400"
+    ],
+    "prNumbers": [
+      1999,
+      2001,
+      2003,
+      2010,
+      2012,
+      2014,
+      2018
+    ],
+    "commitSubjects": [
+      "chore: promote dev into main for production release (#2018)",
+      "chore: promote dev into main for production release (#2014)",
+      "chore: promote dev into main for production release (#2012)",
+      "chore: promote dev into main for production release (#2010)",
+      "chore: promote dev into main for production release (#2003)",
+      "chore: promote dev into main for production release (#2001)",
+      "chore: promote dev into main for production release (#1999)"
+    ]
+  },
+  "release": {
+    "deck": "Promote dev into main for production release and promote enrollment diagnostics to production",
+    "features": [],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.9.1400\n\nPromote dev into main for production release and promote enrollment diagnostics to production\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
