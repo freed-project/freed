@@ -347,3 +347,8 @@ unsettled pass attributable without adding provider calls or changing admission.
 Checkpoint import progress separates immutable object download and verification,
 local selection comparison, staging, page storage, activation, and cleanup.
 Only bounded counts and byte totals enter the local progress display.
+
+Long PWA Drive transfers retain the expiry of a reused access token and check
+credentials before each existing request. Expiring credentials refresh without
+restarting checkpoint import. Disconnect or lifecycle replacement during refresh
+prevents the pending Drive request from being sent.
