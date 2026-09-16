@@ -964,18 +964,23 @@ export function createNodeLibraryServicePorts(
 ): NodeLibraryServicePorts {
   const fileSystem = new NodeLibraryServiceFileSystem();
   const clock = new NodeLibraryServiceClock();
+  const aclProof = new NodeLibraryServiceAclProof(fileSystem);
   return {
     fileSystem,
     identity: new NodeLibraryServiceIdentity(),
-    aclProof: new NodeLibraryServiceAclProof(fileSystem),
+    aclProof,
     clock,
     entropy: new NodeLibraryServiceEntropy(),
     process: new NodeLibraryServiceProcess(clock, options.spawnChild ?? spawn),
-    localActorIngress: createNodeLibraryServiceLocalActorIngressPortV1(),
+    localActorIngress: createNodeLibraryServiceLocalActorIngressPortV1({
+      fileSystem,
+      aclProof,
+    }),
     primaryCloud: {
       async start(input) {
-        const { createNodeLibraryServicePrimaryCloudPortV1 } =
-          await import("./primary-cloud-runtime.js");
+        const { createNodeLibraryServicePrimaryCloudPortV1 } = await import(
+          "./primary-cloud-runtime.js"
+        );
         return createNodeLibraryServicePrimaryCloudPortV1().start(input);
       },
     },

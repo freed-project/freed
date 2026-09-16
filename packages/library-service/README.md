@@ -30,6 +30,13 @@ bounded restart policy, and no shell. The command does not write, install,
 load, enable, or start the definition. Windows fails closed until its native
 service-account handle and named-pipe ACL contract is implemented.
 
+The Linux unit also creates a private mode `0700` runtime directory beneath
+`/run/user/<uid>`. Long state-root paths use its `actor.sock` endpoint, outside
+the service's private `/tmp` namespace. A manually launched Linux service with
+a long state-root path requires the same directory to exist with verified
+ownership and permissions. The service fails closed instead of falling back
+to a socket that external actors cannot reach.
+
 ## Configuration schema version 1
 
 The configuration is exact-shape JSON. Its physical file must be owned by the
@@ -226,6 +233,7 @@ child output, or credential values.
 On successful startup the native sidecar holds the data-root lease before it
 opens SQLite, constructs the reusable staged checkpoint, status, and closed
 backup authority, writes exactly one secret-free ready record, closes stdout,
-and waits on fd8. This slice adds no socket or public listener. SQLite, WAL,
+and waits on fd8. The supervisor exposes only the private local actor socket,
+not a public listener. SQLite, WAL,
 SHM, rollback journals, and backups stay beneath the descriptor-bound data
 root and never enter service state or transport.
