@@ -105,6 +105,12 @@ export interface LibraryServiceGoogleDriveConfig {
   installationWitness: string;
   credentialRecordId: string;
   publicationStateFile: string;
+  credentialStore?: {
+    backend: "linux-sealed-file-v1";
+    directory: string;
+    wrappingKeyFile: string;
+    wrappingKeyDigest: string;
+  };
 }
 
 export interface LibraryServiceCredentialDescriptor {
@@ -262,7 +268,11 @@ export interface LibraryServiceProcessPort {
 }
 
 export type LibraryServicePhase =
-  "starting" | "running" | "stopping" | "stopped" | "failed";
+  | "starting"
+  | "running"
+  | "stopping"
+  | "stopped"
+  | "failed";
 
 export interface LibraryServiceStatusRecord {
   schemaVersion: typeof LIBRARY_SERVICE_STATUS_SCHEMA_VERSION;

@@ -17,6 +17,8 @@ import {
 import { createLibraryServiceDefinitionV1 } from "./service-definition.js";
 import { LibraryServiceSupervisor } from "./supervisor.js";
 import { authorizeNodeGoogleDriveV1 } from "./node-google-drive-auth.js";
+import { createBoundDriveCredentialStore } from "./bound-drive-credential-store.js";
+import { createLinuxDriveConsentPresenter } from "./linux-drive-consent.js";
 
 interface ParsedArguments {
   command: "serve" | "status" | "doctor" | "service-definition" | "drive-auth";
@@ -183,8 +185,24 @@ async function authorizeGoogleDrive(configPath: string): Promise<number> {
     if (bound.config.cloud === null) {
       throw new LibraryServiceFailure("config_invalid");
     }
+    const credentialStore = createBoundDriveCredentialStore(
+      bound,
+      ports.aclProof,
+    );
     const receipt = await authorizeNodeGoogleDriveV1(
       bound.config.cloud.credentialRecordId,
+      {
+        ...(credentialStore === undefined
+          ? {}
+          : { persistCredential: credentialStore.persistCredential }),
+        ...(process.platform === "linux"
+          ? {
+              openAuthorizationUrl: createLinuxDriveConsentPresenter(
+                process.stderr,
+              ),
+            }
+          : {}),
+      },
     );
     await assertLibraryServiceBindingsStable(bound, ports.fileSystem);
     writeStandardReport({
