@@ -2386,6 +2386,28 @@ mod tests {
              UPDATE library_follower_result_outbox SET acknowledged_at = 3000;",
             )
             .expect("fixture has no unpublished Primary work");
+        // Simulate a device with stale Primary and provider admission. Activating
+        // a consumer checkpoint must revoke both, including after a restart.
+        replica
+            .execute(
+                "INSERT OR REPLACE INTO library_local_cloud_writer_admission
+             (singleton_id, local_writer_id, active_writer_id, authority_epoch_id,
+              control_revision, verified_at) VALUES (1, ?1, ?1, ?2, 'old-control', 1);",
+                params!["1".repeat(64), "2".repeat(64)],
+            )
+            .unwrap();
+        let admission_counts = |connection: &Connection| {
+            connection
+                .query_row(
+                    "SELECT (SELECT count(*) FROM library_writer_admission),
+                        (SELECT count(*) FROM library_local_cloud_writer_admission);",
+                    [],
+                    |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+                )
+                .unwrap()
+        };
+        let admissions_before = admission_counts(&replica);
+        assert_eq!(admissions_before, (1, 1));
         let context = normalized_follower_transport_context_v2(&replica).expect("before context");
         let tables = [
             "library_follower_actor_request",
@@ -2504,6 +2526,7 @@ mod tests {
         .to_string()
         .contains("injected checkpoint activation fault"));
         assert_eq!(snapshot(&replica), before);
+        assert_eq!(admission_counts(&replica), admissions_before);
         replica.execute_batch("DROP TRIGGER fail_refresh;").unwrap();
         replace_with_normalized_follower_checkpoint_stage_v2(
             &mut replica,
@@ -2511,6 +2534,8 @@ mod tests {
             &receipt,
         )
         .expect("refresh with unresolved signed edits");
+        assert_eq!(admission_counts(&replica), (0, 0));
+        assert!(crate::normalized_primary_mutation_context_v1(&replica).is_err());
         assert_eq!(snapshot(&replica), before);
         assert_eq!(
             normalized_follower_transport_context_v2(&replica).unwrap(),
@@ -2529,6 +2554,8 @@ mod tests {
         drop(replica);
         let reopened = crate::open_normalized_sqlite_database_v1(&database_path, false)
             .expect("reopen refreshed replica");
+        assert_eq!(admission_counts(&reopened), (0, 0));
+        assert!(crate::normalized_primary_mutation_context_v1(&reopened).is_err());
         assert_eq!(snapshot(&reopened), before);
         assert_eq!(
             normalized_follower_transport_context_v2(&reopened).unwrap(),

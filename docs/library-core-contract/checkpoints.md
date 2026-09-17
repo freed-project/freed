@@ -82,7 +82,10 @@ The last provider-confirmed writer lease is a device-local row in the selected
 normalized SQLite catalog. Capture and provider-delivery workers read that row
 before external work. It is never a source of Library authority and is excluded
 from checkpoint export. A remote writer mismatch pauses local provider work
-until cloud coordination verifies a later control revision.
+until cloud coordination verifies a later control revision. Follower checkpoint
+activation deletes both canonical writer admission and the provider lease in
+the activation transaction. A failed activation rolls back both deletions; a
+successful consumer import cannot inherit prior local writer permission.
 
 Every legal value that cannot fit a logical record becomes a descriptor plus
 content-addressed chunks. The initial raw chunk size is 65,536 bytes, which

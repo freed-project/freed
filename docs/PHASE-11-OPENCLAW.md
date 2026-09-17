@@ -16,7 +16,8 @@
 
 Native same-epoch follower checkpoint refresh preserves pending and published
 signed edits, enrollment, optimistic fields, and transport history. Native
-SQLite tests verify exact retention and rollback. The installed edit round trip
+SQLite tests verify exact retention and rollback. Consumer activation removes
+prior writer and provider admission atomically. The installed edit round trip
 and Primary handoff acceptance below remain open; this does not complete the
 headless host's transport or promotion work.
 

@@ -9,7 +9,9 @@ provider contact on September 7, 2026. Capture and refresh cadence are unchanged
 
 Native consumer checkpoint refresh now retains pending edits, enrollment,
 optimistic fields, and transport receipts atomically. Tests cover pending,
-published, and settled history plus activation rollback. Native role lifecycle,
+published, and settled history plus activation rollback. Consumer activation
+also revokes stale native writer and provider admission, with restart and
+rollback coverage. Native role lifecycle,
 incremental catch-up, and installed cooperative Primary handoff remain open.
 
 Shared feed cards scale text with interface zoom, use consistent content insets,

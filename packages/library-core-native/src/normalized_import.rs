@@ -838,6 +838,12 @@ fn install_follower_checkpoint_receipt(
             "normalized follower checkpoint writer is not active",
         ));
     }
+    // A verified checkpoint grants replica reads, never local writer or provider
+    // authority. Revoke stale admission in the same transaction as activation.
+    transaction.execute_batch(
+        "DELETE FROM library_writer_admission;
+         DELETE FROM library_local_cloud_writer_admission;",
+    )?;
     transaction.execute(
         "INSERT INTO library_follower_checkpoint_receipt
          (singleton_id, library_id, authority_epoch_id, writer_actor_id,
