@@ -6259,17 +6259,16 @@ export class PwaLibraryCoreSqliteEngine {
               text(row[2], "staged authority epoch") !==
                 imported.snapshot.authorityEpoch ||
               text(row[3], "staged writer") !== imported.snapshot.writerId ||
-              safeInteger(row[4], "staged snapshot revision") !==
-                imported.snapshot.sourceRevision ||
+              // Delivery time and export upper bound are not signed identity.
+              // Retain the first receipt while accepting exact bytes from a later pass.
+              safeInteger(row[4], "staged snapshot revision") < record.sourceRevision ||
               safeInteger(row[5], "staged member count") !==
                 expectedMemberCount ||
               text(row[6], "staged result digest") !== record.recordDigest ||
               !sameBytes(
                 bytes(row[7], "staged canonical result"),
                 canonicalBytes,
-              ) ||
-              safeInteger(row[8], "staged result received time") !==
-                imported.receivedAt
+              )
             ) {
               throw new Error("normalized accepted transaction replay changed");
             }
@@ -6350,7 +6349,7 @@ export class PwaLibraryCoreSqliteEngine {
     }
 
     let appliedTransactionCount = 0;
-    while (true) {
+    while (appliedTransactionCount < LIBRARY_CORE_NORMALIZED_OPERATION_SEGMENT_MAXIMUM_RECORDS) {
       const revisionRows = this.#database.exec({
         sql: `SELECT m.source_revision, changes.revision
               FROM library_meta AS m
@@ -6377,6 +6376,7 @@ export class PwaLibraryCoreSqliteEngine {
         throw new Error("normalized operation revision is exhausted");
       }
       const nextRevision = previousRevision + 1;
+      if (nextRevision > imported.snapshot.sourceRevision) break;
       const stageRows = this.#database.exec({
         sql: `SELECT transaction_id, transaction_digest, authority_epoch_id,
                      writer_id, snapshot_source_revision,
