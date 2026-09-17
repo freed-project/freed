@@ -5,7 +5,8 @@
 Native follower checkpoint refresh preserves signed pending and published edits,
 enrollment, optimistic fields, and exact intent/result transport history within
 the same Library and authority epoch. Activation faults roll back all retained
-state. Authority changes and regressing checkpoints fail without replacement.
+state. Successful consumer activation revokes stale native writer and provider
+admission in that same transaction. Authority changes and regressing checkpoints fail without replacement.
 Accepted results retain optimistic fields until the corresponding canonical
 revision reaches the replica. Incremental Desktop catch-up and installed
 multi-Desktop convergence remain open.
