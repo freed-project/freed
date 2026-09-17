@@ -968,10 +968,11 @@ describe("SQLite Library Google Drive production wiring", () => {
         checkpointGeneration: null,
         sourceRevision: null,
         pendingIntentCount: 0,
+        awaitingCanonicalChanges: false,
         publishedIntentCount: 0,
         importedResultCount: 0,
       })
-      .mockResolvedValueOnce({
+      .mockResolvedValue({
         state: "awaiting_enrollment",
         libraryId,
         authorityEpochId: epochId,
@@ -979,6 +980,7 @@ describe("SQLite Library Google Drive production wiring", () => {
         checkpointGeneration: 9,
         sourceRevision: 9,
         pendingIntentCount: 0,
+        awaitingCanonicalChanges: false,
         publishedIntentCount: 0,
         importedResultCount: 0,
       });
@@ -1059,6 +1061,9 @@ describe("SQLite Library Google Drive production wiring", () => {
         await expect(startSqliteLibraryGoogleDriveFollowerSync({ accessToken: "token", resolveAccessToken: async () => "refreshed-token", onSynced })).rejects.toBe(error);
         await vi.advanceTimersByTimeAsync(60_000);
         expect(onSynced).toHaveBeenCalledTimes(1);
+        expect(onSynced).toHaveBeenCalledWith(expect.objectContaining({
+          status: "follower_synced", follower: expect.objectContaining({ state: "awaiting_enrollment" }),
+        }));
         expect(vi.getTimerCount()).toBe(1);
       } finally {
         stopSqliteLibraryCloudSync();
@@ -1068,7 +1073,7 @@ describe("SQLite Library Google Drive production wiring", () => {
       const first = syncSqliteLibraryFollowerGoogleDriveOnce({ accessToken: "token" });
       const second = syncSqliteLibraryFollowerGoogleDriveOnce({ accessToken: "token" });
       expect(second).toBe(first);
-      await expect(first).resolves.toEqual({ status: "follower_synced", revision: 7 });
+      await expect(first).resolves.toEqual(expect.objectContaining({ status: "follower_synced", revision: 7 }));
     }
 
     expect(mocks.importCheckpoint).toHaveBeenCalledTimes(1);
@@ -1138,6 +1143,7 @@ describe("SQLite Library Google Drive production wiring", () => {
       checkpointGeneration: 9,
       sourceRevision: 9,
       pendingIntentCount: 1,
+        awaitingCanonicalChanges: false,
       publishedIntentCount: 0,
       importedResultCount: 0,
     };
@@ -1208,7 +1214,7 @@ describe("SQLite Library Google Drive production wiring", () => {
 
     await expect(
       syncSqliteLibraryFollowerGoogleDriveOnce({ accessToken: "token" }),
-    ).resolves.toEqual({ status: "follower_synced", revision: 7 });
+    ).resolves.toEqual(expect.objectContaining({ status: "follower_synced", revision: 7 }));
 
     expect(mocks.pageFollowerTransport).toHaveBeenCalledWith({
       actorId,
@@ -1274,6 +1280,7 @@ describe("SQLite Library Google Drive production wiring", () => {
       checkpointGeneration: 9,
       sourceRevision: 9,
       pendingIntentCount: 0,
+        awaitingCanonicalChanges: false,
       publishedIntentCount: 1,
       importedResultCount: 0,
     });
@@ -1326,7 +1333,7 @@ describe("SQLite Library Google Drive production wiring", () => {
 
     await expect(
       syncSqliteLibraryFollowerGoogleDriveOnce({ accessToken: "token" }),
-    ).resolves.toEqual({ status: "follower_synced", revision: 7 });
+    ).resolves.toEqual(expect.objectContaining({ status: "follower_synced", revision: 7 }));
 
     expect(mocks.importNormalizedResultTransport).toHaveBeenCalledWith(
       resultPublication,

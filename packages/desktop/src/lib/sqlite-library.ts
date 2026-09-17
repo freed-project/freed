@@ -186,6 +186,7 @@ export interface NormalizedLibraryFollowerRuntimeStatus {
   readonly pendingIntentCount: number;
   readonly publishedIntentCount: number;
   readonly importedResultCount: number;
+  readonly awaitingCanonicalChanges: boolean;
 }
 
 export interface SqliteLibraryFollowerOperationSignature {

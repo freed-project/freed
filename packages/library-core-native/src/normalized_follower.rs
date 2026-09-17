@@ -142,6 +142,7 @@ pub struct NormalizedFollowerRuntimeStatusV2 {
     pub pending_intent_count: u64,
     pub published_intent_count: u64,
     pub imported_result_count: u64,
+    pub awaiting_canonical_changes: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -2284,6 +2285,7 @@ pub fn normalized_follower_runtime_status_v2(
             pending_intent_count: 0,
             published_intent_count: 0,
             imported_result_count: 0,
+            awaiting_canonical_changes: false,
         });
     };
     let generation = u64::try_from(generation)
@@ -2328,6 +2330,16 @@ pub fn normalized_follower_runtime_status_v2(
         [],
         |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
     )?;
+    // A signed acceptance is not proof that its canonical rows have arrived.
+    let awaiting_canonical_changes: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM library_optimistic_fields AS optimistic
+         JOIN library_intent_results AS result USING (transaction_id)
+         WHERE result.status IN ('accepted', 'already_applied')
+           AND result.authoritative_source_revision >
+             (SELECT source_revision FROM library_meta WHERE singleton_id = 1));",
+        [],
+        |row| row.get(0),
+    )?;
     Ok(NormalizedFollowerRuntimeStatusV2 {
         state,
         library_id: Some(library_id),
@@ -2339,6 +2351,7 @@ pub fn normalized_follower_runtime_status_v2(
             .map_err(|_| invalid("normalized follower pending count is invalid"))?,
         published_intent_count: u64::try_from(published)
             .map_err(|_| invalid("normalized follower published count is invalid"))?,
+        awaiting_canonical_changes,
         imported_result_count: u64::try_from(imported)
             .map_err(|_| invalid("normalized follower result count is invalid"))?,
     })
@@ -2714,6 +2727,11 @@ mod tests {
             2,
             "exact result replay cannot hide the edit"
         );
+        assert!(
+            normalized_follower_runtime_status_v2(&follower)
+                .unwrap()
+                .awaiting_canonical_changes
+        );
         assert_checkpoint_preserves_follower_history(&follower);
 
         let descriptor = describe_normalized_checkpoint_export_v2(&primary).unwrap();
@@ -2757,6 +2775,11 @@ mod tests {
         )
         .expect("checkpoint covers the signed accepted result");
         assert_eq!(overlay_count(&follower), 0);
+        assert!(
+            !normalized_follower_runtime_status_v2(&follower)
+                .unwrap()
+                .awaiting_canonical_changes
+        );
         assert_eq!(
             follower
                 .query_row(
