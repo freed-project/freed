@@ -564,18 +564,19 @@ fn verify_authority_rows(
 
 fn assert_checkpoint_replacement_has_no_local_overlay(
     transaction: &Transaction<'_>,
+    retain_follower: bool,
 ) -> Result<(), NormalizedSqliteError> {
     let unresolved: i64 = transaction.query_row(
         "SELECT
            (SELECT count(*) FROM library_intent_transactions
-              WHERE state IN ('pending', 'published')) +
-           (SELECT count(*) FROM library_optimistic_fields) +
+              WHERE state IN ('pending', 'published') AND NOT ?1) +
+           (SELECT count(*) FROM library_optimistic_fields WHERE NOT ?1) +
            (SELECT count(*) FROM library_replication_outbox
               WHERE acknowledged_at IS NULL) +
            (SELECT count(*) FROM library_follower_result_outbox
               WHERE acknowledged_at IS NULL) +
            (SELECT count(*) FROM library_primary_intent_stage_transactions);",
-        [],
+        [retain_follower],
         |row| row.get(0),
     )?;
     if unresolved != 0 {
@@ -583,6 +584,158 @@ fn assert_checkpoint_replacement_has_no_local_overlay(
             "normalized checkpoint replacement has unresolved local operations",
         ));
     }
+    Ok(())
+}
+
+// These are installation-local records, not checkpoint content. Disk-backed
+// scratch tables keep history out of Rust memory and share activation rollback.
+const RETAINED_FOLLOWER_TABLES: &[&str] = &[
+    "library_follower_actor_request",
+    "library_intent_actors",
+    "library_intent_transactions",
+    "library_intent_members",
+    "library_intent_results",
+    "library_intent_result_cursors",
+    "library_intent_transport_heads",
+    "library_intent_transport_segments",
+    "library_result_transport_heads",
+    "library_result_transport_segments",
+    "library_optimistic_fields",
+    "library_local_change_state",
+    "library_local_invalidations",
+];
+
+fn retain_follower_checkpoint_state(
+    transaction: &Transaction<'_>,
+    stage: &(String, String, i64, i64, i64),
+    receipt: &NormalizedFollowerCheckpointReceiptV2,
+) -> Result<bool, NormalizedSqliteError> {
+    let request: Option<(String, String, String)> = transaction
+        .query_row(
+            "SELECT library_id, authority_epoch_id, actor_id
+             FROM library_follower_actor_request WHERE singleton_id = 1;",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .optional()?;
+    let Some((library, epoch, actor)) = request else {
+        return Ok(false);
+    };
+    if library != stage.0 || epoch != stage.1 {
+        return Err(invalid("follower checkpoint requires authority recovery"));
+    }
+    let compatible: bool = transaction.query_row(
+        "SELECT EXISTS (
+           SELECT 1 FROM library_meta AS meta
+           JOIN library_follower_checkpoint_receipt AS receipt
+             ON receipt.library_id = meta.library_id
+            AND receipt.authority_epoch_id = meta.authority_epoch
+           WHERE meta.singleton_id = 1 AND receipt.singleton_id = 1
+             AND meta.library_id = ?1 AND meta.authority_epoch = ?2
+             AND meta.source_revision <= ?3
+             AND receipt.checkpoint_generation <= ?4
+             AND receipt.writer_actor_id = ?5
+         ) AND NOT EXISTS (
+           SELECT 1 FROM library_intent_actors WHERE actor_id != ?6
+         ) AND NOT EXISTS (
+           SELECT 1 FROM library_intent_transactions
+           WHERE actor_id != ?6 OR intent_epoch_id != ?2
+         );",
+        params![
+            library,
+            epoch,
+            stage.2,
+            receipt.checkpoint_generation,
+            receipt.writer_actor_id,
+            actor
+        ],
+        |row| row.get(0),
+    )?;
+    if !compatible {
+        return Err(invalid(
+            "follower checkpoint would discard or regress local history",
+        ));
+    }
+    for table in RETAINED_FOLLOWER_TABLES {
+        transaction.execute_batch(&format!(
+            "CREATE TABLE main.checkpoint_retained_{table} AS SELECT * FROM {table};"
+        ))?;
+    }
+    transaction.execute_batch(
+        "CREATE TABLE main.checkpoint_retained_authority AS
+           SELECT epoch_id, authority_key_id, authority_public_key,
+                  canonical_transition_certificate
+           FROM library_authority_epochs
+           WHERE epoch_id = (SELECT authority_epoch FROM library_meta WHERE singleton_id = 1);
+         CREATE TABLE main.checkpoint_retained_actor_tip AS
+           SELECT actor_id, accepted_counter, accepted_operation_id, accepted_chain_digest
+           FROM library_actors
+           WHERE actor_id = (SELECT actor_id FROM library_follower_actor_request WHERE singleton_id = 1);",
+    )?;
+    Ok(true)
+}
+
+fn restore_follower_checkpoint_state(
+    transaction: &Transaction<'_>,
+) -> Result<(), NormalizedSqliteError> {
+    let authority_matches: bool = transaction.query_row(
+        "SELECT EXISTS (
+           SELECT 1 FROM checkpoint_retained_authority AS old
+           JOIN library_authority_epochs AS current USING (epoch_id)
+           WHERE current.authority_key_id = old.authority_key_id
+             AND current.authority_public_key = old.authority_public_key
+             AND current.canonical_transition_certificate = old.canonical_transition_certificate
+         );",
+        [],
+        |row| row.get(0),
+    )?;
+    if !authority_matches {
+        return Err(invalid(
+            "follower checkpoint changed the accepted authority",
+        ));
+    }
+    // Suspend invalidation triggers while restoring the exact overlay history.
+    // The retained singleton and its sequence are restored after the fields.
+    transaction.execute("DELETE FROM library_local_change_state;", [])?;
+    for table in RETAINED_FOLLOWER_TABLES {
+        transaction.execute_batch(&format!(
+            "INSERT INTO {table} SELECT * FROM main.checkpoint_retained_{table};
+             DROP TABLE main.checkpoint_retained_{table};"
+        ))?;
+    }
+    let changed_tip: bool = transaction.query_row(
+        "SELECT EXISTS (
+           SELECT 1 FROM checkpoint_retained_actor_tip AS old
+           LEFT JOIN library_actors AS current USING (actor_id)
+           WHERE current.actor_id IS NULL
+             OR current.accepted_counter < old.accepted_counter
+             OR (current.accepted_counter = old.accepted_counter AND
+                 (current.accepted_operation_id IS NOT old.accepted_operation_id OR
+                  current.accepted_chain_digest != old.accepted_chain_digest))
+             OR (current.accepted_counter > old.accepted_counter AND NOT EXISTS (
+               SELECT 1 FROM library_intent_transactions AS intent
+               WHERE intent.actor_id = current.actor_id
+                 AND intent.last_counter = current.accepted_counter
+                 AND intent.ending_operation_id = current.accepted_operation_id
+                 AND intent.ending_chain_digest = current.accepted_chain_digest
+             ))
+         ) OR EXISTS (
+           SELECT 1 FROM library_intent_actors AS local
+           JOIN library_actors AS current USING (actor_id)
+           WHERE local.next_counter <= current.accepted_counter
+         );",
+        [],
+        |row| row.get(0),
+    )?;
+    if changed_tip {
+        return Err(invalid(
+            "follower checkpoint changed the retained actor chain",
+        ));
+    }
+    transaction.execute_batch(
+        "DROP TABLE main.checkpoint_retained_authority;
+         DROP TABLE main.checkpoint_retained_actor_tip;",
+    )?;
     Ok(())
 }
 
@@ -685,6 +838,12 @@ fn install_follower_checkpoint_receipt(
             "normalized follower checkpoint writer is not active",
         ));
     }
+    // A verified checkpoint grants replica reads, never local writer or provider
+    // authority. Revoke stale admission in the same transaction as activation.
+    transaction.execute_batch(
+        "DELETE FROM library_writer_admission;
+         DELETE FROM library_local_cloud_writer_admission;",
+    )?;
     transaction.execute(
         "INSERT INTO library_follower_checkpoint_receipt
          (singleton_id, library_id, authority_epoch_id, writer_actor_id,
@@ -721,9 +880,13 @@ fn install_follower_checkpoint_receipt(
             .query_row(
                 "SELECT accepted_counter, accepted_operation_id,
                         accepted_chain_digest
-                 FROM library_actors
-                 WHERE actor_id = ?1 AND authority_epoch_id = ?2
-                   AND retired_at IS NULL;",
+                 FROM library_actors AS actor
+                 JOIN library_follower_actor_request AS request
+                   ON request.actor_id = actor.actor_id
+                  AND request.actor_public_key = actor.public_key
+                  AND request.enrollment_certificate_digest = actor.enrollment_certificate_digest
+                 WHERE actor.actor_id = ?1 AND actor.authority_epoch_id = ?2
+                   AND actor.retired_at IS NULL;",
                 params![actor_id, stage.1],
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
@@ -740,7 +903,8 @@ fn install_follower_checkpoint_receipt(
         transaction.execute(
             "INSERT INTO library_intent_actors
              (actor_id, next_counter, previous_operation_id,
-              previous_chain_digest) VALUES (?1, ?2, ?3, ?4);",
+              previous_chain_digest) VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT (actor_id) DO NOTHING;",
             params![
                 actor_id,
                 next_counter,
@@ -1033,8 +1197,17 @@ fn activate_normalized_checkpoint_stage_v2(
         )
         .optional()?
         .ok_or(invalid("normalized checkpoint stage is incomplete"))?;
+    let retain_follower = if replace_existing {
+        if let Some(receipt) = follower_receipt {
+            retain_follower_checkpoint_state(&transaction, &stage, receipt)?
+        } else {
+            false
+        }
+    } else {
+        false
+    };
     if replace_existing {
-        assert_checkpoint_replacement_has_no_local_overlay(&transaction)?;
+        assert_checkpoint_replacement_has_no_local_overlay(&transaction, retain_follower)?;
         clear_checkpoint_replacement_target(&transaction)?;
     }
     let existing_rows: i64 = transaction.query_row(
@@ -1133,6 +1306,9 @@ fn activate_normalized_checkpoint_stage_v2(
     }
     verify_blob_rows(&transaction)?;
     reconcile_local_content_state(&transaction)?;
+    if retain_follower {
+        restore_follower_checkpoint_state(&transaction)?;
+    }
     let foreign_key_failure: Option<String> = transaction
         .query_row(
             "SELECT \"table\" FROM pragma_foreign_key_check LIMIT 1;",
@@ -1161,6 +1337,18 @@ fn activate_normalized_checkpoint_stage_v2(
     }
     if let Some(receipt) = follower_receipt {
         install_follower_checkpoint_receipt(&transaction, &stage, &checkpoint_digest, receipt)?;
+    }
+    if retain_follower {
+        // A stored, verified result plus its covered canonical revision is proof
+        // of settlement. Checkpoint effects alone never acknowledge an intent.
+        transaction.execute(
+            "DELETE FROM library_optimistic_fields WHERE transaction_id IN (
+               SELECT transaction_id FROM library_intent_results
+               WHERE status IN ('accepted', 'already_applied')
+                 AND authority_epoch_id = ?1 AND authoritative_source_revision <= ?2
+             );",
+            params![stage.1, stage.2],
+        )?;
     }
     transaction.execute(
         "DELETE FROM library_checkpoint_stages WHERE stage_id = ?1;",

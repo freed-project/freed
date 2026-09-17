@@ -81,10 +81,10 @@ export type SocialProviderRefreshResult = {
 type ProviderWriterBlock = { stage: string; detail: string };
 
 async function providerWriterBlock(): Promise<ProviderWriterBlock | null> {
-  if (readLibraryCoreDesktopRole() === "follower") {
+  if (readLibraryCoreDesktopRole() !== "primary") {
     return {
       stage: "follower",
-      detail: "Provider sync is disabled on this follower Freed Desktop.",
+      detail: "Provider sync requires verified Primary authority on this Freed Desktop.",
     };
   }
   if (!isSqliteLibraryActive()) return null;

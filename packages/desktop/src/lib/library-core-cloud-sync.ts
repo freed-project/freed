@@ -74,6 +74,7 @@ import { readNativeJsonValue, writeNativeJsonValue } from "./native-json-store";
 import { createCheckpointPublicationDeadline } from "./checkpoint-publication-deadline";
 import {
   readLibraryCoreDesktopRole,
+  refreshLibraryCoreDesktopRole,
   requireFollowerLibraryCoreDesktopRole,
   requirePrimaryLibraryCoreDesktopRole,
 } from "./library-core-desktop-role";
@@ -1472,8 +1473,11 @@ export async function syncSqliteLibraryFollowerGoogleDriveOnce(input: {
   readonly googleFetch?: GoogleDriveFetch;
   readonly signal?: AbortSignal;
 }): Promise<LibraryCoreCloudPublishResult> {
+  const installation = await refreshLibraryCoreDesktopRole();
   requireFollowerLibraryCoreDesktopRole();
+  if (!installation.libraryId) throw new Error("Select a Library before consumer sync.");
   const discovered = await discoverPublishedGoogleDriveLibraryCoreControlV1({
+    libraryId: installation.libraryId,
     accessToken: input.accessToken,
     googleFetch: input.googleFetch,
     signal: input.signal,

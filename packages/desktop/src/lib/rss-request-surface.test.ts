@@ -73,10 +73,14 @@ const FEED_XML = `<?xml version="1.0" encoding="UTF-8"?>
   </rss>`;
 
 describe("RSS request surface counters", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
     window.localStorage.clear();
     mocks.invoke.mockImplementation(async (command: string, args?: unknown) => {
+      if (command === "normalized_desktop_installation_status") return {
+        state: "standalone_primary", role: "primary", libraryId: "a".repeat(64),
+        authorityEpochId: "b".repeat(64), actorId: "c".repeat(64),
+      };
       if (command === "fetch_url") return FEED_XML;
       if (command === "query_normalized_library") {
         const request = (args as {
@@ -119,6 +123,8 @@ describe("RSS request surface counters", () => {
       }
       return null;
     });
+    const { refreshLibraryCoreDesktopRole } = await import("./library-core-desktop-role");
+    await refreshLibraryCoreDesktopRole();
   });
 
   it("counts subscription, manual, and scheduled pulls without feed identifiers", async () => {

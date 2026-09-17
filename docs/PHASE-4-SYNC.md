@@ -2,6 +2,21 @@
 
 > **Status:** 🚧 In Progress
 
+Native follower checkpoint refresh preserves signed pending and published edits,
+enrollment, optimistic fields, and exact intent/result transport history within
+the same Library and authority epoch. Activation faults roll back all retained
+state. Successful consumer activation revokes stale native writer and provider
+admission in that same transaction. Authority changes and regressing checkpoints fail without replacement.
+Accepted results retain optimistic fields until the corresponding canonical
+revision reaches the replica. Incremental Desktop catch-up and installed
+multi-Desktop convergence remain open.
+
+Desktop discovery uses the native pinned Library ID, including before its first
+checkpoint. Native checkpoint selection accepts the verified consumer receipt
+for the imported generation. Native publication requires Primary admission,
+and consumer setup can resume without creating a temporary Primary. The full
+installed two-Desktop and PWA convergence scenario remains open.
+
 PWA first-launch presentation distinguishes Google Drive connection from an
 accepted Library. Before checkpoint selection, setup stays available without
 mounting Library-backed routes or the Saved overview. Sync errors link back to

@@ -1152,7 +1152,9 @@ async fn wait_for_auth_result(
 
 #[tauri::command]
 pub async fn yt_show_login(app: tauri::AppHandle) -> Result<(), String> {
+    crate::library_core_desktop_runtime::require_primary_library_authority(&app)?;
     let _operation = YOUTUBE_SESSION_OPERATION.lock().await;
+    crate::library_core_desktop_runtime::require_primary_library_authority(&app)?;
     ensure_youtube_session_window(&app, YOUTUBE_SUBSCRIPTIONS_URL, true)?;
     Ok(())
 }
@@ -1184,7 +1186,9 @@ pub async fn yt_hide_login(
 
 #[tauri::command]
 pub async fn yt_check_auth(app: tauri::AppHandle) -> Result<bool, String> {
+    crate::library_core_desktop_runtime::require_primary_library_authority(&app)?;
     let _operation = YOUTUBE_SESSION_OPERATION.lock().await;
+    crate::library_core_desktop_runtime::require_primary_library_authority(&app)?;
     let result = async {
         let window = ensure_youtube_session_window(&app, YOUTUBE_SUBSCRIPTIONS_URL, false)?;
         tokio::time::sleep(Duration::from_secs(3)).await;
@@ -1201,6 +1205,7 @@ pub async fn yt_capture(
     include_roster: Option<bool>,
     capture_id: String,
 ) -> Result<YouTubeCaptureResult, String> {
+    crate::library_core_desktop_runtime::require_primary_library_authority(&app)?;
     let _capture_guard = YouTubeCaptureGuard::begin(&capture_id)?;
     let queue_deadline = Instant::now() + YOUTUBE_CAPTURE_QUEUE_TIMEOUT;
     let _operation = tokio::select! {
@@ -1212,6 +1217,7 @@ pub async fn yt_capture(
             return Err("YouTube capture was cancelled.".to_string());
         },
     };
+    crate::library_core_desktop_runtime::require_primary_library_authority(&app)?;
     let overall_deadline = Instant::now() + YOUTUBE_CAPTURE_OVERALL_TIMEOUT;
     let capture_result = timeout_at(overall_deadline, async {
         let include_roster = capture_includes_roster(include_roster);
@@ -1290,7 +1296,9 @@ pub async fn yt_add_to_offline_playlist(
     app: tauri::AppHandle,
     video_url: String,
 ) -> Result<(), String> {
+    crate::library_core_desktop_runtime::require_primary_library_authority(&app)?;
     let _operation = YOUTUBE_SESSION_OPERATION.lock().await;
+    crate::library_core_desktop_runtime::require_primary_library_authority(&app)?;
     let result = async {
         let (watch_url, video_id) = canonical_watch_url(&video_url)?;
         let window = ensure_youtube_session_window(&app, &watch_url, false)?;

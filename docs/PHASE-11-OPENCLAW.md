@@ -14,6 +14,16 @@
 
 ## Objective
 
+Native same-epoch follower checkpoint refresh preserves pending and published
+signed edits, enrollment, optimistic fields, and transport history. Native
+SQLite tests verify exact retention and rollback. Consumer activation removes
+prior writer and provider admission atomically. Freed Desktop now chooses and
+pins a native setup role before fresh genesis, with receipt-backed consumer
+selection and explicit refusal to replace an independent Library. This does not
+change the headless bootstrap workflow. The installed edit round trip
+and Primary handoff acceptance below remain open; this does not complete the
+headless host's transport or promotion work.
+
 Freed must support one authoritative Library Core on an always-on machine while
 Freed Desktop and the PWA remain fully editable clients. The authority may run
 inside Freed Desktop or in a future headless service. Both hosts must use the
