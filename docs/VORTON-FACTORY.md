@@ -26,6 +26,14 @@ base branch with Git before use. Validation commands are argument arrays run
 from the worktree root without a shell. They still execute repository code and
 must run inside the worker's execution boundary.
 
+Factory validation uses `node scripts/doctor.mjs --strict --factory-worker`.
+This checks the pinned Node toolchain, PATH Node, Git, curl and Python without
+reading controller credentials, legacy automation authority or publisher state.
+A wrong or missing PATH Node fails this worker check. The normal host scope and
+`--require-publisher` retain their existing checks; worker scope cannot satisfy
+publisher readiness. The trusted controller remains responsible for ownership,
+quota admission, approval and publication. Worker preflight grants none of these.
+
 Configuration grants no authority and activates no schedule. Preserve Freed's
 claim, provider approval, behavioral concurrency, and publication requirements.
 Review must approve the exact published commit. Workers cannot merge, deploy,

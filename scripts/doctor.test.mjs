@@ -1,6 +1,7 @@
 import "./test-helpers/lease-archive-python-runtime.mjs";
 
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   chmodSync,
@@ -396,10 +397,7 @@ test("automation state preflight checks private recovery directories", () => {
   assert.equal(result.status, "fail");
   assert.match(result.detail, /outcome-ledger-transactions is not mode 0700/);
   assert.match(result.detail, /outcome-ledger-repair is not mode 0700/);
-  assert.match(
-    result.detail,
-    /event-history-witness-repairs is not mode 0700/,
-  );
+  assert.match(result.detail, /event-history-witness-repairs is not mode 0700/);
 });
 
 test("automation state preflight accepts only the exact completed kernel guard cutover", () => {
@@ -1045,9 +1043,18 @@ test("automation state preflight rejects a missing cutover receipt", () => {
   assert.equal(result.status, "fail");
   assert.match(result.detail, /kernel-guard-cutover\.json.*safely readable/);
   assert.match(result.remediation, /automation:cutover-kernel-guards/);
-  assert.match(result.remediation, /Scope: automation control-plane operations only/);
-  assert.match(result.remediation, /does not block ordinary builds, GitHub-authenticated PR publication, or the dedicated release tag publisher/);
-  assert.match(result.remediation, /Do not migrate the host merely to ship a release/);
+  assert.match(
+    result.remediation,
+    /Scope: automation control-plane operations only/,
+  );
+  assert.match(
+    result.remediation,
+    /does not block ordinary builds, GitHub-authenticated PR publication, or the dedicated release tag publisher/,
+  );
+  assert.match(
+    result.remediation,
+    /Do not migrate the host merely to ship a release/,
+  );
 });
 
 test("automation state preflight rejects a zero-byte writer sentinel", () => {
@@ -1396,5 +1403,84 @@ test("runChecks returns every check id with a valid status", () => {
   assert.equal(
     result.failures,
     result.checks.filter((item) => item.status === "fail").length,
+  );
+});
+
+test("factory worker preflight checks build tools without creating controller state", (t) => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "freed-worker-doctor-"));
+  t.after(() => rmSync(home, { recursive: true, force: true }));
+  const env = {
+    HOME: home,
+    NODE_BIN: process.execPath,
+    PATH: `${path.dirname(process.execPath)}:/usr/bin:/bin`,
+    LANG: "C.UTF-8",
+  };
+  const result = spawnSync(
+    process.execPath,
+    [
+      path.join(sourceRoot, "scripts/doctor.mjs"),
+      "--factory-worker",
+      "--strict",
+      "--json",
+    ],
+    { env, encoding: "utf8", timeout: 10000 },
+  );
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.scope, "factory-worker");
+  assert.deepEqual(
+    report.checks.map((item) => item.id),
+    ["node-toolchain", "path-node", "git", "curl", "python3"],
+  );
+  assert.equal(report.failures, 0);
+  assert.deepEqual(readdirSync(home), []);
+  assert.match(formatReport(report), /worker preflight \(build tools only\)/);
+
+  const wrongBin = path.join(home, "bin");
+  mkdirSync(wrongBin);
+  writeFileSync(path.join(wrongBin, "node"), "#!/bin/sh\necho v0.0.0\n", {
+    mode: 0o755,
+  });
+  const wrong = spawnSync(
+    process.execPath,
+    [
+      path.join(sourceRoot, "scripts/doctor.mjs"),
+      "--factory-worker",
+      "--strict",
+      "--json",
+    ],
+    {
+      env: { ...env, PATH: `${wrongBin}:/usr/bin:/bin` },
+      encoding: "utf8",
+      timeout: 10000,
+    },
+  );
+  assert.equal(wrong.status, 1);
+  assert.equal(
+    JSON.parse(wrong.stdout).checks.find((item) => item.id === "path-node")
+      .status,
+    "fail",
+  );
+});
+
+test("factory worker scope cannot claim publisher readiness or accept an unknown scope", () => {
+  assert.throws(() => runChecks({ scope: "unknown" }), /Unknown doctor scope/);
+  const result = spawnSync(
+    process.execPath,
+    [
+      path.join(sourceRoot, "scripts/doctor.mjs"),
+      "--factory-worker",
+      "--require-publisher",
+    ],
+    { encoding: "utf8", timeout: 10000 },
+  );
+  assert.equal(result.status, 1);
+  assert.match(result.stdout, /Usage:/);
+  assert.equal(
+    resolveExitCode(
+      { checks: [], failures: 0, warnings: 0 },
+      { requirePublisher: true },
+    ),
+    1,
   );
 });

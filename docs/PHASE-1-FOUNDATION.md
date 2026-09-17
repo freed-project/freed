@@ -250,6 +250,9 @@ Feature worktrees now also default to layered validation. `npm run validate:feat
 `vorton.factory.json` and versioned JSON Schema for approved issue selection,
 bounded validation commands, and reviewed draft-only publication. Configuration
 does not activate execution or replace Freed authorization checks.
+Isolated Factory validation uses the doctor worker scope to verify pinned build
+tools without exposing controller credentials or authority records. Controller
+and publisher checks remain outside the worker boundary.
 
 Production release closeout now also requires a dedicated `main` back into `dev` reverse-integration PR so shipped production fixes and release-tooling changes do not drift out of the product branch.
 
