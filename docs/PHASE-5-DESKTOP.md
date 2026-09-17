@@ -11,8 +11,12 @@ Native consumer checkpoint refresh now retains pending edits, enrollment,
 optimistic fields, and transport receipts atomically. Tests cover pending,
 published, and settled history plus activation rollback. Consumer activation
 also revokes stale native writer and provider admission, with restart and
-rollback coverage. Native role lifecycle,
-incremental catch-up, and installed cooperative Primary handoff remain open.
+rollback coverage. Fresh installations now choose Create or Join before native
+genesis. Joining pins a Library in a private native setup record, stages its
+verified checkpoint without creating a writer, and recovers a committed import
+whose local selector was interrupted. Existing independent Library data blocks
+replacement. Settings reads native roles instead of changing localStorage.
+Incremental catch-up and installed cooperative Primary handoff remain open.
 
 Shared feed cards scale text with interface zoom, use consistent content insets,
 and blend images over the full-card hover background. Preview rails hide

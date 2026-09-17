@@ -12,7 +12,8 @@ const mocks = vi.hoisted(() => ({
   disconnect: vi.fn(),
   getAllLocalIPs: vi.fn(async () => []),
   getSyncUrl: vi.fn(async () => "ws://127.0.0.1:1421?t=pairing-token"),
-  invoke: vi.fn(async () => false),
+  role: "primary" as "primary" | "follower",
+  invoke: vi.fn(async () => ({ state: "standalone_primary", role: "primary", libraryId: "a".repeat(64), authorityEpochId: "b".repeat(64), actorId: "c".repeat(64) })),
   onStatusChange: vi.fn(() => () => {}),
   resetPairingToken: vi.fn(),
   resolveCloudSyncConflict: vi.fn(async () => {}),
@@ -117,6 +118,11 @@ describe("MobileSyncTab cloud diagnostics", () => {
       globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
     ).IS_REACT_ACT_ENVIRONMENT = true;
     vi.clearAllMocks();
+    mocks.role = "primary";
+    mocks.invoke.mockImplementation(async () => ({
+      state: mocks.role === "primary" ? "standalone_primary" : "editable_consumer", role: mocks.role,
+      libraryId: "a".repeat(64), authorityEpochId: "b".repeat(64), actorId: "c".repeat(64),
+    }));
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: { writeText: mocks.clipboardWrite },
@@ -206,10 +212,8 @@ describe("MobileSyncTab cloud diagnostics", () => {
     expect(syncNow?.disabled).toBe(false);
     expect(copyReceipt).toBeInstanceOf(HTMLButtonElement);
     expect(copyReceipt?.disabled).toBe(false);
-    const follower = Array.from(
-      container.querySelectorAll<HTMLButtonElement>("[role='radio']"),
-    ).find((button) => button.textContent?.includes("Editable follower"));
-    expect(follower?.disabled).toBe(true);
+    expect(container.querySelector("[role='radio']")).toBeNull();
+    expect(container.textContent).toContain("Primary source");
 
     await act(async () => {
       copyReceipt?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -228,35 +232,14 @@ describe("MobileSyncTab cloud diagnostics", () => {
     expect(mocks.syncCloudProviderNow).toHaveBeenCalledWith("gdrive");
   });
 
-  it("persists follower mode only while the Drive connection is inactive", async () => {
-    mocks.providers.gdrive = {
-      status: "error",
-      error: "Connection failed.",
-    };
-    useDebugStore.setState({ cloudProviders: null });
-
-    await act(async () => {
-      root.render(<MobileSyncTab />);
-    });
-
-    const roleControl = container.querySelector(
-      "[data-testid='library-core-desktop-role']",
-    );
-    const follower = Array.from(
-      roleControl?.querySelectorAll<HTMLButtonElement>("[role='radio']") ?? [],
-    ).find((button) => button.textContent?.includes("Editable follower"));
-
-    expect(follower?.disabled).toBe(false);
-    await act(async () => {
-      follower?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await Promise.resolve();
-    });
-
+  it("shows the native consumer role without a renderer promotion toggle", async () => {
+    mocks.role = "follower";
+    await act(async () => { root.render(<MobileSyncTab />); });
+    const roleControl = container.querySelector("[data-testid='library-core-desktop-role']");
     expect(readLibraryCoreDesktopRole()).toBe("follower");
-    expect(follower?.getAttribute("aria-checked")).toBe("true");
-    expect(roleControl?.textContent).toContain(
-      "Authority publication is blocked on this installation.",
-    );
+    expect(roleControl?.querySelector("[role='radio']")).toBeNull();
+    expect(roleControl?.textContent).toContain("Editable consumer");
+    expect(roleControl?.textContent).toContain("Capture runs on the Primary.");
     const diagnostics = container.querySelector(
       "[data-testid='library-core-follower-diagnostics']",
     );

@@ -5,6 +5,7 @@ import { listen } from "@tauri-apps/api/event";
 import { open as shellOpen } from "@tauri-apps/plugin-shell";
 import type { CloudProvider } from "@freed/sync/cloud/library-core";
 import type { GoogleDriveFetch } from "@freed/sync/cloud/library-core";
+import { discoverPublishedGoogleDriveLibraryCoreControlV1 } from "@freed/sync/cloud/library-core";
 import {
   recordCloudProviderEvent,
   updateCloudProvider,
@@ -28,7 +29,7 @@ import {
 import { reloadSqliteLibraryState } from "./library-client";
 import { base64ToBytes } from "./google-drive";
 import {
-  readLibraryCoreDesktopRole,
+  refreshLibraryCoreDesktopRole,
   requirePrimaryLibraryCoreDesktopRole,
 } from "./library-core-desktop-role";
 import { safeUnlisten } from "./safe-unlisten";
@@ -141,6 +142,14 @@ function activeGoogleDriveFetch(): GoogleDriveFetch | undefined {
   return googleDriveFetch
     ? createGoogleDriveAuthenticatedFetch(googleDriveFetch)
     : undefined;
+}
+
+export async function discoverDesktopCloudLibrary(libraryId?: string, signal?: AbortSignal) {
+  const accessToken = await getValidCloudToken("gdrive");
+  if (!accessToken) throw new Error("Connect Google Drive to choose a Library.");
+  return discoverPublishedGoogleDriveLibraryCoreControlV1({
+    accessToken, libraryId, signal, googleFetch: activeGoogleDriveFetch(),
+  });
 }
 
 function currentGeneration(provider: CloudProvider): number {
@@ -532,7 +541,10 @@ export async function startCloudSync(
   const generation = currentGeneration(provider);
   const controller = new AbortController();
   cloudAborts.set(provider, controller);
-  const role = readLibraryCoreDesktopRole();
+  const installation = await refreshLibraryCoreDesktopRole();
+  if (controller.signal.aborted || generation !== currentGeneration(provider)) return;
+  const role = installation.role;
+  if (role === null) throw new Error("Choose a Library before starting cloud sync.");
   updateCloudProvider(provider, {
     status: "connecting",
     stage: role === "follower" ? "download" : "upload",
@@ -632,7 +644,7 @@ export async function startCloudSync(
   markConnected(result.status === "published", role === "follower");
 }
 
-function stopCloudSync(provider: CloudProvider): void {
+export function stopCloudSync(provider: CloudProvider): void {
   advanceGeneration(provider);
   cloudAborts.get(provider)?.abort();
   cloudAborts.delete(provider);
@@ -666,7 +678,9 @@ export async function syncCloudProviderNow(
   const accessToken = await getValidCloudToken(provider);
   if (!accessToken) throw new Error("Reconnect Google Drive to resume sync.");
   const authenticatedGoogleDriveFetch = activeGoogleDriveFetch();
-  const follower = readLibraryCoreDesktopRole() === "follower";
+  const installation = await refreshLibraryCoreDesktopRole();
+  if (!installation.role) throw new Error("Native Library authority is unavailable.");
+  const follower = installation.role === "follower";
   const result = follower
     ? await syncSqliteLibraryFollowerGoogleDriveOnce({
         accessToken,

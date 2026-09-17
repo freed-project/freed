@@ -1,3 +1,5 @@
+import { DesktopLibrarySetup } from "./components/DesktopLibrarySetup";
+import { refreshLibraryCoreDesktopRole, type DesktopLibraryInstallationStatus } from "./lib/library-core-desktop-role";
 import { useEffect, useMemo, useCallback, useRef, useState, Profiler, type ProfilerOnRenderCallback } from "react";
 import {
   formatReleaseVersion,
@@ -546,6 +548,21 @@ function App() {
     () => !isTouchOnlyInputSurface(),
   );
   const fatalError = useFatalRuntimeError();
+  const [installation, setInstallation] = useState<DesktopLibraryInstallationStatus | null>(null);
+  const [installationError, setInstallationError] = useState<string | null>(null);
+  const installationReady = installation !== null && ["standalone_primary", "shared_primary", "awaiting_enrollment", "editable_consumer"].includes(installation.state);
+
+  useEffect(() => {
+    if (!legalAccepted || lockedStartupState !== "ready") return;
+    let disposed = false;
+    void refreshLibraryCoreDesktopRole().then((status) => {
+      if (!disposed) { setInstallation(status); setInstallationError(null); }
+    }).catch((failure) => {
+      if (!disposed) setInstallationError(failure instanceof Error ? failure.message : "Native Library setup is unavailable.");
+    });
+    return () => { disposed = true; };
+  }, [legalAccepted, lockedStartupState]);
+
 
   useDesktopNavigationHistory(legalAccepted);
 
@@ -679,9 +696,9 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!legalAccepted || lockedStartupState !== "ready") return;
+    if (!legalAccepted || lockedStartupState !== "ready" || !installationReady) return;
     initialize();
-  }, [initialize, legalAccepted, lockedStartupState]);
+  }, [initialize, legalAccepted, lockedStartupState, installationReady]);
 
   useEffect(() => {
     if (!legalAccepted || !isInitialized || !tauriRuntimeAvailable) return;
@@ -720,10 +737,12 @@ function App() {
       },
     });
     void initProviderHealth();
-    startRssPoller();
-    startProviderSyncScheduler({
-      existingInstall: wasDesktopClientRegistrationCreatedThisLaunch() !== true,
-    });
+    if (installation?.role === "primary") {
+      startRssPoller();
+      startProviderSyncScheduler({
+        existingInstall: wasDesktopClientRegistrationCreatedThisLaunch() !== true,
+      });
+    }
     // SQLite synchronization starts only through the typed Library Core path.
     if (isTauri()) {
       void startSnapshotManager().catch((error) => {
@@ -736,7 +755,9 @@ function App() {
     }
     // Start background content fetcher, which processes the article HTML queue.
     void contentCache.pruneOversized();
-    startContentFetcher({ startupDelayMs: 5 * 60_000, memoryGuard: true });
+    if (installation?.role === "primary") {
+      startContentFetcher({ startupDelayMs: 5 * 60_000, memoryGuard: true });
+    }
     startSemanticClassifier({
       isEnabled: () => {
         const prefs = useDesktopStore.getState().preferences.ai;
@@ -775,7 +796,7 @@ function App() {
       stopSemanticClassifier();
       stopMemoryMonitor();
     };
-  }, [isInitialized, legalAccepted]);
+  }, [isInitialized, legalAccepted, installation?.role]);
 
   // Log OS sleep/wake transitions so the log file shows where overnight
   // freezes begin. These events are emitted by Tauri on macOS suspend/resume.
@@ -1807,6 +1828,13 @@ function App() {
         }}
       />
     );
+  }
+
+  if (!installationReady) {
+    return <DesktopLibrarySetup status={installation} initialError={installationError} onReady={(status) => {
+      setInstallation(status);
+      setInstallationError(null);
+    }} />;
   }
 
   return (

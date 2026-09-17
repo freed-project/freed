@@ -5001,13 +5001,16 @@ fn truncate_for_log(value: &str, max_chars: usize) -> String {
 }
 
 async fn acquire_background_scraper_session(
+    app: &tauri::AppHandle,
     capture: &CaptureState,
     operation: &'static str,
 ) -> Result<ActiveScraperSession, String> {
+    library_core_desktop_runtime::require_primary_library_authority(app)?;
     let session = capture.scraper_session.clone();
 
     match session.clone().try_lock_owned() {
         Ok(guard) => {
+            library_core_desktop_runtime::require_primary_library_authority(app)?;
             capture.background_runtime.begin_job(operation)?;
             info!("[scraper] acquired session op={} wait_ms=0", operation);
             Ok(ActiveScraperSession {
@@ -5021,6 +5024,7 @@ async fn acquire_background_scraper_session(
             info!("[scraper] waiting for active session op={}", operation);
             let wait_started = std::time::Instant::now();
             let guard = session.lock_owned().await;
+            library_core_desktop_runtime::require_primary_library_authority(app)?;
             capture.background_runtime.begin_job(operation)?;
             info!(
                 "[scraper] acquired session op={} wait_ms={}",
@@ -5614,12 +5618,14 @@ async fn fetch_binary_url(url: String) -> Result<Vec<u8>, String> {
 /// the Rust native-tls stack, causing a silent connection failure.
 #[tauri::command]
 async fn x_api_request(
+    app: tauri::AppHandle,
     capture: tauri::State<'_, CaptureState>,
     url: String,
     body: String,
     headers: Vec<(String, String)>,
     method: Option<String>,
 ) -> Result<String, String> {
+    library_core_desktop_runtime::require_primary_library_authority(&app)?;
     // Use the shared wreq client (Chrome TLS fingerprint, persistent connection pool).
     let client = &capture.x_client;
 
@@ -7541,6 +7547,7 @@ async fn ensure_social_scrape_memory(
     operation: &str,
     preserve_label: Option<&str>,
 ) -> Result<(), String> {
+    library_core_desktop_runtime::require_primary_library_authority(app)?;
     let prep = prepare_social_scrape_memory_internal(
         app,
         Some(background_runtime),
@@ -8469,6 +8476,7 @@ async fn fb_show_login(
     capture: tauri::State<'_, CaptureState>,
     user_agent: String,
 ) -> Result<(), String> {
+    library_core_desktop_runtime::require_primary_library_authority(&app)?;
     use tauri::WebviewWindowBuilder;
 
     info!("[FB] opening login window");
@@ -8580,7 +8588,7 @@ async fn fb_check_auth(
         Some("fb-scraper"),
     )
     .await?;
-    let _scraper_session = acquire_background_scraper_session(&capture, "fb_check_auth").await?;
+    let _scraper_session = acquire_background_scraper_session(&app, &capture, "fb_check_auth").await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "fb-scraper", "auth check");
     let wv = match app.get_webview_window("fb-scraper") {
         Some(w) => w,
@@ -8870,7 +8878,7 @@ async fn fb_scrape_feed(
         None,
     )
     .await?;
-    let _scraper_session = acquire_background_scraper_session(&capture, "fb_scrape_feed").await?;
+    let _scraper_session = acquire_background_scraper_session(&app, &capture, "fb_scrape_feed").await?;
     let recycle_guard = WebviewRecycleGuard::new(app.clone(), "fb-scraper", "feed scrape complete");
 
     let wv = match app.get_webview_window("fb-scraper") {
@@ -9191,7 +9199,7 @@ async fn fb_scrape_groups(
         None,
     )
     .await?;
-    let _scraper_session = acquire_background_scraper_session(&capture, "fb_scrape_groups").await?;
+    let _scraper_session = acquire_background_scraper_session(&app, &capture, "fb_scrape_groups").await?;
     let _recycle_guard =
         WebviewRecycleGuard::new(app.clone(), "fb-scraper", "groups scrape complete");
 
@@ -9348,7 +9356,7 @@ async fn fb_check_group_membership(
     )
     .await?;
     let _scraper_session =
-        acquire_background_scraper_session(&capture, "fb_check_group_membership").await?;
+        acquire_background_scraper_session(&app, &capture, "fb_check_group_membership").await?;
     let _recycle_guard =
         WebviewRecycleGuard::new(app.clone(), "fb-scraper", "group membership check complete");
 
@@ -9523,7 +9531,7 @@ async fn fb_scrape_comments(
 ) -> Result<(), String> {
     let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
     let _scraper_session =
-        acquire_background_scraper_session(&capture, "fb_scrape_comments").await?;
+        acquire_background_scraper_session(&app, &capture, "fb_scrape_comments").await?;
     let _recycle_guard =
         WebviewRecycleGuard::new(app.clone(), "fb-scraper", "comments scrape complete");
     let wv = match app.get_webview_window("fb-scraper") {
@@ -9600,6 +9608,7 @@ async fn ig_show_login(
     capture: tauri::State<'_, CaptureState>,
     user_agent: String,
 ) -> Result<(), String> {
+    library_core_desktop_runtime::require_primary_library_authority(&app)?;
     use tauri::WebviewWindowBuilder;
 
     recycle_webview_window(
@@ -9704,7 +9713,7 @@ async fn ig_check_auth(
         Some("ig-scraper"),
     )
     .await?;
-    let _scraper_session = acquire_background_scraper_session(&capture, "ig_check_auth").await?;
+    let _scraper_session = acquire_background_scraper_session(&app, &capture, "ig_check_auth").await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "ig-scraper", "auth check");
     let wv = match app.get_webview_window("ig-scraper") {
         Some(w) => w,
@@ -9775,7 +9784,7 @@ async fn ig_scrape_feed(
         None,
     )
     .await?;
-    let scraper_session = acquire_background_scraper_session(&capture, "ig_scrape_feed").await?;
+    let scraper_session = acquire_background_scraper_session(&app, &capture, "ig_scrape_feed").await?;
     let recycle_guard = WebviewRecycleGuard::new(app.clone(), "ig-scraper", "feed scrape complete");
     let scrape_start_stats = collect_runtime_memory_stats(&app);
 
@@ -10065,7 +10074,7 @@ async fn ig_scrape_comments(
 ) -> Result<(), String> {
     let scraper_user_agent = stored_or_default_user_agent(&capture.ig_user_agent);
     let _scraper_session =
-        acquire_background_scraper_session(&capture, "ig_scrape_comments").await?;
+        acquire_background_scraper_session(&app, &capture, "ig_scrape_comments").await?;
     let _recycle_guard =
         WebviewRecycleGuard::new(app.clone(), "ig-scraper", "comments scrape complete");
     let wv = match app.get_webview_window("ig-scraper") {
@@ -10137,7 +10146,7 @@ async fn fb_visit_url(
     let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
     ensure_social_scrape_memory(&app, &capture.background_runtime, "Facebook", "visit", None)
         .await?;
-    let _scraper_session = acquire_background_scraper_session(&capture, "fb_visit_url").await?;
+    let _scraper_session = acquire_background_scraper_session(&app, &capture, "fb_visit_url").await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "fb-scraper", "visit complete");
     let wv = match app.get_webview_window("fb-scraper") {
         Some(window) => window,
@@ -10176,7 +10185,7 @@ async fn ig_visit_url(
         None,
     )
     .await?;
-    let _scraper_session = acquire_background_scraper_session(&capture, "ig_visit_url").await?;
+    let _scraper_session = acquire_background_scraper_session(&app, &capture, "ig_visit_url").await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "ig-scraper", "visit complete");
     let wv = match app.get_webview_window("ig-scraper") {
         Some(window) => window,
@@ -10215,7 +10224,7 @@ async fn fb_like_post(
     let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
     ensure_social_scrape_memory(&app, &capture.background_runtime, "Facebook", "like", None)
         .await?;
-    let _scraper_session = acquire_background_scraper_session(&capture, "fb_like_post").await?;
+    let _scraper_session = acquire_background_scraper_session(&app, &capture, "fb_like_post").await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "fb-scraper", "like complete");
     let wv = match app.get_webview_window("fb-scraper") {
         Some(window) => window,
@@ -10266,7 +10275,7 @@ async fn ig_like_post(
     let scraper_user_agent = stored_or_default_user_agent(&capture.ig_user_agent);
     ensure_social_scrape_memory(&app, &capture.background_runtime, "Instagram", "like", None)
         .await?;
-    let _scraper_session = acquire_background_scraper_session(&capture, "ig_like_post").await?;
+    let _scraper_session = acquire_background_scraper_session(&app, &capture, "ig_like_post").await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "ig-scraper", "like complete");
     let wv = match app.get_webview_window("ig-scraper") {
         Some(window) => window,
@@ -10328,6 +10337,7 @@ async fn li_show_login(
     capture: tauri::State<'_, CaptureState>,
     user_agent: String,
 ) -> Result<(), String> {
+    library_core_desktop_runtime::require_primary_library_authority(&app)?;
     use tauri::WebviewWindowBuilder;
 
     recycle_webview_window(
@@ -10433,7 +10443,7 @@ async fn li_check_auth(
         Some("li-scraper"),
     )
     .await?;
-    let _scraper_session = acquire_background_scraper_session(&capture, "li_check_auth").await?;
+    let _scraper_session = acquire_background_scraper_session(&app, &capture, "li_check_auth").await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "li-scraper", "auth check");
     let wv = match app.get_webview_window("li-scraper") {
         Some(w) => {
@@ -10516,7 +10526,7 @@ async fn li_scrape_feed(
         None,
     )
     .await?;
-    let scraper_session = acquire_background_scraper_session(&capture, "li_scrape_feed").await?;
+    let scraper_session = acquire_background_scraper_session(&app, &capture, "li_scrape_feed").await?;
     let recycle_guard = WebviewRecycleGuard::new(app.clone(), "li-scraper", "feed scrape complete");
 
     let wv = match app.get_webview_window("li-scraper") {
@@ -11275,6 +11285,7 @@ async fn show_essay_provider_login(
     user_agent: String,
     provider: EssayProviderConfig,
 ) -> Result<(), String> {
+    library_core_desktop_runtime::require_primary_library_authority(&app)?;
     use tauri::WebviewWindowBuilder;
     let user_agent = store_essay_provider_user_agent(user_agent_store, user_agent)?;
 
@@ -11366,7 +11377,7 @@ async fn check_essay_provider_auth(
     )
     .await?;
     let _scraper_session =
-        acquire_background_scraper_session(capture, provider.auth_operation).await?;
+        acquire_background_scraper_session(&app, capture, provider.auth_operation).await?;
     let _recycle_guard = WebviewRecycleGuard::new(
         app.clone(),
         provider.scraper_window_label,
@@ -11533,7 +11544,7 @@ async fn scrape_essay_provider(
         None,
     )
     .await?;
-    let _scraper_session = acquire_background_scraper_session(capture, operation).await?;
+    let _scraper_session = acquire_background_scraper_session(&app, capture, operation).await?;
     let _recycle_guard = WebviewRecycleGuard::new(
         app.clone(),
         provider.scraper_window_label,
@@ -14322,6 +14333,8 @@ pub fn run() {
             library_core_desktop_runtime::query_normalized_device_contact_match_page,
             library_core_desktop_runtime::query_normalized_device_contact_suggestion_page,
             library_core_desktop_runtime::query_normalized_device_contact_unmatched_page,
+            library_core_desktop_runtime::normalized_desktop_installation_status,
+            library_core_desktop_runtime::select_normalized_desktop_library_setup,
             library_core_desktop_runtime::ensure_fresh_normalized_desktop_library,
             library_core_desktop_runtime::begin_normalized_library_checkpoint_export,
             library_core_desktop_runtime::describe_normalized_library_checkpoint,

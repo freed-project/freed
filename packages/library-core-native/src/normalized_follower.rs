@@ -2536,6 +2536,25 @@ mod tests {
         .expect("refresh with unresolved signed edits");
         assert_eq!(admission_counts(&replica), (0, 0));
         assert!(crate::normalized_primary_mutation_context_v1(&replica).is_err());
+        crate::verify_normalized_library_selection_v1(&replica, &descriptor.library_id)
+            .expect("selected consumer recognizes its checkpoint generation");
+        assert!(
+            crate::verify_normalized_library_selection_v1(&replica, "another-library").is_err()
+        );
+        for tamper in [
+            "DELETE FROM library_follower_checkpoint_receipt;",
+            "UPDATE library_follower_checkpoint_receipt SET checkpoint_digest = printf('%064d', 0);",
+            "UPDATE library_follower_checkpoint_receipt SET source_revision = source_revision + 1;",
+            "UPDATE library_follower_checkpoint_receipt SET library_id = 'another-library';",
+            "UPDATE library_actors SET retired_at = 4000 WHERE actor_kind = 'desktop';",
+        ] {
+            replica.execute_batch("SAVEPOINT receipt_tamper;").unwrap();
+            replica.execute_batch(tamper).unwrap();
+            assert!(crate::verify_normalized_library_selection_v1(&replica, &descriptor.library_id).is_err(),
+                "reject changed receipt: {tamper}");
+            replica.execute_batch("ROLLBACK TO receipt_tamper; RELEASE receipt_tamper;").unwrap();
+        }
+
         assert_eq!(snapshot(&replica), before);
         assert_eq!(
             normalized_follower_transport_context_v2(&replica).unwrap(),
@@ -2556,6 +2575,51 @@ mod tests {
             .expect("reopen refreshed replica");
         assert_eq!(admission_counts(&reopened), (0, 0));
         assert!(crate::normalized_primary_mutation_context_v1(&reopened).is_err());
+        crate::verify_normalized_library_selection_v1(&reopened, &descriptor.library_id)
+            .expect("reopened consumer remains selected");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let fixture = tempfile::tempdir().unwrap();
+            std::fs::set_permissions(fixture.path(), std::fs::Permissions::from_mode(0o700))
+                .unwrap();
+            let bound_directory = fixture.path().join("app-data");
+            let binding = crate::LibraryCoreDesktopBinding::open(
+                &bound_directory,
+                crate::ProcessLeaseIdentity::new("consumer-join-test", "1"),
+            )
+            .unwrap();
+            binding
+                .select_library_setup_v1(&crate::DesktopLibrarySetupChoiceV1::Follower {
+                    library_id: descriptor.library_id.clone(),
+                })
+                .unwrap();
+            let mut target = binding.connect_normalized().unwrap();
+            rusqlite::backup::Backup::new(&reopened, &mut target)
+                .unwrap()
+                .run_to_completion(128, std::time::Duration::ZERO, None)
+                .unwrap();
+            drop(target);
+            assert!(!binding.normalized_authority_is_selected_v1().unwrap());
+            // Simulate termination after the checkpoint transaction committed,
+            // before its first local selector was published.
+            drop(binding);
+            let binding = crate::LibraryCoreDesktopBinding::open(
+                &bound_directory,
+                crate::ProcessLeaseIdentity::new("consumer-join-test", "1"),
+            )
+            .unwrap();
+            binding
+                .publish_follower_authority_selection_v1(&descriptor.library_id)
+                .unwrap();
+            binding
+                .publish_follower_authority_selection_v1(&descriptor.library_id)
+                .unwrap();
+            let selected = binding.connect_selected_normalized().unwrap();
+            assert_eq!(snapshot(&selected), before);
+            assert!(crate::normalized_primary_mutation_context_v1(&selected).is_err());
+        }
+
         assert_eq!(snapshot(&reopened), before);
         assert_eq!(
             normalized_follower_transport_context_v2(&reopened).unwrap(),

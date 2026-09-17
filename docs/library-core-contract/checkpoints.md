@@ -121,7 +121,11 @@ surface.
 The verified checkpoint digest becomes the local materialization generation
 ID. Every bounded query cursor binds to that generation ID, never to the human
 Library ID. The generation metadata is local and is not included in checkpoint
-records, which keeps the checkpoint digest acyclic.
+records, which keeps the checkpoint digest acyclic. Native Desktop selection
+accepts this generation only through a receipt naming the same Library, epoch,
+active writer actor, and checkpoint digest, at a revision covered by local
+canonical state. Primary genesis and restore retain their epoch-digest proof.
+Missing or mismatched consumer receipts do not become a new Primary proof.
 
 Native follower refresh within the same Library and authority epoch retains
 the exact enrollment request, signed intent members, pending and published
