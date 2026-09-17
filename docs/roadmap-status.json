@@ -21,13 +21,13 @@
     {
       "id": 4,
       "status": "current",
-      "reviewedAt": "2026-09-14",
+      "reviewedAt": "2026-09-17",
       "source": "docs/PHASE-4-SYNC.md"
     },
     {
       "id": 5,
       "status": "current",
-      "reviewedAt": "2026-09-07",
+      "reviewedAt": "2026-09-17",
       "source": "docs/PHASE-5-DESKTOP.md"
     },
     {
@@ -62,6 +62,7 @@
     {
       "id": 11,
       "status": "current",
+      "reviewedAt": "2026-09-17",
       "source": "docs/PHASE-11-OPENCLAW.md"
     },
     {

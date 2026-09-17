@@ -119,3 +119,19 @@ The verified checkpoint digest becomes the local materialization generation
 ID. Every bounded query cursor binds to that generation ID, never to the human
 Library ID. The generation metadata is local and is not included in checkpoint
 records, which keeps the checkpoint digest acyclic.
+
+Native follower refresh within the same Library and authority epoch retains
+the exact enrollment request, signed intent members, pending and published
+transactions, optimistic fields, result receipts, transport history, counters,
+and local invalidations. Disk-backed scratch tables participate in the same
+activation transaction and disappear on success or rollback. Refresh cannot
+change the accepted authority certificate or writer, regress the source revision
+or actor chain, or introduce an actor advance absent from retained signed work.
+An incompatible Library or epoch requires explicit recovery. Unpublished Primary
+work still blocks replacement. A checkpoint never settles a pending intent by
+itself.
+
+A verified accepted result ahead of the native replica's canonical revision
+retains its optimistic fields. A later checkpoint removes those fields only
+when the stored result belongs to that authority epoch and its revision is
+covered. Result and transport receipts remain available for exact replay.
