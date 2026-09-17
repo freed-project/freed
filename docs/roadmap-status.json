@@ -21,19 +21,19 @@
     {
       "id": 4,
       "status": "current",
-      "reviewedAt": "2026-09-17T21:25:30Z",
+      "reviewedAt": "2026-09-17T22:08:32Z",
       "source": "docs/PHASE-4-SYNC.md"
     },
     {
       "id": 5,
       "status": "current",
-      "reviewedAt": "2026-09-17T20:51:29Z",
+      "reviewedAt": "2026-09-17T21:40:39Z",
       "source": "docs/PHASE-5-DESKTOP.md"
     },
     {
       "id": 6,
       "status": "current",
-      "reviewedAt": "2026-09-17T21:25:30Z",
+      "reviewedAt": "2026-09-17T22:08:32Z",
       "source": "docs/PHASE-6-PWA.md"
     },
     {
@@ -62,7 +62,7 @@
     {
       "id": 11,
       "status": "current",
-      "reviewedAt": "2026-09-17T21:25:30Z",
+      "reviewedAt": "2026-09-17T22:08:32Z",
       "source": "docs/PHASE-11-OPENCLAW.md"
     },
     {
