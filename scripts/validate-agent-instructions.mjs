@@ -64,6 +64,9 @@ function collectInstructionFiles(repoRoot) {
         );
       }
       if (entry.isDirectory()) {
+        // The isolated worker reserves this root for private runtime state.
+        // It is deliberately unreadable and is not a source instruction route.
+        if (relativeDirectory === "." && entry.name === ".codex") continue;
         if (IGNORED_DIRECTORIES.has(entry.name)) continue;
         const childRelative =
           relativeDirectory === "."
