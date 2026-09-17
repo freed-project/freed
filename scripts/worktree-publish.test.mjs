@@ -361,7 +361,14 @@ if (args[1] === "create") {
 }
 
 if (args[1] === "view") {
+  state.prViewCallCount = (state.prViewCallCount || 0) + 1;
+  fs.writeFileSync(stateFile, JSON.stringify(state));
+  if (state.failView) {
+    process.stderr.write("pull request unavailable");
+    process.exit(1);
+  }
   const headRefOid = execFileSync("/usr/bin/git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+  const headRefName = execFileSync("/usr/bin/git", ["branch", "--show-current"], { encoding: "utf8" }).trim();
   const requestedReference = String(args[2] || "");
   const requestedNumber = Number.parseInt(requestedReference, 10);
   const pr = (state.prList || []).find(
@@ -370,9 +377,13 @@ if (args[1] === "view") {
       item.url === requestedReference,
   ) || state.prList?.[0] || {};
   process.stdout.write(JSON.stringify({
-    headRefOid,
+    number: pr.number,
+    headRefOid: state.viewHead || (state.prViewCallCount <= (state.staleHeadReads || 0) ? "a".repeat(40) : headRefOid),
+    headRefName,
     baseRefName: state.viewBase || "dev",
+    state: "OPEN",
     isDraft: pr.isDraft ?? true,
+    ...state.viewOverrides,
   }));
   process.exit(0);
 }
@@ -1299,6 +1310,75 @@ test("worktree-publish updates an existing draft PR without toggling it", async 
     true,
   );
   assert.equal(ghCalls.at(-1).args[1], "view");
+});
+
+test("worktree-publish reconciles only stale heads after a successful push", async (t) => {
+  const cases = [
+    { name: "converges", staleHeadReads: 2, succeeds: true, sleeps: 2 },
+    { name: "exhausts retries", staleHeadReads: 5, sleeps: 4 },
+    { name: "rejects changed base", viewOverrides: { baseRefName: "main" } },
+    { name: "rejects changed branch", viewOverrides: { headRefName: "other" } },
+    { name: "rejects replaced PR", viewOverrides: { number: 999 } },
+    { name: "rejects closed PR", viewOverrides: { state: "CLOSED" } },
+    { name: "rejects changed review state", viewOverrides: { isDraft: false } },
+    { name: "rejects missing head", viewOverrides: { headRefOid: "" } },
+    { name: "rejects unavailable PR", failView: true },
+  ];
+  for (const scenario of cases) {
+    await t.test(scenario.name, async (t) => {
+      const fixture = await createPublishFixture(t);
+      const fixtureRoot = path.dirname(fixture.ghStateFile);
+      const sleepLog = path.join(fixtureRoot, "sleep.log");
+      // Keep the retry contract deterministic without production-duration waits.
+      await fs.writeFile(
+        path.join(fixtureRoot, "bin", "sleep"),
+        `#!${process.execPath}\nrequire("node:fs").appendFileSync(${JSON.stringify(sleepLog)}, process.argv[2] + "\\n");\n`,
+        { mode: 0o755 },
+      );
+      await fs.writeFile(
+        fixture.ghStateFile,
+        JSON.stringify({
+          prList: [{
+            number: 251,
+            url: "https://github.com/freed-project/freed/pull/251",
+            isDraft: true,
+            headRefOid: "a".repeat(40),
+          }],
+          staleHeadReads: scenario.staleHeadReads ?? 0,
+          viewOverrides: scenario.viewOverrides,
+          failView: scenario.failView,
+        }),
+      );
+      await fs.writeFile(
+        path.join(fixture.worktree, "README.md"), "head propagation\n",
+      );
+      const result = run(
+        "bash", [publishScript, "--title", "fix: reconcile PR head"],
+        { cwd: fixture.worktree, env: directPublishEnv(fixture), timeout: 30_000 },
+      );
+      const calls = await readGhLog(fixture.ghLogFile);
+      const writes = calls.filter((call) => ["edit", "ready", "create"].includes(call.args[1]));
+      if (scenario.succeeds) {
+        assertSuccess(result);
+        assert.equal(writes.length, 1);
+        assert.equal(writes[0].args[1], "edit");
+      } else {
+        assert.notEqual(result.status, 0);
+        assert.match(result.stderr, /pull request (head did not converge|target does not match|unavailable)/);
+        assert.equal(writes.length, 0);
+        assert.equal(calls.filter((call) => call.args[1] === "view").length, scenario.staleHeadReads ? 5 : 1);
+      }
+      const sleeps = await fs.readFile(sleepLog, "utf8").catch((error) => {
+        if (error.code === "ENOENT") return "";
+        throw error;
+      });
+      assert.equal(sleeps, "1\n".repeat(scenario.sleeps ?? 0));
+      const localHead = run("git", ["rev-parse", "HEAD"], { cwd: fixture.worktree }).stdout.trim();
+      // The branch push must have completed before reconciliation starts.
+      const branch = run("git", ["branch", "--show-current"], { cwd: fixture.worktree }).stdout.trim();
+      assert.match(run("git", ["ls-remote", "origin", `refs/heads/${branch}`], { cwd: fixture.worktree }).stdout, new RegExp(`^${localHead}\\s`));
+    });
+  }
 });
 
 test("worktree-publish refuses an existing PR retargeted after lookup", async (t) => {
