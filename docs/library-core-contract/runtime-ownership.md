@@ -29,6 +29,18 @@ discriminator, deserializes the remaining fields into the exact generated
 request type, and returns the exact response DTO. Unknown query IDs and extra
 fields fail closed. Raw SQL never crosses the native boundary.
 
+Freed Desktop records its initial Create or Join choice in the bounded private
+`library-installation-setup-v1.json` control file. A Join choice pins one Library
+before checkpoint staging and never creates writer authority. Effective roles
+come from native Primary admission or a verified follower checkpoint and
+enrollment, not from that setup record or renderer storage. Initial setup cannot
+replace a selected or populated independent Library. Legacy renderer consumer
+preferences may only revoke local writer and provider admission; they can never
+grant it. Interrupted first consumer activation resumes from its committed
+checkpoint receipt before publishing the local selector. Provider entry points
+and cloud export commands check native Primary admission independently of UI
+state. Capture schedules are not started for consumers.
+
 Native and browser responses pass through one shared TypeScript dispatcher
 bound to the original typed request before reaching a client. The dispatcher
 selects the registered response parser by `queryId`, checks source fences,

@@ -340,26 +340,11 @@ fn open_normalized_database(app: &tauri::AppHandle) -> Result<Connection, String
             return Err("normalized SQLite authority selection identity is invalid".into());
         }
         let connection = open_unselected_normalized_database(app, false)?;
-        let matches: i64 = connection
-            .query_row(
-                "SELECT count(*)
-                 FROM library_active_authority AS active
-                 JOIN library_authority_epochs AS epoch ON epoch.epoch_id = active.epoch_id
-                 JOIN library_meta AS meta ON meta.singleton_id = 1
-                 JOIN library_materialization_generation AS generation ON generation.singleton_id = 1
-                 WHERE active.active_key = 'active'
-                   AND active.library_id = ?1
-                   AND meta.library_id = active.library_id
-                   AND meta.authority_epoch = active.epoch_id
-                   AND epoch.library_id = active.library_id
-                   AND epoch.materialized_state_digest = generation.generation_id;",
-                [&selection.library_id],
-                |row| row.get(0),
-            )
-            .map_err(|error| error.to_string())?;
-        if matches != 1 {
-            return Err("normalized SQLite authority selection does not match SQLite".into());
-        }
+        freed_library_core::verify_normalized_library_selection_v1(
+            &connection,
+            &selection.library_id,
+        )
+        .map_err(|error| error.to_string())?;
         Ok(connection)
     }
 }
@@ -399,7 +384,15 @@ fn publish_windows_authority_selection(
     app: &tauri::AppHandle,
     prepared: &freed_library_core::NormalizedDesktopAuthorityPreparedV1,
 ) -> Result<(), String> {
-    if !valid_normalized_digest(&prepared.library_id) {
+    publish_windows_library_selection(app, &prepared.library_id)
+}
+
+#[cfg(not(unix))]
+fn publish_windows_library_selection(
+    app: &tauri::AppHandle,
+    library_id: &str,
+) -> Result<(), String> {
+    if !valid_normalized_digest(library_id) {
         return Err("normalized SQLite authority identity is invalid".into());
     }
     let path = app_root(app)?.join(AUTHORITY_SELECTION_FILE);
@@ -409,7 +402,7 @@ fn publish_windows_authority_selection(
     let pending = path.with_extension("pending");
     let bytes = serde_json::to_vec(&DesktopLibraryAuthoritySelectionV1 {
         format: "freed_desktop_sqlite_authority_selection_v1".into(),
-        library_id: prepared.library_id.clone(),
+        library_id: library_id.to_owned(),
     })
     .map_err(|error| error.to_string())?;
     fs::write(&pending, bytes).map_err(|error| error.to_string())?;
@@ -609,6 +602,319 @@ fn complete_windows_normalized_cutover(
     Ok(true)
 }
 
+fn desktop_setup_choice(
+    app: &tauri::AppHandle,
+) -> Result<Option<freed_library_core::DesktopLibrarySetupChoiceV1>, String> {
+    #[cfg(unix)]
+    {
+        let _ = app;
+        freed_library_core::desktop_binding()
+            .map_err(|error| error.to_string())?
+            .library_setup_choice_v1()
+            .map_err(|error| error.to_string())
+    }
+    #[cfg(not(unix))]
+    {
+        let path = app_root(app)?.join(freed_library_core::DESKTOP_LIBRARY_SETUP_FILE);
+        match fs::symlink_metadata(&path) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(error.to_string()),
+            Ok(metadata)
+                if !metadata.is_file()
+                    || metadata.file_type().is_symlink()
+                    || metadata.len()
+                        > freed_library_core::DESKTOP_LIBRARY_SETUP_MAXIMUM_BYTES as u64 =>
+            {
+                return Err("Desktop Library setup file is invalid".into())
+            }
+            Ok(_) => {}
+        }
+        freed_library_core::DesktopLibrarySetupChoiceV1::from_canonical_bytes(
+            &fs::read(path).map_err(|error| error.to_string())?,
+        )
+        .map(Some)
+    }
+}
+
+fn desktop_library_is_selected(app: &tauri::AppHandle) -> Result<bool, String> {
+    #[cfg(unix)]
+    {
+        let _ = app;
+        freed_library_core::desktop_binding()
+            .map_err(|error| error.to_string())?
+            .normalized_authority_is_selected_v1()
+            .map_err(|error| error.to_string())
+    }
+    #[cfg(not(unix))]
+    {
+        if !app_root(app)?.join(AUTHORITY_SELECTION_FILE).exists() {
+            return Ok(false);
+        }
+        open_normalized_database(app).map(|_| true)
+    }
+}
+
+fn open_setup_database(app: &tauri::AppHandle) -> Result<Connection, String> {
+    #[cfg(unix)]
+    {
+        let _ = app;
+        freed_library_core::desktop_binding()
+            .map_err(|error| error.to_string())?
+            .connect_normalized()
+            .map_err(|error| error.to_string())
+    }
+    #[cfg(not(unix))]
+    {
+        open_unselected_normalized_database(app, true)
+    }
+}
+
+fn publish_consumer_selection(app: &tauri::AppHandle, library_id: &str) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        let _ = app;
+        freed_library_core::desktop_binding()
+            .map_err(|error| error.to_string())?
+            .publish_follower_authority_selection_v1(library_id)
+            .map_err(|error| error.to_string())
+    }
+    #[cfg(not(unix))]
+    {
+        publish_windows_library_selection(app, library_id)
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DesktopLibraryInstallationStatus {
+    state: &'static str,
+    role: Option<&'static str>,
+    library_id: Option<String>,
+    authority_epoch_id: Option<String>,
+    actor_id: Option<String>,
+}
+
+#[tauri::command]
+pub(super) fn normalized_desktop_installation_status(
+    app: tauri::AppHandle,
+    legacy_follower_requested: Option<bool>,
+) -> Result<DesktopLibraryInstallationStatus, String> {
+    // A legacy renderer preference may revoke authority, never confer it. This
+    // one-way migration preserves an old consumer choice even if its previous
+    // build had already created a local Primary before joining.
+    if legacy_follower_requested.unwrap_or(false) {
+        let mut connection = open_setup_database(&app)?;
+        let transaction = connection
+            .transaction()
+            .map_err(|error| error.to_string())?;
+        transaction.execute_batch(
+            "DELETE FROM library_writer_admission; DELETE FROM library_local_cloud_writer_admission;",
+        ).map_err(|error| error.to_string())?;
+        transaction.commit().map_err(|error| error.to_string())?;
+    }
+    let choice = desktop_setup_choice(&app)?;
+    if !desktop_library_is_selected(&app)? {
+        // Recover the only split commit: a verified first checkpoint reached
+        // SQLite, but the process stopped before publishing its local selector.
+        if let Some(freed_library_core::DesktopLibrarySetupChoiceV1::Follower { library_id }) =
+            &choice
+        {
+            let connection = open_setup_database(&app)?;
+            let installed: bool = connection.query_row(
+                "SELECT EXISTS(SELECT 1 FROM library_follower_checkpoint_receipt WHERE library_id = ?1);",
+                [library_id], |row| row.get(0),
+            ).map_err(|error| error.to_string())?;
+            if installed {
+                freed_library_core::verify_normalized_library_selection_v1(&connection, library_id)
+                    .map_err(|error| error.to_string())?;
+                drop(connection);
+                publish_consumer_selection(&app, library_id)?;
+            }
+        }
+    }
+    if desktop_library_is_selected(&app)? {
+        let connection = open_normalized_database(&app)?;
+        let follower = freed_library_core::normalized_follower_runtime_status_v2(&connection)
+            .map_err(|error| error.to_string())?;
+        if follower.library_id.is_some() {
+            return Ok(DesktopLibraryInstallationStatus {
+                state: if follower.state == "active" {
+                    "editable_consumer"
+                } else {
+                    "awaiting_enrollment"
+                },
+                role: Some("follower"),
+                library_id: follower.library_id,
+                authority_epoch_id: follower.authority_epoch_id,
+                actor_id: follower.actor_id,
+            });
+        }
+        if let Ok(primary) = freed_library_core::normalized_primary_mutation_context_v1(&connection)
+        {
+            return Ok(DesktopLibraryInstallationStatus {
+                state: if writer_admission_status(&connection)?.allowed {
+                    "shared_primary"
+                } else {
+                    "standalone_primary"
+                },
+                role: Some("primary"),
+                library_id: Some(primary.library_id),
+                authority_epoch_id: Some(primary.epoch_id),
+                actor_id: Some(primary.actor_id),
+            });
+        }
+        return Ok(DesktopLibraryInstallationStatus {
+            state: "fenced",
+            role: None,
+            library_id: None,
+            authority_epoch_id: None,
+            actor_id: None,
+        });
+    }
+    Ok(match choice {
+        Some(freed_library_core::DesktopLibrarySetupChoiceV1::Primary) => {
+            DesktopLibraryInstallationStatus {
+                state: "creating_primary",
+                role: Some("primary"),
+                library_id: None,
+                authority_epoch_id: None,
+                actor_id: None,
+            }
+        }
+        Some(freed_library_core::DesktopLibrarySetupChoiceV1::Follower { library_id }) => {
+            DesktopLibraryInstallationStatus {
+                state: "joining",
+                role: Some("follower"),
+                library_id: Some(library_id),
+                authority_epoch_id: None,
+                actor_id: None,
+            }
+        }
+        None => DesktopLibraryInstallationStatus {
+            state: "unconfigured",
+            role: None,
+            library_id: None,
+            authority_epoch_id: None,
+            actor_id: None,
+        },
+    })
+}
+
+static DESKTOP_SETUP_GATE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+#[tauri::command]
+pub(super) fn select_normalized_desktop_library_setup(
+    app: tauri::AppHandle,
+    choice: freed_library_core::DesktopLibrarySetupChoiceV1,
+) -> Result<DesktopLibraryInstallationStatus, String> {
+    let _gate = DESKTOP_SETUP_GATE
+        .lock()
+        .map_err(|_| "Desktop Library setup lock is poisoned")?;
+    choice.validate()?;
+    #[cfg(unix)]
+    {
+        freed_library_core::desktop_binding()
+            .map_err(|error| error.to_string())?
+            .select_library_setup_v1(&choice)
+            .map_err(|error| error.to_string())?;
+    }
+    #[cfg(not(unix))]
+    {
+        if let Some(existing) = desktop_setup_choice(&app)? {
+            if existing != choice {
+                return Err("Desktop Library setup is already pinned".into());
+            }
+        } else {
+            if desktop_library_is_selected(&app)?
+                || app_root(&app)?
+                    .join("library-core")
+                    .join(NORMALIZED_DATABASE_FILE)
+                    .exists()
+            {
+                return Err(
+                    "Existing Library data must be preserved before joining another Library".into(),
+                );
+            }
+            let connection = open_setup_database(&app)?;
+            let occupied: bool = connection.query_row(
+                "SELECT EXISTS(SELECT 1 FROM library_meta) OR EXISTS(SELECT 1 FROM library_active_authority);",
+                [], |row| row.get(0),
+            ).map_err(|error| error.to_string())?;
+            if occupied {
+                return Err(
+                    "Existing Library data must be preserved before joining another Library".into(),
+                );
+            }
+            let path = app_root(&app)?.join(freed_library_core::DESKTOP_LIBRARY_SETUP_FILE);
+            let pending = path.with_extension("pending");
+            use std::io::Write;
+            match fs::remove_file(&pending) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.to_string()),
+            }
+            let mut file = fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&pending)
+                .map_err(|error| error.to_string())?;
+            file.write_all(&choice.canonical_bytes()?)
+                .map_err(|error| error.to_string())?;
+            file.sync_all().map_err(|error| error.to_string())?;
+            drop(file);
+            fs::rename(&pending, &path).map_err(|error| error.to_string())?;
+        }
+    }
+    if choice == freed_library_core::DesktopLibrarySetupChoiceV1::Primary {
+        ensure_fresh_normalized_desktop_library(app.clone(), true)?;
+    }
+    normalized_desktop_installation_status(app, None)
+}
+
+fn open_checkpoint_import_database(app: &tauri::AppHandle) -> Result<Connection, String> {
+    if desktop_library_is_selected(app)? {
+        return open_normalized_database(app);
+    }
+    if matches!(
+        desktop_setup_choice(app)?,
+        Some(freed_library_core::DesktopLibrarySetupChoiceV1::Follower { .. })
+    ) {
+        return open_setup_database(app);
+    }
+    Err("Choose a Library before importing its checkpoint".into())
+}
+
+fn require_checkpoint_library(
+    app: &tauri::AppHandle,
+    connection: &Connection,
+    library_id: &str,
+) -> Result<(), String> {
+    let selected: Option<String> = connection
+        .query_row(
+            "SELECT library_id FROM library_meta WHERE singleton_id = 1;",
+            [],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+    if let Some(selected) = selected {
+        if selected == library_id {
+            return Ok(());
+        }
+        return Err(
+            "Checkpoint belongs to another Library; existing data has been preserved".into(),
+        );
+    }
+    if desktop_setup_choice(app)?
+        == Some(freed_library_core::DesktopLibrarySetupChoiceV1::Follower {
+            library_id: library_id.to_owned(),
+        })
+    {
+        return Ok(());
+    }
+    Err("Checkpoint does not match this installation's selected Library".into())
+}
+
 #[tauri::command]
 pub(super) fn ensure_fresh_normalized_desktop_library(
     app: tauri::AppHandle,
@@ -619,6 +925,11 @@ pub(super) fn ensure_fresh_normalized_desktop_library(
         if app_root(&app)?.join(AUTHORITY_SELECTION_FILE).exists() {
             open_normalized_database(&app)?;
             return Ok(true);
+        }
+        if desktop_setup_choice(&app)?
+            != Some(freed_library_core::DesktopLibrarySetupChoiceV1::Primary)
+        {
+            return Ok(false);
         }
         if !historical_data_absent {
             return Ok(false);
@@ -654,6 +965,11 @@ pub(super) fn ensure_fresh_normalized_desktop_library(
             .map_err(|error| error.to_string())?
         {
             return Ok(true);
+        }
+        if desktop_setup_choice(&app)?
+            != Some(freed_library_core::DesktopLibrarySetupChoiceV1::Primary)
+        {
+            return Ok(false);
         }
         if !historical_data_absent {
             return Ok(false);
@@ -839,11 +1155,12 @@ pub(super) fn query_normalized_device_contact_unmatched_page(
 pub(super) fn begin_normalized_library_checkpoint_export(
     app: tauri::AppHandle,
 ) -> Result<freed_library_core::NormalizedCheckpointExportDescriptorV2, String> {
+    let connection = open_normalized_database(&app)?;
+    freed_library_core::normalized_primary_mutation_context_v1(&connection)
+        .map_err(|_| "Checkpoint publication requires native Primary authority".to_owned())?;
     ensure_checkpoint_export_reaper()?;
-    let export = freed_library_core::NormalizedCheckpointExportSessionV2::begin_current(
-        open_normalized_database(&app)?,
-    )
-    .map_err(|error| error.to_string())?;
+    let export = freed_library_core::NormalizedCheckpointExportSessionV2::begin_current(connection)
+        .map_err(|error| error.to_string())?;
     let snapshot = export.snapshot().clone();
     let mut guard = checkpoint_export_session()
         .lock()
@@ -888,6 +1205,10 @@ pub(super) fn read_normalized_library_checkpoint_page(
     app: tauri::AppHandle,
     request: freed_library_core::PinnedNormalizedCheckpointExportRequestV2,
 ) -> Result<freed_library_core::NormalizedCheckpointExportPageV2, String> {
+    let connection = open_normalized_database(&app)?;
+    freed_library_core::normalized_primary_mutation_context_v1(&connection)
+        .map_err(|_| "Checkpoint publication requires native Primary authority".to_owned())?;
+    drop(connection);
     ensure_checkpoint_export_reaper()?;
     let starting = request.page.after.is_none();
     let mut guard = checkpoint_export_session()
@@ -945,7 +1266,8 @@ pub(super) fn begin_normalized_library_checkpoint_import(
     app: tauri::AppHandle,
     request: freed_library_core::BeginNormalizedCheckpointStageV2,
 ) -> Result<freed_library_core::NormalizedCheckpointStageStatusV2, String> {
-    let connection = open_normalized_database(&app)?;
+    let connection = open_checkpoint_import_database(&app)?;
+    require_checkpoint_library(&app, &connection, &request.library_id)?;
     freed_library_core::begin_normalized_checkpoint_stage_v2(&connection, &request)
         .map_err(|error| error.to_string())
 }
@@ -955,7 +1277,7 @@ pub(super) fn append_normalized_library_checkpoint_import_page(
     app: tauri::AppHandle,
     request: AppendNormalizedLibraryCheckpointPageRequest,
 ) -> Result<freed_library_core::NormalizedCheckpointStageStatusV2, String> {
-    let mut connection = open_normalized_database(&app)?;
+    let mut connection = open_checkpoint_import_database(&app)?;
     freed_library_core::append_normalized_checkpoint_stage_page_v2(
         &mut connection,
         &request.stage_id,
@@ -969,8 +1291,20 @@ pub(super) fn activate_normalized_library_checkpoint_import(
     app: tauri::AppHandle,
     request: ActivateNormalizedLibraryCheckpointImportRequest,
 ) -> Result<freed_library_core::NormalizedCheckpointActivationReceiptV2, String> {
-    let mut connection = open_normalized_database(&app)?;
-    match request.follower_receipt {
+    let mut connection = open_checkpoint_import_database(&app)?;
+    let library_id: String = connection
+        .query_row(
+            "SELECT library_id FROM library_checkpoint_stages WHERE stage_id = ?1;",
+            [&request.stage_id],
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())?;
+    require_checkpoint_library(&app, &connection, &library_id)?;
+    let follower = request.follower_receipt.is_some();
+    if !follower && !desktop_library_is_selected(&app)? {
+        return Err("Consumer setup requires a verified follower checkpoint".into());
+    }
+    let receipt = match request.follower_receipt {
         Some(receipt) => freed_library_core::replace_with_normalized_follower_checkpoint_stage_v2(
             &mut connection,
             &request.stage_id,
@@ -981,14 +1315,19 @@ pub(super) fn activate_normalized_library_checkpoint_import(
             &request.stage_id,
         ),
     }
-    .map_err(|error| error.to_string())
+    .map_err(|error| error.to_string())?;
+    drop(connection);
+    if follower {
+        publish_consumer_selection(&app, &receipt.library_id)?;
+    }
+    Ok(receipt)
 }
 
 #[tauri::command]
 pub(super) fn normalized_library_follower_runtime_status(
     app: tauri::AppHandle,
 ) -> Result<freed_library_core::NormalizedFollowerRuntimeStatusV2, String> {
-    let connection = open_normalized_database(&app)?;
+    let connection = open_checkpoint_import_database(&app)?;
     freed_library_core::normalized_follower_runtime_status_v2(&connection)
         .map_err(|error| error.to_string())
 }
@@ -1687,7 +2026,9 @@ fn writer_admission_status(connection: &Connection) -> Result<CloudWriterAdmissi
         },
         Some((local, active, epoch, revision, verified_at_ms)) => CloudWriterAdmissionStatus {
             configured: true,
-            allowed: local == active,
+            allowed: local == active
+                && freed_library_core::normalized_primary_mutation_context_v1(connection)
+                    .is_ok_and(|context| context.actor_id == local && context.epoch_id == epoch),
             local_writer_id: Some(local),
             active_writer_id: Some(active),
             storage_epoch: Some(epoch),
@@ -1739,6 +2080,13 @@ pub(super) fn set_sqlite_library_cloud_writer_admission(
     let status = writer_admission_status(&transaction)?;
     transaction.commit().map_err(|error| error.to_string())?;
     Ok(status)
+}
+
+pub(super) fn require_primary_library_authority(app: &tauri::AppHandle) -> Result<(), String> {
+    let connection = open_normalized_database(app)?;
+    freed_library_core::normalized_primary_mutation_context_v1(&connection)
+        .map(|_| ())
+        .map_err(|_| "Provider work requires native Primary authority on this Freed Desktop".into())
 }
 
 #[tauri::command]
@@ -1882,6 +2230,11 @@ pub(super) fn reset_normalized_library(app: tauri::AppHandle) -> Result<(), Stri
                 Err(error) => return Err(error.to_string()),
             }
         }
+        match fs::remove_file(root.join(freed_library_core::DESKTOP_LIBRARY_SETUP_FILE)) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.to_string()),
+        }
         match fs::remove_file(root.join(AUTHORITY_SELECTION_FILE)) {
             Ok(()) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
@@ -1958,5 +2311,10 @@ mod tests {
             Some("3333333333333333333333333333333333333333333333333333333333333333")
         );
         assert_eq!(status.control_revision.as_deref(), Some("etag-2"));
+        connection.execute("UPDATE library_local_cloud_writer_admission SET active_writer_id = local_writer_id;", []).unwrap();
+        assert!(
+            !writer_admission_status(&connection).unwrap().allowed,
+            "renderer lease equality cannot confer native Primary authority"
+        );
     }
 }

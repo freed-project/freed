@@ -1,3 +1,4 @@
+import { refreshLibraryCoreDesktopRole } from "./library-core-desktop-role";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createLibraryCoreImmutableObjectKey,
@@ -8,6 +9,7 @@ import {
 
 const mocks = vi.hoisted(() => ({
   nativeState: null as unknown,
+  role: "primary" as "primary" | "follower",
   controlRead: {
     revision: '"etag-1"',
     bytes: new TextEncoder().encode("{}"),
@@ -117,6 +119,11 @@ const mocks = vi.hoisted(() => ({
     reference.descriptor
   ),
 }));
+
+vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(async () => ({
+  state: mocks.role === "primary" ? "standalone_primary" : "editable_consumer", role: mocks.role,
+  libraryId: "ab".repeat(32), authorityEpochId: "cd".repeat(32), actorId: "12".repeat(32),
+})) }));
 
 vi.mock("./native-json-store", () => ({
   readNativeJsonValue: mocks.readNative.mockImplementation(
@@ -361,7 +368,9 @@ import {
 } from "./library-core-cloud-sync";
 
 describe("SQLite Library Google Drive production wiring", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    mocks.role = "primary";
+    await refreshLibraryCoreDesktopRole();
     stopSqliteLibraryCloudSync();
     window.localStorage.clear();
     mocks.nativeState = null;
@@ -805,18 +814,20 @@ describe("SQLite Library Google Drive production wiring", () => {
   });
 
   it("rechecks the Desktop role before any publication work begins", async () => {
-    window.localStorage.setItem("freed.libraryCore.desktopRoleV1", "follower");
+    mocks.role = "follower";
+    await refreshLibraryCoreDesktopRole();
 
     expect(() =>
       publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token" }),
-    ).toThrow("cannot publish or replace the Primary cloud Library");
+    ).toThrow("not an active Primary for cloud publication");
 
     expect(mocks.describeCloudIdentity).not.toHaveBeenCalled();
     expect(mocks.publish).not.toHaveBeenCalled();
   });
 
   it("imports the Primary checkpoint and publishes one stable follower enrollment request", async () => {
-    window.localStorage.setItem("freed.libraryCore.desktopRoleV1", "follower");
+    mocks.role = "follower";
+    await refreshLibraryCoreDesktopRole();
     const libraryId = mocks.bootstrapAuthority.authority.library_id;
     const epochId = mocks.bootstrapAuthority.authority.epoch_id;
     const manifestDigest = "56".repeat(32) as LibraryCoreLowercaseHex64;
@@ -956,7 +967,8 @@ describe("SQLite Library Google Drive production wiring", () => {
   });
 
   it("publishes a transaction-complete follower intent and records its exact immutable digest", async () => {
-    window.localStorage.setItem("freed.libraryCore.desktopRoleV1", "follower");
+    mocks.role = "follower";
+    await refreshLibraryCoreDesktopRole();
     const libraryId = mocks.bootstrapAuthority.authority.library_id;
     const epochId = mocks.bootstrapAuthority.authority.epoch_id;
     const actorId = "78".repeat(32);
@@ -1091,7 +1103,8 @@ describe("SQLite Library Google Drive production wiring", () => {
   });
 
   it("imports the exact follower result chain into the native durable cursor", async () => {
-    window.localStorage.setItem("freed.libraryCore.desktopRoleV1", "follower");
+    mocks.role = "follower";
+    await refreshLibraryCoreDesktopRole();
     const libraryId = mocks.bootstrapAuthority.authority.library_id;
     const epochId = mocks.bootstrapAuthority.authority.epoch_id;
     const actorId = "78".repeat(32);
