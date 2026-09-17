@@ -385,3 +385,18 @@ mandatory.
 Operation sync uses the enrolled Primary actor identity already bound by checkpoint
 export. Native export, PWA staging, and accepted-result materialization reject
 missing, retired, or ambiguous writers and recheck admission before committing.
+
+### Desktop synchronization ownership, September 17, 2026
+
+Primary publication, consumer catch-up, and writer reassignment share one local
+work owner. Cancellation returns promptly but retains that ownership until any
+in-flight native command settles. Overlapping manual consumer calls join the
+same pass; a replacement lifecycle cannot run over canceled native work.
+Consumer checkpoint staging checks cancellation before activation.
+
+An initial consumer connection failure now schedules another attempt after the
+existing 60-second interval, refreshing its access token. Lifecycle replacement
+and stop prevent stale callbacks and duplicate timers. Deterministic offline
+tests cover cancellation, delayed native settlement, coalescing, initial-failure
+recovery, and timer ownership. Installed convergence and cooperative Primary
+handoff remain separate acceptance work.
