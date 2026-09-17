@@ -34,6 +34,11 @@ A wrong or missing PATH Node fails this worker check. The normal host scope and
 publisher readiness. The trusted controller remains responsible for ownership,
 quota admission, approval and publication. Worker preflight grants none of these.
 
+The instruction validator excludes the root `.codex` runtime directory, which
+the worker boundary makes unreadable. Keep repository instruction files in the
+normal root and scoped source paths. Nested source directories retain instruction
+validation.
+
 Configuration grants no authority and activates no schedule. Preserve Freed's
 claim, provider approval, behavioral concurrency, and publication requirements.
 Review must approve the exact published commit. Workers cannot merge, deploy,
