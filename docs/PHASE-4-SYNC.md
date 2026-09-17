@@ -2,14 +2,22 @@
 
 > **Status:** 🚧 In Progress
 
+Freed Desktop publishes bounded normalized operation segments after its verified
+checkpoint. Desktop and PWA consumers import those segments in revision order.
+Native SQLite stages partial transactions durably and applies complete signed
+transactions through the shared native materializers without writer admission
+or publication outboxes. Drive commits the exact immutable tail through a
+strong-ETag operation head. Administrative revision gaps, content-descriptor
+dependencies, and a chain of 64 segments require a new checkpoint. The chain
+limit bounds recovery work; installed workload tuning remains open.
+
 Native follower checkpoint refresh preserves signed pending and published edits,
 enrollment, optimistic fields, and exact intent/result transport history within
 the same Library and authority epoch. Activation faults roll back all retained
 state. Successful consumer activation revokes stale native writer and provider
 admission in that same transaction. Authority changes and regressing checkpoints fail without replacement.
 Accepted results retain optimistic fields until the corresponding canonical
-revision reaches the replica. Incremental Desktop catch-up and installed
-multi-Desktop convergence remain open.
+revision reaches the replica. Installed multi-Desktop convergence remains open.
 
 Desktop discovery uses the native pinned Library ID, including before its first
 checkpoint. Native checkpoint selection accepts the verified consumer receipt
@@ -385,3 +393,18 @@ mandatory.
 Operation sync uses the enrolled Primary actor identity already bound by checkpoint
 export. Native export, PWA staging, and accepted-result materialization reject
 missing, retired, or ambiguous writers and recheck admission before committing.
+
+### Desktop synchronization ownership, September 17, 2026
+
+Primary publication, consumer catch-up, and writer reassignment share one local
+work owner. Cancellation returns promptly but retains that ownership until any
+in-flight native command settles. Overlapping manual consumer calls join the
+same pass; a replacement lifecycle cannot run over canceled native work.
+Consumer checkpoint staging checks cancellation before activation.
+
+An initial consumer connection failure now schedules another attempt after the
+existing 60-second interval, refreshing its access token. Lifecycle replacement
+and stop prevent stale callbacks and duplicate timers. Deterministic offline
+tests cover cancellation, delayed native settlement, coalescing, initial-failure
+recovery, and timer ownership. Installed convergence and cooperative Primary
+handoff remain separate acceptance work.

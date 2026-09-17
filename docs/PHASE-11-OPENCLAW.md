@@ -14,6 +14,13 @@
 
 ## Objective
 
+Desktop and PWA now consume a shared bounded operation chain after checkpoint
+bootstrap. Native consumer import verifies signed results and actor operations,
+stages incomplete transactions, and advances canonical state without authority
+keys or writer admission. This Desktop delivery does not activate the headless
+transport. Cooperative Primary handoff and installed transition acceptance remain
+open.
+
 Native same-epoch follower checkpoint refresh preserves pending and published
 signed edits, enrollment, optimistic fields, and transport history. Native
 SQLite tests verify exact retention and rollback. Consumer activation removes
@@ -622,3 +629,13 @@ Freed Desktop and the PWA remain ordinary editable clients. Agents and capture
 workers use narrow signed capabilities, while the authority database, cloud
 credentials, and provider sessions stay isolated. The system can move Primary
 authority forward without creating split heads or copying live database files.
+
+### Desktop consumer lifecycle proof, September 17, 2026
+
+Desktop cloud publication, consumer synchronization, and writer reassignment
+now retain one local work owner through cancellation and native settlement.
+Consumer startup failure remains recoverable at the existing polling interval.
+Offline fault tests cover overlapping callers, cancellation before checkpoint
+activation, canceled preflight, and replacement timer ownership. This completes
+the local sync ownership boundary, not cooperative authority transfer or
+installed host-transition acceptance.

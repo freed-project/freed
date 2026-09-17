@@ -2,6 +2,13 @@
 
 > **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, Windows signing plan scaffolded, legal consent gate shipped, tri-state sidebar chrome shipped, public-safe bug reporting shipped, runtime memory telemetry shipped, native startup recovery shipped, bundled recovery updater flow shipped, permanent local social media vault shipped, desktop hot-path side-effect scheduling shipped, bounded SQLite user mutations and queries shipped, visible-scope bulk actions shipped, background runtime coordination shipped, renderer recovery safe mode shipped, deep local WebKit diagnostics shipped, adaptive high-memory scrape budgets shipped, explicit local-only primary Library authority shipped, normalized sample-data accounting, Story Wall candidates, Saved analytics, full-library native search, bounded scheduled RSS refresh, Google Drive checkpoint publication, follower intents, global background activity monitoring, and native terminal sync soaks shipped)
 
+Freed Desktop now connects native operation export and consumer import to the
+shared Drive coordinator. Ordinary signed mutations advance a durable operation
+publication cursor while retaining the checkpoint receipt. Consumer revision
+reads use bounded metadata queries. Native tests cover partial pages, restart,
+changed replay, signature rejection, revision ordering, and atomic application
+rollback. Installed convergence and cooperative host handoff remain open.
+
 YouTube reader content loads the privacy-enhanced player immediately with
 autoplay disabled. Completion removes the iframe until an explicit replay;
 API errors and timeouts also close it. The owner approved this additional
@@ -1042,3 +1049,12 @@ Read-on-scroll refreshes replace the complete resident window atomically, avoidi
 Local feature previews replace marked sample records once per page load through the same shared curated population used by the public demo, including its authored timelines, relationships and fresh randomized presentation seed. Browser previews retain remote image URLs; mocked Desktop uses inline media and bypasses its unavailable native avatar cache. Ordinary test fixtures retain explicit population control.
 
 The Populate sample data action in every build uses that same curated generator and fresh randomized posting times. Manual population remains additive in Libraries containing real records; only explicit sample cleanup or local-preview replacement removes marked sample records. Settings counts describe the shared population, including people who are connections rather than friends.
+
+### Consumer synchronization recovery, September 17, 2026
+
+Manual and automatic consumer sync share one active pass. Stopping sync cancels
+the caller promptly while retaining ownership of unfinished native work. A
+failed initial consumer connection retries on the existing 60-second interval
+with a refreshed token. Replacing the lifecycle leaves one retry timer and
+suppresses callbacks from the previous lifecycle. Offline tests prove these
+boundaries; they do not establish installed two-machine acceptance.

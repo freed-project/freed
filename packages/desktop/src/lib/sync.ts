@@ -585,7 +585,7 @@ export async function startCloudSync(
                 stage: "idle",
                 error: message,
                 statusMessage: "Follower Library sync needs attention.",
-                pendingReason: "Use Sync now to retry the exact bounded pass.",
+                pendingReason: "Retrying automatically in one minute. Sync now can retry sooner.",
               });
               recordCloudProviderEvent(provider, {
                 kind: "error",
@@ -618,7 +618,9 @@ export async function startCloudSync(
       error: message,
       statusMessage: "SQLite Library sync needs attention.",
       pendingReason:
-        "Try Sync now again. Reconnect Google Drive if the problem continues.",
+        role === "follower"
+          ? "Retrying automatically in one minute. Reconnect Google Drive if the problem continues."
+          : "Try Sync now again. Reconnect Google Drive if the problem continues.",
     });
     recordCloudProviderEvent(provider, {
       kind: "error",

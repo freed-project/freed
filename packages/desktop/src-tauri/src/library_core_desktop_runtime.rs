@@ -1324,6 +1324,44 @@ pub(super) fn activate_normalized_library_checkpoint_import(
 }
 
 #[tauri::command]
+pub(super) fn describe_normalized_library_operation_export(
+    app: tauri::AppHandle,
+) -> Result<freed_library_core::NormalizedOperationExportDescriptorV2, String> {
+    let connection = open_normalized_database(&app)?;
+    freed_library_core::normalized_primary_mutation_context_v1(&connection)
+        .map_err(|error| error.to_string())?;
+    freed_library_core::describe_normalized_operation_export_v2(&connection)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub(super) fn read_normalized_library_operation_page(
+    app: tauri::AppHandle,
+    request: freed_library_core::NormalizedOperationExportRequestV2,
+) -> Result<freed_library_core::NormalizedOperationExportPageV2, String> {
+    let connection = open_normalized_database(&app)?;
+    freed_library_core::normalized_primary_mutation_context_v1(&connection)
+        .map_err(|error| error.to_string())?;
+    freed_library_core::export_normalized_operation_page_v2(&connection, &request)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub(super) fn import_normalized_library_operation_page(
+    app: tauri::AppHandle,
+    request: freed_library_core::NormalizedOperationImportPageV2,
+) -> Result<freed_library_core::NormalizedOperationImportReceiptV2, String> {
+    let mut connection = open_normalized_database(&app)?;
+    let follower = freed_library_core::normalized_follower_runtime_status_v2(&connection)
+        .map_err(|error| error.to_string())?;
+    if follower.library_id.as_deref() != Some(request.snapshot.library_id.as_str()) {
+        return Err("Operation catch-up requires a verified consumer Library".into());
+    }
+    freed_library_core::import_normalized_operation_page_v2(&mut connection, &request)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub(super) fn normalized_library_follower_runtime_status(
     app: tauri::AppHandle,
 ) -> Result<freed_library_core::NormalizedFollowerRuntimeStatusV2, String> {
