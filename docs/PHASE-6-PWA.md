@@ -2,12 +2,21 @@
 
 > **Status:** 🚧 In Progress (the official SQLite WebAssembly engine, exact schema identity, single-worker OPFS runtime, normalized checkpoint import, product mutation entrypoints, bounded product queries, follower transport, recovery UI, selective content, and IndexedDB Library deletion are implemented; physical iPhone acceptance remains open)
 
+PWA checkpoint refresh now preserves pending and published signed edits,
+optimistic fields, actor counters, enrollment and exact transport history in the
+same activation transaction. It requires the verified Library, epoch and writer,
+nonregressing checkpoint history, unchanged authority certificate and a compatible
+actor chain. Failed activation leaves the old state intact. An accepted result
+clears its overlay only when the new canonical frontier covers that result;
+checkpoint effects alone never acknowledge pending work. Installed multi-client
+acceptance remains open.
+
 Connected PWA refresh now follows checkpoint and edit exchange with the shared
 normalized operation coordinator. It pins the operation chain to the selected
 Library, authority epoch, writer, and checkpoint manifest, then feeds bounded
 pages to the existing OPFS importer. Revision reads use metadata rather than
-checkpoint export. Pending-edit checkpoint continuity and installed multi-client
-convergence still require completion and acceptance.
+checkpoint export. Pending-edit checkpoint continuity is implemented below; installed multi-client
+convergence still requires acceptance.
 
 Sync now joins an active automatic refresh instead of starting an overlapping
 Library import. Stopping sync invalidates that shared pass. Deterministic

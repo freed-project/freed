@@ -1466,6 +1466,119 @@ export class PwaLibraryCoreSqliteEngine {
     }
   }
 
+  #retainFollowerCheckpointState(
+    libraryId: string,
+    authorityEpoch: string,
+    sourceRevision: number,
+    receipt: NonNullable<LibraryCoreActivateNormalizedCheckpointStageV2["followerReceipt"]>,
+  ): string[] {
+    const requests = this.#database.exec({
+      sql: `SELECT library_id, authority_epoch_id, actor_id
+            FROM library_follower_actor_request WHERE singleton_id = 1;`,
+      rowMode: "array", returnValue: "resultRows",
+    });
+    if (requests.length === 0) return [];
+    const request = requests[0]!;
+    if (requests.length !== 1 || request[0] !== libraryId || request[1] !== authorityEpoch) {
+      throw new Error("follower checkpoint requires authority recovery");
+    }
+    const compatible = this.#database.exec({
+      sql: `SELECT EXISTS (
+              SELECT 1 FROM library_meta AS meta
+              JOIN library_follower_checkpoint_receipt AS receipt
+                ON receipt.library_id = meta.library_id
+               AND receipt.authority_epoch_id = meta.authority_epoch
+              WHERE meta.singleton_id = 1 AND receipt.singleton_id = 1
+                AND meta.library_id = ?1 AND meta.authority_epoch = ?2
+                AND meta.source_revision <= ?3 AND receipt.checkpoint_generation <= ?4
+                AND receipt.writer_actor_id = ?5
+            ) AND NOT EXISTS (
+              SELECT 1 FROM library_intent_actors WHERE actor_id != ?6
+            ) AND NOT EXISTS (
+              SELECT 1 FROM library_intent_transactions
+              WHERE actor_id != ?6 OR intent_epoch_id != ?2
+            );`,
+      bind: [libraryId, authorityEpoch, sourceRevision, receipt.checkpointGeneration,
+        receipt.writerActorId, text(request[2], "retained follower actor")],
+      rowMode: 0, returnValue: "resultRows",
+    });
+    if (safeInteger(compatible[0], "follower checkpoint compatibility") !== 1) {
+      throw new Error("follower checkpoint would discard or regress local history");
+    }
+    // Main-database scratch pages share the bounded pager and activation rollback.
+    // Preserve all local rows only after proving that they belong to this actor.
+    const tables = [
+      "library_follower_actor_request", "library_intent_actors",
+      "library_intent_transactions", "library_intent_members", "library_intent_results",
+      "library_intent_result_cursors", "library_intent_transport_heads",
+      "library_intent_transport_segments", "library_result_transport_heads",
+      "library_result_transport_segments", "library_optimistic_fields",
+      "library_local_change_state", "library_local_invalidations",
+    ];
+    for (const table of tables) {
+      this.#database.exec(`CREATE TABLE main.checkpoint_retained_${table} AS SELECT * FROM ${table};`);
+    }
+    this.#database.exec(`CREATE TABLE main.checkpoint_retained_authority AS
+        SELECT epoch_id, authority_key_id, authority_public_key, canonical_transition_certificate
+        FROM library_authority_epochs
+        WHERE epoch_id = (SELECT authority_epoch FROM library_meta WHERE singleton_id = 1);
+      CREATE TABLE main.checkpoint_retained_actor_tip AS
+        SELECT actor_id, accepted_counter, accepted_operation_id, accepted_chain_digest
+        FROM library_actors
+        WHERE actor_id = (SELECT actor_id FROM library_follower_actor_request WHERE singleton_id = 1);`);
+    return tables;
+  }
+
+  #restoreFollowerCheckpointState(tables: readonly string[]): void {
+    const authority = this.#database.exec({
+      sql: `SELECT EXISTS (
+              SELECT 1 FROM checkpoint_retained_authority AS old
+              JOIN library_authority_epochs AS current USING (epoch_id)
+              WHERE current.authority_key_id = old.authority_key_id
+                AND current.authority_public_key = old.authority_public_key
+                AND current.canonical_transition_certificate = old.canonical_transition_certificate
+            );`,
+      rowMode: 0, returnValue: "resultRows",
+    });
+    if (safeInteger(authority[0], "retained authority match") !== 1) {
+      throw new Error("follower checkpoint changed the accepted authority");
+    }
+    // Suspend overlay invalidation triggers, then restore the original sequence.
+    this.#database.exec("DELETE FROM library_local_change_state;");
+    for (const table of tables) {
+      this.#database.exec(`INSERT INTO ${table} SELECT * FROM main.checkpoint_retained_${table};
+        DROP TABLE main.checkpoint_retained_${table};`);
+    }
+    const changedTip = this.#database.exec({
+      sql: `SELECT EXISTS (
+              SELECT 1 FROM checkpoint_retained_actor_tip AS old
+              LEFT JOIN library_actors AS current USING (actor_id)
+              WHERE current.actor_id IS NULL
+                OR current.accepted_counter < old.accepted_counter
+                OR (current.accepted_counter = old.accepted_counter AND
+                    (current.accepted_operation_id IS NOT old.accepted_operation_id OR
+                     current.accepted_chain_digest != old.accepted_chain_digest))
+                OR (current.accepted_counter > old.accepted_counter AND NOT EXISTS (
+                  SELECT 1 FROM library_intent_transactions AS intent
+                  WHERE intent.actor_id = current.actor_id
+                    AND intent.last_counter = current.accepted_counter
+                    AND intent.ending_operation_id = current.accepted_operation_id
+                    AND intent.ending_chain_digest = current.accepted_chain_digest
+                ))
+            ) OR EXISTS (
+              SELECT 1 FROM library_intent_actors AS local
+              JOIN library_actors AS current USING (actor_id)
+              WHERE local.next_counter <= current.accepted_counter
+            );`,
+      rowMode: 0, returnValue: "resultRows",
+    });
+    if (safeInteger(changedTip[0], "retained actor chain match") !== 0) {
+      throw new Error("follower checkpoint changed the retained actor chain");
+    }
+    this.#database.exec(`DROP TABLE main.checkpoint_retained_authority;
+      DROP TABLE main.checkpoint_retained_actor_tip;`);
+  }
+
   activateNormalizedCheckpointStage(
     input: LibraryCoreActivateNormalizedCheckpointStageV2,
     onProgress?: (completedRecords: number, totalRecords: number) => void,
@@ -1503,20 +1616,26 @@ export class PwaLibraryCoreSqliteEngine {
         stage[4],
         "checkpoint canonical bytes",
       );
-      const retainedFollowerTables: string[] = [];
+      let retainedFollowerTables: string[] = [];
       onProgress?.(0, expectedRecordCount);
       if (replaceExisting) {
+        if (followerReceipt !== null) {
+          retainedFollowerTables = this.#retainFollowerCheckpointState(
+            libraryId, authorityEpoch, sourceRevision, followerReceipt,
+          );
+        }
         const unresolvedLocalOperations = safeInteger(
           this.#database.exec({
             sql: `SELECT
                     (SELECT count(*) FROM library_intent_transactions
-                       WHERE state IN ('pending', 'published')) +
-                    (SELECT count(*) FROM library_optimistic_fields) +
+                       WHERE state IN ('pending', 'published') AND NOT ?1) +
+                    (SELECT count(*) FROM library_optimistic_fields WHERE NOT ?1) +
                     (SELECT count(*) FROM library_replication_outbox
                        WHERE acknowledged_at IS NULL) +
                     (SELECT count(*) FROM library_follower_result_outbox
                        WHERE acknowledged_at IS NULL) +
                     (SELECT count(*) FROM library_primary_intent_stage_transactions);`,
+            bind: [retainedFollowerTables.length > 0 ? 1 : 0],
             rowMode: 0,
             returnValue: "resultRows",
           })[0],
@@ -1526,45 +1645,6 @@ export class PwaLibraryCoreSqliteEngine {
           throw new Error(
             "normalized checkpoint replacement has unresolved local operations",
           );
-        }
-        const retainFollower =
-          followerReceipt !== null &&
-          this.#database.exec({
-            sql: `SELECT request.actor_id
-                  FROM library_follower_actor_request AS request
-                  JOIN library_meta AS meta
-                    ON meta.library_id = request.library_id
-                   AND meta.authority_epoch = request.authority_epoch_id
-                  WHERE request.singleton_id = 1 AND meta.singleton_id = 1
-                    AND request.library_id = ?1
-                    AND request.authority_epoch_id = ?2;`,
-            bind: [libraryId, authorityEpoch],
-            rowMode: 0,
-            returnValue: "resultRows",
-          }).length === 1;
-        if (retainFollower) {
-          // Main-database scratch pages share the bounded pager and rollback
-          // transaction. TEMP tables would use this worker's in-memory temp store.
-          // Preserve exact replay history as well as cursors: canonical actor tips
-          // do not describe rejected local intents or transport acknowledgements.
-          for (const table of [
-            "library_follower_actor_request",
-            "library_intent_actors",
-            "library_intent_transactions",
-            "library_intent_members",
-            "library_intent_results",
-            "library_intent_result_cursors",
-            "library_intent_transport_heads",
-            "library_intent_transport_segments",
-            "library_result_transport_heads",
-            "library_result_transport_segments",
-          ]) {
-            this.#database.exec(`CREATE TABLE main.checkpoint_retained_${table}
-              AS SELECT * FROM ${table}
-              WHERE actor_id = (SELECT actor_id FROM library_follower_actor_request
-                                WHERE singleton_id = 1);`);
-            retainedFollowerTables.push(table);
-          }
         }
         this.#database.exec(`DELETE FROM library_optimistic_fields;
           DELETE FROM library_local_invalidations;
@@ -1785,10 +1865,8 @@ export class PwaLibraryCoreSqliteEngine {
       }
       this.#verifyCheckpointContent();
       this.#reconcileLocalContentState();
-      for (const table of retainedFollowerTables) {
-        this.#database.exec(`INSERT INTO ${table}
-          SELECT * FROM main.checkpoint_retained_${table};
-          DROP TABLE main.checkpoint_retained_${table};`);
+      if (retainedFollowerTables.length > 0) {
+        this.#restoreFollowerCheckpointState(retainedFollowerTables);
       }
       const foreignKeys = this.#database.exec({
         sql: "PRAGMA foreign_key_check;",
@@ -1898,6 +1976,18 @@ export class PwaLibraryCoreSqliteEngine {
         } else if (localActors.length > 1) {
           throw new Error("normalized follower actor request is ambiguous");
         }
+      }
+      if (retainedFollowerTables.length > 0) {
+        // A previously verified result plus a covered canonical revision settles
+        // an overlay. Checkpoint effects alone never acknowledge a pending edit.
+        this.#database.exec({
+          sql: `DELETE FROM library_optimistic_fields WHERE transaction_id IN (
+                  SELECT transaction_id FROM library_intent_results
+                  WHERE status IN ('accepted', 'already_applied')
+                    AND authority_epoch_id = ?1 AND authoritative_source_revision <= ?2
+                );`,
+          bind: [authorityEpoch, sourceRevision],
+        });
       }
       this.#database.exec({
         sql: "DELETE FROM library_checkpoint_stages WHERE stage_id = ?1;",

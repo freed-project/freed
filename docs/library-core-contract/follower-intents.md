@@ -178,8 +178,9 @@ That importer is the sole canonical browser materializer for both this
 follower's accepted edits and operations created by other actors. If result
 settlement commits but operation application fails, the optimistic overlay
 remains visible and an exact result-segment retry resumes the staged operation.
-The overlay is removed only inside the successful operation transaction, or
-when an exact already-applied operation proof is present.
+The overlay is removed inside the successful operation transaction, when an
+exact already-applied operation proof is present, or during same-epoch checkpoint
+activation when a previously verified result is covered by the canonical revision.
 Resuming a locally settled result uses its stored first receive time, not the
 retry's wall clock. Direct and transport-based retries therefore retain the
 same staging identity after an interrupted materialization.
@@ -342,3 +343,25 @@ for the next record fail closed. The query uses the actor and sequence index
 with no offset, table scan, or temporary sort. A transport can convert these
 records into immutable objects, but it cannot reinterpret their status,
 signature, ordering, or identity.
+
+### Consumer checkpoint continuity
+
+Native and browser consumers retain device-local enrollment, signed intent
+members and counters, result cursors, transport receipts, optimistic fields and
+local invalidation history during same-Library, same-epoch checkpoint activation.
+Disk-backed scratch tables share the activation transaction and bounded SQLite
+pager. No renderer-sized snapshot of pending work is created.
+
+Retention requires an existing verified consumer receipt, a nonregressing source
+revision and checkpoint generation, and the same writer. The authority key and
+canonical transition certificate must remain identical. The retained actor tip
+cannot regress or change at the same counter. An advanced canonical actor tip
+must match a retained signed intent, and the next local counter must stay ahead
+of that accepted tip. Other actors' unresolved work prevents replacement.
+
+Cross-Library or cross-epoch replacement of an enrolled consumer requires explicit
+recovery and preserves its existing work. A failed import, foreign-key check,
+authority check, actor-chain check or final receipt write rolls back both canonical
+and local changes. Checkpoint activation settles only overlays whose already
+verified accepted result is covered by the new canonical revision. It does not
+invent results, reset request identities, or re-sign unresolved edits.
