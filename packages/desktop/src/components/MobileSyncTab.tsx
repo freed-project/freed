@@ -1,5 +1,6 @@
 /** Google Drive controls for the SQLite Library shared by Desktop and PWA. */
 
+import { describeLibraryFollowerProgress } from "../lib/library-core-follower-status";
 import { useCallback, useEffect, useState } from "react";
 import type { CloudProvider } from "@freed/ui/components/CloudProviderCard";
 import {
@@ -92,20 +93,6 @@ function isWriterOwnershipWarning(message?: string | null): boolean {
   );
 }
 
-function describeFollowerState(
-  state: NormalizedLibraryFollowerRuntimeStatus["state"],
-): string {
-  switch (state) {
-    case "awaiting_checkpoint":
-      return "Waiting for the primary Library checkpoint.";
-    case "awaiting_enrollment":
-      return "Checkpoint installed. Waiting to create this follower's actor.";
-    case "enrollment_pending":
-      return "Waiting for the primary source to accept this follower.";
-    case "active":
-      return "Follower SQLite is active.";
-  }
-}
 
 export function MobileSyncTab() {
   const librarySnapshot = useDebugStore((state) => state.librarySnapshot);
@@ -307,7 +294,8 @@ export function MobileSyncTab() {
                     className="mt-3"
                   >
                     <p className="mb-2 text-xs text-[var(--theme-text-secondary)]">
-                      {describeFollowerState(followerStatus.state)}
+                      {describeLibraryFollowerProgress(followerStatus).statusMessage}
+                      {" "}{describeLibraryFollowerProgress(followerStatus).pendingReason}
                     </p>
                     <div className="grid grid-cols-2 gap-2">
                       <DiagnosticCell

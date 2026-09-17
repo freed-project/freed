@@ -14,6 +14,15 @@
 
 ## Objective
 
+PWA checkpoint refresh now preserves pending and published signed edits,
+optimistic fields, actor counters, enrollment and exact transport history in the
+same activation transaction. It requires the verified Library, epoch and writer,
+nonregressing checkpoint history, unchanged authority certificate and a compatible
+actor chain. Failed activation leaves the old state intact. An accepted result
+clears its overlay only when the new canonical frontier covers that result;
+checkpoint effects alone never acknowledge pending work. Installed multi-client
+acceptance remains open.
+
 Desktop and PWA now consume a shared bounded operation chain after checkpoint
 bootstrap. Native consumer import verifies signed results and actor operations,
 stages incomplete transactions, and advances canonical state without authority
@@ -639,3 +648,13 @@ Offline fault tests cover overlapping callers, cancellation before checkpoint
 activation, canceled preflight, and replacement timer ownership. This completes
 the local sync ownership boundary, not cooperative authority transfer or
 installed host-transition acceptance.
+
+### Consumer synchronization status, September 17, 2026
+
+Freed Desktop reports enrollment, edits waiting to upload, edits awaiting Primary
+acceptance, and accepted changes awaiting canonical application from native
+SQLite state. Successful transport does not imply all edits have synchronized or
+that the Primary is online. Checkpoint revision remains the operation anchor;
+sync events report the verified local canonical revision separately. Native
+settlement and Desktop presentation tests cover these distinctions. Installed
+two-host acceptance remains open.

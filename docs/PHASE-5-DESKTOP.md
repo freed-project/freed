@@ -1058,3 +1058,13 @@ failed initial consumer connection retries on the existing 60-second interval
 with a refreshed token. Replacing the lifecycle leaves one retry timer and
 suppresses callbacks from the previous lifecycle. Offline tests prove these
 boundaries; they do not establish installed two-machine acceptance.
+
+### Consumer synchronization status, September 17, 2026
+
+Freed Desktop reports enrollment, edits waiting to upload, edits awaiting Primary
+acceptance, and accepted changes awaiting canonical application from native
+SQLite state. Successful transport does not imply all edits have synchronized or
+that the Primary is online. Checkpoint revision remains the operation anchor;
+sync events report the verified local canonical revision separately. Native
+settlement and Desktop presentation tests cover these distinctions. Installed
+two-host acceptance remains open.

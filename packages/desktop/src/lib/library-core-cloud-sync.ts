@@ -79,6 +79,7 @@ import {
   recordNormalizedLibraryFollowerIntentTransportPublication,
   setSqliteLibraryCloudWriterAdmission as setNativeWriterAdmission,
   type NormalizedLibraryCloudIdentity,
+  type NormalizedLibraryFollowerRuntimeStatus,
   type SqliteLibraryPersistedCloudIdentity,
 } from "./sqlite-library";
 import { readNativeJsonValue, writeNativeJsonValue } from "./native-json-store";
@@ -120,7 +121,7 @@ export interface LibraryCorePublishedCheckpointReceiptV1 {
 export type LibraryCoreCloudPublishResult =
   | { readonly status: "published"; readonly revision: number }
   | { readonly status: "current"; readonly revision: number }
-  | { readonly status: "follower_synced"; readonly revision: number }
+  | { readonly status: "follower_synced"; readonly revision: number; readonly follower: NormalizedLibraryFollowerRuntimeStatus }
   | { readonly status: "writer_transferred"; readonly revision: number }
   | { readonly status: "bootstrap_required" }
   | {
@@ -1675,14 +1676,16 @@ async function syncSqliteLibraryFollowerGoogleDriveOnceInternal(input: {
   }
   const descriptor = await describeNormalizedLibraryCloudIdentity();
   throwIfPublicationCanceled(input.signal);
-  return { status: "follower_synced", revision: descriptor.sourceRevision };
+  const follower = await readNormalizedLibraryFollowerRuntimeStatus();
+  throwIfPublicationCanceled(input.signal);
+  return { status: "follower_synced", revision: descriptor.sourceRevision, follower };
 }
 
 export async function startSqliteLibraryGoogleDriveFollowerSync(input: {
   readonly accessToken: string;
   readonly googleFetch?: GoogleDriveFetch;
   readonly onError?: (error: unknown) => void;
-  readonly onSynced?: () => Promise<void>;
+  readonly onSynced?: (result: LibraryCoreCloudPublishResult) => Promise<void>;
   readonly resolveAccessToken: () => Promise<string>;
 }): Promise<LibraryCoreCloudPublishResult> {
   stopSqliteLibraryCloudSync();
@@ -1700,8 +1703,8 @@ export async function startSqliteLibraryGoogleDriveFollowerSync(input: {
       running!.timer = setTimeout(() => void poll().catch(console.error), FOLLOWER_SYNC_POLL_MS);
     }
   };
-  const notifySynced = async () => {
-    if (ownsLifecycle()) await input.onSynced?.();
+  const notifySynced = async (result: LibraryCoreCloudPublishResult) => {
+    if (ownsLifecycle()) await input.onSynced?.(result);
   };
   const poll = async (): Promise<void> => {
     if (!ownsLifecycle()) return;
@@ -1710,8 +1713,8 @@ export async function startSqliteLibraryGoogleDriveFollowerSync(input: {
       return;
     }
     try {
-      await sync(await input.resolveAccessToken());
-      await notifySynced();
+      const result = await sync(await input.resolveAccessToken());
+      await notifySynced(result);
     } catch (error) {
       if (ownsLifecycle()) input.onError?.(error);
       throw error;
@@ -1721,7 +1724,7 @@ export async function startSqliteLibraryGoogleDriveFollowerSync(input: {
   };
   try {
     const initial = await sync(input.accessToken);
-    await notifySynced();
+    await notifySynced(initial);
     return initial;
   } catch (error) {
     if (ownsLifecycle()) input.onError?.(error);
