@@ -1635,7 +1635,7 @@ fn invalidations_at(
     Ok(invalidations)
 }
 
-fn require_causal_tips(
+pub(crate) fn require_causal_tips(
     transaction: &Transaction<'_>,
     verified: &VerifiedOperationTransaction,
 ) -> Result<(), NormalizedSqliteError> {
@@ -2551,6 +2551,201 @@ pub fn normalized_primary_mutation_context_v1(
     })
 }
 
+/// Persist one sealed transaction using the canonical materializers. Callers
+/// retain authority and signature admission; consumers never enqueue publication.
+pub(crate) fn materialize_verified_normalized_transaction_v1(
+    transaction: &Transaction<'_>,
+    verified: &VerifiedOperationTransaction,
+    actor: &ActorState,
+    program: SqliteMutationProgram,
+    committed_at: i64,
+    publish_operations: bool,
+) -> Result<(i64, i64), NormalizedSqliteError> {
+    let first = &verified.members[0];
+    let last = verified
+        .members
+        .last()
+        .expect("verified transaction is nonempty");
+    let previous_revision: i64 = transaction.query_row(
+        "SELECT revision FROM library_change_state WHERE singleton_id = 1;",
+        [],
+        |row| row.get(0),
+    )?;
+    let committed_revision = previous_revision
+        .checked_add(1)
+        .filter(|value| *value <= MAX_SAFE_INTEGER)
+        .ok_or(NormalizedSqliteError::InvalidRequest(
+            "normalized mutation revision is exhausted",
+        ))?;
+    transaction.execute(
+        "INSERT INTO library_transactions
+         (transaction_id, transaction_digest, library_id, authority_epoch,
+          actor_id, member_count, first_counter, last_counter,
+          previous_operation_id, previous_chain_digest,
+          committed_operation_id, committed_chain_digest,
+          canonical_member_bytes, previous_revision, committed_revision, committed_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16);",
+        params![
+            verified.transaction_id,
+            verified.transaction_digest,
+            verified.library_id,
+            verified.epoch_id,
+            verified.actor_id,
+            i64::try_from(verified.members.len()).expect("bounded members"),
+            first.actor_sequence,
+            last.actor_sequence,
+            first.previous_actor_operation_id,
+            first.previous_actor_chain_digest,
+            last.operation_id,
+            last.actor_chain_digest,
+            i64::try_from(verified.canonical_envelope_bytes).expect("bounded bytes"),
+            previous_revision,
+            committed_revision,
+            committed_at,
+        ],
+    )?;
+    for (member_index, member) in verified.members.iter().enumerate() {
+        transaction.execute(
+            "INSERT INTO library_operations
+             (operation_id, transaction_id, member_index, member_count,
+              actor_id, actor_counter, previous_actor_operation_id,
+              previous_actor_chain_digest, actor_chain_digest, member_digest,
+              envelope_digest, mutation_id, entity_type, entity_id,
+              canonical_envelope, committed_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16);",
+            params![
+                member.operation_id,
+                verified.transaction_id,
+                i64::try_from(member_index).expect("bounded member index"),
+                i64::try_from(verified.members.len()).expect("bounded members"),
+                verified.actor_id,
+                member.actor_sequence,
+                member.previous_actor_operation_id,
+                member.previous_actor_chain_digest,
+                member.actor_chain_digest,
+                member.member_digest,
+                member.envelope_digest,
+                member.operation_type,
+                member.entity_type,
+                member.entity_id,
+                member.canonical_envelope_json.as_bytes(),
+                committed_at,
+            ],
+        )?;
+        for (tip_index, tip) in member.causal_tips.iter().enumerate() {
+            transaction.execute(
+                "INSERT INTO library_operation_causal_tips
+                 (operation_id, tip_index, actor_id, actor_counter,
+                  tip_operation_id, chain_digest)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6);",
+                params![
+                    member.operation_id,
+                    i64::try_from(tip_index).expect("bounded tip index"),
+                    tip.actor_id,
+                    tip.sequence,
+                    tip.operation_id,
+                    tip.chain_digest,
+                ],
+            )?;
+        }
+        materialize_member(transaction, verified, member_index, committed_at, program)?;
+        if publish_operations {
+            transaction.execute(
+                "INSERT INTO library_replication_outbox
+                 (operation_id, actor_id, actor_counter, enqueued_at)
+                 VALUES (?1, ?2, ?3, ?4);",
+                params![
+                    member.operation_id,
+                    verified.actor_id,
+                    member.actor_sequence,
+                    committed_at,
+                ],
+            )?;
+        }
+        let result_text = format!(
+            "{{\"committedRevision\":{committed_revision},\"operationId\":{}}}",
+            serde_json::to_string(&member.operation_id).expect("operation ID serializes")
+        );
+        transaction.execute(
+            "INSERT INTO library_receipts
+             (actor_id, operation_id, status, digest, result_text, accepted_at)
+             VALUES (?1, ?2, 'accepted', ?3, ?4, ?5);",
+            params![
+                verified.actor_id,
+                member.operation_id,
+                member.envelope_digest,
+                result_text,
+                committed_at,
+            ],
+        )?;
+        transaction.execute(
+            "INSERT INTO library_invalidations
+             (revision, ordinal, topic, entity_id, reset_required)
+             VALUES (?1, ?2, ?3, ?4, 0);",
+            params![
+                committed_revision,
+                i64::try_from(member_index).expect("bounded invalidation index"),
+                program.invalidation_topic,
+                member.entity_id,
+            ],
+        )?;
+        if member.operation_type == "friend_replace" {
+            transaction.execute(
+                "INSERT INTO library_invalidations
+                 (revision, ordinal, topic, entity_id, reset_required)
+                 VALUES (?1, ?2, 'account', NULL, 1);",
+                params![
+                    committed_revision,
+                    i64::try_from(verified.members.len() + member_index)
+                        .expect("bounded Friend invalidation index"),
+                ],
+            )?;
+        }
+    }
+    let actor_updated = transaction.execute(
+        "UPDATE library_actors
+         SET accepted_counter = ?1, accepted_operation_id = ?2,
+             accepted_chain_digest = ?3, updated_at = ?4
+         WHERE actor_id = ?5 AND authority_epoch_id = ?6
+           AND accepted_counter = ?7
+           AND accepted_operation_id IS ?8
+           AND accepted_chain_digest = ?9;",
+        params![
+            last.actor_sequence,
+            last.operation_id,
+            last.actor_chain_digest,
+            committed_at,
+            verified.actor_id,
+            verified.epoch_id,
+            actor.next_sequence - 1,
+            actor.previous_operation_id,
+            actor.previous_chain_digest,
+        ],
+    )?;
+    if actor_updated != 1 {
+        return Err(LibraryCoreError::StaleActorTip {
+            actor_id: verified.actor_id.clone(),
+        }
+        .into());
+    }
+    let revision_updated = transaction.execute(
+        "UPDATE library_change_state SET revision = ?1
+         WHERE singleton_id = 1 AND revision = ?2;",
+        params![committed_revision, previous_revision],
+    )?;
+    let meta_updated = transaction.execute(
+        "UPDATE library_meta SET source_revision = ?1, updated_at = ?2
+         WHERE singleton_id = 1 AND source_revision = ?3;",
+        params![committed_revision, committed_at, previous_revision],
+    )?;
+    if revision_updated != 1 || meta_updated != 1 {
+        return Err(NormalizedSqliteError::InvalidRequest(
+            "normalized mutation revision changed concurrently",
+        ));
+    }
+    Ok((previous_revision, committed_revision))
+}
+
 pub(crate) fn resolve_normalized_operation_transaction_v1(
     connection: &mut Connection,
     canonical_envelopes: &[Vec<u8>],
@@ -2692,181 +2887,14 @@ pub(crate) fn resolve_normalized_operation_transaction_v1(
             return Ok(NormalizedMutationResolutionV1::FollowerResult(receipt));
         }
     }
-    let previous_revision: i64 = transaction.query_row(
-        "SELECT revision FROM library_change_state WHERE singleton_id = 1;",
-        [],
-        |row| row.get(0),
+    let (previous_revision, committed_revision) = materialize_verified_normalized_transaction_v1(
+        &transaction,
+        &verified,
+        &actor,
+        program,
+        committed_at,
+        true,
     )?;
-    let committed_revision = previous_revision
-        .checked_add(1)
-        .filter(|value| *value <= MAX_SAFE_INTEGER)
-        .ok_or(NormalizedSqliteError::InvalidRequest(
-            "normalized mutation revision is exhausted",
-        ))?;
-    transaction.execute(
-        "INSERT INTO library_transactions
-         (transaction_id, transaction_digest, library_id, authority_epoch,
-          actor_id, member_count, first_counter, last_counter,
-          previous_operation_id, previous_chain_digest,
-          committed_operation_id, committed_chain_digest,
-          canonical_member_bytes, previous_revision, committed_revision, committed_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16);",
-        params![
-            verified.transaction_id,
-            verified.transaction_digest,
-            verified.library_id,
-            verified.epoch_id,
-            verified.actor_id,
-            i64::try_from(verified.members.len()).expect("bounded members"),
-            first.actor_sequence,
-            last.actor_sequence,
-            first.previous_actor_operation_id,
-            first.previous_actor_chain_digest,
-            last.operation_id,
-            last.actor_chain_digest,
-            i64::try_from(verified.canonical_envelope_bytes).expect("bounded bytes"),
-            previous_revision,
-            committed_revision,
-            committed_at,
-        ],
-    )?;
-    for (member_index, member) in verified.members.iter().enumerate() {
-        transaction.execute(
-            "INSERT INTO library_operations
-             (operation_id, transaction_id, member_index, member_count,
-              actor_id, actor_counter, previous_actor_operation_id,
-              previous_actor_chain_digest, actor_chain_digest, member_digest,
-              envelope_digest, mutation_id, entity_type, entity_id,
-              canonical_envelope, committed_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16);",
-            params![
-                member.operation_id,
-                verified.transaction_id,
-                i64::try_from(member_index).expect("bounded member index"),
-                i64::try_from(verified.members.len()).expect("bounded members"),
-                verified.actor_id,
-                member.actor_sequence,
-                member.previous_actor_operation_id,
-                member.previous_actor_chain_digest,
-                member.actor_chain_digest,
-                member.member_digest,
-                member.envelope_digest,
-                member.operation_type,
-                member.entity_type,
-                member.entity_id,
-                member.canonical_envelope_json.as_bytes(),
-                committed_at,
-            ],
-        )?;
-        for (tip_index, tip) in member.causal_tips.iter().enumerate() {
-            transaction.execute(
-                "INSERT INTO library_operation_causal_tips
-                 (operation_id, tip_index, actor_id, actor_counter,
-                  tip_operation_id, chain_digest)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6);",
-                params![
-                    member.operation_id,
-                    i64::try_from(tip_index).expect("bounded tip index"),
-                    tip.actor_id,
-                    tip.sequence,
-                    tip.operation_id,
-                    tip.chain_digest,
-                ],
-            )?;
-        }
-        materialize_member(&transaction, &verified, member_index, committed_at, program)?;
-        transaction.execute(
-            "INSERT INTO library_replication_outbox
-             (operation_id, actor_id, actor_counter, enqueued_at)
-             VALUES (?1, ?2, ?3, ?4);",
-            params![
-                member.operation_id,
-                verified.actor_id,
-                member.actor_sequence,
-                committed_at,
-            ],
-        )?;
-        let result_text = format!(
-            "{{\"committedRevision\":{committed_revision},\"operationId\":{}}}",
-            serde_json::to_string(&member.operation_id).expect("operation ID serializes")
-        );
-        transaction.execute(
-            "INSERT INTO library_receipts
-             (actor_id, operation_id, status, digest, result_text, accepted_at)
-             VALUES (?1, ?2, 'accepted', ?3, ?4, ?5);",
-            params![
-                verified.actor_id,
-                member.operation_id,
-                member.envelope_digest,
-                result_text,
-                committed_at,
-            ],
-        )?;
-        transaction.execute(
-            "INSERT INTO library_invalidations
-             (revision, ordinal, topic, entity_id, reset_required)
-             VALUES (?1, ?2, ?3, ?4, 0);",
-            params![
-                committed_revision,
-                i64::try_from(member_index).expect("bounded invalidation index"),
-                program.invalidation_topic,
-                member.entity_id,
-            ],
-        )?;
-        if member.operation_type == "friend_replace" {
-            transaction.execute(
-                "INSERT INTO library_invalidations
-                 (revision, ordinal, topic, entity_id, reset_required)
-                 VALUES (?1, ?2, 'account', NULL, 1);",
-                params![
-                    committed_revision,
-                    i64::try_from(verified.members.len() + member_index)
-                        .expect("bounded Friend invalidation index"),
-                ],
-            )?;
-        }
-    }
-    let actor_updated = transaction.execute(
-        "UPDATE library_actors
-         SET accepted_counter = ?1, accepted_operation_id = ?2,
-             accepted_chain_digest = ?3, updated_at = ?4
-         WHERE actor_id = ?5 AND authority_epoch_id = ?6
-           AND accepted_counter = ?7
-           AND accepted_operation_id IS ?8
-           AND accepted_chain_digest = ?9;",
-        params![
-            last.actor_sequence,
-            last.operation_id,
-            last.actor_chain_digest,
-            committed_at,
-            verified.actor_id,
-            verified.epoch_id,
-            actor.next_sequence - 1,
-            actor.previous_operation_id,
-            actor.previous_chain_digest,
-        ],
-    )?;
-    if actor_updated != 1 {
-        return Err(LibraryCoreError::StaleActorTip {
-            actor_id: verified.actor_id.clone(),
-        }
-        .into());
-    }
-    let revision_updated = transaction.execute(
-        "UPDATE library_change_state SET revision = ?1
-         WHERE singleton_id = 1 AND revision = ?2;",
-        params![committed_revision, previous_revision],
-    )?;
-    let meta_updated = transaction.execute(
-        "UPDATE library_meta SET source_revision = ?1, updated_at = ?2
-         WHERE singleton_id = 1 AND source_revision = ?3;",
-        params![committed_revision, committed_at, previous_revision],
-    )?;
-    if revision_updated != 1 || meta_updated != 1 {
-        return Err(NormalizedSqliteError::InvalidRequest(
-            "normalized mutation revision changed concurrently",
-        ));
-    }
     let (follower_result_sequence, follower_result_digest, canonical_follower_result) =
         persist_follower_result_outcome(
             &transaction,

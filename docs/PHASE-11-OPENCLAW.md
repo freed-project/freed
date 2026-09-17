@@ -23,6 +23,13 @@ clears its overlay only when the new canonical frontier covers that result;
 checkpoint effects alone never acknowledge pending work. Installed multi-client
 acceptance remains open.
 
+Desktop and PWA now consume a shared bounded operation chain after checkpoint
+bootstrap. Native consumer import verifies signed results and actor operations,
+stages incomplete transactions, and advances canonical state without authority
+keys or writer admission. This Desktop delivery does not activate the headless
+transport. Cooperative Primary handoff and installed transition acceptance remain
+open.
+
 Native same-epoch follower checkpoint refresh preserves pending and published
 signed edits, enrollment, optimistic fields, and transport history. Native
 SQLite tests verify exact retention and rollback. Consumer activation removes

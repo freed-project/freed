@@ -1577,6 +1577,16 @@ describe("PWA Library Core SQLite engine", () => {
       stagedRecordCount: 1,
       stagedTransactionCount: 1,
     });
+    // A later result exchange and a newer export snapshot can deliver the
+    // exact same signed transaction. Neither changes its durable identity.
+    await expect(engine.importNormalizedOperationPage({
+      page: page(resultRecord, false), receivedAt: 2_601,
+      snapshot: { ...descriptor, sourceRevision: 2, operationCount: 2, transactionCount: 2 },
+    })).resolves.toMatchObject({ appliedThroughRevision: 0, appliedTransactionCount: 0 });
+    expect(database.exec({
+      sql: "SELECT received_at, snapshot_source_revision FROM library_operation_replication_stages WHERE source_revision = 1;",
+      rowMode: "array", returnValue: "resultRows",
+    })).toEqual([[2_600, descriptor.sourceRevision]]);
     const operationRecord = record(
       canonicalOperation,
       "operation",

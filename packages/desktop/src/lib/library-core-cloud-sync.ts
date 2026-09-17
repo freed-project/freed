@@ -1,4 +1,7 @@
+import { queryNormalizedLibrary } from "./library-core-normalized-query-client";
 import {
+  LIBRARY_CORE_OPTIMISTIC_FIELDS_QUERY_ID,
+  LIBRARY_CORE_OPTIMISTIC_FIELDS_SCHEMA_VERSION,
   createLibraryCoreImmutableObjectKey,
   decodeLibraryCoreCanonicalValue,
   encodeLibraryCoreCanonicalValue,
@@ -17,6 +20,11 @@ import {
 } from "@freed/shared/library-core";
 import {
   createGoogleDriveLibraryCoreAdapterV1,
+  createGoogleDriveLibraryCoreOperationAdapterV2,
+  discoverGoogleDriveLibraryCoreOperationHeadV2,
+  provisionGoogleDriveLibraryCoreOperationHeadV2,
+  publishLibraryCoreNormalizedOperationsOnceV2,
+  syncLibraryCoreNormalizedOperationsOnceV2,
   createGoogleDriveLibraryCoreNormalizedFollowerTransportV2,
   createGoogleDriveLibraryCoreNormalizedIntentAdapterV2,
   createGoogleDriveLibraryCoreNormalizedResultAdapterV2,
@@ -52,6 +60,9 @@ import {
   beginNormalizedLibraryCheckpointExport,
   beginNormalizedLibraryCheckpointImport,
   describeNormalizedLibraryCloudIdentity,
+  describeNormalizedLibraryOperationExport,
+  readNormalizedLibraryOperationPage,
+  importNormalizedLibraryOperationPage,
   describeNormalizedLibraryCheckpoint,
   installNormalizedLibraryFollowerActorEnrollment,
   importNormalizedLibraryFollowerResultTransport,
@@ -91,6 +102,7 @@ interface LocalLibraryCoreCloudStateV2 {
   readonly writerId: string;
   readonly controlFileId: string | null;
   readonly lastPublishedRevision: number | null;
+  readonly lastPublishedOperationRevision?: number | null;
   readonly lastPublishedActorDigest: string | null;
   readonly lastPublishedCheckpoint?: LibraryCorePublishedCheckpointReceiptV1 | null;
 }
@@ -143,6 +155,8 @@ export function isSqliteLibraryGoogleDriveSyncEnabled(): boolean {
 function isCloudState(value: unknown): value is LocalLibraryCoreCloudStateV2 {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const candidate = value as Partial<LocalLibraryCoreCloudStateV2>;
+  if (candidate.lastPublishedOperationRevision !== undefined && candidate.lastPublishedOperationRevision !== null
+    && (!Number.isSafeInteger(candidate.lastPublishedOperationRevision) || candidate.lastPublishedOperationRevision < 0)) return false;
   return (
     candidate.version === 2 &&
     typeof candidate.libraryId === "string" &&
@@ -1031,6 +1045,7 @@ async function makeThisSqliteLibraryDesktopWriterInternal(input: {
     ...state,
     lastPublishedCheckpoint: null,
     lastPublishedRevision: null,
+    lastPublishedOperationRevision: null,
     storageEpoch: targetStorageEpoch,
     writerId: loaded.currentWriterId,
   });
@@ -1193,6 +1208,40 @@ async function publishCurrentSqliteLibraryToGoogleDriveInternal(input: {
     signal: input.signal,
   }));
   throwIfPublicationCanceled(input.signal);
+  const checkpointReceipt = checkpointReceiptForState(state);
+  if (pointer && checkpointReceipt && controlRead.revision === checkpointReceipt.controlRevision
+    && controlPointersEqual(pointer, checkpointReceipt.controlPointer)) {
+    const anchor = { libraryId: pointer.libraryId, storageEpoch: pointer.storageEpoch, writerId: pointer.writerId,
+      checkpointDigest: pointer.manifest.descriptor.contentDigest, checkpointRevision: checkpointReceipt.localRevision };
+    const operationHeadFileId = await provisionGoogleDriveLibraryCoreOperationHeadV2({
+      accessToken: input.accessToken, googleFetch: input.googleFetch, signal: input.signal,
+      head: { ...anchor, format: "freed_normalized_operation_head_v2", protocolVersion: 2, segmentCount: 0, tail: null },
+    });
+    const incremental = await publishLibraryCoreNormalizedOperationsOnceV2({
+      anchor,
+      transport: createGoogleDriveLibraryCoreOperationAdapterV2({
+        accessToken: input.accessToken, libraryId: state.libraryId, epochId: state.storageEpoch,
+        writerId: state.writerId, controlFileId: provisioned.controlFileId, operationHeadFileId,
+        googleFetch: input.googleFetch, signal: input.signal,
+      }),
+      source: { describe: describeNormalizedLibraryOperationExport, read: readNormalizedLibraryOperationPage },
+      async assertCurrentAuthority() {
+        await refreshLibraryCoreDesktopRole();
+        requirePrimaryLibraryCoreDesktopRole();
+        const current = await adapter.readControl();
+        const active = parseControl(current);
+        if (current.revision !== controlRead.revision || !active || !controlPointersEqual(active,pointer)) {
+          throw new Error("Library authority changed during operation publication.");
+        }
+      },
+      signal: input.signal,
+    });
+    if (incremental.status !== "checkpoint_required") {
+      state = Object.freeze({ ...state, lastPublishedOperationRevision: incremental.revision });
+      await persistCloudState(state);
+      return { status: incremental.status, revision: incremental.revision };
+    }
+  }
   return withCheckpointExport(async () => {
     const normalizedCheckpoint =
       await tracedPublicationStage("prepare checkpoint snapshot", () =>
@@ -1273,6 +1322,7 @@ async function publishCurrentSqliteLibraryToGoogleDriveInternal(input: {
         controlPointer: result.controlPointer,
       }),
       lastPublishedRevision: normalizedCheckpoint.sourceRevision,
+      lastPublishedOperationRevision: normalizedCheckpoint.sourceRevision,
     });
     await persistCloudState(state);
     return { status: "published", revision: normalizedCheckpoint.sourceRevision };
@@ -1525,6 +1575,32 @@ export async function syncSqliteLibraryFollowerGoogleDriveOnce(input: {
     createDesktopNormalizedFollowerRuntime(),
     { signal: input.signal },
   );
+  const replica = await readNormalizedLibraryFollowerRuntimeStatus();
+  const operationHeadFileId = await discoverGoogleDriveLibraryCoreOperationHeadV2({
+    accessToken: input.accessToken, libraryId: pointer.libraryId, epochId: pointer.storageEpoch,
+    googleFetch: input.googleFetch, signal: input.signal,
+  });
+  if (operationHeadFileId && replica.sourceRevision !== null) {
+    await syncLibraryCoreNormalizedOperationsOnceV2({
+      anchor: { libraryId: pointer.libraryId, storageEpoch: pointer.storageEpoch, writerId: pointer.writerId,
+        checkpointDigest: pointer.manifest.descriptor.contentDigest, checkpointRevision: replica.sourceRevision },
+      transport: createGoogleDriveLibraryCoreOperationAdapterV2({
+        accessToken: input.accessToken, libraryId: pointer.libraryId, epochId: pointer.storageEpoch,
+        writerId: pointer.writerId, controlFileId: discovered.controlFileId, operationHeadFileId,
+        googleFetch: input.googleFetch, signal: input.signal,
+      }),
+      runtime: {
+        async readRevision() {
+          const response = await queryNormalizedLibrary({ entityIds: [],
+            queryId: LIBRARY_CORE_OPTIMISTIC_FIELDS_QUERY_ID,
+            schemaVersion: LIBRARY_CORE_OPTIMISTIC_FIELDS_SCHEMA_VERSION });
+          return response.source.projectionRevision;
+        },
+        importPage: importNormalizedLibraryOperationPage,
+      },
+      now: Date.now, signal: input.signal,
+    });
+  }
   const descriptor = await describeNormalizedLibraryCloudIdentity();
   return { status: "follower_synced", revision: descriptor.sourceRevision };
 }
@@ -1611,7 +1687,7 @@ export async function startSqliteLibraryGoogleDriveSync(input: {
         return {
           active: true,
           localRevision: identity.sourceRevision,
-          lastPublishedRevision: state.lastPublishedRevision,
+          lastPublishedRevision: state.lastPublishedOperationRevision ?? state.lastPublishedRevision,
         };
       },
     },

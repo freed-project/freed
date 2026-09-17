@@ -47,6 +47,7 @@ mod normalized_operation_verifier;
 mod normalized_protocol_limits;
 mod normalized_query;
 mod normalized_replication;
+mod normalized_replication_import;
 mod normalized_snapshot;
 mod normalized_sqlite;
 mod normalized_transaction_validator;
@@ -212,3 +213,5 @@ pub use selective_content::{
     HydrationCandidatePageRequestV1, HydrationCandidatePageV1, HydrationCandidateV1,
     SelectiveContentError, VerifiedContentRangePublicationV1, VerifiedContentRangeReceiptV1,
 };
+
+pub use normalized_replication_import::{import_normalized_operation_page_v2, NormalizedOperationImportPageV2, NormalizedOperationImportReceiptV2};

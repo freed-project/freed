@@ -86,3 +86,4 @@ export * from "./preferences-snapshot-contracts.js";
 export * from "./runtime-state.js";
 export * from "./sha256.js";
 export * from "./wire-frame.js";
+export * from "./normalized-operation-segment-contracts.js";

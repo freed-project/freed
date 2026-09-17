@@ -73,6 +73,9 @@ import type {
 import {
   type LibraryCoreEnrollmentDiscoverySummaryV2,
   createGoogleDriveLibraryCoreAdapterV1,
+  createGoogleDriveLibraryCoreOperationAdapterV2,
+  discoverGoogleDriveLibraryCoreOperationHeadV2,
+  syncLibraryCoreNormalizedOperationsOnceV2,
   createGoogleDriveLibraryCoreNormalizedFollowerTransportV2,
   discoverPublishedGoogleDriveLibraryCoreControlV1,
   importLibraryCoreNormalizedCheckpointV2,
@@ -88,6 +91,7 @@ import {
   mutatePwaContentPolicy,
   readPwaFollowerTransportContext,
   readPwaNormalizedCheckpointReceipt,
+  importPwaNormalizedOperationPage,
   resetPwaNormalizedLibrary,
   closePwaNormalizedLibrary,
 } from "./library-core-sqlite-runtime";
@@ -1373,6 +1377,40 @@ export async function syncPwaLibraryCoreFromGoogleDrive(input: {
     }),
     { signal: input.signal },
   );
+  const replica = (await readPwaNormalizedCheckpointReceipt()).receipt;
+  if (!replica || replica.libraryId !== pointer.libraryId ||
+      replica.authorityEpoch !== pointer.storageEpoch ||
+      replica.manifestContentDigest !== pointer.manifest.descriptor.contentDigest) {
+    throw new Error("Selected Library checkpoint changed during synchronization");
+  }
+  const operationHeadFileId = await discoverGoogleDriveLibraryCoreOperationHeadV2({
+    accessToken: input.accessToken, libraryId: pointer.libraryId, epochId: pointer.storageEpoch,
+    googleFetch: input.googleFetch, signal: input.signal,
+  });
+  if (operationHeadFileId) {
+    input.onSyncStage?.("Applying verified Library changes.");
+    await syncLibraryCoreNormalizedOperationsOnceV2({
+      anchor: { libraryId: pointer.libraryId, storageEpoch: pointer.storageEpoch,
+        writerId: pointer.writerId, checkpointDigest: pointer.manifest.descriptor.contentDigest,
+        checkpointRevision: replica.sourceRevision },
+      transport: createGoogleDriveLibraryCoreOperationAdapterV2({
+        accessToken: input.accessToken, libraryId: pointer.libraryId, epochId: pointer.storageEpoch,
+        writerId: pointer.writerId, controlFileId: discovered.controlFileId, operationHeadFileId,
+        googleFetch: input.googleFetch, signal: input.signal,
+      }),
+      runtime: {
+        async readRevision() {
+          // An empty overlay query returns only source metadata, without scanning the Library.
+          const response = await queryPwaNormalizedLibrary({ entityIds: [],
+            queryId: LIBRARY_CORE_OPTIMISTIC_FIELDS_QUERY_ID,
+            schemaVersion: LIBRARY_CORE_OPTIMISTIC_FIELDS_SCHEMA_VERSION });
+          return response.source.projectionRevision;
+        },
+        importPage: importPwaNormalizedOperationPage,
+      },
+      now: Date.now, signal: input.signal,
+    });
+  }
   input.onSyncStage?.("Refreshing the local Library view.");
   return Object.freeze({
     ...await publishSelectedStateAfterLibraryCoreSync(),

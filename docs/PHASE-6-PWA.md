@@ -11,6 +11,13 @@ clears its overlay only when the new canonical frontier covers that result;
 checkpoint effects alone never acknowledge pending work. Installed multi-client
 acceptance remains open.
 
+Connected PWA refresh now follows checkpoint and edit exchange with the shared
+normalized operation coordinator. It pins the operation chain to the selected
+Library, authority epoch, writer, and checkpoint manifest, then feeds bounded
+pages to the existing OPFS importer. Revision reads use metadata rather than
+checkpoint export. Pending-edit checkpoint continuity is implemented below; installed multi-client
+convergence still requires acceptance.
+
 Sync now joins an active automatic refresh instead of starting an overlapping
 Library import. Stopping sync invalidates that shared pass. Deterministic
 lifecycle tests cover settlement, failure, and stop/restart isolation; live
