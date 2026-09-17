@@ -46,6 +46,11 @@ const sourceRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 );
+// A confined /proc can make Node report argv[0] instead of its executable path.
+// The worker supplies the same pinned absolute NODE_BIN used by product tooling.
+const testNodeExecutable = realpathSync(
+  process.env.NODE_BIN ?? process.execPath,
+);
 
 function checkAutomationStateDir(stateDir) {
   return checkAutomationStateDirProduction(stateDir, {
@@ -132,8 +137,8 @@ function writePublisherConfigFixture(home, overrides = {}) {
       ),
       githubCLIPath: brokerPath,
       githubCLISha256: sha256(brokerPath),
-      nodePath: process.execPath,
-      nodeSha256: sha256(process.execPath),
+      nodePath: testNodeExecutable,
+      nodeSha256: sha256(testNodeExecutable),
       publisherPublicKeyBase64: Buffer.alloc(32, 7).toString("base64"),
       ...overrides,
     })}\n`,
@@ -1411,12 +1416,12 @@ test("factory worker preflight checks build tools without creating controller st
   t.after(() => rmSync(home, { recursive: true, force: true }));
   const env = {
     HOME: home,
-    NODE_BIN: process.execPath,
-    PATH: `${path.dirname(process.execPath)}:/usr/bin:/bin`,
+    NODE_BIN: testNodeExecutable,
+    PATH: `${path.dirname(testNodeExecutable)}:/usr/bin:/bin`,
     LANG: "C.UTF-8",
   };
   const result = spawnSync(
-    process.execPath,
+    testNodeExecutable,
     [
       path.join(sourceRoot, "scripts/doctor.mjs"),
       "--factory-worker",
@@ -1442,7 +1447,7 @@ test("factory worker preflight checks build tools without creating controller st
     mode: 0o755,
   });
   const wrong = spawnSync(
-    process.execPath,
+    testNodeExecutable,
     [
       path.join(sourceRoot, "scripts/doctor.mjs"),
       "--factory-worker",
@@ -1466,7 +1471,7 @@ test("factory worker preflight checks build tools without creating controller st
 test("factory worker scope cannot claim publisher readiness or accept an unknown scope", () => {
   assert.throws(() => runChecks({ scope: "unknown" }), /Unknown doctor scope/);
   const result = spawnSync(
-    process.execPath,
+    testNodeExecutable,
     [
       path.join(sourceRoot, "scripts/doctor.mjs"),
       "--factory-worker",
