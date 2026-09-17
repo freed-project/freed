@@ -1677,6 +1677,149 @@ pub fn record_normalized_follower_intent_transport_publication_v2(
     })
 }
 
+/// Verify the original authority-signed result bytes independently of a local
+/// intent. Replication and local intent settlement share this proof boundary.
+pub(crate) fn verify_normalized_follower_result_record_v1(
+    connection: &Connection,
+    record: &NormalizedFollowerResultRecordV1,
+    expected_library_id: &str,
+) -> Result<Value, NormalizedSqliteError> {
+    if record.canonical_result_json.is_empty() || record.canonical_result_json.len() > 131_072 {
+        return Err(invalid("normalized follower result exceeds its byte bound"));
+    }
+    let value: Value = serde_json::from_str(&record.canonical_result_json)
+        .map_err(|_| invalid("normalized follower result JSON is invalid"))?;
+    let object = value
+        .as_object()
+        .ok_or(invalid("normalized follower result must be an object"))?;
+    const RESULT_FIELDS: &[&str] = &[
+        "actor_id",
+        "authoritative_source_revision",
+        "authority_key_id",
+        "canonical_operation_ids",
+        "epoch",
+        "epoch_id",
+        "format",
+        "intent_epoch",
+        "intent_epoch_id",
+        "library_id",
+        "original_result_digest",
+        "previous_result_digest",
+        "receipt_ids",
+        "rejection_reason",
+        "replacement_fields",
+        "resolved_at_ms",
+        "result_body_digest",
+        "result_sequence",
+        "schema_version",
+        "signature",
+        "signature_algorithm",
+        "status",
+        "transaction_digest",
+        "transaction_id",
+    ];
+    if object.len() != RESULT_FIELDS.len()
+        || !RESULT_FIELDS
+            .iter()
+            .all(|field| object.contains_key(*field))
+        || encode_canonical_value(&value, 131_072)
+            .map_err(|_| invalid("normalized follower result is not canonical"))?
+            != record.canonical_result_json.as_bytes()
+    {
+        return Err(invalid("normalized follower result field set is invalid"));
+    }
+    let text = |field: &'static str| {
+        object
+            .get(field)
+            .and_then(Value::as_str)
+            .ok_or(invalid("normalized follower result text field is invalid"))
+    };
+    let integer = |field: &'static str| {
+        object.get(field).and_then(Value::as_i64).ok_or(invalid(
+            "normalized follower result integer field is invalid",
+        ))
+    };
+    if text("format")? != "freed_follower_result_v1"
+        || integer("schema_version")? != 1
+        || text("signature_algorithm")? != "ed25519"
+        || text("actor_id")? != record.actor_id
+        || text("transaction_id")? != record.transaction_id
+        || text("transaction_digest")? != record.transaction_digest
+        || text("epoch_id")? != record.authority_epoch_id
+        || text("intent_epoch_id")? != record.intent_epoch_id
+        || integer("result_sequence")? != record.result_sequence
+        || integer("authoritative_source_revision")? != record.authoritative_source_revision
+        || text("status")? != record.status
+        || text("library_id")? != expected_library_id
+        || object.get("previous_result_digest")
+            != Some(
+                &record
+                    .previous_result_digest
+                    .as_ref()
+                    .map_or(Value::Null, |digest| Value::String(digest.clone())),
+            )
+    {
+        return Err(invalid("normalized follower result typed identity changed"));
+    }
+    let rejection_reason = object
+        .get("rejection_reason")
+        .and_then(|value| value.as_str().map(str::to_owned));
+    let original_result_digest = object
+        .get("original_result_digest")
+        .and_then(|value| value.as_str().map(str::to_owned));
+    if rejection_reason != record.rejection_reason
+        || original_result_digest != record.original_result_digest
+    {
+        return Err(invalid("normalized follower result outcome changed"));
+    }
+    let (authority_key_id, authority_public_key, epoch_number, library_id): (
+        String,
+        String,
+        i64,
+        String,
+    ) = connection.query_row(
+        "SELECT authority_key_id, authority_public_key, epoch_number, library_id
+         FROM library_authority_epochs WHERE epoch_id = ?1;",
+        [&record.authority_epoch_id],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+    )?;
+    if text("authority_key_id")? != authority_key_id
+        || integer("epoch")? != epoch_number
+        || library_id != expected_library_id
+    {
+        return Err(invalid("normalized follower result authority key changed"));
+    }
+    let mut body = object.clone();
+    let signature = body
+        .remove("signature")
+        .and_then(|value| value.as_str().map(str::to_owned))
+        .ok_or(invalid("normalized follower result signature is invalid"))?;
+    body.remove("signature_algorithm");
+    let claimed_digest = body
+        .remove("result_body_digest")
+        .and_then(|value| value.as_str().map(str::to_owned))
+        .ok_or(invalid("normalized follower result digest is invalid"))?;
+    let digest_input =
+        encode_operation_digest_input("follower-result-body", &Value::Object(body), 131_072)
+            .map_err(|_| invalid("normalized follower result digest input is invalid"))?;
+    let computed_digest = lower_hex(&Sha256::digest(digest_input));
+    if claimed_digest != computed_digest || record.result_digest != computed_digest {
+        return Err(invalid("normalized follower result digest changed"));
+    }
+    let signature_input = encode_signature_input(
+        "follower-result-envelope",
+        &json!({ "result_body_digest": computed_digest }),
+        131_072,
+    )
+    .map_err(|_| invalid("normalized follower result signature input is invalid"))?;
+    if !verify_library_core_ed25519(&authority_public_key, &signature, &signature_input)
+        .map_err(|_| invalid("normalized follower result signature encoding is invalid"))?
+    {
+        return Err(invalid("normalized follower result signature is invalid"));
+    }
+    Ok(value)
+}
+
 fn import_normalized_follower_result_page_in_transaction_v1(
     transaction: &Transaction<'_>,
     records: &[NormalizedFollowerResultRecordV1],
@@ -1738,136 +1881,11 @@ fn import_normalized_follower_result_page_in_transaction_v1(
                 "normalized follower result chain is not contiguous",
             ));
         }
-        let value: Value = serde_json::from_str(&record.canonical_result_json)
-            .map_err(|_| invalid("normalized follower result JSON is invalid"))?;
-        let object = value
-            .as_object()
-            .ok_or(invalid("normalized follower result must be an object"))?;
-        const RESULT_FIELDS: &[&str] = &[
-            "actor_id",
-            "authoritative_source_revision",
-            "authority_key_id",
-            "canonical_operation_ids",
-            "epoch",
-            "epoch_id",
-            "format",
-            "intent_epoch",
-            "intent_epoch_id",
-            "library_id",
-            "original_result_digest",
-            "previous_result_digest",
-            "receipt_ids",
-            "rejection_reason",
-            "replacement_fields",
-            "resolved_at_ms",
-            "result_body_digest",
-            "result_sequence",
-            "schema_version",
-            "signature",
-            "signature_algorithm",
-            "status",
-            "transaction_digest",
-            "transaction_id",
-        ];
-        if object.len() != RESULT_FIELDS.len()
-            || !RESULT_FIELDS
-                .iter()
-                .all(|field| object.contains_key(*field))
-            || encode_canonical_value(&value, 131_072)
-                .map_err(|_| invalid("normalized follower result is not canonical"))?
-                != record.canonical_result_json.as_bytes()
-        {
-            return Err(invalid("normalized follower result field set is invalid"));
-        }
-        let text = |field: &'static str| {
-            object
-                .get(field)
-                .and_then(Value::as_str)
-                .ok_or(invalid("normalized follower result text field is invalid"))
-        };
-        let integer = |field: &'static str| {
-            object.get(field).and_then(Value::as_i64).ok_or(invalid(
-                "normalized follower result integer field is invalid",
-            ))
-        };
-        if text("format")? != "freed_follower_result_v1"
-            || integer("schema_version")? != 1
-            || text("signature_algorithm")? != "ed25519"
-            || text("actor_id")? != record.actor_id
-            || text("transaction_id")? != record.transaction_id
-            || text("transaction_digest")? != record.transaction_digest
-            || text("epoch_id")? != record.authority_epoch_id
-            || text("intent_epoch_id")? != record.intent_epoch_id
-            || integer("result_sequence")? != record.result_sequence
-            || integer("authoritative_source_revision")? != record.authoritative_source_revision
-            || text("status")? != record.status
-            || text("library_id")? != current_authority.library_id
-            || object.get("previous_result_digest")
-                != Some(
-                    &record
-                        .previous_result_digest
-                        .as_ref()
-                        .map_or(Value::Null, |digest| Value::String(digest.clone())),
-                )
-        {
-            return Err(invalid("normalized follower result typed identity changed"));
-        }
-        let rejection_reason = object
-            .get("rejection_reason")
-            .and_then(|value| value.as_str().map(str::to_owned));
-        let original_result_digest = object
-            .get("original_result_digest")
-            .and_then(|value| value.as_str().map(str::to_owned));
-        if rejection_reason != record.rejection_reason
-            || original_result_digest != record.original_result_digest
-        {
-            return Err(invalid("normalized follower result outcome changed"));
-        }
-        let (authority_key_id, authority_public_key, epoch_number, library_id): (
-            String,
-            String,
-            i64,
-            String,
-        ) = transaction.query_row(
-            "SELECT authority_key_id, authority_public_key, epoch_number, library_id
-             FROM library_authority_epochs WHERE epoch_id = ?1;",
-            [&record.authority_epoch_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        verify_normalized_follower_result_record_v1(
+            transaction,
+            record,
+            &current_authority.library_id,
         )?;
-        if text("authority_key_id")? != authority_key_id
-            || integer("epoch")? != epoch_number
-            || library_id != current_authority.library_id
-        {
-            return Err(invalid("normalized follower result authority key changed"));
-        }
-        let mut body = object.clone();
-        let signature = body
-            .remove("signature")
-            .and_then(|value| value.as_str().map(str::to_owned))
-            .ok_or(invalid("normalized follower result signature is invalid"))?;
-        body.remove("signature_algorithm");
-        let claimed_digest = body
-            .remove("result_body_digest")
-            .and_then(|value| value.as_str().map(str::to_owned))
-            .ok_or(invalid("normalized follower result digest is invalid"))?;
-        let digest_input =
-            encode_operation_digest_input("follower-result-body", &Value::Object(body), 131_072)
-                .map_err(|_| invalid("normalized follower result digest input is invalid"))?;
-        let computed_digest = lower_hex(&Sha256::digest(digest_input));
-        if claimed_digest != computed_digest || record.result_digest != computed_digest {
-            return Err(invalid("normalized follower result digest changed"));
-        }
-        let signature_input = encode_signature_input(
-            "follower-result-envelope",
-            &json!({ "result_body_digest": computed_digest }),
-            131_072,
-        )
-        .map_err(|_| invalid("normalized follower result signature input is invalid"))?;
-        if !verify_library_core_ed25519(&authority_public_key, &signature, &signature_input)
-            .map_err(|_| invalid("normalized follower result signature encoding is invalid"))?
-        {
-            return Err(invalid("normalized follower result signature is invalid"));
-        }
         let intent: (String, String, String) = transaction.query_row(
             "SELECT transaction_digest, actor_id, intent_epoch_id
              FROM library_intent_transactions WHERE transaction_id = ?1;",

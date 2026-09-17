@@ -24,7 +24,7 @@ fn is_lower_sha256(value: &str) -> bool {
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
-fn canonical_json(value: &[u8]) -> Result<Value, NormalizedSqliteError> {
+pub(crate) fn canonical_json(value: &[u8]) -> Result<Value, NormalizedSqliteError> {
     if value.len() < 2 || value.len() > NORMALIZED_OPERATION_RECORD_MAXIMUM_CANONICAL_BYTES {
         return Err(invalid(
             "normalized operation record exceeds its byte bound",
@@ -256,7 +256,7 @@ fn validate_accepted_result(
     Ok(())
 }
 
-fn validate_operation_record(
+pub(crate) fn validate_operation_record(
     record: &NormalizedOperationExportRecordV2,
     value: &Value,
 ) -> Result<(), NormalizedSqliteError> {

@@ -22,3 +22,5 @@ export * from "./library-core-primary-coordinator.js";
 export * from "./library-core-result-publication.js";
 export * from "./library-core-result-segments.js";
 export * from "./library-core-wire-object.js";
+export * from "./library-core-normalized-operation-segments.js";
+export * from "./library-core-normalized-operation-sync.js";
