@@ -14,6 +14,15 @@
 
 ## Objective
 
+PWA checkpoint refresh now preserves pending and published signed edits,
+optimistic fields, actor counters, enrollment and exact transport history in the
+same activation transaction. It requires the verified Library, epoch and writer,
+nonregressing checkpoint history, unchanged authority certificate and a compatible
+actor chain. Failed activation leaves the old state intact. An accepted result
+clears its overlay only when the new canonical frontier covers that result;
+checkpoint effects alone never acknowledge pending work. Installed multi-client
+acceptance remains open.
+
 Desktop and PWA now consume a shared bounded operation chain after checkpoint
 bootstrap. Native consumer import verifies signed results and actor operations,
 stages incomplete transactions, and advances canonical state without authority
