@@ -2075,6 +2075,15 @@ export function tauriInitScript() {
           controlRevision: null,
           verifiedAtMs: null,
         },
+      describe_normalized_library_operation_export: () => {
+        throw new Error("Operation export requires an explicit signed Library fixture.");
+      },
+      read_normalized_library_operation_page: () => {
+        throw new Error("Operation export requires an explicit signed Library fixture.");
+      },
+      import_normalized_library_operation_page: () => {
+        throw new Error("Operation import requires an explicit signed Library fixture.");
+      },
       normalized_library_follower_runtime_status: () => ({
         state: 'awaiting_checkpoint',
         libraryId: null,

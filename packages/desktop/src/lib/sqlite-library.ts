@@ -2,6 +2,15 @@
  * SQLite-only Freed Desktop Library runtime.
  */
 
+import {
+  parseLibraryCoreNormalizedOperationExportDescriptorV2,
+  parseLibraryCoreNormalizedOperationExportRequestV2,
+  parseLibraryCoreNormalizedOperationExportPageV2,
+  parseLibraryCoreNormalizedOperationImportPageV2,
+  parseLibraryCoreNormalizedOperationImportReceiptV2,
+  type LibraryCoreNormalizedOperationExportRequestV2,
+  type LibraryCoreNormalizedOperationImportPageV2,
+} from "@freed/shared/library-core";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import {
   buildDiscoveredAccountsFromItems,
@@ -2031,6 +2040,28 @@ export async function ensureFreshNormalizedDesktopLibrary(
   return invoke<boolean>("ensure_fresh_normalized_desktop_library", {
     historicalDataAbsent,
   });
+}
+
+export async function describeNormalizedLibraryOperationExport() {
+  return parseLibraryCoreNormalizedOperationExportDescriptorV2(
+    await invoke<unknown>("describe_normalized_library_operation_export"),
+  );
+}
+
+export async function readNormalizedLibraryOperationPage(request: LibraryCoreNormalizedOperationExportRequestV2) {
+  return parseLibraryCoreNormalizedOperationExportPageV2(
+    await invoke<unknown>("read_normalized_library_operation_page", {
+      request: parseLibraryCoreNormalizedOperationExportRequestV2(request),
+    }),
+  );
+}
+
+export async function importNormalizedLibraryOperationPage(request: LibraryCoreNormalizedOperationImportPageV2) {
+  return parseLibraryCoreNormalizedOperationImportReceiptV2(
+    await invoke<unknown>("import_normalized_library_operation_page", {
+      request: parseLibraryCoreNormalizedOperationImportPageV2(request),
+    }),
+  );
 }
 
 export async function describeNormalizedLibraryCheckpoint(): Promise<LibraryCoreNormalizedCheckpointExportDescriptorV2> {

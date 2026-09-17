@@ -8,6 +8,11 @@ import {
 } from "@freed/shared/library-core";
 
 const mocks = vi.hoisted(() => ({
+  discoverOperationHead: vi.fn(),
+  provisionOperationHead: vi.fn(),
+  publishOperations: vi.fn(),
+  syncOperations: vi.fn(),
+  operationAdapter: {},
   nativeState: null as unknown,
   role: "primary" as "primary" | "follower",
   controlRead: {
@@ -137,6 +142,9 @@ vi.mock("./native-json-store", () => ({
 }));
 
 vi.mock("./sqlite-library", () => ({
+  describeNormalizedLibraryOperationExport: vi.fn(),
+  readNormalizedLibraryOperationPage: vi.fn(),
+  importNormalizedLibraryOperationPage: vi.fn(),
   activateNormalizedLibraryCheckpointImport: mocks.activateNormalizedImport,
   appendNormalizedLibraryCheckpointImportPage: mocks.appendNormalizedPage,
   beginNormalizedLibraryCheckpointExport: mocks.beginNormalizedExport,
@@ -214,6 +222,11 @@ vi.mock("@freed/sync/cloud/library-core", async (importOriginal) => {
   };
   return {
     ...actual,
+    discoverGoogleDriveLibraryCoreOperationHeadV2: mocks.discoverOperationHead,
+    provisionGoogleDriveLibraryCoreOperationHeadV2: mocks.provisionOperationHead,
+    createGoogleDriveLibraryCoreOperationAdapterV2: () => mocks.operationAdapter,
+    publishLibraryCoreNormalizedOperationsOnceV2: mocks.publishOperations,
+    syncLibraryCoreNormalizedOperationsOnceV2: mocks.syncOperations,
     discoverGoogleDriveLibraryCoreActorEnrollmentRequestsV1:
       mocks.discoverEnrollmentRequests,
     discoverGoogleDriveLibraryCoreActorEnrollmentsV1:
@@ -369,6 +382,11 @@ import {
 
 describe("SQLite Library Google Drive production wiring", () => {
   beforeEach(async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("Unexpected network request in offline sync test"); }));
+    mocks.discoverOperationHead.mockReset().mockResolvedValue(null);
+    mocks.provisionOperationHead.mockReset().mockResolvedValue("operation-head");
+    mocks.publishOperations.mockReset().mockResolvedValue({ status: "current", revision: 7, continuation: false });
+    mocks.syncOperations.mockReset();
     mocks.role = "primary";
     await refreshLibraryCoreDesktopRole();
     stopSqliteLibraryCloudSync();
@@ -1265,7 +1283,7 @@ describe("SQLite Library Google Drive production wiring", () => {
     });
   });
 
-  it("proves the committed Drive receipt before treating a repeat publication as current", async () => {
+  it.each(["current", "published"] as const)("uses verified operation publication for a %s checkpoint anchor", async (status) => {
     await expect(
       publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token" }),
     ).resolves.toEqual({ status: "published", revision: 7 });
@@ -1288,10 +1306,18 @@ describe("SQLite Library Google Drive production wiring", () => {
       bytes: exactControlBytes,
     };
 
+    const revision = status === "current" ? 7 : 8;
+    mocks.publishOperations.mockImplementation(async (input) => {
+      await input.assertCurrentAuthority();
+      expect(input.anchor).toMatchObject({ checkpointRevision: 7 });
+      expect(input.transport).toBe(mocks.operationAdapter);
+      return { status, revision, continuation: false };
+    });
     await expect(
       publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token" }),
-    ).resolves.toEqual({ status: "current", revision: 7 });
+    ).resolves.toEqual({ status, revision });
     expect(mocks.publish).toHaveBeenCalledTimes(1);
+    expect(mocks.nativeState).toMatchObject({ lastPublishedRevision: 7, lastPublishedOperationRevision: revision });
   });
 
   it("fails closed when a local current marker does not match Drive control", async () => {
