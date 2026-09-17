@@ -417,3 +417,13 @@ and stop prevent stale callbacks and duplicate timers. Deterministic offline
 tests cover cancellation, delayed native settlement, coalescing, initial-failure
 recovery, and timer ownership. Installed convergence and cooperative Primary
 handoff remain separate acceptance work.
+
+### Consumer synchronization status, September 17, 2026
+
+Freed Desktop reports enrollment, edits waiting to upload, edits awaiting Primary
+acceptance, and accepted changes awaiting canonical application from native
+SQLite state. Successful transport does not imply all edits have synchronized or
+that the Primary is online. Checkpoint revision remains the operation anchor;
+sync events report the verified local canonical revision separately. Native
+settlement and Desktop presentation tests cover these distinctions. Installed
+two-host acceptance remains open.

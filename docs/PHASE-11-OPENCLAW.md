@@ -648,3 +648,13 @@ Offline fault tests cover overlapping callers, cancellation before checkpoint
 activation, canceled preflight, and replacement timer ownership. This completes
 the local sync ownership boundary, not cooperative authority transfer or
 installed host-transition acceptance.
+
+### Consumer synchronization status, September 17, 2026
+
+Freed Desktop reports enrollment, edits waiting to upload, edits awaiting Primary
+acceptance, and accepted changes awaiting canonical application from native
+SQLite state. Successful transport does not imply all edits have synchronized or
+that the Primary is online. Checkpoint revision remains the operation anchor;
+sync events report the verified local canonical revision separately. Native
+settlement and Desktop presentation tests cover these distinctions. Installed
+two-host acceptance remains open.

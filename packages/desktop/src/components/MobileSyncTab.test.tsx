@@ -62,6 +62,7 @@ const mocks = vi.hoisted(() => ({
     pendingIntentCount: 6,
     publishedIntentCount: 7,
     importedResultCount: 8,
+    awaitingCanonicalChanges: false,
   },
 }));
 
@@ -243,7 +244,8 @@ describe("MobileSyncTab cloud diagnostics", () => {
     const diagnostics = container.querySelector(
       "[data-testid='library-core-follower-diagnostics']",
     );
-    expect(diagnostics?.textContent).toContain("Follower SQLite is active.");
+    expect(diagnostics?.textContent).toContain("Library edits are still synchronizing.");
+    expect(diagnostics?.textContent).toContain("6 edits waiting to upload. 7 edits awaiting Primary acceptance.");
     expect(diagnostics?.textContent).toContain("Queued edits");
     expect(diagnostics?.textContent).toContain("6");
     expect(diagnostics?.textContent).toContain("Published edits");

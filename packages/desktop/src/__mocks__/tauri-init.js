@@ -2094,6 +2094,7 @@ export function tauriInitScript() {
         pendingIntentCount: 0,
         publishedIntentCount: 0,
         importedResultCount: 0,
+        awaitingCanonicalChanges: false,
       }),
       normalized_library_follower_transport_context: () => ({
         actorId: '11'.repeat(32),
