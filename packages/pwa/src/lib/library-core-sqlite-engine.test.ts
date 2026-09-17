@@ -6153,7 +6153,7 @@ describe("PWA Library Core SQLite engine", () => {
   });
 
   it.each(["same", "other-library", "other-epoch"])(
-    "atomically replaces canonical rows and fences enrollment: %s",
+    "preserves enrollment and requires explicit authority recovery: %s",
     (identity) => {
       const sameEpoch = identity == "same";
       const engine = new PwaLibraryCoreSqliteEngine(
@@ -6161,6 +6161,16 @@ describe("PWA Library Core SQLite engine", () => {
         sqlite3.version.libVersion,
       );
       engine.initialize();
+      const records = [checkpointHeader(), ...authorityRecords()];
+      stageRecords(engine, records, "original");
+      engine.activateNormalizedCheckpointStage({
+        followerReceipt: {
+          checkpointGeneration: 8, controlRevision: "control-8", installedAt: 1_000,
+          manifestContentDigest: lowercaseHex64("8".repeat(64)),
+          manifestObjectKey: "manifest-8", manifestTransportObjectId: "drive-8",
+          writerActorId: "actor-1",
+        }, replaceExisting: false, stageId: "original",
+      });
       database.exec(
         `INSERT INTO library_preferences (path, value_type, updated_at)
        VALUES ('v:$.old', 'null', 1);
@@ -6171,17 +6181,13 @@ describe("PWA Library Core SQLite engine", () => {
        VALUES (1, '${identity == "other-library" ? "old-library" : "library-1"}', '${identity == "other-epoch" ? "old-epoch" : "epoch-1"}', '${"a".repeat(64)}',
                '${"b".repeat(64)}', '${"c".repeat(64)}', '{}', 1);`,
       );
-      database.exec(`INSERT INTO library_meta
-      (singleton_id, library_id, schema_version, authority_epoch, source_revision, updated_at)
-      VALUES (1, 'library-1', 1, 'epoch-1', 6, 1);`);
       const previousEnrollment = database.exec({
         sql: "SELECT * FROM library_follower_actor_request;",
         rowMode: "array",
         returnValue: "resultRows",
       });
-      const records = [checkpointHeader(), ...authorityRecords()];
       stageRecords(engine, records, "replacement");
-      const receipt = engine.activateNormalizedCheckpointStage({
+      const activate = () => engine.activateNormalizedCheckpointStage({
         followerReceipt: {
           checkpointGeneration: 9,
           controlRevision: "control-revision-1",
@@ -6194,6 +6200,15 @@ describe("PWA Library Core SQLite engine", () => {
         replaceExisting: true,
         stageId: "replacement",
       });
+      if (!sameEpoch) {
+        expect(activate).toThrow("authority recovery");
+        expect(database.exec({ sql: "SELECT * FROM library_follower_actor_request;",
+          rowMode: "array", returnValue: "resultRows" })).toEqual(previousEnrollment);
+        expect(database.exec({ sql: "SELECT count(*) FROM library_preferences;",
+          rowMode: 0, returnValue: "resultRows" })).toEqual([1]);
+        return;
+      }
+      const receipt = activate();
       expect(
         database.exec({
           sql: "SELECT count(*) FROM library_preferences;",
@@ -6246,9 +6261,11 @@ describe("PWA Library Core SQLite engine", () => {
     },
   );
 
-  it.each([false, true])(
-    "retains settled follower replay state atomically across checkpoints, fault: %s",
-    (failActivation) => {
+  it.each([false, true].flatMap((failActivation) =>
+    (["pending", "published"] as const).map((state) => ({ failActivation, state })),
+  ))(
+    "retains $state edits and settled history across checkpoints, fault: $failActivation",
+    ({ failActivation, state }) => {
       const engine = new PwaLibraryCoreSqliteEngine(
         database,
         sqlite3.version.libVersion,
@@ -6266,7 +6283,12 @@ describe("PWA Library Core SQLite engine", () => {
       );
       stageRecords(engine, records, "original");
       engine.activateNormalizedCheckpointStage({
-        followerReceipt: null,
+        followerReceipt: {
+          checkpointGeneration: 9, controlRevision: "control-9", installedAt: 1_000,
+          manifestContentDigest: lowercaseHex64("8".repeat(64)),
+          manifestObjectKey: "manifest-9", manifestTransportObjectId: "drive-9",
+          writerActorId: actorId,
+        },
         replaceExisting: false,
         stageId: "original",
       });
@@ -6396,9 +6418,34 @@ describe("PWA Library Core SQLite engine", () => {
           bind: Object.values(row),
         });
       }
+      const pendingRows = {
+        library_intent_transactions: {
+          ...localRows.library_intent_transactions!, transaction_id: "pending-4",
+          transaction_digest: "8".repeat(64), first_counter: 4, last_counter: 4,
+          previous_operation_id: "rejected-3", previous_chain_digest: digest,
+          ending_operation_id: "pending-operation-4", ending_chain_digest: "9".repeat(64),
+          state, created_at: 6, published_at: state === "published" ? 7 : null, resolved_at: null,
+        },
+        library_intent_members: {
+          ...localRows.library_intent_members!, transaction_id: "pending-4",
+          operation_id: "pending-operation-4", actor_counter: 4, member_digest: "8".repeat(64),
+        },
+        library_optimistic_fields: {
+          transaction_id: "pending-4", member_index: 0, actor_id: actorId, actor_counter: 4,
+          entity_type: "FeedItem", entity_id: "item-1", field_path: "read_at",
+          value_type: "integer", boolean_value: null, integer_value: 6, created_at: 6,
+        },
+      };
+      for (const [table, row] of Object.entries(pendingRows)) {
+        database.exec({ sql: `INSERT INTO ${table} (${Object.keys(row).join(",")})
+          VALUES (${Object.keys(row).map(() => "?").join(",")});`, bind: Object.values(row) });
+      }
+      database.exec(`UPDATE library_intent_actors SET next_counter = 5,
+        previous_operation_id = 'pending-operation-4', previous_chain_digest = '${"9".repeat(64)}';`);
       const snapshot = () =>
         Object.fromEntries(
-          Object.keys(localRows).map((table) => [
+          [...Object.keys(localRows), "library_optimistic_fields", "library_local_change_state",
+            "library_local_invalidations"].map((table) => [
             table,
             database.exec({
               sql: `SELECT * FROM ${table};`,
@@ -6427,6 +6474,32 @@ describe("PWA Library Core SQLite engine", () => {
           replaceExisting: true,
           stageId: "next-checkpoint",
         });
+      if (!failActivation && state === "pending") {
+        const originalChain = database.exec({
+          sql: "SELECT accepted_chain_digest FROM library_actors WHERE actor_id = ?1;",
+          bind: [actorId], rowMode: 0, returnValue: "resultRows",
+        })[0] as string;
+        const originalAuthority = database.exec({
+          sql: "SELECT authority_public_key FROM library_authority_epochs WHERE epoch_id = 'epoch-1';",
+          rowMode: 0, returnValue: "resultRows",
+        })[0] as string;
+        const refuse = (sql: string, value: string | number, original: string | number, message: string) => {
+          database.exec({ sql, bind: [value] });
+          try {
+            expect(activate).toThrow(message);
+            expect(database.exec({ sql: "SELECT name FROM sqlite_schema WHERE name LIKE 'checkpoint_retained_%';",
+              rowMode: 0, returnValue: "resultRows" })).toEqual([]);
+          } finally {
+            database.exec({ sql, bind: [original] });
+          }
+          expect(snapshot()).toEqual(before);
+        };
+        refuse("UPDATE library_meta SET source_revision = ?1;", 8, 7, "regress local history");
+        refuse("UPDATE library_follower_checkpoint_receipt SET checkpoint_generation = ?1;", 11, 9, "regress local history");
+        refuse("UPDATE library_follower_actor_request SET authority_epoch_id = ?1;", "other-epoch", "epoch-1", "authority recovery");
+        refuse("UPDATE library_actors SET accepted_chain_digest = ?1;", "e".repeat(64), originalChain, "retained actor chain");
+        refuse("UPDATE library_authority_epochs SET authority_public_key = ?1;", "e".repeat(64), originalAuthority, "accepted authority");
+      }
       if (failActivation)
         expect(activate).toThrow(/injected checkpoint receipt fault/);
       else expect(activate()).toMatchObject({ sourceRevision: 7 });
@@ -6449,6 +6522,41 @@ describe("PWA Library Core SQLite engine", () => {
         database.exec("DROP TRIGGER fail_checkpoint_receipt;");
         expect(activate()).toMatchObject({ sourceRevision: 7 });
         expect(snapshot()).toEqual(before);
+      }
+      if (!failActivation && state === "pending") {
+        // Seed the already verified result boundary, then prove that only its
+        // covered canonical checkpoint can remove the retained overlay.
+        database.exec("UPDATE library_intent_transactions SET state = 'accepted', resolved_at = 8 WHERE transaction_id = 'pending-4';");
+        const result = { ...localRows.library_intent_results!, transaction_id: "pending-4",
+          result_sequence: 2, previous_result_digest: digest, result_digest: "8".repeat(64),
+          status: "accepted", authoritative_source_revision: 8, received_at: 8 };
+        database.exec({ sql: `INSERT INTO library_intent_results (${Object.keys(result).join(",")})
+          VALUES (${Object.keys(result).map(() => "?").join(",")});`, bind: Object.values(result) });
+        const advanced = records.map((record) => {
+          if (record.registryKey === "00_checkpoint_header") return createLibraryCoreNormalizedCheckpointRecordV2({
+            ...record, payload: { ...record.payload, checkpointId: "library-1:epoch-1:8", sourceRevision: 8 },
+          });
+          if (record.registryKey === "90_actor_state") return createLibraryCoreNormalizedCheckpointRecordV2({
+            ...record, payload: { ...record.payload, acceptedCounter: 4,
+              acceptedOperationId: "pending-operation-4", acceptedChainDigest: "9".repeat(64) },
+          });
+          return record;
+        });
+        stageRecords(engine, advanced, "covered-result", { libraryId: "library-1", authorityEpoch: "epoch-1", sourceRevision: 8 });
+        expect(database.exec({ sql: "SELECT count(*) FROM library_optimistic_fields;",
+          rowMode: 0, returnValue: "resultRows" })).toEqual([1]);
+        engine.activateNormalizedCheckpointStage({
+          followerReceipt: { checkpointGeneration: 11, controlRevision: "control-11", installedAt: 3_000,
+            manifestContentDigest: lowercaseHex64("a".repeat(64)), manifestObjectKey: "manifest-11",
+            manifestTransportObjectId: "drive-11", writerActorId: actorId },
+          replaceExisting: true, stageId: "covered-result",
+        });
+        expect(database.exec({ sql: "SELECT count(*) FROM library_optimistic_fields;",
+          rowMode: 0, returnValue: "resultRows" })).toEqual([0]);
+        expect(database.exec({ sql: "SELECT next_counter FROM library_intent_actors;",
+          rowMode: 0, returnValue: "resultRows" })).toEqual([5]);
+        expect(database.exec({ sql: "SELECT state FROM library_intent_transactions WHERE transaction_id = 'pending-4';",
+          rowMode: 0, returnValue: "resultRows" })).toEqual(["accepted"]);
       }
     },
   );

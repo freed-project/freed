@@ -2,6 +2,15 @@
 
 > **Status:** 🚧 In Progress
 
+PWA checkpoint refresh now preserves pending and published signed edits,
+optimistic fields, actor counters, enrollment and exact transport history in the
+same activation transaction. It requires the verified Library, epoch and writer,
+nonregressing checkpoint history, unchanged authority certificate and a compatible
+actor chain. Failed activation leaves the old state intact. An accepted result
+clears its overlay only when the new canonical frontier covers that result;
+checkpoint effects alone never acknowledge pending work. Installed multi-client
+acceptance remains open.
+
 Native follower checkpoint refresh preserves signed pending and published edits,
 enrollment, optimistic fields, and exact intent/result transport history within
 the same Library and authority epoch. Activation faults roll back all retained
@@ -23,7 +32,7 @@ mounting Library-backed routes or the Saved overview. Sync errors link back to
 Settings. This does not change discovery, import verification, or cadence.
 
 Replacing a PWA checkpoint for the same Library and authority epoch preserves
-the exact local enrollment request and settled intent/result transport history
+the exact local enrollment request, pending edits and intent/result transport history
 inside the activation transaction. Failed activation leaves the previous state
 intact. Periodic status reads use bounded receipts without exporting the Library.
 

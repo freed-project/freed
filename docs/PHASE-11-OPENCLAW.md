@@ -14,6 +14,15 @@
 
 ## Objective
 
+PWA checkpoint refresh now preserves pending and published signed edits,
+optimistic fields, actor counters, enrollment and exact transport history in the
+same activation transaction. It requires the verified Library, epoch and writer,
+nonregressing checkpoint history, unchanged authority certificate and a compatible
+actor chain. Failed activation leaves the old state intact. An accepted result
+clears its overlay only when the new canonical frontier covers that result;
+checkpoint effects alone never acknowledge pending work. Installed multi-client
+acceptance remains open.
+
 Native same-epoch follower checkpoint refresh preserves pending and published
 signed edits, enrollment, optimistic fields, and transport history. Native
 SQLite tests verify exact retention and rollback. Consumer activation removes
