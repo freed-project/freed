@@ -3,7 +3,7 @@
   "version": "26.9.1700-dev",
   "channel": "dev",
   "dayKey": "26.9.17",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-09-18T00:46:33.723Z",
   "model": "heuristic",
@@ -180,33 +180,24 @@
     ]
   },
   "release": {
-    "deck": "Incremental Desktop and PWA operation catch-up, report durable consumer synchronization progress, and native Library joining and consumer enforcement",
+    "deck": "Clearer Saved filters, incremental device sync, and more reliable Library recovery.",
     "features": [
-      "Incremental Desktop and PWA operation catch-up",
-      "Report durable consumer synchronization progress",
-      "Native Library joining and consumer enforcement"
+      "Freed Desktop can join an existing Library as a consumer device.",
+      "Desktop and PWA devices can catch up through incremental operations.",
+      "Joined devices report synchronization progress."
     ],
     "fixes": [
-      "Reader, feed, and header polish",
-      "Sync and update reliability fixes",
-      "Release build and type-safety cleanup",
-      "Shared package test coverage in integration restored"
+      "Saved titles now name active filters, such as Saved Inspiring and News, and return to Saved when Everything is selected.",
+      "Saved bookmarks remain visible after browsing Friends without inheriting the Friends-only view.",
+      "Desktop and PWA retain pending edits while refreshing Library checkpoints.",
+      "Desktop retains sync ownership until canceled work has settled.",
+      "PWA setup and Drive synchronization recover more reliably from interrupted transfers and device enrollment conflicts.",
+      "Drive credentials refresh during long PWA transfers, and sync status reports active stages and the last successful completion.",
+      "Google Contacts recovers from expired synchronization tokens.",
+      "Compact headers, reader controls, and phone landscape layouts keep actions accessible.",
+      "Demo Libraries restore sample thumbnails, maps, and grouped stories."
     ],
-    "followUps": [
-      "Define Vorton Factory repository configuration",
-      "Label reader focus mode and explain its purpose",
-      "Remove repeated release validation and setup",
-      "Cross-compile Intel releases on Apple Silicon",
-      "Reverse-integrate v26.9.803 and publish README showcase",
-      "Yield during desktop mock snapshot encoding",
-      "Isolate desktop scroll benchmark overhead",
-      "Refine themed showcase animations",
-      "Group nearby stories and unify sample population",
-      "Enforce initiative and decision review",
-      "Compact map cards and preserve location markers",
-      "Migrate OpenAI defaults to GPT-6 Astra",
-      "500 post demo corpus"
-    ]
+    "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.9.1700-dev\n\nIncremental Desktop and PWA operation catch-up, report durable consumer synchronization progress, and native Library joining and consumer enforcement\n\n### Features\n\n- Incremental Desktop and PWA operation catch-up\n- Report durable consumer synchronization progress\n- Native Library joining and consumer enforcement\n\n### Fixes\n\n- Reader, feed, and header polish\n- Sync and update reliability fixes\n- Release build and type-safety cleanup\n- Shared package test coverage in integration restored\n\n### Follow-ups\n\n- Define Vorton Factory repository configuration\n- Label reader focus mode and explain its purpose\n- Remove repeated release validation and setup\n- Cross-compile Intel releases on Apple Silicon\n- Reverse-integrate v26.9.803 and publish README showcase\n- Yield during desktop mock snapshot encoding\n- Isolate desktop scroll benchmark overhead\n- Refine themed showcase animations\n- Group nearby stories and unify sample population\n- Enforce initiative and decision review\n- Compact map cards and preserve location markers\n- Migrate OpenAI defaults to GPT-6 Astra\n- 500 post demo corpus\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.9.1700-dev\n\nClearer Saved filters, incremental device sync, and more reliable Library recovery\n\n### Features\n\n- Freed Desktop can join an existing Library as a consumer device\n- Desktop and PWA devices can catch up through incremental operations\n- Joined devices report synchronization progress\n\n### Fixes\n\n- Saved titles now name active filters, such as Saved Inspiring and News, and return to Saved when Everything is selected\n- Saved bookmarks remain visible after browsing Friends without inheriting the Friends-only view\n- Desktop and PWA retain pending edits while refreshing Library checkpoints\n- Desktop retains sync ownership until canceled work has settled\n- PWA setup and Drive synchronization recover more reliably from interrupted transfers and device enrollment conflicts\n- Drive credentials refresh during long PWA transfers, and sync status reports active stages and the last successful completion\n- Google Contacts recovers from expired synchronization tokens\n- Compact headers, reader controls, and phone landscape layouts keep actions accessible\n- Demo Libraries restore sample thumbnails, maps, and grouped stories\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
