@@ -73,19 +73,19 @@
   "dependencies": {
     "@floating-ui/dom": "^1.8.0",
     "@freed/shared": "*",
-    "@tanstack/react-virtual": "^3.14.8",
+    "@tanstack/react-virtual": "^3.14.13",
     "@types/d3-force": "^3.0.10",
     "d3-force": "^3.0.0",
     "date-fns": "^4.4.0",
-    "maplibre-gl": "^6.0.0",
-    "pixi.js": "^8.19.0",
-    "three": "^0.185.1",
-    "zustand": "^5.0.14"
+    "maplibre-gl": "^6.9.1",
+    "pixi.js": "^8.20.1",
+    "three": "^0.186.0",
+    "zustand": "^5.0.15"
   },
   "devDependencies": {
-    "@types/react": "^19.2.17",
-    "@types/react-dom": "^19.2.3",
-    "@types/three": "^0.185.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/three": "^0.186.0",
     "@webgpu/types": "^0.1.71",
     "typescript": "~5.9.3"
   },
