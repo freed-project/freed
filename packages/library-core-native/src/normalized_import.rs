@@ -1177,7 +1177,7 @@ fn recover_exact_checkpoint_activation(
     if !identity_matches {
         return Err(invalid("checkpoint activation retry identity changed"));
     }
-    assert_checkpoint_replacement_has_no_local_overlay(transaction)?;
+    assert_checkpoint_replacement_has_no_local_overlay(transaction, false)?;
     let mut staged = NormalizedCheckpointDigestAccumulatorV2::new();
     let mut statement = transaction.prepare(
         "SELECT record_canonical FROM library_checkpoint_stage_records
