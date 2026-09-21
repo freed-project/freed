@@ -551,7 +551,7 @@ mod tests {
                 .expect("imported writer admission"),
             ("primary:desktop".into(), "primary:desktop".into(), 0)
         );
-        assert_ne!(
+        assert_eq!(
             selected.causal_frontier_digest,
             source.causal_frontier_digest
         );

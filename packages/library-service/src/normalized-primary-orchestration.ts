@@ -12,12 +12,10 @@ import {
   parseLibraryCoreNormalizedCheckpointExportDescriptorV2,
   type LibraryCoreLowercaseHex64,
 } from "@freed/shared/library-core";
-import type { LibraryCorePrimaryPublicationResultV1 } from "@freed/sync/cloud/library-core-primary-coordinator";
 
 import { LibraryServiceFailure } from "./contracts.js";
 import type { LibraryCoreNativeCommandClientV1 } from "./native-command.js";
 import { createLibraryServiceNormalizedPrimaryNativeRuntimeV2 } from "./normalized-primary-native-runtime.js";
-import type { LibraryServicePrimaryPublicationPortV1 } from "./primary-runtime.js";
 
 const ACTOR_PAGE_LIMIT = 16;
 
@@ -31,12 +29,14 @@ export interface LibraryServiceNormalizedPrimaryTransportV2
   extends LibraryCoreNormalizedPrimaryEnrollmentTransportV2,
     LibraryCoreNormalizedPrimaryIntentTransportV2,
     LibraryCoreNormalizedPrimaryResultTransportV2 {
-  pageActors(input: Readonly<{
-    afterActorId: LibraryCoreLowercaseHex64 | null;
-    libraryId: LibraryCoreLowercaseHex64;
-    limit: number;
-    storageEpochId: LibraryCoreLowercaseHex64;
-  }>): Promise<LibraryServiceNormalizedPrimaryActorPageV2>;
+  pageActors(
+    input: Readonly<{
+      afterActorId: LibraryCoreLowercaseHex64 | null;
+      libraryId: LibraryCoreLowercaseHex64;
+      limit: number;
+      storageEpochId: LibraryCoreLowercaseHex64;
+    }>,
+  ): Promise<LibraryServiceNormalizedPrimaryActorPageV2>;
 }
 
 export interface LibraryServiceNormalizedPrimaryRefreshReceiptV2 {
@@ -51,6 +51,7 @@ export interface LibraryServiceNormalizedPrimaryRefreshReceiptV2 {
 export interface LibraryServiceNormalizedPrimaryOrchestrationV2 {
   refresh(
     signal: AbortSignal,
+    transport?: LibraryServiceNormalizedPrimaryTransportV2,
   ): Promise<LibraryServiceNormalizedPrimaryRefreshReceiptV2>;
 }
 
@@ -58,28 +59,11 @@ export interface LibraryServiceNormalizedPrimaryOrchestrationOptionsV2 {
   readonly native: LibraryCoreNativeCommandClientV1;
   readonly now: () => number;
   readonly subtle: SubtleCrypto;
-  readonly transport: LibraryServiceNormalizedPrimaryTransportV2;
-}
-
-/** Run normalized inbound work only on the scheduler's existing inbound pass. */
-export function createLibraryServiceNormalizedPrimaryPublicationV2<
-  Result extends LibraryCorePrimaryPublicationResultV1,
->(
-  publication: LibraryServicePrimaryPublicationPortV1<Result>,
-  normalizedPrimary: LibraryServiceNormalizedPrimaryOrchestrationV2,
-): LibraryServicePrimaryPublicationPortV1<Result> {
-  return Object.freeze({
-    async publish(
-      input: Parameters<
-        LibraryServicePrimaryPublicationPortV1<Result>["publish"]
-      >[0],
-    ) {
-      if (input.reason === "inbound_refresh") {
-        await normalizedPrimary.refresh(input.signal);
-      }
-      return publication.publish(input);
-    },
-  });
+  readonly transport?:
+    | LibraryServiceNormalizedPrimaryTransportV2
+    | ((
+        signal: AbortSignal,
+      ) => Promise<LibraryServiceNormalizedPrimaryTransportV2>);
 }
 
 function checkpointContext(value: unknown): Readonly<{
@@ -87,9 +71,8 @@ function checkpointContext(value: unknown): Readonly<{
   storageEpochId: LibraryCoreLowercaseHex64;
 }> {
   try {
-    const descriptor = parseLibraryCoreNormalizedCheckpointExportDescriptorV2(
-      value,
-    );
+    const descriptor =
+      parseLibraryCoreNormalizedCheckpointExportDescriptorV2(value);
     return Object.freeze({
       libraryId: descriptor.libraryId,
       storageEpochId: descriptor.authorityEpoch,
@@ -114,7 +97,9 @@ function actorPage(
     !Array.isArray(value.actorIds) ||
     value.actorIds.length > ACTOR_PAGE_LIMIT ||
     (value.actorIds.length === 0 && !value.done) ||
-    value.actorIds.some((candidate) => !isLibraryCoreLowercaseHex64(candidate)) ||
+    value.actorIds.some(
+      (candidate) => !isLibraryCoreLowercaseHex64(candidate),
+    ) ||
     value.actorIds.some(
       (candidate, index) =>
         (index === 0 && afterActorId !== null && candidate <= afterActorId) ||
@@ -152,22 +137,32 @@ export function createLibraryServiceNormalizedPrimaryOrchestrationV2(
   return Object.freeze({
     async refresh(
       signal: AbortSignal,
+      boundTransport?: LibraryServiceNormalizedPrimaryTransportV2,
     ): Promise<LibraryServiceNormalizedPrimaryRefreshReceiptV2> {
       signal.throwIfAborted();
       const context = checkpointContext(
         await options.native.execute("describe_checkpoint_export_v2", {}),
       );
       signal.throwIfAborted();
-      const enrollment =
-        await syncLibraryCoreNormalizedPrimaryEnrollmentsV2(
-          options.transport,
-          runtime,
-          context,
-          { signal },
-        );
+      // Keep the fairness cursor on this runtime, but bind network clients to
+      // this pass. A cancelled pass must not poison the next refresh's signal.
+      const transport =
+        boundTransport ??
+        (typeof options.transport === "function"
+          ? await options.transport(signal)
+          : options.transport);
+      if (transport === undefined)
+        throw new Error("normalized Primary transport unavailable");
+      signal.throwIfAborted();
+      const enrollment = await syncLibraryCoreNormalizedPrimaryEnrollmentsV2(
+        transport,
+        runtime,
+        context,
+        { signal },
+      );
       signal.throwIfAborted();
       const actors = actorPage(
-        await options.transport.pageActors({
+        await transport.pageActors({
           afterActorId,
           ...context,
           limit: ACTOR_PAGE_LIMIT,
@@ -180,7 +175,7 @@ export function createLibraryServiceNormalizedPrimaryOrchestrationV2(
         signal.throwIfAborted();
         const actorContext = Object.freeze({ ...context, actorId });
         const intents = await syncLibraryCoreNormalizedPrimaryIntentsV2(
-          options.transport,
+          transport,
           runtime,
           actorContext,
           { signal },
@@ -188,7 +183,7 @@ export function createLibraryServiceNormalizedPrimaryOrchestrationV2(
         importedIntentCount += intents.importedIntentCount;
         signal.throwIfAborted();
         const results = await syncLibraryCoreNormalizedPrimaryResultsV2(
-          options.transport,
+          transport,
           runtime,
           actorContext,
           { signal },

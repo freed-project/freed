@@ -807,6 +807,8 @@ export const LIBRARY_CORE_NATIVE_COMMAND_IDS = [
   "append_checkpoint_stage_v2",
   "begin_checkpoint_export_v2",
   "begin_checkpoint_stage_v2",
+  "cloud_writer_clear_v1",
+  "cloud_writer_observe_v1",
   "commit_transaction_v1",
   "content_eviction_candidates_page_v1",
   "content_hydration_candidates_page_v1",

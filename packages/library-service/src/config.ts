@@ -67,6 +67,11 @@ export interface BoundLibraryServiceConfiguration {
   credentialDescriptorDigest: string;
   configFile: LibraryServiceBoundPath;
   cloudState: LibraryServiceBoundPath | null;
+  driveCredentialStore?: {
+    directory: LibraryServiceBoundPath;
+    wrappingKey: LibraryServiceBoundPath;
+    wrappingKeyDigest: string;
+  };
   bindings: LibraryServiceBoundInputs;
   close(): Promise<void>;
 }
@@ -219,11 +224,12 @@ async function openVerifiedPath(
   context: ValidationContext,
   preOpen: LibraryServiceFileMetadata,
   failureCode: LibraryServiceFailureCode,
+  access: "read" | "read-write" = "read",
 ): Promise<LibraryServiceBoundPath> {
   throwIfAborted(context.signal);
   let bound: LibraryServiceBoundPath;
   try {
-    bound = await context.fileSystem.openBoundPath(filePath);
+    bound = await context.fileSystem.openBoundPath(filePath, access);
   } catch {
     throw new LibraryServiceFailure(failureCode);
   }
@@ -245,6 +251,7 @@ async function bindPrivateFile(
   context: ValidationContext,
   missingCode: LibraryServiceFailureCode,
   privateCode: LibraryServiceFailureCode,
+  access: "read" | "read-write" = "read",
 ): Promise<LibraryServiceBoundPath> {
   const metadata = await inspect(filePath, context, missingCode);
   if (
@@ -257,7 +264,7 @@ async function bindPrivateFile(
   }
   await requireCanonicalPath(filePath, context, privateCode);
   await requireSafeHierarchy(filePath, context, privateCode);
-  return openVerifiedPath(filePath, context, metadata, privateCode);
+  return openVerifiedPath(filePath, context, metadata, privateCode, access);
 }
 
 async function bindPrivateDirectory(
@@ -365,7 +372,13 @@ function parseConfig(text: string): LibraryServiceConfig {
   if ("cloud" in raw && raw.cloud !== null) {
     if (
       !isObject(raw.cloud) ||
-      !hasExactKeys(raw.cloud, CLOUD_CONFIG_KEYS) ||
+      !hasExactKeys(
+        raw.cloud,
+        new Set([
+          ...CLOUD_CONFIG_KEYS,
+          ...("credentialStore" in raw.cloud ? ["credentialStore"] : []),
+        ]),
+      ) ||
       raw.cloud.provider !== "google-drive" ||
       typeof raw.cloud.installationWitness !== "string" ||
       !LOWERCASE_SHA256.test(raw.cloud.installationWitness) ||
@@ -383,6 +396,38 @@ function parseConfig(text: string): LibraryServiceConfig {
         "cloud_state_missing",
       ),
     };
+    if ("credentialStore" in raw.cloud) {
+      const store = raw.cloud.credentialStore;
+      if (
+        !isObject(store) ||
+        !hasExactKeys(
+          store,
+          new Set([
+            "backend",
+            "directory",
+            "wrappingKeyFile",
+            "wrappingKeyDigest",
+          ]),
+        ) ||
+        store.backend !== "linux-sealed-file-v1" ||
+        typeof store.wrappingKeyDigest !== "string" ||
+        !LOWERCASE_SHA256.test(store.wrappingKeyDigest)
+      ) {
+        throw new LibraryServiceFailure("config_invalid");
+      }
+      cloud.credentialStore = {
+        backend: "linux-sealed-file-v1",
+        directory: requireAbsolutePhysicalPath(
+          store.directory,
+          "config_invalid",
+        ),
+        wrappingKeyFile: requireAbsolutePhysicalPath(
+          store.wrappingKeyFile,
+          "config_invalid",
+        ),
+        wrappingKeyDigest: store.wrappingKeyDigest,
+      };
+    }
   }
 
   if (
@@ -465,6 +510,31 @@ function validatePathSeparation(
 ): void {
   const statusPath = path.join(config.stateRoot, "library-service-status.json");
   const cloudStatePath = config.cloud?.publicationStateFile ?? null;
+  const store = config.cloud?.credentialStore;
+  if (store !== undefined) {
+    const signingMount = path.join(config.stateRoot, "mounted-credentials");
+    if (
+      !isStrictChild(store.directory, config.stateRoot) ||
+      !isStrictChild(store.wrappingKeyFile, config.stateRoot) ||
+      isWithinOrEqual(store.wrappingKeyFile, store.directory) ||
+      isWithinOrEqual(store.directory, signingMount) ||
+      isWithinOrEqual(signingMount, store.directory) ||
+      isWithinOrEqual(store.wrappingKeyFile, signingMount) ||
+      [
+        config.admissionFile,
+        config.credentialDescriptorFile,
+        statusPath,
+        cloudStatePath,
+      ].some(
+        (file) =>
+          file !== null &&
+          (isWithinOrEqual(file, store.directory) ||
+            file === store.wrappingKeyFile),
+      )
+    ) {
+      throw new LibraryServiceFailure("config_invalid");
+    }
+  }
   if (
     config.dataRoot === config.stateRoot ||
     isWithinOrEqual(config.dataRoot, config.stateRoot) ||
@@ -521,6 +591,12 @@ export async function assertLibraryServiceBindingsStable(
     bound.configFile,
     ...Object.values(bound.bindings),
     ...(bound.cloudState === null ? [] : [bound.cloudState]),
+    ...(bound.driveCredentialStore === undefined
+      ? []
+      : [
+          bound.driveCredentialStore.directory,
+          bound.driveCredentialStore.wrappingKey,
+        ]),
   ];
   for (const resource of paths) {
     throwIfAborted(signal);
@@ -550,6 +626,14 @@ export async function assertLibraryServiceBindingsStable(
     [bound.bindings.executable, bound.executableDigest],
     [bound.bindings.admission, bound.admissionDigest],
     [bound.bindings.credentialDescriptor, bound.credentialDescriptorDigest],
+    ...(bound.driveCredentialStore === undefined
+      ? []
+      : [
+          [
+            bound.driveCredentialStore.wrappingKey,
+            bound.driveCredentialStore.wrappingKeyDigest,
+          ] as const,
+        ]),
   ];
   for (const [resource, expectedDigest] of digests) {
     throwIfAborted(signal);
@@ -655,12 +739,42 @@ export async function bindLibraryServiceConfig(
             context,
             "cloud_state_missing",
             "cloud_state_not_private",
+            "read-write",
           );
     if (cloudState !== null) {
       opened.push(cloudState);
       if (cloudState.metadata.size > LIBRARY_SERVICE_MAX_DESCRIPTOR_BYTES) {
         throw new LibraryServiceFailure("cloud_state_invalid");
       }
+    }
+    let driveCredentialStore: BoundLibraryServiceConfiguration["driveCredentialStore"];
+    if (config.cloud?.credentialStore !== undefined) {
+      const store = config.cloud.credentialStore;
+      const directory = await bindPrivateDirectory(
+        store.directory,
+        context,
+        "config_invalid",
+        "drive_credential_unavailable",
+      );
+      opened.push(directory);
+      const wrappingKey = await bindPrivateFile(
+        store.wrappingKeyFile,
+        context,
+        "drive_credential_unavailable",
+        "drive_credential_unavailable",
+      );
+      opened.push(wrappingKey);
+      if (
+        wrappingKey.metadata.size !== 32 ||
+        (await wrappingKey.sha256()) !== store.wrappingKeyDigest
+      ) {
+        throw new LibraryServiceFailure("drive_credential_unavailable");
+      }
+      driveCredentialStore = {
+        directory,
+        wrappingKey,
+        wrappingKeyDigest: store.wrappingKeyDigest,
+      };
     }
     const sidecar = await bindPinnedSidecar(config, context);
     opened.push(sidecar.bound);
@@ -682,6 +796,7 @@ export async function bindLibraryServiceConfig(
       credentialDescriptorDigest: sha256(credentialBytes),
       configFile,
       cloudState,
+      ...(driveCredentialStore === undefined ? {} : { driveCredentialStore }),
       bindings: {
         executable: sidecar.bound,
         dataRoot,
@@ -698,6 +813,12 @@ export async function bindLibraryServiceConfig(
           admission,
           credentialDescriptor,
           ...(cloudState === null ? [] : [cloudState]),
+          ...(driveCredentialStore === undefined
+            ? []
+            : [
+                driveCredentialStore.directory,
+                driveCredentialStore.wrappingKey,
+              ]),
         ]);
       },
     };

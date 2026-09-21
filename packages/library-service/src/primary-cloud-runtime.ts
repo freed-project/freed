@@ -4,11 +4,13 @@ import type {
   LibraryServiceFileSystemPort,
   LibraryServiceGoogleDriveConfig,
 } from "./contracts.js";
+import { LibraryServiceFailure } from "./contracts.js";
 import {
   createBoundGoogleDrivePublicationStatePortV1,
   createLibraryServiceGoogleDrivePublicationV1,
 } from "./google-drive-publication.js";
 import type { LibraryCoreNativeCommandClientV1 } from "./native-command.js";
+import { createGoogleDrivePrimaryTransportV2 } from "./google-drive-primary-transport.js";
 import { createNodeGoogleDriveTokenPortV1 } from "./node-google-drive-token.js";
 import {
   createLibraryServicePrimaryRuntimeV1,
@@ -16,7 +18,6 @@ import {
 } from "./primary-runtime.js";
 import {
   createLibraryServiceNormalizedPrimaryOrchestrationV2,
-  createLibraryServiceNormalizedPrimaryPublicationV2,
   type LibraryServiceNormalizedPrimaryTransportV2,
 } from "./normalized-primary-orchestration.js";
 
@@ -27,6 +28,10 @@ export interface LibraryServicePrimaryCloudPortV1 {
     readonly fileSystem: LibraryServiceFileSystemPort;
     readonly clock: LibraryServiceClockPort;
     readonly native: LibraryCoreNativeCommandClientV1;
+    readonly credentialStore?: {
+      readCredential(recordId: string): Promise<string>;
+      credentialRevision?(recordId: string): Promise<string>;
+    };
   }): Promise<LibraryServicePrimaryRuntimeV1<{ readonly status: string }>>;
 }
 
@@ -44,37 +49,52 @@ export function createNodeLibraryServicePrimaryCloudPortV1(
 ): LibraryServicePrimaryCloudPortV1 {
   return Object.freeze({
     async start(input: PrimaryCloudStartInputV1) {
+      const normalizedPrimary =
+        createLibraryServiceNormalizedPrimaryOrchestrationV2({
+          native: input.native,
+          now: () => input.clock.nowMs(),
+          subtle: crypto.subtle,
+          transport: options.normalizedPrimaryTransport,
+        });
       const publication = createLibraryServiceGoogleDrivePublicationV1({
+        refreshInbound: async ({
+          accessToken,
+          controlFileId,
+          descriptor,
+          signal,
+        }) => {
+          await normalizedPrimary.refresh(
+            signal,
+            options.normalizedPrimaryTransport ??
+              createGoogleDrivePrimaryTransportV2({
+                accessToken,
+                controlFileId,
+                signal,
+                libraryId: descriptor.libraryId,
+                epochId: descriptor.authorityEpoch,
+              }),
+          );
+        },
         state: createBoundGoogleDrivePublicationStatePortV1(
           input.stateFile,
           input.fileSystem,
         ),
         token: createNodeGoogleDriveTokenPortV1(
           input.config.credentialRecordId,
+          input.credentialStore === undefined
+            ? {}
+            : {
+                readCredential: input.credentialStore.readCredential,
+                credentialRevision: input.credentialStore.credentialRevision,
+              },
         ),
       });
-      const normalizedPrimary =
-        options.normalizedPrimaryTransport === undefined
-          ? null
-          : createLibraryServiceNormalizedPrimaryOrchestrationV2({
-              native: input.native,
-              now: () => input.clock.nowMs(),
-              subtle: crypto.subtle,
-              transport: options.normalizedPrimaryTransport,
-            });
-      const coordinatedPublication =
-        normalizedPrimary === null
-          ? publication
-          : createLibraryServiceNormalizedPrimaryPublicationV2(
-              publication,
-              normalizedPrimary,
-            );
       const runtime = createLibraryServicePrimaryRuntimeV1({
         clock: { nowMs: () => input.clock.nowMs() },
         diagnostics: { record() {} },
         installationWitness: input.config.installationWitness,
         native: input.native,
-        publication: coordinatedPublication,
+        publication,
         publicationState: publication,
         scheduler: {
           schedule(callback, delayMs) {
@@ -85,7 +105,15 @@ export function createNodeLibraryServicePrimaryCloudPortV1(
           },
         },
       });
-      await runtime.start();
+      try {
+        const initial = await runtime.start();
+        if (initial.status !== "published" && initial.status !== "current") {
+          throw new LibraryServiceFailure("authority_not_primary");
+        }
+      } catch (error) {
+        runtime.stop();
+        throw error;
+      }
       return runtime;
     },
   });
