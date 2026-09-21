@@ -69,11 +69,30 @@ Intentional differences: `dev` and `main` route provider and durable-storage
 work to their pre-action gates. `www` excludes product work and instead
 requires Level 6 or 7 for a merge that deploys production. Its task and
 deployment routes stay website-specific. Main receives instruction changes
-through normal reviewed promotion, not an out-of-band product merge.
+through normal reviewed promotion, not an out-of-band product merge. The preview
+and delivery policy starts on dev; main retains its existing default Build
+policy until promotion, and www requires a separate instruction-only port.
+Report this authority-section drift explicitly until those lanes converge; do
+not weaken the parity validator or merge lanes merely to silence it.
+
+## Preview and delivery
+
+For a user-facing fix or feature, separate local review from permission to publish or deploy. Start at the root policy's default Level 2 unless the owner has already set another scope or level.
+
+1. Fetch current instructions, preserve existing work, and create the isolated worktree. Build the smallest useful version of the requested change. Run focused checks needed to make it safe and runnable.
+2. Show the local preview in the task's built-in Browser as soon as that version works. Give the URL, what changed, what to inspect, and any known limitation. Do not wait for a production build, broad regression suite, CI, or deployment authority unless it is necessary to make this preview work safely. Agent-only inspection is not an owner preview.
+3. Ask for feedback on the result, keep the preview alive, and incorporate corrections until the owner accepts it. "Looks good" accepts the preview; it does not authorize publication, merge, or deployment. Silence is neither acceptance nor authorization. Continue independent validation while awaiting feedback when useful, without delaying the preview or disrupting review. Use the UI polish workflow for an open visual batch.
+4. Finish applicable validation and prepare the exact change, destination, and deployment plan for review. Preparation at Level 2 stays local. Do not push, open a PR, or create a hosted preview without authority covering that external action. Resolve failures before requesting deployment permission. If the reviewed behavior materially changes, refresh the preview and obtain acceptance of that change.
+5. After preview acceptance and validation, ask one concise deployment question if authority is still missing, for example: "Deploy this sidebar fix to demo.freed.wtf?" An explicit "deploy it" in that clear context authorizes that deployment and the necessary publication steps. "Merge this into dev" authorizes that merge and its necessary PR steps, not a production deployment. Record the applicable numbered level and exact scope without granting unrelated capabilities. Clarify an ambiguous destination before dependent external actions.
+6. Use existing authority instead of asking again. Prior deployment authority does not remove an explicit owner review hold. An explicit request to deliver autonomously through deployment, or an explicit preview waiver, can replace the default review checkpoint; preserve any narrower stop. Deploy through the governed workflow, verify the live identity and behavior, report the outcome, and clean up only the task's resources after verification and review are complete.
+
+For documentation, tooling, or backend work without a meaningful visual surface, show the reviewable artifact, diff, or focused execution evidence instead of inventing a UI preview. An explicit request to implement and merge a described policy change authorizes that delivery without another acceptance round. Build the reviewable result before asking for any still-missing authority.
+
+These rules change interaction order, not safety controls. Provider-visible behavior still requires the numbered approval and warning in the root provider gate. Durable Library authority, release identity, runtime checks, CODEOWNER review, and branch protections remain binding. Deployment permission never grants unrelated provider traffic or data migration.
 
 ## Authorized merge completion
 
-An explicit owner request to merge a task includes the repository setting and PR actions needed to complete that merge. Apply the existing authorization level for the destination lane; this policy grants no production deployment or provider behavior authority.
+An explicit owner request to merge a task includes the repository setting and PR actions needed to complete that merge. Record the level for that destination and scope under the root authorization policy; do not ask for a numbered restatement. A request to merge into dev grants no production deployment or provider behavior authority.
 
 1. Finish implementation, owner-requested review, and required local validation before arranging the merge. Resolve failing checks, conflicts, missing approvals, and explicit owner holds first.
 2. If the PR is eligible to merge now, squash merge it using its title as the commit subject and verify the resulting remote commit.

@@ -10,9 +10,9 @@ Build one attributable product change from the latest `origin/dev`. Keep the cha
 ## Start from current policy
 
 1. Treat the supplied working directory as a launcher until proven otherwise.
-2. Before the owner-facing authorization exchange, run `git fetch --all --prune` and read `AGENTS.md` from `origin/dev` with `git show origin/dev:AGENTS.md`.
+2. Before planning or changing files, run `git fetch --all --prune` and read `AGENTS.md` from `origin/dev` with `git show origin/dev:AGENTS.md`.
 3. If either command fails, stop. Do not rely on a possibly stale local instruction copy.
-4. Use the numbered Level 1 through Level 7 labels from the fetched `AGENTS.md` with the owner. Internal actor labels are bookkeeping only and must never be presented as owner authorization choices.
+4. Apply the default Build authority and explicit scoped instructions from the fetched `AGENTS.md`. Follow [preview and delivery](../../../docs/AGENT-INSTRUCTIONS.md#preview-and-delivery); do not begin with an authorization menu or require a numbered restatement of an authorized operation. Internal actor labels are bookkeeping only and must never be presented as owner authorization choices.
 5. After Level 2 or higher is active, create the implementation worktree from that exact fetched `origin/dev` head. Level 1 stays read-only and may inspect the fetched ref without creating a worktree.
 
 ## Establish the contract
@@ -33,7 +33,7 @@ Build one attributable product change from the latest `origin/dev`. Keep the cha
 2. Create the worktree with `./scripts/worktree-add.sh ../freed-<slug> -b <branch> origin/dev --install full --target <desktop|pwa|shared>`. Use `--swarm` only for deliberately deferred speculative work.
 3. Before creating a component or hook, search the relevant package for an existing primitive. Before closeout, search for every new or changed export and confirm a real entry point consumes it.
 4. Implement one runnable slice. Keep instrumentation changes separate from the behavior they are intended to judge unless the metric cannot exist independently.
-5. Launch the lightest useful preview on a fresh port with `scripts/lib/find-free-port.mjs` and `scripts/worktree-preview.sh`. Use a native Desktop preview only when Tauri behavior matters.
+5. Launch and show the lightest useful local preview as soon as the slice works and its focused checks pass, before broad validation. Use a fresh port with `scripts/lib/find-free-port.mjs` and `scripts/worktree-preview.sh`. Use a native Desktop preview only when Tauri behavior matters. Ask for feedback and follow the canonical preview and delivery checkpoint before requesting deployment authority.
    When populating a feature preview, follow [sample thumbnail proof](references/sample-thumbnail-proof.md): include image-backed posts and stories and verify decoded thumbnails before handing over the preview.
 6. Iterate with the cheapest proof that answers the current question. Preserve useful previews until the user is finished reviewing them.
 

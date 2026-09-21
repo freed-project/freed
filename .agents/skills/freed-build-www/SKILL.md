@@ -26,8 +26,8 @@ Build one website change in the `www` lane and preserve its source identity thro
 ## Verify and publish
 
 1. Run website commands from `website/`, with the worktree root `node_modules/.bin` on `PATH` when a hoisted binary is needed.
-2. Run `npm run build` from `website/`.
-3. Launch `./scripts/worktree-preview.sh website` on a fresh port returned by `scripts/lib/find-free-port.mjs`.
+2. Run focused checks needed for a working preview, then launch and show `./scripts/worktree-preview.sh website` on a fresh port returned by `scripts/lib/find-free-port.mjs`. Follow [preview and delivery](../../../docs/AGENT-INSTRUCTIONS.md#preview-and-delivery) for feedback and deployment authority.
+3. Run `npm run build` from `website/` before publication. Do not delay a working local preview for this broader gate.
 4. Use browser automation only when the task requires browser inspection. Keep the preview alive while the user is reviewing it.
 5. Deploy a shareable preview only when requested, using `./scripts/vercel-deploy-preview.sh website`.
 6. Publish with `./scripts/worktree-publish.sh --title "<conventional title>" --base www --summary "<change>" --test "cd website && PATH=../node_modules/.bin:$PATH npm run build" --ready` using the caller's existing GitHub authentication. Omit `--ready` while work remains. A deliberately provisioned unattended host may use `FREED_TRUSTED_PUBLISHER` as an optional wrapper around the same helper. Missing broker provisioning does not block the normal website PR path.
