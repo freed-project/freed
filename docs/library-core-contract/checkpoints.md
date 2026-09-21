@@ -159,4 +159,3 @@ authority records, then rereads exact control after verification. Matching write
 and epoch labels alone never resolve an ambiguous transfer. Publication receipts
 use an explicitly writable, descriptor-bound private file; other service inputs
 remain read-only. Ordinary startup cannot substitute for incomplete promotion.
-
