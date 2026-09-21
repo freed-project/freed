@@ -23,7 +23,7 @@ import { ContactSyncModal } from "../friends/ContactSyncModal.js";
 import { useContactSync } from "../../hooks/useContactSync.js";
 import { ContactSyncContext } from "../../context/ContactSyncContext.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
-import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
+import { useDocumentScroll } from "../../hooks/useDocumentScroll.js";
 import { useSettingsStore } from "../../lib/settings-store.js";
 import {
   type Account,
@@ -100,8 +100,7 @@ export function AppShell({ children }: AppShellProps) {
   const [friendsMobileSurface, setFriendsMobileSurface] =
     useState<FriendsMobileSurface>("graph");
   const isMobileViewport = useIsMobile();
-  const isMobileDevice = useIsMobileDevice();
-  const usesDocumentScroll = isMobileViewport || isMobileDevice;
+  const usesDocumentScroll = useDocumentScroll();
   const debugVisible = useDebugStore((s) => s.visible);
   const toggleDebug = useDebugStore((s) => s.toggle);
   const activeView = useAppStore((s) => s.activeView);

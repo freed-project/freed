@@ -16,7 +16,7 @@
  * values, scroll overflow, gap detection, and sticky header position.
  */
 
-import { test, expect, Page } from "@playwright/test";
+import { test, expect, devices, Page } from "@playwright/test";
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
@@ -580,4 +580,62 @@ test.describe("BottomSheet / drawer viewport", () => {
     await expect(panel).toHaveCount(0);
     await expect.poll(() => page.evaluate(() => document.body.style.overflow)).toBe("");
   });
+});
+
+// Wide touch devices must scroll the feed without moving the persistent sidebar.
+test("iPad feed and sidebar scroll independently across rotation", async ({ browser }, testInfo) => {
+  const context = await browser.newContext({ ...devices["iPad Pro 11"] });
+  const page = await context.newPage();
+  try {
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, "platform", { value: "MacIntel" });
+      Object.defineProperty(navigator, "maxTouchPoints", { value: 5 });
+      (globalThis as typeof globalThis & { __FREED_PWA_SQLITE_MEMORY_E2E__?: boolean })
+        .__FREED_PWA_SQLITE_MEMORY_E2E__ = true;
+    });
+    await page.goto("/", { waitUntil: "load" });
+    await acceptLegalGateIfPresent(page);
+    await page.waitForFunction(() => {
+      const store = (window as unknown as Record<string, unknown>).__FREED_STORE__ as
+        { getState: () => { isInitialized: boolean } } | undefined;
+      return store?.getState().isInitialized;
+    });
+    await page.evaluate(async () => {
+      const library = (window as unknown as Record<string, unknown>).__FREED_LIBRARY_CORE__ as
+        { addItems: (items: unknown[]) => Promise<void> };
+      const now = Date.now();
+      const items = Array.from({ length: 40 }, (_, index) => ({
+        globalId: `rss:rotation:${index}`, platform: "rss", contentType: "article",
+        capturedAt: now, publishedAt: now - index * 60000,
+        author: { id: "rotation", handle: "rotation", displayName: "Rotation Fixture" },
+        content: {
+          text: `Rotation article ${index}. ` + "Local synthetic content for checking phone scrolling. ".repeat(10),
+          mediaUrls: [], mediaTypes: [],
+        },
+        userState: { hidden: false, saved: false, archived: false, tags: [] },
+        topics: [], sourceUrl: `https://example.com/rotation/${index}`,
+      }));
+      for (const item of items) await library.addItems([item]);
+    });
+
+    const feed = page.getByTestId("feed-list-scroll-container");
+    const sidebar = page.getByTestId("app-sidebar");
+    for (const viewport of [{ width: 834, height: 1194 }, { width: 1194, height: 834 }]) {
+      await page.setViewportSize(viewport);
+      await expect(feed).toBeVisible();
+      await expect(sidebar).toBeVisible();
+      const before = await sidebar.boundingBox();
+      for (const top of [600, 1200, 0]) {
+        await feed.evaluate((element, offset) => element.scrollTo({ top: offset, behavior: "instant" }), top);
+        await expect.poll(() => feed.evaluate(element => element.scrollTop)).toBe(top);
+        await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+        const after = await sidebar.boundingBox();
+        expect(after!.y).toBeCloseTo(before!.y, 0);
+        expect(after!.height).toBeCloseTo(before!.height, 0);
+      }
+      await page.screenshot({ path: testInfo.outputPath(`ipad-scroll-${viewport.width}.png`) });
+    }
+  } finally {
+    await context.close();
+  }
 });

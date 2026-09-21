@@ -14,8 +14,7 @@ import { LoadingState } from "../LoadingState.js";
 import { useReadOnScrollTracker } from "./useReadOnScrollTracker.js";
 import type { FeedItem as FeedItemType } from "@freed/shared";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
-import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
-import { useIsMobile } from "../../hooks/useIsMobile.js";
+import { useDocumentScroll } from "../../hooks/useDocumentScroll.js";
 import {
   DESKTOP_FEED_CARD_HEIGHT_BY_DENSITY,
   useFeedCardDensity,
@@ -293,9 +292,7 @@ export function FeedList({
   const windowListRef = useRef<HTMLDivElement>(null);
 
   // Scroll ownership must survive rotation, just like AppShell's layout mode.
-  const isMobileDevice = useIsMobileDevice();
-  const isMobileViewport = useIsMobile();
-  const isMobile = isMobileDevice || isMobileViewport;
+  const isMobile = useDocumentScroll();
   const feedCardHorizontalGutter = isMobile
     ? 0
     : DESKTOP_FEED_CARD_HORIZONTAL_GUTTER;
