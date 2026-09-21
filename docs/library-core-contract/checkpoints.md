@@ -82,7 +82,10 @@ The last provider-confirmed writer lease is a device-local row in the selected
 normalized SQLite catalog. Capture and provider-delivery workers read that row
 before external work. It is never a source of Library authority and is excluded
 from checkpoint export. A remote writer mismatch pauses local provider work
-until cloud coordination verifies a later control revision.
+until cloud coordination verifies a later control revision. Follower checkpoint
+activation deletes both canonical writer admission and the provider lease in
+the activation transaction. A failed activation rolls back both deletions; a
+successful consumer import cannot inherit prior local writer permission.
 
 Every legal value that cannot fit a logical record becomes a descriptor plus
 content-addressed chunks. The initial raw chunk size is 65,536 bytes, which
@@ -118,4 +121,24 @@ surface.
 The verified checkpoint digest becomes the local materialization generation
 ID. Every bounded query cursor binds to that generation ID, never to the human
 Library ID. The generation metadata is local and is not included in checkpoint
-records, which keeps the checkpoint digest acyclic.
+records, which keeps the checkpoint digest acyclic. Native Desktop selection
+accepts this generation only through a receipt naming the same Library, epoch,
+active writer actor, and checkpoint digest, at a revision covered by local
+canonical state. Primary genesis and restore retain their epoch-digest proof.
+Missing or mismatched consumer receipts do not become a new Primary proof.
+
+Native follower refresh within the same Library and authority epoch retains
+the exact enrollment request, signed intent members, pending and published
+transactions, optimistic fields, result receipts, transport history, counters,
+and local invalidations. Disk-backed scratch tables participate in the same
+activation transaction and disappear on success or rollback. Refresh cannot
+change the accepted authority certificate or writer, regress the source revision
+or actor chain, or introduce an actor advance absent from retained signed work.
+An incompatible Library or epoch requires explicit recovery. Unpublished Primary
+work still blocks replacement. A checkpoint never settles a pending intent by
+itself.
+
+A verified accepted result ahead of the native replica's canonical revision
+retains its optimistic fields. A later checkpoint removes those fields only
+when the stored result belongs to that authority epoch and its revision is
+covered. Result and transport receipts remain available for exact replay.

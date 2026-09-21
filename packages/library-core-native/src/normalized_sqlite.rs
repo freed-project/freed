@@ -202,6 +202,48 @@ pub struct NormalizedCheckpointStageStatusV2 {
     pub complete: bool,
 }
 
+/// Verify the selected Library against its native materialization receipt.
+///
+/// Primary genesis and restore bind the epoch's materialized digest. A consumer
+/// checkpoint has a different, acyclic digest and binds it in its local verified
+/// receipt instead. Neither proof grants writer admission.
+pub fn verify_normalized_library_selection_v1(
+    connection: &Connection,
+    library_id: &str,
+) -> Result<(), NormalizedSqliteError> {
+    let matches: bool = connection.query_row(
+        "SELECT EXISTS(
+           SELECT 1 FROM library_active_authority AS active
+           JOIN library_authority_epochs AS epoch ON epoch.epoch_id = active.epoch_id
+           JOIN library_meta AS meta ON meta.singleton_id = 1
+           JOIN library_materialization_generation AS generation ON generation.singleton_id = 1
+           WHERE active.active_key = 'active' AND active.library_id = ?1
+             AND meta.library_id = active.library_id
+             AND meta.authority_epoch = active.epoch_id
+             AND epoch.library_id = active.library_id
+             AND (epoch.materialized_state_digest = generation.generation_id OR EXISTS(
+               SELECT 1 FROM library_follower_checkpoint_receipt AS receipt
+               JOIN library_actors AS writer ON writer.actor_id = receipt.writer_actor_id
+               WHERE receipt.singleton_id = 1
+                 AND receipt.library_id = active.library_id
+                 AND receipt.authority_epoch_id = active.epoch_id
+                 AND receipt.checkpoint_digest = generation.generation_id
+                 AND receipt.source_revision <= meta.source_revision
+                 AND writer.authority_epoch_id = active.epoch_id
+                 AND writer.actor_kind = 'desktop' AND writer.retired_at IS NULL
+             ))
+         );",
+        [library_id],
+        |row| row.get(0),
+    )?;
+    if !matches {
+        return Err(NormalizedSqliteError::InvalidRequest(
+            "normalized SQLite authority selection does not match its native receipt",
+        ));
+    }
+    Ok(())
+}
+
 pub fn install_normalized_schema_v1(connection: &Connection) -> Result<(), NormalizedSqliteError> {
     let user_version: u32 =
         connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
@@ -562,9 +604,9 @@ fn checkpoint_hex_identity(value: &str) -> bool {
             .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
 }
 
-pub fn describe_normalized_checkpoint_export_v2(
+pub(crate) fn normalized_writer_identity(
     connection: &Connection,
-) -> Result<NormalizedCheckpointExportDescriptorV2, NormalizedSqliteError> {
+) -> Result<(String, String, String, i64), NormalizedSqliteError> {
     let (library_id, authority_epoch, writer_id, source_revision): (String, String, String, i64) =
         connection.query_row(
             "SELECT meta.library_id, meta.authority_epoch, actor.actor_id,
@@ -586,6 +628,14 @@ pub fn describe_normalized_checkpoint_export_v2(
             [],
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
         )?;
+    Ok((library_id, authority_epoch, writer_id, source_revision))
+}
+
+pub fn describe_normalized_checkpoint_export_v2(
+    connection: &Connection,
+) -> Result<NormalizedCheckpointExportDescriptorV2, NormalizedSqliteError> {
+    let (library_id, authority_epoch, writer_id, source_revision) =
+        normalized_writer_identity(connection)?;
     if !checkpoint_hex_identity(&library_id)
         || !checkpoint_hex_identity(&authority_epoch)
         || !checkpoint_hex_identity(&writer_id)

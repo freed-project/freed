@@ -1,5 +1,18 @@
 ## 7. Follower intents and Primary results
 
+The PWA may recover a pending local enrollment from an unused actor already
+admitted in its verified checkpoint. Exact request replay triggers this bounded
+SQLite recovery. It verifies the stored canonical certificate against the current
+Library, epoch and authority key using the certificate's signed historical
+frontier, then rechecks its exact bytes against the active actor and capability
+rows inside the write transaction. The actor must have the retained request's
+key, a zero accepted counter, an unchanged genesis, a full editor capability,
+and no retirement or local intent history. Recovery stores the admitted
+certificate and local intent genesis atomically without changing any canonical
+actor row. The original pending request bytes and digest remain preserved even
+when they differ from the recovered certificate. Unknown history, conflicting
+grants, changed authority and invalid signatures fail before any recovery write.
+
 A follower edit atomically writes a signed intent transaction and its sparse
 optimistic effect to local SQLite. The intent envelope binds:
 
@@ -34,6 +47,12 @@ those exact bytes, and an actor cursor keeps only the next result sequence and
 previous digest. Reusing a transaction or result identity with changed bytes,
 skipping a sequence, changing the authority, or omitting one optimistic field
 fails before settlement.
+
+Replacement identities come from the registered operations in the durable intent,
+not from the sparse optimistic preview. Saved and archive assignments return the
+complete coupled saved/archive register, including when clearing either state.
+The follower requires the exact deduplicated operation projection and rejects
+missing, duplicate, or unrelated replacement identities before settlement.
 
 The result authority epoch and intent epoch are separate mandatory fields. An
 accepted, already-applied, or ordinary rejected result uses the same epoch for
@@ -159,8 +178,9 @@ That importer is the sole canonical browser materializer for both this
 follower's accepted edits and operations created by other actors. If result
 settlement commits but operation application fails, the optimistic overlay
 remains visible and an exact result-segment retry resumes the staged operation.
-The overlay is removed only inside the successful operation transaction, or
-when an exact already-applied operation proof is present.
+The overlay is removed inside the successful operation transaction, when an
+exact already-applied operation proof is present, or during same-epoch checkpoint
+activation when a previously verified result is covered by the canonical revision.
 Resuming a locally settled result uses its stored first receive time, not the
 retry's wall clock. Direct and transport-based retries therefore retain the
 same staging identity after an interrupted materialization.
@@ -323,3 +343,25 @@ for the next record fail closed. The query uses the actor and sequence index
 with no offset, table scan, or temporary sort. A transport can convert these
 records into immutable objects, but it cannot reinterpret their status,
 signature, ordering, or identity.
+
+### Consumer checkpoint continuity
+
+Native and browser consumers retain device-local enrollment, signed intent
+members and counters, result cursors, transport receipts, optimistic fields and
+local invalidation history during same-Library, same-epoch checkpoint activation.
+Disk-backed scratch tables share the activation transaction and bounded SQLite
+pager. No renderer-sized snapshot of pending work is created.
+
+Retention requires an existing verified consumer receipt, a nonregressing source
+revision and checkpoint generation, and the same writer. The authority key and
+canonical transition certificate must remain identical. The retained actor tip
+cannot regress or change at the same counter. An advanced canonical actor tip
+must match a retained signed intent, and the next local counter must stay ahead
+of that accepted tip. Other actors' unresolved work prevents replacement.
+
+Cross-Library or cross-epoch replacement of an enrolled consumer requires explicit
+recovery and preserves its existing work. A failed import, foreign-key check,
+authority check, actor-chain check or final receipt write rolls back both canonical
+and local changes. Checkpoint activation settles only overlays whose already
+verified accepted result is covered by the new canonical revision. It does not
+invent results, reset request identities, or re-sign unresolved edits.

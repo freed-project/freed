@@ -21,6 +21,23 @@ import {
 import { tauriInitScript } from "./fixtures/tauri-init";
 import { TOP_TOOLBAR_HEIGHT_PX } from "../../../ui/src/components/layout/layoutConstants";
 
+test("fresh Library setup does not create authority before the owner chooses", async ({ app, ipc }) => {
+  await app.page.addInitScript(() => {
+    (window as unknown as Record<string, unknown>).__TAURI_MOCK_LIBRARY_INSTALLATION__ = {
+      state: "unconfigured", role: null, libraryId: null, authorityEpochId: null, actorId: null,
+    };
+  });
+  await app.goto();
+  await acceptLegalGate(app.page);
+  await expect(app.page.getByRole("heading", { name: "Set up your Library" })).toBeVisible();
+  expect((await ipc.invocations()).some(({ cmd }) => cmd === "ensure_fresh_normalized_desktop_library")).toBe(false);
+  await app.page.getByRole("button", { name: "Create a new Library", exact: true }).click();
+  await app.waitForReady();
+  expect(await ipc.invocations()).toContainEqual({
+    cmd: "select_normalized_desktop_library_setup", args: { choice: { role: "primary" } },
+  });
+});
+
 const SIDEBAR_ALIGNMENT_TOLERANCE_PX = 4;
 const SIDEBAR_ICON_ALIGNMENT_TOLERANCE_PX = 10;
 const READER_RAIL_ALIGNMENT_TOLERANCE_PX = 8;

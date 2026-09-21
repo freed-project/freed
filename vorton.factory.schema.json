@@ -1,0 +1,81 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Vorton Factory repository configuration v1",
+  "description": "Repository workflow configuration. This file does not grant execution authority or activate a controller.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "repository",
+    "baseBranch",
+    "issues",
+    "validation",
+    "publication"
+  ],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 1 },
+    "repository": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+    },
+    "baseBranch": { "type": "string", "minLength": 1, "maxLength": 255 },
+    "issues": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requiredLabels", "excludedLabels", "priorityLabels"],
+      "properties": {
+        "requiredLabels": { "$ref": "#/definitions/nonemptyLabels" },
+        "excludedLabels": { "$ref": "#/definitions/labels" },
+        "priorityLabels": {
+          "$ref": "#/definitions/labels",
+          "description": "Highest priority first. Unlisted issues sort last, then by oldest approval and issue number."
+        }
+      }
+    },
+    "validation": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["argv", "timeoutSeconds"],
+        "properties": {
+          "argv": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "minLength": 1 }
+          },
+          "timeoutSeconds": { "type": "integer", "minimum": 1, "maximum": 7200 }
+        }
+      },
+      "description": "Run from the worktree root as argument arrays without a shell, using the trusted base configuration. Validation code still requires worker isolation."
+    },
+    "publication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "independentReview"],
+      "properties": {
+        "mode": { "const": "draft-pr" },
+        "independentReview": { "const": true }
+      }
+    },
+    "maxRepairAttempts": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 3,
+      "default": 2
+    }
+  },
+  "definitions": {
+    "labels": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1, "maxLength": 50 }
+    },
+    "nonemptyLabels": {
+      "allOf": [{ "$ref": "#/definitions/labels" }],
+      "minItems": 1
+    }
+  }
+}

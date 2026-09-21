@@ -45,6 +45,8 @@ function parseContact(raw: NonNullable<GoogleContactsConnectionsResponse["connec
   };
 }
 
+const EXPIRED_SYNC_TOKEN_MESSAGE = "Sync token is expired. Clear local cache and retry call without the sync token.";
+
 async function fetchPage(
   accessToken: string,
   params: URLSearchParams
@@ -55,7 +57,12 @@ async function fetchPage(
   });
   if (!res.ok) {
     const status = res.status;
-    throw Object.assign(new Error(`People API error ${status}`), { status });
+    let expiredSyncToken = false;
+    if (status === 400) {
+      const body = await res.json().catch(() => null) as { error?: { message?: string } } | null;
+      expiredSyncToken = body?.error?.message === EXPIRED_SYNC_TOKEN_MESSAGE;
+    }
+    throw Object.assign(new Error(`People API error ${status}`), { status, expiredSyncToken });
   }
   return res.json() as Promise<GoogleContactsConnectionsResponse>;
 }
@@ -97,12 +104,15 @@ export async function fetchGoogleContactsWithPageFetcher(
       pageToken = page.nextPageToken;
     } while (pageToken);
   } catch (err: unknown) {
-    // 410 GONE = expired syncToken, fall back to full sync
+    // Restart once without either the expired sync token or partial page state.
     if (
       typeof err === "object" &&
       err !== null &&
       "status" in err &&
-      (err as { status: number }).status === 410 &&
+      ((err as { status: number }).status === 410 ||
+        ((err as { status: number }).status === 400 &&
+          (("expiredSyncToken" in err && err.expiredSyncToken === true) ||
+            (err instanceof Error && err.message.endsWith(EXPIRED_SYNC_TOKEN_MESSAGE))))) &&
       syncToken
     ) {
       return fetchGoogleContactsWithPageFetcher(accessToken, null, pageFetcher);

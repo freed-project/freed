@@ -2,6 +2,22 @@
 
 > **Status:** 🚧 In Progress (the official SQLite WebAssembly engine, exact schema identity, single-worker OPFS runtime, normalized checkpoint import, product mutation entrypoints, bounded product queries, follower transport, recovery UI, selective content, and IndexedDB Library deletion are implemented; physical iPhone acceptance remains open)
 
+PWA checkpoint refresh now preserves pending and published signed edits,
+optimistic fields, actor counters, enrollment and exact transport history in the
+same activation transaction. It requires the verified Library, epoch and writer,
+nonregressing checkpoint history, unchanged authority certificate and a compatible
+actor chain. Failed activation leaves the old state intact. An accepted result
+clears its overlay only when the new canonical frontier covers that result;
+checkpoint effects alone never acknowledge pending work. Installed multi-client
+acceptance remains open.
+
+Connected PWA refresh now follows checkpoint and edit exchange with the shared
+normalized operation coordinator. It pins the operation chain to the selected
+Library, authority epoch, writer, and checkpoint manifest, then feeds bounded
+pages to the existing OPFS importer. Revision reads use metadata rather than
+checkpoint export. Pending-edit checkpoint continuity is implemented below; installed multi-client
+convergence still requires acceptance.
+
 Sync now joins an active automatic refresh instead of starting an overlapping
 Library import. Stopping sync invalidates that shared pass. Deterministic
 lifecycle tests cover settlement, failure, and stop/restart isolation; live
@@ -67,6 +83,22 @@ pending until the exact tagged assets are published and checked.
 > **Dependencies:** Phase 4 (Sync Layer), Phase 5 (Desktop App)
 
 ## Current SQLite PWA work
+
+A device with no accepted checkpoint shows setup guidance across Feed, Map,
+Friends, and the Saved overview. Settings and sample population remain usable.
+Receipt-verified runtime state enables the normal pages after the first import
+or local sample activation, including an empty Library. Missing storage does
+not become a successful query result or a fabricated checkpoint. WebKit covers
+setup, sample activation, and reopening the selected Library after reload.
+
+The anonymous demo enables queries after its checked sample checkpoint finishes
+initializing. It does not require an authenticated follower receipt; ordinary
+devices retain the selected-checkpoint guard. App changes run the showcase check.
+
+Worker restart allows a bounded three-second wait for the previous browser lock
+to release, while another live tab still retains exclusive ownership. Checkpoint
+replacement retains same-epoch enrollment and follower replay records. Settings
+coalesces status reads and no longer exports the Library on each refresh.
 
 The reader consolidates original-post navigation into its provider button and
 keeps theme, zoom, and Focus controls available in the toolbar menu. Synthetic

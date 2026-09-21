@@ -1,3 +1,4 @@
+import { refreshLibraryCoreDesktopRole } from "./library-core-desktop-role";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createLibraryCoreImmutableObjectKey,
@@ -7,7 +8,13 @@ import {
 } from "@freed/shared/library-core";
 
 const mocks = vi.hoisted(() => ({
+  discoverOperationHead: vi.fn(),
+  provisionOperationHead: vi.fn(),
+  publishOperations: vi.fn(),
+  syncOperations: vi.fn(),
+  operationAdapter: {},
   nativeState: null as unknown,
+  role: "primary" as "primary" | "follower",
   controlRead: {
     revision: '"etag-1"',
     bytes: new TextEncoder().encode("{}"),
@@ -118,6 +125,11 @@ const mocks = vi.hoisted(() => ({
   ),
 }));
 
+vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(async () => ({
+  state: mocks.role === "primary" ? "standalone_primary" : "editable_consumer", role: mocks.role,
+  libraryId: "ab".repeat(32), authorityEpochId: "cd".repeat(32), actorId: "12".repeat(32),
+})) }));
+
 vi.mock("./native-json-store", () => ({
   readNativeJsonValue: mocks.readNative.mockImplementation(
     async () => mocks.nativeState,
@@ -130,6 +142,9 @@ vi.mock("./native-json-store", () => ({
 }));
 
 vi.mock("./sqlite-library", () => ({
+  describeNormalizedLibraryOperationExport: vi.fn(),
+  readNormalizedLibraryOperationPage: vi.fn(),
+  importNormalizedLibraryOperationPage: vi.fn(),
   activateNormalizedLibraryCheckpointImport: mocks.activateNormalizedImport,
   appendNormalizedLibraryCheckpointImportPage: mocks.appendNormalizedPage,
   beginNormalizedLibraryCheckpointExport: mocks.beginNormalizedExport,
@@ -207,6 +222,11 @@ vi.mock("@freed/sync/cloud/library-core", async (importOriginal) => {
   };
   return {
     ...actual,
+    discoverGoogleDriveLibraryCoreOperationHeadV2: mocks.discoverOperationHead,
+    provisionGoogleDriveLibraryCoreOperationHeadV2: mocks.provisionOperationHead,
+    createGoogleDriveLibraryCoreOperationAdapterV2: () => mocks.operationAdapter,
+    publishLibraryCoreNormalizedOperationsOnceV2: mocks.publishOperations,
+    syncLibraryCoreNormalizedOperationsOnceV2: mocks.syncOperations,
     discoverGoogleDriveLibraryCoreActorEnrollmentRequestsV1:
       mocks.discoverEnrollmentRequests,
     discoverGoogleDriveLibraryCoreActorEnrollmentsV1:
@@ -356,12 +376,20 @@ import {
   publishCurrentSqliteLibraryToGoogleDrive,
   readSqliteLibraryGoogleDrivePublicationReceipt,
   startSqliteLibraryGoogleDriveSync,
+  startSqliteLibraryGoogleDriveFollowerSync,
   stopSqliteLibraryCloudSync,
   syncSqliteLibraryFollowerGoogleDriveOnce,
 } from "./library-core-cloud-sync";
 
 describe("SQLite Library Google Drive production wiring", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("Unexpected network request in offline sync test"); }));
+    mocks.discoverOperationHead.mockReset().mockResolvedValue(null);
+    mocks.provisionOperationHead.mockReset().mockResolvedValue("operation-head");
+    mocks.publishOperations.mockReset().mockResolvedValue({ status: "current", revision: 7, continuation: false });
+    mocks.syncOperations.mockReset();
+    mocks.role = "primary";
+    await refreshLibraryCoreDesktopRole();
     stopSqliteLibraryCloudSync();
     window.localStorage.clear();
     mocks.nativeState = null;
@@ -598,7 +626,7 @@ describe("SQLite Library Google Drive production wiring", () => {
     stopSqliteLibraryCloudSync();
   });
 
-  it("admits normalized follower transport and publishes signed results without the retired journal", async () => {
+  it.each(["clean", "string conflict", "Error conflict"])("admits normalized follower transport and publishes signed results with %s enrollment discovery", async (scenario) => {
     const libraryId = "ab".repeat(32);
     const storageEpochId = "cd".repeat(32);
     const actorId = "34".repeat(32);
@@ -619,14 +647,23 @@ describe("SQLite Library Google Drive production wiring", () => {
       },
       transportObjectId: "intent-segment-1",
     };
-    mocks.discoverEnrollmentRequests.mockResolvedValue([
-      { bytes: new TextEncoder().encode("enrollment-request") },
-    ]);
-    mocks.countersignNormalizedEnrollment.mockResolvedValue({
-      actorId,
-      authorityEpochId: storageEpochId,
-      canonicalEnrollmentCertificateJson: "{}",
-      libraryId,
+    const requestNames = scenario === "clean"
+      ? ["enrollment-request"]
+      : ["conflict-before", "enrollment-request", "conflict-after"];
+    mocks.discoverEnrollmentRequests.mockResolvedValue(
+      requestNames.map((name) => ({ bytes: new TextEncoder().encode(name) })),
+    );
+    mocks.countersignNormalizedEnrollment.mockImplementation(async (request: string) => {
+      if (request.startsWith("conflict-")) {
+        const message = "normalized follower actor replay changed";
+        throw scenario === "string conflict" ? message : new Error(message);
+      }
+      return {
+        actorId,
+        authorityEpochId: storageEpochId,
+        canonicalEnrollmentCertificateJson: "{}",
+        libraryId,
+      };
     });
     mocks.discoverActorEnrollments.mockResolvedValue([
       {
@@ -795,19 +832,96 @@ describe("SQLite Library Google Drive production wiring", () => {
     }
   });
 
+  it("retries a failed initial consumer pass at the existing interval and stops cleanly", async () => {
+    mocks.role = "follower";
+    await refreshLibraryCoreDesktopRole();
+    vi.useFakeTimers();
+    const error = new Error("offline fixture");
+    mocks.discoverPublishedControl.mockRejectedValue(error);
+    const onError = vi.fn();
+    const resolveAccessToken = vi.fn(async () => "refreshed-token");
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await expect(startSqliteLibraryGoogleDriveFollowerSync({ accessToken: "initial-token", onError, resolveAccessToken })).rejects.toBe(error);
+      expect(onError).toHaveBeenCalledTimes(1);
+      expect(vi.getTimerCount()).toBe(1);
+      await vi.advanceTimersByTimeAsync(59_999);
+      expect(mocks.discoverPublishedControl).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(mocks.discoverPublishedControl).toHaveBeenCalledTimes(2);
+      expect(mocks.discoverPublishedControl).toHaveBeenLastCalledWith(expect.objectContaining({ accessToken: "refreshed-token" }));
+      expect(resolveAccessToken).toHaveBeenCalledTimes(1);
+      expect(onError).toHaveBeenCalledTimes(2);
+      expect(vi.getTimerCount()).toBe(1);
+      stopSqliteLibraryCloudSync();
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(mocks.discoverPublishedControl).toHaveBeenCalledTimes(2);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      stopSqliteLibraryCloudSync();
+      vi.useRealTimers();
+      consoleError.mockRestore();
+    }
+  });
+
+  it("keeps a canceled consumer pass owned across lifecycle replacement", async () => {
+    mocks.role = "follower";
+    await refreshLibraryCoreDesktopRole();
+    vi.useFakeTimers();
+    let finish!: (value: null) => void;
+    let enter!: () => void;
+    const entered = new Promise<void>((resolve) => { enter = resolve; });
+    mocks.discoverPublishedControl.mockImplementationOnce(() => {
+      enter();
+      return new Promise((resolve) => { finish = resolve; });
+    }).mockResolvedValue(null);
+    const oldError = vi.fn();
+    const newError = vi.fn();
+    const resolveAccessToken = vi.fn(async () => "refreshed-token");
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const oldPass = startSqliteLibraryGoogleDriveFollowerSync({ accessToken: "old-token", onError: oldError, resolveAccessToken });
+      await entered;
+      const oldRejected = expect(oldPass).rejects.toMatchObject({ name: "AbortError" });
+      const replacement = startSqliteLibraryGoogleDriveFollowerSync({ accessToken: "new-token", onError: newError, resolveAccessToken });
+      await expect(replacement).rejects.toMatchObject({ name: "AbortError" });
+      await oldRejected;
+      expect(oldError).not.toHaveBeenCalled();
+      expect(newError).toHaveBeenCalledTimes(1);
+      expect(vi.getTimerCount()).toBe(1);
+      await expect(syncSqliteLibraryFollowerGoogleDriveOnce({ accessToken: "manual-token" })).rejects.toThrow("sync is still finishing");
+      expect(mocks.discoverPublishedControl).toHaveBeenCalledTimes(1);
+      finish(null);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(vi.getTimerCount()).toBe(1);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(mocks.discoverPublishedControl).toHaveBeenCalledTimes(2);
+      expect(oldError).not.toHaveBeenCalled();
+      expect(newError).toHaveBeenCalledTimes(2);
+    } finally {
+      finish?.(null);
+      await vi.advanceTimersByTimeAsync(0);
+      stopSqliteLibraryCloudSync();
+      vi.useRealTimers();
+      consoleError.mockRestore();
+    }
+  });
+
   it("rechecks the Desktop role before any publication work begins", async () => {
-    window.localStorage.setItem("freed.libraryCore.desktopRoleV1", "follower");
+    mocks.role = "follower";
+    await refreshLibraryCoreDesktopRole();
 
     expect(() =>
       publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token" }),
-    ).toThrow("cannot publish or replace the Primary cloud Library");
+    ).toThrow("not an active Primary for cloud publication");
 
     expect(mocks.describeCloudIdentity).not.toHaveBeenCalled();
     expect(mocks.publish).not.toHaveBeenCalled();
   });
 
-  it("imports the Primary checkpoint and publishes one stable follower enrollment request", async () => {
-    window.localStorage.setItem("freed.libraryCore.desktopRoleV1", "follower");
+  it.each(["concurrent", "initial-failure", "cancel-before-activation"])("imports the Primary checkpoint with owned consumer work (%s)", async (scenario) => {
+    mocks.role = "follower";
+    await refreshLibraryCoreDesktopRole();
     const libraryId = mocks.bootstrapAuthority.authority.library_id;
     const epochId = mocks.bootstrapAuthority.authority.epoch_id;
     const manifestDigest = "56".repeat(32) as LibraryCoreLowercaseHex64;
@@ -854,10 +968,11 @@ describe("SQLite Library Google Drive production wiring", () => {
         checkpointGeneration: null,
         sourceRevision: null,
         pendingIntentCount: 0,
+        awaitingCanonicalChanges: false,
         publishedIntentCount: 0,
         importedResultCount: 0,
       })
-      .mockResolvedValueOnce({
+      .mockResolvedValue({
         state: "awaiting_enrollment",
         libraryId,
         authorityEpochId: epochId,
@@ -865,6 +980,7 @@ describe("SQLite Library Google Drive production wiring", () => {
         checkpointGeneration: 9,
         sourceRevision: 9,
         pendingIntentCount: 0,
+        awaitingCanonicalChanges: false,
         publishedIntentCount: 0,
         importedResultCount: 0,
       });
@@ -924,9 +1040,41 @@ describe("SQLite Library Google Drive production wiring", () => {
       },
     );
 
-    await expect(
-      syncSqliteLibraryFollowerGoogleDriveOnce({ accessToken: "token" }),
-    ).resolves.toEqual({ status: "follower_synced", revision: 7 });
+    if (scenario === "cancel-before-activation") {
+      const controller = new AbortController();
+      mocks.appendNormalizedPage.mockImplementationOnce(async (request: Record<string, unknown>) => {
+        controller.abort();
+        return { complete: true, expectedRecordCount: 3, stagedCanonicalBytes: 1, stagedRecordCount: 3, stageId: request.stageId };
+      });
+      await expect(syncSqliteLibraryFollowerGoogleDriveOnce({ accessToken: "token", signal: controller.signal })).rejects.toMatchObject({ name: "AbortError" });
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(mocks.activateNormalizedImport).not.toHaveBeenCalled();
+      expect(mocks.normalizedFollowerSync).not.toHaveBeenCalled();
+      return;
+    }
+    if (scenario === "initial-failure") {
+      vi.useFakeTimers();
+      const error = new Error("offline fixture");
+      mocks.discoverPublishedControl.mockRejectedValueOnce(error);
+      const onSynced = vi.fn(async () => {});
+      try {
+        await expect(startSqliteLibraryGoogleDriveFollowerSync({ accessToken: "token", resolveAccessToken: async () => "refreshed-token", onSynced })).rejects.toBe(error);
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(onSynced).toHaveBeenCalledTimes(1);
+        expect(onSynced).toHaveBeenCalledWith(expect.objectContaining({
+          status: "follower_synced", follower: expect.objectContaining({ state: "awaiting_enrollment" }),
+        }));
+        expect(vi.getTimerCount()).toBe(1);
+      } finally {
+        stopSqliteLibraryCloudSync();
+        vi.useRealTimers();
+      }
+    } else {
+      const first = syncSqliteLibraryFollowerGoogleDriveOnce({ accessToken: "token" });
+      const second = syncSqliteLibraryFollowerGoogleDriveOnce({ accessToken: "token" });
+      expect(second).toBe(first);
+      await expect(first).resolves.toEqual(expect.objectContaining({ status: "follower_synced", revision: 7 }));
+    }
 
     expect(mocks.importCheckpoint).toHaveBeenCalledTimes(1);
     expect(mocks.activateNormalizedImport).toHaveBeenCalledWith({
@@ -947,7 +1095,8 @@ describe("SQLite Library Google Drive production wiring", () => {
   });
 
   it("publishes a transaction-complete follower intent and records its exact immutable digest", async () => {
-    window.localStorage.setItem("freed.libraryCore.desktopRoleV1", "follower");
+    mocks.role = "follower";
+    await refreshLibraryCoreDesktopRole();
     const libraryId = mocks.bootstrapAuthority.authority.library_id;
     const epochId = mocks.bootstrapAuthority.authority.epoch_id;
     const actorId = "78".repeat(32);
@@ -994,6 +1143,7 @@ describe("SQLite Library Google Drive production wiring", () => {
       checkpointGeneration: 9,
       sourceRevision: 9,
       pendingIntentCount: 1,
+        awaitingCanonicalChanges: false,
       publishedIntentCount: 0,
       importedResultCount: 0,
     };
@@ -1064,7 +1214,7 @@ describe("SQLite Library Google Drive production wiring", () => {
 
     await expect(
       syncSqliteLibraryFollowerGoogleDriveOnce({ accessToken: "token" }),
-    ).resolves.toEqual({ status: "follower_synced", revision: 7 });
+    ).resolves.toEqual(expect.objectContaining({ status: "follower_synced", revision: 7 }));
 
     expect(mocks.pageFollowerTransport).toHaveBeenCalledWith({
       actorId,
@@ -1082,7 +1232,8 @@ describe("SQLite Library Google Drive production wiring", () => {
   });
 
   it("imports the exact follower result chain into the native durable cursor", async () => {
-    window.localStorage.setItem("freed.libraryCore.desktopRoleV1", "follower");
+    mocks.role = "follower";
+    await refreshLibraryCoreDesktopRole();
     const libraryId = mocks.bootstrapAuthority.authority.library_id;
     const epochId = mocks.bootstrapAuthority.authority.epoch_id;
     const actorId = "78".repeat(32);
@@ -1129,6 +1280,7 @@ describe("SQLite Library Google Drive production wiring", () => {
       checkpointGeneration: 9,
       sourceRevision: 9,
       pendingIntentCount: 0,
+        awaitingCanonicalChanges: false,
       publishedIntentCount: 1,
       importedResultCount: 0,
     });
@@ -1181,7 +1333,7 @@ describe("SQLite Library Google Drive production wiring", () => {
 
     await expect(
       syncSqliteLibraryFollowerGoogleDriveOnce({ accessToken: "token" }),
-    ).resolves.toEqual({ status: "follower_synced", revision: 7 });
+    ).resolves.toEqual(expect.objectContaining({ status: "follower_synced", revision: 7 }));
 
     expect(mocks.importNormalizedResultTransport).toHaveBeenCalledWith(
       resultPublication,
@@ -1243,7 +1395,7 @@ describe("SQLite Library Google Drive production wiring", () => {
     });
   });
 
-  it("proves the committed Drive receipt before treating a repeat publication as current", async () => {
+  it.each(["current", "published"] as const)("uses verified operation publication for a %s checkpoint anchor", async (status) => {
     await expect(
       publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token" }),
     ).resolves.toEqual({ status: "published", revision: 7 });
@@ -1266,10 +1418,18 @@ describe("SQLite Library Google Drive production wiring", () => {
       bytes: exactControlBytes,
     };
 
+    const revision = status === "current" ? 7 : 8;
+    mocks.publishOperations.mockImplementation(async (input) => {
+      await input.assertCurrentAuthority();
+      expect(input.anchor).toMatchObject({ checkpointRevision: 7 });
+      expect(input.transport).toBe(mocks.operationAdapter);
+      return { status, revision, continuation: false };
+    });
     await expect(
       publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token" }),
-    ).resolves.toEqual({ status: "current", revision: 7 });
+    ).resolves.toEqual({ status, revision });
     expect(mocks.publish).toHaveBeenCalledTimes(1);
+    expect(mocks.nativeState).toMatchObject({ lastPublishedRevision: 7, lastPublishedOperationRevision: revision });
   });
 
   it("fails closed when a local current marker does not match Drive control", async () => {
@@ -1401,6 +1561,27 @@ describe("SQLite Library Google Drive production wiring", () => {
     );
     expect(mocks.publish).not.toHaveBeenCalled();
     expect(mocks.writeNative).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "normalized follower actor countersignature failed",
+    "normalized follower enrollment authority changed concurrently",
+    "database is locked",
+    "normalized follower actor replay changed unexpectedly",
+    Object.assign(new Error("normalized follower actor replay changed"), { name: "AbortError" }),
+  ])("stops enrollment discovery on unrelated refusal: %s", async (reason) => {
+    mocks.discoverEnrollmentRequests.mockResolvedValue([
+      { bytes: new TextEncoder().encode("enrollment-request") },
+      { bytes: new TextEncoder().encode("later-request") },
+    ]);
+    mocks.countersignNormalizedEnrollment.mockRejectedValueOnce(reason);
+    await expect(
+      publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token" }),
+    ).rejects.toThrow(reason instanceof Error ? reason.message : `countersign follower enrollment failed: ${reason}`);
+    expect(mocks.countersignNormalizedEnrollment).toHaveBeenCalledTimes(1);
+    expect(mocks.putImmutable).not.toHaveBeenCalled();
+    expect(mocks.discoverActorEnrollments).not.toHaveBeenCalled();
+    expect(mocks.publish).not.toHaveBeenCalled();
   });
 
   it("preserves a native string rejection with its publication stage", async () => {
@@ -1555,37 +1736,30 @@ describe("SQLite Library Google Drive production wiring", () => {
     }
   });
 
-  it("does not queue a fresh publication behind an abandoned native command", async () => {
+  it("retains canceled native preflight ownership until the command settles", async () => {
     const controller = new AbortController();
-    mocks.describeCloudIdentity
-      .mockReset()
-      .mockImplementationOnce(() => new Promise(() => {}));
-    const abandoned = publishCurrentSqliteLibraryToGoogleDrive({
-      accessToken: "token",
-      signal: controller.signal,
+    const descriptor = await mocks.describeCloudIdentity();
+    let finish!: (value: unknown) => void;
+    let enter!: () => void;
+    const entered = new Promise<void>((resolve) => { enter = resolve; });
+    mocks.describeCloudIdentity.mockImplementationOnce(() => {
+      enter();
+      return new Promise((resolve) => { finish = resolve; });
     });
-    await Promise.resolve();
-
-    // An attempt is abandoned only once its owner cancels it. A still-live
-    // attempt must coalesce the manual and scheduled callers above.
+    const canceled = publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token", signal: controller.signal });
+    await entered;
     controller.abort();
-    await expect(abandoned).rejects.toMatchObject({ name: "AbortError" });
-
-    mocks.describeCloudIdentity.mockResolvedValue({
-      format: "freed_normalized_checkpoint_export_v2",
-      protocolVersion: 2,
-      libraryId: "ab".repeat(32),
-      authorityEpoch: "cd".repeat(32),
-      writerId: "12".repeat(32),
-      sourceRevision: 7,
-      causalFrontierDigest: "66".repeat(32),
-      recordCount: 1,
-      itemCount: 2,
-      localActorId: "12".repeat(32),
-    });
-    await expect(
-      publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token" }),
-    ).resolves.toEqual({ status: "published", revision: 7 });
+    await expect(canceled).rejects.toMatchObject({ name: "AbortError" });
+    try {
+      await expect(publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token" })).rejects.toThrow("sync is still finishing");
+      await expect(makeThisSqliteLibraryDesktopWriter({ accessToken: "token" })).rejects.toThrow("sync is still finishing");
+      expect(mocks.publish).not.toHaveBeenCalled();
+    } finally {
+      finish(descriptor);
+    }
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    await expect(publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token" })).resolves.toEqual({ status: "published", revision: 7 });
+    expect(mocks.publish).toHaveBeenCalledTimes(1);
   });
 
   it("refuses cloud publication when restored state belongs to another Desktop installation", async () => {

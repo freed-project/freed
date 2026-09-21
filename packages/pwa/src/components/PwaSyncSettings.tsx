@@ -9,7 +9,7 @@
  *   last-synced time, and a Disconnect action.
  */
 
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { getWebsiteHostForChannel } from "@freed/shared";
 import { usePlatform } from "@freed/ui/context";
 import {
@@ -205,22 +205,36 @@ export function PwaSyncSettings() {
   const selectedCheckpoint = cloudReceipt?.checkpoint ?? null;
   const followerReceipt = cloudReceipt?.follower ?? null;
 
-  const refreshSelectedCheckpoint = useCallback(async () => {
+  const receiptRefresh = useRef<Promise<void> | null>(null);
+  const receiptGeneration = useRef(0);
+  const refreshSelectedCheckpoint = useCallback((): Promise<void> => {
     if (activeCloudProvider !== "gdrive") {
       setCloudReceipt(null);
       setSelectedCheckpointError(null);
-      return;
+      return Promise.resolve();
     }
-    try {
-      setCloudReceipt(await readPwaLibraryCoreCloudReceiptV2());
-      setSelectedCheckpointError(null);
-    } catch (error) {
-      setSelectedCheckpointError(
-        error instanceof Error
-          ? error.message
-          : "SQLite checkpoint receipt is unavailable.",
-      );
-    }
+    if (receiptRefresh.current) return receiptRefresh.current;
+    const generation = receiptGeneration.current;
+    const task = (async () => {
+      try {
+        const receipt = await readPwaLibraryCoreCloudReceiptV2();
+        if (generation !== receiptGeneration.current) return;
+        setCloudReceipt(receipt);
+        setSelectedCheckpointError(null);
+      } catch (error) {
+        if (generation !== receiptGeneration.current) return;
+        setSelectedCheckpointError(
+          error instanceof Error
+            ? error.message
+            : "SQLite checkpoint receipt is unavailable.",
+        );
+      }
+    })();
+    receiptRefresh.current = task;
+    void task.finally(() => {
+      if (receiptRefresh.current === task) receiptRefresh.current = null;
+    });
+    return task;
   }, [activeCloudProvider]);
 
   const copySelectedCheckpoint = useCallback(async () => {
@@ -240,12 +254,19 @@ export function PwaSyncSettings() {
   }, [cloudReceipt]);
 
   useEffect(() => {
-    queueMicrotask(() => void refreshSelectedCheckpoint());
-    const timer = window.setInterval(
-      () => void refreshSelectedCheckpoint(),
-      15_000,
-    );
-    return () => window.clearInterval(timer);
+    let canceled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const refresh = async () => {
+      if (canceled) return;
+      await refreshSelectedCheckpoint();
+      if (!canceled) timer = setTimeout(() => void refresh(), 15_000);
+    };
+    queueMicrotask(() => void refresh());
+    return () => {
+      canceled = true;
+      receiptGeneration.current += 1;
+      clearTimeout(timer);
+    };
   }, [refreshSelectedCheckpoint]);
 
   const handleDisconnect = () => {

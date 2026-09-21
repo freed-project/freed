@@ -14,6 +14,32 @@
 
 ## Objective
 
+PWA checkpoint refresh now preserves pending and published signed edits,
+optimistic fields, actor counters, enrollment and exact transport history in the
+same activation transaction. It requires the verified Library, epoch and writer,
+nonregressing checkpoint history, unchanged authority certificate and a compatible
+actor chain. Failed activation leaves the old state intact. An accepted result
+clears its overlay only when the new canonical frontier covers that result;
+checkpoint effects alone never acknowledge pending work. Installed multi-client
+acceptance remains open.
+
+Desktop and PWA now consume a shared bounded operation chain after checkpoint
+bootstrap. Native consumer import verifies signed results and actor operations,
+stages incomplete transactions, and advances canonical state without authority
+keys or writer admission. This Desktop delivery does not activate the headless
+transport. Cooperative Primary handoff and installed transition acceptance remain
+open.
+
+Native same-epoch follower checkpoint refresh preserves pending and published
+signed edits, enrollment, optimistic fields, and transport history. Native
+SQLite tests verify exact retention and rollback. Consumer activation removes
+prior writer and provider admission atomically. Freed Desktop now chooses and
+pins a native setup role before fresh genesis, with receipt-backed consumer
+selection and explicit refusal to replace an independent Library. This does not
+change the headless bootstrap workflow. The installed edit round trip
+and Primary handoff acceptance below remain open; this does not complete the
+headless host's transport or promotion work.
+
 Freed must support one authoritative Library Core on an always-on machine while
 Freed Desktop and the PWA remain fully editable clients. The authority may run
 inside Freed Desktop or in a future headless service. Both hosts must use the
@@ -612,3 +638,23 @@ Freed Desktop and the PWA remain ordinary editable clients. Agents and capture
 workers use narrow signed capabilities, while the authority database, cloud
 credentials, and provider sessions stay isolated. The system can move Primary
 authority forward without creating split heads or copying live database files.
+
+### Desktop consumer lifecycle proof, September 17, 2026
+
+Desktop cloud publication, consumer synchronization, and writer reassignment
+now retain one local work owner through cancellation and native settlement.
+Consumer startup failure remains recoverable at the existing polling interval.
+Offline fault tests cover overlapping callers, cancellation before checkpoint
+activation, canceled preflight, and replacement timer ownership. This completes
+the local sync ownership boundary, not cooperative authority transfer or
+installed host-transition acceptance.
+
+### Consumer synchronization status, September 17, 2026
+
+Freed Desktop reports enrollment, edits waiting to upload, edits awaiting Primary
+acceptance, and accepted changes awaiting canonical application from native
+SQLite state. Successful transport does not imply all edits have synchronized or
+that the Primary is online. Checkpoint revision remains the operation anchor;
+sync events report the verified local canonical revision separately. Native
+settlement and Desktop presentation tests cover these distinctions. Installed
+two-host acceptance remains open.

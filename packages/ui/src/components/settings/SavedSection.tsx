@@ -59,7 +59,7 @@ function TabBar({
 // ── Root section component ─────────────────────────────────────────────────────
 
 export function SavedSection() {
-  const { importMarkdown } = usePlatform();
+  const { importMarkdown, LibrarySetupState } = usePlatform();
 
   const availableTabs: { id: SavedTab; label: string }[] = [
     { id: "overview" as const, label: "Overview" },
@@ -75,7 +75,7 @@ export function SavedSection() {
       {availableTabs.length > 1 && (
         <TabBar tabs={availableTabs} active={activeTab} onChange={setActiveTab} />
       )}
-      {activeTab === "overview" && <OverviewPane />}
+      {activeTab === "overview" && (LibrarySetupState ? <LibrarySetupState /> : <OverviewPane />)}
       {activeTab === "import" && importMarkdown && <ImportPane />}
       {activeTab === "export" && <ExportPane />}
     </div>

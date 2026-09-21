@@ -68,6 +68,7 @@ function defaultDependencies() {
     loadBinding: loadAndVerifyReleaseTagPublisher,
     verifyInstallation: verifyReleaseTagPublisherInstallation,
     verifyAttestation: verifyReleaseTagPublisherReadiness,
+    inspectHost: inspectInstalledHost,
     run: spawnSync,
   };
 }
@@ -240,7 +241,7 @@ export function activateReleaseTagPublisher({
 }) {
   const dependencies = dependenciesWith(overrides);
   const identity = validateAppIdentity(appId, appSlug);
-  inspectInstalledHost(dependencies.hostPath);
+  dependencies.inspectHost(dependencies.hostPath);
   const publisherSha256 = sha256File(dependencies.hostPath);
   const binding = {
     schemaVersion: 1,

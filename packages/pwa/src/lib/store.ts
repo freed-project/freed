@@ -59,6 +59,7 @@ import {
   ensurePwaLibraryCoreLocalSampleState,
   settlePwaLibraryCoreLocalSampleState,
   initializePwaLibraryCoreState,
+  hasSelectedPwaLibraryCore,
   readPwaLibraryCoreItemDetail,
   subscribePwaLibraryCoreState,
 } from "./library-core-runtime";
@@ -95,6 +96,7 @@ function recordReadStateInfo(
 
 /** PWA-specific store state — extends the shared base with sync connection status. */
 interface AppState extends BaseAppState {
+  hasSelectedLibrary: boolean;
   initializationBlocker: "library_busy" | null;
   setInitializationFailure: (error: unknown) => void;
   syncConnected: boolean;
@@ -260,6 +262,7 @@ function stopPwaStoreForFactoryReset(): void {
 registerPwaFactoryResetQuiesceHandler("store", stopPwaStoreForFactoryReset, 20);
 
 export const useAppStore = create<AppState>((set, get) => ({
+  hasSelectedLibrary: false,
   // Initial state
   searchCorpusVersion: 0,
   preferences: createDefaultPreferences(),
@@ -337,6 +340,7 @@ export const useAppStore = create<AppState>((set, get) => ({
               localChange
                 ? {
                     ...next,
+                    hasSelectedLibrary: hasSelectedPwaLibraryCore(),
                     libraryItemVersion:
                       (current.libraryItemVersion ??
                         current.searchCorpusVersion) + 1,
@@ -344,12 +348,13 @@ export const useAppStore = create<AppState>((set, get) => ({
                       (current.savedFeedVersion ??
                         current.searchCorpusVersion) + 1,
                   }
-                : next,
+                : { ...next, hasSelectedLibrary: hasSelectedPwaLibraryCore() },
             );
           },
         );
         set({
           ...state,
+          hasSelectedLibrary: hasSelectedPwaLibraryCore(),
           activeFilter: applyFeedSignalModesToFilter(
             get().activeFilter,
             getDeviceDisplayPreferences().feedSignalModes,

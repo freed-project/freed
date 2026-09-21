@@ -2,6 +2,48 @@
 
 > **Status:** 🚧 In Progress
 
+PWA checkpoint refresh now preserves pending and published signed edits,
+optimistic fields, actor counters, enrollment and exact transport history in the
+same activation transaction. It requires the verified Library, epoch and writer,
+nonregressing checkpoint history, unchanged authority certificate and a compatible
+actor chain. Failed activation leaves the old state intact. An accepted result
+clears its overlay only when the new canonical frontier covers that result;
+checkpoint effects alone never acknowledge pending work. Installed multi-client
+acceptance remains open.
+
+Freed Desktop publishes bounded normalized operation segments after its verified
+checkpoint. Desktop and PWA consumers import those segments in revision order.
+Native SQLite stages partial transactions durably and applies complete signed
+transactions through the shared native materializers without writer admission
+or publication outboxes. Drive commits the exact immutable tail through a
+strong-ETag operation head. Administrative revision gaps, content-descriptor
+dependencies, and a chain of 64 segments require a new checkpoint. The chain
+limit bounds recovery work; installed workload tuning remains open.
+
+Native follower checkpoint refresh preserves signed pending and published edits,
+enrollment, optimistic fields, and exact intent/result transport history within
+the same Library and authority epoch. Activation faults roll back all retained
+state. Successful consumer activation revokes stale native writer and provider
+admission in that same transaction. Authority changes and regressing checkpoints fail without replacement.
+Accepted results retain optimistic fields until the corresponding canonical
+revision reaches the replica. Installed multi-Desktop convergence remains open.
+
+Desktop discovery uses the native pinned Library ID, including before its first
+checkpoint. Native checkpoint selection accepts the verified consumer receipt
+for the imported generation. Native publication requires Primary admission,
+and consumer setup can resume without creating a temporary Primary. The full
+installed two-Desktop and PWA convergence scenario remains open.
+
+PWA first-launch presentation distinguishes Google Drive connection from an
+accepted Library. Before checkpoint selection, setup stays available without
+mounting Library-backed routes or the Saved overview. Sync errors link back to
+Settings. This does not change discovery, import verification, or cadence.
+
+Replacing a PWA checkpoint for the same Library and authority epoch preserves
+the exact local enrollment request, pending edits and intent/result transport history
+inside the activation transaction. Failed activation leaves the previous state
+intact. Periodic status reads use bounded receipts without exporting the Library.
+
 PWA manual sync joins an automatic Google Drive refresh already in flight.
 One lifecycle generation runs at most one import at a time; success and failure
 release the slot, and a stopped generation cannot clear its successor.
@@ -308,3 +350,80 @@ Drive acceptance remains required before claiming the release effective.
 - Freed Desktop native Library Core from Phase 5
 - PWA OPFS SQLite runtime from Phase 6
 - Existing Google Drive adapter behavior and authenticated app-data storage
+
+### Conflicting enrollment isolation
+
+A native rejection of changed actor enrollment bytes leaves that actor unchanged
+and does not stop independent device requests or accepted actor synchronization.
+The coordinator records a bounded diagnostic and publishes no certificate for the
+rejected request. Other native, authority, cancellation, and transport failures
+still stop the pass. Recovery of a device whose retained request itself conflicts
+with its accepted enrollment remains a separate verification requirement.
+
+Google Drive follower certificate discovery matches the retained request against
+the complete certificate digest, not the distinct nested enrollment-body digest.
+Actor identity and request matching remain exact; SQLite still verifies the
+canonical certificate, signatures, capabilities, and current authority before
+enrollment. The transport fixture uses different digest fields to protect this
+boundary.
+
+Pending PWA enrollment diagnostics expose only the device and request identity
+suffixes plus counts from the existing certificate discovery pass. They distinguish
+a missing device certificate from a different request for the same device without
+adding Drive requests or changing enrollment admission.
+
+PWA sync reports its current local-checkpoint, Drive discovery, checkpoint import,
+follower-sync, and view-refresh stage while the pass is running. This keeps an
+unsettled pass attributable without adding provider calls or changing admission.
+
+Checkpoint import progress separates immutable object download and verification,
+local selection comparison, staging, page storage, activation, and cleanup.
+Only bounded counts and byte totals enter the local progress display.
+
+Long PWA Drive transfers retain the expiry of a reused access token and check
+credentials before each existing request. Expiring credentials refresh without
+restarting checkpoint import. Disconnect or lifecycle replacement during refresh
+prevents the pending Drive request from being sent.
+
+PWA enrollment can recover an unused device actor already admitted in the
+verified checkpoint when an older client retained a different local request.
+SQLite verifies the original certificate and active authority, exact key and
+capability, zero accepted operations, and empty local intent history. Recovery
+retains the pending request as evidence and commits the enrollment receipt and
+intent genesis together. It never replaces the Primary actor or selects a
+certificate merely because Drive discovery found the same actor ID.
+
+PWA result settlement validates the complete operation-owned replacement fields
+instead of requiring equality with sparse optimistic previews. Unsave and
+unarchive can therefore settle the full authoritative saved/archive register.
+Signed-result, identity, cursor, missing-field and atomic rollback checks remain
+mandatory.
+
+Operation sync uses the enrolled Primary actor identity already bound by checkpoint
+export. Native export, PWA staging, and accepted-result materialization reject
+missing, retired, or ambiguous writers and recheck admission before committing.
+
+### Desktop synchronization ownership, September 17, 2026
+
+Primary publication, consumer catch-up, and writer reassignment share one local
+work owner. Cancellation returns promptly but retains that ownership until any
+in-flight native command settles. Overlapping manual consumer calls join the
+same pass; a replacement lifecycle cannot run over canceled native work.
+Consumer checkpoint staging checks cancellation before activation.
+
+An initial consumer connection failure now schedules another attempt after the
+existing 60-second interval, refreshing its access token. Lifecycle replacement
+and stop prevent stale callbacks and duplicate timers. Deterministic offline
+tests cover cancellation, delayed native settlement, coalescing, initial-failure
+recovery, and timer ownership. Installed convergence and cooperative Primary
+handoff remain separate acceptance work.
+
+### Consumer synchronization status, September 17, 2026
+
+Freed Desktop reports enrollment, edits waiting to upload, edits awaiting Primary
+acceptance, and accepted changes awaiting canonical application from native
+SQLite state. Successful transport does not imply all edits have synchronized or
+that the Primary is online. Checkpoint revision remains the operation anchor;
+sync events report the verified local canonical revision separately. Native
+settlement and Desktop presentation tests cover these distinctions. Installed
+two-host acceptance remains open.

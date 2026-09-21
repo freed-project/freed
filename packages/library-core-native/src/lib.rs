@@ -33,6 +33,7 @@ mod normalized_authority;
 mod normalized_authority_credentials;
 mod normalized_checkpoint;
 mod normalized_enrollment_verifier;
+mod normalized_desktop_setup;
 mod normalized_follower;
 mod normalized_import;
 #[cfg_attr(not(test), allow(dead_code))]
@@ -46,6 +47,7 @@ mod normalized_operation_verifier;
 mod normalized_protocol_limits;
 mod normalized_query;
 mod normalized_replication;
+mod normalized_replication_import;
 mod normalized_snapshot;
 mod normalized_sqlite;
 mod normalized_transaction_validator;
@@ -104,6 +106,9 @@ pub use normalized_authority_credentials::{
 pub use normalized_checkpoint::{
     reassemble_content_records_v1, split_content_records_v1, ContentRecordError,
     NormalizedCheckpointRecordV2,
+};
+pub use normalized_desktop_setup::{
+    DesktopLibrarySetupChoiceV1, DESKTOP_LIBRARY_SETUP_FILE, DESKTOP_LIBRARY_SETUP_MAXIMUM_BYTES,
 };
 pub use normalized_follower::{
     countersign_normalized_follower_actor_request_v2, enqueue_normalized_follower_intent_v1,
@@ -184,7 +189,8 @@ pub use normalized_sqlite::{
     append_normalized_checkpoint_stage_page_v2, begin_normalized_checkpoint_stage_v2,
     describe_normalized_checkpoint_export_v2, export_normalized_checkpoint_page_v2,
     export_pinned_normalized_checkpoint_page_v2, install_normalized_schema_v1,
-    open_normalized_sqlite_database_v1, BeginNormalizedCheckpointStageV2,
+    open_normalized_sqlite_database_v1, verify_normalized_library_selection_v1,
+    BeginNormalizedCheckpointStageV2,
     NormalizedCheckpointCursorV2, NormalizedCheckpointExportDescriptorV2,
     NormalizedCheckpointExportPageV2, NormalizedCheckpointExportRequestV2,
     NormalizedCheckpointExportSessionV2, NormalizedCheckpointStageStatusV2, NormalizedSqliteError,
@@ -207,3 +213,5 @@ pub use selective_content::{
     HydrationCandidatePageRequestV1, HydrationCandidatePageV1, HydrationCandidateV1,
     SelectiveContentError, VerifiedContentRangePublicationV1, VerifiedContentRangeReceiptV1,
 };
+
+pub use normalized_replication_import::{import_normalized_operation_page_v2, NormalizedOperationImportPageV2, NormalizedOperationImportReceiptV2};

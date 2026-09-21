@@ -7,17 +7,15 @@ import { SampleDataTestingSection } from "@freed/ui/components/SampleDataTesting
 import { useLibraryRssFeedDetail } from "@freed/ui/hooks/useLibraryRssFeedDetail";
 import { useCloudSyncActivity } from "./cloudSyncActivity";
 import { useSamplePopulationProgress } from "../lib/sample-population-progress";
+import { getCloudProvider } from "../lib/sync";
 
 const openSyncSettings = () =>
   window.dispatchEvent(new CustomEvent("freed:open-settings", { detail: { scrollTo: "sync" } }));
 
-function isMergeBlocked(message?: string): boolean {
-  return message?.includes("blocked a sync merge") ?? false;
-}
-
 export function PwaFeedEmptyState() {
   const { demo } = usePlatformCapabilities();
-  const syncConnected = useAppStore((s) => s.syncConnected);
+  const syncActive = useAppStore((s) => s.syncConnected);
+  const syncConnected = syncActive || getCloudProvider() === "gdrive";
   const isSyncing = useAppStore((s) => s.isSyncing);
   const samplePopulationActive = useSamplePopulationProgress((s) => s.active);
   const samplePopulationPercent = useSamplePopulationProgress((s) => s.percent);
@@ -31,7 +29,7 @@ export function PwaFeedEmptyState() {
   const cloudState = cloudProviders?.gdrive ?? null;
   const cloudActivity = useCloudSyncActivity(cloudState);
   const cloudError = cloudState?.error;
-  const syncBlocked = syncConnected && isMergeBlocked(cloudError);
+  const syncBlocked = syncConnected && Boolean(cloudError);
   const cloudStage = cloudState?.stage;
   const cloudTransferRunning =
     syncConnected &&
@@ -130,7 +128,7 @@ export function PwaFeedEmptyState() {
           : cloudTransferRunning && cloudActivity
           ? `${cloudActivity.detailLabel}. Running for ${cloudActivity.elapsedLabel}.`
           : syncConnected
-          ? "Freed Desktop is connected. New feed content will appear here once fetched."
+          ? "Google Drive is connected. Your Library will appear after sync completes."
           : "Connect to Freed Desktop to sync your feeds."}
       </p>
       {(syncBlocked || !syncConnected) && (

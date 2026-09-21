@@ -365,6 +365,89 @@ impl LibraryCoreDesktopBinding {
         .map_err(|error| LibraryCoreStorageError::from(error.to_string()))
     }
 
+    pub fn library_setup_choice_v1(
+        &self,
+    ) -> Result<Option<crate::DesktopLibrarySetupChoiceV1>, LibraryCoreStorageError> {
+        self.require_factory_reset_complete_v1()?;
+        self.app_root
+            .read_bounded_private_file(
+                crate::DESKTOP_LIBRARY_SETUP_FILE,
+                crate::DESKTOP_LIBRARY_SETUP_MAXIMUM_BYTES,
+            )?
+            .map(|bytes| {
+                crate::DesktopLibrarySetupChoiceV1::from_canonical_bytes(&bytes)
+                    .map_err(LibraryCoreStorageError::from)
+            })
+            .transpose()
+    }
+
+    /// Pin an initial choice before creating authority or accepting a checkpoint.
+    /// Existing Libraries require their own explicit transfer or recovery flow.
+    pub fn select_library_setup_v1(
+        &self,
+        choice: &crate::DesktopLibrarySetupChoiceV1,
+    ) -> Result<(), LibraryCoreStorageError> {
+        let _gate = self.reset_gate.lock().map_err(|_| {
+            LibraryCoreStorageError::from("Desktop Library setup lock is poisoned".to_owned())
+        })?;
+        let bytes = choice
+            .canonical_bytes()
+            .map_err(LibraryCoreStorageError::from)?;
+        if let Some(existing) = self.library_setup_choice_v1()? {
+            if existing == *choice {
+                return Ok(());
+            }
+            return Err(LibraryCoreStorageError::from(
+                "Desktop Library setup is already pinned; reset or complete its current setup"
+                    .to_owned(),
+            ));
+        }
+        if self.authority_selection()?.is_some() || self.historical_source_is_present_v1() {
+            return Err(LibraryCoreStorageError::from(
+                "This installation already has a Library; use its transfer or recovery workflow"
+                    .to_owned(),
+            ));
+        }
+        let connection = self.connect_normalized()?;
+        let occupied: bool = connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM library_meta) OR EXISTS(SELECT 1 FROM library_active_authority);",
+            [], |row| row.get(0),
+        )?;
+        if occupied {
+            return Err(LibraryCoreStorageError::from(
+                "Existing Library data must be preserved before joining another Library".to_owned(),
+            ));
+        }
+        self.app_root.write_new_private_file_atomically(
+            crate::DESKTOP_LIBRARY_SETUP_FILE,
+            ".library-installation-setup-v1.pending",
+            &bytes,
+            crate::DESKTOP_LIBRARY_SETUP_MAXIMUM_BYTES,
+        )
+    }
+
+    pub fn publish_follower_authority_selection_v1(
+        &self,
+        library_id: &str,
+    ) -> Result<(), LibraryCoreStorageError> {
+        let connection = self.connect_normalized()?;
+        let matches: bool = connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM library_follower_checkpoint_receipt
+             WHERE singleton_id = 1 AND library_id = ?1);",
+            [library_id],
+            |row| row.get(0),
+        )?;
+        if !matches {
+            return Err(LibraryCoreStorageError::from(
+                "Consumer checkpoint receipt is absent".to_owned(),
+            ));
+        }
+        self.write_authority_selection(&DesktopAuthoritySelectionV1 {
+            format: "freed_desktop_sqlite_authority_selection_v1".into(),
+            library_id: library_id.to_owned(),
+        })
+    }
+
     pub fn normalized_authority_is_selected_v1(&self) -> Result<bool, LibraryCoreStorageError> {
         self.require_factory_reset_complete_v1()?;
         Ok(self.authority_selection()?.is_some())
@@ -430,6 +513,8 @@ impl LibraryCoreDesktopBinding {
             source.clear_bound_all()?;
         }
         self.normalized_database.clear_files()?;
+        self.app_root
+            .remove_private_file(crate::DESKTOP_LIBRARY_SETUP_FILE)?;
         self.content_vault.clear_all_v1()?;
         crate::normalized_snapshot::clear_normalized_local_snapshots_bound_v1(
             self.snapshot_directory.as_raw_fd(),
@@ -527,27 +612,8 @@ impl LibraryCoreDesktopBinding {
             .open(normalized_sqlite_open_flags(false))?;
         configure_normalized_sqlite_connection(&connection)
             .map_err(|error| LibraryCoreStorageError::from(error.to_string()))?;
-        let matches: i64 = connection.query_row(
-            "SELECT count(*)
-             FROM library_active_authority AS active
-             JOIN library_authority_epochs AS epoch ON epoch.epoch_id = active.epoch_id
-             JOIN library_meta AS meta ON meta.singleton_id = 1
-             JOIN library_materialization_generation AS generation ON generation.singleton_id = 1
-             WHERE active.active_key = 'active'
-               AND active.library_id = ?1
-               AND meta.library_id = active.library_id
-               AND meta.authority_epoch = active.epoch_id
-               AND epoch.library_id = active.library_id
-               AND epoch.materialized_state_digest = generation.generation_id;",
-            [&selection.library_id],
-            |row| row.get(0),
-        )?;
-        if matches != 1 {
-            return Err(LibraryCoreStorageError::from(
-                "Desktop authority selection does not match normalized SQLite".to_string(),
-            ));
-        }
-        Ok(())
+        crate::verify_normalized_library_selection_v1(&connection, &selection.library_id)
+            .map_err(|error| LibraryCoreStorageError::from(error.to_string()))
     }
 
     fn write_authority_selection(
@@ -696,6 +762,39 @@ mod tests {
                 primary_actor_id: "primary-actor".to_owned(),
             })
             .expect("publish test authority selector");
+    }
+
+    #[test]
+    fn setup_choice_pins_an_empty_installation_without_creating_authority() {
+        let fixture = tempfile::tempdir().unwrap();
+        let app_root = fixture.path().join("app-data");
+        fs::create_dir(&app_root).unwrap();
+        fs::set_permissions(&app_root, fs::Permissions::from_mode(0o700)).unwrap();
+        let choice = crate::DesktopLibrarySetupChoiceV1::Follower {
+            library_id: "a".repeat(64),
+        };
+        let binding = LibraryCoreDesktopBinding::open(&app_root, TEST_IDENTITY).unwrap();
+        assert_eq!(binding.library_setup_choice_v1().unwrap(), None);
+        binding.select_library_setup_v1(&choice).unwrap();
+        binding.select_library_setup_v1(&choice).unwrap();
+        assert!(binding
+            .select_library_setup_v1(&crate::DesktopLibrarySetupChoiceV1::Primary)
+            .is_err());
+        assert!(!binding.normalized_authority_is_selected_v1().unwrap());
+        let connection = binding.connect_normalized().unwrap();
+        let authorities: i64 = connection
+            .query_row(
+                "SELECT count(*) FROM library_active_authority;",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(authorities, 0);
+        drop(connection);
+        drop(binding);
+        let reopened = LibraryCoreDesktopBinding::open(&app_root, TEST_IDENTITY).unwrap();
+        assert_eq!(reopened.library_setup_choice_v1().unwrap(), Some(choice));
+        assert!(!reopened.normalized_authority_is_selected_v1().unwrap());
     }
 
     #[test]

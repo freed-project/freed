@@ -1,3 +1,4 @@
+import type { LibraryCoreOperationTransportV2 } from "./library-core-normalized-operation-sync.js";
 import {
   createLibraryCoreImmutableObjectKey,
   createLibraryCoreMediaBlobDigestStateV1,
@@ -13,6 +14,8 @@ import {
   parseLibraryCoreIntentHeadV1,
   parseLibraryCoreNormalizedIntentHeadV2,
   parseLibraryCoreNormalizedResultHeadV2,
+  parseLibraryCoreNormalizedOperationHeadV2,
+  type LibraryCoreNormalizedOperationHeadV2,
   parseLibraryCoreResultHeadV1,
   type LibraryCoreCanonicalValue,
   type LibraryCoreImmutableObjectDescriptorV1,
@@ -2820,4 +2823,116 @@ export function createGoogleDriveLibraryCoreAdapterV1(
       });
     },
   });
+}
+
+/** One epoch-scoped mutable head commits the bounded immutable operation chain. */
+export async function discoverGoogleDriveLibraryCoreOperationHeadV2(input: {
+  readonly accessToken: string;
+  readonly libraryId: string;
+  readonly epochId: string;
+  readonly googleFetch?: GoogleDriveFetch;
+  readonly signal?: AbortSignal;
+}): Promise<string | null> {
+  assertLibraryId(input.libraryId);
+  assertLibraryId(input.epochId);
+  assertBoundedText(input.accessToken, "Google Drive access token", MAX_ACCESS_TOKEN_BYTES);
+  const properties = await operationHeadProperties(input.libraryId, input.epochId);
+  const files = await listDriveFilesByProperties({
+    accessToken: input.accessToken, properties,
+    googleFetch: input.googleFetch ?? defaultGoogleDriveFetch(), signal: input.signal,
+    maxFiles: MAX_CONTROL_DISCOVERY_CANDIDATES,
+  });
+  const name = operationHeadName(input.libraryId,input.epochId);
+  if (files.length > 1 || files.some((file) => file.name !== name)) throw new Error("Operation head discovery is ambiguous.");
+  if (!files[0]) return null;
+  assertExpectedProperties(files[0].appProperties,properties,"operation head");
+  return files[0].id;
+}
+
+function operationHeadName(libraryId: string, epochId: string): string {
+  return `freed-v2-operation-head~${libraryId}~e${epochId}.json`;
+}
+async function operationHeadProperties(libraryId: string, epochId: string) {
+  return Object.freeze({ freedProtocol: PROTOCOL_PROPERTY,
+    freedLibraryDigest: await libraryIdentityDigest(libraryId),
+    freedEpochDigest: await libraryIdentityDigest(epochId), freedObjectKind: "operation-head" });
+}
+function operationHeadBytes(head: LibraryCoreNormalizedOperationHeadV2): Uint8Array {
+  return encodeLibraryCoreCanonicalValue(parseLibraryCoreNormalizedOperationHeadV2(head) as unknown as LibraryCoreCanonicalValue, { maximumBytes: MAX_CONTROL_BYTES });
+}
+function decodeOperationHead(bytes: Uint8Array): LibraryCoreNormalizedOperationHeadV2 {
+  const head = parseLibraryCoreNormalizedOperationHeadV2(decodeLibraryCoreCanonicalValue(bytes,{maximumBytes:MAX_CONTROL_BYTES}));
+  if (!bytesEqual(bytes,operationHeadBytes(head))) throw new Error("Operation head is not canonical.");
+  return head;
+}
+
+export async function provisionGoogleDriveLibraryCoreOperationHeadV2(input: {
+  readonly accessToken: string;
+  readonly head: LibraryCoreNormalizedOperationHeadV2;
+  readonly googleFetch?: GoogleDriveFetch;
+  readonly signal?: AbortSignal;
+}): Promise<string> {
+  const head = parseLibraryCoreNormalizedOperationHeadV2(input.head);
+  if (head.segmentCount !== 0) throw new Error("Operation head bootstrap must start at its checkpoint.");
+  const discovery = { accessToken: input.accessToken, libraryId: head.libraryId, epochId: head.storageEpoch, googleFetch: input.googleFetch, signal: input.signal };
+  const existing = await discoverGoogleDriveLibraryCoreOperationHeadV2(discovery);
+  if (existing) return existing;
+  const googleFetch = input.googleFetch ?? defaultGoogleDriveFetch();
+  const boundary = `freed-operation-head-${head.storageEpoch.slice(0,32)}`;
+  let failure: unknown;
+  try {
+    const response = await googleFetch(`${DRIVE_UPLOAD_URL}?uploadType=multipart&fields=id,name,size,appProperties`,{
+      method: "POST", headers: {...authorizationHeaders(input.accessToken),"Content-Type":`multipart/related; boundary=${boundary}`},
+      body: multipartUploadBody(boundary,{name:operationHeadName(head.libraryId,head.storageEpoch),parents:["appDataFolder"],appProperties:await operationHeadProperties(head.libraryId,head.storageEpoch)},operationHeadBytes(head)),
+      signal: input.signal,
+    });
+    if (!response.ok) throw await responseError("Operation head bootstrap failed",response);
+    await readBoundedResponseBytes(response,MAX_DRIVE_JSON_BYTES,"operation head bootstrap response");
+  } catch (error) { failure = error; }
+  const selected = await discoverGoogleDriveLibraryCoreOperationHeadV2(discovery);
+  if (!selected) throw failure ?? new Error("Operation head bootstrap is not discoverable.");
+  return selected;
+}
+
+export function createGoogleDriveLibraryCoreOperationAdapterV2(options: {
+  readonly accessToken: string;
+  readonly libraryId: string;
+  readonly epochId: string;
+  readonly writerId: string;
+  readonly controlFileId: string;
+  readonly operationHeadFileId: string;
+  readonly googleFetch?: GoogleDriveFetch;
+  readonly signal?: AbortSignal;
+}): LibraryCoreOperationTransportV2 {
+  assertLibraryId(options.libraryId); assertLibraryId(options.epochId); assertLibraryId(options.writerId);
+  assertBoundedText(options.operationHeadFileId,"operation head file ID",MAX_DRIVE_FILE_ID_BYTES);
+  const googleFetch = options.googleFetch ?? defaultGoogleDriveFetch();
+  const immutable = createGoogleDriveLibraryCoreAdapterV1(options);
+  const requireIdentity = (head: LibraryCoreNormalizedOperationHeadV2) => {
+    if (head.libraryId !== options.libraryId || head.storageEpoch !== options.epochId || head.writerId !== options.writerId) throw new Error("Operation head authority identity changed.");
+    return head;
+  };
+  const readOperationHead = async () => {
+    const metadata = await readDriveFileMetadata({accessToken:options.accessToken,fileId:options.operationHeadFileId,googleFetch,signal:options.signal});
+    assertExpectedProperties(metadata.appProperties,await operationHeadProperties(options.libraryId,options.epochId),"operation head");
+    if (metadata.name !== operationHeadName(options.libraryId,options.epochId)) throw new Error("Operation head name changed.");
+    const read = await readDriveFileWithRevision({accessToken:options.accessToken,fileId:options.operationHeadFileId,googleFetch,signal:options.signal,maxBytes:MAX_CONTROL_BYTES,label:"Operation head read failed"});
+    return { head:requireIdentity(decodeOperationHead(read.bytes)),revision:read.revision };
+  };
+  return {
+    ...immutable, readOperationHead,
+    async compareAndSwapOperationHead(input) {
+      const expectedRevision = parseStrongDriveEtag(input.expectedRevision,"operation head revision");
+      const bytes = operationHeadBytes(requireIdentity(parseLibraryCoreNormalizedOperationHeadV2(input.head)));
+      const response = await googleFetch(`${DRIVE_V2_UPLOAD_URL}/${encodeURIComponent(options.operationHeadFileId)}?uploadType=media&fields=id,etag`,{
+        method:"PUT",headers:{...authorizationHeaders(options.accessToken),"Content-Type":"application/json; charset=UTF-8","If-Match":expectedRevision},
+        body:exactArrayBuffer(bytes),signal:options.signal,
+      });
+      if (response.status === 412) return "conflict";
+      if (!response.ok) throw await responseError("Operation head update failed",response);
+      const readBack = await readOperationHead();
+      if (!bytesEqual(operationHeadBytes(readBack.head),bytes)) throw new Error("Operation head readback changed.");
+      return "committed";
+    },
+  };
 }

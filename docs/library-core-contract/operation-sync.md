@@ -5,7 +5,7 @@ segments. A segment binds:
 
 - Library, epoch, actor, first and last sequence
 - previous and ending actor chain tips
-- complete transaction boundaries
+- transaction identity, member index, and member count
 - canonical operation envelopes
 - decoded byte length and digest
 
@@ -47,7 +47,45 @@ event ID, so concurrent delivery order cannot change the retained set. Person
 upserts cannot replace or erase event history. A Person tombstone blocks later
 root and event writes.
 
-Authenticated manifests publish the latest checkpoint, operation heads, intent
-heads, result heads, content roots, and authority tuple. Google Drive is a
-transport adapter for these immutable objects. Provider endpoints, headers,
+Authenticated checkpoint manifests and authority-bound transport heads locate
+checkpoint, operation, intent, result, and content objects. Google Drive is a
+transport adapter for these objects. Provider endpoints, headers,
 OAuth behavior, retries, and cadence are outside this contract.
+
+Checkpoint and operation descriptors bind the same enrolled Primary actor. Native
+export and PWA import resolve exactly one nonretired Desktop actor in the active
+SQLite authority epoch. The installation-local writer role is not a transport
+identity. Missing or ambiguous actors block admission, and PWA materialization
+rechecks this identity inside its write transaction after signature verification.
+
+### Normalized operation transport v2
+
+The normalized transport uses a Library and epoch scoped Drive operation head.
+Its closed anchor includes the writer, checkpoint manifest digest, and checkpoint
+source revision. An immutable segment binds that anchor, its index, the previous
+segment reference, the pinned native export descriptor, and one bounded export
+page. The object digest covers the exact stored wire bytes. Each accepted result
+and operation still requires independent canonical and signature verification.
+The operation head is discovered beside the checkpoint control; it is not an
+extra field in the existing control pointer. Only the current Primary publishes
+it, using strong ETag compare-and-swap and exact readback after response loss.
+
+A page contains at most 128 records and 1 MiB of canonical record bytes. The wire
+header carries record metadata separately from canonical signed records to avoid
+double encoding. Transactions may cross pages. Native and browser importers
+retain partial records, reject changed replays, and materialize only complete
+consecutive transactions. Native materialization shares the Primary mutation
+program but creates no canonical publication outbox or authority signature.
+
+Consumers traverse at most 64 segment references backward, retaining bounded
+reference metadata, then reread and import one page at a time in forward order.
+Their canonical revision advances only after durable materialization. The
+checkpoint receipt remains a separate bootstrap anchor. Ordinary publication
+advances a device-local operation cursor and does not rewrite that receipt.
+
+A new checkpoint is required before extending a full chain, crossing a source
+revision absent from the operation journal, or publishing operations that depend
+on content descriptors. Descriptor-dependent highlights and event evidence stay
+on the checkpoint path until descriptor delivery is implemented. The 64-segment
+limit is a bounded initial policy, not an installed performance claim. No schema,
+storage epoch, or signing domain changes are introduced by this transport.

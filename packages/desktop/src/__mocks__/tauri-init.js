@@ -1957,6 +1957,22 @@ export function tauriInitScript() {
       return null;
     }
     window.__TAURI_MOCK_HANDLERS__ = {
+      normalized_desktop_installation_status: () => window.__TAURI_MOCK_LIBRARY_INSTALLATION__ ?? ({
+        state: "standalone_primary", role: "primary", libraryId: "a".repeat(64),
+        authorityEpochId: "b".repeat(64), actorId: "6".repeat(64),
+      }),
+      select_normalized_desktop_library_setup: (args) => {
+        const choice = args.choice;
+        const status = choice.role === "follower" ? {
+          state: "joining", role: "follower", libraryId: choice.libraryId,
+          authorityEpochId: null, actorId: null,
+        } : {
+          state: "standalone_primary", role: "primary", libraryId: "a".repeat(64),
+          authorityEpochId: "b".repeat(64), actorId: "6".repeat(64),
+        };
+        window.__TAURI_MOCK_LIBRARY_INSTALLATION__ = status;
+        return status;
+      },
       ensure_fresh_normalized_desktop_library: serializedSqliteMutation(() => {
         sqliteState().active = true;
         return true;
@@ -2059,6 +2075,15 @@ export function tauriInitScript() {
           controlRevision: null,
           verifiedAtMs: null,
         },
+      describe_normalized_library_operation_export: () => {
+        throw new Error("Operation export requires an explicit signed Library fixture.");
+      },
+      read_normalized_library_operation_page: () => {
+        throw new Error("Operation export requires an explicit signed Library fixture.");
+      },
+      import_normalized_library_operation_page: () => {
+        throw new Error("Operation import requires an explicit signed Library fixture.");
+      },
       normalized_library_follower_runtime_status: () => ({
         state: 'awaiting_checkpoint',
         libraryId: null,
@@ -2069,6 +2094,7 @@ export function tauriInitScript() {
         pendingIntentCount: 0,
         publishedIntentCount: 0,
         importedResultCount: 0,
+        awaitingCanonicalChanges: false,
       }),
       normalized_library_follower_transport_context: () => ({
         actorId: '11'.repeat(32),

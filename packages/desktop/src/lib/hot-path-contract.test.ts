@@ -55,7 +55,7 @@ describe("desktop hot-path contract", () => {
       syncSource.indexOf("export async function startCloudSync"),
       syncSource.indexOf("function stopCloudSync"),
     );
-    expect(startCloud).toContain("readLibraryCoreDesktopRole()");
+    expect(startCloud).toContain("refreshLibraryCoreDesktopRole()");
     expect(startCloud).toContain("startSqliteLibraryGoogleDriveFollowerSync");
     expect(startCloud).toContain("startSqliteLibraryGoogleDriveSync");
 
@@ -65,7 +65,7 @@ describe("desktop hot-path contract", () => {
         "export async function transferSqliteLibraryWriterToThisDesktop",
       ),
     );
-    expect(syncNow).toContain("readLibraryCoreDesktopRole()");
+    expect(syncNow).toContain("refreshLibraryCoreDesktopRole()");
     expect(syncNow).toContain("syncSqliteLibraryFollowerGoogleDriveOnce");
     expect(syncNow).toContain("publishCurrentSqliteLibraryToGoogleDrive");
 

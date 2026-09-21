@@ -5,6 +5,14 @@
 
 ---
 
+Consumer startup no longer starts RSS or social capture schedules. Native X
+requests, social session acquisition, provider login entry points, and YouTube
+commands require local Primary admission, including after queued session waits.
+The device-local cloud lease also has to match the native Primary actor and
+epoch. These gates suppress consumer traffic without changing Primary request
+shapes, cookies, extraction, or cadence. Installed provider-ledger acceptance
+remains open.
+
 ## Overview
 
 Facebook, Instagram, LinkedIn, Substack and Medium share an Advanced disclosure

@@ -28,7 +28,49 @@ describe("demo worker storage isolation", () => {
     vi.stubEnv("VITE_FREED_DEMO", "0");
     vi.stubEnv("VITE_FREED_PWA_SQLITE_MEMORY_E2E", "0");
   });
-  afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
+  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
+
+  it.each(["released", "occupied", "rejected"])("bounds ownership acquisition when the previous worker is %s", async (outcome) => {
+    vi.useFakeTimers();
+    vi.stubEnv("VITE_FREED_PWA_SQLITE_MEMORY_E2E", "1");
+    let grant!: () => void;
+    let signal!: AbortSignal;
+    const lockRequest = vi.fn((_name, options, callback) => new Promise((resolve, reject) => {
+      signal = options.signal;
+      signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
+      grant = () => resolve(callback({ name: _name, mode: "exclusive" }));
+      if (outcome === "rejected") reject(new Error("ownership service unavailable"));
+    }));
+    vi.stubGlobal("navigator", { locks: { request: lockRequest } });
+    vi.stubGlobal("location", new URL("https://app.freed.wtf/"));
+    vi.stubGlobal("name", "freed-library-core-sqlite");
+    vi.stubGlobal("onmessage", null);
+    const response = new Promise<{ ok: boolean; message?: string }>((resolve) => {
+      vi.stubGlobal("postMessage", resolve);
+    });
+    await import("./library-core-sqlite-worker");
+    (globalThis.onmessage as unknown as (event: MessageEvent) => void)({
+      data: createLibraryCoreSqliteWorkerRequest("open", "ownership-test"),
+      isTrusted: true, source: null, origin: "https://app.freed.wtf",
+    } as MessageEvent);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(lockRequest).toHaveBeenCalledOnce();
+    expect(storage.memoryOpen).not.toHaveBeenCalled();
+    if (outcome === "released") {
+      await vi.advanceTimersByTimeAsync(250);
+      grant();
+      expect((await response).ok).toBe(true);
+      await vi.advanceTimersByTimeAsync(4_000);
+      expect(signal.aborted).toBe(false);
+      expect(storage.memoryOpen).toHaveBeenCalledOnce();
+    } else {
+      await vi.advanceTimersByTimeAsync(3_000);
+      expect(await response).toMatchObject({ ok: false, message: outcome === "occupied"
+        ? "PWA Library SQLite is already open in another app window"
+        : "ownership service unavailable" });
+      expect(storage.memoryOpen).not.toHaveBeenCalled();
+    }
+  });
 
   it("serializes a read behind asynchronous database opening", async () => {
     let finishReconcile!: () => void;
@@ -86,7 +128,7 @@ describe("demo worker storage isolation", () => {
     } else {
       expect(lockRequest).toHaveBeenCalledExactlyOnceWith(
         "freed-library-core-sqlite-opfs-v1",
-        { ifAvailable: true, mode: "exclusive" }, expect.any(Function),
+        { signal: expect.any(AbortSignal), mode: "exclusive" }, expect.any(Function),
       );
       expect(storage.memoryOpen).not.toHaveBeenCalled();
       expect(storage.vaultStorage).not.toHaveBeenCalled();

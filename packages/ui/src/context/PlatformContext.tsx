@@ -584,6 +584,9 @@ export interface PlatformConfig {
   /** Replaces default "All caught up" empty state when feeds exist but no items */
   FeedEmptyState: ComponentType | null;
 
+  /** Setup content while this device has no verified Library to query. */
+  LibrarySetupState?: ComponentType;
+
   /**
    * Content rendered in the Settings > Sources > X section.
    * When null, the X section is omitted from settings entirely (e.g. PWA).

@@ -299,12 +299,12 @@ function contextualFeedTitle({
   activeSignalModes: readonly FeedSignalMode[];
   allSignalsSelected: boolean;
 }): string {
-  if (filter.savedOnly || filter.archivedOnly) return scopeLabel;
+  if (filter.archivedOnly) return scopeLabel;
 
   const signalPart = allSignalsSelected ? null : signalTitlePart(activeSignalModes);
   const kindPart = contentKindTitlePart(filter);
   const providerPart =
-    filter.platform && filter.platform !== "rss"
+    filter.savedOnly || (filter.platform && filter.platform !== "rss")
       ? scopeLabel
       : null;
   const hasContentFilter = !!signalPart || filter.socialContentFilter === "posts" || filter.socialContentFilter === "stories";

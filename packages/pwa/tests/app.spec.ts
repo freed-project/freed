@@ -36,9 +36,8 @@ async function acceptLegalGate(
   page: import("@playwright/test").Page,
 ): Promise<boolean> {
   const acceptButton = page.getByTestId("legal-gate-accept");
-  const gateVisible = await acceptButton.isVisible({ timeout: 5_000 }).catch(
-    () => false,
-  );
+  await expect(acceptButton.or(page.locator("main"))).toBeVisible({ timeout: 10_000 });
+  const gateVisible = await acceptButton.isVisible();
 
   if (!gateVisible) return false;
 
@@ -120,6 +119,19 @@ async function waitForPwaReady(
       | undefined;
     if (!store) return false;
     return store.getState().isInitialized === true;
+  });
+}
+
+/** Establish an empty synthetic Library for tests of already-selected routes. */
+async function selectEmptyTestLibrary(
+  page: import("@playwright/test").Page,
+): Promise<void> {
+  await waitForPwaReady(page);
+  await page.evaluate(async () => {
+    const library = (window as unknown as {
+      __FREED_LIBRARY_CORE__: { facetSummary(): Promise<unknown> };
+    }).__FREED_LIBRARY_CORE__;
+    await library.facetSummary();
   });
 }
 
@@ -738,10 +750,32 @@ async function seedSocialReaderItem(
     const w = window as Record<string, unknown>;
     const libraryCore = w.__FREED_LIBRARY_CORE__ as {
       addItems: (items: unknown[]) => Promise<void>;
+      replacePerson: (person: unknown, accounts: unknown[]) => Promise<void>;
       facetSummary: () => Promise<BrowserLibraryFacetSummary>;
     };
 
     const now = Date.now();
+    await libraryCore.replacePerson({
+      id: "person-reader-author",
+      name: "Reader Author",
+      relationshipStatus: "friend",
+      careLevel: 3,
+      createdAt: now,
+      updatedAt: now,
+    }, [{
+      id: "social:facebook:reader-author",
+      personId: "person-reader-author",
+      kind: "social",
+      provider: "facebook",
+      externalId: "reader-author",
+      handle: "reader-author",
+      displayName: "Reader Author",
+      firstSeenAt: now,
+      lastSeenAt: now,
+      discoveredFrom: "captured_item",
+      createdAt: now,
+      updatedAt: now,
+    }]);
     await libraryCore.addItems([
       {
         globalId: "facebook:reader-author:1",
@@ -912,6 +946,7 @@ test.describe("FREED PWA", () => {
   }) => {
     await page.goto("/");
     await acceptLegalGate(page);
+    await selectEmptyTestLibrary(page);
     await waitForPwaReady(page);
 
     await expect
@@ -1018,7 +1053,7 @@ test.describe("FREED PWA", () => {
     await seedSidebarFeeds(page);
 
     const sidebar = page.locator("aside");
-    await sidebar.getByTestId("source-row-rss").click();
+    await sidebar.getByTestId("source-row-rss").getByText("Feeds", { exact: true }).click();
 
     await expect.poll(() => new URL(page.url()).search).toBe("?platform=rss");
     await expect(sidebar.getByRole("button", { name: "Alpha Dispatch", exact: true })).toHaveCount(0);
@@ -1033,6 +1068,7 @@ test.describe("FREED PWA", () => {
     test("loads the Friends view directly from the URL", async ({ page }) => {
       await page.goto("/friends");
       await acceptLegalGate(page);
+    await selectEmptyTestLibrary(page);
       await waitForPwaReady(page);
 
       await page.waitForFunction(() => {
@@ -1080,7 +1116,7 @@ test.describe("FREED PWA", () => {
 
       const sidebar = page.locator("aside");
 
-      await sidebar.getByTestId("source-row-rss").click();
+      await sidebar.getByTestId("source-row-rss").getByText("Feeds", { exact: true }).click();
       await expect.poll(() => new URL(page.url()).search).toBe("?platform=rss");
 
       await sidebar.getByRole("button", { name: "Saved" }).click();
@@ -1109,15 +1145,15 @@ test.describe("FREED PWA", () => {
       await seedNavigationFeed(page);
 
       await page.locator(".feed-card").filter({ hasText: "Navigation Item One" }).first().click();
-      await expect(page.getByLabel("Back")).toBeVisible();
+      await expect(page.getByRole("button", { name: "Back to list", exact: true })).toBeVisible();
       await expect.poll(() => new URL(page.url()).search).toBe("?item=rss%3Anavigation%3A1");
 
       await page.goBack();
-      await expect(page.getByLabel("Back")).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Back to list", exact: true })).toHaveCount(0);
       await expect.poll(() => new URL(page.url()).search).toBe("");
 
       await page.goForward();
-      await expect(page.getByLabel("Back")).toBeVisible();
+      await expect(page.getByRole("button", { name: "Back to list", exact: true })).toBeVisible();
       await expect.poll(() => new URL(page.url()).search).toBe("?item=rss%3Anavigation%3A1");
     });
 
@@ -1196,6 +1232,7 @@ test.describe("FREED PWA", () => {
   test("map navigation is live from the sidebar", async ({ page }) => {
     await page.goto("/");
     await acceptLegalGate(page);
+    await selectEmptyTestLibrary(page);
 
     await page.getByRole("button", { name: "Map", exact: true }).click();
     await expect(page.locator("main").getByRole("heading", { name: "Map" })).toHaveCount(0);
@@ -1212,6 +1249,7 @@ test.describe("FREED PWA", () => {
   test("feed and friends use shared headers while map stays full-bleed", async ({ page }) => {
     await page.goto("/");
     await acceptLegalGate(page);
+    await selectEmptyTestLibrary(page);
 
     await expect(page.getByRole("banner").getByText(/^All Sources•/)).toBeVisible();
 
@@ -1259,7 +1297,7 @@ test.describe("FREED PWA", () => {
 
     await expect(page.locator("main").getByText("Ada Lovelace").first()).toBeVisible();
     await expect(page.getByText("Last seen")).toBeVisible();
-    await expect(page.getByRole("button", { name: /last seen paris/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Open map for Ada Lovelace", exact: true })).toContainText("Paris");
     await expect(page.getByRole("button", { name: /open map/i })).toBeVisible();
   });
 
@@ -1274,7 +1312,7 @@ test.describe("FREED PWA", () => {
       .getAttribute("data-avatar-url");
 
     await page.getByTestId("source-row-map").click();
-    await expect(page.getByText("Ada Lovelace").first()).toBeVisible();
+    await expect(page.getByRole("button", { name: "Ada Lovelace", exact: true })).toBeVisible();
     const mapAvatarUrl = await page
       .locator('.freed-map-marker[data-avatar-name="Ada Lovelace"]')
       .first()
@@ -1457,6 +1495,7 @@ test.describe("FREED PWA", () => {
 
     await page.goto("/");
     await acceptLegalGate(page);
+    await selectEmptyTestLibrary(page);
     await page.getByRole("button", { name: "Map" }).click();
 
     await expect(page.locator(".maplibregl-canvas")).toBeVisible();

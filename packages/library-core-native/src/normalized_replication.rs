@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::library_core_canonical::encode_canonical_value;
-use crate::normalized_sqlite::NormalizedSqliteError;
+use crate::normalized_sqlite::{normalized_writer_identity, NormalizedSqliteError};
 use crate::sqlite_contract_generated::{
     NORMALIZED_OPERATION_EXPORT_FORMAT, NORMALIZED_OPERATION_EXPORT_MAXIMUM_RESPONSE_BYTES,
     NORMALIZED_OPERATION_RECORD_MAXIMUM_CANONICAL_BYTES,
@@ -24,7 +24,7 @@ fn is_lower_sha256(value: &str) -> bool {
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
-fn canonical_json(value: &[u8]) -> Result<Value, NormalizedSqliteError> {
+pub(crate) fn canonical_json(value: &[u8]) -> Result<Value, NormalizedSqliteError> {
     if value.len() < 2 || value.len() > NORMALIZED_OPERATION_RECORD_MAXIMUM_CANONICAL_BYTES {
         return Err(invalid(
             "normalized operation record exceeds its byte bound",
@@ -113,24 +113,6 @@ pub struct NormalizedOperationExportPageV2 {
     pub records: Vec<NormalizedOperationExportRecordV2>,
 }
 
-type AuthorityIdentity = (String, String, String, i64);
-
-fn authority_identity(connection: &Connection) -> Result<AuthorityIdentity, NormalizedSqliteError> {
-    connection
-        .query_row(
-            "SELECT meta.library_id, meta.authority_epoch, active.writer_id,
-                    meta.source_revision
-             FROM library_meta AS meta
-             JOIN library_active_authority AS active
-               ON active.library_id = meta.library_id
-              AND active.epoch_id = meta.authority_epoch
-             WHERE meta.singleton_id = 1 AND active.active_key = 'active';",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
-        )
-        .map_err(Into::into)
-}
-
 type ReplicationCounts = (i64, usize, usize);
 
 fn replication_counts(
@@ -175,7 +157,7 @@ fn replication_counts(
 pub fn describe_normalized_operation_export_v2(
     connection: &Connection,
 ) -> Result<NormalizedOperationExportDescriptorV2, NormalizedSqliteError> {
-    let (library_id, authority_epoch, writer_id, source_revision) = authority_identity(connection)?;
+    let (library_id, authority_epoch, writer_id, source_revision) = normalized_writer_identity(connection)?;
     if !(0..=MAX_SAFE_INTEGER).contains(&source_revision)
         || !is_lower_sha256(&library_id)
         || !is_lower_sha256(&authority_epoch)
@@ -211,7 +193,7 @@ fn verify_snapshot(
     {
         return Err(invalid("normalized operation export snapshot is invalid"));
     }
-    let current = authority_identity(connection)?;
+    let current = normalized_writer_identity(connection)?;
     if current.0 != snapshot.library_id
         || current.1 != snapshot.authority_epoch
         || current.2 != snapshot.writer_id
@@ -274,7 +256,7 @@ fn validate_accepted_result(
     Ok(())
 }
 
-fn validate_operation_record(
+pub(crate) fn validate_operation_record(
     record: &NormalizedOperationExportRecordV2,
     value: &Value,
 ) -> Result<(), NormalizedSqliteError> {
@@ -554,6 +536,36 @@ mod tests {
             maximum_records,
             maximum_response_bytes: NORMALIZED_OPERATION_EXPORT_MAXIMUM_RESPONSE_BYTES,
             snapshot,
+        }
+    }
+
+    #[test]
+    fn operation_writer_matches_checkpoint_actor_and_rejects_lost_admission() {
+        let (connection, _, enrollment) = fixture();
+        connection.execute(
+            "UPDATE library_active_authority SET writer_id = 'primary:desktop';", [],
+        ).expect("production role");
+        let snapshot = describe_normalized_operation_export_v2(&connection).expect("actor writer");
+        let checkpoint = crate::normalized_sqlite::describe_normalized_checkpoint_export_v2(&connection)
+            .expect("checkpoint actor");
+        assert_eq!(snapshot.writer_id, enrollment.actor_id);
+        assert_eq!(snapshot.writer_id, checkpoint.writer_id);
+        for mutation in [
+            "UPDATE library_actors SET retired_at = 2;".to_string(),
+            "UPDATE library_actors SET actor_kind = 'pwa';".to_string(),
+            format!("INSERT INTO library_actors
+                SELECT '{}', authority_epoch_id, actor_kind, public_key,
+                       'enroll-ambiguous', '{}', canonical_enrollment_certificate,
+                       chain_genesis_digest, accepted_counter, accepted_operation_id,
+                       accepted_chain_digest, retired_at, created_at, updated_at
+                FROM library_actors;", "7".repeat(64), "8".repeat(64)),
+        ] {
+            connection.execute_batch("SAVEPOINT invalid_writer;").unwrap();
+            connection.execute_batch(&mutation).unwrap();
+            assert!(describe_normalized_operation_export_v2(&connection).is_err());
+            assert!(export_normalized_operation_page_v2(&connection,
+                &request(snapshot.clone(), None, 1)).is_err());
+            connection.execute_batch("ROLLBACK TO invalid_writer; RELEASE invalid_writer;").unwrap();
         }
     }
 

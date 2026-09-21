@@ -4,7 +4,7 @@
     {
       "id": 1,
       "status": "complete",
-      "reviewedAt": "2026-09-07",
+      "reviewedAt": "2026-09-17",
       "source": "docs/PHASE-1-FOUNDATION.md"
     },
     {
@@ -21,31 +21,31 @@
     {
       "id": 4,
       "status": "current",
-      "reviewedAt": "2026-09-09",
+      "reviewedAt": "2026-09-17T22:20:31Z",
       "source": "docs/PHASE-4-SYNC.md"
     },
     {
       "id": 5,
       "status": "current",
-      "reviewedAt": "2026-09-07",
+      "reviewedAt": "2026-09-17T22:20:31Z",
       "source": "docs/PHASE-5-DESKTOP.md"
     },
     {
       "id": 6,
       "status": "current",
-      "reviewedAt": "2026-09-09",
+      "reviewedAt": "2026-09-17T22:08:32Z",
       "source": "docs/PHASE-6-PWA.md"
     },
     {
       "id": 7,
       "status": "current",
-      "reviewedAt": "2026-09-09",
+      "reviewedAt": "2026-09-17T19:52:31Z",
       "source": "docs/PHASE-7-SOCIAL-CAPTURE.md"
     },
     {
       "id": 8,
       "status": "current",
-      "reviewedAt": "2026-09-09",
+      "reviewedAt": "2026-09-10",
       "source": "docs/PHASE-8-FRIENDS.md"
     },
     {
@@ -62,6 +62,7 @@
     {
       "id": 11,
       "status": "current",
+      "reviewedAt": "2026-09-17T22:20:31Z",
       "source": "docs/PHASE-11-OPENCLAW.md"
     },
     {

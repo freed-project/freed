@@ -939,3 +939,10 @@ Isolated editorial follow-up on September 6: accepted sample Stories now carry c
 ## Demo relationships and graph pins
 
 Search promotions use the existing demo care-change path and read the current linked person before offering a promotion. Unlinked accounts keep navigation but cannot create a person, promote, or open a person map in the demo. Graph pins use the registered device-layout mutation in the memory-only demo SQLite worker. Pin and care changes are serialized; a care checkpoint replacement preserves pinned coordinates. Reload clears both kinds of edits.
+
+Google Contacts expired-token recovery accepts the observed HTTP 400 response
+with the exact expired-token message as well as HTTP 410. Recovery starts one
+fresh paginated read without the old sync token or partial incremental results.
+Unrelated HTTP 400 failures still propagate, and a failed full read does not
+retry recursively. The current synchronization schedule and credentials remain
+unchanged. Browser and native-adapter fixtures cover this boundary.

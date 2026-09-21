@@ -23,7 +23,6 @@ import {
   LIBRARY_CORE_LOCAL_CHANGE_FEED_QUERY_ID,
   LIBRARY_CORE_OPTIMISTIC_FIELDS_QUERY_ID,
   LIBRARY_CORE_OPTIMISTIC_FIELDS_SCHEMA_VERSION,
-  LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES,
   readLibraryCoreNormalizedAccountDetailV1,
   openLibraryCoreNormalizedFeedReaderV1,
   openLibraryCoreNormalizedSavedFeedReaderV1,
@@ -59,7 +58,6 @@ import {
   type LibraryCoreFollowerTransportContextV2,
   type LibraryCoreLocalChangeFeedResponseV1,
   type LibraryCoreSelectedNormalizedCheckpointReceiptV2,
-  type LibraryCoreNormalizedCheckpointExportDescriptorV2,
   type LibraryCoreRssFeedScopeActionKindV1,
   type LibraryCoreScopeActionRequestV1,
   type LibraryCoreScopeActionReceiptV1,
@@ -73,7 +71,11 @@ import type {
   SearchLibraryItems,
 } from "@freed/ui/context";
 import {
+  type LibraryCoreEnrollmentDiscoverySummaryV2,
   createGoogleDriveLibraryCoreAdapterV1,
+  createGoogleDriveLibraryCoreOperationAdapterV2,
+  discoverGoogleDriveLibraryCoreOperationHeadV2,
+  syncLibraryCoreNormalizedOperationsOnceV2,
   createGoogleDriveLibraryCoreNormalizedFollowerTransportV2,
   discoverPublishedGoogleDriveLibraryCoreControlV1,
   importLibraryCoreNormalizedCheckpointV2,
@@ -87,10 +89,9 @@ import {
   pagePwaScopeActionStage,
   queryPwaNormalizedLibrary,
   mutatePwaContentPolicy,
-  describePwaNormalizedCheckpointExport,
-  readPwaNormalizedCheckpointExportPage,
   readPwaFollowerTransportContext,
   readPwaNormalizedCheckpointReceipt,
+  importPwaNormalizedOperationPage,
   resetPwaNormalizedLibrary,
   closePwaNormalizedLibrary,
 } from "./library-core-sqlite-runtime";
@@ -141,7 +142,13 @@ type LibraryCoreStateListener = (
 
 const listeners = new Set<LibraryCoreStateListener>();
 let lastState: LibraryCoreRuntimeStateV1 | null = null;
+let selectedLibraryAvailable = false;
 let lastLocalChangeSequence = 0;
+
+/** Presentation readiness from the last receipt-verified Library state. */
+export function hasSelectedPwaLibraryCore(): boolean {
+  return selectedLibraryAvailable;
+}
 
 const NORMALIZED_READER_RUNTIME = Object.freeze({
   query: queryPwaNormalizedLibrary,
@@ -155,7 +162,6 @@ export async function readPwaLibraryCoreSelectedCheckpointReceipt(): Promise<Lib
 export interface PwaLibraryCoreCloudReceiptV2 {
   readonly checkpoint: LibraryCoreSelectedNormalizedCheckpointReceiptV2 | null;
   readonly follower: LibraryCoreFollowerTransportContextV2 | null;
-  readonly localExport: LibraryCoreNormalizedCheckpointExportDescriptorV2 | null;
 }
 
 /** Read one bounded local view of checkpoint and follower cloud progress. */
@@ -165,46 +171,7 @@ export async function readPwaLibraryCoreCloudReceiptV2(): Promise<PwaLibraryCore
     return Object.freeze({
       checkpoint: null,
       follower: null,
-      localExport: null,
     });
-  }
-  let localExport: LibraryCoreNormalizedCheckpointExportDescriptorV2 | null;
-  try {
-    localExport = await describePwaNormalizedCheckpointExport();
-    if (
-      localExport.libraryId !== checkpoint.libraryId ||
-      localExport.authorityEpoch !== checkpoint.authorityEpoch ||
-      localExport.writerId !== checkpoint.writerActorId
-    ) {
-      throw new Error("PWA local checkpoint export crosses Library authority");
-    }
-    const firstPage = await readPwaNormalizedCheckpointExportPage({
-      page: {
-        after: null,
-        maximumRecords: 1,
-        maximumResponseBytes: LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES,
-      },
-      snapshot: localExport,
-    });
-    const header = firstPage.records[0];
-    if (
-      header?.registryKey !== "00_checkpoint_header" ||
-      header.payload.libraryId !== localExport.libraryId ||
-      header.payload.authorityEpoch !== localExport.authorityEpoch ||
-      header.payload.sourceRevision !== localExport.sourceRevision
-    ) {
-      throw new Error("PWA local checkpoint export header is invalid");
-    }
-  } catch (error) {
-    if (
-      error instanceof Error &&
-      error.message ===
-        "normalized checkpoint export has unresolved local intents"
-    ) {
-      localExport = null;
-    } else {
-      throw error;
-    }
   }
   let follower: LibraryCoreFollowerTransportContextV2 | null;
   try {
@@ -225,7 +192,7 @@ export async function readPwaLibraryCoreCloudReceiptV2(): Promise<PwaLibraryCore
   ) {
     throw new Error("PWA follower cloud receipt crosses Library authority");
   }
-  return Object.freeze({ checkpoint, follower, localExport });
+  return Object.freeze({ checkpoint, follower });
 }
 
 async function readSelectedState(): Promise<LibraryCoreRuntimeStateV1 | null> {
@@ -255,8 +222,10 @@ async function readSelectedState(): Promise<LibraryCoreRuntimeStateV1 | null> {
 function publishState(
   state: LibraryCoreRuntimeStateV1,
   localChange?: PwaLibraryCoreLocalChangeV1,
+  hasSelectedLibrary = true,
 ): void {
   lastState = state;
+  selectedLibraryAvailable = hasSelectedLibrary;
   for (const listener of listeners) listener(state, localChange);
 }
 
@@ -341,13 +310,13 @@ export function subscribePwaLibraryCoreState(
 }
 
 export async function initializePwaLibraryCoreState(): Promise<LibraryCoreRuntimeStateV1> {
-  const state =
-    (await readSelectedState()) ?? createEmptyLibraryCoreRuntimeStateV1();
+  const selectedState = await readSelectedState();
+  const state = selectedState ?? createEmptyLibraryCoreRuntimeStateV1();
   lastLocalChangeSequence =
     state.searchCorpusVersion === 0
       ? 0
       : await readPwaLocalChangeSequence(state.searchCorpusVersion);
-  publishState(state);
+  publishState(state, undefined, selectedState !== null);
   return state;
 }
 
@@ -1308,11 +1277,15 @@ async function publishSelectedStateAfterLibraryCoreSync(): Promise<LibraryCoreRu
 /** Import the published normalized Desktop checkpoint into OPFS SQLite. */
 export async function syncPwaLibraryCoreFromGoogleDrive(input: {
   readonly accessToken: string;
+  readonly googleFetch?: typeof fetch;
   readonly libraryId?: string;
   readonly signal?: AbortSignal;
+  readonly onSyncStage?: (message: string) => void;
 }): Promise<LibraryCoreRuntimeStateV1 & {
   readonly followerEnrollmentState: Awaited<ReturnType<typeof syncPwaLibraryCoreFollowerV2>>["enrollmentState"];
+  readonly enrollmentDiscovery: LibraryCoreEnrollmentDiscoverySummaryV2 | null;
 }> {
+  input.onSyncStage?.("Reading the local Library checkpoint.");
   const selected = await readPwaNormalizedCheckpointReceipt();
   const retainedLibraryId = selected.receipt &&
     !selected.receipt.controlRevision.startsWith("preview:")
@@ -1320,8 +1293,10 @@ export async function syncPwaLibraryCoreFromGoogleDrive(input: {
   if (retainedLibraryId && input.libraryId && retainedLibraryId !== input.libraryId) {
     throw new Error("Reset this device before connecting a different Library");
   }
+  input.onSyncStage?.("Finding the published Library in Google Drive.");
   const discovered = await discoverPublishedGoogleDriveLibraryCoreControlV1({
     accessToken: input.accessToken,
+    googleFetch: input.googleFetch,
     libraryId: retainedLibraryId ?? input.libraryId,
     signal: input.signal,
   });
@@ -1337,37 +1312,110 @@ export async function syncPwaLibraryCoreFromGoogleDrive(input: {
   }
   const adapter = createGoogleDriveLibraryCoreAdapterV1({
     accessToken: input.accessToken,
+    googleFetch: input.googleFetch,
     controlFileId: discovered.controlFileId,
     libraryId: pointer.libraryId,
     signal: input.signal,
   });
   const controlRevision = sha256LowerHex(discovered.control.bytes);
+  const checkpointWriter = createPwaNormalizedCheckpointWriter({
+    checkpointGeneration: pointer.generation,
+    controlRevision,
+    installedAt: Date.now(),
+    writerActorId: pointer.writerId,
+  });
+  let checkpointObjectCount = 0;
+  input.onSyncStage?.("Importing the verified Library checkpoint.");
   await importLibraryCoreNormalizedCheckpointV2({
-    adapter,
+    adapter: {
+      async readImmutable(reference) {
+        checkpointObjectCount += 1;
+        input.onSyncStage?.(`Downloading checkpoint object ${checkpointObjectCount.toLocaleString()} (${reference.descriptor.byteLength.toLocaleString()} bytes).`);
+        const bytes = await adapter.readImmutable(reference);
+        input.onSyncStage?.("Verifying the downloaded checkpoint object.");
+        return bytes;
+      },
+    },
     generation: pointer.generation,
     libraryId: pointer.libraryId,
     manifest: pointer.manifest,
     storageEpoch: pointer.storageEpoch,
     subtle: crypto.subtle,
-    writer: createPwaNormalizedCheckpointWriter({
-      checkpointGeneration: pointer.generation,
-      controlRevision,
-      installedAt: Date.now(),
-      writerActorId: pointer.writerId,
-    }),
+    writer: {
+      async prepareImport(manifest, reference) {
+        input.onSyncStage?.("Comparing the downloaded checkpoint with this device.");
+        return await checkpointWriter.prepareImport?.(manifest, reference) ?? "import";
+      },
+      async beginImport(header) {
+        input.onSyncStage?.("Opening local checkpoint staging.");
+        return await checkpointWriter.beginImport(header);
+      },
+      async appendPage(pageIndex, records) {
+        input.onSyncStage?.(`Storing checkpoint page ${(pageIndex + 1).toLocaleString()} (${records.length.toLocaleString()} records).`);
+        return await checkpointWriter.appendPage(pageIndex, records);
+      },
+      async finalizeImport(receipt) {
+        input.onSyncStage?.("Verifying and activating the staged checkpoint.");
+        return await checkpointWriter.finalizeImport(receipt);
+      },
+      async abortImport() {
+        input.onSyncStage?.("Discarding the incomplete checkpoint stage.");
+        await checkpointWriter.abortImport?.();
+      },
+    },
   });
+  let enrollmentDiscovery: LibraryCoreEnrollmentDiscoverySummaryV2 | null = null;
+  input.onSyncStage?.("Checking device enrollment and syncing edits.");
   const followerReceipt = await syncPwaLibraryCoreFollowerV2(
     createGoogleDriveLibraryCoreNormalizedFollowerTransportV2({
+      onEnrollmentDiscovery: (summary) => { enrollmentDiscovery = summary; },
       accessToken: input.accessToken,
+      googleFetch: input.googleFetch,
       controlFileId: discovered.controlFileId,
       libraryId: pointer.libraryId,
       signal: input.signal,
     }),
     { signal: input.signal },
   );
+  const replica = (await readPwaNormalizedCheckpointReceipt()).receipt;
+  if (!replica || replica.libraryId !== pointer.libraryId ||
+      replica.authorityEpoch !== pointer.storageEpoch ||
+      replica.manifestContentDigest !== pointer.manifest.descriptor.contentDigest) {
+    throw new Error("Selected Library checkpoint changed during synchronization");
+  }
+  const operationHeadFileId = await discoverGoogleDriveLibraryCoreOperationHeadV2({
+    accessToken: input.accessToken, libraryId: pointer.libraryId, epochId: pointer.storageEpoch,
+    googleFetch: input.googleFetch, signal: input.signal,
+  });
+  if (operationHeadFileId) {
+    input.onSyncStage?.("Applying verified Library changes.");
+    await syncLibraryCoreNormalizedOperationsOnceV2({
+      anchor: { libraryId: pointer.libraryId, storageEpoch: pointer.storageEpoch,
+        writerId: pointer.writerId, checkpointDigest: pointer.manifest.descriptor.contentDigest,
+        checkpointRevision: replica.sourceRevision },
+      transport: createGoogleDriveLibraryCoreOperationAdapterV2({
+        accessToken: input.accessToken, libraryId: pointer.libraryId, epochId: pointer.storageEpoch,
+        writerId: pointer.writerId, controlFileId: discovered.controlFileId, operationHeadFileId,
+        googleFetch: input.googleFetch, signal: input.signal,
+      }),
+      runtime: {
+        async readRevision() {
+          // An empty overlay query returns only source metadata, without scanning the Library.
+          const response = await queryPwaNormalizedLibrary({ entityIds: [],
+            queryId: LIBRARY_CORE_OPTIMISTIC_FIELDS_QUERY_ID,
+            schemaVersion: LIBRARY_CORE_OPTIMISTIC_FIELDS_SCHEMA_VERSION });
+          return response.source.projectionRevision;
+        },
+        importPage: importPwaNormalizedOperationPage,
+      },
+      now: Date.now, signal: input.signal,
+    });
+  }
+  input.onSyncStage?.("Refreshing the local Library view.");
   return Object.freeze({
     ...await publishSelectedStateAfterLibraryCoreSync(),
     followerEnrollmentState: followerReceipt.enrollmentState,
+    enrollmentDiscovery,
   });
 }
 
@@ -1376,6 +1424,7 @@ registerPwaFactoryResetQuiesceHandler(
   async () => {
     await closePwaNormalizedLibrary();
     lastState = null;
+    selectedLibraryAvailable = false;
     lastLocalChangeSequence = 0;
   },
   25,

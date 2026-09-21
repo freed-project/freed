@@ -72,6 +72,10 @@ function isAcceptedWorkerMessage(event: MessageEvent<unknown>): boolean {
 
 async function acquireOwnership(): Promise<void> {
   if (!("locks" in navigator)) return;
+  const controller = new AbortController();
+  // Terminating a worker does not synchronously release its browser-owned lock.
+  // Queue behind that release, but never wait indefinitely for another tab.
+  const timeout = setTimeout(() => controller.abort(), 3_000);
   let resolveAcquired: (() => void) | null = null;
   let rejectAcquired: ((error: Error) => void) | null = null;
   const acquired = new Promise<void>((resolve, reject) => {
@@ -80,8 +84,9 @@ async function acquireOwnership(): Promise<void> {
   });
   ownershipTask = navigator.locks.request(
     PWA_LIBRARY_CORE_SQLITE_OWNERSHIP_LOCK,
-    { ifAvailable: true, mode: "exclusive" },
+    { signal: controller.signal, mode: "exclusive" },
     async (lock) => {
+      clearTimeout(timeout);
       if (!lock) {
         rejectAcquired?.(
           new Error("PWA Library SQLite is already open in another app window"),
@@ -93,7 +98,12 @@ async function acquireOwnership(): Promise<void> {
         releaseOwnership = resolve;
       });
     },
-  );
+  ).catch((error: unknown) => {
+    clearTimeout(timeout);
+    rejectAcquired?.(controller.signal.aborted
+      ? new Error("PWA Library SQLite is already open in another app window")
+      : error instanceof Error ? error : new Error("PWA Library SQLite ownership failed"));
+  });
   await acquired;
 }
 

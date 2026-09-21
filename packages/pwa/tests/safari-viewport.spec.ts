@@ -39,7 +39,8 @@ async function acceptLegalGateIfPresent(
   page: Page,
 ): Promise<void> {
   const acceptButton = page.getByTestId("legal-gate-accept");
-  const visible = await acceptButton.isVisible({ timeout: 2_000 }).catch(() => false);
+  await expect(acceptButton.or(page.locator("main"))).toBeVisible({ timeout: 10_000 });
+  const visible = await acceptButton.isVisible();
   if (!visible) return;
 
   await page.getByRole("checkbox").evaluate((element) => {
@@ -126,7 +127,7 @@ async function openSeededFriendsGraph(page: Page, friendId: string, friendName: 
     }, { id: friendId, name: friendName });
   }
   await expect(page.getByTestId("friend-graph-viewport")).toBeVisible({ timeout: 10_000 });
-  await page.getByRole("button", { name: "Fit all", exact: true }).click();
+  await page.getByRole("button", { name: "Fit All", exact: true }).click();
   const deadline = Date.now() + 15_000;
   let lastPerf: unknown = null;
   let previousSceneSyncCount = -1;

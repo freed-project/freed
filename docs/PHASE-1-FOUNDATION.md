@@ -246,6 +246,14 @@ Local product worktrees now default to a ready-to-run full bootstrap so the next
 
 Feature worktrees now also default to layered validation. `npm run validate:feature` always runs root typecheck, then scopes website, PWA, desktop, capture-package, and release-tooling checks from the changed path set. It is the required pre publish gate for draft PRs, not the default check after every small edit. Phase documents and `docs/roadmap-status.json` use their focused manifest validator and unit test instead of launching general tooling shards. `npm run validate:dev` is the integration suite for merges, pushes to `dev`, and dev build publishing. It runs deterministic desktop smoke, functional regression, and visual browser lanes. Raw browser timing remains in the nightly performance matrix, where it can be compared on a controlled runner. `npm run validate:production` is the full public-release gate for `main`, including the dev validation suite, production builds, and release artifact validation. `npm run validate:release` remains a temporary compatibility alias for `validate:production`.
 
+[Vorton Factory](VORTON-FACTORY.md) uses the repository-root
+`vorton.factory.json` and versioned JSON Schema for approved issue selection,
+bounded validation commands, and reviewed draft-only publication. Configuration
+does not activate execution or replace Freed authorization checks.
+Isolated Factory validation uses the doctor worker scope to verify pinned build
+tools without exposing controller credentials or authority records. Controller
+and publisher checks remain outside the worker boundary.
+
 Production release closeout now also requires a dedicated `main` back into `dev` reverse-integration PR so shipped production fixes and release-tooling changes do not drift out of the product branch.
 
 ---

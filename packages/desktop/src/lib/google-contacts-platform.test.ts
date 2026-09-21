@@ -56,6 +56,15 @@ describe("desktop Google Contacts platform fetch", () => {
     });
   });
 
+  it("recovers the native expired-token response without repeating the stale token", async () => {
+    invokeMock.mockResolvedValueOnce({ status: 400, headers: [], bodyB64: btoa(JSON.stringify({ error: { message: "Sync token is expired. Clear local cache and retry call without the sync token." } })) })
+      .mockResolvedValueOnce({ status: 200, headers: [], bodyB64: btoa(JSON.stringify({ connections: [], nextSyncToken: "fresh" })) });
+    const { fetchGoogleContactsViaTauri } = await import("./google-contacts");
+    await expect(fetchGoogleContactsViaTauri("access-token", "expired")).resolves.toMatchObject({ nextSyncToken: "fresh", contacts: [] });
+    expect(invokeMock).toHaveBeenCalledTimes(2);
+    expect(new URL(invokeMock.mock.calls[1][1].url).searchParams.has("syncToken")).toBe(false);
+  });
+
   it("preserves native transport failures", async () => {
     invokeMock.mockRejectedValueOnce("Google Contacts request failed: dns error");
 
