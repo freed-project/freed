@@ -52,7 +52,6 @@ export {
 } from "./normalized-primary-native-runtime.js";
 export {
   createLibraryServiceNormalizedPrimaryOrchestrationV2,
-  createLibraryServiceNormalizedPrimaryPublicationV2,
   type LibraryServiceNormalizedPrimaryActorPageV2,
   type LibraryServiceNormalizedPrimaryOrchestrationOptionsV2,
   type LibraryServiceNormalizedPrimaryOrchestrationV2,

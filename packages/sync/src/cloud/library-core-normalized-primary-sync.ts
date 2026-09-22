@@ -75,6 +75,8 @@ export interface LibraryCoreNormalizedPrimaryEnrollmentReceiptV2 {
 
 export interface LibraryCoreNormalizedPrimaryIntentReferencePageV2 {
   readonly done: boolean;
+  /** First counter of the first complete immutable segment, including replay. */
+  readonly firstActorCounter: number;
   readonly previousSegmentDigest: LibraryCoreLowercaseHex64 | null;
   readonly references: readonly LibraryCoreImmutableObjectReferenceV1[];
 }
@@ -252,7 +254,13 @@ function parseEnrollmentRequestIdentity(
   );
   const certificateBody = closedRecord(
     request.certificate_body,
-    ["actor_enrollment_body", "actor_proof", "enrollment_body_digest"],
+    [
+      "actor_enrollment_body",
+      "actor_proof",
+      "enrollment_body_digest",
+      "actor_capability_body",
+      "actor_capability_body_digest",
+    ],
     "normalized enrollment request certificate body",
   );
   const enrollmentBody = closedRecord(
@@ -263,7 +271,7 @@ function parseEnrollmentRequestIdentity(
   const actorId = enrollmentBody.actor_id;
   const actorPublicKey = enrollmentBody.actor_public_key;
   const libraryId = enrollmentBody.library_id;
-  const storageEpochId = enrollmentBody.authority_epoch_id;
+  const storageEpochId = enrollmentBody.epoch_id;
   const certificateDigest = request.certificate_digest;
   if (
     !isLibraryCoreLowercaseHex64(actorId) ||
@@ -592,10 +600,14 @@ export async function syncLibraryCoreNormalizedPrimaryIntentsV2(
     !Array.isArray(page.references) ||
     page.references.length > INTENT_REFERENCE_PAGE_LIMIT ||
     (page.references.length === 0 && !page.done) ||
+    !isLibraryCoreNonnegativeSafeInteger(page.firstActorCounter) ||
+    page.firstActorCounter < 1 ||
+    page.firstActorCounter > actorState.nextActorCounter ||
+    (page.references.length === 0 &&
+      page.firstActorCounter !== actorState.nextActorCounter) ||
     (page.previousSegmentDigest !== null &&
       !isLibraryCoreLowercaseHex64(page.previousSegmentDigest)) ||
-    (actorState.nextActorCounter === 1) !==
-      (page.previousSegmentDigest === null)
+    (page.firstActorCounter === 1) !== (page.previousSegmentDigest === null)
   ) {
     throw new TypeError("normalized intent reference page is invalid");
   }
@@ -605,7 +617,10 @@ export async function syncLibraryCoreNormalizedPrimaryIntentsV2(
   for (const rawReference of page.references) {
     options.signal?.throwIfAborted();
     const reference = parseLibraryCoreImmutableObjectReferenceV1(rawReference);
-    const expectedFirstActorCounter = actorState.nextActorCounter;
+    const expectedFirstActorCounter =
+      importedSegmentCount === 0
+        ? page.firstActorCounter
+        : actorState.nextActorCounter;
     let segmentLastActorCounter: number | null = null;
     await importLibraryCoreNormalizedIntentSegmentV2({
       actorId,
@@ -618,6 +633,11 @@ export async function syncLibraryCoreNormalizedPrimaryIntentsV2(
       subtle: runtime.subtle,
       writer: {
         async stageNormalizedIntentSegment(input): Promise<void> {
+          if (input.header.last_actor_counter < actorState.nextActorCounter) {
+            throw new Error(
+              "normalized intent replay does not contain the pending counter",
+            );
+          }
           const records = input.envelopes.map((envelope, index) =>
             stageIntentRecord(envelope, input.canonicalEnvelopes[index]!),
           );

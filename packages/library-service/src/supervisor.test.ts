@@ -99,6 +99,54 @@ const EQUAL_LENGTH_INPUT_REWRITES: ReadonlyArray<
 ];
 
 describe("LibraryServiceSupervisor", () => {
+  it("settles one maintenance operation without actor ingress or cloud startup", async () => {
+    const fileSystem = validConfigFileSystem();
+    const config = JSON.parse(fileSystem.texts.get("/safe/config.json")!);
+    config.cloud = {
+      provider: "google-drive",
+      installationWitness: "e".repeat(64),
+      credentialRecordId: "library-drive",
+      publicationStateFile: "/safe/state/library-drive-state.json",
+    };
+    fileSystem.addFile("/safe/config.json", JSON.stringify(config));
+    fileSystem.addFile("/safe/state/library-drive-state.json", "");
+    const primaryCloud = { start: vi.fn() };
+    const { supervisor, child, localActorIngress } = createSupervisor({
+      fileSystem,
+      primaryCloud,
+    });
+    await expect(supervisor.runMaintenance(async (native) => {
+      await native.execute("inspect_storage_v1", {});
+      return { checkpointVerified: true };
+    })).resolves.toEqual({ checkpointVerified: true });
+    expect(child.commandRequests).toHaveLength(2);
+    expect(child.isRunning()).toBe(false);
+    expect(child.isGroupRunning()).toBe(false);
+    expect(localActorIngress.starts).toHaveLength(0);
+    expect(primaryCloud.start).not.toHaveBeenCalled();
+    expect(fileSystem.writes.map(({ contents }) => JSON.parse(contents).phase))
+      .toEqual(["starting", "stopped"]);
+    await expect(supervisor.start()).rejects.toMatchObject({ code: "already_started" });
+  });
+
+  it("cancels maintenance and settles the sidecar without acknowledging a result", async () => {
+    const { supervisor, child, localActorIngress } = createSupervisor();
+    const abort = new AbortController();
+    const entered = new Deferred<void>();
+    const pending = new Deferred<never>();
+    const result = supervisor.runMaintenance(async () => {
+      entered.resolve();
+      return pending.promise;
+    }, abort.signal);
+    const refused = expect(result).rejects.toBeInstanceOf(LibraryServiceFailure);
+    await entered.promise;
+    abort.abort();
+    await refused;
+    expect(child.isRunning()).toBe(false);
+    expect(child.isGroupRunning()).toBe(false);
+    expect(localActorIngress.starts).toHaveLength(0);
+  });
+
   it("starts exactly one pinned sidecar through an empty argv and environment", async () => {
     const { child, process, fileSystem, localActorIngress, supervisor } =
       createSupervisor();
@@ -164,15 +212,21 @@ describe("LibraryServiceSupervisor", () => {
     fileSystem.addFile("/safe/config.json", JSON.stringify(config));
     fileSystem.addFile("/safe/state/library-drive-state.json", "");
     const stop = vi.fn();
+    const verified = new Deferred<void>();
     const primaryCloud: LibraryServicePrimaryCloudPortV1 = {
-      start: vi.fn(async () => ({
-        start: async () => ({ status: "current" }),
-        stop,
-      })),
+      start: vi.fn(async () => {
+        await verified.promise;
+        return { start: async () => ({ status: "current" }), stop };
+      }),
     };
-    const { supervisor } = createSupervisor({ fileSystem, primaryCloud });
+    const { supervisor, localActorIngress } = createSupervisor({ fileSystem, primaryCloud });
 
-    await supervisor.start();
+    const starting = supervisor.start();
+    await waitFor(() => vi.mocked(primaryCloud.start).mock.calls.length === 1);
+    expect(localActorIngress.starts).toHaveLength(0);
+    verified.resolve();
+    await starting;
+    expect(localActorIngress.starts).toHaveLength(1);
     expect(primaryCloud.start).toHaveBeenCalledWith(
       expect.objectContaining({
         config: expect.objectContaining({

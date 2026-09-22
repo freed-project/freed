@@ -32,8 +32,8 @@ mod normalized_agent_query;
 mod normalized_authority;
 mod normalized_authority_credentials;
 mod normalized_checkpoint;
-mod normalized_enrollment_verifier;
 mod normalized_desktop_setup;
+mod normalized_enrollment_verifier;
 mod normalized_follower;
 mod normalized_import;
 #[cfg_attr(not(test), allow(dead_code))]
@@ -190,10 +190,10 @@ pub use normalized_sqlite::{
     describe_normalized_checkpoint_export_v2, export_normalized_checkpoint_page_v2,
     export_pinned_normalized_checkpoint_page_v2, install_normalized_schema_v1,
     open_normalized_sqlite_database_v1, verify_normalized_library_selection_v1,
-    BeginNormalizedCheckpointStageV2,
-    NormalizedCheckpointCursorV2, NormalizedCheckpointExportDescriptorV2,
-    NormalizedCheckpointExportPageV2, NormalizedCheckpointExportRequestV2,
-    NormalizedCheckpointExportSessionV2, NormalizedCheckpointStageStatusV2, NormalizedSqliteError,
+    BeginNormalizedCheckpointStageV2, NormalizedCheckpointCursorV2,
+    NormalizedCheckpointExportDescriptorV2, NormalizedCheckpointExportPageV2,
+    NormalizedCheckpointExportRequestV2, NormalizedCheckpointExportSessionV2,
+    NormalizedCheckpointStageStatusV2, NormalizedSqliteError,
     PinnedNormalizedCheckpointExportRequestV2,
 };
 pub use normalized_writer_certificate::{
@@ -214,4 +214,7 @@ pub use selective_content::{
     SelectiveContentError, VerifiedContentRangePublicationV1, VerifiedContentRangeReceiptV1,
 };
 
-pub use normalized_replication_import::{import_normalized_operation_page_v2, NormalizedOperationImportPageV2, NormalizedOperationImportReceiptV2};
+pub use normalized_replication_import::{
+    import_normalized_operation_page_v2, NormalizedOperationImportPageV2,
+    NormalizedOperationImportReceiptV2,
+};

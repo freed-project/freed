@@ -157,7 +157,8 @@ fn replication_counts(
 pub fn describe_normalized_operation_export_v2(
     connection: &Connection,
 ) -> Result<NormalizedOperationExportDescriptorV2, NormalizedSqliteError> {
-    let (library_id, authority_epoch, writer_id, source_revision) = normalized_writer_identity(connection)?;
+    let (library_id, authority_epoch, writer_id, source_revision) =
+        normalized_writer_identity(connection)?;
     if !(0..=MAX_SAFE_INTEGER).contains(&source_revision)
         || !is_lower_sha256(&library_id)
         || !is_lower_sha256(&authority_epoch)
@@ -542,30 +543,45 @@ mod tests {
     #[test]
     fn operation_writer_matches_checkpoint_actor_and_rejects_lost_admission() {
         let (connection, _, enrollment) = fixture();
-        connection.execute(
-            "UPDATE library_active_authority SET writer_id = 'primary:desktop';", [],
-        ).expect("production role");
+        connection
+            .execute(
+                "UPDATE library_active_authority SET writer_id = 'primary:desktop';",
+                [],
+            )
+            .expect("production role");
         let snapshot = describe_normalized_operation_export_v2(&connection).expect("actor writer");
-        let checkpoint = crate::normalized_sqlite::describe_normalized_checkpoint_export_v2(&connection)
-            .expect("checkpoint actor");
+        let checkpoint =
+            crate::normalized_sqlite::describe_normalized_checkpoint_export_v2(&connection)
+                .expect("checkpoint actor");
         assert_eq!(snapshot.writer_id, enrollment.actor_id);
         assert_eq!(snapshot.writer_id, checkpoint.writer_id);
         for mutation in [
             "UPDATE library_actors SET retired_at = 2;".to_string(),
             "UPDATE library_actors SET actor_kind = 'pwa';".to_string(),
-            format!("INSERT INTO library_actors
+            format!(
+                "INSERT INTO library_actors
                 SELECT '{}', authority_epoch_id, actor_kind, public_key,
                        'enroll-ambiguous', '{}', canonical_enrollment_certificate,
                        chain_genesis_digest, accepted_counter, accepted_operation_id,
                        accepted_chain_digest, retired_at, created_at, updated_at
-                FROM library_actors;", "7".repeat(64), "8".repeat(64)),
+                FROM library_actors;",
+                "7".repeat(64),
+                "8".repeat(64)
+            ),
         ] {
-            connection.execute_batch("SAVEPOINT invalid_writer;").unwrap();
+            connection
+                .execute_batch("SAVEPOINT invalid_writer;")
+                .unwrap();
             connection.execute_batch(&mutation).unwrap();
             assert!(describe_normalized_operation_export_v2(&connection).is_err());
-            assert!(export_normalized_operation_page_v2(&connection,
-                &request(snapshot.clone(), None, 1)).is_err());
-            connection.execute_batch("ROLLBACK TO invalid_writer; RELEASE invalid_writer;").unwrap();
+            assert!(export_normalized_operation_page_v2(
+                &connection,
+                &request(snapshot.clone(), None, 1)
+            )
+            .is_err());
+            connection
+                .execute_batch("ROLLBACK TO invalid_writer; RELEASE invalid_writer;")
+                .unwrap();
         }
     }
 

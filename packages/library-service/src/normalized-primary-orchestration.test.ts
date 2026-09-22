@@ -9,7 +9,6 @@ import { describe, expect, it, vi } from "vitest";
 import type { LibraryCoreNativeCommandClientV1 } from "./native-command.js";
 import {
   createLibraryServiceNormalizedPrimaryOrchestrationV2,
-  createLibraryServiceNormalizedPrimaryPublicationV2,
   type LibraryServiceNormalizedPrimaryTransportV2,
 } from "./normalized-primary-orchestration.js";
 
@@ -107,10 +106,17 @@ function transport(
       expect(input.libraryId).toBe(LIBRARY_ID);
       expect(input.limit).toBe(16);
       expect(input.storageEpochId).toBe(EPOCH_ID);
-      return { done: true, previousSegmentDigest: null, references: [] };
+      return {
+        done: true,
+        firstActorCounter: 1,
+        previousSegmentDigest: null,
+        references: [],
+      };
     },
     async publishEnrollmentCertificate() {
-      throw new Error("an empty enrollment page must not publish a certificate");
+      throw new Error(
+        "an empty enrollment page must not publish a certificate",
+      );
     },
   };
 }
@@ -145,59 +151,6 @@ function native() {
 }
 
 describe("normalized Primary service orchestration", () => {
-  it("uses only the existing inbound refresh hook and runs before publication", async () => {
-    const events: string[] = [];
-    const publication = createLibraryServiceNormalizedPrimaryPublicationV2(
-      {
-        async publish(input) {
-          events.push(`publish:${input.reason}`);
-          return { status: "current" };
-        },
-      },
-      {
-        async refresh() {
-          events.push("normalized:refresh");
-          return {
-            actorPageDone: true,
-            enrollment: {
-              done: true,
-              processedRequestCount: 0,
-              publishedCertificates: [],
-            },
-            importedIntentCount: 0,
-            nextActorId: null,
-            processedActorCount: 0,
-            publishedResultCount: 0,
-          };
-        },
-      },
-    );
-    const controller = new AbortController();
-
-    await publication.publish({
-      native: native().client,
-      reason: "initial",
-      signal: controller.signal,
-    });
-    await publication.publish({
-      native: native().client,
-      reason: "local_revision",
-      signal: controller.signal,
-    });
-    await publication.publish({
-      native: native().client,
-      reason: "inbound_refresh",
-      signal: controller.signal,
-    });
-
-    expect(events).toEqual([
-      "publish:initial",
-      "publish:local_revision",
-      "normalized:refresh",
-      "publish:inbound_refresh",
-    ]);
-  });
-
   it("runs one bounded enrollment, intent, and result pass in authority order", async () => {
     const active = native();
     const runtime = createLibraryServiceNormalizedPrimaryOrchestrationV2({
@@ -207,20 +160,20 @@ describe("normalized Primary service orchestration", () => {
       transport: transport(),
     });
 
-    await expect(runtime.refresh(new AbortController().signal)).resolves.toEqual(
-      {
-        actorPageDone: true,
-        enrollment: {
-          done: true,
-          processedRequestCount: 0,
-          publishedCertificates: [],
-        },
-        importedIntentCount: 0,
-        nextActorId: null,
-        processedActorCount: 1,
-        publishedResultCount: 0,
+    await expect(
+      runtime.refresh(new AbortController().signal),
+    ).resolves.toEqual({
+      actorPageDone: true,
+      enrollment: {
+        done: true,
+        processedRequestCount: 0,
+        publishedCertificates: [],
       },
-    );
+      importedIntentCount: 0,
+      nextActorId: null,
+      processedActorCount: 1,
+      publishedResultCount: 0,
+    });
     expect(active.execute.mock.calls.map(([commandId]) => commandId)).toEqual([
       "describe_checkpoint_export_v2",
       "primary_follower_actor_transport_state_v1",
@@ -265,12 +218,12 @@ describe("normalized Primary service orchestration", () => {
       ]),
     });
 
-    await expect(runtime.refresh(new AbortController().signal)).resolves.toMatchObject(
-      { actorPageDone: false, nextActorId: ACTOR_ID },
-    );
-    await expect(runtime.refresh(new AbortController().signal)).resolves.toMatchObject(
-      { actorPageDone: true, nextActorId: null },
-    );
+    await expect(
+      runtime.refresh(new AbortController().signal),
+    ).resolves.toMatchObject({ actorPageDone: false, nextActorId: ACTOR_ID });
+    await expect(
+      runtime.refresh(new AbortController().signal),
+    ).resolves.toMatchObject({ actorPageDone: true, nextActorId: null });
   });
 
   it("does no work after cancellation", async () => {
@@ -288,5 +241,74 @@ describe("normalized Primary service orchestration", () => {
       name: "AbortError",
     });
     expect(active.execute).not.toHaveBeenCalled();
+  });
+
+  it("binds cancellation per pass without resetting fairness after an interrupted read", async () => {
+    const active = native();
+    const actors = Array.from(
+      { length: 17 },
+      (_, index) =>
+        (index + 1).toString(16).padStart(64, "0") as LibraryCoreLowercaseHex64,
+    );
+    const controllers = Array.from({ length: 3 }, () => new AbortController());
+    const signals: AbortSignal[] = [];
+    const blocked = vi.fn();
+    let started!: () => void;
+    const reading = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const runtime = createLibraryServiceNormalizedPrimaryOrchestrationV2({
+      native: active.client,
+      now: () => 10,
+      subtle: crypto.subtle,
+      async transport(signal) {
+        signals.push(signal);
+        if (signals.length === 2) {
+          return {
+            ...transport(),
+            pageActors: blocked,
+            pageEnrollmentRequests() {
+              return new Promise((_, reject) => {
+                signal.addEventListener("abort", () => reject(signal.reason), {
+                  once: true,
+                });
+                started();
+              });
+            },
+          };
+        }
+        return transport([
+          signals.length === 1
+            ? { afterActorId: null, actorIds: actors.slice(0, 16), done: false }
+            : {
+                afterActorId: actors[15]!,
+                actorIds: actors.slice(16),
+                done: true,
+              },
+        ]);
+      },
+    });
+
+    await expect(
+      runtime.refresh(controllers[0]!.signal),
+    ).resolves.toMatchObject({
+      processedActorCount: 16,
+      nextActorId: actors[15],
+    });
+    const interrupted = runtime.refresh(controllers[1]!.signal);
+    const rejected = expect(interrupted).rejects.toMatchObject({
+      name: "AbortError",
+    });
+    await reading;
+    controllers[1]!.abort();
+    await rejected;
+    expect(blocked).not.toHaveBeenCalled();
+    await expect(
+      runtime.refresh(controllers[2]!.signal),
+    ).resolves.toMatchObject({
+      processedActorCount: 1,
+      nextActorId: null,
+    });
+    expect(signals).toEqual(controllers.map((controller) => controller.signal));
   });
 });
