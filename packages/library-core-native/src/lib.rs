@@ -32,9 +32,27 @@ mod normalized_agent_query;
 mod normalized_authority;
 mod normalized_authority_credentials;
 mod normalized_checkpoint;
-mod normalized_enrollment_verifier;
 mod normalized_desktop_setup;
+mod normalized_enrollment_verifier;
 mod normalized_follower;
+mod normalized_preference_policy;
+mod normalized_handoff;
+mod normalized_handoff_activation;
+mod normalized_handoff_cancellation;
+mod normalized_handoff_certificate;
+mod normalized_handoff_checkpoint;
+mod normalized_source_handoff;
+pub use normalized_handoff_activation::{
+    activate_target_handoff_after_remote_verification_v1, recover_active_target_handoff_v1,
+};
+pub use normalized_handoff_checkpoint::{
+    HandoffCheckpointVerifierV1, HandoffManifestPageV1, HandoffVerificationPlanV1,
+};
+pub use normalized_source_handoff::{
+    adopt_source_handoff_after_remote_verification_v1, recover_demoted_source_handoff_v1,
+    source_handoff_verification_plan_v1,
+};
+mod normalized_handoff_writer_certificate;
 mod normalized_import;
 #[cfg_attr(not(test), allow(dead_code))]
 mod normalized_migration;
@@ -55,6 +73,18 @@ mod normalized_writer_certificate;
 mod normalized_writer_reassignment;
 mod selective_content;
 pub mod sqlite_contract_generated;
+
+pub use normalized_handoff_certificate::{
+    accept_target_handoff_authorization_v1, authorize_source_handoff_v1, begin_source_handoff_v1,
+    prepare_source_handoff_authorization_v1, prepare_target_handoff_activation_v1,
+    prepare_target_handoff_readiness_v1, stage_target_handoff_v1,
+};
+
+pub use normalized_handoff::{
+    read_native_handoff_status_v1, require_handoff_checkpoint_export_v1,
+    require_normalized_handoff_reset_v1, require_normalized_provider_handoff_admission_v2,
+    seal_source_handoff_v1, HandoffInstallationRoleV1, HandoffPhaseV1, NativeHandoffStatusV1,
+};
 
 pub use device_contact_sync::{
     digest_device_contact_sync_mutation_v1, mutate_device_contact_sync_v1,
@@ -79,9 +109,10 @@ pub use historical_migration_source::{
     open_historical_migration_source_v1, LibraryCoreStorageError,
 };
 pub use library_core_actor_enrollment::{
-    countersign_actor_enrollment_request_bytes, load_or_create_normalized_actor_id_v2,
-    prepare_normalized_follower_actor_enrollment_request_v2, sign_library_core_operation_digest,
-    sign_library_core_operation_digests, ActorKeyStore, PreparedActorEnrollmentRequest,
+    countersign_actor_enrollment_request_bytes, load_normalized_local_actor_id_v2,
+    load_or_create_normalized_actor_id_v2, prepare_normalized_follower_actor_enrollment_request_v2,
+    sign_library_core_operation_digest, sign_library_core_operation_digests, ActorKeyStore,
+    PreparedActorEnrollmentRequest,
 };
 #[cfg(unix)]
 pub use library_core_desktop_binding::{
@@ -190,16 +221,15 @@ pub use normalized_sqlite::{
     describe_normalized_checkpoint_export_v2, export_normalized_checkpoint_page_v2,
     export_pinned_normalized_checkpoint_page_v2, install_normalized_schema_v1,
     open_normalized_sqlite_database_v1, verify_normalized_library_selection_v1,
-    BeginNormalizedCheckpointStageV2,
-    NormalizedCheckpointCursorV2, NormalizedCheckpointExportDescriptorV2,
-    NormalizedCheckpointExportPageV2, NormalizedCheckpointExportRequestV2,
-    NormalizedCheckpointExportSessionV2, NormalizedCheckpointStageStatusV2, NormalizedSqliteError,
+    BeginNormalizedCheckpointStageV2, NormalizedCheckpointCursorV2,
+    NormalizedCheckpointExportDescriptorV2, NormalizedCheckpointExportPageV2,
+    NormalizedCheckpointExportRequestV2, NormalizedCheckpointExportSessionV2,
+    NormalizedCheckpointStageStatusV2, NormalizedSqliteError,
     PinnedNormalizedCheckpointExportRequestV2,
 };
 pub use normalized_writer_certificate::{
     prepare_writer_epoch_reassignment, WriterEpochReassignment,
 };
-pub use normalized_writer_reassignment::reassign_normalized_writer_epoch_v2;
 pub use selective_content::{
     get_content_state_v1, page_eviction_candidates_v1, page_hydration_candidates_v1,
     publish_content_range_from_reader_v1, register_verified_content_range_v1,
@@ -214,4 +244,30 @@ pub use selective_content::{
     SelectiveContentError, VerifiedContentRangePublicationV1, VerifiedContentRangeReceiptV1,
 };
 
-pub use normalized_replication_import::{import_normalized_operation_page_v2, NormalizedOperationImportPageV2, NormalizedOperationImportReceiptV2};
+pub use normalized_replication_import::{
+    import_normalized_operation_page_v2, NormalizedOperationImportPageV2,
+    NormalizedOperationImportReceiptV2,
+};
+
+pub use normalized_handoff::read_sealed_handoff_result_actors_v1;
+
+mod normalized_consumer_recovery;
+mod normalized_recovery_input;
+mod normalized_recovery_reissue;
+pub use normalized_consumer_recovery::{
+    archive_consumer_epoch_recovery_v1, commit_consumer_epoch_reenrollment_v1,
+    prepare_consumer_epoch_reenrollment_v1, prepare_consumer_recovery_v1,
+    read_consumer_recovery_summary_v1, ConsumerRecoverySummaryV1,
+};
+pub use normalized_recovery_input::ArchivedIntentOutcomeV1;
+pub use normalized_recovery_reissue::{
+    reapply_archived_assignments_v1, reapply_archived_editor_transaction_v1,
+    RecoveryReissueReceiptV1, RecoveryReissueRequestV1,
+};
+
+mod normalized_query_control;
+pub use normalized_query_control::{query_normalized_json_with_control_v1, NormalizedQueryControl};
+
+pub use normalized_handoff_cancellation::{
+    accept_target_handoff_cancellation_v1, cancel_source_handoff_with_proof_v1,
+};

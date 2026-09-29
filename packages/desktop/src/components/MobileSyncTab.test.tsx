@@ -1,3 +1,4 @@
+vi.mock("./LibraryHandoffPanel", () => ({ LibraryHandoffPanel: () => <section>Primary transfer</section> }));
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -6,6 +7,8 @@ import { readLibraryCoreDesktopRole } from "../lib/library-core-desktop-role";
 import { MobileSyncTab } from "./MobileSyncTab";
 
 const mocks = vi.hoisted(() => ({
+  recovery: null as null | { recoveryId: string; libraryId: string; predecessorEpochId: string; successorEpochId: string; state: "archived" | "prepared" | "following"; archivedPendingEdits: number; archivedPublishedEdits: number },
+  prepareRecovery: vi.fn(), commitRecovery: vi.fn(),
   clipboardWrite: vi.fn(async () => {}),
   connect: vi.fn(),
   cancelConnect: vi.fn(),
@@ -53,7 +56,7 @@ const mocks = vi.hoisted(() => ({
     },
   },
   followerStatus: {
-    state: "active" as const,
+    state: "active" as "active" | "authority_recovery_required" | "enrollment_pending",
     libraryId: "a".repeat(64),
     authorityEpochId: "b".repeat(64),
     actorId: "c".repeat(64),
@@ -94,7 +97,13 @@ vi.mock("../lib/sync", () => ({
     mocks.transferSqliteLibraryWriterToThisDesktop,
 }));
 
+vi.mock("../lib/library-core-handoff", () => ({
+  prepareDesktopLibraryConsumerRecovery: mocks.prepareRecovery,
+  commitDesktopLibraryConsumerRecovery: mocks.commitRecovery,
+}));
+
 vi.mock("../lib/sqlite-library", () => ({
+  readNormalizedLibraryConsumerRecovery: vi.fn(async () => mocks.recovery),
   readNormalizedLibraryFollowerRuntimeStatus: vi.fn(
     async () => mocks.followerStatus,
   ),
@@ -120,6 +129,8 @@ describe("MobileSyncTab cloud diagnostics", () => {
     ).IS_REACT_ACT_ENVIRONMENT = true;
     vi.clearAllMocks();
     mocks.role = "primary";
+    mocks.recovery = null;
+    mocks.followerStatus.state = "active";
     mocks.invoke.mockImplementation(async () => ({
       state: mocks.role === "primary" ? "standalone_primary" : "editable_consumer", role: mocks.role,
       libraryId: "a".repeat(64), authorityEpochId: "b".repeat(64), actorId: "c".repeat(64),
@@ -173,6 +184,34 @@ describe("MobileSyncTab cloud diagnostics", () => {
     (
       globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
     ).IS_REACT_ACT_ENVIRONMENT = false;
+  });
+
+  it("keeps archived edits visible through explicit prepare and reconnect steps", async () => {
+    mocks.role = "follower";
+    mocks.followerStatus.state = "authority_recovery_required";
+    mocks.prepareRecovery.mockImplementation(async () => {
+      mocks.recovery = { recoveryId: "e".repeat(64), libraryId: "a".repeat(64), predecessorEpochId: "b".repeat(64),
+        successorEpochId: "d".repeat(64), state: "prepared", archivedPendingEdits: 6, archivedPublishedEdits: 7 };
+      return mocks.recovery;
+    });
+    mocks.commitRecovery.mockImplementation(async () => {
+      mocks.recovery = { ...mocks.recovery!, state: "following" };
+      mocks.followerStatus.state = "enrollment_pending";
+      return mocks.recovery;
+    });
+    await act(async () => { root.render(<MobileSyncTab />); });
+    let button = container.querySelector<HTMLButtonElement>("[data-testid='consumer-recovery-action']");
+    expect(button?.textContent).toBe("Prepare recovery");
+    await act(async () => { button?.click(); });
+    button = container.querySelector<HTMLButtonElement>("[data-testid='consumer-recovery-action']");
+    expect(button?.textContent).toBe("Reconnect this consumer");
+    expect(mocks.commitRecovery).not.toHaveBeenCalled();
+    expect(container.textContent).toContain("pending changes will stop appearing");
+    await act(async () => { button?.click(); });
+    expect(mocks.commitRecovery).toHaveBeenCalledWith("e".repeat(64));
+    expect(container.querySelector("[data-testid='consumer-recovery-action']")).toBeNull();
+    expect(container.querySelector("[data-testid='consumer-recovery']")?.textContent).toContain("6 previously queued; 7 previously uploaded");
+    expect(container.textContent).toContain("These edits have not been resent");
   });
 
   it("explains a missing upload and lets the user run sync now", async () => {
@@ -285,7 +324,7 @@ describe("MobileSyncTab cloud diagnostics", () => {
     ).not.toBeNull();
   });
 
-  it("offers one confirmed action when another Freed Desktop owns SQLite writes", async () => {
+  it("requires cooperative transfer instead of offering legacy takeover", async () => {
     useDebugStore.setState({
       cloudProviders: {
         dropbox: { status: "idle" },
@@ -299,29 +338,10 @@ describe("MobileSyncTab cloud diagnostics", () => {
         },
       },
     });
-    const confirmMock = vi.spyOn(window, "confirm").mockReturnValue(true);
-
-    await act(async () => {
-      root.render(<MobileSyncTab />);
-    });
-
-    const transfer = container.querySelector<HTMLButtonElement>(
-      "[data-testid='sqlite-writer-transfer-button']",
-    );
-    expect(transfer?.textContent).toBe("Make This Freed Desktop the Writer");
-    expect(container.textContent).toContain(
-      "Transfer ownership here to publish from this installation",
-    );
-
-    await act(async () => {
-      transfer?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await Promise.resolve();
-    });
-
-    expect(confirmMock).toHaveBeenCalledTimes(1);
-    expect(
-      mocks.transferSqliteLibraryWriterToThisDesktop,
-    ).toHaveBeenCalledTimes(1);
-    confirmMock.mockRestore();
+    await act(async () => { root.render(<MobileSyncTab />); });
+    expect(container.querySelector("[data-testid='sqlite-writer-transfer-button']")).toBeNull();
+    expect(container.textContent).toContain("signed transfer consent");
+    expect(container.textContent).toContain("Primary transfer");
+    expect(mocks.transferSqliteLibraryWriterToThisDesktop).not.toHaveBeenCalled();
   });
 });

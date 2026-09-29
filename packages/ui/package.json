@@ -64,7 +64,14 @@
     "./hooks/useLibraryFacetSummary": "./src/hooks/useLibraryFacetSummary.ts",
     "./hooks/useLibraryRssFeedDetail": "./src/hooks/useLibraryRssFeedDetail.ts",
     "./context": "./src/context/index.ts",
-    "./components/friends": "./src/components/friends/index.ts"
+    "./components/friends": "./src/components/friends/index.ts",
+    "./components/RecoveryAnnotationFields": "./src/components/RecoveryAnnotationFields.tsx",
+    "./components/RecoveryRssSubscriptionFields": "./src/components/RecoveryRssSubscriptionFields.tsx",
+    "./components/RecoveryAccountFields": "./src/components/RecoveryAccountFields.tsx",
+    "./components/RecoveryReachOutFields": "./src/components/RecoveryReachOutFields.tsx",
+    "./components/RecoveryPersonFields": "./src/components/RecoveryPersonFields.tsx",
+    "./components/RecoveryAccountLinkFields": "./src/components/RecoveryAccountLinkFields.tsx",
+    "./components/RecoveryFriendFields": "./src/components/RecoveryFriendFields.tsx"
   },
   "peerDependencies": {
     "react": ">=19",

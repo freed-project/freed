@@ -15,6 +15,15 @@ export type DesktopLibrarySetupChoice =
 // Presentation cache only. Native SQLite and installation setup own authority.
 // Missing or failed native state never defaults to Primary.
 let installation: DesktopLibraryInstallationStatus | null = null;
+let installationError: string | null = null;
+const listeners = new Set<() => void>();
+export function subscribeDesktopLibraryInstallation(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
+}
+export function readDesktopLibraryInstallationError(): string | null { return installationError; }
+export function readDesktopLibraryInstallation(): DesktopLibraryInstallationStatus | null { return installation; }
+function notifyInstallation(): void { for (const listener of listeners) listener(); }
 let requestVersion = 0;
 let pendingRoleRead: Promise<DesktopLibraryInstallationStatus> | null = null;
 const LEGACY_ROLE_KEY = "freed.libraryCore.desktopRoleV1";
@@ -63,6 +72,8 @@ function acceptNativeStatus(value: DesktopLibraryInstallationStatus): DesktopLib
     throw new Error("Native Library installation state is invalid.");
   }
   installation = Object.freeze(value);
+  installationError = null;
+  notifyInstallation();
   return installation;
 }
 
@@ -79,7 +90,7 @@ export function refreshLibraryCoreDesktopRole(): Promise<DesktopLibraryInstallat
       clearLegacyRole();
       return accepted;
     } catch (error) {
-      if (version === requestVersion) installation = null;
+      if (version === requestVersion) { installation = null; installationError = error instanceof Error ? error.message : "Native Library role is unavailable."; notifyInstallation(); }
       throw error;
     }
   })().finally(() => { if (pendingRoleRead === operation) pendingRoleRead = null; });
@@ -91,6 +102,8 @@ export async function selectDesktopLibrarySetup(choice: DesktopLibrarySetupChoic
   const version = ++requestVersion;
   pendingRoleRead = null;
   installation = null;
+  installationError = null;
+  notifyInstallation();
   const status = await invoke<DesktopLibraryInstallationStatus>("select_normalized_desktop_library_setup", { choice });
   if (version !== requestVersion) throw new Error("Native Library setup was superseded.");
   const accepted = acceptNativeStatus(status);

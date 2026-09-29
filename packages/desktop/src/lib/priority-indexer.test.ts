@@ -33,7 +33,8 @@ vi.mock("@freed/ui/lib/factory-reset", () => ({
   waitForFactoryResetDrain: vi.fn(),
 }));
 
-import { start, stop } from "./priority-indexer";
+import { start, stop, stopAndDrain } from "./priority-indexer";
+import { pauseDesktopOperationsForHandoff } from "./factory-reset-guard";
 
 const firstWeights: WeightPreferences = Object.freeze({
   authors: { ada: 90 },
@@ -49,6 +50,22 @@ const secondWeights: WeightPreferences = Object.freeze({
 });
 
 describe("Primary priority indexer", () => {
+  it("requires an owned pause and permits restarting after a resumable drain", async () => {
+    await expect(stopAndDrain({ resumable: true })).rejects.toThrow("requires the handoff pause");
+    const pause = pauseDesktopOperationsForHandoff();
+    try {
+      await stopAndDrain({ resumable: true });
+      start({ getWeights: () => firstWeights });
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(mocks.backfill).not.toHaveBeenCalled();
+    } finally {
+      pause.resume();
+    }
+    mocks.backfill.mockResolvedValue({ remaining: 0, updated: 1 });
+    start({ getWeights: () => firstWeights });
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(mocks.backfill).toHaveBeenCalledOnce();
+  });
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(0);

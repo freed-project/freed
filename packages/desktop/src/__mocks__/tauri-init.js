@@ -598,6 +598,9 @@ export function tauriInitScript() {
     }
     function sqliteNormalizedQuery(args) {
       var request = args && args.request || {};
+      if (request.queryId === 'recovery_intent_page_v1' || request.queryId === 'recovery_intent_review_v1') {
+        throw new Error('This preview has no recovery archive.');
+      }
       var state = sqliteState();
       var source = {
         generationId: 'd'.repeat(64),
@@ -1193,6 +1196,17 @@ export function tauriInitScript() {
           schemaVersion: request.schemaVersion,
           source: source,
         };
+      }
+      if (request.queryId === 'person_root_v1') {
+        var storedPersonRoot = state.persons && state.persons[request.personId] || null;
+        var completePersonRoot = null;
+        if (storedPersonRoot) {
+          completePersonRoot = {};
+          ['id', 'name', 'avatarUrl', 'bio', 'relationshipStatus', 'careLevel', 'reachOutIntervalDays', 'tags', 'notes', 'sampleDataFingerprint', 'createdAt', 'updatedAt'].forEach(function(key) {
+            if (storedPersonRoot[key] !== undefined && storedPersonRoot[key] !== null) completePersonRoot[key] = storedPersonRoot[key];
+          });
+        }
+        return { queryId: request.queryId, schemaVersion: 1, personId: request.personId, person: completePersonRoot, source: source };
       }
       if (request.queryId === 'person_detail_v1') {
         var person = state.persons && state.persons[request.personId] || null;
@@ -1978,7 +1992,11 @@ export function tauriInitScript() {
         return true;
       }),
       describe_normalized_library_cloud_identity: normalizedLibraryCloudIdentity,
-      query_normalized_library: sqliteNormalizedQuery,
+      query_normalized_library: (args) => {
+        args.started?.onmessage?.("00000000000000000000000000000001");
+        return sqliteNormalizedQuery(args);
+      },
+      cancel_normalized_library_query: () => true,
       normalized_library_primary_mutation_context: normalizedPrimaryMutationContext,
       normalized_library_follower_mutation_context: normalizedFollowerMutationContext,
       sign_normalized_library_operations: (args) =>
@@ -2084,6 +2102,39 @@ export function tauriInitScript() {
       import_normalized_library_operation_page: () => {
         throw new Error("Operation import requires an explicit signed Library fixture.");
       },
+      begin_normalized_library_source_handoff: () => {
+        throw new Error("Authority transfers require Freed Desktop.");
+      },
+      accept_normalized_library_target_handoff_cancellation: () => { throw new Error("Authority transfers require Freed Desktop."); },
+  cancel_normalized_library_source_handoff: () => {
+        throw new Error("Authority transfers require Freed Desktop.");
+      },
+      seal_normalized_library_source_handoff: () => {
+        throw new Error("Authority transfers require Freed Desktop.");
+      },
+      prepare_normalized_library_handoff_activation: () => { throw new Error("Authority transfers require Freed Desktop."); },
+  stage_normalized_library_target_handoff: () => { throw new Error("Authority transfers require Freed Desktop."); },
+  read_normalized_library_handoff_result_actors: () => { throw new Error("Authority transfers require Freed Desktop."); },
+  adopt_normalized_library_source_handoff: () => { throw new Error("Authority transfers require Freed Desktop."); },
+  activate_normalized_library_target_handoff: () => { throw new Error("Authority transfers require Freed Desktop."); },
+  accept_normalized_library_target_handoff_authorization: () => {
+        throw new Error("Authority transfers require Freed Desktop.");
+      },
+      prepare_normalized_library_handoff_authorization: () => {
+        throw new Error("Native Library handoff authorization is unavailable in this preview");
+      },
+      authorize_normalized_library_source_handoff: () => {
+        throw new Error("Authority transfers require Freed Desktop.");
+      },
+      read_normalized_library_consumer_recovery: () => null,
+  reapply_normalized_library_archived_editor_transaction: () => { throw new Error("Library recovery requires Freed Desktop."); },
+  reapply_normalized_library_archived_assignments: () => { throw new Error("Library recovery requires Freed Desktop."); },
+  prepare_normalized_library_consumer_recovery: () => { throw new Error("Library recovery requires Freed Desktop."); },
+  commit_normalized_library_consumer_recovery: () => { throw new Error("Library recovery requires Freed Desktop."); },
+  read_normalized_library_handoff_status: () => null,
+      prepare_normalized_library_handoff_readiness: () => {
+        throw new Error("Authority transfers require Freed Desktop.");
+      },
       normalized_library_follower_runtime_status: () => ({
         state: 'awaiting_checkpoint',
         libraryId: null,
@@ -2147,6 +2198,8 @@ export function tauriInitScript() {
         };
       },
       fetch_url: () => '',
+      fetch_rss_url: () => '',
+      fetch_background_article_url: () => '',
       google_api_request: () => ({ status: 200, headers: [['content-type', 'application/json']], bodyB64: btoa('{"connections":[],"nextSyncToken":"test-sync-token"}') }),
       google_oauth_proxy_request: () => ({ status: 200, headers: [['content-type', 'application/json']], bodyB64: btoa('{"access_token":"test-access-token","refresh_token":"test-refresh-token","expires_in":3600}') }),
       google_drive_request: () => ({ status: 200, headers: [['content-type', 'application/json']], bodyB64: btoa('{"files":[]}') }),

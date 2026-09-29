@@ -83,6 +83,14 @@ export interface LibraryCoreImmutablePublicationRequestV1<Source> {
       }>;
 }
 
+/** Transport commitments for a natively verified cooperative transition.
+ * These digests do not authenticate consent or grant local writer admission. */
+export interface LibraryCoreHandoffFrontiersV1 {
+  readonly kind: "cooperative_handoff_v1";
+  readonly predecessor: string;
+  readonly successor: string;
+}
+
 export type LibraryCoreWriterReassignmentRequestV1<Source> = Omit<
   LibraryCoreImmutablePublicationRequestV1<Source>,
   "expectedControl"
@@ -91,6 +99,7 @@ export type LibraryCoreWriterReassignmentRequestV1<Source> = Omit<
     readonly revision: string;
     readonly pointer: LibraryCoreControlPointerV1;
   };
+  readonly handoffFrontiers?: LibraryCoreHandoffFrontiersV1;
   readonly targetStorageEpoch: string;
   readonly targetWriterId: string;
   readonly epochCertificate: LibraryCorePreparedImmutableObjectV1<Source>;
@@ -318,6 +327,15 @@ async function publishLibraryCoreGenerationV1<Source>(
         "writer reassignment requires an existing control pointer",
       );
     }
+    if (reassignment.handoffFrontiers !== undefined) {
+      const frontiers = reassignment.handoffFrontiers;
+      if (frontiers.kind !== "cooperative_handoff_v1"
+        || !/^[0-9a-f]{64}$/.test(frontiers.predecessor)
+        || !/^[0-9a-f]{64}$/.test(frontiers.successor)
+        || frontiers.predecessor !== expectedPointer.causalFrontierDigest) {
+        throw new TypeError("cooperative handoff frontiers do not match the predecessor");
+      }
+    }
     if (
       !isLibraryCoreOperationInstanceId(reassignment.targetStorageEpoch) ||
       !isLibraryCoreOperationInstanceId(reassignment.targetWriterId)
@@ -451,7 +469,7 @@ async function publishLibraryCoreGenerationV1<Source>(
       nextControlPointer.libraryId !== expectedPointer.libraryId ||
       nextControlPointer.activeTransport !== expectedPointer.activeTransport ||
       nextControlPointer.causalFrontierDigest !==
-        expectedPointer.causalFrontierDigest
+        (reassignment.handoffFrontiers?.successor ?? expectedPointer.causalFrontierDigest)
     ) {
       throw new TypeError(
         "writer reassignment must preserve the library, active transport, and exact causal frontier",

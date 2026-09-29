@@ -6,8 +6,11 @@ mod avatar_cache;
 mod library_core_actor_key_store;
 mod library_core_authority_key_store;
 mod library_core_desktop_runtime;
+mod library_core_query_control;
+mod library_core_handoff_remote;
 #[cfg_attr(not(test), allow(dead_code))]
 mod library_core_platform_key;
+mod provider_operation_gate;
 mod youtube;
 
 use base64::Engine;
@@ -916,6 +919,44 @@ fn recycle_social_scraper_windows(
     for label in SOCIAL_SCRAPER_WINDOW_LABELS {
         recycle_webview_window(app, label, reason, detail);
     }
+}
+
+/// Call only while holding the exclusive provider operation permit and after
+/// committing the source fence. This preserves authentication stores.
+async fn close_provider_windows_for_handoff(app: &tauri::AppHandle) -> Result<(), String> {
+    let mut labels = SOCIAL_SCRAPER_WINDOW_LABELS.to_vec();
+    labels.extend([
+        "x-login",
+        "fb-login",
+        "ig-login",
+        "li-login",
+        "substack-login",
+        "medium-login",
+        youtube::YOUTUBE_SESSION_WINDOW_LABEL,
+    ]);
+    provider_operation_gate::request_window_closure(&labels, |label| {
+        if label == youtube::YOUTUBE_SESSION_WINDOW_LABEL {
+            return youtube::close_youtube_session_for_handoff(app);
+        }
+        if let Some(window) = app.get_webview_window(label) {
+            scrub_webview_before_destroy(&window);
+            window.destroy().map_err(|error| error.to_string())?;
+            record_window_destroyed(
+                app,
+                label,
+                WindowDestroyedReason::User,
+                "cooperative authority transfer",
+            );
+        }
+        Ok(())
+    })?;
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while labels.iter().any(|label| app.get_webview_window(label).is_some()) {
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    })
+    .await
+    .map_err(|_| "Provider windows remain open; authority transfer is still fenced.".to_string())
 }
 
 fn active_job_uses_social_scraper(active_job: Option<&str>) -> bool {
@@ -3400,6 +3441,7 @@ struct CaptureState {
     substack_user_agent: std::sync::Mutex<String>,
     medium_user_agent: std::sync::Mutex<String>,
     scraper_session: Arc<tokio::sync::Mutex<()>>,
+    provider_operations: provider_operation_gate::ProviderOperationGate,
     background_runtime: Arc<BackgroundRuntimeCoordinator>,
     x_client: wreq::Client,
 }
@@ -3421,6 +3463,7 @@ impl CaptureState {
             substack_user_agent: std::sync::Mutex::new(String::new()),
             medium_user_agent: std::sync::Mutex::new(String::new()),
             scraper_session: Arc::new(tokio::sync::Mutex::new(())),
+            provider_operations: provider_operation_gate::ProviderOperationGate::default(),
             background_runtime: Arc::new(BackgroundRuntimeCoordinator::new()),
             x_client,
         }
@@ -3452,6 +3495,7 @@ fn get_background_runtime_active_operation(
 }
 
 struct ActiveScraperSession {
+    _provider_operation: tokio::sync::OwnedRwLockReadGuard<()>,
     _guard: tokio::sync::OwnedMutexGuard<()>,
     background_runtime: Arc<BackgroundRuntimeCoordinator>,
     operation: &'static str,
@@ -5000,6 +5044,14 @@ fn truncate_for_log(value: &str, max_chars: usize) -> String {
     }
 }
 
+fn acquire_native_provider_operation(
+    app: &tauri::AppHandle,
+) -> Result<tokio::sync::OwnedRwLockReadGuard<()>, String> {
+    let permit = app.state::<CaptureState>().provider_operations.try_begin()?;
+    library_core_desktop_runtime::require_primary_library_authority(app)?;
+    Ok(permit)
+}
+
 async fn acquire_background_scraper_session(
     app: &tauri::AppHandle,
     capture: &CaptureState,
@@ -5010,10 +5062,11 @@ async fn acquire_background_scraper_session(
 
     match session.clone().try_lock_owned() {
         Ok(guard) => {
-            library_core_desktop_runtime::require_primary_library_authority(app)?;
+            let provider_operation = acquire_native_provider_operation(app)?;
             capture.background_runtime.begin_job(operation)?;
             info!("[scraper] acquired session op={} wait_ms=0", operation);
             Ok(ActiveScraperSession {
+                _provider_operation: provider_operation,
                 _guard: guard,
                 background_runtime: capture.background_runtime.clone(),
                 operation,
@@ -5024,7 +5077,7 @@ async fn acquire_background_scraper_session(
             info!("[scraper] waiting for active session op={}", operation);
             let wait_started = std::time::Instant::now();
             let guard = session.lock_owned().await;
-            library_core_desktop_runtime::require_primary_library_authority(app)?;
+            let provider_operation = acquire_native_provider_operation(app)?;
             capture.background_runtime.begin_job(operation)?;
             info!(
                 "[scraper] acquired session op={} wait_ms={}",
@@ -5032,6 +5085,7 @@ async fn acquire_background_scraper_session(
                 wait_started.elapsed().as_millis()
             );
             Ok(ActiveScraperSession {
+                _provider_operation: provider_operation,
                 _guard: guard,
                 background_runtime: capture.background_runtime.clone(),
                 operation,
@@ -5229,6 +5283,28 @@ async fn pick_contact() -> Result<Option<ContactResult>, String> {
 // ---------------------------------------------------------------------------
 // Tauri commands — network / proxy
 // ---------------------------------------------------------------------------
+
+/// RSS capture is a Primary operation. Keep its permit through response-body
+/// completion, with the same 30-second budget as the RSS parser package.
+#[tauri::command]
+async fn fetch_rss_url(app: tauri::AppHandle, url: String) -> Result<String, String> {
+    let _provider_operation = acquire_native_provider_operation(&app)?;
+    timeout(Duration::from_secs(30), fetch_url(url, None))
+        .await
+        .map_err(|_| "RSS request exceeded its 30-second deadline.".to_string())?
+}
+
+/// Background cache hydration shares the renderer's existing 30-second budget,
+/// but retains native ownership until the HTTP future completes or is dropped.
+#[tauri::command]
+async fn fetch_background_article_url(
+    app: tauri::AppHandle, url: String, max_bytes: usize,
+) -> Result<String, String> {
+    let _provider_operation = acquire_native_provider_operation(&app)?;
+    timeout(Duration::from_secs(30), fetch_url(url, Some(max_bytes)))
+        .await
+        .map_err(|_| "fetch_url TIMEOUT".to_string())?
+}
 
 /// Fetch any URL and return its body as text (bypasses browser CORS).
 #[tauri::command]
@@ -5625,7 +5701,7 @@ async fn x_api_request(
     headers: Vec<(String, String)>,
     method: Option<String>,
 ) -> Result<String, String> {
-    library_core_desktop_runtime::require_primary_library_authority(&app)?;
+    let _provider_operation = acquire_native_provider_operation(&app)?;
     // Use the shared wreq client (Chrome TLS fingerprint, persistent connection pool).
     let client = &capture.x_client;
 
@@ -8021,6 +8097,7 @@ enum XLoginCheckResult {
 /// If the window already exists, focus it instead of creating a duplicate.
 #[tauri::command]
 async fn open_x_login_window(app: tauri::AppHandle) -> Result<(), String> {
+    let _provider_operation = acquire_native_provider_operation(&app)?;
     if let Some(existing) = app.get_webview_window("x-login") {
         let _ = existing.show();
         let _ = existing.set_focus();
@@ -8047,6 +8124,7 @@ async fn open_x_login_window(app: tauri::AppHandle) -> Result<(), String> {
 /// from "window open, still waiting for login."
 #[tauri::command]
 async fn check_x_login_cookies(app: tauri::AppHandle) -> Result<XLoginCheckResult, String> {
+    let _provider_operation = acquire_native_provider_operation(&app)?;
     let Some(window) = app.get_webview_window("x-login") else {
         return Ok(XLoginCheckResult::Closed);
     };
@@ -8476,7 +8554,7 @@ async fn fb_show_login(
     capture: tauri::State<'_, CaptureState>,
     user_agent: String,
 ) -> Result<(), String> {
-    library_core_desktop_runtime::require_primary_library_authority(&app)?;
+    let _provider_operation = acquire_native_provider_operation(&app)?;
     use tauri::WebviewWindowBuilder;
 
     info!("[FB] opening login window");
@@ -9608,7 +9686,7 @@ async fn ig_show_login(
     capture: tauri::State<'_, CaptureState>,
     user_agent: String,
 ) -> Result<(), String> {
-    library_core_desktop_runtime::require_primary_library_authority(&app)?;
+    let _provider_operation = acquire_native_provider_operation(&app)?;
     use tauri::WebviewWindowBuilder;
 
     recycle_webview_window(
@@ -10337,7 +10415,7 @@ async fn li_show_login(
     capture: tauri::State<'_, CaptureState>,
     user_agent: String,
 ) -> Result<(), String> {
-    library_core_desktop_runtime::require_primary_library_authority(&app)?;
+    let _provider_operation = acquire_native_provider_operation(&app)?;
     use tauri::WebviewWindowBuilder;
 
     recycle_webview_window(
@@ -11285,7 +11363,7 @@ async fn show_essay_provider_login(
     user_agent: String,
     provider: EssayProviderConfig,
 ) -> Result<(), String> {
-    library_core_desktop_runtime::require_primary_library_authority(&app)?;
+    let _provider_operation = acquire_native_provider_operation(&app)?;
     use tauri::WebviewWindowBuilder;
     let user_agent = store_essay_provider_user_agent(user_agent_store, user_agent)?;
 
@@ -14306,6 +14384,8 @@ pub fn run() {
             retry_startup_after_crash,
             export_startup_diagnostics,
             fetch_url,
+            fetch_rss_url,
+            fetch_background_article_url,
             google_api_request,
             google_oauth_proxy_request,
             google_drive_request,
@@ -14326,6 +14406,7 @@ pub fn run() {
             get_social_provider_cookie_state,
             prepare_social_scrape_memory,
             library_core_desktop_runtime::query_normalized_library,
+            library_core_query_control::cancel_normalized_library_query,
             library_core_desktop_runtime::mutate_normalized_device_graph_layout,
             library_core_desktop_runtime::mutate_normalized_content_policy,
             library_core_desktop_runtime::mutate_normalized_device_contacts,
@@ -14350,20 +14431,38 @@ pub fn run() {
             library_core_desktop_runtime::normalized_library_follower_transport_context,
             library_core_desktop_runtime::page_normalized_library_follower_transport,
             library_core_desktop_runtime::normalized_library_follower_mutation_context,
+            library_core_desktop_runtime::read_normalized_library_consumer_recovery,
+            library_core_desktop_runtime::prepare_normalized_library_consumer_recovery,
+            library_core_desktop_runtime::commit_normalized_library_consumer_recovery,
+            library_core_desktop_runtime::prepare_normalized_library_handoff_readiness,
+            library_core_desktop_runtime::begin_normalized_library_source_handoff,
+            library_core_desktop_runtime::cancel_normalized_library_source_handoff,
+            library_core_desktop_runtime::seal_normalized_library_source_handoff,
+            library_core_desktop_runtime::accept_normalized_library_target_handoff_authorization,
+            library_core_desktop_runtime::accept_normalized_library_target_handoff_cancellation,
+            library_core_desktop_runtime::stage_normalized_library_target_handoff,
+            library_core_desktop_runtime::activate_normalized_library_target_handoff,
+            library_core_desktop_runtime::adopt_normalized_library_source_handoff,
+            library_core_desktop_runtime::prepare_normalized_library_handoff_activation,
+            library_core_desktop_runtime::prepare_normalized_library_handoff_authorization,
+            library_core_desktop_runtime::authorize_normalized_library_source_handoff,
+            library_core_desktop_runtime::read_normalized_library_handoff_status,
             library_core_desktop_runtime::prepare_normalized_library_follower_actor_request,
             library_core_desktop_runtime::install_normalized_library_follower_actor_enrollment,
             library_core_desktop_runtime::countersign_normalized_library_follower_actor_request,
             library_core_desktop_runtime::sign_normalized_library_follower_operation,
             library_core_desktop_runtime::enqueue_normalized_library_follower_intent,
+            library_core_desktop_runtime::reapply_normalized_library_archived_editor_transaction,
+            library_core_desktop_runtime::reapply_normalized_library_archived_assignments,
             library_core_desktop_runtime::read_normalized_library_follower_intent_page,
             library_core_desktop_runtime::record_normalized_library_follower_intent_publication,
             library_core_desktop_runtime::record_normalized_library_follower_intent_transport_publication,
             library_core_desktop_runtime::ingest_normalized_library_follower_intent_page,
             library_core_desktop_runtime::normalized_library_primary_follower_actor_transport_state,
             library_core_desktop_runtime::read_normalized_library_follower_result_page,
+            library_core_desktop_runtime::read_normalized_library_handoff_result_actors,
             library_core_desktop_runtime::import_normalized_library_follower_result_page,
             library_core_desktop_runtime::import_normalized_library_follower_result_transport_segment,
-            library_core_desktop_runtime::reassign_normalized_library_writer_epoch,
             library_core_desktop_runtime::normalized_library_primary_mutation_context,
             library_core_desktop_runtime::sign_normalized_library_operations,
             library_core_desktop_runtime::commit_normalized_library_transaction,

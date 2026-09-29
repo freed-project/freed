@@ -103,9 +103,12 @@ describe("cross-platform normalized feed readers", () => {
   });
 
   it("converts exact SQLite Person and Account details without renderer catalogs", async () => {
+    const source = { generationId: "a".repeat(64), projectionRevision: 7, transitionSequence: 7 };
+    const root = { source, person: { id: "person-ada", name: "Ada", bio: "Mathematician", careLevel: 5, createdAt: 1, updatedAt: 10, relationshipStatus: "friend", reachOutIntervalDays: 7, tags: ["computing"] } };
     const query = vi
       .fn()
       .mockResolvedValueOnce({
+        source,
         person: {
           avatarUrl: null,
           bio: "Mathematician",
@@ -131,6 +134,7 @@ describe("cross-platform normalized feed readers", () => {
           updatedAt: 10,
         },
       })
+      .mockResolvedValueOnce(root)
       .mockResolvedValueOnce({
         account: {
           address: null,
@@ -160,6 +164,7 @@ describe("cross-platform normalized feed readers", () => {
         },
       })
       .mockResolvedValueOnce({
+        source,
         linkedAccountCount: 1,
         linkedAccounts: [
           {
@@ -199,7 +204,7 @@ describe("cross-platform normalized feed readers", () => {
           tags: ["computing"],
           updatedAt: 10,
         },
-      }) as unknown as LibraryCoreNormalizedQueryExecutor;
+      }).mockResolvedValueOnce(root) as unknown as LibraryCoreNormalizedQueryExecutor;
     const runtime = { query, randomId: () => "test" };
 
     await expect(
@@ -228,12 +233,12 @@ describe("cross-platform normalized feed readers", () => {
       queryId: "person_detail_v1",
       schemaVersion: 1,
     });
-    expect(query).toHaveBeenNthCalledWith(2, {
+    expect(query).toHaveBeenNthCalledWith(3, {
       accountId: "account-ada",
       queryId: "account_detail_v1",
       schemaVersion: 1,
     });
-    expect(query).toHaveBeenNthCalledWith(3, {
+    expect(query).toHaveBeenNthCalledWith(4, {
       personId: "person-ada",
       queryId: "person_detail_v1",
       schemaVersion: 1,
@@ -648,6 +653,9 @@ describe("cross-platform normalized feed readers", () => {
   it("reconstructs synchronized preferences through the normalized executor", async () => {
     const query = vi.fn(async () => ({
       rows: [
+        ...["o:$.weights", "o:$.weights.topics", "o:$.weights.topics.alpha"].map(path => ({ path, booleanValue: null, integerValue: null, realValue: null, textValue: null, updatedAt: 1, valueType: "null" })),
+        ...[["v:$.weights.topics.alpha.bits", "3fc0000000000000"], ["v:$.weights.topics.alpha.codec", "ieee754_binary64_hex_v1"]].map(([path, textValue]) => ({ path, booleanValue: null, integerValue: null, realValue: null, textValue, updatedAt: 1, valueType: "text" })),
+
         {
           booleanValue: null,
           integerValue: null,
@@ -677,7 +685,7 @@ describe("cross-platform normalized feed readers", () => {
     ).resolves.toEqual(
       expect.objectContaining({
         display: expect.objectContaining({ themeId: "neon" }),
-        weights: expect.any(Object),
+        weights: expect.objectContaining({ topics: { alpha: 0.125 } }),
       }),
     );
     expect(query).toHaveBeenCalledWith({

@@ -1,4 +1,21 @@
-import type { Database, PreparedStatement, SqlValue } from "@sqlite.org/sqlite-wasm";
+import { sameLibraryCoreRecoveryPreferenceScopeV1 } from "@freed/shared/library-core";
+import { parseLibraryCoreFeedPageSourceV1 } from "@freed/shared/library-core";
+import { parseLibraryCorePersonAccountPageRequestV1, parseLibraryCorePersonAccountPageResponseV1, decodeLibraryCorePersonAccountCursorV1, encodeLibraryCorePersonAccountCursorV1, type LibraryCorePersonAccountPageRequestV1, type LibraryCorePersonAccountPageResponseV1 } from "@freed/shared/library-core";
+import { parseLibraryCoreAccountRootRequestV1, parseLibraryCoreAccountRootResponseV1, type LibraryCoreAccountRootRequestV1, type LibraryCoreAccountRootResponseV1 } from "@freed/shared/library-core";
+import { parseLibraryCorePersonRootRequestV1, parseLibraryCorePersonRootResponseV1, type LibraryCorePersonRootRequestV1, type LibraryCorePersonRootResponseV1 } from "@freed/shared/library-core";
+import { parseLibraryCoreReapplyConsumerIntentV1, parseLibraryCoreRecoveryReissueReceiptV1, type LibraryCoreReapplyConsumerIntentV1, type LibraryCoreRecoveryReissueReceiptV1 } from "@freed/shared/library-core";
+import { inspectPwaRecoveryIntentInTransaction, queryPwaRecoveryIntentReview } from "./library-core-recovery-review";
+import {
+  parseLibraryCoreRecoveryIntentPageRequestV1, parseLibraryCoreRecoveryIntentPageResponseV1,
+  type LibraryCoreRecoveryIntentPageRequestV1, type LibraryCoreRecoveryIntentPageResponseV1,
+  parseLibraryCoreRecoveryArchivePageRequestV1, parseLibraryCoreRecoveryArchivePageResponseV1,
+  type LibraryCoreRecoveryArchivePageRequestV1, type LibraryCoreRecoveryArchivePageResponseV1,
+} from "@freed/shared/library-core";
+import { readPwaConsumerRecoveryPlan, readPwaConsumerRecoveryStatus, preparePwaConsumerRecovery, commitPwaConsumerRecovery } from "./library-core-consumer-recovery";
+import { verifyPwaFollowerActorRequest } from "./library-core-follower-request-proof";
+import { verifyPwaCheckpointSuccessor, requirePwaCheckpointSuccessor, type PwaVerifiedSuccessor } from "./library-core-successor-proof";
+import { readPwaLibraryStorageIdentity } from "./library-core-recovery-schema";
+import type { CAPI, Database, PreparedStatement, SqlValue } from "@sqlite.org/sqlite-wasm";
 import { CONTENT_SIGNAL_KEYS } from "@freed/shared";
 import { parseLibraryCoreItemAnnotationsRequestV1, parseLibraryCoreItemAnnotationsResponseV1, type LibraryCoreItemAnnotationsRequestV1, type LibraryCoreItemAnnotationsResponseV1 } from "@freed/shared/library-core";
 import { parseLibraryCoreRssItemSummaryRequestV1, parseLibraryCoreRssItemSummaryResponseV1, type LibraryCoreRssItemSummaryRequestV1, type LibraryCoreRssItemSummaryResponseV1 } from "@freed/shared/library-core";
@@ -34,6 +51,7 @@ import {
   LIBRARY_CORE_NORMALIZED_OPERATION_SEGMENT_PROTOCOL_VERSION,
   LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
   LIBRARY_CORE_SQLITE_SCHEMA_VERSION,
+  LIBRARY_CORE_LOCAL_STORAGE_SCHEMA_VERSION,
   type LibraryCoreSqliteWorkerStatus,
   type LibraryCoreCanonicalValue,
   type LibraryCoreFollowerIntentCommitResultV1,
@@ -63,8 +81,6 @@ import {
   type LibraryCoreVerifiedFollowerResultV1,
   type LibraryCoreAcceptedActorStateV1,
   encodeLibraryCoreDigestInput,
-  encodeLibraryCoreSignatureInput,
-  constructLibraryCoreActorEnrollmentBodyV1,
   isLibraryCoreCanonicalRecord,
   isLibraryCoreEd25519PublicKeyHex,
   isLibraryCoreLowercaseHex64,
@@ -89,6 +105,7 @@ import {
   parseLibraryCoreFollowerResultEnvelopeV1,
   sha256LowerHex,
   verifyLibraryCoreEd25519WithWebCrypto,
+  type LibraryCoreVerifiedOperationTransactionV1,
   verifyLibraryCoreOperationTransactionV1,
   verifyLibraryCoreFollowerResultV1,
   verifyLibraryCoreActorCapabilityCertificateV2,
@@ -430,25 +447,6 @@ function text(value: unknown, label: string): string {
     throw new Error(`${label} is not SQLite text`);
   }
   return value;
-}
-
-function canonicalRecord(
-  value: unknown,
-  expectedKeys: readonly string[],
-  label: string,
-): Readonly<Record<string, unknown>> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(`${label} must be an object`);
-  }
-  const keys = Object.keys(value).sort();
-  const expected = [...expectedKeys].sort();
-  if (
-    keys.length !== expected.length ||
-    keys.some((key, index) => key !== expected[index])
-  ) {
-    throw new Error(`${label} has unknown or missing fields`);
-  }
-  return value as Readonly<Record<string, unknown>>;
 }
 
 function coreDigest(
@@ -838,7 +836,9 @@ export class PwaLibraryCoreSqliteEngine {
   readonly #now: () => number;
   readonly #sqliteVersion: string;
   readonly #subtle: SubtleCrypto;
+  readonly #capi: CAPI | undefined;
   #connectionGeneration = 0;
+  #successorProof: PwaVerifiedSuccessor | null = null;
 
   constructor(
     database: Database,
@@ -846,12 +846,14 @@ export class PwaLibraryCoreSqliteEngine {
     dependencies: Readonly<{
       now?: () => number;
       subtle?: SubtleCrypto;
+      capi?: CAPI;
     }> = {},
   ) {
     this.#database = database;
     this.#now = dependencies.now ?? Date.now;
     this.#sqliteVersion = sqliteVersion;
     this.#subtle = dependencies.subtle ?? crypto.subtle;
+    this.#capi = dependencies.capi;
   }
 
   initialize(): LibraryCoreSqliteWorkerStatus {
@@ -893,7 +895,7 @@ export class PwaLibraryCoreSqliteEngine {
       this.#database.exec(
         `PRAGMA user_version = ${LIBRARY_CORE_SQLITE_SCHEMA_VERSION};`,
       );
-    } else if (userVersion !== LIBRARY_CORE_SQLITE_SCHEMA_VERSION) {
+    } else if (userVersion !== LIBRARY_CORE_SQLITE_SCHEMA_VERSION && userVersion !== LIBRARY_CORE_LOCAL_STORAGE_SCHEMA_VERSION) {
       throw new Error("PWA Library SQLite schema version is unsupported");
     } else if (applicationId !== LIBRARY_CORE_SQLITE_APPLICATION_ID) {
       throw new Error("PWA Library SQLite application identity is unsupported");
@@ -933,8 +935,7 @@ export class PwaLibraryCoreSqliteEngine {
       contractVersion: LIBRARY_CORE_SQLITE_CONTRACT_VERSION,
       engine: "sqlite-wasm-opfs-sahpool",
       protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
-      schemaSha256: LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256,
-      schemaVersion: LIBRARY_CORE_SQLITE_SCHEMA_VERSION,
+      ...readPwaLibraryStorageIdentity(this.#database),
       sqliteVersion: this.#sqliteVersion,
       storage: "opfs",
     });
@@ -1471,6 +1472,7 @@ export class PwaLibraryCoreSqliteEngine {
     authorityEpoch: string,
     sourceRevision: number,
     receipt: NonNullable<LibraryCoreActivateNormalizedCheckpointStageV2["followerReceipt"]>,
+    verifiedSuccessor: "successor" | "continuation" | null,
   ): string[] {
     const requests = this.#database.exec({
       sql: `SELECT library_id, authority_epoch_id, actor_id
@@ -1479,7 +1481,7 @@ export class PwaLibraryCoreSqliteEngine {
     });
     if (requests.length === 0) return [];
     const request = requests[0]!;
-    if (requests.length !== 1 || request[0] !== libraryId || request[1] !== authorityEpoch) {
+    if (requests.length !== 1 || request[0] !== libraryId || (request[1] !== authorityEpoch && !verifiedSuccessor)) {
       throw new Error("follower checkpoint requires authority recovery");
     }
     const compatible = this.#database.exec({
@@ -1490,16 +1492,16 @@ export class PwaLibraryCoreSqliteEngine {
                AND receipt.authority_epoch_id = meta.authority_epoch
               WHERE meta.singleton_id = 1 AND receipt.singleton_id = 1
                 AND meta.library_id = ?1 AND meta.authority_epoch = ?2
-                AND meta.source_revision <= ?3 AND receipt.checkpoint_generation <= ?4
-                AND receipt.writer_actor_id = ?5
+                AND meta.source_revision <= ?3 AND (?7 OR (receipt.checkpoint_generation <= ?4
+                AND receipt.writer_actor_id = ?5))
             ) AND NOT EXISTS (
               SELECT 1 FROM library_intent_actors WHERE actor_id != ?6
             ) AND NOT EXISTS (
               SELECT 1 FROM library_intent_transactions
-              WHERE actor_id != ?6 OR intent_epoch_id != ?2
+              WHERE actor_id != ?6 OR intent_epoch_id != ?8
             );`,
-      bind: [libraryId, authorityEpoch, sourceRevision, receipt.checkpointGeneration,
-        receipt.writerActorId, text(request[2], "retained follower actor")],
+      bind: [libraryId, verifiedSuccessor === "successor" ? text(request[1], "retained follower epoch") : authorityEpoch, sourceRevision, receipt.checkpointGeneration,
+        receipt.writerActorId, text(request[2], "retained follower actor"), verifiedSuccessor === "successor" ? 1 : 0, text(request[1], "retained intent epoch")],
       rowMode: 0, returnValue: "resultRows",
     });
     if (safeInteger(compatible[0], "follower checkpoint compatibility") !== 1) {
@@ -1519,9 +1521,10 @@ export class PwaLibraryCoreSqliteEngine {
       this.#database.exec(`CREATE TABLE main.checkpoint_retained_${table} AS SELECT * FROM ${table};`);
     }
     this.#database.exec(`CREATE TABLE main.checkpoint_retained_authority AS
-        SELECT epoch_id, authority_key_id, authority_public_key, canonical_transition_certificate
+        SELECT epoch_id, library_id, epoch_number, transition_certificate_digest, authority_key_id, authority_public_key, canonical_transition_certificate
         FROM library_authority_epochs
-        WHERE epoch_id = (SELECT authority_epoch FROM library_meta WHERE singleton_id = 1);
+        WHERE epoch_id IN ((SELECT authority_epoch FROM library_meta WHERE singleton_id = 1),
+          (SELECT authority_epoch_id FROM library_follower_actor_request WHERE singleton_id = 1));
       CREATE TABLE main.checkpoint_retained_actor_tip AS
         SELECT actor_id, accepted_counter, accepted_operation_id, accepted_chain_digest
         FROM library_actors
@@ -1531,12 +1534,14 @@ export class PwaLibraryCoreSqliteEngine {
 
   #restoreFollowerCheckpointState(tables: readonly string[]): void {
     const authority = this.#database.exec({
-      sql: `SELECT EXISTS (
+      sql: `SELECT NOT EXISTS (
               SELECT 1 FROM checkpoint_retained_authority AS old
-              JOIN library_authority_epochs AS current USING (epoch_id)
-              WHERE current.authority_key_id = old.authority_key_id
-                AND current.authority_public_key = old.authority_public_key
-                AND current.canonical_transition_certificate = old.canonical_transition_certificate
+              LEFT JOIN library_authority_epochs AS current USING (epoch_id)
+              WHERE current.epoch_id IS NULL OR current.library_id != old.library_id
+                OR current.epoch_number != old.epoch_number OR current.transition_certificate_digest != old.transition_certificate_digest
+                OR current.authority_key_id != old.authority_key_id
+                OR current.authority_public_key != old.authority_public_key
+                OR current.canonical_transition_certificate != old.canonical_transition_certificate
             );`,
       rowMode: 0, returnValue: "resultRows",
     });
@@ -1577,6 +1582,19 @@ export class PwaLibraryCoreSqliteEngine {
     }
     this.#database.exec(`DROP TABLE main.checkpoint_retained_authority;
       DROP TABLE main.checkpoint_retained_actor_tip;`);
+  }
+
+  /** Prepare async crypto only; activation rechecks this proof under its write lock. */
+  async verifyNormalizedCheckpointSuccessor(
+    input: LibraryCoreActivateNormalizedCheckpointStageV2,
+  ): Promise<void> {
+    this.#successorProof = null;
+    const activation = parseLibraryCoreActivateNormalizedCheckpointStageV2(input);
+    if (activation.replaceExisting && activation.followerReceipt !== null) {
+      this.#successorProof = await verifyPwaCheckpointSuccessor(
+        this.#database, activation.stageId, this.#subtle,
+      );
+    }
   }
 
   activateNormalizedCheckpointStage(
@@ -1622,6 +1640,9 @@ export class PwaLibraryCoreSqliteEngine {
         if (followerReceipt !== null) {
           retainedFollowerTables = this.#retainFollowerCheckpointState(
             libraryId, authorityEpoch, sourceRevision, followerReceipt,
+            requirePwaCheckpointSuccessor(
+              this.#database, stageId, this.#successorProof, followerReceipt.writerActorId,
+            ),
           );
         }
         const unresolvedLocalOperations = safeInteger(
@@ -4087,6 +4108,26 @@ export class PwaLibraryCoreSqliteEngine {
     }
   }
 
+  consumerRecoveryStatus() {
+    return readPwaConsumerRecoveryStatus(this.#database, this.followerActorEnrollmentContext().authority);
+  }
+
+  consumerRecoveryPlan() {
+    return readPwaConsumerRecoveryPlan(this.#database, this.followerActorEnrollmentContext().authority);
+  }
+
+  async prepareConsumerRecovery(recoveryId: string, request: LibraryCoreStoreFollowerActorRequestV2): Promise<void> {
+    if (!this.#capi) throw new Error("PWA recovery SQLite transaction API is unavailable");
+    await preparePwaConsumerRecovery(this.#database, this.#capi, this.#subtle,
+      this.followerActorEnrollmentContext().authority, recoveryId, request);
+  }
+
+  async commitConsumerRecovery(recoveryId: string, committedAt: number): Promise<void> {
+    if (!this.#capi) throw new Error("PWA recovery SQLite transaction API is unavailable");
+    await commitPwaConsumerRecovery(this.#database, this.#capi, this.#subtle,
+      this.followerActorEnrollmentContext().authority, recoveryId, committedAt);
+  }
+
   followerActorEnrollmentContext(): LibraryCoreFollowerActorEnrollmentContextV2 {
     const rows = this.#database.exec({
       sql: `SELECT m.library_id, e.epoch_number, e.epoch_id,
@@ -4208,129 +4249,13 @@ export class PwaLibraryCoreSqliteEngine {
       }
       return this.followerActorEnrollmentContext().request!;
     }
-    const decoded = decodeLibraryCoreCanonicalValue(
-      request.canonicalRequestBytes,
-      { maximumBytes: 65_536 },
-    );
-    const canonical = encodeLibraryCoreCanonicalValue(decoded, {
-      maximumBytes: 65_536,
-    });
-    if (
-      canonical.byteLength !== request.canonicalRequestBytes.byteLength ||
-      !canonical.every(
-        (byte, index) => byte === request.canonicalRequestBytes[index],
-      )
-    ) {
-      throw new Error("PWA follower actor request is not canonical");
-    }
-    const outer = canonicalRecord(
-      decoded,
-      ["certificate_body", "certificate_digest"],
-      "PWA follower actor request",
-    );
-    const body = canonicalRecord(
-      outer.certificate_body,
-      [
-        "actor_enrollment_body",
-        "enrollment_body_digest",
-        "actor_proof",
-        "actor_capability_body",
-        "actor_capability_body_digest",
-      ],
-      "PWA follower actor request body",
-    );
-    const enrollmentInput = canonicalRecord(
-      body.actor_enrollment_body,
-      [
-        "operation_id",
-        "operation_type",
-        "library_id",
-        "epoch",
-        "epoch_id",
-        "schema_version",
-        "authority_key_id",
-        "installation_incarnation",
-        "actor_incarnation_nonce",
-        "actor_id",
-        "actor_public_key",
-        "actor_public_key_fingerprint",
-        "observed_frontier",
-        "created_at_ms",
-        "signature_algorithm",
-      ],
-      "PWA follower actor enrollment body",
-    );
-    const derivedEnrollment = constructLibraryCoreActorEnrollmentBodyV1(
-      {
-        actor_incarnation_nonce: enrollmentInput.actor_incarnation_nonce,
-        actor_public_key: enrollmentInput.actor_public_key,
-        authority_key_id: enrollmentInput.authority_key_id,
-        created_at_ms: enrollmentInput.created_at_ms,
-        epoch: enrollmentInput.epoch,
-        epoch_id: enrollmentInput.epoch_id,
-        installation_incarnation: enrollmentInput.installation_incarnation,
-        library_id: enrollmentInput.library_id,
-        observed_frontier: enrollmentInput.observed_frontier,
-        operation_id: enrollmentInput.operation_id,
-      },
-      { digest: coreDigest },
-    );
-    const capability = canonicalRecord(
-      body.actor_capability_body,
-      [
-        "format",
-        "library_id",
-        "epoch",
-        "epoch_id",
-        "authority_key_id",
-        "actor_id",
-        "actor_public_key",
-        "actor_class",
-        "allowed_operation_types",
-        "allowed_query_ids",
-        "scope",
-        "issuance_identity",
-        "retirement_identity",
-        "issued_at_ms",
-        "signature_algorithm",
-      ],
-      "PWA follower actor capability",
-    );
-    const requestDigest = coreDigest("actor-capability-certificate", body);
-    const actorProof = body.actor_proof;
-    if (
-      outer.certificate_digest !== requestDigest ||
-      body.enrollment_body_digest !==
-        derivedEnrollment.enrollment_body_digest ||
-      derivedEnrollment.body.library_id !== context.authority.library_id ||
-      derivedEnrollment.body.epoch !== context.authority.epoch ||
-      derivedEnrollment.body.epoch_id !== context.authority.epoch_id ||
-      derivedEnrollment.body.authority_key_id !==
-        context.authority.authority_key_id ||
-      derivedEnrollment.body.created_at_ms !== request.createdAt ||
-      capability.actor_id !== derivedEnrollment.body.actor_id ||
-      capability.actor_public_key !== derivedEnrollment.body.actor_public_key ||
-      capability.library_id !== context.authority.library_id ||
-      capability.epoch_id !== context.authority.epoch_id ||
-      capability.actor_class !== "editor" ||
-      JSON.stringify(capability.scope) !== '{"mode":"library_wide"}' ||
-      JSON.stringify(capability.allowed_operation_types) !==
-        JSON.stringify(LIBRARY_CORE_PRIMARY_WRITER_OPERATION_TYPES_V2) ||
-      JSON.stringify(capability.allowed_query_ids) !== "[]" ||
-      !isLibraryCoreLowercaseHex64(requestDigest) ||
-      typeof actorProof !== "string" ||
-      !(await verifyLibraryCoreEd25519WithWebCrypto(
-        {
-          message: encodeLibraryCoreSignatureInput("actor-enrollment-proof", {
-            enrollment_body_digest: derivedEnrollment.enrollment_body_digest,
-          }),
-          publicKeyHex: derivedEnrollment.body.actor_public_key,
-          signatureHex: actorProof as never,
-        },
-        this.#subtle,
-      ))
-    ) {
-      throw new Error("PWA follower actor request proof is invalid");
+    const verified = await verifyPwaFollowerActorRequest(request, context.authority, this.#subtle);
+    const derivedEnrollment = { body: verified.enrollment };
+    const requestDigest = verified.requestDigest;
+    // Crypto yields. Recheck authority and the singleton before installing its result.
+    const current = this.followerActorEnrollmentContext();
+    if (JSON.stringify(current) !== JSON.stringify(context)) {
+      throw new Error("PWA follower enrollment changed during verification");
     }
     this.#database.exec({
       sql: `INSERT INTO library_follower_actor_request
@@ -4552,6 +4477,11 @@ export class PwaLibraryCoreSqliteEngine {
     }).decode(install.canonicalCertificateBytes);
     this.#database.exec("BEGIN IMMEDIATE;");
     try {
+      // WebCrypto verification yields. Recheck the exact authority and pending
+      // request under the write lock before installing the verified response.
+      if (JSON.stringify(this.followerActorEnrollmentContext()) !== JSON.stringify(context)) {
+        throw new Error("PWA follower enrollment changed during verification");
+      }
       this.#database.exec({
         sql: `INSERT OR IGNORE INTO library_actors
                 (actor_id, authority_epoch_id, actor_kind, public_key,
@@ -4590,19 +4520,58 @@ export class PwaLibraryCoreSqliteEngine {
           capability.issued_at_ms,
         ],
       });
+      // Native checkpoints key capabilities by certificate digest. Reuse that
+      // physical ID only after verifying the stored actor and signed grant.
+      const anchored = this.#database.exec({
+        sql: `SELECT c.capability_id FROM library_actors AS a
+              JOIN library_actor_capabilities AS c ON c.actor_id = a.actor_id
+              WHERE a.actor_id = ?1 AND a.authority_epoch_id = ?2
+                AND a.actor_kind = 'pwa' AND a.public_key = ?3
+                AND a.enrollment_certificate_digest = ?4
+                AND a.canonical_enrollment_certificate = ?5
+                AND a.chain_genesis_digest = ?6 AND a.accepted_counter = 0
+                AND a.accepted_operation_id IS NULL AND a.accepted_chain_digest = ?6
+                AND a.retired_at IS NULL AND c.retired_at IS NULL
+                AND c.certificate_digest = ?4 AND c.canonical_certificate = ?5
+                AND c.certificate_version = 2 AND c.actor_class = 'editor'
+                AND c.scope_mode = 'library_wide' AND c.scope_kind IS NULL
+                AND c.scope_id IS NULL AND c.issuance_identity = ?7
+                AND c.retirement_identity = ?8 AND c.issued_at = ?9
+                AND NOT EXISTS (SELECT 1 FROM library_actor_capabilities AS other
+                  WHERE other.actor_id = a.actor_id AND other.retired_at IS NULL
+                    AND other.capability_id <> c.capability_id);`,
+        bind: [enrollment.actor_id, enrollment.epoch_id, enrollment.actor_public_key,
+          certificate.certificate_digest, canonicalCertificate, verified.actor_chain_genesis,
+          capability.issuance_identity, capability.retirement_identity, capability.issued_at_ms],
+        rowMode: "array", returnValue: "resultRows",
+      });
+      if (anchored.length !== 1) throw new Error("PWA follower enrollment stored identity changed");
+      const capabilityId = text(anchored[0]![0], "enrollment capability identity");
       for (const mutationId of capability.allowed_operation_types) {
         this.#database.exec({
           sql: `INSERT OR IGNORE INTO library_actor_capability_mutations
                   (capability_id, mutation_id) VALUES (?1, ?2);`,
-          bind: [capability.issuance_identity, mutationId],
+          bind: [capabilityId, mutationId],
         });
       }
       for (const queryId of capability.allowed_query_ids) {
         this.#database.exec({
           sql: `INSERT OR IGNORE INTO library_actor_capability_queries
                   (capability_id, query_id) VALUES (?1, ?2);`,
-          bind: [capability.issuance_identity, queryId],
+          bind: [capabilityId, queryId],
         });
+      }
+      const storedMutations = this.#database.exec({
+        sql: "SELECT mutation_id FROM library_actor_capability_mutations WHERE capability_id = ?1 ORDER BY mutation_id LIMIT 1001;",
+        bind: [capabilityId], rowMode: "array", returnValue: "resultRows",
+      }).map((row) => text(row[0], "enrollment mutation grant"));
+      const storedQueries = this.#database.exec({
+        sql: "SELECT query_id FROM library_actor_capability_queries WHERE capability_id = ?1 ORDER BY query_id LIMIT 1001;",
+        bind: [capabilityId], rowMode: "array", returnValue: "resultRows",
+      }).map((row) => text(row[0], "enrollment query grant"));
+      if (JSON.stringify(storedMutations) !== JSON.stringify(capability.allowed_operation_types) ||
+          JSON.stringify(storedQueries) !== JSON.stringify(capability.allowed_query_ids)) {
+        throw new Error("PWA follower enrollment stored permissions changed");
       }
       this.#database.exec({
         sql: `UPDATE library_follower_actor_request
@@ -4657,6 +4626,9 @@ export class PwaLibraryCoreSqliteEngine {
             JOIN library_actors AS a
               ON a.actor_id = request.actor_id
              AND a.authority_epoch_id = e.epoch_id
+             AND a.public_key = request.actor_public_key
+             AND a.enrollment_certificate_digest = request.enrollment_certificate_digest
+             AND a.chain_genesis_digest = request.actor_chain_genesis
              AND a.retired_at IS NULL
             LEFT JOIN library_intent_actors AS i ON i.actor_id = a.actor_id
             WHERE m.singleton_id = 1
@@ -4818,6 +4790,93 @@ export class PwaLibraryCoreSqliteEngine {
     });
   }
 
+  async reapplyConsumerIntent(input: LibraryCoreReapplyConsumerIntentV1): Promise<LibraryCoreRecoveryReissueReceiptV1> {
+    const { review, intent } = parseLibraryCoreReapplyConsumerIntentV1(input);
+    if (!this.#capi || !this.#database.pointer || this.#capi.sqlite3_get_autocommit(this.#database.pointer) !== 1) {
+      throw new Error("Recovery replacement requires its own transaction");
+    }
+    if (this.#database.selectValue("PRAGMA synchronous;") !== 2 || this.#database.selectValue("PRAGMA foreign_keys;") !== 1) {
+      throw new Error("Recovery replacement requires FULL durability and foreign keys");
+    }
+    this.#database.exec("BEGIN IMMEDIATE;");
+    try {
+      const original = await inspectPwaRecoveryIntentInTransaction(this.#database, this.#capi, review,
+        verification => verifyLibraryCoreEd25519WithWebCrypto(verification, this.#subtle));
+      if (original.archiveDigest !== review.archiveDigest || original.verified.transaction_digest !== review.transactionDigest ||
+          original.verified.members.length !== review.memberCount) throw new Error("Recovery replacement archive identity changed");
+      // Resolve response loss before checking today's actor, revision or replacement bytes.
+      if (original.replacement) { this.#database.exec("COMMIT;"); return original.replacement; }
+      if (original.outcome.state === "confirmed_accepted") throw new Error("Recovery edit was already accepted; reapplication refused");
+      if (original.source.generationId !== review.reviewedGenerationId || original.source.projectionRevision !== review.reviewedRevision ||
+          original.source.transitionSequence !== review.reviewedLocalSequence) throw new Error("RECOVERY_REVIEW_STALE: review the current Library before applying again");
+      const context = this.followerMutationContext(), recovery = this.consumerRecoveryStatus();
+      const old = original.verified.members[0]!.envelope;
+      if (recovery.state !== "following" || String(recovery.plan.authority.epoch_id) !== String(context.epoch_id) ||
+          String(context.epoch_id) === old.epoch_id || context.actor_id === old.actor_id) throw new Error("Recovery replacement requires the enrolled successor consumer");
+      const decoded = decodeLibraryCoreCanonicalValue(intent.envelopeBytes[0]!);
+      if (!decoded || typeof decoded !== "object" || Array.isArray(decoded)) throw new Error("Recovery replacement must be a canonical record");
+      const candidate = decoded as Readonly<Record<string, LibraryCoreCanonicalValue>>;
+      if (typeof candidate.actor_id !== "string" || typeof candidate.transaction_id !== "string") {
+        throw new Error("Recovery replacement envelope identity is invalid");
+      }
+      if (candidate.transaction_id === review.transactionId || this.#database.selectValue(
+        "SELECT EXISTS(SELECT 1 FROM library_intent_transactions WHERE transaction_id = ?1);", [candidate.transaction_id]) !== 0) {
+        throw new Error("Recovery cannot attach an existing unlinked intent");
+      }
+      const prepared = await this.#prepareFollowerIntent(intent, candidate.actor_id);
+      if (prepared.actorState.actor_id !== context.actor_id || prepared.verified.members.length !== original.verified.members.length ||
+          prepared.verified.members.some((member, index) => {
+            const previous = original.verified.members[index]!.envelope;
+            return member.envelope.operation_type !== previous.operation_type || member.envelope.entity_type !== previous.entity_type || member.envelope.entity_id !== previous.entity_id;
+          })) throw new Error("Recovery editor must preserve the complete ordered operation and target set");
+      for (const [index, { envelope }] of prepared.verified.members.entries()) {
+        const archived = original.verified.members[index]!.envelope;
+        if (envelope.operation_type === "preferences_leaf_assignment" && !sameLibraryCoreRecoveryPreferenceScopeV1(
+          (archived.payload as { updates: LibraryCoreCanonicalValue }).updates,
+          (envelope.payload as { updates: LibraryCoreCanonicalValue }).updates))
+          throw new Error("Recovery must preserve the original preference assignment paths");
+        // Checkpoint history can retain an event without its acceptance receipt.
+        if (envelope.operation_type === "person_reach_out_append" && this.#database.selectValue(
+          "SELECT EXISTS(SELECT 1 FROM library_person_reach_outs WHERE person_id = ?1 AND reach_out_id = ?2);",
+          [archived.entity_id, archived.operation_id]) !== 0)
+          throw new Error("Recovery reach-out event is already present");
+        if (["person_upsert", "friend_replace"].includes(envelope.operation_type) && this.#database.selectValue(
+          "SELECT EXISTS(SELECT 1 FROM library_tombstones WHERE entity_type = 'person' AND entity_id = ?1);", [envelope.entity_id]) !== 0)
+          throw new Error("Recovery cannot recreate a deleted person");
+        if (envelope.operation_type === "account_upsert" && this.#database.selectValue(
+          "SELECT EXISTS(SELECT 1 FROM library_tombstones WHERE entity_type = 'account' AND entity_id = ?1);", [envelope.entity_id]) !== 0)
+          throw new Error("Recovery cannot recreate a deleted account");
+        // Verified Friend payloads contain at most 64 accounts. Check selected
+        // identities under the same write transaction as intent and link creation.
+        if (envelope.operation_type === "friend_replace" && this.#database.selectValue(
+          "SELECT EXISTS(SELECT 1 FROM json_each(?1, '$.accounts') AS selected JOIN library_tombstones AS deleted ON deleted.entity_type = 'account' AND deleted.entity_id = json_extract(selected.value, '$.id'));",
+          [JSON.stringify(envelope.payload)]) !== 0)
+          throw new Error("Recovery cannot recreate a deleted account");
+        if (envelope.operation_type === "rss_feed_upsert" && this.#database.selectValue(
+          "SELECT EXISTS(SELECT 1 FROM library_tombstones WHERE entity_type = 'rss_feed' AND entity_id = ?1);", [envelope.entity_id]) !== 0)
+          throw new Error("Recovery cannot recreate a deleted subscription");
+      }
+      const committed = this.#commitPreparedFollowerIntent(prepared);
+      const receipt = parseLibraryCoreRecoveryReissueReceiptV1({ schemaVersion: 1, recoveryId: review.recoveryId,
+        originalTransactionId: review.transactionId, replacementTransactionId: committed.transactionId,
+        replacementTransactionDigest: prepared.verified.transaction_digest, replacementEpochId: prepared.actorState.epoch_id,
+        replacementActorId: committed.actorId, firstCounter: committed.firstCounter, lastCounter: committed.lastCounter,
+        memberCount: committed.memberCount, createdAt: prepared.committedAt }, review);
+      if (!receipt.ok) throw new Error(receipt.error);
+      const value = receipt.value;
+      this.#database.exec({ sql: `INSERT INTO library_local_recovery_reissues
+        (recovery_id, original_transaction_id, archive_digest, original_transaction_digest, replacement_transaction_id,
+         replacement_transaction_digest, replacement_epoch_id, replacement_actor_id, first_counter, last_counter,
+         member_count, reviewed_generation_id, reviewed_revision, reviewed_local_sequence, created_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15);`,
+        bind: [review.recoveryId, review.transactionId, review.archiveDigest, review.transactionDigest, value.replacementTransactionId,
+          value.replacementTransactionDigest, value.replacementEpochId, value.replacementActorId, value.firstCounter, value.lastCounter,
+          value.memberCount, review.reviewedGenerationId, review.reviewedRevision, review.reviewedLocalSequence, value.createdAt] });
+      this.#database.exec("COMMIT;");
+      return value;
+    } catch (error) { rollbackPreservingOriginalError(this.#database, error); }
+  }
+
   async commitFollowerIntent(
     input: LibraryCoreFollowerIntentCommitV1,
   ): Promise<LibraryCoreFollowerIntentCommitResultV1> {
@@ -4847,6 +4906,18 @@ export class PwaLibraryCoreSqliteEngine {
     );
     if (exactRetry !== null) return exactRetry;
 
+    const prepared = await this.#prepareFollowerIntent(commit, firstRecord.actor_id);
+    this.#database.exec("BEGIN IMMEDIATE;");
+    try {
+      const result = this.#commitPreparedFollowerIntent(prepared);
+      this.#database.exec("COMMIT;");
+      return result;
+    } catch (error) {
+      rollbackPreservingOriginalError(this.#database, error);
+    }
+  }
+
+  async #prepareFollowerIntent(commit: LibraryCoreFollowerIntentCommitV1, actorId: string) {
     const actorRows = this.#database.exec({
       sql: `SELECT m.library_id, e.epoch_number, e.epoch_id,
                    a.actor_id, a.public_key,
@@ -4861,7 +4932,7 @@ export class PwaLibraryCoreSqliteEngine {
               AND a.authority_epoch_id = e.epoch_id AND a.retired_at IS NULL
             LEFT JOIN library_intent_actors AS i ON i.actor_id = a.actor_id
             WHERE m.singleton_id = 1;`,
-      bind: [firstRecord.actor_id],
+      bind: [actorId],
       rowMode: "array",
       returnValue: "resultRows",
     });
@@ -4921,6 +4992,22 @@ export class PwaLibraryCoreSqliteEngine {
         "follower intent transaction exceeds its registered mutation program",
       );
     }
+    const committedAt = this.#now();
+    if (!Number.isSafeInteger(committedAt) || committedAt < 0) {
+      throw new Error("follower intent clock is invalid");
+    }
+
+    return { commit, actorState, verified, committedAt };
+  }
+
+  /** Caller owns the write transaction, including any durable recovery linkage. */
+  #commitPreparedFollowerIntent(prepared: {
+    commit: LibraryCoreFollowerIntentCommitV1;
+    actorState: LibraryCoreAcceptedActorStateV1;
+    verified: LibraryCoreVerifiedOperationTransactionV1;
+    committedAt: number;
+  }): LibraryCoreFollowerIntentCommitResultV1 {
+    const { commit, actorState, verified, committedAt } = prepared;
     const effects = verified.members.flatMap((member, memberIndex) =>
       libraryCoreOptimisticFieldsForEnvelopeV1(member.envelope).map((effect) =>
         Object.freeze({ effect, member, memberIndex }),
@@ -4930,257 +5017,254 @@ export class PwaLibraryCoreSqliteEngine {
       verified.transaction_body as unknown as LibraryCoreCanonicalValue,
       { maximumBytes: 131_072 },
     );
-    const committedAt = this.#now();
-    if (!Number.isSafeInteger(committedAt) || committedAt < 0) {
-      throw new Error("follower intent clock is invalid");
+    const retryInsideTransaction = this.#followerIntentRetry(
+      verified.transaction_body.transaction_id,
+      commit.envelopeBytes,
+    );
+    if (retryInsideTransaction !== null) {
+      return retryInsideTransaction;
     }
-
-    this.#database.exec("BEGIN IMMEDIATE;");
-    try {
-      const retryInsideTransaction = this.#followerIntentRetry(
-        verified.transaction_body.transaction_id,
-        commit.envelopeBytes,
+    const enrollment = this.followerMutationContext();
+    if (enrollment.actor_id !== actorState.actor_id || enrollment.actor_public_key !== actorState.actor_public_key ||
+        String(enrollment.library_id) !== actorState.library_id || String(enrollment.epoch_id) !== actorState.epoch_id) {
+      throw new Error("Follower intent does not belong to this browser's current enrollment");
+    }
+    const recovery = this.consumerRecoveryStatus();
+    if (recovery.state !== "none" && recovery.state !== "following") {
+      throw new Error("Follower intent requires completed consumer recovery");
+    }
+    const current = this.#database.exec({
+      sql: `SELECT a.accepted_counter, a.accepted_operation_id,
+                   a.accepted_chain_digest, i.next_counter,
+                   i.previous_operation_id, i.previous_chain_digest,
+                   m.library_id, e.epoch_number, e.epoch_id, a.public_key
+            FROM library_meta AS m
+            JOIN library_authority_epochs AS e ON e.epoch_id = m.authority_epoch
+            JOIN library_active_authority AS active
+              ON active.library_id = m.library_id AND active.epoch_id = e.epoch_id
+            JOIN library_actors AS a ON a.actor_id = ?1
+              AND a.authority_epoch_id = e.epoch_id
+            LEFT JOIN library_intent_actors AS i ON i.actor_id = a.actor_id
+            WHERE a.actor_id = ?1 AND a.retired_at IS NULL;`,
+      bind: [actorState.actor_id],
+      rowMode: "array",
+      returnValue: "resultRows",
+    });
+    if (current.length !== 1) {
+      throw new Error("follower intent actor changed during verification");
+    }
+    const tip = current[0]!;
+    if (
+      text(tip[6], "current follower Library ID") !== actorState.library_id ||
+      safeInteger(tip[7], "current follower epoch") !== actorState.epoch ||
+      text(tip[8], "current follower epoch ID") !== actorState.epoch_id ||
+      text(tip[9], "current follower actor public key") !==
+        actorState.actor_public_key
+    ) {
+      throw new Error(
+        "follower intent authority changed during verification",
       );
-      if (retryInsideTransaction !== null) {
-        this.#database.exec("COMMIT;");
-        return retryInsideTransaction;
-      }
-      const current = this.#database.exec({
-        sql: `SELECT a.accepted_counter, a.accepted_operation_id,
-                     a.accepted_chain_digest, i.next_counter,
-                     i.previous_operation_id, i.previous_chain_digest,
-                     m.library_id, e.epoch_number, e.epoch_id, a.public_key
-              FROM library_meta AS m
-              JOIN library_authority_epochs AS e ON e.epoch_id = m.authority_epoch
-              JOIN library_active_authority AS active
-                ON active.library_id = m.library_id AND active.epoch_id = e.epoch_id
-              JOIN library_actors AS a ON a.actor_id = ?1
-                AND a.authority_epoch_id = e.epoch_id
-              LEFT JOIN library_intent_actors AS i ON i.actor_id = a.actor_id
-              WHERE a.actor_id = ?1 AND a.retired_at IS NULL;`,
-        bind: [actorState.actor_id],
-        rowMode: "array",
-        returnValue: "resultRows",
-      });
-      if (current.length !== 1) {
-        throw new Error("follower intent actor changed during verification");
-      }
-      const tip = current[0]!;
-      if (
-        text(tip[6], "current follower Library ID") !== actorState.library_id ||
-        safeInteger(tip[7], "current follower epoch") !== actorState.epoch ||
-        text(tip[8], "current follower epoch ID") !== actorState.epoch_id ||
-        text(tip[9], "current follower actor public key") !==
-          actorState.actor_public_key
-      ) {
-        throw new Error(
-          "follower intent authority changed during verification",
-        );
-      }
-      const nextCounter =
-        tip[3] === null
-          ? safeInteger(tip[0], "follower actor accepted counter") + 1
-          : safeInteger(tip[3], "follower actor local next counter");
-      const previousOperation =
-        tip[3] === null
-          ? nullableText(tip[1], "follower actor accepted operation")
-          : nullableText(tip[4], "follower actor local operation");
-      const previousDigest =
-        tip[3] === null
-          ? text(tip[2], "follower actor accepted digest")
-          : text(tip[5], "follower actor local digest");
-      if (
-        nextCounter !== actorState.next_actor_sequence ||
-        previousOperation !== actorState.previous_actor_operation_id ||
-        previousDigest !== actorState.previous_actor_chain_digest
-      ) {
-        throw new Error(
-          "follower intent actor tip changed during verification",
-        );
-      }
-      for (const member of verified.members) {
-        const envelope = member.envelope;
-        const allowed = safeInteger(
-          this.#database.exec({
-            sql: `SELECT count(*)
-                  FROM library_actor_capabilities AS c
-                  JOIN library_actor_capability_mutations AS m
-                    ON m.capability_id = c.capability_id
-                  WHERE c.actor_id = ?1 AND c.retired_at IS NULL
-                    AND m.mutation_id = ?2
-                    AND (c.scope_mode <> 'bounded'
-                      OR (c.scope_kind = ?3 AND c.scope_id = ?4));`,
-            bind: [
-              envelope.actor_id,
-              envelope.operation_type,
-              envelope.entity_type,
-              envelope.entity_id,
-            ],
-            rowMode: 0,
-            returnValue: "resultRows",
-          })[0],
-          "follower intent capability count",
-        );
-        if (allowed < 1) {
-          throw new Error(
-            `follower actor capability denies ${envelope.operation_type}`,
-          );
-        }
-        const program =
-          LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS[
-            envelope.operation_type as keyof typeof LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS
-          ];
-        if (!program) {
-          throw new Error(
-            `follower intent mutation program is absent for ${envelope.operation_type}`,
-          );
-        }
-        const targetExists = safeInteger(
-          this.#database.exec({
-            sql: program.targetExistsSql,
-            bind: program.targetExistsSql.includes("?1")
-              ? [envelope.entity_id]
-              : [],
-            rowMode: 0,
-            returnValue: "resultRows",
-          })[0],
-          "follower optimistic target count",
-        );
-        if (program.requiresExistingTarget && targetExists !== 1) {
-          throw new Error("follower optimistic target is unavailable");
-        }
-      }
-      this.#database.exec({
-        sql: `INSERT OR IGNORE INTO library_intent_actors
-                (actor_id, next_counter, previous_operation_id, previous_chain_digest)
-              VALUES (?1, ?2, ?3, ?4);`,
-        bind: [
-          actorState.actor_id,
-          actorState.next_actor_sequence,
-          actorState.previous_actor_operation_id,
-          actorState.previous_actor_chain_digest,
-        ],
-      });
-      const firstEnvelope = verified.members[0]!.envelope;
-      const lastEnvelope = verified.members.at(-1)!.envelope;
-      this.#database.exec({
-        sql: `INSERT INTO library_intent_transactions
-                (transaction_id, transaction_digest, actor_id, member_count,
-                 intent_epoch, intent_epoch_id, first_counter, last_counter,
-                 previous_operation_id,
-                 previous_chain_digest, ending_operation_id,
-                 ending_chain_digest, canonical_member_bytes,
-                 canonical_transaction, state, created_at)
-              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
-                      ?13, ?14, 'pending', ?15);`,
-        bind: [
-          verified.transaction_body.transaction_id,
-          verified.transaction_digest,
-          actorState.actor_id,
-          verified.members.length,
-          firstEnvelope.epoch,
-          firstEnvelope.epoch_id,
-          firstEnvelope.actor_sequence,
-          lastEnvelope.actor_sequence,
-          firstEnvelope.previous_actor_operation_id,
-          firstEnvelope.previous_actor_chain_digest,
-          lastEnvelope.operation_id,
-          lastEnvelope.actor_chain_digest,
-          verified.canonical_envelope_bytes,
-          canonicalTransaction,
-          committedAt,
-        ],
-      });
-      verified.members.forEach((member, memberIndex) => {
-        const envelope = member.envelope;
+    }
+    const nextCounter =
+      tip[3] === null
+        ? safeInteger(tip[0], "follower actor accepted counter") + 1
+        : safeInteger(tip[3], "follower actor local next counter");
+    const previousOperation =
+      tip[3] === null
+        ? nullableText(tip[1], "follower actor accepted operation")
+        : nullableText(tip[4], "follower actor local operation");
+    const previousDigest =
+      tip[3] === null
+        ? text(tip[2], "follower actor accepted digest")
+        : text(tip[5], "follower actor local digest");
+    if (
+      nextCounter !== actorState.next_actor_sequence ||
+      previousOperation !== actorState.previous_actor_operation_id ||
+      previousDigest !== actorState.previous_actor_chain_digest
+    ) {
+      throw new Error(
+        "follower intent actor tip changed during verification",
+      );
+    }
+    for (const member of verified.members) {
+      const envelope = member.envelope;
+      const allowed = safeInteger(
         this.#database.exec({
-          sql: `INSERT INTO library_intent_members
-                  (transaction_id, actor_id, member_index, operation_id, actor_counter,
-                   mutation_id, entity_type, entity_id, canonical_member,
-                   member_digest)
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10);`,
+          sql: `SELECT count(*)
+                FROM library_actor_capabilities AS c
+                JOIN library_actor_capability_mutations AS m
+                  ON m.capability_id = c.capability_id
+                WHERE c.actor_id = ?1 AND c.retired_at IS NULL
+                  AND m.mutation_id = ?2
+                  AND (c.scope_mode <> 'bounded'
+                    OR (c.scope_kind = ?3 AND c.scope_id = ?4));`,
           bind: [
-            verified.transaction_body.transaction_id,
-            actorState.actor_id,
-            memberIndex,
-            envelope.operation_id,
-            envelope.actor_sequence,
+            envelope.actor_id,
             envelope.operation_type,
             envelope.entity_type,
             envelope.entity_id,
-            commit.envelopeBytes[memberIndex]!,
-            member.member_digest,
           ],
-        });
-      });
-      for (const { effect, member, memberIndex } of effects) {
-        this.#database.exec({
-          sql: `INSERT INTO library_optimistic_fields
-                  (transaction_id, member_index, actor_id, actor_counter,
-                   entity_type, entity_id, field_path, value_type,
-                   boolean_value, integer_value, created_at)
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11);`,
-          bind: [
-            verified.transaction_body.transaction_id,
-            memberIndex,
-            member.envelope.actor_id,
-            member.envelope.actor_sequence,
-            effect.entityType,
-            effect.entityId,
-            effect.fieldPath,
-            effect.valueType,
-            effect.valueType === "boolean"
-              ? effect.value === true
-                ? 1
-                : 0
-              : null,
-            effect.valueType === "integer" ? effect.value : null,
-            effect.createdAt,
-          ],
-        });
+          rowMode: 0,
+          returnValue: "resultRows",
+        })[0],
+        "follower intent capability count",
+      );
+      if (allowed < 1) {
+        throw new Error(
+          `follower actor capability denies ${envelope.operation_type}`,
+        );
       }
+      const program =
+        LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS[
+          envelope.operation_type as keyof typeof LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS
+        ];
+      if (!program) {
+        throw new Error(
+          `follower intent mutation program is absent for ${envelope.operation_type}`,
+        );
+      }
+      const targetExists = safeInteger(
+        this.#database.exec({
+          sql: program.targetExistsSql,
+          bind: program.targetExistsSql.includes("?1")
+            ? [envelope.entity_id]
+            : [],
+          rowMode: 0,
+          returnValue: "resultRows",
+        })[0],
+        "follower optimistic target count",
+      );
+      if (program.requiresExistingTarget && targetExists !== 1) {
+        throw new Error("follower optimistic target is unavailable");
+      }
+    }
+    this.#database.exec({
+      sql: `INSERT OR IGNORE INTO library_intent_actors
+              (actor_id, next_counter, previous_operation_id, previous_chain_digest)
+            VALUES (?1, ?2, ?3, ?4);`,
+      bind: [
+        actorState.actor_id,
+        actorState.next_actor_sequence,
+        actorState.previous_actor_operation_id,
+        actorState.previous_actor_chain_digest,
+      ],
+    });
+    const firstEnvelope = verified.members[0]!.envelope;
+    const lastEnvelope = verified.members.at(-1)!.envelope;
+    this.#database.exec({
+      sql: `INSERT INTO library_intent_transactions
+              (transaction_id, transaction_digest, actor_id, member_count,
+               intent_epoch, intent_epoch_id, first_counter, last_counter,
+               previous_operation_id,
+               previous_chain_digest, ending_operation_id,
+               ending_chain_digest, canonical_member_bytes,
+               canonical_transaction, state, created_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
+                    ?13, ?14, 'pending', ?15);`,
+      bind: [
+        verified.transaction_body.transaction_id,
+        verified.transaction_digest,
+        actorState.actor_id,
+        verified.members.length,
+        firstEnvelope.epoch,
+        firstEnvelope.epoch_id,
+        firstEnvelope.actor_sequence,
+        lastEnvelope.actor_sequence,
+        firstEnvelope.previous_actor_operation_id,
+        firstEnvelope.previous_actor_chain_digest,
+        lastEnvelope.operation_id,
+        lastEnvelope.actor_chain_digest,
+        verified.canonical_envelope_bytes,
+        canonicalTransaction,
+        committedAt,
+      ],
+    });
+    verified.members.forEach((member, memberIndex) => {
+      const envelope = member.envelope;
       this.#database.exec({
-        sql: `UPDATE library_intent_actors
-              SET next_counter = ?2, previous_operation_id = ?3,
-                  previous_chain_digest = ?4
-              WHERE actor_id = ?1 AND next_counter = ?5
-                AND previous_operation_id IS ?6
-                AND previous_chain_digest = ?7;`,
+        sql: `INSERT INTO library_intent_members
+                (transaction_id, actor_id, member_index, operation_id, actor_counter,
+                 mutation_id, entity_type, entity_id, canonical_member,
+                 member_digest)
+              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10);`,
         bind: [
+          verified.transaction_body.transaction_id,
           actorState.actor_id,
-          lastEnvelope.actor_sequence + 1,
-          lastEnvelope.operation_id,
-          lastEnvelope.actor_chain_digest,
-          actorState.next_actor_sequence,
-          actorState.previous_actor_operation_id,
-          actorState.previous_actor_chain_digest,
+          memberIndex,
+          envelope.operation_id,
+          envelope.actor_sequence,
+          envelope.operation_type,
+          envelope.entity_type,
+          envelope.entity_id,
+          commit.envelopeBytes[memberIndex]!,
+          member.member_digest,
         ],
       });
-      if (
-        safeInteger(
-          this.#database.exec({
-            sql: "SELECT changes();",
-            rowMode: 0,
-            returnValue: "resultRows",
-          })[0],
-          "follower intent actor tip update",
-        ) !== 1
-      ) {
-        throw new Error("follower intent actor tip compare-and-swap failed");
-      }
-      this.#database.exec("COMMIT;");
-      return Object.freeze({
-        actorId: actorState.actor_id,
-        firstCounter: firstEnvelope.actor_sequence,
-        lastCounter: lastEnvelope.actor_sequence,
-        memberCount: verified.members.length,
-        optimisticFieldCount: effects.length,
-        state: "pending",
-        transactionId: verified.transaction_body.transaction_id,
+    });
+    for (const { effect, member, memberIndex } of effects) {
+      this.#database.exec({
+        sql: `INSERT INTO library_optimistic_fields
+                (transaction_id, member_index, actor_id, actor_counter,
+                 entity_type, entity_id, field_path, value_type,
+                 boolean_value, integer_value, created_at)
+              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11);`,
+        bind: [
+          verified.transaction_body.transaction_id,
+          memberIndex,
+          member.envelope.actor_id,
+          member.envelope.actor_sequence,
+          effect.entityType,
+          effect.entityId,
+          effect.fieldPath,
+          effect.valueType,
+          effect.valueType === "boolean"
+            ? effect.value === true
+              ? 1
+              : 0
+            : null,
+          effect.valueType === "integer" ? effect.value : null,
+          effect.createdAt,
+        ],
       });
-    } catch (error) {
-      rollbackPreservingOriginalError(this.#database, error);
     }
+    this.#database.exec({
+      sql: `UPDATE library_intent_actors
+            SET next_counter = ?2, previous_operation_id = ?3,
+                previous_chain_digest = ?4
+            WHERE actor_id = ?1 AND next_counter = ?5
+              AND previous_operation_id IS ?6
+              AND previous_chain_digest = ?7;`,
+      bind: [
+        actorState.actor_id,
+        lastEnvelope.actor_sequence + 1,
+        lastEnvelope.operation_id,
+        lastEnvelope.actor_chain_digest,
+        actorState.next_actor_sequence,
+        actorState.previous_actor_operation_id,
+        actorState.previous_actor_chain_digest,
+      ],
+    });
+    if (
+      safeInteger(
+        this.#database.exec({
+          sql: "SELECT changes();",
+          rowMode: 0,
+          returnValue: "resultRows",
+        })[0],
+        "follower intent actor tip update",
+      ) !== 1
+    ) {
+      throw new Error("follower intent actor tip compare-and-swap failed");
+    }
+    return Object.freeze({
+      actorId: actorState.actor_id,
+      firstCounter: firstEnvelope.actor_sequence,
+      lastCounter: lastEnvelope.actor_sequence,
+      memberCount: verified.members.length,
+      optimisticFieldCount: effects.length,
+      state: "pending",
+      transactionId: verified.transaction_body.transaction_id,
+    });
   }
 
   pageFollowerIntents(
@@ -8034,6 +8118,12 @@ export class PwaLibraryCoreSqliteEngine {
     input: T,
   ): LibraryCoreSqliteQueryResponseFor<T> {
     switch (input.queryId) {
+      case "recovery_intent_review_v1":
+        throw new Error("Recovery review requires asynchronous verification");
+      case "recovery_intent_page_v1":
+        return this.#queryRecoveryIntents(input) as LibraryCoreSqliteQueryResponseFor<T>;
+      case "recovery_archive_page_v1":
+        return this.#queryRecoveryArchives(input) as LibraryCoreSqliteQueryResponseFor<T>;
       case "account_detail_v1":
         return this.#queryAccountDetail(
           input,
@@ -8114,6 +8204,12 @@ export class PwaLibraryCoreSqliteEngine {
         return this.#queryMapMarkers(
           input,
         ) as LibraryCoreSqliteQueryResponseFor<T>;
+      case "person_account_page_v1":
+        return this.#queryPersonAccountPage(input) as LibraryCoreSqliteQueryResponseFor<T>;
+      case "account_root_v1":
+        return this.#queryAccountRoot(input) as LibraryCoreSqliteQueryResponseFor<T>;
+      case "person_root_v1":
+        return this.#queryPersonRoot(input) as LibraryCoreSqliteQueryResponseFor<T>;
       case "person_detail_v1":
         return this.#queryPersonDetail(
           input,
@@ -8171,6 +8267,93 @@ export class PwaLibraryCoreSqliteEngine {
           input,
         ) as LibraryCoreSqliteQueryResponseFor<T>;
     }
+  }
+
+  async queryWithVerification<T extends LibraryCoreSqliteQueryRequest>(input: T): Promise<LibraryCoreSqliteQueryResponseFor<T>> {
+    if (input.queryId !== "recovery_intent_review_v1") return this.query(input);
+    if (!this.#capi) throw new Error("PWA recovery SQLite transaction API is unavailable");
+    return await queryPwaRecoveryIntentReview(this.#database, this.#capi, this.#subtle, input) as LibraryCoreSqliteQueryResponseFor<T>;
+  }
+
+  #queryRecoveryIntents(input: LibraryCoreRecoveryIntentPageRequestV1): LibraryCoreRecoveryIntentPageResponseV1 {
+    const request = parseLibraryCoreRecoveryIntentPageRequestV1(input);
+    if (!request.ok) throw new TypeError(request.error);
+    if (readPwaLibraryStorageIdentity(this.#database).schemaVersion !== 2) throw new Error("Recovery archives are unavailable in this storage version");
+    return this.#database.transaction(() => {
+      const { generationId, sourceRevision } = this.#querySource();
+      const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.recovery_intent_page_v1;
+      const archiveDigest = text(this.#database.selectValue(program.countSql, [request.value.recoveryId]), "recovery archive digest");
+      if (!isLibraryCoreLowercaseHex64(archiveDigest)) throw new Error("Recovery archive digest is invalid");
+      const binding = `recovery_intent_page_v1:${request.value.recoveryId}:${archiveDigest}`;
+      if (!isLibraryCoreEntityId(binding)) throw new Error("Recovery intent cursor identity is invalid");
+      let after = -1;
+      if (request.value.cursor !== null) {
+        const cursor = decodeLibraryCoreFeedPageCursorV1(request.value.cursor);
+        if (!cursor.ok || cursor.value.globalId !== binding || cursor.value.generationId !== generationId ||
+            cursor.value.projectionRevision !== sourceRevision || cursor.value.transitionSequence !== sourceRevision) throw new Error("CURSOR_STALE");
+        after = cursor.value.sortAt;
+      }
+      const raw = this.#database.exec({ sql: program.sql, bind: [request.value.recoveryId, after, request.value.limit + 1], rowMode: "object", returnValue: "resultRows" });
+      if (raw.length > program.maximumScanRows) throw new Error("Recovery intent page exceeds its row bound");
+      const identities = new Set<string>();
+      const decoded = raw.map(row => {
+        const value = coerceLibraryCoreGeneratedSqliteQueryRow("recovery_intent_page_v1", row);
+        // Include the lookahead in validation before deciding where this page ends.
+        if (!value || value.ordinal <= after || identities.has(value.transactionId)) throw new Error("Recovery intent ordering or identity is invalid");
+        after = value.ordinal; identities.add(value.transactionId);
+        return value;
+      });
+      const rows = decoded.slice(0, request.value.limit), last = rows.at(-1);
+      const parsed = parseLibraryCoreRecoveryIntentPageResponseV1({ queryId: request.value.queryId, schemaVersion: 1,
+        recoveryId: request.value.recoveryId, archiveDigest, rows,
+        nextCursor: decoded.length > rows.length && last ? encodeLibraryCoreFeedPageCursorV1({
+          generationId: generationId as never, globalId: binding, sortAt: last.ordinal,
+          projectionRevision: sourceRevision, transitionSequence: sourceRevision,
+        }) : null, source: { generationId, projectionRevision: sourceRevision, transitionSequence: sourceRevision } }, request.value);
+      if (!parsed.ok) throw new Error(parsed.error);
+      return parsed.value;
+    });
+  }
+
+  #queryRecoveryArchives(input: LibraryCoreRecoveryArchivePageRequestV1): LibraryCoreRecoveryArchivePageResponseV1 {
+    const request = parseLibraryCoreRecoveryArchivePageRequestV1(input);
+    if (!request.ok) throw new TypeError(request.error);
+    if (readPwaLibraryStorageIdentity(this.#database).schemaVersion !== 2) throw new Error("Recovery archives are unavailable in this storage version");
+    return this.#database.transaction(() => {
+      const { generationId, sourceRevision } = this.#querySource();
+      const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.recovery_archive_page_v1;
+      const handoffId = text(this.#database.selectValue(program.countSql), "recovery handoff identity");
+      const prefix = `recovery_archive_page_v1:${handoffId}:`;
+      let after = "";
+      if (request.value.cursor !== null) {
+        const cursor = decodeLibraryCoreFeedPageCursorV1(request.value.cursor);
+        if (!cursor.ok || cursor.value.generationId !== generationId || cursor.value.projectionRevision !== sourceRevision ||
+            cursor.value.transitionSequence !== sourceRevision || !cursor.value.globalId.startsWith(prefix)) throw new Error("CURSOR_STALE");
+        after = cursor.value.globalId.slice(prefix.length);
+      }
+      const raw = this.#database.exec({ sql: program.sql, bind: [after, request.value.limit + 1], rowMode: "object", returnValue: "resultRows" });
+      if (raw.length > program.maximumScanRows) throw new Error("Recovery archive page exceeds its row bound");
+      const decoded = raw.map(row => {
+        const value = coerceLibraryCoreGeneratedSqliteQueryRow("recovery_archive_page_v1", row);
+        if (!value) throw new Error("Recovery archive row is invalid");
+        return value;
+      });
+      // Validate the lookahead too; malformed archives must not disappear at a page boundary.
+      for (const row of decoded) {
+        if (![row.recoveryId, row.predecessorEpochId, row.successorEpochId].every(isLibraryCoreLowercaseHex64) || row.recoveryId <= after) throw new Error("Recovery archive ordering or identity is invalid");
+        after = row.recoveryId;
+      }
+      const rows = decoded.slice(0, request.value.limit), last = rows.at(-1);
+      const cursorId = `${prefix}${last?.recoveryId ?? ""}`;
+      if (!isLibraryCoreEntityId(cursorId)) throw new Error("Recovery archive cursor identity is invalid");
+      const parsed = parseLibraryCoreRecoveryArchivePageResponseV1({ queryId: request.value.queryId, schemaVersion: 1,
+        handoffId, rows, nextCursor: decoded.length > rows.length && last ? encodeLibraryCoreFeedPageCursorV1({
+          generationId: generationId as never, globalId: cursorId, sortAt: 0,
+          projectionRevision: sourceRevision, transitionSequence: sourceRevision,
+        }) : null, source: { generationId, projectionRevision: sourceRevision, transitionSequence: sourceRevision } }, request.value);
+      if (!parsed.ok) throw new Error(parsed.error);
+      return parsed.value;
+    });
   }
 
   #querySource(): {
@@ -8475,6 +8658,67 @@ export class PwaLibraryCoreSqliteEngine {
     const parsed = parseLibraryCorePreferencesSnapshotResponseV1(response);
     if (!parsed.ok) throw new Error(parsed.error);
     return parsed.value;
+  }
+
+  #queryPersonAccountPage(input: LibraryCorePersonAccountPageRequestV1): LibraryCorePersonAccountPageResponseV1 {
+    const parsed = parseLibraryCorePersonAccountPageRequestV1(input);
+    if (!parsed.ok) throw new TypeError(parsed.error);
+    const request = parsed.value;
+    return this.#database.transaction(() => {
+      const { generationId, sourceRevision } = this.#querySource();
+      const parsedSource = parseLibraryCoreFeedPageSourceV1({ generationId, projectionRevision: sourceRevision, transitionSequence: sourceRevision });
+      if (!parsedSource.ok) throw new Error(parsedSource.error);
+      const source = parsedSource.value;
+      const cursor = request.cursor === null ? null : decodeLibraryCorePersonAccountCursorV1(request.cursor, request.personId);
+      if (cursor && (cursor.source.generationId !== generationId || cursor.source.projectionRevision !== sourceRevision)) throw new Error("CURSOR_STALE");
+      const records = this.#database.exec({ sql: LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.person_account_page_v1.sql,
+        bind: [request.personId, cursor?.accountId ?? "", request.limit + 1], rowMode: "object", returnValue: "resultRows" });
+      const rows = records.map(row => {
+        const value = coerceLibraryCoreGeneratedSqliteQueryRow("person_account_page_v1", row);
+        if (!value) throw new Error("Person account row is invalid");
+        return value;
+      }).slice(0, request.limit);
+      const nextCursor = records.length > request.limit ? encodeLibraryCorePersonAccountCursorV1(request.personId, rows[rows.length - 1]!.accountId, source) : null;
+      const response = parseLibraryCorePersonAccountPageResponseV1({ queryId: request.queryId, schemaVersion: 1, personId: request.personId, rows, nextCursor, source }, request);
+      if (!response.ok) throw new Error(response.error);
+      return response.value;
+    });
+  }
+
+  #queryAccountRoot(input: LibraryCoreAccountRootRequestV1): LibraryCoreAccountRootResponseV1 {
+    const request = parseLibraryCoreAccountRootRequestV1(input);
+    if (!request.ok) throw new TypeError(request.error);
+    return this.#database.transaction(() => {
+    const { generationId, sourceRevision } = this.#querySource();
+    const rows = this.#database.exec({ sql: LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.account_root_v1.sql,
+      bind: [request.value.accountId], rowMode: "object", returnValue: "resultRows" });
+    if (rows.length > 1) throw new Error("Account root exceeded its row bound");
+    if (rows[0]?.accountJson === null) throw new Error("Account root exceeds its read bounds");
+    const response = parseLibraryCoreAccountRootResponseV1({ ...request.value,
+      account: rows.length === 0 ? null : JSON.parse(text(rows[0]!.accountJson, "Account root")),
+      source: { generationId, projectionRevision: sourceRevision, transitionSequence: sourceRevision },
+    }, request.value);
+    if (!response.ok) throw new Error(response.error);
+    return response.value;
+    });
+  }
+
+  #queryPersonRoot(input: LibraryCorePersonRootRequestV1): LibraryCorePersonRootResponseV1 {
+    const request = parseLibraryCorePersonRootRequestV1(input);
+    if (!request.ok) throw new TypeError(request.error);
+    return this.#database.transaction(() => {
+    const { generationId, sourceRevision } = this.#querySource();
+    const rows = this.#database.exec({ sql: LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.person_root_v1.sql,
+      bind: [request.value.personId], rowMode: "object", returnValue: "resultRows" });
+    if (rows.length > 1) throw new Error("Person root exceeded its row bound");
+    if (rows[0]?.personJson === null) throw new Error("Person root exceeds its read bounds");
+    const response = parseLibraryCorePersonRootResponseV1({ ...request.value,
+      person: rows.length === 0 ? null : JSON.parse(text(rows[0]!.personJson, "Person root")),
+      source: { generationId, projectionRevision: sourceRevision, transitionSequence: sourceRevision },
+    }, request.value);
+    if (!response.ok) throw new Error(response.error);
+    return response.value;
+    });
   }
 
   #queryPersonDetail(
@@ -11373,38 +11617,9 @@ export class PwaLibraryCoreSqliteEngine {
   }
 
   #verifyStorageIdentity(): void {
-    const rows = this.#database.exec({
-      sql: `SELECT contract_version, schema_version, protocol_version, schema_sha256
-            FROM library_storage_meta WHERE singleton_id = 1;`,
-      rowMode: "array",
-      returnValue: "resultRows",
-    });
-    if (rows.length !== 1) {
-      throw new Error("PWA Library SQLite storage identity is missing");
-    }
-    const applicationId = safeInteger(
-      this.#database.exec({
-        sql: "PRAGMA application_id;",
-        rowMode: 0,
-        returnValue: "resultRows",
-      })[0],
-      "SQLite application identity",
-    );
-    const row = rows[0]!;
-    if (
-      applicationId !== LIBRARY_CORE_SQLITE_APPLICATION_ID ||
-      safeInteger(row[0], "SQLite contract version") !==
-        LIBRARY_CORE_SQLITE_CONTRACT_VERSION ||
-      safeInteger(row[1], "SQLite schema version") !==
-        LIBRARY_CORE_SQLITE_SCHEMA_VERSION ||
-      safeInteger(row[2], "SQLite protocol version") !==
-        LIBRARY_CORE_SQLITE_PROTOCOL_VERSION ||
-      text(row[3], "SQLite schema digest") !==
-        LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256
-    ) {
-      throw new Error(
-        "PWA Library SQLite storage identity does not match this build",
-      );
-    }
+    readPwaLibraryStorageIdentity(this.#database);
   }
 }
+
+
+// Match the mutation's object-merge and array/scalar-replacement boundaries.

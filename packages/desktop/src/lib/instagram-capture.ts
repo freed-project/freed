@@ -494,7 +494,7 @@ async function captureIgFeedInternal(
   try {
     addDebugEvent("change", "[IG] sync started");
     const fetchStartedAt = performance.now();
-    const result = await fetchIgFeed(onProviderContact);
+    const result = await fetchIgFeedInternal(resetEpoch, onProviderContact);
     assertFactoryResetEpoch(resetEpoch);
     log.info(
       `[IG] fetch finished duration=${formatSocialCaptureDuration(socialCaptureDurationMs(fetchStartedAt))} ` +

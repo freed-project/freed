@@ -10,6 +10,15 @@ export function describeLibraryFollowerProgress(
       pendingReason: "A verified Library checkpoint is required before joining.",
     };
   }
+  if (status.state === "authority_recovery_required") {
+    const retained = status.pendingIntentCount + status.publishedIntentCount;
+    return {
+      statusMessage: "Primary changed. Enrollment recovery is required.",
+      pendingReason: retained > 0
+        ? `${retained.toLocaleString()} ${retained === 1 ? "edit is" : "edits are"} preserved from the previous Primary. Review recovery before submitting them again.`
+        : "Previous enrollment is preserved. Recover enrollment before making new edits.",
+    };
+  }
   if (status.state !== "active") {
     return {
       statusMessage: "Waiting for Primary enrollment.",

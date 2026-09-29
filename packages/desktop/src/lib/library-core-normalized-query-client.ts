@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 import {
   createLibraryCoreOperationInstanceId,
   createLibraryCoreSqliteQueryWorkerRequest,
@@ -30,7 +30,7 @@ export function createDesktopLibraryCoreOperationId(
 /** Run one closed, bounded Library Core query against Freed Desktop SQLite. */
 export async function queryNormalizedLibrary<
   T extends LibraryCoreSqliteQueryRequest,
->(request: T): Promise<LibraryCoreSqliteQueryResponseFor<T>> {
+>(request: T, signal?: AbortSignal): Promise<LibraryCoreSqliteQueryResponseFor<T>> {
   const validated = createLibraryCoreSqliteQueryWorkerRequest(
     "desktop-query-validation",
     request,
@@ -38,10 +38,33 @@ export async function queryNormalizedLibrary<
   if (validated.kind !== "query") {
     throw new TypeError("normalized Library query validation failed");
   }
-  const response = await invoke<unknown>("query_normalized_library", {
-    request: validated.query,
-  });
-  return parseLibraryCoreSqliteQueryResponse(response, validated.query as T);
+  signal?.throwIfAborted();
+  let ticket: string | null = null;
+  let settled = false;
+  let cancellationSent = false;
+  const cancel = () => {
+    if (settled || cancellationSent || !ticket || !signal?.aborted) return;
+    cancellationSent = true;
+    // The native deadline remains effective if this best-effort IPC fails.
+    void invoke("cancel_normalized_library_query", { ticket }).catch(() => {});
+  };
+  const started = signal ? new Channel<string>((registeredTicket) => {
+    ticket = registeredTicket;
+    cancel();
+  }) : undefined;
+  signal?.addEventListener("abort", cancel, { once: true });
+  try {
+    const response = await invoke<unknown>("query_normalized_library", {
+      request: validated.query,
+      ...(started ? { started } : {}),
+    });
+    signal?.throwIfAborted();
+    return parseLibraryCoreSqliteQueryResponse(response, validated.query as T);
+  } finally {
+    settled = true;
+    signal?.removeEventListener("abort", cancel);
+    if (started) started.onmessage = () => {};
+  }
 }
 
 export const mutateNormalizedDeviceGraphLayout: LibraryCoreDeviceGraphLayoutMutationExecutor =

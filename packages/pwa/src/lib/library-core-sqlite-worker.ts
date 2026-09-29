@@ -139,6 +139,7 @@ async function open(): Promise<PwaLibraryCoreSqliteEngine> {
     const next = new PwaLibraryCoreSqliteEngine(
       database,
       sqlite3.version.libVersion,
+      { capi: sqlite3.capi },
     );
     openingEngine = next;
     next.initialize();
@@ -285,6 +286,7 @@ async function executeActivateCheckpoint(
   await active.verifyNormalizedCheckpointActorRetirements(
     request.activation.stageId,
   );
+  await active.verifyNormalizedCheckpointSuccessor(request.activation);
   return result(
     request.requestId,
     active.activateNormalizedCheckpointStage(request.activation, (completedRecords, totalRecords) => {
@@ -339,10 +341,10 @@ function executeAppendCheckpointPage(
   );
 }
 
-function executeQuery(
+async function executeQuery(
   request: WorkerRequest<"query">,
-): LibraryCoreSqliteWorkerResponse {
-  return result(request.requestId, requireEngine().query(request.query));
+): Promise<LibraryCoreSqliteWorkerResponse> {
+  return result(request.requestId, await requireEngine().queryWithVerification(request.query));
 }
 
 function executeBeginScopeAction(
@@ -746,6 +748,20 @@ function compileCommand(
       return bindCommand(request, executeImportNormalizedResultTransport);
     case "import_normalized_operation_page":
       return bindCommand(request, executeImportNormalizedOperationPage);
+    case "reapply_consumer_intent":
+      return bindCommand(request, async current => result(current.requestId, await requireEngine().reapplyConsumerIntent(current.recovery)));
+    case "read_consumer_recovery":
+      return bindCommand(request, current => result(current.requestId, requireEngine().consumerRecoveryStatus()));
+    case "prepare_consumer_recovery":
+      return bindCommand(request, async current => {
+        await requireEngine().prepareConsumerRecovery(current.recovery.recoveryId, current.recovery.request);
+        return result(current.requestId, requireEngine().consumerRecoveryStatus());
+      });
+    case "commit_consumer_recovery":
+      return bindCommand(request, async current => {
+        await requireEngine().commitConsumerRecovery(current.recovery.recoveryId, current.recovery.committedAt);
+        return result(current.requestId, requireEngine().consumerRecoveryStatus());
+      });
     case "read_follower_actor_enrollment_context":
       return bindCommand(request, executeReadFollowerEnrollmentContext);
     case "store_follower_actor_request":

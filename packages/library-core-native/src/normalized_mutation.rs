@@ -271,6 +271,10 @@ fn admitted_authority_epoch(
     transaction: &Transaction<'_>,
     library_id: &str,
 ) -> Result<(i64, String), NormalizedSqliteError> {
+    crate::normalized_handoff::require_handoff_admission(
+        transaction,
+        crate::normalized_handoff::HandoffAdmission::CanonicalWrite,
+    )?;
     transaction
         .query_row(
             "SELECT epoch.epoch_number, epoch.epoch_id
@@ -2469,6 +2473,10 @@ fn persist_rejected_resolution(
 pub fn normalized_primary_mutation_context_v1(
     connection: &Connection,
 ) -> Result<NormalizedMutationContextV1, NormalizedSqliteError> {
+    crate::normalized_handoff::require_handoff_admission(
+        connection,
+        crate::normalized_handoff::HandoffAdmission::CanonicalWrite,
+    )?;
     type ContextRow = (
         String,
         i64,
@@ -2842,6 +2850,21 @@ pub(crate) fn resolve_normalized_operation_transaction_v1(
     if actor.next_sequence != first.actor_sequence
         || actor.previous_operation_id != first.previous_actor_operation_id
         || actor.previous_chain_digest != first.previous_actor_chain_digest
+    {
+        let receipt = persist_rejected_resolution(
+            &transaction,
+            &verified,
+            authority_key_pair,
+            committed_at,
+            "precondition_failed",
+        )?;
+        transaction.commit()?;
+        return Ok(NormalizedMutationResolutionV1::FollowerResult(receipt));
+    }
+    if verified
+        .members
+        .iter()
+        .any(|member| !crate::normalized_preference_policy::supports_fresh_preferences(member))
     {
         let receipt = persist_rejected_resolution(
             &transaction,
@@ -6196,6 +6219,51 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn authenticated_historical_preferences_remain_inspectable_but_new_unsupported_writes_are_rejected(
+    ) {
+        let (mut db, key, enrollment) = fixture();
+        let payload = json!({"updates":{"display":{"markReadOnScroll":false}}});
+        let frames = signed_envelopes_from_tip_with_payload(
+            &key,
+            &enrollment,
+            "historical:unsupported-preference",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[("preferences", 1000)],
+            "preferences_leaf_assignment",
+            Some(&payload),
+        );
+        let (verified, _) = verify_operation_transaction_for_resolution(&frames, |identity| {
+            actor_state_at(&db, identity)
+        })
+        .unwrap();
+        assert_eq!(verified.members.len(), 1);
+        let result =
+            resolve_normalized_operation_transaction_v1(&mut db, &frames, &key, 2000).unwrap();
+        let NormalizedMutationResolutionV1::FollowerResult(result) = result else {
+            panic!("unsupported write was admitted");
+        };
+        let signed: Value = serde_json::from_slice(&result.canonical_follower_result).unwrap();
+        assert_eq!(signed["rejection_reason"], "precondition_failed");
+        assert_eq!(
+            db.query_row("SELECT count(*) FROM library_preferences", [], |r| r
+                .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            db.query_row(
+                "SELECT accepted_counter FROM library_actors WHERE actor_id=?1",
+                [&enrollment.actor_id],
+                |r| r.get::<_, i64>(0)
+            )
+            .unwrap(),
+            0
+        );
+    }
+
+    #[test]
     fn signed_preference_patch_preserves_empty_containers_and_deep_merge_semantics() {
         let (mut connection, key_pair, enrollment) = fixture();
         let initial_payload = serde_json::json!({
@@ -6207,7 +6275,7 @@ pub(crate) mod tests {
                     "allowedPaths": { "x": [] },
                     "blockedPlatforms": ["x", "facebook"]
                 },
-                "weights": { "topics": {} }
+                "weights": { "topics": {}, "authors": { "alpha": { "bits": "3fc0000000000000", "codec": "ieee754_binary64_hex_v1" } } }
             }
         });
         let initial = signed_envelopes_from_tip_with_payload(
@@ -6246,6 +6314,8 @@ pub(crate) mod tests {
                 .expect("empty object marker"),
             "null"
         );
+
+        assert_eq!(connection.query_row("SELECT text_value FROM library_preferences WHERE path = 'v:$.weights.authors.alpha.bits'", [], |r| r.get::<_, String>(0)).unwrap(), "3fc0000000000000");
 
         let replacement_payload = serde_json::json!({
             "updates": {

@@ -318,7 +318,7 @@ pub(crate) fn validate_rss_feed(
     Ok(())
 }
 
-fn validate_person(
+pub(crate) fn validate_person(
     person: &Map<String, Value>,
     entity_id: &str,
     index: usize,
@@ -433,7 +433,7 @@ fn validate_person(
     Ok(())
 }
 
-fn validate_account(
+pub(crate) fn validate_account(
     account: &Map<String, Value>,
     entity_id: &str,
     index: usize,
@@ -1910,12 +1910,16 @@ where
         actor
     };
     for (index, bytes) in canonical_envelopes.iter().enumerate().skip(1) {
+        crate::normalized_query_control::check_current_query()
+            .map_err(|field| LibraryCoreError::InvalidVerifiedInput { field })?;
         parsed.push(parse_envelope(bytes, index)?);
     }
 
     let first = &parsed[0];
     let mut operation_ids = HashSet::with_capacity(parsed.len());
     for (index, member) in parsed.iter().enumerate() {
+        crate::normalized_query_control::check_current_query()
+            .map_err(|field| LibraryCoreError::InvalidVerifiedInput { field })?;
         let expected_sequence = first
             .actor_sequence
             .checked_add(index as i64)
@@ -1960,6 +1964,8 @@ where
     let mut previous_chain_digest = first.previous_actor_chain_digest.clone();
     let mut verified_members = Vec::with_capacity(parsed.len());
     for (index, member) in parsed.iter().enumerate() {
+        crate::normalized_query_control::check_current_query()
+            .map_err(|field| LibraryCoreError::InvalidVerifiedInput { field })?;
         if member.previous_actor_chain_digest != previous_chain_digest
             || member.transaction_digest != transaction_digest
         {

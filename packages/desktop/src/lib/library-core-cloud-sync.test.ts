@@ -15,6 +15,8 @@ const mocks = vi.hoisted(() => ({
   operationAdapter: {},
   nativeState: null as unknown,
   role: "primary" as "primary" | "follower",
+  controlReadFault: null as null | ((token: string) => void),
+  controlTokens: [] as string[],
   controlRead: {
     revision: '"etag-1"',
     bytes: new TextEncoder().encode("{}"),
@@ -24,6 +26,8 @@ const mocks = vi.hoisted(() => ({
   publishStatus: "committed" as "committed" | "recovered_after_response_loss",
   reassignRequest: null as Record<string, unknown> | null,
   beginNormalizedExport: vi.fn(),
+  handoffStatus: vi.fn(),
+  stageHandoff: vi.fn(), proposal: vi.fn(), cas: vi.fn(),
   describeCloudIdentity: vi.fn(),
   describeNormalizedCheckpoint: vi.fn(),
   readNormalizedCheckpointPage: vi.fn(),
@@ -50,17 +54,6 @@ const mocks = vi.hoisted(() => ({
     sourceRevision: 9,
     stageId: input.stageId,
   })),
-  reassignNative: vi.fn(async () => ({
-    authority: {
-      library_id: "ab".repeat(32),
-      epoch: 2,
-      epoch_id: "89".repeat(32),
-      authority_key_id: "de".repeat(32),
-      authority_public_key: "ef".repeat(32),
-      observed_frontier: [],
-    },
-    canonicalEpochCertificateJson: "{}",
-  })),
   bootstrapAuthority: {
     authority: {
       library_id: "ab".repeat(32),
@@ -85,6 +78,7 @@ const mocks = vi.hoisted(() => ({
   setWriterAdmission: vi.fn(async () => ({ configured: true, allowed: true })),
   publish: vi.fn(),
   reassign: vi.fn(),
+  stageCheckpoint: vi.fn(),
   importCheckpoint: vi.fn(),
   discoverPublishedControl: vi.fn(),
   discoverEnrollmentRequests: vi.fn(async (): Promise<unknown[]> => []),
@@ -116,6 +110,7 @@ const mocks = vi.hoisted(() => ({
   readPrimaryFollowerTransportState: vi.fn(),
   ingestNormalizedFollowerIntents: vi.fn(),
   readPrimaryFollowerResults: vi.fn(),
+  handoffResultActors: vi.fn(),
   importNormalizedIntent: vi.fn(),
   importNormalizedResult: vi.fn(),
   publishNormalizedResult: vi.fn(),
@@ -142,6 +137,9 @@ vi.mock("./native-json-store", () => ({
 }));
 
 vi.mock("./sqlite-library", () => ({
+  readNormalizedLibraryHandoffStatus: mocks.handoffStatus,
+  stageNormalizedLibraryTargetHandoff: mocks.stageHandoff,
+  prepareNormalizedLibraryHandoffActivation: mocks.proposal,
   describeNormalizedLibraryOperationExport: vi.fn(),
   readNormalizedLibraryOperationPage: vi.fn(),
   importNormalizedLibraryOperationPage: vi.fn(),
@@ -161,6 +159,7 @@ vi.mock("./sqlite-library", () => ({
   readNormalizedPrimaryFollowerActorTransportState:
     mocks.readPrimaryFollowerTransportState,
   readNormalizedPrimaryFollowerResultPage: mocks.readPrimaryFollowerResults,
+  readNormalizedLibraryHandoffResultActors: mocks.handoffResultActors,
   prepareNormalizedLibraryFollowerActorRequest:
     mocks.prepareFollowerActorRequest,
   pageNormalizedLibraryFollowerTransport: mocks.pageFollowerTransport,
@@ -171,7 +170,6 @@ vi.mock("./sqlite-library", () => ({
     mocks.recordNormalizedIntentPublication,
   importNormalizedLibraryFollowerResultTransport:
     mocks.importNormalizedResultTransport,
-  reassignNormalizedLibraryWriterEpoch: mocks.reassignNative,
   setSqliteLibraryCloudWriterAdmission: mocks.setWriterAdmission,
 }));
 
@@ -267,8 +265,13 @@ vi.mock("@freed/sync/cloud/library-core", async (importOriginal) => {
       controlFileId: "control-1",
       created: true,
     })),
-    createGoogleDriveLibraryCoreAdapterV1: vi.fn(() => ({
-      readControl: vi.fn(async () => mocks.controlRead),
+    createGoogleDriveLibraryCoreAdapterV1: vi.fn((input: { accessToken: string }) => ({
+      readControl: vi.fn(async () => {
+        mocks.controlTokens.push(input.accessToken);
+        mocks.controlReadFault?.(input.accessToken);
+        return mocks.controlRead;
+      }),
+      compareAndSwapControl: mocks.cas,
       putImmutable: mocks.putImmutable,
       verifyImmutable: mocks.verifyImmutable,
     })),
@@ -354,6 +357,7 @@ vi.mock("@freed/sync/cloud/library-core", async (importOriginal) => {
           };
         },
       ),
+    stageLibraryCoreNormalizedCheckpointV2: mocks.stageCheckpoint,
     reassignLibraryCoreNormalizedCheckpointV2:
       mocks.reassign.mockImplementation(
         async (request: Record<string, unknown>) => {
@@ -372,8 +376,12 @@ vi.mock("@freed/sync/cloud/library-core", async (importOriginal) => {
 
 import {
   isSqliteLibraryGoogleDriveSyncEnabled,
-  makeThisSqliteLibraryDesktopWriter,
+  runSqliteLibraryHandoffLifecycle,
   publishCurrentSqliteLibraryToGoogleDrive,
+  publishSealedSqliteLibraryCheckpoint,
+  stageSqliteLibraryHandoffSource,
+  catchUpSqliteLibraryHandoffTarget,
+  publishSqliteLibraryHandoffTarget,
   readSqliteLibraryGoogleDrivePublicationReceipt,
   startSqliteLibraryGoogleDriveSync,
   startSqliteLibraryGoogleDriveFollowerSync,
@@ -383,6 +391,10 @@ import {
 
 describe("SQLite Library Google Drive production wiring", () => {
   beforeEach(async () => {
+    mocks.controlReadFault = null; mocks.controlTokens = [];
+    mocks.handoffStatus.mockReset().mockResolvedValue(null);
+    mocks.stageCheckpoint.mockReset();
+    mocks.stageHandoff.mockReset(); mocks.proposal.mockReset(); mocks.cas.mockReset();
     vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("Unexpected network request in offline sync test"); }));
     mocks.discoverOperationHead.mockReset().mockResolvedValue(null);
     mocks.provisionOperationHead.mockReset().mockResolvedValue("operation-head");
@@ -439,7 +451,6 @@ describe("SQLite Library Google Drive production wiring", () => {
       canonicalRecordBytes: 1,
     });
     mocks.reassign.mockClear();
-    mocks.reassignNative.mockClear();
     mocks.importCheckpoint.mockClear();
     mocks.beginNormalizedImport.mockClear();
     mocks.appendNormalizedPage.mockClear();
@@ -571,6 +582,7 @@ describe("SQLite Library Google Drive production wiring", () => {
     mocks.countersignNormalizedEnrollment.mockReset();
     mocks.readPrimaryFollowerTransportState.mockReset();
     mocks.ingestNormalizedFollowerIntents.mockReset();
+    mocks.handoffResultActors.mockReset().mockResolvedValue([]);
     mocks.readPrimaryFollowerResults.mockReset().mockResolvedValue({
       canonicalRecordBytes: 0,
       done: true,
@@ -600,6 +612,302 @@ describe("SQLite Library Google Drive production wiring", () => {
       itemCount: 2,
       localActorId: "12".repeat(32),
     });
+  });
+
+
+  it.each(["committed", "proposal-failure", "response-loss", "not-committed", "competing-head", "redirected-proposal", "expired-read", "expired-cas", "canceled-read"] as const)("persists successor proposal before CAS and keeps admission closed: %s", async mode => {
+    await publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "fixture" });
+    const saved = mocks.nativeState as { lastPublishedCheckpoint: { controlPointer: Record<string, unknown>; controlRevision: string } };
+    const previous = saved.lastPublishedCheckpoint;
+    const canonical = (value: unknown) => new TextDecoder().decode(encodeLibraryCoreCanonicalValue(value as never));
+    const trace: string[] = [];
+    mocks.controlReadFault = token => { trace.push(`read:${token}`); };
+    const epoch = "34".repeat(32), writer = "56".repeat(32), frontier = "78".repeat(32);
+    const manifest = { descriptor: { byteLength: 123, contentDigest: "67".repeat(32),
+      objectKey: `freed-v2-manifest~${"ab".repeat(32)}~e${epoch}~g0~${"67".repeat(32)}.json` }, transportObjectId: "successor-manifest" };
+    const target = { ...previous.controlPointer, storageEpoch: epoch, writerId: writer,
+      causalFrontierDigest: frontier, generation: 0, manifest };
+    let status = { handoffId: "aa".repeat(32), libraryId: "ab".repeat(32), predecessorEpochId: "cd".repeat(32),
+      successorEpochId: epoch, installationRole: "target", phase: "cas_pending", canonicalAuthorization: "consent",
+      canonicalAuthorizationBody: canonical({ source_control: previous.controlPointer,
+        source_control_revision: previous.controlRevision, source_control_file_id: "control-1", final_source_revision: 7 }), canonicalActivation: null as string | null };
+    mocks.handoffStatus.mockImplementation(async () => status);
+    mocks.controlRead = { revision: previous.controlRevision, bytes: new TextEncoder().encode(canonical(previous.controlPointer)) };
+    mocks.stageHandoff.mockResolvedValue('{}');
+    mocks.describeNormalizedCheckpoint.mockResolvedValue({ format: "freed_normalized_checkpoint_export_v2", protocolVersion: 2,
+      libraryId: status.libraryId, authorityEpoch: epoch, writerId: writer, causalFrontierDigest: frontier,
+      sourceRevision: 7, recordCount: 1, itemCount: 0 });
+    mocks.discoverPublishedControl.mockResolvedValue({ controlFileId: "control-1", libraryId: status.libraryId });
+    mocks.proposal.mockImplementation(async (_id: string, file: string, bytes: string) => {
+      trace.push("proposal");
+      if (mode === "proposal-failure") throw new Error("proposal disk full");
+      const proposal = canonical({ format: "freed_library_handoff_activation_proposal_v1", handoff_id: status.handoffId,
+        control_file_id: file, expected_control_revision: previous.controlRevision, control: JSON.parse(bytes),
+        successor_checkpoint_digest: "90".repeat(32) });
+      status = { ...status, canonicalActivation: proposal };
+      return proposal;
+    });
+    mocks.cas.mockImplementation(async (change: { bytes: Uint8Array }) => {
+      trace.push("cas");
+      expect(status.canonicalActivation).not.toBeNull();
+      if ((mode === "not-committed" || mode === "expired-cas") && mocks.cas.mock.calls.length === 1) throw new Error("response lost");
+      if (mode === "expired-cas" && mocks.cas.mock.calls.length === 2) throw new Error("HTTP 401 expired credential");
+      if (mode === "competing-head") {
+        mocks.controlRead = { revision: '"competitor"', bytes: new TextEncoder().encode(canonical({ ...target, writerId: "ff".repeat(32) })) };
+        throw new Error("response lost");
+      }
+      mocks.controlRead = { revision: '"winner"', bytes: new Uint8Array(change.bytes) };
+      if (["response-loss", "redirected-proposal", "expired-read", "canceled-read"].includes(mode)) throw new Error("response lost");
+      return { status: "committed", revision: '"winner"' };
+    });
+    mocks.reassign.mockImplementationOnce(async (request: Record<string, unknown>) => {
+      expect(request.handoffFrontiers).toEqual({ kind: "cooperative_handoff_v1",
+        predecessor: previous.controlPointer.causalFrontierDigest, successor: frontier });
+      await (request.adapter as { compareAndSwapControl(change: unknown): Promise<unknown> }).compareAndSwapControl({
+        expectedRevision: previous.controlRevision, bytes: new TextEncoder().encode(canonical(target)) });
+      return { status: "committed", revision: '"winner"', controlPointer: target, manifest, dependencies: [] };
+    });
+    mocks.setWriterAdmission.mockClear();
+    const input = { handoffId: status.handoffId, accessToken: "fixture" };
+    if (mode === "committed") await expect(publishSqliteLibraryHandoffTarget(input)).resolves.toMatchObject({ controlRevision: '"winner"' });
+    else {
+      await expect(publishSqliteLibraryHandoffTarget(input)).rejects.toThrow(mode === "proposal-failure" ? "proposal disk full" : "response lost");
+      if (mode !== "proposal-failure") {
+        mocks.stageHandoff.mockClear(); mocks.reassign.mockClear();
+        if (mode === "redirected-proposal") {
+          status = { ...status, canonicalActivation: canonical({ ...JSON.parse(status.canonicalActivation!), control_file_id: "another-control" }) };
+          await expect(publishSqliteLibraryHandoffTarget(input)).rejects.toThrow("Persisted activation proposal is invalid");
+        } else if (mode === "competing-head") await expect(publishSqliteLibraryHandoffTarget(input)).rejects.toThrow("Another authority change won");
+        else if (["expired-read", "expired-cas", "canceled-read"].includes(mode)) {
+          const proposal = status.canonicalActivation;
+          const controller = new AbortController();
+          mocks.controlTokens = [];
+          if (mode === "expired-read") mocks.controlReadFault = token => { trace.push(`read:${token}`); if (token === "expired") throw new Error("HTTP 401 expired credential"); };
+          if (mode === "canceled-read") mocks.controlReadFault = token => { trace.push(`read:${token}`); controller.abort(); };
+          await expect(publishSqliteLibraryHandoffTarget({ ...input, accessToken: "expired", signal: controller.signal })).rejects.toThrow();
+          expect(status.canonicalActivation).toBe(proposal);
+          expect(status.phase).toBe("cas_pending");
+          expect(mocks.cas).toHaveBeenCalledTimes(mode === "expired-cas" ? 2 : 1);
+          expect(mocks.setWriterAdmission).not.toHaveBeenCalled();
+          mocks.controlReadFault = token => { trace.push(`read:${token}`); };
+          await expect(publishSqliteLibraryHandoffTarget({ ...input, accessToken: "refreshed" })).resolves.toMatchObject({ controlRevision: '\"winner\"' });
+          expect(mocks.controlTokens).toContain("expired");
+          expect(mocks.controlTokens.at(-1)).toBe("refreshed");
+          expect(trace).toEqual(mode === "expired-cas"
+            ? ["proposal", "cas", "proposal", "read:expired", "cas", "read:expired", "proposal", "read:refreshed", "cas", "read:refreshed"]
+            : ["proposal", "cas", "proposal", "read:expired", "proposal", "read:refreshed"]);
+          expect(status.canonicalActivation).toBe(proposal);
+          expect(status.phase).toBe("cas_pending");
+        }
+        else await expect(publishSqliteLibraryHandoffTarget(input)).resolves.toMatchObject({ controlRevision: '"winner"' });
+        expect(mocks.stageHandoff).not.toHaveBeenCalled(); expect(mocks.reassign).not.toHaveBeenCalled();
+        expect(mocks.cas).toHaveBeenCalledTimes(mode === "expired-cas" ? 3 : mode === "not-committed" ? 2 : 1);
+      } else expect(mocks.cas).not.toHaveBeenCalled();
+    }
+    expect(mocks.setWriterAdmission).not.toHaveBeenCalled();
+  });
+
+  it.each(["verified", "predecessor", "changed-local", "canceled"] as const)("stages a source successor without activation: %s", async (mode) => {
+    await publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "fixture" });
+    const saved = mocks.nativeState as { lastPublishedCheckpoint: { controlPointer: Record<string, unknown>; controlRevision: string } };
+    const pointer = saved.lastPublishedCheckpoint.controlPointer;
+    mocks.controlRead = { revision: saved.lastPublishedCheckpoint.controlRevision,
+      bytes: new Uint8Array(encodeLibraryCoreCanonicalValue(pointer as never)) };
+    const handoffId = "aa".repeat(32);
+    const status = { handoffId, libraryId: "ab".repeat(32), predecessorEpochId: mode === "predecessor" ? pointer.storageEpoch : "99".repeat(32),
+      installationRole: "source", phase: "authorized", canonicalAuthorization: "native-grant",
+      canonicalAuthorizationBody: new TextDecoder().decode(encodeLibraryCoreCanonicalValue({ source_control_file_id: "control-1" })) };
+    mocks.handoffStatus.mockResolvedValue(status);
+    const controller = new AbortController();
+    mocks.stageCheckpoint.mockImplementation(async () => {
+      if (mode === "changed-local") mocks.handoffStatus.mockResolvedValue(null);
+      if (mode === "canceled") controller.abort();
+      return { stageId: "verified-stage" };
+    });
+    mocks.activateNormalizedImport.mockClear(); mocks.setWriterAdmission.mockClear(); mocks.publish.mockClear();
+    const result = stageSqliteLibraryHandoffSource({ handoffId, accessToken: "fixture", signal: controller.signal });
+    if (mode === "verified") {
+      await expect(result).resolves.toEqual({ stageId: "verified-stage", canonicalControl: new TextDecoder().decode(encodeLibraryCoreCanonicalValue(pointer as never)) });
+      expect(mocks.stageCheckpoint).toHaveBeenCalledWith(expect.objectContaining({ manifest: pointer.manifest, storageEpoch: pointer.storageEpoch }));
+    } else if (mode === "canceled") await expect(result).rejects.toMatchObject({ name: "AbortError" });
+    else await expect(result).rejects.toThrow(mode === "predecessor" ? "has not published" : "changed during");
+    if (mode === "predecessor") expect(mocks.stageCheckpoint).not.toHaveBeenCalled();
+    expect(mocks.activateNormalizedImport).not.toHaveBeenCalled();
+    expect(mocks.setWriterAdmission).not.toHaveBeenCalled();
+    expect(mocks.publish).not.toHaveBeenCalled();
+  });
+
+  it.each(["verified", "changed-head", "lost-local-record"] as const)("imports only consent-bound target state: %s", async (mode) => {
+    await publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "fixture" });
+    const saved = mocks.nativeState as { lastPublishedCheckpoint: { controlPointer: Record<string, unknown>; controlRevision: string } };
+    const expected = saved.lastPublishedCheckpoint;
+    mocks.controlRead = { revision: mode === "changed-head" ? '"changed"' : expected.controlRevision,
+      bytes: new Uint8Array(encodeLibraryCoreCanonicalValue(expected.controlPointer as never)) };
+    const handoffId = "aa".repeat(32);
+    const status = { handoffId, libraryId: "ab".repeat(32), predecessorEpochId: "cd".repeat(32),
+      installationRole: "target", phase: "preparing", canonicalAuthorization: "native-verified-consent",
+      canonicalAuthorizationBody: new TextDecoder().decode(encodeLibraryCoreCanonicalValue({
+        source_control: expected.controlPointer, source_control_revision: expected.controlRevision, source_control_file_id: "control-1", final_source_revision: 7,
+      } as never)) };
+    mocks.handoffStatus.mockResolvedValue(status);
+    if (mode === "lost-local-record") mocks.handoffStatus.mockResolvedValueOnce(status).mockResolvedValueOnce(null);
+    mocks.discoverPublishedControl.mockResolvedValue({ controlFileId: "control-1", libraryId: status.libraryId });
+    mocks.publish.mockClear(); mocks.setWriterAdmission.mockClear(); mocks.describeCloudIdentity.mockClear();
+    const result = catchUpSqliteLibraryHandoffTarget({ handoffId, accessToken: "fixture" });
+    if (mode === "verified") {
+      await expect(result).resolves.toMatchObject({ sourceRevision: 7, libraryId: status.libraryId });
+      expect(mocks.importCheckpoint).toHaveBeenCalledWith(expect.objectContaining({ manifest: expected.controlPointer.manifest }));
+      expect(mocks.activateNormalizedImport).toHaveBeenCalledWith(expect.objectContaining({ followerReceipt: expect.objectContaining({ controlRevision: expected.controlRevision }) }));
+    } else {
+      await expect(result).rejects.toThrow(mode === "changed-head" ? "Cloud authority changed" : "continuity could not be verified");
+      if (mode === "changed-head") expect(mocks.importCheckpoint).not.toHaveBeenCalled();
+    }
+    expect(mocks.describeCloudIdentity).not.toHaveBeenCalled();
+    expect(mocks.publish).not.toHaveBeenCalled();
+    expect(mocks.setWriterAdmission).not.toHaveBeenCalled();
+  });
+
+  it.each(["complete", "failed", "batch_limit", "empty_page"])("flushes durable results before the sealed checkpoint: %s", async (mode) => {
+    await publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "fixture" });
+    const saved = mocks.nativeState as { lastPublishedCheckpoint: { controlPointer: never; controlRevision: string } };
+    mocks.controlRead = { revision: saved.lastPublishedCheckpoint.controlRevision,
+      bytes: new Uint8Array(encodeLibraryCoreCanonicalValue(saved.lastPublishedCheckpoint.controlPointer)) };
+    const handoffId = "aa".repeat(32), actorId = "34".repeat(32);
+    mocks.handoffStatus.mockResolvedValue({ handoffId, libraryId: "ab".repeat(32), predecessorEpochId: "cd".repeat(32),
+      installationRole: "source", phase: "sealed", canonicalAuthorizationBody: null });
+    mocks.handoffResultActors.mockResolvedValueOnce([actorId]).mockResolvedValue([]);
+    mocks.discoverResultHead.mockResolvedValue({ resultHeadFileId: "result-head" });
+    mocks.createNormalizedResultAdapter.mockReturnValue({ readHead: async () => ({ head: {
+      actor_id: actorId, latest_segment: null, latest_segment_digest: null, library_id: "ab".repeat(32),
+      next_result_sequence: 1, protocol: "normalized_result_head_v2", protocol_version: 2, storage_epoch_id: "cd".repeat(32),
+    } }) });
+    mocks.readPrimaryFollowerResults.mockResolvedValue({ records: mode === "empty_page" ? [] : [{ canonicalResultJson: "{}" }], done: mode !== "batch_limit" && mode !== "empty_page" });
+    mocks.publishNormalizedResult.mockResolvedValue({ segmentHeader: { first_result_sequence: 1 } });
+    if (mode === "failed") mocks.publishNormalizedResult.mockRejectedValueOnce(new Error("result upload failed"));
+    const publish = mocks.publish.getMockImplementation()!;
+    mocks.publish.mockClear().mockImplementationOnce(async (request: Record<string, unknown>) => {
+      const result = await publish(request);
+      mocks.controlRead = { revision: result.revision, bytes: new Uint8Array(encodeLibraryCoreCanonicalValue(result.controlPointer)) };
+      return result;
+    });
+    mocks.ingestNormalizedFollowerIntents.mockClear();
+    mocks.discoverEnrollmentRequests.mockClear();
+    const operation = publishSealedSqliteLibraryCheckpoint({ accessToken: "fixture", handoffId });
+    if (mode === "complete") {
+      await operation;
+      expect(mocks.publishNormalizedResult.mock.invocationCallOrder[0]).toBeLessThan(mocks.publish.mock.invocationCallOrder[0]);
+      expect(mocks.handoffResultActors).toHaveBeenLastCalledWith(handoffId, actorId);
+    } else {
+      await expect(operation).rejects.toThrow(mode === "failed" ? "result upload failed" : mode === "empty_page" ? "did not advance" : "batch limit");
+      expect(mocks.publish).not.toHaveBeenCalled();
+      if (mode === "batch_limit") expect(mocks.publishNormalizedResult).toHaveBeenCalledTimes(100);
+    }
+    expect(mocks.ingestNormalizedFollowerIntents).not.toHaveBeenCalled();
+    expect(mocks.discoverEnrollmentRequests).not.toHaveBeenCalled();
+  });
+
+  it.each(["verified", "mismatched", "authorized_before_cas"] as const)("publishes a sealed checkpoint without writer admission and requires readback: %s", async (mode) => {
+    await publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "fixture" });
+    const saved = mocks.nativeState as { lastPublishedCheckpoint: { controlPointer: never; controlRevision: string } };
+    mocks.controlRead = {
+      revision: saved.lastPublishedCheckpoint.controlRevision,
+      bytes: new Uint8Array(encodeLibraryCoreCanonicalValue(saved.lastPublishedCheckpoint.controlPointer)),
+    };
+    const handoffId = "aa".repeat(32);
+    mocks.handoffStatus.mockResolvedValue({
+      handoffId, libraryId: "ab".repeat(32), predecessorEpochId: "cd".repeat(32),
+      installationRole: "source", phase: "sealed", canonicalAuthorizationBody: null,
+    });
+    const ordinaryPublish = mocks.publish.getMockImplementation()!;
+    mocks.publish.mockImplementationOnce(async (request: Record<string, unknown>) => {
+      const result = await ordinaryPublish(request);
+      if (mode === "authorized_before_cas") {
+        mocks.handoffStatus.mockResolvedValue({ handoffId, installationRole: "source", phase: "authorized" });
+        await (request.adapter as { compareAndSwapControl(input: unknown): Promise<unknown> }).compareAndSwapControl({});
+      }
+      if (mode === "verified") mocks.controlRead = {
+        revision: result.revision, bytes: new Uint8Array(encodeLibraryCoreCanonicalValue(result.controlPointer)),
+      };
+      return result;
+    });
+    mocks.setWriterAdmission.mockClear();
+    mocks.discoverEnrollmentRequests.mockClear();
+    mocks.ingestNormalizedFollowerIntents.mockClear();
+    mocks.writeNative.mockClear();
+    const publication = publishSealedSqliteLibraryCheckpoint({ accessToken: "fixture", handoffId });
+    if (mode === "verified") {
+      const result = await publication;
+      expect(result.controlPointer.generation).toBe(1);
+      expect(result.checkpoint.sourceRevision).toBe(7);
+      expect(mocks.beginNormalizedExport).toHaveBeenLastCalledWith(handoffId);
+      expect(mocks.readNormalizedCheckpointPage).toHaveBeenLastCalledWith(expect.objectContaining({ handoffId }));
+      expect(mocks.writeNative).toHaveBeenCalledOnce();
+      expect(mocks.nativeState).toEqual(expect.objectContaining({
+        writerId: "12".repeat(32), storageEpoch: "cd".repeat(32),
+        lastPublishedCheckpoint: expect.objectContaining({ controlPointer: result.controlPointer, controlRevision: result.controlRevision }),
+      }));
+    } else {
+      await expect(publication).rejects.toThrow(mode === "mismatched" ? "cloud head could not be verified" : "sealed, unsigned");
+      expect(mocks.writeNative).not.toHaveBeenCalled();
+    }
+    expect(mocks.setWriterAdmission).not.toHaveBeenCalled();
+    expect(mocks.discoverEnrollmentRequests).not.toHaveBeenCalled();
+    expect(mocks.ingestNormalizedFollowerIntents).not.toHaveBeenCalled();
+  });
+
+  it.each(["cancelled", "authorized", "other_library", "other_frontier"] as const)("recovers a lost final publication receipt only for its cancelled predecessor: %s", async (mode) => {
+    await publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "fixture" });
+    const saved = mocks.nativeState as { lastPublishedCheckpoint: { controlPointer: never; controlRevision: string } };
+    mocks.controlRead = {
+      revision: saved.lastPublishedCheckpoint.controlRevision,
+      bytes: new Uint8Array(encodeLibraryCoreCanonicalValue(saved.lastPublishedCheckpoint.controlPointer)),
+    };
+    const handoffId = "aa".repeat(32);
+    const handoff = {
+      handoffId, libraryId: "ab".repeat(32), predecessorEpochId: "cd".repeat(32),
+      installationRole: "source", phase: "sealed", canonicalAuthorizationBody: null,
+      canonicalAuthorization: null, canonicalActivation: null,
+    };
+    mocks.handoffStatus.mockResolvedValue(handoff);
+    const ordinaryPublish = mocks.publish.getMockImplementation()!;
+    mocks.publish.mockImplementationOnce(async (request: Record<string, unknown>) => {
+      const result = await ordinaryPublish(request);
+      mocks.controlRead = { revision: result.revision, bytes: new Uint8Array(encodeLibraryCoreCanonicalValue(result.controlPointer)) };
+      return result;
+    });
+    mocks.writeNative.mockRejectedValueOnce(new Error("fixture disk full"));
+    await expect(publishSealedSqliteLibraryCheckpoint({ accessToken: "fixture", handoffId })).rejects.toThrow("fixture disk full");
+    expect(mocks.nativeState).toBe(saved);
+    mocks.handoffStatus.mockResolvedValue({ ...handoff,
+      phase: mode === "authorized" ? "authorized" : "cancelled",
+      libraryId: mode === "other_library" ? "ff".repeat(32) : handoff.libraryId,
+    });
+    if (mode === "other_frontier") {
+      const pointer = JSON.parse(new TextDecoder().decode(mocks.controlRead.bytes));
+      pointer.causalFrontierDigest = "ff".repeat(32);
+      mocks.controlRead.bytes = new Uint8Array(encodeLibraryCoreCanonicalValue(pointer));
+    }
+    mocks.publish.mockClear();
+    const recovery = publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "fixture" });
+    if (mode === "cancelled") {
+      await expect(recovery).resolves.toEqual({ status: "published", revision: 7 });
+      expect(mocks.publish).toHaveBeenCalledOnce();
+      expect(mocks.publishRequest?.generation).toBe(2);
+      expect(mocks.nativeState).toEqual(expect.objectContaining({
+        lastPublishedCheckpoint: expect.objectContaining({ controlPointer: expect.objectContaining({ generation: 2 }) }),
+      }));
+    } else {
+      await expect(recovery).rejects.toThrow("publication receipt does not match");
+      expect(mocks.publish).not.toHaveBeenCalled();
+    }
+  });
+
+  it.each(["authorized", "cancelled", "preparing"])("refuses a new final publication in %s state", async (phase) => {
+    const handoffId = "aa".repeat(32);
+    mocks.handoffStatus.mockResolvedValue({ handoffId, installationRole: "source", phase, canonicalAuthorizationBody: null });
+    await expect(publishSealedSqliteLibraryCheckpoint({ accessToken: "fixture", handoffId })).rejects.toThrow("sealed, unsigned");
+    expect(mocks.beginNormalizedExport).not.toHaveBeenCalled();
+    expect(mocks.publish).not.toHaveBeenCalled();
   });
 
   it("enables immutable Drive sync by default with an explicit local rollback", () => {
@@ -919,7 +1227,7 @@ describe("SQLite Library Google Drive production wiring", () => {
     expect(mocks.publish).not.toHaveBeenCalled();
   });
 
-  it.each(["concurrent", "initial-failure", "cancel-before-activation"])("imports the Primary checkpoint with owned consumer work (%s)", async (scenario) => {
+  it.each(["concurrent", "initial-failure", "cancel-before-activation", "authority-recovery"])("imports the Primary checkpoint with owned consumer work (%s)", async (scenario) => {
     mocks.role = "follower";
     await refreshLibraryCoreDesktopRole();
     const libraryId = mocks.bootstrapAuthority.authority.library_id;
@@ -1040,6 +1348,22 @@ describe("SQLite Library Google Drive production wiring", () => {
       },
     );
 
+    if (scenario === "authority-recovery") {
+      mocks.followerRuntimeStatus.mockResolvedValue({ state: "authority_recovery_required",
+        libraryId, authorityEpochId: epochId, actorId: "78".repeat(32), checkpointGeneration: 9,
+        sourceRevision: 9, pendingIntentCount: 1, publishedIntentCount: 1, importedResultCount: 0,
+        awaitingCanonicalChanges: false });
+      mocks.discoverOperationHead.mockResolvedValue("operation-head");
+      await expect(syncSqliteLibraryFollowerGoogleDriveOnce({ accessToken: "token" })).resolves.toMatchObject({
+        status: "follower_synced", follower: { state: "authority_recovery_required", pendingIntentCount: 1, publishedIntentCount: 1 },
+      });
+      expect(mocks.importCheckpoint).toHaveBeenCalledOnce();
+      expect(mocks.syncOperations).toHaveBeenCalledOnce();
+      expect(mocks.normalizedFollowerSync).not.toHaveBeenCalled();
+      expect(mocks.prepareFollowerActorRequest).not.toHaveBeenCalled();
+      expect(mocks.publishFollowerIntent).not.toHaveBeenCalled();
+      return;
+    }
     if (scenario === "cancel-before-activation") {
       const controller = new AbortController();
       mocks.appendNormalizedPage.mockImplementationOnce(async (request: Record<string, unknown>) => {
@@ -1736,6 +2060,36 @@ describe("SQLite Library Google Drive production wiring", () => {
     }
   });
 
+  it("waits for cancelled sync ownership before native handoff and rejects ordinary sync while paused", async () => {
+    const { pauseDesktopOperationsForHandoff } = await import("./factory-reset-guard");
+    const descriptor = await mocks.describeCloudIdentity();
+    let finish!: (value: unknown) => void;
+    let enter!: () => void;
+    const entered = new Promise<void>((resolve) => { enter = resolve; });
+    mocks.describeCloudIdentity.mockImplementationOnce(() => {
+      enter();
+      return new Promise((resolve) => { finish = resolve; });
+    });
+    const publication = publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token" });
+    const rejected = expect(publication).rejects.toMatchObject({ name: "AbortError" });
+    await entered;
+    const pause = pauseDesktopOperationsForHandoff();
+    const nativeWork = vi.fn(async () => "sealed");
+    try {
+      const handoff = runSqliteLibraryHandoffLifecycle(nativeWork);
+      await rejected;
+      expect(nativeWork).not.toHaveBeenCalled();
+      await expect(publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token" })).rejects.toThrow("pausing ordinary synchronization");
+      finish(descriptor);
+      await expect(handoff).resolves.toBe("sealed");
+      expect(nativeWork).toHaveBeenCalledOnce();
+      expect(mocks.publish).not.toHaveBeenCalled();
+    } finally {
+      finish(descriptor);
+      pause.resume();
+    }
+  });
+
   it("retains canceled native preflight ownership until the command settles", async () => {
     const controller = new AbortController();
     const descriptor = await mocks.describeCloudIdentity();
@@ -1752,7 +2106,6 @@ describe("SQLite Library Google Drive production wiring", () => {
     await expect(canceled).rejects.toMatchObject({ name: "AbortError" });
     try {
       await expect(publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token" })).rejects.toThrow("sync is still finishing");
-      await expect(makeThisSqliteLibraryDesktopWriter({ accessToken: "token" })).rejects.toThrow("sync is still finishing");
       expect(mocks.publish).not.toHaveBeenCalled();
     } finally {
       finish(descriptor);
@@ -1789,221 +2142,4 @@ describe("SQLite Library Google Drive production wiring", () => {
     );
   });
 
-  it("moves a current restored SQLite copy to a fresh writer epoch with one control CAS", async () => {
-    const libraryId = "ab".repeat(32);
-    mocks.describeNormalizedCheckpoint
-      .mockReset()
-      .mockResolvedValueOnce({
-        format: "freed_normalized_checkpoint_export_v2",
-        protocolVersion: 2,
-        libraryId,
-        authorityEpoch: "cd".repeat(32),
-        writerId: "34".repeat(32),
-        sourceRevision: 7,
-        causalFrontierDigest: "ef".repeat(32),
-        recordCount: 1,
-        itemCount: 2,
-      })
-      .mockResolvedValue({
-        format: "freed_normalized_checkpoint_export_v2",
-        protocolVersion: 2,
-        libraryId,
-        authorityEpoch: "89".repeat(32),
-        writerId: mocks.bootstrapAuthority.actor.actor_id,
-        sourceRevision: 7,
-        causalFrontierDigest: "90".repeat(32),
-        recordCount: 1,
-        itemCount: 2,
-      });
-    mocks.nativeState = {
-      version: 2,
-      libraryId,
-      storageEpoch: "cd".repeat(32),
-      writerId: "34".repeat(32),
-      controlFileId: "control-1",
-      lastPublishedRevision: 7,
-    };
-    mocks.controlRead = {
-      revision: '"etag-current"',
-      bytes: new Uint8Array(
-        encodeLibraryCoreCanonicalValue({
-          activeTransport: "google_drive_app_data_v1",
-          causalFrontierDigest: "ef".repeat(32),
-          generation: 4,
-          libraryId,
-          manifest: {
-            descriptor: {
-              byteLength: 123,
-              contentDigest: "12".repeat(32),
-              objectKey: createLibraryCoreImmutableObjectKey({
-                digest: "12".repeat(32) as LibraryCoreLowercaseHex64,
-                epochId: "cd".repeat(32),
-                generation: 4,
-                kind: "checkpoint_manifest",
-                libraryId,
-              }),
-            },
-            transportObjectId: "manifest-4",
-          },
-          protocolVersion: 1,
-          schemaVersion: 1,
-          storageEpoch: "cd".repeat(32),
-          writerId: "34".repeat(32),
-        }),
-      ),
-    };
-
-    await expect(
-      makeThisSqliteLibraryDesktopWriter({ accessToken: "token" }),
-    ).resolves.toEqual({ status: "writer_transferred", revision: 7 });
-
-    expect(mocks.reassign).toHaveBeenCalledTimes(1);
-    expect(mocks.reassignNative).toHaveBeenCalledWith(
-      expect.objectContaining({
-        targetWriterId: mocks.bootstrapAuthority.actor.actor_id,
-      }),
-    );
-    expect(mocks.reassignRequest).toMatchObject({
-      descriptor: {
-        authorityEpoch: "89".repeat(32),
-        writerId: mocks.bootstrapAuthority.actor.actor_id,
-      },
-      expectedControl: { revision: '"etag-current"' },
-      generation: 0,
-    });
-    expect(mocks.publishedRecords).toHaveLength(1);
-    expect(JSON.stringify(mocks.publishedRecords)).not.toContain(
-      "00_library_shell",
-    );
-    expect(mocks.nativeState).toMatchObject({
-      lastPublishedRevision: 7,
-      writerId: mocks.bootstrapAuthority.actor.actor_id,
-    });
-    expect(mocks.setWriterAdmission).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        activeWriterId: mocks.bootstrapAuthority.actor.actor_id,
-        localWriterId: mocks.bootstrapAuthority.actor.actor_id,
-        controlRevision: '"etag-2"',
-      }),
-    );
-  });
-
-  it("atomically imports the normalized cloud checkpoint before taking over from a newer epoch", async () => {
-    const libraryId = "ab".repeat(32);
-    const cloudEpoch = "78".repeat(32);
-    const cloudWriter = "56".repeat(32);
-    mocks.describeNormalizedCheckpoint
-      .mockReset()
-      .mockResolvedValueOnce({
-        format: "freed_normalized_checkpoint_export_v2",
-        protocolVersion: 2,
-        libraryId,
-        authorityEpoch: cloudEpoch,
-        writerId: cloudWriter,
-        sourceRevision: 1,
-        causalFrontierDigest: "ef".repeat(32),
-        recordCount: 1,
-        itemCount: 2,
-      })
-      .mockResolvedValue({
-        format: "freed_normalized_checkpoint_export_v2",
-        protocolVersion: 2,
-        libraryId,
-        authorityEpoch: "89".repeat(32),
-        writerId: mocks.bootstrapAuthority.actor.actor_id,
-        sourceRevision: 1,
-        causalFrontierDigest: "90".repeat(32),
-        recordCount: 1,
-        itemCount: 2,
-      });
-    mocks.nativeState = {
-      version: 2,
-      libraryId,
-      storageEpoch: "cd".repeat(32),
-      writerId: "34".repeat(32),
-      controlFileId: "control-1",
-      lastPublishedRevision: 7,
-    };
-    mocks.describeCloudIdentity
-      .mockReset()
-      .mockResolvedValueOnce({
-        format: "freed_normalized_checkpoint_export_v2",
-        protocolVersion: 2,
-        libraryId,
-        authorityEpoch: "cd".repeat(32),
-        writerId: "34".repeat(32),
-        sourceRevision: 8,
-        causalFrontierDigest: "66".repeat(32),
-        recordCount: 1,
-        itemCount: 2,
-        localActorId: mocks.bootstrapAuthority.actor.actor_id,
-      })
-      .mockResolvedValue({
-        format: "freed_normalized_checkpoint_export_v2",
-        protocolVersion: 2,
-        libraryId,
-        authorityEpoch: cloudEpoch,
-        writerId: cloudWriter,
-        sourceRevision: 1,
-        causalFrontierDigest: "ef".repeat(32),
-        recordCount: 1,
-        itemCount: 2,
-        localActorId: mocks.bootstrapAuthority.actor.actor_id,
-      });
-    mocks.controlRead = {
-      revision: '"etag-current"',
-      bytes: new Uint8Array(
-        encodeLibraryCoreCanonicalValue({
-          activeTransport: "google_drive_app_data_v1",
-          causalFrontierDigest: "ef".repeat(32),
-          generation: 9,
-          libraryId,
-          manifest: {
-            descriptor: {
-              byteLength: 123,
-              contentDigest: "56".repeat(32),
-              objectKey: createLibraryCoreImmutableObjectKey({
-                digest: "56".repeat(32) as LibraryCoreLowercaseHex64,
-                epochId: cloudEpoch,
-                generation: 9,
-                kind: "checkpoint_manifest",
-                libraryId,
-              }),
-            },
-            transportObjectId: "manifest-9",
-          },
-          protocolVersion: 1,
-          schemaVersion: 1,
-          storageEpoch: cloudEpoch,
-          writerId: cloudWriter,
-        }),
-      ),
-    };
-
-    await expect(
-      makeThisSqliteLibraryDesktopWriter({ accessToken: "token" }),
-    ).resolves.toEqual({ status: "writer_transferred", revision: 1 });
-
-    expect(mocks.importCheckpoint).toHaveBeenCalledTimes(1);
-    expect(mocks.beginNormalizedImport).toHaveBeenCalledWith(
-      expect.objectContaining({
-        expectedRecordCount: 3,
-        sourceRevision: 9,
-        stageId: "56".repeat(32),
-      }),
-    );
-    expect(mocks.appendNormalizedPage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        records: expect.arrayContaining([
-          expect.objectContaining({ registryKey: "10_feed_item" }),
-        ]),
-        stageId: "56".repeat(32),
-      }),
-    );
-    expect(mocks.activateNormalizedImport).toHaveBeenCalledWith({
-      followerReceipt: undefined,
-      stageId: "56".repeat(32),
-    });
-    expect(mocks.reassign).toHaveBeenCalledTimes(1);
-  });
 });

@@ -60,9 +60,54 @@ pub(crate) fn validate_subject(value: &str) -> Result<(), String> {
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
-fn keyring_entry(vault: &PlatformKeyVault) -> Result<Entry, String> {
-    Entry::new(KEYRING_SERVICE, vault.account)
+fn keyring_entry(account: &str) -> Result<Entry, String> {
+    Entry::new(KEYRING_SERVICE, account)
         .map_err(|_| "Library Core could not open the platform credential vault".to_string())
+}
+
+// A length-delimited namespace prevents account/subject boundary collisions.
+// Legacy accounts remain read-only so joining another Library cannot erase keys.
+fn subject_account(vault: &PlatformKeyVault, subject: &str) -> Result<String, String> {
+    validate_subject(subject)?;
+    Ok(format!(
+        "subject-v1:{}:{}:{}",
+        vault.account.len(),
+        vault.account,
+        subject
+    ))
+}
+
+fn load_subject_key(
+    vault: &PlatformKeyVault,
+    subject: &str,
+    mut read: impl FnMut(&str) -> Result<Option<Vec<u8>>, String>,
+) -> Result<Option<Vec<u8>>, String> {
+    let account = subject_account(vault, subject)?;
+    if let Some(bytes) = read(&account)? {
+        // A mismatched scoped entry is corruption, never permission to mint.
+        return decode_envelope(vault, subject, &bytes)?
+            .map(Some)
+            .ok_or_else(|| {
+                format!(
+                    "Library Core {} key subject is inconsistent",
+                    vault.description
+                )
+            });
+    }
+    match read(vault.account)? {
+        Some(bytes) => decode_envelope(vault, subject, &bytes),
+        None => Ok(None),
+    }
+}
+
+fn store_subject_key(
+    vault: &PlatformKeyVault,
+    subject: &str,
+    bytes: &[u8],
+    write: impl FnOnce(&str, &[u8]) -> Result<(), String>,
+) -> Result<(), String> {
+    let account = subject_account(vault, subject)?;
+    write(&account, &encode_envelope(vault, subject, bytes)?)
 }
 
 #[cfg(target_os = "macos")]
@@ -160,13 +205,17 @@ pub(crate) fn load_platform_key(
 ) -> Result<Option<Vec<u8>>, String> {
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     {
-        with_keyring_user_interaction_disabled(|| match keyring_entry(vault)?.get_secret() {
-            Ok(bytes) => decode_envelope(vault, subject, &bytes),
-            Err(keyring::Error::NoEntry) => Ok(None),
-            Err(_) => Err(format!(
-                "Library Core could not read its {} key",
-                vault.description
-            )),
+        with_keyring_user_interaction_disabled(|| {
+            load_subject_key(vault, subject, |account| {
+                match keyring_entry(account)?.get_secret() {
+                    Ok(bytes) => Ok(Some(bytes)),
+                    Err(keyring::Error::NoEntry) => Ok(None),
+                    Err(_) => Err(format!(
+                        "Library Core could not read its {} key",
+                        vault.description
+                    )),
+                }
+            })
         })
     }
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
@@ -183,13 +232,14 @@ pub(crate) fn store_platform_key(
 ) -> Result<(), String> {
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     {
-        let encoded = encode_envelope(vault, subject, bytes)?;
         with_keyring_user_interaction_disabled(|| {
-            keyring_entry(vault)?.set_secret(&encoded).map_err(|_| {
-                format!(
-                    "Library Core could not protect its {} key",
-                    vault.description
-                )
+            store_subject_key(vault, subject, bytes, |account, encoded| {
+                keyring_entry(account)?.set_secret(encoded).map_err(|_| {
+                    format!(
+                        "Library Core could not protect its {} key",
+                        vault.description
+                    )
+                })
             })
         })
     }
@@ -215,6 +265,79 @@ mod tests {
         envelope_format: "freed_library_core_test_key_v1",
         description: "test",
     };
+
+    #[test]
+    fn scoped_keys_preserve_other_libraries_and_read_only_legacy_custody() {
+        use std::collections::HashMap;
+        let legacy = encode_envelope(&VAULT, "old-library", &[1]).unwrap();
+        let mut entries = HashMap::from([(VAULT.account.to_string(), legacy.clone())]);
+        for (subject, key) in [("new-library", 2), ("another-library", 3)] {
+            store_subject_key(&VAULT, subject, &[key], |account, bytes| {
+                entries.insert(account.to_string(), bytes.to_vec());
+                Ok(())
+            })
+            .unwrap();
+        }
+        for (subject, key) in [
+            ("old-library", 1),
+            ("new-library", 2),
+            ("another-library", 3),
+        ] {
+            assert_eq!(
+                load_subject_key(&VAULT, subject, |account| Ok(entries.get(account).cloned()))
+                    .unwrap(),
+                Some(vec![key])
+            );
+        }
+        assert_eq!(entries.get(VAULT.account), Some(&legacy));
+        assert_eq!(
+            load_subject_key(&VAULT, "absent", |account| Ok(entries
+                .get(account)
+                .cloned()))
+            .unwrap(),
+            None
+        );
+        store_subject_key(&VAULT, "old-library", &[4], |account, bytes| {
+            entries.insert(account.to_string(), bytes.to_vec());
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(
+            load_subject_key(&VAULT, "old-library", |account| Ok(entries
+                .get(account)
+                .cloned()))
+            .unwrap(),
+            Some(vec![4])
+        );
+        assert_eq!(entries.get(VAULT.account), Some(&legacy));
+    }
+
+    #[test]
+    fn scoped_corruption_and_vault_errors_never_fall_back_to_legacy() {
+        for bytes in [
+            b"corrupt".to_vec(),
+            encode_envelope(&VAULT, "wrong-subject", &[1]).unwrap(),
+        ] {
+            let mut reads = 0;
+            assert!(load_subject_key(&VAULT, "subject", |_| {
+                reads += 1;
+                Ok(Some(bytes.clone()))
+            })
+            .is_err());
+            assert_eq!(reads, 1);
+        }
+        let mut reads = 0;
+        assert!(load_subject_key(&VAULT, "subject", |_| {
+            reads += 1;
+            Err("unavailable".to_string())
+        })
+        .is_err());
+        assert_eq!(reads, 1);
+        assert!(load_subject_key(&VAULT, "bad/subject", |_| panic!(
+            "invalid subject reached vault"
+        ))
+        .is_err());
+    }
 
     #[test]
     fn an_envelope_round_trips_only_for_its_own_subject() {

@@ -1,3 +1,4 @@
+import { decodeLibraryCoreFractionalNumbersV1 } from "./fractional-number-codec.js";
 import {
   mergeDefaultPreferences,
   type Account,
@@ -41,6 +42,7 @@ import {
   LIBRARY_CORE_PERSON_DETAIL_QUERY_ID,
   LIBRARY_CORE_PERSON_DETAIL_SCHEMA_VERSION,
   type LibraryCorePersonDetailV1,
+  type LibraryCorePersonDetailResponseV1,
   type LibraryCorePersonLinkedAccountV1,
 } from "./person-detail-contracts.js";
 import {
@@ -491,6 +493,16 @@ export function libraryCoreAccountDetailToAccountV1(
   };
 }
 
+/** Merge bounded display children only after the complete root matches their source. */
+async function completePersonWithHistory(runtime: LibraryCoreNormalizedReaderRuntime, personId: string, detail: LibraryCorePersonDetailResponseV1): Promise<Person | null> {
+  const root = await runtime.query({ personId, queryId: "person_root_v1", schemaVersion: 1 });
+  if (root.source.generationId !== detail.source.generationId || root.source.projectionRevision !== detail.source.projectionRevision ||
+      (root.person === null) !== (detail.person === null)) throw new Error("CURSOR_STALE");
+  if (!root.person || !detail.person) return null;
+  const history = libraryCorePersonDetailToPersonV1(detail.person).reachOutLog;
+  return { ...root.person, ...(history === undefined ? {} : { reachOutLog: history }) } as unknown as Person;
+}
+
 /** Read one exact Person directly from the selected SQLite generation. */
 export async function readLibraryCoreNormalizedPersonDetailV1(
   runtime: LibraryCoreNormalizedReaderRuntime,
@@ -501,9 +513,7 @@ export async function readLibraryCoreNormalizedPersonDetailV1(
     queryId: LIBRARY_CORE_PERSON_DETAIL_QUERY_ID,
     schemaVersion: LIBRARY_CORE_PERSON_DETAIL_SCHEMA_VERSION,
   });
-  return response.person === null
-    ? null
-    : libraryCorePersonDetailToPersonV1(response.person);
+  return completePersonWithHistory(runtime, personId, response);
 }
 
 /** Read one selected Friend and its bounded linked Account window from SQLite. */
@@ -522,7 +532,8 @@ export async function readLibraryCoreNormalizedFriendDetailV1(
       "The selected Friend exceeds the bounded linked Account detail window",
     );
   }
-  const person = libraryCorePersonDetailToPersonV1(response.person);
+  const person = await completePersonWithHistory(runtime, personId, response);
+  if (!person) throw new Error("CURSOR_STALE");
   const accounts = response.linkedAccounts.map((account) =>
     libraryCorePersonLinkedAccountToAccountV1(account, person.id),
   );
@@ -589,9 +600,9 @@ export async function readLibraryCoreNormalizedPreferencesV1(
     schemaVersion: LIBRARY_CORE_PREFERENCES_SNAPSHOT_SCHEMA_VERSION,
   });
   return mergeDefaultPreferences(
-    libraryCorePreferenceNodesToValueV1(
+    decodeLibraryCoreFractionalNumbersV1(libraryCorePreferenceNodesToValueV1(
       response.rows,
-    ) as Partial<UserPreferences>,
+    )) as Partial<UserPreferences>,
   );
 }
 

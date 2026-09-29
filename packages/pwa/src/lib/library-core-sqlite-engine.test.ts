@@ -1,9 +1,13 @@
+import nativeRecoveredBrowser from "../../../shared/src/library-core/native-recovered-browser-vector-v1.json";
+import recoveredEnrollmentVector from "../../../shared/src/library-core/recovered-enrollment-vector-v1.json";
+import { verifyPwaRecoveryArchive } from "./library-core-recovery-archive";
+import { migratePwaLibraryRecoverySchema } from "./library-core-recovery-schema";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   CONTENT_SIGNAL_KEYS,
   normalizeLibraryCoreFeedBrowseFilterV1,
 } from "@freed/shared";
-import { createHash, generateKeyPairSync, sign } from "node:crypto";
+import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, sign } from "node:crypto";
 import sqlite3InitModule, {
   type Database,
   type Sqlite3Static,
@@ -18,6 +22,8 @@ import {
   LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES,
   LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_MAXIMUM_RESPONSE_BYTES,
   createLibraryCoreNormalizedCheckpointRecordV2,
+  parseLibraryCoreNormalizedCheckpointRecordV2,
+  parseLibraryCoreNormalizedOperationImportPageV2,
   createLibraryCoreImmutableObjectKey,
   decodeLibraryCoreCanonicalBase64,
   decodeLibraryCoreCanonicalValue,
@@ -87,6 +93,61 @@ describe("PWA Library Core SQLite engine", () => {
     }
     return value;
   }
+
+  it("pages all Person account identities at one revision without a display limit", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion);
+    engine.initialize();
+    database.exec(`INSERT INTO library_meta (singleton_id, library_id, schema_version, authority_epoch, source_revision, updated_at) VALUES (1, '${"a".repeat(64)}', 1, 'epoch-1', 7, 100); INSERT INTO library_materialization_generation SELECT 1, library_id FROM library_meta; UPDATE library_change_state SET revision = 7 WHERE singleton_id = 1;
+      INSERT INTO library_persons (id, name, relationship_status, care_level, created_at, updated_at) VALUES ('person-1', 'Ada', 'friend', 3, 1, 2);`);
+    database.transaction(() => { for (let i = 0; i < 130; i++) database.exec({ sql: "INSERT INTO library_accounts (id, person_id, kind, provider, external_id, discovered_from, first_seen_at, last_seen_at, created_at, updated_at) VALUES (?1, 'person-1', 'social', 'instagram', ?1, 'manual_entry', 1, 2, 1, 2)", bind: [`account:${String(i).padStart(3, "0")}`] }); });
+    const request = { queryId: "person_account_page_v1", schemaVersion: 1, personId: "person-1", limit: 64, cursor: null } as const;
+    const first = engine.query(request), second = engine.query({ ...request, cursor: first.nextCursor }), third = engine.query({ ...request, cursor: second.nextCursor });
+    expect(first.rows).toHaveLength(64); expect(second.rows).toHaveLength(64); expect(third.rows).toHaveLength(2);
+    expect(third.nextCursor).toBeNull();
+    expect(new Set([...first.rows, ...second.rows, ...third.rows].map(row => row.accountId)).size).toBe(130);
+    expect(() => engine.query({ ...request, personId: "other", cursor: first.nextCursor })).toThrow("cursor");
+    database.exec("UPDATE library_meta SET source_revision = 8; UPDATE library_change_state SET revision = 8;");
+    expect(() => engine.query({ ...request, cursor: first.nextCursor })).toThrow("CURSOR_STALE");
+  });
+
+  it("reads full Account roots beyond display limits and refuses oversized roots", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion);
+    engine.initialize();
+    database.exec(`INSERT INTO library_meta (singleton_id, library_id, schema_version, authority_epoch, source_revision, updated_at) VALUES (1, '${"a".repeat(64)}', 1, 'epoch-1', 7, 100); INSERT INTO library_materialization_generation SELECT 1, library_id FROM library_meta; UPDATE library_change_state SET revision = 7 WHERE singleton_id = 1;
+      INSERT INTO library_accounts (id, kind, provider, external_id, discovered_from, first_seen_at, last_seen_at, created_at, updated_at, follow_roster_active) VALUES ('account-1', 'social', 'instagram', 'one', 'manual_entry', 1, 2, 1, 2, 1);
+      INSERT INTO library_account_follow_roles VALUES ('account-1', 'following');`);
+    database.exec({ sql: "UPDATE library_accounts SET address = ?1 WHERE id = 'account-1'", bind: ["x".repeat(20000)] });
+    const request = { queryId: "account_root_v1", schemaVersion: 1, accountId: "account-1" } as const;
+    const result = engine.query(request);
+    expect(result.account?.address).toHaveLength(20000);
+    expect(result.account?.followRosterActive).toBe(true);
+    expect(result.account?.followRosterRoles).toEqual(["following"]);
+    expect(result.account).not.toHaveProperty("personId");
+    expect(result.source.projectionRevision).toBe(7);
+    database.exec({ sql: "UPDATE library_accounts SET address = ?1 WHERE id = 'account-1'", bind: ["x".repeat(65536)] });
+    expect(() => engine.query(request)).toThrow("read bounds");
+    expect(engine.query({ ...request, accountId: "missing" }).account).toBeNull();
+  });
+
+  it("reads complete Person roots beyond display bounds and rejects overflow without losing the source", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion);
+    engine.initialize();
+    database.exec(`INSERT INTO library_meta (singleton_id, library_id, schema_version, authority_epoch, source_revision, updated_at) VALUES (1, '${"a".repeat(64)}', 1, 'epoch-1', 7, 100); INSERT INTO library_materialization_generation SELECT 1, library_id FROM library_meta; UPDATE library_change_state SET revision = 7 WHERE singleton_id = 1; INSERT INTO library_persons (id, name, relationship_status, care_level, created_at, updated_at) VALUES ('person-1', 'Ada', 'friend', 3, 1, 2);`);
+    database.transaction(() => {
+      for (let i = 0; i < 4096; i++) database.exec({ sql: "INSERT INTO library_person_tags (person_id, tag) VALUES ('person-1', ?1)", bind: [`t${String(i).padStart(4, "0")}`] });
+    });
+    const request = { queryId: "person_root_v1", schemaVersion: 1, personId: "person-1" } as const;
+    const result = engine.query(request);
+    expect(result.person?.tags).toHaveLength(4096);
+    expect(result.source.projectionRevision).toBe(7);
+    expect(result.person).not.toHaveProperty("reachOutLog");
+    database.exec("INSERT INTO library_person_tags (person_id, tag) VALUES ('person-1', 'overflow')");
+    expect(() => engine.query(request)).toThrow("read bounds");
+    database.exec("DELETE FROM library_person_tags WHERE tag = 'overflow'");
+    database.exec({ sql: "UPDATE library_persons SET notes = ?1 WHERE id = 'person-1'", bind: ["x".repeat(65536)] });
+    expect(() => engine.query(request)).toThrow("read bounds");
+    expect(engine.query({ ...request, personId: "missing" }).person).toBeNull();
+  });
 
   it("reports the failed schema check without repairing rejected staging rows", () => {
     const engine = new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion);
@@ -1154,6 +1215,21 @@ describe("PWA Library Core SQLite engine", () => {
     const canonicalCertificateBytes = encodeLibraryCoreCanonicalValue(
       certificate.certificate as unknown as LibraryCoreCanonicalValue,
     );
+    // Signature verification yields. A replaced pending request must not let
+    // the old response install an actor or report an enrollment that was lost.
+    const pendingInstall = engine.installFollowerActorEnrollment({ canonicalCertificateBytes, enrolledAt: 1_100 });
+    database.exec("UPDATE library_follower_actor_request SET created_at = 1001;");
+    await expect(pendingInstall).rejects.toThrow(/changed during verification/);
+    expect(database.selectValue("SELECT count(*) FROM library_actors;")).toBe(0);
+    expect(database.selectValue("SELECT count(*) FROM library_actor_capabilities;")).toBe(0);
+    expect(database.selectValue("SELECT enrollment_certificate_digest FROM library_follower_actor_request;")).toBeNull();
+    database.exec("UPDATE library_follower_actor_request SET created_at = 1000;");
+    const replacedAuthority = engine.installFollowerActorEnrollment({ canonicalCertificateBytes, enrolledAt: 1_100 });
+    database.exec({ sql: "UPDATE library_authority_epochs SET authority_public_key = ?1;", bind: ["00".repeat(32)] });
+    await expect(replacedAuthority).rejects.toThrow(/changed during verification/);
+    expect(database.selectValue("SELECT count(*) FROM library_actors;")).toBe(0);
+    expect(database.selectValue("SELECT count(*) FROM library_intent_actors;")).toBe(0);
+    database.exec({ sql: "UPDATE library_authority_epochs SET authority_public_key = ?1;", bind: [authorityPublicKey] });
     const installed = await engine.installFollowerActorEnrollment({
       canonicalCertificateBytes,
       enrolledAt: 1_100,
@@ -1916,6 +1992,22 @@ describe("PWA Library Core SQLite engine", () => {
       schema_version: 1,
     });
 
+    const enrollmentRow = database.exec({ sql: "SELECT enrollment_certificate_digest, canonical_enrollment_certificate, actor_chain_genesis, enrolled_at FROM library_follower_actor_request;", rowMode: "array", returnValue: "resultRows" })[0]!;
+    database.exec("UPDATE library_follower_actor_request SET enrollment_certificate_digest = NULL, canonical_enrollment_certificate = NULL, actor_chain_genesis = NULL, enrolled_at = NULL;");
+    await expect(engine.commitFollowerIntent({ envelopeBytes })).rejects.toThrow(/mutation context/);
+    expect(database.selectValue("SELECT count(*) FROM library_intent_transactions;")).toBe(0);
+    database.exec({ sql: "UPDATE library_follower_actor_request SET enrollment_certificate_digest = ?1, canonical_enrollment_certificate = ?2, actor_chain_genesis = ?3, enrolled_at = ?4;", bind: enrollmentRow });
+    database.exec({ sql: "UPDATE library_follower_actor_request SET actor_public_key = ?1;", bind: ["0".repeat(64)] });
+    await expect(engine.commitFollowerIntent({ envelopeBytes })).rejects.toThrow(/mutation context/);
+    database.exec({ sql: "UPDATE library_follower_actor_request SET actor_public_key = ?1;", bind: [publicKeyHex] });
+    database.exec(`CREATE TEMP TRIGGER fail_final_intent_tip BEFORE UPDATE ON library_intent_actors
+      BEGIN SELECT RAISE(ABORT, 'final intent tip fault'); END;`);
+    await expect(engine.commitFollowerIntent({ envelopeBytes })).rejects.toThrow(/final intent tip fault/);
+    expect(database.selectValue("SELECT count(*) FROM library_intent_transactions;")).toBe(0);
+    expect(database.selectValue("SELECT count(*) FROM library_intent_members;")).toBe(0);
+    expect(database.selectValue("SELECT count(*) FROM library_optimistic_fields;")).toBe(0);
+    expect(database.selectValue("SELECT count(*) FROM library_intent_actors;")).toBe(0);
+    database.exec("DROP TRIGGER fail_final_intent_tip;");
     const first = await engine.commitFollowerIntent({ envelopeBytes });
     expect(first).toEqual({
       actorId,
@@ -1932,6 +2024,10 @@ describe("PWA Library Core SQLite engine", () => {
       previous_actor_operation_id: "intent-operation-1",
     });
     expect(await engine.commitFollowerIntent({ envelopeBytes })).toEqual(first);
+    database.exec("UPDATE library_follower_actor_request SET enrollment_certificate_digest = NULL, canonical_enrollment_certificate = NULL, actor_chain_genesis = NULL, enrolled_at = NULL;");
+    expect(await engine.commitFollowerIntent({ envelopeBytes })).toEqual(first);
+    database.exec({ sql: "UPDATE library_follower_actor_request SET enrollment_certificate_digest = ?1, canonical_enrollment_certificate = ?2, actor_chain_genesis = ?3, enrolled_at = ?4;", bind: enrollmentRow });
+
     expect(
       database.exec({
         sql: `SELECT value_type, integer_value
@@ -2462,6 +2558,19 @@ describe("PWA Library Core SQLite engine", () => {
         value.envelope as unknown as LibraryCoreCanonicalValue,
       ),
     );
+    database.transaction("IMMEDIATE", () => migratePwaLibraryRecoverySchema(database, sqlite3.capi));
+    // A synthetic incomplete lifecycle must fence fresh writes even with a valid enrolled actor.
+    database.exec({ sql: `INSERT INTO library_local_handoff
+      (singleton_id, handoff_id, library_id, installation_role, phase, predecessor_epoch_id,
+       successor_epoch_id, target_writer_id, target_authority_public_key, canonical_readiness,
+       canonical_authorization_body, expected_control_revision, created_at, updated_at)
+      VALUES (1, ?1, ?2, 'consumer', 'recovery', ?3, ?4, ?5, ?6, X'7b7d', X'7b7d', 'control', 1, 1);`,
+      bind: ["ab".repeat(32), libraryId, "cd".repeat(32), epochId, "66".repeat(32), authorityPublicKeyHex] });
+    await expect(engine.commitFollowerIntent({ envelopeBytes })).rejects.toThrow(/resolved follower intent/);
+    await expect(engine.commitFollowerIntent({ envelopeBytes: secondEnvelopeBytes })).rejects.toThrow(/recovery.*lifecycle/);
+    expect(database.selectValue("SELECT next_counter FROM library_intent_actors;")).toBe(2);
+    expect(database.selectValue("SELECT count(*) FROM library_intent_transactions;")).toBe(1);
+    database.exec("DELETE FROM library_local_handoff;");
     await engine.commitFollowerIntent({ envelopeBytes: secondEnvelopeBytes });
     const unsignedSecondResult = parseLibraryCoreFollowerResultEnvelopeV1({
       actor_id: actorId,
@@ -2870,6 +2979,16 @@ describe("PWA Library Core SQLite engine", () => {
         value.envelope as unknown as LibraryCoreCanonicalValue,
       ),
     );
+    // Provision this browser's local enrollment for this materialization fixture.
+    database.exec(`INSERT INTO library_follower_actor_request
+      (singleton_id, library_id, authority_epoch_id, actor_id, actor_public_key, enrollment_request_digest,
+       canonical_enrollment_request, created_at, enrollment_certificate_digest, canonical_enrollment_certificate,
+       actor_chain_genesis, enrolled_at)
+      SELECT 1, meta.library_id, actor.authority_epoch_id, actor.actor_id, actor.public_key,
+        actor.enrollment_certificate_digest, '{}', 1, actor.enrollment_certificate_digest,
+        actor.canonical_enrollment_certificate, actor.chain_genesis_digest, 1
+      FROM library_meta AS meta JOIN library_actors AS actor ON actor.authority_epoch_id = meta.authority_epoch
+      WHERE actor.actor_kind = 'pwa';`);
     const intent = await engine.commitFollowerIntent({ envelopeBytes });
     expect(intent.optimisticFieldCount).toBe(0);
     expect(
@@ -3513,6 +3632,16 @@ describe("PWA Library Core SQLite engine", () => {
         },
       },
     );
+    // Provision this browser's local enrollment for this materialization fixture.
+    database.exec(`INSERT INTO library_follower_actor_request
+      (singleton_id, library_id, authority_epoch_id, actor_id, actor_public_key, enrollment_request_digest,
+       canonical_enrollment_request, created_at, enrollment_certificate_digest, canonical_enrollment_certificate,
+       actor_chain_genesis, enrolled_at)
+      SELECT 1, meta.library_id, actor.authority_epoch_id, actor.actor_id, actor.public_key,
+        actor.enrollment_certificate_digest, '{}', 1, actor.enrollment_certificate_digest,
+        actor.canonical_enrollment_certificate, actor.chain_genesis_digest, 1
+      FROM library_meta AS meta JOIN library_actors AS actor ON actor.authority_epoch_id = meta.authority_epoch
+      WHERE actor.actor_kind = 'pwa';`);
     await engine.commitFollowerIntent({
       envelopeBytes: finalized.members.map(({ envelope }) =>
         encodeLibraryCoreCanonicalValue(
@@ -3747,6 +3876,16 @@ describe("PWA Library Core SQLite engine", () => {
         },
       },
     );
+    // Provision this browser's local enrollment for this materialization fixture.
+    database.exec(`INSERT INTO library_follower_actor_request
+      (singleton_id, library_id, authority_epoch_id, actor_id, actor_public_key, enrollment_request_digest,
+       canonical_enrollment_request, created_at, enrollment_certificate_digest, canonical_enrollment_certificate,
+       actor_chain_genesis, enrolled_at)
+      SELECT 1, meta.library_id, actor.authority_epoch_id, actor.actor_id, actor.public_key,
+        actor.enrollment_certificate_digest, '{}', 1, actor.enrollment_certificate_digest,
+        actor.canonical_enrollment_certificate, actor.chain_genesis_digest, 1
+      FROM library_meta AS meta JOIN library_actors AS actor ON actor.authority_epoch_id = meta.authority_epoch
+      WHERE actor.actor_kind = 'pwa';`);
     await engine.commitFollowerIntent({
       envelopeBytes: upsertFinalized.members.map((value) =>
         encodeLibraryCoreCanonicalValue(
@@ -6133,6 +6272,288 @@ describe("PWA Library Core SQLite engine", () => {
     });
   });
 
+  it("pins a verified direct successor at commit and preserves the old consumer enrollment", async () => {
+    const handoffVector = recoveredEnrollmentVector;
+    const engine = new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion, { capi: sqlite3.capi });
+    engine.initialize();
+    const pin = handoffVector.predecessor;
+    const certificate = JSON.parse(handoffVector.canonicalCertificate);
+    const targetId = certificate.certificate_body.target_writer_id;
+    const consumerKey = generateKeyPairSync("ed25519");
+    const consumerPublicKey = consumerKey.publicKey.export({ format: "der", type: "spki" }).subarray(-32).toString("hex");
+    async function consumerRequest(epochId: string, epoch: number, keyId: string, nonce: string, createdAt: number,
+      observedFrontier: ReturnType<PwaLibraryCoreSqliteEngine["followerActorEnrollmentContext"]>["authority"]["observed_frontier"] = []) {
+      const enrollment = constructLibraryCoreActorEnrollmentBodyV1({
+        actor_incarnation_nonce: nonce, actor_public_key: consumerPublicKey, authority_key_id: keyId,
+        created_at_ms: createdAt, epoch, epoch_id: epochId, installation_incarnation: "7".repeat(64),
+        library_id: pin.libraryId, observed_frontier: observedFrontier, operation_id: `consumer-enrollment:${createdAt}`,
+      }, { digest: coreDigest });
+      const signed = await constructLibraryCoreActorCapabilityRequestV2(enrollment, {
+        actor_class: "editor", allowed_operation_types: LIBRARY_CORE_PRIMARY_WRITER_OPERATION_TYPES_V2,
+        allowed_query_ids: [], scope: { mode: "library_wide" },
+      }, { digest: coreDigest, signActorProof: async message => sign(null, message, consumerKey.privateKey).toString("hex") });
+      return { enrollment, actorId: enrollment.body.actor_id, requestDigest: signed.request.certificate_digest,
+        input: { canonicalRequestBytes: encodeLibraryCoreCanonicalValue(signed.request as unknown as LibraryCoreCanonicalValue), createdAt } };
+    }
+    const originalRequest = await consumerRequest(pin.epochId, pin.epoch, "a".repeat(64), "8".repeat(64), 1);
+    const consumerId = originalRequest.actorId;
+    const base = [checkpointHeader(), ...authorityRecords()].map(record => {
+      const changed = JSON.parse(JSON.stringify(record).replaceAll("library-1", pin.libraryId).replaceAll("epoch-1", pin.epochId).replaceAll("actor-1", pin.writerId).replaceAll("writer-1", pin.writerId));
+      if (changed.registryKey === "01_authority_epoch") {
+        changed.payload.epochNumber = pin.epoch;
+        changed.payload.authorityPublicKey = pin.authorityPublicKey;
+        changed.payload.transitionCertificateDigest = pin.certificateDigest;
+      }
+      return createLibraryCoreNormalizedCheckpointRecordV2(changed);
+    });
+    const actorTemplate = base.find(row => row.registryKey === "90_actor_state")!;
+    const capabilityTemplate = base.find(row => row.registryKey === "91_actor_capability")!;
+    for (const [id, publicKey] of [[targetId, handoffVector.enrolledActorPublicKey], [consumerId, consumerPublicKey]]) {
+      base.push(createLibraryCoreNormalizedCheckpointRecordV2({ ...actorTemplate, primaryKey: id!, payload: {
+        ...actorTemplate.payload, acceptedCounter: 0, acceptedOperationId: null, acceptedChainDigest: "2".repeat(64),
+        actorKind: "pwa", publicKey: publicKey!,
+      } }));
+      base.push(createLibraryCoreNormalizedCheckpointRecordV2({ ...capabilityTemplate, primaryKey: `cap-${id}`, payload: { ...capabilityTemplate.payload, actorId: id! } }));
+      base.push(createLibraryCoreNormalizedCheckpointRecordV2({ registryKey: "92_actor_capability_mutation", primaryKey: [`cap-${id}`, "feed_item_read_assignment"], payload: { mutationId: "feed_item_read_assignment" } }));
+    }
+    const receipt = { checkpointGeneration: 7, controlRevision: "old-head", installedAt: 1000,
+      manifestContentDigest: lowercaseHex64("8".repeat(64)), manifestObjectKey: "old-manifest", manifestTransportObjectId: "old-file", writerActorId: pin.writerId };
+    stageRecords(engine, base, "before-successor", { libraryId: pin.libraryId, authorityEpoch: pin.epochId, sourceRevision: 7 });
+    engine.activateNormalizedCheckpointStage({ stageId: "before-successor", replaceExisting: false, followerReceipt: receipt });
+    database.exec({ sql: `INSERT INTO library_follower_actor_request (singleton_id, library_id, authority_epoch_id, actor_id, actor_public_key, enrollment_request_digest, canonical_enrollment_request, created_at)
+      VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, 1);`, bind: [pin.libraryId, pin.epochId, consumerId, consumerPublicKey, originalRequest.requestDigest, new TextDecoder().decode(originalRequest.input.canonicalRequestBytes)] });
+    const before = database.exec({ sql: "SELECT * FROM library_follower_actor_request;", rowMode: "array", returnValue: "resultRows" });
+    // These opaque bytes exercise retention, not signature admission. The shared
+    // certificate vector above supplies the independently verified authority proof.
+    const bytes = new Uint8Array([123, 125]);
+    const localRows = {
+      library_intent_actors: { actor_id: consumerId, next_counter: 2,
+        previous_operation_id: "offline-operation", previous_chain_digest: "6".repeat(64) },
+      library_intent_transactions: { transaction_id: "offline-edit", transaction_digest: "5".repeat(64),
+        actor_id: consumerId, intent_epoch: pin.epoch, intent_epoch_id: pin.epochId, member_count: 1,
+        first_counter: 1, last_counter: 1, previous_operation_id: null, previous_chain_digest: "2".repeat(64),
+        ending_operation_id: "offline-operation", ending_chain_digest: "6".repeat(64), canonical_member_bytes: 2,
+        canonical_transaction: bytes, state: "pending", created_at: 3, published_at: null, resolved_at: null },
+      library_intent_members: { transaction_id: "offline-edit", actor_id: consumerId, member_index: 0,
+        operation_id: "offline-operation", actor_counter: 1, mutation_id: "feed_item_read_assignment",
+        entity_type: "FeedItem", entity_id: "item-1", canonical_member: bytes, member_digest: "5".repeat(64) },
+      library_optimistic_fields: { transaction_id: "offline-edit", member_index: 0, actor_id: consumerId,
+        actor_counter: 1, entity_type: "FeedItem", entity_id: "item-1", field_path: "read_at",
+        value_type: "integer", boolean_value: null, integer_value: 3, created_at: 3 },
+    };
+    for (const [table, row] of Object.entries(localRows)) {
+      database.exec({ sql: `INSERT INTO ${table} (${Object.keys(row).join(",")})
+        VALUES (${Object.keys(row).map(() => "?").join(",")});`, bind: Object.values(row) });
+    }
+    const snapshot = () => Object.fromEntries(Object.keys(localRows).map(table => [table,
+      database.exec({ sql: `SELECT * FROM ${table};`, rowMode: "array", returnValue: "resultRows" })]));
+    const oldEdits = snapshot();
+    const nextEpoch = handoffVector.expected.epochId;
+    const revision = Math.max(8, certificate.certificate_body.handoff_authorization.body.final_source_revision);
+    const incoming = base.map(record => {
+      if (record.registryKey === "00_checkpoint_header") return createLibraryCoreNormalizedCheckpointRecordV2({ ...record, payload: { ...record.payload, authorityEpoch: nextEpoch, sourceRevision: revision, checkpointId: `${pin.libraryId}:${nextEpoch}:${revision}` } });
+      if (record.registryKey === "03_active_authority") return createLibraryCoreNormalizedCheckpointRecordV2({ ...record, payload: { ...record.payload, epochId: nextEpoch, writerId: targetId } });
+      if (record.registryKey === "90_actor_state" && record.primaryKey === targetId) return createLibraryCoreNormalizedCheckpointRecordV2({ ...record, payload: { ...record.payload, actorKind: "desktop", authorityEpochId: nextEpoch } });
+      return record;
+    });
+    const oldEpoch = base.find(row => row.registryKey === "01_authority_epoch")!;
+    incoming.push(createLibraryCoreNormalizedCheckpointRecordV2({ ...oldEpoch, primaryKey: nextEpoch, payload: { ...oldEpoch.payload,
+      epochNumber: pin.epoch + 1, authorityPublicKey: handoffVector.expected.authorityPublicKey,
+      authorityKeyId: handoffVector.expected.authorityKeyId, transitionCertificateDigest: handoffVector.expected.certificateDigest,
+      canonicalTransitionCertificate: handoffVector.canonicalCertificate,
+    } }));
+    incoming.push(createLibraryCoreNormalizedCheckpointRecordV2({ registryKey: "02_authority_frontier", primaryKey: [nextEpoch, 0], payload: {
+      actorId: pin.writerId, acceptedCounter: 2, acceptedOperationId: "operation-2", acceptedChainDigest: "3".repeat(64),
+    } }));
+    stageRecords(engine, incoming, "direct-successor", { libraryId: pin.libraryId, authorityEpoch: nextEpoch, sourceRevision: revision });
+    const activation = { stageId: "direct-successor", replaceExisting: true, followerReceipt: { ...receipt, checkpointGeneration: 0, writerActorId: targetId } };
+    expect(() => engine.activateNormalizedCheckpointStage(activation)).toThrow(/verified proof/);
+    const pendingProof = engine.verifyNormalizedCheckpointSuccessor(activation);
+    database.exec({ sql: "UPDATE library_actors SET public_key = ?1 WHERE actor_id = ?2;", bind: ["7".repeat(64), targetId] });
+    await expect(pendingProof).rejects.toThrow(/changed during verification/);
+    database.exec({ sql: "UPDATE library_actors SET public_key = ?1 WHERE actor_id = ?2;", bind: [handoffVector.enrolledActorPublicKey, targetId] });
+    await engine.verifyNormalizedCheckpointSuccessor(activation);
+    expect(() => engine.activateNormalizedCheckpointStage({ ...activation, followerReceipt: { ...activation.followerReceipt, writerActorId: pin.writerId } })).toThrow(/verified proof/);
+    database.exec({ sql: "UPDATE library_actors SET public_key = ?1 WHERE actor_id = ?2;", bind: ["7".repeat(64), targetId] });
+    expect(() => engine.activateNormalizedCheckpointStage(activation)).toThrow(/verified proof/);
+    database.exec({ sql: "UPDATE library_actors SET public_key = ?1 WHERE actor_id = ?2;", bind: [handoffVector.enrolledActorPublicKey, targetId] });
+    await engine.verifyNormalizedCheckpointSuccessor(activation);
+    database.exec("CREATE TEMP TRIGGER fail_successor_receipt BEFORE INSERT ON library_follower_checkpoint_receipt BEGIN SELECT RAISE(ABORT, 'successor receipt fault'); END;");
+    expect(() => engine.activateNormalizedCheckpointStage(activation)).toThrow(/successor receipt fault/);
+    expect(database.exec({ sql: "SELECT authority_epoch FROM library_meta;", rowMode: 0, returnValue: "resultRows" })).toEqual([pin.epochId]);
+    expect(database.exec({ sql: "SELECT * FROM library_follower_actor_request;", rowMode: "array", returnValue: "resultRows" })).toEqual(before);
+    expect(snapshot()).toEqual(oldEdits);
+    database.exec("DROP TRIGGER fail_successor_receipt;");
+    expect(engine.activateNormalizedCheckpointStage(activation).authorityEpoch).toBe(nextEpoch);
+    expect(snapshot()).toEqual(oldEdits);
+    expect(() => engine.followerMutationContext()).toThrow(/context is unavailable/);
+    expect(database.exec({ sql: "SELECT * FROM library_follower_actor_request;", rowMode: "array", returnValue: "resultRows" })).toEqual(before);
+    const plan = engine.consumerRecoveryPlan();
+    const archiveId = plan.recoveryId;
+    const prepared = await consumerRequest(nextEpoch, pin.epoch + 1, handoffVector.expected.authorityKeyId, archiveId, 1000, plan.authority.observed_frontier);
+    await engine.prepareConsumerRecovery(archiveId, prepared.input);
+    expect(engine.consumerRecoveryStatus()).toMatchObject({ state: "prepared", plan: { preparedRequest: prepared.input } });
+    const recoveryRows = () => database.exec({ sql: "SELECT * FROM library_local_recovery_rows ORDER BY table_key, row_ordinal;", rowMode: "array", returnValue: "resultRows" });
+    const archived = recoveryRows();
+    // A later checkpoint in the accepted successor must not force recovery first.
+    const refreshedRevision = revision + 1;
+    const refreshedIncoming = incoming.map(record => record.registryKey === "00_checkpoint_header"
+      ? createLibraryCoreNormalizedCheckpointRecordV2({ ...record, payload: { ...record.payload,
+        sourceRevision: refreshedRevision, checkpointId: `${pin.libraryId}:${nextEpoch}:${refreshedRevision}` } }) : record);
+    const refresh = { ...activation, stageId: "pending-recovery-refresh", followerReceipt: { ...activation.followerReceipt, checkpointGeneration: 1 } };
+    stageRecords(engine, refreshedIncoming, refresh.stageId, { libraryId: pin.libraryId, authorityEpoch: nextEpoch, sourceRevision: refreshedRevision });
+    expect(() => engine.activateNormalizedCheckpointStage(refresh)).toThrow(/current verified proof/);
+    await engine.verifyNormalizedCheckpointSuccessor(refresh);
+    database.exec("UPDATE library_follower_actor_request SET created_at = 2;");
+    expect(() => engine.activateNormalizedCheckpointStage(refresh)).toThrow(/current verified proof/);
+    database.exec("UPDATE library_follower_actor_request SET created_at = 1;");
+    await engine.verifyNormalizedCheckpointSuccessor(refresh);
+    database.exec("CREATE TEMP TRIGGER fail_continuation BEFORE INSERT ON library_follower_checkpoint_receipt BEGIN SELECT RAISE(ABORT, 'continuation receipt fault'); END;");
+    expect(() => engine.activateNormalizedCheckpointStage(refresh)).toThrow(/continuation receipt fault/);
+    expect(snapshot()).toEqual(oldEdits);
+    expect(database.selectValue("SELECT checkpoint_generation FROM library_follower_checkpoint_receipt;")).toBe(0);
+    database.exec("DROP TRIGGER fail_continuation;");
+    expect(engine.activateNormalizedCheckpointStage(refresh).authorityEpoch).toBe(nextEpoch);
+    expect(snapshot()).toEqual(oldEdits);
+    expect(database.exec({ sql: "SELECT * FROM library_follower_actor_request;", rowMode: "array", returnValue: "resultRows" })).toEqual(before);
+    expect(() => engine.followerMutationContext()).toThrow(/context is unavailable/);
+    const regressed = { ...refresh, stageId: "regressed-recovery-refresh", followerReceipt: { ...refresh.followerReceipt, checkpointGeneration: 0 } };
+    stageRecords(engine, refreshedIncoming, regressed.stageId, { libraryId: pin.libraryId, authorityEpoch: nextEpoch, sourceRevision: refreshedRevision });
+    await engine.verifyNormalizedCheckpointSuccessor(regressed);
+    expect(() => engine.activateNormalizedCheckpointStage(regressed)).toThrow(/regress local history/);
+    expect(snapshot()).toEqual(oldEdits);
+    expect(database.selectValue("SELECT checkpoint_generation FROM library_follower_checkpoint_receipt;")).toBe(1);
+    database.transaction("IMMEDIATE", () => verifyPwaRecoveryArchive(database, sqlite3.capi, archiveId, true));
+    const corruptHistory = refreshedIncoming.map(record => record.registryKey === "01_authority_epoch" && record.primaryKey === pin.epochId
+      ? createLibraryCoreNormalizedCheckpointRecordV2({ ...record, payload: { ...record.payload, transitionCertificateDigest: "f".repeat(64) } }) : record);
+    const changedHistory = { ...refresh, stageId: "changed-historical-authority" };
+    stageRecords(engine, corruptHistory, changedHistory.stageId, { libraryId: pin.libraryId, authorityEpoch: nextEpoch, sourceRevision: refreshedRevision });
+    await engine.verifyNormalizedCheckpointSuccessor(changedHistory);
+    expect(() => engine.activateNormalizedCheckpointStage(changedHistory)).toThrow(/changed the accepted authority/);
+    database.transaction("IMMEDIATE", () => verifyPwaRecoveryArchive(database, sqlite3.capi, archiveId, true));
+    // Resume the exact preparation after actual checkpoint activation, then prove
+    // commit retry does not allocate another actor or rewrite archived bytes.
+    expect(engine.consumerRecoveryStatus()).toMatchObject({ state: "prepared", plan: { preparedRequest: prepared.input } });
+    expect(recoveryRows()).toEqual(archived);
+    const resumed = new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion, { capi: sqlite3.capi });
+    resumed.initialize();
+    await resumed.commitConsumerRecovery(archiveId, 1001);
+    expect(resumed.consumerRecoveryStatus()).toMatchObject({ state: "following", plan: { recoveryId: archiveId } });
+    expect(resumed.followerActorEnrollmentContext().request?.actorId).toBe(prepared.actorId);
+    // Storing the new request still requires the Primary's enrollment response.
+    expect(() => resumed.followerMutationContext()).toThrow(/context is unavailable/);
+    expect(database.selectValue("SELECT count(*) FROM library_intent_transactions;")).toBe(0);
+    expect(recoveryRows()).toEqual(archived);
+    const changes = database.changes(true);
+    await resumed.commitConsumerRecovery(archiveId, 1002);
+    expect(database.changes(true)).toBe(changes);
+    database.transaction("IMMEDIATE", () => verifyPwaRecoveryArchive(database, sqlite3.capi, archiveId, false));
+    // This public test seed is the native handoff vector's successor authority.
+    // Matching its public key prevents this fixture from silently signing for a
+    // different authority when the native vector changes.
+    const successorKey = createPrivateKey({ format: "der", type: "pkcs8", key: Buffer.concat([
+      Buffer.from("302e020100300506032b657004220420", "hex"), Buffer.alloc(32, 99),
+    ]) });
+    expect(createPublicKey(successorKey).export({ format: "der", type: "spki" }).subarray(-32).toString("hex")).toBe(handoffVector.expected.authorityPublicKey);
+    const capability = await constructLibraryCoreActorCapabilityCertificateV2(prepared.enrollment, {
+      actor_class: "editor", allowed_operation_types: LIBRARY_CORE_PRIMARY_WRITER_OPERATION_TYPES_V2,
+      allowed_query_ids: [], scope: { mode: "library_wide" },
+    }, { digest: coreDigest,
+      signActorProof: async message => sign(null, message, consumerKey.privateKey).toString("hex"),
+      signAuthorityCertificate: async message => sign(null, message, successorKey).toString("hex"),
+    });
+    const enrollmentInput = {
+      canonicalCertificateBytes: encodeLibraryCoreCanonicalValue(capability.certificate as unknown as LibraryCoreCanonicalValue),
+      enrolledAt: 1100,
+    };
+    const installed = await resumed.installFollowerActorEnrollment(enrollmentInput);
+    const enrolledChanges = database.changes(true);
+    expect(await resumed.installFollowerActorEnrollment(enrollmentInput)).toEqual(installed);
+    expect(database.changes(true)).toBe(enrolledChanges);
+    expect(resumed.followerMutationContext()).toMatchObject({
+      actor_id: prepared.actorId, actor_public_key: consumerPublicKey, epoch_id: nextEpoch,
+      next_actor_sequence: 1, previous_actor_operation_id: null, previous_actor_chain_digest: capability.actor_chain_genesis,
+    });
+    expect(resumed.followerTransportContext()).toMatchObject({ actorId: prepared.actorId,
+      storageEpochId: nextEpoch, nextIntentActorCounter: 1, nextResultSequence: 1,
+      previousIntentSegmentDigest: null, previousResultSegmentDigest: null });
+    expect(resumed.pageFollowerTransport({ actorId: lowercaseHex64(consumerId), firstActorCounter: 1, limit: 128, schemaVersion: 2 })).toMatchObject({ canonicalEnvelopes: [], lastActorCounter: null, done: true });
+    expect(recoveryRows()).toEqual(archived);
+
+
+
+
+  });
+
+  it("converges with native recovered-actor signed edits through incremental pages", async () => {
+    const fixture = nativeRecoveredBrowser;
+    const bytes = (value: string) => Uint8Array.from(new TextEncoder().encode(value));
+    let engine = new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion, { capi: sqlite3.capi, now: () => 2202 });
+    engine.initialize();
+    const records = fixture.baselineRecords.map(parseLibraryCoreNormalizedCheckpointRecordV2);
+    stageRecords(engine, records, "native-recovered-baseline", fixture.baseline);
+    engine.activateNormalizedCheckpointStage({ stageId: "native-recovered-baseline", replaceExisting: false,
+      followerReceipt: { checkpointGeneration: 0, controlRevision: "native-fixture", installedAt: 2200,
+        manifestContentDigest: lowercaseHex64("8".repeat(64)), manifestObjectKey: "fixture", manifestTransportObjectId: "fixture",
+        writerActorId: fixture.baseline.writerId } });
+    expect(engine.describeNormalizedCheckpointExport()).toEqual(fixture.baseline);
+    await engine.storeFollowerActorRequest({
+      canonicalRequestBytes: bytes(fixture.request.canonicalEnrollmentRequestJson),
+      createdAt: fixture.request.createdAt,
+    });
+    // A checkpoint may deliver the grant before the response arrives. Its
+    // physical capability ID is reusable only for the exact signed identity.
+    database.exec({ sql: "UPDATE library_actor_capabilities SET canonical_certificate = '{}' WHERE actor_id = ?1;",
+      bind: [fixture.request.actorId] });
+    await expect(engine.installFollowerActorEnrollment({ canonicalCertificateBytes: bytes(fixture.certificate), enrolledAt: 2201 }))
+      .rejects.toThrow(/stored identity changed/);
+    expect(database.selectValue("SELECT enrollment_certificate_digest FROM library_follower_actor_request;")).toBeNull();
+    expect(database.selectValue("SELECT count(*) FROM library_intent_actors;")).toBe(0);
+    database.exec({ sql: "UPDATE library_actor_capabilities SET canonical_certificate = ?1 WHERE actor_id = ?2;",
+      bind: [fixture.certificate, fixture.request.actorId] });
+    database.exec({ sql: `INSERT INTO library_actor_capability_queries (capability_id, query_id)
+        SELECT capability_id, 'unapproved_query' FROM library_actor_capabilities WHERE actor_id = ?1;`,
+      bind: [fixture.request.actorId] });
+    await expect(engine.installFollowerActorEnrollment({ canonicalCertificateBytes: bytes(fixture.certificate), enrolledAt: 2201 }))
+      .rejects.toThrow(/stored permissions changed/);
+    expect(database.selectValue("SELECT enrollment_certificate_digest FROM library_follower_actor_request;")).toBeNull();
+    database.exec("DELETE FROM library_actor_capability_queries WHERE query_id = 'unapproved_query';");
+    await engine.installFollowerActorEnrollment({ canonicalCertificateBytes: bytes(fixture.certificate), enrolledAt: 2201 });
+    const envelopeBytes = fixture.envelopes.map(bytes);
+    await engine.commitFollowerIntent({ envelopeBytes });
+    expect(database.selectValue("SELECT count(*) FROM library_optimistic_fields;")).toBe(2);
+    for (const page of fixture.operationPages) {
+      const input = parseLibraryCoreNormalizedOperationImportPageV2(page);
+      await engine.importNormalizedOperationPage(input);
+      if (!page.page.done) {
+        expect(database.selectValue("SELECT source_revision FROM library_meta;")).toBe(fixture.baseline.sourceRevision);
+        expect(database.selectValue("SELECT count(*) FROM library_optimistic_fields;")).toBe(2);
+        engine = new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion, { capi: sqlite3.capi, now: () => 2202 });
+        engine.initialize();
+      }
+      await engine.importNormalizedOperationPage(input);
+    }
+    for (const result of fixture.results) {
+      const input = { canonicalResultBytes: bytes(result.canonicalResultJson) };
+      expect(await engine.applyFollowerResult(input)).toMatchObject({ status: "accepted", actorId: fixture.request.actorId });
+      await engine.applyFollowerResult(input);
+    }
+    expect(database.selectValue("SELECT count(*) FROM library_optimistic_fields;")).toBe(0);
+    expect(database.exec({ sql: "SELECT read_at FROM library_feed_items ORDER BY global_id;", rowMode: 0, returnValue: "resultRows" })).toEqual([900, 901]);
+    const snapshot = engine.describeNormalizedCheckpointExport();
+    expect(snapshot).toEqual(fixture.expected);
+    const finalRecords: LibraryCoreNormalizedCheckpointRecordV2[] = [];
+    let after = null;
+    while (true) {
+      const page = engine.exportPinnedNormalizedCheckpointPage({ snapshot, page: { after, maximumRecords: 3,
+        maximumResponseBytes: LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES } });
+      finalRecords.push(...page.records);
+      if (page.done) break;
+      after = page.nextCursor;
+    }
+    expect(digestLibraryCoreNormalizedCheckpointRecordsV2(finalRecords)).toBe(fixture.expectedCheckpointDigest);
+  });
+
   it("rolls back browser activation on unresolved references", () => {
     const engine = new PwaLibraryCoreSqliteEngine(
       database,
@@ -6271,16 +6692,17 @@ describe("PWA Library Core SQLite engine", () => {
     },
   );
 
-  it.each([false, true].flatMap((failActivation) =>
-    (["pending", "published"] as const).map((state) => ({ failActivation, state })),
-  ))(
-    "retains $state edits and settled history across checkpoints, fault: $failActivation",
-    ({ failActivation, state }) => {
+  it.each([1, 2].flatMap((physicalVersion) => [false, true].flatMap((failActivation) =>
+    (["pending", "published"] as const).map((state) => ({ physicalVersion, failActivation, state })),
+  )))(
+    "retains $state edits and settled history across checkpoints, physical $physicalVersion, fault: $failActivation",
+    ({ physicalVersion, failActivation, state }) => {
       const engine = new PwaLibraryCoreSqliteEngine(
         database,
         sqlite3.version.libVersion,
       );
       engine.initialize();
+      if (physicalVersion === 2) database.transaction("IMMEDIATE", () => migratePwaLibraryRecoverySchema(database, sqlite3.capi));
       const actorId = "a".repeat(64);
       const digest = "7".repeat(64);
       const records = [checkpointHeader(), ...authorityRecords()].map(
@@ -6307,6 +6729,14 @@ describe("PWA Library Core SQLite engine", () => {
         string,
         Record<string, string | number | Uint8Array | null>
       > = {
+        ...(physicalVersion === 2 ? {
+          library_local_recovery_archives: {
+            recovery_id: "1".repeat(64), library_id: "library-1",
+            predecessor_epoch_id: "older-epoch", successor_epoch_id: "epoch-1",
+            actor_id: actorId, schema_sha256: LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256,
+            row_count: 0, archive_digest: "6".repeat(64), created_at: 1,
+          },
+        } : {}),
         library_follower_actor_request: {
           singleton_id: 1,
           library_id: "library-1",

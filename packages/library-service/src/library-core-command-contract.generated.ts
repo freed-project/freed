@@ -38,7 +38,6 @@ export const LIBRARY_CORE_NATIVE_COMMAND_IDS = [
   "primary_follower_actor_transport_state_v1",
   "primary_mutation_context_v1",
   "query_v1",
-  "reassign_writer_epoch_v2",
   "retire_actor_v1",
   "sign_operation_v1",
 ] as const;

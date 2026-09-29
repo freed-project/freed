@@ -38,6 +38,7 @@ import {
 } from "./library-core-checkpoint-import.js";
 import type {
   LibraryCoreImmutableReadAdapterV1,
+  LibraryCoreHandoffFrontiersV1,
   LibraryCoreImmutablePublicationAdapterV1,
   LibraryCoreImmutablePublicationResultV1,
   LibraryCorePreparedImmutableObjectV1,
@@ -393,6 +394,7 @@ export interface ReassignLibraryCoreNormalizedCheckpointRequestV2
     readonly pointer: LibraryCoreControlPointerV1;
   };
   readonly epochCertificate: LibraryCorePreparedImmutableObjectV1<Uint8Array>;
+  readonly handoffFrontiers?: LibraryCoreHandoffFrontiersV1;
 }
 
 export function publishLibraryCoreNormalizedCheckpointV2(
@@ -430,6 +432,7 @@ export function reassignLibraryCoreNormalizedCheckpointV2(
     causalFrontierDigest: descriptor.causalFrontierDigest,
     datasetSchemaId: LIBRARY_CORE_NORMALIZED_CHECKPOINT_DATASET_SCHEMA_ID,
     epochCertificate: input.epochCertificate,
+    handoffFrontiers: input.handoffFrontiers,
     expectedControl: input.expectedControl,
     generation: input.generation,
     libraryId: descriptor.libraryId,
@@ -442,9 +445,14 @@ export function reassignLibraryCoreNormalizedCheckpointV2(
   });
 }
 
-export async function importLibraryCoreNormalizedCheckpointV2(
-  input: ImportLibraryCoreNormalizedCheckpointRequestV2,
-): Promise<ImportLibraryCoreNormalizedCheckpointResultV2> {
+type CheckpointDigestSummary = ReturnType<ReturnType<typeof createLibraryCoreNormalizedCheckpointDigestAccumulatorV2>["finish"]>;
+type CheckpointDownloadInput = Omit<ImportLibraryCoreNormalizedCheckpointRequestV2, "writer">;
+type CheckpointSink = Omit<LibraryCoreNormalizedCheckpointImportWriterV2, "finalizeImport">;
+
+async function receiveNormalizedCheckpoint<T>(
+  input: CheckpointDownloadInput & { readonly writer: CheckpointSink },
+  finalize: (completed: CheckpointDigestSummary) => Promise<T>,
+): Promise<ImportLibraryCoreCheckpointManifestResultV1 & { readonly completion: T | null }> {
   const digest = createLibraryCoreNormalizedCheckpointDigestAccumulatorV2();
   let began = false;
   let importedManifest: LibraryCoreCheckpointManifestV1 | null = null;
@@ -510,25 +518,14 @@ export async function importLibraryCoreNormalizedCheckpointV2(
       subtle: input.subtle,
     });
     if (imported.status === "already_complete") {
-      return Object.freeze({ ...imported, activationReceipt: null });
+      return Object.freeze({ ...imported, completion: null });
     }
     if (!began) {
       throw new TypeError("normalized checkpoint imported no records");
     }
     const completed = digest.finish();
-    const activationReceipt = await input.writer.finalizeImport(completed);
-    if (
-      activationReceipt.checkpointDigest !== completed.checkpointDigest ||
-      activationReceipt.canonicalBytes !== completed.canonicalBytes ||
-      activationReceipt.recordCount !== completed.recordCount ||
-      activationReceipt.libraryId !== input.libraryId ||
-      activationReceipt.authorityEpoch !== input.storageEpoch
-    ) {
-      throw new TypeError(
-        "normalized checkpoint activation receipt does not match its import",
-      );
-    }
-    return Object.freeze({ ...imported, activationReceipt });
+    const completion = await finalize(completed);
+    return Object.freeze({ ...imported, completion });
   } catch (error) {
     if (began && input.writer.abortImport !== undefined) {
       try {
@@ -542,4 +539,69 @@ export async function importLibraryCoreNormalizedCheckpointV2(
     }
     throw error;
   }
+}
+
+
+export async function importLibraryCoreNormalizedCheckpointV2(
+  input: ImportLibraryCoreNormalizedCheckpointRequestV2,
+): Promise<ImportLibraryCoreNormalizedCheckpointResultV2> {
+  const { completion, ...imported } = await receiveNormalizedCheckpoint(input, async (completed) => {
+    const receipt = await input.writer.finalizeImport(completed);
+    if (receipt.checkpointDigest !== completed.checkpointDigest
+      || receipt.canonicalBytes !== completed.canonicalBytes
+      || receipt.recordCount !== completed.recordCount
+      || receipt.libraryId !== input.libraryId || receipt.authorityEpoch !== input.storageEpoch) {
+      throw new TypeError("normalized checkpoint activation receipt does not match its import");
+    }
+    return receipt;
+  });
+  return Object.freeze({ ...imported, activationReceipt: completion });
+}
+
+export interface LibraryCoreDownloadedCheckpointStageV2 {
+  readonly status: "staged";
+  readonly checkpoint: CheckpointDigestSummary;
+  readonly stageId: string;
+  readonly libraryId: string;
+  readonly authorityEpoch: string;
+  readonly sourceRevision: number;
+}
+
+/** Download and verify bounded pages without selecting them or granting authority.
+ * A runtime must separately verify and commit any eventual activation. */
+export async function stageLibraryCoreNormalizedCheckpointV2(
+  input: CheckpointDownloadInput & {
+    readonly runtime: Pick<LibraryCoreNormalizedCheckpointStageRuntimeV2, "begin" | "appendPage">;
+  },
+): Promise<LibraryCoreDownloadedCheckpointStageV2> {
+  let stage: LibraryCoreBeginNormalizedCheckpointStageV2 | null = null;
+  let latest: LibraryCoreNormalizedCheckpointStageStatusV2 | null = null;
+  let nextPage = 0;
+  const { completion } = await receiveNormalizedCheckpoint({ ...input, writer: {
+    async beginImport({ header, manifest, manifestReference }) {
+      // Pin replay metadata to the immutable header, not the retry clock.
+      stage = { stageId: manifestReference.descriptor.contentDigest,
+        libraryId: manifest.libraryId, authorityEpoch: manifest.storageEpoch,
+        sourceRevision: header.payload.sourceRevision as number,
+        expectedRecordCount: manifest.totalRecordCount, createdAt: header.payload.createdAtMs as number };
+      latest = await input.runtime.begin(stage);
+    },
+    async appendPage(pageIndex, records) {
+      if (!stage || pageIndex !== nextPage) throw new Error("checkpoint staging page order changed");
+      latest = await input.runtime.appendPage({ stageId: stage.stageId, records });
+      nextPage += 1;
+    },
+  } }, async (completed) => {
+    if (!stage || !latest || !latest.complete || latest.stageId !== stage.stageId
+      || latest.expectedRecordCount !== stage.expectedRecordCount
+      || latest.stagedCanonicalBytes !== completed.canonicalBytes
+      || latest.stagedRecordCount !== completed.recordCount
+      || completed.recordCount !== stage.expectedRecordCount) {
+      throw new Error("checkpoint staging receipt does not match the download");
+    }
+    return Object.freeze({ status: "staged" as const, checkpoint: completed, stageId: stage.stageId, libraryId: stage.libraryId,
+      authorityEpoch: stage.authorityEpoch, sourceRevision: stage.sourceRevision });
+  });
+  if (completion === null) throw new Error("checkpoint download did not stage records");
+  return completion;
 }

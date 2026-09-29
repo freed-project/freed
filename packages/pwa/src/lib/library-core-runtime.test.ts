@@ -928,8 +928,10 @@ describe("PWA Library Core bounded scanner", () => {
           return { nextCursor: null, rows: [rssRow] };
         case "person_graph_page_v1":
           return { nextCursor: null, rows: [personGraphRow] };
+        case "person_root_v1": return { person: { id: "person-sample", name: "Sample Person", careLevel: 3, relationshipStatus: "friend", createdAt: 1, updatedAt: 1, tags: [], sampleDataFingerprint: sample }, source: { generationId: "a".repeat(64), projectionRevision: 7, transitionSequence: 7 } };
         case "person_detail_v1":
           return {
+            source: { generationId: "a".repeat(64), projectionRevision: 7, transitionSequence: 7 },
             person: {
               avatarUrl: null,
               bio: null,

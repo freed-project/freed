@@ -41,6 +41,29 @@ describe("saveUrlInDesktop", () => {
     mockAddLibraryStubItem.mockResolvedValue(stubItem);
   });
 
+  it("drains an accepted save through its note write while rejecting new saves during handoff", async () => {
+    const { saveUrlInDesktop } = await import("./save-url.js");
+    const { pauseDesktopOperationsForHandoff } = await import("./factory-reset-guard");
+    let releaseStub!: (item: FeedItem) => void;
+    mockAddLibraryStubItem.mockImplementationOnce(() => new Promise<FeedItem>((resolve) => { releaseStub = resolve; }));
+    const saving = saveUrlInDesktop(SAMPLE_URL, { notes: "Keep this note" });
+    await Promise.resolve();
+    expect(mockAddLibraryStubItem).toHaveBeenCalledOnce();
+    const pause = pauseDesktopOperationsForHandoff();
+    try {
+      const finished = vi.fn();
+      const draining = pause.drain(1_000).then(finished);
+      await expect(saveUrlInDesktop(SAMPLE_URL)).rejects.toThrow("pausing");
+      expect(finished).not.toHaveBeenCalled();
+      releaseStub(stubItem);
+      await saving;
+      await draining;
+      expect(mockUpdateLibraryFeedItem).toHaveBeenCalledOnce();
+      expect(mockEnqueue).toHaveBeenCalledOnce();
+      expect(mockUpdateLibraryFeedItem.mock.invocationCallOrder[0]).toBeLessThan(finished.mock.invocationCallOrder[0]);
+    } finally { pause.resume(); }
+  });
+
   it("writes a saved stub and queues background detail fetching", async () => {
     const { saveUrlInDesktop } = await import("./save-url.js");
 

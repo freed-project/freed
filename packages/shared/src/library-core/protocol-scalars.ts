@@ -47,19 +47,19 @@ const OPERATION_INSTANCE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 export function isLibraryCoreLowercaseHex64(
   value: unknown,
 ): value is LibraryCoreLowercaseHex64 {
-  return typeof value === "string" && LOWERCASE_HEX_64.test(value);
+  return typeof value === "string" && value.length === 64 && LOWERCASE_HEX_64.test(value);
 }
 
 export function isLibraryCoreEd25519PublicKeyHex(
   value: unknown,
 ): value is LibraryCoreEd25519PublicKeyHex {
-  return typeof value === "string" && LOWERCASE_HEX_64.test(value);
+  return typeof value === "string" && value.length === 64 && LOWERCASE_HEX_64.test(value);
 }
 
 export function isLibraryCoreEd25519SignatureHex(
   value: unknown,
 ): value is LibraryCoreEd25519SignatureHex {
-  return typeof value === "string" && LOWERCASE_HEX_128.test(value);
+  return typeof value === "string" && value.length === 128 && LOWERCASE_HEX_128.test(value);
 }
 
 /**
