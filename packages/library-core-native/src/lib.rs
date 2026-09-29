@@ -35,12 +35,12 @@ mod normalized_checkpoint;
 mod normalized_desktop_setup;
 mod normalized_enrollment_verifier;
 mod normalized_follower;
-mod normalized_preference_policy;
 mod normalized_handoff;
 mod normalized_handoff_activation;
 mod normalized_handoff_cancellation;
 mod normalized_handoff_certificate;
 mod normalized_handoff_checkpoint;
+mod normalized_preference_policy;
 mod normalized_source_handoff;
 pub use normalized_handoff_activation::{
     activate_target_handoff_after_remote_verification_v1, recover_active_target_handoff_v1,

@@ -1,7 +1,7 @@
 {
   "baseline": {
     "authorityEpoch": "3ab4a1ef22a3e2d7290782d53013ffedf86f1614273807a55f75d3028d4deb39",
-    "causalFrontierDigest": "c104650548960cd470364237a135aa567f47ada73806f5d581d235027d9fa8e3",
+    "causalFrontierDigest": "24ccb461b9e6d763be3033eb714f0a757099dcc3dcd9cbb787b0b20319173149",
     "format": "freed_normalized_checkpoint_export_v2",
     "itemCount": 2,
     "libraryId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -953,7 +953,7 @@
   ],
   "expected": {
     "authorityEpoch": "3ab4a1ef22a3e2d7290782d53013ffedf86f1614273807a55f75d3028d4deb39",
-    "causalFrontierDigest": "9856cf34075a48f568e6f031b4ed0fb511b62485b3b9de6ea5936785714e94b6",
+    "causalFrontierDigest": "f35d0ce17ab9efc4dc17be3a5ac1f616e245501a8e2dcd4df117db6114509d72",
     "format": "freed_normalized_checkpoint_export_v2",
     "itemCount": 2,
     "libraryId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",

@@ -1132,6 +1132,68 @@ mod tests {
     }
 
     #[test]
+    fn public_recovered_browser_vector_matches_native_checkpoint_frontiers() {
+        // One public signed vector is consumed by both runtimes. Keep historical
+        // envelopes intact while checking the current export frontier contract.
+        let vector: Value = serde_json::from_str(include_str!(
+            "../../shared/src/library-core/native-recovered-browser-vector-v1.json"
+        ))
+        .unwrap();
+        let baseline: NormalizedCheckpointExportDescriptorV2 =
+            serde_json::from_value(vector["baseline"].clone()).unwrap();
+        let records: Vec<NormalizedCheckpointRecordV2> =
+            serde_json::from_value(vector["baselineRecords"].clone()).unwrap();
+        let mut connection = fixture();
+        begin_normalized_checkpoint_stage_v2(
+            &connection,
+            &BeginNormalizedCheckpointStageV2 {
+                stage_id: "browser-vector".into(),
+                library_id: baseline.library_id.clone(),
+                authority_epoch: baseline.authority_epoch.clone(),
+                source_revision: baseline.source_revision,
+                expected_record_count: records.len(),
+                created_at: 2200,
+            },
+        )
+        .unwrap();
+        append_normalized_checkpoint_stage_page_v2(&mut connection, "browser-vector", &records)
+            .unwrap();
+        finalize_normalized_checkpoint_stage_v2(&mut connection, "browser-vector").unwrap();
+        assert_eq!(
+            describe_normalized_checkpoint_export_v2(&connection).unwrap(),
+            baseline
+        );
+        for page in vector["operationPages"].as_array().unwrap() {
+            let input = serde_json::from_value(page.clone()).unwrap();
+            crate::import_normalized_operation_page_v2(&mut connection, &input).unwrap();
+            crate::import_normalized_operation_page_v2(&mut connection, &input).unwrap();
+        }
+        let expected: NormalizedCheckpointExportDescriptorV2 =
+            serde_json::from_value(vector["expected"].clone()).unwrap();
+        assert_eq!(
+            describe_normalized_checkpoint_export_v2(&connection).unwrap(),
+            expected
+        );
+        let mut records = Vec::new();
+        let mut request = NormalizedCheckpointExportRequestV2 {
+            maximum_records: 3,
+            ..Default::default()
+        };
+        loop {
+            let page = export_normalized_checkpoint_page_v2(&connection, &request).unwrap();
+            records.extend(page.records);
+            if page.done {
+                break;
+            }
+            request.after = page.next_cursor;
+        }
+        assert_eq!(
+            normalized_checkpoint_digest_v2(&records).unwrap(),
+            vector["expectedCheckpointDigest"].as_str().unwrap()
+        );
+    }
+
+    #[test]
     fn platform_path_opener_creates_and_reopens_the_normalized_schema() {
         let root = tempfile::TempDir::new().expect("create database root");
         let path = root
