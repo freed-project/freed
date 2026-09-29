@@ -886,8 +886,10 @@ archive-only because native authority never accepted that former PWA ordering.
 Shared cryptographic tests and PWA SQLite fixtures cover this historical
 preference path, including tampering, incomplete mixed transactions, device-local
 exclusions, a mismatched signed receipt, duplicate import and retained bytes.
-These fixtures do not establish compatibility for every historical native
-segment or prove installed Mac behavior.
+The native historical validator and shared verifier additionally consume the
+same 32 policy cases, covering the historical top-level sections and device-local
+exclusions. These fixtures do not establish compatibility for every historical
+native segment or prove installed Mac behavior.
 
 Finite numbers in the registered binary64 wrapper are scalar preference values.
 Fresh policy validation decodes them for type checks but retains their original

@@ -1063,3 +1063,7 @@ be finalized or reused as fresh verified transactions. Shared cryptographic and
 PWA SQLite tests cover unchanged bytes, mixed-member completeness, device-local
 exclusions, tampering, mismatched receipts and exact retry. Native-produced old
 preference segment fixtures and installed Mac acceptance remain unverified.
+
+The Rust historical validator and shared verifier also pass the same 32 policy
+cases, covering all historical sections and device-local exclusions. This is
+policy parity; native-produced signed segment and installed Mac proof remain separate.

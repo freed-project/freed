@@ -1,3 +1,4 @@
+import historicalPreferencePolicy from "./historical-preference-policy-vector-v1.json";
 import { createHash, generateKeyPairSync, sign, verify } from "node:crypto";
 
 import { describe, expect, it, vi } from "vitest";
@@ -383,15 +384,13 @@ it("authenticates historical preference bytes and the complete actor chain witho
 
 it("keeps native historical preference exclusions and bounded decoding", () => {
   const construct = (updates: unknown) => constructLibraryCoreHistoricalPreferencesMemberV1({ ...memberInput(0, 1), entity_id: "preferences", payload: { updates } }, { digest });
+  // Match native history policy without retrofitting fresh semantic shapes.
+  for (const entry of historicalPreferencePolicy) {
+    if (entry.supported) expect(construct(entry.updates).body.payload, entry.name).toEqual({ updates: entry.updates });
+    else expect(() => construct(entry.updates), entry.name).toThrow();
+  }
   for (const updates of [
-    { unknown: true }, { display: { themeId: "local" } }, { display: { reading: { dualColumnMode: true } } },
-    { ai: { provider: "local" } }, { fbCapture: { knownGroups: [] } }, { storyWall: { publishTarget: { status: "ready" } } },
     { display: { unknown: "x".repeat(8_193) } }, { display: { ["x".repeat(4_097)]: false } },
     { display: Object.fromEntries(Array.from({ length: 512 }, (_, index) => [String(index), false])) },
   ]) expect(() => construct(updates)).toThrow();
-  // Native historical policy bounds canonical values but does not retrofit the
-  // current semantic shape. These authenticated bytes must not be sanitized.
-  for (const updates of [{ display: { markReadOnScroll: false } }, { display: null }, { display: [false] }]) {
-    expect(construct(updates).body.payload).toEqual({ updates });
-  }
 });
