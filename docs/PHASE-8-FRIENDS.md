@@ -1074,3 +1074,12 @@ checkpoint digest. The original zero-operation descriptor remains intact; the
 tests explicitly check current carried-frontier normalization at that baseline.
 Checkpoint admission is synthetic, and this does not prove live cloud joining
 or an installed build.
+
+Preference recovery now reads only the selected setting through a source-bound
+query shared by native SQLite and the PWA. The form retains one current value,
+requires each comparison before confirmation, cancels abandoned reads and keeps
+the same prepared edit after response loss. Group summaries cannot be used as
+replacement values. Native/PWA fixture tests cover oversized unrelated trees,
+exact values and invalid rows; a headless Desktop workflow verifies two scoped
+reads and identical retry submissions. Ordinary startup still has the global
+preference snapshot limit, and installed Mac acceptance remains incomplete.

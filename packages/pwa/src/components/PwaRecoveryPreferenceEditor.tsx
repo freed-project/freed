@@ -1,5 +1,7 @@
+import { readLibraryCoreRecoveryPreferenceCurrentV1 } from "@freed/shared/library-core";
+import { queryPwaNormalizedLibrary } from "../lib/library-core-sqlite-runtime";
 import type { RecoveryPreferenceDraft } from "@freed/shared/library-core";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { LibraryCoreRecoveryIntentReviewResponseV1, LibraryCoreRecoveryReissueReceiptV1 } from "@freed/shared/library-core";
 import { RecoveryPreferenceFields } from "@freed/ui/components/RecoveryPreferenceFields";
 import { loadPwaRecoveryPreferenceDrafts } from "../lib/library-core-pwa-recovery-editors";
@@ -11,7 +13,8 @@ export function PwaRecoveryPreferenceEditor({ review, onReplacement, onMutating 
   onReplacement: (receipt: LibraryCoreRecoveryReissueReceiptV1) => void;
   onMutating: (value: boolean) => void;
 }) {
-  const [drafts, setDrafts] = useState<readonly RecoveryPreferenceDraft[] | null>(null);
+  const [loaded, setLoaded] = useState<{ review: LibraryCoreRecoveryIntentReviewResponseV1; drafts: readonly RecoveryPreferenceDraft[] } | null>(null);
+  const drafts = loaded?.review === review ? loaded.drafts : null;
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false), [locked, setLocked] = useState(false);
   const alive = useRef(false), pending = useRef(false);
@@ -24,7 +27,7 @@ export function PwaRecoveryPreferenceEditor({ review, onReplacement, onMutating 
     const controller = new AbortController();
     void loadPwaRecoveryPreferenceDrafts(review, controller.signal).then((result) => {
       if (controller.signal.aborted) return;
-      if (result.replacement) onReplacement(result.replacement); else setDrafts(result.drafts);
+      if (result.replacement) onReplacement(result.replacement); else setLoaded({ review, drafts: result.drafts });
     }).catch(() => {
       if (!controller.signal.aborted) setError("The Library changed or the complete preference edit could not be verified. Its archive is preserved. Start again to review it.");
     });
@@ -45,6 +48,9 @@ export function PwaRecoveryPreferenceEditor({ review, onReplacement, onMutating 
       if (alive.current) { setSaving(false); onMutating(false); }
     }
   };
+  const readCurrent = useCallback((path: readonly string[], signal: AbortSignal) =>
+    readLibraryCoreRecoveryPreferenceCurrentV1(review, path, queryPwaNormalizedLibrary,
+      () => { if (signal.aborted) throw new Error("QUERY_CANCELLED"); }), [review]);
   if (!drafts) return <p role={error ? "alert" : "status"}>{error ?? "Loading verified settings..."}</p>;
-  return <RecoveryPreferenceFields drafts={drafts} saving={saving} locked={locked} error={error} onSubmit={submit} />;
+  return <RecoveryPreferenceFields drafts={drafts} readCurrent={readCurrent} saving={saving} locked={locked} error={error} onSubmit={submit} />;
 }

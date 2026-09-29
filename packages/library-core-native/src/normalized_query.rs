@@ -272,6 +272,25 @@ pub struct NormalizedSavedAnalyticsRequestV2 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedPreferenceValueRequestV1 {
+    pub schema_version: u32,
+    pub path: Vec<String>,
+    pub generation_id: String,
+    pub source_revision: i64,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedPreferenceValueResponseV1 {
+    pub query_id: String,
+    pub schema_version: u32,
+    pub path: Vec<String>,
+    pub kind: String,
+    pub rows: Vec<NormalizedPreferenceLeafV1>,
+    pub source: NormalizedFeedPageSourceV1,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedPreferencesSnapshotRequestV1 {
     pub schema_version: u32,
 }
@@ -585,6 +604,7 @@ pub enum NormalizedQueryRequestV1 {
     PersonPickerPage(NormalizedPersonPickerPageRequestV1),
     PersonTimeline(NormalizedPersonTimelineRequestV1),
     PersonsGraph(NormalizedPersonsGraphRequestV1),
+    PreferenceValue(NormalizedPreferenceValueRequestV1),
     PreferencesSnapshot(NormalizedPreferencesSnapshotRequestV1),
     RssFeedDetail(NormalizedRssFeedDetailRequestV1),
     RssFeedPage(NormalizedRssFeedPageRequestV1),
@@ -1562,6 +1582,7 @@ pub enum NormalizedQueryResponseV1 {
     PersonPickerPage(NormalizedPersonPickerPageResponseV1),
     PersonTimeline(NormalizedPersonTimelineResponseV1),
     PersonsGraph(NormalizedPersonsGraphResponseV1),
+    PreferenceValue(NormalizedPreferenceValueResponseV1),
     PreferencesSnapshot(NormalizedPreferencesSnapshotResponseV1),
     RssFeedDetail(NormalizedRssFeedDetailResponseV1),
     RssFeedPage(NormalizedRssFeedPageResponseV1),
@@ -1639,6 +1660,11 @@ fn decode_generated_query_row<T: serde::de::DeserializeOwned>(
                 }
             }
             ValueRef::Integer(value) => serde_json::Value::Number(value.into()),
+            ValueRef::Real(value) if field.kind == SqliteQueryRowFieldKind::Real => {
+                serde_json::Value::Number(
+                    serde_json::Number::from_f64(value).ok_or(rusqlite::Error::InvalidQuery)?,
+                )
+            }
             ValueRef::Text(bytes) => {
                 // Reject oversized SQLite text before allocating its owned copy.
                 if field.kind != SqliteQueryRowFieldKind::Text
@@ -1687,6 +1713,7 @@ fn decode_generated_query_value<T: serde::de::DeserializeOwned>(
         } else {
             match field.kind {
                 SqliteQueryRowFieldKind::Boolean => cell.is_boolean(),
+                SqliteQueryRowFieldKind::Real => cell.as_f64().is_some_and(f64::is_finite),
                 SqliteQueryRowFieldKind::Integer => cell.as_i64().is_some_and(|value| {
                     field.minimum_integer.is_none_or(|minimum| value >= minimum)
                         && field.maximum_integer.is_none_or(|maximum| value <= maximum)
@@ -5494,6 +5521,309 @@ fn query_saved_analytics(
     Ok(response)
 }
 
+fn validate_preference_rows(
+    rows: &[NormalizedPreferenceLeafV1],
+) -> Result<(), NormalizedSqliteError> {
+    if rows.len() > PREFERENCES_SNAPSHOT_MAXIMUM_ROWS {
+        return Err(invalid("normalized preferences exceed their row bound"));
+    }
+    for row in rows {
+        let populated = [
+            row.boolean_value.is_some(),
+            row.integer_value.is_some(),
+            row.real_value.is_some(),
+            row.text_value.is_some(),
+        ];
+        let expected = [
+            row.value_type == "boolean",
+            row.value_type == "integer",
+            row.value_type == "real",
+            row.value_type == "text",
+        ];
+        if !["a:", "o:", "v:"]
+            .iter()
+            .any(|prefix| row.path.starts_with(prefix))
+            || !row.path.get(2..).is_some_and(|path| path.starts_with("$."))
+            || (row.path.starts_with("a:")
+                && (row.value_type != "integer"
+                    || !row
+                        .integer_value
+                        .is_some_and(|length| (0..=512).contains(&length))))
+            || (row.path.starts_with("o:") && row.value_type != "null")
+            || row.path.len() > PREFERENCE_PATH_MAXIMUM_BYTES
+            || row
+                .text_value
+                .as_ref()
+                .is_some_and(|value| value.len() > PREFERENCE_TEXT_MAXIMUM_BYTES)
+            || !valid_safe_integer(row.updated_at)
+            || row
+                .integer_value
+                .is_some_and(|value| !(-MAX_SAFE_INTEGER..=MAX_SAFE_INTEGER).contains(&value))
+            || row.real_value.is_some_and(|value| !value.is_finite())
+            || !matches!(
+                row.value_type.as_str(),
+                "boolean" | "integer" | "real" | "text" | "null"
+            )
+            || populated != expected
+        {
+            return Err(invalid("normalized preference row is invalid"));
+        }
+    }
+    if rows.windows(2).any(|pair| pair[0].path >= pair[1].path) {
+        return Err(invalid("normalized preferences are not in binary order"));
+    }
+    Ok(())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+enum PreferenceValuePathPart {
+    Key(String),
+    Index(usize),
+}
+
+// Decode SQLite fullkey syntax without executing caller-provided path expressions.
+fn preference_value_path(
+    path: &str,
+) -> Result<Vec<PreferenceValuePathPart>, NormalizedSqliteError> {
+    let bad = || invalid("preference value path is invalid");
+    if !path.starts_with("$.") {
+        return Err(bad());
+    }
+    let bytes = path.as_bytes();
+    let mut index = 1;
+    let mut parts = Vec::new();
+    while index < bytes.len() {
+        match bytes[index] {
+            b'.' => {
+                index += 1;
+                let start = index;
+                let key = if bytes.get(index) == Some(&b'"') {
+                    index += 1;
+                    while index < bytes.len() && bytes[index] != b'"' {
+                        index += if bytes[index] == b'\\' { 2 } else { 1 };
+                    }
+                    if index >= bytes.len() {
+                        return Err(bad());
+                    }
+                    index += 1;
+                    serde_json::from_str::<String>(&path[start..index]).map_err(|_| bad())?
+                } else {
+                    while index < bytes.len() && !matches!(bytes[index], b'.' | b'[') {
+                        index += 1;
+                    }
+                    if start == index {
+                        return Err(bad());
+                    }
+                    path[start..index].to_owned()
+                };
+                parts.push(PreferenceValuePathPart::Key(key));
+            }
+            b'[' => {
+                index += 1;
+                let start = index;
+                while index < bytes.len() && bytes[index].is_ascii_digit() {
+                    index += 1;
+                }
+                if start == index
+                    || bytes.get(index) != Some(&b']')
+                    || index - start > 1 && bytes[start] == b'0'
+                {
+                    return Err(bad());
+                }
+                let ordinal = path[start..index].parse::<usize>().map_err(|_| bad())?;
+                if ordinal >= 512 {
+                    return Err(bad());
+                }
+                parts.push(PreferenceValuePathPart::Index(ordinal));
+                index += 1;
+            }
+            _ => return Err(bad()),
+        }
+        if parts.len() > 512 {
+            return Err(bad());
+        }
+    }
+    Ok(parts)
+}
+
+fn validate_preference_value_shape(
+    rows: &[NormalizedPreferenceLeafV1],
+) -> Result<(), NormalizedSqliteError> {
+    use std::collections::BTreeMap;
+    let bad = || invalid("preference value nodes are invalid");
+    let mut nodes = BTreeMap::new();
+    for row in rows {
+        let path = preference_value_path(&row.path[2..])?;
+        if path.first() != Some(&PreferenceValuePathPart::Key("_".into()))
+            || nodes.insert(path, row).is_some()
+        {
+            return Err(bad());
+        }
+    }
+    let mut array_counts = BTreeMap::<Vec<PreferenceValuePathPart>, usize>::new();
+    for (path, row) in &nodes {
+        if path.len() > 1 {
+            let parent_path = &path[..path.len() - 1];
+            let parent = nodes.get(parent_path).ok_or_else(bad)?;
+            match (&parent.path[..2], path.last()) {
+                ("a:", Some(PreferenceValuePathPart::Index(index)))
+                    if parent
+                        .integer_value
+                        .is_some_and(|n| n >= 0 && (*index as i64) < n) =>
+                {
+                    *array_counts.entry(parent_path.to_vec()).or_default() += 1;
+                }
+                ("o:", Some(PreferenceValuePathPart::Key(_))) => {}
+                _ => return Err(bad()),
+            }
+        }
+        if row.path.starts_with("a:") && row.integer_value.is_none_or(|n| !(0..=512).contains(&n)) {
+            return Err(bad());
+        }
+    }
+    for (path, row) in nodes {
+        if row.path.starts_with("a:")
+            && array_counts.get(&path).copied().unwrap_or(0)
+                != row.integer_value.unwrap_or(-1) as usize
+        {
+            return Err(invalid("preference array is incomplete"));
+        }
+    }
+    Ok(())
+}
+
+fn query_preference_value(
+    connection: &mut Connection,
+    request: NormalizedPreferenceValueRequestV1,
+) -> Result<NormalizedPreferenceValueResponseV1, NormalizedSqliteError> {
+    if request.schema_version != 1
+        || request.path.is_empty()
+        || request.path.len() > 32
+        || request.generation_id.len() != 64
+        || !request
+            .generation_id
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        || !valid_safe_integer(request.source_revision)
+        || serde_json::to_vec(&request.path)
+            .map_err(|_| invalid("preference path is invalid"))?
+            .len()
+            > 8192
+    {
+        return Err(invalid("preference value request is invalid"));
+    }
+    let program = SQLITE_QUERY_PROGRAMS
+        .iter()
+        .find(|p| p.query_id == "preference_value_v1")
+        .ok_or(invalid("preference value program is missing"))?;
+    let variant = |id| {
+        program
+            .variants
+            .iter()
+            .find(|v| v.variant_id == id)
+            .map(|v| v.sql)
+            .ok_or(invalid("preference value variant is missing"))
+    };
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    let (generation_id, source_revision) = query_source(&transaction)?;
+    if generation_id != request.generation_id || source_revision != request.source_revision {
+        return Err(invalid("CURSOR_STALE"));
+    }
+    let mut selection = serde_json::Value::Null;
+    for key in request.path.iter().rev() {
+        selection = serde_json::json!({ key: selection });
+    }
+    let selection_json = serde_json::to_string(&selection)
+        .map_err(|_| invalid("preference selection is invalid"))?;
+    let paths = transaction
+        .prepare(variant("selection_path")?)?
+        .query_map([&selection_json], |r| r.get::<_, String>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    if paths.len() != 1 || paths[0].len() + 2 > 4096 {
+        return Err(invalid("preference selection path exceeds its bound"));
+    }
+    let path = &paths[0];
+    let read = |sql: &str,
+                bindings: &[&dyn rusqlite::ToSql]|
+     -> Result<Vec<NormalizedPreferenceLeafV1>, NormalizedSqliteError> {
+        let mut statement = transaction.prepare(sql)?;
+        let rows = statement
+            .query_map(bindings, |row| {
+                decode_generated_query_row::<NormalizedPreferenceLeafV1>(row, "preference_value_v1")
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    };
+    let mut rows = read(program.sql, &[path])?;
+    if rows.len() > 1 {
+        return Err(invalid("preference selection has conflicting roots"));
+    }
+    let prefix = rows
+        .first()
+        .map(|r| r.path[..2].to_owned())
+        .unwrap_or_default();
+    let maximum = match prefix.as_str() {
+        "a:" => 513,
+        "o:" => 4,
+        _ => rows.len(),
+    };
+    if prefix == "a:" || prefix == "o:" {
+        for physical in ["a:", "o:", "v:"] {
+            for (lower, upper) in [(".", "/"), ("[", "\\")] {
+                let remaining = maximum - rows.len();
+                if remaining > 0 {
+                    let lower = format!("{physical}{path}{lower}");
+                    let upper = format!("{physical}{path}{upper}");
+                    rows.extend(read(
+                        variant("descendants")?,
+                        &[path, &lower, &upper, &(remaining as i64)],
+                    )?);
+                }
+            }
+        }
+    }
+    let root = rows.first().cloned();
+    rows.sort_by(|a, b| a.path.cmp(&b.path));
+    validate_preference_rows(&rows)?;
+    let mut kind = if rows.is_empty() { "absent" } else { "value" };
+    if prefix == "o:" {
+        let text = |path: &str| {
+            rows.iter()
+                .find(|r| r.path == path && r.value_type == "text")
+                .and_then(|r| r.text_value.as_deref())
+        };
+        let candidate = serde_json::json!({"bits":text("v:$._.bits"),"codec":text("v:$._.codec")});
+        if rows.len() == 3 && crate::normalized_preference_policy::is_binary64_wrapper(&candidate) {
+            crate::normalized_checkpoint::decode_binary64_wrapper(&candidate)?;
+        } else {
+            kind = "object_group";
+            rows = root.into_iter().collect();
+        }
+    }
+    validate_preference_value_shape(&rows)?;
+    let response = NormalizedPreferenceValueResponseV1 {
+        query_id: "preference_value_v1".into(),
+        schema_version: 1,
+        path: request.path,
+        kind: kind.into(),
+        rows,
+        source: NormalizedFeedPageSourceV1 {
+            generation_id,
+            projection_revision: source_revision,
+            transition_sequence: source_revision,
+        },
+    };
+    if serde_json::to_vec(&response)
+        .map_err(|_| invalid("preference value response is invalid"))?
+        .len()
+        > PREFERENCES_SNAPSHOT_MAXIMUM_RESPONSE_BYTES
+    {
+        return Err(invalid("preference value response exceeds its byte bound"));
+    }
+    transaction.commit()?;
+    Ok(response)
+}
+
 fn query_preferences_snapshot(
     connection: &mut Connection,
     request: NormalizedPreferencesSnapshotRequestV1,
@@ -5521,45 +5851,7 @@ fn query_preferences_snapshot(
     })?;
     let mut rows = mapped.collect::<rusqlite::Result<Vec<_>>>()?;
     drop(statement);
-    if rows.len() > PREFERENCES_SNAPSHOT_MAXIMUM_ROWS || rows.len() >= program.maximum_scan_rows {
-        return Err(invalid("normalized preferences exceed their row bound"));
-    }
-    for row in &rows {
-        let populated = [
-            row.boolean_value.is_some(),
-            row.integer_value.is_some(),
-            row.real_value.is_some(),
-            row.text_value.is_some(),
-        ];
-        let expected = [
-            row.value_type == "boolean",
-            row.value_type == "integer",
-            row.value_type == "real",
-            row.value_type == "text",
-        ];
-        if row.path.is_empty()
-            || row.path.len() > PREFERENCE_PATH_MAXIMUM_BYTES
-            || row
-                .text_value
-                .as_ref()
-                .is_some_and(|value| value.len() > PREFERENCE_TEXT_MAXIMUM_BYTES)
-            || !valid_safe_integer(row.updated_at)
-            || row
-                .integer_value
-                .is_some_and(|value| !(-MAX_SAFE_INTEGER..=MAX_SAFE_INTEGER).contains(&value))
-            || row.real_value.is_some_and(|value| !value.is_finite())
-            || !matches!(
-                row.value_type.as_str(),
-                "boolean" | "integer" | "real" | "text" | "null"
-            )
-            || populated != expected
-        {
-            return Err(invalid("normalized preference row is invalid"));
-        }
-    }
-    if rows.windows(2).any(|pair| pair[0].path >= pair[1].path) {
-        return Err(invalid("normalized preferences are not in binary order"));
-    }
+    validate_preference_rows(&rows)?;
     rows.shrink_to_fit();
     let response = NormalizedPreferencesSnapshotResponseV1 {
         query_id: "preferences_snapshot_v1".to_owned(),
@@ -7493,6 +7785,11 @@ pub fn query_normalized_v1(
         NormalizedQueryRequestV1::PersonsGraph(request) => Ok(
             NormalizedQueryResponseV1::PersonsGraph(query_persons_graph(connection, request)?),
         ),
+        NormalizedQueryRequestV1::PreferenceValue(request) => {
+            Ok(NormalizedQueryResponseV1::PreferenceValue(
+                query_preference_value(connection, request)?,
+            ))
+        }
         NormalizedQueryRequestV1::PreferencesSnapshot(request) => {
             Ok(NormalizedQueryResponseV1::PreferencesSnapshot(
                 query_preferences_snapshot(connection, request)?,
@@ -7641,6 +7938,9 @@ pub fn query_normalized_json_v1(
         "persons_graph_v1" => {
             decode_request!(NormalizedPersonsGraphRequestV1, PersonsGraph)
         }
+        "preference_value_v1" => {
+            decode_request!(NormalizedPreferenceValueRequestV1, PreferenceValue)
+        }
         "preferences_snapshot_v1" => {
             decode_request!(NormalizedPreferencesSnapshotRequestV1, PreferencesSnapshot)
         }
@@ -7715,6 +8015,7 @@ pub fn query_normalized_json_v1(
         NormalizedQueryResponseV1::PersonPickerPage(response) => encode_response!(response),
         NormalizedQueryResponseV1::PersonTimeline(response) => encode_response!(response),
         NormalizedQueryResponseV1::PersonsGraph(response) => encode_response!(response),
+        NormalizedQueryResponseV1::PreferenceValue(response) => encode_response!(response),
         NormalizedQueryResponseV1::PreferencesSnapshot(response) => encode_response!(response),
         NormalizedQueryResponseV1::RssFeedDetail(response) => encode_response!(response),
         NormalizedQueryResponseV1::RssFeedPage(response) => encode_response!(response),
@@ -11175,5 +11476,100 @@ mod tests {
         )
         .expect_err("offset past end");
         assert!(error.to_string().contains("metadata is invalid"));
+    }
+    #[test]
+    fn native_scoped_preferences_match_shared_value_vector() {
+        let vector: serde_json::Value = serde_json::from_str(include_str!(
+            "../../shared/src/library-core/preference-value-query-vector-v1.json"
+        ))
+        .unwrap();
+        let mut connection = Connection::open_in_memory().unwrap();
+        install_normalized_schema_v1(&connection).unwrap();
+        connection
+            .execute_batch(vector["setupSql"].as_str().unwrap())
+            .unwrap();
+        assert!(query_normalized_json_v1(
+            &mut connection,
+            serde_json::json!({"queryId":"preferences_snapshot_v1","schemaVersion":1})
+        )
+        .is_err());
+        let request = serde_json::json!({"queryId":"preference_value_v1","schemaVersion":1,"generationId":vector["generationId"],"sourceRevision":7,"path":["weights","topics"]});
+        for entry in vector["cases"].as_array().unwrap() {
+            let mut input = request.clone();
+            input["path"] = entry["path"].clone();
+            let response = query_normalized_json_v1(&mut connection, input).unwrap();
+            assert_eq!(response["kind"], entry["kind"]);
+            assert_eq!(
+                response["rows"].as_array().unwrap().len(),
+                entry["rows"].as_u64().unwrap() as usize
+            );
+            assert_eq!(response["rows"], entry["expectedRows"]);
+            assert_eq!(response["path"], entry["path"]);
+            assert_eq!(response["source"]["projectionRevision"], 7);
+        }
+        // Match browser retained-row read limits, including the array marker.
+        // These fixtures do not claim fresh operation admission at every size.
+        for boundary in vector["boundaries"].as_array().unwrap() {
+            connection
+                .execute_batch(boundary["setupSql"].as_str().unwrap())
+                .unwrap();
+            let mut input = request.clone();
+            input["path"] = boundary["path"].clone();
+            let result = query_normalized_json_v1(&mut connection, input);
+            if !boundary["accepted"].as_bool().unwrap() {
+                assert!(result.is_err(), "{}", boundary["path"]);
+                continue;
+            }
+            let response = result.unwrap();
+            let rows = response["rows"].as_array().unwrap();
+            assert_eq!(rows.len() as u64, boundary["rows"].as_u64().unwrap());
+            let text_bytes: usize = rows
+                .iter()
+                .filter_map(|row| row["textValue"].as_str())
+                .map(str::len)
+                .sum();
+            assert_eq!(text_bytes as u64, boundary["textBytes"].as_u64().unwrap());
+        }
+        connection.execute("UPDATE library_preferences SET real_value=1e999 WHERE path='v:$.weights.topics.realSetting';", []).unwrap();
+        let mut nonfinite = request.clone();
+        nonfinite["path"] = serde_json::json!(["weights", "topics", "realSetting"]);
+        assert!(matches!(
+            query_normalized_json_v1(&mut connection, nonfinite),
+            Err(NormalizedSqliteError::Sqlite(rusqlite::Error::InvalidQuery))
+        ));
+        let mut stale = request.clone();
+        stale["sourceRevision"] = serde_json::json!(8);
+        assert!(matches!(
+            query_normalized_json_v1(&mut connection, stale),
+            Err(NormalizedSqliteError::InvalidRequest("CURSOR_STALE"))
+        ));
+        for fault in vector["invalidArrayRows"].as_array().unwrap() {
+            let path = fault["path"].as_str().unwrap();
+            connection.execute("INSERT INTO library_preferences(path,value_type,integer_value,updated_at) VALUES (?1,'integer',3,1);",[path]).unwrap();
+            let mut input = request.clone();
+            input["path"] = serde_json::json!(["storyWall", "selectedYears"]);
+            assert!(
+                query_normalized_json_v1(&mut connection, input).is_err(),
+                "{}",
+                fault["reason"]
+            );
+            connection
+                .execute("DELETE FROM library_preferences WHERE path=?1;", [path])
+                .unwrap();
+        }
+        connection
+            .execute(
+                "DELETE FROM library_preferences WHERE path='v:$.storyWall.selectedYears[1]';",
+                [],
+            )
+            .unwrap();
+        let mut incomplete = request;
+        incomplete["path"] = serde_json::json!(["storyWall", "selectedYears"]);
+        assert!(matches!(
+            query_normalized_json_v1(&mut connection, incomplete),
+            Err(NormalizedSqliteError::InvalidRequest(
+                "preference array is incomplete"
+            ))
+        ));
     }
 }

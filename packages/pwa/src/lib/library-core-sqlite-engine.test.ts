@@ -1,3 +1,4 @@
+import preferenceValueVector from "../../../shared/src/library-core/preference-value-query-vector-v1.json";
 import historicalNativePreferences from "../../../shared/src/library-core/historical-native-preference-vector-v1.json";
 import nativeRecoveredBrowser from "../../../shared/src/library-core/native-recovered-browser-vector-v1.json";
 import recoveredEnrollmentVector from "../../../shared/src/library-core/recovered-enrollment-vector-v1.json";
@@ -98,6 +99,42 @@ describe("PWA Library Core SQLite engine", () => {
     }
     return value;
   }
+
+  // Tier 1: identical native/browser SQL must read selected values beyond global snapshot bounds.
+  it("reads scoped preference values beyond the whole-tree limit", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion);
+    engine.initialize(); database.exec(preferenceValueVector.setupSql);
+    expect(() => engine.query({ queryId: "preferences_snapshot_v1", schemaVersion: 1 })).toThrow("row bound");
+    const request = { queryId: "preference_value_v1" as const, schemaVersion: 1 as const,
+      generationId: preferenceValueVector.generationId, sourceRevision: preferenceValueVector.sourceRevision, path: ["weights", "topics"] };
+    for (const entry of preferenceValueVector.cases) {
+      const response = engine.query({ ...request, path: entry.path });
+      expect(response.kind).toBe(entry.kind); expect(response.rows).toEqual(entry.expectedRows);
+      expect(response.path).toEqual(entry.path); expect(response.source.projectionRevision).toBe(7);
+    }
+    // Tier 1: storage-query bounds include the array marker and all serialized values.
+    // These retained-row fixtures test read limits, not fresh mutation admission.
+    for (const boundary of preferenceValueVector.boundaries) {
+      database.exec(boundary.setupSql);
+      const query = () => engine.query({ ...request, path: boundary.path });
+      if (!boundary.accepted) { expect(query, boundary.path.join("/")).toThrow(); continue; }
+      const result = query();
+      expect(result.rows).toHaveLength(boundary.rows);
+      expect(result.rows.reduce((bytes, row) => bytes + (row.textValue?.length ?? 0), 0)).toBe(boundary.textBytes);
+    }
+    expect(() => engine.query({ ...request, sourceRevision: 8 })).toThrow("CURSOR_STALE");
+    // Corrupt retained rows must not become partial current values in recovery.
+    for (const invalid of preferenceValueVector.invalidArrayRows) {
+      database.exec({ sql: "INSERT INTO library_preferences(path,value_type,integer_value,updated_at) VALUES (?1,'integer',3,1);", bind: [invalid.path] });
+      expect(() => engine.query({ ...request, path: ["storyWall", "selectedYears"] }), invalid.reason).toThrow();
+      database.exec({ sql: "DELETE FROM library_preferences WHERE path=?1;", bind: [invalid.path] });
+    }
+
+    database.exec("UPDATE library_preferences SET real_value=1e999 WHERE path='v:$.weights.topics.realSetting';");
+    expect(() => engine.query({ ...request, path: ["weights", "topics", "realSetting"] })).toThrow("Preference value row is invalid");
+    database.exec("DELETE FROM library_preferences WHERE path='v:$.storyWall.selectedYears[1]';");
+    expect(() => engine.query({ ...request, path: ["storyWall", "selectedYears"] })).toThrow("completeness");
+  });
 
   it("pages all Person account identities at one revision without a display limit", () => {
     const engine = new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion);

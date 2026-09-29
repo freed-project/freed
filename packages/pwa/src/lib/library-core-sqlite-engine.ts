@@ -1,3 +1,4 @@
+import { createLibraryCorePreferenceValueResponseV1, libraryCorePreferenceSelectionJsonV1, parseLibraryCorePreferenceValueRequestV1, type LibraryCorePreferenceValueRequestV1, type LibraryCorePreferenceValueResponseV1, type LibraryCorePreferenceNodeV1 } from "@freed/shared/library-core";
 import { sameLibraryCoreRecoveryPreferenceScopeV1 } from "@freed/shared/library-core";
 import { parseLibraryCoreFeedPageSourceV1 } from "@freed/shared/library-core";
 import { parseLibraryCorePersonAccountPageRequestV1, parseLibraryCorePersonAccountPageResponseV1, decodeLibraryCorePersonAccountCursorV1, encodeLibraryCorePersonAccountCursorV1, type LibraryCorePersonAccountPageRequestV1, type LibraryCorePersonAccountPageResponseV1 } from "@freed/shared/library-core";
@@ -8269,6 +8270,8 @@ export class PwaLibraryCoreSqliteEngine {
         return this.#queryStoryWallCandidates(
           input,
         ) as LibraryCoreSqliteQueryResponseFor<T>;
+      case "preference_value_v1":
+        return this.#queryPreferenceValue(input) as LibraryCoreSqliteQueryResponseFor<T>;
       case "preferences_snapshot_v1":
         return this.#queryPreferencesSnapshot(
           input,
@@ -8616,6 +8619,40 @@ export class PwaLibraryCoreSqliteEngine {
       : parseLibraryCoreChangeFeedResponseV1(response, request.value);
     if (!parsed.ok) throw new Error(parsed.error);
     return parsed.value;
+  }
+
+  #queryPreferenceValue(input: LibraryCorePreferenceValueRequestV1): LibraryCorePreferenceValueResponseV1 {
+    const parsed = parseLibraryCorePreferenceValueRequestV1(input);
+    if (!parsed.ok) throw new TypeError(parsed.error);
+    const request = parsed.value;
+    return this.#database.transaction(() => {
+      const { generationId, sourceRevision } = this.#querySource();
+      if (generationId !== request.generationId || sourceRevision !== request.sourceRevision) throw new Error("CURSOR_STALE");
+      const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.preference_value_v1;
+      const paths = this.#database.exec({ sql: program.variants.selection_path.sql, bind: [libraryCorePreferenceSelectionJsonV1(request)], rowMode: "array", returnValue: "resultRows" });
+      if (paths.length !== 1) throw new Error("Preference selection path is invalid");
+      const path = text(paths[0]![0], "preference selection path");
+      if (new TextEncoder().encode(path).length + 2 > 4096) throw new Error("Preference selection path exceeds its bound");
+      const read = (sql: string, bind: (string | number)[]): LibraryCorePreferenceNodeV1[] => this.#database.exec({ sql, bind, rowMode: "object", returnValue: "resultRows" }).map(row => {
+        const decoded = coerceLibraryCoreGeneratedSqliteQueryRow("preference_value_v1", row);
+        if (!decoded) throw new Error("Preference value row is invalid");
+        return decoded;
+      });
+      const rows = read(program.sql, [path]);
+      if (rows.length > 1) throw new Error("Preference selection has conflicting roots");
+      const prefix = rows[0]?.path.slice(0, 2);
+      const maximum = prefix === "a:" ? 513 : prefix === "o:" ? 4 : rows.length;
+      // Disjoint indexed ranges share one total budget, including an overflow sentinel.
+      if (prefix === "a:" || prefix === "o:") {
+        for (const physical of ["a:", "o:", "v:"]) for (const [lower, upper] of [[".", "/"], ["[", "\\"]]) {
+          const remaining = maximum - rows.length;
+          if (remaining > 0) rows.push(...read(program.variants.descendants.sql, [path, physical + path + lower, physical + path + upper, remaining]));
+        }
+      }
+      const source = parseLibraryCoreFeedPageSourceV1({ generationId, projectionRevision: sourceRevision, transitionSequence: sourceRevision });
+      if (!source.ok) throw new Error(source.error);
+      return createLibraryCorePreferenceValueResponseV1(request, rows, source.value);
+    });
   }
 
   #queryPreferencesSnapshot(

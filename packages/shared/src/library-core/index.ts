@@ -101,3 +101,5 @@ export * from "./account-root-contracts.js";
 export * from "./person-account-page-contracts.js";
 export * from "./recovery-preference-context.js";
 export * from "./recovery-preference-input.js";
+
+export * from "./preference-value-contracts.js";

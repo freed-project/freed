@@ -550,7 +550,7 @@ function assertContract(contract) {
         typeof field.name !== "string" ||
         !/^[a-z][A-Za-z0-9]*$/.test(field.name) ||
         field.name <= previousField ||
-        !["boolean", "integer", "text"].includes(field.kind) ||
+        !["boolean", "integer", "real", "text"].includes(field.kind) ||
         typeof field.nullable !== "boolean" ||
         !Array.isArray(field.enumValues) ||
         field.enumValues.some((value) => typeof value !== "string") ||
@@ -947,7 +947,9 @@ type LibraryCoreSqliteQueryRowFieldValue<
     ? Field["integerValues"] extends readonly []
       ? number
       : Field["integerValues"][number]
-    : Field["enumValues"] extends readonly []
+    : Field["kind"] extends "real"
+      ? number
+      : Field["enumValues"] extends readonly []
       ? string
       : Field["enumValues"][number];
 type LibraryCoreSqliteQueryRowValue<
@@ -994,6 +996,9 @@ function libraryCoreGeneratedQueryRowValue(
       return input === 1;
     }
     return undefined;
+  }
+  if (field.kind === "real") {
+    return typeof input === "number" && Number.isFinite(input) ? input : undefined;
   }
   if (field.kind === "integer") {
     return Number.isSafeInteger(input) &&
@@ -1404,6 +1409,7 @@ ${queryPrograms}
 pub enum SqliteQueryRowFieldKind {
     Boolean,
     Integer,
+    Real,
     Text,
 }
 

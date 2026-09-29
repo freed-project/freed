@@ -217,7 +217,7 @@ it("keeps historical reach-out payloads and refuses retained originals, missing 
  await expect(loadPwaRecoveryReachOutDrafts(original, new AbortController().signal)).rejects.toThrow("No members were removed");
 });
 
-it("loads all preference members against one snapshot and returns stored replacement before current reads", async () => {
+it("loads all preference originals without current reads and returns stored replacement first", async () => {
   const { loadPwaRecoveryPreferenceDrafts } = await import("./library-core-pwa-recovery-editors");
   const original = { ...review(), memberCount: 2 };
   const prefRow = (index: number, value: boolean) => ({ ...original.rows[0]!, memberIndex: index, operationType: "preferences_leaf_assignment", entityId: "preferences",
@@ -228,12 +228,12 @@ it("loads all preference members against one snapshot and returns stored replace
   if (!isLibraryCoreEntityId(globalId)) throw new Error("Invalid fixture cursor");
   const first = { ...original, rows: [prefRow(0, false)], nextCursor: encodeLibraryCoreFeedPageCursorV1({ ...cursor.value, globalId }) };
   const last = { ...original, rows: [prefRow(1, true)], nextCursor: null };
-  query.mockResolvedValueOnce(first).mockResolvedValueOnce({ source, rows: [] }).mockResolvedValueOnce(last);
+  query.mockResolvedValueOnce(first).mockResolvedValueOnce(last);
   const loaded = await loadPwaRecoveryPreferenceDrafts(original);
   expect(loaded.drafts?.map(draft => draft.fields[0]?.archived)).toEqual([false, true]);
-  expect(query.mock.calls.map(([request]) => request.queryId)).toEqual(["recovery_intent_review_v1", "preferences_snapshot_v1", "recovery_intent_review_v1"]);
+  expect(query.mock.calls.map(([request]) => request.queryId)).toEqual(["recovery_intent_review_v1", "recovery_intent_review_v1"]);
   query.mockReset();
-  query.mockResolvedValueOnce(first).mockResolvedValueOnce({ source, rows: [] }).mockResolvedValueOnce({ ...last, source: { ...source, projectionRevision: 99 } });
+  query.mockResolvedValueOnce(first).mockResolvedValueOnce({ ...last, source: { ...source, projectionRevision: 99 } });
   await expect(loadPwaRecoveryPreferenceDrafts(original)).rejects.toThrow("Library changed");
   query.mockReset();
   const replacement = { replacementTransactionId: "stored-replacement" };

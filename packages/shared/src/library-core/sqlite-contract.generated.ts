@@ -1445,6 +1445,7 @@ export const LIBRARY_CORE_QUERY_IDS = [
   "person_root_v1",
   "person_timeline_v1",
   "persons_graph_v1",
+  "preference_value_v1",
   "preferences_snapshot_v1",
   "provider_media_page_v1",
   "recovery_archive_page_v1",
@@ -1645,6 +1646,19 @@ export const LIBRARY_CORE_SQLITE_QUERY_PROGRAMS = {
     "maximumScanRows": 513,
     "countSql": "SELECT count(*) FROM library_preferences;",
     "sql": "SELECT path, value_type AS valueType, boolean_value AS booleanValue, integer_value AS integerValue, real_value AS realValue, text_value AS textValue, updated_at AS updatedAt FROM library_preferences ORDER BY path COLLATE BINARY LIMIT 513;"
+  },
+  "preference_value_v1": {
+    "maximumScanRows": 513,
+    "countSql": "SELECT count(*) FROM library_preferences WHERE path IN ('v:' || ?1, 'a:' || ?1, 'o:' || ?1);",
+    "sql": "SELECT substr(path, 1, 2) || '$._' || substr(path, length(?1) + 3) AS path, value_type AS valueType, boolean_value AS booleanValue, integer_value AS integerValue, real_value AS realValue, text_value AS textValue, updated_at AS updatedAt FROM library_preferences WHERE path IN ('v:' || ?1, 'a:' || ?1, 'o:' || ?1) ORDER BY path COLLATE BINARY LIMIT 3;",
+    "variants": {
+      "selection_path": {
+        "sql": "SELECT fullkey FROM json_tree(?1) WHERE type = 'null' LIMIT 2;"
+      },
+      "descendants": {
+        "sql": "SELECT substr(path, 1, 2) || '$._' || substr(path, length(?1) + 3) AS path, value_type AS valueType, boolean_value AS booleanValue, integer_value AS integerValue, real_value AS realValue, text_value AS textValue, updated_at AS updatedAt FROM library_preferences WHERE path >= ?2 COLLATE BINARY AND path < ?3 COLLATE BINARY ORDER BY path COLLATE BINARY LIMIT ?4;"
+      }
+    }
   },
   "provider_media_page_v1": {
     "maximumScanRows": 65,
@@ -2667,6 +2681,91 @@ export const LIBRARY_CORE_SQLITE_QUERY_ROW_MODELS = {
       "name": "accountId",
       "nullable": false
     }
+  ],
+  "preference_value_v1": [
+    {
+      "enumValues": [],
+      "integerValues": [],
+      "kind": "boolean",
+      "maximumInteger": null,
+      "maximumUtf8Bytes": null,
+      "minimumInteger": null,
+      "minimumUtf8Bytes": null,
+      "name": "booleanValue",
+      "nullable": true
+    },
+    {
+      "enumValues": [],
+      "integerValues": [],
+      "kind": "integer",
+      "maximumInteger": 9007199254740991,
+      "maximumUtf8Bytes": null,
+      "minimumInteger": -9007199254740991,
+      "minimumUtf8Bytes": null,
+      "name": "integerValue",
+      "nullable": true
+    },
+    {
+      "enumValues": [],
+      "integerValues": [],
+      "kind": "text",
+      "maximumInteger": null,
+      "maximumUtf8Bytes": 4096,
+      "minimumInteger": null,
+      "minimumUtf8Bytes": 3,
+      "name": "path",
+      "nullable": false
+    },
+    {
+      "enumValues": [],
+      "integerValues": [],
+      "kind": "real",
+      "maximumInteger": null,
+      "maximumUtf8Bytes": null,
+      "minimumInteger": null,
+      "minimumUtf8Bytes": null,
+      "name": "realValue",
+      "nullable": true
+    },
+    {
+      "enumValues": [],
+      "integerValues": [],
+      "kind": "text",
+      "maximumInteger": null,
+      "maximumUtf8Bytes": 8192,
+      "minimumInteger": null,
+      "minimumUtf8Bytes": 0,
+      "name": "textValue",
+      "nullable": true
+    },
+    {
+      "enumValues": [],
+      "integerValues": [],
+      "kind": "integer",
+      "maximumInteger": 9007199254740991,
+      "maximumUtf8Bytes": null,
+      "minimumInteger": 0,
+      "minimumUtf8Bytes": null,
+      "name": "updatedAt",
+      "nullable": false
+    },
+    {
+      "enumValues": [
+        "boolean",
+        "integer",
+        "null",
+        "real",
+        "text"
+      ],
+      "integerValues": [],
+      "kind": "text",
+      "maximumInteger": null,
+      "maximumUtf8Bytes": 7,
+      "minimumInteger": null,
+      "minimumUtf8Bytes": 4,
+      "name": "valueType",
+      "nullable": false
+    }
   ]
 } as const;
 export type LibraryCoreSqliteQueryRowModelId = keyof typeof LIBRARY_CORE_SQLITE_QUERY_ROW_MODELS;
@@ -2681,7 +2780,9 @@ type LibraryCoreSqliteQueryRowFieldValue<
     ? Field["integerValues"] extends readonly []
       ? number
       : Field["integerValues"][number]
-    : Field["enumValues"] extends readonly []
+    : Field["kind"] extends "real"
+      ? number
+      : Field["enumValues"] extends readonly []
       ? string
       : Field["enumValues"][number];
 type LibraryCoreSqliteQueryRowValue<
@@ -2728,6 +2829,9 @@ function libraryCoreGeneratedQueryRowValue(
       return input === 1;
     }
     return undefined;
+  }
+  if (field.kind === "real") {
+    return typeof input === "number" && Number.isFinite(input) ? input : undefined;
   }
   if (field.kind === "integer") {
     return Number.isSafeInteger(input) &&

@@ -910,17 +910,25 @@ normalized nodes. Materialized rows and checkpoint digests do not change. Recove
 may replace a wrapped number with an integer at the same assignment path without
 adding or dropping a setting. Nonfinite wrappers refuse fresh admission.
 
-Preference review context uses one `preferences_snapshot_v1` response for all
-original members. It compares the snapshot generation and canonical revision
-with the archive review; archive pagination independently fences installation-local
-changes. Exact stored replacement links return before the snapshot read. Paths
-retain separate segments, so dotted map keys cannot address another setting.
-Current values use the normal preference default merge and identify whether the
-path was stored or defaulted. Empty object groups remain explicit and are not
-represented as whole-value replacement assignments. Original patches, including
-empty groups and numeric encodings, remain available independently of the visible
-field list. The existing snapshot row and response bounds still apply; this does
-not prove admission of every maximum-size accumulated preference tree.
+Preference recovery preserves the complete original drafts, then reads only the
+selected setting through `preference_value_v1`. Each comparison must match the
+archive review's generation and canonical revision. Archive pagination separately
+fences installation-local changes. Exact stored replacement links return before
+comparison reads; a locked response-loss retry retains the same prepared action.
+
+Paths retain literal segments, so dotted map keys cannot select another setting.
+The form retains one current value and distinguishes stored values, defaults,
+absence, object-group summaries, loading and errors. It does not offer a group
+summary as a replacement value. Empty object patches remain non-replacement
+merges. Confirmation requires every field's comparison to load, and any edit or
+navigation clears confirmation. Closing or replacing a review aborts its UI read
+and discards late results. Desktop forwards cancellation to the native query
+registry; the PWA checks cancellation around its bounded worker response.
+
+This removes the whole-tree snapshot dependency from preference recovery.
+Ordinary startup still uses `preferences_snapshot_v1`, whose total row and byte
+bounds can be exceeded by accumulated accepted patches. Startup and dynamic
+preference collection repair remain incomplete.
 
 Preference signing adapters accept the complete reviewed wire patches, validate
 every member and the aggregate byte bound, and snapshot values before context or

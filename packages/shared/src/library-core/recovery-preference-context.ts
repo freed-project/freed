@@ -1,6 +1,7 @@
 import { mergeDefaultPreferences, type UserPreferences } from "../types.js";
 import { decodeLibraryCoreFractionalNumbersV1, isLibraryCoreBinary64V1 } from "./fractional-number-codec.js";
 import { PREFERENCES_LEAF_ASSIGNMENT_PAYLOAD_SCHEMA } from "./operation-payload-contracts.js";
+import { parseLibraryCorePreferenceValueResponseV1 } from "./preference-value-contracts.js";
 import { libraryCorePreferenceNodesToValueV1 } from "./preferences-snapshot-contracts.js";
 import type { LibraryCoreCanonicalValue } from "./canonical-codec.js";
 import type { LibraryCoreNormalizedReaderRuntime } from "./normalized-feed-readers.js";
@@ -11,7 +12,6 @@ export interface RecoveryPreferenceField {
   readonly path: readonly string[];
   readonly kind: "assignment" | "empty_object";
   readonly archived: unknown;
-  readonly current: { readonly origin: "stored" | "default"; readonly value: unknown } | null;
 }
 export interface RecoveryPreferenceDraft {
   /** Retain empty groups and original numeric encodings, not just visible leaves. */
@@ -28,21 +28,17 @@ function ownPath(root: unknown, path: readonly string[]): { value: unknown } | n
   return value === undefined ? null : { value };
 }
 
-/** Read one bounded snapshot for the entire verified transaction, including repeated paths. */
-export async function readLibraryCoreRecoveryPreferenceContextV1(
-  review: LibraryCoreRecoveryIntentReviewResponseV1,
-  query: LibraryCoreNormalizedReaderRuntime["query"],
-  checkCancellation: () => void,
-): Promise<(row: LibraryCoreRecoveryIntentReviewResponseV1["rows"][number], envelope: Readonly<Record<string, unknown>>) => RecoveryPreferenceDraft> {
-  checkCancellation();
-  const snapshot = await query({ queryId: "preferences_snapshot_v1", schemaVersion: 1 });
-  checkCancellation();
-  // Snapshot transitionSequence is the canonical revision. Archive review also
-  // tracks installation-local changes, so compare their shared source fields.
-  if (snapshot.source.generationId !== review.source.generationId || snapshot.source.projectionRevision !== review.source.projectionRevision) throw new Error("CURSOR_STALE");
-  const stored = decodeLibraryCoreFractionalNumbersV1(libraryCorePreferenceNodesToValueV1(snapshot.rows));
-  const effective = mergeDefaultPreferences(stored as Partial<UserPreferences>);
-  return (row, envelope) => {
+export type RecoveryPreferenceCurrent =
+  | { readonly kind: "absent" }
+  | { readonly kind: "object_group"; readonly origin: "stored" | "default" }
+  | { readonly kind: "value"; readonly origin: "stored" | "default"; readonly value: unknown };
+
+/** Preserve original assignments without loading unrelated current preferences. */
+export function createLibraryCoreRecoveryPreferenceDraftV1(
+  row: LibraryCoreRecoveryIntentReviewResponseV1["rows"][number],
+  envelope: Readonly<Record<string, unknown>>,
+  checkCancellation: () => void = () => {},
+): RecoveryPreferenceDraft {
     checkCancellation();
     const payload = PREFERENCES_LEAF_ASSIGNMENT_PAYLOAD_SCHEMA.validate(envelope.payload);
     if (row.operationType !== "preferences_leaf_assignment" || row.entityId !== "preferences" || envelope.entity_type !== "UserPreferences" || !payload.ok || !Array.isArray(envelope.blob_references) || envelope.blob_references.length !== 0)
@@ -55,12 +51,33 @@ export async function readLibraryCoreRecoveryPreferenceContextV1(
         for (const [key, child] of Object.entries(value)) visit(child, [...path, key]);
         return;
       }
-      const persisted = ownPath(stored, path), current = ownPath(effective, path);
       fields.push({ path, kind: object ? "empty_object" : "assignment",
-        archived: decodeLibraryCoreFractionalNumbersV1(value),
-        current: current ? { origin: persisted ? "stored" : "default", value: current.value } : null });
+        archived: decodeLibraryCoreFractionalNumbersV1(value) });
     };
     for (const [key, value] of Object.entries(payload.value.updates)) visit(value, [key]);
     return { updates: payload.value.updates, fields };
-  };
+}
+
+/** Retain only the selected comparison, pinned to the archived edit review's source. */
+export async function readLibraryCoreRecoveryPreferenceCurrentV1(
+  review: LibraryCoreRecoveryIntentReviewResponseV1,
+  path: readonly string[],
+  query: LibraryCoreNormalizedReaderRuntime["query"],
+  checkCancellation: () => void,
+): Promise<RecoveryPreferenceCurrent> {
+  checkCancellation();
+  const request = { queryId: "preference_value_v1" as const, schemaVersion: 1 as const, path,
+    generationId: review.source.generationId, sourceRevision: review.source.projectionRevision };
+  const response = await query(request);
+  checkCancellation();
+  const parsed = parseLibraryCorePreferenceValueResponseV1(response, request);
+  if (!parsed.ok) throw new Error(parsed.error);
+  if (parsed.value.kind === "object_group") return { kind: "object_group", origin: "stored" };
+  if (parsed.value.kind === "value") return { kind: "value", origin: "stored",
+    value: decodeLibraryCoreFractionalNumbersV1(libraryCorePreferenceNodesToValueV1(parsed.value.rows)._) };
+  const current = ownPath(mergeDefaultPreferences({} as Partial<UserPreferences>), path);
+  if (!current) return { kind: "absent" };
+  return current.value !== null && typeof current.value === "object" && !Array.isArray(current.value)
+    ? { kind: "object_group", origin: "default" }
+    : { kind: "value", origin: "default", value: current.value };
 }

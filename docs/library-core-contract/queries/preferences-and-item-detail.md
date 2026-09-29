@@ -11,6 +11,21 @@ all descendants in one transaction. Each stored row still contains exactly
 one boolean, integer, real, text, or null value. Neither native nor browser code
 reconstructs a monolithic settings object at the storage or transport boundary.
 
+`preference_value_v1` reads one literal property path at an exact materialization
+generation and canonical revision. Requests allow 32 segments and 8,192 encoded
+bytes; SQLite derives the canonical fullkey and enforces the stored 4,096-byte
+path bound. Exact root lookups and disjoint descendant ranges use the path index.
+The response contains at most 512 nodes and 2 MiB. One overflow row detects an
+oversized array; object inspection reads at most three descendants and returns
+only a group summary unless the complete value is a numeric wrapper.
+
+The selected root is remapped to `$._`, which does not enlarge its stored path.
+Native and PWA use the same generated row descriptor, including finite real
+numbers, and reject incomplete arrays, invalid parents and duplicate semantic
+paths. Missing settings remain distinct from group summaries. Recovery loads
+only the visible comparison; it never joins pages into an unbounded settings
+object. This query does not remove the old whole-tree startup limit.
+
 `item_detail_v1` is a metadata point query. It reuses the compact feed-card
 projection and returns only typed locators that say whether each reader body is
 absent, inline in SQLite, or stored as a content-addressed blob. It also returns
