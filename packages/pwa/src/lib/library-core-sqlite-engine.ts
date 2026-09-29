@@ -107,6 +107,7 @@ import {
   verifyLibraryCoreEd25519WithWebCrypto,
   type LibraryCoreVerifiedOperationTransactionV1,
   verifyLibraryCoreOperationTransactionV1,
+  verifyLibraryCoreHistoricalOperationTransactionV1,
   verifyLibraryCoreFollowerResultV1,
   verifyLibraryCoreActorCapabilityCertificateV2,
   verifyLibraryCoreActorRetirementCertificateV1,
@@ -6678,7 +6679,9 @@ export class PwaLibraryCoreSqliteEngine {
       const canonicalMembers = memberRows.map((row) =>
         bytes(row[3], "normalized canonical operation member"),
       );
-      const verified = await verifyLibraryCoreOperationTransactionV1(
+      // Historical authentication grants no fresh-write provenance. The frozen actor
+      // snapshot is rechecked inside the commit transaction after receipt binding.
+      const verified = await verifyLibraryCoreHistoricalOperationTransactionV1(
         canonicalMembers,
         acceptedActor,
         {
@@ -6783,7 +6786,7 @@ export class PwaLibraryCoreSqliteEngine {
                  AND actor.authority_epoch_id = m.authority_epoch
                  AND actor.retired_at IS NULL
                 WHERE m.singleton_id = 1;`,
-          bind: [verified.accepted_actor_state.actor_id],
+          bind: [acceptedActor.actor_id],
           rowMode: "array",
           returnValue: "resultRows",
         });
@@ -6806,17 +6809,17 @@ export class PwaLibraryCoreSqliteEngine {
           safeInteger(current[0]![1], "commit change revision") !==
             previousRevision ||
           text(current[0]![2], "commit Library") !==
-            verified.accepted_actor_state.library_id ||
+            acceptedActor.library_id ||
           text(current[0]![3], "commit epoch") !==
-            verified.accepted_actor_state.epoch_id ||
+            acceptedActor.epoch_id ||
           text(current[0]![4], "commit writer") !==
             text(stage[3], "stage writer") ||
           safeInteger(current[0]![5], "commit actor counter") !==
-            verified.accepted_actor_state.next_actor_sequence - 1 ||
+            acceptedActor.next_actor_sequence - 1 ||
           nullableText(current[0]![6], "commit actor operation") !==
-            verified.accepted_actor_state.previous_actor_operation_id ||
+            acceptedActor.previous_actor_operation_id ||
           text(current[0]![7], "commit actor chain") !==
-            verified.accepted_actor_state.previous_actor_chain_digest ||
+            acceptedActor.previous_actor_chain_digest ||
           stagedAgain.length !== 1 ||
           text(stagedAgain[0]![0], "commit staged transaction") !==
             resultEnvelope.transaction_id ||
@@ -6847,9 +6850,9 @@ export class PwaLibraryCoreSqliteEngine {
           bind: [
             resultEnvelope.transaction_id,
             verified.transaction_digest,
-            verified.accepted_actor_state.library_id,
-            verified.accepted_actor_state.epoch_id,
-            verified.accepted_actor_state.actor_id,
+            acceptedActor.library_id,
+            acceptedActor.epoch_id,
+            acceptedActor.actor_id,
             verified.members.length,
             first.actor_sequence,
             last.actor_sequence,
@@ -6965,11 +6968,11 @@ export class PwaLibraryCoreSqliteEngine {
             last.operation_id,
             last.actor_chain_digest,
             resultEnvelope.resolved_at_ms,
-            verified.accepted_actor_state.actor_id,
-            verified.accepted_actor_state.epoch_id,
-            verified.accepted_actor_state.next_actor_sequence - 1,
-            verified.accepted_actor_state.previous_actor_operation_id,
-            verified.accepted_actor_state.previous_actor_chain_digest,
+            acceptedActor.actor_id,
+            acceptedActor.epoch_id,
+            acceptedActor.next_actor_sequence - 1,
+            acceptedActor.previous_actor_operation_id,
+            acceptedActor.previous_actor_chain_digest,
           ],
         });
         if (

@@ -12,6 +12,8 @@ import {
 import {
   FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   constructLibraryCoreArchivedFriendMemberV1,
+  constructLibraryCoreHistoricalPreferencesMemberV1,
+  PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   isLibraryCoreTransactionMemberConstruction,
   type FeedItemReadAssignmentTransactionMemberInputV1,
 } from "./operation-envelope-contracts.js";
@@ -20,8 +22,9 @@ import {
   isLibraryCoreVerifiedOperationTransactionV1,
   verifyLibraryCoreOperationTransactionV1,
   verifyLibraryCoreArchivedOperationTransactionV1,
+  verifyLibraryCoreHistoricalOperationTransactionV1,
 } from "./operation-envelope-verification.js";
-import { assembleLibraryCoreTransactionV1, assembleLibraryCoreArchivedFriendV1, isLibraryCoreAssembledTransactionV1 } from "./operation-transaction-contracts.js";
+import { assembleLibraryCoreTransactionV1, assembleLibraryCoreArchivedFriendV1, assembleLibraryCoreHistoricalPreferencesV1, isLibraryCoreAssembledTransactionV1 } from "./operation-transaction-contracts.js";
 
 const HEX = {
   library: "11".repeat(32),
@@ -328,6 +331,7 @@ it("authenticates legacy Friend account order without granting construction, sig
   const actor = { ...acceptedActorState(), actor_public_key: key };
   const dependencies = { digest, verifySignature: async (value: { publicKeyHex: string; message: Uint8Array; signatureHex: string }) => value.publicKeyHex === key && verify(null, value.message, keys.publicKey, Buffer.from(value.signatureHex, "hex")) };
   await expect(verifyLibraryCoreOperationTransactionV1([bytes], actor, dependencies)).rejects.toThrow("sorted");
+  await expect(verifyLibraryCoreHistoricalOperationTransactionV1([bytes], actor, dependencies)).rejects.toThrow("sorted");
   const archived = await verifyLibraryCoreArchivedOperationTransactionV1([bytes], actor, dependencies);
   expect(isLibraryCoreVerifiedOperationTransactionV1(archived)).toBe(false);
   expect(archived.members[0].envelope.payload).toEqual({ accounts, person });
@@ -336,4 +340,58 @@ it("authenticates legacy Friend account order without granting construction, sig
   const tampered = encodeLibraryCoreCanonicalValue({ ...envelope, signature: "00".repeat(64) } as never);
   await expect(verifyLibraryCoreArchivedOperationTransactionV1([tampered], actor, dependencies)).rejects.toThrow("signature is invalid");
   expect(() => constructLibraryCoreArchivedFriendMemberV1({ ...input, payload: { accounts: [accounts[0], accounts[0]], person } }, { digest })).toThrow("unique");
+});
+
+// Tier 1: preserve native-authenticated history without granting a fresh write
+// or allowing an unsupported field to disappear from a mixed transaction.
+it("authenticates historical preference bytes and the complete actor chain without fresh-write provenance", async () => {
+  const payload = { updates: { display: { markReadOnScroll: false } } };
+  const input = { ...memberInput(0, 2), entity_id: "preferences", payload };
+  expect(() => PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA.construct(input, { digest })).toThrow("unsupported fields");
+  const historical = constructLibraryCoreHistoricalPreferencesMemberV1(input, { digest });
+  const ordinary = FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA.construct(memberInput(1, 2), { digest });
+  expect(isLibraryCoreTransactionMemberConstruction(historical)).toBe(false);
+  expect(() => assembleLibraryCoreTransactionV1([historical, ordinary], HEX.chain, { digest })).toThrow("closed member");
+  const assembled = assembleLibraryCoreHistoricalPreferencesV1([historical, ordinary], HEX.chain, { digest });
+  expect(isLibraryCoreAssembledTransactionV1(assembled)).toBe(false);
+  const signer = vi.fn();
+  await expect(finalizeLibraryCoreTransactionV1(assembled, { digest, signOperation: signer })).rejects.toThrow();
+  expect(signer).not.toHaveBeenCalled();
+  const keys = generateKeyPairSync("ed25519");
+  const publicKey = keys.publicKey.export({ type: "spki", format: "der" }).subarray(-32).toString("hex");
+  const envelopes = assembled.members.map(member => ({ ...member.signing_body, signature: sign(null,
+    encodeLibraryCoreOperationSignatureInput({ operation_signing_body_digest: member.signing_body_digest }), keys.privateKey).toString("hex") }));
+  const bytes = envelopes.map(envelope => encodeLibraryCoreCanonicalValue(envelope as never));
+  const snapshots = bytes.map(value => new Uint8Array(value));
+  const actor = { ...acceptedActorState(), actor_public_key: publicKey };
+  const dependencies = { digest, verifySignature: async (value: { publicKeyHex: string; message: Uint8Array; signatureHex: string }) =>
+    value.publicKeyHex === publicKey && verify(null, value.message, keys.publicKey, Buffer.from(value.signatureHex, "hex")) };
+  await expect(verifyLibraryCoreOperationTransactionV1(bytes, actor, dependencies)).rejects.toThrow("unsupported fields");
+  for (const verifier of [verifyLibraryCoreArchivedOperationTransactionV1, verifyLibraryCoreHistoricalOperationTransactionV1]) {
+    const result = await verifier(bytes, actor, dependencies);
+    expect(result.members).toHaveLength(2);
+    expect(result.members[0].envelope.payload).toEqual(payload);
+    expect(result.members.map(member => member.canonical_envelope_json)).toEqual(snapshots.map(value => new TextDecoder().decode(value)));
+    expect(isLibraryCoreVerifiedOperationTransactionV1(result)).toBe(false);
+    expect(result).not.toHaveProperty("accepted_actor_state");
+    await expect(verifier(bytes.slice(0, 1), actor, dependencies)).rejects.toThrow();
+    const tampered = encodeLibraryCoreCanonicalValue({ ...envelopes[0], signature: "00".repeat(64) } as never);
+    await expect(verifier([tampered, bytes[1]], actor, dependencies)).rejects.toThrow("signature is invalid");
+  }
+  expect(bytes).toEqual(snapshots);
+});
+
+it("keeps native historical preference exclusions and bounded decoding", () => {
+  const construct = (updates: unknown) => constructLibraryCoreHistoricalPreferencesMemberV1({ ...memberInput(0, 1), entity_id: "preferences", payload: { updates } }, { digest });
+  for (const updates of [
+    { unknown: true }, { display: { themeId: "local" } }, { display: { reading: { dualColumnMode: true } } },
+    { ai: { provider: "local" } }, { fbCapture: { knownGroups: [] } }, { storyWall: { publishTarget: { status: "ready" } } },
+    { display: { unknown: "x".repeat(8_193) } }, { display: { ["x".repeat(4_097)]: false } },
+    { display: Object.fromEntries(Array.from({ length: 512 }, (_, index) => [String(index), false])) },
+  ]) expect(() => construct(updates)).toThrow();
+  // Native historical policy bounds canonical values but does not retrofit the
+  // current semantic shape. These authenticated bytes must not be sanitized.
+  for (const updates of [{ display: { markReadOnScroll: false } }, { display: null }, { display: [false] }]) {
+    expect(construct(updates).body.payload).toEqual({ updates });
+  }
 });

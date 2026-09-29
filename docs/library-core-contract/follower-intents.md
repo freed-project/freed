@@ -873,6 +873,22 @@ historical patch valid for new PWA writes or prove that every old canonical
 segment can be imported by the PWA. Such bytes remain preserved and must not be
 silently stripped or re-signed.
 
+PWA historical preference authentication uses the same bounded top-level and
+device-local exclusions as native history verification, without applying the
+current fresh-write sanitizer. Archive and canonical-history results carry no
+fresh-write verification provenance or accepted actor state. Their member
+constructions cannot be finalized for signing. Canonical import independently
+verifies and binds the authority-signed acceptance receipt, then rechecks its
+frozen actor snapshot and source revision inside the write transaction. The
+original envelope bytes remain unchanged. Historical Friend ordering remains
+archive-only because native authority never accepted that former PWA ordering.
+
+Shared cryptographic tests and PWA SQLite fixtures cover this historical
+preference path, including tampering, incomplete mixed transactions, device-local
+exclusions, a mismatched signed receipt, duplicate import and retained bytes.
+These fixtures do not establish compatibility for every historical native
+segment or prove installed Mac behavior.
+
 Finite numbers in the registered binary64 wrapper are scalar preference values.
 Fresh policy validation decodes them for type checks but retains their original
 authenticated representation. Normal PWA preference writes use the same encoder

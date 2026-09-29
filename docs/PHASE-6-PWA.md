@@ -1343,3 +1343,13 @@ pass. Installed Mac acceptance and full multi-device convergence remain pending.
 Friend recovery clears its editor by unmounting during review reload and by
 keying each archived transaction by digest. Its load effect only commits verified
 results; closing or replacing the review aborts the pending load.
+
+
+PWA historical preference verification now matches the native historical field
+policy while fresh writes retain the current policy. Archive review preserves
+authenticated old fields, and incremental catch-up checks the authority-signed
+acceptance receipt before materializing them. Historical constructions cannot
+be finalized or reused as fresh verified transactions. Shared cryptographic and
+PWA SQLite tests cover unchanged bytes, mixed-member completeness, device-local
+exclusions, tampering, mismatched receipts and exact retry. Native-produced old
+preference segment fixtures and installed Mac acceptance remain unverified.

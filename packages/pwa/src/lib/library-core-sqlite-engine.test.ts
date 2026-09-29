@@ -54,6 +54,10 @@ import {
   RSS_FEED_TITLE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   RSS_FEED_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   assembleLibraryCoreTransactionV1,
+  constructLibraryCoreHistoricalPreferencesMemberV1,
+  assembleLibraryCoreHistoricalPreferencesV1,
+  PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  encodeLibraryCoreOperationSignatureInput,
   type LibraryCoreCanonicalValue,
   type LibraryCoreDigestDomain,
   libraryCoreFollowerResultBodyV1,
@@ -6482,6 +6486,81 @@ describe("PWA Library Core SQLite engine", () => {
 
 
 
+  });
+
+  // Tier 1: authentic history requires an authority receipt before materialization;
+  // fresh policy is not retroactively applied to the signed preference bytes.
+  it("imports historical preferences only with the exact signed acceptance receipt", async () => {
+    const libraryId = "11".repeat(32), epochId = "22".repeat(32), actorId = "33".repeat(32);
+    const chainGenesis = "44".repeat(32), authorityKeyId = "55".repeat(32);
+    const actorKeys = generateKeyPairSync("ed25519"), authorityKeys = generateKeyPairSync("ed25519");
+    const publicKey = (keys: typeof actorKeys) => keys.publicKey.export({ format: "der", type: "spki" }).subarray(-32).toString("hex");
+    const engine = new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion);
+    engine.initialize();
+    database.exec({ sql: "INSERT INTO library_meta VALUES (1,?1,1,?2,0,1);", bind: [libraryId, epochId] });
+    database.exec({ sql: "INSERT INTO library_materialization_generation VALUES (1,?1);", bind: ["99".repeat(32)] });
+    database.exec({ sql: `INSERT INTO library_authority_epochs
+      (epoch_id,library_id,epoch_number,authority_key_id,authority_public_key,transition_certificate_digest,
+       canonical_transition_certificate,accepted_manifest_generation,checkpoint_frontier_digest,materialized_state_digest,accepted_at)
+      VALUES (?1,?2,1,?3,?4,?5,'{}',1,?6,?7,1);`,
+      bind: [epochId, libraryId, authorityKeyId, publicKey(authorityKeys), "77".repeat(32), "88".repeat(32), "aa".repeat(32)] });
+    database.exec({ sql: "INSERT INTO library_active_authority VALUES ('active',?1,?2,?3,1,1);", bind: [libraryId, epochId, actorId] });
+    database.exec({ sql: `INSERT INTO library_actors
+      (actor_id,authority_epoch_id,actor_kind,public_key,enrollment_operation_id,enrollment_certificate_digest,
+       canonical_enrollment_certificate,chain_genesis_digest,accepted_counter,accepted_operation_id,accepted_chain_digest,retired_at,created_at,updated_at)
+      VALUES (?1,?2,'desktop',?3,'enroll-history',?4,'{}',?5,0,NULL,?5,NULL,1,1);`,
+      bind: [actorId, epochId, publicKey(actorKeys), "bb".repeat(32), chainGenesis] });
+    const input = { actor_id: actorId, actor_sequence: 1, causal_frontier: [], created_at_ms: 2000,
+      entity_id: "preferences", epoch: 1, epoch_id: epochId, hlc_counter: 0, hlc_wall_ms: 2000, library_id: libraryId,
+      operation_id: "historical:preferences", payload: { updates: { display: { markReadOnScroll: false } } },
+      previous_actor_operation_id: null, transaction_id: "historical:transaction", transaction_member_count: 1, transaction_member_index: 0 };
+    expect(() => PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA.construct(input, { digest: coreDigest })).toThrow("unsupported fields");
+    const assembled = assembleLibraryCoreHistoricalPreferencesV1([
+      constructLibraryCoreHistoricalPreferencesMemberV1(input, { digest: coreDigest }),
+    ], chainGenesis, { digest: coreDigest });
+    const envelope = { ...assembled.members[0]!.signing_body, signature: sign(null,
+      encodeLibraryCoreOperationSignatureInput({ operation_signing_body_digest: assembled.members[0]!.signing_body_digest }), actorKeys.privateKey).toString("hex") };
+    const canonical = (value: unknown) => encodeLibraryCoreCanonicalValue(value as LibraryCoreCanonicalValue);
+    const envelopeDigest = coreDigest("operation-envelope", envelope as unknown as LibraryCoreCanonicalValue);
+    const result = (receiptId: string, corruptSignature = false) => {
+      const unsigned = parseLibraryCoreFollowerResultEnvelopeV1({ actor_id: actorId, authoritative_source_revision: 1,
+        authority_key_id: authorityKeyId, canonical_operation_ids: [input.operation_id], epoch: 1, epoch_id: epochId,
+        format: "freed_follower_result_v1", intent_epoch: 1, intent_epoch_id: epochId, library_id: libraryId,
+        original_result_digest: null, previous_result_digest: null, receipt_ids: [receiptId], rejection_reason: null,
+        replacement_fields: [], resolved_at_ms: 3000, result_body_digest: "0".repeat(64), result_sequence: 1, schema_version: 1,
+        signature: "0".repeat(128), signature_algorithm: "ed25519", status: "accepted", transaction_digest: assembled.transaction_digest,
+        transaction_id: input.transaction_id });
+      const digest = coreDigest("follower-result-body", libraryCoreFollowerResultBodyV1(unsigned));
+      return { digest, bytes: canonical({ ...unsigned, result_body_digest: digest, signature: corruptSignature ? "00".repeat(64) : sign(null,
+        encodeLibraryCoreSignatureInput("follower-result-envelope", { result_body_digest: digest }), authorityKeys.privateKey).toString("hex") }) };
+    };
+    const snapshot = parseLibraryCoreNormalizedOperationExportDescriptorV2({ authorityEpoch: epochId, firstAvailableRevision: 1,
+      format: "freed_normalized_operation_export_v2", libraryId, operationCount: 1, protocolVersion: 2, sourceRevision: 1, transactionCount: 1, writerId: actorId });
+    const importResult = (accepted: ReturnType<typeof result>) => {
+      const records = [{ bytes: accepted.bytes, digest: accepted.digest, kind: "accepted_transaction", index: -1 },
+        { bytes: canonical(envelope), digest: envelopeDigest, kind: "operation", index: 0 }].map(value => ({
+          canonicalRecordJson: new TextDecoder().decode(value.bytes), kind: value.kind, memberIndex: value.index,
+          recordDigest: value.digest, sourceRevision: 1, transactionDigest: assembled.transaction_digest, transactionId: input.transaction_id }));
+      return engine.importNormalizedOperationPage({ snapshot, receivedAt: 4000, page: parseLibraryCoreNormalizedOperationExportPageV2({
+        canonicalRecordBytes: records.reduce((sum, value) => sum + new TextEncoder().encode(value.canonicalRecordJson).length, 0),
+        done: true, nextCursor: { kind: "operation", memberIndex: 0, recordDigest: envelopeDigest, sourceRevision: 1 }, records }) });
+    };
+    for (const invalid of [result("00".repeat(32)), result(envelopeDigest, true)]) {
+      try {
+        await expect(importResult(invalid)).rejects.toThrow(/signature|proof changed/);
+        expect(database.selectValue("SELECT count(*) FROM library_preferences;")).toBe(0);
+        expect(database.selectValue("SELECT accepted_counter FROM library_actors;")).toBe(0);
+        expect(database.selectValue("SELECT source_revision FROM library_meta;")).toBe(0);
+      } finally { database.exec("DELETE FROM library_operation_replication_stage_members; DELETE FROM library_operation_replication_stages;"); }
+    }
+    const accepted = result(envelopeDigest);
+    await expect(importResult(accepted)).resolves.toMatchObject({ appliedThroughRevision: 1, appliedTransactionCount: 1 });
+    await importResult(accepted);
+    expect(database.exec({ sql: "SELECT path,value_type,boolean_value FROM library_preferences ORDER BY path;", rowMode: "array", returnValue: "resultRows" }))
+      .toContainEqual(['v:$.display.markReadOnScroll', "boolean", 0]);
+    expect(database.selectValue("SELECT accepted_counter FROM library_actors;")).toBe(1);
+    expect(database.selectValue("SELECT count(*) FROM library_operations;")).toBe(1);
+    expect(database.selectValue("SELECT canonical_envelope FROM library_operations;")).toEqual(canonical(envelope));
   });
 
   it("converges with native recovered-actor signed edits through incremental pages", async () => {
