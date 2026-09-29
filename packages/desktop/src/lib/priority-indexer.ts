@@ -1,6 +1,5 @@
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import { waitForFactoryResetDrain } from "@freed/ui/lib/factory-reset";
-import type { WeightPreferences } from "@freed/shared";
 import {
   backfillLibraryPriorities,
   reloadSqliteLibraryState,
@@ -20,7 +19,6 @@ const REFRESH_INTERVAL_MS = 60 * 60 * 1000;
 const FACTORY_RESET_DRAIN_TIMEOUT_MS = 120_000;
 
 interface PriorityIndexerOptions {
-  readonly getWeights: () => WeightPreferences;
   readonly subscribeToWeightChanges?: (callback: () => void) => () => void;
 }
 
@@ -29,18 +27,11 @@ let processing = false;
 let scheduled = false;
 let rerunRequested = false;
 let passStartedAt = 0;
-let activeWeights: WeightPreferences | null = null;
 let nextRefreshAt = 0;
 let startedAt = 0;
 let intervalHandle: ReturnType<typeof setInterval> | null = null;
 let unsubscribeLibrary: (() => void) | null = null;
 let unsubscribeWeights: (() => void) | null = null;
-let getWeights: () => WeightPreferences = () => ({
-  authors: {},
-  platforms: {},
-  recency: 50,
-  topics: {},
-});
 let factoryResetDrainInProgress = false;
 const activeResetSensitiveOperations = new Set<Promise<unknown>>();
 
@@ -55,7 +46,6 @@ function trackResetSensitiveOperation<T>(operation: Promise<T>): Promise<T> {
 
 function beginPass(): void {
   passStartedAt = Math.max(Date.now(), passStartedAt + 1);
-  activeWeights = getWeights();
   scheduled = true;
   rerunRequested = false;
 }
@@ -81,10 +71,6 @@ async function processNextBatch(): Promise<void> {
   }
   processing = true;
   try {
-    const weights = activeWeights;
-    if (weights === null) {
-      throw new Error("priority pass has no weight snapshot");
-    }
     const summary = await runBackgroundJob({
       kind: "library-projection",
       source: "feed-priority",
@@ -93,7 +79,6 @@ async function processNextBatch(): Promise<void> {
       run: () =>
         trackResetSensitiveOperation(
           backfillLibraryPriorities(
-            weights,
             passStartedAt,
             BATCH_SIZE,
             false,
@@ -110,7 +95,6 @@ async function processNextBatch(): Promise<void> {
       if (rerunRequested) {
         beginPass();
       } else {
-        activeWeights = null;
         nextRefreshAt = Date.now() + REFRESH_INTERVAL_MS;
       }
     }
@@ -126,7 +110,6 @@ async function processNextBatch(): Promise<void> {
 
 export function start(options: PriorityIndexerOptions): void {
   if (running || factoryResetDrainInProgress || isDesktopHandoffPaused()) return;
-  getWeights = options.getWeights;
   running = true;
   startedAt = Date.now();
   schedulePass();
@@ -148,7 +131,6 @@ export function stop(): void {
   running = false;
   scheduled = false;
   rerunRequested = false;
-  activeWeights = null;
   passStartedAt = 0;
   nextRefreshAt = 0;
   if (intervalHandle !== null) {
@@ -159,12 +141,6 @@ export function stop(): void {
   unsubscribeLibrary = null;
   unsubscribeWeights?.();
   unsubscribeWeights = null;
-  getWeights = () => ({
-    authors: {},
-    platforms: {},
-    recency: 50,
-    topics: {},
-  });
   log.info("[priority-indexer] stopped");
 }
 

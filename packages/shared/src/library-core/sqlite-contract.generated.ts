@@ -1448,6 +1448,7 @@ export const LIBRARY_CORE_QUERY_IDS = [
   "preference_value_v1",
   "preferences_snapshot_v1",
   "provider_media_page_v1",
+  "ranking_weight_scope_v1",
   "recovery_archive_page_v1",
   "recovery_intent_page_v1",
   "recovery_intent_review_v1",
@@ -1659,6 +1660,11 @@ export const LIBRARY_CORE_SQLITE_QUERY_PROGRAMS = {
         "sql": "SELECT substr(path, 1, 2) || '$._' || substr(path, length(?1) + 3) AS path, value_type AS valueType, boolean_value AS booleanValue, integer_value AS integerValue, real_value AS realValue, text_value AS textValue, updated_at AS updatedAt FROM library_preferences WHERE path >= ?2 COLLATE BINARY AND path < ?3 COLLATE BINARY ORDER BY path COLLATE BINARY LIMIT ?4;"
       }
     }
+  },
+  "ranking_weight_scope_v1": {
+    "maximumScanRows": 65,
+    "countSql": "SELECT json_array_length(?1);",
+    "sql": "SELECT CAST(selection.key AS INTEGER) AS ordinal, leaf.fullkey AS path FROM json_each(?1) AS selection, json_tree(selection.value) AS leaf WHERE leaf.type = 'null' ORDER BY ordinal LIMIT 65;"
   },
   "provider_media_page_v1": {
     "maximumScanRows": 65,
@@ -2764,6 +2770,30 @@ export const LIBRARY_CORE_SQLITE_QUERY_ROW_MODELS = {
       "minimumInteger": null,
       "minimumUtf8Bytes": 4,
       "name": "valueType",
+      "nullable": false
+    }
+  ],
+  "ranking_weight_scope_v1": [
+    {
+      "enumValues": [],
+      "integerValues": [],
+      "kind": "integer",
+      "maximumInteger": 63,
+      "maximumUtf8Bytes": null,
+      "minimumInteger": 0,
+      "minimumUtf8Bytes": null,
+      "name": "ordinal",
+      "nullable": false
+    },
+    {
+      "enumValues": [],
+      "integerValues": [],
+      "kind": "text",
+      "maximumInteger": null,
+      "maximumUtf8Bytes": 32768,
+      "minimumInteger": null,
+      "minimumUtf8Bytes": 1,
+      "name": "path",
       "nullable": false
     }
   ]

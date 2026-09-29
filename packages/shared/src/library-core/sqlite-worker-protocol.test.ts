@@ -77,6 +77,15 @@ describe("Library Core SQLite worker protocol", () => {
   });
 
   it("carries only registered closed query contracts", () => {
+    const weightQuery = { queryId: "ranking_weight_scope_v1" as const, schemaVersion: 1 as const,
+      paths: [["weights", "topics", "one"]], generationId: "a".repeat(64), sourceRevision: 7 };
+    const weightRequest = createLibraryCoreSqliteQueryWorkerRequest("request-weights", weightQuery);
+    expect(parseLibraryCoreSqliteWorkerRequest(weightRequest)).toEqual(weightRequest);
+    expect(() => parseLibraryCoreSqliteWorkerRequest({ ...weightRequest, query: { ...weightQuery, paths: [["fbCapture", "excludedGroupIds", "one"]] } })).toThrow();
+    const weightResponse = { queryId: weightQuery.queryId, schemaVersion: 1, paths: weightQuery.paths, values: [0.5],
+      source: { generationId: weightQuery.generationId, projectionRevision: 7, transitionSequence: 7 } };
+    expect(parseLibraryCoreSqliteQueryResponse(weightResponse, weightQuery)).toEqual(weightResponse);
+    expect(() => parseLibraryCoreSqliteQueryResponse({ ...weightResponse, values: ["0.5"] }, weightQuery)).toThrow();
     expect(
       createLibraryCoreSqliteQueryWorkerRequest("request-account", {
         accountId: "account-1",

@@ -1460,3 +1460,10 @@ assignments and empty groups, and clears confirmation whenever a value changes.
 After signing, the form locks its inputs and retries the same replacement after
 an ambiguous response. Focused platform tests and the Desktop browser workflow
 pass. Installed Mac acceptance and full multi-device convergence remain pending.
+
+Primary ranking now retrieves only the weights needed by each bounded candidate
+batch. Native SQLite and PWA share a grouped read with exact source checks;
+Desktop uses it without retaining a full weight map for the pass. Tests cover
+large candidate scopes, long literal IDs, stale chunks, numeric validation and
+preference changes during an in-flight batch. Startup still uses the global
+preference snapshot, and installed Mac acceptance remains incomplete.

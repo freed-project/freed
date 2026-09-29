@@ -1,9 +1,11 @@
-import { createDefaultPreferences, type FeedItem } from "@freed/shared";
+import { calculatePriority, createDefaultPreferences, type FeedItem } from "@freed/shared";
 import type { LibraryCoreRuntimeStateV1 } from "@freed/shared/library-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   analysisCandidates: vi.fn(),
+  priorityCandidates: vi.fn(),
+  commitPriorities: vi.fn(),
   commitAnalysis: vi.fn(),
   dispatch: vi.fn(),
   query: vi.fn(),
@@ -34,6 +36,7 @@ vi.mock("./legacy-library-presence", () => ({
 
 vi.mock("./library-core-item-detail-runtime", () => ({
   readLibraryCoreAnalysisCandidateBatch: mocks.analysisCandidates,
+  readLibraryCorePriorityCandidateBatch: mocks.priorityCandidates,
   scanLibraryCoreBackgroundItems: vi.fn(),
 }));
 
@@ -44,6 +47,7 @@ vi.mock("./library-core-normalized-query-client", () => ({
 
 vi.mock("./sqlite-library", () => ({
   commitDesktopLibraryFeedItemAnalysisSets: mocks.commitAnalysis,
+  commitDesktopLibraryFeedItemPriorities: mocks.commitPriorities,
   dispatchSqliteMutation: mocks.dispatch,
   ensureFreshNormalizedDesktopLibrary: vi.fn(async () => true),
   loadSqliteLibraryState: vi.fn(async () => state(1)),
@@ -53,6 +57,7 @@ vi.mock("./sqlite-library", () => ({
 
 import {
   backfillLibraryContentSignals,
+  backfillLibraryPriorities,
   initializeDesktopLibraryRuntime,
   markLibraryItemAsRead,
   resetLocalLibrary,
@@ -64,9 +69,31 @@ describe("Desktop Library client canonical invalidations", () => {
     await resetLocalLibrary();
     mocks.dispatch.mockReset();
     mocks.analysisCandidates.mockReset();
+    mocks.priorityCandidates.mockReset();
+    mocks.commitPriorities.mockReset();
     mocks.commitAnalysis.mockReset();
     mocks.query.mockReset();
     mocks.readItems.mockReset();
+  });
+
+  it("commits scoped ranking weights and never commits a failed source read", async () => {
+    const item: FeedItem = { author: { displayName: "Ada", handle: "ada", id: "ada" }, capturedAt: 100,
+      content: { mediaTypes: [], mediaUrls: [], text: "A bounded ranking candidate" }, contentType: "post",
+      globalId: "rank-1", platform: "saved", publishedAt: 100, topics: [],
+      userState: { archived: false, hidden: false, saved: false, tags: [] } };
+    const weights = { recency: 10, authors: { ada: 95 }, platforms: { saved: 80 }, topics: {} };
+    mocks.priorityCandidates.mockResolvedValue({ items: [{ item, careLevel: 5 }], remaining: false, weights,
+      source: { generationId: "a".repeat(64), projectionRevision: 1, transitionSequence: 1 } });
+    mocks.commitPriorities.mockResolvedValue(undefined);
+    mocks.query.mockResolvedValue({ nextCursor: null, queryId: "local_change_feed_v1", rows: [], schemaVersion: 1,
+      source: { generationId: "a".repeat(64), projectionRevision: 1, transitionSequence: 0 } });
+    const result = await backfillLibraryPriorities(1000, 64, false);
+    expect(result).toEqual({ passStartedAt: 1000, remaining: 0, updated: 1 });
+    expect(mocks.commitPriorities).toHaveBeenCalledWith([{ entityId: "rank-1",
+      priorityBasisPoints: calculatePriority(item, weights, 1000, { careLevel: 5 }) * 100 }], 1000);
+    mocks.priorityCandidates.mockRejectedValueOnce(new Error("CURSOR_STALE"));
+    await expect(backfillLibraryPriorities(1001, 64, false)).rejects.toThrow("CURSOR_STALE");
+    expect(mocks.commitPriorities).toHaveBeenCalledOnce();
   });
 
   it("infers one source-fenced SQLite analysis batch and commits it once", async () => {

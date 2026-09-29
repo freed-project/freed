@@ -1,3 +1,4 @@
+import { calculatePriority } from "../ranking.js";
 import { encodeLibraryCoreFeedBrowsePageCursorV2, decodeLibraryCoreFeedBrowsePageCursorV2 } from "./feed-browse-page-contracts.js";
 import { encodeLibraryCoreSavedFeedPageCursorV2, decodeLibraryCoreSavedFeedPageCursorV2 } from "./saved-feed-page-contracts.js";
 import { describe, expect, it, vi } from "vitest";
@@ -489,7 +490,9 @@ describe("cross-platform normalized feed readers", () => {
   });
 
   it("reads one bounded Primary ranking batch with complete ranking inputs", async () => {
-    const query = vi.fn(async () => ({
+    const query = vi.fn(async (request) => {
+      if (request.queryId === "ranking_weight_scope_v1") return { queryId: request.queryId, schemaVersion: 1, paths: request.paths, values: [30, 90, 70, 80], source: querySource };
+      return ({
       nextCursor: "more-priority-work",
       rows: [
         {
@@ -501,7 +504,7 @@ describe("cross-platform normalized feed readers", () => {
         },
       ],
       source: querySource,
-    })) as unknown as LibraryCoreNormalizedQueryExecutor;
+    }); }) as unknown as LibraryCoreNormalizedQueryExecutor;
 
     const batch = await readLibraryCoreNormalizedPriorityCandidateBatchV1(
       { query, randomId: () => "test" },
@@ -510,6 +513,7 @@ describe("cross-platform normalized feed readers", () => {
     );
 
     expect(batch).toEqual({
+      weights: { recency: 30, authors: { "reader-1": 90 }, platforms: { rss: 70 }, topics: { sqlite: 80 } },
       items: [
         {
           careLevel: 5,
@@ -521,6 +525,7 @@ describe("cross-platform normalized feed readers", () => {
         },
       ],
       remaining: true,
+      source: querySource,
     });
     expect(query).toHaveBeenCalledWith({
       analysisVersion: null,
@@ -532,6 +537,38 @@ describe("cross-platform normalized feed readers", () => {
       readerSessionId: "priority-reader:test",
       schemaVersion: 1,
     });
+  });
+
+  // Tier 1: bounded ranking must not materialize unrelated weights or accept mixed sources.
+  it.each(["topics", "longAuthors"])("partitions a maximum %s candidate batch and refuses a stale chunk", async (shape) => {
+    const rows = Array.from({ length: 64 }, (_, i) => ({ ...backgroundCard(`item-${i}`),
+      authorId: shape === "longAuthors" ? `${i}${'"'.repeat(4090)}` : i === 0 ? "__proto__" : `author-${i}`,
+      topics: shape === "topics" ? Array.from({ length: 64 }, (_, j) => `topic_${i}_${j}`) : [] }));
+    let scopes = 0, stale = false;
+    const query = vi.fn(async request => {
+      if (request.queryId === "background_item_page_v1") return { rows, nextCursor: null, source: querySource };
+      scopes += 1;
+      expect(request.paths.length).toBeLessThanOrEqual(64);
+      expect(new TextEncoder().encode(JSON.stringify(request)).length).toBeLessThanOrEqual(96 * 1024);
+      expect(request.generationId).toBe(querySource.generationId);
+      expect(request.sourceRevision).toBe(querySource.projectionRevision);
+      return { queryId: request.queryId, schemaVersion: 1, paths: request.paths,
+        values: request.paths.map((path: readonly string[]) => path[1] === "recency" ? 30 : path[1] === "platforms" ? 70 : path[2] === "__proto__" ? 90 : path[2] === "topic_0_0" ? 81 : null),
+        source: stale && scopes > 1 ? { ...querySource, projectionRevision: 2, transitionSequence: 2 } : querySource };
+    }) as unknown as LibraryCoreNormalizedQueryExecutor;
+    const runtime = { query, randomId: () => "test" };
+    const batch = await readLibraryCoreNormalizedPriorityCandidateBatchV1(runtime, 1000, 64);
+    expect(scopes).toBeGreaterThan(1);
+    expect(scopes).toBeLessThanOrEqual(66);
+    expect(batch.weights.recency).toBe(30);
+    expect(Object.keys(batch.weights.topics)).toEqual(shape === "topics" ? ["topic_0_0"] : []);
+    expect(Object.getPrototypeOf(batch.weights.authors)).toBeNull();
+    const full = { recency: 30, platforms: { rss: 70, unrelated: 99 },
+      authors: { ["__proto__"]: 90, unrelated: 99 }, topics: { topic_0_0: 81, unrelated: 99 } };
+    for (const candidate of batch.items) expect(calculatePriority(candidate.item, batch.weights, 1000)).toBe(calculatePriority(candidate.item, full, 1000));
+    stale = true; scopes = 0;
+    await expect(readLibraryCoreNormalizedPriorityCandidateBatchV1(runtime, 1000, 64)).rejects.toThrow("CURSOR_STALE");
+    expect(scopes).toBe(2);
   });
 
   it("streams compact content fetch candidates without reconstructing items", async () => {

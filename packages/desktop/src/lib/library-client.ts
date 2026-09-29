@@ -22,7 +22,6 @@ import {
   type RssFeed,
   type SampleDataClearSummary,
   type UserPreferences,
-  type WeightPreferences,
 } from "@freed/shared";
 import type {
   LibraryMutationEvent,
@@ -602,7 +601,6 @@ export interface LibraryPriorityBackfillSummary {
 }
 
 export async function backfillLibraryPriorities(
-  weights: WeightPreferences,
   passStartedAt: number,
   batchSize = 64,
   publishRuntimeUpdate = true,
@@ -628,7 +626,7 @@ export async function backfillLibraryPriorities(
         batch.items.map(({ careLevel, item }) => ({
           entityId: item.globalId,
           priorityBasisPoints:
-            calculatePriority(item, weights, passStartedAt, { careLevel }) *
+            calculatePriority(item, batch.weights, passStartedAt, { careLevel }) *
             100,
         })),
         passStartedAt,

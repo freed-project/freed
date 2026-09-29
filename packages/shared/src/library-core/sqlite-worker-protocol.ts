@@ -1,3 +1,4 @@
+import { parseLibraryCoreRankingWeightScopeRequestV1, parseLibraryCoreRankingWeightScopeResponseV1, type LibraryCoreRankingWeightScopeRequestV1, type LibraryCoreRankingWeightScopeResponseV1 } from "./ranking-weight-scope-contracts.js";
 import { parseLibraryCorePreferenceValueRequestV1, parseLibraryCorePreferenceValueResponseV1, type LibraryCorePreferenceValueRequestV1, type LibraryCorePreferenceValueResponseV1 } from "./preference-value-contracts.js";
 import { parseLibraryCorePersonAccountPageRequestV1, parseLibraryCorePersonAccountPageResponseV1, type LibraryCorePersonAccountPageRequestV1, type LibraryCorePersonAccountPageResponseV1 } from "./person-account-page-contracts.js";
 import { parseLibraryCoreAccountRootRequestV1, parseLibraryCoreAccountRootResponseV1, type LibraryCoreAccountRootRequestV1, type LibraryCoreAccountRootResponseV1 } from "./account-root-contracts.js";
@@ -377,11 +378,12 @@ export type LibraryCoreSqliteQueryRequest =
   | LibraryCoreSearchPageRequestV1
   | LibraryCoreStoryWallCandidatesRequestV1
   | LibraryCorePreferencesSnapshotRequestV1
-  | LibraryCorePreferenceValueRequestV1;
+  | LibraryCorePreferenceValueRequestV1
+  | LibraryCoreRankingWeightScopeRequestV1;
 
 export type LibraryCoreSqliteQueryResponseFor<
   T extends LibraryCoreSqliteQueryRequest,
-> = T extends LibraryCorePreferenceValueRequestV1 ? LibraryCorePreferenceValueResponseV1 : T extends LibraryCoreRssItemSummaryRequestV1
+> = T extends LibraryCoreRankingWeightScopeRequestV1 ? LibraryCoreRankingWeightScopeResponseV1 : T extends LibraryCorePreferenceValueRequestV1 ? LibraryCorePreferenceValueResponseV1 : T extends LibraryCoreRssItemSummaryRequestV1
   ? LibraryCoreRssItemSummaryResponseV1
   : T extends LibraryCoreItemAnnotationsRequestV1
   ? LibraryCoreItemAnnotationsResponseV1
@@ -473,7 +475,7 @@ export function parseLibraryCoreSqliteQueryResponse<
   T extends LibraryCoreSqliteQueryRequest,
 >(value: unknown, request: T): LibraryCoreSqliteQueryResponseFor<T> {
   const parsed =
-    request.queryId === "preference_value_v1" ? parseLibraryCorePreferenceValueResponseV1(value, request) : request.queryId === "rss_item_summary_v1"
+    request.queryId === "ranking_weight_scope_v1" ? parseLibraryCoreRankingWeightScopeResponseV1(value, request) : request.queryId === "preference_value_v1" ? parseLibraryCorePreferenceValueResponseV1(value, request) : request.queryId === "rss_item_summary_v1"
       ? parseLibraryCoreRssItemSummaryResponseV1(value)
       : request.queryId === "item_annotations_v1"
       ? parseLibraryCoreItemAnnotationsResponseV1(value, request)
@@ -1264,7 +1266,7 @@ export function parseLibraryCoreSqliteWorkerRequest(
     parseLibraryCoreActivateNormalizedCheckpointStageV2(value.activation);
   } else if (value.kind === "query") {
     const query = isClosedRecord(value.query)
-      ? value.query.queryId === "preference_value_v1" ? parseLibraryCorePreferenceValueRequestV1(value.query) : value.query.queryId === "rss_item_summary_v1"
+      ? value.query.queryId === "ranking_weight_scope_v1" ? parseLibraryCoreRankingWeightScopeRequestV1(value.query) : value.query.queryId === "preference_value_v1" ? parseLibraryCorePreferenceValueRequestV1(value.query) : value.query.queryId === "rss_item_summary_v1"
         ? parseLibraryCoreRssItemSummaryRequestV1(value.query)
         : value.query.queryId === "item_annotations_v1"
         ? parseLibraryCoreItemAnnotationsRequestV1(value.query)

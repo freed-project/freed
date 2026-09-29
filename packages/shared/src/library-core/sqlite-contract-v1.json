@@ -1654,6 +1654,11 @@
         }
       }
     },
+    "ranking_weight_scope_v1": {
+      "maximumScanRows": 65,
+      "countSql": "SELECT json_array_length(?1);",
+      "sql": "SELECT CAST(selection.key AS INTEGER) AS ordinal, leaf.fullkey AS path FROM json_each(?1) AS selection, json_tree(selection.value) AS leaf WHERE leaf.type = 'null' ORDER BY ordinal LIMIT 65;"
+    },
     "provider_media_page_v1": {
       "maximumScanRows": 65,
       "countSql": "SELECT count(*) FROM library_feed_items AS item WHERE ((?1 = 'youtube' AND ?2 = 1 AND item.saved = 1 AND (instr(lower(COALESCE(item.source_url, '')), 'youtube.com/') > 0 OR instr(lower(COALESCE(item.source_url, '')), 'youtube-nocookie.com/') > 0 OR instr(lower(COALESCE(item.source_url, '')), 'youtu.be/') > 0 OR instr(lower(COALESCE(item.link_url, '')), 'youtube.com/') > 0 OR instr(lower(COALESCE(item.link_url, '')), 'youtube-nocookie.com/') > 0 OR instr(lower(COALESCE(item.link_url, '')), 'youtu.be/') > 0)) OR (item.platform = ?1 AND (?2 = 0 OR item.saved = 1))) AND item.hidden = 0;",
@@ -2758,6 +2763,30 @@
         "name": "valueType",
         "nullable": false
       }
+    ],
+    "ranking_weight_scope_v1": [
+      {
+        "enumValues": [],
+        "integerValues": [],
+        "kind": "integer",
+        "maximumInteger": 63,
+        "maximumUtf8Bytes": null,
+        "minimumInteger": 0,
+        "minimumUtf8Bytes": null,
+        "name": "ordinal",
+        "nullable": false
+      },
+      {
+        "enumValues": [],
+        "integerValues": [],
+        "kind": "text",
+        "maximumInteger": null,
+        "maximumUtf8Bytes": 32768,
+        "minimumInteger": null,
+        "minimumUtf8Bytes": 1,
+        "name": "path",
+        "nullable": false
+      }
     ]
   },
   "scopeActionPrograms": {
@@ -2802,6 +2831,7 @@
     "preference_value_v1",
     "preferences_snapshot_v1",
     "provider_media_page_v1",
+    "ranking_weight_scope_v1",
     "recovery_archive_page_v1",
     "recovery_intent_page_v1",
     "recovery_intent_review_v1",

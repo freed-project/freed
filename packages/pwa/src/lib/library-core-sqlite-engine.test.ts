@@ -112,6 +112,26 @@ describe("PWA Library Core SQLite engine", () => {
       expect(response.kind).toBe(entry.kind); expect(response.rows).toEqual(entry.expectedRows);
       expect(response.path).toEqual(entry.path); expect(response.source.projectionRevision).toBe(7);
     }
+    const scope = { queryId: "ranking_weight_scope_v1" as const, schemaVersion: 1 as const,
+      generationId: request.generationId, sourceRevision: 7, paths: preferenceValueVector.weightScope.paths };
+    expect(engine.query(scope)).toEqual({ queryId: scope.queryId, schemaVersion: 1, paths: scope.paths,
+      values: preferenceValueVector.weightScope.values, source: { generationId: request.generationId, projectionRevision: 7, transitionSequence: 7 } });
+    const maximumPaths = Array.from({ length: 64 }, (_, i) => ["weights", "topics", `topic_${i}`]);
+    expect(engine.query({ ...scope, paths: maximumPaths }).values).toEqual(Array.from({ length: 64 }, (_, i) => i));
+    expect(() => engine.query({ ...scope, sourceRevision: 8 })).toThrow("CURSOR_STALE");
+    expect(() => engine.query({ ...scope, paths: [...maximumPaths, ["weights", "recency"]] })).toThrow();
+    expect(() => engine.query({ ...scope, paths: [["weights", "topics"]] })).toThrow();
+    for (const fault of ["INSERT INTO library_preferences(path,value_type,boolean_value,updated_at) VALUES ('v:$.weights.recency','boolean',1,1);",
+      "INSERT INTO library_preferences(path,value_type,text_value,updated_at) VALUES ('v:$.weights.recency','text','50',1);",
+      "INSERT INTO library_preferences(path,value_type,updated_at) VALUES ('v:$.weights.recency','null',1);"]) {
+      database.exec(fault);
+      expect(() => engine.query(scope)).toThrow("not numeric");
+      database.exec("DELETE FROM library_preferences WHERE path='v:$.weights.recency';");
+    }
+    // A wrapper-shaped group with an extra child is not a valid numeric value.
+    database.exec("INSERT INTO library_preferences(path,value_type,integer_value,updated_at) VALUES ('v:$.weights.topics.fraction.extra','integer',1,1);");
+    expect(() => engine.query(scope)).toThrow("not numeric");
+    database.exec("DELETE FROM library_preferences WHERE path='v:$.weights.topics.fraction.extra';");
     // Tier 1: storage-query bounds include the array marker and all serialized values.
     // These retained-row fixtures test read limits, not fresh mutation admission.
     for (const boundary of preferenceValueVector.boundaries) {

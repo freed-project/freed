@@ -103,3 +103,5 @@ export * from "./recovery-preference-context.js";
 export * from "./recovery-preference-input.js";
 
 export * from "./preference-value-contracts.js";
+
+export * from "./ranking-weight-scope-contracts.js";

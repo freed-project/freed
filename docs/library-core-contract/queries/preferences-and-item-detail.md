@@ -26,6 +26,31 @@ paths. Missing settings remain distinct from group summaries. Recovery loads
 only the visible comparison; it never joins pages into an unbounded settings
 object. This query does not remove the old whole-tree startup limit.
 
+`ranking_weight_scope_v1` reads at most 64 selected recency, author, platform
+or topic weights at one exact generation and canonical revision. Requests and
+responses each have a 128 KiB bound. Results preserve request order and distinguish
+an absent weight from invalid retained data. Only finite numbers and the existing
+binary64 wrapper are numeric weights; other stored types refuse the entire read.
+The generated selection-plan query derives SQLite fullkeys, then native and PWA
+reuse the indexed point programs inside one read transaction. Native cancellation
+is checked between selected weights.
+
+Valid item author IDs can exceed the stored preference-path limit. Grouped
+requests allow literal keys up to 4,096 UTF-16 code units; intermediate selection
+paths have a 32 KiB bound. These larger lookup keys may return an indexed miss.
+They do not permit larger stored rows: an existing oversized preference path is
+refused, and the ordinary single-setting query retains its prior limits.
+
+Primary ranking loads only weights addressed by its current candidate batch.
+The shared adapter partitions requests by both 64-key and 96 KiB limits, checks
+every result against the candidate source, and retains only relevant weight
+entries in own-key maps. The existing ranking formula and absent-value defaults
+remain. A stale chunk fails before any ranking write, and preference invalidations
+received during a pass coalesce into a fresh pass. Startup still loads the complete
+bounded preference snapshot, and the current weight-change subscription still
+uses that runtime state. Those remaining ownership changes must precede removal
+of startup's full preference map.
+
 `item_detail_v1` is a metadata point query. It reuses the compact feed-card
 projection and returns only typed locators that say whether each reader body is
 absent, inline in SQLite, or stored as a content-addressed blob. It also returns

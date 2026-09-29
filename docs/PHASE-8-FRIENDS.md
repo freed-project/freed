@@ -1083,3 +1083,10 @@ replacement values. Native/PWA fixture tests cover oversized unrelated trees,
 exact values and invalid rows; a headless Desktop workflow verifies two scoped
 reads and identical retry submissions. Ordinary startup still has the global
 preference snapshot limit, and installed Mac acceptance remains incomplete.
+
+Primary ranking now retrieves only the weights needed by each bounded candidate
+batch. Native SQLite and PWA share a grouped read with exact source checks;
+Desktop uses it without retaining a full weight map for the pass. Tests cover
+large candidate scopes, long literal IDs, stale chunks, numeric validation and
+preference changes during an in-flight batch. Startup still uses the global
+preference snapshot, and installed Mac acceptance remains incomplete.

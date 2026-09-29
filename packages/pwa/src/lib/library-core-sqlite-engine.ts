@@ -1,3 +1,4 @@
+import { parseLibraryCoreRankingWeightScopeRequestV1, parseLibraryCoreRankingWeightScopeResponseV1, libraryCorePreferenceNodesToValueV1, type LibraryCoreRankingWeightScopeRequestV1, type LibraryCoreRankingWeightScopeResponseV1 } from "@freed/shared/library-core";
 import { createLibraryCorePreferenceValueResponseV1, libraryCorePreferenceSelectionJsonV1, parseLibraryCorePreferenceValueRequestV1, type LibraryCorePreferenceValueRequestV1, type LibraryCorePreferenceValueResponseV1, type LibraryCorePreferenceNodeV1 } from "@freed/shared/library-core";
 import { sameLibraryCoreRecoveryPreferenceScopeV1 } from "@freed/shared/library-core";
 import { parseLibraryCoreFeedPageSourceV1 } from "@freed/shared/library-core";
@@ -8270,6 +8271,8 @@ export class PwaLibraryCoreSqliteEngine {
         return this.#queryStoryWallCandidates(
           input,
         ) as LibraryCoreSqliteQueryResponseFor<T>;
+      case "ranking_weight_scope_v1":
+        return this.#queryRankingWeightScope(input) as LibraryCoreSqliteQueryResponseFor<T>;
       case "preference_value_v1":
         return this.#queryPreferenceValue(input) as LibraryCoreSqliteQueryResponseFor<T>;
       case "preferences_snapshot_v1":
@@ -8625,33 +8628,79 @@ export class PwaLibraryCoreSqliteEngine {
     const parsed = parseLibraryCorePreferenceValueRequestV1(input);
     if (!parsed.ok) throw new TypeError(parsed.error);
     const request = parsed.value;
+    return this.#database.transaction(() => this.#readPreferenceValue(request));
+  }
+
+  #readPreferenceValue(request: LibraryCorePreferenceValueRequestV1, selectedPath?: string): LibraryCorePreferenceValueResponseV1 {
+    const { generationId, sourceRevision } = this.#querySource();
+    if (generationId !== request.generationId || sourceRevision !== request.sourceRevision) throw new Error("CURSOR_STALE");
+    const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.preference_value_v1;
+    const paths = selectedPath === undefined ? this.#database.exec({ sql: program.variants.selection_path.sql, bind: [libraryCorePreferenceSelectionJsonV1(request)], rowMode: "array", returnValue: "resultRows" }) : [[selectedPath]];
+    if (paths.length !== 1) throw new Error("Preference selection path is invalid");
+    const path = text(paths[0]![0], "preference selection path");
+    if (selectedPath === undefined && new TextEncoder().encode(path).length + 2 > 4096) throw new Error("Preference selection path exceeds its bound");
+    const read = (sql: string, bind: (string | number)[]): LibraryCorePreferenceNodeV1[] => this.#database.exec({ sql, bind, rowMode: "object", returnValue: "resultRows" }).map(row => {
+      const decoded = coerceLibraryCoreGeneratedSqliteQueryRow("preference_value_v1", row);
+      if (!decoded) throw new Error("Preference value row is invalid");
+      return decoded;
+    });
+    const rows = read(program.sql, [path]);
+    if (rows.length > 1) throw new Error("Preference selection has conflicting roots");
+    const prefix = rows[0]?.path.slice(0, 2);
+    const maximum = prefix === "a:" ? 513 : prefix === "o:" ? 4 : rows.length;
+    // Disjoint indexed ranges share one total budget, including an overflow sentinel.
+    if (prefix === "a:" || prefix === "o:") {
+      for (const physical of ["a:", "o:", "v:"]) for (const [lower, upper] of [[".", "/"], ["[", "\\"]]) {
+        const remaining = maximum - rows.length;
+        if (remaining > 0) rows.push(...read(program.variants.descendants.sql, [path, physical + path + lower, physical + path + upper, remaining]));
+      }
+    }
+    const source = parseLibraryCoreFeedPageSourceV1({ generationId, projectionRevision: sourceRevision, transitionSequence: sourceRevision });
+    if (!source.ok) throw new Error(source.error);
+    // Grouped ranking can query valid item IDs that cannot fit a stored preference path.
+    // Only an indexed miss is absence; a retained oversized key is corruption.
+    if (selectedPath !== undefined && new TextEncoder().encode(selectedPath).length + 2 > 4096) {
+      if (rows.length) throw new Error("Stored ranking weight path exceeds its bound");
+      return { queryId: "preference_value_v1", schemaVersion: 1, path: request.path, kind: "absent", rows: [], source: source.value };
+    }
+    return createLibraryCorePreferenceValueResponseV1(request, rows, source.value);
+  }
+
+  #queryRankingWeightScope(input: LibraryCoreRankingWeightScopeRequestV1): LibraryCoreRankingWeightScopeResponseV1 {
+    const parsed = parseLibraryCoreRankingWeightScopeRequestV1(input);
+    if (!parsed.ok) throw new TypeError(parsed.error);
+    const request = parsed.value;
     return this.#database.transaction(() => {
       const { generationId, sourceRevision } = this.#querySource();
       if (generationId !== request.generationId || sourceRevision !== request.sourceRevision) throw new Error("CURSOR_STALE");
-      const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.preference_value_v1;
-      const paths = this.#database.exec({ sql: program.variants.selection_path.sql, bind: [libraryCorePreferenceSelectionJsonV1(request)], rowMode: "array", returnValue: "resultRows" });
-      if (paths.length !== 1) throw new Error("Preference selection path is invalid");
-      const path = text(paths[0]![0], "preference selection path");
-      if (new TextEncoder().encode(path).length + 2 > 4096) throw new Error("Preference selection path exceeds its bound");
-      const read = (sql: string, bind: (string | number)[]): LibraryCorePreferenceNodeV1[] => this.#database.exec({ sql, bind, rowMode: "object", returnValue: "resultRows" }).map(row => {
-        const decoded = coerceLibraryCoreGeneratedSqliteQueryRow("preference_value_v1", row);
-        if (!decoded) throw new Error("Preference value row is invalid");
-        return decoded;
-      });
-      const rows = read(program.sql, [path]);
-      if (rows.length > 1) throw new Error("Preference selection has conflicting roots");
-      const prefix = rows[0]?.path.slice(0, 2);
-      const maximum = prefix === "a:" ? 513 : prefix === "o:" ? 4 : rows.length;
-      // Disjoint indexed ranges share one total budget, including an overflow sentinel.
-      if (prefix === "a:" || prefix === "o:") {
-        for (const physical of ["a:", "o:", "v:"]) for (const [lower, upper] of [[".", "/"], ["[", "\\"]]) {
-          const remaining = maximum - rows.length;
-          if (remaining > 0) rows.push(...read(program.variants.descendants.sql, [path, physical + path + lower, physical + path + upper, remaining]));
+      const pointRequests = request.paths.map(path => ({ queryId: "preference_value_v1" as const, schemaVersion: 1 as const,
+        path, generationId, sourceRevision }));
+      const selectionJson = JSON.stringify(request.paths.map(path => {
+        let node: unknown = null;
+        for (const key of [...path].reverse()) {
+          const parent = Object.create(null) as Record<string, unknown>;
+          Object.defineProperty(parent, key, { enumerable: true, value: node });
+          node = parent;
         }
-      }
-      const source = parseLibraryCoreFeedPageSourceV1({ generationId, projectionRevision: sourceRevision, transitionSequence: sourceRevision });
-      if (!source.ok) throw new Error(source.error);
-      return createLibraryCorePreferenceValueResponseV1(request, rows, source.value);
+        return node;
+      }));
+      const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.ranking_weight_scope_v1;
+      const selected = this.#database.exec({ sql: program.sql, bind: [selectionJson], rowMode: "object", returnValue: "resultRows" });
+      if (selected.length !== request.paths.length) throw new Error("Ranking weight selection is incomplete");
+      const values = selected.map((row, index) => {
+        const selection = coerceLibraryCoreGeneratedSqliteQueryRow("ranking_weight_scope_v1", row);
+        if (!selection || selection.ordinal !== index) throw new Error("Ranking weight selection is invalid");
+        const result = this.#readPreferenceValue(pointRequests[index]!, selection.path);
+        if (result.kind === "absent") return null;
+        if (result.kind !== "value") throw new Error("Ranking weight is not numeric");
+        const value = decodeLibraryCoreFractionalNumbersV1(libraryCorePreferenceNodesToValueV1(result.rows)._);
+        if (typeof value !== "number" || !Number.isFinite(value)) throw new Error("Ranking weight is not numeric");
+        return value;
+      });
+      const response = parseLibraryCoreRankingWeightScopeResponseV1({ queryId: request.queryId, schemaVersion: 1,
+        paths: request.paths, values, source: { generationId, projectionRevision: sourceRevision, transitionSequence: sourceRevision } }, request);
+      if (!response.ok) throw new Error(response.error);
+      return response.value;
     });
   }
 

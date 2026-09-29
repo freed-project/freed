@@ -758,6 +758,7 @@ pub const QUERY_IDS: &[&str] = &[
     "preference_value_v1",
     "preferences_snapshot_v1",
     "provider_media_page_v1",
+    "ranking_weight_scope_v1",
     "recovery_archive_page_v1",
     "recovery_intent_page_v1",
     "recovery_intent_review_v1",
@@ -882,6 +883,9 @@ pub const SQLITE_QUERY_PROGRAMS: &[SqliteQueryProgram] = &[
     SqliteQueryProgram { query_id: "preference_value_v1", maximum_scan_rows: 513, sql: "SELECT substr(path, 1, 2) || '$._' || substr(path, length(?1) + 3) AS path, value_type AS valueType, boolean_value AS booleanValue, integer_value AS integerValue, real_value AS realValue, text_value AS textValue, updated_at AS updatedAt FROM library_preferences WHERE path IN ('v:' || ?1, 'a:' || ?1, 'o:' || ?1) ORDER BY path COLLATE BINARY LIMIT 3;", reverse_sql: Some("SELECT fullkey FROM json_tree(?1) WHERE type = 'null' LIMIT 2;"), count_sql: "SELECT count(*) FROM library_preferences WHERE path IN ('v:' || ?1, 'a:' || ?1, 'o:' || ?1);", variants: &[
         SqliteQueryVariant { variant_id: "selection_path", sql: "SELECT fullkey FROM json_tree(?1) WHERE type = 'null' LIMIT 2;", reverse_sql: "SELECT fullkey FROM json_tree(?1) WHERE type = 'null' LIMIT 2;" },
         SqliteQueryVariant { variant_id: "descendants", sql: "SELECT substr(path, 1, 2) || '$._' || substr(path, length(?1) + 3) AS path, value_type AS valueType, boolean_value AS booleanValue, integer_value AS integerValue, real_value AS realValue, text_value AS textValue, updated_at AS updatedAt FROM library_preferences WHERE path >= ?2 COLLATE BINARY AND path < ?3 COLLATE BINARY ORDER BY path COLLATE BINARY LIMIT ?4;", reverse_sql: "SELECT substr(path, 1, 2) || '$._' || substr(path, length(?1) + 3) AS path, value_type AS valueType, boolean_value AS booleanValue, integer_value AS integerValue, real_value AS realValue, text_value AS textValue, updated_at AS updatedAt FROM library_preferences WHERE path >= ?2 COLLATE BINARY AND path < ?3 COLLATE BINARY ORDER BY path COLLATE BINARY LIMIT ?4;" },
+    ] },
+    SqliteQueryProgram { query_id: "ranking_weight_scope_v1", maximum_scan_rows: 65, sql: "SELECT CAST(selection.key AS INTEGER) AS ordinal, leaf.fullkey AS path FROM json_each(?1) AS selection, json_tree(selection.value) AS leaf WHERE leaf.type = 'null' ORDER BY ordinal LIMIT 65;", reverse_sql: None, count_sql: "SELECT json_array_length(?1);", variants: &[
+
     ] },
     SqliteQueryProgram { query_id: "provider_media_page_v1", maximum_scan_rows: 65, sql: "SELECT item.global_id AS globalId, item.platform, item.content_type AS contentType, item.published_at AS publishedAt, item.captured_at AS capturedAt, nullif(substr(item.author_id, 1, 1024), '') AS authorId, nullif(substr(item.author_display_name, 1, 512), '') AS authorDisplayName, nullif(substr(item.author_handle, 1, 256), '') AS authorHandle, substr(item.author_avatar_url, 1, 2048) AS authorAvatarUrl, substr(item.source_url, 1, 2048) AS sourceUrl, item.read_at AS readAt, item.saved, item.archived, item.liked, item.liked_at AS likedAt, item.liked_synced_at AS likedSyncedAt, substr(item.content_text, 1, 1500) AS contentText, substr(item.link_title, 1, 512) AS linkPreviewTitle, substr(item.location_name, 1, 512) AS locationName, item.engagement_likes AS engagementLikes, item.engagement_comments AS engagementComments, item.preserved_reading_time AS readingTimeMinutes, (SELECT json_group_array(source_url) FROM (SELECT media.source_url FROM library_feed_item_media AS media WHERE media.global_id = item.global_id ORDER BY media.ordinal LIMIT 8)) AS mediaUrlsJson, (SELECT json_group_array(media_type) FROM (SELECT media.media_type FROM library_feed_item_media AS media WHERE media.global_id = item.global_id ORDER BY media.ordinal LIMIT 8)) AS mediaTypesJson, (SELECT json_group_array(tag) FROM (SELECT item_tag.tag FROM library_feed_item_tags AS item_tag WHERE item_tag.global_id = item.global_id ORDER BY item_tag.tag COLLATE BINARY LIMIT 32)) AS tagsJson, (SELECT json_group_array(signal) FROM (SELECT score.signal FROM library_feed_item_signal_scores AS score WHERE score.global_id = item.global_id AND score.tagged = 1 ORDER BY score.signal COLLATE BINARY LIMIT 32)) AS contentSignalTagsJson, event.starts_at AS eventStartsAt, CAST(round(event.confidence * 10000.0) AS INTEGER) AS eventConfidenceBasisPoints, substr(item.link_url, 1, 2048) AS linkUrl, substr(item.fb_group_id, 1, 1024) AS fbGroupId, substr(item.fb_group_name, 1, 512) AS fbGroupName, substr(item.fb_group_url, 1, 2048) AS fbGroupUrl FROM library_feed_items AS item LEFT JOIN library_feed_item_events AS event ON event.global_id = item.global_id WHERE ((?1 = 'youtube' AND ?2 = 1 AND item.saved = 1 AND (instr(lower(COALESCE(item.source_url, '')), 'youtube.com/') > 0 OR instr(lower(COALESCE(item.source_url, '')), 'youtube-nocookie.com/') > 0 OR instr(lower(COALESCE(item.source_url, '')), 'youtu.be/') > 0 OR instr(lower(COALESCE(item.link_url, '')), 'youtube.com/') > 0 OR instr(lower(COALESCE(item.link_url, '')), 'youtube-nocookie.com/') > 0 OR instr(lower(COALESCE(item.link_url, '')), 'youtu.be/') > 0)) OR (item.platform = ?1 AND (?2 = 0 OR item.saved = 1))) AND item.hidden = 0 AND item.global_id > COALESCE(?3, '') COLLATE BINARY ORDER BY item.global_id COLLATE BINARY ASC LIMIT ?4;", reverse_sql: None, count_sql: "SELECT count(*) FROM library_feed_items AS item WHERE ((?1 = 'youtube' AND ?2 = 1 AND item.saved = 1 AND (instr(lower(COALESCE(item.source_url, '')), 'youtube.com/') > 0 OR instr(lower(COALESCE(item.source_url, '')), 'youtube-nocookie.com/') > 0 OR instr(lower(COALESCE(item.source_url, '')), 'youtu.be/') > 0 OR instr(lower(COALESCE(item.link_url, '')), 'youtube.com/') > 0 OR instr(lower(COALESCE(item.link_url, '')), 'youtube-nocookie.com/') > 0 OR instr(lower(COALESCE(item.link_url, '')), 'youtu.be/') > 0)) OR (item.platform = ?1 AND (?2 = 0 OR item.saved = 1))) AND item.hidden = 0;", variants: &[
 
@@ -1961,6 +1965,33 @@ pub const SQLITE_QUERY_ROW_MODELS: &[SqliteQueryRowModel] = &[
             minimum_integer: None,
             maximum_integer: None,
             enum_values: &["boolean", "integer", "null", "real", "text"],
+            integer_values: &[],
+        },
+        ],
+    },
+    SqliteQueryRowModel {
+        query_id: "ranking_weight_scope_v1",
+        fields: &[
+        SqliteQueryRowField {
+            name: "ordinal",
+            kind: SqliteQueryRowFieldKind::Integer,
+            nullable: false,
+            minimum_utf8_bytes: None,
+            maximum_utf8_bytes: None,
+            minimum_integer: Some(0),
+            maximum_integer: Some(63),
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "path",
+            kind: SqliteQueryRowFieldKind::Text,
+            nullable: false,
+            minimum_utf8_bytes: Some(1),
+            maximum_utf8_bytes: Some(32768),
+            minimum_integer: None,
+            maximum_integer: None,
+            enum_values: &[],
             integer_values: &[],
         },
         ],
