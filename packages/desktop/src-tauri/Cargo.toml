@@ -10,13 +10,13 @@ name = "freed_desktop_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "=2.6.3", features = [] }
+tauri-build = { version = "=2.7.0", features = [] }
 
 [dependencies]
 freed-library-core = { path = "../../library-core-native" }
 # Decode bounded immutable checkpoint pages during native handoff verification.
 flate2 = "1"
-tauri = { version = "=2.11.5", features = ["macos-private-api", "tray-icon", "image-png"] }
+tauri = { version = "=2.11.6", features = ["macos-private-api", "tray-icon", "image-png"] }
 tauri-plugin-shell = "2"
 tauri-plugin-updater = { version = "2", features = ["rustls-tls"] }
 tauri-plugin-process = "2"
@@ -24,7 +24,7 @@ tauri-plugin-store = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-log = "2"
 tauri-plugin-global-shortcut = "=2.3.2"
-tauri-plugin-clipboard-manager = "=2.3.2"
+tauri-plugin-clipboard-manager = "=2.3.3"
 log = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -84,7 +84,7 @@ objc2-foundation = { version = "0.3", default-features = false, features = ["std
 objc2-web-kit = { version = "0.3", features = ["WKWebViewConfiguration"] }
 
 [dev-dependencies]
-tauri = { version = "=2.11.5", features = ["test"] }
+tauri = { version = "=2.11.6", features = ["test"] }
 
 [features]
 default = ["custom-protocol"]
