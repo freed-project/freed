@@ -1446,6 +1446,7 @@ export const LIBRARY_CORE_QUERY_IDS = [
   "person_timeline_v1",
   "persons_graph_v1",
   "preference_value_v1",
+  "preferences_revision_v1",
   "preferences_snapshot_v1",
   "provider_media_page_v1",
   "ranking_weight_scope_v1",
@@ -1742,6 +1743,11 @@ export const LIBRARY_CORE_SQLITE_QUERY_PROGRAMS = {
     "maximumScanRows": 65,
     "countSql": "SELECT 1;",
     "sql": "SELECT id AS accountId FROM library_accounts INDEXED BY library_accounts_person WHERE person_id = ?1 COLLATE BINARY AND id > ?2 COLLATE BINARY ORDER BY id COLLATE BINARY LIMIT ?3;"
+  },
+  "preferences_revision_v1": {
+    "maximumScanRows": 1,
+    "countSql": "SELECT 1;",
+    "sql": "SELECT COALESCE((SELECT revision FROM library_invalidations WHERE topic = 'preferences' ORDER BY revision DESC LIMIT 1), 0) AS revision;"
   }
 } as const;
 export type LibraryCoreSqliteQueryProgramId = keyof typeof LIBRARY_CORE_SQLITE_QUERY_PROGRAMS;
@@ -2794,6 +2800,19 @@ export const LIBRARY_CORE_SQLITE_QUERY_ROW_MODELS = {
       "minimumInteger": null,
       "minimumUtf8Bytes": 1,
       "name": "path",
+      "nullable": false
+    }
+  ],
+  "preferences_revision_v1": [
+    {
+      "enumValues": [],
+      "integerValues": [],
+      "kind": "integer",
+      "maximumInteger": 9007199254740991,
+      "maximumUtf8Bytes": null,
+      "minimumInteger": 0,
+      "minimumUtf8Bytes": null,
+      "name": "revision",
       "nullable": false
     }
   ]

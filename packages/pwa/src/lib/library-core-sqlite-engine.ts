@@ -1,3 +1,4 @@
+import { parseLibraryCorePreferencesRevisionRequestV1, parseLibraryCorePreferencesRevisionResponseV1, type LibraryCorePreferencesRevisionRequestV1, type LibraryCorePreferencesRevisionResponseV1 } from "@freed/shared/library-core";
 import { parseLibraryCoreRankingWeightScopeRequestV1, parseLibraryCoreRankingWeightScopeResponseV1, libraryCorePreferenceNodesToValueV1, type LibraryCoreRankingWeightScopeRequestV1, type LibraryCoreRankingWeightScopeResponseV1 } from "@freed/shared/library-core";
 import { createLibraryCorePreferenceValueResponseV1, libraryCorePreferenceSelectionJsonV1, parseLibraryCorePreferenceValueRequestV1, type LibraryCorePreferenceValueRequestV1, type LibraryCorePreferenceValueResponseV1, type LibraryCorePreferenceNodeV1 } from "@freed/shared/library-core";
 import { sameLibraryCoreRecoveryPreferenceScopeV1 } from "@freed/shared/library-core";
@@ -8275,6 +8276,8 @@ export class PwaLibraryCoreSqliteEngine {
         return this.#queryRankingWeightScope(input) as LibraryCoreSqliteQueryResponseFor<T>;
       case "preference_value_v1":
         return this.#queryPreferenceValue(input) as LibraryCoreSqliteQueryResponseFor<T>;
+      case "preferences_revision_v1":
+        return this.#queryPreferencesRevision(input) as LibraryCoreSqliteQueryResponseFor<T>;
       case "preferences_snapshot_v1":
         return this.#queryPreferencesSnapshot(
           input,
@@ -8699,6 +8702,22 @@ export class PwaLibraryCoreSqliteEngine {
       });
       const response = parseLibraryCoreRankingWeightScopeResponseV1({ queryId: request.queryId, schemaVersion: 1,
         paths: request.paths, values, source: { generationId, projectionRevision: sourceRevision, transitionSequence: sourceRevision } }, request);
+      if (!response.ok) throw new Error(response.error);
+      return response.value;
+    });
+  }
+
+  #queryPreferencesRevision(input: LibraryCorePreferencesRevisionRequestV1): LibraryCorePreferencesRevisionResponseV1 {
+    const parsed = parseLibraryCorePreferencesRevisionRequestV1(input);
+    if (!parsed.ok) throw new TypeError(parsed.error);
+    return this.#database.transaction(() => {
+      const { generationId, sourceRevision } = this.#querySource();
+      const rows = this.#database.exec({ sql: LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.preferences_revision_v1.sql, rowMode: "object", returnValue: "resultRows" });
+      if (rows.length !== 1) throw new Error("Preference revision row is missing");
+      const row = coerceLibraryCoreGeneratedSqliteQueryRow("preferences_revision_v1", rows[0]);
+      if (!row) throw new Error("Preference revision row is invalid");
+      const response = parseLibraryCorePreferencesRevisionResponseV1({ queryId: "preferences_revision_v1", schemaVersion: 1,
+        revision: row.revision, source: { generationId, projectionRevision: sourceRevision, transitionSequence: sourceRevision } });
       if (!response.ok) throw new Error(response.error);
       return response.value;
     });

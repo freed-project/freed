@@ -786,14 +786,7 @@ function App() {
         };
       },
     });
-    startPriorityIndexer({
-      subscribeToWeightChanges: (callback) =>
-        useDesktopStore.subscribe((state, previous) => {
-          if (state.preferences.weights !== previous.preferences.weights) {
-            callback();
-          }
-        }),
-    });
+    startPriorityIndexer();
     return () => {
       stopRssPoller();
       stopProviderSyncScheduler();

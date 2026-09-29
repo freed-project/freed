@@ -276,5 +276,32 @@
       null,
       null
     ]
-  }
+  },
+  "preferenceRevisionSteps": [
+    {
+      "sql": "",
+      "revision": 0,
+      "generationId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "sql": "INSERT INTO library_invalidations VALUES (6,0,'preferences',NULL,0);",
+      "revision": 6,
+      "generationId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "sql": "INSERT INTO library_invalidations VALUES (7,0,'feed_item','item-1',0);",
+      "revision": 6,
+      "generationId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "sql": "INSERT INTO library_invalidations VALUES (8,0,'preferences',NULL,0);",
+      "revision": null,
+      "generationId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "sql": "DELETE FROM library_invalidations WHERE revision=8; DELETE FROM library_invalidations; UPDATE library_materialization_generation SET generation_id='bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';",
+      "revision": 0,
+      "generationId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  ]
 }

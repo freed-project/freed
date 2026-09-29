@@ -1467,3 +1467,10 @@ Desktop uses it without retaining a full weight map for the pass. Tests cover
 large candidate scopes, long literal IDs, stale chunks, numeric validation and
 preference changes during an in-flight batch. Startup still uses the global
 preference snapshot, and installed Mac acceptance remains incomplete.
+
+Ranking invalidation now compares a compact, indexed preference revision and
+materialization generation instead of the renderer's full weight-map identity.
+Native and PWA expose the same bounded marker. Preference changes during a pass
+and checkpoint replacement request another pass; item-only writes do not change
+the marker. Failed completion reads remain retryable. Startup's whole-preference
+snapshot limit still needs removal.

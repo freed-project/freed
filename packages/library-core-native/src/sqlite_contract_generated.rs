@@ -756,6 +756,7 @@ pub const QUERY_IDS: &[&str] = &[
     "person_timeline_v1",
     "persons_graph_v1",
     "preference_value_v1",
+    "preferences_revision_v1",
     "preferences_snapshot_v1",
     "provider_media_page_v1",
     "ranking_weight_scope_v1",
@@ -924,6 +925,9 @@ pub const SQLITE_QUERY_PROGRAMS: &[SqliteQueryProgram] = &[
 
     ] },
     SqliteQueryProgram { query_id: "person_account_page_v1", maximum_scan_rows: 65, sql: "SELECT id AS accountId FROM library_accounts INDEXED BY library_accounts_person WHERE person_id = ?1 COLLATE BINARY AND id > ?2 COLLATE BINARY ORDER BY id COLLATE BINARY LIMIT ?3;", reverse_sql: None, count_sql: "SELECT 1;", variants: &[
+
+    ] },
+    SqliteQueryProgram { query_id: "preferences_revision_v1", maximum_scan_rows: 1, sql: "SELECT COALESCE((SELECT revision FROM library_invalidations WHERE topic = 'preferences' ORDER BY revision DESC LIMIT 1), 0) AS revision;", reverse_sql: None, count_sql: "SELECT 1;", variants: &[
 
     ] },
 ];
@@ -1991,6 +1995,22 @@ pub const SQLITE_QUERY_ROW_MODELS: &[SqliteQueryRowModel] = &[
             maximum_utf8_bytes: Some(32768),
             minimum_integer: None,
             maximum_integer: None,
+            enum_values: &[],
+            integer_values: &[],
+        },
+        ],
+    },
+    SqliteQueryRowModel {
+        query_id: "preferences_revision_v1",
+        fields: &[
+        SqliteQueryRowField {
+            name: "revision",
+            kind: SqliteQueryRowFieldKind::Integer,
+            nullable: false,
+            minimum_utf8_bytes: None,
+            maximum_utf8_bytes: None,
+            minimum_integer: Some(0),
+            maximum_integer: Some(9007199254740991),
             enum_values: &[],
             integer_values: &[],
         },

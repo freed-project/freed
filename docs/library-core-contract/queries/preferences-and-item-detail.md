@@ -46,10 +46,17 @@ The shared adapter partitions requests by both 64-key and 96 KiB limits, checks
 every result against the candidate source, and retains only relevant weight
 entries in own-key maps. The existing ranking formula and absent-value defaults
 remain. A stale chunk fails before any ranking write, and preference invalidations
-received during a pass coalesce into a fresh pass. Startup still loads the complete
-bounded preference snapshot, and the current weight-change subscription still
-uses that runtime state. Those remaining ownership changes must precede removal
-of startup's full preference map.
+received during a pass coalesce into a fresh pass.
+
+`preferences_revision_v1` returns the latest preference invalidation revision,
+using the existing `(topic, revision)` index, plus the materialization source.
+Its single-row result does not grow with the preference collection. Consumers
+compare both generation and preference revision because checkpoint import clears
+invalidations. Item-only writes leave the marker unchanged. A revision beyond the
+canonical source is invalid. Primary ranking checks this marker before each batch
+and after its completion reload, and retries failed reads. It no longer subscribes
+to the renderer's full weight-map identity. Startup still loads the complete
+bounded preference snapshot; removing that ownership remains unfinished.
 
 `item_detail_v1` is a metadata point query. It reuses the compact feed-card
 projection and returns only typed locators that say whether each reader body is

@@ -4,8 +4,10 @@ const mocks = vi.hoisted(() => ({
   backfill: vi.fn(),
   reload: vi.fn(),
   librarySubscriber: null as null | ((state: unknown, event: { source: string }) => void),
-  weightSubscriber: null as null | (() => void),
+  query: vi.fn(),
 }));
+
+vi.mock("./library-core-normalized-query-client", () => ({ queryNormalizedLibrary: mocks.query }));
 
 vi.mock("./library-client", () => ({
   backfillLibraryPriorities: mocks.backfill,
@@ -35,20 +37,25 @@ vi.mock("@freed/ui/lib/factory-reset", () => ({
 import { start, stop, stopAndDrain } from "./priority-indexer";
 import { pauseDesktopOperationsForHandoff } from "./factory-reset-guard";
 
+function revision(value: number, generationId = "a".repeat(64)) {
+  return { queryId: "preferences_revision_v1", schemaVersion: 1, revision: value,
+    source: { generationId, projectionRevision: 100, transitionSequence: 100 } };
+}
+
 describe("Primary priority indexer", () => {
   it("requires an owned pause and permits restarting after a resumable drain", async () => {
     await expect(stopAndDrain({ resumable: true })).rejects.toThrow("requires the handoff pause");
     const pause = pauseDesktopOperationsForHandoff();
     try {
       await stopAndDrain({ resumable: true });
-      start({});
+      start();
       await vi.advanceTimersByTimeAsync(30_000);
       expect(mocks.backfill).not.toHaveBeenCalled();
     } finally {
       pause.resume();
     }
     mocks.backfill.mockResolvedValue({ remaining: 0, updated: 1 });
-    start({});
+    start();
     await vi.advanceTimersByTimeAsync(30_000);
     expect(mocks.backfill).toHaveBeenCalledOnce();
   });
@@ -59,7 +66,8 @@ describe("Primary priority indexer", () => {
     mocks.reload.mockReset();
     mocks.reload.mockResolvedValue({});
     mocks.librarySubscriber = null;
-    mocks.weightSubscriber = null;
+    mocks.query.mockReset();
+    mocks.query.mockResolvedValue(revision(0));
   });
 
   afterEach(() => {
@@ -77,15 +85,10 @@ describe("Primary priority indexer", () => {
         updated: 1,
       });
 
-    start({
-      subscribeToWeightChanges: (callback) => {
-        mocks.weightSubscriber = callback;
-        return vi.fn();
-      },
-    });
+    start();
 
     await vi.advanceTimersByTimeAsync(30_000);
-    mocks.weightSubscriber?.();
+    mocks.librarySubscriber?.(null, { source: "preferences_patch" });
     await vi.advanceTimersByTimeAsync(500);
     await vi.advanceTimersByTimeAsync(500);
 
@@ -114,9 +117,9 @@ describe("Primary priority indexer", () => {
     let finish!: (value: { remaining: number; updated: number }) => void;
     mocks.backfill.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }))
       .mockResolvedValue({ remaining: 0, updated: 1 });
-    start({ subscribeToWeightChanges: callback => { mocks.weightSubscriber = callback; return vi.fn(); } });
+    start();
     await vi.advanceTimersByTimeAsync(30_000);
-    mocks.weightSubscriber?.(); mocks.weightSubscriber?.();
+    mocks.librarySubscriber?.(null, { source: "preferences_patch" }); mocks.librarySubscriber?.(null, { source: "preferences_patch" });
     finish({ remaining: 0, updated: 1 });
     await vi.advanceTimersByTimeAsync(1_000);
     expect(mocks.backfill).toHaveBeenCalledTimes(2);
@@ -126,7 +129,7 @@ describe("Primary priority indexer", () => {
 
   it("retries a stale read without marking the pass complete", async () => {
     mocks.backfill.mockRejectedValueOnce(new Error("CURSOR_STALE")).mockResolvedValue({ remaining: 0, updated: 1 });
-    start({});
+    start();
     await vi.advanceTimersByTimeAsync(30_000);
     expect(mocks.reload).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(500);
@@ -145,7 +148,7 @@ describe("Primary priority indexer", () => {
         updated: 1,
       });
 
-    start({});
+    start();
     await vi.advanceTimersByTimeAsync(30_000);
     mocks.librarySubscriber?.(null, { source: "item_patch" });
     mocks.librarySubscriber?.(null, { source: "state_update" });
@@ -160,4 +163,41 @@ describe("Primary priority indexer", () => {
     );
     expect(mocks.reload).toHaveBeenCalledTimes(2);
   });
+  it("detects durable preference changes without a renderer map subscription", async () => {
+    mocks.backfill.mockResolvedValue({ remaining: 0, updated: 1 });
+    mocks.query.mockResolvedValueOnce(revision(0)).mockResolvedValue(revision(1));
+    start();
+    await vi.advanceTimersByTimeAsync(31_000);
+    expect(mocks.backfill).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not loop on its own reload or item-only revisions", async () => {
+    mocks.backfill.mockResolvedValue({ remaining: 0, updated: 0 });
+    mocks.reload.mockImplementation(async () => {
+      mocks.librarySubscriber?.(null, { source: "state_update" });
+      mocks.librarySubscriber?.(null, { source: "item_patch" });
+    });
+    start();
+    await vi.advanceTimersByTimeAsync(35_000);
+    expect(mocks.backfill).toHaveBeenCalledOnce();
+  });
+
+  it("reruns after a checkpoint generation replacement with the same revision", async () => {
+    mocks.backfill.mockResolvedValue({ remaining: 0, updated: 1 });
+    mocks.query.mockResolvedValueOnce(revision(0)).mockResolvedValue(revision(0, "b".repeat(64)));
+    start();
+    await vi.advanceTimersByTimeAsync(31_000);
+    expect(mocks.backfill).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries a failed completion marker instead of silently completing", async () => {
+    mocks.backfill.mockResolvedValue({ remaining: 0, updated: 1 });
+    mocks.query.mockResolvedValueOnce(revision(0)).mockRejectedValueOnce(new Error("marker unavailable"))
+      .mockResolvedValue(revision(0));
+    start();
+    await vi.advanceTimersByTimeAsync(31_000);
+    expect(mocks.backfill).toHaveBeenCalledTimes(2);
+    expect(mocks.backfill.mock.calls[1]).toEqual(mocks.backfill.mock.calls[0]);
+  });
+
 });

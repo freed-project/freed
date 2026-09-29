@@ -313,6 +313,20 @@ struct RankingWeightSelection {
     path: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedPreferencesRevisionResponseV1 {
+    pub query_id: String,
+    pub schema_version: u32,
+    pub revision: i64,
+    pub source: NormalizedFeedPageSourceV1,
+}
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PreferencesRevisionRow {
+    revision: i64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedPreferencesSnapshotRequestV1 {
@@ -631,6 +645,7 @@ pub enum NormalizedQueryRequestV1 {
     PreferenceValue(NormalizedPreferenceValueRequestV1),
     RankingWeightScope(NormalizedRankingWeightScopeRequestV1),
     PreferencesSnapshot(NormalizedPreferencesSnapshotRequestV1),
+    PreferencesRevision(NormalizedPreferencesSnapshotRequestV1),
     RssFeedDetail(NormalizedRssFeedDetailRequestV1),
     RssFeedPage(NormalizedRssFeedPageRequestV1),
     SavedAnalytics(NormalizedSavedAnalyticsRequestV2),
@@ -1610,6 +1625,7 @@ pub enum NormalizedQueryResponseV1 {
     PreferenceValue(NormalizedPreferenceValueResponseV1),
     RankingWeightScope(NormalizedRankingWeightScopeResponseV1),
     PreferencesSnapshot(NormalizedPreferencesSnapshotResponseV1),
+    PreferencesRevision(NormalizedPreferencesRevisionResponseV1),
     RssFeedDetail(NormalizedRssFeedDetailResponseV1),
     RssFeedPage(NormalizedRssFeedPageResponseV1),
     SavedAnalytics(NormalizedSavedAnalyticsResponseV2),
@@ -5995,6 +6011,40 @@ fn query_ranking_weight_scope(
     Ok(response)
 }
 
+// The topic index makes unrelated item invalidations irrelevant to this lookup.
+fn query_preferences_revision(
+    connection: &mut Connection,
+    request: NormalizedPreferencesSnapshotRequestV1,
+) -> Result<NormalizedPreferencesRevisionResponseV1, NormalizedSqliteError> {
+    if request.schema_version != 1 {
+        return Err(invalid("preference revision request is invalid"));
+    }
+    let program = SQLITE_QUERY_PROGRAMS
+        .iter()
+        .find(|p| p.query_id == "preferences_revision_v1")
+        .ok_or(invalid("preference revision program is missing"))?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    let (generation_id, source_revision) = query_source(&transaction)?;
+    let row: PreferencesRevisionRow = transaction.query_row(program.sql, [], |row| {
+        decode_generated_query_row(row, "preferences_revision_v1")
+    })?;
+    if row.revision > source_revision {
+        return Err(invalid("preference revision source is inconsistent"));
+    }
+    let response = NormalizedPreferencesRevisionResponseV1 {
+        query_id: "preferences_revision_v1".into(),
+        schema_version: 1,
+        revision: row.revision,
+        source: NormalizedFeedPageSourceV1 {
+            generation_id,
+            projection_revision: source_revision,
+            transition_sequence: source_revision,
+        },
+    };
+    transaction.commit()?;
+    Ok(response)
+}
+
 fn query_preferences_snapshot(
     connection: &mut Connection,
     request: NormalizedPreferencesSnapshotRequestV1,
@@ -7966,6 +8016,11 @@ pub fn query_normalized_v1(
                 query_preference_value(connection, request)?,
             ))
         }
+        NormalizedQueryRequestV1::PreferencesRevision(request) => {
+            Ok(NormalizedQueryResponseV1::PreferencesRevision(
+                query_preferences_revision(connection, request)?,
+            ))
+        }
         NormalizedQueryRequestV1::PreferencesSnapshot(request) => {
             Ok(NormalizedQueryResponseV1::PreferencesSnapshot(
                 query_preferences_snapshot(connection, request)?,
@@ -8120,6 +8175,9 @@ pub fn query_normalized_json_v1(
         "preference_value_v1" => {
             decode_request!(NormalizedPreferenceValueRequestV1, PreferenceValue)
         }
+        "preferences_revision_v1" => {
+            decode_request!(NormalizedPreferencesSnapshotRequestV1, PreferencesRevision)
+        }
         "preferences_snapshot_v1" => {
             decode_request!(NormalizedPreferencesSnapshotRequestV1, PreferencesSnapshot)
         }
@@ -8196,6 +8254,7 @@ pub fn query_normalized_json_v1(
         NormalizedQueryResponseV1::PersonsGraph(response) => encode_response!(response),
         NormalizedQueryResponseV1::RankingWeightScope(response) => encode_response!(response),
         NormalizedQueryResponseV1::PreferenceValue(response) => encode_response!(response),
+        NormalizedQueryResponseV1::PreferencesRevision(response) => encode_response!(response),
         NormalizedQueryResponseV1::PreferencesSnapshot(response) => encode_response!(response),
         NormalizedQueryResponseV1::RssFeedDetail(response) => encode_response!(response),
         NormalizedQueryResponseV1::RssFeedPage(response) => encode_response!(response),
@@ -11799,5 +11858,39 @@ mod tests {
                 "preference array is incomplete"
             ))
         ));
+    }
+    #[test]
+    fn preference_revision_ignores_item_changes_and_tracks_generation_replacement() {
+        let vector: serde_json::Value = serde_json::from_str(include_str!(
+            "../../shared/src/library-core/preference-value-query-vector-v1.json"
+        ))
+        .unwrap();
+        let mut connection = Connection::open_in_memory().unwrap();
+        install_normalized_schema_v1(&connection).unwrap();
+        connection
+            .execute_batch(vector["setupSql"].as_str().unwrap())
+            .unwrap();
+        for step in vector["preferenceRevisionSteps"].as_array().unwrap() {
+            connection
+                .execute_batch(step["sql"].as_str().unwrap())
+                .unwrap();
+            let result = query_normalized_json_v1(
+                &mut connection,
+                serde_json::json!({"queryId":"preferences_revision_v1","schemaVersion":1}),
+            );
+            if step["revision"].is_null() {
+                assert!(matches!(
+                    result,
+                    Err(NormalizedSqliteError::InvalidRequest(
+                        "preference revision source is inconsistent"
+                    ))
+                ));
+            } else {
+                let response = result.unwrap();
+                assert_eq!(response["revision"], step["revision"]);
+                assert_eq!(response["source"]["generationId"], step["generationId"]);
+                assert_eq!(response["source"]["projectionRevision"], 7);
+            }
+        }
     }
 }

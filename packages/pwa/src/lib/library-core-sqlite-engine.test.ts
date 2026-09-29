@@ -100,6 +100,19 @@ describe("PWA Library Core SQLite engine", () => {
     return value;
   }
 
+  // Tier 1: priority writes cannot impersonate preference changes; imports change the marker generation.
+  it("reads preference revisions independently of item changes and generation replacement", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion);
+    engine.initialize(); database.exec(preferenceValueVector.setupSql);
+    for (const step of preferenceValueVector.preferenceRevisionSteps) {
+      if (step.sql) database.exec(step.sql);
+      const read = () => engine.query({ queryId: "preferences_revision_v1", schemaVersion: 1 });
+      if (step.revision === null) expect(read).toThrow("source is inconsistent");
+      else expect(read()).toEqual({ queryId: "preferences_revision_v1", schemaVersion: 1,
+        revision: step.revision, source: { generationId: step.generationId, projectionRevision: 7, transitionSequence: 7 } });
+    }
+  });
+
   // Tier 1: identical native/browser SQL must read selected values beyond global snapshot bounds.
   it("reads scoped preference values beyond the whole-tree limit", () => {
     const engine = new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion);
