@@ -1,3 +1,4 @@
+import { ConsumerRecoveryPreferenceEditor } from "./ConsumerRecoveryPreferenceEditor";
 import { ConsumerRecoveryReachOutEditor } from "./ConsumerRecoveryReachOutEditor";
 import { ConsumerRecoveryAccountEditor } from "./ConsumerRecoveryAccountEditor";
 import { ConsumerRecoveryFriendEditor } from "./ConsumerRecoveryFriendEditor";
@@ -234,6 +235,10 @@ export function ConsumerRecoveryReview({ recoveryId: currentRecoveryId = null, r
         {!readOnly && !replacement && review.outcome.state !== "confirmed_accepted" && review.rows.length > 0 && review.rows.every((row) => row.operationType === "rss_feed_upsert") && (
           editingOriginal ? <ConsumerRecoveryRssUpsertEditor key={review.transactionDigest} review={review} onReplacement={setReplacement} onMutating={setApplying} />
             : <button type="button" className="btn-secondary mt-2 rounded-lg px-3 py-1.5 text-xs" disabled={busy || applying} onClick={() => setEditingOriginal(true)}>Review subscription settings</button>
+        )}
+        {!readOnly && !replacement && review.outcome.state !== "confirmed_accepted" && review.rows.length > 0 && review.rows.every(row => row.operationType === "preferences_leaf_assignment") && (
+          editingOriginal ? <ConsumerRecoveryPreferenceEditor key={review.transactionDigest} review={review} onReplacement={setReplacement} onMutating={setApplying} />
+            : <button type="button" className="btn-secondary mt-2 rounded-lg px-3 py-1.5 text-xs" disabled={busy || applying} onClick={() => setEditingOriginal(true)}>Review preferences</button>
         )}
         {!readOnly && !replacement && review.outcome.state !== "confirmed_accepted" && review.rows.length > 0 && review.rows.every(row => row.operationType === "person_reach_out_append") && (
           editingOriginal ? <ConsumerRecoveryReachOutEditor key={review.transactionDigest} review={review} onReplacement={setReplacement} onMutating={setApplying} />

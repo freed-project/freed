@@ -1312,7 +1312,7 @@ and maximum legal detail coverage remain separate requirements.
 Preference recovery now enforces the original object assignment paths inside
 native and browser write transactions. Added, dropped or collapsed object paths
 refuse before intent writes, while durable replacement receipts remain available
-on retry. The preference editor and historical import coverage remain unfinished.
+on retry. Historical import coverage remains unfinished.
 
 
 Native fresh preference writes now use the generated field policy, with shared
@@ -1322,14 +1322,20 @@ signature inspection remains separate. Finite fractional weights now validate an
 read consistently on both platforms, using the existing binary64 wire encoding.
 Stored preference nodes and signed archive bytes remain unchanged. Recovery treats
 encoded numbers as scalar assignments, including fractional-to-integer changes.
-The preference recovery editor and historical canonical import coverage remain
-unfinished.
+Historical canonical import coverage remains unfinished.
 
 Preference recovery now has shared read-only comparison context. Both platform
 loaders preserve member order and compare exact assignment paths against one
 source-fenced snapshot, distinguishing stored settings from defaults. Arrays
 remain whole assignments and empty groups remain in the original patch. The
-preference form is not yet connected to the new signing adapters. These adapters
+Desktop and PWA Settings forms now connect this context to signing adapters. They
 retain every ordered patch, snapshot inputs before asynchronous work, and reuse
 the normal preference member builders. The PWA checks original assignment scope
 before signing and retains the exact request after an ambiguous response.
+
+The preference recovery form requires review of every setting and explicit
+confirmation. It compares archived and current values, preserves whole-array
+assignments and empty groups, and clears confirmation whenever a value changes.
+After signing, the form locks its inputs and retries the same replacement after
+an ambiguous response. Focused platform tests and the Desktop browser workflow
+pass. Installed Mac acceptance and full multi-device convergence remain pending.

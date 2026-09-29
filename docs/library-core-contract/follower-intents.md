@@ -710,7 +710,7 @@ reopening checks the durable link. Native or worker source and enrollment checks
 own admission. PWA preparation additionally reads each selected Person at the
 reviewed source before key access. Its action retains the finalized transaction
 across retries without rerunning queries or signing after an ambiguous commit.
-Complete Friend recovery uses the separate two-step Person and account editor. Preference editor recovery remains required.
+Complete Friend recovery uses the separate two-step Person and account editor. Preference recovery uses its own complete-transaction editor.
 
 ### Person deletion recovery
 
@@ -853,7 +853,7 @@ become independent recovery targets. This check follows durable replacement
 lookup and precedes intent storage. Exact retry therefore retains the original
 receipt even when new replacement bytes would fail admission.
 
-The preference recovery editor remains unfinished. Matching assignment paths
+The preference recovery editor requires explicit review and confirmation. Matching assignment paths
 does not replace payload validation, current-value review or provider behavior
 review for settings that affect capture. Historical canonical import coverage
 remains part of this work.
@@ -902,3 +902,11 @@ for response-loss retry. Native and worker write transactions remain responsible
 for original signature checks and atomic intent, counter and replacement linkage.
 These adapters do not use ordinary intent enqueue. Fractional-number conversion
 preserves literal map keys such as `__proto__` as own data properties.
+
+Desktop and PWA Settings expose the same preference form. It visits each original
+assignment in order, compares archived and current values, and validates revised
+wire patches without changing their assignment paths. Arrays remain whole values;
+empty object groups preserve their non-replacement semantics. Every change clears
+confirmation. Once signing starts, inputs lock and response-loss retry retains the
+same prepared action. Closing a pending review cancels its reads. The form never
+loads URLs from preference values or sends provider requests.

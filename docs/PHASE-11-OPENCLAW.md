@@ -336,11 +336,11 @@ continues to fail closed until its service-account named pipe and inherited
 handle contract is complete.
 
 `import-checkpoint` installs the pinned logical source and returns its native
-receipt. The explicit `promote-writer` command requires that exact source control
-pointer and revision, the installation witness, and a fixed request timestamp.
-It retains those inputs before preparing a signed successor epoch. Recovery
-reuses that certificate and verifies the complete committed checkpoint. It
-never adopts an old local database as the cloud head.
+receipt. `promote-writer` now refuses before local or cloud activity with
+`cooperative_handoff_required`. The retired unilateral takeover cannot coexist
+with cooperative Primary fencing. Headless promotion must adopt predecessor-signed
+authorization and verified target activation in its separate delivery. Existing
+private promotion requests remain preserved as recovery evidence.
 
 ### Secrets
 
@@ -603,7 +603,7 @@ review before implementation.
 | 11.4  | Complete    | Add the headless service supervisor, explicit role config, and fail-closed startup                                                                                                                                                                                                                                                                                                                                                 |
 | 11.5 | In Progress | macOS Keychain and Linux versioned sealed-file custody share the existing Drive-only PKCE flow. Linux binds its separate mounted wrapping key and record directory through admitted configuration. Linux system-unit startup and shutdown are proven with synthetic credentials. Complete live account acceptance and the Windows vault adapter. |
 | 11.6  | In Progress | Open final normalized SQLite behind the descriptor-bound sidecar and provide generated bounded checkpoint, atomic pinned export begin, registered query, Primary signing, canonical commit, authority-signed follower enrollment, follower-intent admission, actor state, and result export commands. The installed service now composes one bounded provider-neutral enrollment, intent, and result pass on the existing inbound hook when a transport is injected. The default Drive transport is integrated with authority checks, bounded actor fairness, and staged intent recovery.              |
-| 11.7  | In Progress | Apply exact writer promotion through the generated native sidecar command and bind the shared 15-second revision plus 60-second inbound schedule to native actor and checkpoint identity. The installed macOS service now starts and stops that scheduler with immutable Drive checkpoint publication and durable exact control receipts. Explicit import and promotion now retain exact retry input, verify source and target content, and recheck cloud control before admission. Compiled Linux synthetic proof covers a killed prepared sidecar, lost control response, and replay. Live provider transfer acceptance remains separate.                      |
+| 11.7  | In Progress | Apply exact writer promotion through the generated native sidecar command and bind the shared 15-second revision plus 60-second inbound schedule to native actor and checkpoint identity. The installed macOS service now starts and stops that scheduler with immutable Drive checkpoint publication and durable exact control receipts. Checkpoint import retains exact retry input and verifies content. Unilateral promotion is retired and refuses before activity; cooperative headless promotion and live provider transfer acceptance remain separate.                      |
 | 11.8  | Complete    | Prove actor capability certificates and the frozen transition policy in native SQLite. Phase 6 carries the same proof into PWA SQLite before activation.                                                                                                                                                                                                                                                                           |
 | 11.9  | Complete    | Apply authority-signed actor retirement atomically, return exact replay receipts, and verify the normalized retirement record during native and PWA checkpoint activation                                                                                                                                                                                                                                                          |
 | 11.10 | In Progress | Bind generated local actor protocol 2 to a private macOS and Linux Unix socket with bounded frames, connections, rate, timeout, exact replay, native signed query and intent admission, owned cleanup, and Primary fencing. Complete the Windows service-account named-pipe binding with task 11.14.                                                                                                                               |

@@ -30,7 +30,10 @@ describe("headless checkpoint bootstrap admission", () => {
     });
     const request = { ...input, manifest };
     const signal = new AbortController().signal;
-    const ports = createNodeLibraryServicePorts();
+    // File identity/size tests use real files. ACL backend admission is a
+    // separate contract; inject its result and prove refusals propagate.
+    const assertNoExtendedAcl = vi.fn(async () => {});
+    const ports = { ...createNodeLibraryServicePorts(), aclProof: { assertNoExtendedAcl } };
     try {
       await mkdir(path.join(root, "objects"), { mode: 0o700 });
       await writeFile(path.join(root, "request.json"), JSON.stringify(request), { mode: 0o600 });
@@ -42,6 +45,9 @@ describe("headless checkpoint bootstrap admission", () => {
       );
       try {
         expect(await source.adapter.readImmutable(manifest)).toEqual(Buffer.from("abc"));
+        expect(assertNoExtendedAcl).toHaveBeenCalled();
+        assertNoExtendedAcl.mockRejectedValueOnce(new Error("fixture ACL refusal"));
+        await expect(source.adapter.readImmutable(manifest)).rejects.toThrow("fixture ACL refusal");
         await expect(source.adapter.readImmutable({
           ...manifest, descriptor: { ...manifest.descriptor, byteLength: 4 * 1024 * 1024 + 1 },
         })).rejects.toMatchObject({ code: "config_invalid" });

@@ -1,3 +1,4 @@
+import { PwaRecoveryPreferenceEditor } from "./PwaRecoveryPreferenceEditor";
 import { PwaRecoveryReachOutEditor } from "./PwaRecoveryReachOutEditor";
 import { PwaRecoveryAccountEditor } from "./PwaRecoveryAccountEditor";
 import { PwaRecoveryFriendEditor } from "./PwaRecoveryFriendEditor";
@@ -150,7 +151,7 @@ function PwaRecoveryReview({ recoveryId, transactionId, onBack, allowReapply }: 
   const [page, setPage] = useState<LibraryCoreRecoveryIntentReviewResponseV1 | null>(null);
   const [busy, setBusy] = useState(false), [error, setError] = useState<string | null>(null);
   const generation = useRef(0);
-  const reviewed = useRef({ count: 0, eligible: true, rss: true, accounts: true, persons: true, subscriptions: true, removal: true, items: true, people: true, accountRemoval: true, reachOuts: true, accountRecords: true, annotations: true, source: "" });
+  const reviewed = useRef({ count: 0, eligible: true, rss: true, accounts: true, persons: true, subscriptions: true, removal: true, items: true, people: true, accountRemoval: true, preferences: true, reachOuts: true, accountRecords: true, annotations: true, source: "" });
   const action = useRef<ReturnType<typeof createPwaRecoveryAssignmentAction> | null>(null);
   const actionPending = useRef(false);
   const [applied, setApplied] = useState(false), [retry, setRetry] = useState(false);
@@ -162,6 +163,7 @@ function PwaRecoveryReview({ recoveryId, transactionId, onBack, allowReapply }: 
   const [personsComplete, setPersonsComplete] = useState(false), [personsOpened, setPersonsOpened] = useState(false);
   const [subscriptionsComplete, setSubscriptionsComplete] = useState(false), [subscriptionsOpened, setSubscriptionsOpened] = useState(false);
   const [itemsComplete, setItemsComplete] = useState(false);
+  const [preferencesComplete, setPreferencesComplete] = useState(false), [preferencesOpened, setPreferencesOpened] = useState(false);
   const [reachOutsComplete, setReachOutsComplete] = useState(false), [reachOutsOpened, setReachOutsOpened] = useState(false);
   const [accountRecordsComplete, setAccountRecordsComplete] = useState(false), [accountRecordsOpened, setAccountRecordsOpened] = useState(false);
   const [accountRemovalComplete, setAccountRemovalComplete] = useState(false);
@@ -171,8 +173,8 @@ function PwaRecoveryReview({ recoveryId, transactionId, onBack, allowReapply }: 
   useEffect(() => () => { generation.current += 1; }, []);
   async function load(cursor: string | null) {
     if (actionPending.current) return;
-    if (cursor === null) { reviewed.current = { count: 0, eligible: true, rss: true, accounts: true, persons: true, subscriptions: true, removal: true, items: true, people: true, accountRemoval: true, reachOuts: true, accountRecords: true, annotations: true, source: "" }; action.current = null; setRetry(false); }
-    setReachOutsComplete(false); setReachOutsOpened(false); setFriendsOpened(false); setPersonsComplete(false); setPersonsOpened(false); setAccountRecordsComplete(false); setAccountRecordsOpened(false); setPeopleComplete(false); setAccountRemovalComplete(false); setAccountsComplete(false); setAccountsOpened(false); setSubscriptionsComplete(false); setSubscriptionsOpened(false); setComplete(false); setRssComplete(false); setRssOpened(false); setAnnotationsComplete(false); setAnnotationsOpened(false); setRemovalComplete(false); setItemsComplete(false);
+    if (cursor === null) { reviewed.current = { count: 0, eligible: true, rss: true, accounts: true, persons: true, subscriptions: true, removal: true, items: true, people: true, accountRemoval: true, preferences: true, reachOuts: true, accountRecords: true, annotations: true, source: "" }; action.current = null; setRetry(false); }
+    setPreferencesComplete(false); setPreferencesOpened(false); setReachOutsComplete(false); setReachOutsOpened(false); setFriendsOpened(false); setPersonsComplete(false); setPersonsOpened(false); setAccountRecordsComplete(false); setAccountRecordsOpened(false); setPeopleComplete(false); setAccountRemovalComplete(false); setAccountsComplete(false); setAccountsOpened(false); setSubscriptionsComplete(false); setSubscriptionsOpened(false); setComplete(false); setRssComplete(false); setRssOpened(false); setAnnotationsComplete(false); setAnnotationsOpened(false); setRemovalComplete(false); setItemsComplete(false);
     const token = ++generation.current;
     setBusy(true); setError(null); setPage(null);
     try {
@@ -187,6 +189,7 @@ function PwaRecoveryReview({ recoveryId, transactionId, onBack, allowReapply }: 
         for (const row of result.rows) {
           if (row.memberIndex !== previous.count) throw new Error("Review every change before applying this edit again.");
           previous.count += 1;
+          previous.preferences &&= row.operationType === "preferences_leaf_assignment";
           previous.reachOuts &&= row.operationType === "person_reach_out_append";
           previous.accountRecords &&= row.operationType === "account_upsert";
           previous.accountRemoval &&= row.operationType === "account_remove";
@@ -204,6 +207,7 @@ function PwaRecoveryReview({ recoveryId, transactionId, onBack, allowReapply }: 
         setComplete(previous.eligible && previous.count === result.memberCount && result.nextCursor === null);
         setAnnotationsComplete(previous.annotations && previous.count === result.memberCount && result.nextCursor === null);
         setItemsComplete(previous.items && previous.count === result.memberCount && result.nextCursor === null);
+        setPreferencesComplete(previous.preferences && previous.count === result.memberCount && result.nextCursor === null);
         setReachOutsComplete(previous.reachOuts && previous.count === result.memberCount && result.nextCursor === null);
         setAccountRecordsComplete(previous.accountRecords && previous.count === result.memberCount && result.nextCursor === null);
         setAccountRemovalComplete(previous.accountRemoval && previous.count === result.memberCount && result.nextCursor === null);
@@ -261,11 +265,12 @@ function PwaRecoveryReview({ recoveryId, transactionId, onBack, allowReapply }: 
     </>}
     {applied && <p role="status" className="mt-2 text-xs">Replacement preserved for the new Primary. This does not confirm acceptance.</p>}
     {canApply && <p className="mt-2 text-xs text-[var(--theme-text-secondary)]">Applying again creates a new edit and may override later changes. An unresolved original may already have been accepted.</p>}
-    {page && page.rows[0]?.operationType !== "friend_replace" && !complete && !accountsComplete && !personsComplete && !subscriptionsComplete && !rssComplete && !annotationsComplete && !removalComplete && !peopleComplete && !accountRemovalComplete && !reachOutsComplete && !accountRecordsComplete && !itemsComplete && !page.nextCursor && !applied && <p className="mt-2 text-xs text-[var(--theme-text-muted)]">Other edit types need their original editors. Missing items cannot be reapplied here.</p>}
+    {page && page.rows[0]?.operationType !== "friend_replace" && !complete && !accountsComplete && !personsComplete && !subscriptionsComplete && !rssComplete && !annotationsComplete && !removalComplete && !peopleComplete && !accountRemovalComplete && !preferencesComplete && !reachOutsComplete && !accountRecordsComplete && !itemsComplete && !page.nextCursor && !applied && <p className="mt-2 text-xs text-[var(--theme-text-muted)]">Other edit types need their original editors. Missing items cannot be reapplied here.</p>}
     {!allowReapply && <p className="mt-2 text-xs text-[var(--theme-text-secondary)]">You can review earlier archives now. Finish enrollment with the new Primary before applying edits again.</p>}
     {page && annotationsOpened && !applied && <PwaRecoveryAnnotationEditor review={page} onReplacement={replaced} onMutating={setBusy} />}
     {page && accountsOpened && !applied && <PwaRecoveryAccountLinkEditor key={page.transactionDigest} review={page} onReplacement={replaced} onMutating={setBusy} />}
     {page && friendsOpened && !applied && <PwaRecoveryFriendEditor key={page.transactionDigest} review={page} onReplacement={replaced} onMutating={setBusy} />}
+    {page && preferencesOpened && !applied && <PwaRecoveryPreferenceEditor key={page.transactionDigest} review={page} onReplacement={replaced} onMutating={setBusy} />}
     {page && reachOutsOpened && !applied && <PwaRecoveryReachOutEditor key={page.transactionDigest} review={page} onReplacement={replaced} onMutating={setBusy} />}
     {page && accountRecordsOpened && !applied && <PwaRecoveryAccountEditor key={page.transactionDigest} review={page} onReplacement={replaced} onMutating={setBusy} />}
     {page && personsOpened && !applied && <PwaRecoveryPersonEditor key={page.transactionDigest} review={page} onReplacement={replaced} onMutating={setBusy} />}
@@ -278,6 +283,7 @@ function PwaRecoveryReview({ recoveryId, transactionId, onBack, allowReapply }: 
       {allowReapply && accountsComplete && !accountsOpened && !applied && !page?.replacement && outcome?.state !== "confirmed_accepted" && <button type="button" disabled={busy} className="btn-secondary rounded-lg px-3 py-2 text-sm" onClick={() => setAccountsOpened(true)}>Review account links</button>}
       {allowReapply && personsComplete && !personsOpened && !applied && !page?.replacement && outcome?.state !== "confirmed_accepted" && <button type="button" disabled={busy} className="btn-secondary rounded-lg px-3 py-2 text-sm" onClick={() => setPersonsOpened(true)}>Review people</button>}
       {allowReapply && subscriptionsComplete && !subscriptionsOpened && !applied && !page?.replacement && outcome?.state !== "confirmed_accepted" && <button type="button" disabled={busy} className="btn-secondary rounded-lg px-3 py-2 text-sm" onClick={() => setSubscriptionsOpened(true)}>Review subscription settings</button>}
+      {allowReapply && preferencesComplete && !preferencesOpened && !applied && !page?.replacement && outcome?.state !== "confirmed_accepted" && <button type="button" disabled={busy} className="btn-secondary rounded-lg px-3 py-2 text-sm" onClick={() => setPreferencesOpened(true)}>Review preferences</button>}
       {allowReapply && reachOutsComplete && !reachOutsOpened && !applied && !page?.replacement && outcome?.state !== "confirmed_accepted" && <button type="button" disabled={busy} className="btn-secondary rounded-lg px-3 py-2 text-sm" onClick={() => setReachOutsOpened(true)}>Review reach-out history</button>}
       {allowReapply && accountRecordsComplete && !accountRecordsOpened && !applied && !page?.replacement && outcome?.state !== "confirmed_accepted" && <button type="button" disabled={busy} className="btn-secondary rounded-lg px-3 py-2 text-sm" onClick={() => setAccountRecordsOpened(true)}>Review account details</button>}
       {allowReapply && accountRemovalComplete && !rssOpened && !applied && !page?.replacement && outcome?.state !== "confirmed_accepted" && <button type="button" disabled={busy} className="btn-secondary rounded-lg px-3 py-2 text-sm" onClick={() => { setRssMode("accounts"); setRssOpened(true); }}>Review account deletion</button>}

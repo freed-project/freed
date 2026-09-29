@@ -22,14 +22,6 @@ import { openCheckpointBootstrapInput } from "./checkpoint-bootstrap-input.js";
 import { createBoundDriveCredentialStore } from "./bound-drive-credential-store.js";
 import { createLinuxDriveConsentPresenter } from "./linux-drive-consent.js";
 
-import { promoteLibraryServiceWriter } from "./writer-promotion.js";
-import {
-  readWriterPromotionRequest,
-  retainWriterPromotionRequest,
-} from "./writer-promotion-input.js";
-import { createNodeGoogleDriveTokenPortV1 } from "./node-google-drive-token.js";
-import { createGoogleDriveLibraryCoreAdapterV1 } from "@freed/sync/cloud/library-core";
-import { createBoundGoogleDrivePublicationStatePortV1 } from "./google-drive-publication.js";
 
 interface ParsedArguments {
   command:
@@ -270,79 +262,9 @@ export async function runLibraryServiceCli(
 ): Promise<number> {
   try {
     const parsed = parseArguments(argv);
+    // Refuse before opening local state, credentials, a sidecar or a cloud session.
+    if (parsed.command === "promote-writer") throw new LibraryServiceFailure("cooperative_handoff_required");
     const ports = createNodeLibraryServicePorts();
-    if (parsed.command === "promote-writer") {
-      const abort = new AbortController();
-      const cancel = () => abort.abort();
-      const deadline = setTimeout(cancel, 30 * 60 * 1000);
-      process.on("SIGINT", cancel);
-      process.on("SIGTERM", cancel);
-      try {
-        const request = await readWriterPromotionRequest(
-          parsed.requestPath!,
-          ports,
-        );
-        const supervisor = new LibraryServiceSupervisor({
-          ...ports,
-          configPath: parsed.configPath,
-        });
-        const result = await supervisor.runMaintenance(
-          async (native, bound) => {
-            if (
-              bound.config.cloud === null ||
-              bound.cloudState === null ||
-              bound.config.cloud.installationWitness !==
-                request.installationWitness
-            )
-              throw new LibraryServiceFailure("config_invalid");
-            const credentialStore = createBoundDriveCredentialStore(
-              bound,
-              ports.aclProof,
-            );
-            const token = createNodeGoogleDriveTokenPortV1(
-              bound.config.cloud.credentialRecordId,
-              credentialStore ?? {},
-            );
-            const accessToken = await token.accessToken(abort.signal);
-            const adapter = createGoogleDriveLibraryCoreAdapterV1({
-              accessToken,
-              libraryId: request.sourceControl.libraryId,
-              controlFileId: request.controlFileId,
-              signal: abort.signal,
-            });
-            return promoteLibraryServiceWriter(request, {
-              native,
-              adapter,
-              signal: abort.signal,
-              state: createBoundGoogleDrivePublicationStatePortV1(
-                bound.cloudState,
-                ports.fileSystem,
-              ),
-              retainRequest: (text) =>
-                retainWriterPromotionRequest(
-                  bound.bindings.dataRoot,
-                  text,
-                  ports,
-                ),
-            });
-          },
-          abort.signal,
-        );
-        writeStandardReport({
-          schemaVersion: 1,
-          service: "freed-library",
-          ok: true,
-          role: null,
-          phase: "writer-promoted",
-          receipt: result,
-        });
-        return 0;
-      } finally {
-        clearTimeout(deadline);
-        process.removeListener("SIGINT", cancel);
-        process.removeListener("SIGTERM", cancel);
-      }
-    }
     if (parsed.command === "import-checkpoint") {
       const abort = new AbortController();
       const cancel = () => abort.abort();
