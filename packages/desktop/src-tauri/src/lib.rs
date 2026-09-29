@@ -3,6 +3,7 @@
 //! Native desktop app that bundles capture and the reader UI.
 
 mod avatar_cache;
+mod jev;
 mod library_core_actor_key_store;
 mod library_core_authority_key_store;
 mod library_core_desktop_runtime;
@@ -8588,7 +8589,8 @@ async fn fb_check_auth(
         Some("fb-scraper"),
     )
     .await?;
-    let _scraper_session = acquire_background_scraper_session(&app, &capture, "fb_check_auth").await?;
+    let _scraper_session =
+        acquire_background_scraper_session(&app, &capture, "fb_check_auth").await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "fb-scraper", "auth check");
     let wv = match app.get_webview_window("fb-scraper") {
         Some(w) => w,
@@ -8878,7 +8880,8 @@ async fn fb_scrape_feed(
         None,
     )
     .await?;
-    let _scraper_session = acquire_background_scraper_session(&app, &capture, "fb_scrape_feed").await?;
+    let _scraper_session =
+        acquire_background_scraper_session(&app, &capture, "fb_scrape_feed").await?;
     let recycle_guard = WebviewRecycleGuard::new(app.clone(), "fb-scraper", "feed scrape complete");
 
     let wv = match app.get_webview_window("fb-scraper") {
@@ -9199,7 +9202,8 @@ async fn fb_scrape_groups(
         None,
     )
     .await?;
-    let _scraper_session = acquire_background_scraper_session(&app, &capture, "fb_scrape_groups").await?;
+    let _scraper_session =
+        acquire_background_scraper_session(&app, &capture, "fb_scrape_groups").await?;
     let _recycle_guard =
         WebviewRecycleGuard::new(app.clone(), "fb-scraper", "groups scrape complete");
 
@@ -9713,7 +9717,8 @@ async fn ig_check_auth(
         Some("ig-scraper"),
     )
     .await?;
-    let _scraper_session = acquire_background_scraper_session(&app, &capture, "ig_check_auth").await?;
+    let _scraper_session =
+        acquire_background_scraper_session(&app, &capture, "ig_check_auth").await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "ig-scraper", "auth check");
     let wv = match app.get_webview_window("ig-scraper") {
         Some(w) => w,
@@ -9784,7 +9789,8 @@ async fn ig_scrape_feed(
         None,
     )
     .await?;
-    let scraper_session = acquire_background_scraper_session(&app, &capture, "ig_scrape_feed").await?;
+    let scraper_session =
+        acquire_background_scraper_session(&app, &capture, "ig_scrape_feed").await?;
     let recycle_guard = WebviewRecycleGuard::new(app.clone(), "ig-scraper", "feed scrape complete");
     let scrape_start_stats = collect_runtime_memory_stats(&app);
 
@@ -10146,7 +10152,8 @@ async fn fb_visit_url(
     let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
     ensure_social_scrape_memory(&app, &capture.background_runtime, "Facebook", "visit", None)
         .await?;
-    let _scraper_session = acquire_background_scraper_session(&app, &capture, "fb_visit_url").await?;
+    let _scraper_session =
+        acquire_background_scraper_session(&app, &capture, "fb_visit_url").await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "fb-scraper", "visit complete");
     let wv = match app.get_webview_window("fb-scraper") {
         Some(window) => window,
@@ -10185,7 +10192,8 @@ async fn ig_visit_url(
         None,
     )
     .await?;
-    let _scraper_session = acquire_background_scraper_session(&app, &capture, "ig_visit_url").await?;
+    let _scraper_session =
+        acquire_background_scraper_session(&app, &capture, "ig_visit_url").await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "ig-scraper", "visit complete");
     let wv = match app.get_webview_window("ig-scraper") {
         Some(window) => window,
@@ -10224,7 +10232,8 @@ async fn fb_like_post(
     let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
     ensure_social_scrape_memory(&app, &capture.background_runtime, "Facebook", "like", None)
         .await?;
-    let _scraper_session = acquire_background_scraper_session(&app, &capture, "fb_like_post").await?;
+    let _scraper_session =
+        acquire_background_scraper_session(&app, &capture, "fb_like_post").await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "fb-scraper", "like complete");
     let wv = match app.get_webview_window("fb-scraper") {
         Some(window) => window,
@@ -10275,7 +10284,8 @@ async fn ig_like_post(
     let scraper_user_agent = stored_or_default_user_agent(&capture.ig_user_agent);
     ensure_social_scrape_memory(&app, &capture.background_runtime, "Instagram", "like", None)
         .await?;
-    let _scraper_session = acquire_background_scraper_session(&app, &capture, "ig_like_post").await?;
+    let _scraper_session =
+        acquire_background_scraper_session(&app, &capture, "ig_like_post").await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "ig-scraper", "like complete");
     let wv = match app.get_webview_window("ig-scraper") {
         Some(window) => window,
@@ -10443,7 +10453,8 @@ async fn li_check_auth(
         Some("li-scraper"),
     )
     .await?;
-    let _scraper_session = acquire_background_scraper_session(&app, &capture, "li_check_auth").await?;
+    let _scraper_session =
+        acquire_background_scraper_session(&app, &capture, "li_check_auth").await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "li-scraper", "auth check");
     let wv = match app.get_webview_window("li-scraper") {
         Some(w) => {
@@ -10526,7 +10537,8 @@ async fn li_scrape_feed(
         None,
     )
     .await?;
-    let scraper_session = acquire_background_scraper_session(&app, &capture, "li_scrape_feed").await?;
+    let scraper_session =
+        acquire_background_scraper_session(&app, &capture, "li_scrape_feed").await?;
     let recycle_guard = WebviewRecycleGuard::new(app.clone(), "li-scraper", "feed scrape complete");
 
     let wv = match app.get_webview_window("li-scraper") {
@@ -14306,6 +14318,11 @@ pub fn run() {
             retry_startup_after_crash,
             export_startup_diagnostics,
             fetch_url,
+            jev::get_jev_api_key,
+            jev::set_jev_api_key,
+            jev::clear_jev_api_key,
+            jev::request_jev,
+            jev::cancel_jev_request,
             google_api_request,
             google_oauth_proxy_request,
             google_drive_request,

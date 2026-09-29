@@ -28,6 +28,7 @@ import { fileURLToPath } from "url";
 import pkg from "./package.json" with { type: "json" };
 import { getBuildMetadata } from "../../scripts/lib/build-metadata.mjs";
 import { assertNoRetiredAutomergeRollupBundle } from "../../scripts/lib/retired-automerge-runtime.mjs";
+import { jevPreviewPlugin } from "./dev/jev-preview-server.mjs";
 // Resolve workspace packages directly from their TypeScript source so that
 // worktrees don't need to build dist/ artifacts before running the dev server.
 var src = function (name) {
@@ -82,6 +83,11 @@ var rejectRetiredDesktopLibraryAssets = {
 };
 var buildMetadata = getBuildMetadata(pkg.version);
 export default defineConfig({
+    // Development and production-React test servers must not replace each
+    // other's optimized dependency graph when the complete suite runs both.
+    cacheDir: process.env.FREED_E2E_PERF === "1"
+        ? rootFile("node_modules/.vite-feed-perf")
+        : undefined,
     define: {
         __APP_VERSION__: JSON.stringify(buildMetadata.appVersion),
         __BUILD_KIND__: JSON.stringify(buildMetadata.buildKind),
@@ -102,10 +108,16 @@ export default defineConfig({
             topLevelAwait(),
         ]; },
     },
-    plugins: __spreadArray(__spreadArray([], (process.env.VITE_TEST_TAURI
+    plugins: __spreadArray(__spreadArray([
+        jevPreviewPlugin()
+    ], (process.env.VITE_TEST_TAURI
         ? [{
                 name: "desktop-mock-bootstrap",
                 transformIndexHtml: function () { return [{
+                        tag: "meta",
+                        attrs: { name: "freed-e2e-render-mode", content: process.env.NODE_ENV === "production" ? "production" : "development" },
+                        injectTo: "head-prepend",
+                    }, {
                         tag: "script",
                         children: tauriInitScript(),
                         injectTo: "head-prepend",

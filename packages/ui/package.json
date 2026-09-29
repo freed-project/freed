@@ -64,7 +64,8 @@
     "./hooks/useLibraryFacetSummary": "./src/hooks/useLibraryFacetSummary.ts",
     "./hooks/useLibraryRssFeedDetail": "./src/hooks/useLibraryRssFeedDetail.ts",
     "./context": "./src/context/index.ts",
-    "./components/friends": "./src/components/friends/index.ts"
+    "./components/friends": "./src/components/friends/index.ts",
+    "./components/settings/AISection": "./src/components/settings/AISection.tsx"
   },
   "peerDependencies": {
     "react": ">=19",

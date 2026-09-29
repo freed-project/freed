@@ -675,7 +675,8 @@ export async function readLibraryCoreNormalizedFeedSignalCountsV1(
     FEED_SIGNAL_FILTER_PRESETS.map(async (preset) => {
       const signalFilter: LibraryCoreFeedBrowseFilterV1 = {
         ...filter,
-        signals: preset.mode === "all" ? [] : preset.signals,
+        // Presets use presentation order; the wire contract requires a sorted set.
+        signals: preset.mode === "all" ? [] : [...preset.signals].sort(),
       };
       const page = await runtime.query({
         cancellationId: operationId(runtime, "signal-count"),
