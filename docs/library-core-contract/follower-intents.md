@@ -891,6 +891,17 @@ same 32 policy cases, covering the historical top-level sections and device-loca
 exclusions. These fixtures do not establish compatibility for every historical
 native segment or prove installed Mac behavior.
 
+The historical native preference fixture is exported by published source
+`v26.9.1700-dev` through its existing signing, acceptance and bounded export
+functions. Current native and PWA readers preserve the original envelope and
+acceptance receipt, replay duplicate pages, and reach the same final revision,
+actor frontier and checkpoint digest. The PWA also reopens its engine between
+pages. The old zero-operation export descriptor is retained unchanged. At that
+baseline, tests explicitly require the current carried-frontier rule described
+in [checkpoints](checkpoints.md), since enrollment alone no longer contributes a
+tip. Checkpoint admission in this fixture is synthetic; live cloud joining and
+installed Mac acceptance remain separate requirements.
+
 Finite numbers in the registered binary64 wrapper are scalar preference values.
 Fresh policy validation decodes them for type checks but retains their original
 authenticated representation. Normal PWA preference writes use the same encoder

@@ -1132,65 +1132,123 @@ mod tests {
     }
 
     #[test]
-    fn public_recovered_browser_vector_matches_native_checkpoint_frontiers() {
+    fn public_browser_vectors_match_native_checkpoint_frontiers() {
         // One public signed vector is consumed by both runtimes. Keep historical
         // envelopes intact while checking the current export frontier contract.
-        let vector: Value = serde_json::from_str(include_str!(
-            "../../shared/src/library-core/native-recovered-browser-vector-v1.json"
-        ))
-        .unwrap();
-        let baseline: NormalizedCheckpointExportDescriptorV2 =
-            serde_json::from_value(vector["baseline"].clone()).unwrap();
-        let records: Vec<NormalizedCheckpointRecordV2> =
-            serde_json::from_value(vector["baselineRecords"].clone()).unwrap();
-        let mut connection = fixture();
-        begin_normalized_checkpoint_stage_v2(
-            &connection,
-            &BeginNormalizedCheckpointStageV2 {
-                stage_id: "browser-vector".into(),
-                library_id: baseline.library_id.clone(),
-                authority_epoch: baseline.authority_epoch.clone(),
-                source_revision: baseline.source_revision,
-                expected_record_count: records.len(),
-                created_at: 2200,
-            },
-        )
-        .unwrap();
-        append_normalized_checkpoint_stage_page_v2(&mut connection, "browser-vector", &records)
+        for wire in [
+            include_str!("../../shared/src/library-core/native-recovered-browser-vector-v1.json"),
+            include_str!(
+                "../../shared/src/library-core/historical-native-preference-vector-v1.json"
+            ),
+        ] {
+            let vector: Value = serde_json::from_str(wire).unwrap();
+            let baseline: NormalizedCheckpointExportDescriptorV2 =
+                serde_json::from_value(vector["baseline"].clone()).unwrap();
+            let records: Vec<NormalizedCheckpointRecordV2> =
+                serde_json::from_value(vector["baselineRecords"].clone()).unwrap();
+            let mut connection = fixture();
+            begin_normalized_checkpoint_stage_v2(
+                &connection,
+                &BeginNormalizedCheckpointStageV2 {
+                    stage_id: "browser-vector".into(),
+                    library_id: baseline.library_id.clone(),
+                    authority_epoch: baseline.authority_epoch.clone(),
+                    source_revision: baseline.source_revision,
+                    expected_record_count: records.len(),
+                    created_at: 2200,
+                },
+            )
             .unwrap();
-        finalize_normalized_checkpoint_stage_v2(&mut connection, "browser-vector").unwrap();
-        assert_eq!(
-            describe_normalized_checkpoint_export_v2(&connection).unwrap(),
-            baseline
-        );
-        for page in vector["operationPages"].as_array().unwrap() {
-            let input = serde_json::from_value(page.clone()).unwrap();
-            crate::import_normalized_operation_page_v2(&mut connection, &input).unwrap();
-            crate::import_normalized_operation_page_v2(&mut connection, &input).unwrap();
-        }
-        let expected: NormalizedCheckpointExportDescriptorV2 =
-            serde_json::from_value(vector["expected"].clone()).unwrap();
-        assert_eq!(
-            describe_normalized_checkpoint_export_v2(&connection).unwrap(),
-            expected
-        );
-        let mut records = Vec::new();
-        let mut request = NormalizedCheckpointExportRequestV2 {
-            maximum_records: 3,
-            ..Default::default()
-        };
-        loop {
-            let page = export_normalized_checkpoint_page_v2(&connection, &request).unwrap();
-            records.extend(page.records);
-            if page.done {
-                break;
+            append_normalized_checkpoint_stage_page_v2(&mut connection, "browser-vector", &records)
+                .unwrap();
+            finalize_normalized_checkpoint_stage_v2(&mut connection, "browser-vector").unwrap();
+            let mut current_baseline = baseline.clone();
+            if vector["sourceCommit"] == "17743c0e074b2b8ca27ff1c560a76854984410d7" {
+                // The published source included zero-counter enrollment in its
+                // frontier. Current readers carry the authenticated predecessor
+                // frontier until accepted work exists. Keep the old descriptor.
+                assert_eq!(baseline.source_revision, 0);
+                assert_eq!(
+                    connection
+                        .query_row(
+                            "SELECT max(accepted_counter) FROM library_actors;",
+                            [],
+                            |row| row.get::<_, i64>(0)
+                        )
+                        .unwrap(),
+                    0
+                );
+                assert_eq!(
+                    normalized_checkpoint_digest_v2(&records).unwrap(),
+                    vector["baselineCheckpointDigest"].as_str().unwrap()
+                );
+                current_baseline.causal_frontier_digest = records
+                    .iter()
+                    .find(|record| record.registry_key == "01_authority_epoch")
+                    .unwrap()
+                    .payload["checkpointFrontierDigest"]
+                    .as_str()
+                    .unwrap()
+                    .to_owned();
+                assert_ne!(
+                    current_baseline.causal_frontier_digest,
+                    baseline.causal_frontier_digest
+                );
             }
-            request.after = page.next_cursor;
+            assert_eq!(
+                describe_normalized_checkpoint_export_v2(&connection).unwrap(),
+                current_baseline
+            );
+            for page in vector["operationPages"].as_array().unwrap() {
+                let input = serde_json::from_value(page.clone()).unwrap();
+                crate::import_normalized_operation_page_v2(&mut connection, &input).unwrap();
+                crate::import_normalized_operation_page_v2(&mut connection, &input).unwrap();
+            }
+            if let Some(original) = vector["canonicalResultJson"].as_str() {
+                let stored: Vec<u8> = connection
+                    .query_row(
+                        "SELECT canonical_result FROM library_operation_replication_results;",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .unwrap();
+                assert_eq!(stored, original.as_bytes());
+                let envelope: Vec<u8> = connection
+                    .query_row(
+                        "SELECT canonical_envelope FROM library_operations;",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .unwrap();
+                assert_eq!(
+                    envelope,
+                    vector["envelopes"][0].as_str().unwrap().as_bytes()
+                );
+            }
+            let expected: NormalizedCheckpointExportDescriptorV2 =
+                serde_json::from_value(vector["expected"].clone()).unwrap();
+            assert_eq!(
+                describe_normalized_checkpoint_export_v2(&connection).unwrap(),
+                expected
+            );
+            let mut records = Vec::new();
+            let mut request = NormalizedCheckpointExportRequestV2 {
+                maximum_records: 3,
+                ..Default::default()
+            };
+            loop {
+                let page = export_normalized_checkpoint_page_v2(&connection, &request).unwrap();
+                records.extend(page.records);
+                if page.done {
+                    break;
+                }
+                request.after = page.next_cursor;
+            }
+            assert_eq!(
+                normalized_checkpoint_digest_v2(&records).unwrap(),
+                vector["expectedCheckpointDigest"].as_str().unwrap()
+            );
         }
-        assert_eq!(
-            normalized_checkpoint_digest_v2(&records).unwrap(),
-            vector["expectedCheckpointDigest"].as_str().unwrap()
-        );
     }
 
     #[test]

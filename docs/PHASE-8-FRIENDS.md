@@ -1061,9 +1061,16 @@ authenticated old fields, and incremental catch-up checks the authority-signed
 acceptance receipt before materializing them. Historical constructions cannot
 be finalized or reused as fresh verified transactions. Shared cryptographic and
 PWA SQLite tests cover unchanged bytes, mixed-member completeness, device-local
-exclusions, tampering, mismatched receipts and exact retry. Native-produced old
-preference segment fixtures and installed Mac acceptance remain unverified.
+exclusions, tampering, mismatched receipts and exact retry. Live cloud joining across versions and installed Mac acceptance remain unverified.
 
 The Rust historical validator and shared verifier also pass the same 32 policy
 cases, covering all historical sections and device-local exclusions. This is
-policy parity; native-produced signed segment and installed Mac proof remain separate.
+policy parity; installed Mac proof remains separate.
+
+A signed historical preference fixture now comes from published native source
+`v26.9.1700-dev`. Current native SQLite and PWA preserve its envelope and acceptance
+receipt, replay duplicate pages, and match its final revision, actor frontier and
+checkpoint digest. The original zero-operation descriptor remains intact; the
+tests explicitly check current carried-frontier normalization at that baseline.
+Checkpoint admission is synthetic, and this does not prove live cloud joining
+or an installed build.

@@ -1,3 +1,4 @@
+import historicalNativePreferences from "../../../shared/src/library-core/historical-native-preference-vector-v1.json";
 import nativeRecoveredBrowser from "../../../shared/src/library-core/native-recovered-browser-vector-v1.json";
 import recoveredEnrollmentVector from "../../../shared/src/library-core/recovered-enrollment-vector-v1.json";
 import { verifyPwaRecoveryArchive } from "./library-core-recovery-archive";
@@ -6561,6 +6562,60 @@ describe("PWA Library Core SQLite engine", () => {
     expect(database.selectValue("SELECT accepted_counter FROM library_actors;")).toBe(1);
     expect(database.selectValue("SELECT count(*) FROM library_operations;")).toBe(1);
     expect(database.selectValue("SELECT canonical_envelope FROM library_operations;")).toEqual(canonical(envelope));
+  });
+
+  // Tier 1: these immutable bytes were accepted and exported by published native
+  // source v26.9.1700-dev, before fresh preference policy became stricter.
+  it("imports published native historical preference bytes and converges at the exact frontier", async () => {
+    const fixture = historicalNativePreferences;
+    const bytes = (value: string) => new TextEncoder().encode(value);
+    let engine = new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion, { capi: sqlite3.capi });
+    engine.initialize();
+    const baseline = fixture.baselineRecords.map(parseLibraryCoreNormalizedCheckpointRecordV2);
+    expect(digestLibraryCoreNormalizedCheckpointRecordsV2(baseline)).toBe(fixture.baselineCheckpointDigest);
+    stageRecords(engine, baseline, "published-native-preferences", fixture.baseline);
+    engine.activateNormalizedCheckpointStage({ stageId: "published-native-preferences", replaceExisting: false,
+      followerReceipt: { checkpointGeneration: 0, controlRevision: "synthetic-native-history", installedAt: 2100,
+        manifestContentDigest: lowercaseHex64("8".repeat(64)), manifestObjectKey: "fixture", manifestTransportObjectId: "fixture",
+        writerActorId: fixture.baseline.writerId } });
+    // Current frontier semantics exclude enrollment without accepted work.
+    // Preserve the published descriptor and authenticate the same checkpoint rows.
+    expect(fixture.sourceCommit).toBe("17743c0e074b2b8ca27ff1c560a76854984410d7");
+    expect(fixture.baseline.sourceRevision).toBe(0);
+    expect(database.selectValue("SELECT max(accepted_counter) FROM library_actors;")).toBe(0);
+    const carriedFrontier = fixture.baselineRecords.find(record => record.registryKey === "01_authority_epoch")!.payload.checkpointFrontierDigest;
+    expect(carriedFrontier).not.toBe(fixture.baseline.causalFrontierDigest);
+    expect(engine.describeNormalizedCheckpointExport()).toEqual({ ...fixture.baseline, causalFrontierDigest: carriedFrontier });
+    for (const page of fixture.operationPages) {
+      const input = parseLibraryCoreNormalizedOperationImportPageV2(page);
+      await engine.importNormalizedOperationPage(input);
+      if (!page.page.done) {
+        expect(database.selectValue("SELECT source_revision FROM library_meta;")).toBe(0);
+        expect(database.selectValue("SELECT count(*) FROM library_preferences;")).toBe(0);
+        engine = new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion, { capi: sqlite3.capi });
+        engine.initialize();
+      }
+      await engine.importNormalizedOperationPage(input);
+    }
+    expect(database.selectValue("SELECT boolean_value FROM library_preferences WHERE path='v:$.display.markReadOnScroll';")).toBe(0);
+    expect(database.selectValue("SELECT integer_value FROM library_preferences WHERE path='v:$.weights.topics.historical';")).toBe(3);
+    expect(Array.from(database.selectValue("SELECT canonical_envelope FROM library_operations;") as Uint8Array)).toEqual(Array.from(bytes(fixture.envelopes[0]!)));
+    expect(Array.from(database.selectValue("SELECT canonical_result FROM library_operation_replication_results;") as Uint8Array)).toEqual(Array.from(bytes(fixture.canonicalResultJson)));
+    expect(database.selectValue("SELECT count(*) FROM library_operations;")).toBe(1);
+    expect(database.selectValue("SELECT accepted_counter FROM library_actors;")).toBe(1);
+    const snapshot = engine.describeNormalizedCheckpointExport();
+    expect(snapshot).toEqual(fixture.expected);
+    const records: LibraryCoreNormalizedCheckpointRecordV2[] = [];
+    let after = null;
+    for (let pageCount = 0; pageCount < 100; pageCount += 1) {
+      const page = engine.exportPinnedNormalizedCheckpointPage({ snapshot, page: { after, maximumRecords: 3,
+        maximumResponseBytes: LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES } });
+      records.push(...page.records);
+      if (page.done) break;
+      after = page.nextCursor;
+    }
+    expect(records).toHaveLength(fixture.expected.recordCount);
+    expect(digestLibraryCoreNormalizedCheckpointRecordsV2(records)).toBe(fixture.expectedCheckpointDigest);
   });
 
   it("converges with native recovered-actor signed edits through incremental pages", async () => {

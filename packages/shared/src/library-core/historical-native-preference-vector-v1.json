@@ -1,0 +1,608 @@
+{
+  "baseline": {
+    "authorityEpoch": "2222222222222222222222222222222222222222222222222222222222222222",
+    "causalFrontierDigest": "b5180daded011be20c0e1ad62be28475769294a94c0eebfd9254fcad32848de4",
+    "format": "freed_normalized_checkpoint_export_v2",
+    "itemCount": 2,
+    "libraryId": "1111111111111111111111111111111111111111111111111111111111111111",
+    "protocolVersion": 2,
+    "recordCount": 31,
+    "sourceRevision": 0,
+    "writerId": "3333333333333333333333333333333333333333333333333333333333333333"
+  },
+  "baselineCheckpointDigest": "c3e8b09d007d316cc71a82f33153028be396d1ba77cbd41997ba58d28a57a6e1",
+  "baselineRecords": [
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "authorityEpoch": "2222222222222222222222222222222222222222222222222222222222222222",
+        "checkpointId": "1111111111111111111111111111111111111111111111111111111111111111:2222222222222222222222222222222222222222222222222222222222222222:0",
+        "createdAtMs": 1000,
+        "libraryId": "1111111111111111111111111111111111111111111111111111111111111111",
+        "schemaVersion": 1,
+        "sourceRevision": 0
+      },
+      "primaryKey": "checkpoint",
+      "protocolVersion": 2,
+      "registryKey": "00_checkpoint_header"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "acceptedAt": 1000,
+        "acceptedManifestGeneration": 0,
+        "authorityKeyId": "aaf0c82b2245672170a83c9347d98671e0174dd87ef5bd3dfa9e41b1a4a858e4",
+        "authorityPublicKey": "66cd608b928b88e50e0efeaa33faf1c43cefe07294b0b87e9fe0aba6a3cf7633",
+        "canonicalTransitionCertificate": "{}",
+        "checkpointFrontierDigest": "9999999999999999999999999999999999999999999999999999999999999999",
+        "epochNumber": 1,
+        "libraryId": "1111111111111111111111111111111111111111111111111111111111111111",
+        "materializedStateDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "transitionCertificateDigest": "8888888888888888888888888888888888888888888888888888888888888888"
+      },
+      "primaryKey": "2222222222222222222222222222222222222222222222222222222222222222",
+      "protocolVersion": 2,
+      "registryKey": "01_authority_epoch"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "acceptedManifestGeneration": 0,
+        "activatedAt": 1000,
+        "activeKey": "active",
+        "epochId": "2222222222222222222222222222222222222222222222222222222222222222",
+        "libraryId": "1111111111111111111111111111111111111111111111111111111111111111",
+        "writerId": "6666666666666666666666666666666666666666666666666666666666666666"
+      },
+      "primaryKey": "active",
+      "protocolVersion": 2,
+      "registryKey": "03_active_authority"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "archived": false,
+        "archivedAt": null,
+        "authorAvatarUrl": null,
+        "authorDisplayName": "Ada",
+        "authorHandle": "ada",
+        "authorId": "author-1",
+        "capturedAt": 800,
+        "contentText": null,
+        "contentTextBlobDigest": null,
+        "contentType": "article",
+        "engagementComments": null,
+        "engagementLikes": null,
+        "engagementReposts": null,
+        "engagementViews": null,
+        "fbGroupId": null,
+        "fbGroupName": null,
+        "fbGroupUrl": null,
+        "hidden": false,
+        "liked": null,
+        "likedAt": null,
+        "likedSyncedAt": null,
+        "linkDescription": null,
+        "linkTitle": null,
+        "linkUrl": null,
+        "locationLat": null,
+        "locationLng": null,
+        "locationName": null,
+        "locationSource": null,
+        "locationUrl": null,
+        "platform": "rss",
+        "preservedAt": null,
+        "preservedAuthor": null,
+        "preservedPublishedAt": null,
+        "preservedReadingTime": null,
+        "preservedText": null,
+        "preservedTextBlobDigest": null,
+        "preservedWordCount": null,
+        "priority": null,
+        "priorityComputedAt": null,
+        "publishedAt": 700,
+        "readAt": null,
+        "rssFeedTitle": null,
+        "rssFeedUrl": null,
+        "rssSiteUrl": null,
+        "sampleBatchId": null,
+        "sampleGeneratedAt": null,
+        "sampleGeneratorVersion": null,
+        "saved": false,
+        "savedAt": null,
+        "seenSyncedAt": null,
+        "sourceUrl": null,
+        "timeRangeEndsAt": null,
+        "timeRangeKind": null,
+        "timeRangeStartsAt": null,
+        "updatedAt": 800
+      },
+      "primaryKey": "rss:item:1",
+      "protocolVersion": 2,
+      "registryKey": "10_feed_item"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "archived": false,
+        "archivedAt": null,
+        "authorAvatarUrl": null,
+        "authorDisplayName": "Ada",
+        "authorHandle": "ada",
+        "authorId": "author-1",
+        "capturedAt": 801,
+        "contentText": null,
+        "contentTextBlobDigest": null,
+        "contentType": "article",
+        "engagementComments": null,
+        "engagementLikes": null,
+        "engagementReposts": null,
+        "engagementViews": null,
+        "fbGroupId": null,
+        "fbGroupName": null,
+        "fbGroupUrl": null,
+        "hidden": false,
+        "liked": null,
+        "likedAt": null,
+        "likedSyncedAt": null,
+        "linkDescription": null,
+        "linkTitle": null,
+        "linkUrl": null,
+        "locationLat": null,
+        "locationLng": null,
+        "locationName": null,
+        "locationSource": null,
+        "locationUrl": null,
+        "platform": "rss",
+        "preservedAt": null,
+        "preservedAuthor": null,
+        "preservedPublishedAt": null,
+        "preservedReadingTime": null,
+        "preservedText": null,
+        "preservedTextBlobDigest": null,
+        "preservedWordCount": null,
+        "priority": null,
+        "priorityComputedAt": null,
+        "publishedAt": 701,
+        "readAt": null,
+        "rssFeedTitle": null,
+        "rssFeedUrl": null,
+        "rssSiteUrl": null,
+        "sampleBatchId": null,
+        "sampleGeneratedAt": null,
+        "sampleGeneratorVersion": null,
+        "saved": false,
+        "savedAt": null,
+        "seenSyncedAt": null,
+        "sourceUrl": null,
+        "timeRangeEndsAt": null,
+        "timeRangeKind": null,
+        "timeRangeStartsAt": null,
+        "updatedAt": 801
+      },
+      "primaryKey": "rss:item:2",
+      "protocolVersion": 2,
+      "registryKey": "10_feed_item"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "acceptedChainDigest": "5555555555555555555555555555555555555555555555555555555555555555",
+        "acceptedCounter": 0,
+        "acceptedOperationId": null,
+        "actorKind": "desktop",
+        "authorityEpochId": "2222222222222222222222222222222222222222222222222222222222222222",
+        "canonicalEnrollmentCertificate": "{\"certificate\":\"fixture\"}",
+        "chainGenesisDigest": "5555555555555555555555555555555555555555555555555555555555555555",
+        "createdAt": 1000,
+        "enrollmentCertificateDigest": "4444444444444444444444444444444444444444444444444444444444444444",
+        "enrollmentOperationId": "op:actor:enroll:native-verifier",
+        "publicKey": "66cd608b928b88e50e0efeaa33faf1c43cefe07294b0b87e9fe0aba6a3cf7633",
+        "retiredAt": null,
+        "updatedAt": 1000
+      },
+      "primaryKey": "3333333333333333333333333333333333333333333333333333333333333333",
+      "protocolVersion": 2,
+      "registryKey": "90_actor_state"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "actorClass": "editor",
+        "actorId": "3333333333333333333333333333333333333333333333333333333333333333",
+        "canonicalCertificate": "{}",
+        "certificateDigest": "4444444444444444444444444444444444444444444444444444444444444444",
+        "certificateVersion": 2,
+        "issuanceIdentity": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "issuedAt": 1000,
+        "retiredAt": null,
+        "retirementCertificateDigest": null,
+        "retirementIdentity": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "scopeId": null,
+        "scopeKind": null,
+        "scopeMode": "library_wide"
+      },
+      "primaryKey": "4444444444444444444444444444444444444444444444444444444444444444",
+      "protocolVersion": 2,
+      "registryKey": "91_actor_capability"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "account_person_assignment"
+      },
+      "primaryKey": [
+        "4444444444444444444444444444444444444444444444444444444444444444",
+        "account_person_assignment"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "account_remove"
+      },
+      "primaryKey": [
+        "4444444444444444444444444444444444444444444444444444444444444444",
+        "account_remove"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "account_upsert"
+      },
+      "primaryKey": [
+        "4444444444444444444444444444444444444444444444444444444444444444",
+        "account_upsert"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "feed_item_analysis_replace"
+      },
+      "primaryKey": [
+        "4444444444444444444444444444444444444444444444444444444444444444",
+        "feed_item_analysis_replace"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "feed_item_annotations_replace"
+      },
+      "primaryKey": [
+        "4444444444444444444444444444444444444444444444444444444444444444",
+        "feed_item_annotations_replace"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "feed_item_archive_assignment"
+      },
+      "primaryKey": [
+        "4444444444444444444444444444444444444444444444444444444444444444",
+        "feed_item_archive_assignment"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "feed_item_capture_upsert"
+      },
+      "primaryKey": [
+        "4444444444444444444444444444444444444444444444444444444444444444",
+        "feed_item_capture_upsert"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "feed_item_like_assignment"
+      },
+      "primaryKey": [
+        "4444444444444444444444444444444444444444444444444444444444444444",
+        "feed_item_like_assignment"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "feed_item_like_sync_receipt"
+      },
+      "primaryKey": [
+        "4444444444444444444444444444444444444444444444444444444444444444",
+        "feed_item_like_sync_receipt"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "feed_item_priority_assignment"
+      },
+      "primaryKey": [
+        "4444444444444444444444444444444444444444444444444444444444444444",
+        "feed_item_priority_assignment"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "feed_item_read_assignment"
+      },
+      "primaryKey": [
+        "4444444444444444444444444444444444444444444444444444444444444444",
+        "feed_item_read_assignment"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "feed_item_remove"
+      },
+      "primaryKey": [
+        "4444444444444444444444444444444444444444444444444444444444444444",
+        "feed_item_remove"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "feed_item_saved_assignment"
+      },
+      "primaryKey": [
+        "4444444444444444444444444444444444444444444444444444444444444444",
+        "feed_item_saved_assignment"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "feed_item_seen_sync_receipt"
+      },
+      "primaryKey": [
+        "4444444444444444444444444444444444444444444444444444444444444444",
+        "feed_item_seen_sync_receipt"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "friend_replace"
+      },
+      "primaryKey": [
+        "4444444444444444444444444444444444444444444444444444444444444444",
+        "friend_replace"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "person_reach_out_append"
+      },
+      "primaryKey": [
+        "4444444444444444444444444444444444444444444444444444444444444444",
+        "person_reach_out_append"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "person_remove_and_accounts"
+      },
+      "primaryKey": [
+        "4444444444444444444444444444444444444444444444444444444444444444",
+        "person_remove_and_accounts"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "person_remove_detach_accounts"
+      },
+      "primaryKey": [
+        "4444444444444444444444444444444444444444444444444444444444444444",
+        "person_remove_detach_accounts"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "person_upsert"
+      },
+      "primaryKey": [
+        "4444444444444444444444444444444444444444444444444444444444444444",
+        "person_upsert"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "preferences_leaf_assignment"
+      },
+      "primaryKey": [
+        "4444444444444444444444444444444444444444444444444444444444444444",
+        "preferences_leaf_assignment"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "rss_feed_remove_keep_items"
+      },
+      "primaryKey": [
+        "4444444444444444444444444444444444444444444444444444444444444444",
+        "rss_feed_remove_keep_items"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "rss_feed_remove_with_items"
+      },
+      "primaryKey": [
+        "4444444444444444444444444444444444444444444444444444444444444444",
+        "rss_feed_remove_with_items"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "rss_feed_title_assignment"
+      },
+      "primaryKey": [
+        "4444444444444444444444444444444444444444444444444444444444444444",
+        "rss_feed_title_assignment"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "rss_feed_upsert"
+      },
+      "primaryKey": [
+        "4444444444444444444444444444444444444444444444444444444444444444",
+        "rss_feed_upsert"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    }
+  ],
+  "canonicalResultJson": "{\"actor_id\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"authoritative_source_revision\":1,\"authority_key_id\":\"aaf0c82b2245672170a83c9347d98671e0174dd87ef5bd3dfa9e41b1a4a858e4\",\"canonical_operation_ids\":[\"tx:historical:preferences:published-native:member:0\"],\"epoch\":1,\"epoch_id\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"format\":\"freed_follower_result_v1\",\"intent_epoch\":1,\"intent_epoch_id\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"library_id\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"original_result_digest\":null,\"previous_result_digest\":null,\"receipt_ids\":[\"cc51bf7e3846d0fd4ac757e14c65144fa7f38970d1261a847531189320461568\"],\"rejection_reason\":null,\"replacement_fields\":[],\"resolved_at_ms\":2000,\"result_body_digest\":\"a1b2ea7eaf328a4c3196dc9c8fa8dcf43270599b16eaa13459fa3e6b7ada6876\",\"result_sequence\":1,\"schema_version\":1,\"signature\":\"2c3824d830f5085df03718053f6844608076e94904d9f18dfb68ec4a3493dc012cc59221b142a9caddaaeb1cf99322c190e6d3217ad719b76681cc463b96a40f\",\"signature_algorithm\":\"ed25519\",\"status\":\"accepted\",\"transaction_digest\":\"4447877ec36d8066ead314861ccad857d674c160dcdd840819dcde2ec09a81bf\",\"transaction_id\":\"tx:historical:preferences:published-native\"}",
+  "envelopes": [
+    "{\"actor_chain_digest\":\"dd83e9cf85019d1f77d1800845770eddac7e95b8a0b2fbe850f511d39fb0a524\",\"actor_id\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"actor_sequence\":1,\"blob_references\":[],\"causal_frontier\":[],\"created_at_ms\":1000,\"entity_id\":\"preferences\",\"entity_type\":\"UserPreferences\",\"epoch\":1,\"epoch_id\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"hlc_counter\":0,\"hlc_wall_ms\":1000,\"library_id\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"operation_id\":\"tx:historical:preferences:published-native:member:0\",\"operation_type\":\"preferences_leaf_assignment\",\"payload\":{\"updates\":{\"display\":{\"markReadOnScroll\":false},\"weights\":{\"topics\":{\"historical\":3}}}},\"payload_digest\":\"ccf37a54d8b5e46bd2d6bde703b2952ee770304a74686d4052593525fab5818b\",\"previous_actor_chain_digest\":\"5555555555555555555555555555555555555555555555555555555555555555\",\"previous_actor_operation_id\":null,\"schema_version\":1,\"signature\":\"8fb031a31c8dd9b1a77248bd92db7eaa06ea380f2227ca77718b29d849de3070a2f8d3c8df0df20d4b8885aef567f08b7d91c81f516e7def9daf70e4ef3ff508\",\"signature_algorithm\":\"ed25519\",\"transaction_digest\":\"4447877ec36d8066ead314861ccad857d674c160dcdd840819dcde2ec09a81bf\",\"transaction_id\":\"tx:historical:preferences:published-native\",\"transaction_member_count\":1,\"transaction_member_index\":0}"
+  ],
+  "expected": {
+    "authorityEpoch": "2222222222222222222222222222222222222222222222222222222222222222",
+    "causalFrontierDigest": "6e776f5d17982c3dfced70fa0b778ea57442c890c6d2cadb9aa564801fc99461",
+    "format": "freed_normalized_checkpoint_export_v2",
+    "itemCount": 2,
+    "libraryId": "1111111111111111111111111111111111111111111111111111111111111111",
+    "protocolVersion": 2,
+    "recordCount": 37,
+    "sourceRevision": 1,
+    "writerId": "3333333333333333333333333333333333333333333333333333333333333333"
+  },
+  "expectedCheckpointDigest": "48d96b13368b3d7a14aba56ef165111d6b750dcca9429f9b2820920965986cb8",
+  "operationPages": [
+    {
+      "page": {
+        "canonicalRecordBytes": 1272,
+        "done": false,
+        "nextCursor": {
+          "kind": "accepted_transaction",
+          "memberIndex": -1,
+          "recordDigest": "a1b2ea7eaf328a4c3196dc9c8fa8dcf43270599b16eaa13459fa3e6b7ada6876",
+          "sourceRevision": 1
+        },
+        "records": [
+          {
+            "canonicalRecordJson": "{\"actor_id\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"authoritative_source_revision\":1,\"authority_key_id\":\"aaf0c82b2245672170a83c9347d98671e0174dd87ef5bd3dfa9e41b1a4a858e4\",\"canonical_operation_ids\":[\"tx:historical:preferences:published-native:member:0\"],\"epoch\":1,\"epoch_id\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"format\":\"freed_follower_result_v1\",\"intent_epoch\":1,\"intent_epoch_id\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"library_id\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"original_result_digest\":null,\"previous_result_digest\":null,\"receipt_ids\":[\"cc51bf7e3846d0fd4ac757e14c65144fa7f38970d1261a847531189320461568\"],\"rejection_reason\":null,\"replacement_fields\":[],\"resolved_at_ms\":2000,\"result_body_digest\":\"a1b2ea7eaf328a4c3196dc9c8fa8dcf43270599b16eaa13459fa3e6b7ada6876\",\"result_sequence\":1,\"schema_version\":1,\"signature\":\"2c3824d830f5085df03718053f6844608076e94904d9f18dfb68ec4a3493dc012cc59221b142a9caddaaeb1cf99322c190e6d3217ad719b76681cc463b96a40f\",\"signature_algorithm\":\"ed25519\",\"status\":\"accepted\",\"transaction_digest\":\"4447877ec36d8066ead314861ccad857d674c160dcdd840819dcde2ec09a81bf\",\"transaction_id\":\"tx:historical:preferences:published-native\"}",
+            "kind": "accepted_transaction",
+            "memberIndex": -1,
+            "recordDigest": "a1b2ea7eaf328a4c3196dc9c8fa8dcf43270599b16eaa13459fa3e6b7ada6876",
+            "sourceRevision": 1,
+            "transactionDigest": "4447877ec36d8066ead314861ccad857d674c160dcdd840819dcde2ec09a81bf",
+            "transactionId": "tx:historical:preferences:published-native"
+          }
+        ]
+      },
+      "receivedAt": 2200,
+      "snapshot": {
+        "authorityEpoch": "2222222222222222222222222222222222222222222222222222222222222222",
+        "firstAvailableRevision": 1,
+        "format": "freed_normalized_operation_export_v2",
+        "libraryId": "1111111111111111111111111111111111111111111111111111111111111111",
+        "operationCount": 1,
+        "protocolVersion": 2,
+        "sourceRevision": 1,
+        "transactionCount": 1,
+        "writerId": "3333333333333333333333333333333333333333333333333333333333333333"
+      }
+    },
+    {
+      "page": {
+        "canonicalRecordBytes": 1343,
+        "done": true,
+        "nextCursor": {
+          "kind": "operation",
+          "memberIndex": 0,
+          "recordDigest": "cc51bf7e3846d0fd4ac757e14c65144fa7f38970d1261a847531189320461568",
+          "sourceRevision": 1
+        },
+        "records": [
+          {
+            "canonicalRecordJson": "{\"actor_chain_digest\":\"dd83e9cf85019d1f77d1800845770eddac7e95b8a0b2fbe850f511d39fb0a524\",\"actor_id\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"actor_sequence\":1,\"blob_references\":[],\"causal_frontier\":[],\"created_at_ms\":1000,\"entity_id\":\"preferences\",\"entity_type\":\"UserPreferences\",\"epoch\":1,\"epoch_id\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"hlc_counter\":0,\"hlc_wall_ms\":1000,\"library_id\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"operation_id\":\"tx:historical:preferences:published-native:member:0\",\"operation_type\":\"preferences_leaf_assignment\",\"payload\":{\"updates\":{\"display\":{\"markReadOnScroll\":false},\"weights\":{\"topics\":{\"historical\":3}}}},\"payload_digest\":\"ccf37a54d8b5e46bd2d6bde703b2952ee770304a74686d4052593525fab5818b\",\"previous_actor_chain_digest\":\"5555555555555555555555555555555555555555555555555555555555555555\",\"previous_actor_operation_id\":null,\"schema_version\":1,\"signature\":\"8fb031a31c8dd9b1a77248bd92db7eaa06ea380f2227ca77718b29d849de3070a2f8d3c8df0df20d4b8885aef567f08b7d91c81f516e7def9daf70e4ef3ff508\",\"signature_algorithm\":\"ed25519\",\"transaction_digest\":\"4447877ec36d8066ead314861ccad857d674c160dcdd840819dcde2ec09a81bf\",\"transaction_id\":\"tx:historical:preferences:published-native\",\"transaction_member_count\":1,\"transaction_member_index\":0}",
+            "kind": "operation",
+            "memberIndex": 0,
+            "recordDigest": "cc51bf7e3846d0fd4ac757e14c65144fa7f38970d1261a847531189320461568",
+            "sourceRevision": 1,
+            "transactionDigest": "4447877ec36d8066ead314861ccad857d674c160dcdd840819dcde2ec09a81bf",
+            "transactionId": "tx:historical:preferences:published-native"
+          }
+        ]
+      },
+      "receivedAt": 2200,
+      "snapshot": {
+        "authorityEpoch": "2222222222222222222222222222222222222222222222222222222222222222",
+        "firstAvailableRevision": 1,
+        "format": "freed_normalized_operation_export_v2",
+        "libraryId": "1111111111111111111111111111111111111111111111111111111111111111",
+        "operationCount": 1,
+        "protocolVersion": 2,
+        "sourceRevision": 1,
+        "transactionCount": 1,
+        "writerId": "3333333333333333333333333333333333333333333333333333333333333333"
+      }
+    }
+  ],
+  "sourceCommit": "17743c0e074b2b8ca27ff1c560a76854984410d7",
+  "sourceTag": "v26.9.1700-dev"
+}
