@@ -1439,7 +1439,7 @@ pub(crate) fn install_normalized_checkpoint_stage_in_transaction_v2(
         |row| row.get(0),
     )?;
     if existing_rows != 0 {
-        let recovered = recover_exact_checkpoint_activation(&transaction, stage_id, &stage)?;
+        let recovered = recover_exact_checkpoint_activation(transaction, stage_id, &stage)?;
         transaction.execute(
             "DELETE FROM library_checkpoint_stages WHERE stage_id = ?1;",
             [stage_id],
