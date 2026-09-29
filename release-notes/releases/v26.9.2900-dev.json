@@ -1,0 +1,98 @@
+{
+  "tag": "v26.9.2900-dev",
+  "version": "26.9.2900-dev",
+  "channel": "dev",
+  "dayKey": "26.9.29",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-09-29T20:04:41.453Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.9.1700-dev",
+    "previousPublishedDayTag": "v26.9.1700-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "45332a4d2e21c03df275f6f446b0d26c10ef5213",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.9.1700-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "3040c7805152f79fae6a966213849fdae8a882cb",
+        "toInclusiveProductCommitSha": "45332a4d2e21c03df275f6f446b0d26c10ef5213"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:709197038cc687ff0889d7e28497c08704b0a1f7096f4348479ea36bf5896ccb",
+        "currentDigest": "sha256:87ced2658785f1d28753666537ab09bef76d45848f728aeb12343f22ee70d6d1"
+      },
+      "transitions": [
+        {
+          "activationId": "consumer-successor-archive-and-reissue-v1",
+          "gate": "F",
+          "kind": "recovery_activation",
+          "failureResponse": "Preserve old signed intents and archive bytes. Refuse unverified successors, stale review inputs and unsupported complete transactions. Retain an exact durable replacement link atomically with the new intent; ambiguous responses retry that replacement without signing another action.",
+          "receiptExpectations": [
+            "recovery_receipt",
+            "roll_forward_recovery_receipt"
+          ]
+        },
+        {
+          "activationId": "cooperative-handoff-local-schema-v2",
+          "gate": "F",
+          "kind": "schema_version_activation",
+          "failureResponse": "Refuse an unknown or mismatched physical catalog before mutation. Migrate installation-local handoff and recovery tables atomically with their first durable lifecycle record. Preserve schema 2 databases and use a compatible successor build; never reopen them with a schema 1 binary or delete local recovery state to downgrade.",
+          "receiptExpectations": [
+            "roll_forward_recovery_receipt",
+            "schema_migration_receipt"
+          ]
+        },
+        {
+          "activationId": "cooperative-primary-authority-handoff-v1",
+          "gate": "F",
+          "kind": "authority_key_rotation",
+          "failureResponse": "Before signed source authorization, resume only through the verified cancellation path. After authorization, keep the predecessor fenced and recover the exact saved target transition. Admit the target only after independently verified cloud publication; never infer a winner or restore predecessor writes after ambiguous publication.",
+          "receiptExpectations": [
+            "authority_rotation_receipt",
+            "authority_transition_certificate",
+            "roll_forward_recovery_receipt"
+          ]
+        }
+      ],
+      "inspectionDigest": "sha256:48b389f8088c24dc707498d905a006eac0ab2a664c60369fbbc95af36adbef4e",
+      "decision": {
+        "state": "review_required",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.9.2900-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.9.2900-dev"
+    ],
+    "prNumbers": [],
+    "commitSubjects": [
+      "feat: add cooperative Primary handoff and consumer edit recovery",
+      "feat: complete headless Library service bootstrap",
+      "fix: anchor PWA preview build paths to repository root",
+      "docs: show local previews before deployment approval"
+    ]
+  },
+  "release": {
+    "deck": "Cooperative Primary handoff and consumer edit recovery and complete headless Library service bootstrap",
+    "features": [
+      "Cooperative Primary handoff and consumer edit recovery",
+      "Complete headless Library service bootstrap"
+    ],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.9.2900-dev\n\nCooperative Primary handoff and consumer edit recovery and complete headless Library service bootstrap\n\n### Features\n\n- Cooperative Primary handoff and consumer edit recovery\n- Complete headless Library service bootstrap\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
