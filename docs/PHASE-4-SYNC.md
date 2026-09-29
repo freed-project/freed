@@ -599,6 +599,10 @@ the new target fence atomically. A failed write preserves the old fence; restart
 reuses the saved readiness. This does not activate the return transfer. Complete
 round-trip and installed Mac acceptance remain pending.
 
+The activated target also exposes the source preparation form for a subsequent
+transfer. The form requires the current Primary role and completed activation;
+a staged target cannot start another transfer.
+
 Native lifecycle coverage now exercises a complete return transfer after the
 successor accepts the former Primary's consumer enrollment. It verifies the new
 source fence, final checkpoint, signed authorization, staged target, immutable

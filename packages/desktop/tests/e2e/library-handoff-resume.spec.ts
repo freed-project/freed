@@ -121,3 +121,58 @@ test("target verifies cancellation and remains a consumer after restart", async 
   expect((await ipc.invocations()).filter(call => call.cmd === "start_oauth_server")).toHaveLength(0);
   await panel.screenshot({ path: testInfo.outputPath("target-cancellation.png") });
 });
+
+test("activated target prepares the next source transfer and resumes its fence", async ({ app, ipc }, testInfo) => {
+  await app.goto(); await app.waitForReady();
+  await app.page.addInitScript(() => {
+    const handlers = (window as any).__TAURI_MOCK_HANDLERS__;
+    const sealed = localStorage.getItem("test-promoted-source-sealed") === "yes";
+    const readiness = JSON.stringify({ body: { target_actor_id: "e".repeat(64) } });
+    let status = {
+      handoffId: (sealed ? "f" : "a").repeat(64), libraryId: "b".repeat(64),
+      installationRole: sealed ? "source" : "target", phase: sealed ? "sealed" : "active",
+      predecessorEpochId: "c".repeat(64), successorEpochId: sealed ? null : "d".repeat(64),
+      canonicalReadiness: readiness, canonicalAuthorizationBody: sealed ? null : "body",
+      canonicalAuthorization: sealed ? null : "grant", canonicalActivation: sealed ? null : "activation",
+      expectedControlRevision: null, observedControlRevision: sealed ? null : '"winner"', updatedAtMs: 1,
+    };
+    const descriptor = { format: "freed_normalized_checkpoint_export_v2", protocolVersion: 2,
+      libraryId: status.libraryId, authorityEpoch: "d".repeat(64), writerId: "9".repeat(64),
+      sourceRevision: 7, causalFrontierDigest: "8".repeat(64), recordCount: 1, itemCount: 0 };
+    handlers.read_normalized_library_handoff_status = () => status;
+    handlers.normalized_desktop_installation_status = () => ({
+      state: status.phase === "active" ? "shared_primary" : "fenced", role: status.phase === "active" ? "primary" : null,
+      libraryId: status.libraryId, authorityEpochId: descriptor.authorityEpoch, actorId: descriptor.writerId,
+    });
+    handlers.begin_normalized_library_source_handoff = (args: any) => {
+      if (args.canonicalReadiness !== readiness || args.selectedTargetActorId !== "e".repeat(64)) throw new Error("Return transfer selected the wrong consumer");
+      status = { ...status, handoffId: "f".repeat(64), installationRole: "source", phase: "preparing",
+        predecessorEpochId: descriptor.authorityEpoch, successorEpochId: null, canonicalAuthorizationBody: null,
+        canonicalAuthorization: null, canonicalActivation: null, observedControlRevision: null };
+      return status.handoffId;
+    };
+    handlers.describe_normalized_library_checkpoint = () => descriptor;
+    handlers.seal_normalized_library_source_handoff = () => {
+      localStorage.setItem("test-promoted-source-sealed", "yes"); status.phase = "sealed"; return descriptor;
+    };
+  });
+  await app.page.reload(); await app.waitForReady();
+  await app.page.evaluate(async path => {
+    const { useSettingsStore } = await import(path); useSettingsStore.getState().openTo("sync");
+  }, settingsModule);
+  const panel = app.page.getByRole("region", { name: "Primary transfer" });
+  const prepare = panel.getByRole("button", { name: "Pause and prepare transfer", exact: true });
+  await expect(prepare).toBeDisabled();
+  await panel.getByLabel("New device readiness receipt", { exact: true }).fill(JSON.stringify({ body: { target_actor_id: "e".repeat(64) } }));
+  await panel.getByLabel("Target actor ID from the new device", { exact: true }).fill("e".repeat(64));
+  await panel.getByRole("checkbox").check();
+  await prepare.click();
+  await expect(panel).toContainText("Source paused");
+  await expect(panel.getByRole("alert")).toHaveCount(0);
+  await app.page.reload();
+  await expect(panel).toContainText("Source paused");
+  await expect(panel.getByRole("button", { name: "Publish final checkpoint and authorize move" })).toBeVisible();
+  await expect(prepare).toHaveCount(0);
+  expect((await ipc.invocations()).filter(call => call.cmd === "start_oauth_server")).toHaveLength(0);
+  await panel.screenshot({ path: testInfo.outputPath("promoted-primary-return-source.png") });
+});

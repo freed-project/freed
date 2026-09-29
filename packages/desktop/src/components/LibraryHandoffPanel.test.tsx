@@ -95,3 +95,12 @@ it.each(["preparing", "active", "demoted"])("keeps archive discovery available i
   expect(buttons().some(button => button.textContent === "Browse recovery archives")).toBe(true);
   expect(container.textContent?.includes("Applying them again is unavailable")).toBe(phase !== "demoted");
 });
+
+it.each(["preparing", "cas_pending", "active"])("offers a subsequent source transfer only after target activation: %s", async phase => {
+  mocks.status = { ...mocks.status, installationRole: "target", phase };
+  mocks.role.mockReturnValue("primary");
+  await render();
+  const prepare = buttons().find(button => button.textContent === "Pause and prepare transfer");
+  expect(Boolean(prepare)).toBe(phase === "active");
+  if (prepare) expect(prepare.disabled).toBe(true);
+});

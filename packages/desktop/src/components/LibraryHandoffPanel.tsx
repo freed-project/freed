@@ -60,6 +60,7 @@ export function LibraryHandoffPanel() {
     return { handoffId: status!.handoffId, accessToken, signal };
   }
   const fresh = loaded && (!status || status.phase === "cancelled"
+    || (status.installationRole === "target" && status.phase === "active")
     || (status.installationRole === "consumer" && status.phase === "following")
     || (status.installationRole === "source" && status.phase === "demoted"));
   const source = status?.installationRole === "source";
