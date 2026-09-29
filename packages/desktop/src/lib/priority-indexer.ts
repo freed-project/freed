@@ -11,6 +11,7 @@ import {
   runBackgroundJob,
 } from "./background-runtime-coordinator";
 import { log } from "./logger";
+import { isDesktopHandoffPaused } from "./factory-reset-guard";
 
 const BATCH_SIZE = 64;
 const PROCESS_INTERVAL_MS = 500;
@@ -124,7 +125,7 @@ async function processNextBatch(): Promise<void> {
 }
 
 export function start(options: PriorityIndexerOptions): void {
-  if (running || factoryResetDrainInProgress) return;
+  if (running || factoryResetDrainInProgress || isDesktopHandoffPaused()) return;
   getWeights = options.getWeights;
   running = true;
   startedAt = Date.now();
@@ -167,8 +168,9 @@ export function stop(): void {
   log.info("[priority-indexer] stopped");
 }
 
-export async function stopAndDrain(): Promise<void> {
-  factoryResetDrainInProgress = true;
+export async function stopAndDrain(options: { resumable?: boolean } = {}): Promise<void> {
+  if (options.resumable && !isDesktopHandoffPaused()) throw new Error("Resumable priority drain requires the handoff pause");
+  if (!options.resumable) factoryResetDrainInProgress = true;
   stop();
   await waitForFactoryResetDrain(
     () => Array.from(activeResetSensitiveOperations),

@@ -488,10 +488,431 @@ impl LibraryCoreDesktopBinding {
         })
     }
 
+    pub fn reapply_archived_assignments_v1(
+        &self,
+        request: &crate::RecoveryReissueRequestV1,
+        actor_store: &dyn crate::ActorKeyStore,
+        now: i64,
+    ) -> Result<crate::RecoveryReissueReceiptV1, LibraryCoreStorageError> {
+        let _reset = self.reset_gate.lock().map_err(|_| {
+            LibraryCoreStorageError::from("Desktop Library reset gate is poisoned".to_string())
+        })?;
+        crate::reapply_archived_assignments_v1(
+            &mut self.connect_selected_normalized()?,
+            request,
+            actor_store,
+            now,
+        )
+        .map_err(LibraryCoreStorageError::from)
+    }
+
+    pub fn reapply_archived_editor_transaction_v1(
+        &self,
+        request: &crate::RecoveryReissueRequestV1,
+        canonical_envelopes: &[Vec<u8>],
+        now: i64,
+    ) -> Result<crate::RecoveryReissueReceiptV1, LibraryCoreStorageError> {
+        let _reset = self.reset_gate.lock().map_err(|_| {
+            LibraryCoreStorageError::from("Desktop Library reset gate is poisoned".to_string())
+        })?;
+        crate::reapply_archived_editor_transaction_v1(
+            &mut self.connect_selected_normalized()?,
+            request,
+            canonical_envelopes,
+            now,
+        )
+        .map_err(LibraryCoreStorageError::from)
+    }
+
+    pub fn prepare_consumer_recovery_v1(
+        &self,
+        installation_witness: &str,
+        actor_store: &dyn crate::ActorKeyStore,
+        created_at: u64,
+    ) -> Result<crate::ConsumerRecoverySummaryV1, LibraryCoreStorageError> {
+        let _reset = self.reset_gate.lock().map_err(|_| {
+            LibraryCoreStorageError::from("Desktop Library reset gate is poisoned".to_string())
+        })?;
+        let mut connection = self.connect_selected_normalized()?;
+        crate::prepare_consumer_recovery_v1(
+            &mut connection,
+            installation_witness,
+            actor_store,
+            created_at,
+        )
+        .map_err(LibraryCoreStorageError::from)
+    }
+
+    pub fn commit_consumer_recovery_v1(
+        &self,
+        recovery_id: &str,
+        installation_witness: &str,
+        actor_store: &dyn crate::ActorKeyStore,
+        committed_at: u64,
+    ) -> Result<crate::ConsumerRecoverySummaryV1, LibraryCoreStorageError> {
+        let _reset = self.reset_gate.lock().map_err(|_| {
+            LibraryCoreStorageError::from("Desktop Library reset gate is poisoned".to_string())
+        })?;
+        let mut connection = self.connect_selected_normalized()?;
+        crate::commit_consumer_epoch_reenrollment_v1(
+            &mut connection,
+            recovery_id,
+            installation_witness,
+            actor_store,
+            committed_at,
+        )
+        .map_err(LibraryCoreStorageError::from)?;
+        crate::read_consumer_recovery_summary_v1(&connection)
+            .map_err(LibraryCoreStorageError::from)?
+            .ok_or_else(|| {
+                LibraryCoreStorageError::from("committed consumer recovery is missing".to_string())
+            })
+    }
+
+    pub fn prepare_target_handoff_readiness_v1(
+        &self,
+        actor_store: &dyn crate::ActorKeyStore,
+        pending_authority_store: &dyn crate::AuthorityKeyStore,
+        created_at_ms: u64,
+    ) -> Result<String, LibraryCoreStorageError> {
+        let _reset = self.reset_gate.lock().map_err(|_| {
+            LibraryCoreStorageError::from("Desktop Library reset gate is poisoned".to_string())
+        })?;
+        let mut connection = self.connect_selected_normalized()?;
+        crate::normalized_handoff_certificate::prepare_target_handoff_readiness_v1(
+            &mut connection,
+            actor_store,
+            pending_authority_store,
+            created_at_ms,
+        )
+        .map_err(LibraryCoreStorageError::from)
+    }
+
+    pub fn begin_source_handoff_v1(
+        &self,
+        readiness: &[u8],
+        selected_target_actor_id: &str,
+        authority_store: &dyn crate::AuthorityKeyStore,
+        prepared_at_ms: u64,
+    ) -> Result<String, LibraryCoreStorageError> {
+        let _reset = self.reset_gate.lock().map_err(|_| {
+            LibraryCoreStorageError::from("Desktop Library reset gate is poisoned".to_string())
+        })?;
+        let mut connection = self.connect_selected_normalized()?;
+        crate::normalized_handoff_certificate::begin_source_handoff_v1(
+            &mut connection,
+            readiness,
+            selected_target_actor_id,
+            authority_store,
+            prepared_at_ms,
+        )
+        .map_err(LibraryCoreStorageError::from)
+    }
+
+    pub fn read_native_handoff_status_v1(
+        &self,
+    ) -> Result<Option<crate::NativeHandoffStatusV1>, LibraryCoreStorageError> {
+        let _reset = self.reset_gate.lock().map_err(|_| {
+            LibraryCoreStorageError::from("Desktop Library reset gate is poisoned".to_string())
+        })?;
+        let mut connection = self.connect_selected_normalized()?;
+        crate::read_native_handoff_status_v1(&mut connection)
+            .map_err(|error| LibraryCoreStorageError::from(error.to_string()))
+    }
+
+    pub fn recover_active_target_handoff_v1(
+        &self,
+        handoff_id: &str,
+        actor_store: &dyn crate::ActorKeyStore,
+        current_store: &dyn crate::AuthorityKeyStore,
+    ) -> Result<crate::NativeHandoffStatusV1, LibraryCoreStorageError> {
+        let _reset = self.reset_gate.lock().map_err(|_| {
+            LibraryCoreStorageError::from("Desktop Library reset gate is poisoned".to_string())
+        })?;
+        let mut connection = self.connect_selected_normalized()?;
+        crate::recover_active_target_handoff_v1(
+            &mut connection,
+            handoff_id,
+            actor_store,
+            current_store,
+        )
+        .map_err(LibraryCoreStorageError::from)
+    }
+
+    pub fn activate_target_handoff_after_remote_verification_v1(
+        &self,
+        plan: &crate::HandoffVerificationPlanV1,
+        verified_revision: &str,
+        actor_store: &dyn crate::ActorKeyStore,
+        pending_store: &dyn crate::AuthorityKeyStore,
+        current_store: &dyn crate::AuthorityKeyStore,
+        activated_at_ms: u64,
+    ) -> Result<crate::NativeHandoffStatusV1, LibraryCoreStorageError> {
+        let _reset = self.reset_gate.lock().map_err(|_| {
+            LibraryCoreStorageError::from("Desktop Library reset gate is poisoned".to_string())
+        })?;
+        let mut connection = self.connect_selected_normalized()?;
+        crate::activate_target_handoff_after_remote_verification_v1(
+            &mut connection,
+            plan,
+            verified_revision,
+            actor_store,
+            pending_store,
+            current_store,
+            activated_at_ms,
+        )
+        .map_err(LibraryCoreStorageError::from)
+    }
+
+    pub fn source_handoff_verification_plan_v1(
+        &self,
+        handoff_id: &str,
+        stage_id: &str,
+        canonical_control: &[u8],
+    ) -> Result<crate::HandoffVerificationPlanV1, LibraryCoreStorageError> {
+        let _reset = self.reset_gate.lock().map_err(|_| {
+            LibraryCoreStorageError::from("Desktop Library reset gate is poisoned".to_string())
+        })?;
+        let mut connection = self.connect_selected_normalized()?;
+        crate::source_handoff_verification_plan_v1(
+            &mut connection,
+            handoff_id,
+            stage_id,
+            canonical_control,
+        )
+        .map_err(LibraryCoreStorageError::from)
+    }
+
+    pub fn recover_demoted_source_handoff_v1(
+        &self,
+        handoff_id: &str,
+        stage_id: &str,
+        canonical_control: &[u8],
+    ) -> Result<Option<crate::NativeHandoffStatusV1>, LibraryCoreStorageError> {
+        let _reset = self.reset_gate.lock().map_err(|_| {
+            LibraryCoreStorageError::from("Desktop Library reset gate is poisoned".to_string())
+        })?;
+        let mut connection = self.connect_selected_normalized()?;
+        crate::recover_demoted_source_handoff_v1(
+            &mut connection,
+            handoff_id,
+            stage_id,
+            canonical_control,
+        )
+        .map_err(LibraryCoreStorageError::from)
+    }
+
+    pub fn adopt_source_handoff_after_remote_verification_v1(
+        &self,
+        plan: &crate::HandoffVerificationPlanV1,
+        revision: &str,
+        adopted_at: u64,
+    ) -> Result<crate::NativeHandoffStatusV1, LibraryCoreStorageError> {
+        let _reset = self.reset_gate.lock().map_err(|_| {
+            LibraryCoreStorageError::from("Desktop Library reset gate is poisoned".to_string())
+        })?;
+        let mut connection = self.connect_selected_normalized()?;
+        crate::adopt_source_handoff_after_remote_verification_v1(
+            &mut connection,
+            plan,
+            revision,
+            adopted_at,
+        )
+        .map_err(LibraryCoreStorageError::from)
+    }
+
+    pub fn handoff_verification_plan_v1(
+        &self,
+        handoff_id: &str,
+    ) -> Result<crate::HandoffVerificationPlanV1, LibraryCoreStorageError> {
+        let _reset = self.reset_gate.lock().map_err(|_| {
+            LibraryCoreStorageError::from("Desktop Library reset gate is poisoned".to_string())
+        })?;
+        let mut connection = self.connect_selected_normalized()?;
+        crate::HandoffVerificationPlanV1::from_target(&mut connection, handoff_id)
+            .map_err(LibraryCoreStorageError::from)
+    }
+
+    pub fn prepare_target_handoff_activation_v1(
+        &self,
+        handoff_id: &str,
+        control_file_id: &str,
+        canonical_control: &[u8],
+        prepared_at_ms: u64,
+    ) -> Result<String, LibraryCoreStorageError> {
+        let _reset = self.reset_gate.lock().map_err(|_| {
+            LibraryCoreStorageError::from("Desktop Library reset gate is poisoned".to_string())
+        })?;
+        let mut connection = self.connect_selected_normalized()?;
+        crate::prepare_target_handoff_activation_v1(
+            &mut connection,
+            handoff_id,
+            control_file_id,
+            canonical_control,
+            prepared_at_ms,
+        )
+        .map_err(LibraryCoreStorageError::from)
+    }
+
+    pub fn stage_target_handoff_v1(
+        &self,
+        handoff_id: &str,
+        installation_witness: &str,
+        actor_store: &dyn crate::ActorKeyStore,
+        pending_authority_store: &dyn crate::AuthorityKeyStore,
+        staged_at_ms: u64,
+    ) -> Result<crate::WriterEpochReassignment, LibraryCoreStorageError> {
+        let _reset = self.reset_gate.lock().map_err(|_| {
+            LibraryCoreStorageError::from("Desktop Library reset gate is poisoned".to_string())
+        })?;
+        let mut connection = self.connect_selected_normalized()?;
+        crate::stage_target_handoff_v1(
+            &mut connection,
+            handoff_id,
+            installation_witness,
+            actor_store,
+            pending_authority_store,
+            staged_at_ms,
+        )
+        .map_err(LibraryCoreStorageError::from)
+    }
+
+    pub fn accept_target_handoff_cancellation_v1(
+        &self,
+        canonical_cancellation: &[u8],
+        applied_at_ms: u64,
+    ) -> Result<String, LibraryCoreStorageError> {
+        let _reset = self.reset_gate.lock().map_err(|_| {
+            LibraryCoreStorageError::from("Desktop Library reset gate is poisoned".to_string())
+        })?;
+        let mut connection = self.connect_selected_normalized()?;
+        crate::accept_target_handoff_cancellation_v1(
+            &mut connection,
+            canonical_cancellation,
+            applied_at_ms,
+        )
+        .map_err(LibraryCoreStorageError::from)
+    }
+
+    pub fn accept_target_handoff_authorization_v1(
+        &self,
+        canonical_authorization: &[u8],
+        actor_store: &dyn crate::ActorKeyStore,
+        pending_authority_store: &dyn crate::AuthorityKeyStore,
+        accepted_at_ms: u64,
+    ) -> Result<String, LibraryCoreStorageError> {
+        let _reset = self.reset_gate.lock().map_err(|_| {
+            LibraryCoreStorageError::from("Desktop Library reset gate is poisoned".to_string())
+        })?;
+        let mut connection = self.connect_selected_normalized()?;
+        crate::accept_target_handoff_authorization_v1(
+            &mut connection,
+            canonical_authorization,
+            actor_store,
+            pending_authority_store,
+            accepted_at_ms,
+        )
+        .map_err(LibraryCoreStorageError::from)
+    }
+
+    pub fn prepare_source_handoff_authorization_v1(
+        &self,
+        handoff_id: &str,
+        canonical_control: &[u8],
+        control_revision: &str,
+        control_file_id: &str,
+    ) -> Result<String, LibraryCoreStorageError> {
+        let _reset = self.reset_gate.lock().map_err(|_| {
+            LibraryCoreStorageError::from("Desktop Library reset gate is poisoned".to_string())
+        })?;
+        let mut connection = self.connect_selected_normalized()?;
+        crate::prepare_source_handoff_authorization_v1(
+            &mut connection,
+            handoff_id,
+            canonical_control,
+            control_revision,
+            control_file_id,
+        )
+        .map_err(LibraryCoreStorageError::from)
+    }
+
+    pub fn authorize_source_handoff_v1(
+        &self,
+        canonical_body: &[u8],
+        authority_store: &dyn crate::AuthorityKeyStore,
+        authorized_at_ms: u64,
+    ) -> Result<String, LibraryCoreStorageError> {
+        let _reset = self.reset_gate.lock().map_err(|_| {
+            LibraryCoreStorageError::from("Desktop Library reset gate is poisoned".to_string())
+        })?;
+        let mut connection = self.connect_selected_normalized()?;
+        crate::normalized_handoff_certificate::authorize_source_handoff_v1(
+            &mut connection,
+            canonical_body,
+            authority_store,
+            authorized_at_ms,
+        )
+        .map_err(LibraryCoreStorageError::from)
+    }
+
+    pub fn seal_source_handoff_v1(
+        &self,
+        handoff_id: &str,
+        expected: &crate::normalized_sqlite::NormalizedCheckpointExportDescriptorV2,
+        sealed_at_ms: u64,
+    ) -> Result<
+        crate::normalized_sqlite::NormalizedCheckpointExportDescriptorV2,
+        LibraryCoreStorageError,
+    > {
+        let _reset = self.reset_gate.lock().map_err(|_| {
+            LibraryCoreStorageError::from("Desktop Library reset gate is poisoned".to_string())
+        })?;
+        let mut connection = self.connect_selected_normalized()?;
+        crate::normalized_handoff::seal_source_handoff_v1(
+            &mut connection,
+            handoff_id,
+            expected,
+            sealed_at_ms,
+        )
+        .map_err(|error| LibraryCoreStorageError::from(error.to_string()))
+    }
+
+    pub fn cancel_source_handoff_v1(
+        &self,
+        handoff_id: &str,
+        cancelled_at_ms: u64,
+        authority_store: &dyn AuthorityKeyStore,
+    ) -> Result<(), LibraryCoreStorageError> {
+        let _reset = self.reset_gate.lock().map_err(|_| {
+            LibraryCoreStorageError::from("Desktop Library reset gate is poisoned".to_string())
+        })?;
+        let mut connection = self.connect_selected_normalized()?;
+        crate::cancel_source_handoff_with_proof_v1(
+            &mut connection,
+            handoff_id,
+            cancelled_at_ms,
+            authority_store,
+        )
+        .map(|_| ())
+        .map_err(|error| LibraryCoreStorageError::from(error.to_string()))
+    }
+
+    fn require_reset_preserves_handoff_v1(&self) -> Result<(), LibraryCoreStorageError> {
+        if !self.normalized_database.database_exists()? {
+            return Ok(());
+        }
+        let connection = self
+            .normalized_database
+            .open(normalized_sqlite_open_flags(false))?;
+        crate::normalized_handoff::require_normalized_handoff_reset_v1(&connection)
+            .map_err(|error| LibraryCoreStorageError::from(error.to_string()))
+    }
+
     pub fn reset_normalized_library_v1(&self) -> Result<(), LibraryCoreStorageError> {
         let _reset = self.reset_gate.lock().map_err(|_| {
             LibraryCoreStorageError::from("Desktop Library reset gate is poisoned".to_string())
         })?;
+        self.require_reset_preserves_handoff_v1()?;
         self.app_root.write_new_private_file_atomically(
             FACTORY_RESET_PENDING_FILE,
             ".library-factory-reset-pending-v1.pending",
@@ -507,6 +928,7 @@ impl LibraryCoreDesktopBinding {
                 "Desktop Library factory reset marker is absent".to_string(),
             ));
         }
+        self.require_reset_preserves_handoff_v1()?;
         self.app_root
             .remove_private_file(AUTHORITY_SELECTION_FILE)?;
         if let Some(source) = &self.historical_migration_source {
@@ -1169,6 +1591,74 @@ mod tests {
             .join(NORMALIZED_LIBRARY_DIRECTORY)
             .join("library-core.sqlite")
             .is_file());
+    }
+
+    #[test]
+    fn factory_reset_and_restart_cannot_erase_authorized_handoff() {
+        let fixture = tempfile::tempdir().unwrap();
+        let app_root = fixture.path().join("app-data");
+        fs::create_dir(&app_root).unwrap();
+        fs::set_permissions(&app_root, fs::Permissions::from_mode(0o700)).unwrap();
+        let binding = LibraryCoreDesktopBinding::open(&app_root, TEST_IDENTITY).unwrap();
+        let library = "b".repeat(64);
+        let epoch = "a".repeat(64);
+        install_test_selected_authority(&binding, &library, &epoch);
+        let mut connection = binding.connect_normalized().unwrap();
+        let transaction = connection.transaction().unwrap();
+        crate::normalized_sqlite::migrate_native_handoff_schema_v2(&transaction).unwrap();
+        transaction
+            .execute(
+                "INSERT INTO library_local_handoff
+            (singleton_id, handoff_id, library_id, installation_role, phase,
+             predecessor_epoch_id, target_writer_id, target_authority_public_key,
+             canonical_readiness, canonical_authorization_body, expected_control_revision,
+             created_at, updated_at)
+            VALUES (1, ?1, ?2, 'source', 'authorized', ?3, ?1, ?1, ?4, ?4, 'etag', 1, 1);",
+                rusqlite::params!["c".repeat(64), library, epoch, b"{}".as_slice()],
+            )
+            .unwrap();
+        transaction.commit().unwrap();
+        drop(connection);
+        let selector_before = fs::read(app_root.join(AUTHORITY_SELECTION_FILE)).unwrap();
+        let error = binding.reset_normalized_library_v1().unwrap_err();
+        assert!(error.to_string().contains("handoff fence"));
+        assert!(!app_root.join(FACTORY_RESET_PENDING_FILE).exists());
+        assert_eq!(
+            fs::read(app_root.join(AUTHORITY_SELECTION_FILE)).unwrap(),
+            selector_before
+        );
+
+        // A stale pending-reset marker must not bypass the same check at startup.
+        binding
+            .app_root
+            .write_new_private_file_atomically(
+                FACTORY_RESET_PENDING_FILE,
+                ".library-factory-reset-pending-v1.pending",
+                FACTORY_RESET_PENDING_BYTES,
+                CONTROL_FILE_MAXIMUM_BYTES,
+            )
+            .unwrap();
+        drop(binding);
+        let result = LibraryCoreDesktopBinding::open(&app_root, TEST_IDENTITY);
+        assert!(matches!(result, Err(error) if error.to_string().contains("handoff fence")));
+        assert_eq!(
+            fs::read(app_root.join(AUTHORITY_SELECTION_FILE)).unwrap(),
+            selector_before
+        );
+        assert!(app_root.join(FACTORY_RESET_PENDING_FILE).exists());
+        let database = crate::normalized_sqlite::open_normalized_sqlite_database_v1(
+            &app_root
+                .join(NORMALIZED_LIBRARY_DIRECTORY)
+                .join("library-core.sqlite"),
+            false,
+        )
+        .unwrap();
+        let phase: String = database
+            .query_row("SELECT phase FROM library_local_handoff;", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(phase, "authorized");
     }
 
     #[test]

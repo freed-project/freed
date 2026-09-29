@@ -336,7 +336,7 @@ pub struct NormalizedFollowerResultTransportImportReceiptV2 {
     pub stored_segment_digest: String,
 }
 
-fn actor_request(
+pub(crate) fn actor_request(
     connection: &Connection,
     library_id: &str,
     authority_epoch_id: &str,
@@ -393,12 +393,38 @@ pub fn prepare_normalized_follower_actor_request_v2(
     if let Some(existing) = actor_request(connection, &authority.library_id, &authority.epoch_id)? {
         return Ok(existing);
     }
-    let prepared = prepare_normalized_follower_actor_enrollment_request_v2(
-        &authority,
-        installation_witness,
-        actor_store,
-        created_at,
+    let prior_request: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM library_follower_actor_request WHERE singleton_id = 1);",
+        [],
+        |row| row.get(0),
+    )?;
+    if prior_request {
+        return Err(invalid(
+            "follower authority recovery must preserve the previous enrollment before re-enrolling",
+        ));
+    }
+    let source_incarnation = crate::normalized_source_handoff::source_consumer_incarnation_v1(
+        connection,
+        &authority.library_id,
+        &authority.epoch_id,
     )
+    .map_err(NormalizedSqliteError::Transport)?;
+    let prepared = if let Some(incarnation) = source_incarnation.as_deref() {
+        crate::library_core_actor_enrollment::prepare_recovery_actor_request(
+            &authority,
+            installation_witness,
+            actor_store,
+            created_at,
+            incarnation,
+        )
+    } else {
+        prepare_normalized_follower_actor_enrollment_request_v2(
+            &authority,
+            installation_witness,
+            actor_store,
+            created_at,
+        )
+    }
     .map_err(|_| invalid("normalized follower actor request is invalid"))?;
     let request = NormalizedFollowerActorRequestV2 {
         library_id: authority.library_id.clone(),
@@ -415,6 +441,18 @@ pub fn prepare_normalized_follower_actor_request_v2(
     if current != authority {
         return Err(invalid(
             "normalized authority changed during follower actor preparation",
+        ));
+    }
+    if crate::normalized_source_handoff::source_consumer_incarnation_v1(
+        &transaction,
+        &authority.library_id,
+        &authority.epoch_id,
+    )
+    .map_err(NormalizedSqliteError::Transport)?
+        != source_incarnation
+    {
+        return Err(invalid(
+            "source consumer incarnation changed during preparation",
         ));
     }
     transaction.execute(
@@ -1015,15 +1053,35 @@ pub fn enqueue_normalized_follower_intent_v1(
     canonical_envelopes: &[Vec<u8>],
     enqueued_at: i64,
 ) -> Result<NormalizedFollowerIntentCommitReceiptV1, NormalizedSqliteError> {
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let receipt = enqueue_normalized_follower_intent_in_transaction_v1(
+        &transaction,
+        canonical_envelopes,
+        enqueued_at,
+    )?;
+    transaction.commit()?;
+    Ok(receipt)
+}
+
+/// Enqueue inside the caller's write transaction so recovery can commit its
+/// durable replacement link with the intent, overlay and actor tip. The helper
+/// never commits; any later failure must roll back the caller's whole transaction.
+/// Authority, enrollment, capabilities and signed members are read and verified
+/// under this same transaction, with the actor tip compared again at update.
+pub(crate) fn enqueue_normalized_follower_intent_in_transaction_v1(
+    transaction: &Transaction<'_>,
+    canonical_envelopes: &[Vec<u8>],
+    enqueued_at: i64,
+) -> Result<NormalizedFollowerIntentCommitReceiptV1, NormalizedSqliteError> {
     if canonical_envelopes.is_empty()
         || canonical_envelopes.len() > FOLLOWER_INTENT_MAXIMUM_MEMBERS
         || !(0..=MAX_SAFE_INTEGER).contains(&enqueued_at)
     {
         return Err(invalid("normalized follower intent request is invalid"));
     }
-    let expected = normalized_follower_mutation_context_v1(connection)?;
+    let expected = normalized_follower_mutation_context_v1(transaction)?;
     let verified = verify_operation_transaction(canonical_envelopes, |identity| {
-        let mut actor = actor_state_at(connection, identity)?;
+        let mut actor = actor_state_at(transaction, identity)?;
         actor.next_sequence = expected.next_counter;
         actor.previous_operation_id = expected.previous_operation_id.clone();
         actor.previous_chain_digest = expected.previous_chain_digest.clone();
@@ -1060,7 +1118,6 @@ pub fn enqueue_normalized_follower_intent_v1(
         optimistic_field_count,
         state,
     };
-    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let existing: Option<(String, String, i64, i64, i64)> = transaction
         .query_row(
             "SELECT transaction_digest, actor_id, first_counter, last_counter,
@@ -1120,9 +1177,34 @@ pub fn enqueue_normalized_follower_intent_v1(
         if usize::try_from(stored_optimistic_field_count).ok() != Some(optimistic_field_count) {
             return Err(invalid("normalized follower optimistic replay changed"));
         }
-        transaction.commit()?;
         return Ok(receipt("pending"));
     }
+    if verified
+        .members
+        .iter()
+        .any(|member| !crate::normalized_preference_policy::supports_fresh_preferences(member))
+    {
+        return Err(invalid(
+            "normalized follower preference patch contains unsupported fields",
+        ));
+    }
+    // Match Primary materialization and PWA admission before allocating any
+    // local intent state. Exact stored retries above remain readback operations.
+    let program = SQLITE_MUTATION_PROGRAMS
+        .iter()
+        .find(|program| program.mutation_id == first.operation_type)
+        .ok_or(invalid("normalized follower mutation program is absent"))?;
+    if verified.members.len() > program.maximum_members
+        || verified.members.iter().any(|member| {
+            member.operation_type != program.mutation_id
+                || member.entity_type != program.entity_type
+        })
+    {
+        return Err(invalid(
+            "normalized follower intent exceeds its registered mutation program",
+        ));
+    }
+    crate::normalized_handoff::require_handoff_follower_edit_admission_v1(transaction)?;
     let canonical_transaction = encode_canonical_value(
         &json!({
             "actor_id": verified.actor_id,
@@ -1235,7 +1317,6 @@ pub fn enqueue_normalized_follower_intent_v1(
             "normalized follower actor tip changed concurrently",
         ));
     }
-    transaction.commit()?;
     Ok(receipt("pending"))
 }
 
@@ -2303,7 +2384,20 @@ pub fn normalized_follower_runtime_status_v2(
         )
         .optional()?;
     let (state, actor_id) = match actor {
-        None => ("awaiting_enrollment", None),
+        None => {
+            let retained: Option<String> = connection
+                .query_row(
+                    "SELECT actor_id FROM library_follower_actor_request WHERE singleton_id = 1;",
+                    [],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            if retained.is_some() {
+                ("authority_recovery_required", retained)
+            } else {
+                ("awaiting_enrollment", None)
+            }
+        }
         Some((actor_id, false)) => ("enrollment_pending", Some(actor_id)),
         Some((actor_id, true)) => {
             let active: bool = connection.query_row(
@@ -2531,7 +2625,7 @@ mod tests {
         )
         .unwrap_err()
         .to_string()
-        .contains("authority recovery"));
+        .contains("successor authority record is missing"));
         assert_eq!(snapshot(&replica), before);
         replica
             .execute(
@@ -2885,8 +2979,74 @@ mod tests {
         )
         .expect("verified follower enrollment");
         let envelopes = signed_envelopes(&actor_key_pair, &verified);
+        // A recovery caller must be able to attach its durable link after enqueue
+        // without exposing any intent, overlay, counter or invalidation on failure.
+        let before = normalized_follower_mutation_context_v1(&connection).unwrap();
+        {
+            let transaction = connection
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .unwrap();
+            enqueue_normalized_follower_intent_in_transaction_v1(&transaction, &envelopes, 2_200)
+                .expect("stage intent in the recovery caller's transaction");
+            assert!(transaction
+                .execute("INSERT INTO missing_recovery_link VALUES (1);", [])
+                .is_err());
+            transaction.rollback().unwrap();
+        }
+        let after = normalized_follower_mutation_context_v1(&connection).unwrap();
+        assert_eq!(after.next_counter, before.next_counter);
+        assert_eq!(after.previous_operation_id, before.previous_operation_id);
+        assert_eq!(after.previous_chain_digest, before.previous_chain_digest);
+        for table in [
+            "library_intent_transactions",
+            "library_intent_members",
+            "library_optimistic_fields",
+            "library_local_invalidations",
+        ] {
+            assert_eq!(
+                connection
+                    .query_row(&format!("SELECT count(*) FROM {table};"), [], |row| {
+                        row.get::<_, i64>(0)
+                    })
+                    .unwrap(),
+                0,
+                "caller rollback retained rows in {table}"
+            );
+        }
+        // Admission reads the caller's transaction, including an actor retirement
+        // made there. No pre-transaction enrollment snapshot can authorize a write.
+        {
+            let transaction = connection
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .unwrap();
+            transaction
+                .execute(
+                    "UPDATE library_actors SET retired_at = 2199 WHERE actor_id = ?1;",
+                    [&accepted.actor_id],
+                )
+                .unwrap();
+            assert!(enqueue_normalized_follower_intent_in_transaction_v1(
+                &transaction,
+                &envelopes,
+                2_200,
+            )
+            .is_err());
+            transaction.rollback().unwrap();
+        }
         let intent = enqueue_normalized_follower_intent_v1(&mut connection, &envelopes, 2_200)
             .expect("enqueue follower intent");
+        assert_eq!(
+            enqueue_normalized_follower_intent_v1(&mut connection, &envelopes, 2_201)
+                .expect("response-loss retry reads back the same intent"),
+            intent,
+        );
+        assert_eq!(
+            normalized_follower_mutation_context_v1(&connection)
+                .unwrap()
+                .next_counter,
+            3,
+            "retry must not allocate another counter",
+        );
         assert_eq!(intent.first_counter, 1);
         assert_eq!(intent.last_counter, 2);
         assert_eq!(intent.optimistic_field_count, 2);

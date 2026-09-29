@@ -38,6 +38,11 @@ pub const CONTENT_RANGE_MAXIMUM_APPEND_BYTES: usize = 262144;
 pub const FOLLOWER_INTENT_PAGE_MAXIMUM_RECORDS: usize = 128;
 pub const OPERATION_TRANSACTION_MAXIMUM_MEMBERS: usize = 1000;
 pub const OPERATION_TRANSACTION_MAXIMUM_BYTES: usize = 4194304;
+pub const NATIVE_STORAGE_SCHEMA_VERSION: u32 = 2;
+pub const NORMALIZED_NATIVE_SCHEMA_SHA256: &str =
+    "8d73df0aaceb54467284af7be396d4a7127db93b592ca11a469c5153deaf4af9";
+pub const NORMALIZED_NATIVE_SCHEMA_EXTENSION_SQL: &str =
+    include_str!("normalized_native_schema_v2.sql");
 pub const NORMALIZED_SCHEMA_SHA256: &str =
     "aaa181e3306dece6e7c385f6be6c6c3e6feffdcb8aeb4a9cb7212f599ae99c0f";
 pub const NORMALIZED_SCHEMA_SQL: &str =
@@ -557,7 +562,6 @@ pub const NATIVE_COMMAND_IDS: &[&str] = &[
     "primary_follower_actor_transport_state_v1",
     "primary_mutation_context_v1",
     "query_v1",
-    "reassign_writer_epoch_v2",
     "retire_actor_v1",
     "sign_operation_v1",
 ];
@@ -726,6 +730,7 @@ pub const QUERY_IDS: &[&str] = &[
     "account_graph_page_v1",
     "account_link_candidates_v1",
     "account_picker_page_v1",
+    "account_root_v1",
     "account_timeline_v1",
     "background_item_page_v1",
     "change_feed_v1",
@@ -743,13 +748,18 @@ pub const QUERY_IDS: &[&str] = &[
     "local_change_feed_v1",
     "map_markers_v1",
     "optimistic_fields_v1",
+    "person_account_page_v1",
     "person_detail_v1",
     "person_graph_page_v1",
     "person_picker_page_v1",
+    "person_root_v1",
     "person_timeline_v1",
     "persons_graph_v1",
     "preferences_snapshot_v1",
     "provider_media_page_v1",
+    "recovery_archive_page_v1",
+    "recovery_intent_page_v1",
+    "recovery_intent_review_v1",
     "rss_feed_detail_v1",
     "rss_feed_page_v1",
     "rss_item_summary_v1",
@@ -777,6 +787,14 @@ pub struct SqliteQueryProgram {
 }
 
 pub const SQLITE_QUERY_PROGRAMS: &[SqliteQueryProgram] = &[
+    SqliteQueryProgram { query_id: "recovery_intent_review_v1", maximum_scan_rows: 1001, sql: "SELECT archive_digest FROM library_local_recovery_archives WHERE recovery_id = ?1 AND library_id = (SELECT library_id FROM library_meta WHERE singleton_id = 1);", reverse_sql: Some("SELECT substr(author_display_name, 1, 128), COALESCE(NULLIF(substr(content_text, 1, 256), ''), substr(link_title, 1, 256)) FROM library_feed_items WHERE global_id = ?1 LIMIT 1;"), count_sql: "SELECT row_count FROM library_local_recovery_archives WHERE recovery_id = ?1;", variants: &[
+        SqliteQueryVariant { variant_id: "item_context", sql: "SELECT substr(author_display_name, 1, 128), COALESCE(NULLIF(substr(content_text, 1, 256), ''), substr(link_title, 1, 256)) FROM library_feed_items WHERE global_id = ?1 LIMIT 1;", reverse_sql: "SELECT substr(author_display_name, 1, 128), COALESCE(NULLIF(substr(content_text, 1, 256), ''), substr(link_title, 1, 256)) FROM library_feed_items WHERE global_id = ?1 LIMIT 1;" },
+        SqliteQueryVariant { variant_id: "rss_context", sql: "SELECT CASE WHEN EXISTS(SELECT 1 FROM library_tombstones WHERE entity_type = 'rss_feed' AND entity_id = ?1) THEN 'deleted' WHEN EXISTS(SELECT 1 FROM library_rss_feeds WHERE url = ?1) THEN 'present' ELSE 'absent' END;", reverse_sql: "SELECT CASE WHEN EXISTS(SELECT 1 FROM library_tombstones WHERE entity_type = 'rss_feed' AND entity_id = ?1) THEN 'deleted' WHEN EXISTS(SELECT 1 FROM library_rss_feeds WHERE url = ?1) THEN 'present' ELSE 'absent' END;" },
+        SqliteQueryVariant { variant_id: "person_context", sql: "SELECT CASE WHEN EXISTS(SELECT 1 FROM library_tombstones WHERE entity_type = 'person' AND entity_id = ?1) THEN 'deleted' WHEN EXISTS(SELECT 1 FROM library_persons WHERE id = ?1) THEN 'present' ELSE 'absent' END;", reverse_sql: "SELECT CASE WHEN EXISTS(SELECT 1 FROM library_tombstones WHERE entity_type = 'person' AND entity_id = ?1) THEN 'deleted' WHEN EXISTS(SELECT 1 FROM library_persons WHERE id = ?1) THEN 'present' ELSE 'absent' END;" },
+    ] },
+    SqliteQueryProgram { query_id: "recovery_intent_page_v1", maximum_scan_rows: 65, sql: "SELECT row_ordinal AS ordinal, transaction_id AS transactionId FROM library_local_recovery_rows WHERE recovery_id = ?1 AND table_key = 'library_intent_transactions' AND row_ordinal > ?2 ORDER BY row_ordinal LIMIT ?3;", reverse_sql: None, count_sql: "SELECT archive_digest FROM library_local_recovery_archives WHERE recovery_id = ?1 AND library_id = (SELECT library_id FROM library_meta WHERE singleton_id = 1);", variants: &[
+
+    ] },
     SqliteQueryProgram { query_id: "account_detail_v1", maximum_scan_rows: 1, sql: "SELECT account.id, account.person_id AS personId, account.kind, account.provider, account.external_id AS externalId, account.handle, account.display_name AS displayName, account.avatar_url AS avatarUrl, account.profile_url AS profileUrl, account.email, account.phone, account.address, account.imported_at AS importedAt, account.first_seen_at AS firstSeenAt, account.last_seen_at AS lastSeenAt, account.discovered_from AS discoveredFrom, CASE account.follow_roster_active WHEN 1 THEN 1 WHEN 0 THEN 0 ELSE NULL END AS followRosterActive, account.follow_roster_synced_at AS followRosterSyncedAt, account.sample_batch_id AS sampleBatchId, account.sample_generated_at AS sampleGeneratedAt, account.sample_generator_version AS sampleGeneratorVersion, account.created_at AS createdAt, account.updated_at AS updatedAt, (SELECT json_group_array(role) FROM (SELECT role FROM library_account_follow_roles WHERE account_id = account.id ORDER BY role COLLATE BINARY LIMIT 8)) AS followRosterRolesJson FROM library_accounts AS account WHERE account.id = ?1 COLLATE BINARY LIMIT 1;", reverse_sql: None, count_sql: "SELECT count(*) FROM library_accounts WHERE id = ?1 COLLATE BINARY;", variants: &[
 
     ] },
@@ -887,6 +905,18 @@ pub const SQLITE_QUERY_PROGRAMS: &[SqliteQueryProgram] = &[
     SqliteQueryProgram { query_id: "story_wall_candidates_v1", maximum_scan_rows: 251, sql: "SELECT item.global_id AS globalId, item.platform, item.published_at AS publishedAt, item.captured_at AS capturedAt, substr(item.author_id, 1, 1024) AS authorId, substr(item.author_display_name, 1, 512) AS authorDisplayName, substr(item.author_handle, 1, 256) AS authorHandle, substr(item.source_url, 1, 2048) AS sourceUrl, substr(item.content_text, 1, 1500) AS contentText, substr(item.location_name, 1, 512) AS locationName, account.id AS linkedAccountId, account.person_id AS linkedPersonId, (SELECT json_group_array(source_url) FROM (SELECT media.source_url FROM library_feed_item_media AS media WHERE media.global_id = item.global_id ORDER BY media.ordinal LIMIT 8)) AS mediaUrlsJson, (SELECT json_group_array(media_type) FROM (SELECT media.media_type FROM library_feed_item_media AS media WHERE media.global_id = item.global_id ORDER BY media.ordinal LIMIT 8)) AS mediaTypesJson FROM library_feed_items AS item INDEXED BY library_feed_items_browse LEFT JOIN library_accounts AS account INDEXED BY library_accounts_provider_external ON account.provider = item.platform AND account.external_id = item.author_id WHERE item.archived = 0 AND item.hidden = 0 AND EXISTS (SELECT 1 FROM library_feed_item_media AS media WHERE media.global_id = item.global_id) ORDER BY item.published_at DESC, item.global_id COLLATE BINARY ASC LIMIT ?1;", reverse_sql: None, count_sql: "SELECT count(*) FROM library_feed_items AS item WHERE item.archived = 0 AND item.hidden = 0 AND EXISTS (SELECT 1 FROM library_feed_item_media AS media WHERE media.global_id = item.global_id);", variants: &[
 
     ] },
+    SqliteQueryProgram { query_id: "recovery_archive_page_v1", maximum_scan_rows: 65, sql: "SELECT created_at AS createdAt, pending_intent_count AS pendingEdits, predecessor_epoch_id AS predecessorEpochId, published_intent_count AS publishedEdits, CASE WHEN library_id = (SELECT library_id FROM library_meta WHERE singleton_id = 1) THEN recovery_id ELSE NULL END AS recoveryId, successor_epoch_id AS successorEpochId FROM library_local_recovery_archives WHERE recovery_id > ?1 COLLATE BINARY ORDER BY recovery_id COLLATE BINARY LIMIT ?2;", reverse_sql: None, count_sql: "SELECT handoff_id FROM library_local_handoff WHERE singleton_id = 1 AND library_id = (SELECT library_id FROM library_meta WHERE singleton_id = 1);", variants: &[
+
+    ] },
+    SqliteQueryProgram { query_id: "person_root_v1", maximum_scan_rows: 1, sql: "WITH tags AS MATERIALIZED (SELECT length(CAST(tag AS BLOB)) AS tagBytes FROM library_person_tags WHERE person_id = ?1 COLLATE BINARY ORDER BY tag COLLATE BINARY LIMIT 4097), bounds AS (SELECT count(*) AS tagCount, COALESCE(sum(tagBytes), 0) AS tagBytes FROM tags) SELECT CASE WHEN bounds.tagCount <= 4096 AND bounds.tagBytes + COALESCE(length(CAST(p.id AS BLOB)), 0) + COALESCE(length(CAST(p.name AS BLOB)), 0) + COALESCE(length(CAST(p.avatar_url AS BLOB)), 0) + COALESCE(length(CAST(p.bio AS BLOB)), 0) + COALESCE(length(CAST(p.relationship_status AS BLOB)), 0) + COALESCE(length(CAST(p.notes AS BLOB)), 0) + COALESCE(length(CAST(p.sample_batch_id AS BLOB)), 0) <= 65536 THEN json_patch(json_object('id', p.id, 'name', p.name, 'relationshipStatus', p.relationship_status, 'careLevel', p.care_level, 'createdAt', p.created_at, 'updatedAt', p.updated_at, 'tags', json((SELECT json_group_array(tag) FROM (SELECT tag FROM library_person_tags WHERE person_id = ?1 COLLATE BINARY ORDER BY tag COLLATE BINARY LIMIT 4096)))), json_object('avatarUrl', p.avatar_url, 'bio', p.bio, 'notes', p.notes, 'reachOutIntervalDays', p.reach_out_interval_days, 'sampleDataFingerprint', CASE WHEN p.sample_batch_id IS NOT NULL AND p.sample_generated_at IS NOT NULL AND p.sample_generator_version IS NOT NULL THEN json_object('marker', 'freed.sample-data.v1', 'batchId', p.sample_batch_id, 'generatedAt', p.sample_generated_at, 'generatorVersion', p.sample_generator_version) ELSE NULL END)) ELSE NULL END AS personJson FROM library_persons AS p CROSS JOIN bounds WHERE p.id = ?1 COLLATE BINARY LIMIT 1;", reverse_sql: None, count_sql: "SELECT count(*) FROM library_persons WHERE id = ?1 COLLATE BINARY;", variants: &[
+
+    ] },
+    SqliteQueryProgram { query_id: "account_root_v1", maximum_scan_rows: 1, sql: "WITH roles AS MATERIALIZED (SELECT role FROM library_account_follow_roles WHERE account_id = ?1 COLLATE BINARY ORDER BY role COLLATE BINARY LIMIT 4) SELECT CASE WHEN (SELECT count(*) FROM roles) <= 3 AND COALESCE(length(CAST(a.id AS BLOB)),0) + COALESCE(length(CAST(a.kind AS BLOB)),0) + COALESCE(length(CAST(a.provider AS BLOB)),0) + COALESCE(length(CAST(a.external_id AS BLOB)),0) + COALESCE(length(CAST(a.discovered_from AS BLOB)),0) + COALESCE(length(CAST(a.person_id AS BLOB)),0) + COALESCE(length(CAST(a.handle AS BLOB)),0) + COALESCE(length(CAST(a.display_name AS BLOB)),0) + COALESCE(length(CAST(a.avatar_url AS BLOB)),0) + COALESCE(length(CAST(a.profile_url AS BLOB)),0) + COALESCE(length(CAST(a.email AS BLOB)),0) + COALESCE(length(CAST(a.phone AS BLOB)),0) + COALESCE(length(CAST(a.address AS BLOB)),0) + COALESCE(length(CAST(a.sample_batch_id AS BLOB)),0) <= 65536 THEN json_patch(json_object('id', a.id, 'kind', a.kind, 'provider', a.provider, 'externalId', a.external_id, 'discoveredFrom', a.discovered_from, 'firstSeenAt', a.first_seen_at, 'lastSeenAt', a.last_seen_at, 'createdAt', a.created_at, 'updatedAt', a.updated_at, 'followRosterRoles', json((SELECT json_group_array(role) FROM roles))), json_object('personId', a.person_id, 'handle', a.handle, 'displayName', a.display_name, 'avatarUrl', a.avatar_url, 'profileUrl', a.profile_url, 'email', a.email, 'phone', a.phone, 'address', a.address, 'importedAt', a.imported_at, 'followRosterSyncedAt', a.follow_roster_synced_at, 'followRosterActive', json(CASE a.follow_roster_active WHEN 1 THEN 'true' WHEN 0 THEN 'false' ELSE 'null' END), 'sampleDataFingerprint', CASE WHEN a.sample_batch_id IS NOT NULL AND a.sample_generated_at IS NOT NULL AND a.sample_generator_version IS NOT NULL THEN json_object('marker','freed.sample-data.v1','batchId',a.sample_batch_id,'generatedAt',a.sample_generated_at,'generatorVersion',a.sample_generator_version) ELSE NULL END)) ELSE NULL END AS accountJson FROM library_accounts AS a WHERE a.id = ?1 COLLATE BINARY LIMIT 1;", reverse_sql: None, count_sql: "SELECT count(*) FROM library_accounts WHERE id = ?1 COLLATE BINARY;", variants: &[
+
+    ] },
+    SqliteQueryProgram { query_id: "person_account_page_v1", maximum_scan_rows: 65, sql: "SELECT id AS accountId FROM library_accounts INDEXED BY library_accounts_person WHERE person_id = ?1 COLLATE BINARY AND id > ?2 COLLATE BINARY ORDER BY id COLLATE BINARY LIMIT ?3;", reverse_sql: None, count_sql: "SELECT 1;", variants: &[
+
+    ] },
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -917,6 +947,181 @@ pub struct SqliteQueryRowModel {
 
 #[rustfmt::skip]
 pub const SQLITE_QUERY_ROW_MODELS: &[SqliteQueryRowModel] = &[
+    SqliteQueryRowModel {
+        query_id: "recovery_intent_review_v1",
+        fields: &[
+        SqliteQueryRowField {
+            name: "assigned",
+            kind: SqliteQueryRowFieldKind::Boolean,
+            nullable: true,
+            minimum_utf8_bytes: None,
+            maximum_utf8_bytes: None,
+            minimum_integer: None,
+            maximum_integer: None,
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "assignedAt",
+            kind: SqliteQueryRowFieldKind::Integer,
+            nullable: true,
+            minimum_utf8_bytes: None,
+            maximum_utf8_bytes: None,
+            minimum_integer: Some(0),
+            maximum_integer: Some(9007199254740991),
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "authorName",
+            kind: SqliteQueryRowFieldKind::Text,
+            nullable: true,
+            minimum_utf8_bytes: Some(0),
+            maximum_utf8_bytes: Some(512),
+            minimum_integer: None,
+            maximum_integer: None,
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "createdAt",
+            kind: SqliteQueryRowFieldKind::Integer,
+            nullable: false,
+            minimum_utf8_bytes: None,
+            maximum_utf8_bytes: None,
+            minimum_integer: Some(0),
+            maximum_integer: Some(9007199254740991),
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "entityId",
+            kind: SqliteQueryRowFieldKind::Text,
+            nullable: false,
+            minimum_utf8_bytes: Some(1),
+            maximum_utf8_bytes: Some(2048),
+            minimum_integer: None,
+            maximum_integer: None,
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "itemPresent",
+            kind: SqliteQueryRowFieldKind::Boolean,
+            nullable: true,
+            minimum_utf8_bytes: None,
+            maximum_utf8_bytes: None,
+            minimum_integer: None,
+            maximum_integer: None,
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "itemText",
+            kind: SqliteQueryRowFieldKind::Text,
+            nullable: true,
+            minimum_utf8_bytes: Some(0),
+            maximum_utf8_bytes: Some(1024),
+            minimum_integer: None,
+            maximum_integer: None,
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "memberIndex",
+            kind: SqliteQueryRowFieldKind::Integer,
+            nullable: false,
+            minimum_utf8_bytes: None,
+            maximum_utf8_bytes: None,
+            minimum_integer: Some(0),
+            maximum_integer: Some(999),
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "operationType",
+            kind: SqliteQueryRowFieldKind::Text,
+            nullable: false,
+            minimum_utf8_bytes: Some(1),
+            maximum_utf8_bytes: Some(128),
+            minimum_integer: None,
+            maximum_integer: None,
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "originalEnvelopeJson",
+            kind: SqliteQueryRowFieldKind::Text,
+            nullable: true,
+            minimum_utf8_bytes: Some(1),
+            maximum_utf8_bytes: Some(131072),
+            minimum_integer: None,
+            maximum_integer: None,
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "personState",
+            kind: SqliteQueryRowFieldKind::Text,
+            nullable: true,
+            minimum_utf8_bytes: Some(6),
+            maximum_utf8_bytes: Some(7),
+            minimum_integer: None,
+            maximum_integer: None,
+            enum_values: &["absent", "deleted", "present"],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "readAt",
+            kind: SqliteQueryRowFieldKind::Integer,
+            nullable: true,
+            minimum_utf8_bytes: None,
+            maximum_utf8_bytes: None,
+            minimum_integer: Some(0),
+            maximum_integer: Some(9007199254740991),
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "rssFeedState",
+            kind: SqliteQueryRowFieldKind::Text,
+            nullable: true,
+            minimum_utf8_bytes: Some(6),
+            maximum_utf8_bytes: Some(7),
+            minimum_integer: None,
+            maximum_integer: None,
+            enum_values: &["absent", "deleted", "present"],
+            integer_values: &[],
+        },
+        ],
+    },
+    SqliteQueryRowModel {
+        query_id: "recovery_intent_page_v1",
+        fields: &[
+        SqliteQueryRowField {
+            name: "ordinal",
+            kind: SqliteQueryRowFieldKind::Integer,
+            nullable: false,
+            minimum_utf8_bytes: None,
+            maximum_utf8_bytes: None,
+            minimum_integer: Some(0),
+            maximum_integer: Some(9007199254740991),
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "transactionId",
+            kind: SqliteQueryRowFieldKind::Text,
+            nullable: false,
+            minimum_utf8_bytes: Some(1),
+            maximum_utf8_bytes: Some(255),
+            minimum_integer: None,
+            maximum_integer: None,
+            enum_values: &[],
+            integer_values: &[],
+        },
+        ],
+    },
     SqliteQueryRowModel {
         query_id: "optimistic_fields_v1",
         fields: &[
@@ -1581,6 +1786,93 @@ pub const SQLITE_QUERY_ROW_MODELS: &[SqliteQueryRowModel] = &[
             minimum_integer: None,
             maximum_integer: None,
             enum_values: &["connection", "friend"],
+            integer_values: &[],
+        },
+        ],
+    },
+    SqliteQueryRowModel {
+        query_id: "recovery_archive_page_v1",
+        fields: &[
+        SqliteQueryRowField {
+            name: "createdAt",
+            kind: SqliteQueryRowFieldKind::Integer,
+            nullable: false,
+            minimum_utf8_bytes: None,
+            maximum_utf8_bytes: None,
+            minimum_integer: Some(0),
+            maximum_integer: Some(9007199254740991),
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "pendingEdits",
+            kind: SqliteQueryRowFieldKind::Integer,
+            nullable: false,
+            minimum_utf8_bytes: None,
+            maximum_utf8_bytes: None,
+            minimum_integer: Some(0),
+            maximum_integer: Some(9007199254740991),
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "predecessorEpochId",
+            kind: SqliteQueryRowFieldKind::Text,
+            nullable: false,
+            minimum_utf8_bytes: Some(64),
+            maximum_utf8_bytes: Some(64),
+            minimum_integer: None,
+            maximum_integer: None,
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "publishedEdits",
+            kind: SqliteQueryRowFieldKind::Integer,
+            nullable: false,
+            minimum_utf8_bytes: None,
+            maximum_utf8_bytes: None,
+            minimum_integer: Some(0),
+            maximum_integer: Some(9007199254740991),
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "recoveryId",
+            kind: SqliteQueryRowFieldKind::Text,
+            nullable: false,
+            minimum_utf8_bytes: Some(64),
+            maximum_utf8_bytes: Some(64),
+            minimum_integer: None,
+            maximum_integer: None,
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "successorEpochId",
+            kind: SqliteQueryRowFieldKind::Text,
+            nullable: false,
+            minimum_utf8_bytes: Some(64),
+            maximum_utf8_bytes: Some(64),
+            minimum_integer: None,
+            maximum_integer: None,
+            enum_values: &[],
+            integer_values: &[],
+        },
+        ],
+    },
+    SqliteQueryRowModel {
+        query_id: "person_account_page_v1",
+        fields: &[
+        SqliteQueryRowField {
+            name: "accountId",
+            kind: SqliteQueryRowFieldKind::Text,
+            nullable: false,
+            minimum_utf8_bytes: Some(1),
+            maximum_utf8_bytes: Some(4096),
+            minimum_integer: None,
+            maximum_integer: None,
+            enum_values: &[],
             integer_values: &[],
         },
         ],

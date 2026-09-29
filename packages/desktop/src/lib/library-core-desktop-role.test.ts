@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const native = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: native.invoke }));
 import {
-  readLibraryCoreDesktopRole, refreshLibraryCoreDesktopRole, selectDesktopLibrarySetup,
+  subscribeDesktopLibraryInstallation, readDesktopLibraryInstallationError, readDesktopLibraryInstallation, readLibraryCoreDesktopRole, refreshLibraryCoreDesktopRole, selectDesktopLibrarySetup,
   requirePrimaryLibraryCoreDesktopRole, requireFollowerLibraryCoreDesktopRole,
 } from "./library-core-desktop-role";
 const primary = { state: "standalone_primary", role: "primary", libraryId: "a".repeat(64), authorityEpochId: "b".repeat(64), actorId: "c".repeat(64) };
@@ -46,6 +46,21 @@ describe("native Desktop installation role", () => {
     expect(native.invoke).toHaveBeenLastCalledWith("normalized_desktop_installation_status", { legacyFollowerRequested: true });
     expect(window.localStorage.getItem("freed.libraryCore.desktopRoleV1")).toBeNull();
     expect(requirePrimaryLibraryCoreDesktopRole).toThrow();
+  });
+
+  it("notifies the app after native fencing, consumer selection and failed readback", async () => {
+    const observed: unknown[] = [];
+    const unsubscribe = subscribeDesktopLibraryInstallation(() => observed.push(readDesktopLibraryInstallation()));
+    const fenced = { ...primary, state: "fenced", role: null, actorId: null };
+    const follower = { ...primary, state: "editable_consumer", role: "follower" };
+    native.invoke.mockResolvedValueOnce(fenced).mockResolvedValueOnce(follower).mockRejectedValueOnce(new Error("unavailable"));
+    await refreshLibraryCoreDesktopRole(); await refreshLibraryCoreDesktopRole();
+    await refreshLibraryCoreDesktopRole().catch(() => {});
+    expect(observed).toEqual([fenced, follower, null]);
+    expect(readDesktopLibraryInstallationError()).toBe("unavailable");
+    unsubscribe(); native.invoke.mockResolvedValue(primary); await refreshLibraryCoreDesktopRole();
+    expect(observed).toHaveLength(3);
+    expect(readDesktopLibraryInstallationError()).toBeNull();
   });
 
   it("coalesces native reads and rejects a response superseded by setup", async () => {

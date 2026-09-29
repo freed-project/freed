@@ -256,7 +256,7 @@ describe("capture factory reset boundary", () => {
     await refreshing;
 
     expect(mocks.invoke).toHaveBeenCalledTimes(7);
-    expect(mocks.invoke).not.toHaveBeenCalledWith("fetch_url", {
+    expect(mocks.invoke).not.toHaveBeenCalledWith("fetch_rss_url", {
       url: "https://example.com/feed-6.xml",
     });
     expect(mocks.captureXTimeline).not.toHaveBeenCalled();

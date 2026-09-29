@@ -1,3 +1,7 @@
+import type { LibraryCoreReapplyConsumerIntentV1, LibraryCoreRecoveryReissueReceiptV1 } from "@freed/shared/library-core";
+import type {
+  LibraryCoreConsumerRecoveryStatusV1, LibraryCorePrepareConsumerRecoveryV1, LibraryCoreCommitConsumerRecoveryV1,
+} from "@freed/shared/library-core";
 import type {
   LibraryCoreNormalizedQueryExecutor,
   LibraryCoreSqliteQueryRequest,
@@ -274,6 +278,23 @@ export async function importPwaNormalizedOperationPage(
 ): Promise<LibraryCoreNormalizedOperationImportReceiptV2> {
   const active = await openClient();
   return active.importNormalizedOperationPage(imported);
+}
+
+/** Mutations are never automatically replayed after an ambiguous worker response. */
+export async function reapplyPwaConsumerIntent(input: LibraryCoreReapplyConsumerIntentV1): Promise<LibraryCoreRecoveryReissueReceiptV1> {
+  return (await openClient()).reapplyConsumerIntent(input);
+}
+
+export async function readPwaConsumerRecoveryStatus(): Promise<LibraryCoreConsumerRecoveryStatusV1> {
+  return runReplaySafeRead(active => active.consumerRecoveryStatus());
+}
+
+export async function preparePwaConsumerRecoveryRequest(recovery: LibraryCorePrepareConsumerRecoveryV1): Promise<LibraryCoreConsumerRecoveryStatusV1> {
+  return (await openClient()).prepareConsumerRecovery(recovery);
+}
+
+export async function commitPwaConsumerRecoveryRequest(recovery: LibraryCoreCommitConsumerRecoveryV1): Promise<LibraryCoreConsumerRecoveryStatusV1> {
+  return (await openClient()).commitConsumerRecovery(recovery);
 }
 
 export async function readPwaFollowerActorEnrollmentContext(): Promise<LibraryCoreFollowerActorEnrollmentContextV2> {

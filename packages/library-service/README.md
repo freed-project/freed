@@ -293,34 +293,15 @@ must be mode `0700`. The importer verifies bounded logical records and returns
 the native activation receipt. It grants no writer authority. Reuse the same
 request after interruption or a lost response.
 
-`promote-writer` requires configured Google Drive custody and one private JSON
-request with exactly these fields:
+`promote-writer` now refuses with `cooperative_handoff_required` before opening
+configuration, credentials, the sidecar or a cloud session. Its previous unilateral
+writer command is retired. Headless promotion needs predecessor-signed authorization,
+durable source fencing and verified cloud publication before target activation.
+That cooperative headless delivery remains separate from Desktop handoff.
 
-- `sourceControl`: the complete accepted control pointer, including its exact
-  immutable manifest reference.
-- `expectedRevision`: the remote control revision observed with that pointer.
-- `controlFileId`: the existing Drive control object identifier.
-- `installationWitness`: the witness already configured for this installation.
-- `acceptedAtMs`: the fixed nonnegative request timestamp, reused on retry.
+Retain any existing private `writer-promotion-<source-epoch>.json` recovery input.
+Do not delete it to bypass a refusal or assume a prepared old transfer succeeded.
 
-The source checkpoint must already be imported. The command verifies complete
-source content before native preparation, retains the exact request under the
-Library data-root lease, and asks native SQLite to prepare the signed successor
-epoch. Immutable checkpoint publication precedes the expected-revision control
-update. A lost response reuses the retained certificate. Before recording
-success, the command verifies the remote checkpoint against the prepared local
-records and rereads the complete control pointer and revision. A competitor or
-changed retry input fails closed.
-
-The private `writer-promotion-<source-epoch>.json` file is recovery input.
-Retain it with this installation. Do not edit or delete it to bypass a refusal.
-A partially written publication receipt can be repaired by rerunning the exact
-promotion command; ordinary startup remains fenced until a valid receipt exists.
-After maintenance completes, start the service with `serve`. Startup clears
-prior-process writer admission before reading current cloud authority. A changed
-remote revision requires complete checkpoint verification and another control
-read before admission. Scheduled inbound work keeps the existing cadence.
-
-Both maintenance commands have a 30-minute deadline and settle the native
-process before returning. Failure preserves staged input and accepted Library
-state. Neither command copies SQLite, WAL, SHM, or journal files through Drive.
+Checkpoint import retains its 30-minute deadline and settles the native process
+before returning. Failure preserves staged input and accepted Library state.
+It never copies SQLite, WAL, SHM or journal files through Drive.

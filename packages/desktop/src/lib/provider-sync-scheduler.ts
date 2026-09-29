@@ -1,5 +1,6 @@
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import { waitForFactoryResetDrain } from "@freed/ui/lib/factory-reset";
+import { isDesktopHandoffPaused } from "./factory-reset-guard";
 import {
   canStartBackgroundJob,
   getNativeBackgroundRuntimeOperationStatus,
@@ -476,7 +477,7 @@ function refreshProviderSyncSchedule(): void {
 export function startProviderSyncScheduler(
   options: ProviderSyncSchedulerOptions = {},
 ): void {
-  if (acceptingWork) return;
+  if (acceptingWork || isDesktopHandoffPaused()) return;
   acceptingWork = true;
   activeRandom = options.random ?? createCryptoRandomSource();
   nowSource = options.now ?? Date.now;

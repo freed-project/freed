@@ -6,6 +6,7 @@
  */
 
 import { refreshScheduledRssFeeds } from "./capture";
+import { isDesktopHandoffPaused } from "./factory-reset-guard";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import {
   formatBackgroundRuntimeDeferredReason,
@@ -116,7 +117,7 @@ export function startRssPoller(
   intervalMs?: number,
   options: RssPollerOptions = {},
 ): void {
-  if (pollIntervalId !== null || factoryResetDrainInProgress) return; // Already running
+  if (pollIntervalId !== null || factoryResetDrainInProgress || isDesktopHandoffPaused()) return;
   pollerAcceptingWork = true;
   if (intervalMs !== undefined && !setRssSyncInterval(intervalMs)) {
     addDebugEvent("error", "[RSS] automatic sync paused because its device schedule is unavailable.");
@@ -159,8 +160,9 @@ export function stopRssPoller(): void {
 }
 
 /** Stop future polls and wait for an already-started feed refresh to settle. */
-export async function stopRssPollerAndDrain(): Promise<void> {
-  factoryResetDrainInProgress = true;
+export async function stopRssPollerAndDrain(options: { resumable?: boolean } = {}): Promise<void> {
+  if (options.resumable && !isDesktopHandoffPaused()) throw new Error("Resumable RSS drain requires the handoff pause");
+  if (!options.resumable) factoryResetDrainInProgress = true;
   stopRssPoller();
   await waitForFactoryResetDrain(
     () => Array.from(activeResetSensitiveOperations),

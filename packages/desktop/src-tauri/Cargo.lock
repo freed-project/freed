@@ -1270,6 +1270,7 @@ version = "26.9.1700"
 dependencies = [
  "base64 0.23.1",
  "dirs",
+ "flate2",
  "freed-library-core",
  "fslock",
  "futures-util",

@@ -110,6 +110,27 @@ impl BoundSqliteDatabase {
         Connection::open_with_flags_and_vfs(self.logical_path(), flags, "unix-excl")
     }
 
+    pub(crate) fn database_exists(&self) -> Result<bool, LibraryCoreStorageError> {
+        let leaf = CString::new(DATABASE_FILE).expect("static SQLite leaf");
+        let mut metadata = std::mem::MaybeUninit::<libc::stat>::uninit();
+        let result = unsafe {
+            libc::fstatat(
+                self.binding.directory.as_raw_fd(),
+                leaf.as_ptr(),
+                metadata.as_mut_ptr(),
+                libc::AT_SYMLINK_NOFOLLOW,
+            )
+        };
+        if result == 0 {
+            return Ok(true);
+        }
+        let error = std::io::Error::last_os_error();
+        if error.kind() == std::io::ErrorKind::NotFound {
+            return Ok(false);
+        }
+        Err(error.into())
+    }
+
     pub(crate) fn clear_files(&self) -> Result<(), LibraryCoreStorageError> {
         for leaf in DATABASE_FILES {
             let leaf = CString::new(*leaf).expect("static SQLite leaf");

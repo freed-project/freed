@@ -61,6 +61,7 @@ export * from "./person-timeline-contracts.js";
 export * from "./account-timeline-contracts.js";
 export * from "./persons-graph-contracts.js";
 export * from "./person-detail-contracts.js";
+export * from "./person-root-contracts.js";
 export * from "./account-detail-contracts.js";
 export * from "./contact-match-contracts.js";
 export * from "./rss-feed-detail-contracts.js";
@@ -87,3 +88,16 @@ export * from "./runtime-state.js";
 export * from "./sha256.js";
 export * from "./wire-frame.js";
 export * from "./normalized-operation-segment-contracts.js";
+
+export * from "./recovery-intent-page-contracts.js";
+
+export * from "./handoff-certificate.js";
+
+export * from "./consumer-recovery-contracts.js";
+export * from "./recovery-friend-context.js";
+
+export * from "./account-root-contracts.js";
+
+export * from "./person-account-page-contracts.js";
+export * from "./recovery-preference-context.js";
+export * from "./recovery-preference-input.js";

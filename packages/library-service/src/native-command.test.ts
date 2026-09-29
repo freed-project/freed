@@ -76,6 +76,22 @@ describe("Library Core native command client", () => {
     ).rejects.toMatchObject({ code: "command_response_invalid" });
   });
 
+  it("refuses retired writer takeover before contacting the sidecar", async () => {
+    const child = new FakeSidecarProcess();
+    let contacted = false;
+    child.exchangeCommand = async () => {
+      contacted = true;
+      throw new Error("retired command reached sidecar");
+    };
+    const client = createLibraryCoreNativeCommandClientV1(child, new FakeEntropy());
+
+    await expect(
+      // @ts-expect-error Old callers may still send the retired command at runtime.
+      client.execute("reassign_writer_epoch_v2", {}),
+    ).rejects.toMatchObject({ code: "command_response_invalid" });
+    expect(contacted).toBe(false);
+  });
+
   it("maps a closed native refusal without exposing its detail", async () => {
     const child = new FakeSidecarProcess();
     child.exchangeCommand = async (request) =>
@@ -86,7 +102,7 @@ describe("Library Core native command client", () => {
     );
 
     await expect(
-      client.execute("reassign_writer_epoch_v2", {}),
+      client.execute("inspect_storage_v1", {}),
     ).rejects.toEqual(new LibraryCoreNativeCommandFailure("request_invalid"));
   });
 

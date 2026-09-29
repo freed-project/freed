@@ -225,7 +225,15 @@ const supervisor = new LibraryServiceSupervisor({
   process: nodePorts.process,
   clock: nodePorts.clock,
   entropy: nodePorts.entropy,
-  localActorIngress: nodePorts.localActorIngress,
+  // These process-group cases exercise actual child processes and watchdog FDs.
+  // Socket custody has its own real-socket suite; it must not require systemd
+  // runtime-directory provisioning or a socket-capable home filesystem here.
+  // Native acceptance cases continue to use the production ingress.
+  localActorIngress: acceptanceMode === "process-lifecycle-only" ? {
+    async start() {
+      return { endpoint: "process-lifecycle-fixture", failure: new Promise(() => {}), async stop() {} };
+    },
+  } : nodePorts.localActorIngress,
   primaryCloud: createNormalizedPrimaryAcceptanceCloud(),
 });
 

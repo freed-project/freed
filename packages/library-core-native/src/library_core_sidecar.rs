@@ -29,13 +29,13 @@ use crate::{
     export_normalized_follower_result_page_v1, export_normalized_follower_result_page_v2,
     export_normalized_operation_page_v2, export_pinned_normalized_checkpoint_page_v2,
     finalize_normalized_checkpoint_stage_v2, get_content_state_v1,
-    ingest_normalized_follower_intent_page_v1, load_or_create_normalized_actor_id_v2, lower_hex,
+    ingest_normalized_follower_intent_page_v1, load_normalized_local_actor_id_v2, lower_hex,
     normalized_primary_follower_actor_transport_state_v1, normalized_primary_mutation_context_v1,
     page_eviction_candidates_v1, page_hydration_candidates_v1, query_normalized_json_v1,
-    reassign_normalized_writer_epoch_v2, set_content_policy_v1, sign_library_core_operation_digest,
-    ActorKeyStore, AuthorityKeyStore, BeginNormalizedCheckpointStageV2, ContentPolicyMutationV1,
-    ContentStateRequestV1, EvictionCandidatePageRequestV1, HydrationCandidatePageRequestV1,
-    LibraryCoreProcessLease, NormalizedCheckpointExportSessionV2, NormalizedCheckpointRecordV2,
+    set_content_policy_v1, sign_library_core_operation_digest, ActorKeyStore, AuthorityKeyStore,
+    BeginNormalizedCheckpointStageV2, ContentPolicyMutationV1, ContentStateRequestV1,
+    EvictionCandidatePageRequestV1, HydrationCandidatePageRequestV1, LibraryCoreProcessLease,
+    NormalizedCheckpointExportSessionV2, NormalizedCheckpointRecordV2,
     NormalizedFollowerIntentStagePageV1, NormalizedFollowerResultPageRequestV1,
     NormalizedFollowerResultPageRequestV2, NormalizedOperationExportRequestV2,
     NormalizedSqliteError, PinnedNormalizedCheckpointExportRequestV2, ProcessLeaseIdentity,
@@ -297,47 +297,10 @@ struct PrimaryActorIdentityReceiptV1 {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct ReassignWriterEpochCommandV2 {
-    accepted_at_ms: i64,
-    canonical_source_control_json: String,
-    installation_witness: String,
-    target_writer_id: String,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct RetireActorCommandV1 {
     actor_id: String,
     reason: String,
     retired_at_ms: i64,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct WriterCausalTipReceiptV1 {
-    actor_id: String,
-    sequence: i64,
-    operation_id: String,
-    chain_digest: String,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct WriterAuthorityReceiptV2 {
-    library_id: String,
-    epoch: i64,
-    epoch_id: String,
-    authority_key_id: String,
-    authority_public_key: String,
-    observed_frontier: Vec<WriterCausalTipReceiptV1>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ReassignWriterEpochReceiptV2 {
-    authority: WriterAuthorityReceiptV2,
-    canonical_epoch_certificate_json: String,
-    transition_certificate_digest: String,
 }
 
 #[derive(Deserialize)]
@@ -951,7 +914,8 @@ fn execute_native_command_v1(
         "primary_actor_identity_v1" => {
             let command: PrimaryActorIdentityCommandV1 =
                 serde_json::from_value(payload).map_err(|_| "request_invalid")?;
-            let actor_id = load_or_create_normalized_actor_id_v2(
+            let actor_id = load_normalized_local_actor_id_v2(
+                connection,
                 &credentials.library_id,
                 &command.installation_witness,
                 &MountedActorKeyStore(credentials),
@@ -999,42 +963,6 @@ fn execute_native_command_v1(
         }
         "query_v1" => {
             query_normalized_json_v1(connection, payload).map_err(normalized_command_error)
-        }
-        "reassign_writer_epoch_v2" => {
-            let command: ReassignWriterEpochCommandV2 =
-                serde_json::from_value(payload).map_err(|_| "request_invalid")?;
-            let reassigned = reassign_normalized_writer_epoch_v2(
-                connection,
-                &command.canonical_source_control_json,
-                &command.target_writer_id,
-                &command.installation_witness,
-                &MountedActorKeyStore(credentials),
-                &MountedAuthorityKeyStore(credentials),
-                command.accepted_at_ms,
-            )
-            .map_err(normalized_command_error)?;
-            encode_command_result(ReassignWriterEpochReceiptV2 {
-                authority: WriterAuthorityReceiptV2 {
-                    library_id: reassigned.authority.library_id,
-                    epoch: reassigned.authority.epoch,
-                    epoch_id: reassigned.authority.epoch_id,
-                    authority_key_id: reassigned.authority.authority_key_id,
-                    authority_public_key: reassigned.authority.authority_public_key,
-                    observed_frontier: reassigned
-                        .authority
-                        .observed_frontier
-                        .into_iter()
-                        .map(|tip| WriterCausalTipReceiptV1 {
-                            actor_id: tip.actor_id,
-                            sequence: tip.sequence,
-                            operation_id: tip.operation_id,
-                            chain_digest: tip.chain_digest,
-                        })
-                        .collect(),
-                },
-                canonical_epoch_certificate_json: reassigned.canonical_certificate_json,
-                transition_certificate_digest: reassigned.transition_certificate_digest,
-            })
         }
         "retire_actor_v1" => {
             let command: RetireActorCommandV1 =
@@ -2035,6 +1963,19 @@ mod tests {
             execute_native_command_v1(&mut connection, &credentials, "shell_import_v1", json!({}),),
             Err("command_unknown")
         );
+
+        // Retired takeover must fail before decoding a payload or touching state.
+        let changes = connection.total_changes();
+        assert_eq!(
+            execute_native_command_v1(
+                &mut connection,
+                &credentials,
+                "reassign_writer_epoch_v2",
+                json!({})
+            ),
+            Err("command_unknown")
+        );
+        assert_eq!(connection.total_changes(), changes);
 
         let mut oversized = tempfile::tempfile().expect("temporary frame");
         oversized

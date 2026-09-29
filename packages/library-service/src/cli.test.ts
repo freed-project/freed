@@ -16,6 +16,11 @@ afterEach(async () => {
 });
 
 describe("freed-library CLI", () => {
+  it("refuses retired promotion before reading config or request files", async () => {
+    await expect(execFileAsync(process.execPath, [path.resolve("dist/bin.js"), "promote-writer", "--config", "/missing/config.json", "--request", "/missing/request.json"]))
+      .rejects.toMatchObject({ code: 2, stdout: "", stderr: expect.stringContaining('"code":"cooperative_handoff_required"') });
+  });
+
   it("returns one secret-free bounded doctor failure record", async () => {
     const cliPath = path.resolve("dist/bin.js");
     const missingPath = "/definitely/missing/private-config.json";

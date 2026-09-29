@@ -19,6 +19,16 @@ describe("consumer synchronization progress", () => {
     expect(describeLibraryFollowerProgress(active).statusMessage).toBe("No local edits waiting to sync.");
   });
 
+  it("distinguishes old-epoch recovery from enrollment and preserves both edit queues in its count", () => {
+    const recovery = { ...active, state: "authority_recovery_required" as const, pendingIntentCount: 1, publishedIntentCount: 2 };
+    expect(describeLibraryFollowerProgress(recovery)).toEqual({
+      statusMessage: "Primary changed. Enrollment recovery is required.",
+      pendingReason: "3 edits are preserved from the previous Primary. Review recovery before submitting them again.",
+    });
+    expect(describeLibraryFollowerProgress({ ...recovery, pendingIntentCount: 0, publishedIntentCount: 0 }).pendingReason)
+      .toBe("Previous enrollment is preserved. Recover enrollment before making new edits.");
+  });
+
   it("does not describe unenrolled readers as editable or infer Primary availability", () => {
     for (const state of ["awaiting_enrollment", "enrollment_pending"] as const) {
       expect(describeLibraryFollowerProgress({ ...active, state }).statusMessage)

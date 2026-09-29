@@ -1,3 +1,8 @@
+import {
+  parseLibraryCoreReapplyConsumerIntentV1, parseLibraryCoreRecoveryReissueReceiptV1, type LibraryCoreReapplyConsumerIntentV1, type LibraryCoreRecoveryReissueReceiptV1,
+  createLibraryCoreConsumerRecoveryWorkerRequest, parseLibraryCoreConsumerRecoveryStatusV1,
+  type LibraryCoreConsumerRecoveryStatusV1, type LibraryCorePrepareConsumerRecoveryV1, type LibraryCoreCommitConsumerRecoveryV1,
+} from "@freed/shared/library-core";
 import { isFreedDemoMode } from "./demo-mode";
 import {
   LIBRARY_CORE_SQLITE_WORKER_MAXIMUM_PENDING_REQUESTS,
@@ -718,6 +723,29 @@ export class PwaLibraryCoreSqliteClient {
         ),
       parseLibraryCoreNormalizedOperationImportReceiptV2,
     );
+  }
+
+  reapplyConsumerIntent(input: LibraryCoreReapplyConsumerIntentV1): Promise<LibraryCoreRecoveryReissueReceiptV1> {
+    const recovery = parseLibraryCoreReapplyConsumerIntentV1(input);
+    return this.#send(requestId => createLibraryCoreConsumerRecoveryWorkerRequest(requestId, { kind: "reapply_consumer_intent", recovery }), value => {
+      const parsed = parseLibraryCoreRecoveryReissueReceiptV1(value, recovery.review);
+      if (!parsed.ok) throw new Error(parsed.error); return parsed.value;
+    });
+  }
+
+  consumerRecoveryStatus(): Promise<LibraryCoreConsumerRecoveryStatusV1> {
+    return this.#send(requestId => createLibraryCoreConsumerRecoveryWorkerRequest(requestId, { kind: "read_consumer_recovery" }),
+      parseLibraryCoreConsumerRecoveryStatusV1);
+  }
+
+  prepareConsumerRecovery(recovery: LibraryCorePrepareConsumerRecoveryV1): Promise<LibraryCoreConsumerRecoveryStatusV1> {
+    return this.#send(requestId => createLibraryCoreConsumerRecoveryWorkerRequest(requestId, { kind: "prepare_consumer_recovery", recovery }),
+      parseLibraryCoreConsumerRecoveryStatusV1);
+  }
+
+  commitConsumerRecovery(recovery: LibraryCoreCommitConsumerRecoveryV1): Promise<LibraryCoreConsumerRecoveryStatusV1> {
+    return this.#send(requestId => createLibraryCoreConsumerRecoveryWorkerRequest(requestId, { kind: "commit_consumer_recovery", recovery }),
+      parseLibraryCoreConsumerRecoveryStatusV1);
   }
 
   followerActorEnrollmentContext(): Promise<LibraryCoreFollowerActorEnrollmentContextV2> {

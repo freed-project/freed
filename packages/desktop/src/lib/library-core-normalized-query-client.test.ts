@@ -10,7 +10,10 @@ import {
 
 const mocks = vi.hoisted(() => ({ invoke: vi.fn() }));
 
-vi.mock("@tauri-apps/api/core", () => ({ invoke: mocks.invoke }));
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: mocks.invoke,
+  Channel: class { constructor(public onmessage: (ticket: string) => void) {} },
+}));
 
 const {
   mutateNormalizedContentPolicy,
@@ -70,6 +73,26 @@ describe("Freed Desktop normalized query client", () => {
     expect(mocks.invoke).toHaveBeenCalledWith("query_normalized_library", {
       request,
     });
+  });
+
+  it("cancels only after native registration, including an abort before acknowledgment", async () => {
+    const controller = new AbortController();
+    let complete!: (value: unknown) => void;
+    mocks.invoke.mockImplementation((command) => command === "query_normalized_library"
+      ? new Promise((resolve) => { complete = resolve; }) : Promise.resolve(true));
+    const pending = queryNormalizedLibrary(request, controller.signal);
+    const rejected = expect(pending).rejects.toThrow();
+    controller.abort();
+    expect(mocks.invoke).toHaveBeenCalledTimes(1);
+    const started = mocks.invoke.mock.calls[0][1].started;
+    started.onmessage("ticket");
+    expect(mocks.invoke).toHaveBeenLastCalledWith("cancel_normalized_library_query", { ticket: "ticket" });
+    started.onmessage("ticket");
+    expect(mocks.invoke).toHaveBeenCalledTimes(2);
+    complete(response);
+    await rejected;
+    started.onmessage("late-ticket");
+    expect(mocks.invoke).toHaveBeenCalledTimes(2);
   });
 
   it("rejects a native response with compatibility payload fields", async () => {

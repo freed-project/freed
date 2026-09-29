@@ -17,6 +17,7 @@ import {
 } from "./scope-action-contracts.js";
 import {
   LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256,
+  LIBRARY_CORE_LOCAL_SCHEMA_SHA256,
   LIBRARY_CORE_SQLITE_CONTRACT_VERSION,
   LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
   LIBRARY_CORE_SQLITE_SCHEMA_VERSION,
@@ -168,6 +169,14 @@ const closedReceipts: readonly Readonly<{
 ];
 
 describe("SQLite worker result contracts", () => {
+  it("pairs local physical schema2 with its exact hash", () => {
+    const base = closedReceipts.find(receipt => receipt.label === "worker status")!.value;
+    const local = { ...base, schemaVersion: 2, schemaSha256: LIBRARY_CORE_LOCAL_SCHEMA_SHA256 };
+    expect(parseLibraryCoreSqliteWorkerStatus(local)).toEqual(local);
+    expect(() => parseLibraryCoreSqliteWorkerStatus({ ...local, schemaVersion: 1 })).toThrow();
+    expect(() => parseLibraryCoreSqliteWorkerStatus({ ...local, schemaSha256: LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256 })).toThrow();
+  });
+
   for (const receipt of closedReceipts) {
     it(`accepts and snapshots the closed ${receipt.label}`, () => {
       const parsed = receipt.parse(receipt.value);

@@ -1,6 +1,8 @@
 import { DesktopLibrarySetup } from "./components/DesktopLibrarySetup";
-import { refreshLibraryCoreDesktopRole, type DesktopLibraryInstallationStatus } from "./lib/library-core-desktop-role";
-import { useEffect, useMemo, useCallback, useRef, useState, Profiler, type ProfilerOnRenderCallback } from "react";
+import { subscribeDesktopLibraryInstallation, readDesktopLibraryInstallationError, readDesktopLibraryInstallation, refreshLibraryCoreDesktopRole, type DesktopLibraryInstallationStatus } from "./lib/library-core-desktop-role";
+import { useEffect, useMemo, useCallback, useRef, useState, useSyncExternalStore, Profiler, type ProfilerOnRenderCallback } from "react";
+import { isDesktopHandoffPaused, subscribeDesktopHandoffPause } from "./lib/factory-reset-guard";
+import { restoreDesktopLibraryHandoffPause } from "./lib/library-core-handoff";
 import {
   formatReleaseVersion,
   getWebsiteHostForChannel,
@@ -549,13 +551,21 @@ function App() {
   );
   const fatalError = useFatalRuntimeError();
   const [installation, setInstallation] = useState<DesktopLibraryInstallationStatus | null>(null);
+  useEffect(() => subscribeDesktopLibraryInstallation(() => {
+    setInstallation(readDesktopLibraryInstallation());
+    setInstallationError(readDesktopLibraryInstallationError());
+  }), []);
   const [installationError, setInstallationError] = useState<string | null>(null);
+  const handoffPaused = useSyncExternalStore(subscribeDesktopHandoffPause, isDesktopHandoffPaused);
   const installationReady = installation !== null && ["standalone_primary", "shared_primary", "awaiting_enrollment", "editable_consumer"].includes(installation.state);
 
   useEffect(() => {
     if (!legalAccepted || lockedStartupState !== "ready") return;
     let disposed = false;
-    void refreshLibraryCoreDesktopRole().then((status) => {
+    void refreshLibraryCoreDesktopRole().then(async (status) => {
+      if (status.state === "fenced" || (status.libraryId !== null && status.authorityEpochId !== null)) {
+        await restoreDesktopLibraryHandoffPause();
+      }
       if (!disposed) { setInstallation(status); setInstallationError(null); }
     }).catch((failure) => {
       if (!disposed) setInstallationError(failure instanceof Error ? failure.message : "Native Library setup is unavailable.");
@@ -701,25 +711,25 @@ function App() {
   }, [initialize, legalAccepted, lockedStartupState, installationReady]);
 
   useEffect(() => {
-    if (!legalAccepted || !isInitialized || !tauriRuntimeAvailable) return;
+    if (!legalAccepted || !isInitialized || !tauriRuntimeAvailable || handoffPaused) return;
     return startAvatarBackfill(queryNormalizedLibrary,
       invalidate => subscribeDesktopLibraryRuntime((_state, event) => {
         if (event.requiresFullScan) invalidate();
       }), message => { void log.info(message); });
-  }, [isInitialized, legalAccepted, tauriRuntimeAvailable]);
+  }, [isInitialized, legalAccepted, tauriRuntimeAvailable, handoffPaused]);
 
   useEffect(() => {
-    if (!legalAccepted || !isInitialized || !tauriRuntimeAvailable) return;
+    if (!legalAccepted || !isInitialized || !tauriRuntimeAvailable || handoffPaused) return;
     void startAllCloudSyncs().catch((error) => {
       log.warn(
         `[cloud] Failed to resume configured sync: ${error instanceof Error ? error.message : String(error)}`,
       );
     });
     return () => stopAllCloudSyncs();
-  }, [isInitialized, legalAccepted, tauriRuntimeAvailable]);
+  }, [isInitialized, legalAccepted, tauriRuntimeAvailable, handoffPaused]);
 
   useEffect(() => {
-    if (!legalAccepted || !isInitialized) return;
+    if (!legalAccepted || !isInitialized || handoffPaused) return;
     startMemoryMonitor({
       onCriticalPressure: () => {
         stopContentFetcher();
@@ -796,7 +806,7 @@ function App() {
       stopSemanticClassifier();
       stopMemoryMonitor();
     };
-  }, [isInitialized, legalAccepted, installation?.role]);
+  }, [isInitialized, legalAccepted, installation?.role, handoffPaused]);
 
   // Log OS sleep/wake transitions so the log file shows where overnight
   // freezes begin. These events are emitted by Tauri on macOS suspend/resume.

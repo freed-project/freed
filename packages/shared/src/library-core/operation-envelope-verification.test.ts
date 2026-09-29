@@ -1,23 +1,27 @@
-import { createHash } from "node:crypto";
+import { createHash, generateKeyPairSync, sign, verify } from "node:crypto";
 
 import { describe, expect, it, vi } from "vitest";
 
 import {
   encodeLibraryCoreCanonicalValue,
+  encodeLibraryCoreOperationSignatureInput,
   encodeLibraryCoreDigestInput,
   type LibraryCoreCanonicalValue,
   type LibraryCoreDigestDomain,
 } from "./canonical-codec.js";
 import {
   FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  constructLibraryCoreArchivedFriendMemberV1,
+  isLibraryCoreTransactionMemberConstruction,
   type FeedItemReadAssignmentTransactionMemberInputV1,
 } from "./operation-envelope-contracts.js";
 import { finalizeLibraryCoreTransactionV1 } from "./operation-envelope-finalization.js";
 import {
   isLibraryCoreVerifiedOperationTransactionV1,
   verifyLibraryCoreOperationTransactionV1,
+  verifyLibraryCoreArchivedOperationTransactionV1,
 } from "./operation-envelope-verification.js";
-import { assembleLibraryCoreTransactionV1 } from "./operation-transaction-contracts.js";
+import { assembleLibraryCoreTransactionV1, assembleLibraryCoreArchivedFriendV1, isLibraryCoreAssembledTransactionV1 } from "./operation-transaction-contracts.js";
 
 const HEX = {
   library: "11".repeat(32),
@@ -300,4 +304,36 @@ describe("Library Core operation transaction verification", () => {
     });
     expect(calls).toBe(2);
   });
+});
+
+it("authenticates legacy Friend account order without granting construction, signing or admission provenance", async () => {
+  const person = { id: "person:one", name: "Friend", careLevel: 3, relationshipStatus: "friend", createdAt: 1, updatedAt: 2 };
+  const accounts = ["account:a", "account:A"].map(id => ({ id, personId: person.id, kind: "social", provider: "instagram", externalId: id, discoveredFrom: "manual_entry", firstSeenAt: 1, lastSeenAt: 2, createdAt: 1, updatedAt: 2 }));
+  const input = { ...memberInput(0, 1), entity_id: person.id, payload: { accounts, person } };
+  const member = constructLibraryCoreArchivedFriendMemberV1(input, { digest });
+  expect(isLibraryCoreTransactionMemberConstruction(member)).toBe(false);
+  expect(() => assembleLibraryCoreTransactionV1([member], HEX.chain, { digest })).toThrow("closed member");
+  const assembled = assembleLibraryCoreArchivedFriendV1([member], HEX.chain, { digest });
+  expect(isLibraryCoreAssembledTransactionV1(assembled)).toBe(false);
+  const signer = vi.fn();
+  await expect(finalizeLibraryCoreTransactionV1(assembled, { digest, signOperation: signer })).rejects.toThrow();
+  expect(signer).not.toHaveBeenCalled();
+  // The historical fixture is signed independently, as an older client did.
+  const keys = generateKeyPairSync("ed25519");
+  const key = keys.publicKey.export({ type: "spki", format: "der" }).subarray(-32).toString("hex");
+  const message = encodeLibraryCoreOperationSignatureInput({ operation_signing_body_digest: assembled.members[0].signing_body_digest });
+  const envelope = { ...assembled.members[0].signing_body, signature: sign(null, message, keys.privateKey).toString("hex") };
+  const bytes = encodeLibraryCoreCanonicalValue(envelope as never);
+  const snapshot = new Uint8Array(bytes);
+  const actor = { ...acceptedActorState(), actor_public_key: key };
+  const dependencies = { digest, verifySignature: async (value: { publicKeyHex: string; message: Uint8Array; signatureHex: string }) => value.publicKeyHex === key && verify(null, value.message, keys.publicKey, Buffer.from(value.signatureHex, "hex")) };
+  await expect(verifyLibraryCoreOperationTransactionV1([bytes], actor, dependencies)).rejects.toThrow("sorted");
+  const archived = await verifyLibraryCoreArchivedOperationTransactionV1([bytes], actor, dependencies);
+  expect(isLibraryCoreVerifiedOperationTransactionV1(archived)).toBe(false);
+  expect(archived.members[0].envelope.payload).toEqual({ accounts, person });
+  expect(archived.members[0].canonical_envelope_json).toBe(new TextDecoder().decode(snapshot));
+  expect(bytes).toEqual(snapshot);
+  const tampered = encodeLibraryCoreCanonicalValue({ ...envelope, signature: "00".repeat(64) } as never);
+  await expect(verifyLibraryCoreArchivedOperationTransactionV1([tampered], actor, dependencies)).rejects.toThrow("signature is invalid");
+  expect(() => constructLibraryCoreArchivedFriendMemberV1({ ...input, payload: { accounts: [accounts[0], accounts[0]], person } }, { digest })).toThrow("unique");
 });

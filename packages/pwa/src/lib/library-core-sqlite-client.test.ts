@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  parseLibraryCoreReapplyConsumerIntentV1,
   LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256,
   LIBRARY_CORE_SQLITE_CONTRACT_VERSION,
   LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
@@ -107,6 +108,24 @@ describe("PWA SQLite worker response boundary", () => {
     vi.stubEnv("VITE_FREED_DEMO", "1");
     new PwaLibraryCoreSqliteClient();
     expect(activeWorker().options?.name).toBe("freed-library-core-sqlite-demo");
+  });
+
+  it("validates replacement receipts and never retries an ambiguous recovery mutation", async () => {
+    const id = "a".repeat(64);
+    const input = parseLibraryCoreReapplyConsumerIntentV1({ review: { schemaVersion: 1, recoveryId: id, archiveDigest: id,
+      transactionId: "original-edit", transactionDigest: id, reviewedGenerationId: id, reviewedRevision: 1, reviewedLocalSequence: 0, memberCount: 1 },
+      intent: { envelopeBytes: [Uint8Array.of(123, 125)] } });
+    const client = new PwaLibraryCoreSqliteClient(), worker = activeWorker();
+    const pending = client.reapplyConsumerIntent(input);
+    expect(worker.posted[0]).toMatchObject({ kind: "reapply_consumer_intent", recovery: input });
+    worker.respond({ requestId: requestId(worker), ok: true, result: { schemaVersion: 1, recoveryId: id, originalTransactionId: "another-edit",
+      replacementTransactionId: "replacement-edit", replacementTransactionDigest: id, replacementEpochId: id, replacementActorId: id,
+      firstCounter: 1, lastCounter: 1, memberCount: 1, createdAt: 10 } });
+    await expect(pending).rejects.toThrow(/receipt/);
+    const lost = client.reapplyConsumerIntent(input);
+    worker.emit("error");
+    await expect(lost).rejects.toMatchObject({ code: "pwa_sqlite_worker_unavailable" });
+    expect(worker.posted).toHaveLength(2);
   });
 
   it("terminally retires the client when its worker errors", async () => {

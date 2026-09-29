@@ -2,6 +2,7 @@ import { createHash, webcrypto } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   createLibraryCoreNormalizedCheckpointRecordV2,
+  createLibraryCoreImmutableObjectKey,
   createLibraryCoreNormalizedCheckpointDigestAccumulatorV2,
   LIBRARY_CORE_CHECKPOINT_MANIFEST_PAGE_RECORD_LIMIT,
   LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_DECODED_BYTES,
@@ -15,8 +16,10 @@ import {
 } from "@freed/shared/library-core";
 import {
   importLibraryCoreNormalizedCheckpointV2,
+  stageLibraryCoreNormalizedCheckpointV2,
   prepareLibraryCoreNormalizedCheckpointPagesV2,
   publishLibraryCoreNormalizedCheckpointV2,
+  reassignLibraryCoreNormalizedCheckpointV2,
 } from "./library-core-normalized-checkpoint.js";
 import type {
   LibraryCoreControlCompareAndSwapResultV1,
@@ -171,6 +174,34 @@ describe("normalized checkpoint publication", () => {
       subtle,
     });
     expect(published.status).toBe("committed");
+    if (published.status === "conflict") throw new Error("setup failed");
+    const successorEpoch = "34".repeat(32) as LibraryCoreLowercaseHex64;
+    const successorFrontier = "56".repeat(32) as LibraryCoreLowercaseHex64;
+    const successorWriter = "78".repeat(32) as LibraryCoreLowercaseHex64;
+    const certificateBytes = new TextEncoder().encode("transport-only certificate fixture");
+    const certificateDigest = createHash("sha256").update(certificateBytes).digest("hex");
+    const successorRecords = [createLibraryCoreNormalizedCheckpointRecordV2({
+      registryKey: "00_checkpoint_header", primaryKey: "checkpoint", payload: {
+        authorityEpoch: successorEpoch, checkpointId: `${libraryId}:${successorEpoch}:7`,
+        createdAtMs: 1_000, libraryId, schemaVersion: 1, sourceRevision: 7,
+      },
+    }), ...records.slice(1)];
+    const reassigned = await reassignLibraryCoreNormalizedCheckpointV2({
+      activeTransport: "google_drive_app_data_v1", adapter,
+      descriptor: { format: "freed_normalized_checkpoint_export_v2", protocolVersion: 2,
+        libraryId, authorityEpoch: successorEpoch, writerId: successorWriter, sourceRevision: 7,
+        causalFrontierDigest: successorFrontier, recordCount: successorRecords.length, itemCount: 0 },
+      expectedControl: { pointer: published.controlPointer, revision: published.revision },
+      handoffFrontiers: { kind: "cooperative_handoff_v1", predecessor: frontierDigest, successor: successorFrontier },
+      epochCertificate: { source: certificateBytes, descriptor: parseLibraryCoreImmutableObjectDescriptorV1({
+        objectKey: createLibraryCoreImmutableObjectKey({ kind: "epoch_certificate", libraryId,
+          epochId: successorEpoch, digest: certificateDigest }),
+        contentDigest: certificateDigest, byteLength: certificateBytes.length,
+      }) }, generation: 0, records: successorRecords, subtle,
+    });
+    expect(reassigned).toMatchObject({ status: "committed", controlPointer: {
+      storageEpoch: successorEpoch, writerId: successorWriter, causalFrontierDigest: successorFrontier,
+    } });
   });
 
   it("stores exact typed normalized records without a shell envelope", async () => {
@@ -349,12 +380,41 @@ describe("normalized checkpoint publication", () => {
     const expectedDigest =
       createLibraryCoreNormalizedCheckpointDigestAccumulatorV2();
     for (const record of records) expectedDigest.push(record);
+    const expectedSummary = expectedDigest.finish();
     expect(imported).toMatchObject({
-      activationReceipt: expectedDigest.finish(),
+      activationReceipt: expectedSummary,
       importedPageCount: 1,
       importedRecordCount: records.length,
       status: "imported",
     });
+    // Staging runs the real wire verifier but cannot call activation. The same
+    // immutable header supplies identical begin metadata after response loss.
+    const retained = new Map<string, typeof records[number]>();
+    const begins: unknown[] = [];
+    const stagingInput = { adapter, generation: 0, libraryId, manifest: published.manifest,
+      storageEpoch: authorityEpoch, subtle, runtime: {
+        async begin(request: import("@freed/shared/library-core").LibraryCoreBeginNormalizedCheckpointStageV2) {
+          begins.push(request);
+          return { stageId: request.stageId, complete: false, expectedRecordCount: records.length, stagedRecordCount: retained.size, stagedCanonicalBytes: 0 };
+        },
+        async appendPage(page: { stageId: string; records: readonly typeof records[number][] }) {
+          for (const record of page.records) retained.set(libraryCoreNormalizedCheckpointRecordIdentityV2(record), record);
+          const digest = createLibraryCoreNormalizedCheckpointDigestAccumulatorV2();
+          for (const record of retained.values()) digest.push(record);
+          return { stageId: page.stageId, complete: true, expectedRecordCount: records.length,
+            stagedRecordCount: retained.size, stagedCanonicalBytes: digest.finish().canonicalBytes };
+        },
+      } };
+    const staged = await stageLibraryCoreNormalizedCheckpointV2(stagingInput);
+    expect(staged).toMatchObject({ status: "staged", checkpoint: expectedSummary, stageId: published.manifest.descriptor.contentDigest, sourceRevision: 7 });
+    expect(staged).not.toHaveProperty("activationReceipt");
+    expect(await stageLibraryCoreNormalizedCheckpointV2(stagingInput)).toEqual(staged);
+    expect(begins[0]).toEqual(begins[1]);
+    await expect(stageLibraryCoreNormalizedCheckpointV2({ ...stagingInput, runtime: {
+      ...stagingInput.runtime, async appendPage(page) {
+        return { ...await stagingInput.runtime.appendPage(page), stagedCanonicalBytes: 0 };
+      },
+    } })).rejects.toThrow("staging receipt does not match");
     expect(importedRecords).toEqual(records);
     expect(JSON.stringify(importedRecords)).not.toContain("shell");
   });

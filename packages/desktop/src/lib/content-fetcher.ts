@@ -40,6 +40,7 @@ import { log } from "./logger.js";
 import { toSyncedPreservedText } from "./preserved-text.js";
 import { renderFeedItemReaderHtml } from "./reader-item-html.js";
 import { pinLibraryCoreItemContent } from "./library-core-item-detail-runtime.js";
+import { isDesktopHandoffPaused, runFactoryResetSensitiveDesktopOperation } from "./factory-reset-guard";
 import {
   isBackgroundRuntimeDeferredError,
   runBackgroundJob,
@@ -115,6 +116,8 @@ const failed = new Map<string, number>();
 const reopenSaveDialogOnErrorIds = new Set<string>();
 let completed = 0;
 let running = false;
+let workerGeneration = 0;
+let workerInProgress = false;
 let workerTimer: ReturnType<typeof setTimeout> | null = null;
 let startupTimer: ReturnType<typeof setTimeout> | null = null;
 let heartbeatHandle: ReturnType<typeof setInterval> | null = null;
@@ -271,7 +274,9 @@ export function pinReaderItem(item: FeedItem): Promise<void> {
   if (factoryResetDrainInProgress) {
     return Promise.reject(new Error("Content fetcher is being reset"));
   }
-  return trackResetSensitiveOperation(pinReaderItemInternal(item));
+  return trackResetSensitiveOperation(
+    runFactoryResetSensitiveDesktopOperation(() => pinReaderItemInternal(item)),
+  );
 }
 
 function maybeScanLibraryItems(
@@ -415,7 +420,7 @@ function scheduleWorker(delayMs: number): void {
   workerTimer = setTimeout(() => {
     workerTimer = null;
     nextDelayMs = undefined;
-    void runWorkerOnce();
+    void trackResetSensitiveOperation(runWorkerOnce());
   }, delayMs);
   notifyStatus();
 }
@@ -475,6 +480,22 @@ async function getContentFetchMemoryDeferReason(): Promise<string | null> {
 }
 
 async function runWorkerOnce(): Promise<void> {
+  if (!running || workerInProgress) return;
+  workerInProgress = true;
+  const generation = workerGeneration;
+  try {
+    await runWorkerPass(generation);
+  } finally {
+    workerInProgress = false;
+    // A restart may have tried to schedule while the previous pass still owned
+    // a memory check or an admitted write. Resume only after that owner settles.
+    if (running && generation !== workerGeneration && queue.length > 0) {
+      scheduleWorker(0);
+    }
+  }
+}
+
+async function runWorkerPass(generation: number): Promise<void> {
   if (!running || activeStartedAt !== null) return;
   if (queue.length === 0) {
     notifyStatus();
@@ -490,6 +511,7 @@ async function runWorkerOnce(): Promise<void> {
   }
 
   const memoryDeferReason = await getContentFetchMemoryDeferReason();
+  if (!running || generation !== workerGeneration) return;
   if (memoryDeferReason) {
     log.warn(`[content-fetcher] deferred by memory guard reason=${memoryDeferReason}`);
     notifyStatus();
@@ -501,12 +523,23 @@ async function runWorkerOnce(): Promise<void> {
   notifyStatus();
 
   let outcome: ProcessOutcome = "idle";
+  let admittedWork: Promise<ProcessOutcome> | undefined;
   try {
     outcome = await runBackgroundJob({
       kind: "content-fetch",
       source: "content-fetcher",
       timeoutMs: 180_000,
-      run: () => trackResetSensitiveOperation(processNext()),
+      run: () => {
+        // Runtime admission can itself yield. A stopped pass must never consume
+        // an entry, even when a newer generation has already restarted capture.
+        if (!running || generation !== workerGeneration) {
+          return Promise.resolve<ProcessOutcome>("idle");
+        }
+        admittedWork = trackResetSensitiveOperation(
+          runFactoryResetSensitiveDesktopOperation(() => processNext()),
+        );
+        return admittedWork;
+      },
     });
   } catch (err) {
     if (isBackgroundRuntimeDeferredError(err)) {
@@ -519,6 +552,9 @@ async function runWorkerOnce(): Promise<void> {
       outcome = "backoff";
     }
   } finally {
+    // A coordinator timeout does not cancel a cache or Library write. Retain
+    // worker ownership until that write settles, including across stop/start.
+    await admittedWork?.catch(() => undefined);
     activeStartedAt = null;
   }
 
@@ -551,7 +587,7 @@ async function processNext(): Promise<ProcessOutcome> {
     // machine can't freeze the interval forever.
     recordReaderArticleFetchAttempt({ source: "background-cache" });
     const html = await Promise.race([
-      invoke<string>("fetch_url", { url: entry.url, maxBytes: MAX_BACKGROUND_HTML_BYTES }),
+      invoke<string>("fetch_background_article_url", { url: entry.url, maxBytes: MAX_BACKGROUND_HTML_BYTES }),
       new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("fetch_url TIMEOUT")), FETCH_TIMEOUT_MS),
       ),
@@ -674,7 +710,8 @@ async function processNext(): Promise<ProcessOutcome> {
  * Safe to call multiple times -- a second call is a no-op if already running.
  */
 export function start(options: ContentFetcherOptions = {}): void {
-  if (running) return;
+  if (running || factoryResetDrainInProgress || isDesktopHandoffPaused()) return;
+  workerGeneration++;
   running = true;
   memoryGuardEnabled = options.memoryGuard ?? false;
   lastScannedItemCount = null;
@@ -710,6 +747,7 @@ export function start(options: ContentFetcherOptions = {}): void {
 export function stop(): void {
   if (!running) return;
   running = false;
+  workerGeneration++;
 
   if (workerTimer !== null) {
     clearTimeout(workerTimer);
@@ -717,7 +755,6 @@ export function stop(): void {
   }
   clearStartupDelay();
   nextDelayMs = undefined;
-  activeStartedAt = null;
   memoryGuardEnabled = false;
 
   if (heartbeatHandle !== null) {
@@ -737,8 +774,9 @@ export function stop(): void {
 }
 
 /** Stop future work and wait for every cache or document write already in flight. */
-export async function stopAndDrain(): Promise<void> {
-  factoryResetDrainInProgress = true;
+export async function stopAndDrain(options: { resumable?: boolean } = {}): Promise<void> {
+  if (options.resumable && !isDesktopHandoffPaused()) throw new Error("Resumable article drain requires the handoff pause");
+  if (!options.resumable) factoryResetDrainInProgress = true;
   stop();
   await waitForFactoryResetDrain(
     () => Array.from(activeResetSensitiveOperations),
