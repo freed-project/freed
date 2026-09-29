@@ -73,6 +73,17 @@ describe("Jev preview server boundary", () => {
     expect(await good.text()).not.toContain("private-test-key");
   });
 
+  it("isolates cached responses when the client replaces its credential", async () => {
+    const { post, upstream } = await start({ getApiKey: undefined });
+    const firstHeaders = { Authorization: "Bearer first-test-key" };
+    const secondHeaders = { Authorization: "Bearer second-test-key" };
+    expect(await (await post({ item }, firstHeaders)).json()).toMatchObject({ cached: false });
+    expect(await (await post({ item }, secondHeaders)).json()).toMatchObject({ cached: false });
+    expect(await (await post({ item }, secondHeaders)).json()).toMatchObject({ cached: true });
+    expect(upstream).toHaveBeenCalledTimes(2);
+    expect(upstream.mock.calls[1]?.[1]?.headers).toMatchObject(secondHeaders);
+  });
+
   it("caches validated results, accounts only fresh calls, and honors explicit reclassification", async () => {
     const { post, upstream } = await start();
     const first = await (await post()).json();
@@ -117,7 +128,7 @@ describe("Jev preview server boundary", () => {
     const upstream = vi.fn<typeof fetch>().mockImplementation((_url, init) => new Promise((_resolve, reject) => {
       init?.signal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
     }));
-    const { post } = await start({ fetchImpl: upstream, deadlineMs: 15 });
+    const { post } = await start({ fetchImpl: upstream, deadlineMs: 500 });
     const result = await post();
     expect(result.status).toBe(504);
     expect(await result.json()).toMatchObject({ code: "deadline" });
@@ -137,7 +148,7 @@ describe("Jev preview server boundary", () => {
   });
 
   it("expires incomplete request bodies, flushes their errors, and releases every admission slot", async () => {
-    const { url, post, upstream } = await start({ deadlineMs: 20 });
+    const { url, post, upstream } = await start({ deadlineMs: 500 });
     const pending = Array.from({ length: 4 }, () => new Promise<{ status: number | undefined; body: string }>((resolve, reject) => {
       const request = httpRequest(`${url}/api/jev-preview/classify`, {
         method: "POST",

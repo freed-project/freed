@@ -1,4 +1,7 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes, scrypt } from "node:crypto";
+import { promisify } from "node:util";
+
+const deriveCacheKey = promisify(scrypt);
 import { setTimeout as delay } from "node:timers/promises";
 
 const PREFIX = "/api/jev-preview/";
@@ -113,6 +116,7 @@ export function createJevPreviewMiddleware({
   let active = 0;
   let attempts = 0;
   const cache = new Map();
+  const cacheSalt = randomBytes(32);
 
   return async (request, response, next) => {
     const path = request.url?.split("?")[0];
@@ -183,8 +187,12 @@ export function createJevPreviewMiddleware({
             : "This sample has no usable text or exceeds the preview request limit.");
         }
         const serialized = JSON.stringify(payload);
-        const cacheKey = createHash("sha256")
-          .update(apiKey).update(questionPackVersion).update(serialized).digest("hex");
+        // Partition cached responses by credential without retaining the key or
+        // a fast credential hash. Admission also bounds concurrent derivations.
+        const requestSalt = createHash("sha256")
+          .update(cacheSalt).update(questionPackVersion).update(serialized).digest();
+        const cacheKey = (await deriveCacheKey(apiKey, requestSalt, 32)).toString("hex");
+        controller.signal.throwIfAborted();
         if (body.reclassify !== true && cache.has(cacheKey)) {
           const result = cache.get(cacheKey);
           return json(response, 200, { ...result, cached: true, estimatedCostUsd: 0, elapsedMs: 0 });
