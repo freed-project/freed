@@ -3,8 +3,10 @@
   "version": "26.9.2900-dev",
   "channel": "dev",
   "dayKey": "26.9.29",
-  "approved": false,
-  "editorialNotes": [],
+  "approved": true,
+  "editorialNotes": [
+    "Reviewed against the immutable product source. This candidate covers cooperative Desktop transfer and consumer edit recovery; headless authority transfer remains separate. Installed acceptance is still required."
+  ],
   "generatedAt": "2026-09-29T20:04:41.453Z",
   "model": "heuristic",
   "source": {
@@ -86,13 +88,24 @@
     ]
   },
   "release": {
-    "deck": "Cooperative Primary handoff and consumer edit recovery and complete headless Library service bootstrap",
+    "deck": "Cooperative Primary transfers and explicit recovery for offline consumer edits",
     "features": [
-      "Cooperative Primary handoff and consumer edit recovery",
-      "Complete headless Library service bootstrap"
+      "Freed Desktop can transfer Primary authority to another enrolled installation and resume the transfer after restart",
+      "Desktop and PWA consumers can review archived edits and explicitly apply eligible changes again after an authority transfer",
+      "The former Primary can join the successor as a consumer, and later transfers retain access to earlier recovery archives"
     ],
-    "fixes": [],
-    "followUps": []
+    "fixes": [
+      "The source stops capture before authorizing a transfer, and the target stays fenced until it verifies the published successor",
+      "Retrying a recovery action after a lost response returns its original replacement instead of creating a duplicate edit",
+      "Recovery editors preserve complete transactions and compare archived values with current Library state before signing",
+      "Closing or replacing an archive review cancels its pending native read",
+      "An activated target can prepare a later transfer back to another enrolled installation"
+    ],
+    "followUps": [
+      "This dev candidate requires end-to-end acceptance with two isolated Desktop installations and the matching PWA before moving the owner Library",
+      "After transfer or recovery activates local schema 2, preserve the database and use a compatible successor build. Do not downgrade it with an older binary",
+      "Headless authority transfer remains a separate delivery; unilateral headless promotion is refused"
+    ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.9.2900-dev\n\nCooperative Primary handoff and consumer edit recovery and complete headless Library service bootstrap\n\n### Features\n\n- Cooperative Primary handoff and consumer edit recovery\n- Complete headless Library service bootstrap\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.9.2900-dev\n\nCooperative Primary transfers and explicit recovery for offline consumer edits\n\n### Features\n\n- Freed Desktop can transfer Primary authority to another enrolled installation and resume the transfer after restart\n- Desktop and PWA consumers can review archived edits and explicitly apply eligible changes again after an authority transfer\n- The former Primary can join the successor as a consumer, and later transfers retain access to earlier recovery archives\n\n### Fixes\n\n- The source stops capture before authorizing a transfer, and the target stays fenced until it verifies the published successor\n- Retrying a recovery action after a lost response returns its original replacement instead of creating a duplicate edit\n- Recovery editors preserve complete transactions and compare archived values with current Library state before signing\n- Closing or replacing an archive review cancels its pending native read\n- An activated target can prepare a later transfer back to another enrolled installation\n\n### Follow-ups\n\n- This dev candidate requires end-to-end acceptance with two isolated Desktop installations and the matching PWA before moving the owner Library\n- After transfer or recovery activates local schema 2, preserve the database and use a compatible successor build. Do not downgrade it with an older binary\n- Headless authority transfer remains a separate delivery; unilateral headless promotion is refused\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
