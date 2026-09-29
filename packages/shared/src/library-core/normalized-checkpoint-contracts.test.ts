@@ -161,7 +161,9 @@ describe("normalized SQLite checkpoint contract", () => {
         (record) => String(record.registryKey) === "00_library_shell",
       ),
     ).toBe(false);
-    expect(reassembleLibraryCoreContentV1(records)).toEqual(bytes);
+    const restored = reassembleLibraryCoreContentV1(records);
+    expect(restored.byteLength).toBe(bytes.byteLength);
+    expect(restored.every((byte, index) => byte === bytes[index])).toBe(true);
   }, 15_000);
 
   it("keeps maximum metadata rows below the logical wire-record ceiling", () => {

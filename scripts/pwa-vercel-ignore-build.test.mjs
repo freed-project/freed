@@ -26,53 +26,67 @@ function commit(cwd, message) {
   return git(cwd, "rev-parse", "HEAD");
 }
 
-test("PWA Vercel filtering compares the last successful deployment", (t) => {
-  const cwd = mkdtempSync(path.join(os.tmpdir(), "freed-pwa-ignore-"));
-  t.after(() => rmSync(cwd, { recursive: true, force: true }));
-  git(cwd, "init", "-q");
-  mkdirSync(path.join(cwd, "packages", "pwa"), { recursive: true });
-  mkdirSync(path.join(cwd, "docs"), { recursive: true });
-  writeFileSync(path.join(cwd, "packages", "pwa", "app.ts"), "first\n");
-  const deployed = commit(cwd, "initial PWA");
+for (const invocationDirectory of [".", "packages/pwa"]) {
+  test(`PWA Vercel filtering compares the last successful deployment from ${invocationDirectory}`, (t) => {
+    const cwd = mkdtempSync(path.join(os.tmpdir(), "freed-pwa-ignore-"));
+    t.after(() => rmSync(cwd, { recursive: true, force: true }));
+    git(cwd, "init", "-q");
+    mkdirSync(path.join(cwd, "packages", "pwa"), { recursive: true });
+    mkdirSync(path.join(cwd, "docs"), { recursive: true });
+    writeFileSync(path.join(cwd, "packages", "pwa", "app.ts"), "first\n");
+    const deployed = commit(cwd, "initial PWA");
+    const planFromInvocationDirectory = (options) => planPwaVercelBuild({
+      ...options,
+      cwd: path.join(cwd, invocationDirectory),
+    });
 
-  writeFileSync(path.join(cwd, "docs", "notes.md"), "docs only\n");
-  const docsOnly = commit(cwd, "docs only");
-  assert.deepEqual(
-    planPwaVercelBuild({ cwd, previousSha: deployed, currentSha: docsOnly }),
-    { ignore: true, reason: "no PWA-relevant changes" },
-  );
+    writeFileSync(path.join(cwd, "docs", "notes.md"), "docs only\n");
+    const docsOnly = commit(cwd, "docs only");
+    assert.deepEqual(
+      planFromInvocationDirectory({ previousSha: deployed, currentSha: docsOnly }),
+      { ignore: true, reason: "no PWA-relevant changes" },
+    );
 
-  writeFileSync(path.join(cwd, "packages", "pwa", "app.ts"), "functional\n");
-  commit(cwd, "functional change");
-  writeFileSync(path.join(cwd, "docs", "notes.md"), "trailing docs\n");
-  const functionalThenDocs = commit(cwd, "trailing docs");
-  assert.deepEqual(
-    planPwaVercelBuild({
-      cwd,
-      previousSha: docsOnly,
-      currentSha: functionalThenDocs,
-    }),
-    { ignore: false, reason: "PWA-relevant changes detected" },
-  );
+    writeFileSync(path.join(cwd, "packages", "pwa", "app.ts"), "functional\n");
+    commit(cwd, "functional change");
+    writeFileSync(path.join(cwd, "docs", "notes.md"), "trailing docs\n");
+    const functionalThenDocs = commit(cwd, "trailing docs");
+    assert.deepEqual(
+      planFromInvocationDirectory({
+        cwd,
+        previousSha: docsOnly,
+        currentSha: functionalThenDocs,
+      }),
+      { ignore: false, reason: "PWA-relevant changes detected" },
+    );
 
-  assert.equal(
-    planPwaVercelBuild({ cwd, previousSha: "", currentSha: docsOnly }).ignore,
-    false,
-  );
-  assert.equal(
-    planPwaVercelBuild({
-      cwd,
-      previousSha: "f".repeat(40),
-      currentSha: docsOnly,
-    }).ignore,
-    false,
-  );
+    assert.equal(
+      planFromInvocationDirectory({ previousSha: "", currentSha: docsOnly }).ignore,
+      false,
+    );
+    assert.equal(
+      planFromInvocationDirectory({
+        cwd,
+        previousSha: "f".repeat(40),
+        currentSha: docsOnly,
+      }).ignore,
+      false,
+    );
 
-  git(cwd, "checkout", "-q", "--orphan", "unrelated");
-  writeFileSync(path.join(cwd, "docs", "notes.md"), "unrelated root\n");
-  const unrelated = commit(cwd, "unrelated root");
-  assert.deepEqual(
-    planPwaVercelBuild({ cwd, previousSha: deployed, currentSha: unrelated }),
-    { ignore: false, reason: "deployment baseline is not an ancestor" },
-  );
-});
+    mkdirSync(path.join(cwd, "scripts"), { recursive: true });
+    writeFileSync(path.join(cwd, "scripts", "pwa-vercel-ignore-build.mjs"), "// filter repair\n");
+    const filterChange = commit(cwd, "filter repair");
+    assert.deepEqual(
+      planFromInvocationDirectory({ previousSha: functionalThenDocs, currentSha: filterChange }),
+      { ignore: false, reason: "PWA-relevant changes detected" },
+    );
+
+    git(cwd, "checkout", "-q", "--orphan", "unrelated");
+    writeFileSync(path.join(cwd, "docs", "notes.md"), "unrelated root\n");
+    const unrelated = commit(cwd, "unrelated root");
+    assert.deepEqual(
+      planFromInvocationDirectory({ previousSha: deployed, currentSha: unrelated }),
+      { ignore: false, reason: "deployment baseline is not an ancestor" },
+    );
+  });
+}

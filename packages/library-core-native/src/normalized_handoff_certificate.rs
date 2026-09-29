@@ -5291,10 +5291,12 @@ mod tests {
             successor_control.manifest.descriptor.content_digest
         );
         let id = &target_grant.body.readiness.handoff_id;
-        assert_ne!(
+        // Enrollment without accepted operations carries the predecessor frontier.
+        assert_eq!(
             successor_control.causal_frontier_digest,
             selected.causal_frontier_digest
         );
+        successor_control.causal_frontier_digest = "0".repeat(64);
         assert!(
             prepare_target_handoff_activation_v1(
                 &mut database,
@@ -5304,7 +5306,7 @@ mod tests {
                 104
             )
             .is_err(),
-            "predecessor digest is not the successor checkpoint digest"
+            "a mismatched frontier cannot authorize successor activation"
         );
         successor_control.causal_frontier_digest = selected.causal_frontier_digest.clone();
         let (manifest_bytes, compressed_pages) =

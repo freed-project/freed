@@ -893,7 +893,7 @@ describe("compiled freed-library runtime", () => {
           expect(serviceDefinition).toMatchObject({ code: 0, stderr: "" });
           expect(JSON.parse(serviceDefinition.stdout)).toMatchObject({
             platform: "linux",
-            format: "systemd-user-unit-v1",
+            format: "systemd-system-unit-v1",
             fileName: "freed-library.service",
             contents: expect.stringContaining("ProtectSystem=strict"),
           });
