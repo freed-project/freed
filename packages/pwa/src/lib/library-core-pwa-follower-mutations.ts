@@ -1258,7 +1258,9 @@ export function createPwaRecoveryRssUpsertAction(
     if (selected.length !== original.drafts.length || selected.some((feed, i) => feed.url !== original.drafts[i]!.archived.url))
       throw new Error("Review the complete original subscription set.");
     const revised = selected.map((feed, i) => {
-      const { lastFetched: _oldFetch, sampleDataFingerprint: _oldSample, ...settings } = feed;
+      const settings = { ...feed };
+      delete settings.lastFetched;
+      delete settings.sampleDataFingerprint;
       const draft = original.drafts[i]!;
       const current = draft.current;
       const provenance = (current ?? draft.archived).sampleDataFingerprint;

@@ -1,5 +1,12 @@
 import { test, expect } from "@playwright/test";
 
+type FriendProof = {
+  prepared: number; attempts: number; busy: boolean[];
+  replacement: { replacementTransactionId: string } | null;
+  input: { person: { name: string }; accounts: { id: string }[] };
+};
+const readFriendProof = () => (window as Window & { __friendProof: FriendProof }).__friendProof;
+
 // Tier 1 browser integration for the PWA wrapper and shared form. Storage and
 // cryptography have separate real SQLite tests; these boundaries are mocked.
 for (const paged of [false, true]) {
@@ -60,7 +67,7 @@ test(`PWA Friend ${paged ? "paged" : "small"} review retains one action after re
     await editor.getByRole("button", { name: "Next account", exact: true }).click();
     await confirmation.check();
   }
-  expect(await page.evaluate(() => (window as any).__friendProof.prepared)).toBe(0);
+  expect((await page.evaluate(readFriendProof)).prepared).toBe(0);
   await expect(editor.locator("img")).toHaveCount(0);
   await submit.scrollIntoViewIfNeeded();
   await page.screenshot({ path: testInfo.outputPath("pwa-friend-confirmation.png") });
@@ -69,8 +76,8 @@ test(`PWA Friend ${paged ? "paged" : "small"} review retains one action after re
   await expect(editor.getByLabel("Include this account", { exact: true })).toBeDisabled();
   await expect(editor.getByRole("button", { name: "Review Person again", exact: true })).toBeDisabled();
   await submit.click();
-  await expect.poll(() => page.evaluate(() => (window as any).__friendProof.replacement)).toEqual({ replacementTransactionId: "replacement" });
-  const proof = await page.evaluate(() => (window as any).__friendProof);
+  await expect.poll(async () => (await page.evaluate(readFriendProof)).replacement).toEqual({ replacementTransactionId: "replacement" });
+  const proof = await page.evaluate(readFriendProof);
   expect(proof.prepared).toBe(1);
   expect(proof.attempts).toBe(2);
   expect(proof.input.person.name).toBe("Reviewed Friend");

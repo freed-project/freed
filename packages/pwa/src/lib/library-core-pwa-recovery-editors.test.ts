@@ -163,7 +163,8 @@ it("preserves absent Person records without image loads and refuses deleted or s
   await expect(loadPwaRecoveryPersonDrafts(original)).rejects.toThrow("was deleted");
   query.mockResolvedValueOnce(original).mockResolvedValueOnce({ source: { ...source, projectionRevision: 999 }, person: null });
   await expect(loadPwaRecoveryPersonDrafts(original)).rejects.toThrow("CURSOR_STALE");
-  const { avatarUrl: _archivedAvatar, ...root } = person;
+  const root: Partial<typeof person> = { ...person };
+  delete root.avatarUrl;
   const current = { ...root, name: "Current", bio: "Current bio", notes: "Current notes", careLevel: 5, tags: ["current"], reachOutIntervalDays: 14, createdAt: 42, updatedAt: 99,
     sampleDataFingerprint: { marker: "freed.sample-data.v1", batchId: "sample:current", generatedAt: 40, generatorVersion: 1 } };
   query.mockResolvedValueOnce({ ...original, rows: [{ ...original.rows[0], personState: "present" }] }).mockResolvedValueOnce({ source, person: current });

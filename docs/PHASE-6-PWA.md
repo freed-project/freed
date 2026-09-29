@@ -1339,3 +1339,7 @@ assignments and empty groups, and clears confirmation whenever a value changes.
 After signing, the form locks its inputs and retries the same replacement after
 an ambiguous response. Focused platform tests and the Desktop browser workflow
 pass. Installed Mac acceptance and full multi-device convergence remain pending.
+
+Friend recovery clears its editor by unmounting during review reload and by
+keying each archived transaction by digest. Its load effect only commits verified
+results; closing or replacing the review aborts the pending load.

@@ -23,7 +23,7 @@ export function PwaRecoveryFriendEditor({ review, onReplacement, onMutating }: {
   }, [onMutating]);
   useEffect(() => {
     const controller = new AbortController();
-    setDraft(null); setError(null);
+    // The parent unmounts during review reload and keys each edit by its digest.
     void loadPwaRecoveryFriendDraft(review, controller.signal).then((result) => {
       if (controller.signal.aborted) return;
       if (result.replacement) onReplacement(result.replacement); else setDraft(result.draft);

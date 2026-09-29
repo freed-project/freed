@@ -174,7 +174,7 @@ describe("PWA SQLite follower mutations", () => {
       entityId: "account:fixed", operationType: "account_person_assignment", itemPresent: null,
       originalEnvelopeJson: new TextDecoder().decode(encodeLibraryCoreCanonicalValue({ entity_type: "Account", blob_references: [], payload: { assigned_at_ms: 100, person_id: null } })),
     })) } as unknown as LibraryCoreRecoveryIntentReviewResponseV1;
-    const respond = async (request: any) => request.queryId === "account_detail_v1" ? { source: review.source, account: { id: "account:fixed", personId: null, displayName: "Account" } }
+    const respond = async (request: { queryId: string; personId?: string }) => request.queryId === "account_detail_v1" ? { source: review.source, account: { id: "account:fixed", personId: null, displayName: "Account" } }
       : request.queryId === "person_detail_v1" ? { source: review.source, person: { id: request.personId, name: "Chosen" } } : review;
     mocks.query.mockImplementation(respond);
     const selected = [{ accountId: "account:fixed", personId: "person:chosen" as string | null }, { accountId: "account:fixed", personId: null }];
