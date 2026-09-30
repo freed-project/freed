@@ -2,6 +2,12 @@
 
 > **Status:** 🚧 In Progress
 
+Native provider admission now has bounded lifetime counters in the existing
+runtime-health sampler. The soak verdict reports their delta only across a
+stable, covered interval with no active provider commands or provider windows.
+Missing or inconsistent evidence is inconclusive. Installed consumer-role and
+multi-device acceptance remain separate requirements.
+
 PWA checkpoint refresh now preserves pending and published signed edits,
 optimistic fields, actor counters, enrollment and exact transport history in the
 same activation transaction. It requires the verified Library, epoch and writer,

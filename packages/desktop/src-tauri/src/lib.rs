@@ -921,9 +921,7 @@ fn recycle_social_scraper_windows(
     }
 }
 
-/// Call only while holding the exclusive provider operation permit and after
-/// committing the source fence. This preserves authentication stores.
-async fn close_provider_windows_for_handoff(app: &tauri::AppHandle) -> Result<(), String> {
+fn provider_window_labels() -> Vec<&'static str> {
     let mut labels = SOCIAL_SCRAPER_WINDOW_LABELS.to_vec();
     labels.extend([
         "x-login",
@@ -934,6 +932,13 @@ async fn close_provider_windows_for_handoff(app: &tauri::AppHandle) -> Result<()
         "medium-login",
         youtube::YOUTUBE_SESSION_WINDOW_LABEL,
     ]);
+    labels
+}
+
+/// Call only while holding the exclusive provider operation permit and after
+/// committing the source fence. This preserves authentication stores.
+async fn close_provider_windows_for_handoff(app: &tauri::AppHandle) -> Result<(), String> {
+    let labels = provider_window_labels();
     provider_operation_gate::request_window_closure(&labels, |label| {
         if label == youtube::YOUTUBE_SESSION_WINDOW_LABEL {
             return youtube::close_youtube_session_for_handoff(app);
@@ -3498,7 +3503,7 @@ fn get_background_runtime_active_operation(
 }
 
 struct ActiveScraperSession {
-    _provider_operation: tokio::sync::OwnedRwLockReadGuard<()>,
+    _provider_operation: provider_operation_gate::AdmittedProviderOperation,
     _guard: tokio::sync::OwnedMutexGuard<()>,
     background_runtime: Arc<BackgroundRuntimeCoordinator>,
     operation: &'static str,
@@ -5049,13 +5054,13 @@ fn truncate_for_log(value: &str, max_chars: usize) -> String {
 
 fn acquire_native_provider_operation(
     app: &tauri::AppHandle,
-) -> Result<tokio::sync::OwnedRwLockReadGuard<()>, String> {
+) -> Result<provider_operation_gate::AdmittedProviderOperation, String> {
     let permit = app
         .state::<CaptureState>()
         .provider_operations
         .try_begin()?;
     library_core_desktop_runtime::require_primary_library_authority(app)?;
-    Ok(permit)
+    Ok(permit.admit())
 }
 
 async fn acquire_background_scraper_session(
@@ -13750,6 +13755,20 @@ pub fn run() {
                     };
                     if let Some(fields) = health_payload.as_object_mut() {
                         fields.extend(memory_health_fields);
+                        let capture = app_for_memory_monitor.state::<CaptureState>();
+                        let observation_start_ms = unix_millis_now();
+                        let before = capture.provider_operations.snapshot();
+                        let provider_windows: Vec<_> = provider_window_labels()
+                            .into_iter()
+                            .filter(|label| app_for_memory_monitor.get_webview_window(label).is_some())
+                            .collect();
+                        let after = capture.provider_operations.snapshot();
+                        let observation_end_ms = unix_millis_now();
+                        fields.insert("providerObservationStartMs".into(), serde_json::json!(observation_start_ms));
+                        fields.insert("providerObservationEndMs".into(), serde_json::json!(observation_end_ms));
+                        fields.insert("providerObservationStable".into(), serde_json::json!(before == after));
+                        fields.insert("providerOperations".into(), serde_json::json!(after));
+                        fields.insert("providerWindows".into(), serde_json::json!(provider_windows));
                     }
                     append_runtime_health(&app_for_memory_monitor, health_payload);
 
