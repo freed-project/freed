@@ -1,3 +1,5 @@
+import { snapshotLibraryCoreRecoverySavedUrlEditsV1, reviseLibraryCoreRecoverySavedUrlV1, decodeLibraryCoreFractionalNumbersV1, type RecoverySavedUrlEdit } from "@freed/shared/library-core";
+import { loadPwaRecoverySavedUrlDrafts } from "./library-core-pwa-recovery-editors";
 import { snapshotLibraryCoreRecoveryPreferencePatchesV1, sameLibraryCoreRecoveryPreferenceScopeV1 } from "@freed/shared/library-core";
 import type { RecoveryReachOutDraft } from "@freed/ui/components/RecoveryReachOutFields";
 import { PERSON_REACH_OUT_APPEND_PAYLOAD_SCHEMA } from "@freed/shared/library-core";
@@ -302,30 +304,8 @@ export async function commitPwaLibraryCoreUserStateAssignments(
   await commitFollowerTransaction(context, members);
 }
 
-export async function commitPwaLibraryCoreFeedItemCaptures(
-  items: readonly FeedItem[],
-  createdAtMs: number,
-): Promise<void> {
-  if (
-    items.length === 0 ||
-    items.length > PWA_LIBRARY_CORE_SQLITE_CAPTURE_BATCH_LIMIT
-  ) {
-    throw new RangeError("PWA FeedItem capture transaction is too large");
-  }
-  const identities = new Set<string>();
-  for (const item of items) {
-    if (!item.globalId)
-      throw new TypeError("capture item global ID is required");
-    if (identities.has(item.globalId)) {
-      throw new TypeError(
-        "FeedItem capture transaction contains a duplicate ID",
-      );
-    }
-    identities.add(item.globalId);
-  }
-  const context = await readPwaFollowerMutationContext();
-  const transactionId = transactionIdentity("pwa-capture");
-  const members = items.map((item, index) =>
+function captureTransactionMembers(context: Awaited<ReturnType<typeof readPwaFollowerMutationContext>>, items: readonly FeedItem[], transactionId: ReturnType<typeof transactionIdentity>, createdAtMs: number) {
+  return items.map((item, index) =>
     FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA.construct(
       {
         actor_id: context.actor_id,
@@ -356,6 +336,32 @@ export async function commitPwaLibraryCoreFeedItemCaptures(
       { digest },
     ),
   );
+}
+
+export async function commitPwaLibraryCoreFeedItemCaptures(
+  items: readonly FeedItem[],
+  createdAtMs: number,
+): Promise<void> {
+  if (
+    items.length === 0 ||
+    items.length > PWA_LIBRARY_CORE_SQLITE_CAPTURE_BATCH_LIMIT
+  ) {
+    throw new RangeError("PWA FeedItem capture transaction is too large");
+  }
+  const identities = new Set<string>();
+  for (const item of items) {
+    if (!item.globalId)
+      throw new TypeError("capture item global ID is required");
+    if (identities.has(item.globalId)) {
+      throw new TypeError(
+        "FeedItem capture transaction contains a duplicate ID",
+      );
+    }
+    identities.add(item.globalId);
+  }
+  const context = await readPwaFollowerMutationContext();
+  const transactionId = transactionIdentity("pwa-capture");
+  const members = captureTransactionMembers(context, items, transactionId, createdAtMs);
   await commitFollowerTransaction(context, members);
 }
 
@@ -1271,6 +1277,21 @@ export function createPwaRecoveryRssUpsertAction(
     });
     const context = await readPwaFollowerMutationContext();
     const members = rssUpsertMembers(context, revised, transactionIdentity("pwa-recovery-rss-upsert"), Date.now());
+    const { commit } = await finalizeFollowerTransaction(context, members);
+    return { intent: commit };
+  });
+}
+
+/** Exact retries retain the finalized capture and atomic archive linkage. */
+export function createPwaRecoverySavedUrlAction(review: LibraryCoreRecoveryIntentReviewResponseV1, edits: readonly RecoverySavedUrlEdit[]): () => Promise<LibraryCoreRecoveryReissueReceiptV1> {
+  const selected = snapshotLibraryCoreRecoverySavedUrlEditsV1(edits);
+  return createRecoveryTransactionAction(review, async () => {
+    const original = await loadPwaRecoverySavedUrlDrafts(review);
+    if (original.replacement) return { receipt: original.replacement };
+    if (selected.length !== original.drafts.length) throw new Error("Review every saved URL in this transaction");
+    const items = selected.map((edit, i) => decodeLibraryCoreFractionalNumbersV1(reviseLibraryCoreRecoverySavedUrlV1(original.drafts[i]!, edit)) as unknown as FeedItem);
+    const context = await readPwaFollowerMutationContext();
+    const members = captureTransactionMembers(context, items, transactionIdentity("pwa-recovery-saved-url"), Date.now());
     const { commit } = await finalizeFollowerTransaction(context, members);
     return { intent: commit };
   });

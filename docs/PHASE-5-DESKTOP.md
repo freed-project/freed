@@ -2,6 +2,15 @@
 
 > **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, Windows signing plan scaffolded, legal consent gate shipped, tri-state sidebar chrome shipped, public-safe bug reporting shipped, runtime memory telemetry shipped, native startup recovery shipped, bundled recovery updater flow shipped, permanent local social media vault shipped, desktop hot-path side-effect scheduling shipped, bounded SQLite user mutations and queries shipped, visible-scope bulk actions shipped, background runtime coordination shipped, renderer recovery safe mode shipped, deep local WebKit diagnostics shipped, adaptive high-memory scrape budgets shipped, explicit local-only primary Library authority shipped, normalized sample-data accounting, Story Wall candidates, Saved analytics, full-library native search, bounded scheduled RSS refresh, Google Drive checkpoint publication, follower intents, global background activity monitoring, and native terminal sync soaks shipped)
 
+Saved URL recovery now distinguishes absent targets from deleted items. The
+owner reviews every URL, edits its title or description, and explicitly confirms
+one complete replacement. Original targets, URLs and remaining archived content
+stay fixed. Deleted items and unsupported capture types are refused. Opening the
+editor stays offline; after acceptance, the Primary may fetch the publisher under
+its existing content policy. Exact retries retain the signed replacement and use
+the durable archive link. Notes and tags remain separate recovery transactions.
+Installed multi-device acceptance is still outstanding.
+
 Freed Desktop now connects native operation export and consumer import to the
 shared Drive coordinator. Ordinary signed mutations advance a durable operation
 publication cursor while retaining the checkpoint receipt. Consumer revision
@@ -1537,9 +1546,8 @@ process-restart durability or installed cross-device acceptance.
 Browser successor refresh resolves the cloud writer from the unique active
 Desktop actor, matching native checkpoints with the local writer label
 `primary:desktop`. The follower receipt must name that actor. The later missed-transfer evidence
-below extends this direct-transfer path. Large-checkpoint deadline admission,
-OS-crash boundaries and installed Mac acceptance remain unverified. Current local work
-still requires full feature validation, fresh provider review and exact-head CI.
+below extends this direct-transfer path and records synthetic large-checkpoint
+admission. OS-crash boundaries and installed Mac acceptance remain unverified.
 
 ### Replica audit evidence, September 30, 2026
 
@@ -1563,3 +1571,9 @@ retains recovery inputs; success removes only consumed stages.
 The Desktop transport accepts bounded read lists and stages historical downloads
 without activating intermediate epochs. Installed two-Desktop/PWA acceptance,
 representative-size timing and MacBook Pro authority transition remain pending.
+
+The native two-transfer lifecycle also passes with 100,000 synthetic FeedItems,
+including rollback after a historical-stage cleanup failure, preservation of
+the original pending row, and final recovery archival. Its optimized canonical
+audit completes within the existing 30-second budget and matches the PWA digest.
+This is Linux fixture evidence, not installed Mac acceptance or transfer timing.

@@ -54,6 +54,7 @@
         "createdAt": 1000,
         "entityId": "rss:item:1",
         "itemPresent": true,
+        "itemState": "present",
         "itemText": null,
         "memberIndex": 0,
         "operationType": "feed_item_read_assignment",

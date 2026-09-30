@@ -115,3 +115,5 @@ export * from "./shell-preferences.js";
 export * from "./visible-preference-source.js";
 
 export * from "./visible-preference-contracts.js";
+
+export * from "./recovery-saved-url-input.js";

@@ -2,6 +2,15 @@
 
 > **Status:** 🚧 In Progress
 
+Saved URL recovery now distinguishes absent targets from deleted items. The
+owner reviews every URL, edits its title or description, and explicitly confirms
+one complete replacement. Original targets, URLs and remaining archived content
+stay fixed. Deleted items and unsupported capture types are refused. Opening the
+editor stays offline; after acceptance, the Primary may fetch the publisher under
+its existing content policy. Exact retries retain the signed replacement and use
+the durable archive link. Notes and tags remain separate recovery transactions.
+Installed multi-device acceptance is still outstanding.
+
 PWA convergence audits now stream canonical records through an OPFS-backed sort
 with a bounded cache. Deadline, cancellation and temporary-file failures return no
 receipt and restore the connection settings. Memory-only backends retain bounded
@@ -1105,9 +1114,8 @@ process-restart durability or installed cross-device acceptance.
 Browser successor refresh resolves the cloud writer from the unique active
 Desktop actor, matching native checkpoints with the local writer label
 `primary:desktop`. The follower receipt must name that actor. The later missed-transfer evidence
-below extends this direct-transfer path. Large-checkpoint deadline admission,
-OS-crash boundaries and installed Mac acceptance remain unverified. Current local work
-still requires full feature validation, fresh provider review and exact-head CI.
+below extends this direct-transfer path and records synthetic large-checkpoint
+admission. OS-crash boundaries and installed Mac acceptance remain unverified.
 
 ### Replica audit evidence, September 30, 2026
 
@@ -1135,3 +1143,10 @@ resumption and unrelated staging survives. Longer histories currently refuse;
 resumable traversal beyond 32 transfers remains unfinished. Abandoned staging
 has no automatic age-based deletion. Representative-size latency, installed
 cross-device acceptance and actual new-host transition remain pending.
+
+A signed two-transfer fixture with 100,000 synthetic FeedItems passes native
+activation, late cleanup-failure rollback and retained pending-row checks. The
+PWA activates the same history through its production OPFS worker and retains
+the exact canonical digest after a full browser restart. Native and browser
+audits agree. Synthetic cloud receipts and Linux execution do not establish
+live-cloud or installed multi-device acceptance.

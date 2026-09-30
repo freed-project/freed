@@ -2,6 +2,15 @@
 
 > **Status:** 🚧 In Progress (the official SQLite WebAssembly engine, exact schema identity, single-worker OPFS runtime, normalized checkpoint import, product mutation entrypoints, bounded product queries, follower transport, recovery UI, selective content, and IndexedDB Library deletion are implemented; physical iPhone acceptance remains open)
 
+Saved URL recovery now distinguishes absent targets from deleted items. The
+owner reviews every URL, edits its title or description, and explicitly confirms
+one complete replacement. Original targets, URLs and remaining archived content
+stay fixed. Deleted items and unsupported capture types are refused. Opening the
+editor stays offline; after acceptance, the Primary may fetch the publisher under
+its existing content policy. Exact retries retain the signed replacement and use
+the durable archive link. Notes and tags remain separate recovery transactions.
+Installed multi-device acceptance is still outstanding.
+
 PWA convergence audits now stream canonical records through an OPFS-backed sort
 with a bounded cache. Deadline, cancellation and temporary-file failures return no
 receipt and restore the connection settings. Memory-only backends retain bounded
@@ -1431,9 +1440,8 @@ process-restart durability or installed cross-device acceptance.
 Browser successor refresh resolves the cloud writer from the unique active
 Desktop actor, matching native checkpoints with the local writer label
 `primary:desktop`. The follower receipt must name that actor. The later missed-transfer evidence
-below extends this direct-transfer path. Large-checkpoint deadline admission,
-OS-crash boundaries and installed Mac acceptance remain unverified. Current local work
-still requires full feature validation, fresh provider review and exact-head CI.
+below extends this direct-transfer path and records synthetic large-checkpoint
+admission. OS-crash boundaries and installed Mac acceptance remain unverified.
 
 ### Replica audit evidence, September 30, 2026
 
@@ -1468,3 +1476,11 @@ same epoch, revision and checkpoint digest. It uses a synthetic final cloud
 receipt and a small corpus. It does not establish old-intent retention in that
 browser scenario, cooperative cancellation inside the write transaction,
 OS-crash recovery, Mac WebKit behavior or representative-size performance.
+
+A separate Linux Chromium OPFS run activates valid signed history with 100,000
+synthetic FeedItems. Activation takes 39.8 seconds with 490 progress events and
+reaches the same canonical digest as native. A full browser restart preserves
+the receipt, current digest, epoch, writer, revision and frontier. The final
+cloud receipt is synthetic; this does not test old local browser intents or
+OS-crash recovery. Exact-commit macOS WebKit durability CI also passes, while
+installed multi-device acceptance remains outstanding.

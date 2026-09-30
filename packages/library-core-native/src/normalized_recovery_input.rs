@@ -769,7 +769,7 @@ mod tests {
         );
         assert_eq!(
             first["rows"],
-            json!([{ "personState": null, "rssFeedState": null, "originalEnvelopeJson": null, "authorName": "Ada", "itemPresent": true, "itemText": null, "assigned": null, "assignedAt": null, "createdAt": 1000, "entityId": "rss:item:1", "memberIndex": 0, "operationType": "feed_item_read_assignment", "readAt": 900 }])
+            json!([{ "personState": null, "rssFeedState": null, "originalEnvelopeJson": null, "authorName": "Ada", "itemPresent": true, "itemState": "present", "itemText": null, "assigned": null, "assignedAt": null, "createdAt": 1000, "entityId": "rss:item:1", "memberIndex": 0, "operationType": "feed_item_read_assignment", "readAt": 900 }])
         );
         let mut editor = request.clone();
         editor["includeOriginal"] = json!(true);
@@ -842,6 +842,20 @@ mod tests {
             query_normalized_json_v1(&mut connection, request.clone()).unwrap()["outcome"],
             first["outcome"]
         );
+        // Target deletion is separate from evidence about the original transaction.
+        connection
+            .execute(
+                "DELETE FROM library_feed_items WHERE global_id = 'rss:item:1';",
+                [],
+            )
+            .unwrap();
+        let absent = query_normalized_json_v1(&mut connection, request.clone()).unwrap();
+        assert_eq!(absent["rows"][0]["itemState"], "absent");
+        assert_eq!(absent["rows"][0]["itemPresent"], false);
+        connection.execute("INSERT INTO library_tombstones VALUES ('feed_item', 'rss:item:1', 'test-actor', 1, 'test-removal', 1);", []).unwrap();
+        let deleted = query_normalized_json_v1(&mut connection, request.clone()).unwrap();
+        assert_eq!(deleted["rows"][0]["itemState"], "deleted");
+        assert_eq!(deleted["outcome"], first["outcome"]);
         connection
             .execute(
                 "UPDATE library_local_recovery_archives SET archive_digest = ?1;",

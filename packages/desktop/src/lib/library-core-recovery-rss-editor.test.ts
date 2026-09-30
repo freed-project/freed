@@ -218,7 +218,7 @@ it("loads complete Friend account choices from exact current rows without trusti
 
 it("retains complete Account roots, clears absent avatars, and refuses stale or mixed recovery", async () => {
   const { loadRecoveryAccountDrafts } = await import("./library-core-recovery-account-upsert-editor");
-  const one = { ...review, memberCount: 1, rows: [{ ...row(0), assigned: null, assignedAt: null, authorName: null, createdAt: 1000, itemPresent: null, itemText: null, readAt: null }] };
+  const one = { ...review, memberCount: 1, rows: [{ ...row(0), assigned: null, assignedAt: null, authorName: null, createdAt: 1000, itemPresent: null, itemState: null, itemText: null, readAt: null }] };
   const account = { id: "account:root", kind: "social", provider: "x", externalId: "external:one", discoveredFrom: "manual_entry", firstSeenAt: 1, lastSeenAt: 2, createdAt: 1, updatedAt: 2, avatarUrl: "https://example.com/avatar", address: "a".repeat(20000) };
   const member = { ...one.rows[0]!, entityId: account.id, operationType: "account_upsert", originalEnvelopeJson: new TextDecoder().decode(encodeLibraryCoreCanonicalValue({ entity_type: "Account", blob_references: [], payload: { account } })) };
   const original = { ...one, rows: [member], nextCursor: null };

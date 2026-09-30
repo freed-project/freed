@@ -5132,6 +5132,9 @@ export class PwaLibraryCoreSqliteEngine {
           "SELECT EXISTS(SELECT 1 FROM json_each(?1, '$.accounts') AS selected JOIN library_tombstones AS deleted ON deleted.entity_type = 'account' AND deleted.entity_id = json_extract(selected.value, '$.id'));",
           [JSON.stringify(envelope.payload)]) !== 0)
           throw new Error("Recovery cannot recreate a deleted account");
+        if (envelope.operation_type === "feed_item_capture_upsert" && this.#database.selectValue(
+          "SELECT EXISTS(SELECT 1 FROM library_tombstones WHERE entity_type = 'feed_item' AND entity_id = ?1);", [envelope.entity_id]) !== 0)
+          throw new Error("Recovery cannot recreate a deleted item");
         if (envelope.operation_type === "rss_feed_upsert" && this.#database.selectValue(
           "SELECT EXISTS(SELECT 1 FROM library_tombstones WHERE entity_type = 'rss_feed' AND entity_id = ?1);", [envelope.entity_id]) !== 0)
           throw new Error("Recovery cannot recreate a deleted subscription");
