@@ -1,3 +1,4 @@
+import { createLibraryCoreRecoverySavedUrlDraftV1, type RecoverySavedUrlDraft } from "@freed/shared/library-core";
 import { createLibraryCoreRecoveryPreferenceDraftV1, type RecoveryPreferenceDraft } from "@freed/shared/library-core";
 import type { RecoveryReachOutDraft, RecoveryReachOutHistory } from "@freed/ui/components/RecoveryReachOutFields";
 import { PERSON_REACH_OUT_APPEND_PAYLOAD_SCHEMA } from "@freed/shared/library-core";
@@ -399,6 +400,21 @@ export async function loadPwaRecoveryPreferenceDrafts(review: LibraryCoreRecover
   const drafts: RecoveryPreferenceDraft[] = [];
   const replacement = await visitRecoveryMembers(review, signal, async (row, envelope) => {
     drafts.push(createLibraryCoreRecoveryPreferenceDraftV1(row, envelope, () => { if (signal?.aborted) throw new Error("QUERY_CANCELLED"); }));
+  });
+  return replacement ? { replacement } : { replacement: null, drafts };
+}
+
+/** Preserve the complete verified capture transaction without contacting its URLs. */
+export async function loadPwaRecoverySavedUrlDrafts(review: LibraryCoreRecoveryIntentReviewResponseV1, signal?: AbortSignal): Promise<
+  { replacement: LibraryCoreRecoveryReissueReceiptV1; drafts?: never } | { replacement: null; drafts: readonly RecoverySavedUrlDraft[] }
+> {
+  const drafts: RecoverySavedUrlDraft[] = [];
+  let bytes = 0;
+  const replacement = await visitRecoveryMembers(review, signal, async (row, envelope) => {
+    const draft = createLibraryCoreRecoverySavedUrlDraftV1(row, envelope);
+    bytes += new TextEncoder().encode(JSON.stringify(draft)).length;
+    if (bytes > 4_194_304) throw new Error("Saved URL recovery exceeds its byte bound");
+    drafts.push(draft);
   });
   return replacement ? { replacement } : { replacement: null, drafts };
 }

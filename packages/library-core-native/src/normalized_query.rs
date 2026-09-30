@@ -597,6 +597,7 @@ pub struct NormalizedRecoveryEditRowV1 {
     pub original_envelope_json: Option<String>,
     pub author_name: Option<String>,
     pub item_present: Option<bool>,
+    pub item_state: Option<String>,
     pub item_text: Option<String>,
     pub assigned: Option<bool>,
     pub assigned_at: Option<i64>,
@@ -2634,6 +2635,12 @@ fn query_recovery_intent_review(
         .find(|variant| variant.variant_id == "item_context")
         .ok_or(invalid("recovery item context program is missing"))?
         .sql;
+    let item_state_sql = program
+        .variants
+        .iter()
+        .find(|variant| variant.variant_id == "item_state")
+        .ok_or(invalid("recovery item state program is missing"))?
+        .sql;
     let rss_sql = program
         .variants
         .iter()
@@ -2666,13 +2673,18 @@ fn query_recovery_intent_review(
         } else {
             None
         };
+        let item_state: Option<String> = if member.entity_type == "FeedItem" {
+            Some(tx.query_row(item_state_sql, [&member.entity_id], |row| row.get(0))?)
+        } else {
+            None
+        };
         let item_present = (member.entity_type == "FeedItem").then_some(item.is_some());
         let (author_name, item_text) = item.unwrap_or_default();
         let row = decode_generated_query_value::<NormalizedRecoveryEditRowV1>(
             serde_json::json!({
                 "originalEnvelopeJson": request.include_original.then_some(&member.canonical_envelope_json),
                 "assigned": member.assigned, "assignedAt": member.assigned_at_ms, "createdAt": member.created_at_ms,
-                "authorName": author_name, "itemPresent": item_present, "itemText": item_text, "rssFeedState": rss_feed_state, "personState": person_state,
+                "authorName": author_name, "itemPresent": item_present, "itemState": item_state, "itemText": item_text, "rssFeedState": rss_feed_state, "personState": person_state,
                 "entityId": member.entity_id, "memberIndex": start + index, "operationType": member.operation_type, "readAt": member.read_at_ms,
             }),
             QUERY,

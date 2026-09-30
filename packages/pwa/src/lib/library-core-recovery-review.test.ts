@@ -3,7 +3,7 @@ import { generateKeyPairSync, sign } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import sqlite3InitModule, { type Database, type Sqlite3Static, type SqlValue } from "@sqlite.org/sqlite-wasm";
 import {
-  assembleLibraryCoreTransactionV1, finalizeLibraryCoreTransactionV1, FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA, RSS_FEED_UPSERT_TRANSACTION_MEMBER_SCHEMA, PERSON_UPSERT_TRANSACTION_MEMBER_SCHEMA, FRIEND_REPLACE_TRANSACTION_MEMBER_SCHEMA, LIBRARY_CORE_SQLITE_QUERY_PROGRAMS,
+  assembleLibraryCoreTransactionV1, finalizeLibraryCoreTransactionV1, FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA, FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA, RSS_FEED_UPSERT_TRANSACTION_MEMBER_SCHEMA, PERSON_UPSERT_TRANSACTION_MEMBER_SCHEMA, FRIEND_REPLACE_TRANSACTION_MEMBER_SCHEMA, LIBRARY_CORE_SQLITE_QUERY_PROGRAMS,
   encodeLibraryCoreDigestInput, parseLibraryCoreReapplyConsumerIntentV1,
   decodeLibraryCoreCanonicalBase64, decodeLibraryCoreCanonicalValue, encodeLibraryCoreCanonicalBase64,
   encodeLibraryCoreCanonicalValue, parseLibraryCoreRecoveryIntentReviewRequestV1, sha256LowerHex,
@@ -63,6 +63,19 @@ describe("browser verified archive review", () => {
     db.exec("UPDATE library_local_change_state SET sequence = sequence + 1;");
     await expect(engine.queryWithVerification(request({ cursor: first.nextCursor }))).rejects.toThrow(/CURSOR_STALE/);
     expect(sqlite.capi.sqlite3_get_autocommit(db.pointer!)).toBe(1);
+  });
+  it("distinguishes a missing target from a deleted target without changing its archived outcome", async () => {
+    const original = await engine.queryWithVerification(request());
+    expect(original.rows[0]!.itemState).toBe("present");
+    const entityId = original.rows[0]!.entityId;
+    db.exec({ sql: "DELETE FROM library_feed_items WHERE global_id = ?1;", bind: [entityId] });
+    const absent = await engine.queryWithVerification(request());
+    expect(absent.rows[0]).toMatchObject({ itemPresent: false, itemState: "absent" });
+    db.exec({ sql: "INSERT INTO library_tombstones VALUES ('feed_item', ?1, 'test-actor', 1, 'test-removal', 1);", bind: [entityId] });
+    const deleted = await engine.queryWithVerification(request());
+    expect(deleted.rows[0]).toMatchObject({ itemPresent: false, itemState: "deleted" });
+    expect(deleted.outcome).toEqual(original.outcome);
+    expect(deleted.transactionDigest).toBe(original.transactionDigest);
   });
   it("never treats published state as acceptance and rejects partial canonical receipts", async () => {
     db.exec("DELETE FROM library_receipts WHERE operation_id = (SELECT operation_id FROM library_receipts LIMIT 1);");
@@ -128,7 +141,7 @@ describe("browser verified archive review", () => {
     } finally { now.mockRestore(); }
   });
 
-  async function successorReplacement(mode: "ordinary" | "accepted" | "reordered" | "rss" | "person" | "friend" = "ordinary") {
+  async function successorReplacement(mode: "ordinary" | "accepted" | "reordered" | "rss" | "person" | "friend" | "capture" = "ordinary") {
     // Synthetic accepted successor ledger isolates mutation atomicity. Transfer proofs have separate coverage.
     const epoch = "b".repeat(64), actor = "e".repeat(64), genesis = "f".repeat(64), enrollmentDigest = "d".repeat(64);
     const keys = generateKeyPairSync("ed25519"), publicKey = keys.publicKey.export({ format: "der", type: "spki" }).subarray(-32).toString("hex");
@@ -144,7 +157,7 @@ describe("browser verified archive review", () => {
     db.exec({ sql: `INSERT INTO library_actor_capabilities (capability_id, actor_id, certificate_version, actor_class,
       scope_mode, issuance_identity, retirement_identity, certificate_digest, canonical_certificate, issued_at)
       VALUES (?1, ?2, 2, 'editor', 'library_wide', ?1, ?3, ?1, '{}', 3000);`, bind: [enrollmentDigest, actor, "c".repeat(64)] });
-    db.exec({ sql: "INSERT INTO library_actor_capability_mutations VALUES (?1, ?2);", bind: [enrollmentDigest, mode === "person" ? "person_upsert" : mode === "friend" ? "friend_replace" : mode === "rss" ? "rss_feed_upsert" : "feed_item_read_assignment"] });
+    db.exec({ sql: "INSERT INTO library_actor_capability_mutations VALUES (?1, ?2);", bind: [enrollmentDigest, mode === "capture" ? "feed_item_capture_upsert" : mode === "person" ? "person_upsert" : mode === "friend" ? "friend_replace" : mode === "rss" ? "rss_feed_upsert" : "feed_item_read_assignment"] });
     db.exec({ sql: `INSERT INTO library_follower_actor_request VALUES (1, ?1, ?2, ?3, ?4, ?5, '{}', 3000, ?5, '{}', ?6, 3000);`,
       bind: [library, epoch, actor, publicKey, enrollmentDigest, genesis] });
     const receipt = encodeLibraryCoreCanonicalValue({ libraryId: library, authorityEpochId: epoch, actorId: actor,
@@ -162,11 +175,11 @@ describe("browser verified archive review", () => {
     const context = engine.followerMutationContext();
     const digest = (domain: Parameters<typeof encodeLibraryCoreDigestInput>[0], value: unknown) => sha256LowerHex(encodeLibraryCoreDigestInput(domain, value as LibraryCoreCanonicalValue));
     const selectedRows = mode === "reordered" ? [...review.rows].reverse() : review.rows;
-    const members = selectedRows.map((row, index) => (mode === "person" ? PERSON_UPSERT_TRANSACTION_MEMBER_SCHEMA : mode === "friend" ? FRIEND_REPLACE_TRANSACTION_MEMBER_SCHEMA : mode === "rss" ? RSS_FEED_UPSERT_TRANSACTION_MEMBER_SCHEMA : FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA).construct({
+    const members = selectedRows.map((row, index) => (mode === "capture" ? FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA : mode === "person" ? PERSON_UPSERT_TRANSACTION_MEMBER_SCHEMA : mode === "friend" ? FRIEND_REPLACE_TRANSACTION_MEMBER_SCHEMA : mode === "rss" ? RSS_FEED_UPSERT_TRANSACTION_MEMBER_SCHEMA : FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA).construct({
       actor_id: context.actor_id, actor_sequence: index + 1, causal_frontier: context.observed_frontier,
       created_at_ms: 4000, entity_id: row.entityId, epoch: context.epoch, epoch_id: context.epoch_id,
       hlc_counter: 0, hlc_wall_ms: 4000, library_id: context.library_id, operation_id: `replacement-member-${index}`,
-      payload: mode === "person" || mode === "friend" ? { ...(mode === "friend" ? { accounts: [] } : {}), person: { id: row.entityId, name: "Recovered", relationshipStatus: "friend", careLevel: 3, createdAt: 1000, updatedAt: 4000 } } : mode === "rss" ? { feed: { url: row.entityId, title: "Recovered", enabled: false, trackUnread: true } } : { read_at_ms: 4000 }, previous_actor_operation_id: index ? `replacement-member-${index - 1}` : null,
+      payload: mode === "capture" ? { item: { globalId: row.entityId, platform: "saved", contentType: "article", capturedAt: 4000, publishedAt: 4000, author: { id: "author", handle: "author", displayName: "Author" }, content: { text: "Recovered", mediaUrls: [], mediaTypes: [] }, topics: [], userState: { hidden: false, saved: true, archived: false, tags: [] } } } : mode === "person" || mode === "friend" ? { ...(mode === "friend" ? { accounts: [] } : {}), person: { id: row.entityId, name: "Recovered", relationshipStatus: "friend", careLevel: 3, createdAt: 1000, updatedAt: 4000 } } : mode === "rss" ? { feed: { url: row.entityId, title: "Recovered", enabled: false, trackUnread: true } } : { read_at_ms: 4000 }, previous_actor_operation_id: index ? `replacement-member-${index - 1}` : null,
       transaction_id: "replacement-edit", transaction_member_count: selectedRows.length, transaction_member_index: index,
     }, { digest }));
     const finalized = await finalizeLibraryCoreTransactionV1(assembleLibraryCoreTransactionV1(members, genesis, { digest }), {
@@ -178,6 +191,29 @@ describe("browser verified archive review", () => {
       reviewedLocalSequence: review.source.transitionSequence, memberCount: selectedRows.length },
       intent: { envelopeBytes: finalized.members.map(member => encodeLibraryCoreCanonicalValue(member.envelope as unknown as LibraryCoreCanonicalValue)) } });
   }
+  it("uses indexed item state and refuses a tombstoned replacement before changing intent state", async () => {
+    const input = await successorReplacement("capture");
+    const target = (decodeLibraryCoreCanonicalValue(input.intent.envelopeBytes[0]!) as Record<string, unknown>).entity_id as string;
+    const sql = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.recovery_intent_review_v1.variants.item_state.sql;
+    expect(db.selectValue(sql, [target])).toBe("present");
+    db.exec({ sql: "INSERT INTO library_tombstones VALUES ('feed_item',?1,?2,1,'test:deleted',1500);", bind: [target, "e".repeat(64)] });
+    expect(db.selectValue(sql, [target])).toBe("deleted"); // Tombstone wins even if a contradictory live row exists.
+    const plan = db.exec({ sql: "EXPLAIN QUERY PLAN " + sql, bind: [target], rowMode: "array", returnValue: "resultRows" }).flat().join(" ");
+    expect(plan).toContain("SEARCH library_tombstones"); expect(plan).toContain("SEARCH library_feed_items");
+    // Isolate the write guard with an already-verified original capture scope. Native tests
+    // prove actual archived capture signatures; this boundary test still verifies fresh signatures.
+    const inspect = reviewBoundary.inspectPwaRecoveryIntentInTransaction;
+    const verifiedScope = vi.spyOn(reviewBoundary, "inspectPwaRecoveryIntentInTransaction").mockImplementation(async (...args) => {
+      const original = await inspect(...args);
+      return { ...original, verified: { ...original.verified, members: original.verified.members.map(member => ({ ...member,
+        envelope: { ...member.envelope, operation_type: "feed_item_capture_upsert", entity_type: "FeedItem" } })) } } as typeof original;
+    });
+    try {
+      await expect(engine.reapplyConsumerIntent(input)).rejects.toThrow("deleted item");
+      for (const table of ["library_intent_transactions", "library_intent_members", "library_intent_actors", "library_local_recovery_reissues"])
+        expect(db.selectValue(`SELECT count(*) FROM ${table};`)).toBe(0);
+    } finally { verifiedScope.mockRestore(); }
+  });
   it("uses indexed RSS state and refuses a tombstoned replacement before changing intent state", async () => {
     const input = await successorReplacement("rss");
     const target = (decodeLibraryCoreCanonicalValue(input.intent.envelopeBytes[0]!) as Record<string, unknown>).entity_id as string;

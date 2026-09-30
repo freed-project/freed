@@ -68,6 +68,7 @@
     "./components/friends": "./src/components/friends/index.ts",
     "./components/RecoveryAnnotationFields": "./src/components/RecoveryAnnotationFields.tsx",
     "./components/RecoveryRssSubscriptionFields": "./src/components/RecoveryRssSubscriptionFields.tsx",
+    "./components/RecoverySavedUrlFields": "./src/components/RecoverySavedUrlFields.tsx",
     "./components/RecoveryAccountFields": "./src/components/RecoveryAccountFields.tsx",
     "./components/RecoveryPreferenceFields": "./src/components/RecoveryPreferenceFields.tsx",
     "./components/RecoveryReachOutFields": "./src/components/RecoveryReachOutFields.tsx",

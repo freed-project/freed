@@ -813,6 +813,7 @@ pub const SQLITE_QUERY_PROGRAMS: &[SqliteQueryProgram] = &[
         SqliteQueryVariant { variant_id: "item_context", sql: "SELECT substr(author_display_name, 1, 128), COALESCE(NULLIF(substr(content_text, 1, 256), ''), substr(link_title, 1, 256)) FROM library_feed_items WHERE global_id = ?1 LIMIT 1;", reverse_sql: "SELECT substr(author_display_name, 1, 128), COALESCE(NULLIF(substr(content_text, 1, 256), ''), substr(link_title, 1, 256)) FROM library_feed_items WHERE global_id = ?1 LIMIT 1;" },
         SqliteQueryVariant { variant_id: "rss_context", sql: "SELECT CASE WHEN EXISTS(SELECT 1 FROM library_tombstones WHERE entity_type = 'rss_feed' AND entity_id = ?1) THEN 'deleted' WHEN EXISTS(SELECT 1 FROM library_rss_feeds WHERE url = ?1) THEN 'present' ELSE 'absent' END;", reverse_sql: "SELECT CASE WHEN EXISTS(SELECT 1 FROM library_tombstones WHERE entity_type = 'rss_feed' AND entity_id = ?1) THEN 'deleted' WHEN EXISTS(SELECT 1 FROM library_rss_feeds WHERE url = ?1) THEN 'present' ELSE 'absent' END;" },
         SqliteQueryVariant { variant_id: "person_context", sql: "SELECT CASE WHEN EXISTS(SELECT 1 FROM library_tombstones WHERE entity_type = 'person' AND entity_id = ?1) THEN 'deleted' WHEN EXISTS(SELECT 1 FROM library_persons WHERE id = ?1) THEN 'present' ELSE 'absent' END;", reverse_sql: "SELECT CASE WHEN EXISTS(SELECT 1 FROM library_tombstones WHERE entity_type = 'person' AND entity_id = ?1) THEN 'deleted' WHEN EXISTS(SELECT 1 FROM library_persons WHERE id = ?1) THEN 'present' ELSE 'absent' END;" },
+        SqliteQueryVariant { variant_id: "item_state", sql: "SELECT CASE WHEN EXISTS(SELECT 1 FROM library_tombstones WHERE entity_type = 'feed_item' AND entity_id = ?1) THEN 'deleted' WHEN EXISTS(SELECT 1 FROM library_feed_items WHERE global_id = ?1) THEN 'present' ELSE 'absent' END;", reverse_sql: "SELECT CASE WHEN EXISTS(SELECT 1 FROM library_tombstones WHERE entity_type = 'feed_item' AND entity_id = ?1) THEN 'deleted' WHEN EXISTS(SELECT 1 FROM library_feed_items WHERE global_id = ?1) THEN 'present' ELSE 'absent' END;" },
     ] },
     SqliteQueryProgram { query_id: "recovery_intent_page_v1", maximum_scan_rows: 65, sql: "SELECT row_ordinal AS ordinal, transaction_id AS transactionId FROM library_local_recovery_rows WHERE recovery_id = ?1 AND table_key = 'library_intent_transactions' AND row_ordinal > ?2 ORDER BY row_ordinal LIMIT ?3;", reverse_sql: None, count_sql: "SELECT archive_digest FROM library_local_recovery_archives WHERE recovery_id = ?1 AND library_id = (SELECT library_id FROM library_meta WHERE singleton_id = 1);", variants: &[
 
@@ -1050,6 +1051,17 @@ pub const SQLITE_QUERY_ROW_MODELS: &[SqliteQueryRowModel] = &[
             minimum_integer: None,
             maximum_integer: None,
             enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "itemState",
+            kind: SqliteQueryRowFieldKind::Text,
+            nullable: true,
+            minimum_utf8_bytes: Some(6),
+            maximum_utf8_bytes: Some(7),
+            minimum_integer: None,
+            maximum_integer: None,
+            enum_values: &["absent", "deleted", "present"],
             integer_values: &[],
         },
         SqliteQueryRowField {

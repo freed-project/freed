@@ -66,7 +66,7 @@ describe("verified recovery review contract", () => {
   const review = { queryId: selected.queryId, schemaVersion: 1, recoveryId: selected.recoveryId,
     archiveDigest, transactionId: selected.transactionId, transactionDigest, memberCount: 2,
     outcome: { state: "confirmed_accepted", committed_revision: 7 }, replacement: null, source, nextCursor: reviewCursor,
-    rows: [{ personState: null, rssFeedState: null, originalEnvelopeJson: null, authorName: "Author", itemPresent: true, itemText: "Current item text", assigned: true, assignedAt: 100, readAt: null, createdAt: 100, entityId: "item-1", memberIndex: 0, operationType: "feed_item_saved_assignment" }],
+    rows: [{ personState: null, rssFeedState: null, originalEnvelopeJson: null, authorName: "Author", itemPresent: true, itemState: "present", itemText: "Current item text", assigned: true, assignedAt: 100, readAt: null, createdAt: 100, entityId: "item-1", memberIndex: 0, operationType: "feed_item_saved_assignment" }],
   };
   it("registers proof-backed review without accepting caller evidence or changed members", () => {
     expect(createLibraryCoreSqliteQueryWorkerRequest("review-query", selected)).toMatchObject({ kind: "query", query: selected });
