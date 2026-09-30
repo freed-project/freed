@@ -224,6 +224,14 @@ export async function readPwaNormalizedCheckpointReceipt(): Promise<LibraryCoreN
   );
 }
 
+/** Explicit audit: cancellation never retries or replaces the active worker. */
+export async function auditPwaNormalizedReplica(signal: AbortSignal) {
+  signal.throwIfAborted();
+  const active = await openClient();
+  signal.throwIfAborted();
+  return active.auditNormalizedReplica(signal);
+}
+
 export async function describePwaNormalizedCheckpointExport(): Promise<LibraryCoreNormalizedCheckpointExportDescriptorV2> {
   return runReplaySafeRead((active) =>
     active.describeNormalizedCheckpointExport(),

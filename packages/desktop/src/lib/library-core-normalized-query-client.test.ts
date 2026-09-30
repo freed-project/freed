@@ -21,6 +21,7 @@ const {
   mutateNormalizedDeviceContacts,
   queryNormalizedDeviceContacts,
   queryNormalizedLibrary,
+  auditNormalizedLibraryReplica,
 } = await import("./library-core-normalized-query-client");
 
 const request = {
@@ -75,12 +76,15 @@ describe("Freed Desktop normalized query client", () => {
     });
   });
 
-  it("cancels only after native registration, including an abort before acknowledgment", async () => {
+  it.each(["query_normalized_library", "audit_normalized_library_replica"] as const)(
+    "%s cancels after registration, including an early abort", async (readCommand) => {
     const controller = new AbortController();
     let complete!: (value: unknown) => void;
-    mocks.invoke.mockImplementation((command) => command === "query_normalized_library"
+    mocks.invoke.mockImplementation((command) => command === readCommand
       ? new Promise((resolve) => { complete = resolve; }) : Promise.resolve(true));
-    const pending = queryNormalizedLibrary(request, controller.signal);
+    const pending = readCommand === "query_normalized_library"
+      ? queryNormalizedLibrary(request, controller.signal)
+      : auditNormalizedLibraryReplica(controller.signal);
     const rejected = expect(pending).rejects.toThrow();
     controller.abort();
     expect(mocks.invoke).toHaveBeenCalledTimes(1);
@@ -93,6 +97,23 @@ describe("Freed Desktop normalized query client", () => {
     await rejected;
     started.onmessage("late-ticket");
     expect(mocks.invoke).toHaveBeenCalledTimes(2);
+  });
+
+  it("validates the audit receipt without granting publication", async () => {
+    const receipt = {
+      format: "freed_normalized_replica_audit_v1", checkpointDigest: "d".repeat(64),
+      snapshot: {
+        format: "freed_normalized_checkpoint_export_v2", protocolVersion: 2,
+        libraryId: "a".repeat(64), authorityEpoch: "b".repeat(64),
+        writerId: "c".repeat(64), sourceRevision: 1, recordCount: 2, itemCount: 0,
+        causalFrontierDigest: "e".repeat(64),
+      },
+    };
+    mocks.invoke.mockResolvedValue(receipt);
+    await expect(auditNormalizedLibraryReplica()).resolves.toEqual(receipt);
+    expect(mocks.invoke).toHaveBeenCalledWith("audit_normalized_library_replica", {});
+    mocks.invoke.mockResolvedValue({ ...receipt, writerAdmission: true });
+    await expect(auditNormalizedLibraryReplica()).rejects.toThrow();
   });
 
   it("rejects a native response with compatibility payload fields", async () => {

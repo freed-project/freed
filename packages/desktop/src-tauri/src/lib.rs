@@ -14425,6 +14425,7 @@ pub fn run() {
             get_social_provider_cookie_state,
             prepare_social_scrape_memory,
             library_core_desktop_runtime::query_normalized_library,
+            library_core_desktop_runtime::audit_normalized_library_replica,
             library_core_query_control::cancel_normalized_library_query,
             library_core_desktop_runtime::mutate_normalized_device_graph_layout,
             library_core_desktop_runtime::mutate_normalized_content_policy,

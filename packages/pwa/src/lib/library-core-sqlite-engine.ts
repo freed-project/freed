@@ -1,3 +1,4 @@
+import { createLibraryCoreNormalizedCheckpointDigestAccumulatorV2, parseLibraryCoreNormalizedReplicaAuditV1, type LibraryCoreNormalizedReplicaAuditV1 } from "@freed/shared/library-core";
 import { parseLibraryCorePreferenceScopeRequestV1, parseLibraryCorePreferenceScopeResponseV1, type LibraryCorePreferenceScopeRequestV1, type LibraryCorePreferenceScopeResponseV1 } from "@freed/shared/library-core";
 import { parseLibraryCorePreferencesRevisionRequestV1, parseLibraryCorePreferencesRevisionResponseV1, type LibraryCorePreferencesRevisionRequestV1, type LibraryCorePreferencesRevisionResponseV1 } from "@freed/shared/library-core";
 import { parseLibraryCoreRankingWeightScopeRequestV1, parseLibraryCoreRankingWeightScopeResponseV1, libraryCorePreferenceNodesToValueV1, type LibraryCoreRankingWeightScopeRequestV1, type LibraryCoreRankingWeightScopeResponseV1 } from "@freed/shared/library-core";
@@ -1079,8 +1080,59 @@ export class PwaLibraryCoreSqliteEngine {
     });
   }
 
+  /** Worker command serialization owns this transaction across page yields. */
+  async auditNormalizedReplica(control: {
+    check(): void;
+    yieldControl(): Promise<void>;
+  }): Promise<LibraryCoreNormalizedReplicaAuditV1> {
+    control.check();
+    this.#database.exec("BEGIN;");
+    try {
+      const snapshot = this.describeNormalizedCheckpointExport();
+      const digest = createLibraryCoreNormalizedCheckpointDigestAccumulatorV2();
+      let after: LibraryCorePinnedNormalizedCheckpointExportRequestV2["page"]["after"] = null;
+      for (;;) {
+        await control.yieldControl();
+        control.check();
+        const page = this.#readPinnedCheckpointPage({ snapshot, page: {
+          after, maximumRecords: 64,
+          maximumResponseBytes: LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES,
+        } }, false);
+        for (const record of page.records) {
+          control.check();
+          digest.push(record);
+        }
+        if (page.done) break;
+        if (page.records.length === 0 || page.nextCursor === null) {
+          throw new Error("replica audit export did not advance");
+        }
+        after = page.nextCursor;
+      }
+      control.check();
+      const completed = digest.finish();
+      if (completed.recordCount !== snapshot.recordCount) {
+        throw new Error("replica audit record count changed");
+      }
+      const receipt = parseLibraryCoreNormalizedReplicaAuditV1({
+        format: "freed_normalized_replica_audit_v1", snapshot,
+        checkpointDigest: completed.checkpointDigest,
+      });
+      this.#database.exec("COMMIT;");
+      return receipt;
+    } catch (error) {
+      rollbackPreservingOriginalError(this.#database, error);
+    }
+  }
+
   exportPinnedNormalizedCheckpointPage(
     input: LibraryCorePinnedNormalizedCheckpointExportRequestV2,
+  ): LibraryCoreNormalizedCheckpointExportPageV2 {
+    return this.#readPinnedCheckpointPage(input, true);
+  }
+
+  #readPinnedCheckpointPage(
+    input: LibraryCorePinnedNormalizedCheckpointExportRequestV2,
+    ownsSnapshot: boolean,
   ): LibraryCoreNormalizedCheckpointExportPageV2 {
     const { page: request, snapshot } = input;
     if (
@@ -1094,7 +1146,7 @@ export class PwaLibraryCoreSqliteEngine {
     }
     const afterRegistryKey = request.after?.registryKey ?? "";
     const afterPrimaryKeyJson = request.after?.primaryKeyJson ?? "";
-    this.#database.exec("BEGIN;");
+    if (ownsSnapshot) this.#database.exec("BEGIN;");
     try {
       if (
         JSON.stringify(this.describeNormalizedCheckpointExport()) !==
@@ -1192,10 +1244,11 @@ export class PwaLibraryCoreSqliteEngine {
           "normalized checkpoint response exceeded its exact byte bound",
         );
       }
-      this.#database.exec("COMMIT;");
+      if (ownsSnapshot) this.#database.exec("COMMIT;");
       return result;
     } catch (error) {
-      rollbackPreservingOriginalError(this.#database, error);
+      if (ownsSnapshot) rollbackPreservingOriginalError(this.#database, error);
+      throw error;
     }
   }
 

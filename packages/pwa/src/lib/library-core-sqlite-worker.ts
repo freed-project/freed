@@ -330,6 +330,34 @@ function executeReadCheckpointReceipt(
   );
 }
 
+const replicaAudits = new Map<string, { cancelled: boolean; interrupted: boolean; deadline: number }>();
+
+function executeCancelReplicaAudit(
+  request: WorkerRequest<"cancel_normalized_replica_audit">,
+): LibraryCoreSqliteWorkerResponse {
+  const control = replicaAudits.get(request.auditRequestId);
+  if (control) control.cancelled = true;
+  // Cancellation only marks an existing reader. Unknown tickets allocate nothing.
+  return result(request.requestId, null);
+}
+
+async function executeReplicaAudit(
+  request: WorkerRequest<"audit_normalized_replica">,
+): Promise<LibraryCoreSqliteWorkerResponse> {
+  const control = replicaAudits.get(request.requestId);
+  if (!control) throw new Error("Replica audit registration is missing");
+  const check = () => {
+    if (control.cancelled) throw new Error("AUDIT_CANCELLED");
+    if (control.interrupted) throw new Error("Replica audit interrupted by Library activity. Retry after sync finishes.");
+    if (performance.now() >= control.deadline) throw new Error("AUDIT_DEADLINE");
+  };
+  check();
+  return result(request.requestId, await requireEngine().auditNormalizedReplica({
+    check,
+    yieldControl: () => new Promise<void>((resolve) => setTimeout(resolve, 0)),
+  }));
+}
+
 function executeDescribeCheckpointExport(
   request: WorkerRequest<"describe_normalized_checkpoint_export">,
 ): LibraryCoreSqliteWorkerResponse {
@@ -702,6 +730,10 @@ function compileCommand(
       return bindCommand(request, executeBeginCheckpoint);
     case "read_normalized_checkpoint_receipt":
       return bindCommand(request, executeReadCheckpointReceipt);
+    case "audit_normalized_replica":
+      return bindCommand(request, executeReplicaAudit);
+    case "cancel_normalized_replica_audit":
+      return bindCommand(request, executeCancelReplicaAudit);
     case "describe_normalized_checkpoint_export":
       return bindCommand(request, executeDescribeCheckpointExport);
     case "read_normalized_checkpoint_export_page":
@@ -803,10 +835,26 @@ scope.onmessage = (event) => {
   try {
     const request = parseLibraryCoreSqliteWorkerRequest(event.data);
     requestId = request.requestId;
+    // Only this flag-only control bypasses the serialized database queue.
+    // Queuing it behind its audit would make cancellation ineffective.
+    if (request.kind === "cancel_normalized_replica_audit") {
+      scope.postMessage(executeCancelReplicaAudit(request));
+      return;
+    }
     if (queuedCommands >= LIBRARY_CORE_SQLITE_WORKER_MAXIMUM_PENDING_REQUESTS) {
       throw new Error("PWA Library SQLite worker queue is full");
     }
     const command = compileCommand(request);
+    if (request.kind === "audit_normalized_replica") {
+      // Audits are optional diagnostics. Never queue them behind product work or
+      // let several audits occupy the connection ahead of an edit or sync.
+      if (queuedCommands !== 0) throw new Error("Library is busy. Retry the replica audit after sync finishes.");
+      replicaAudits.set(request.requestId, { cancelled: false, interrupted: false, deadline: performance.now() + 30_000 });
+    } else {
+      // The flag is safe outside the SQL queue. The audit rolls back its read
+      // snapshot at its next bounded page before this command enters SQLite.
+      for (const control of replicaAudits.values()) control.interrupted = true;
+    }
     queuedCommands += 1;
     commandFlight = commandFlight.then(async () => {
       try {
@@ -815,6 +863,7 @@ scope.onmessage = (event) => {
       } catch (error) {
         scope.postMessage(failure(command.requestId, error));
       } finally {
+        if (request.kind === "audit_normalized_replica") replicaAudits.delete(request.requestId);
         queuedCommands -= 1;
       }
     });

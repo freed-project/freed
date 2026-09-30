@@ -7180,6 +7180,17 @@ describe("PWA Library Core SQLite engine", () => {
     expect(readImmutable).not.toHaveBeenCalled();
     await engine.verifyNormalizedCheckpointSuccessor(successorActivation);
     expect(engine.activateNormalizedCheckpointStage(successorActivation).authorityEpoch).toBe(v.successor.authorityEpoch);
+    // This native checkpoint spans more than one 64-record audit page.
+    expect(v.successor.recordCount).toBeGreaterThan(64);
+    let pages = 0;
+    await expect(engine.auditNormalizedReplica({
+      check() { if (pages === 2) throw new Error("AUDIT_INTERRUPTED"); },
+      yieldControl: async () => { pages += 1; },
+    })).rejects.toThrow("AUDIT_INTERRUPTED");
+    expect(pages).toBe(2);
+    const audited = await engine.auditNormalizedReplica({ check() {}, yieldControl: async () => {} });
+    expect(audited.snapshot).toEqual(v.successor);
+    expect(audited.checkpointDigest).toBe(digestLibraryCoreNormalizedCheckpointRecordsV2(records(v.successorRecords)));
   });
 
   it("pins a verified direct successor at commit and preserves the old consumer enrollment", async () => {
@@ -7703,6 +7714,17 @@ describe("PWA Library Core SQLite engine", () => {
     }
     expect(records).toHaveLength(fixture.expected.recordCount);
     expect(digestLibraryCoreNormalizedCheckpointRecordsV2(records)).toBe(fixture.expectedCheckpointDigest);
+    const audit = await engine.auditNormalizedReplica({ check() {}, yieldControl: async () => {} });
+    expect(audit.snapshot).toEqual(fixture.expected);
+    expect(audit.checkpointDigest).toBe(fixture.expectedCheckpointDigest);
+    let checkedRecords = 0;
+    await expect(engine.auditNormalizedReplica({
+      check() { if (++checkedRecords === 5) throw new Error("AUDIT_CANCELLED"); },
+      yieldControl: async () => {},
+    })).rejects.toThrow("AUDIT_CANCELLED");
+    expect(checkedRecords).toBe(5);
+    // Cancellation released its snapshot and left the same worker engine usable.
+    expect(await engine.auditNormalizedReplica({ check() {}, yieldControl: async () => {} })).toEqual(audit);
   });
 
   it("converges with native recovered-actor signed edits through incremental pages", async () => {

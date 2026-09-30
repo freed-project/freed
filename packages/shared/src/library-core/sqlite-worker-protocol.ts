@@ -1,3 +1,4 @@
+import type { LibraryCoreNormalizedReplicaAuditV1 } from "./normalized-checkpoint-contracts.js";
 import type { verifyLibraryCoreHandoffPredecessorCheckpointV1 } from "./handoff-certificate.js";
 import { parseLibraryCorePreferenceScopeRequestV1, parseLibraryCorePreferenceScopeResponseV1, type LibraryCorePreferenceScopeRequestV1, type LibraryCorePreferenceScopeResponseV1 } from "./preference-scope-contracts.js";
 import { parseLibraryCorePreferencesRevisionRequestV1, parseLibraryCorePreferencesRevisionResponseV1, type LibraryCorePreferencesRevisionRequestV1, type LibraryCorePreferencesRevisionResponseV1 } from "./preferences-revision-contracts.js";
@@ -886,6 +887,17 @@ export type LibraryCoreSqliteWorkerRequest =
       requestId: string;
     }>
   | Readonly<{
+      kind: "audit_normalized_replica";
+      protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
+      requestId: string;
+    }>
+  | Readonly<{
+      kind: "cancel_normalized_replica_audit";
+      protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
+      requestId: string;
+      auditRequestId: string;
+    }>
+  | Readonly<{
       kind: "describe_normalized_checkpoint_export";
       protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
       requestId: string;
@@ -945,6 +957,7 @@ export interface LibraryCoreSqliteWorkerStatus {
 }
 
 export type LibraryCoreSqliteWorkerResult =
+  | LibraryCoreNormalizedReplicaAuditV1
   | Awaited<ReturnType<typeof verifyLibraryCoreHandoffPredecessorCheckpointV1>>
   | null
   | LibraryCoreRecoveryReissueReceiptV1
@@ -1087,7 +1100,9 @@ export function parseLibraryCoreSqliteWorkerRequest(
   }
   const keys = Object.keys(value).sort();
   const expectedKeys =
-    value.kind === "prepare_predecessor_checkpoint_read"
+    value.kind === "cancel_normalized_replica_audit"
+      ? ["auditRequestId", "kind", "protocolVersion", "requestId"]
+      : value.kind === "prepare_predecessor_checkpoint_read"
       ? ["kind", "protocolVersion", "requestId", "stageId"]
       : value.kind === "activate_verified_predecessor_checkpoint"
       ? ["activation", "kind", "protocolVersion", "requestId", "successorStageId"]
@@ -1233,6 +1248,8 @@ export function parseLibraryCoreSqliteWorkerRequest(
       "close_scope_action",
       "commit_follower_intent",
       "describe_normalized_checkpoint_export",
+      "audit_normalized_replica",
+      "cancel_normalized_replica_audit",
       "append_scope_action",
       "finalize_scope_action",
       "finalize_content_range_publication",
@@ -1274,6 +1291,12 @@ export function parseLibraryCoreSqliteWorkerRequest(
     value.requestId.length > 255
   ) {
     throw new TypeError("SQLite worker request identity is invalid");
+  }
+  if (value.kind === "cancel_normalized_replica_audit") {
+    if (typeof value.auditRequestId !== "string" || value.auditRequestId.length < 1 ||
+        value.auditRequestId.length > 255 || value.auditRequestId === value.requestId) {
+      throw new TypeError("replica audit cancellation identity is invalid");
+    }
   }
   if (value.kind === "read_normalized_checkpoint_export_page") {
     return Object.freeze({
@@ -2120,6 +2143,21 @@ export function createLibraryCoreSqliteReadCheckpointReceiptWorkerRequest(
     protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
     requestId,
   });
+}
+
+export function createLibraryCoreSqliteReplicaAuditWorkerRequest(
+  requestId: string,
+): LibraryCoreSqliteWorkerRequest {
+  return parseLibraryCoreSqliteWorkerRequest({ kind: "audit_normalized_replica",
+    protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION, requestId });
+}
+
+export function createLibraryCoreSqliteCancelReplicaAuditWorkerRequest(
+  requestId: string,
+  auditRequestId: string,
+): LibraryCoreSqliteWorkerRequest {
+  return parseLibraryCoreSqliteWorkerRequest({ kind: "cancel_normalized_replica_audit",
+    protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION, requestId, auditRequestId });
 }
 
 export function createLibraryCoreSqliteDescribeCheckpointExportWorkerRequest(

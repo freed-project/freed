@@ -1630,9 +1630,11 @@ pub(crate) fn selected_checkpoint_digest_v2(
     let mut request = crate::normalized_sqlite::NormalizedCheckpointExportRequestV2::default();
     let mut digest = NormalizedCheckpointDigestAccumulatorV2::new();
     loop {
+        crate::normalized_query_control::check_current_query().map_err(invalid)?;
         let page =
             crate::normalized_sqlite::export_normalized_checkpoint_page_v2(connection, &request)?;
         for record in &page.records {
+            crate::normalized_query_control::check_current_query().map_err(invalid)?;
             digest.push(record)?;
         }
         if page.done {

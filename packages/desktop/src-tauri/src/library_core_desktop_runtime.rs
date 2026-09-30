@@ -1082,6 +1082,26 @@ pub(super) async fn query_normalized_library(
     .await
 }
 
+/// Read-only audit admission is independent of Primary publication admission.
+#[tauri::command]
+pub(super) async fn audit_normalized_library_replica(
+    app: tauri::AppHandle,
+    started: Option<tauri::ipc::JavaScriptChannelId>,
+    webview: tauri::Webview,
+) -> Result<freed_library_core::NormalizedReplicaAuditV1, String> {
+    let started = started.map(|channel| channel.channel_on(webview));
+    super::library_core_query_control::run(
+        Arc::clone(normalized_query_permits()),
+        started,
+        move |control| {
+            control.check()?;
+            let connection = open_normalized_database(&app)?;
+            freed_library_core::audit_normalized_replica_with_control_v1(connection, control)
+        },
+    )
+    .await
+}
+
 async fn run_normalized_query_off_main<T, F>(query: F) -> Result<T, String>
 where
     T: Send + 'static,
