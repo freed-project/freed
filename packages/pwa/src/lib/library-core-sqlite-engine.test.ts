@@ -7702,10 +7702,10 @@ describe("PWA Library Core SQLite engine", () => {
 
   // Tier 1: these immutable bytes were accepted and exported by published native
   // source v26.9.1700-dev, before fresh preference policy became stricter.
-  it("imports published native historical preference bytes and converges at the exact frontier", async () => {
+  it.each([false, true])("imports native historical preference bytes at the exact frontier (persistent audit storage: %s)", async (persistentAuditTemporaryStorage) => {
     const fixture = historicalNativePreferences;
     const bytes = (value: string) => new TextEncoder().encode(value);
-    let engine = new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion, { capi: sqlite3.capi });
+    let engine = new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion, { capi: sqlite3.capi, persistentAuditTemporaryStorage });
     engine.initialize();
     const baseline = fixture.baselineRecords.map(parseLibraryCoreNormalizedCheckpointRecordV2);
     expect(digestLibraryCoreNormalizedCheckpointRecordsV2(baseline)).toBe(fixture.baselineCheckpointDigest);
@@ -7728,7 +7728,7 @@ describe("PWA Library Core SQLite engine", () => {
       if (!page.page.done) {
         expect(database.selectValue("SELECT source_revision FROM library_meta;")).toBe(0);
         expect(database.selectValue("SELECT count(*) FROM library_preferences;")).toBe(0);
-        engine = new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion, { capi: sqlite3.capi });
+        engine = new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion, { capi: sqlite3.capi, persistentAuditTemporaryStorage });
         engine.initialize();
       }
       await engine.importNormalizedOperationPage(input);
@@ -7752,6 +7752,21 @@ describe("PWA Library Core SQLite engine", () => {
     }
     expect(records).toHaveLength(fixture.expected.recordCount);
     expect(digestLibraryCoreNormalizedCheckpointRecordsV2(records)).toBe(fixture.expectedCheckpointDigest);
+    const connectionSettings = () => ["temp_store", "main.cache_size", "temp.cache_size"]
+      .map(name => database.selectValue(`PRAGMA ${name}`));
+    database.exec("PRAGMA main.cache_size=-4096; PRAGMA temp.cache_size=-1024;");
+    const priorSettings = connectionSettings();
+    database.exec("CREATE TEMP TABLE audit_preserve(value TEXT); INSERT INTO audit_preserve VALUES ('retained');");
+    if (persistentAuditTemporaryStorage) {
+      await expect(engine.auditNormalizedReplica({ check() {}, yieldControl: async () => {} }))
+        .rejects.toThrow("empty SQLite temporary schema");
+    } else {
+      expect((await engine.auditNormalizedReplica({ check() {}, yieldControl: async () => {} })).checkpointDigest)
+        .toBe(fixture.expectedCheckpointDigest);
+    }
+    expect(database.selectValue("SELECT value FROM audit_preserve")).toBe("retained");
+    expect(connectionSettings()).toEqual(priorSettings);
+    database.exec("DROP TABLE audit_preserve;");
     const audit = await engine.auditNormalizedReplica({ check() {}, yieldControl: async () => {} });
     expect(audit.snapshot).toEqual(fixture.expected);
     expect(audit.checkpointDigest).toBe(fixture.expectedCheckpointDigest);
@@ -7761,8 +7776,13 @@ describe("PWA Library Core SQLite engine", () => {
       yieldControl: async () => {},
     })).rejects.toThrow("AUDIT_CANCELLED");
     expect(checkedRecords).toBe(5);
+    expect(connectionSettings()).toEqual(priorSettings);
+    // A larger read would encounter a leaked progress callback after cancellation.
+    expect(database.selectValue("WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<2000) SELECT sum(x) FROM n"))
+      .toBe(2001000);
     // Cancellation released its snapshot and left the same worker engine usable.
     expect(await engine.auditNormalizedReplica({ check() {}, yieldControl: async () => {} })).toEqual(audit);
+    expect(connectionSettings()).toEqual(priorSettings);
   });
 
   it.each([2202, 3300])("converges with native recovered-actor signed edits with consumer enqueue clock %i", async (enqueuedAt) => {

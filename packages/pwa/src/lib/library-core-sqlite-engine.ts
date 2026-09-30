@@ -869,6 +869,7 @@ export class PwaLibraryCoreSqliteEngine {
   readonly #sqliteVersion: string;
   readonly #subtle: SubtleCrypto;
   readonly #capi: CAPI | undefined;
+  readonly #persistentAuditTemporaryStorage: boolean;
   #connectionGeneration = 0;
   #successorProof: PwaVerifiedSuccessor | null = null;
 
@@ -879,6 +880,8 @@ export class PwaLibraryCoreSqliteEngine {
       now?: () => number;
       subtle?: SubtleCrypto;
       capi?: CAPI;
+      /** Only an actual persistent VFS can spill audit sorts outside WASM memory. */
+      persistentAuditTemporaryStorage?: boolean;
     }> = {},
   ) {
     this.#database = database;
@@ -886,6 +889,7 @@ export class PwaLibraryCoreSqliteEngine {
     this.#sqliteVersion = sqliteVersion;
     this.#subtle = dependencies.subtle ?? crypto.subtle;
     this.#capi = dependencies.capi;
+    this.#persistentAuditTemporaryStorage = dependencies.persistentAuditTemporaryStorage === true && !!dependencies.capi;
   }
 
   initialize(): LibraryCoreSqliteWorkerStatus {
@@ -1108,6 +1112,90 @@ export class PwaLibraryCoreSqliteEngine {
 
   /** Worker command serialization owns this transaction across page yields. */
   async auditNormalizedReplica(control: {
+    check(): void;
+    yieldControl(): Promise<void>;
+  }): Promise<LibraryCoreNormalizedReplicaAuditV1> {
+    if (!this.#persistentAuditTemporaryStorage) return this.#auditPagedReplica(control);
+    control.check();
+    const db = this.#database;
+    // Changing temp_store deletes temporary objects. Never discard another
+    // operation's temp table or trigger merely to run a diagnostic.
+    if (db.selectValue("SELECT 1 FROM sqlite_temp_master LIMIT 1") !== undefined) {
+      throw new Error("Replica audit requires an empty SQLite temporary schema.");
+    }
+    const tempStore = Number(db.selectValue("PRAGMA temp_store"));
+    const mainCache = Number(db.selectValue("PRAGMA main.cache_size"));
+    const tempCache = Number(db.selectValue("PRAGMA temp.cache_size"));
+    if (![tempStore, mainCache, tempCache].every(Number.isSafeInteger)
+      || tempStore < 0 || tempStore > 2) {
+      throw new Error("Replica audit could not read SQLite connection settings.");
+    }
+    let progressFailure: unknown;
+    const clearProgress = () => {
+      if (this.#capi && db.pointer) this.#capi.sqlite3_progress_handler(db.pointer, 0, 0, 0);
+    };
+    try {
+      // The external sorter spills through the connection's VFS. Keep its
+      // cache bounded instead of sorting corpus-sized payloads in WASM memory.
+      db.exec("PRAGMA temp_store=FILE; PRAGMA main.cache_size=-2048; PRAGMA temp.cache_size=-2048;");
+      if (this.#capi && db.pointer) {
+        this.#capi.sqlite3_progress_handler(db.pointer, 1000, () => {
+          try { control.check(); return 0; }
+          catch (error) { progressFailure = error; return 1; }
+        }, 0);
+      }
+      db.exec("BEGIN;");
+      try {
+        const snapshot = this.describeNormalizedCheckpointExport();
+        const digest = createLibraryCoreNormalizedCheckpointDigestAccumulatorV2();
+        await control.yieldControl();
+        control.check();
+        const statement = db.prepare(`SELECT registry_key, primary_key_json, payload_json, chunk_bytes
+          FROM library_checkpoint_export ORDER BY registry_key, primary_key_json`);
+        try {
+          let pageRecords = 0;
+          let pageBytes = 0;
+          while (statement.step()) {
+            control.check();
+            const { record, canonicalBytes } = checkpointRecordFromSqlRow(statement.get([]));
+            if (pageRecords >= 64 || pageBytes + canonicalBytes > LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES) {
+              await control.yieldControl();
+              control.check();
+              pageRecords = 0;
+              pageBytes = 0;
+            }
+            digest.push(record);
+            pageRecords += 1;
+            pageBytes += canonicalBytes;
+          }
+        } finally {
+          statement.finalize();
+        }
+        control.check();
+        const completed = digest.finish();
+        if (completed.recordCount !== snapshot.recordCount) {
+          throw new Error("replica audit record count changed");
+        }
+        const receipt = parseLibraryCoreNormalizedReplicaAuditV1({
+          format: "freed_normalized_replica_audit_v1", snapshot,
+          checkpointDigest: completed.checkpointDigest,
+        });
+        db.exec("COMMIT;");
+        return receipt;
+      } catch (error) {
+        // An interrupting callback must not interrupt transaction cleanup too.
+        clearProgress();
+        rollbackPreservingOriginalError(db, progressFailure ?? error);
+      }
+    } finally {
+      clearProgress();
+      db.exec(`PRAGMA temp_store=${tempStore}; PRAGMA main.cache_size=${mainCache}; PRAGMA temp.cache_size=${tempCache};`);
+    }
+  }
+
+  // Memory-only/demo VFS implementations may back temporary files with RAM.
+  // Retain the bounded key-page path instead of a corpus-sized external sort.
+  async #auditPagedReplica(control: {
     check(): void;
     yieldControl(): Promise<void>;
   }): Promise<LibraryCoreNormalizedReplicaAuditV1> {

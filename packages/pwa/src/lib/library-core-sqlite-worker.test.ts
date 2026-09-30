@@ -7,6 +7,7 @@ const storage = vi.hoisted(() => ({
   predecessor: vi.fn(),
   predecessorRead: vi.fn(),
   memoryOpen: vi.fn(),
+  engineOpen: vi.fn(),
   installOpfs: vi.fn(),
   reconcile: vi.fn(),
   vaultStorage: vi.fn(),
@@ -17,6 +18,7 @@ vi.mock("@sqlite.org/sqlite-wasm", () => ({ default: async () => ({
   installOpfsSAHPoolVfs: storage.installOpfs,
 }) }));
 vi.mock("./library-core-sqlite-engine", () => ({ PwaLibraryCoreSqliteEngine: class {
+  constructor(...args: unknown[]) { storage.engineOpen(...args); }
   queryWithVerification = storage.query;
   auditNormalizedReplica = storage.audit;
   activateVerifiedPredecessorCheckpoint = storage.predecessor;
@@ -215,6 +217,8 @@ describe("demo worker storage isolation", () => {
     if (disposable) {
       expect(lockRequest).not.toHaveBeenCalled();
       expect(storage.memoryOpen).toHaveBeenCalledExactlyOnceWith(":memory:", "c");
+      expect(storage.engineOpen).toHaveBeenCalledWith(expect.anything(), "test",
+        expect.objectContaining({ persistentAuditTemporaryStorage: false }));
       expect(storage.vaultStorage).toHaveBeenCalledWith(expect.objectContaining({
         read: expect.any(Function), create: expect.any(Function),
       }));

@@ -51,6 +51,14 @@ appear comparable. Audits have a 30-second budget. Large Libraries may reach tha
 limit even while idle; a timeout leaves convergence unverified and must not be
 replaced with a matching-count claim.
 
+On the persistent PWA backend, audits stream one ordered SQLite statement and
+spill sort data to OPFS temporary files with a bounded cache. The statement closes
+on completion or failure, and prior connection settings are restored. An audit
+refuses to change temporary-storage settings if temporary tables or triggers
+already exist. Insufficient temporary-file capacity returns no receipt. Memory-only
+demo and test backends retain bounded paging because their temporary files can
+still reside in memory.
+
 The copied `interfaceBuild` identifies the loaded interface. Record the installed
 native build separately. These receipts do not prove zero consumer capture, Mac
 OPFS durability or successful host transition.
