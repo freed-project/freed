@@ -445,6 +445,10 @@ describe("normalized checkpoint publication", () => {
       })).rejects.toThrow(reason);
       expect(activate).not.toHaveBeenCalled();
     }
+    // Even one predecessor remains unselected for an old source. Native demotion
+    // owns the atomic installation of historical proof and the final winner.
+    await catchUpLibraryCorePredecessorCheckpointV1({ ...catchup, stageOnly: true });
+    expect(activate).not.toHaveBeenCalled();
     await catchUpLibraryCorePredecessorCheckpointV1(catchup);
     expect(activate).toHaveBeenCalledOnce();
     expect(activate).toHaveBeenCalledWith(expect.objectContaining({ stageId: staged.stageId, replaceExisting: true,

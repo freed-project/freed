@@ -1577,3 +1577,17 @@ including rollback after a historical-stage cleanup failure, preservation of
 the original pending row, and final recovery archival. Its optimized canonical
 audit completes within the existing 30-second budget and matches the PWA digest.
 This is Linux fixture evidence, not installed Mac acceptance or transfer timing.
+
+### Old Primary recovery after later transfers, September 30, 2026
+
+An old Primary that authorized a transfer and then stayed offline can adopt a
+verified later successor. Desktop stages at most 32 authenticated historical
+checkpoints without activating intermediate authorities. Native adoption pins
+the first signed transfer to the original consent and the final selection to
+the verified cloud winner. Consent, original target identity and signed history
+remain intact. Failed verification or cleanup leaves the old Primary fenced.
+
+The native two-transfer lifecycle covers consent tampering, failed cleanup,
+retry, database reopening, explicit successor enrollment and preparation to
+receive authority again. Adoption alone grants no edit or capture rights.
+Installed multi-device acceptance and actual host transition remain pending.

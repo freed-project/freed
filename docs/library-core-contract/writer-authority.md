@@ -77,8 +77,11 @@ cannot grant current edit rights. This does not reapply edits as Primary. Full r
 
 Return preparation from a demoted source requires current successor selection,
 accepted consumer enrollment, retained actor key, settled intents and no writer
-admission. Verify the retained authorization against the selected successor's
-signed transition certificate. Persist exact authorization and adoption bytes in
+admission. For a source that missed later transfers, verify the retained
+authorization against the first certificate in the bounded authenticated chain
+and bind the adoption receipt to the final selected successor. Preserve the
+original target identity and consent. Historical checkpoints must remain staged
+until source demotion commits the final selection atomically. Persist exact authorization and adoption bytes in
 `library_local_source_demotions` before replacing the source singleton, within
 the same FULL transaction. The installation-local ledger survives checkpoint
 imports, is excluded from logical checkpoints and grants no authority. Preparation

@@ -615,6 +615,8 @@ export async function catchUpLibraryCorePredecessorCheckpointV1(input: {
   subtle: SubtleCrypto;
   successorStageId: string;
   installedAt: number;
+  /** Source demotion must install history and the final winner in one native transaction. */
+  stageOnly?: boolean;
   assertActive(): void;
   runtime: Pick<LibraryCoreNormalizedCheckpointStageRuntimeV2, "begin" | "appendPage"> & {
     prepare(stageId: string): Promise<unknown>;
@@ -644,7 +646,7 @@ export async function catchUpLibraryCorePredecessorCheckpointV1(input: {
       throw new Error("downloaded predecessor differs from signed consent");
     }
     input.assertActive();
-    if (references.length > 1) continue;
+    if (input.stageOnly || references.length > 1) continue;
     const receipt = await input.runtime.activate({ stageId: staged.stageId, replaceExisting: true,
       followerReceipt: { checkpointGeneration: pointer.generation, writerActorId: pointer.writerId,
         manifestObjectKey: pointer.manifest.descriptor.objectKey, manifestTransportObjectId: pointer.manifest.transportObjectId,
