@@ -985,3 +985,111 @@ assignments and empty groups, and clears confirmation whenever a value changes.
 After signing, the form locks its inputs and retries the same replacement after
 an ambiguous response. Focused platform tests and the Desktop browser workflow
 pass. Installed Mac acceptance and full multi-device convergence remain pending.
+
+
+PWA historical preference verification now matches the native historical field
+policy while fresh writes retain the current policy. Archive review preserves
+authenticated old fields, and incremental catch-up checks the authority-signed
+acceptance receipt before materializing them. Historical constructions cannot
+be finalized or reused as fresh verified transactions. Shared cryptographic and
+PWA SQLite tests cover unchanged bytes, mixed-member completeness, device-local
+exclusions, tampering, mismatched receipts and exact retry. Live cloud joining across versions and installed Mac acceptance remain unverified.
+
+The Rust historical validator and shared verifier also pass the same 32 policy
+cases, covering all historical sections and device-local exclusions. This is
+policy parity; installed Mac proof remains separate.
+
+A signed historical preference fixture now comes from published native source
+`v26.9.1700-dev`. Current native SQLite and PWA preserve its envelope and acceptance
+receipt, replay duplicate pages, and match its final revision, actor frontier and
+checkpoint digest. The original zero-operation descriptor remains intact; the
+tests explicitly check current carried-frontier normalization at that baseline.
+Checkpoint admission is synthetic, and this does not prove live cloud joining
+or an installed build.
+
+Preference recovery now reads only the selected setting through a source-bound
+query shared by native SQLite and the PWA. The form retains one current value,
+requires each comparison before confirmation, cancels abandoned reads and keeps
+the same prepared edit after response loss. Group summaries cannot be used as
+replacement values. Native/PWA fixture tests cover oversized unrelated trees,
+exact values and invalid rows; a headless Desktop workflow verifies two scoped
+reads and identical retry submissions. Ordinary startup still has the global
+preference snapshot limit, and installed Mac acceptance remains incomplete.
+
+Primary ranking now retrieves only the weights needed by each bounded candidate
+batch. Native SQLite and PWA share a grouped read with exact source checks;
+Desktop uses it without retaining a full weight map for the pass. Tests cover
+large candidate scopes, long literal IDs, stale chunks, numeric validation and
+preference changes during an in-flight batch. Startup still uses the global
+preference snapshot, and installed Mac acceptance remains incomplete.
+
+Ranking invalidation now compares a compact, indexed preference revision and
+materialization generation instead of the renderer's full weight-map identity.
+Native and PWA expose the same bounded marker. Preference changes during a pass
+and checkpoint replacement request another pass; item-only writes do not change
+the marker. Failed completion reads remain retryable. Startup's whole-preference
+snapshot limit still needs removal.
+
+
+Native checkpoint admission now recognizes a completed consumer recovery when a
+later verified successor is selected. It checks the retained enrollment receipt,
+new predecessor-signed certificate, selected writer and original archive before
+accepting the checkpoint. Missing receipts, changed writers and corrupted prior
+recovery evidence refuse admission. Local fixtures cover this admission boundary;
+installed repeated-transfer acceptance remains pending.
+
+
+An empty native recovery catalog no longer blocks ordinary consumer checkpoint
+refresh. The signed-intent fixture now runs against both physical schemas 1 and
+2, including activation rollback, preservation of pending edits and revocation
+of stale Primary/provider admission. Existing handoff rows still enforce their
+phase and proof checks.
+
+Dormant physical schema 3 stores device-local pending preference effects without
+changing logical checkpoints or replication protocol 2. Native and browser
+fixtures cover signed backfill, atomic receipt settlement, checkpoint replacement,
+successor recovery and retry after injected failures. Original signed intents and
+recovery archives remain intact. Production openers still refuse schema 3; these
+fixtures do not authorize migration or prove installed durability.
+
+The native return-transfer fixture now sends a third consumer through the full
+second-successor checkpoint path. It first catches up the predecessor enrollment,
+then verifies rollback after a late checkpoint failure, retry, same-successor
+refresh, a second immutable archive and explicit reenrollment. The consumer
+regains edit admission without Primary or provider admission, and its first
+archive remains byte-identical. This is local physical-schema-2 evidence;
+installed acceptance remains pending.
+
+The dormant schema 3 variant now migrates an enrolled consumer with a real signed
+pending preference assignment before that second transfer. Late projection-restore
+failure rolls back the checkpoint; retry preserves signed members, the actor tip
+and derived effects. A second explicit recovery archives the old slots and clears
+the projection atomically, with exact commit retry and the first archive intact.
+This fixture stops before the next certificate admission and does not activate
+schema 3 in production.
+
+Offline consumers now attempt one authenticated predecessor checkpoint before
+admitting a direct successor whose target enrollment they missed. Desktop and
+PWA use the same bounded downloader and coordinator. The native or worker read
+command verifies all handoff signatures against locally selected authority;
+the returned download reference grants no enrollment or writer admission.
+Activation independently reconstructs the proof, checks the signed receipt and
+source revision, and verifies the installed digest before commit. Ordinary
+successor verification then requires the enrolled target as before.
+
+The shared coordinator performs no recursive epoch search or new retry loop.
+Cancellation, expired tokens, missing objects and mismatched digests refuse
+activation. A retry after a lost predecessor commit response consults durable
+runtime state. Native fixtures preserve pending signed edits through rollback
+and successful import; the browser fixture downloads and verifies the signed native manifest and 29
+compressed pages through the shared coordinator into real SQLite. A lost response
+after the actual predecessor commit retries from durable state with no second
+download, then admits the successor. These fixtures do not establish OPFS
+process-restart durability or installed cross-device acceptance.
+
+Browser successor refresh resolves the cloud writer from the unique active
+Desktop actor, matching native checkpoints with the local writer label
+`primary:desktop`. The follower receipt must name that actor. Multiple missed
+authority transfers, large-checkpoint deadline admission, actual crash/restart
+boundaries and installed Mac acceptance remain unverified. Current local work
+still requires full feature validation, fresh provider review and exact-head CI.

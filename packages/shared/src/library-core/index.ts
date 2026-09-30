@@ -101,3 +101,17 @@ export * from "./account-root-contracts.js";
 export * from "./person-account-page-contracts.js";
 export * from "./recovery-preference-context.js";
 export * from "./recovery-preference-input.js";
+
+export * from "./preference-value-contracts.js";
+
+export * from "./ranking-weight-scope-contracts.js";
+
+export * from "./preferences-revision-contracts.js";
+
+export * from "./preference-scope-contracts.js";
+
+export * from "./shell-preferences.js";
+
+export * from "./visible-preference-source.js";
+
+export * from "./visible-preference-contracts.js";

@@ -144,6 +144,8 @@ vi.mock("./sqlite-library", () => ({
   readNormalizedLibraryOperationPage: vi.fn(),
   importNormalizedLibraryOperationPage: vi.fn(),
   activateNormalizedLibraryCheckpointImport: mocks.activateNormalizedImport,
+  prepareNormalizedLibraryPredecessorCheckpointRead: vi.fn(async () => null),
+  activateNormalizedLibraryPredecessorCheckpoint: vi.fn(),
   appendNormalizedLibraryCheckpointImportPage: mocks.appendNormalizedPage,
   beginNormalizedLibraryCheckpointExport: mocks.beginNormalizedExport,
   beginNormalizedLibraryCheckpointImport: mocks.beginNormalizedImport,

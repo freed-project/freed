@@ -2076,3 +2076,27 @@ where
         OperationAdmissionVerdict::CapabilityDenied { field } => Err(invalid(0, field)),
     }
 }
+
+#[cfg(test)]
+mod historical_preference_policy_tests {
+    use super::*;
+
+    // Tier 1: one frozen policy must authenticate the same historical bytes on
+    // native and browser readers, independently of current fresh-write policy.
+    #[test]
+    fn historical_preferences_match_shared_verification_vectors() {
+        let cases: Value = serde_json::from_str(include_str!(
+            "../../shared/src/library-core/historical-preference-policy-vector-v1.json"
+        ))
+        .unwrap();
+        for case in cases.as_array().unwrap() {
+            let updates = case["updates"].as_object().unwrap();
+            assert_eq!(
+                validate_preferences_patch(updates, 0).is_ok(),
+                case["supported"].as_bool().unwrap(),
+                "{}",
+                case["name"]
+            );
+        }
+    }
+}

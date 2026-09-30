@@ -1168,8 +1168,9 @@ function validateRssFeedRemovePayload(
   return { ok: true, value: Object.freeze({ removed_at_ms: removedAt.value }) };
 }
 
-function validatePreferencesLeafAssignmentPayload(
+function validatePreferencesPayload(
   value: unknown,
+  historical: boolean,
 ): LibraryCorePayloadValidationResult<PreferencesLeafAssignmentPayloadV1> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return invalid("payload must be a plain object");
@@ -1245,6 +1246,26 @@ function validatePreferencesLeafAssignmentPayload(
     ) {
       return invalid("updates exceed normalized preference node bounds");
     }
+    if (historical) {
+      const allowed = new Set(["weights", "ulysses", "display", "xCapture", "fbCapture", "friendSuggestions", "ai", "storyWall"]);
+      if (Object.keys(updates).some(key => !allowed.has(key))) {
+        return invalid("updates contain unsupported historical sections");
+      }
+      const object = (value: LibraryCoreCanonicalValue | undefined): Readonly<Record<string, LibraryCoreCanonicalValue>> =>
+        typeof value === "object" && value !== null && !Array.isArray(value) ? value as Readonly<Record<string, LibraryCoreCanonicalValue>> : {};
+      const fields = object(updates);
+      const forbidden: Readonly<Record<string, readonly string[]>> = {
+        display: ["themeId", "sidebarWidth", "sidebarMode", "friendsSidebarWidth", "friendsSidebarOpen", "friendsMode", "debugPanelWidth", "mapMode", "mapTimeMode", "feedSignalMode", "feedSignalModes", "savedContentSortMode"],
+        ai: ["provider", "model", "ollamaUrl"],
+        fbCapture: ["knownGroups"],
+      };
+      if (Object.entries(forbidden).some(([parent, keys]) => keys.some(key => Object.hasOwn(object(fields[parent]), key))) ||
+          Object.hasOwn(object(object(fields.display).reading), "dualColumnMode") ||
+          ["lastError", "status"].some(key => Object.hasOwn(object(object(fields.storyWall).publishTarget), key))) {
+        return invalid("updates contain device-local historical fields");
+      }
+      return { ok: true, value: Object.freeze({ updates: fields }) };
+    }
     // Validate semantic numbers, retaining the original authenticated wire value.
     // Compare normalized copies so historical finite integer wrappers remain valid.
     const decodedNumbers = decodeLibraryCoreFractionalNumbersV1(updates);
@@ -1272,6 +1293,15 @@ function validatePreferencesLeafAssignmentPayload(
       error instanceof Error ? error.message : "updates are not canonical",
     );
   }
+}
+
+function validatePreferencesLeafAssignmentPayload(value: unknown): LibraryCorePayloadValidationResult<PreferencesLeafAssignmentPayloadV1> {
+  return validatePreferencesPayload(value, false);
+}
+
+/** Match native historical authentication without sanitizing signed bytes. Never use for fresh writes. */
+export function validateHistoricalPreferencesPayloadV1(value: unknown): LibraryCorePayloadValidationResult<PreferencesLeafAssignmentPayloadV1> {
+  return validatePreferencesPayload(value, true);
 }
 
 function validatePersonUpsertPayload(

@@ -254,18 +254,18 @@ it("keeps historical reach-out payloads and refuses retained originals, missing 
  await expect(loadRecoveryReachOutDrafts(original, new AbortController().signal)).rejects.toThrow("No members were removed");
 });
 
-it("loads complete preference transactions against one snapshot and returns stored replacements first", async () => {
+it("loads complete preference originals without current reads and returns stored replacements first", async () => {
   const { loadRecoveryPreferenceDrafts } = await import("./library-core-recovery-preference-editor");
   const prefRow = (index: number, value: boolean) => ({ ...row(index), operationType: "preferences_leaf_assignment", entityId: "preferences",
     originalEnvelopeJson: new TextDecoder().decode(encodeLibraryCoreCanonicalValue({ entity_type: "UserPreferences", blob_references: [], payload: { updates: { display: { showEngagementCounts: value } } } })) });
   const first = { ...review, rows: [prefRow(0, false)], nextCursor: "next" };
   const last = { ...review, rows: [prefRow(1, true)], nextCursor: null };
-  query.mockResolvedValueOnce(first).mockResolvedValueOnce({ source, rows: [] }).mockResolvedValueOnce(last);
+  query.mockResolvedValueOnce(first).mockResolvedValueOnce(last);
   const loaded = await loadRecoveryPreferenceDrafts(review, new AbortController().signal);
   expect(loaded.drafts?.map(draft => draft.fields[0]?.archived)).toEqual([false, true]);
-  expect(query.mock.calls.map(([request]) => request.queryId)).toEqual(["recovery_intent_review_v1", "preferences_snapshot_v1", "recovery_intent_review_v1"]);
+  expect(query.mock.calls.map(([request]) => request.queryId)).toEqual(["recovery_intent_review_v1", "recovery_intent_review_v1"]);
   query.mockReset();
-  query.mockResolvedValueOnce(first).mockResolvedValueOnce({ source, rows: [] }).mockResolvedValueOnce({ ...last, source: { ...source, projectionRevision: 8 } });
+  query.mockResolvedValueOnce(first).mockResolvedValueOnce({ ...last, source: { ...source, projectionRevision: 8 } });
   await expect(loadRecoveryPreferenceDrafts(review, new AbortController().signal)).rejects.toThrow("CURSOR_STALE");
   query.mockReset();
   const replacement = { replacementTransactionId: "stored-replacement" };

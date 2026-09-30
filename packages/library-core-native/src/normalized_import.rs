@@ -1285,6 +1285,28 @@ pub(crate) fn install_normalized_checkpoint_stage_in_transaction_v2(
     follower_receipt: Option<&NormalizedFollowerCheckpointReceiptV2>,
     restore: Option<&NormalizedRestoreTransitionV1>,
 ) -> Result<NormalizedCheckpointActivationReceiptV2, NormalizedSqliteError> {
+    install_checkpoint_with_version_admission(
+        transaction,
+        stage_id,
+        replace_existing,
+        follower_receipt,
+        restore,
+        crate::normalized_handoff_certificate::verify_handoff_checkpoint_install_v1,
+    )
+}
+
+pub(crate) fn install_checkpoint_with_version_admission(
+    transaction: &Transaction<'_>,
+    stage_id: &str,
+    replace_existing: bool,
+    follower_receipt: Option<&NormalizedFollowerCheckpointReceiptV2>,
+    restore: Option<&NormalizedRestoreTransitionV1>,
+    admit: impl FnOnce(
+        &Connection,
+        &str,
+        Option<&NormalizedFollowerCheckpointReceiptV2>,
+    ) -> Result<(), String>,
+) -> Result<NormalizedCheckpointActivationReceiptV2, NormalizedSqliteError> {
     transaction.pragma_update(None, "defer_foreign_keys", true)?;
     if let Some(restore) = restore {
         if describe_normalized_checkpoint_export_v2(transaction)?
@@ -1548,12 +1570,8 @@ pub(crate) fn install_normalized_checkpoint_stage_in_transaction_v2(
             params![stage.1, stage.2],
         )?;
     }
-    crate::normalized_handoff_certificate::verify_handoff_checkpoint_install_v1(
-        transaction,
-        &checkpoint_digest,
-        follower_receipt,
-    )
-    .map_err(NormalizedSqliteError::Transport)?;
+    admit(transaction, &checkpoint_digest, follower_receipt)
+        .map_err(NormalizedSqliteError::Transport)?;
     transaction.execute(
         "DELETE FROM library_checkpoint_stages WHERE stage_id = ?1;",
         [stage_id],

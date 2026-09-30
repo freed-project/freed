@@ -1053,3 +1053,47 @@ assignments and empty groups, and clears confirmation whenever a value changes.
 After signing, the form locks its inputs and retries the same replacement after
 an ambiguous response. Focused platform tests and the Desktop browser workflow
 pass. Installed Mac acceptance and full multi-device convergence remain pending.
+
+
+PWA historical preference verification now matches the native historical field
+policy while fresh writes retain the current policy. Archive review preserves
+authenticated old fields, and incremental catch-up checks the authority-signed
+acceptance receipt before materializing them. Historical constructions cannot
+be finalized or reused as fresh verified transactions. Shared cryptographic and
+PWA SQLite tests cover unchanged bytes, mixed-member completeness, device-local
+exclusions, tampering, mismatched receipts and exact retry. Live cloud joining across versions and installed Mac acceptance remain unverified.
+
+The Rust historical validator and shared verifier also pass the same 32 policy
+cases, covering all historical sections and device-local exclusions. This is
+policy parity; installed Mac proof remains separate.
+
+A signed historical preference fixture now comes from published native source
+`v26.9.1700-dev`. Current native SQLite and PWA preserve its envelope and acceptance
+receipt, replay duplicate pages, and match its final revision, actor frontier and
+checkpoint digest. The original zero-operation descriptor remains intact; the
+tests explicitly check current carried-frontier normalization at that baseline.
+Checkpoint admission is synthetic, and this does not prove live cloud joining
+or an installed build.
+
+Preference recovery now reads only the selected setting through a source-bound
+query shared by native SQLite and the PWA. The form retains one current value,
+requires each comparison before confirmation, cancels abandoned reads and keeps
+the same prepared edit after response loss. Group summaries cannot be used as
+replacement values. Native/PWA fixture tests cover oversized unrelated trees,
+exact values and invalid rows; a headless Desktop workflow verifies two scoped
+reads and identical retry submissions. Ordinary startup still has the global
+preference snapshot limit, and installed Mac acceptance remains incomplete.
+
+Primary ranking now retrieves only the weights needed by each bounded candidate
+batch. Native SQLite and PWA share a grouped read with exact source checks;
+Desktop uses it without retaining a full weight map for the pass. Tests cover
+large candidate scopes, long literal IDs, stale chunks, numeric validation and
+preference changes during an in-flight batch. Startup still uses the global
+preference snapshot, and installed Mac acceptance remains incomplete.
+
+Ranking invalidation now compares a compact, indexed preference revision and
+materialization generation instead of the renderer's full weight-map identity.
+Native and PWA expose the same bounded marker. Preference changes during a pass
+and checkpoint replacement request another pass; item-only writes do not change
+the marker. Failed completion reads remain retryable. Startup's whole-preference
+snapshot limit still needs removal.

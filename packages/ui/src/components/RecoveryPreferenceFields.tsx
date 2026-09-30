@@ -3,7 +3,7 @@ import {
   decodeLibraryCoreFractionalNumbersV1, encodeLibraryCoreFractionalNumbersV1,
   PREFERENCES_LEAF_ASSIGNMENT_PAYLOAD_SCHEMA, sameLibraryCoreRecoveryPreferenceScopeV1,
   snapshotLibraryCoreRecoveryPreferencePatchesV1,
-  type LibraryCoreCanonicalValue, type RecoveryPreferenceDraft,
+  type LibraryCoreCanonicalValue, type RecoveryPreferenceDraft, type RecoveryPreferenceCurrent,
 } from "@freed/shared/library-core";
 
 const button = "btn-secondary rounded-lg px-3 py-1.5 disabled:opacity-50";
@@ -56,16 +56,36 @@ function readPath(value: unknown, path: readonly string[]): unknown {
   return decodeLibraryCoreFractionalNumbersV1(value);
 }
 
-export function RecoveryPreferenceFields({ drafts, onSubmit, saving, locked, error }: {
+export function RecoveryPreferenceFields({ drafts, readCurrent, onSubmit, saving, locked, error }: {
+  readCurrent: (path: readonly string[], signal: AbortSignal) => Promise<RecoveryPreferenceCurrent>;
   drafts: readonly RecoveryPreferenceDraft[]; onSubmit: (patches: readonly unknown[]) => Promise<void>;
   saving: boolean; locked: boolean; error: string | null;
 }) {
   const fields = useMemo(() => drafts.flatMap((draft, member) => draft.fields.map(field => ({ member, field }))), [drafts]);
   const [patches, setPatches] = useState(() => drafts.map(draft => draft.updates));
-  const [page, setPage] = useState(0), [seen, setSeen] = useState(1), [confirmed, setConfirmed] = useState(false);
+  const [page, setPage] = useState(0), [seen, setSeen] = useState(0), [confirmed, setConfirmed] = useState(false);
   const [invalid, setInvalid] = useState(false), [reset, setReset] = useState(0);
   const selected = fields[page];
   const [candidate, setCandidate] = useState<unknown>(() => fields[0]?.field.archived);
+  const [comparison, setComparison] = useState<{ field: RecoveryPreferenceDraft["fields"][number]; reader: typeof readCurrent; value: RecoveryPreferenceCurrent | null; failed: boolean } | null>(null);
+  const [readAttempt, setReadAttempt] = useState(0);
+  const matching = comparison?.field === selected?.field && comparison?.reader === readCurrent ? comparison : null;
+  const current = matching?.value ?? null;
+  const readReady = current !== null;
+  useEffect(() => {
+    if (!selected || locked) return;
+    const controller = new AbortController();
+    setConfirmed(false);
+    setComparison({ field: selected.field, reader: readCurrent, value: null, failed: false });
+    void Promise.resolve().then(() => readCurrent(selected.field.path, controller.signal)).then(value => {
+      if (controller.signal.aborted) return;
+      setComparison({ field: selected.field, reader: readCurrent, value, failed: false });
+      setSeen(previous => Math.max(previous, page + 1));
+    }).catch(() => {
+      if (!controller.signal.aborted) setComparison({ field: selected.field, reader: readCurrent, value: null, failed: true });
+    });
+    return () => controller.abort();
+  }, [selected, page, readCurrent, readAttempt, locked]);
   const disabled = saving || locked;
   const change = (value: unknown) => {
     setCandidate(value); setConfirmed(false);
@@ -81,7 +101,7 @@ export function RecoveryPreferenceFields({ drafts, onSubmit, saving, locked, err
   };
   const navigate = (next: number) => {
     const entry = fields[next]!;
-    setPage(next); setSeen(Math.max(seen, next + 1)); setConfirmed(false); setReset(reset + 1);
+    setPage(next); setConfirmed(false); setReset(reset + 1);
     setCandidate(readPath(patches[entry.member], entry.field.path));
   };
   const restore = (value: unknown) => { change(value); setReset(reset + 1); };
@@ -91,21 +111,27 @@ export function RecoveryPreferenceFields({ drafts, onSubmit, saving, locked, err
     {selected && <>
       <p>Setting {(page + 1).toLocaleString()} of {fields.length.toLocaleString()} in edit {(selected.member + 1).toLocaleString()} of {drafts.length.toLocaleString()}</p>
       <h4 className="font-medium break-words">{pathLabel(selected.field.path)}</h4>
-      <div className="grid gap-3 sm:grid-cols-2"><div><p className="font-medium">Archived value</p><ValueView value={selected.field.archived} /></div><div><p className="font-medium">{selected.field.current?.origin === "default" ? "Current default" : "Last-synced value"}</p>{selected.field.current ? <ValueView value={selected.field.current.value} /> : <p>No stored or default value.</p>}</div></div>
+      <div className="grid gap-3 sm:grid-cols-2"><div><p className="font-medium">Archived value</p><ValueView value={selected.field.archived} /></div><div><p className="font-medium">{current && current.kind !== "absent" && current.origin === "default" ? "Current default" : "Last-synced value"}</p>
+        {!current ? matching?.failed ? <p role="alert">This setting could not be read at the reviewed Library revision. Retry, or close and review the edit again if the Library changed.</p> : <p role="status">Loading this setting...</p>
+          : current.kind === "value" ? <ValueView value={current.value} />
+          : current.kind === "object_group" ? <p>A settings group exists here. Its contents are not loaded in this comparison.{selected.field.kind !== "empty_object" && " Applying a value replaces that group."}</p>
+          : <p>No stored or default value.</p>}
+        {matching?.failed && <button type="button" className={button} disabled={disabled} onClick={() => setReadAttempt(readAttempt + 1)}>Retry comparison</button>}
+      </div></div>
       {selected.field.kind === "empty_object" ? <p>This edit preserves an empty settings group. It does not remove settings already inside that group.</p> : <>
         <p className="font-medium">Value to apply</p>
-        <ValueInput key={`${page}:${reset}`} value={candidate} label="Value to apply" disabled={disabled} canGrow={!invalid} numericList={selected.field.path.at(-1) === "selectedYears"} onChange={change} />
-        <div className="flex flex-wrap gap-2"><button type="button" className={button} disabled={disabled} onClick={() => restore(selected.field.archived)}>Use archived value</button>
-          {selected.field.current && <button type="button" className={button} disabled={disabled} onClick={() => restore(selected.field.current!.value)}>Use current value</button>}</div>
+        <ValueInput key={`${page}:${reset}`} value={candidate} label="Value to apply" disabled={disabled || !readReady} canGrow={!invalid} numericList={selected.field.path.at(-1) === "selectedYears"} onChange={change} />
+        <div className="flex flex-wrap gap-2"><button type="button" className={button} disabled={disabled || !readReady} onClick={() => restore(selected.field.archived)}>Use archived value</button>
+          {current?.kind === "value" && <button type="button" className={button} disabled={disabled} onClick={() => restore(current.value)}>Use current value</button>}</div>
       </>}
     </>}
     {invalid && <p role="alert">This value changes the original setting structure, is invalid, or exceeds the edit size limit. Revise it or use the archived value.</p>}
-    <label className="flex items-start gap-2"><input aria-label="Confirm preference recovery" type="checkbox" disabled={disabled || invalid || seen < fields.length || !fields.length} checked={confirmed} onChange={e => setConfirmed(e.target.checked)} />I reviewed every setting and want to apply these values as a new edit.</label>
+    <label className="flex items-start gap-2"><input aria-label="Confirm preference recovery" type="checkbox" disabled={disabled || invalid || !readReady || seen < fields.length || !fields.length} checked={confirmed} onChange={e => setConfirmed(e.target.checked)} />I reviewed every setting and want to apply these values as a new edit.</label>
     {error && <p role="alert">{error}</p>}
     <div className="flex flex-wrap gap-2">
-      {page > 0 && <button type="button" className={button} disabled={disabled || invalid} onClick={() => navigate(page - 1)}>Previous setting</button>}
-      {page + 1 < fields.length && <button type="button" className={button} disabled={disabled || invalid} onClick={() => navigate(page + 1)}>Next setting</button>}
-      <button type="button" className="btn-primary rounded-lg px-3 py-1.5 disabled:opacity-50" disabled={saving || !locked && (!confirmed || invalid || seen < fields.length || !fields.length)} onClick={() => void onSubmit(patches)}>{saving ? "Storing replacement..." : locked ? "Retry same preference edit" : "Store revised preferences"}</button>
+      {page > 0 && <button type="button" className={button} disabled={disabled || invalid || !readReady} onClick={() => navigate(page - 1)}>Previous setting</button>}
+      {page + 1 < fields.length && <button type="button" className={button} disabled={disabled || invalid || !readReady} onClick={() => navigate(page + 1)}>Next setting</button>}
+      <button type="button" className="btn-primary rounded-lg px-3 py-1.5 disabled:opacity-50" disabled={saving || !locked && (!confirmed || invalid || !readReady || seen < fields.length || !fields.length)} onClick={() => void onSubmit(patches)}>{saving ? "Storing replacement..." : locked ? "Retry same preference edit" : "Store revised preferences"}</button>
     </div>
   </div>;
 }

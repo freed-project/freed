@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createLibraryCoreSqliteWorkerRequest, createLibraryCoreSqliteQueryWorkerRequest } from "@freed/shared/library-core";
+import { createLibraryCoreSqliteWorkerRequest, createLibraryCoreSqliteQueryWorkerRequest, createLibraryCoreSqliteActivatePredecessorWorkerRequest, createLibraryCoreSqlitePredecessorReadWorkerRequest } from "@freed/shared/library-core";
 
 const storage = vi.hoisted(() => ({
   query: vi.fn(),
+  predecessor: vi.fn(),
+  predecessorRead: vi.fn(),
   memoryOpen: vi.fn(),
   installOpfs: vi.fn(),
   reconcile: vi.fn(),
@@ -15,6 +17,8 @@ vi.mock("@sqlite.org/sqlite-wasm", () => ({ default: async () => ({
 }) }));
 vi.mock("./library-core-sqlite-engine", () => ({ PwaLibraryCoreSqliteEngine: class {
   queryWithVerification = storage.query;
+  activateVerifiedPredecessorCheckpoint = storage.predecessor;
+  preparePredecessorCheckpointRead = storage.predecessorRead;
   initialize() {}
   status() { return { synthetic: true }; }
 } }));
@@ -98,7 +102,7 @@ describe("demo worker storage isolation", () => {
     expect(storage.memoryOpen).toHaveBeenCalledOnce();
   });
 
-  it("holds later commands behind asynchronous review and releases them after verification failure", async () => {
+  it.each(["review", "predecessor", "predecessor read"] as const)("holds later commands behind asynchronous %s and releases them after verification failure", async (operation) => {
     vi.stubGlobal("navigator", {});
     vi.stubGlobal("location", new URL("https://demo.freed.wtf/"));
     vi.stubGlobal("name", "freed-library-core-sqlite-demo");
@@ -106,17 +110,26 @@ describe("demo worker storage isolation", () => {
     const replies: { requestId: string; ok: boolean }[] = [];
     vi.stubGlobal("postMessage", (reply: { requestId: string; ok: boolean }) => replies.push(reply));
     let reject!: (error: Error) => void;
-    storage.query.mockImplementationOnce(() => new Promise((_resolve, fail) => { reject = fail; }));
+    const verification = operation === "review" ? storage.query : operation === "predecessor" ? storage.predecessor : storage.predecessorRead;
+    verification.mockImplementationOnce(() => new Promise((_resolve, fail) => { reject = fail; }));
     await import("./library-core-sqlite-worker");
     const send = (data: unknown) => (globalThis.onmessage as unknown as (event: MessageEvent) => void)({
       data, isTrusted: true, source: null, origin: "https://demo.freed.wtf",
     } as MessageEvent);
     send(createLibraryCoreSqliteWorkerRequest("open", "open"));
-    send(createLibraryCoreSqliteQueryWorkerRequest("review", { queryId: "recovery_intent_review_v1", schemaVersion: 1,
+    send(operation === "review" ? createLibraryCoreSqliteQueryWorkerRequest("review", { queryId: "recovery_intent_review_v1", schemaVersion: 1,
       recoveryId: "a".repeat(64), transactionId: "preserved-edit", cursor: null, limit: 1,
-      cancellationId: "review-cancel", readerSessionId: "review-reader" }));
+      cancellationId: "review-cancel", readerSessionId: "review-reader" }) :
+      operation === "predecessor read" ? createLibraryCoreSqlitePredecessorReadWorkerRequest("review", "successor") :
+      createLibraryCoreSqliteActivatePredecessorWorkerRequest("review", {
+        stageId: "predecessor", replaceExisting: true, followerReceipt: {
+          checkpointGeneration: 1, controlRevision: "revision", installedAt: 2400,
+          manifestContentDigest: "a".repeat(64) as never, manifestObjectKey: "manifest",
+          manifestTransportObjectId: "object", writerActorId: "writer",
+        },
+      }, "successor"));
     send(createLibraryCoreSqliteWorkerRequest("status", "after-review"));
-    await vi.waitFor(() => expect(storage.query).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(verification).toHaveBeenCalledOnce());
     expect(replies.map(reply => reply.requestId)).toEqual(["open"]);
     reject(new Error("signature rejected"));
     await vi.waitFor(() => expect(replies).toHaveLength(3));

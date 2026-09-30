@@ -1463,7 +1463,11 @@ pub fn ingest_normalized_follower_intent_page_v1(
                 ));
             }
             exact_retries += 1;
-            touched_transactions.insert(record.transaction_id.clone());
+            touched_transactions.insert((
+                record.actor_id.clone(),
+                first_counter,
+                record.transaction_id.clone(),
+            ));
             continue;
         }
         transaction.execute(
@@ -1510,13 +1514,19 @@ pub fn ingest_normalized_follower_intent_page_v1(
             ));
         }
         staged_records += 1;
-        touched_transactions.insert(record.transaction_id.clone());
+        touched_transactions.insert((
+            record.actor_id.clone(),
+            first_counter,
+            record.transaction_id.clone(),
+        ));
     }
     transaction.commit()?;
 
     let mut resolved_transactions = 0_usize;
     let mut pending_transactions = 0_usize;
-    for transaction_id in touched_transactions {
+    // IDs carry no causal ordering. Resolve consecutive transactions from the
+    // same actor by their counters, even when their IDs sort in reverse.
+    for (_, _, transaction_id) in touched_transactions {
         let complete = connection
             .query_row(
                 "SELECT received_count = member_count

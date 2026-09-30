@@ -1,3 +1,4 @@
+import type { LibraryCoreActivateNormalizedCheckpointStageV2 } from "@freed/shared/library-core";
 import {
   createLibraryCoreNormalizedCheckpointWriterV2,
   type LibraryCoreNormalizedCheckpointImportWriterV2,
@@ -14,6 +15,7 @@ type PwaNormalizedCheckpointWriterRuntime =
   LibraryCoreNormalizedCheckpointStageRuntimeV2;
 
 export interface CreatePwaNormalizedCheckpointWriterInput {
+  readonly beforeActivate?: (activation: LibraryCoreActivateNormalizedCheckpointStageV2) => Promise<void>;
   readonly checkpointGeneration: number;
   readonly controlRevision: string;
   readonly installedAt: number;
@@ -32,8 +34,12 @@ const DEFAULT_RUNTIME = Object.freeze({
 export function createPwaNormalizedCheckpointWriter(
   input: CreatePwaNormalizedCheckpointWriterInput,
 ): LibraryCoreNormalizedCheckpointImportWriterV2 {
+  const runtime = input.runtime ?? DEFAULT_RUNTIME;
   return createLibraryCoreNormalizedCheckpointWriterV2({
     ...input,
-    runtime: input.runtime ?? DEFAULT_RUNTIME,
+    runtime: { ...runtime, async activate(activation) {
+      await input.beforeActivate?.(activation);
+      return runtime.activate(activation);
+    } },
   });
 }

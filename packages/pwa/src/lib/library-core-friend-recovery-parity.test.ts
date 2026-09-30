@@ -6,6 +6,7 @@ import {
   encodeLibraryCoreCanonicalValue, encodeLibraryCoreDigestInput, encodeLibraryCoreOperationSignatureInput,
   sha256LowerHex, constructLibraryCoreActorEnrollmentBodyV1, constructLibraryCoreActorEnrollmentCertificateV1,
   constructLibraryCoreArchivedFriendMemberV1, assembleLibraryCoreArchivedFriendV1,
+  constructLibraryCoreHistoricalPreferencesMemberV1, assembleLibraryCoreHistoricalPreferencesV1,
   PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA, PERSON_REACH_OUT_APPEND_TRANSACTION_MEMBER_SCHEMA, ACCOUNT_UPSERT_TRANSACTION_MEMBER_SCHEMA, FRIEND_REPLACE_TRANSACTION_MEMBER_SCHEMA, assembleLibraryCoreTransactionV1, finalizeLibraryCoreTransactionV1,
   parseLibraryCoreRecoveryIntentReviewRequestV1, parseLibraryCoreReapplyConsumerIntentV1, type LibraryCoreCanonicalValue, type LibraryCoreDigestDomain,
 } from "@freed/shared/library-core";
@@ -16,7 +17,7 @@ import { PwaLibraryCoreSqliteEngine } from "./library-core-sqlite-engine";
 // Native Friend vector plus generated certified historical Friend and Account
 // and reach-out archives. Successor admission is synthetic; this does not prove cloud handoff
 // or OPFS durability.
-it.each(["native", "historical PWA", "Account upsert", "Reach-out", "Preferences"] as const)("verifies %s recovery signatures, refuses unsafe replacements and resolves exact retry", async mode => {
+it.each(["native", "historical PWA", "Account upsert", "Reach-out", "Preferences", "Historical preferences"] as const)("verifies %s recovery signatures, refuses unsafe replacements and resolves exact retry", async mode => {
   const sqlite = await sqlite3InitModule();
   const db = new sqlite.oo1.DB(":memory:", "c");
   try {
@@ -44,6 +45,13 @@ it.each(["native", "historical PWA", "Account upsert", "Reach-out", "Preferences
       bind: [vector.receipt.replacementActorId, "6".repeat(64)] });
     const alternate: { value?: ReturnType<typeof parseLibraryCoreReapplyConsumerIntentV1> } = {};
     const historical = mode !== "native" ? await seedRecoveryEdit(db, engine, mode, alternate) : null;
+    if (mode === "Historical preferences") {
+      expect(historical).toBeNull();
+      expect(db.selectValue("SELECT count(*) FROM library_intent_transactions;")).toBe(0);
+      expect(db.selectValue("SELECT count(*) FROM library_local_recovery_reissues;")).toBe(0);
+      expect(engine.followerMutationContext().next_actor_sequence).toBe(1);
+      return;
+    }
     const input = historical ?? parseLibraryCoreReapplyConsumerIntentV1({ review: vector.review,
       intent: { envelopeBytes: vector.envelopes.map(value => new Uint8Array(new TextEncoder().encode(value))) } });
     const archive = () => db.exec({ sql: "SELECT * FROM library_local_recovery_rows ORDER BY table_key,row_ordinal;", rowMode: "array", returnValue: "resultRows" });
@@ -80,8 +88,8 @@ it.each(["native", "historical PWA", "Account upsert", "Reach-out", "Preferences
 // Tier 1: exercise original enrollment and signatures through SQLite reissue
 // without substituting a verified scope. Historical Friend storage is seeded
 // directly because ordinary enqueue must reject the old locale-based order.
-async function seedRecoveryEdit(db: Database, engine: PwaLibraryCoreSqliteEngine, mode: "historical PWA" | "Account upsert" | "Reach-out" | "Preferences", alternate: { value?: ReturnType<typeof parseLibraryCoreReapplyConsumerIntentV1> }) {
-  const accountUpsert = mode === "Account upsert", reachOut = mode === "Reach-out", preferences = mode === "Preferences";
+async function seedRecoveryEdit(db: Database, engine: PwaLibraryCoreSqliteEngine, mode: "historical PWA" | "Account upsert" | "Reach-out" | "Preferences" | "Historical preferences", alternate: { value?: ReturnType<typeof parseLibraryCoreReapplyConsumerIntentV1> }) {
+  const accountUpsert = mode === "Account upsert", reachOut = mode === "Reach-out", preferences = mode === "Preferences" || mode === "Historical preferences";
   if (reachOut) db.exec("INSERT OR IGNORE INTO library_persons (id,name,relationship_status,care_level,created_at,updated_at) VALUES ('rss:item:1','Reach-out target','friend',3,1000,1000);");
   const digest = (domain: LibraryCoreDigestDomain, value: unknown) =>
     sha256LowerHex(encodeLibraryCoreDigestInput(domain, value as LibraryCoreCanonicalValue));
@@ -106,8 +114,11 @@ async function seedRecoveryEdit(db: Database, engine: PwaLibraryCoreSqliteEngine
     hlc_wall_ms: 1000, hlc_counter: 0, transaction_id: vector.review.transactionId, transaction_member_index: 0,
     transaction_member_count: 1, entity_id: person.id, payload: { accounts, person }, created_at_ms: 1000 };
   const reachOutPayload = { channel: null, logged_at_ms: 1000, notes: "Recovered history" };
-  const preferencePayload = { updates: { ai: { autoSummarize: true }, display: { archivePruneDays: 14 }, weights: { topics: { alpha: { bits: "3fc0000000000000", codec: "ieee754_binary64_hex_v1" } } } } };
-  const historical = preferences
+  const preferencePayload = mode === "Historical preferences" ? { updates: { display: { markReadOnScroll: false } } } : { updates: { ai: { autoSummarize: true }, display: { archivePruneDays: 14 }, weights: { topics: { alpha: { bits: "3fc0000000000000", codec: "ieee754_binary64_hex_v1" } } } } };
+  const historical = mode === "Historical preferences"
+    ? assembleLibraryCoreHistoricalPreferencesV1([constructLibraryCoreHistoricalPreferencesMemberV1({ ...memberInput,
+      entity_id: "preferences", payload: preferencePayload }, { digest })], certificate.actor_chain_genesis, { digest })
+    : preferences
     ? assembleLibraryCoreTransactionV1([PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA.construct({ ...memberInput,
       entity_id: "preferences", payload: preferencePayload }, { digest })], certificate.actor_chain_genesis, { digest })
     : reachOut
@@ -174,6 +185,12 @@ async function seedRecoveryEdit(db: Database, engine: PwaLibraryCoreSqliteEngine
   expect(reviewed.rows[0]!.originalEnvelopeJson).toBe(json(signed));
   if (mode === "historical PWA") expect((JSON.parse(reviewed.rows[0]!.originalEnvelopeJson!) as { payload: { accounts: { id: string }[] } }).payload.accounts.map(account => account.id))
     .toEqual(["account:a", "account:A", "account:selected"]);
+  if (mode === "Historical preferences") {
+    expect(JSON.parse(reviewed.rows[0]!.originalEnvelopeJson!).payload).toEqual(preferencePayload);
+    expect(() => PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA.construct({ ...memberInput,
+      entity_id: "preferences", payload: preferencePayload }, { digest })).toThrow("unsupported fields");
+    return null;
+  }
   const context = engine.followerMutationContext();
   const replacement = (preferences ? PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA : reachOut ? PERSON_REACH_OUT_APPEND_TRANSACTION_MEMBER_SCHEMA : accountUpsert ? ACCOUNT_UPSERT_TRANSACTION_MEMBER_SCHEMA : FRIEND_REPLACE_TRANSACTION_MEMBER_SCHEMA).construct({ ...memberInput,
     epoch: context.epoch, epoch_id: context.epoch_id, actor_id: context.actor_id,

@@ -1600,6 +1600,27 @@ pub(crate) fn verify_handoff_checkpoint_install_v1(
     if version != 2 {
         return Err("handoff checkpoint storage is unsupported".into());
     }
+    verify_existing_handoff_checkpoint_install_v1(connection, checkpoint_digest, receipt)
+}
+
+/// Version admission belongs to the platform adapter; lifecycle proof remains shared.
+pub(crate) fn verify_existing_handoff_checkpoint_install_v1(
+    connection: &rusqlite::Connection,
+    checkpoint_digest: &str,
+    receipt: Option<&crate::normalized_import::NormalizedFollowerCheckpointReceiptV2>,
+) -> Result<(), String> {
+    // Installing the local catalog does not start a transfer. Ordinary
+    // checkpoint verification owns admission when no lifecycle fence exists.
+    let has_handoff: bool = connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM library_local_handoff);",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    if !has_handoff {
+        return Ok(());
+    }
     let cancelled_target: bool = connection.query_row(
         "SELECT EXISTS(SELECT 1 FROM library_local_handoff WHERE singleton_id = 1 AND installation_role = 'target' AND phase = 'cancelled');",
         [], |row| row.get(0),
@@ -1609,6 +1630,11 @@ pub(crate) fn verify_handoff_checkpoint_install_v1(
             return Err("canceled target checkpoint requires a consumer receipt".into());
         }
         crate::normalized_handoff_cancellation::verify_cancelled_target_history_v1(connection)?;
+        return Ok(());
+    }
+    if crate::normalized_consumer_recovery::verify_completed_consumer_successor_checkpoint(
+        connection, receipt,
+    )? {
         return Ok(());
     }
     let consumer: Option<(String, Vec<u8>)> = connection.query_row(
@@ -4029,6 +4055,13 @@ mod tests {
                 .unwrap();
         }
 
+        crate::normalized_preference_projection::check_projected_successor_checkpoint(
+            &consumer,
+            "successor",
+            &new_receipt,
+            &actor_store,
+            &installation_witness,
+        );
         crate::normalized_import::replace_with_normalized_follower_checkpoint_stage_v2(
             &mut consumer,
             "successor",
@@ -4544,6 +4577,13 @@ mod tests {
         )
         .is_err());
         consumer.execute("UPDATE library_local_recovery_rows SET canonical_row = ?2 WHERE recovery_id = ?1 AND table_key = 'library_intent_transactions';", params![archive_id, archived_transaction]).unwrap();
+        crate::normalized_preference_projection::check_projected_recovery_commit(
+            &consumer,
+            &archive_id,
+            &installation_witness,
+            &actor_store,
+            &next_certificate,
+        );
         let before_commit = crate::describe_normalized_checkpoint_export_v2(&consumer).unwrap();
         consumer.execute_batch("CREATE TEMP TRIGGER refuse_recovery_commit AFTER UPDATE OF phase ON library_local_handoff WHEN NEW.phase = 'following' BEGIN SELECT RAISE(ABORT, 'injected recovery commit failure'); END;").unwrap();
         assert!(crate::commit_consumer_epoch_reenrollment_v1(
@@ -4942,6 +4982,28 @@ mod tests {
                 .unwrap();
             repeated.execute("UPDATE library_follower_checkpoint_receipt SET authority_epoch_id = ?1, writer_actor_id = ?2;",
                 params![third.authority.epoch_id, third_grant.body.readiness.body.target_actor_id]).unwrap();
+            let third_receipt = crate::NormalizedFollowerCheckpointReceiptV2 {
+                writer_actor_id: third_grant.body.readiness.body.target_actor_id.clone(),
+                ..new_receipt.clone()
+            };
+            verify_existing_handoff_checkpoint_install_v1(
+                &repeated,
+                "unused-consumer-digest",
+                Some(&third_receipt),
+            )
+            .expect("a completed consumer cycle must admit its verified next successor checkpoint");
+            assert!(verify_existing_handoff_checkpoint_install_v1(
+                &repeated,
+                "unused-consumer-digest",
+                None
+            )
+            .is_err());
+            assert!(verify_existing_handoff_checkpoint_install_v1(
+                &repeated,
+                "unused-consumer-digest",
+                Some(&new_receipt)
+            )
+            .is_err());
             let previous_digest: String = repeated.query_row("SELECT archive_digest FROM library_local_recovery_archives WHERE recovery_id = ?1;", [&archive_id], |r| r.get(0)).unwrap();
             // A pre-existing local link has no FK to the active intent tables.
             repeated.execute("INSERT INTO library_local_recovery_reissues VALUES (?1, 'pending', ?2, ?3, 'retained:replacement', ?3, ?4, ?5, 1, 1, 1, ?3, 0, 0, 2000);",
@@ -4953,6 +5015,12 @@ mod tests {
             let retained_digest: String = repeated.query_row("SELECT reenrollment_digest FROM library_local_recovery_archives WHERE recovery_id = ?1;", [&archive_id], |r| r.get(0)).unwrap();
             repeated.execute("UPDATE library_local_recovery_archives SET reenrollment_digest = ?1 WHERE recovery_id = ?2;", params!["0".repeat(64), archive_id]).unwrap();
             assert!(crate::read_consumer_recovery_summary_v1(&repeated).is_err());
+            assert!(verify_existing_handoff_checkpoint_install_v1(
+                &repeated,
+                "unused-consumer-digest",
+                Some(&third_receipt)
+            )
+            .is_err());
             assert!(
                 crate::archive_consumer_epoch_recovery_v1(&mut repeated, &actor_store, 2302)
                     .is_err()
@@ -6398,6 +6466,21 @@ mod tests {
         // Reverse the two real installations after the successor accepted the
         // former source's enrollment. Preserve the original restart probes below.
         if !recovered_incarnation && !cancelled_consumer {
+            // Earlier archive fixtures countersigned without committing on this
+            // Primary. Commit that enrollment before its checkpoint is exported.
+            let enrolled_consumer = crate::countersign_normalized_follower_actor_request_v2(
+                &mut database,
+                next_request.canonical_enrollment_request_json.as_bytes(),
+                &current,
+                2200,
+            )
+            .unwrap();
+            assert_eq!(
+                enrolled_consumer
+                    .canonical_enrollment_certificate_json
+                    .as_bytes(),
+                next_certificate
+            );
             let returning_path = directory.path().join("roundtrip-target.sqlite");
             let leaving_path = directory.path().join("roundtrip-source.sqlite");
             for (source, path) in [(&adopting, &returning_path), (&database, &leaving_path)] {
@@ -6550,6 +6633,180 @@ mod tests {
                     .unwrap(),
                 0
             );
+            // A third installation follows this real second transfer through the
+            // complete checkpoint importer, preserving its completed first archive.
+            let mut repeated = open_normalized_sqlite_database_v1(
+                &directory.path().join("roundtrip-consumer.sqlite"),
+                true,
+            )
+            .unwrap();
+            rusqlite::backup::Backup::new(&consumer, &mut repeated)
+                .unwrap()
+                .run_to_completion(64, std::time::Duration::ZERO, None)
+                .unwrap();
+            let archive_bytes = |db: &rusqlite::Connection| {
+                db.prepare("SELECT canonical_row FROM library_local_recovery_rows WHERE recovery_id=?1 ORDER BY table_key,row_ordinal;")
+                    .unwrap().query_map([&archive_id], |row| row.get::<_,Vec<u8>>(0))
+                    .unwrap().collect::<rusqlite::Result<Vec<_>>>().unwrap()
+            };
+            let prior_archive = archive_bytes(&repeated);
+            // This consumer has not received the return target's enrollment yet.
+            // Acquire that predecessor checkpoint before accepting its successor.
+            assert!(
+                verify_successor(&repeated, third.canonical_certificate_json.as_bytes())
+                    .unwrap_err()
+                    .contains("target is not enrolled")
+            );
+            stage_replica(&mut repeated, &returning, "roundtrip-read-proof");
+            crate::normalized_handoff_writer_certificate::check_staged_predecessor_read(
+                &mut repeated,
+                "roundtrip-read-proof",
+                &final_control,
+            );
+            stage_replica(&mut repeated, &leaving, "roundtrip-predecessor");
+            crate::normalized_handoff_writer_certificate::check_install_verified_predecessor(
+                &mut repeated,
+                "roundtrip-read-proof",
+                "roundtrip-predecessor",
+            );
+            let prior_checkpoint =
+                crate::describe_normalized_checkpoint_export_v2(&repeated).unwrap();
+            let prior_request: String = repeated.query_row(
+                "SELECT canonical_enrollment_request FROM library_follower_actor_request WHERE singleton_id=1;", [], |row|row.get(0),
+            ).unwrap();
+            let next_receipt = stage_replica(&mut repeated, &returning, "roundtrip-successor");
+            crate::normalized_preference_projection::check_migrated_repeated_successor(
+                &repeated,
+                "roundtrip-successor",
+                &next_receipt,
+                &actor_store,
+                &installation_witness,
+                &next_certificate,
+            );
+            repeated.execute_batch("CREATE TEMP TRIGGER refuse_second_successor AFTER INSERT ON library_follower_checkpoint_receipt BEGIN SELECT RAISE(ABORT,'injected second successor failure'); END;").unwrap();
+            let error =
+                crate::normalized_import::replace_with_normalized_follower_checkpoint_stage_v2(
+                    &mut repeated,
+                    "roundtrip-successor",
+                    &next_receipt,
+                )
+                .unwrap_err();
+            assert!(
+                error
+                    .to_string()
+                    .contains("injected second successor failure"),
+                "{error}"
+            );
+            assert_eq!(
+                crate::describe_normalized_checkpoint_export_v2(&repeated).unwrap(),
+                prior_checkpoint
+            );
+            assert_eq!(archive_bytes(&repeated), prior_archive);
+            repeated
+                .execute_batch("DROP TRIGGER refuse_second_successor;")
+                .unwrap();
+            crate::normalized_import::replace_with_normalized_follower_checkpoint_stage_v2(
+                &mut repeated,
+                "roundtrip-successor",
+                &next_receipt,
+            )
+            .unwrap();
+            assert_eq!(
+                crate::describe_normalized_checkpoint_export_v2(&repeated).unwrap(),
+                crate::describe_normalized_checkpoint_export_v2(&returning).unwrap()
+            );
+            assert_eq!(repeated.query_row("SELECT canonical_enrollment_request FROM library_follower_actor_request WHERE singleton_id=1;", [], |row|row.get::<_,String>(0)).unwrap(), prior_request);
+            assert_eq!(archive_bytes(&repeated), prior_archive);
+            assert!(crate::normalized_follower_mutation_context_v1(&repeated).is_err());
+            assert!(crate::normalized_primary_mutation_context_v1(&repeated).is_err());
+            assert!(crate::require_normalized_provider_handoff_admission_v2(&repeated).is_err());
+            // A later same-successor refresh must not demand another recovery or
+            // lose the historical epoch used to verify the retained enrollment.
+            let refresh = stage_replica(&mut repeated, &returning, "roundtrip-refresh");
+            crate::normalized_import::replace_with_normalized_follower_checkpoint_stage_v2(
+                &mut repeated,
+                "roundtrip-refresh",
+                &refresh,
+            )
+            .unwrap();
+            let next_archive =
+                crate::archive_consumer_epoch_recovery_v1(&mut repeated, &actor_store, 2400)
+                    .unwrap();
+            assert_ne!(next_archive, archive_id);
+            assert_eq!(
+                crate::archive_consumer_epoch_recovery_v1(&mut repeated, &actor_store, 2401)
+                    .unwrap(),
+                next_archive
+            );
+            assert_eq!(archive_bytes(&repeated), prior_archive);
+            let next_recovery = crate::prepare_consumer_epoch_reenrollment_v1(
+                &mut repeated,
+                &next_archive,
+                &installation_witness,
+                &actor_store,
+                2402,
+            )
+            .unwrap();
+            assert_eq!(next_recovery.authority_epoch_id, third.authority.epoch_id);
+            assert_eq!(
+                crate::prepare_consumer_epoch_reenrollment_v1(
+                    &mut repeated,
+                    &next_archive,
+                    &installation_witness,
+                    &actor_store,
+                    2403,
+                )
+                .unwrap(),
+                next_recovery
+            );
+            assert_eq!(archive_bytes(&repeated), prior_archive);
+            let committed_recovery = crate::commit_consumer_epoch_reenrollment_v1(
+                &mut repeated,
+                &next_archive,
+                &installation_witness,
+                &actor_store,
+                2404,
+            )
+            .unwrap();
+            assert_eq!(committed_recovery, next_recovery);
+            assert!(crate::normalized_follower_mutation_context_v1(&repeated).is_err());
+            // Keep the published checkpoint immutable for the source-adoption
+            // probes below; this copy advances independently for reenrollment.
+            let mut reenrolling_primary = open_normalized_sqlite_database_v1(
+                &directory
+                    .path()
+                    .join("roundtrip-reenrolling-primary.sqlite"),
+                true,
+            )
+            .unwrap();
+            rusqlite::backup::Backup::new(&returning, &mut reenrolling_primary)
+                .unwrap()
+                .run_to_completion(64, std::time::Duration::ZERO, None)
+                .unwrap();
+            let enrolled_again = crate::countersign_normalized_follower_actor_request_v2(
+                &mut reenrolling_primary,
+                next_recovery.canonical_enrollment_request_json.as_bytes(),
+                &retained_old_authority,
+                2405,
+            )
+            .unwrap();
+            crate::install_normalized_follower_actor_enrollment_v2(
+                &mut repeated,
+                enrolled_again
+                    .canonical_enrollment_certificate_json
+                    .as_bytes(),
+            )
+            .unwrap();
+            assert_eq!(
+                crate::normalized_follower_mutation_context_v1(&repeated)
+                    .unwrap()
+                    .actor_id,
+                next_recovery.actor_id
+            );
+            assert_ne!(next_recovery.actor_id, next_request.actor_id);
+            assert_eq!(archive_bytes(&repeated), prior_archive);
+            assert!(crate::normalized_primary_mutation_context_v1(&repeated).is_err());
+            assert!(crate::require_normalized_provider_handoff_admission_v2(&repeated).is_err());
             stage_copy(&returning, &mut leaving, "return-adoption", 129);
             let adoption_plan = crate::source_handoff_verification_plan_v1(
                 &mut leaving,

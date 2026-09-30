@@ -7,6 +7,9 @@ import { isFreedDemoMode } from "./demo-mode";
 import {
   LIBRARY_CORE_SQLITE_WORKER_MAXIMUM_PENDING_REQUESTS,
   createLibraryCoreSqliteActivateCheckpointWorkerRequest,
+  createLibraryCoreSqliteActivatePredecessorWorkerRequest,
+  createLibraryCoreSqlitePredecessorReadWorkerRequest,
+  parseLibraryCorePredecessorCheckpointReadV1,
   createLibraryCoreSqliteAppendCheckpointPageWorkerRequest,
   createLibraryCoreSqliteBeginCheckpointWorkerRequest,
   createLibraryCoreSqliteQueryWorkerRequest,
@@ -820,6 +823,21 @@ export class PwaLibraryCoreSqliteClient {
     );
   }
 
+  preparePredecessorCheckpointRead(stageId: string) {
+    return this.#send((requestId) => createLibraryCoreSqlitePredecessorReadWorkerRequest(requestId, stageId),
+      parseLibraryCorePredecessorCheckpointReadV1);
+  }
+
+  activateVerifiedPredecessorCheckpoint(
+    activation: LibraryCoreActivateNormalizedCheckpointStageV2,
+    successorStageId: string,
+  ): Promise<LibraryCoreNormalizedCheckpointActivationReceiptV2> {
+    return this.#send(
+      (requestId) => createLibraryCoreSqliteActivatePredecessorWorkerRequest(requestId, activation, successorStageId),
+      parseLibraryCoreNormalizedCheckpointActivationReceiptV2,
+    );
+  }
+
   readNormalizedCheckpointReceipt(): Promise<LibraryCoreNormalizedCheckpointSelectionV2> {
     return this.#send(
       (requestId) =>
@@ -995,7 +1013,7 @@ export class PwaLibraryCoreSqliteClient {
     const completed = response.completedRecords;
     const total = response.totalRecords;
     if (
-      pending.kind !== "activate_normalized_checkpoint_stage" ||
+      (pending.kind !== "activate_normalized_checkpoint_stage" && pending.kind !== "activate_verified_predecessor_checkpoint") ||
       !exactResponseKeys(response, ["kind", "requestId", "completedRecords", "totalRecords"]) ||
       typeof completed !== "number" || !Number.isSafeInteger(completed) ||
       completed < 0 || completed <= pending.completedRecords ||

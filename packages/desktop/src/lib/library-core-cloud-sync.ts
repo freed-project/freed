@@ -43,6 +43,7 @@ import {
   importLibraryCoreNormalizedResultSegmentV2,
   importLibraryCoreNormalizedCheckpointV2,
   stageLibraryCoreNormalizedCheckpointV2,
+  catchUpLibraryCorePredecessorCheckpointV1,
   provisionGoogleDriveLibraryCoreControlV1,
   provisionGoogleDriveLibraryCoreNormalizedResultHeadV2,
   publishLibraryCoreNormalizedCheckpointV2,
@@ -59,6 +60,8 @@ import { recordCloudProviderEvent } from "@freed/ui/lib/debug-store";
 import { log } from "./logger";
 import {
   activateNormalizedLibraryCheckpointImport,
+  activateNormalizedLibraryPredecessorCheckpoint,
+  prepareNormalizedLibraryPredecessorCheckpointRead,
   appendNormalizedLibraryCheckpointImportPage,
   beginNormalizedLibraryCheckpointExport,
   beginNormalizedLibraryCheckpointImport,
@@ -920,7 +923,21 @@ async function importCloudCheckpointIntoSqlite(input: {
       controlRevision: input.controlRevision,
       installedAt,
       runtime: {
-        activate: (request) => {
+        activate: async (request) => {
+          throwIfPublicationCanceled(input.signal);
+          if (input.follower) await catchUpLibraryCorePredecessorCheckpointV1({
+            adapter: input.adapter, subtle: crypto.subtle, successorStageId: request.stageId, installedAt,
+            assertActive: () => throwIfPublicationCanceled(input.signal), runtime: {
+              prepare: prepareNormalizedLibraryPredecessorCheckpointRead,
+              activate: activateNormalizedLibraryPredecessorCheckpoint,
+              begin: beginNormalizedLibraryCheckpointImport,
+              async appendPage(page) {
+                const receipt = await appendNormalizedLibraryCheckpointImportPage(page);
+                input.deadline?.verifiedObject(`predecessor:${page.stageId}:${receipt.stagedRecordCount}`);
+                return receipt;
+              },
+            },
+          });
           throwIfPublicationCanceled(input.signal);
           return activateNormalizedLibraryCheckpointImport({
             followerReceipt: request.followerReceipt ?? undefined,

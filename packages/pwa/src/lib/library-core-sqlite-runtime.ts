@@ -252,6 +252,17 @@ export async function appendPwaNormalizedCheckpointStagePage(
   return active.appendNormalizedCheckpointStagePage(page);
 }
 
+export async function preparePwaNormalizedPredecessorCheckpointRead(stageId: string) {
+  return runReplaySafeRead(active => active.preparePredecessorCheckpointRead(stageId));
+}
+
+export async function activatePwaNormalizedPredecessorCheckpoint(
+  activation: LibraryCoreActivateNormalizedCheckpointStageV2, successorStageId: string,
+): Promise<LibraryCoreNormalizedCheckpointActivationReceiptV2> {
+  const active = await openClient();
+  return active.activateVerifiedPredecessorCheckpoint(activation, successorStageId);
+}
+
 export async function activatePwaNormalizedCheckpointStage(
   activation: LibraryCoreActivateNormalizedCheckpointStageV2,
 ): Promise<LibraryCoreNormalizedCheckpointActivationReceiptV2> {

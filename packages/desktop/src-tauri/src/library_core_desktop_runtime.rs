@@ -1330,6 +1330,67 @@ pub(super) fn append_normalized_library_checkpoint_import_page(
     .map_err(|error| error.to_string())
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct PredecessorCheckpointReadRequest {
+    stage_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct ActivatePredecessorCheckpointRequest {
+    stage_id: String,
+    successor_stage_id: String,
+    follower_receipt: freed_library_core::NormalizedFollowerCheckpointReceiptV2,
+}
+
+#[tauri::command]
+pub(super) fn prepare_normalized_library_predecessor_checkpoint_read(
+    app: tauri::AppHandle,
+    request: PredecessorCheckpointReadRequest,
+) -> Result<Option<serde_json::Value>, String> {
+    let mut connection = open_checkpoint_import_database(&app)?;
+    let proof = freed_library_core::prepare_normalized_predecessor_checkpoint_read_v1(
+        &mut connection,
+        &request.stage_id,
+    )?;
+    if let Some(proof) = &proof {
+        require_checkpoint_library(
+            &app,
+            &connection,
+            proof["pointer"]["libraryId"]
+                .as_str()
+                .ok_or("predecessor Library is missing")?,
+        )?;
+    }
+    Ok(proof)
+}
+
+#[tauri::command]
+pub(super) fn activate_normalized_library_predecessor_checkpoint(
+    app: tauri::AppHandle,
+    request: ActivatePredecessorCheckpointRequest,
+) -> Result<freed_library_core::NormalizedCheckpointActivationReceiptV2, String> {
+    let mut connection = open_checkpoint_import_database(&app)?;
+    let library_id: String = connection
+        .query_row(
+            "SELECT library_id FROM library_checkpoint_stages WHERE stage_id=?1;",
+            [&request.stage_id],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    require_checkpoint_library(&app, &connection, &library_id)?;
+    let receipt = freed_library_core::activate_normalized_predecessor_checkpoint_v1(
+        &mut connection,
+        &request.successor_stage_id,
+        &request.stage_id,
+        &request.follower_receipt,
+    )?;
+    drop(connection);
+    publish_consumer_selection(&app, &receipt.library_id)?;
+    Ok(receipt)
+}
+
 #[tauri::command]
 pub(super) fn activate_normalized_library_checkpoint_import(
     app: tauri::AppHandle,

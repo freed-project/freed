@@ -1,4 +1,4 @@
-import { readLibraryCoreRecoveryPreferenceContextV1, type RecoveryPreferenceDraft } from "@freed/shared/library-core";
+import { createLibraryCoreRecoveryPreferenceDraftV1, type RecoveryPreferenceDraft } from "@freed/shared/library-core";
 import type { RecoveryReachOutDraft, RecoveryReachOutHistory } from "@freed/ui/components/RecoveryReachOutFields";
 import { PERSON_REACH_OUT_APPEND_PAYLOAD_SCHEMA } from "@freed/shared/library-core";
 import type { Account } from "@freed/shared";
@@ -391,16 +391,14 @@ export async function loadPwaRecoveryReachOutDrafts(review: LibraryCoreRecoveryI
   return replacement ? { replacement } : { replacement: null, drafts };
 }
 
-/** Original members stay ordered; all comparisons share one bounded current snapshot. */
+/** Verify complete original members before the form requests selected comparisons. */
 export async function loadPwaRecoveryPreferenceDrafts(review: LibraryCoreRecoveryIntentReviewResponseV1, signal?: AbortSignal): Promise<
   { replacement: LibraryCoreRecoveryReissueReceiptV1; drafts?: never } | { replacement: null; drafts: readonly RecoveryPreferenceDraft[] }
 > {
   if (review.memberCount > LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.preferences_leaf_assignment.maximumMembers) throw new Error("Recovery exceeds its member bound");
   const drafts: RecoveryPreferenceDraft[] = [];
-  let context: Awaited<ReturnType<typeof readLibraryCoreRecoveryPreferenceContextV1>> | undefined;
   const replacement = await visitRecoveryMembers(review, signal, async (row, envelope) => {
-    context ??= await readLibraryCoreRecoveryPreferenceContextV1(review, queryPwaNormalizedLibrary, () => { if (signal?.aborted) throw new Error("QUERY_CANCELLED"); });
-    drafts.push(context(row, envelope));
+    drafts.push(createLibraryCoreRecoveryPreferenceDraftV1(row, envelope, () => { if (signal?.aborted) throw new Error("QUERY_CANCELLED"); }));
   });
   return replacement ? { replacement } : { replacement: null, drafts };
 }

@@ -7,6 +7,8 @@ import {
 import {
   LIBRARY_CORE_TRANSACTION_MEMBER_SCHEMAS,
   constructLibraryCoreArchivedFriendMemberV1,
+  constructLibraryCoreHistoricalPreferencesMemberV1,
+  type PreferencesLeafAssignmentTransactionMemberInputV1,
   type FriendReplaceTransactionMemberInputV1,
   type FeedItemReadAssignmentTransactionMemberInputV1,
   type LibraryCoreConstructionDigestDomain,
@@ -21,6 +23,7 @@ import {
 import {
   assembleLibraryCoreTransactionV1,
   assembleLibraryCoreArchivedFriendV1,
+  assembleLibraryCoreHistoricalPreferencesV1,
   type LibraryCoreTransactionBodyV1,
 } from "./operation-transaction-contracts.js";
 import {
@@ -393,24 +396,35 @@ export async function verifyLibraryCoreOperationTransactionV1(
   acceptedActorState: unknown,
   dependencies: LibraryCoreOperationVerificationDependencies,
 ): Promise<LibraryCoreVerifiedOperationTransactionV1> {
-  return verifyOperationTransaction(envelopeBytes, acceptedActorState, dependencies, false);
+  return verifyOperationTransaction(envelopeBytes, acceptedActorState, dependencies, "fresh");
 }
 /** Archive inspection only. Its result never carries new-write verification provenance. */
 export type LibraryCoreArchivedOperationTransactionV1 = Pick<LibraryCoreVerifiedOperationTransactionV1,
   "transaction_body" | "transaction_digest" | "members" | "canonical_envelope_bytes">;
 
 export async function verifyLibraryCoreArchivedOperationTransactionV1(envelopeBytes: readonly Uint8Array[], acceptedActorState: unknown, dependencies: LibraryCoreOperationVerificationDependencies): Promise<LibraryCoreArchivedOperationTransactionV1> {
-  const verified = await verifyOperationTransaction(envelopeBytes, acceptedActorState, dependencies, true);
+  const verified = await verifyOperationTransaction(envelopeBytes, acceptedActorState, dependencies, "archive");
   // Deliberately omit the accepted actor state so the archive result cannot be
   // substituted for a new-write verification result even through its TS type.
   return Object.freeze({ transaction_body: verified.transaction_body, transaction_digest: verified.transaction_digest,
     members: verified.members, canonical_envelope_bytes: verified.canonical_envelope_bytes });
 }
+/**
+ * Authenticate canonical history with native-compatible preference policy.
+ * Callers must independently prove authority acceptance before materializing.
+ * Unlike archive inspection, this does not allow native-rejected Friend order.
+ */
+export async function verifyLibraryCoreHistoricalOperationTransactionV1(envelopeBytes: readonly Uint8Array[], acceptedActorState: unknown, dependencies: LibraryCoreOperationVerificationDependencies): Promise<LibraryCoreArchivedOperationTransactionV1> {
+  const verified = await verifyOperationTransaction(envelopeBytes, acceptedActorState, dependencies, "history");
+  return Object.freeze({ transaction_body: verified.transaction_body, transaction_digest: verified.transaction_digest,
+    members: verified.members, canonical_envelope_bytes: verified.canonical_envelope_bytes });
+}
+
 async function verifyOperationTransaction(
   envelopeBytes: readonly Uint8Array[],
   acceptedActorState: unknown,
   dependencies: LibraryCoreOperationVerificationDependencies,
-  archive: boolean,
+  mode: "fresh" | "archive" | "history",
 ): Promise<LibraryCoreVerifiedOperationTransactionV1> {
   const digestValue = dependencies.digest;
   const verifySignature = dependencies.verifySignature;
@@ -430,9 +444,13 @@ async function verifyOperationTransaction(
       `operation envelope[${index.toLocaleString()}]`,
     ),
   );
-  const archivedFriend = archive && decodedEnvelopes.length === 1 && decodedEnvelopes[0].operation_type === "friend_replace";
+  const archivedFriend = mode === "archive" && decodedEnvelopes.length === 1 && decodedEnvelopes[0].operation_type === "friend_replace";
+  const historicalPreferences = mode !== "fresh" && decodedEnvelopes.some(envelope => envelope.operation_type === "preferences_leaf_assignment");
   const memberConstructions = decodedEnvelopes.map((envelope) => {
     if (archivedFriend) return constructLibraryCoreArchivedFriendMemberV1(memberInputFromEnvelope(envelope) as FriendReplaceTransactionMemberInputV1, digestDependencies);
+    if (historicalPreferences && envelope.operation_type === "preferences_leaf_assignment") {
+      return constructLibraryCoreHistoricalPreferencesMemberV1(memberInputFromEnvelope(envelope) as PreferencesLeafAssignmentTransactionMemberInputV1, digestDependencies);
+    }
     const schema =
       typeof envelope.operation_type === "string" &&
       Object.hasOwn(
@@ -474,7 +492,7 @@ async function verifyOperationTransaction(
     );
   }
 
-  const assembled = (archivedFriend ? assembleLibraryCoreArchivedFriendV1 : assembleLibraryCoreTransactionV1)(
+  const assembled = (archivedFriend ? assembleLibraryCoreArchivedFriendV1 : historicalPreferences ? assembleLibraryCoreHistoricalPreferencesV1 : assembleLibraryCoreTransactionV1)(
     memberConstructions,
     actorState.previous_actor_chain_digest,
     digestDependencies,
@@ -541,6 +559,6 @@ async function verifyOperationTransaction(
     canonical_envelope_bytes: canonicalEnvelopeBytes,
     accepted_actor_state: actorState,
   });
-  if (!archive) VERIFIED_OPERATION_TRANSACTIONS.add(verified);
+  if (mode === "fresh") VERIFIED_OPERATION_TRANSACTIONS.add(verified);
   return verified;
 }

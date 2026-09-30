@@ -9,7 +9,7 @@ import {
   type LibraryCoreCanonicalValue, type LibraryCoreFollowerActorEnrollmentContextV2,
   type LibraryCoreStoreFollowerActorRequestV2,
 } from "@freed/shared/library-core";
-import { archivePwaFollowerRows, verifyPwaRecoveryArchive } from "./library-core-recovery-archive";
+import { archivePwaFollowerRowsWithStorageAdmission, verifyPwaRecoveryArchiveWithStorageAdmission } from "./library-core-recovery-archive";
 import { migratePwaLibraryRecoverySchema, readPwaLibraryStorageIdentity } from "./library-core-recovery-schema";
 import { verifyPwaFollowerActorRequest } from "./library-core-follower-request-proof";
 
@@ -128,6 +128,14 @@ export function readPwaConsumerRecoveryStatus(db: Database, authority: Authority
       pendingIntentCount: counts[0]![0], publishedIntentCount: counts[0]![1] });
   }
   if (readPwaLibraryStorageIdentity(db).schemaVersion === 1) return { state: "none" };
+  return readPwaExistingConsumerRecoveryStatus(db,authority);
+}
+
+/** Storage version is checked by the caller; retained recovery proofs stay mandatory. */
+export function readPwaExistingConsumerRecoveryStatus(db:Database,authority:Authority):LibraryCoreConsumerRecoveryStatusV1 {
+  const active=rows(db,`SELECT authority_epoch_id, actor_id, actor_public_key, enrollment_request_digest,
+    canonical_enrollment_request, created_at FROM library_follower_actor_request WHERE singleton_id=1 AND library_id=?1;`,[authority.library_id]);
+  if (active.length!==1 || active[0]![0]!==authority.epoch_id) throw new Error("consumer recovery enrollment is unavailable");
   const fences = rows(db, "SELECT phase FROM library_local_handoff WHERE singleton_id = 1;");
   if (fences.length === 0) return { state: "none" };
   const archive = rows(db, `SELECT archive.recovery_id, archive.pending_intent_count, archive.published_intent_count
@@ -151,7 +159,7 @@ export function readPwaConsumerRecoveryStatus(db: Database, authority: Authority
 }
 
 /** Retire only a completed prior cycle, in the transaction that creates its successor archive. */
-function retireCompletedConsumerCycle(db: Database, capi: CAPI, before: ReturnType<typeof candidate>, createdAt: number) {
+function retireCompletedConsumerCycle(db: Database, capi: CAPI, before: ReturnType<typeof candidate>, createdAt: number, admitStorage?: () => void) {
   const archives = rows(db, `SELECT archive.recovery_id FROM library_local_handoff AS handoff
     JOIN library_local_recovery_archives AS archive ON archive.library_id = handoff.library_id
       AND archive.predecessor_epoch_id = handoff.predecessor_epoch_id
@@ -169,7 +177,7 @@ function retireCompletedConsumerCycle(db: Database, capi: CAPI, before: ReturnTy
     throw new Error("previous consumer recovery receipt differs from the retained actor");
   }
   // Previous live rows have changed legitimately. Historical archive bytes must not have.
-  verifyPwaRecoveryArchive(db, capi, id, false);
+  verifyPwaRecoveryArchiveWithStorageAdmission(db, capi, id, false, admitStorage);
   db.exec({ sql: `DELETE FROM library_local_handoff WHERE singleton_id = 1
     AND installation_role = 'consumer' AND phase = 'following'
     AND library_id = ?1 AND successor_epoch_id = ?2 AND updated_at <= ?3;`,
@@ -180,6 +188,14 @@ function retireCompletedConsumerCycle(db: Database, capi: CAPI, before: ReturnTy
 /** Persist the archive and exact replacement request together, without clearing active slots. */
 export async function preparePwaConsumerRecovery(db: Database, capi: CAPI, subtle: SubtleCrypto, authority: Authority,
   recoveryId: string, input: LibraryCoreStoreFollowerActorRequestV2): Promise<void> {
+  return preparePwaConsumerRecoveryWithStorageAdmission(db, capi, subtle, authority, recoveryId, input);
+}
+
+/** Internal schema admission hook; successor proof, fencing and archive transaction stay shared. */
+export async function preparePwaConsumerRecoveryWithStorageAdmission(
+  db: Database, capi: CAPI, subtle: SubtleCrypto, authority: Authority,
+  recoveryId: string, input: LibraryCoreStoreFollowerActorRequestV2, admitStorage?: () => void,
+): Promise<void> {
   if (!isLibraryCoreLowercaseHex64(recoveryId)) throw new Error("consumer recovery identity is invalid");
   input = parseLibraryCoreStoreFollowerActorRequestV2(input);
   const before = candidate(db, authority);
@@ -198,11 +214,12 @@ export async function preparePwaConsumerRecovery(db: Database, capi: CAPI, subtl
   if (!db.pointer || capi.sqlite3_get_autocommit(db.pointer) !== 1) throw new Error("consumer recovery transaction is already active");
   db.transaction("IMMEDIATE", () => {
     if (candidate(db, authority).snapshot !== before.snapshot) throw new Error("consumer recovery changed during verification");
-    migratePwaLibraryRecoverySchema(db, capi);
+    if (admitStorage) admitStorage();
+    else migratePwaLibraryRecoverySchema(db, capi);
     const fences = rows(db, "SELECT installation_role, phase, handoff_id FROM library_local_handoff WHERE singleton_id = 1;");
     if (fences.length) {
       if (fences.length === 1 && fences[0]![0] === "consumer" && fences[0]![1] === "following") {
-        retireCompletedConsumerCycle(db, capi, before, verified.request.createdAt);
+        retireCompletedConsumerCycle(db, capi, before, verified.request.createdAt, admitStorage);
       } else {
         if (fences.length !== 1 || fences[0]![0] !== "consumer" || fences[0]![1] !== "recovery" || fences[0]![2] !== proof.handoffId) {
           throw new Error("consumer recovery cannot replace another lifecycle fence");
@@ -211,7 +228,7 @@ export async function preparePwaConsumerRecovery(db: Database, capi: CAPI, subtl
         if (retained.row[2] !== null || retained.row[1] !== sha256LowerHex(receipt) || retained.row[7] !== before.installation) {
           throw new Error("consumer recovery prepared replay changed");
         }
-        verifyPwaRecoveryArchive(db, capi, recoveryId, true);
+        verifyPwaRecoveryArchiveWithStorageAdmission(db, capi, recoveryId, true, admitStorage);
         return;
       }
     }
@@ -229,7 +246,7 @@ export async function preparePwaConsumerRecovery(db: Database, capi: CAPI, subtl
       VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7, ?8, ?9, ?10, ?11);`,
       bind: [recoveryId, authority.library_id, text(before.old[1]), authority.epoch_id, text(before.old[2]),
         LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256, "0".repeat(64), verified.request.createdAt, receipt, sha256LowerHex(receipt), before.installation] });
-    archivePwaFollowerRows(db, capi, recoveryId);
+    archivePwaFollowerRowsWithStorageAdmission(db, capi, recoveryId, admitStorage);
     if (archivedRequest(db, recoveryId).row[1] !== sha256LowerHex(receipt)) throw new Error("consumer recovery receipt readback changed");
   });
 }
@@ -237,6 +254,15 @@ export async function preparePwaConsumerRecovery(db: Database, capi: CAPI, subtl
 /** Explicitly retire archived slots and install the persisted request in one transaction. */
 export async function commitPwaConsumerRecovery(db: Database, capi: CAPI, subtle: SubtleCrypto, authority: Authority,
   recoveryId: string, committedAt: number): Promise<void> {
+  return commitPwaConsumerRecoveryWithLocalProjection(db,capi,subtle,authority,recoveryId,committedAt);
+}
+
+/** Internal storage adapter hook. Proof verification and archive checks stay shared. */
+export async function commitPwaConsumerRecoveryWithLocalProjection(
+  db: Database, capi: CAPI, subtle: SubtleCrypto, authority: Authority,
+  recoveryId: string, committedAt: number,
+  projection?: { before(): void; admitArchiveStorage(): void; after(fresh: boolean): void },
+): Promise<void> {
   if (!isLibraryCoreLowercaseHex64(recoveryId) || !isLibraryCoreNonnegativeSafeInteger(committedAt)) throw new Error("consumer recovery commit identity is invalid");
   const before = archivedRequest(db, recoveryId);
   const verified = await verifyPwaFollowerActorRequest(before.input, authority, subtle);
@@ -256,6 +282,7 @@ export async function commitPwaConsumerRecovery(db: Database, capi: CAPI, subtle
   }
   if (!db.pointer || capi.sqlite3_get_autocommit(db.pointer) !== 1) throw new Error("consumer recovery transaction is already active");
   db.transaction("IMMEDIATE", () => {
+    projection?.before();
     selected(db, authority);
     const current = archivedRequest(db, recoveryId);
     if (JSON.stringify(current.row) !== JSON.stringify(before.row) || (old && candidate(db, authority).snapshot !== old.snapshot)) {
@@ -268,7 +295,7 @@ export async function commitPwaConsumerRecovery(db: Database, capi: CAPI, subtle
     if (fence.length !== 1 || fence[0]![0] !== (pending ? "recovery" : "following") || integer(fence[0]![1]) > committedAt) {
       throw new Error("consumer recovery lifecycle changed");
     }
-    verifyPwaRecoveryArchive(db, capi, recoveryId, pending);
+    verifyPwaRecoveryArchiveWithStorageAdmission(db, capi, recoveryId, pending, projection?.admitArchiveStorage);
     if (pending) {
       db.exec(`DELETE FROM library_optimistic_fields;
         DELETE FROM library_result_transport_segments; DELETE FROM library_result_transport_heads;
@@ -288,5 +315,6 @@ export async function commitPwaConsumerRecovery(db: Database, capi: CAPI, subtle
       FROM library_follower_actor_request WHERE singleton_id = 1 AND library_id = ?1 AND authority_epoch_id = ?2;`, [authority.library_id, authority.epoch_id]);
     if (JSON.stringify(active) !== JSON.stringify([[enrollment.actor_id, enrollment.actor_public_key, verified.requestDigest,
       request.canonicalEnrollmentRequestJson, verified.request.createdAt]])) throw new Error("consumer recovery commit readback changed");
+    projection?.after(pending);
   });
 }

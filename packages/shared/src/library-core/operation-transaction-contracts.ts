@@ -29,7 +29,7 @@ import type {
   LibraryCoreOperationDigestDependencies,
   LibraryCoreTransactionMemberConstruction,
 } from "./operation-envelope-contracts.js";
-import { isLibraryCoreTransactionMemberConstruction, isLibraryCoreArchivedFriendMemberV1 } from "./operation-envelope-contracts.js";
+import { isLibraryCoreTransactionMemberConstruction, isLibraryCoreArchivedFriendMemberV1, isLibraryCoreHistoricalPreferencesMemberV1 } from "./operation-envelope-contracts.js";
 
 const ASSEMBLED_LIBRARY_CORE_TRANSACTIONS = new WeakSet<object>();
 
@@ -268,15 +268,21 @@ export function assembleLibraryCoreTransactionV1(members: readonly LibraryCoreTr
 /** Derive historical digests with the same algorithm, but never permit finalization. */
 export function assembleLibraryCoreArchivedFriendV1(members: readonly LibraryCoreTransactionMemberConstruction[], initialPreviousActorChainDigest: unknown, dependencies: LibraryCoreOperationDigestDependencies): LibraryCoreAssembledTransactionV1 {
   if (members.length !== 1) throw new TypeError("Archived Friend must contain one member");
-  return assembleTransaction(members, initialPreviousActorChainDigest, dependencies, true);
+  return assembleTransaction(members, initialPreviousActorChainDigest, dependencies, "friend");
+}
+/** Recompute historical preferences using the canonical algorithm, without signing provenance. */
+export function assembleLibraryCoreHistoricalPreferencesV1(members: readonly LibraryCoreTransactionMemberConstruction[], initialPreviousActorChainDigest: unknown, dependencies: LibraryCoreOperationDigestDependencies): LibraryCoreAssembledTransactionV1 {
+  return assembleTransaction(members, initialPreviousActorChainDigest, dependencies, "preferences");
 }
 function assembleTransaction(
   members: readonly LibraryCoreTransactionMemberConstruction[],
   initialPreviousActorChainDigest: unknown,
   dependencies: LibraryCoreOperationDigestDependencies,
-  archivedFriend: boolean,
+  historical: "friend" | "preferences" | false,
 ): LibraryCoreAssembledTransactionV1 {
-  const trustedMember = archivedFriend ? isLibraryCoreArchivedFriendMemberV1 : isLibraryCoreTransactionMemberConstruction;
+  const trustedMember = historical === "friend" ? isLibraryCoreArchivedFriendMemberV1
+    : historical === "preferences" ? (value: unknown) => isLibraryCoreHistoricalPreferencesMemberV1(value) || isLibraryCoreTransactionMemberConstruction(value)
+    : isLibraryCoreTransactionMemberConstruction;
   const digestValue = dependencies.digest;
   if (typeof digestValue !== "function") {
     throw new TypeError("transaction digest dependency must be callable");
@@ -404,6 +410,6 @@ function assembleTransaction(
     members: Object.freeze(signingMembers),
     canonical_member_bytes: canonicalMemberBytes,
   });
-  if (!archivedFriend) ASSEMBLED_LIBRARY_CORE_TRANSACTIONS.add(assembled);
+  if (!historical) ASSEMBLED_LIBRARY_CORE_TRANSACTIONS.add(assembled);
   return assembled;
 }

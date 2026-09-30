@@ -1132,65 +1132,123 @@ mod tests {
     }
 
     #[test]
-    fn public_recovered_browser_vector_matches_native_checkpoint_frontiers() {
+    fn public_browser_vectors_match_native_checkpoint_frontiers() {
         // One public signed vector is consumed by both runtimes. Keep historical
         // envelopes intact while checking the current export frontier contract.
-        let vector: Value = serde_json::from_str(include_str!(
-            "../../shared/src/library-core/native-recovered-browser-vector-v1.json"
-        ))
-        .unwrap();
-        let baseline: NormalizedCheckpointExportDescriptorV2 =
-            serde_json::from_value(vector["baseline"].clone()).unwrap();
-        let records: Vec<NormalizedCheckpointRecordV2> =
-            serde_json::from_value(vector["baselineRecords"].clone()).unwrap();
-        let mut connection = fixture();
-        begin_normalized_checkpoint_stage_v2(
-            &connection,
-            &BeginNormalizedCheckpointStageV2 {
-                stage_id: "browser-vector".into(),
-                library_id: baseline.library_id.clone(),
-                authority_epoch: baseline.authority_epoch.clone(),
-                source_revision: baseline.source_revision,
-                expected_record_count: records.len(),
-                created_at: 2200,
-            },
-        )
-        .unwrap();
-        append_normalized_checkpoint_stage_page_v2(&mut connection, "browser-vector", &records)
+        for wire in [
+            include_str!("../../shared/src/library-core/native-recovered-browser-vector-v1.json"),
+            include_str!(
+                "../../shared/src/library-core/historical-native-preference-vector-v1.json"
+            ),
+        ] {
+            let vector: Value = serde_json::from_str(wire).unwrap();
+            let baseline: NormalizedCheckpointExportDescriptorV2 =
+                serde_json::from_value(vector["baseline"].clone()).unwrap();
+            let records: Vec<NormalizedCheckpointRecordV2> =
+                serde_json::from_value(vector["baselineRecords"].clone()).unwrap();
+            let mut connection = fixture();
+            begin_normalized_checkpoint_stage_v2(
+                &connection,
+                &BeginNormalizedCheckpointStageV2 {
+                    stage_id: "browser-vector".into(),
+                    library_id: baseline.library_id.clone(),
+                    authority_epoch: baseline.authority_epoch.clone(),
+                    source_revision: baseline.source_revision,
+                    expected_record_count: records.len(),
+                    created_at: 2200,
+                },
+            )
             .unwrap();
-        finalize_normalized_checkpoint_stage_v2(&mut connection, "browser-vector").unwrap();
-        assert_eq!(
-            describe_normalized_checkpoint_export_v2(&connection).unwrap(),
-            baseline
-        );
-        for page in vector["operationPages"].as_array().unwrap() {
-            let input = serde_json::from_value(page.clone()).unwrap();
-            crate::import_normalized_operation_page_v2(&mut connection, &input).unwrap();
-            crate::import_normalized_operation_page_v2(&mut connection, &input).unwrap();
-        }
-        let expected: NormalizedCheckpointExportDescriptorV2 =
-            serde_json::from_value(vector["expected"].clone()).unwrap();
-        assert_eq!(
-            describe_normalized_checkpoint_export_v2(&connection).unwrap(),
-            expected
-        );
-        let mut records = Vec::new();
-        let mut request = NormalizedCheckpointExportRequestV2 {
-            maximum_records: 3,
-            ..Default::default()
-        };
-        loop {
-            let page = export_normalized_checkpoint_page_v2(&connection, &request).unwrap();
-            records.extend(page.records);
-            if page.done {
-                break;
+            append_normalized_checkpoint_stage_page_v2(&mut connection, "browser-vector", &records)
+                .unwrap();
+            finalize_normalized_checkpoint_stage_v2(&mut connection, "browser-vector").unwrap();
+            let mut current_baseline = baseline.clone();
+            if vector["sourceCommit"] == "17743c0e074b2b8ca27ff1c560a76854984410d7" {
+                // The published source included zero-counter enrollment in its
+                // frontier. Current readers carry the authenticated predecessor
+                // frontier until accepted work exists. Keep the old descriptor.
+                assert_eq!(baseline.source_revision, 0);
+                assert_eq!(
+                    connection
+                        .query_row(
+                            "SELECT max(accepted_counter) FROM library_actors;",
+                            [],
+                            |row| row.get::<_, i64>(0)
+                        )
+                        .unwrap(),
+                    0
+                );
+                assert_eq!(
+                    normalized_checkpoint_digest_v2(&records).unwrap(),
+                    vector["baselineCheckpointDigest"].as_str().unwrap()
+                );
+                current_baseline.causal_frontier_digest = records
+                    .iter()
+                    .find(|record| record.registry_key == "01_authority_epoch")
+                    .unwrap()
+                    .payload["checkpointFrontierDigest"]
+                    .as_str()
+                    .unwrap()
+                    .to_owned();
+                assert_ne!(
+                    current_baseline.causal_frontier_digest,
+                    baseline.causal_frontier_digest
+                );
             }
-            request.after = page.next_cursor;
+            assert_eq!(
+                describe_normalized_checkpoint_export_v2(&connection).unwrap(),
+                current_baseline
+            );
+            for page in vector["operationPages"].as_array().unwrap() {
+                let input = serde_json::from_value(page.clone()).unwrap();
+                crate::import_normalized_operation_page_v2(&mut connection, &input).unwrap();
+                crate::import_normalized_operation_page_v2(&mut connection, &input).unwrap();
+            }
+            if let Some(original) = vector["canonicalResultJson"].as_str() {
+                let stored: Vec<u8> = connection
+                    .query_row(
+                        "SELECT canonical_result FROM library_operation_replication_results;",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .unwrap();
+                assert_eq!(stored, original.as_bytes());
+                let envelope: Vec<u8> = connection
+                    .query_row(
+                        "SELECT canonical_envelope FROM library_operations;",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .unwrap();
+                assert_eq!(
+                    envelope,
+                    vector["envelopes"][0].as_str().unwrap().as_bytes()
+                );
+            }
+            let expected: NormalizedCheckpointExportDescriptorV2 =
+                serde_json::from_value(vector["expected"].clone()).unwrap();
+            assert_eq!(
+                describe_normalized_checkpoint_export_v2(&connection).unwrap(),
+                expected
+            );
+            let mut records = Vec::new();
+            let mut request = NormalizedCheckpointExportRequestV2 {
+                maximum_records: 3,
+                ..Default::default()
+            };
+            loop {
+                let page = export_normalized_checkpoint_page_v2(&connection, &request).unwrap();
+                records.extend(page.records);
+                if page.done {
+                    break;
+                }
+                request.after = page.next_cursor;
+            }
+            assert_eq!(
+                normalized_checkpoint_digest_v2(&records).unwrap(),
+                vector["expectedCheckpointDigest"].as_str().unwrap()
+            );
         }
-        assert_eq!(
-            normalized_checkpoint_digest_v2(&records).unwrap(),
-            vector["expectedCheckpointDigest"].as_str().unwrap()
-        );
     }
 
     #[test]
@@ -2832,6 +2890,145 @@ mod tests {
                 .unwrap()
                 .staged_record_count,
             page.records.len()
+        );
+    }
+    // Dormant schema contract only: no application open or migration invokes this SQL yet.
+    #[test]
+    fn dormant_preference_projection_schema_preserves_intent_lifetimes() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        connection.execute_batch("PRAGMA foreign_keys=ON;
+            CREATE TABLE library_intent_actors(actor_id TEXT PRIMARY KEY);
+            CREATE TABLE library_intent_members(transaction_id TEXT,member_index INTEGER,actor_id TEXT,actor_counter INTEGER,
+                PRIMARY KEY(transaction_id,member_index),UNIQUE(actor_id,actor_counter));
+            INSERT INTO library_intent_actors VALUES('actor');
+            INSERT INTO library_intent_members VALUES('first',0,'actor',1),('second',0,'actor',2);").unwrap();
+        let sql = include_str!("normalized_local_preferences_schema_v3.sql");
+        {
+            let tx = connection.transaction().unwrap();
+            tx.execute_batch(sql).unwrap();
+            // A crash or failed backfill initialization cannot leave half a catalog.
+        }
+        assert_eq!(connection.query_row("SELECT count(*) FROM sqlite_schema WHERE name LIKE 'library_local_preference%';", [], |r|r.get::<_,i64>(0)).unwrap(),0);
+        connection.execute_batch(sql).unwrap();
+        connection
+            .execute(
+                "INSERT INTO library_local_preference_projection VALUES(1,'actor',0,2,NULL,printf('%064d',0));",
+                [],
+            )
+            .unwrap();
+        assert!(connection
+            .execute(
+                "UPDATE library_local_preference_projection SET last_counter=3;",
+                []
+            )
+            .is_err());
+        let insert = "INSERT INTO library_local_preference_nodes(transaction_id,member_index,actor_id,actor_counter,path,node_kind,value_type,integer_value,updated_at)
+            VALUES(?1,0,'actor',?2,'$.friendSuggestions.dismissedSuggestionIds','array','integer',1,10);";
+        connection.execute(insert, params!["first", 1]).unwrap();
+        connection.execute(insert, params!["second", 2]).unwrap();
+        assert!(connection.execute(insert, params!["missing", 3]).is_err());
+        assert!(connection
+            .execute(
+                "UPDATE library_local_preference_nodes SET boolean_value=1;",
+                []
+            )
+            .is_err());
+        assert!(connection
+            .execute(
+                "UPDATE library_local_preference_nodes SET integer_value=512;",
+                []
+            )
+            .is_err());
+        assert!(connection
+            .execute(
+                "UPDATE library_local_preference_nodes SET path='caller sql';",
+                []
+            )
+            .is_err());
+        // A later object merge does not erase an earlier non-object replacement barrier.
+        connection.execute_batch("INSERT INTO library_local_preference_nodes(transaction_id,member_index,actor_id,actor_counter,path,node_kind,value_type,integer_value,updated_at)
+          VALUES('first',0,'actor',1,'$.parent','value','integer',1,10);
+          INSERT INTO library_local_preference_nodes(transaction_id,member_index,actor_id,actor_counter,path,node_kind,value_type,updated_at)
+          VALUES('second',0,'actor',2,'$.parent','object','null',11);").unwrap();
+        let program = |id| {
+            crate::sqlite_contract_generated::PENDING_PREFERENCE_QUERY_PROGRAMS
+                .iter()
+                .find(|(name, _)| *name == id)
+                .unwrap()
+                .1
+        };
+        assert_eq!(
+            connection
+                .query_row(
+                    program("latest_node_v1"),
+                    params!["actor", "$.parent"],
+                    |r| r.get::<_, i64>(2)
+                )
+                .unwrap(),
+            2
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    program("replacement_barrier_v1"),
+                    params!["actor", "$.parent"],
+                    |r| r.get::<_, i64>(0)
+                )
+                .unwrap(),
+            1
+        );
+        for (id, index) in [
+            ("latest_node_v1", "library_local_preference_node_lookup"),
+            (
+                "replacement_barrier_v1",
+                "library_local_preference_replacement_lookup",
+            ),
+        ] {
+            let plan = connection
+                .prepare(&format!("EXPLAIN QUERY PLAN {}", program(id)))
+                .unwrap()
+                .query_map(params!["actor", "$.parent"], |r| r.get::<_, String>(3))
+                .unwrap()
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .unwrap()
+                .join(" ");
+            assert!(plan.contains(index), "{plan}");
+            assert!(!plan.contains("TEMP B-TREE"), "{plan}");
+        }
+        let newest = "SELECT actor_counter FROM library_local_preference_nodes INDEXED BY library_local_preference_node_lookup WHERE actor_id='actor' AND path='$.friendSuggestions.dismissedSuggestionIds' ORDER BY actor_counter DESC LIMIT 1;";
+        assert_eq!(
+            connection
+                .query_row(newest, [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            2
+        );
+        connection
+            .execute(
+                "DELETE FROM library_intent_members WHERE transaction_id='second';",
+                [],
+            )
+            .unwrap();
+        assert_eq!(
+            connection
+                .query_row(newest, [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+        connection
+            .execute(
+                "DELETE FROM library_intent_actors WHERE actor_id='actor';",
+                [],
+            )
+            .unwrap();
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT count(*) FROM library_local_preference_projection",
+                    [],
+                    |r| r.get::<_, i64>(0)
+                )
+                .unwrap(),
+            0
         );
     }
 }

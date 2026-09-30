@@ -1,5 +1,5 @@
 import { createHash, webcrypto } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   createLibraryCoreNormalizedCheckpointRecordV2,
   createLibraryCoreImmutableObjectKey,
@@ -17,6 +17,7 @@ import {
 import {
   importLibraryCoreNormalizedCheckpointV2,
   stageLibraryCoreNormalizedCheckpointV2,
+  catchUpLibraryCorePredecessorCheckpointV1,
   prepareLibraryCoreNormalizedCheckpointPagesV2,
   publishLibraryCoreNormalizedCheckpointV2,
   reassignLibraryCoreNormalizedCheckpointV2,
@@ -415,6 +416,47 @@ describe("normalized checkpoint publication", () => {
         return { ...await stagingInput.runtime.appendPage(page), stagedCanonicalBytes: 0 };
       },
     } })).rejects.toThrow("staging receipt does not match");
+    const reference = { purpose: "predecessor_checkpoint_read" as const, pointer: published.controlPointer,
+      controlRevision: '"signed-revision"', controlFileId: "control-1", checkpointDigest: expectedSummary.checkpointDigest,
+      sourceRevision: 7, successorEpochId: "f".repeat(64), authorizationDigest: "a".repeat(64) };
+    const prepare = vi.fn(async () => reference as typeof reference | null);
+    const activate = vi.fn(async () => ({ stageId: staged.stageId, libraryId, authorityEpoch,
+      sourceRevision: 7, ...expectedSummary }));
+    const readImmutable = vi.fn(adapter.readImmutable.bind(adapter));
+    const catchup = { adapter: { readImmutable }, subtle, successorStageId: "successor-stage", installedAt: 2500,
+      assertActive: () => {}, runtime: { ...stagingInput.runtime, prepare, activate } };
+    prepare.mockResolvedValueOnce(null);
+    await catchUpLibraryCorePredecessorCheckpointV1(catchup);
+    expect(readImmutable).not.toHaveBeenCalled();
+    expect(activate).not.toHaveBeenCalled();
+    prepare.mockResolvedValueOnce({ ...reference, checkpointDigest: "0".repeat(64) as LibraryCoreLowercaseHex64 });
+    await expect(catchUpLibraryCorePredecessorCheckpointV1(catchup)).rejects.toThrow("differs from signed consent");
+    expect(activate).not.toHaveBeenCalled();
+    let canceled = false;
+    await expect(catchUpLibraryCorePredecessorCheckpointV1({ ...catchup,
+      assertActive: () => { if (canceled) throw new Error("canceled"); }, runtime: { ...catchup.runtime,
+        async appendPage(page) { const result = await stagingInput.runtime.appendPage(page); canceled = true; return result; },
+      },
+    })).rejects.toThrow("canceled");
+    expect(activate).not.toHaveBeenCalled();
+    for (const reason of ["expired token", "missing immutable checkpoint"]) {
+      await expect(catchUpLibraryCorePredecessorCheckpointV1({ ...catchup,
+        adapter: { async readImmutable() { throw new Error(reason); } },
+      })).rejects.toThrow(reason);
+      expect(activate).not.toHaveBeenCalled();
+    }
+    await catchUpLibraryCorePredecessorCheckpointV1(catchup);
+    expect(activate).toHaveBeenCalledOnce();
+    expect(activate).toHaveBeenCalledWith(expect.objectContaining({ stageId: staged.stageId, replaceExisting: true,
+      followerReceipt: expect.objectContaining({ controlRevision: reference.controlRevision,
+        manifestContentDigest: published.manifest.descriptor.contentDigest }) }), "successor-stage");
+    // A lost commit response retries from durable runtime state, with no second download.
+    activate.mockRejectedValueOnce(new Error("response lost"));
+    await expect(catchUpLibraryCorePredecessorCheckpointV1(catchup)).rejects.toThrow("response lost");
+    readImmutable.mockClear();
+    prepare.mockResolvedValueOnce(null);
+    await catchUpLibraryCorePredecessorCheckpointV1(catchup);
+    expect(readImmutable).not.toHaveBeenCalled();
     expect(importedRecords).toEqual(records);
     expect(JSON.stringify(importedRecords)).not.toContain("shell");
   });

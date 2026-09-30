@@ -43,6 +43,12 @@ pub const NORMALIZED_NATIVE_SCHEMA_SHA256: &str =
     "8d73df0aaceb54467284af7be396d4a7127db93b592ca11a469c5153deaf4af9";
 pub const NORMALIZED_NATIVE_SCHEMA_EXTENSION_SQL: &str =
     include_str!("normalized_native_schema_v2.sql");
+/// Dormant definitions; no open or migration route activates this extension yet.
+pub const PENDING_PREFERENCE_STORAGE_SCHEMA_VERSION: u32 = 3;
+pub const PENDING_PREFERENCE_SCHEMA_SHA256: &str =
+    "5ef10502dc142aa63c3b33a8cd84c96c930a02e7f380d0efcb6e8a0f542a53fa";
+pub const PENDING_PREFERENCE_SCHEMA_EXTENSION_SQL: &str =
+    include_str!("normalized_local_preferences_schema_v3.sql");
 pub const NORMALIZED_SCHEMA_SHA256: &str =
     "aaa181e3306dece6e7c385f6be6c6c3e6feffdcb8aeb4a9cb7212f599ae99c0f";
 pub const NORMALIZED_SCHEMA_SQL: &str =
@@ -706,8 +712,20 @@ pub const SQLITE_LOCAL_MUTATION_PROGRAMS: &[(&str, usize, &str, &str, &str)] = &
     ("person_graph_position_set_v1", 1, "Person", "SELECT EXISTS(SELECT 1 FROM library_persons WHERE id = ?1 COLLATE BINARY);", "INSERT INTO library_device_person_graph_layout (person_id, graph_x, graph_y, updated_at) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(person_id) DO UPDATE SET graph_x = excluded.graph_x, graph_y = excluded.graph_y, updated_at = excluded.updated_at WHERE graph_x IS NOT excluded.graph_x OR graph_y IS NOT excluded.graph_y OR updated_at IS NOT excluded.updated_at;"),
 ];
 
+pub const PENDING_PREFERENCE_QUERY_PROGRAMS: &[(&str, &str)] = &[
+    ("array_nodes_v1", "SELECT path,node_kind,value_type,boolean_value,integer_value,real_value,text_value,updated_at FROM library_local_preference_nodes WHERE transaction_id=?1 AND member_index=?2 AND path>=?3 COLLATE BINARY AND path<?4 COLLATE BINARY ORDER BY path LIMIT 513;"),
+    ("latest_node_v1", "SELECT transaction_id,member_index,actor_counter,path,node_kind,value_type,boolean_value,integer_value,real_value,text_value,updated_at FROM library_local_preference_nodes INDEXED BY library_local_preference_node_lookup WHERE actor_id=?1 AND path=?2 COLLATE BINARY ORDER BY actor_counter DESC LIMIT 1;"),
+    ("replacement_barrier_v1", "SELECT actor_counter FROM library_local_preference_nodes INDEXED BY library_local_preference_replacement_lookup WHERE actor_id=?1 AND path=?2 COLLATE BINARY AND node_kind<>'object' ORDER BY actor_counter DESC LIMIT 1;"),
+    ("source_v1", "SELECT g.generation_id,m.source_revision,c.sequence,p.actor_id,p.last_counter FROM library_meta m JOIN library_materialization_generation g ON g.singleton_id=1 JOIN library_local_change_state c ON c.singleton_id=1 JOIN library_local_preference_projection p ON p.singleton_id=1 JOIN library_intent_actors i ON i.actor_id=p.actor_id JOIN library_follower_actor_request r ON r.singleton_id=1 AND r.actor_id=p.actor_id AND r.library_id=m.library_id AND r.authority_epoch_id=m.authority_epoch WHERE m.singleton_id=1 AND p.last_counter=p.target_counter AND i.next_counter=p.last_counter+1 AND p.previous_operation_id IS i.previous_operation_id AND p.previous_chain_digest=i.previous_chain_digest;"),
+    ("selection_ancestors_v1", "SELECT fullkey FROM json_tree(?1) WHERE type='object' AND fullkey<>'$' ORDER BY id LIMIT 33;"),
+    ("pending_object_extras_v1", "SELECT path FROM library_local_preference_nodes INDEXED BY library_local_preference_node_lookup WHERE actor_id=?1 AND path >= (?2 || '.') COLLATE BINARY AND path < (?2 || '/') COLLATE BINARY AND actor_counter>=?3 AND path <> (?2 || '.bits') AND NOT (path >= (?2 || '.bits' || '.') COLLATE BINARY AND path < (?2 || '.bits' || '/') COLLATE BINARY) AND NOT (path >= (?2 || '.bits' || '[') COLLATE BINARY AND path < (?2 || '.bits' || '\\') COLLATE BINARY) AND path <> (?2 || '.codec') AND NOT (path >= (?2 || '.codec' || '.') COLLATE BINARY AND path < (?2 || '.codec' || '/') COLLATE BINARY) AND NOT (path >= (?2 || '.codec' || '[') COLLATE BINARY AND path < (?2 || '.codec' || '\\') COLLATE BINARY) LIMIT 1;"),
+    ("canonical_object_extras_v1", "SELECT path FROM library_preferences WHERE path >= (?1 || ?2 || '.') COLLATE BINARY AND path < (?1 || ?2 || '/') COLLATE BINARY AND path <> ((?1 || ?2) || '.bits') AND NOT (path >= ((?1 || ?2) || '.bits' || '.') COLLATE BINARY AND path < ((?1 || ?2) || '.bits' || '/') COLLATE BINARY) AND NOT (path >= ((?1 || ?2) || '.bits' || '[') COLLATE BINARY AND path < ((?1 || ?2) || '.bits' || '\\') COLLATE BINARY) AND path <> ((?1 || ?2) || '.codec') AND NOT (path >= ((?1 || ?2) || '.codec' || '.') COLLATE BINARY AND path < ((?1 || ?2) || '.codec' || '/') COLLATE BINARY) AND NOT (path >= ((?1 || ?2) || '.codec' || '[') COLLATE BINARY AND path < ((?1 || ?2) || '.codec' || '\\') COLLATE BINARY) LIMIT 1;"),
+];
+
 pub const SQLITE_LOCAL_RECONCILIATION_PROGRAMS: &[(&str, &str)] = &[
     ("content_checkpoint_reconcile_v1", "DELETE FROM library_device_content_policies WHERE NOT EXISTS (SELECT 1 FROM library_blobs AS blob WHERE blob.content_digest = library_device_content_policies.content_digest); DELETE FROM library_device_content_ranges WHERE NOT EXISTS (SELECT 1 FROM library_content_ranges AS range WHERE range.content_digest = library_device_content_ranges.content_digest AND range.range_index = library_device_content_ranges.range_index AND range.byte_length = library_device_content_ranges.verified_byte_length AND range.range_digest = library_device_content_ranges.verified_range_digest); DELETE FROM library_device_content_availability WHERE NOT EXISTS (SELECT 1 FROM library_blobs AS blob WHERE blob.content_digest = library_device_content_availability.content_digest); UPDATE library_device_content_availability SET hydration_state = 'partially_cached', verified_bytes = COALESCE((SELECT sum(local.verified_byte_length) FROM library_device_content_ranges AS local WHERE local.content_digest = library_device_content_availability.content_digest), 0), complete_digest_verified_at = NULL WHERE complete_digest_verified_at IS NOT NULL AND EXISTS (SELECT 1 FROM library_blobs AS blob WHERE blob.content_digest = library_device_content_availability.content_digest AND (blob.byte_length IS NOT COALESCE((SELECT sum(local.verified_byte_length) FROM library_device_content_ranges AS local WHERE local.content_digest = blob.content_digest), 0) OR blob.range_count IS NOT (SELECT count(*) FROM library_device_content_ranges AS local WHERE local.content_digest = blob.content_digest))); UPDATE library_device_content_availability SET verified_bytes = COALESCE((SELECT sum(local.verified_byte_length) FROM library_device_content_ranges AS local WHERE local.content_digest = library_device_content_availability.content_digest), 0) WHERE complete_digest_verified_at IS NULL AND verified_bytes IS NOT COALESCE((SELECT sum(local.verified_byte_length) FROM library_device_content_ranges AS local WHERE local.content_digest = library_device_content_availability.content_digest), 0); DELETE FROM library_device_content_availability WHERE complete_digest_verified_at IS NULL AND verified_bytes = 0;"),
+    ("pending_preferences_added_v1", "UPDATE library_local_change_state SET sequence = sequence + 1 WHERE singleton_id = 1; INSERT INTO library_local_invalidations (sequence, topic, entity_id, reason) VALUES (COALESCE((SELECT sequence FROM library_local_change_state WHERE singleton_id = 1), 0), 'preferences', 'preferences', 'optimistic_added'); DELETE FROM library_local_invalidations WHERE sequence <= (SELECT sequence - 4096 FROM library_local_change_state WHERE singleton_id = 1);"),
+    ("pending_preferences_removed_v1", "UPDATE library_local_change_state SET sequence = sequence + 1 WHERE singleton_id = 1; INSERT INTO library_local_invalidations (sequence, topic, entity_id, reason) VALUES (COALESCE((SELECT sequence FROM library_local_change_state WHERE singleton_id = 1), 0), 'preferences', 'preferences', 'optimistic_removed'); DELETE FROM library_local_invalidations WHERE sequence <= (SELECT sequence - 4096 FROM library_local_change_state WHERE singleton_id = 1);"),
 ];
 
 pub const SQLITE_CONTENT_WORK_PROGRAMS: &[(&str, &str)] = &[
@@ -755,8 +773,12 @@ pub const QUERY_IDS: &[&str] = &[
     "person_root_v1",
     "person_timeline_v1",
     "persons_graph_v1",
+    "preference_scope_v1",
+    "preference_value_v1",
+    "preferences_revision_v1",
     "preferences_snapshot_v1",
     "provider_media_page_v1",
+    "ranking_weight_scope_v1",
     "recovery_archive_page_v1",
     "recovery_intent_page_v1",
     "recovery_intent_review_v1",
@@ -878,6 +900,13 @@ pub const SQLITE_QUERY_PROGRAMS: &[SqliteQueryProgram] = &[
     SqliteQueryProgram { query_id: "preferences_snapshot_v1", maximum_scan_rows: 513, sql: "SELECT path, value_type AS valueType, boolean_value AS booleanValue, integer_value AS integerValue, real_value AS realValue, text_value AS textValue, updated_at AS updatedAt FROM library_preferences ORDER BY path COLLATE BINARY LIMIT 513;", reverse_sql: None, count_sql: "SELECT count(*) FROM library_preferences;", variants: &[
 
     ] },
+    SqliteQueryProgram { query_id: "preference_value_v1", maximum_scan_rows: 513, sql: "SELECT substr(path, 1, 2) || '$._' || substr(path, length(?1) + 3) AS path, value_type AS valueType, boolean_value AS booleanValue, integer_value AS integerValue, real_value AS realValue, text_value AS textValue, updated_at AS updatedAt FROM library_preferences WHERE path IN ('v:' || ?1, 'a:' || ?1, 'o:' || ?1) ORDER BY path COLLATE BINARY LIMIT 3;", reverse_sql: Some("SELECT fullkey FROM json_tree(?1) WHERE type = 'null' LIMIT 2;"), count_sql: "SELECT count(*) FROM library_preferences WHERE path IN ('v:' || ?1, 'a:' || ?1, 'o:' || ?1);", variants: &[
+        SqliteQueryVariant { variant_id: "selection_path", sql: "SELECT fullkey FROM json_tree(?1) WHERE type = 'null' LIMIT 2;", reverse_sql: "SELECT fullkey FROM json_tree(?1) WHERE type = 'null' LIMIT 2;" },
+        SqliteQueryVariant { variant_id: "descendants", sql: "SELECT substr(path, 1, 2) || '$._' || substr(path, length(?1) + 3) AS path, value_type AS valueType, boolean_value AS booleanValue, integer_value AS integerValue, real_value AS realValue, text_value AS textValue, updated_at AS updatedAt FROM library_preferences WHERE path >= ?2 COLLATE BINARY AND path < ?3 COLLATE BINARY ORDER BY path COLLATE BINARY LIMIT ?4;", reverse_sql: "SELECT substr(path, 1, 2) || '$._' || substr(path, length(?1) + 3) AS path, value_type AS valueType, boolean_value AS booleanValue, integer_value AS integerValue, real_value AS realValue, text_value AS textValue, updated_at AS updatedAt FROM library_preferences WHERE path >= ?2 COLLATE BINARY AND path < ?3 COLLATE BINARY ORDER BY path COLLATE BINARY LIMIT ?4;" },
+    ] },
+    SqliteQueryProgram { query_id: "ranking_weight_scope_v1", maximum_scan_rows: 65, sql: "SELECT CAST(selection.key AS INTEGER) AS ordinal, leaf.fullkey AS path FROM json_each(?1) AS selection, json_tree(selection.value) AS leaf WHERE leaf.type = 'null' ORDER BY ordinal LIMIT 65;", reverse_sql: None, count_sql: "SELECT json_array_length(?1);", variants: &[
+
+    ] },
     SqliteQueryProgram { query_id: "provider_media_page_v1", maximum_scan_rows: 65, sql: "SELECT item.global_id AS globalId, item.platform, item.content_type AS contentType, item.published_at AS publishedAt, item.captured_at AS capturedAt, nullif(substr(item.author_id, 1, 1024), '') AS authorId, nullif(substr(item.author_display_name, 1, 512), '') AS authorDisplayName, nullif(substr(item.author_handle, 1, 256), '') AS authorHandle, substr(item.author_avatar_url, 1, 2048) AS authorAvatarUrl, substr(item.source_url, 1, 2048) AS sourceUrl, item.read_at AS readAt, item.saved, item.archived, item.liked, item.liked_at AS likedAt, item.liked_synced_at AS likedSyncedAt, substr(item.content_text, 1, 1500) AS contentText, substr(item.link_title, 1, 512) AS linkPreviewTitle, substr(item.location_name, 1, 512) AS locationName, item.engagement_likes AS engagementLikes, item.engagement_comments AS engagementComments, item.preserved_reading_time AS readingTimeMinutes, (SELECT json_group_array(source_url) FROM (SELECT media.source_url FROM library_feed_item_media AS media WHERE media.global_id = item.global_id ORDER BY media.ordinal LIMIT 8)) AS mediaUrlsJson, (SELECT json_group_array(media_type) FROM (SELECT media.media_type FROM library_feed_item_media AS media WHERE media.global_id = item.global_id ORDER BY media.ordinal LIMIT 8)) AS mediaTypesJson, (SELECT json_group_array(tag) FROM (SELECT item_tag.tag FROM library_feed_item_tags AS item_tag WHERE item_tag.global_id = item.global_id ORDER BY item_tag.tag COLLATE BINARY LIMIT 32)) AS tagsJson, (SELECT json_group_array(signal) FROM (SELECT score.signal FROM library_feed_item_signal_scores AS score WHERE score.global_id = item.global_id AND score.tagged = 1 ORDER BY score.signal COLLATE BINARY LIMIT 32)) AS contentSignalTagsJson, event.starts_at AS eventStartsAt, CAST(round(event.confidence * 10000.0) AS INTEGER) AS eventConfidenceBasisPoints, substr(item.link_url, 1, 2048) AS linkUrl, substr(item.fb_group_id, 1, 1024) AS fbGroupId, substr(item.fb_group_name, 1, 512) AS fbGroupName, substr(item.fb_group_url, 1, 2048) AS fbGroupUrl FROM library_feed_items AS item LEFT JOIN library_feed_item_events AS event ON event.global_id = item.global_id WHERE ((?1 = 'youtube' AND ?2 = 1 AND item.saved = 1 AND (instr(lower(COALESCE(item.source_url, '')), 'youtube.com/') > 0 OR instr(lower(COALESCE(item.source_url, '')), 'youtube-nocookie.com/') > 0 OR instr(lower(COALESCE(item.source_url, '')), 'youtu.be/') > 0 OR instr(lower(COALESCE(item.link_url, '')), 'youtube.com/') > 0 OR instr(lower(COALESCE(item.link_url, '')), 'youtube-nocookie.com/') > 0 OR instr(lower(COALESCE(item.link_url, '')), 'youtu.be/') > 0)) OR (item.platform = ?1 AND (?2 = 0 OR item.saved = 1))) AND item.hidden = 0 AND item.global_id > COALESCE(?3, '') COLLATE BINARY ORDER BY item.global_id COLLATE BINARY ASC LIMIT ?4;", reverse_sql: None, count_sql: "SELECT count(*) FROM library_feed_items AS item WHERE ((?1 = 'youtube' AND ?2 = 1 AND item.saved = 1 AND (instr(lower(COALESCE(item.source_url, '')), 'youtube.com/') > 0 OR instr(lower(COALESCE(item.source_url, '')), 'youtube-nocookie.com/') > 0 OR instr(lower(COALESCE(item.source_url, '')), 'youtu.be/') > 0 OR instr(lower(COALESCE(item.link_url, '')), 'youtube.com/') > 0 OR instr(lower(COALESCE(item.link_url, '')), 'youtube-nocookie.com/') > 0 OR instr(lower(COALESCE(item.link_url, '')), 'youtu.be/') > 0)) OR (item.platform = ?1 AND (?2 = 0 OR item.saved = 1))) AND item.hidden = 0;", variants: &[
 
     ] },
@@ -917,12 +946,19 @@ pub const SQLITE_QUERY_PROGRAMS: &[SqliteQueryProgram] = &[
     SqliteQueryProgram { query_id: "person_account_page_v1", maximum_scan_rows: 65, sql: "SELECT id AS accountId FROM library_accounts INDEXED BY library_accounts_person WHERE person_id = ?1 COLLATE BINARY AND id > ?2 COLLATE BINARY ORDER BY id COLLATE BINARY LIMIT ?3;", reverse_sql: None, count_sql: "SELECT 1;", variants: &[
 
     ] },
+    SqliteQueryProgram { query_id: "preferences_revision_v1", maximum_scan_rows: 1, sql: "SELECT COALESCE((SELECT revision FROM library_invalidations WHERE topic = 'preferences' ORDER BY revision DESC LIMIT 1), 0) AS revision;", reverse_sql: None, count_sql: "SELECT 1;", variants: &[
+
+    ] },
+    SqliteQueryProgram { query_id: "preference_scope_v1", maximum_scan_rows: 65, sql: "SELECT CAST(selection.key AS INTEGER) AS ordinal, leaf.fullkey AS path FROM json_each(?1) AS selection, json_tree(selection.value) AS leaf WHERE leaf.type = 'null' ORDER BY ordinal LIMIT 65;", reverse_sql: None, count_sql: "SELECT json_array_length(?1);", variants: &[
+
+    ] },
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SqliteQueryRowFieldKind {
     Boolean,
     Integer,
+    Real,
     Text,
 }
 
@@ -1870,6 +1906,158 @@ pub const SQLITE_QUERY_ROW_MODELS: &[SqliteQueryRowModel] = &[
             nullable: false,
             minimum_utf8_bytes: Some(1),
             maximum_utf8_bytes: Some(4096),
+            minimum_integer: None,
+            maximum_integer: None,
+            enum_values: &[],
+            integer_values: &[],
+        },
+        ],
+    },
+    SqliteQueryRowModel {
+        query_id: "preference_value_v1",
+        fields: &[
+        SqliteQueryRowField {
+            name: "booleanValue",
+            kind: SqliteQueryRowFieldKind::Boolean,
+            nullable: true,
+            minimum_utf8_bytes: None,
+            maximum_utf8_bytes: None,
+            minimum_integer: None,
+            maximum_integer: None,
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "integerValue",
+            kind: SqliteQueryRowFieldKind::Integer,
+            nullable: true,
+            minimum_utf8_bytes: None,
+            maximum_utf8_bytes: None,
+            minimum_integer: Some(-9007199254740991),
+            maximum_integer: Some(9007199254740991),
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "path",
+            kind: SqliteQueryRowFieldKind::Text,
+            nullable: false,
+            minimum_utf8_bytes: Some(3),
+            maximum_utf8_bytes: Some(4096),
+            minimum_integer: None,
+            maximum_integer: None,
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "realValue",
+            kind: SqliteQueryRowFieldKind::Real,
+            nullable: true,
+            minimum_utf8_bytes: None,
+            maximum_utf8_bytes: None,
+            minimum_integer: None,
+            maximum_integer: None,
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "textValue",
+            kind: SqliteQueryRowFieldKind::Text,
+            nullable: true,
+            minimum_utf8_bytes: Some(0),
+            maximum_utf8_bytes: Some(8192),
+            minimum_integer: None,
+            maximum_integer: None,
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "updatedAt",
+            kind: SqliteQueryRowFieldKind::Integer,
+            nullable: false,
+            minimum_utf8_bytes: None,
+            maximum_utf8_bytes: None,
+            minimum_integer: Some(0),
+            maximum_integer: Some(9007199254740991),
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "valueType",
+            kind: SqliteQueryRowFieldKind::Text,
+            nullable: false,
+            minimum_utf8_bytes: Some(4),
+            maximum_utf8_bytes: Some(7),
+            minimum_integer: None,
+            maximum_integer: None,
+            enum_values: &["boolean", "integer", "null", "real", "text"],
+            integer_values: &[],
+        },
+        ],
+    },
+    SqliteQueryRowModel {
+        query_id: "ranking_weight_scope_v1",
+        fields: &[
+        SqliteQueryRowField {
+            name: "ordinal",
+            kind: SqliteQueryRowFieldKind::Integer,
+            nullable: false,
+            minimum_utf8_bytes: None,
+            maximum_utf8_bytes: None,
+            minimum_integer: Some(0),
+            maximum_integer: Some(63),
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "path",
+            kind: SqliteQueryRowFieldKind::Text,
+            nullable: false,
+            minimum_utf8_bytes: Some(1),
+            maximum_utf8_bytes: Some(32768),
+            minimum_integer: None,
+            maximum_integer: None,
+            enum_values: &[],
+            integer_values: &[],
+        },
+        ],
+    },
+    SqliteQueryRowModel {
+        query_id: "preferences_revision_v1",
+        fields: &[
+        SqliteQueryRowField {
+            name: "revision",
+            kind: SqliteQueryRowFieldKind::Integer,
+            nullable: false,
+            minimum_utf8_bytes: None,
+            maximum_utf8_bytes: None,
+            minimum_integer: Some(0),
+            maximum_integer: Some(9007199254740991),
+            enum_values: &[],
+            integer_values: &[],
+        },
+        ],
+    },
+    SqliteQueryRowModel {
+        query_id: "preference_scope_v1",
+        fields: &[
+        SqliteQueryRowField {
+            name: "ordinal",
+            kind: SqliteQueryRowFieldKind::Integer,
+            nullable: false,
+            minimum_utf8_bytes: None,
+            maximum_utf8_bytes: None,
+            minimum_integer: Some(0),
+            maximum_integer: Some(63),
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "path",
+            kind: SqliteQueryRowFieldKind::Text,
+            nullable: false,
+            minimum_utf8_bytes: Some(1),
+            maximum_utf8_bytes: Some(32768),
             minimum_integer: None,
             maximum_integer: None,
             enum_values: &[],

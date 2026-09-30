@@ -1,3 +1,11 @@
+import { catchUpLibraryCorePredecessorCheckpointV1 } from "@freed/sync/cloud/library-core";
+import nativeHandoffCatchup from "../../../shared/src/library-core/native-handoff-catchup-vector-v1.json";
+import { preparePwaPredecessorCheckpointRead, requirePwaPredecessorCheckpointRead } from "./library-core-successor-proof";
+import { LIBRARY_CORE_PENDING_PREFERENCE_SCHEMA_SQL, LIBRARY_CORE_PENDING_PREFERENCE_SCHEMA_SHA256, parseLibraryCoreActivateNormalizedCheckpointStageV2, createLibraryCoreShellPreferencesV1, LIBRARY_CORE_SHELL_PREFERENCE_PATHS } from "@freed/shared/library-core";
+import { replacePwaProjectedSuccessorCheckpoint, preparePwaProjectedConsumerRecovery, importPwaProjectedOperationPage, catchUpPwaProjectedAcceptedResult, storePwaProjectedResultTransport, storePwaProjectedFollowerResult, commitPwaProjectedConsumerRecovery, installPwaProjectedFollowerEnrollment, migratePwaPendingPreferenceProjection, backfillPwaPendingPreferenceProjection, settlePwaPendingPreferenceProjection, preparePwaPendingPreferenceSettlement, enqueuePwaProjectedFollowerIntent, readPwaVisiblePreferenceSource, readPwaVisiblePreferenceValue, readPwaVisiblePreferenceScope, preparePwaPreferenceCheckpointVerification, replacePwaProjectedCheckpoint } from "./library-core-preference-projection";
+import { readLibraryCoreShellPreferencesV1 } from "@freed/shared/library-core";
+import preferenceValueVector from "../../../shared/src/library-core/preference-value-query-vector-v1.json";
+import historicalNativePreferences from "../../../shared/src/library-core/historical-native-preference-vector-v1.json";
 import nativeRecoveredBrowser from "../../../shared/src/library-core/native-recovered-browser-vector-v1.json";
 import recoveredEnrollmentVector from "../../../shared/src/library-core/recovered-enrollment-vector-v1.json";
 import { verifyPwaRecoveryArchive } from "./library-core-recovery-archive";
@@ -13,6 +21,7 @@ import sqlite3InitModule, {
   type Sqlite3Static,
 } from "@sqlite.org/sqlite-wasm";
 import {
+  LIBRARY_CORE_PENDING_PREFERENCE_QUERY_PROGRAMS,
   LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256,
   LIBRARY_CORE_SQLITE_APPLICATION_ID,
   LIBRARY_CORE_SQLITE_QUERY_PROGRAMS,
@@ -54,6 +63,10 @@ import {
   RSS_FEED_TITLE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   RSS_FEED_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   assembleLibraryCoreTransactionV1,
+  constructLibraryCoreHistoricalPreferencesMemberV1,
+  assembleLibraryCoreHistoricalPreferencesV1,
+  PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  encodeLibraryCoreOperationSignatureInput,
   type LibraryCoreCanonicalValue,
   type LibraryCoreDigestDomain,
   libraryCoreFollowerResultBodyV1,
@@ -93,6 +106,125 @@ describe("PWA Library Core SQLite engine", () => {
     }
     return value;
   }
+
+  // Tier 1: finite shell settings cannot load growing collections or silently default failed reads.
+  it("reads finite shell preferences without owning unrelated collections", async () => {
+    const engine = new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion);
+    engine.initialize(); database.exec(preferenceValueVector.setupSql);
+    database.exec(preferenceValueVector.scopeOverflowSql);
+    database.exec("INSERT INTO library_preferences(path,value_type,boolean_value,updated_at) VALUES ('v:$.display.showEngagementCounts','boolean',1,1);");
+    database.exec("INSERT INTO library_preferences(path,value_type,text_value,updated_at) VALUES ('v:$.storyWall.publishTarget.pagesUrl','text','https://example.test/wall',1);");
+    database.exec("INSERT INTO library_preferences(path,value_type,real_value,updated_at) VALUES ('v:$.weights.recency','real',0.25,1);");
+    const calls: string[] = [];
+    const runtime = { query: async <T extends import('@freed/shared/library-core').LibraryCoreSqliteQueryRequest>(request: T) => {
+      calls.push(request.queryId); return engine.query(request);
+    }, randomId: () => "shell-test" };
+    const source = engine.query({ queryId: "preferences_revision_v1", schemaVersion: 1 }).source;
+    const value = await readLibraryCoreShellPreferencesV1(runtime, source);
+    expect(calls).toEqual(["preference_scope_v1"]);
+    expect(value.display.showEngagementCounts).toBe(true);
+    expect(value.display.reading.markReadOnScroll).toBe(true);
+    expect(value.weights).toEqual({ recency: 0.25 });
+    expect(value.storyWall.publishTarget.pagesUrl).toBe("https://example.test/wall");
+    expect(Object.hasOwn(value.storyWall.publishTarget, "lastPublishedAt")).toBe(false);
+    expect(Object.hasOwn(value, "fbCapture")).toBe(false);
+    expect(Object.hasOwn(value, "friendSuggestions")).toBe(false);
+    expect(Object.hasOwn(value.storyWall, "selectedYears")).toBe(false);
+    expect(Object.hasOwn(value.xCapture, "whitelist")).toBe(false);
+    expect(Object.isFrozen(value.display.reading)).toBe(true);
+    await expect(readLibraryCoreShellPreferencesV1(runtime, { ...source, projectionRevision: 8, transitionSequence: 8 })).rejects.toThrow("CURSOR_STALE");
+    database.exec("UPDATE library_preferences SET boolean_value=NULL,text_value='yes',value_type='text' WHERE path='v:$.display.showEngagementCounts';");
+    await expect(readLibraryCoreShellPreferencesV1(runtime, source)).rejects.toThrow("unsupported value");
+  });
+
+  // Tier 1: selected settings share a source and an aggregate byte ceiling.
+  it("reads a bounded preference scope atomically beyond the whole-tree limit", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion);
+    engine.initialize(); database.exec(preferenceValueVector.setupSql);
+    const request = { queryId: "preference_scope_v1" as const, schemaVersion: 1 as const,
+      generationId: preferenceValueVector.generationId, sourceRevision: 7,
+      paths: preferenceValueVector.cases.map(entry => entry.path) };
+    const response = engine.query(request);
+    expect(response.results.map(value => ({ path: value.path, kind: value.kind, rows: value.rows })))
+      .toEqual(preferenceValueVector.cases.map(entry => ({ path: entry.path, kind: entry.kind, rows: entry.expectedRows })));
+    expect(() => engine.query({ ...request, sourceRevision: 8 })).toThrow("CURSOR_STALE");
+    expect(() => engine.query({ ...request, paths: [request.paths[0]!, request.paths[0]!] })).toThrow("duplicate");
+    const paths = Array.from({ length: 64 }, (_, i) => ["weights", "topics", `topic_${i}`]);
+    expect(engine.query({ ...request, paths }).results).toHaveLength(64);
+    expect(() => engine.query({ ...request, paths: [...paths, ["missing"]] })).toThrow();
+    database.exec(preferenceValueVector.scopeOverflowSql);
+    expect(() => engine.query({ ...request, paths: Array.from({ length: 32 }, (_, i) => [`scope${i}`]) })).toThrow("byte bound");
+    expect(engine.query(request)).toEqual(response);
+  });
+
+  // Tier 1: priority writes cannot impersonate preference changes; imports change the marker generation.
+  it("reads preference revisions independently of item changes and generation replacement", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion);
+    engine.initialize(); database.exec(preferenceValueVector.setupSql);
+    for (const step of preferenceValueVector.preferenceRevisionSteps) {
+      if (step.sql) database.exec(step.sql);
+      const read = () => engine.query({ queryId: "preferences_revision_v1", schemaVersion: 1 });
+      if (step.revision === null) expect(read).toThrow("source is inconsistent");
+      else expect(read()).toEqual({ queryId: "preferences_revision_v1", schemaVersion: 1,
+        revision: step.revision, source: { generationId: step.generationId, projectionRevision: 7, transitionSequence: 7 } });
+    }
+  });
+
+  // Tier 1: identical native/browser SQL must read selected values beyond global snapshot bounds.
+  it("reads scoped preference values beyond the whole-tree limit", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion);
+    engine.initialize(); database.exec(preferenceValueVector.setupSql);
+    expect(() => engine.query({ queryId: "preferences_snapshot_v1", schemaVersion: 1 })).toThrow("row bound");
+    const request = { queryId: "preference_value_v1" as const, schemaVersion: 1 as const,
+      generationId: preferenceValueVector.generationId, sourceRevision: preferenceValueVector.sourceRevision, path: ["weights", "topics"] };
+    for (const entry of preferenceValueVector.cases) {
+      const response = engine.query({ ...request, path: entry.path });
+      expect(response.kind).toBe(entry.kind); expect(response.rows).toEqual(entry.expectedRows);
+      expect(response.path).toEqual(entry.path); expect(response.source.projectionRevision).toBe(7);
+    }
+    const scope = { queryId: "ranking_weight_scope_v1" as const, schemaVersion: 1 as const,
+      generationId: request.generationId, sourceRevision: 7, paths: preferenceValueVector.weightScope.paths };
+    expect(engine.query(scope)).toEqual({ queryId: scope.queryId, schemaVersion: 1, paths: scope.paths,
+      values: preferenceValueVector.weightScope.values, source: { generationId: request.generationId, projectionRevision: 7, transitionSequence: 7 } });
+    const maximumPaths = Array.from({ length: 64 }, (_, i) => ["weights", "topics", `topic_${i}`]);
+    expect(engine.query({ ...scope, paths: maximumPaths }).values).toEqual(Array.from({ length: 64 }, (_, i) => i));
+    expect(() => engine.query({ ...scope, sourceRevision: 8 })).toThrow("CURSOR_STALE");
+    expect(() => engine.query({ ...scope, paths: [...maximumPaths, ["weights", "recency"]] })).toThrow();
+    expect(() => engine.query({ ...scope, paths: [["weights", "topics"]] })).toThrow();
+    for (const fault of ["INSERT INTO library_preferences(path,value_type,boolean_value,updated_at) VALUES ('v:$.weights.recency','boolean',1,1);",
+      "INSERT INTO library_preferences(path,value_type,text_value,updated_at) VALUES ('v:$.weights.recency','text','50',1);",
+      "INSERT INTO library_preferences(path,value_type,updated_at) VALUES ('v:$.weights.recency','null',1);"]) {
+      database.exec(fault);
+      expect(() => engine.query(scope)).toThrow("not numeric");
+      database.exec("DELETE FROM library_preferences WHERE path='v:$.weights.recency';");
+    }
+    // A wrapper-shaped group with an extra child is not a valid numeric value.
+    database.exec("INSERT INTO library_preferences(path,value_type,integer_value,updated_at) VALUES ('v:$.weights.topics.fraction.extra','integer',1,1);");
+    expect(() => engine.query(scope)).toThrow("not numeric");
+    database.exec("DELETE FROM library_preferences WHERE path='v:$.weights.topics.fraction.extra';");
+    // Tier 1: storage-query bounds include the array marker and all serialized values.
+    // These retained-row fixtures test read limits, not fresh mutation admission.
+    for (const boundary of preferenceValueVector.boundaries) {
+      database.exec(boundary.setupSql);
+      const query = () => engine.query({ ...request, path: boundary.path });
+      if (!boundary.accepted) { expect(query, boundary.path.join("/")).toThrow(); continue; }
+      const result = query();
+      expect(result.rows).toHaveLength(boundary.rows);
+      expect(result.rows.reduce((bytes, row) => bytes + (row.textValue?.length ?? 0), 0)).toBe(boundary.textBytes);
+    }
+    expect(() => engine.query({ ...request, sourceRevision: 8 })).toThrow("CURSOR_STALE");
+    // Corrupt retained rows must not become partial current values in recovery.
+    for (const invalid of preferenceValueVector.invalidArrayRows) {
+      database.exec({ sql: "INSERT INTO library_preferences(path,value_type,integer_value,updated_at) VALUES (?1,'integer',3,1);", bind: [invalid.path] });
+      expect(() => engine.query({ ...request, path: ["storyWall", "selectedYears"] }), invalid.reason).toThrow();
+      database.exec({ sql: "DELETE FROM library_preferences WHERE path=?1;", bind: [invalid.path] });
+    }
+
+    database.exec("UPDATE library_preferences SET real_value=1e999 WHERE path='v:$.weights.topics.realSetting';");
+    expect(() => engine.query({ ...request, path: ["weights", "topics", "realSetting"] })).toThrow("Preference value row is invalid");
+    database.exec("DELETE FROM library_preferences WHERE path='v:$.storyWall.selectedYears[1]';");
+    expect(() => engine.query({ ...request, path: ["storyWall", "selectedYears"] })).toThrow("completeness");
+  });
 
   it("pages all Person account identities at one revision without a display limit", () => {
     const engine = new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion);
@@ -1122,9 +1254,11 @@ describe("PWA Library Core SQLite engine", () => {
       authority_public_key: authorityPublicKey,
       signature_algorithm: "ed25519",
     });
+    let followerNow=3500;
     const engine = new PwaLibraryCoreSqliteEngine(
       database,
       sqlite3.version.libVersion,
+      { now:()=>followerNow },
     );
     engine.initialize();
     database.exec({
@@ -1258,6 +1392,68 @@ describe("PWA Library Core SQLite engine", () => {
       previous_actor_chain_digest: certificate.actor_chain_genesis,
     });
 
+    // Tier 1: dormant schema changes and cursor identity roll back together.
+    const beforeMigrationContext = engine.followerMutationContext();
+    expect(() => migratePwaPendingPreferenceProjection(database, sqlite3.capi, engine))
+      .toThrow(/owned FULL transaction/);
+    database.exec(`CREATE TEMP TRIGGER fail_preference_migration BEFORE UPDATE OF schema_version ON library_storage_meta
+      WHEN NEW.schema_version=3 BEGIN SELECT RAISE(ABORT,'preference migration fault'); END;`);
+    expect(() => database.transaction("IMMEDIATE", () =>
+      migratePwaPendingPreferenceProjection(database, sqlite3.capi, engine)))
+      .toThrow(/preference migration fault/);
+    expect(database.selectValue("PRAGMA user_version;")).toBe(1);
+    expect(database.selectValue("SELECT count(*) FROM sqlite_schema WHERE name='library_local_preference_projection';")).toBe(0);
+    expect(database.selectValue("SELECT count(*) FROM sqlite_schema WHERE name='library_local_handoff';")).toBe(0);
+    database.exec("DROP TRIGGER fail_preference_migration;");
+    expect(() => database.transaction("IMMEDIATE", () => {
+      migratePwaPendingPreferenceProjection(database, sqlite3.capi, engine);
+      migratePwaPendingPreferenceProjection(database, sqlite3.capi, engine);
+      expect(database.selectValue("PRAGMA user_version;")).toBe(3);
+      expect(database.selectValue("SELECT target_counter FROM library_local_preference_projection;")).toBe(0);
+      expect(engine.followerMutationContext()).toEqual(beforeMigrationContext);
+      // The ordinary reader stays closed to schema3 until lifecycle activation.
+      expect(() => engine.status()).toThrow(/identity is unsupported/);
+      database.exec("DROP INDEX library_local_preference_replacement_lookup;");
+      expect(() => migratePwaPendingPreferenceProjection(database, sqlite3.capi, engine))
+        .toThrow(/catalog changed/);
+      throw new Error("restore dormant migration fixture");
+    })).toThrow("restore dormant migration fixture");
+    expect(database.selectValue("PRAGMA user_version;")).toBe(1);
+    expect(engine.followerMutationContext()).toEqual(beforeMigrationContext);
+
+    // Enrollment and its new local projection commit together on a copied
+    // signed fixture. This is WASM SQLite coverage, not OPFS crash acceptance.
+    const enrollmentFile="/preference-enrollment.sqlite";
+    sqlite3.capi.sqlite3_js_posix_create_file(enrollmentFile,sqlite3.capi.sqlite3_js_db_export(database.pointer!));
+    const enrollmentDb=new sqlite3.oo1.DB(enrollmentFile,"w");
+    try {
+      enrollmentDb.exec("PRAGMA foreign_keys=ON; PRAGMA synchronous=FULL;");
+      const enrollmentEngine=new PwaLibraryCoreSqliteEngine(enrollmentDb,sqlite3.version.libVersion);
+      enrollmentDb.transaction("IMMEDIATE",()=>migratePwaPendingPreferenceProjection(enrollmentDb,sqlite3.capi,enrollmentEngine));
+      enrollmentDb.exec(`DELETE FROM library_local_preference_projection;
+        DELETE FROM library_intent_actors;
+        UPDATE library_follower_actor_request SET enrollment_certificate_digest=NULL,
+          canonical_enrollment_certificate=NULL,actor_chain_genesis=NULL,enrolled_at=NULL;
+        CREATE TRIGGER preference_enrollment_fault BEFORE INSERT ON library_local_preference_projection
+        BEGIN SELECT RAISE(ABORT,'preference enrollment fault'); END;`);
+      const input={canonicalCertificateBytes,enrolledAt:1_100};
+      await expect(installPwaProjectedFollowerEnrollment(enrollmentDb,sqlite3.capi,enrollmentEngine,input))
+        .rejects.toThrow("preference enrollment fault");
+      expect(enrollmentDb.selectValue("SELECT count(*) FROM library_intent_actors;")).toBe(0);
+      expect(enrollmentDb.selectValue("SELECT enrollment_certificate_digest FROM library_follower_actor_request;")).toBeNull();
+      expect(enrollmentDb.selectValue("SELECT count(*) FROM library_local_preference_projection;")).toBe(0);
+      enrollmentDb.exec("DROP TRIGGER preference_enrollment_fault;");
+      const pending=installPwaProjectedFollowerEnrollment(enrollmentDb,sqlite3.capi,enrollmentEngine,input);
+      enrollmentDb.exec("UPDATE library_follower_actor_request SET created_at=1001;");
+      await expect(pending).rejects.toThrow("changed during verification");
+      expect(enrollmentDb.selectValue("SELECT count(*) FROM library_local_preference_projection;")).toBe(0);
+      enrollmentDb.exec("UPDATE library_follower_actor_request SET created_at=1000;");
+      expect(await installPwaProjectedFollowerEnrollment(enrollmentDb,sqlite3.capi,enrollmentEngine,input)).toEqual(installed);
+      expect(await installPwaProjectedFollowerEnrollment(enrollmentDb,sqlite3.capi,enrollmentEngine,input)).toEqual(installed);
+      expect(enrollmentDb.selectValue("SELECT target_counter FROM library_local_preference_projection;")).toBe(0);
+      expect(enrollmentEngine.followerMutationContext()).toEqual(beforeMigrationContext);
+    } finally {enrollmentDb.close();}
+
     // Reproduce older checkpoint replacement losing the local request while
     // retaining the same key and the Primary's already admitted certificate.
     database.exec("DELETE FROM library_intent_actors; DELETE FROM library_follower_actor_request;");
@@ -1336,6 +1532,653 @@ describe("PWA Library Core SQLite engine", () => {
       previous_actor_chain_digest: certificate.actor_chain_genesis,
     });
     await expect(engine.storeFollowerActorRequest(laterInput)).resolves.toEqual(recovered);
+    const originalPreferenceBytes: Uint8Array[] = [];
+    const originalPreferenceDigests: string[] = [];
+    for (const sequence of [1,2]) {
+      const tip = engine.followerMutationContext();
+      const member = PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA.construct({
+        actor_id:tip.actor_id, actor_sequence:tip.next_actor_sequence, causal_frontier:[],
+        created_at_ms:3000+sequence, entity_id:"preferences", epoch:tip.epoch, epoch_id:tip.epoch_id,
+        hlc_counter:0, hlc_wall_ms:3000+sequence, library_id:tip.library_id,
+        operation_id:`preference-operation-${sequence}`, previous_actor_operation_id:tip.previous_actor_operation_id,
+        transaction_id:`preference-transaction-${sequence}`, transaction_member_count:1, transaction_member_index:0,
+        payload:{updates:{friendSuggestions:{dismissedSuggestionIds:sequence===1?["a"]:["a","b"]}}},
+      }, {digest:coreDigest});
+      const finalized = await finalizeLibraryCoreTransactionV1(
+        assembleLibraryCoreTransactionV1([member],tip.previous_actor_chain_digest,{digest:coreDigest}), {
+          digest:coreDigest, async signOperation(message) { return sign(null,message,actorKeys.privateKey).toString("hex"); },
+        });
+      const bytes = encodeLibraryCoreCanonicalValue(finalized.members[0]!.envelope as unknown as LibraryCoreCanonicalValue);
+      await engine.commitFollowerIntent({envelopeBytes:[bytes]});
+      originalPreferenceBytes.push(bytes);
+      originalPreferenceDigests.push(finalized.members[0]!.envelope_digest);
+    }
+    const pendingTip = engine.followerMutationContext();
+    const preferenceSequence = Number(database.selectValue("SELECT sequence FROM library_local_change_state;"));
+    database.transaction("IMMEDIATE", () => migratePwaPendingPreferenceProjection(database, sqlite3.capi, engine));
+    database.transaction("IMMEDIATE", () => migratePwaPendingPreferenceProjection(database, sqlite3.capi, engine));
+    expect(database.selectValue("PRAGMA user_version;")).toBe(3);
+    expect(database.selectValue("SELECT last_counter FROM library_local_preference_projection;")).toBe(0);
+    expect(database.selectValue("SELECT previous_chain_digest FROM library_local_preference_projection;")).toBe(certificate.actor_chain_genesis);
+    expect(() => new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion).initialize())
+      .toThrow(/schema version is unsupported/);
+    expect(database.selectValue("PRAGMA user_version;")).toBe(3);
+    database.exec(`CREATE TEMP TRIGGER fail_preference_cursor BEFORE UPDATE ON library_local_preference_projection
+      BEGIN SELECT RAISE(ABORT,'preference cursor fault'); END;`);
+    await expect(backfillPwaPendingPreferenceProjection(database,engine)).rejects.toThrow(/preference cursor fault/);
+    expect(database.selectValue("SELECT count(*) FROM library_local_preference_nodes;")).toBe(0);
+    expect(database.selectValue("SELECT last_counter FROM library_local_preference_projection;")).toBe(0);
+    expect(database.selectValue("SELECT sequence FROM library_local_change_state;")).toBe(preferenceSequence);
+    database.exec("DROP TRIGGER fail_preference_cursor;");
+    database.exec("UPDATE library_local_change_state SET sequence=9007199254740991;");
+    await expect(backfillPwaPendingPreferenceProjection(database,engine)).rejects.toThrow();
+    expect(database.selectValue("SELECT count(*) FROM library_local_preference_nodes;")).toBe(0);
+    expect(database.selectValue("SELECT last_counter FROM library_local_preference_projection;")).toBe(0);
+    database.exec({sql:"UPDATE library_local_change_state SET sequence=?1;",bind:[preferenceSequence]});
+
+    let changedDuringVerification = false;
+    const racingSubtle = new Proxy(crypto.subtle, { get(target,property) {
+      if (property === "verify") return async (...args: Parameters<SubtleCrypto["verify"]>) => {
+        const valid = await target.verify(...args);
+        if (!changedDuringVerification) {
+          changedDuringVerification = true;
+          database.exec("UPDATE library_intent_transactions SET state='published' WHERE transaction_id='preference-transaction-1';");
+        }
+        return valid;
+      };
+      const value = Reflect.get(target,property,target);
+      return typeof value === "function" ? value.bind(target) : value;
+    }});
+    await expect(backfillPwaPendingPreferenceProjection(database,engine,racingSubtle)).rejects.toThrow(/changed during verification/);
+    expect(database.selectValue("SELECT count(*) FROM library_local_preference_nodes;")).toBe(0);
+    database.exec("UPDATE library_intent_transactions SET state='pending' WHERE transaction_id='preference-transaction-1';");
+    expect(await backfillPwaPendingPreferenceProjection(database,engine)).toBe(false);
+    expect(database.selectValue("SELECT count(*) FROM library_local_preference_nodes;")).toBe(3);
+    const corrupted = JSON.parse(new TextDecoder().decode(originalPreferenceBytes[1]!));
+    corrupted.signature = (corrupted.signature.startsWith("0")?"1":"0")+corrupted.signature.slice(1);
+    database.exec({sql:"UPDATE library_intent_members SET canonical_member=?1 WHERE transaction_id='preference-transaction-2';",
+      bind:[encodeLibraryCoreCanonicalValue(corrupted as LibraryCoreCanonicalValue)]});
+    await expect(backfillPwaPendingPreferenceProjection(database,engine)).rejects.toThrow();
+    expect(database.selectValue("SELECT last_counter FROM library_local_preference_projection;")).toBe(1);
+    database.exec({sql:"UPDATE library_intent_members SET canonical_member=?1 WHERE transaction_id='preference-transaction-2';",bind:[originalPreferenceBytes[1]!]});
+    expect(await backfillPwaPendingPreferenceProjection(database,engine)).toBe(true);
+    expect(await backfillPwaPendingPreferenceProjection(database,engine)).toBe(true);
+    expect(database.selectValue("SELECT count(*) FROM library_local_preference_nodes;")).toBe(7);
+    expect(engine.followerMutationContext()).toEqual(pendingTip);
+    const retained = database.exec({sql:"SELECT canonical_member FROM library_intent_members ORDER BY actor_counter;",rowMode:0,returnValue:"resultRows"});
+    expect(retained).toEqual(originalPreferenceBytes);
+    expect(database.selectValue("SELECT sequence FROM library_local_change_state;")).toBe(preferenceSequence+2);
+    expect(database.selectValue("SELECT count(*) FROM library_local_invalidations WHERE topic='preferences' AND reason='optimistic_added';")).toBe(2);
+
+    // Outcome fixtures bind real signatures to retained transaction bytes. The
+    // covered case supplies a canonical revision fixture, not checkpoint-import proof.
+    const original = JSON.parse(new TextDecoder().decode(originalPreferenceBytes[0]!));
+    const resultImportBase=sqlite3.capi.sqlite3_js_db_export(database.pointer!);
+    for (const outcome of ["accepted-ahead", "accepted-covered", "rejected"] as const) {
+      const rejected = outcome === "rejected";
+      const unsigned = parseLibraryCoreFollowerResultEnvelopeV1({
+        actor_id:pendingTip.actor_id, authoritative_source_revision:9, authority_key_id:authorityKeyId,
+        canonical_operation_ids:rejected?[]:[original.operation_id], epoch:1, epoch_id:epochId,
+        format:"freed_follower_result_v1", intent_epoch:1, intent_epoch_id:epochId, library_id:libraryId,
+        original_result_digest:null, previous_result_digest:null, receipt_ids:rejected?[]:["ab".repeat(32)],
+        rejection_reason:rejected?"capability_denied":null, replacement_fields:[], resolved_at_ms:4000,
+        result_body_digest:"0".repeat(64), result_sequence:1, schema_version:1,
+        signature:"0".repeat(128), signature_algorithm:"ed25519", status:rejected?"rejected":"accepted",
+        transaction_digest:original.transaction_digest, transaction_id:original.transaction_id,
+      });
+      const digest = coreDigest("follower-result-body",libraryCoreFollowerResultBodyV1(unsigned));
+      const signed = { ...unsigned, result_body_digest:digest,
+        signature:sign(null,encodeLibraryCoreSignatureInput("follower-result-envelope",{result_body_digest:digest}),authorityKeys.privateKey).toString("hex") };
+      const resultBytes = encodeLibraryCoreCanonicalValue(signed as unknown as LibraryCoreCanonicalValue);
+      if(outcome!=="accepted-covered") {
+      for(const delivery of ["receipt","segment"] as const) {
+      const receiptFile=`/projected-result-${outcome}-${delivery}.sqlite`;
+      sqlite3.capi.sqlite3_js_posix_create_file(receiptFile,resultImportBase);
+      const receiptDb=new sqlite3.oo1.DB(receiptFile,"w");
+      try {
+        receiptDb.exec("PRAGMA foreign_keys=ON; PRAGMA synchronous=FULL;");
+        const revision=0;
+        receiptDb.exec({sql:"UPDATE library_meta SET source_revision=?1;",bind:[revision]});
+        receiptDb.exec({sql:"UPDATE library_change_state SET revision=?1;",bind:[revision]});
+        const receiptEngine=new PwaLibraryCoreSqliteEngine(receiptDb,sqlite3.version.libVersion,{now:()=>5000});
+        const sequence=Number(receiptDb.selectValue("SELECT sequence FROM library_local_change_state;"));
+        const input={canonicalResultBytes:resultBytes};
+        const body=parseLibraryCoreNormalizedResultSegmentBodyV2({actor_id:pendingTip.actor_id,
+          canonical_result_bytes:resultBytes.byteLength,first_result_sequence:1,format:"freed_normalized_result_segment_v2",
+          kind:"normalized_result_segment_body",last_result_sequence:1,library_id:libraryId,previous_segment_digest:null,
+          protocol:"normalized_result_segments_v2",protocol_version:2,result_count:1,results:[signed],storage_epoch_id:epochId});
+        const contentDigest="14".repeat(32);
+        const publication=parseLibraryCoreNormalizedResultTransportImportV2({
+          header:normalizedResultSegmentHeaderFromBodyV2(body,coreDigest("normalized-result-segment-body-v2",body)),
+          receivedAt:5000,reference:{descriptor:{byteLength:resultBytes.byteLength,contentDigest,
+            objectKey:createLibraryCoreImmutableObjectKey({actorId:pendingTip.actor_id,digest:contentDigest,epochId,
+              firstSequence:1,kind:"result_segment",lastSequence:1,libraryId})},transportObjectId:"projected-result-object"},results:[signed],
+        });
+        const deliver=(value:typeof input)=>delivery==="receipt"
+          ?storePwaProjectedFollowerResult(receiptDb,receiptEngine,value,sqlite3.capi)
+          :storePwaProjectedResultTransport(receiptDb,receiptEngine,publication,sqlite3.capi);
+
+        if(outcome!=="accepted-ahead") {
+          receiptDb.exec(`CREATE TEMP TRIGGER projected_result_fault BEFORE INSERT ON library_local_invalidations
+            WHEN NEW.topic='preferences' AND NEW.reason='optimistic_removed' BEGIN SELECT RAISE(ABORT,'projected result fault'); END;`);
+          await expect(deliver(input)).rejects.toThrow("projected result fault");
+          expect(receiptDb.selectValue("SELECT count(*) FROM library_intent_results;")).toBe(0);
+          expect(receiptDb.selectValue("SELECT count(*) FROM library_intent_result_cursors;")).toBe(0);
+          expect(receiptDb.selectValue("SELECT count(*) FROM library_result_transport_heads;")).toBe(0);
+          expect(receiptDb.selectValue("SELECT count(*) FROM library_result_transport_segments;")).toBe(0);
+          expect(receiptDb.selectValue("SELECT count(*) FROM library_local_preference_nodes;")).toBe(7);
+          expect(receiptDb.selectValue("SELECT sequence FROM library_local_change_state;")).toBe(sequence);
+          receiptDb.exec("DROP TRIGGER projected_result_fault;");
+        }
+        const suppliedBytes=Uint8Array.from(resultBytes);
+        const pendingReceipt=deliver({canonicalResultBytes:suppliedBytes});
+        suppliedBytes.fill(0);
+        const receipt=await pendingReceipt;
+        expect(receiptDb.selectValue("SELECT count(*) FROM library_local_preference_nodes;")).toBe(outcome==="accepted-ahead"?7:4);
+        const settledSequence=receiptDb.selectValue("SELECT sequence FROM library_local_change_state;");
+        expect(await deliver(input)).toEqual(receipt);
+        expect(receiptDb.selectValue("SELECT sequence FROM library_local_change_state;")).toBe(settledSequence);
+        expect(receiptEngine.followerMutationContext()).toEqual(pendingTip);
+      } finally {receiptDb.close();}
+      }
+      }
+      if(outcome==="accepted-ahead") {
+        for (const delivery of ["receipt-catch-up", "operation-page", "later-coverage"] as const) {
+        const laterCoverage = delivery === "later-coverage";
+        const canonicalFile=`/projected-canonical-${delivery}.sqlite`;
+        sqlite3.capi.sqlite3_js_posix_create_file(canonicalFile,resultImportBase);
+        const canonicalDb=new sqlite3.oo1.DB(canonicalFile,"w");
+        try {
+          canonicalDb.exec("PRAGMA foreign_keys=ON; PRAGMA synchronous=FULL;");
+          const writer="fe".repeat(32),placeholder="fc".repeat(32);
+          // Accepted checkpoint writer catalog is synthetic; consumer operation,
+          // authority result signature and canonical materialization are real.
+          canonicalDb.exec({sql:`INSERT INTO library_actors(actor_id,authority_epoch_id,actor_kind,public_key,enrollment_operation_id,
+            enrollment_certificate_digest,canonical_enrollment_certificate,chain_genesis_digest,accepted_counter,accepted_operation_id,accepted_chain_digest,created_at,updated_at)
+            VALUES(?1,?2,'desktop',?3,'fixture-primary',?3,'{}',?3,0,NULL,?3,1,1);`,bind:[writer,epochId,placeholder]});
+          canonicalDb.exec({sql:"UPDATE library_active_authority SET writer_id=?1;",bind:[writer]});
+          canonicalDb.exec({sql:"INSERT INTO library_materialization_generation(singleton_id,generation_id) VALUES(1,?1);",bind:["ad".repeat(32)]});
+          const canonicalEngine=new PwaLibraryCoreSqliteEngine(canonicalDb,sqlite3.version.libVersion,{now:()=>5000});
+          const accepted={...unsigned,authoritative_source_revision:1,receipt_ids:[originalPreferenceDigests[0]!]};
+          const acceptedDigest=coreDigest("follower-result-body",libraryCoreFollowerResultBodyV1(accepted));
+          const acceptedBytes=encodeLibraryCoreCanonicalValue({...accepted,result_body_digest:acceptedDigest,
+            signature:sign(null,encodeLibraryCoreSignatureInput("follower-result-envelope",{result_body_digest:acceptedDigest}),authorityKeys.privateKey).toString("hex"),
+          } as unknown as LibraryCoreCanonicalValue);
+          const acceptedInput={canonicalResultBytes:acceptedBytes};
+          const records = [
+            {canonicalRecordJson:new TextDecoder().decode(acceptedBytes),kind:"accepted_transaction",memberIndex:-1,recordDigest:acceptedDigest},
+            {canonicalRecordJson:new TextDecoder().decode(originalPreferenceBytes[0]!),kind:"operation",memberIndex:0,recordDigest:originalPreferenceDigests[0]!},
+          ].map(record=>({...record,sourceRevision:1,transactionDigest:accepted.transaction_digest,transactionId:accepted.transaction_id}));
+          const operationInput=parseLibraryCoreNormalizedOperationImportPageV2({
+            snapshot:{authorityEpoch:epochId,firstAvailableRevision:1,format:"freed_normalized_operation_export_v2",
+              libraryId,operationCount:1,protocolVersion:2,sourceRevision:1,transactionCount:1,writerId:writer},
+            receivedAt:5000,page:{canonicalRecordBytes:records.reduce((sum,record)=>sum+new TextEncoder().encode(record.canonicalRecordJson).byteLength,0),
+              done:true,nextCursor:{kind:"operation",memberIndex:0,recordDigest:originalPreferenceDigests[0]!,sourceRevision:1},records},
+          });
+          const catchUp=()=>delivery==="receipt-catch-up"
+            ?catchUpPwaProjectedAcceptedResult(canonicalDb,canonicalEngine,acceptedInput,sqlite3.capi)
+            :importPwaProjectedOperationPage(canonicalDb,canonicalEngine,operationInput,sqlite3.capi);
+          await storePwaProjectedFollowerResult(canonicalDb,canonicalEngine,acceptedInput,sqlite3.capi);
+          if (laterCoverage) {
+            // Seed a retained, authority-signed already-applied receipt at a
+            // later frontier. Receipt admission itself is covered separately.
+            const later = {...accepted,status:"already_applied" as const,authoritative_source_revision:2,original_result_digest:acceptedDigest};
+            const digest=coreDigest("follower-result-body",libraryCoreFollowerResultBodyV1(later));
+            const bytes=encodeLibraryCoreCanonicalValue({...later,result_body_digest:digest,
+              signature:sign(null,encodeLibraryCoreSignatureInput("follower-result-envelope",{result_body_digest:digest}),authorityKeys.privateKey).toString("hex"),
+            } as unknown as LibraryCoreCanonicalValue);
+            canonicalDb.exec({sql:"UPDATE library_intent_results SET status='already_applied',authoritative_source_revision=2,result_digest=?1,canonical_result=?2;",bind:[digest,bytes]});
+          }
+          if (delivery === "operation-page") {
+            canonicalDb.exec("UPDATE library_local_preference_projection SET last_counter=last_counter-1;");
+            await expect(catchUp()).rejects.toThrow("requires completed backfill");
+            expect(canonicalDb.selectValue("SELECT count(*) FROM library_operation_replication_stages;")).toBe(0);
+            expect(canonicalDb.selectValue("SELECT source_revision FROM library_meta;")).toBe(0);
+            canonicalDb.exec("UPDATE library_local_preference_projection SET last_counter=last_counter+1;");
+          }
+          const sequence=canonicalDb.selectValue("SELECT sequence FROM library_local_change_state;");
+          if (!laterCoverage) {
+          canonicalDb.exec(`CREATE TEMP TRIGGER canonical_preference_fault BEFORE INSERT ON library_local_invalidations
+            WHEN NEW.topic='preferences' AND NEW.reason='optimistic_removed' BEGIN SELECT RAISE(ABORT,'canonical preference fault'); END;`);
+          await expect(catchUp()).rejects.toThrow("canonical preference fault");
+          expect(canonicalDb.selectValue("SELECT source_revision FROM library_meta;")).toBe(0);
+          expect(canonicalDb.selectValue("SELECT count(*) FROM library_operations;")).toBe(0);
+          expect(canonicalDb.selectValue("SELECT text_value FROM library_preferences WHERE path='v:$.friendSuggestions.dismissedSuggestionIds[0]';")).toBeUndefined();
+          expect(canonicalDb.selectValue("SELECT count(*) FROM library_local_preference_nodes;")).toBe(7);
+          expect(canonicalDb.selectValue("SELECT count(*) FROM library_operation_replication_stages;")).toBe(1);
+          expect(canonicalDb.selectValue("SELECT sequence FROM library_local_change_state;")).toBe(sequence);
+          canonicalDb.exec("DROP TRIGGER canonical_preference_fault;");
+          }
+          await catchUp();
+          expect(canonicalDb.selectValue("SELECT source_revision FROM library_meta;")).toBe(1);
+          expect(canonicalDb.selectValue("SELECT count(*) FROM library_operations;")).toBe(1);
+          expect(canonicalDb.selectValue("SELECT text_value FROM library_preferences WHERE path='v:$.friendSuggestions.dismissedSuggestionIds[0]';")).toBe("a");
+          const visible=readPwaVisiblePreferenceValue(canonicalDb,canonicalEngine,["friendSuggestions","dismissedSuggestionIds"],readPwaVisiblePreferenceSource(canonicalDb,canonicalEngine));
+          expect(visible.rows.filter(row=>row.valueType==="text").map(row=>row.textValue)).toEqual(["a","b"]);
+          expect(canonicalDb.selectValue("SELECT count(*) FROM library_local_preference_nodes;")).toBe(laterCoverage?7:4);
+          expect(canonicalDb.selectValue("SELECT count(*) FROM library_operation_replication_stages;")).toBe(0);
+          expect(canonicalDb.selectValue("SELECT sequence FROM library_local_change_state;")).toBe(Number(sequence)+(laterCoverage?0:1));
+          const stored=canonicalDb.exec({sql:"SELECT canonical_member FROM library_intent_members ORDER BY actor_counter;",rowMode:0,returnValue:"resultRows"});
+          expect(stored).toEqual(originalPreferenceBytes);
+          const finalTip=canonicalEngine.followerMutationContext();
+          await catchUp();
+          expect(canonicalDb.selectValue("SELECT sequence FROM library_local_change_state;")).toBe(Number(sequence)+(laterCoverage?0:1));
+          expect(canonicalEngine.followerMutationContext()).toEqual(finalTip);
+          expect(canonicalDb.selectValue("SELECT count(*) FROM main.sqlite_schema WHERE name='canonical_verified_preference_results';")).toBe(0);
+          if (laterCoverage) {
+            const second=JSON.parse(new TextDecoder().decode(originalPreferenceBytes[1]!));
+            const nextAccepted={...accepted,authoritative_source_revision:2,transaction_id:second.transaction_id,
+              transaction_digest:second.transaction_digest,canonical_operation_ids:[second.operation_id],receipt_ids:[originalPreferenceDigests[1]!]};
+            const digest=coreDigest("follower-result-body",libraryCoreFollowerResultBodyV1(nextAccepted));
+            const bytes=encodeLibraryCoreCanonicalValue({...nextAccepted,result_body_digest:digest,
+              signature:sign(null,encodeLibraryCoreSignatureInput("follower-result-envelope",{result_body_digest:digest}),authorityKeys.privateKey).toString("hex"),
+            } as unknown as LibraryCoreCanonicalValue);
+            const nextRecords=[
+              {canonicalRecordJson:new TextDecoder().decode(bytes),kind:"accepted_transaction",memberIndex:-1,recordDigest:digest},
+              {canonicalRecordJson:new TextDecoder().decode(originalPreferenceBytes[1]!),kind:"operation",memberIndex:0,recordDigest:originalPreferenceDigests[1]!},
+            ].map(record=>({...record,sourceRevision:2,transactionDigest:second.transaction_digest,transactionId:second.transaction_id}));
+            const nextInput=parseLibraryCoreNormalizedOperationImportPageV2({...operationInput,
+              snapshot:{...operationInput.snapshot,firstAvailableRevision:2,sourceRevision:2},
+              page:{canonicalRecordBytes:nextRecords.reduce((sum,record)=>sum+new TextEncoder().encode(record.canonicalRecordJson).byteLength,0),
+                done:true,nextCursor:{kind:"operation",memberIndex:0,recordDigest:originalPreferenceDigests[1]!,sourceRevision:2},records:nextRecords},
+            });
+            const advance=()=>importPwaProjectedOperationPage(canonicalDb,canonicalEngine,nextInput,sqlite3.capi);
+            canonicalDb.exec(`CREATE TEMP TRIGGER changed_covered_evidence AFTER UPDATE OF source_revision ON library_meta
+              WHEN NEW.source_revision=2 BEGIN UPDATE library_intent_results SET authoritative_source_revision=99; END;`);
+            await expect(advance()).rejects.toThrow("changed verified preference result evidence");
+            expect(canonicalDb.selectValue("SELECT source_revision FROM library_meta;")).toBe(1);
+            expect(canonicalDb.selectValue("SELECT authoritative_source_revision FROM library_intent_results;")).toBe(2);
+            expect(canonicalDb.selectValue("SELECT count(*) FROM library_local_preference_nodes;")).toBe(7);
+            expect(canonicalDb.selectValue("SELECT count(*) FROM main.sqlite_schema WHERE name='canonical_verified_preference_results';")).toBe(0);
+            canonicalDb.exec("DROP TRIGGER changed_covered_evidence;");
+            canonicalDb.exec(`CREATE TEMP TRIGGER later_coverage_fault BEFORE INSERT ON library_local_invalidations
+              WHEN NEW.topic='preferences' AND NEW.reason='optimistic_removed' BEGIN SELECT RAISE(ABORT,'later coverage fault'); END;`);
+            await expect(advance()).rejects.toThrow("later coverage fault");
+            expect(canonicalDb.selectValue("SELECT source_revision FROM library_meta;")).toBe(1);
+            expect(canonicalDb.selectValue("SELECT count(*) FROM library_local_preference_nodes;")).toBe(7);
+            expect(canonicalDb.selectValue("SELECT sequence FROM library_local_change_state;")).toBe(sequence);
+            expect(canonicalDb.selectValue("SELECT count(*) FROM main.sqlite_schema WHERE name='canonical_verified_preference_results';")).toBe(0);
+            canonicalDb.exec("DROP TRIGGER later_coverage_fault;");
+            await advance();
+            expect(canonicalDb.selectValue("SELECT source_revision FROM library_meta;")).toBe(2);
+            expect(canonicalDb.selectValue("SELECT count(*) FROM library_operations;")).toBe(2);
+            expect(canonicalDb.selectValue("SELECT count(*) FROM library_local_preference_nodes WHERE transaction_id='preference-transaction-1';")).toBe(0);
+            expect(canonicalDb.selectValue("SELECT count(*) FROM library_local_preference_nodes;")).toBe(4);
+            expect(canonicalDb.selectValue("SELECT sequence FROM library_local_change_state;")).toBe(Number(sequence)+1);
+            await advance();
+            expect(canonicalDb.selectValue("SELECT sequence FROM library_local_change_state;")).toBe(Number(sequence)+1);
+            expect(canonicalEngine.followerMutationContext()).toEqual(finalTip);
+          }
+        } finally {canonicalDb.close();}
+        }
+      }
+      database.transaction("IMMEDIATE", () => {
+        database.exec("DELETE FROM library_local_preference_nodes; DELETE FROM library_intent_results; UPDATE library_intent_transactions SET state='pending';");
+        database.exec({sql:"UPDATE library_local_preference_projection SET last_counter=0,previous_operation_id=NULL,previous_chain_digest=?1;",bind:[certificate.actor_chain_genesis]});
+        database.exec({sql:"UPDATE library_meta SET source_revision=?1;",bind:[outcome==="accepted-covered"?9:0]});
+        database.exec({sql:"UPDATE library_intent_transactions SET state=?1 WHERE transaction_id=?2;",bind:[signed.status,original.transaction_id]});
+        database.exec({sql:`INSERT INTO library_intent_results
+          (transaction_id,actor_id,authority_epoch_id,intent_epoch_id,result_sequence,previous_result_digest,result_digest,status,authoritative_source_revision,canonical_result,received_at)
+          VALUES (?1,?2,?3,?3,1,NULL,?4,?5,9,?6,4000);`,
+          bind:[original.transaction_id,pendingTip.actor_id,epochId,digest,signed.status,resultBytes]});
+      });
+      // Authentic-looking typed metadata cannot replace the authority signature.
+      const badResult = encodeLibraryCoreCanonicalValue({ ...signed,
+        signature:(signed.signature.startsWith("0")?"1":"0")+signed.signature.slice(1) } as unknown as LibraryCoreCanonicalValue);
+      database.exec({sql:"UPDATE library_intent_results SET canonical_result=?1;",bind:[badResult]});
+      await expect(backfillPwaPendingPreferenceProjection(database,engine)).rejects.toThrow();
+      expect(database.selectValue("SELECT last_counter FROM library_local_preference_projection;")).toBe(0);
+      expect(database.selectValue("SELECT count(*) FROM library_local_preference_nodes;")).toBe(0);
+      database.exec({sql:"UPDATE library_intent_results SET canonical_result=?1;",bind:[resultBytes]});
+      expect(await backfillPwaPendingPreferenceProjection(database,engine)).toBe(false);
+      expect(database.selectValue("SELECT count(*) FROM library_local_preference_nodes;")).toBe(outcome==="accepted-ahead"?3:0);
+      expect(await backfillPwaPendingPreferenceProjection(database,engine)).toBe(true);
+      expect(database.selectValue("SELECT count(*) FROM library_local_preference_nodes;")).toBe(outcome==="accepted-ahead"?7:4);
+      expect(engine.followerMutationContext()).toEqual(pendingTip);
+      const sequenceBeforeSettlement=Number(database.selectValue("SELECT sequence FROM library_local_change_state;"));
+      expect(await settlePwaPendingPreferenceProjection(database,engine,original.transaction_id,sqlite3.capi)).toBe(false);
+      expect(database.selectValue("SELECT sequence FROM library_local_change_state;")).toBe(sequenceBeforeSettlement);
+      if (outcome==="accepted-ahead") {
+        const proof=await preparePwaPreferenceCheckpointVerification(database,engine);
+        expect(()=>proof.assertUnchanged(sqlite3.capi)).toThrow("owned write transaction");
+        database.transaction("IMMEDIATE",()=>proof.assertUnchanged(sqlite3.capi));
+        // Separate connections exercise data_version, which is not covered by
+        // this connection's total_changes counter. This uses the WASM test VFS.
+        const proofFile="/preference-checkpoint-proof.sqlite";
+        sqlite3.capi.sqlite3_js_posix_create_file(proofFile,sqlite3.capi.sqlite3_js_db_export(database.pointer!));
+        const proofReader=new sqlite3.oo1.DB(proofFile,"w");
+        const proofWriter=new sqlite3.oo1.DB(proofFile,"w");
+        try {
+          proofReader.exec("PRAGMA foreign_keys=ON; PRAGMA synchronous=FULL;");
+          const proofEngine=new PwaLibraryCoreSqliteEngine(proofReader,sqlite3.version.libVersion);
+          const externalProof=await preparePwaPreferenceCheckpointVerification(proofReader,proofEngine);
+          const ownChanges=proofReader.selectValue("SELECT total_changes();");
+          proofWriter.exec("UPDATE library_intent_results SET received_at=4001;");
+          expect(proofReader.selectValue("SELECT total_changes();")).toBe(ownChanges);
+          expect(()=>proofReader.transaction("IMMEDIATE",()=>externalProof.assertUnchanged(sqlite3.capi))).toThrow("changed during verification");
+        } finally {proofWriter.close();proofReader.close();}
+        const beforeSchema=await preparePwaPreferenceCheckpointVerification(database,engine);
+        database.exec("CREATE TEMP TABLE preference_proof_schema_probe(value INTEGER);");
+        expect(()=>database.transaction("IMMEDIATE",()=>beforeSchema.assertUnchanged(sqlite3.capi))).toThrow("changed during verification");
+        database.exec("DROP TABLE preference_proof_schema_probe;");
+        database.exec("UPDATE library_intent_results SET received_at=4001;");
+        expect(()=>database.transaction("IMMEDIATE",()=>proof.assertUnchanged(sqlite3.capi))).toThrow("changed during verification");
+        database.exec("UPDATE library_intent_results SET received_at=4000;");
+        let checkpointRace=false;
+        const checkpointSubtle=new Proxy(crypto.subtle,{get(target,property){
+          if (property==="verify") return async (...args:Parameters<SubtleCrypto["verify"]>)=>{
+            expect(sqlite3.capi.sqlite3_get_autocommit(database.pointer!)).toBe(1);
+            const valid=await target.verify(...args);
+            if (!checkpointRace) {checkpointRace=true;database.exec("UPDATE library_intent_results SET received_at=4001;");}
+            return valid;
+          };
+          const value=Reflect.get(target,property,target);return typeof value==="function"?value.bind(target):value;
+        }});
+        await expect(preparePwaPreferenceCheckpointVerification(database,engine,checkpointSubtle)).rejects.toThrow("changed during verification");
+        database.exec("UPDATE library_intent_results SET received_at=4000;");
+        database.exec("UPDATE library_intent_results SET authoritative_source_revision=1000000;");
+        await expect(preparePwaPreferenceCheckpointVerification(database,engine)).rejects.toThrow("evidence changed");
+        database.exec("UPDATE library_intent_results SET authoritative_source_revision=9;");
+        database.exec("UPDATE library_meta SET source_revision=9;");
+        database.exec("UPDATE library_intent_results SET authoritative_source_revision=10;");
+        await expect(settlePwaPendingPreferenceProjection(database,engine,original.transaction_id,sqlite3.capi)).rejects.toThrow(/evidence changed/);
+        expect(database.selectValue("SELECT count(*) FROM library_local_preference_nodes;")).toBe(7);
+        database.exec("UPDATE library_intent_results SET authoritative_source_revision=9;");
+        database.exec(`CREATE TEMP TRIGGER settlement_notification_fault BEFORE INSERT ON library_local_invalidations
+          WHEN NEW.reason='optimistic_removed' BEGIN SELECT RAISE(ABORT,'settlement notification fault'); END;`);
+        await expect(settlePwaPendingPreferenceProjection(database,engine,original.transaction_id,sqlite3.capi)).rejects.toThrow(/settlement notification fault/);
+        expect(database.selectValue("SELECT count(*) FROM library_local_preference_nodes;")).toBe(7);
+        expect(database.selectValue("SELECT sequence FROM library_local_change_state;")).toBe(sequenceBeforeSettlement);
+        database.exec("DROP TRIGGER settlement_notification_fault;");
+        const preparedSettlement=await preparePwaPendingPreferenceSettlement(database,engine,resultBytes);
+        expect(()=>preparedSettlement.commit(sqlite3.capi)).toThrow(/owned write transaction/);
+        expect(()=>database.transaction("IMMEDIATE",()=>{
+          database.exec("UPDATE library_intent_results SET received_at=5000;");
+          expect(preparedSettlement.commit(sqlite3.capi)).toBe(true);
+          throw new Error("caller result commit fault");
+        })).toThrow("caller result commit fault");
+        expect(database.selectValue("SELECT received_at FROM library_intent_results;")).toBe(4000);
+        expect(database.selectValue("SELECT count(*) FROM library_local_preference_nodes;")).toBe(7);
+        expect(database.selectValue("SELECT sequence FROM library_local_change_state;")).toBe(sequenceBeforeSettlement);
+
+        expect(await settlePwaPendingPreferenceProjection(database,engine,original.transaction_id,sqlite3.capi)).toBe(true);
+        expect(await settlePwaPendingPreferenceProjection(database,engine,original.transaction_id,sqlite3.capi)).toBe(false);
+        expect(database.selectValue("SELECT count(*) FROM library_local_preference_nodes;")).toBe(4);
+        expect(database.selectValue("SELECT sequence FROM library_local_change_state;")).toBe(sequenceBeforeSettlement+1);
+        const secondOriginal=JSON.parse(new TextDecoder().decode(originalPreferenceBytes[1]!));
+        const rejected= parseLibraryCoreFollowerResultEnvelopeV1({...unsigned,
+          transaction_id:secondOriginal.transaction_id, transaction_digest:secondOriginal.transaction_digest,
+          status:"rejected", rejection_reason:"capability_denied", canonical_operation_ids:[],receipt_ids:[],
+          result_sequence:2, previous_result_digest:digest,
+        });
+        const rejectionDigest=coreDigest("follower-result-body",libraryCoreFollowerResultBodyV1(rejected));
+        const rejectionBytes=encodeLibraryCoreCanonicalValue({...rejected,result_body_digest:rejectionDigest,
+          signature:sign(null,encodeLibraryCoreSignatureInput("follower-result-envelope",{result_body_digest:rejectionDigest}),authorityKeys.privateKey).toString("hex"),
+        } as unknown as LibraryCoreCanonicalValue);
+        const preparedRejection=await preparePwaPendingPreferenceSettlement(database,engine,rejectionBytes);
+        const commitRejection=()=>{
+          database.exec({sql:"UPDATE library_intent_transactions SET state='rejected' WHERE transaction_id=?1;",bind:[secondOriginal.transaction_id]});
+          database.exec({sql:`INSERT INTO library_intent_results
+            (transaction_id,actor_id,authority_epoch_id,intent_epoch_id,result_sequence,previous_result_digest,result_digest,status,authoritative_source_revision,canonical_result,received_at)
+            VALUES (?1,?2,?3,?3,2,?4,?5,'rejected',9,?6,5000);`,
+            bind:[secondOriginal.transaction_id,pendingTip.actor_id,epochId,digest,rejectionDigest,rejectionBytes]});
+          expect(preparedRejection.commit(sqlite3.capi)).toBe(true);
+        };
+        expect(()=>database.transaction("IMMEDIATE",()=>{
+          commitRejection(); throw new Error("rejection import fault");
+        })).toThrow("rejection import fault");
+        expect(database.selectValue("SELECT count(*) FROM library_intent_results;")).toBe(1);
+        expect(database.selectValue("SELECT state FROM library_intent_transactions WHERE transaction_id='preference-transaction-2';")).toBe("pending");
+        expect(database.selectValue("SELECT count(*) FROM library_local_preference_nodes;")).toBe(4);
+        expect(database.selectValue("SELECT sequence FROM library_local_change_state;")).toBe(sequenceBeforeSettlement+1);
+        database.transaction("IMMEDIATE",commitRejection);
+        expect(database.transaction("IMMEDIATE",()=>preparedRejection.commit(sqlite3.capi))).toBe(false);
+        expect(database.selectValue("SELECT count(*) FROM library_local_preference_nodes;")).toBe(0);
+        expect(database.selectValue("SELECT sequence FROM library_local_change_state;")).toBe(sequenceBeforeSettlement+2);
+      }
+    }
+    database.exec({sql:"INSERT OR IGNORE INTO library_materialization_generation(singleton_id,generation_id) VALUES(1,?1);",bind:["ab".repeat(32)]});
+    const beforeFreshSource=readPwaVisiblePreferenceSource(database,engine);
+    followerNow=6001;
+    const freshTip=engine.followerMutationContext();
+    const freshMember=PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA.construct({
+      actor_id:freshTip.actor_id,actor_sequence:freshTip.next_actor_sequence,causal_frontier:[],created_at_ms:6000,
+      entity_id:"preferences",epoch:freshTip.epoch,epoch_id:freshTip.epoch_id,hlc_counter:0,hlc_wall_ms:6000,
+      library_id:freshTip.library_id,operation_id:"projected-operation-3",previous_actor_operation_id:freshTip.previous_actor_operation_id,
+      transaction_id:"projected-transaction-3",transaction_member_count:1,transaction_member_index:0,
+      payload:{updates:{friendSuggestions:{dismissedSuggestionIds:["c"]},display:{showEngagementCounts:false}}},
+    },{digest:coreDigest});
+    const freshFinalized=await finalizeLibraryCoreTransactionV1(assembleLibraryCoreTransactionV1([freshMember],freshTip.previous_actor_chain_digest,{digest:coreDigest}),{
+      digest:coreDigest,async signOperation(message){return sign(null,message,actorKeys.privateKey).toString("hex");},
+    });
+    const freshIntent={envelopeBytes:[encodeLibraryCoreCanonicalValue(freshFinalized.members[0]!.envelope as unknown as LibraryCoreCanonicalValue)]};
+    const sequenceBeforeFresh=Number(database.selectValue("SELECT sequence FROM library_local_change_state;"));
+    const nodesBeforeFresh=Number(database.selectValue("SELECT count(*) FROM library_local_preference_nodes;"));
+    database.exec("UPDATE library_local_preference_projection SET last_counter=last_counter-1;");
+    expect(()=>readPwaVisiblePreferenceSource(database,engine)).toThrow();
+    await expect(enqueuePwaProjectedFollowerIntent(database,engine,freshIntent,sqlite3.capi)).rejects.toThrow(/backfill is incomplete/);
+    database.exec("UPDATE library_local_preference_projection SET last_counter=last_counter+1;");
+    database.exec({sql:`INSERT INTO library_local_handoff
+      (singleton_id,handoff_id,library_id,installation_role,phase,predecessor_epoch_id,target_writer_id,target_authority_public_key,canonical_readiness,created_at,updated_at)
+      VALUES(1,?1,?2,'target','preparing',?3,?4,?5,X'7b7d',1,1);`,
+      bind:["12".repeat(32),libraryId,epochId,freshTip.actor_id,freshTip.actor_public_key]});
+    await expect(enqueuePwaProjectedFollowerIntent(database,engine,freshIntent,sqlite3.capi)).rejects.toThrow(/lifecycle/);
+    database.exec("DELETE FROM library_local_handoff;");
+    database.exec(`CREATE TEMP TRIGGER projected_cursor_fault BEFORE UPDATE OF last_counter ON library_local_preference_projection
+      WHEN NEW.last_counter>OLD.last_counter BEGIN SELECT RAISE(ABORT,'projected cursor fault'); END;`);
+    await expect(enqueuePwaProjectedFollowerIntent(database,engine,freshIntent,sqlite3.capi)).rejects.toThrow(/projected cursor fault/);
+    expect(engine.followerMutationContext()).toEqual(freshTip);
+    expect(database.selectValue("SELECT count(*) FROM library_intent_transactions WHERE transaction_id='projected-transaction-3';")).toBe(0);
+    expect(database.selectValue("SELECT count(*) FROM library_local_preference_nodes;")).toBe(nodesBeforeFresh);
+    expect(database.selectValue("SELECT sequence FROM library_local_change_state;")).toBe(sequenceBeforeFresh);
+    database.exec("DROP TRIGGER projected_cursor_fault;");
+    const freshReceipt=await enqueuePwaProjectedFollowerIntent(database,engine,freshIntent,sqlite3.capi);
+    expect(await enqueuePwaProjectedFollowerIntent(database,engine,freshIntent,sqlite3.capi)).toEqual(freshReceipt);
+    expect(engine.followerMutationContext().next_actor_sequence).toBe(freshTip.next_actor_sequence+1);
+    expect(database.selectValue("SELECT count(*) FROM library_local_preference_nodes;")).toBe(nodesBeforeFresh+5);
+    expect(database.selectValue("SELECT sequence FROM library_local_change_state;")).toBe(sequenceBeforeFresh+1);
+    const selectedPath="$.friendSuggestions.dismissedSuggestionIds";
+    const selected=database.exec({sql:LIBRARY_CORE_PENDING_PREFERENCE_QUERY_PROGRAMS.latest_node_v1,bind:[freshTip.actor_id,selectedPath],rowMode:"array",returnValue:"resultRows"});
+    expect(selected).toHaveLength(1);
+    expect(selected[0]![2]).toBe(freshTip.next_actor_sequence);
+    const arrayNodes=database.exec({sql:LIBRARY_CORE_PENDING_PREFERENCE_QUERY_PROGRAMS.array_nodes_v1,bind:[selected[0]![0]!,selected[0]![1]!,selectedPath+"[",selectedPath+"\\"],rowMode:"array",returnValue:"resultRows"});
+    expect(arrayNodes.map(row=>row[6])).toEqual(["c"]);
+    const barrier=database.exec({sql:LIBRARY_CORE_PENDING_PREFERENCE_QUERY_PROGRAMS.replacement_barrier_v1,bind:[freshTip.actor_id,selectedPath],rowMode:0,returnValue:"resultRows"});
+    expect(barrier).toEqual([freshTip.next_actor_sequence]);
+    expect(readPwaVisiblePreferenceSource(database,engine)).toEqual({...beforeFreshSource,
+      localSequence:beforeFreshSource.localSequence+1,actorCounter:beforeFreshSource.actorCounter+1});
+    // Tier 1: visible reads bind canonical rows and pending intent effects to
+    // the same local sequence, including edits which did not advance Primary.
+    const visibleSource=readPwaVisiblePreferenceSource(database,engine);
+    const replayEnrollment={
+      canonicalCertificateBytes:Uint8Array.from(new TextEncoder().encode(String(database.selectValue("SELECT canonical_enrollment_certificate FROM library_follower_actor_request;")))),
+      enrolledAt:Number(database.selectValue("SELECT enrolled_at FROM library_follower_actor_request;")),
+    };
+    const signedBeforeEnrollmentRetry=database.exec({sql:"SELECT hex(canonical_member) FROM library_intent_members ORDER BY actor_counter;",rowMode:"array",returnValue:"resultRows"});
+    await installPwaProjectedFollowerEnrollment(database,sqlite3.capi,engine,replayEnrollment);
+    expect(readPwaVisiblePreferenceSource(database,engine)).toEqual(visibleSource);
+    expect(database.selectValue("SELECT count(*) FROM library_local_preference_nodes;")).toBe(nodesBeforeFresh+5);
+    expect(database.exec({sql:"SELECT hex(canonical_member) FROM library_intent_members ORDER BY actor_counter;",rowMode:"array",returnValue:"resultRows"})).toEqual(signedBeforeEnrollmentRetry);
+    const retainedProjection=database.exec({sql:"SELECT * FROM library_local_preference_projection;",rowMode:"array",returnValue:"resultRows"})[0]!;
+    database.exec("DELETE FROM library_local_preference_projection;");
+    await expect(installPwaProjectedFollowerEnrollment(database,sqlite3.capi,engine,replayEnrollment))
+      .rejects.toThrow("cannot discard local edit history");
+    // Restore the exact test cursor only; the adapter above provides no repair.
+    database.exec({sql:"INSERT INTO library_local_preference_projection VALUES(?1,?2,?3,?4,?5,?6);",bind:retainedProjection});
+    expect(readPwaVisiblePreferenceSource(database,engine)).toEqual(visibleSource);
+    const shellScope=readPwaVisiblePreferenceScope(database,engine,LIBRARY_CORE_SHELL_PREFERENCE_PATHS,visibleSource);
+    const shell=createLibraryCoreShellPreferencesV1(shellScope.results);
+    expect(shell.display.showEngagementCounts).toBe(false);
+    expect(shell.display.reading.markReadOnScroll).toBe(true);
+    expect(shellScope.results.every(value=>JSON.stringify(value.source)===JSON.stringify(visibleSource))).toBe(true);
+    expect(()=>readPwaVisiblePreferenceScope(database,engine,LIBRARY_CORE_SHELL_PREFERENCE_PATHS,beforeFreshSource)).toThrow("CURSOR_STALE");
+    expect(()=>createLibraryCoreShellPreferencesV1(shellScope.results.slice(1))).toThrow("incomplete");
+    expect(()=>createLibraryCoreShellPreferencesV1([...shellScope.results].reverse())).toThrow("reordered");
+    expect(()=>readPwaVisiblePreferenceScope(database,engine,[["display"],["display"]],visibleSource)).toThrow("duplicate");
+    const maximumPaths=Array.from({length:64},(_,index)=>["unassigned",String(index)]);
+    expect(readPwaVisiblePreferenceScope(database,engine,maximumPaths,visibleSource).results).toHaveLength(64);
+    expect(()=>readPwaVisiblePreferenceScope(database,engine,[...maximumPaths,["overflow"]],visibleSource)).toThrow();
+    database.exec(preferenceValueVector.scopeOverflowSql);
+    expect(()=>readPwaVisiblePreferenceScope(database,engine,Array.from({length:32},(_,index)=>[`scope${index}`]),visibleSource)).toThrow("byte bound");
+    expect(createLibraryCoreShellPreferencesV1(readPwaVisiblePreferenceScope(database,engine,LIBRARY_CORE_SHELL_PREFERENCE_PATHS,visibleSource).results)).toEqual(shell);
+
+
+    const visible=(path:readonly string[])=>readPwaVisiblePreferenceValue(database,engine,path,visibleSource);
+    expect(()=>readPwaVisiblePreferenceValue(database,engine,["friendSuggestions","dismissedSuggestionIds"],beforeFreshSource)).toThrow("CURSOR_STALE");
+    const visibleArray=visible(["friendSuggestions","dismissedSuggestionIds"]);
+    expect(visibleArray.kind).toBe("value");
+    expect(visibleArray.rows.map(row=>[row.path,row.integerValue,row.textValue])).toEqual([
+      ["a:$._",1,null],["v:$._[0]",null,"c"],
+    ]);
+    expect(visible(["friendSuggestions"]).kind).toBe("object_group");
+    expect(visible(["absentSetting"]).kind).toBe("absent");
+    database.exec(`INSERT INTO library_preferences(path,value_type,integer_value,updated_at)
+      VALUES('v:$.canonicalSetting','integer',42,1);
+      INSERT INTO library_preferences(path,value_type,updated_at) VALUES('o:$.fraction','null',1);
+      INSERT INTO library_preferences(path,value_type,text_value,updated_at) VALUES
+      ('v:$.fraction.bits','text','3fe0000000000000',1),
+      ('v:$.fraction.codec','text','ieee754_binary64_hex_v1',1);`);
+    expect(visible(["canonicalSetting"]).rows[0]?.integerValue).toBe(42);
+    expect(visible(["fraction"]).kind).toBe("value");
+    expect(visible(["fraction"]).rows).toHaveLength(3);
+    database.exec("INSERT INTO library_preferences(path,value_type,integer_value,updated_at) VALUES('v:$.fraction.extra','integer',1,1);");
+    expect(visible(["fraction"]).kind).toBe("object_group");
+    // An earlier canonical object child is hidden by the pending array assignment.
+    database.exec("INSERT INTO library_preferences(path,value_type,text_value,updated_at) VALUES('v:$.friendSuggestions.dismissedSuggestionIds.old','text','hidden',1);");
+    expect(visible(["friendSuggestions","dismissedSuggestionIds","old"]).kind).toBe("absent");
+    database.exec({sql:"INSERT INTO library_preferences(path,value_type,text_value,updated_at) VALUES(?1,'text','literal',1);",
+      bind:['v:$."雪.key"."quote\\\"key"']});
+    expect(visible(["雪.key",'quote"key']).rows[0]?.textValue).toBe("literal");
+    database.exec({sql:`INSERT INTO library_local_preference_nodes
+      (transaction_id,member_index,actor_id,actor_counter,path,node_kind,value_type,integer_value,updated_at)
+      VALUES('projected-transaction-3',0,?1,?2,?3,'value','integer',9,6000);`,
+      bind:[freshTip.actor_id,freshTip.next_actor_sequence,selectedPath+".invalid"]});
+    expect(()=>visible(["friendSuggestions","dismissedSuggestionIds"])).toThrow("invalid object children");
+    database.exec({sql:"DELETE FROM library_local_preference_nodes WHERE path=?1;",bind:[selectedPath+".invalid"]});
+    // Actual logical export/stage/replacement; the Primary catalog rows below
+    // are synthetic setup, while retained consumer operations keep real signatures.
+    const checkpointFile="/preference-checkpoint-activation.sqlite";
+    sqlite3.capi.sqlite3_js_posix_create_file(checkpointFile,sqlite3.capi.sqlite3_js_db_export(database.pointer!));
+    const replica=new sqlite3.oo1.DB(checkpointFile,"w");
+    let donor:Database|undefined;
+    try {
+      replica.exec("PRAGMA foreign_keys=ON; PRAGMA synchronous=FULL;");
+      const replicaEngine=new PwaLibraryCoreSqliteEngine(replica,sqlite3.version.libVersion);
+      const writer="fe".repeat(32), capability="fd".repeat(32), placeholder="fc".repeat(32);
+      replica.exec({sql:`INSERT INTO library_actors(actor_id,authority_epoch_id,actor_kind,public_key,enrollment_operation_id,
+        enrollment_certificate_digest,canonical_enrollment_certificate,chain_genesis_digest,accepted_counter,accepted_operation_id,accepted_chain_digest,created_at,updated_at)
+        VALUES(?1,?2,'desktop',?3,'fixture-primary',?3,'{}',?3,0,NULL,?3,1,1);`,bind:[writer,epochId,placeholder]});
+      replica.exec({sql:`INSERT INTO library_actor_capabilities(capability_id,actor_id,certificate_version,actor_class,scope_mode,
+        issuance_identity,retirement_identity,certificate_digest,canonical_certificate,issued_at)
+        VALUES(?1,?2,2,'editor','library_wide',?3,?3,?3,'{}',1);`,bind:[capability,writer,placeholder]});
+      replica.exec({sql:"UPDATE library_active_authority SET writer_id=?1;",bind:[writer]});
+      replica.exec({sql:`INSERT INTO library_follower_checkpoint_receipt(singleton_id,library_id,authority_epoch_id,writer_actor_id,
+        checkpoint_generation,source_revision,checkpoint_digest,manifest_object_key,manifest_transport_object_id,manifest_content_digest,control_revision,installed_at)
+        SELECT 1,library_id,authority_epoch,?1,0,source_revision,?2,'old-manifest','old-object',?2,'old-control',1 FROM library_meta;`,bind:[writer,placeholder]});
+      const donorFile="/preference-checkpoint-donor.sqlite";
+      sqlite3.capi.sqlite3_js_posix_create_file(donorFile,sqlite3.capi.sqlite3_js_db_export(replica.pointer!));
+      donor=new sqlite3.oo1.DB(donorFile,"w");
+      donor.exec("PRAGMA foreign_keys=ON; DELETE FROM library_intent_transactions; DELETE FROM library_intent_actors; DELETE FROM library_follower_actor_request;");
+      const donorEngine=new PwaLibraryCoreSqliteEngine(donor,sqlite3.version.libVersion);
+      const descriptor=donorEngine.describeNormalizedCheckpointExport(), stageId="projected-checkpoint";
+      replicaEngine.beginNormalizedCheckpointStage({authorityEpoch:descriptor.authorityEpoch,libraryId:descriptor.libraryId,
+        sourceRevision:descriptor.sourceRevision,expectedRecordCount:descriptor.recordCount,stageId,createdAt:7000});
+      let after:import('@freed/shared/library-core').LibraryCoreNormalizedCheckpointExportRequestV2["after"]=null;
+      while (true) {
+        const page=donorEngine.exportPinnedNormalizedCheckpointPage({snapshot:descriptor,page:{after,maximumRecords:128,maximumResponseBytes:1048576}});
+        replicaEngine.appendNormalizedCheckpointStagePage({stageId,records:page.records});
+        if (page.done) break;
+        after=page.nextCursor;
+      }
+      const activation=parseLibraryCoreActivateNormalizedCheckpointStageV2({stageId,replaceExisting:true,followerReceipt:{checkpointGeneration:1,writerActorId:writer,
+        manifestObjectKey:"new-manifest",manifestTransportObjectId:"new-object",manifestContentDigest:placeholder,controlRevision:"new-control",installedAt:7001}});
+      const originalMembers=replica.exec({sql:"SELECT canonical_member FROM library_intent_members ORDER BY actor_counter;",rowMode:0,returnValue:"resultRows"});
+      const originalTip=replicaEngine.followerMutationContext();
+      const nodeCount=replica.selectValue("SELECT count(*) FROM library_local_preference_nodes;");
+      replica.exec("CREATE TEMP TRIGGER projected_restore_fault BEFORE INSERT ON library_local_preference_nodes BEGIN SELECT RAISE(ABORT,'projected restore fault'); END;");
+      await expect(replacePwaProjectedCheckpoint(replica,replicaEngine,activation,sqlite3.capi)).rejects.toThrow("projected restore fault");
+      expect(replica.selectValue("SELECT count(*) FROM library_local_preference_nodes;")).toBe(nodeCount);
+      expect(replicaEngine.followerMutationContext()).toEqual(originalTip);
+      expect(replica.selectValue("SELECT count(*) FROM sqlite_schema WHERE name LIKE 'checkpoint_retained_%' OR name='checkpoint_verified_preference_results';")).toBe(0);
+      expect(replica.selectValue("SELECT count(*) FROM library_checkpoint_stages WHERE stage_id='projected-checkpoint';")).toBe(1);
+      replica.exec("DROP TRIGGER projected_restore_fault;");
+      await replacePwaProjectedCheckpoint(replica,replicaEngine,activation,sqlite3.capi);
+      expect(replica.selectValue("SELECT count(*) FROM library_local_preference_nodes;")).toBe(nodeCount);
+      expect(replicaEngine.followerMutationContext()).toEqual(originalTip);
+      expect(replica.exec({sql:"SELECT canonical_member FROM library_intent_members ORDER BY actor_counter;",rowMode:0,returnValue:"resultRows"})).toEqual(originalMembers);
+      const restoredSource=readPwaVisiblePreferenceSource(replica,replicaEngine);
+      expect(readPwaVisiblePreferenceValue(replica,replicaEngine,["display","showEngagementCounts"],restoredSource).rows[0]?.booleanValue).toBe(false);
+      const newest=freshFinalized.members[0]!.envelope;
+      const priorResult=replica.selectValue("SELECT result_digest FROM library_intent_results ORDER BY result_sequence DESC LIMIT 1;");
+      expect(typeof priorResult).toBe("string");
+      const rejectionBody=parseLibraryCoreFollowerResultEnvelopeV1({
+        actor_id:freshTip.actor_id,authoritative_source_revision:descriptor.sourceRevision,authority_key_id:authorityKeyId,
+        canonical_operation_ids:[],epoch:1,epoch_id:epochId,format:"freed_follower_result_v1",intent_epoch:1,intent_epoch_id:epochId,
+        library_id:libraryId,original_result_digest:null,previous_result_digest:priorResult,receipt_ids:[],
+        rejection_reason:"capability_denied",replacement_fields:[],resolved_at_ms:8000,result_body_digest:"0".repeat(64),
+        result_sequence:3,schema_version:1,signature:"0".repeat(128),signature_algorithm:"ed25519",status:"rejected",
+        transaction_digest:newest.transaction_digest,transaction_id:newest.transaction_id,
+      });
+      const rejectionDigest=coreDigest("follower-result-body",libraryCoreFollowerResultBodyV1(rejectionBody));
+      const rejectionBytes=encodeLibraryCoreCanonicalValue({...rejectionBody,result_body_digest:rejectionDigest,
+        signature:sign(null,encodeLibraryCoreSignatureInput("follower-result-envelope",{result_body_digest:rejectionDigest}),authorityKeys.privateKey).toString("hex"),
+      } as unknown as LibraryCoreCanonicalValue);
+      // Retained signed-result fixture: settlement is deliberately deferred to
+      // checkpoint activation so the test can fault its final atomic boundary.
+      replica.transaction("IMMEDIATE",()=>{
+        replica.exec({sql:"UPDATE library_intent_transactions SET state='rejected' WHERE transaction_id=?1;",bind:[newest.transaction_id]});
+        replica.exec({sql:`INSERT INTO library_intent_results(transaction_id,actor_id,authority_epoch_id,intent_epoch_id,result_sequence,
+          previous_result_digest,result_digest,status,authoritative_source_revision,canonical_result,received_at)
+          VALUES(?1,?2,?3,?3,3,?4,?5,'rejected',?6,?7,8000);`,
+          bind:[newest.transaction_id,freshTip.actor_id,epochId,priorResult!,rejectionDigest,descriptor.sourceRevision,rejectionBytes]});
+      });
+      const stageAgain=(id:string)=>{
+        replicaEngine.beginNormalizedCheckpointStage({authorityEpoch:descriptor.authorityEpoch,libraryId:descriptor.libraryId,
+          sourceRevision:descriptor.sourceRevision,expectedRecordCount:descriptor.recordCount,stageId:id,createdAt:8000});
+        let cursor:typeof after=null;
+        while (true) {
+          const page=donorEngine.exportPinnedNormalizedCheckpointPage({snapshot:descriptor,page:{after:cursor,maximumRecords:128,maximumResponseBytes:1048576}});
+          replicaEngine.appendNormalizedCheckpointStagePage({stageId:id,records:page.records});
+          if (page.done) break;
+          cursor=page.nextCursor;
+        }
+      };
+      const settledStage="projected-checkpoint-settlement";
+      stageAgain(settledStage);
+      const settlementActivation=parseLibraryCoreActivateNormalizedCheckpointStageV2({...activation,stageId:settledStage,
+        followerReceipt:{...activation.followerReceipt!,checkpointGeneration:2,installedAt:8001}});
+      const settlementSequence=replica.selectValue("SELECT sequence FROM library_local_change_state;");
+      replica.exec(`CREATE TEMP TRIGGER projected_receipt_tamper AFTER INSERT ON library_intent_results
+        WHEN NEW.transaction_id='projected-transaction-3' BEGIN UPDATE library_intent_results SET received_at=received_at+1 WHERE transaction_id=NEW.transaction_id; END;`);
+      await expect(replacePwaProjectedCheckpoint(replica,replicaEngine,settlementActivation,sqlite3.capi)).rejects.toThrow("changed verified result evidence");
+      expect(replica.selectValue("SELECT received_at FROM library_intent_results WHERE transaction_id='projected-transaction-3';")).toBe(8000);
+      expect(replica.selectValue("SELECT count(*) FROM library_local_preference_nodes;")).toBe(nodeCount);
+      replica.exec("DROP TRIGGER projected_receipt_tamper;");
+      replica.exec(`CREATE TEMP TRIGGER projected_settlement_fault BEFORE INSERT ON library_local_invalidations
+        WHEN NEW.topic='preferences' AND NEW.reason='optimistic_removed' AND NEW.sequence>${Number(settlementSequence)} BEGIN SELECT RAISE(ABORT,'projected settlement fault'); END;`);
+      await expect(replacePwaProjectedCheckpoint(replica,replicaEngine,settlementActivation,sqlite3.capi)).rejects.toThrow("projected settlement fault");
+      expect(replica.selectValue("SELECT checkpoint_generation FROM library_follower_checkpoint_receipt;")).toBe(1);
+      expect(replica.selectValue("SELECT count(*) FROM library_local_preference_nodes;")).toBe(nodeCount);
+      expect(replica.selectValue("SELECT sequence FROM library_local_change_state;")).toBe(settlementSequence);
+      expect(replicaEngine.followerMutationContext()).toEqual(originalTip);
+      replica.exec("DROP TRIGGER projected_settlement_fault;");
+      await replacePwaProjectedCheckpoint(replica,replicaEngine,settlementActivation,sqlite3.capi);
+      expect(replica.selectValue("SELECT count(*) FROM library_local_preference_nodes;")).toBe(Number(nodeCount)-5);
+      expect(replica.selectValue("SELECT count(*) FROM library_local_preference_nodes WHERE transaction_id='projected-transaction-3';")).toBe(0);
+      expect(replica.selectValue("SELECT sequence FROM library_local_change_state;")).toBe(Number(settlementSequence)+1);
+      expect(replica.exec({sql:"SELECT canonical_member FROM library_intent_members ORDER BY actor_counter;",rowMode:0,returnValue:"resultRows"})).toEqual(originalMembers);
+      const settledSource=readPwaVisiblePreferenceSource(replica,replicaEngine);
+      expect(readPwaVisiblePreferenceValue(replica,replicaEngine,["display","showEngagementCounts"],settledSource).kind).toBe("absent");
+      stageAgain("projected-settlement-repeat");
+      await replacePwaProjectedCheckpoint(replica,replicaEngine,parseLibraryCoreActivateNormalizedCheckpointStageV2({...activation,stageId:"projected-settlement-repeat",
+        followerReceipt:{...activation.followerReceipt!,checkpointGeneration:3,installedAt:8002}}),sqlite3.capi);
+      expect(replica.selectValue("SELECT sequence FROM library_local_change_state;")).toBe(Number(settlementSequence)+1);
+
+    } finally {donor?.close();replica.close();}
+
+
+
+
   });
 
   it("stages split normalized operation pages and atomically applies one verified large transaction", async () => {
@@ -6271,6 +7114,74 @@ describe("PWA Library Core SQLite engine", () => {
     });
   });
 
+  it("imports the native signed predecessor before admitting a missed successor target", async () => {
+    const engine = new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion, { capi: sqlite3.capi });
+    engine.initialize();
+    const v = nativeHandoffCatchup;
+    const records = (input: unknown[]) => input.map(parseLibraryCoreNormalizedCheckpointRecordV2);
+    const initialReceipt = {checkpointGeneration:0,controlRevision:"baseline",installedAt:2400,
+      manifestContentDigest:lowercaseHex64("8".repeat(64)),manifestObjectKey:"baseline",manifestTransportObjectId:"baseline",writerActorId:v.baseline.writerId};
+    stageRecords(engine,records(v.baselineRecords),"catchup-baseline",v.baseline);
+    engine.activateNormalizedCheckpointStage({stageId:"catchup-baseline",replaceExisting:false,followerReceipt:initialReceipt});
+    stageRecords(engine,records(v.successorRecords),"catchup-successor",v.successor);
+    const successorActivation={stageId:"catchup-successor",replaceExisting:true,
+      followerReceipt:{...initialReceipt,writerActorId:v.successor.writerId}};
+    await expect(engine.verifyNormalizedCheckpointSuccessor(successorActivation)).rejects.toThrow("not enrolled");
+    const proof=await engine.preparePredecessorCheckpointRead("catchup-successor");
+    expect(proof).toEqual(v.expectedReadProof);
+    const pointer=proof!.pointer;
+    const activation={stageId:"catchup-predecessor",replaceExisting:true,followerReceipt:{
+      checkpointGeneration:pointer.generation,controlRevision:proof!.controlRevision,installedAt:2401,
+      manifestContentDigest:pointer.manifest.descriptor.contentDigest,manifestObjectKey:pointer.manifest.descriptor.objectKey,
+      manifestTransportObjectId:pointer.manifest.transportObjectId,writerActorId:pointer.writerId,
+    }};
+    const wrong = records(v.predecessorRecords).map(record=>record.registryKey==="00_checkpoint_header"
+      ? createLibraryCoreNormalizedCheckpointRecordV2({...record,payload:{...record.payload,createdAtMs:1}}):record);
+    stageRecords(engine,wrong,activation.stageId,v.predecessor);
+    await expect(engine.activateVerifiedPredecessorCheckpoint(activation,"catchup-successor"))
+      .rejects.toThrow("digest differs from signed consent");
+    expect(database.selectValue("SELECT source_revision FROM library_meta;")).toBe(v.baseline.sourceRevision);
+    expect(database.selectValue("SELECT count(*) FROM library_checkpoint_stages;")).toBe(2);
+    database.exec({sql:"DELETE FROM library_checkpoint_stages WHERE stage_id=?1;",bind:[activation.stageId]});
+    // A replacement engine has no in-memory proof from the preparation attempt.
+    const resumed = new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion, { capi: sqlite3.capi });
+    await expect(resumed.activateVerifiedPredecessorCheckpoint(activation,"x".repeat(256))).rejects.toThrow();
+    await expect(resumed.activateVerifiedPredecessorCheckpoint({ ...activation, followerReceipt: {
+      ...activation.followerReceipt, controlRevision: "untrusted",
+    } },"catchup-successor")).rejects.toThrow("receipt differs from signed consent");
+    expect(database.selectValue("SELECT source_revision FROM library_meta;")).toBe(v.baseline.sourceRevision);
+    const transport = v.predecessorTransport;
+    const manifest = JSON.parse(transport.manifest);
+    const objects = new Map<string, Uint8Array>([[pointer.manifest.transportObjectId, new TextEncoder().encode(transport.manifest)]]);
+    transport.pagesHex.forEach((hex, index) => objects.set(manifest.pages[index].object.transportObjectId,
+      Uint8Array.from(Buffer.from(hex, "hex"))));
+    const readImmutable = vi.fn(async (reference: { transportObjectId: string }) => {
+      const bytes = objects.get(reference.transportObjectId);
+      if (!bytes) throw new Error("fixture immutable object is missing");
+      return bytes;
+    });
+    const catchup = { adapter: { readImmutable }, subtle: crypto.subtle,
+      successorStageId: "catchup-successor", installedAt: 2401, assertActive: () => {}, runtime: {
+        prepare: (stageId: string) => resumed.preparePredecessorCheckpointRead(stageId),
+        begin: async (request: Parameters<typeof resumed.beginNormalizedCheckpointStage>[0]) => resumed.beginNormalizedCheckpointStage(request),
+        appendPage: async (request: Parameters<typeof resumed.appendNormalizedCheckpointStagePage>[0]) => resumed.appendNormalizedCheckpointStagePage(request),
+        async activate(request: Parameters<typeof resumed.activateVerifiedPredecessorCheckpoint>[0], stageId: string) {
+          const installed = await resumed.activateVerifiedPredecessorCheckpoint(request, stageId);
+          expect(installed.checkpointDigest).toBe(proof!.checkpointDigest);
+          throw new Error("commit response lost");
+        },
+      } };
+    await expect(catchUpLibraryCorePredecessorCheckpointV1(catchup)).rejects.toThrow("commit response lost");
+    expect(readImmutable).toHaveBeenCalledTimes(transport.pagesHex.length + 1);
+    expect(database.selectValue("SELECT checkpoint_digest FROM library_follower_checkpoint_receipt;")).toBe(proof!.checkpointDigest);
+    readImmutable.mockClear();
+    // Durable enrollment readback skips the committed predecessor after response loss.
+    await catchUpLibraryCorePredecessorCheckpointV1(catchup);
+    expect(readImmutable).not.toHaveBeenCalled();
+    await engine.verifyNormalizedCheckpointSuccessor(successorActivation);
+    expect(engine.activateNormalizedCheckpointStage(successorActivation).authorityEpoch).toBe(v.successor.authorityEpoch);
+  });
+
   it("pins a verified direct successor at commit and preserves the old consumer enrollment", async () => {
     const handoffVector = recoveredEnrollmentVector;
     const engine = new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion, { capi: sqlite3.capi });
@@ -6351,7 +7262,7 @@ describe("PWA Library Core SQLite engine", () => {
     const revision = Math.max(8, certificate.certificate_body.handoff_authorization.body.final_source_revision);
     const incoming = base.map(record => {
       if (record.registryKey === "00_checkpoint_header") return createLibraryCoreNormalizedCheckpointRecordV2({ ...record, payload: { ...record.payload, authorityEpoch: nextEpoch, sourceRevision: revision, checkpointId: `${pin.libraryId}:${nextEpoch}:${revision}` } });
-      if (record.registryKey === "03_active_authority") return createLibraryCoreNormalizedCheckpointRecordV2({ ...record, payload: { ...record.payload, epochId: nextEpoch, writerId: targetId } });
+      if (record.registryKey === "03_active_authority") return createLibraryCoreNormalizedCheckpointRecordV2({ ...record, payload: { ...record.payload, epochId: nextEpoch, writerId: "primary:desktop" } });
       if (record.registryKey === "90_actor_state" && record.primaryKey === targetId) return createLibraryCoreNormalizedCheckpointRecordV2({ ...record, payload: { ...record.payload, actorKind: "desktop", authorityEpochId: nextEpoch } });
       return record;
     });
@@ -6366,7 +7277,76 @@ describe("PWA Library Core SQLite engine", () => {
     } }));
     stageRecords(engine, incoming, "direct-successor", { libraryId: pin.libraryId, authorityEpoch: nextEpoch, sourceRevision: revision });
     const activation = { stageId: "direct-successor", replaceExisting: true, followerReceipt: { ...receipt, checkpointGeneration: 0, writerActorId: targetId } };
+    // Actual successor importer/proof, with synthetic derived catalog and old
+    // intent bytes. This proves preservation, not old signature admission.
+    const preferenceSuccessorFile="/preference-successor-checkpoint.sqlite";
+    sqlite3.capi.sqlite3_js_posix_create_file(preferenceSuccessorFile,sqlite3.capi.sqlite3_js_db_export(database.pointer!));
+    const preferenceDb=new sqlite3.oo1.DB(preferenceSuccessorFile,"w");
+    try {
+      preferenceDb.exec("PRAGMA foreign_keys=ON; PRAGMA synchronous=FULL;");
+      preferenceDb.transaction("IMMEDIATE",()=>migratePwaLibraryRecoverySchema(preferenceDb,sqlite3.capi));
+      preferenceDb.exec(LIBRARY_CORE_PENDING_PREFERENCE_SCHEMA_SQL);
+      preferenceDb.exec({sql:"UPDATE library_storage_meta SET schema_version=3,schema_sha256=?1;",bind:[LIBRARY_CORE_PENDING_PREFERENCE_SCHEMA_SHA256]});
+      preferenceDb.exec(`PRAGMA user_version=3;
+        INSERT INTO library_local_preference_projection SELECT 1,actor_id,next_counter-1,next_counter-1,previous_operation_id,previous_chain_digest FROM library_intent_actors;
+        INSERT INTO library_local_preference_nodes(transaction_id,member_index,actor_id,actor_counter,path,node_kind,value_type,boolean_value,updated_at)
+          SELECT transaction_id,member_index,actor_id,actor_counter,'$.display.showEngagementCounts','value','boolean',0,1 FROM library_intent_members;`);
+      const successorEngine=new PwaLibraryCoreSqliteEngine(preferenceDb,sqlite3.version.libVersion,{capi:sqlite3.capi});
+      const derived=()=>["library_local_preference_projection","library_local_preference_nodes"].map(table=>
+        preferenceDb.exec({sql:`SELECT * FROM ${table};`,rowMode:"array",returnValue:"resultRows"}));
+      const retainedDerived=derived();
+      preferenceDb.exec(`CREATE TEMP TRIGGER restore_successor_preferences BEFORE INSERT ON library_local_preference_nodes
+        BEGIN SELECT RAISE(ABORT,'successor preferences restore fault'); END;`);
+      await expect(replacePwaProjectedSuccessorCheckpoint(preferenceDb,successorEngine,activation)).rejects.toThrow("successor preferences restore fault");
+      expect(preferenceDb.selectValue("SELECT authority_epoch FROM library_meta;")).toBe(pin.epochId);
+      expect(derived()).toEqual(retainedDerived);
+      expect(preferenceDb.selectValue("SELECT count(*) FROM sqlite_schema WHERE name LIKE 'checkpoint_retained_%';")).toBe(0);
+      preferenceDb.exec("DROP TRIGGER restore_successor_preferences;");
+      expect((await replacePwaProjectedSuccessorCheckpoint(preferenceDb,successorEngine,activation)).authorityEpoch).toBe(nextEpoch);
+      expect(derived()).toEqual(retainedDerived);
+      expect(preferenceDb.selectValue("SELECT canonical_member FROM library_intent_members;")).toEqual(bytes);
+      expect(()=>successorEngine.followerMutationContext()).toThrow("unavailable");
+      expect(preferenceDb.selectValue("SELECT count(*) FROM sqlite_schema WHERE name LIKE 'checkpoint_retained_%';")).toBe(0);
+      const continuation={...activation,stageId:"projected-successor-continuation",
+        followerReceipt:{...activation.followerReceipt,checkpointGeneration:1}};
+      stageRecords(successorEngine,incoming,continuation.stageId,{libraryId:pin.libraryId,authorityEpoch:nextEpoch,sourceRevision:revision});
+      await replacePwaProjectedSuccessorCheckpoint(preferenceDb,successorEngine,continuation);
+      expect(derived()).toEqual(retainedDerived);
+      expect(preferenceDb.selectValue("SELECT checkpoint_generation FROM library_follower_checkpoint_receipt;")).toBe(1);
+      expect(()=>successorEngine.followerMutationContext()).toThrow("unavailable");
+    } finally {preferenceDb.close();}
     expect(() => engine.activateNormalizedCheckpointStage(activation)).toThrow(/verified proof/);
+    // An offline consumer may have missed the target's predecessor enrollment.
+    // A valid signed successor does not authorize skipping that local proof.
+    database.exec("SAVEPOINT missing_successor_target;");
+    database.exec({sql:"DELETE FROM library_actors WHERE actor_id=?1;",bind:[targetId]});
+    await expect(engine.verifyNormalizedCheckpointSuccessor(activation))
+      .rejects.toThrow("successor target is not enrolled in the accepted predecessor");
+    expect(database.selectValue("SELECT authority_epoch FROM library_meta;")).toBe(pin.epochId);
+    expect(snapshot()).toEqual(oldEdits);
+    // This retention fixture starts beyond the vector's final source revision.
+    // A read plan must refuse regression, even with a valid predecessor signature.
+    await expect(preparePwaPredecessorCheckpointRead(database, activation.stageId, crypto.subtle))
+      .rejects.toThrow("does not cover the selected source");
+    database.exec({sql:"UPDATE library_meta SET source_revision=?1;",
+      bind:[certificate.certificate_body.handoff_authorization.body.final_source_revision]});
+    const readProof = await preparePwaPredecessorCheckpointRead(database, activation.stageId, crypto.subtle);
+    expect(readProof?.pointer).toEqual(certificate.certificate_body.handoff_authorization.body.source_control);
+    requirePwaPredecessorCheckpointRead(database, activation.stageId, readProof!);
+    expect(() => requirePwaPredecessorCheckpointRead(database, activation.stageId, { ...readProof! })).toThrow("current verified binding");
+    await expect(engine.verifyNormalizedCheckpointSuccessor(activation)).rejects.toThrow("not enrolled");
+    const readRace = preparePwaPredecessorCheckpointRead(database, activation.stageId, crypto.subtle);
+    database.exec("UPDATE library_meta SET source_revision=source_revision+1;");
+    await expect(readRace).rejects.toThrow("changed during verification");
+    expect(() => requirePwaPredecessorCheckpointRead(database, activation.stageId, readProof!)).toThrow("current verified binding");
+    database.exec("ROLLBACK TO missing_successor_target; RELEASE missing_successor_target;");
+    expect(await preparePwaPredecessorCheckpointRead(database, activation.stageId, crypto.subtle)).toBeNull();
+    database.exec("SAVEPOINT retired_successor_target;");
+    database.exec({sql:"UPDATE library_actors SET retired_at=1 WHERE actor_id=?1;",bind:[targetId]});
+    await expect(preparePwaPredecessorCheckpointRead(database, activation.stageId, crypto.subtle))
+      .rejects.toThrow("cannot replace a retired or conflicting target");
+    database.exec("ROLLBACK TO retired_successor_target; RELEASE retired_successor_target;");
+    expect(() => requirePwaPredecessorCheckpointRead(database, activation.stageId, readProof!)).toThrow("current verified binding");
     const pendingProof = engine.verifyNormalizedCheckpointSuccessor(activation);
     database.exec({ sql: "UPDATE library_actors SET public_key = ?1 WHERE actor_id = ?2;", bind: ["7".repeat(64), targetId] });
     await expect(pendingProof).rejects.toThrow(/changed during verification/);
@@ -6436,6 +7416,8 @@ describe("PWA Library Core SQLite engine", () => {
     expect(recoveryRows()).toEqual(archived);
     const resumed = new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion, { capi: sqlite3.capi });
     resumed.initialize();
+    const projectedRecoveryFile="/projected-successor-recovery.sqlite";
+    sqlite3.capi.sqlite3_js_posix_create_file(projectedRecoveryFile,sqlite3.capi.sqlite3_js_db_export(database.pointer!));
     await resumed.commitConsumerRecovery(archiveId, 1001);
     expect(resumed.consumerRecoveryStatus()).toMatchObject({ state: "following", plan: { recoveryId: archiveId } });
     expect(resumed.followerActorEnrollmentContext().request?.actorId).toBe(prepared.actorId);
@@ -6465,6 +7447,89 @@ describe("PWA Library Core SQLite engine", () => {
       canonicalCertificateBytes: encodeLibraryCoreCanonicalValue(capability.certificate as unknown as LibraryCoreCanonicalValue),
       enrolledAt: 1100,
     };
+    const recoveredPreferenceEnvelopes: Uint8Array[]=[];
+    const projectedDb=new sqlite3.oo1.DB(projectedRecoveryFile,"w");
+    try {
+      projectedDb.exec("PRAGMA foreign_keys=ON; PRAGMA synchronous=FULL;");
+      // Synthetic old derived state; handoff and successor enrollment signatures
+      // are real. Production schema migration through handoff remains separate.
+      projectedDb.exec(LIBRARY_CORE_PENDING_PREFERENCE_SCHEMA_SQL);
+      projectedDb.exec({sql:"UPDATE library_storage_meta SET schema_version=3,schema_sha256=?1;",bind:[LIBRARY_CORE_PENDING_PREFERENCE_SCHEMA_SHA256]});
+      projectedDb.exec(`PRAGMA user_version=3;
+        INSERT INTO library_local_preference_projection
+          SELECT 1,actor_id,next_counter-1,next_counter-1,previous_operation_id,previous_chain_digest FROM library_intent_actors;
+        INSERT INTO library_local_preference_nodes
+          (transaction_id,member_index,actor_id,actor_counter,path,node_kind,value_type,boolean_value,updated_at)
+          SELECT transaction_id,member_index,actor_id,actor_counter,'$.display.showEngagementCounts','value','boolean',0,1 FROM library_intent_members;
+        CREATE TEMP TRIGGER projected_recovery_fault AFTER INSERT ON library_local_invalidations
+          WHEN NEW.topic='preferences' BEGIN SELECT RAISE(ABORT,'projected recovery fault'); END;`);
+      const projectedEngine=new PwaLibraryCoreSqliteEngine(projectedDb,sqlite3.version.libVersion,{capi:sqlite3.capi});
+      const archiveRows=()=>projectedDb.exec({sql:"SELECT table_key,row_ordinal,hex(canonical_row) FROM library_local_recovery_rows ORDER BY table_key,row_ordinal;",rowMode:"array",returnValue:"resultRows"});
+      const originalArchive=archiveRows();
+      // Rebuild preparation through schema3 admission after the verified
+      // successor checkpoint. Derived rows remain local and outside the archive.
+      projectedDb.exec(`DELETE FROM library_local_handoff; DELETE FROM library_local_recovery_rows; DELETE FROM library_local_recovery_archives;
+        CREATE TEMP TRIGGER projected_archive_fault BEFORE INSERT ON library_local_recovery_rows
+        BEGIN SELECT RAISE(ABORT,'projected archive fault'); END;`);
+      await expect(preparePwaProjectedConsumerRecovery(projectedDb,sqlite3.capi,projectedEngine,archiveId,prepared.input))
+        .rejects.toThrow("projected archive fault");
+      expect(projectedDb.selectValue("SELECT count(*) FROM library_local_handoff;")).toBe(0);
+      expect(projectedDb.selectValue("SELECT count(*) FROM library_local_recovery_archives;")).toBe(0);
+      expect(projectedDb.selectValue("SELECT count(*) FROM library_local_preference_nodes;")).toBe(1);
+      projectedDb.exec("DROP TRIGGER projected_archive_fault;");
+      await preparePwaProjectedConsumerRecovery(projectedDb,sqlite3.capi,projectedEngine,archiveId,prepared.input);
+      expect(archiveRows()).toEqual(originalArchive);
+      expect(projectedDb.selectValue("SELECT count(*) FROM library_local_preference_nodes;")).toBe(1);
+      const preparedChanges=projectedDb.changes(true);
+      await preparePwaProjectedConsumerRecovery(projectedDb,sqlite3.capi,projectedEngine,archiveId,prepared.input);
+      expect(projectedDb.changes(true)).toBe(preparedChanges);
+      expect(archiveRows()).toEqual(originalArchive);
+      expect(()=>projectedDb.transaction("IMMEDIATE",()=>verifyPwaRecoveryArchive(projectedDb,sqlite3.capi,archiveId,true)))
+        .toThrow("identity is unsupported");
+      const witness=projectedDb.selectValue("SELECT reenrollment_installation_witness FROM library_local_recovery_archives;");
+      const racingCommit=commitPwaProjectedConsumerRecovery(projectedDb,sqlite3.capi,projectedEngine,archiveId,1001);
+      projectedDb.exec({sql:"UPDATE library_local_recovery_archives SET reenrollment_installation_witness=?1;",bind:["ee".repeat(32)]});
+      await expect(racingCommit).rejects.toThrow("changed before commit");
+      projectedDb.exec({sql:"UPDATE library_local_recovery_archives SET reenrollment_installation_witness=?1;",bind:[witness!]});
+      expect(archiveRows()).toEqual(originalArchive);
+      const beforeSequence=Number(projectedDb.selectValue("SELECT sequence FROM library_local_change_state;"));
+      await expect(commitPwaProjectedConsumerRecovery(projectedDb,sqlite3.capi,projectedEngine,archiveId,1001))
+        .rejects.toThrow("projected recovery fault");
+      expect(projectedDb.selectValue("SELECT count(*) FROM library_local_preference_nodes;")).toBe(1);
+      expect(projectedDb.selectValue("SELECT count(*) FROM library_local_preference_projection;")).toBe(1);
+      expect(projectedDb.selectValue("SELECT sequence FROM library_local_change_state;")).toBe(beforeSequence);
+      expect(projectedDb.selectValue("SELECT reenrollment_committed_at FROM library_local_recovery_archives;")).toBeNull();
+      projectedDb.exec("DROP TRIGGER projected_recovery_fault;");
+      await commitPwaProjectedConsumerRecovery(projectedDb,sqlite3.capi,projectedEngine,archiveId,1001);
+      expect(projectedDb.selectValue("SELECT count(*) FROM library_local_preference_nodes;")).toBe(0);
+      expect(projectedDb.selectValue("SELECT count(*) FROM library_local_preference_projection;")).toBe(0);
+      expect(()=>projectedEngine.followerMutationContext()).toThrow("unavailable");
+      const afterSequence=projectedDb.selectValue("SELECT sequence FROM library_local_change_state;");
+      expect(Number(afterSequence)).toBeGreaterThan(beforeSequence);
+      await commitPwaProjectedConsumerRecovery(projectedDb,sqlite3.capi,projectedEngine,archiveId,1002);
+      expect(projectedDb.selectValue("SELECT sequence FROM library_local_change_state;")).toBe(afterSequence);
+      await installPwaProjectedFollowerEnrollment(projectedDb,sqlite3.capi,projectedEngine,enrollmentInput);
+      const tip=projectedEngine.followerMutationContext();
+      const member=PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA.construct({
+        actor_id:tip.actor_id,actor_sequence:tip.next_actor_sequence,causal_frontier:tip.observed_frontier,created_at_ms:1200,
+        entity_id:"preferences",epoch:tip.epoch,epoch_id:tip.epoch_id,hlc_counter:0,hlc_wall_ms:1200,
+        library_id:tip.library_id,operation_id:"recovered-preference",previous_actor_operation_id:tip.previous_actor_operation_id,
+        transaction_id:"recovered-preference-transaction",transaction_member_count:1,transaction_member_index:0,
+        payload:{updates:{display:{showEngagementCounts:false}}},
+      },{digest:coreDigest});
+      const finalized=await finalizeLibraryCoreTransactionV1(assembleLibraryCoreTransactionV1([member],tip.previous_actor_chain_digest,{digest:coreDigest}),{
+        digest:coreDigest,async signOperation(message){return sign(null,message,consumerKey.privateKey).toString("hex");},
+      });
+      const edit={envelopeBytes:[encodeLibraryCoreCanonicalValue(finalized.members[0]!.envelope as unknown as LibraryCoreCanonicalValue)]};
+      recoveredPreferenceEnvelopes.push(Uint8Array.from(edit.envelopeBytes[0]!));
+      await enqueuePwaProjectedFollowerIntent(projectedDb,projectedEngine,edit,sqlite3.capi);
+      const newTip=projectedEngine.followerMutationContext(),newSequence=projectedDb.selectValue("SELECT sequence FROM library_local_change_state;");
+      await commitPwaProjectedConsumerRecovery(projectedDb,sqlite3.capi,projectedEngine,archiveId,1201);
+      expect(projectedEngine.followerMutationContext()).toEqual(newTip);
+      expect(projectedDb.selectValue("SELECT sequence FROM library_local_change_state;")).toBe(newSequence);
+      expect(projectedDb.selectValue("SELECT count(*) FROM library_local_preference_nodes;")).toBe(2);
+      expect(archiveRows()).toEqual(originalArchive);
+    } finally {projectedDb.close();}
     const installed = await resumed.installFollowerActorEnrollment(enrollmentInput);
     const enrolledChanges = database.changes(true);
     expect(await resumed.installFollowerActorEnrollment(enrollmentInput)).toEqual(installed);
@@ -6478,10 +7543,166 @@ describe("PWA Library Core SQLite engine", () => {
       previousIntentSegmentDigest: null, previousResultSegmentDigest: null });
     expect(resumed.pageFollowerTransport({ actorId: lowercaseHex64(consumerId), firstActorCounter: 1, limit: 128, schemaVersion: 2 })).toMatchObject({ canonicalEnvelopes: [], lastActorCounter: null, done: true });
     expect(recoveryRows()).toEqual(archived);
+    // Execute the actual schema2 migration after real successor enrollment,
+    // with an authentic offline preference envelope pending in ordinary storage.
+    expect(recoveredPreferenceEnvelopes).toHaveLength(1);
+    await resumed.commitFollowerIntent({envelopeBytes:recoveredPreferenceEnvelopes});
+    const migrationTip=resumed.followerMutationContext();
+    database.exec(`CREATE TEMP TRIGGER recovered_preference_migration_fault BEFORE UPDATE OF schema_version ON library_storage_meta
+      WHEN NEW.schema_version=3 BEGIN SELECT RAISE(ABORT,'recovered preference migration fault'); END;`);
+    expect(()=>database.transaction("IMMEDIATE",()=>migratePwaPendingPreferenceProjection(database,sqlite3.capi,resumed)))
+      .toThrow("recovered preference migration fault");
+    expect(database.selectValue("PRAGMA user_version;")).toBe(2);
+    expect(database.selectValue("SELECT count(*) FROM sqlite_schema WHERE name='library_local_preference_projection';")).toBe(0);
+    expect(resumed.followerMutationContext()).toEqual(migrationTip);
+    database.exec("DROP TRIGGER recovered_preference_migration_fault;");
+    database.transaction("IMMEDIATE",()=>migratePwaPendingPreferenceProjection(database,sqlite3.capi,resumed));
+    expect(await backfillPwaPendingPreferenceProjection(database,resumed)).toBe(true);
+    expect(database.selectValue("SELECT count(*) FROM library_local_preference_nodes;")).toBe(2);
+    expect(resumed.followerMutationContext()).toEqual(migrationTip);
+    expect(database.selectValue("SELECT canonical_member FROM library_intent_members;")).toEqual(recoveredPreferenceEnvelopes[0]);
+    expect(recoveryRows()).toEqual(archived);
+    database.transaction("IMMEDIATE",()=>migratePwaPendingPreferenceProjection(database,sqlite3.capi,resumed));
+    expect(await backfillPwaPendingPreferenceProjection(database,resumed)).toBe(true);
+    expect(resumed.followerMutationContext()).toEqual(migrationTip);
+    const vectorStart=preferenceValueVector.setupSql.indexOf("INSERT INTO library_preferences");
+    expect(vectorStart).toBeGreaterThan(0);
+    database.exec(preferenceValueVector.setupSql.slice(vectorStart));
+    const visibleSource=readPwaVisiblePreferenceSource(database,resumed);
+    const visibleScope=readPwaVisiblePreferenceScope(database,resumed,
+      preferenceValueVector.cases.map(entry=>entry.path),visibleSource);
+    expect(visibleScope).toEqual({source:visibleSource,results:preferenceValueVector.cases.map(entry=>({
+      path:entry.path,kind:entry.kind,rows:entry.expectedRows,source:visibleSource,
+    }))});
+  });
 
+  // Tier 1: authentic history requires an authority receipt before materialization;
+  // fresh policy is not retroactively applied to the signed preference bytes.
+  it("imports historical preferences only with the exact signed acceptance receipt", async () => {
+    const libraryId = "11".repeat(32), epochId = "22".repeat(32), actorId = "33".repeat(32);
+    const chainGenesis = "44".repeat(32), authorityKeyId = "55".repeat(32);
+    const actorKeys = generateKeyPairSync("ed25519"), authorityKeys = generateKeyPairSync("ed25519");
+    const publicKey = (keys: typeof actorKeys) => keys.publicKey.export({ format: "der", type: "spki" }).subarray(-32).toString("hex");
+    const engine = new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion);
+    engine.initialize();
+    database.exec({ sql: "INSERT INTO library_meta VALUES (1,?1,1,?2,0,1);", bind: [libraryId, epochId] });
+    database.exec({ sql: "INSERT INTO library_materialization_generation VALUES (1,?1);", bind: ["99".repeat(32)] });
+    database.exec({ sql: `INSERT INTO library_authority_epochs
+      (epoch_id,library_id,epoch_number,authority_key_id,authority_public_key,transition_certificate_digest,
+       canonical_transition_certificate,accepted_manifest_generation,checkpoint_frontier_digest,materialized_state_digest,accepted_at)
+      VALUES (?1,?2,1,?3,?4,?5,'{}',1,?6,?7,1);`,
+      bind: [epochId, libraryId, authorityKeyId, publicKey(authorityKeys), "77".repeat(32), "88".repeat(32), "aa".repeat(32)] });
+    database.exec({ sql: "INSERT INTO library_active_authority VALUES ('active',?1,?2,?3,1,1);", bind: [libraryId, epochId, actorId] });
+    database.exec({ sql: `INSERT INTO library_actors
+      (actor_id,authority_epoch_id,actor_kind,public_key,enrollment_operation_id,enrollment_certificate_digest,
+       canonical_enrollment_certificate,chain_genesis_digest,accepted_counter,accepted_operation_id,accepted_chain_digest,retired_at,created_at,updated_at)
+      VALUES (?1,?2,'desktop',?3,'enroll-history',?4,'{}',?5,0,NULL,?5,NULL,1,1);`,
+      bind: [actorId, epochId, publicKey(actorKeys), "bb".repeat(32), chainGenesis] });
+    const input = { actor_id: actorId, actor_sequence: 1, causal_frontier: [], created_at_ms: 2000,
+      entity_id: "preferences", epoch: 1, epoch_id: epochId, hlc_counter: 0, hlc_wall_ms: 2000, library_id: libraryId,
+      operation_id: "historical:preferences", payload: { updates: { display: { markReadOnScroll: false } } },
+      previous_actor_operation_id: null, transaction_id: "historical:transaction", transaction_member_count: 1, transaction_member_index: 0 };
+    expect(() => PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA.construct(input, { digest: coreDigest })).toThrow("unsupported fields");
+    const assembled = assembleLibraryCoreHistoricalPreferencesV1([
+      constructLibraryCoreHistoricalPreferencesMemberV1(input, { digest: coreDigest }),
+    ], chainGenesis, { digest: coreDigest });
+    const envelope = { ...assembled.members[0]!.signing_body, signature: sign(null,
+      encodeLibraryCoreOperationSignatureInput({ operation_signing_body_digest: assembled.members[0]!.signing_body_digest }), actorKeys.privateKey).toString("hex") };
+    const canonical = (value: unknown) => encodeLibraryCoreCanonicalValue(value as LibraryCoreCanonicalValue);
+    const envelopeDigest = coreDigest("operation-envelope", envelope as unknown as LibraryCoreCanonicalValue);
+    const result = (receiptId: string, corruptSignature = false) => {
+      const unsigned = parseLibraryCoreFollowerResultEnvelopeV1({ actor_id: actorId, authoritative_source_revision: 1,
+        authority_key_id: authorityKeyId, canonical_operation_ids: [input.operation_id], epoch: 1, epoch_id: epochId,
+        format: "freed_follower_result_v1", intent_epoch: 1, intent_epoch_id: epochId, library_id: libraryId,
+        original_result_digest: null, previous_result_digest: null, receipt_ids: [receiptId], rejection_reason: null,
+        replacement_fields: [], resolved_at_ms: 3000, result_body_digest: "0".repeat(64), result_sequence: 1, schema_version: 1,
+        signature: "0".repeat(128), signature_algorithm: "ed25519", status: "accepted", transaction_digest: assembled.transaction_digest,
+        transaction_id: input.transaction_id });
+      const digest = coreDigest("follower-result-body", libraryCoreFollowerResultBodyV1(unsigned));
+      return { digest, bytes: canonical({ ...unsigned, result_body_digest: digest, signature: corruptSignature ? "00".repeat(64) : sign(null,
+        encodeLibraryCoreSignatureInput("follower-result-envelope", { result_body_digest: digest }), authorityKeys.privateKey).toString("hex") }) };
+    };
+    const snapshot = parseLibraryCoreNormalizedOperationExportDescriptorV2({ authorityEpoch: epochId, firstAvailableRevision: 1,
+      format: "freed_normalized_operation_export_v2", libraryId, operationCount: 1, protocolVersion: 2, sourceRevision: 1, transactionCount: 1, writerId: actorId });
+    const importResult = (accepted: ReturnType<typeof result>) => {
+      const records = [{ bytes: accepted.bytes, digest: accepted.digest, kind: "accepted_transaction", index: -1 },
+        { bytes: canonical(envelope), digest: envelopeDigest, kind: "operation", index: 0 }].map(value => ({
+          canonicalRecordJson: new TextDecoder().decode(value.bytes), kind: value.kind, memberIndex: value.index,
+          recordDigest: value.digest, sourceRevision: 1, transactionDigest: assembled.transaction_digest, transactionId: input.transaction_id }));
+      return engine.importNormalizedOperationPage({ snapshot, receivedAt: 4000, page: parseLibraryCoreNormalizedOperationExportPageV2({
+        canonicalRecordBytes: records.reduce((sum, value) => sum + new TextEncoder().encode(value.canonicalRecordJson).length, 0),
+        done: true, nextCursor: { kind: "operation", memberIndex: 0, recordDigest: envelopeDigest, sourceRevision: 1 }, records }) });
+    };
+    for (const invalid of [result("00".repeat(32)), result(envelopeDigest, true)]) {
+      try {
+        await expect(importResult(invalid)).rejects.toThrow(/signature|proof changed/);
+        expect(database.selectValue("SELECT count(*) FROM library_preferences;")).toBe(0);
+        expect(database.selectValue("SELECT accepted_counter FROM library_actors;")).toBe(0);
+        expect(database.selectValue("SELECT source_revision FROM library_meta;")).toBe(0);
+      } finally { database.exec("DELETE FROM library_operation_replication_stage_members; DELETE FROM library_operation_replication_stages;"); }
+    }
+    const accepted = result(envelopeDigest);
+    await expect(importResult(accepted)).resolves.toMatchObject({ appliedThroughRevision: 1, appliedTransactionCount: 1 });
+    await importResult(accepted);
+    expect(database.exec({ sql: "SELECT path,value_type,boolean_value FROM library_preferences ORDER BY path;", rowMode: "array", returnValue: "resultRows" }))
+      .toContainEqual(['v:$.display.markReadOnScroll', "boolean", 0]);
+    expect(database.selectValue("SELECT accepted_counter FROM library_actors;")).toBe(1);
+    expect(database.selectValue("SELECT count(*) FROM library_operations;")).toBe(1);
+    expect(database.selectValue("SELECT canonical_envelope FROM library_operations;")).toEqual(canonical(envelope));
+  });
 
-
-
+  // Tier 1: these immutable bytes were accepted and exported by published native
+  // source v26.9.1700-dev, before fresh preference policy became stricter.
+  it("imports published native historical preference bytes and converges at the exact frontier", async () => {
+    const fixture = historicalNativePreferences;
+    const bytes = (value: string) => new TextEncoder().encode(value);
+    let engine = new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion, { capi: sqlite3.capi });
+    engine.initialize();
+    const baseline = fixture.baselineRecords.map(parseLibraryCoreNormalizedCheckpointRecordV2);
+    expect(digestLibraryCoreNormalizedCheckpointRecordsV2(baseline)).toBe(fixture.baselineCheckpointDigest);
+    stageRecords(engine, baseline, "published-native-preferences", fixture.baseline);
+    engine.activateNormalizedCheckpointStage({ stageId: "published-native-preferences", replaceExisting: false,
+      followerReceipt: { checkpointGeneration: 0, controlRevision: "synthetic-native-history", installedAt: 2100,
+        manifestContentDigest: lowercaseHex64("8".repeat(64)), manifestObjectKey: "fixture", manifestTransportObjectId: "fixture",
+        writerActorId: fixture.baseline.writerId } });
+    // Current frontier semantics exclude enrollment without accepted work.
+    // Preserve the published descriptor and authenticate the same checkpoint rows.
+    expect(fixture.sourceCommit).toBe("17743c0e074b2b8ca27ff1c560a76854984410d7");
+    expect(fixture.baseline.sourceRevision).toBe(0);
+    expect(database.selectValue("SELECT max(accepted_counter) FROM library_actors;")).toBe(0);
+    const carriedFrontier = fixture.baselineRecords.find(record => record.registryKey === "01_authority_epoch")!.payload.checkpointFrontierDigest;
+    expect(carriedFrontier).not.toBe(fixture.baseline.causalFrontierDigest);
+    expect(engine.describeNormalizedCheckpointExport()).toEqual({ ...fixture.baseline, causalFrontierDigest: carriedFrontier });
+    for (const page of fixture.operationPages) {
+      const input = parseLibraryCoreNormalizedOperationImportPageV2(page);
+      await engine.importNormalizedOperationPage(input);
+      if (!page.page.done) {
+        expect(database.selectValue("SELECT source_revision FROM library_meta;")).toBe(0);
+        expect(database.selectValue("SELECT count(*) FROM library_preferences;")).toBe(0);
+        engine = new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion, { capi: sqlite3.capi });
+        engine.initialize();
+      }
+      await engine.importNormalizedOperationPage(input);
+    }
+    expect(database.selectValue("SELECT boolean_value FROM library_preferences WHERE path='v:$.display.markReadOnScroll';")).toBe(0);
+    expect(database.selectValue("SELECT integer_value FROM library_preferences WHERE path='v:$.weights.topics.historical';")).toBe(3);
+    expect(Array.from(database.selectValue("SELECT canonical_envelope FROM library_operations;") as Uint8Array)).toEqual(Array.from(bytes(fixture.envelopes[0]!)));
+    expect(Array.from(database.selectValue("SELECT canonical_result FROM library_operation_replication_results;") as Uint8Array)).toEqual(Array.from(bytes(fixture.canonicalResultJson)));
+    expect(database.selectValue("SELECT count(*) FROM library_operations;")).toBe(1);
+    expect(database.selectValue("SELECT accepted_counter FROM library_actors;")).toBe(1);
+    const snapshot = engine.describeNormalizedCheckpointExport();
+    expect(snapshot).toEqual(fixture.expected);
+    const records: LibraryCoreNormalizedCheckpointRecordV2[] = [];
+    let after = null;
+    for (let pageCount = 0; pageCount < 100; pageCount += 1) {
+      const page = engine.exportPinnedNormalizedCheckpointPage({ snapshot, page: { after, maximumRecords: 3,
+        maximumResponseBytes: LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES } });
+      records.push(...page.records);
+      if (page.done) break;
+      after = page.nextCursor;
+    }
+    expect(records).toHaveLength(fixture.expected.recordCount);
+    expect(digestLibraryCoreNormalizedCheckpointRecordsV2(records)).toBe(fixture.expectedCheckpointDigest);
   });
 
   it("converges with native recovered-actor signed edits through incremental pages", async () => {

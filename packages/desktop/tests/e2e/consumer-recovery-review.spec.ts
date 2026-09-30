@@ -148,6 +148,7 @@ test(`${mode} recovery retries one signed replacement after response loss`, asyn
     handlers.query_normalized_library = (args) => {
       const r = args.request;
       const source = { generationId: "f".repeat(64), projectionRevision: 7, transitionSequence: 9 };
+      if (mode === "preferences" && r.queryId === "preference_value_v1") return { queryId: r.queryId, schemaVersion: 1, path: r.path, kind: "absent", rows: [], source: { ...source, transitionSequence: 7 } };
       if (mode === "preferences" && r.queryId === "preferences_snapshot_v1") return { queryId: r.queryId, schemaVersion: 1, rows: [], source: { ...source, transitionSequence: 7 } };
       if (r.queryId === "recovery_intent_page_v1") return { queryId: r.queryId, schemaVersion: 1, recoveryId: r.recoveryId, archiveDigest: "1".repeat(64), source: { ...source, transitionSequence: 7 }, nextCursor: null, rows: [{ ordinal: 0, transactionId: "tx:rssnames" }] };
       if (r.queryId === "recovery_intent_review_v1") return { queryId: r.queryId, schemaVersion: 1, recoveryId: r.recoveryId, archiveDigest: "1".repeat(64), source, nextCursor: null, transactionId: r.transactionId, transactionDigest: "2".repeat(64), memberCount: 2, replacement: null, outcome: { state: "unresolved" }, rows: [0, 1].map((i) => ({
@@ -325,6 +326,8 @@ test(`${mode} recovery retries one signed replacement after response loss`, asyn
   expect(submissions).toHaveLength(2); expect(submissions[0].args).toEqual(submissions[1].args);
   const frames = (submissions[0].args as { canonicalEnvelopeJson: string[] }).canonicalEnvelopeJson;
   if (mode === "preferences") {
+    const selectedReads = calls.filter(({ cmd, args }) => cmd === "query_normalized_library" && (args as { request?: { queryId?: string } }).request?.queryId === "preference_value_v1");
+    expect(selectedReads.map(({ args }) => (args as { request: { path: string[] } }).request.path)).toEqual([["weights", "topics", "alpha"], ["display", "showEngagementCounts"]]);
     const values = frames.map(value => JSON.parse(value));
     expect(values.map(value => value.entity_id)).toEqual(["preferences", "preferences"]);
     expect(values[0].payload.updates.weights.topics.alpha).toEqual({ bits: "3fd8000000000000", codec: "ieee754_binary64_hex_v1" });

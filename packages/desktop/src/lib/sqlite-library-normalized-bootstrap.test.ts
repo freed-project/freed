@@ -1,3 +1,4 @@
+import catchupVector from "../../../shared/src/library-core/native-handoff-catchup-vector-v1.json";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { FeedItem } from "@freed/shared";
 import { createLibraryCoreNormalizedCheckpointRecordV2, encodeLibraryCoreNormalizedCheckpointRecordV2 } from "@freed/shared/library-core";
@@ -18,6 +19,7 @@ vi.mock("./library-core-normalized-query-client", () => ({
 
 const { dispatchSqliteMutation, loadSqliteLibraryState, readSqliteItems,
   beginNormalizedLibraryCheckpointExport, readNormalizedLibraryCheckpointPage,
+  prepareNormalizedLibraryPredecessorCheckpointRead, activateNormalizedLibraryPredecessorCheckpoint,
   readNormalizedLibraryConsumerRecovery, prepareNormalizedLibraryConsumerRecovery, commitNormalizedLibraryConsumerRecovery } =
   await import("./sqlite-library");
 
@@ -65,6 +67,32 @@ describe("Freed Desktop normalized bootstrap projection", () => {
     expect(mocks.invoke).toHaveBeenCalledTimes(2);
     await beginNormalizedLibraryCheckpointExport();
     expect(mocks.invoke).toHaveBeenLastCalledWith("begin_normalized_library_checkpoint_export");
+  });
+
+  it("bounds native predecessor requests and decodes the shared signed checkpoint reference", async () => {
+    mocks.invoke.mockResolvedValueOnce(catchupVector.expectedReadProof);
+    const proof = await prepareNormalizedLibraryPredecessorCheckpointRead("successor");
+    expect(proof).toEqual(catchupVector.expectedReadProof);
+    expect(mocks.invoke).toHaveBeenLastCalledWith("prepare_normalized_library_predecessor_checkpoint_read", { request: { stageId: "successor" } });
+    if (!proof) throw new Error("missing read reference");
+    const activation = { stageId: "predecessor", replaceExisting: true, followerReceipt: {
+      checkpointGeneration: proof.pointer.generation, writerActorId: proof.pointer.writerId,
+      manifestObjectKey: proof.pointer.manifest.descriptor.objectKey,
+      manifestTransportObjectId: proof.pointer.manifest.transportObjectId,
+      manifestContentDigest: proof.pointer.manifest.descriptor.contentDigest,
+      controlRevision: proof.controlRevision, installedAt: 2400,
+    } };
+    const receipt = { stageId: "predecessor", authorityEpoch: proof.pointer.storageEpoch,
+      libraryId: proof.pointer.libraryId, sourceRevision: proof.sourceRevision, recordCount: 86,
+      canonicalBytes: 1, checkpointDigest: proof.checkpointDigest };
+    mocks.invoke.mockResolvedValueOnce(receipt);
+    await expect(activateNormalizedLibraryPredecessorCheckpoint(activation, "successor")).resolves.toEqual(receipt);
+    expect(mocks.invoke).toHaveBeenLastCalledWith("activate_normalized_library_predecessor_checkpoint", {
+      request: { stageId: "predecessor", successorStageId: "successor", followerReceipt: activation.followerReceipt },
+    });
+    await expect(prepareNormalizedLibraryPredecessorCheckpointRead("x".repeat(256))).rejects.toThrow();
+    await expect(activateNormalizedLibraryPredecessorCheckpoint(activation, "predecessor")).rejects.toThrow();
+    expect(mocks.invoke).toHaveBeenCalledTimes(2);
   });
 
   it("loads only bounded facets and preferences without reading a shell", async () => {

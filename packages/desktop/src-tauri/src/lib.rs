@@ -14443,6 +14443,8 @@ pub fn run() {
             library_core_desktop_runtime::begin_normalized_library_checkpoint_import,
             library_core_desktop_runtime::append_normalized_library_checkpoint_import_page,
             library_core_desktop_runtime::activate_normalized_library_checkpoint_import,
+            library_core_desktop_runtime::prepare_normalized_library_predecessor_checkpoint_read,
+            library_core_desktop_runtime::activate_normalized_library_predecessor_checkpoint,
             library_core_desktop_runtime::describe_normalized_library_operation_export,
             library_core_desktop_runtime::read_normalized_library_operation_page,
             library_core_desktop_runtime::import_normalized_library_operation_page,

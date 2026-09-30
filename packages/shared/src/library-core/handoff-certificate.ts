@@ -1,3 +1,4 @@
+import { parseLibraryCoreControlPointerV1 } from "./immutable-transport-contracts.js";
 import {
   decodeLibraryCoreCanonicalValue, encodeLibraryCoreCanonicalValue,
   encodeLibraryCoreDigestInput, encodeLibraryCoreSignatureInput,
@@ -142,4 +143,67 @@ export async function verifyLibraryCoreHandoffCertificateV1(
   return Object.freeze({ canonicalBytes: snapshot, handoffId, epochId, certificateDigest,
     libraryId: pin.libraryId, epoch: pin.epoch + 1, writerId: targetActorId, finalSourceRevision,
     authorityKeyId: targetKeyId, authorityPublicKey: targetPublicKey });
+}
+
+/** Authenticate only the immutable predecessor checkpoint reference. The target
+ * key in the signed readiness proves possession, not local actor enrollment.
+ * Callers must still import that predecessor and run ordinary successor admission.
+ * This function performs no I/O and grants no selection or writer authority. */
+export async function verifyLibraryCoreHandoffPredecessorCheckpointV1(
+  canonicalBytes: Uint8Array,
+  predecessor: LibraryCoreHandoffPredecessorV1,
+  verifier: { verifySignature(input: LibraryCoreEd25519VerificationInput): boolean | Promise<boolean> },
+) {
+  if (canonicalBytes.byteLength > bound) throw new Error("handoff certificate exceeds its bound");
+  const snapshot = new Uint8Array(canonicalBytes);
+  const decoded = record(decodeLibraryCoreCanonicalValue(snapshot, { maximumBytes: bound }),
+    "certificate_body epoch_id epoch_signature authority_key_possession_signature");
+  const body = record(decoded.certificate_body,
+    "format library_id source_control target_epoch target_writer_id target_authority_public_key target_authority_key_id signature_algorithm handoff_authorization");
+  const grant = record(body.handoff_authorization, "body authorization_digest predecessor_signature");
+  const authorization = record(grant.body,
+    "format readiness predecessor_authority_public_key successor_epoch final_source_revision final_checkpoint_digest source_control source_control_revision source_control_file_id");
+  const readiness = record(authorization.readiness, "body handoff_id actor_signature authority_possession_signature");
+  const ready = record(readiness.body,
+    "format library_id predecessor_epoch_id predecessor_certificate_digest target_actor_id target_actor_public_key target_authority_public_key native_storage_version checkpoint_schema_version replication_protocol_version created_at_ms");
+  // Verify the same canonical bytes and all five signatures. In particular the
+  // locally trusted predecessor signs the manifest and the claimed target key.
+  const proof = await verifyLibraryCoreHandoffCertificateV1(snapshot, predecessor,
+    hex(ready.target_actor_public_key), verifier);
+  const control = parseLibraryCoreControlPointerV1(authorization.source_control);
+  const pointer = Object.freeze({ ...control, manifest: Object.freeze({ ...control.manifest,
+    descriptor: Object.freeze({ ...control.manifest.descriptor }) }) });
+  return Object.freeze({ purpose: "predecessor_checkpoint_read" as const,
+    pointer, controlRevision: string(authorization.source_control_revision),
+    controlFileId: string(authorization.source_control_file_id),
+    checkpointDigest: hex(authorization.final_checkpoint_digest),
+    sourceRevision: proof.finalSourceRevision, successorEpochId: proof.epochId,
+    authorizationDigest: hex(grant.authorization_digest) });
+}
+
+
+/** Decode transport metadata only. Parsing never verifies signatures or grants
+ * checkpoint admission; the receiving runtime must reconstruct its own proof. */
+export function parseLibraryCorePredecessorCheckpointReadV1(value: unknown):
+  Awaited<ReturnType<typeof verifyLibraryCoreHandoffPredecessorCheckpointV1>> | null {
+  if (value === null) return null;
+  if (!value || typeof value !== "object" || Object.getPrototypeOf(value) !== Object.prototype) {
+    throw new Error("predecessor read must be a closed record");
+  }
+  const input = record(value as RecordValue,
+    "purpose pointer controlRevision controlFileId checkpointDigest sourceRevision successorEpochId authorizationDigest");
+  requireEqual(input.purpose, "predecessor_checkpoint_read");
+  const control = parseLibraryCoreControlPointerV1(input.pointer);
+  const controlRevision = string(input.controlRevision), controlFileId = string(input.controlFileId);
+  if (controlFileId.length < 1 || controlFileId.length > 1024 || /[^A-Za-z0-9_-]/.test(controlFileId)) {
+    throw new Error("handoff control file is invalid");
+  }
+  if (controlRevision.length > 1024 || new TextEncoder().encode(controlRevision).length > 1024 ||
+      controlRevision.length < 2 || !controlRevision.startsWith('"') || !controlRevision.endsWith('"') ||
+      /["\x00-\x1f\x7f]/.test(controlRevision.slice(1, -1))) throw new Error("handoff control revision is invalid");
+  const pointer = Object.freeze({ ...control, manifest: Object.freeze({ ...control.manifest,
+    descriptor: Object.freeze({ ...control.manifest.descriptor }) }) });
+  return Object.freeze({ purpose: "predecessor_checkpoint_read" as const, pointer, controlRevision, controlFileId,
+    checkpointDigest: hex(input.checkpointDigest), sourceRevision: integer(input.sourceRevision),
+    successorEpochId: hex(input.successorEpochId), authorizationDigest: hex(input.authorizationDigest) });
 }

@@ -873,6 +873,35 @@ historical patch valid for new PWA writes or prove that every old canonical
 segment can be imported by the PWA. Such bytes remain preserved and must not be
 silently stripped or re-signed.
 
+PWA historical preference authentication uses the same bounded top-level and
+device-local exclusions as native history verification, without applying the
+current fresh-write sanitizer. Archive and canonical-history results carry no
+fresh-write verification provenance or accepted actor state. Their member
+constructions cannot be finalized for signing. Canonical import independently
+verifies and binds the authority-signed acceptance receipt, then rechecks its
+frozen actor snapshot and source revision inside the write transaction. The
+original envelope bytes remain unchanged. Historical Friend ordering remains
+archive-only because native authority never accepted that former PWA ordering.
+
+Shared cryptographic tests and PWA SQLite fixtures cover this historical
+preference path, including tampering, incomplete mixed transactions, device-local
+exclusions, a mismatched signed receipt, duplicate import and retained bytes.
+The native historical validator and shared verifier additionally consume the
+same 32 policy cases, covering the historical top-level sections and device-local
+exclusions. These fixtures do not establish compatibility for every historical
+native segment or prove installed Mac behavior.
+
+The historical native preference fixture is exported by published source
+`v26.9.1700-dev` through its existing signing, acceptance and bounded export
+functions. Current native and PWA readers preserve the original envelope and
+acceptance receipt, replay duplicate pages, and reach the same final revision,
+actor frontier and checkpoint digest. The PWA also reopens its engine between
+pages. The old zero-operation export descriptor is retained unchanged. At that
+baseline, tests explicitly require the current carried-frontier rule described
+in [checkpoints](checkpoints.md), since enrollment alone no longer contributes a
+tip. Checkpoint admission in this fixture is synthetic; live cloud joining and
+installed Mac acceptance remain separate requirements.
+
 Finite numbers in the registered binary64 wrapper are scalar preference values.
 Fresh policy validation decodes them for type checks but retains their original
 authenticated representation. Normal PWA preference writes use the same encoder
@@ -881,17 +910,25 @@ normalized nodes. Materialized rows and checkpoint digests do not change. Recove
 may replace a wrapped number with an integer at the same assignment path without
 adding or dropping a setting. Nonfinite wrappers refuse fresh admission.
 
-Preference review context uses one `preferences_snapshot_v1` response for all
-original members. It compares the snapshot generation and canonical revision
-with the archive review; archive pagination independently fences installation-local
-changes. Exact stored replacement links return before the snapshot read. Paths
-retain separate segments, so dotted map keys cannot address another setting.
-Current values use the normal preference default merge and identify whether the
-path was stored or defaulted. Empty object groups remain explicit and are not
-represented as whole-value replacement assignments. Original patches, including
-empty groups and numeric encodings, remain available independently of the visible
-field list. The existing snapshot row and response bounds still apply; this does
-not prove admission of every maximum-size accumulated preference tree.
+Preference recovery preserves the complete original drafts, then reads only the
+selected setting through `preference_value_v1`. Each comparison must match the
+archive review's generation and canonical revision. Archive pagination separately
+fences installation-local changes. Exact stored replacement links return before
+comparison reads; a locked response-loss retry retains the same prepared action.
+
+Paths retain literal segments, so dotted map keys cannot select another setting.
+The form retains one current value and distinguishes stored values, defaults,
+absence, object-group summaries, loading and errors. It does not offer a group
+summary as a replacement value. Empty object patches remain non-replacement
+merges. Confirmation requires every field's comparison to load, and any edit or
+navigation clears confirmation. Closing or replacing a review aborts its UI read
+and discards late results. Desktop forwards cancellation to the native query
+registry; the PWA checks cancellation around its bounded worker response.
+
+This removes the whole-tree snapshot dependency from preference recovery.
+Ordinary startup still uses `preferences_snapshot_v1`, whose total row and byte
+bounds can be exceeded by accumulated accepted patches. Startup and dynamic
+preference collection repair remain incomplete.
 
 Preference signing adapters accept the complete reviewed wire patches, validate
 every member and the aggregate byte bound, and snapshot values before context or

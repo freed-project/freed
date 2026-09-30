@@ -1,6 +1,7 @@
+import { parseLibraryCorePreferencesRevisionResponseV1 } from "@freed/shared/library-core";
+import { queryNormalizedLibrary } from "./library-core-normalized-query-client";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import { waitForFactoryResetDrain } from "@freed/ui/lib/factory-reset";
-import type { WeightPreferences } from "@freed/shared";
 import {
   backfillLibraryPriorities,
   reloadSqliteLibraryState,
@@ -19,28 +20,17 @@ const STARTUP_DELAY_MS = 30_000;
 const REFRESH_INTERVAL_MS = 60 * 60 * 1000;
 const FACTORY_RESET_DRAIN_TIMEOUT_MS = 120_000;
 
-interface PriorityIndexerOptions {
-  readonly getWeights: () => WeightPreferences;
-  readonly subscribeToWeightChanges?: (callback: () => void) => () => void;
-}
-
 let running = false;
 let processing = false;
 let scheduled = false;
 let rerunRequested = false;
 let passStartedAt = 0;
-let activeWeights: WeightPreferences | null = null;
 let nextRefreshAt = 0;
 let startedAt = 0;
 let intervalHandle: ReturnType<typeof setInterval> | null = null;
 let unsubscribeLibrary: (() => void) | null = null;
-let unsubscribeWeights: (() => void) | null = null;
-let getWeights: () => WeightPreferences = () => ({
-  authors: {},
-  platforms: {},
-  recency: 50,
-  topics: {},
-});
+let preferenceMarker: string | null = null;
+let lifecycle = 0;
 let factoryResetDrainInProgress = false;
 const activeResetSensitiveOperations = new Set<Promise<unknown>>();
 
@@ -55,7 +45,6 @@ function trackResetSensitiveOperation<T>(operation: Promise<T>): Promise<T> {
 
 function beginPass(): void {
   passStartedAt = Math.max(Date.now(), passStartedAt + 1);
-  activeWeights = getWeights();
   scheduled = true;
   rerunRequested = false;
 }
@@ -69,6 +58,18 @@ function schedulePass(): void {
   beginPass();
 }
 
+async function checkPreferenceRevision(expectedLifecycle: number): Promise<void> {
+  const parsed = parseLibraryCorePreferencesRevisionResponseV1(
+    await queryNormalizedLibrary({ queryId: "preferences_revision_v1", schemaVersion: 1 }),
+  );
+  if (!parsed.ok) throw new Error(parsed.error);
+  if (!running || lifecycle !== expectedLifecycle) return;
+  // Generation replacement clears invalidations, so revision alone is insufficient.
+  const marker = JSON.stringify([parsed.value.source.generationId, parsed.value.revision]);
+  if (preferenceMarker !== null && preferenceMarker !== marker) rerunRequested = true;
+  preferenceMarker = marker;
+}
+
 async function processNextBatch(): Promise<void> {
   if (!running || processing || !scheduled) return;
   const now = Date.now();
@@ -80,11 +81,10 @@ async function processNextBatch(): Promise<void> {
     return;
   }
   processing = true;
+  const expectedLifecycle = lifecycle;
   try {
-    const weights = activeWeights;
-    if (weights === null) {
-      throw new Error("priority pass has no weight snapshot");
-    }
+    await checkPreferenceRevision(expectedLifecycle);
+    if (!running || lifecycle !== expectedLifecycle) return;
     const summary = await runBackgroundJob({
       kind: "library-projection",
       source: "feed-priority",
@@ -93,16 +93,21 @@ async function processNextBatch(): Promise<void> {
       run: () =>
         trackResetSensitiveOperation(
           backfillLibraryPriorities(
-            weights,
             passStartedAt,
             BATCH_SIZE,
             false,
           ),
         ),
     });
+    if (!running || lifecycle !== expectedLifecycle) return;
     scheduled = summary.remaining > 0;
     if (!scheduled) {
+      // Keep completion retryable until both reload and the durable marker succeed.
+      scheduled = true;
       await reloadSqliteLibraryState();
+      await checkPreferenceRevision(expectedLifecycle);
+      if (!running || lifecycle !== expectedLifecycle) return;
+      scheduled = false;
       addDebugEvent(
         "change",
         `[priority-indexer] ranked ${summary.updated.toLocaleString()} final items`,
@@ -110,7 +115,6 @@ async function processNextBatch(): Promise<void> {
       if (rerunRequested) {
         beginPass();
       } else {
-        activeWeights = null;
         nextRefreshAt = Date.now() + REFRESH_INTERVAL_MS;
       }
     }
@@ -124,16 +128,14 @@ async function processNextBatch(): Promise<void> {
   }
 }
 
-export function start(options: PriorityIndexerOptions): void {
+export function start(): void {
   if (running || factoryResetDrainInProgress || isDesktopHandoffPaused()) return;
-  getWeights = options.getWeights;
   running = true;
   startedAt = Date.now();
   schedulePass();
   unsubscribeLibrary = subscribeDesktopLibraryRuntime((_state, event) => {
-    if (!processing && event.source !== "feeds_patch") schedulePass();
+    if (event.source === "preferences_patch" || (!processing && event.source !== "feeds_patch")) schedulePass();
   });
-  unsubscribeWeights = options.subscribeToWeightChanges?.(schedulePass) ?? null;
   intervalHandle = setInterval(() => {
     if (!scheduled && Date.now() >= nextRefreshAt) schedulePass();
     trackResetSensitiveOperation(processNextBatch()).catch((error) => {
@@ -146,9 +148,10 @@ export function start(options: PriorityIndexerOptions): void {
 
 export function stop(): void {
   running = false;
+  lifecycle += 1;
+  preferenceMarker = null;
   scheduled = false;
   rerunRequested = false;
-  activeWeights = null;
   passStartedAt = 0;
   nextRefreshAt = 0;
   if (intervalHandle !== null) {
@@ -157,14 +160,6 @@ export function stop(): void {
   }
   unsubscribeLibrary?.();
   unsubscribeLibrary = null;
-  unsubscribeWeights?.();
-  unsubscribeWeights = null;
-  getWeights = () => ({
-    authors: {},
-    platforms: {},
-    recency: 50,
-    topics: {},
-  });
   log.info("[priority-indexer] stopped");
 }
 

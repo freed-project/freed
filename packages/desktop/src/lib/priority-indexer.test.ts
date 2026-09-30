@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { WeightPreferences } from "@freed/shared";
 
 const mocks = vi.hoisted(() => ({
   backfill: vi.fn(),
   reload: vi.fn(),
   librarySubscriber: null as null | ((state: unknown, event: { source: string }) => void),
-  weightSubscriber: null as null | (() => void),
+  query: vi.fn(),
 }));
+
+vi.mock("./library-core-normalized-query-client", () => ({ queryNormalizedLibrary: mocks.query }));
 
 vi.mock("./library-client", () => ({
   backfillLibraryPriorities: mocks.backfill,
@@ -36,18 +37,10 @@ vi.mock("@freed/ui/lib/factory-reset", () => ({
 import { start, stop, stopAndDrain } from "./priority-indexer";
 import { pauseDesktopOperationsForHandoff } from "./factory-reset-guard";
 
-const firstWeights: WeightPreferences = Object.freeze({
-  authors: { ada: 90 },
-  platforms: { rss: 70 },
-  recency: 50,
-  topics: { research: 80 },
-});
-const secondWeights: WeightPreferences = Object.freeze({
-  authors: { ada: 10 },
-  platforms: { rss: 20 },
-  recency: 30,
-  topics: { research: 40 },
-});
+function revision(value: number, generationId = "a".repeat(64)) {
+  return { queryId: "preferences_revision_v1", schemaVersion: 1, revision: value,
+    source: { generationId, projectionRevision: 100, transitionSequence: 100 } };
+}
 
 describe("Primary priority indexer", () => {
   it("requires an owned pause and permits restarting after a resumable drain", async () => {
@@ -55,14 +48,14 @@ describe("Primary priority indexer", () => {
     const pause = pauseDesktopOperationsForHandoff();
     try {
       await stopAndDrain({ resumable: true });
-      start({ getWeights: () => firstWeights });
+      start();
       await vi.advanceTimersByTimeAsync(30_000);
       expect(mocks.backfill).not.toHaveBeenCalled();
     } finally {
       pause.resume();
     }
     mocks.backfill.mockResolvedValue({ remaining: 0, updated: 1 });
-    start({ getWeights: () => firstWeights });
+    start();
     await vi.advanceTimersByTimeAsync(30_000);
     expect(mocks.backfill).toHaveBeenCalledOnce();
   });
@@ -73,7 +66,8 @@ describe("Primary priority indexer", () => {
     mocks.reload.mockReset();
     mocks.reload.mockResolvedValue({});
     mocks.librarySubscriber = null;
-    mocks.weightSubscriber = null;
+    mocks.query.mockReset();
+    mocks.query.mockResolvedValue(revision(0));
   });
 
   afterEach(() => {
@@ -81,8 +75,7 @@ describe("Primary priority indexer", () => {
     vi.useRealTimers();
   });
 
-  it("keeps one weight and timestamp snapshot for every bounded pass", async () => {
-    let currentWeights = firstWeights;
+  it("keeps the pass timestamp and reruns after a weight change", async () => {
     mocks.backfill
       .mockResolvedValueOnce({ passStartedAt: 1, remaining: 1, updated: 64 })
       .mockResolvedValueOnce({ passStartedAt: 1, remaining: 0, updated: 2 })
@@ -92,42 +85,57 @@ describe("Primary priority indexer", () => {
         updated: 1,
       });
 
-    start({
-      getWeights: () => currentWeights,
-      subscribeToWeightChanges: (callback) => {
-        mocks.weightSubscriber = callback;
-        return vi.fn();
-      },
-    });
+    start();
 
     await vi.advanceTimersByTimeAsync(30_000);
-    currentWeights = secondWeights;
-    mocks.weightSubscriber?.();
+    mocks.librarySubscriber?.(null, { source: "preferences_patch" });
     await vi.advanceTimersByTimeAsync(500);
     await vi.advanceTimersByTimeAsync(500);
 
     expect(mocks.backfill).toHaveBeenNthCalledWith(
       1,
-      firstWeights,
       1,
       64,
       false,
     );
     expect(mocks.backfill).toHaveBeenNthCalledWith(
       2,
-      firstWeights,
       1,
       64,
       false,
     );
     expect(mocks.backfill).toHaveBeenNthCalledWith(
       3,
-      secondWeights,
       30_500,
       64,
       false,
     );
     expect(mocks.reload).toHaveBeenCalledTimes(2);
+  });
+
+  it("coalesces preference changes received while a batch is in flight", async () => {
+    let finish!: (value: { remaining: number; updated: number }) => void;
+    mocks.backfill.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }))
+      .mockResolvedValue({ remaining: 0, updated: 1 });
+    start();
+    await vi.advanceTimersByTimeAsync(30_000);
+    mocks.librarySubscriber?.(null, { source: "preferences_patch" }); mocks.librarySubscriber?.(null, { source: "preferences_patch" });
+    finish({ remaining: 0, updated: 1 });
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(mocks.backfill).toHaveBeenCalledTimes(2);
+    expect(mocks.backfill.mock.calls[1]![0]).toBeGreaterThan(mocks.backfill.mock.calls[0]![0]);
+    expect(mocks.reload).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries a stale read without marking the pass complete", async () => {
+    mocks.backfill.mockRejectedValueOnce(new Error("CURSOR_STALE")).mockResolvedValue({ remaining: 0, updated: 1 });
+    start();
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(mocks.reload).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(mocks.backfill).toHaveBeenCalledTimes(2);
+    expect(mocks.backfill.mock.calls[1]).toEqual(mocks.backfill.mock.calls[0]);
+    expect(mocks.reload).toHaveBeenCalledOnce();
   });
 
   it("coalesces Library invalidations into one follow-up pass", async () => {
@@ -140,7 +148,7 @@ describe("Primary priority indexer", () => {
         updated: 1,
       });
 
-    start({ getWeights: () => firstWeights });
+    start();
     await vi.advanceTimersByTimeAsync(30_000);
     mocks.librarySubscriber?.(null, { source: "item_patch" });
     mocks.librarySubscriber?.(null, { source: "state_update" });
@@ -149,11 +157,47 @@ describe("Primary priority indexer", () => {
     expect(mocks.backfill).toHaveBeenCalledTimes(3);
     expect(mocks.backfill).toHaveBeenNthCalledWith(
       3,
-      firstWeights,
       30_500,
       64,
       false,
     );
     expect(mocks.reload).toHaveBeenCalledTimes(2);
   });
+  it("detects durable preference changes without a renderer map subscription", async () => {
+    mocks.backfill.mockResolvedValue({ remaining: 0, updated: 1 });
+    mocks.query.mockResolvedValueOnce(revision(0)).mockResolvedValue(revision(1));
+    start();
+    await vi.advanceTimersByTimeAsync(31_000);
+    expect(mocks.backfill).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not loop on its own reload or item-only revisions", async () => {
+    mocks.backfill.mockResolvedValue({ remaining: 0, updated: 0 });
+    mocks.reload.mockImplementation(async () => {
+      mocks.librarySubscriber?.(null, { source: "state_update" });
+      mocks.librarySubscriber?.(null, { source: "item_patch" });
+    });
+    start();
+    await vi.advanceTimersByTimeAsync(35_000);
+    expect(mocks.backfill).toHaveBeenCalledOnce();
+  });
+
+  it("reruns after a checkpoint generation replacement with the same revision", async () => {
+    mocks.backfill.mockResolvedValue({ remaining: 0, updated: 1 });
+    mocks.query.mockResolvedValueOnce(revision(0)).mockResolvedValue(revision(0, "b".repeat(64)));
+    start();
+    await vi.advanceTimersByTimeAsync(31_000);
+    expect(mocks.backfill).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries a failed completion marker instead of silently completing", async () => {
+    mocks.backfill.mockResolvedValue({ remaining: 0, updated: 1 });
+    mocks.query.mockResolvedValueOnce(revision(0)).mockRejectedValueOnce(new Error("marker unavailable"))
+      .mockResolvedValue(revision(0));
+    start();
+    await vi.advanceTimersByTimeAsync(31_000);
+    expect(mocks.backfill).toHaveBeenCalledTimes(2);
+    expect(mocks.backfill.mock.calls[1]).toEqual(mocks.backfill.mock.calls[0]);
+  });
+
 });
