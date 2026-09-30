@@ -49,6 +49,10 @@ it("discards cancelled results, copies fresh evidence and aborts on close", asyn
       interfaceBuild: expect.objectContaining({ buildKind: "local", commitSha: null }),
       startedAt: expect.any(String), completedAt: expect.any(String),
     }));
+    audit.mockRejectedValueOnce(new Error("AUDIT_DEADLINE"));
+    await click("Audit this Library");
+    expect(host.textContent).toContain("The audit reached its time limit. No receipt was produced.");
+    expect(host.textContent).not.toContain("Copy audit receipt");
     await click("Audit this Library");
     await act(async () => root.unmount()); unmounted = true;
     expect(signals[2]!.aborted).toBe(true);

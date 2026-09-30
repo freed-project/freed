@@ -47,7 +47,9 @@ Browser audits start only when the database queue is idle. New Library activity
 interrupts an audit at a bounded page boundary so edits and sync can proceed.
 Retry after activity settles. Cancellation or deadline failure produces no receipt
 and does not establish agreement. Do not disable sync to make divergent receipts
-appear comparable.
+appear comparable. Audits have a 30-second budget. Large Libraries may reach that
+limit even while idle; a timeout leaves convergence unverified and must not be
+replaced with a matching-count claim.
 
 The copied `interfaceBuild` identifies the loaded interface. Record the installed
 native build separately. These receipts do not prove zero consumer capture, Mac

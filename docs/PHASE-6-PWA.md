@@ -1431,3 +1431,10 @@ interrupts an audit at the next page boundary. Cancellation and deadline settlem
 affect only that audit; they do not retire the worker. Native fixture parity and
 worker cancellation tests pass. Physical Mac OPFS and installed cross-device
 acceptance remain separate requirements.
+
+The explicit audit selects a bounded page of canonical keys before constructing
+payloads, then hashes rows through SQLite's callback without retaining an IPC
+response. Large-record parity covers a byte-boundary stop before the row limit.
+Synthetic Linux probes completed 25,001 items with 1 KiB text each; a 100,001-item
+probe reached the 30-second deadline and released its read transaction. These
+results do not establish representative Library or installed memory acceptance.

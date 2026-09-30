@@ -837,6 +837,32 @@ function searchScoreFromSqliteRow(
     .score;
 }
 
+function checkpointRecordFromSqlRow(row: SqlValue[]) {
+  const registryKey = text(row[0], "checkpoint registry key");
+  const primaryKeyJson = text(row[1], "checkpoint primary key JSON");
+  const primaryKey = JSON.parse(
+    primaryKeyJson,
+  ) as LibraryCoreNormalizedCheckpointPrimaryKeyV2;
+  const payload = JSON.parse(
+    text(row[2], "checkpoint payload JSON"),
+  ) as Record<string, LibraryCoreCanonicalValue>;
+  if (row[3] !== null) {
+    payload.bytesBase64 = encodeLibraryCoreCanonicalBase64(
+      bytes(row[3], "checkpoint chunk bytes"),
+    );
+  }
+  const record = createLibraryCoreNormalizedCheckpointRecordV2({
+    payload,
+    primaryKey,
+    registryKey: registryKey as Parameters<
+      typeof createLibraryCoreNormalizedCheckpointRecordV2
+    >[0]["registryKey"],
+  });
+  const canonicalBytes =
+    encodeLibraryCoreNormalizedCheckpointRecordV2(record).byteLength;
+  return { record, canonicalBytes, registryKey, primaryKeyJson };
+}
+
 export class PwaLibraryCoreSqliteEngine {
   readonly #database: Database;
   readonly #now: () => number;
@@ -1090,23 +1116,47 @@ export class PwaLibraryCoreSqliteEngine {
     try {
       const snapshot = this.describeNormalizedCheckpointExport();
       const digest = createLibraryCoreNormalizedCheckpointDigestAccumulatorV2();
-      let after: LibraryCorePinnedNormalizedCheckpointExportRequestV2["page"]["after"] = null;
+      const cursor: { after: LibraryCorePinnedNormalizedCheckpointExportRequestV2["page"]["after"] } = { after: null };
       for (;;) {
         await control.yieldControl();
         control.check();
-        const page = this.#readPinnedCheckpointPage({ snapshot, page: {
-          after, maximumRecords: 64,
-          maximumResponseBytes: LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES,
-        } }, false);
-        for (const record of page.records) {
-          control.check();
-          digest.push(record);
-        }
-        if (page.done) break;
-        if (page.records.length === 0 || page.nextCursor === null) {
+        let pageRecords = 0;
+        let pageBytes = 0;
+        let byteBoundReached = false;
+        this.#database.exec({
+          // Sort only the bounded key page before constructing its payloads.
+          sql: `WITH page_keys AS MATERIALIZED (
+              SELECT registry_key, primary_key_json FROM library_checkpoint_export
+              WHERE (?1 = '' OR registry_key > ?1
+                     OR (registry_key = ?1 AND primary_key_json > ?2))
+              ORDER BY registry_key, primary_key_json LIMIT 64
+            ) SELECT registry_key, primary_key_json, payload_json, chunk_bytes
+              FROM library_checkpoint_export
+              WHERE (registry_key, primary_key_json) IN
+                (SELECT registry_key, primary_key_json FROM page_keys)
+              ORDER BY registry_key, primary_key_json;`,
+          bind: [cursor.after?.registryKey ?? "", cursor.after?.primaryKeyJson ?? ""],
+          rowMode: "array",
+          returnValue: "this",
+          callback: (row) => {
+            control.check();
+            const { record, canonicalBytes, registryKey, primaryKeyJson } = checkpointRecordFromSqlRow(row);
+            if (pageBytes + canonicalBytes > LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES) {
+              byteBoundReached = true;
+              return false;
+            }
+            digest.push(record);
+            pageBytes += canonicalBytes;
+            pageRecords += 1;
+            cursor.after = { registryKey, primaryKeyJson };
+          },
+        });
+        // exec finalizes the statement, including on callback refusal or error.
+        // The audit never retains a transport page or serializes its response.
+        if (pageRecords < 64 && !byteBoundReached) break;
+        if (pageRecords === 0) {
           throw new Error("replica audit export did not advance");
         }
-        after = page.nextCursor;
       }
       control.check();
       const completed = digest.finish();
@@ -1127,13 +1177,6 @@ export class PwaLibraryCoreSqliteEngine {
   exportPinnedNormalizedCheckpointPage(
     input: LibraryCorePinnedNormalizedCheckpointExportRequestV2,
   ): LibraryCoreNormalizedCheckpointExportPageV2 {
-    return this.#readPinnedCheckpointPage(input, true);
-  }
-
-  #readPinnedCheckpointPage(
-    input: LibraryCorePinnedNormalizedCheckpointExportRequestV2,
-    ownsSnapshot: boolean,
-  ): LibraryCoreNormalizedCheckpointExportPageV2 {
     const { page: request, snapshot } = input;
     if (
       request.maximumRecords < 1 ||
@@ -1146,13 +1189,9 @@ export class PwaLibraryCoreSqliteEngine {
     }
     const afterRegistryKey = request.after?.registryKey ?? "";
     const afterPrimaryKeyJson = request.after?.primaryKeyJson ?? "";
-    if (ownsSnapshot) this.#database.exec("BEGIN;");
+    this.#database.exec("BEGIN;");
     try {
-      // Standalone pages must recheck their caller's descriptor. An audit
-      // already owns one immutable transaction across every page; recounting
-      // the entire checkpoint here would repeat corpus work for each page.
       if (
-        ownsSnapshot &&
         JSON.stringify(this.describeNormalizedCheckpointExport()) !==
         JSON.stringify(snapshot)
       ) {
@@ -1178,28 +1217,7 @@ export class PwaLibraryCoreSqliteEngine {
       let canonicalRecordBytes = 0;
       let nextCursor = request.after;
       for (const row of rows.slice(0, request.maximumRecords)) {
-        const registryKey = text(row[0], "checkpoint registry key");
-        const primaryKeyJson = text(row[1], "checkpoint primary key JSON");
-        const primaryKey = JSON.parse(
-          primaryKeyJson,
-        ) as LibraryCoreNormalizedCheckpointPrimaryKeyV2;
-        const payload = JSON.parse(
-          text(row[2], "checkpoint payload JSON"),
-        ) as Record<string, LibraryCoreCanonicalValue>;
-        if (row[3] !== null) {
-          payload.bytesBase64 = encodeLibraryCoreCanonicalBase64(
-            bytes(row[3], "checkpoint chunk bytes"),
-          );
-        }
-        const record = createLibraryCoreNormalizedCheckpointRecordV2({
-          payload,
-          primaryKey,
-          registryKey: registryKey as Parameters<
-            typeof createLibraryCoreNormalizedCheckpointRecordV2
-          >[0]["registryKey"],
-        });
-        const canonicalBytes =
-          encodeLibraryCoreNormalizedCheckpointRecordV2(record).byteLength;
+        const { record, canonicalBytes, registryKey, primaryKeyJson } = checkpointRecordFromSqlRow(row);
         const candidate = {
           canonicalRecordBytes: canonicalRecordBytes + canonicalBytes,
           done: false,
@@ -1248,11 +1266,10 @@ export class PwaLibraryCoreSqliteEngine {
           "normalized checkpoint response exceeded its exact byte bound",
         );
       }
-      if (ownsSnapshot) this.#database.exec("COMMIT;");
+      this.#database.exec("COMMIT;");
       return result;
     } catch (error) {
-      if (ownsSnapshot) rollbackPreservingOriginalError(this.#database, error);
-      throw error;
+      rollbackPreservingOriginalError(this.#database, error);
     }
   }
 

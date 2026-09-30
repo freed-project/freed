@@ -36,7 +36,10 @@ export function LibraryReplicaAudit({ audit, client }: {
         completedAt: new Date().toISOString(), audit: receipt });
     } catch (cause) {
       if (active.current === controller && !controller.signal.aborted) {
-        setError(cause instanceof Error ? cause.message : "Library audit failed.");
+        const message = cause instanceof Error ? cause.message : typeof cause === "string" ? cause : "Library audit failed.";
+        setError(message === "AUDIT_DEADLINE" || message === "QUERY_DEADLINE"
+          ? "The audit reached its time limit. No receipt was produced."
+          : message);
       }
     } finally {
       if (active.current === controller) { active.current = null; setPending(false); }
