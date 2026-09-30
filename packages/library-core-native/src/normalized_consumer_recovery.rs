@@ -12,32 +12,12 @@ use rusqlite::{params, types::ValueRef, Connection, OptionalExtension};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 
-/// Persist an exact archive and the consumer lifecycle in one FULL transaction.
-/// Active local rows remain intact until a later explicit recovery commit.
-/// Returning an archive ID is not permission to replay its old signed intents.
-pub fn archive_consumer_epoch_recovery_v1(
-    connection: &mut Connection,
-    actor_store: &dyn ActorKeyStore,
-    created_at: u64,
-) -> Result<String, String> {
-    if !connection.is_autocommit() || created_at > 9_007_199_254_740_991 {
-        return Err("consumer recovery transaction or timestamp is invalid".into());
-    }
-    let durability: u32 = connection
-        .pragma_query_value(None, "synchronous", |r| r.get(0))
-        .map_err(|e| e.to_string())?;
-    if durability < 2 {
-        return Err("consumer recovery requires full SQLite durability".into());
-    }
-    let tx = connection
-        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
-        .map_err(|e| e.to_string())?;
-    crate::normalized_sqlite::install_normalized_schema_v1(&tx).map_err(|e| e.to_string())?;
-    let (library, old_epoch, actor, actor_public, request_digest): (String, String, String, String, String) = tx.query_row(
-        "SELECT library_id, authority_epoch_id, actor_id, actor_public_key, enrollment_request_digest FROM library_follower_actor_request WHERE singleton_id = 1;", [],
-        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
-    ).map_err(|_| "consumer recovery requires the previous enrollment")?;
-    let (new_epoch, certificate_json, certificate_digest): (String, String, String) = tx.query_row(
+fn verify_selected_consumer_successor(
+    connection: &Connection,
+    library: &str,
+    old_epoch: &str,
+) -> Result<WriterHandoffCertificateV1, String> {
+    let (new_epoch, certificate_json, certificate_digest): (String, String, String) = connection.query_row(
         "SELECT epoch.epoch_id, epoch.canonical_transition_certificate, epoch.transition_certificate_digest
          FROM library_meta AS meta JOIN library_authority_epochs AS epoch ON epoch.epoch_id = meta.authority_epoch
          JOIN library_follower_checkpoint_receipt AS receipt ON receipt.singleton_id = 1 AND receipt.authority_epoch_id = epoch.epoch_id
@@ -62,15 +42,15 @@ pub fn archive_consumer_epoch_recovery_v1(
     if grant.body.readiness.body.predecessor_epoch_id != old_epoch {
         return Err("consumer recovery requires the direct authorized successor".into());
     }
-    let (number, digest, key): (u64, String, String) = tx.query_row(
+    let (number, digest, key): (u64, String, String) = connection.query_row(
         "SELECT epoch_number, transition_certificate_digest, authority_public_key FROM library_authority_epochs WHERE library_id = ?1 AND epoch_id = ?2;",
         params![library, old_epoch], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
     ).map_err(|_| "consumer predecessor proof is missing")?;
     verify_writer_handoff_certificate_v1(
         &certificate,
         &HandoffPredecessorV1 {
-            library_id: &library,
-            epoch_id: &old_epoch,
+            library_id: library,
+            epoch_id: old_epoch,
             epoch: number,
             certificate_digest: &digest,
             authority_public_key: &key,
@@ -78,6 +58,94 @@ pub fn archive_consumer_epoch_recovery_v1(
         },
         &grant.body.readiness.body.target_actor_public_key,
     )?;
+    Ok(certificate)
+}
+
+/// A completed prior cycle may follow another authenticated successor. This
+/// validates its retained receipt and archive without replacing the old fence.
+pub(crate) fn verify_completed_consumer_successor_checkpoint(
+    connection: &Connection,
+    receipt: Option<&crate::NormalizedFollowerCheckpointReceiptV2>,
+) -> Result<bool, String> {
+    let Some(id) = completed_consumer_cycle_before_current(connection)? else {
+        return Ok(false);
+    };
+    let receipt = receipt.ok_or("repeated consumer checkpoint requires a follower receipt")?;
+    let (library, old_epoch): (String,String) = connection.query_row(
+        "SELECT library_id,authority_epoch_id FROM library_follower_actor_request WHERE singleton_id=1;", [],
+        |r|Ok((r.get(0)?,r.get(1)?))).map_err(|e|e.to_string())?;
+    let certificate = verify_selected_consumer_successor(connection, &library, &old_epoch)?;
+    let writer: String = connection
+        .query_row(
+            "SELECT writer_actor_id FROM library_follower_checkpoint_receipt WHERE singleton_id=1;",
+            [],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    if receipt.writer_actor_id != certificate.certificate_body.target_writer_id
+        || writer != receipt.writer_actor_id
+    {
+        return Err("repeated consumer checkpoint writer changed".into());
+    }
+    verify_archive_contents(connection, &id, false)?;
+    Ok(true)
+}
+
+/// Persist an exact archive and the consumer lifecycle in one FULL transaction.
+/// Active local rows remain intact until a later explicit recovery commit.
+/// Returning an archive ID is not permission to replay its old signed intents.
+pub fn archive_consumer_epoch_recovery_v1(
+    connection: &mut Connection,
+    actor_store: &dyn ActorKeyStore,
+    created_at: u64,
+) -> Result<String, String> {
+    archive_consumer_recovery_with_admission(
+        connection,
+        actor_store,
+        created_at,
+        |db| {
+            crate::normalized_sqlite::install_normalized_schema_v1(db)
+                .map_err(|e| e.to_string())?;
+            let version: u32 = db
+                .pragma_query_value(None, "user_version", |r| r.get(0))
+                .map_err(|e| e.to_string())?;
+            Ok(version == crate::sqlite_contract_generated::NATIVE_STORAGE_SCHEMA_VERSION)
+        },
+        |db| {
+            crate::normalized_sqlite::migrate_native_handoff_schema_v2(db)
+                .map_err(|e| e.to_string())
+        },
+    )
+}
+
+/// Storage admission changes neither successor/key proof nor archive commitment.
+pub(crate) fn archive_consumer_recovery_with_admission(
+    connection: &mut Connection,
+    actor_store: &dyn ActorKeyStore,
+    created_at: u64,
+    admit: impl FnOnce(&Connection) -> Result<bool, String>,
+    ensure_local_schema: impl FnOnce(&rusqlite::Transaction<'_>) -> Result<(), String>,
+) -> Result<String, String> {
+    if !connection.is_autocommit() || created_at > 9_007_199_254_740_991 {
+        return Err("consumer recovery transaction or timestamp is invalid".into());
+    }
+    let durability: u32 = connection
+        .pragma_query_value(None, "synchronous", |r| r.get(0))
+        .map_err(|e| e.to_string())?;
+    if durability < 2 {
+        return Err("consumer recovery requires full SQLite durability".into());
+    }
+    let tx = connection
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(|e| e.to_string())?;
+    let has_local_schema = admit(&tx)?;
+    let (library, old_epoch, actor, actor_public, request_digest): (String, String, String, String, String) = tx.query_row(
+        "SELECT library_id, authority_epoch_id, actor_id, actor_public_key, enrollment_request_digest FROM library_follower_actor_request WHERE singleton_id = 1;", [],
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+    ).map_err(|_| "consumer recovery requires the previous enrollment")?;
+    let certificate = verify_selected_consumer_successor(&tx, &library, &old_epoch)?;
+    let new_epoch = certificate.epoch_id.clone();
+    let grant = &certificate.certificate_body.handoff_authorization;
     let actor_key = load_actor_key_pair(actor_store, &library)?;
     if lower_hex(actor_key.public_key().as_ref()) != actor_public {
         return Err("consumer recovery requires the original actor key".into());
@@ -85,10 +153,15 @@ pub fn archive_consumer_epoch_recovery_v1(
     let identity = canonical_handoff_bytes(&json!({"library": library, "oldEpoch": old_epoch,
         "newEpoch": new_epoch, "actor": actor, "request": request_digest}))?;
     let recovery_id = lower_hex(&Sha256::digest(identity));
-    let version: u32 = tx
-        .pragma_query_value(None, "user_version", |r| r.get(0))
-        .map_err(|e| e.to_string())?;
-    if version == crate::sqlite_contract_generated::NATIVE_STORAGE_SCHEMA_VERSION {
+    let has_lifecycle = has_local_schema
+        && tx
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM library_local_handoff);",
+                [],
+                |r| r.get::<_, bool>(0),
+            )
+            .map_err(|e| e.to_string())?;
+    if has_lifecycle {
         let matching: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM library_local_handoff WHERE singleton_id = 1 AND installation_role = 'consumer' AND phase = 'recovery' AND handoff_id = ?1 AND library_id = ?2 AND predecessor_epoch_id = ?3 AND successor_epoch_id = ?4 AND canonical_authorization = ?5);",
             params![grant.body.readiness.handoff_id, library, old_epoch, new_epoch, canonical_handoff_bytes(grant)?], |r| r.get(0)).map_err(|e| e.to_string())?;
         if matching {
@@ -136,7 +209,7 @@ pub fn archive_consumer_epoch_recovery_v1(
             }
         }
     }
-    crate::normalized_sqlite::migrate_native_handoff_schema_v2(&tx).map_err(|e| e.to_string())?;
+    ensure_local_schema(&tx)?;
     tx.execute("INSERT INTO library_local_handoff (singleton_id, handoff_id, library_id, installation_role, phase,
         predecessor_epoch_id, successor_epoch_id, target_writer_id, target_authority_public_key,
         canonical_readiness, canonical_authorization_body, canonical_authorization, expected_control_revision, created_at, updated_at)
@@ -324,6 +397,25 @@ pub fn prepare_consumer_epoch_reenrollment_v1(
     actor_store: &dyn ActorKeyStore,
     created_at: u64,
 ) -> Result<crate::normalized_follower::NormalizedFollowerActorRequestV2, String> {
+    prepare_consumer_reenrollment_with_admission(
+        connection,
+        recovery_id,
+        installation_witness,
+        actor_store,
+        created_at,
+        |db| crate::normalized_sqlite::install_normalized_schema_v1(db).map_err(|e| e.to_string()),
+    )
+}
+
+/// Storage adapters preserve key possession, exact signed retry and archive checks.
+pub(crate) fn prepare_consumer_reenrollment_with_admission(
+    connection: &mut Connection,
+    recovery_id: &str,
+    installation_witness: &str,
+    actor_store: &dyn ActorKeyStore,
+    created_at: u64,
+    admit: impl FnOnce(&Connection) -> Result<(), String>,
+) -> Result<crate::normalized_follower::NormalizedFollowerActorRequestV2, String> {
     use crate::library_core_hash::is_lower_sha256;
     use crate::normalized_follower::NormalizedFollowerActorRequestV2;
     if !connection.is_autocommit()
@@ -342,7 +434,7 @@ pub fn prepare_consumer_epoch_reenrollment_v1(
     let tx = connection
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .map_err(|e| e.to_string())?;
-    crate::normalized_sqlite::install_normalized_schema_v1(&tx).map_err(|e| e.to_string())?;
+    admit(&tx)?;
     let (authority, _, _, _) =
         crate::normalized_writer_reassignment::current_authority(&tx).map_err(|e| e.to_string())?;
     type Stored = (
@@ -466,6 +558,30 @@ pub fn commit_consumer_epoch_reenrollment_v1(
     actor_store: &dyn ActorKeyStore,
     committed_at: u64,
 ) -> Result<crate::normalized_follower::NormalizedFollowerActorRequestV2, String> {
+    commit_consumer_reenrollment_with_admission(
+        connection,
+        recovery_id,
+        installation_witness,
+        actor_store,
+        committed_at,
+        |db| crate::normalized_sqlite::install_normalized_schema_v1(db).map_err(|e| e.to_string()),
+        |db, _| {
+            crate::normalized_handoff::require_handoff_follower_edit_admission_v1(db)
+                .map_err(|e| e.to_string())
+        },
+    )
+}
+
+// Storage adapters retain the complete archive, key and lifecycle proof checks.
+pub(crate) fn commit_consumer_reenrollment_with_admission(
+    connection: &mut Connection,
+    recovery_id: &str,
+    installation_witness: &str,
+    actor_store: &dyn ActorKeyStore,
+    committed_at: u64,
+    before: impl FnOnce(&Connection) -> Result<(), String>,
+    after: impl FnOnce(&Connection, bool) -> Result<(), String>,
+) -> Result<crate::normalized_follower::NormalizedFollowerActorRequestV2, String> {
     use crate::library_core_hash::is_lower_sha256;
     use crate::normalized_follower::NormalizedFollowerActorRequestV2;
     if !connection.is_autocommit()
@@ -484,7 +600,7 @@ pub fn commit_consumer_epoch_reenrollment_v1(
     let tx = connection
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .map_err(|e| e.to_string())?;
-    crate::normalized_sqlite::install_normalized_schema_v1(&tx).map_err(|e| e.to_string())?;
+    before(&tx)?;
     let (authority, _, _, _) =
         crate::normalized_writer_reassignment::current_authority(&tx).map_err(|e| e.to_string())?;
     let (bytes, digest, witness, prior_commit, phase): (Vec<u8>, String, String, Option<u64>, String) = tx.query_row(
@@ -606,8 +722,7 @@ pub fn commit_consumer_epoch_reenrollment_v1(
     if !matches || !committed {
         return Err("consumer recovery commit readback changed".into());
     }
-    crate::normalized_handoff::require_handoff_follower_edit_admission_v1(&tx)
-        .map_err(|e| e.to_string())?;
+    after(&tx, prior_commit.is_none())?;
     tx.commit().map_err(|e| e.to_string())?;
     Ok(request)
 }

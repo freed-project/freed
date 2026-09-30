@@ -715,12 +715,26 @@ pub fn install_normalized_follower_actor_enrollment_v2(
     canonical_enrollment_certificate: &[u8],
 ) -> Result<NormalizedFollowerActorEnrollmentV2, NormalizedSqliteError> {
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let response = install_follower_actor_enrollment_in_transaction(
+        &transaction,
+        canonical_enrollment_certificate,
+    )?;
+    transaction.commit()?;
+    Ok(response)
+}
+
+// Local derived state must join the enrollment commit, never follow it in a
+// second transaction. Certificate verification and exact retry remain shared.
+pub(crate) fn install_follower_actor_enrollment_in_transaction(
+    transaction: &rusqlite::Transaction<'_>,
+    canonical_enrollment_certificate: &[u8],
+) -> Result<NormalizedFollowerActorEnrollmentV2, NormalizedSqliteError> {
     let authority =
-        enrollment_authority_at_known_frontier(&transaction, canonical_enrollment_certificate)?;
+        enrollment_authority_at_known_frontier(transaction, canonical_enrollment_certificate)?;
     let enrollment =
         verify_actor_enrollment_certificate(canonical_enrollment_certificate, &authority)
             .map_err(|_| invalid("normalized follower enrollment certificate is invalid"))?;
-    let request = actor_request(&transaction, &authority.library_id, &authority.epoch_id)?
+    let request = actor_request(transaction, &authority.library_id, &authority.epoch_id)?
         .ok_or(invalid("normalized follower actor request is missing"))?;
     if request.actor_id != enrollment.actor_id
         || request.actor_public_key != enrollment.actor_public_key
@@ -730,7 +744,7 @@ pub fn install_normalized_follower_actor_enrollment_v2(
             "normalized follower enrollment does not match its request",
         ));
     }
-    install_verified_actor(&transaction, &enrollment)?;
+    install_verified_actor(transaction, &enrollment)?;
     transaction.execute(
         "INSERT OR IGNORE INTO library_intent_actors
          (actor_id, next_counter, previous_operation_id, previous_chain_digest)
@@ -769,7 +783,6 @@ pub fn install_normalized_follower_actor_enrollment_v2(
             return Err(invalid("normalized follower enrollment replay changed"));
         }
     }
-    transaction.commit()?;
     enrollment_response(&enrollment)
 }
 
@@ -1073,6 +1086,22 @@ pub(crate) fn enqueue_normalized_follower_intent_in_transaction_v1(
     canonical_envelopes: &[Vec<u8>],
     enqueued_at: i64,
 ) -> Result<NormalizedFollowerIntentCommitReceiptV1, NormalizedSqliteError> {
+    enqueue_follower_intent_with_admission(
+        transaction,
+        canonical_envelopes,
+        enqueued_at,
+        crate::normalized_handoff::require_handoff_follower_edit_admission_v1,
+    )
+}
+
+/// Reuses the same verifier, exact-retry and durable enqueue implementation.
+/// Only crate-owned storage adapters supply the version-specific admission check.
+pub(crate) fn enqueue_follower_intent_with_admission(
+    transaction: &Transaction<'_>,
+    canonical_envelopes: &[Vec<u8>],
+    enqueued_at: i64,
+    admit: impl FnOnce(&Connection) -> Result<(), NormalizedSqliteError>,
+) -> Result<NormalizedFollowerIntentCommitReceiptV1, NormalizedSqliteError> {
     if canonical_envelopes.is_empty()
         || canonical_envelopes.len() > FOLLOWER_INTENT_MAXIMUM_MEMBERS
         || !(0..=MAX_SAFE_INTEGER).contains(&enqueued_at)
@@ -1204,7 +1233,7 @@ pub(crate) fn enqueue_normalized_follower_intent_in_transaction_v1(
             "normalized follower intent exceeds its registered mutation program",
         ));
     }
-    crate::normalized_handoff::require_handoff_follower_edit_admission_v1(transaction)?;
+    admit(transaction)?;
     let canonical_transaction = encode_canonical_value(
         &json!({
             "actor_id": verified.actor_id,
@@ -1902,7 +1931,7 @@ pub(crate) fn verify_normalized_follower_result_record_v1(
     Ok(value)
 }
 
-fn import_normalized_follower_result_page_in_transaction_v1(
+pub(crate) fn import_normalized_follower_result_page_in_transaction_v1(
     transaction: &Transaction<'_>,
     records: &[NormalizedFollowerResultRecordV1],
     received_at: i64,
@@ -2068,7 +2097,7 @@ pub fn import_normalized_follower_result_page_v1(
     Ok(receipt)
 }
 
-fn normalized_result_segment_digest_v2(
+pub(crate) fn normalized_result_segment_digest_v2(
     publication: &NormalizedFollowerResultTransportImportV2,
 ) -> Result<String, NormalizedSqliteError> {
     let first = publication
@@ -2122,6 +2151,14 @@ fn normalized_result_segment_digest_v2(
 pub fn import_normalized_follower_result_transport_segment_v2(
     connection: &mut Connection,
     publication: &NormalizedFollowerResultTransportImportV2,
+) -> Result<NormalizedFollowerResultTransportImportReceiptV2, NormalizedSqliteError> {
+    import_result_transport_with_reconciliation(connection, publication, |_| Ok(()))
+}
+
+pub(crate) fn import_result_transport_with_reconciliation(
+    connection: &mut Connection,
+    publication: &NormalizedFollowerResultTransportImportV2,
+    reconcile: impl FnOnce(&Transaction<'_>) -> Result<(), NormalizedSqliteError>,
 ) -> Result<NormalizedFollowerResultTransportImportReceiptV2, NormalizedSqliteError> {
     let bounded_text = |value: &str, maximum: usize| !value.is_empty() && value.len() <= maximum;
     let first_result_sequence = publication
@@ -2253,6 +2290,7 @@ pub fn import_normalized_follower_result_transport_segment_v2(
                 "normalized follower result transport replay changed",
             ));
         }
+        reconcile(&transaction)?;
         transaction.commit()?;
         return Ok(NormalizedFollowerResultTransportImportReceiptV2 {
             accepted_transaction_count: usize::try_from(existing.8)
@@ -2328,6 +2366,7 @@ pub fn import_normalized_follower_result_transport_segment_v2(
             "normalized follower result transport head changed concurrently",
         ));
     }
+    reconcile(&transaction)?;
     transaction.commit()?;
     Ok(NormalizedFollowerResultTransportImportReceiptV2 {
         accepted_transaction_count: receipt.accepted_transaction_count,
@@ -2491,6 +2530,15 @@ mod tests {
     // Exercise checkpoint replacement against real signed enrollment and intent
     // bytes from the enrollment/transport fixture, without changing its Primary.
     fn assert_checkpoint_preserves_follower_history(source: &Connection) {
+        for local_schema in [false, true] {
+            assert_checkpoint_preserves_follower_history_at_version(source, local_schema);
+        }
+    }
+
+    fn assert_checkpoint_preserves_follower_history_at_version(
+        source: &Connection,
+        local_schema: bool,
+    ) {
         use crate::{
             append_normalized_checkpoint_stage_page_v2, begin_normalized_checkpoint_stage_v2,
             export_normalized_checkpoint_page_v2,
@@ -2505,6 +2553,21 @@ mod tests {
             .expect("copy fixture")
             .run_to_completion(128, std::time::Duration::ZERO, None)
             .expect("copy complete");
+        if local_schema {
+            let tx = replica
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .unwrap();
+            crate::normalized_sqlite::migrate_native_handoff_schema_v2(&tx).unwrap();
+            tx.commit().unwrap();
+            assert_eq!(
+                replica
+                    .query_row("SELECT count(*) FROM library_local_handoff;", [], |r| r
+                        .get::<_, i64>(0))
+                    .unwrap(),
+                0
+            );
+        }
+
         replica
             .execute_batch(
                 "UPDATE library_replication_outbox SET acknowledged_at = 3000;
@@ -2978,6 +3041,7 @@ mod tests {
             &authority,
         )
         .expect("verified follower enrollment");
+        crate::normalized_preference_projection::check_dormant_migration_contract(&connection);
         let envelopes = signed_envelopes(&actor_key_pair, &verified);
         // A recovery caller must be able to attach its durable link after enqueue
         // without exposing any intent, overlay, counter or invalidation on failure.
@@ -3046,6 +3110,19 @@ mod tests {
                 .next_counter,
             3,
             "retry must not allocate another counter",
+        );
+        crate::normalized_preference_projection::check_dormant_migration_contract(&connection);
+        crate::normalized_preference_projection::check_pending_preference_backfill(
+            &connection,
+            &actor_key_pair,
+            &verified,
+        );
+        crate::normalized_preference_projection::check_backfill_outcomes(
+            &connection,
+            &actor_key_pair,
+            &verified,
+            &crate::load_established_authority_key_pair(&authority_store, &accepted.library_id)
+                .unwrap(),
         );
         assert_eq!(intent.first_counter, 1);
         assert_eq!(intent.last_counter, 2);

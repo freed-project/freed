@@ -41,6 +41,8 @@ mod normalized_handoff_cancellation;
 mod normalized_handoff_certificate;
 mod normalized_handoff_checkpoint;
 mod normalized_preference_policy;
+#[cfg(test)]
+mod normalized_preference_projection;
 mod normalized_source_handoff;
 pub use normalized_handoff_activation::{
     activate_target_handoff_after_remote_verification_v1, recover_active_target_handoff_v1,

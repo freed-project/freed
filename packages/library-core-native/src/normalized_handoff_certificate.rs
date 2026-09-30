@@ -1600,6 +1600,27 @@ pub(crate) fn verify_handoff_checkpoint_install_v1(
     if version != 2 {
         return Err("handoff checkpoint storage is unsupported".into());
     }
+    verify_existing_handoff_checkpoint_install_v1(connection, checkpoint_digest, receipt)
+}
+
+/// Version admission belongs to the platform adapter; lifecycle proof remains shared.
+pub(crate) fn verify_existing_handoff_checkpoint_install_v1(
+    connection: &rusqlite::Connection,
+    checkpoint_digest: &str,
+    receipt: Option<&crate::normalized_import::NormalizedFollowerCheckpointReceiptV2>,
+) -> Result<(), String> {
+    // Installing the local catalog does not start a transfer. Ordinary
+    // checkpoint verification owns admission when no lifecycle fence exists.
+    let has_handoff: bool = connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM library_local_handoff);",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    if !has_handoff {
+        return Ok(());
+    }
     let cancelled_target: bool = connection.query_row(
         "SELECT EXISTS(SELECT 1 FROM library_local_handoff WHERE singleton_id = 1 AND installation_role = 'target' AND phase = 'cancelled');",
         [], |row| row.get(0),
@@ -1609,6 +1630,11 @@ pub(crate) fn verify_handoff_checkpoint_install_v1(
             return Err("canceled target checkpoint requires a consumer receipt".into());
         }
         crate::normalized_handoff_cancellation::verify_cancelled_target_history_v1(connection)?;
+        return Ok(());
+    }
+    if crate::normalized_consumer_recovery::verify_completed_consumer_successor_checkpoint(
+        connection, receipt,
+    )? {
         return Ok(());
     }
     let consumer: Option<(String, Vec<u8>)> = connection.query_row(
@@ -4029,6 +4055,13 @@ mod tests {
                 .unwrap();
         }
 
+        crate::normalized_preference_projection::check_projected_successor_checkpoint(
+            &consumer,
+            "successor",
+            &new_receipt,
+            &actor_store,
+            &installation_witness,
+        );
         crate::normalized_import::replace_with_normalized_follower_checkpoint_stage_v2(
             &mut consumer,
             "successor",
@@ -4544,6 +4577,13 @@ mod tests {
         )
         .is_err());
         consumer.execute("UPDATE library_local_recovery_rows SET canonical_row = ?2 WHERE recovery_id = ?1 AND table_key = 'library_intent_transactions';", params![archive_id, archived_transaction]).unwrap();
+        crate::normalized_preference_projection::check_projected_recovery_commit(
+            &consumer,
+            &archive_id,
+            &installation_witness,
+            &actor_store,
+            &next_certificate,
+        );
         let before_commit = crate::describe_normalized_checkpoint_export_v2(&consumer).unwrap();
         consumer.execute_batch("CREATE TEMP TRIGGER refuse_recovery_commit AFTER UPDATE OF phase ON library_local_handoff WHEN NEW.phase = 'following' BEGIN SELECT RAISE(ABORT, 'injected recovery commit failure'); END;").unwrap();
         assert!(crate::commit_consumer_epoch_reenrollment_v1(
@@ -4942,6 +4982,28 @@ mod tests {
                 .unwrap();
             repeated.execute("UPDATE library_follower_checkpoint_receipt SET authority_epoch_id = ?1, writer_actor_id = ?2;",
                 params![third.authority.epoch_id, third_grant.body.readiness.body.target_actor_id]).unwrap();
+            let third_receipt = crate::NormalizedFollowerCheckpointReceiptV2 {
+                writer_actor_id: third_grant.body.readiness.body.target_actor_id.clone(),
+                ..new_receipt.clone()
+            };
+            verify_existing_handoff_checkpoint_install_v1(
+                &repeated,
+                "unused-consumer-digest",
+                Some(&third_receipt),
+            )
+            .expect("a completed consumer cycle must admit its verified next successor checkpoint");
+            assert!(verify_existing_handoff_checkpoint_install_v1(
+                &repeated,
+                "unused-consumer-digest",
+                None
+            )
+            .is_err());
+            assert!(verify_existing_handoff_checkpoint_install_v1(
+                &repeated,
+                "unused-consumer-digest",
+                Some(&new_receipt)
+            )
+            .is_err());
             let previous_digest: String = repeated.query_row("SELECT archive_digest FROM library_local_recovery_archives WHERE recovery_id = ?1;", [&archive_id], |r| r.get(0)).unwrap();
             // A pre-existing local link has no FK to the active intent tables.
             repeated.execute("INSERT INTO library_local_recovery_reissues VALUES (?1, 'pending', ?2, ?3, 'retained:replacement', ?3, ?4, ?5, 1, 1, 1, ?3, 0, 0, 2000);",
@@ -4953,6 +5015,12 @@ mod tests {
             let retained_digest: String = repeated.query_row("SELECT reenrollment_digest FROM library_local_recovery_archives WHERE recovery_id = ?1;", [&archive_id], |r| r.get(0)).unwrap();
             repeated.execute("UPDATE library_local_recovery_archives SET reenrollment_digest = ?1 WHERE recovery_id = ?2;", params!["0".repeat(64), archive_id]).unwrap();
             assert!(crate::read_consumer_recovery_summary_v1(&repeated).is_err());
+            assert!(verify_existing_handoff_checkpoint_install_v1(
+                &repeated,
+                "unused-consumer-digest",
+                Some(&third_receipt)
+            )
+            .is_err());
             assert!(
                 crate::archive_consumer_epoch_recovery_v1(&mut repeated, &actor_store, 2302)
                     .is_err()

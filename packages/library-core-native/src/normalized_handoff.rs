@@ -272,6 +272,14 @@ pub(crate) fn require_handoff_follower_edit_admission_v1(
             "unsupported handoff storage version",
         ));
     }
+    require_existing_handoff_follower_edit_admission(connection)
+}
+
+// Version admission belongs to the caller; every existing lifecycle fence is
+// still checked here, including cancelled-target proof verification.
+pub(crate) fn require_existing_handoff_follower_edit_admission(
+    connection: &Connection,
+) -> Result<(), NormalizedSqliteError> {
     let source: bool = connection.query_row(
         "SELECT EXISTS(SELECT 1 FROM library_local_handoff AS handoff
           JOIN library_meta AS meta ON meta.singleton_id = 1 AND meta.library_id = handoff.library_id

@@ -1,3 +1,4 @@
+import { parseLibraryCorePreferenceScopeRequestV1, parseLibraryCorePreferenceScopeResponseV1, type LibraryCorePreferenceScopeRequestV1, type LibraryCorePreferenceScopeResponseV1 } from "@freed/shared/library-core";
 import { parseLibraryCorePreferencesRevisionRequestV1, parseLibraryCorePreferencesRevisionResponseV1, type LibraryCorePreferencesRevisionRequestV1, type LibraryCorePreferencesRevisionResponseV1 } from "@freed/shared/library-core";
 import { parseLibraryCoreRankingWeightScopeRequestV1, parseLibraryCoreRankingWeightScopeResponseV1, libraryCorePreferenceNodesToValueV1, type LibraryCoreRankingWeightScopeRequestV1, type LibraryCoreRankingWeightScopeResponseV1 } from "@freed/shared/library-core";
 import { createLibraryCorePreferenceValueResponseV1, libraryCorePreferenceSelectionJsonV1, parseLibraryCorePreferenceValueRequestV1, type LibraryCorePreferenceValueRequestV1, type LibraryCorePreferenceValueResponseV1, type LibraryCorePreferenceNodeV1 } from "@freed/shared/library-core";
@@ -1609,11 +1610,28 @@ export class PwaLibraryCoreSqliteEngine {
     input: LibraryCoreActivateNormalizedCheckpointStageV2,
     onProgress?: (completedRecords: number, totalRecords: number) => void,
   ): LibraryCoreNormalizedCheckpointActivationReceiptV2 {
+    return this.#activateNormalizedCheckpoint(input,onProgress);
+  }
+
+  /** Internal storage adapter hook; never dispatched from a worker payload. */
+  activateNormalizedCheckpointWithLocalProjection(
+    input:LibraryCoreActivateNormalizedCheckpointStageV2,
+    projection:Readonly<{beforeReplace():void;afterReplace():void}>,
+  ):LibraryCoreNormalizedCheckpointActivationReceiptV2 {
+    return this.#activateNormalizedCheckpoint(input,undefined,projection);
+  }
+
+  #activateNormalizedCheckpoint(
+    input:LibraryCoreActivateNormalizedCheckpointStageV2,
+    onProgress?: (completedRecords:number,totalRecords:number)=>void,
+    projection?:Readonly<{beforeReplace():void;afterReplace():void}>,
+  ): LibraryCoreNormalizedCheckpointActivationReceiptV2 {
     const activation =
       parseLibraryCoreActivateNormalizedCheckpointStageV2(input);
     const { followerReceipt, replaceExisting, stageId } = activation;
     this.#database.exec("BEGIN IMMEDIATE;");
     try {
+      projection?.beforeReplace();
       this.#database.exec("PRAGMA defer_foreign_keys = ON;");
       const stages = this.#database.exec({
         sql: `SELECT library_id, authority_epoch, source_revision,
@@ -2022,6 +2040,7 @@ export class PwaLibraryCoreSqliteEngine {
         sql: "DELETE FROM library_checkpoint_stages WHERE stage_id = ?1;",
         bind: [stageId],
       });
+      projection?.afterReplace();
       this.#database.exec("COMMIT;");
       return Object.freeze({
         authorityEpoch,
@@ -4406,57 +4425,88 @@ export class PwaLibraryCoreSqliteEngine {
   async installFollowerActorEnrollment(
     input: LibraryCoreInstallFollowerActorEnrollmentV2,
   ): Promise<LibraryCoreFollowerActorEnrollmentReceiptV2> {
+    return this.#installFollowerActorEnrollment(input);
+  }
+
+  /** Internal storage adapter hook; never exposed through worker messages. */
+  async installFollowerActorEnrollmentWithLocalProjection(
+    input: LibraryCoreInstallFollowerActorEnrollmentV2,
+    afterInstall: () => void,
+  ): Promise<LibraryCoreFollowerActorEnrollmentReceiptV2> {
+    return this.#installFollowerActorEnrollment(input, afterInstall);
+  }
+
+  async #installFollowerActorEnrollment(
+    input: LibraryCoreInstallFollowerActorEnrollmentV2,
+    afterInstall?: () => void,
+  ): Promise<LibraryCoreFollowerActorEnrollmentReceiptV2> {
     const install = parseLibraryCoreInstallFollowerActorEnrollmentV2(input);
     const context = this.followerActorEnrollmentContext();
     if (!context.request) {
       throw new Error("PWA follower actor request is unavailable");
     }
     if (context.request.state === "enrolled") {
-      const rows = this.#database.exec({
-        sql: `SELECT canonical_enrollment_certificate, actor_chain_genesis,
-                     enrolled_at, enrollment_certificate_digest
-              FROM library_follower_actor_request
-              WHERE singleton_id = 1 AND actor_id = ?1;`,
-        bind: [context.request.actorId],
-        rowMode: "array",
-        returnValue: "resultRows",
-      });
-      if (rows.length !== 1) {
-        throw new Error("PWA follower enrollment receipt is unavailable");
+      const request = context.request;
+      const readReceipt = (): LibraryCoreFollowerActorEnrollmentReceiptV2 => {
+        const rows = this.#database.exec({
+          sql: `SELECT canonical_enrollment_certificate, actor_chain_genesis,
+                       enrolled_at, enrollment_certificate_digest
+                FROM library_follower_actor_request
+                WHERE singleton_id = 1 AND actor_id = ?1;`,
+          bind: [request.actorId],
+          rowMode: "array",
+          returnValue: "resultRows",
+        });
+        if (rows.length !== 1) {
+          throw new Error("PWA follower enrollment receipt is unavailable");
+        }
+        const canonicalBytes = new TextEncoder().encode(
+          text(rows[0]![0], "PWA follower enrollment certificate"),
+        );
+        const actorChainGenesis = text(
+          rows[0]![1],
+          "PWA follower enrollment chain genesis",
+        );
+        const enrolledAt = safeInteger(
+          rows[0]![2],
+          "PWA follower enrollment time",
+        );
+        const enrollmentCertificateDigest = text(rows[0]![3], "PWA follower certificate digest");
+        if (!isLibraryCoreLowercaseHex64(enrollmentCertificateDigest)) {
+          throw new Error("PWA follower certificate digest is invalid");
+        }
+        if (
+          enrolledAt !== install.enrolledAt ||
+          canonicalBytes.byteLength !==
+            install.canonicalCertificateBytes.byteLength ||
+          !canonicalBytes.every(
+            (byte, index) => byte === install.canonicalCertificateBytes[index],
+          ) ||
+          !isLibraryCoreLowercaseHex64(actorChainGenesis)
+        ) {
+          throw new Error("PWA follower enrollment replay changed");
+        }
+        return Object.freeze({
+          actorChainGenesis,
+          actorId: request.actorId,
+          actorPublicKey: request.actorPublicKey,
+          enrolledAt,
+          enrollmentCertificateDigest,
+        });
+      };
+      if (!afterInstall) return readReceipt();
+      this.#database.exec("BEGIN IMMEDIATE;");
+      try {
+        if (JSON.stringify(this.followerActorEnrollmentContext()) !== JSON.stringify(context)) {
+          throw new Error("PWA follower enrollment changed before retry");
+        }
+        const receipt = readReceipt();
+        afterInstall();
+        this.#database.exec("COMMIT;");
+        return receipt;
+      } catch (error) {
+        rollbackPreservingOriginalError(this.#database, error);
       }
-      const canonicalBytes = new TextEncoder().encode(
-        text(rows[0]![0], "PWA follower enrollment certificate"),
-      );
-      const actorChainGenesis = text(
-        rows[0]![1],
-        "PWA follower enrollment chain genesis",
-      );
-      const enrolledAt = safeInteger(
-        rows[0]![2],
-        "PWA follower enrollment time",
-      );
-      const enrollmentCertificateDigest = text(rows[0]![3], "PWA follower certificate digest");
-      if (!isLibraryCoreLowercaseHex64(enrollmentCertificateDigest)) {
-        throw new Error("PWA follower certificate digest is invalid");
-      }
-      if (
-        enrolledAt !== install.enrolledAt ||
-        canonicalBytes.byteLength !==
-          install.canonicalCertificateBytes.byteLength ||
-        !canonicalBytes.every(
-          (byte, index) => byte === install.canonicalCertificateBytes[index],
-        ) ||
-        !isLibraryCoreLowercaseHex64(actorChainGenesis)
-      ) {
-        throw new Error("PWA follower enrollment replay changed");
-      }
-      return Object.freeze({
-        actorChainGenesis,
-        actorId: context.request.actorId,
-        actorPublicKey: context.request.actorPublicKey,
-        enrolledAt,
-        enrollmentCertificateDigest,
-      });
     }
     const verified = await verifyLibraryCoreActorCapabilityCertificateV2(
       install.canonicalCertificateBytes,
@@ -4602,6 +4652,7 @@ export class PwaLibraryCoreSqliteEngine {
                  previous_chain_digest) VALUES (?1, 1, NULL, ?2);`,
         bind: [enrollment.actor_id, verified.actor_chain_genesis],
       });
+      afterInstall?.();
       this.#database.exec("COMMIT;");
     } catch (error) {
       rollbackPreservingOriginalError(this.#database, error);
@@ -4925,6 +4976,34 @@ export class PwaLibraryCoreSqliteEngine {
     }
   }
 
+  /** Internal storage adapter hook. No worker command exposes admission callbacks. */
+  async prepareFollowerIntentTransaction(input: LibraryCoreFollowerIntentCommitV1) {
+    const commit=parseLibraryCoreFollowerIntentCommitV1(input);
+    const first=decodeLibraryCoreCanonicalValue(commit.envelopeBytes[0]!);
+    if (first===null || typeof first!=="object" || Array.isArray(first)) {
+      throw new Error("follower intent envelope identity is invalid");
+    }
+    const identity=first as Readonly<Record<string,LibraryCoreCanonicalValue>>;
+    if (typeof identity.actor_id!=="string" || typeof identity.transaction_id!=="string") {
+      throw new Error("follower intent envelope identity is invalid");
+    }
+    const transactionId=identity.transaction_id;
+    const retry=this.#followerIntentRetry(transactionId,commit.envelopeBytes);
+    const prepared=retry===null ? await this.#prepareFollowerIntent(commit,identity.actor_id) : null;
+    return Object.freeze({
+      verified:prepared?.verified ?? null,
+      commit:(capi:Pick<CAPI,"sqlite3_get_autocommit"|"sqlite3_txn_state">,admit:()=>void):LibraryCoreFollowerIntentCommitResultV1=>{
+        if (!this.#database.pointer || capi.sqlite3_get_autocommit(this.#database.pointer)!==0 || capi.sqlite3_txn_state(this.#database.pointer,"main")!==2) {
+          throw new Error("follower intent requires an owned write transaction");
+        }
+        if (prepared!==null) return this.#commitPreparedFollowerIntent(prepared,admit);
+        const exact=this.#followerIntentRetry(transactionId,commit.envelopeBytes);
+        if (exact===null) throw new Error("follower intent retry disappeared");
+        return exact;
+      },
+    });
+  }
+
   async #prepareFollowerIntent(commit: LibraryCoreFollowerIntentCommitV1, actorId: string) {
     const actorRows = this.#database.exec({
       sql: `SELECT m.library_id, e.epoch_number, e.epoch_id,
@@ -5014,7 +5093,7 @@ export class PwaLibraryCoreSqliteEngine {
     actorState: LibraryCoreAcceptedActorStateV1;
     verified: LibraryCoreVerifiedOperationTransactionV1;
     committedAt: number;
-  }): LibraryCoreFollowerIntentCommitResultV1 {
+  }, admit?:()=>void): LibraryCoreFollowerIntentCommitResultV1 {
     const { commit, actorState, verified, committedAt } = prepared;
     const effects = verified.members.flatMap((member, memberIndex) =>
       libraryCoreOptimisticFieldsForEnvelopeV1(member.envelope).map((effect) =>
@@ -5037,9 +5116,12 @@ export class PwaLibraryCoreSqliteEngine {
         String(enrollment.library_id) !== actorState.library_id || String(enrollment.epoch_id) !== actorState.epoch_id) {
       throw new Error("Follower intent does not belong to this browser's current enrollment");
     }
-    const recovery = this.consumerRecoveryStatus();
-    if (recovery.state !== "none" && recovery.state !== "following") {
-      throw new Error("Follower intent requires completed consumer recovery");
+    if (admit) admit();
+    else {
+      const recovery = this.consumerRecoveryStatus();
+      if (recovery.state !== "none" && recovery.state !== "following") {
+        throw new Error("Follower intent requires completed consumer recovery");
+      }
     }
     const current = this.#database.exec({
       sql: `SELECT a.accepted_counter, a.accepted_operation_id,
@@ -6234,6 +6316,21 @@ export class PwaLibraryCoreSqliteEngine {
   async importNormalizedOperationPage(
     input: LibraryCoreNormalizedOperationImportPageV2,
   ): Promise<LibraryCoreNormalizedOperationImportReceiptV2> {
+    return this.#importNormalizedOperationPage(input);
+  }
+
+  /** Internal operation-page adapter; reconciliation shares each canonical commit. */
+  async importNormalizedOperationPageWithLocalProjection(
+    input: LibraryCoreNormalizedOperationImportPageV2,
+    prepare: (result: Uint8Array) => Promise<Readonly<{ beforeMaterialize(): void; afterMaterialize(): void }>>,
+  ): Promise<LibraryCoreNormalizedOperationImportReceiptV2> {
+    return this.#importNormalizedOperationPage(input, prepare);
+  }
+
+  async #importNormalizedOperationPage(
+    input: LibraryCoreNormalizedOperationImportPageV2,
+    prepareProjection?: (result: Uint8Array) => Promise<Readonly<{ beforeMaterialize(): void; afterMaterialize(): void }>>,
+  ): Promise<LibraryCoreNormalizedOperationImportReceiptV2> {
     const imported = parseLibraryCoreNormalizedOperationImportPageV2(input);
     const touchedRevisions = new Set(
       imported.page.records.map((record) => record.sourceRevision),
@@ -6769,8 +6866,10 @@ export class PwaLibraryCoreSqliteEngine {
         }
       }
 
+      const reconcile = await prepareProjection?.(verifiedResult.canonicalBytes);
       this.#database.exec("BEGIN IMMEDIATE;");
       try {
+        reconcile?.beforeMaterialize();
         const current = this.#database.exec({
           sql: `SELECT m.source_revision, changes.revision,
                        m.library_id, m.authority_epoch, writer.actor_id,
@@ -7059,6 +7158,7 @@ export class PwaLibraryCoreSqliteEngine {
                 WHERE source_revision = ?1;`,
           bind: [nextRevision],
         });
+        reconcile?.afterMaterialize();
         this.#database.exec("COMMIT;");
         appliedTransactionCount += 1;
       } catch (error) {
@@ -7085,6 +7185,7 @@ export class PwaLibraryCoreSqliteEngine {
 
   async #applyAcceptedFollowerResultThroughOperationImport(
     verified: LibraryCoreVerifiedFollowerResultV1,
+    prepareProjection?: (result: Uint8Array) => Promise<Readonly<{ beforeMaterialize(): void; afterMaterialize(): void }>>,
   ): Promise<void> {
     const envelope = verified.envelope;
     if (envelope.status !== "accepted") return;
@@ -7230,7 +7331,7 @@ export class PwaLibraryCoreSqliteEngine {
       if (!last) {
         throw new Error("accepted result operation page is empty");
       }
-      await this.importNormalizedOperationPage(
+      await this.#importNormalizedOperationPage(
         parseLibraryCoreNormalizedOperationImportPageV2({
           page: {
             canonicalRecordBytes,
@@ -7246,12 +7347,28 @@ export class PwaLibraryCoreSqliteEngine {
           receivedAt,
           snapshot,
         }),
+        prepareProjection,
       );
     }
   }
 
   async importNormalizedFollowerResultTransport(
     input: LibraryCoreNormalizedResultTransportImportV2,
+  ): Promise<LibraryCoreNormalizedResultTransportImportReceiptV2> {
+    return this.#importNormalizedFollowerResultTransport(input);
+  }
+
+  /** Internal receipt-only adapter. Production transport also performs canonical catch-up. */
+  async storeFollowerResultTransportWithLocalProjection(
+    input: LibraryCoreNormalizedResultTransportImportV2,
+    prepare: (results: readonly Uint8Array[]) => Promise<() => void>,
+  ): Promise<LibraryCoreNormalizedResultTransportImportReceiptV2> {
+    return this.#importNormalizedFollowerResultTransport(input, prepare);
+  }
+
+  async #importNormalizedFollowerResultTransport(
+    input: LibraryCoreNormalizedResultTransportImportV2,
+    prepareProjection?: (results: readonly Uint8Array[]) => Promise<() => void>,
   ): Promise<LibraryCoreNormalizedResultTransportImportReceiptV2> {
     const publication =
       parseLibraryCoreNormalizedResultTransportImportV2(input);
@@ -7322,6 +7439,7 @@ export class PwaLibraryCoreSqliteEngine {
     const firstResultSequence = publication.header.first_result_sequence;
     const lastResultSequence = publication.header.last_result_sequence;
 
+    const reconcile = await prepareProjection?.(verifiedResults.map(result => result.canonicalBytes));
     let receipt: LibraryCoreNormalizedResultTransportImportReceiptV2;
     this.#database.exec("BEGIN IMMEDIATE;");
     try {
@@ -7386,6 +7504,7 @@ export class PwaLibraryCoreSqliteEngine {
         ) {
           throw new Error("normalized result transport replay changed");
         }
+        reconcile?.();
         this.#database.exec("COMMIT;");
         receipt = Object.freeze({
           acceptedTransactionCount: safeInteger(
@@ -7476,6 +7595,7 @@ export class PwaLibraryCoreSqliteEngine {
             "normalized result transport head changed concurrently",
           );
         }
+        reconcile?.();
         this.#database.exec("COMMIT;");
         receipt = Object.freeze({
           acceptedTransactionCount,
@@ -7493,7 +7613,7 @@ export class PwaLibraryCoreSqliteEngine {
     } catch (error) {
       rollbackPreservingOriginalError(this.#database, error);
     }
-    for (const verified of verifiedResults) {
+    for (const verified of prepareProjection ? [] : verifiedResults) {
       await this.#applyAcceptedFollowerResultThroughOperationImport(
         verified,
       );
@@ -7504,6 +7624,32 @@ export class PwaLibraryCoreSqliteEngine {
   async applyFollowerResult(
     input: LibraryCoreFollowerResultApplyV1,
   ): Promise<LibraryCoreFollowerResultApplyReceiptV1> {
+    const { apply, candidate, verified, authority, receivedAt } = await this.#prepareFollowerResult(input);
+
+    this.#applyVerifiedFollowerResult(verified, authority, receivedAt, true);
+    await this.#applyAcceptedFollowerResultThroughOperationImport(
+      verified,
+    );
+    const receipt = this.#followerResultRetry(
+      candidate.transaction_id,
+      apply.canonicalResultBytes,
+    );
+    if (receipt === null) {
+      throw new Error("follower result receipt disappeared after apply");
+    }
+    return receipt;
+  }
+
+  /** Internal accepted-result catch-up using the existing bounded operation importer. */
+  async catchUpFollowerResultWithLocalProjection(
+    input: LibraryCoreFollowerResultApplyV1,
+    prepare: (result: Uint8Array) => Promise<Readonly<{ beforeMaterialize(): void; afterMaterialize(): void }>>,
+  ): Promise<void> {
+    const result = await this.#prepareFollowerResult(input);
+    await this.#applyAcceptedFollowerResultThroughOperationImport(result.verified,prepare);
+  }
+
+  async #prepareFollowerResult(input: LibraryCoreFollowerResultApplyV1) {
     const apply = parseLibraryCoreFollowerResultApplyV1(input);
     const candidate = parseLibraryCoreFollowerResultEnvelopeV1(
       decodeLibraryCoreCanonicalValue(apply.canonicalResultBytes, {
@@ -7548,18 +7694,21 @@ export class PwaLibraryCoreSqliteEngine {
       throw new Error("follower result clock is invalid");
     }
 
-    this.#applyVerifiedFollowerResult(verified, authority, receivedAt, true);
-    await this.#applyAcceptedFollowerResultThroughOperationImport(
-      verified,
-    );
-    const receipt = this.#followerResultRetry(
-      candidate.transaction_id,
-      apply.canonicalResultBytes,
-    );
-    if (receipt === null) {
-      throw new Error("follower result receipt disappeared after apply");
-    }
-    return receipt;
+    return { apply, candidate, verified, authority, receivedAt };
+  }
+
+  /** Internal receipt write owner. Canonical catch-up is a separate import boundary. */
+  async prepareFollowerResultTransaction(input: LibraryCoreFollowerResultApplyV1) {
+    const prepared = await this.#prepareFollowerResult(input);
+    return Object.freeze({
+      commit: (capi: Pick<CAPI,"sqlite3_get_autocommit"|"sqlite3_txn_state">) => {
+        if (!this.#database.pointer || capi.sqlite3_get_autocommit(this.#database.pointer)!==0 ||
+            capi.sqlite3_txn_state(this.#database.pointer,"main")!==2) {
+          throw new Error("Follower result requires an owned write transaction");
+        }
+        return this.#applyVerifiedFollowerResult(prepared.verified,prepared.authority,prepared.receivedAt,false);
+      },
+    });
   }
 
   #applyVerifiedFollowerResult(
@@ -8276,6 +8425,8 @@ export class PwaLibraryCoreSqliteEngine {
         return this.#queryRankingWeightScope(input) as LibraryCoreSqliteQueryResponseFor<T>;
       case "preference_value_v1":
         return this.#queryPreferenceValue(input) as LibraryCoreSqliteQueryResponseFor<T>;
+      case "preference_scope_v1":
+        return this.#queryPreferenceScope(input) as LibraryCoreSqliteQueryResponseFor<T>;
       case "preferences_revision_v1":
         return this.#queryPreferencesRevision(input) as LibraryCoreSqliteQueryResponseFor<T>;
       case "preferences_snapshot_v1":
@@ -8702,6 +8853,41 @@ export class PwaLibraryCoreSqliteEngine {
       });
       const response = parseLibraryCoreRankingWeightScopeResponseV1({ queryId: request.queryId, schemaVersion: 1,
         paths: request.paths, values, source: { generationId, projectionRevision: sourceRevision, transitionSequence: sourceRevision } }, request);
+      if (!response.ok) throw new Error(response.error);
+      return response.value;
+    });
+  }
+
+  #queryPreferenceScope(input: LibraryCorePreferenceScopeRequestV1): LibraryCorePreferenceScopeResponseV1 {
+    const parsed = parseLibraryCorePreferenceScopeRequestV1(input);
+    if (!parsed.ok) throw new TypeError(parsed.error);
+    const request = parsed.value;
+    return this.#database.transaction(() => {
+      const selectionJson = JSON.stringify(request.paths.map(path => {
+        let node: unknown = null;
+        for (const key of [...path].reverse()) {
+          const parent = Object.create(null) as Record<string, unknown>;
+          Object.defineProperty(parent, key, { enumerable: true, value: node });
+          node = parent;
+        }
+        return node;
+      }));
+      const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.preference_scope_v1;
+      const selected = this.#database.exec({ sql: program.sql, bind: [selectionJson], rowMode: "object", returnValue: "resultRows" });
+      if (selected.length !== request.paths.length) throw new Error("Preference scope selection is incomplete");
+      const encoder = new TextEncoder();
+      let bytes = 0;
+      const results = selected.map((row, index) => {
+        const selection = coerceLibraryCoreGeneratedSqliteQueryRow("preference_scope_v1", row);
+        if (!selection || selection.ordinal !== index || encoder.encode(selection.path).length + 2 > 4096)
+          throw new Error("Preference scope selection is invalid");
+        const result = this.#readPreferenceValue({ queryId: "preference_value_v1", schemaVersion: 1,
+          path: request.paths[index]!, generationId: request.generationId, sourceRevision: request.sourceRevision }, selection.path);
+        bytes += encoder.encode(JSON.stringify(result)).length;
+        if (bytes > 2 * 1048576) throw new Error("Preference scope response exceeds its byte bound");
+        return result;
+      });
+      const response = parseLibraryCorePreferenceScopeResponseV1({ queryId: "preference_scope_v1", schemaVersion: 1, results, source: results[0]!.source }, request);
       if (!response.ok) throw new Error(response.error);
       return response.value;
     });

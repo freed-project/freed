@@ -43,13 +43,14 @@ export function encodePwaRecoveryRow(statement: PreparedStatement, capi: CAPI): 
   return canonical(cells, rowLimit);
 }
 
-function requireTransaction(db: Database, capi: CAPI): void {
+function requireTransaction(db: Database, capi: CAPI, admitStorage?: () => void): void {
   if (!db.pointer || capi.sqlite3_get_autocommit(db.pointer) !== 0 ||
       capi.sqlite3_txn_state(db.pointer, "main") !== 2 ||
       db.selectValue("PRAGMA synchronous;") !== 2 || db.selectValue("PRAGMA foreign_keys;") !== 1) {
     throw new Error("consumer archive requires an owned FULL transaction");
   }
-  if (readPwaLibraryStorageIdentity(db).schemaVersion !== 2) throw new Error("consumer archive requires local schema 2");
+  if (admitStorage) admitStorage();
+  else if (readPwaLibraryStorageIdentity(db).schemaVersion !== 2) throw new Error("consumer archive requires local schema 2");
 }
 function layout(db: Database, table: typeof tables[number]) {
   const info = db.exec({ sql: `PRAGMA table_info(${table});`, rowMode: "array", returnValue: "resultRows" });
@@ -94,10 +95,17 @@ function metadata(db: Database, id: string) {
 
 /** Caller owns lifecycle admission, schema migration and rollback of every archive write. */
 export function archivePwaFollowerRows(db: Database, capi: CAPI, recoveryId: string): void {
-  requireTransaction(db, capi);
+  archivePwaFollowerRowsWithStorageAdmission(db, capi, recoveryId);
+}
+
+/** Internal storage admission only; archive layout and commitment remain unchanged. */
+export function archivePwaFollowerRowsWithStorageAdmission(
+  db: Database, capi: CAPI, recoveryId: string, admitStorage?: () => void,
+): void {
+  requireTransaction(db, capi, admitStorage);
   const old = metadata(db, recoveryId);
   if (old[0] !== 0 || old[1] !== "0".repeat(64)) {
-    verifyPwaRecoveryArchive(db, capi, recoveryId, true);
+    verifyPwaRecoveryArchiveWithStorageAdmission(db, capi, recoveryId, true, admitStorage);
     return;
   }
   if (db.selectValue("SELECT count(*) FROM library_local_recovery_rows WHERE recovery_id = ?1;", [recoveryId]) !== 0) {
@@ -125,12 +133,19 @@ export function archivePwaFollowerRows(db: Database, capi: CAPI, recoveryId: str
   db.exec({ sql: `UPDATE library_local_recovery_archives SET row_count = ?2, archive_digest = ?3,
     pending_intent_count = ?4, published_intent_count = ?5 WHERE recovery_id = ?1;`,
     bind: [recoveryId, total, digest.digestLowerHex(), counts[0]!, counts[1]!] });
-  verifyPwaRecoveryArchive(db, capi, recoveryId, true);
+  verifyPwaRecoveryArchiveWithStorageAdmission(db, capi, recoveryId, true, admitStorage);
 }
 
 /** Verify one row at a time; compare live rows only before explicit reenrollment. */
 export function verifyPwaRecoveryArchive(db: Database, capi: CAPI, recoveryId: string, compareLive: boolean): void {
-  requireTransaction(db, capi);
+  verifyPwaRecoveryArchiveWithStorageAdmission(db,capi,recoveryId,compareLive);
+}
+
+/** Internal version admission hook; byte, digest and live-row checks stay identical. */
+export function verifyPwaRecoveryArchiveWithStorageAdmission(
+  db: Database, capi: CAPI, recoveryId: string, compareLive: boolean, admitStorage?: () => void,
+): void {
+  requireTransaction(db, capi, admitStorage);
   const expected = metadata(db, recoveryId), digest = new LibraryCoreSha256(), counts = [0, 0];
   let total = 0;
   for (const table of tables) {

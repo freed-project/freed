@@ -1029,3 +1029,25 @@ Native and PWA expose the same bounded marker. Preference changes during a pass
 and checkpoint replacement request another pass; item-only writes do not change
 the marker. Failed completion reads remain retryable. Startup's whole-preference
 snapshot limit still needs removal.
+
+
+Native checkpoint admission now recognizes a completed consumer recovery when a
+later verified successor is selected. It checks the retained enrollment receipt,
+new predecessor-signed certificate, selected writer and original archive before
+accepting the checkpoint. Missing receipts, changed writers and corrupted prior
+recovery evidence refuse admission. Local fixtures cover this admission boundary;
+installed repeated-transfer acceptance remains pending.
+
+
+An empty native recovery catalog no longer blocks ordinary consumer checkpoint
+refresh. The signed-intent fixture now runs against both physical schemas 1 and
+2, including activation rollback, preservation of pending edits and revocation
+of stale Primary/provider admission. Existing handoff rows still enforce their
+phase and proof checks.
+
+Dormant physical schema 3 stores device-local pending preference effects without
+changing logical checkpoints or replication protocol 2. Native and browser
+fixtures cover signed backfill, atomic receipt settlement, checkpoint replacement,
+successor recovery and retry after injected failures. Original signed intents and
+recovery archives remain intact. Production openers still refuse schema 3; these
+fixtures do not authorize migration or prove installed durability.

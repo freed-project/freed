@@ -1387,3 +1387,11 @@ Native and PWA expose the same bounded marker. Preference changes during a pass
 and checkpoint replacement request another pass; item-only writes do not change
 the marker. Failed completion reads remain retryable. Startup's whole-preference
 snapshot limit still needs removal.
+
+A dormant browser preference projection now mirrors native schema 3 migration,
+signed backfill and bounded reads. Receipt settlement, canonical catch-up and
+checkpoint recovery preserve signed intent bytes and roll back derived effects
+with the surrounding transaction. Recovered-consumer fixtures execute the real
+migration and shared canonical value vectors in the WASM test VFS. Production
+query routing and startup remain unchanged; OPFS restart durability, large-journal
+latency and installed cross-device acceptance remain unverified.

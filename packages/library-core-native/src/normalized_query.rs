@@ -291,6 +291,14 @@ pub struct NormalizedPreferenceValueResponseV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedPreferenceScopeRequestV1 {
+    pub schema_version: u32,
+    pub paths: Vec<Vec<String>>,
+    pub generation_id: String,
+    pub source_revision: i64,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedRankingWeightScopeRequestV1 {
     pub schema_version: u32,
     pub paths: Vec<Vec<String>>,
@@ -306,6 +314,15 @@ pub struct NormalizedRankingWeightScopeResponseV1 {
     pub values: Vec<Option<f64>>,
     pub source: NormalizedFeedPageSourceV1,
 }
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedPreferenceScopeResponseV1 {
+    pub query_id: String,
+    pub schema_version: u32,
+    pub results: Vec<NormalizedPreferenceValueResponseV1>,
+    pub source: NormalizedFeedPageSourceV1,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct RankingWeightSelection {
@@ -646,6 +663,7 @@ pub enum NormalizedQueryRequestV1 {
     RankingWeightScope(NormalizedRankingWeightScopeRequestV1),
     PreferencesSnapshot(NormalizedPreferencesSnapshotRequestV1),
     PreferencesRevision(NormalizedPreferencesSnapshotRequestV1),
+    PreferenceScope(NormalizedPreferenceScopeRequestV1),
     RssFeedDetail(NormalizedRssFeedDetailRequestV1),
     RssFeedPage(NormalizedRssFeedPageRequestV1),
     SavedAnalytics(NormalizedSavedAnalyticsRequestV2),
@@ -1626,6 +1644,7 @@ pub enum NormalizedQueryResponseV1 {
     RankingWeightScope(NormalizedRankingWeightScopeResponseV1),
     PreferencesSnapshot(NormalizedPreferencesSnapshotResponseV1),
     PreferencesRevision(NormalizedPreferencesRevisionResponseV1),
+    PreferenceScope(NormalizedPreferenceScopeResponseV1),
     RssFeedDetail(NormalizedRssFeedDetailResponseV1),
     RssFeedPage(NormalizedRssFeedPageResponseV1),
     SavedAnalytics(NormalizedSavedAnalyticsResponseV2),
@@ -1682,7 +1701,7 @@ fn invalid(message: &'static str) -> NormalizedSqliteError {
     NormalizedSqliteError::InvalidRequest(message)
 }
 
-fn decode_generated_query_row<T: serde::de::DeserializeOwned>(
+pub(crate) fn decode_generated_query_row<T: serde::de::DeserializeOwned>(
     row: &Row<'_>,
     query_id: &str,
 ) -> rusqlite::Result<T> {
@@ -5842,6 +5861,20 @@ fn read_preference_value(
             }
         }
     }
+    finish_preference_value(request, rows, generation_id, source_revision)
+}
+
+/// Shared bounded shape validation for canonical and installation-local readers.
+pub(crate) fn finish_preference_value(
+    request: NormalizedPreferenceValueRequestV1,
+    mut rows: Vec<NormalizedPreferenceLeafV1>,
+    generation_id: String,
+    source_revision: i64,
+) -> Result<NormalizedPreferenceValueResponseV1, NormalizedSqliteError> {
+    let prefix = rows
+        .first()
+        .map(|row| row.path[..2].to_owned())
+        .unwrap_or_default();
     let root = rows.first().cloned();
     rows.sort_by(|a, b| a.path.cmp(&b.path));
     validate_preference_rows(&rows)?;
@@ -6006,6 +6039,100 @@ fn query_ranking_weight_scope(
     };
     if serde_json::to_vec(&response).map_err(|_| bad())?.len() > 128 * 1024 {
         return Err(invalid("ranking weight scope exceeds its byte bound"));
+    }
+    transaction.commit()?;
+    Ok(response)
+}
+
+// Selected values share one read transaction and one aggregate response budget.
+fn query_preference_scope(
+    connection: &mut Connection,
+    request: NormalizedPreferenceScopeRequestV1,
+) -> Result<NormalizedPreferenceScopeResponseV1, NormalizedSqliteError> {
+    let bad = || invalid("preference scope request is invalid");
+    if request.schema_version != 1 || request.paths.is_empty() || request.paths.len() > 64 {
+        return Err(bad());
+    }
+    let mut wire = serde_json::to_value(&request).map_err(|_| bad())?;
+    wire.as_object_mut()
+        .ok_or_else(bad)?
+        .insert("queryId".into(), "preference_scope_v1".into());
+    if serde_json::to_vec(&wire).map_err(|_| bad())?.len() > 128 * 1024 {
+        return Err(bad());
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    let mut selections = Vec::with_capacity(request.paths.len());
+    for path in &request.paths {
+        crate::normalized_query_control::check_current_query().map_err(invalid)?;
+        if path.is_empty()
+            || path.len() > 32
+            || !seen.insert(path)
+            || serde_json::to_vec(path).map_err(|_| bad())?.len() > 8192
+        {
+            return Err(bad());
+        }
+        let mut selection = serde_json::Value::Null;
+        for key in path.iter().rev() {
+            selection = serde_json::json!({ key: selection });
+        }
+        selections.push(selection);
+    }
+    let program = SQLITE_QUERY_PROGRAMS
+        .iter()
+        .find(|p| p.query_id == "preference_scope_v1")
+        .ok_or_else(bad)?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    let (generation_id, source_revision) = query_source(&transaction)?;
+    if generation_id != request.generation_id || source_revision != request.source_revision {
+        return Err(invalid("CURSOR_STALE"));
+    }
+    let selected = transaction
+        .prepare(program.sql)?
+        .query_map(
+            [serde_json::to_string(&selections).map_err(|_| bad())?],
+            |row| decode_generated_query_row::<RankingWeightSelection>(row, "preference_scope_v1"),
+        )?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    if selected.len() != request.paths.len() {
+        return Err(bad());
+    }
+    let mut results = Vec::with_capacity(selected.len());
+    let mut bytes = 0;
+    for (index, selection) in selected.iter().enumerate() {
+        crate::normalized_query_control::check_current_query().map_err(invalid)?;
+        if selection.ordinal != index || selection.path.len() + 2 > 4096 {
+            return Err(bad());
+        }
+        let result = read_preference_value(
+            &transaction,
+            NormalizedPreferenceValueRequestV1 {
+                schema_version: 1,
+                path: request.paths[index].clone(),
+                generation_id: generation_id.clone(),
+                source_revision,
+            },
+            Some(&selection.path),
+        )?;
+        bytes += serde_json::to_vec(&result).map_err(|_| bad())?.len();
+        if bytes > PREFERENCES_SNAPSHOT_MAXIMUM_RESPONSE_BYTES {
+            return Err(invalid("preference scope response exceeds its byte bound"));
+        }
+        results.push(result);
+    }
+    let response = NormalizedPreferenceScopeResponseV1 {
+        query_id: "preference_scope_v1".into(),
+        schema_version: 1,
+        results,
+        source: NormalizedFeedPageSourceV1 {
+            generation_id,
+            projection_revision: source_revision,
+            transition_sequence: source_revision,
+        },
+    };
+    if serde_json::to_vec(&response).map_err(|_| bad())?.len()
+        > PREFERENCES_SNAPSHOT_MAXIMUM_RESPONSE_BYTES
+    {
+        return Err(invalid("preference scope response exceeds its byte bound"));
     }
     transaction.commit()?;
     Ok(response)
@@ -8016,6 +8143,11 @@ pub fn query_normalized_v1(
                 query_preference_value(connection, request)?,
             ))
         }
+        NormalizedQueryRequestV1::PreferenceScope(request) => {
+            Ok(NormalizedQueryResponseV1::PreferenceScope(
+                query_preference_scope(connection, request)?,
+            ))
+        }
         NormalizedQueryRequestV1::PreferencesRevision(request) => {
             Ok(NormalizedQueryResponseV1::PreferencesRevision(
                 query_preferences_revision(connection, request)?,
@@ -8175,6 +8307,9 @@ pub fn query_normalized_json_v1(
         "preference_value_v1" => {
             decode_request!(NormalizedPreferenceValueRequestV1, PreferenceValue)
         }
+        "preference_scope_v1" => {
+            decode_request!(NormalizedPreferenceScopeRequestV1, PreferenceScope)
+        }
         "preferences_revision_v1" => {
             decode_request!(NormalizedPreferencesSnapshotRequestV1, PreferencesRevision)
         }
@@ -8255,6 +8390,7 @@ pub fn query_normalized_json_v1(
         NormalizedQueryResponseV1::RankingWeightScope(response) => encode_response!(response),
         NormalizedQueryResponseV1::PreferenceValue(response) => encode_response!(response),
         NormalizedQueryResponseV1::PreferencesRevision(response) => encode_response!(response),
+        NormalizedQueryResponseV1::PreferenceScope(response) => encode_response!(response),
         NormalizedQueryResponseV1::PreferencesSnapshot(response) => encode_response!(response),
         NormalizedQueryResponseV1::RssFeedDetail(response) => encode_response!(response),
         NormalizedQueryResponseV1::RssFeedPage(response) => encode_response!(response),
@@ -11892,5 +12028,62 @@ mod tests {
                 assert_eq!(response["source"]["projectionRevision"], 7);
             }
         }
+    }
+    #[test]
+    fn preference_scope_preserves_values_and_refuses_aggregate_overflow() {
+        let vector: serde_json::Value = serde_json::from_str(include_str!(
+            "../../shared/src/library-core/preference-value-query-vector-v1.json"
+        ))
+        .unwrap();
+        let mut connection = Connection::open_in_memory().unwrap();
+        install_normalized_schema_v1(&connection).unwrap();
+        connection
+            .execute_batch(vector["setupSql"].as_str().unwrap())
+            .unwrap();
+        let mut request = serde_json::json!({"queryId":"preference_scope_v1","schemaVersion":1,
+            "generationId": vector["generationId"], "sourceRevision":7,
+            "paths":vector["cases"].as_array().unwrap().iter().map(|entry|entry["path"].clone()).collect::<Vec<_>>()});
+        let response = query_normalized_json_v1(&mut connection, request.clone()).unwrap();
+        for (result, entry) in response["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .zip(vector["cases"].as_array().unwrap())
+        {
+            assert_eq!(result["path"], entry["path"]);
+            assert_eq!(result["kind"], entry["kind"]);
+            assert_eq!(result["rows"], entry["expectedRows"]);
+        }
+        request["sourceRevision"] = 8.into();
+        assert!(query_normalized_json_v1(&mut connection, request.clone()).is_err());
+        request["sourceRevision"] = 7.into();
+        request["paths"] = serde_json::json!([["same"], ["same"]]);
+        assert!(query_normalized_json_v1(&mut connection, request.clone()).is_err());
+        request["paths"] = serde_json::json!((0..64)
+            .map(|i| vec![
+                "weights".to_string(),
+                "topics".to_string(),
+                format!("topic_{i}")
+            ])
+            .collect::<Vec<_>>());
+        assert_eq!(
+            query_normalized_json_v1(&mut connection, request.clone()).unwrap()["results"]
+                .as_array()
+                .unwrap()
+                .len(),
+            64
+        );
+        request["paths"]
+            .as_array_mut()
+            .unwrap()
+            .push(serde_json::json!(["missing"]));
+        assert!(query_normalized_json_v1(&mut connection, request.clone()).is_err());
+        connection
+            .execute_batch(vector["scopeOverflowSql"].as_str().unwrap())
+            .unwrap();
+        request["paths"] = serde_json::json!((0..32)
+            .map(|i| vec![format!("scope{i}")])
+            .collect::<Vec<_>>());
+        assert!(query_normalized_json_v1(&mut connection, request).is_err());
     }
 }

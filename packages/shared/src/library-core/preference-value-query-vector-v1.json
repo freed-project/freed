@@ -303,5 +303,6 @@
       "revision": 0,
       "generationId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
     }
-  ]
+  ],
+  "scopeOverflowSql": "WITH RECURSIVE n(i) AS (VALUES(0) UNION ALL SELECT i+1 FROM n WHERE i<31) INSERT INTO library_preferences(path,value_type,integer_value,updated_at) SELECT 'a:$.scope'||i,'integer',9,1 FROM n; WITH RECURSIVE n(i) AS (VALUES(0) UNION ALL SELECT i+1 FROM n WHERE i<31), a(j) AS (VALUES(0) UNION ALL SELECT j+1 FROM a WHERE j<8) INSERT INTO library_preferences(path,value_type,text_value,updated_at) SELECT 'v:$.scope'||i||'['||j||']','text',replace(hex(zeroblob(4096)),'0','x'),1 FROM n,a;"
 }
