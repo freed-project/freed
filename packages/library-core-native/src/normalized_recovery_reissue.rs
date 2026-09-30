@@ -396,6 +396,15 @@ fn reapply_archived_transaction(
                         return Err("recovery cannot recreate a deleted account".into());
                     }
                 }
+                if member.operation_type == "feed_item_capture_upsert" {
+                    let deleted: bool = tx.query_row(
+                        "SELECT EXISTS(SELECT 1 FROM library_tombstones WHERE entity_type = 'feed_item' AND entity_id = ?1);",
+                        [&member.entity_id], |row| row.get(0),
+                    ).map_err(|error| error.to_string())?;
+                    if deleted {
+                        return Err("recovery cannot recreate a deleted item".into());
+                    }
+                }
                 if member.operation_type == "rss_feed_upsert" {
                     let deleted: bool = tx.query_row(
                         "SELECT EXISTS(SELECT 1 FROM library_tombstones WHERE entity_type = 'rss_feed' AND entity_id = ?1);",
@@ -1114,6 +1123,56 @@ mod tests {
             operation,
             payload,
         )
+    }
+
+    #[test]
+    fn capture_recovery_refuses_tombstones_before_writes_and_preserves_exact_retry() {
+        let (mut db, request, keys) = fixture("feed_item_capture_upsert", false);
+        let frames = editor_envelopes(
+            &db,
+            &keys,
+            "feed_item_capture_upsert",
+            &[("rss:item:1", 2000), ("rss:item:2", 2000)],
+        );
+        let deleted = "INSERT INTO library_tombstones VALUES ('feed_item','rss:item:2','test-actor',1,'test:delete',1500);";
+        db.execute(deleted, []).unwrap();
+        assert!(
+            reapply_archived_editor_transaction_v1(&mut db, &request, &frames, 2000)
+                .unwrap_err()
+                .contains("deleted item")
+        );
+        for table in [
+            "library_intent_transactions",
+            "library_intent_members",
+            "library_local_recovery_reissues",
+        ] {
+            assert_eq!(
+                db.query_row(&format!("SELECT count(*) FROM {table}"), [], |row| row
+                    .get::<_, i64>(0))
+                    .unwrap(),
+                0
+            );
+        }
+        assert_eq!(
+            normalized_follower_mutation_context_v1(&db)
+                .unwrap()
+                .next_counter,
+            1
+        );
+        // Reset only this synthetic fixture to model a never-created target.
+        db.execute(
+            "DELETE FROM library_tombstones WHERE entity_type='feed_item';",
+            [],
+        )
+        .unwrap();
+        db.execute("DELETE FROM library_feed_items;", []).unwrap();
+        let receipt =
+            reapply_archived_editor_transaction_v1(&mut db, &request, &frames, 2000).unwrap();
+        db.execute(deleted, []).unwrap();
+        assert_eq!(
+            reapply_archived_editor_transaction_v1(&mut db, &request, &frames, 2001).unwrap(),
+            receipt
+        );
     }
 
     #[test]

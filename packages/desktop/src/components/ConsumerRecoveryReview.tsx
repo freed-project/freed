@@ -1,3 +1,4 @@
+import { ConsumerRecoverySavedUrlEditor } from "./ConsumerRecoverySavedUrlEditor";
 import { ConsumerRecoveryPreferenceEditor } from "./ConsumerRecoveryPreferenceEditor";
 import { ConsumerRecoveryReachOutEditor } from "./ConsumerRecoveryReachOutEditor";
 import { ConsumerRecoveryAccountEditor } from "./ConsumerRecoveryAccountEditor";
@@ -213,13 +214,17 @@ export function ConsumerRecoveryReview({ recoveryId: currentRecoveryId = null, r
           {review.rows.map((edit) => <li key={edit.memberIndex}>
             <p>{describeEdit(edit)} <span className="break-all">(...{edit.entityId.slice(-8)})</span></p>
             {edit.personState && <p className="mt-1 text-[var(--theme-text-muted)]">{edit.personState === "deleted" ? "Person was deleted. Recovery cannot recreate it." : edit.personState === "absent" ? "Person is currently absent. This does not prove whether the original edit was accepted." : "Person is currently present."}</p>}
-            {edit.itemPresent === false ? <p className="mt-1 text-[var(--theme-text-muted)]">Item no longer available in this Library.</p>
+            {edit.itemPresent === false ? <p className="mt-1 text-[var(--theme-text-muted)]">{edit.itemState === "deleted" ? "Item was deleted. Recovery cannot recreate it." : "Item is currently absent. This does not prove whether the original edit was accepted."}</p>
               : edit.itemPresent === true ? <p className="mt-1 break-words text-[var(--theme-text-muted)]">
                 Current item: {edit.authorName && <span>{edit.authorName}: </span>}{edit.itemText || "No text available locally."}
               </p> : <p className="mt-1 text-[var(--theme-text-muted)]">Review this edit in its original editor.</p>}
           </li>)}
         </ul>
         <p className="mt-2">Reviewing does not resend or change an edit.</p>
+        {!readOnly && !replacement && review.outcome.state !== "confirmed_accepted" && review.rows.length > 0 && review.rows.every(row => row.operationType === "feed_item_capture_upsert") && (
+          editingOriginal ? <ConsumerRecoverySavedUrlEditor key={review.transactionDigest} review={review} onReplacement={setReplacement} onMutating={setApplying} />
+            : <button type="button" className="btn-secondary mt-2 rounded-lg px-3 py-1.5 text-xs" disabled={busy || applying} onClick={() => setEditingOriginal(true)}>Review saved URLs</button>
+        )}
         {!readOnly && !replacement && review.outcome.state !== "confirmed_accepted" && review.memberCount === 1 && review.rows.length === 1 && review.rows[0]?.operationType === "friend_replace" && (
           editingOriginal ? <ConsumerRecoveryFriendEditor key={review.transactionDigest} review={review} onReplacement={setReplacement} onMutating={setApplying} />
             : <button type="button" className="btn-secondary mt-2 rounded-lg px-3 py-1.5 text-xs" disabled={busy || applying} onClick={() => setEditingOriginal(true)}>Review Friend and accounts</button>

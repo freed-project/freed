@@ -2,6 +2,15 @@
 
 > **Status:** 🚧 In Progress
 
+Saved URL recovery now distinguishes absent targets from deleted items. The
+owner reviews every URL, edits its title or description, and explicitly confirms
+one complete replacement. Original targets, URLs and remaining archived content
+stay fixed. Deleted items and unsupported capture types are refused. Opening the
+editor stays offline; after acceptance, the Primary may fetch the publisher under
+its existing content policy. Exact retries retain the signed replacement and use
+the durable archive link. Notes and tags remain separate recovery transactions.
+Installed multi-device acceptance is still outstanding.
+
 PWA convergence audits now stream canonical records through an OPFS-backed sort
 with a bounded cache. Deadline, cancellation and temporary-file failures return no
 receipt and restore the connection settings. Memory-only backends retain bounded

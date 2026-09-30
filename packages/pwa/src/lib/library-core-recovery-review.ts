@@ -271,7 +271,8 @@ export async function queryPwaRecoveryIntentReview(db: Database, capi: CAPI, sub
       const payload = record(envelope.payload), assignment = ["feed_item_saved_assignment", "feed_item_archive_assignment", "feed_item_like_assignment"].includes(envelope.operation_type);
       const rssFeedState = envelope.entity_type === "RssFeed" ? db.selectValue(program.variants.rss_context.sql, [envelope.entity_id]) : null;
       const personState = envelope.entity_type === "Person" ? db.selectValue(program.variants.person_context.sql, [envelope.entity_id]) : null;
-      const row = { personState, rssFeedState, assigned: assignment ? payload.assigned : null, assignedAt: assignment ? payload.assigned_at_ms : null,
+      const itemState = envelope.entity_type === "FeedItem" ? db.selectValue(program.variants.item_state.sql, [envelope.entity_id]) : null;
+      const row = { itemState, personState, rssFeedState, assigned: assignment ? payload.assigned : null, assignedAt: assignment ? payload.assigned_at_ms : null,
         readAt: envelope.operation_type === "feed_item_read_assignment" ? payload.read_at_ms : null,
         createdAt: envelope.created_at_ms, entityId: envelope.entity_id, operationType: envelope.operation_type, memberIndex: index,
         authorName: item?.[0] ?? null, itemText: item?.[1] ?? null, itemPresent: envelope.entity_type === "FeedItem" ? Boolean(item) : null,

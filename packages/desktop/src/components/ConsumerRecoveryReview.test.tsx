@@ -15,7 +15,7 @@ const detail = {
   transactionId: page.rows[0].transactionId, memberCount: 2, nextCursor: null,
   outcome: { state: "unresolved" }, replacement: null,
   rows: [{ memberIndex: 0, authorName: "Author", itemPresent: true, itemText: "Recognizable article", entityId: "private-item-abcdefgh", operationType: "feed_item_saved_assignment", assigned: true },
-    { memberIndex: 1, authorName: null, itemPresent: false, itemText: null, entityId: "private-item-ijklmnop", operationType: "feed_item_archive_assignment", assigned: false }],
+    { memberIndex: 1, authorName: null, itemPresent: false, itemState: "deleted", itemText: null, entityId: "private-item-ijklmnop", operationType: "feed_item_archive_assignment", assigned: false }],
 };
 let root: Root, container: HTMLDivElement;
 async function click(label: string) {
@@ -42,7 +42,7 @@ describe("consumer archive review", () => {
     expect(container.textContent).toContain("Save item and remove it from Archive");
     expect(container.textContent).toContain("Remove item from Archive");
     expect(container.textContent).toContain("Recognizable article");
-    expect(container.textContent).toContain("Item no longer available");
+    expect(container.textContent).toContain("Item was deleted. Recovery cannot recreate it.");
     expect(container.textContent).not.toContain("private-item");
     expect(container.textContent).toContain("Reviewing does not resend");
     await click("Next archived edits");
