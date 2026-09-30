@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { webcrypto } from "node:crypto";
 import chain from "./handoff-chain-vectors-v1.json";
 import vector from "./handoff-certificate-vectors-v1.json";
-import { verifyLibraryCoreHandoffCertificateV1 } from "./handoff-certificate.js";
+import { verifyLibraryCoreHandoffCertificateV1, verifyLibraryCoreHandoffPredecessorCheckpointV1, parseLibraryCorePredecessorCheckpointReadV1 } from "./handoff-certificate.js";
 import { verifyLibraryCoreEd25519WithWebCrypto } from "./ed25519-verification.js";
 import { encodeLibraryCoreCanonicalValue } from "./canonical-codec.js";
 
@@ -21,6 +21,38 @@ describe("native cooperative successor certificate parity", () => {
     expect(result.epoch).toBe(vector.predecessor.epoch + 1);
     expect(signature).toHaveBeenCalledTimes(5);
     expect(result.canonicalBytes).toEqual(bytes());
+  });
+
+  it("authenticates a bounded predecessor read without granting target enrollment", async () => {
+    const original = bytes();
+    const pin = { ...vector.predecessor };
+    const pending = verifyLibraryCoreHandoffPredecessorCheckpointV1(original, pin, { verifySignature });
+    original.fill(0);
+    pin.authorityPublicKey = "0".repeat(64);
+    const result = await pending;
+    const grant = JSON.parse(vector.canonicalCertificate).certificate_body.handoff_authorization;
+    expect(result).toEqual({ purpose: "predecessor_checkpoint_read", pointer: grant.body.source_control,
+      controlRevision: grant.body.source_control_revision, controlFileId: grant.body.source_control_file_id,
+      checkpointDigest: grant.body.final_checkpoint_digest, sourceRevision: grant.body.final_source_revision,
+      successorEpochId: vector.expected.epochId, authorizationDigest: grant.authorization_digest });
+    expect(Object.isFrozen(result.pointer.manifest.descriptor)).toBe(true);
+    expect(parseLibraryCorePredecessorCheckpointReadV1(null)).toBeNull();
+    const transported = JSON.parse(JSON.stringify(result));
+    const parsed = parseLibraryCorePredecessorCheckpointReadV1(transported);
+    expect(parsed).toEqual(result);
+    transported.pointer.manifest.transportObjectId = "changed";
+    expect(parsed).toEqual(result);
+    for (const change of [{ proof: {} }, { purpose: "activate" }, { sourceRevision: -1 },
+      { checkpointDigest: "wrong" }, { controlFileId: "x".repeat(1025) }, { controlRevision: "unquoted" }]) {
+      expect(() => parseLibraryCorePredecessorCheckpointReadV1({ ...result, ...change })).toThrow();
+    }
+
+    await expect(verifyLibraryCoreHandoffPredecessorCheckpointV1(bytes(), vector.predecessor,
+      { verifySignature: () => false })).rejects.toThrow("signature is invalid");
+    await expect(verifyLibraryCoreHandoffPredecessorCheckpointV1(bytes(),
+      { ...vector.predecessor, epochId: "0".repeat(64) }, { verifySignature })).rejects.toThrow();
+    // Read authentication cannot replace ordinary locally pinned enrollment.
+    await expect(verify(bytes(), vector.predecessor, "0".repeat(64))).rejects.toThrow();
   });
 
   it("verifies both native return-transfer certificates against the preceding verified authority", async () => {

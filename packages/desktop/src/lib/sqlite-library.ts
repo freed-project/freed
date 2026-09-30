@@ -1,3 +1,5 @@
+import { createLibraryCoreSqliteActivatePredecessorWorkerRequest, createLibraryCoreSqlitePredecessorReadWorkerRequest,
+  parseLibraryCorePredecessorCheckpointReadV1, type LibraryCoreActivateNormalizedCheckpointStageV2 } from "@freed/shared/library-core";
 import { snapshotLibraryCoreRecoveryPreferencePatchesV1 } from "@freed/shared/library-core";
 import { PERSON_REACH_OUT_APPEND_PAYLOAD_SCHEMA } from "@freed/shared/library-core";
 import type { RecoveryReachOutDraft } from "@freed/ui/components/RecoveryReachOutFields";
@@ -2522,6 +2524,25 @@ export async function appendNormalizedLibraryCheckpointImportPage(input: {
       request,
     }),
   );
+}
+
+export async function prepareNormalizedLibraryPredecessorCheckpointRead(stageId: string) {
+  const request = createLibraryCoreSqlitePredecessorReadWorkerRequest("native-predecessor-read", stageId);
+  if (request.kind !== "prepare_predecessor_checkpoint_read") throw new Error("invalid predecessor read request");
+  return parseLibraryCorePredecessorCheckpointReadV1(await invoke<unknown>(
+    "prepare_normalized_library_predecessor_checkpoint_read", { request: { stageId: request.stageId } },
+  ));
+}
+
+export async function activateNormalizedLibraryPredecessorCheckpoint(
+  activation: LibraryCoreActivateNormalizedCheckpointStageV2, successorStageId: string,
+): Promise<LibraryCoreNormalizedCheckpointActivationReceiptV2> {
+  const request = createLibraryCoreSqliteActivatePredecessorWorkerRequest("native-predecessor-import", activation, successorStageId);
+  if (request.kind !== "activate_verified_predecessor_checkpoint") throw new Error("invalid predecessor import request");
+  return parseLibraryCoreNormalizedCheckpointActivationReceiptV2(await invoke<unknown>(
+    "activate_normalized_library_predecessor_checkpoint", { request: { stageId: request.activation.stageId,
+      successorStageId: request.successorStageId, followerReceipt: request.activation.followerReceipt } },
+  ));
 }
 
 export async function activateNormalizedLibraryCheckpointImport(

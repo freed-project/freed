@@ -1051,3 +1051,43 @@ fixtures cover signed backfill, atomic receipt settlement, checkpoint replacemen
 successor recovery and retry after injected failures. Original signed intents and
 recovery archives remain intact. Production openers still refuse schema 3; these
 fixtures do not authorize migration or prove installed durability.
+
+The native return-transfer fixture now sends a third consumer through the full
+second-successor checkpoint path. It first catches up the predecessor enrollment,
+then verifies rollback after a late checkpoint failure, retry, same-successor
+refresh, a second immutable archive and explicit reenrollment. The consumer
+regains edit admission without Primary or provider admission, and its first
+archive remains byte-identical. This is local physical-schema-2 evidence;
+installed acceptance remains pending.
+
+The dormant schema 3 variant now migrates an enrolled consumer with a real signed
+pending preference assignment before that second transfer. Late projection-restore
+failure rolls back the checkpoint; retry preserves signed members, the actor tip
+and derived effects. A second explicit recovery archives the old slots and clears
+the projection atomically, with exact commit retry and the first archive intact.
+This fixture stops before the next certificate admission and does not activate
+schema 3 in production.
+
+Offline consumers now attempt one authenticated predecessor checkpoint before
+admitting a direct successor whose target enrollment they missed. Desktop and
+PWA use the same bounded downloader and coordinator. The native or worker read
+command verifies all handoff signatures against locally selected authority;
+the returned download reference grants no enrollment or writer admission.
+Activation independently reconstructs the proof, checks the signed receipt and
+source revision, and verifies the installed digest before commit. Ordinary
+successor verification then requires the enrolled target as before.
+
+The shared coordinator performs no recursive epoch search or new retry loop.
+Cancellation, expired tokens, missing objects and mismatched digests refuse
+activation. A retry after a lost predecessor commit response consults durable
+runtime state. Native fixtures preserve pending signed edits through rollback
+and successful import; browser fixtures import actual native checkpoint records
+and rebuild proof after engine replacement. These fixtures do not establish
+OPFS process-restart durability or installed cross-device acceptance.
+
+Browser successor refresh resolves the cloud writer from the unique active
+Desktop actor, matching native checkpoints with the local writer label
+`primary:desktop`. The follower receipt must name that actor. Multiple missed
+authority transfers, large-checkpoint deadline admission, actual crash/restart
+boundaries and installed Mac acceptance remain unverified. Current local work
+still requires full feature validation, fresh provider review and exact-head CI.

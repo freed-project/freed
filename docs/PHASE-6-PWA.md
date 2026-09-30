@@ -1395,3 +1395,27 @@ with the surrounding transaction. Recovered-consumer fixtures execute the real
 migration and shared canonical value vectors in the WASM test VFS. Production
 query routing and startup remain unchanged; OPFS restart durability, large-journal
 latency and installed cross-device acceptance remain unverified.
+
+Offline consumers now attempt one authenticated predecessor checkpoint before
+admitting a direct successor whose target enrollment they missed. Desktop and
+PWA use the same bounded downloader and coordinator. The native or worker read
+command verifies all handoff signatures against locally selected authority;
+the returned download reference grants no enrollment or writer admission.
+Activation independently reconstructs the proof, checks the signed receipt and
+source revision, and verifies the installed digest before commit. Ordinary
+successor verification then requires the enrolled target as before.
+
+The shared coordinator performs no recursive epoch search or new retry loop.
+Cancellation, expired tokens, missing objects and mismatched digests refuse
+activation. A retry after a lost predecessor commit response consults durable
+runtime state. Native fixtures preserve pending signed edits through rollback
+and successful import; browser fixtures import actual native checkpoint records
+and rebuild proof after engine replacement. These fixtures do not establish
+OPFS process-restart durability or installed cross-device acceptance.
+
+Browser successor refresh resolves the cloud writer from the unique active
+Desktop actor, matching native checkpoints with the local writer label
+`primary:desktop`. The follower receipt must name that actor. Multiple missed
+authority transfers, large-checkpoint deadline admission, actual crash/restart
+boundaries and installed Mac acceptance remain unverified. Current local work
+still requires full feature validation, fresh provider review and exact-head CI.

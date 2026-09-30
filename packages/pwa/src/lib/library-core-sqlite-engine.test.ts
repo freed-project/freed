@@ -1,3 +1,5 @@
+import nativeHandoffCatchup from "../../../shared/src/library-core/native-handoff-catchup-vector-v1.json";
+import { preparePwaPredecessorCheckpointRead, requirePwaPredecessorCheckpointRead } from "./library-core-successor-proof";
 import { LIBRARY_CORE_PENDING_PREFERENCE_SCHEMA_SQL, LIBRARY_CORE_PENDING_PREFERENCE_SCHEMA_SHA256, parseLibraryCoreActivateNormalizedCheckpointStageV2, createLibraryCoreShellPreferencesV1, LIBRARY_CORE_SHELL_PREFERENCE_PATHS } from "@freed/shared/library-core";
 import { replacePwaProjectedSuccessorCheckpoint, preparePwaProjectedConsumerRecovery, importPwaProjectedOperationPage, catchUpPwaProjectedAcceptedResult, storePwaProjectedResultTransport, storePwaProjectedFollowerResult, commitPwaProjectedConsumerRecovery, installPwaProjectedFollowerEnrollment, migratePwaPendingPreferenceProjection, backfillPwaPendingPreferenceProjection, settlePwaPendingPreferenceProjection, preparePwaPendingPreferenceSettlement, enqueuePwaProjectedFollowerIntent, readPwaVisiblePreferenceSource, readPwaVisiblePreferenceValue, readPwaVisiblePreferenceScope, preparePwaPreferenceCheckpointVerification, replacePwaProjectedCheckpoint } from "./library-core-preference-projection";
 import { readLibraryCoreShellPreferencesV1 } from "@freed/shared/library-core";
@@ -7111,6 +7113,49 @@ describe("PWA Library Core SQLite engine", () => {
     });
   });
 
+  it("imports the native signed predecessor before admitting a missed successor target", async () => {
+    const engine = new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion, { capi: sqlite3.capi });
+    engine.initialize();
+    const v = nativeHandoffCatchup;
+    const records = (input: unknown[]) => input.map(parseLibraryCoreNormalizedCheckpointRecordV2);
+    const initialReceipt = {checkpointGeneration:0,controlRevision:"baseline",installedAt:2400,
+      manifestContentDigest:lowercaseHex64("8".repeat(64)),manifestObjectKey:"baseline",manifestTransportObjectId:"baseline",writerActorId:v.baseline.writerId};
+    stageRecords(engine,records(v.baselineRecords),"catchup-baseline",v.baseline);
+    engine.activateNormalizedCheckpointStage({stageId:"catchup-baseline",replaceExisting:false,followerReceipt:initialReceipt});
+    stageRecords(engine,records(v.successorRecords),"catchup-successor",v.successor);
+    const successorActivation={stageId:"catchup-successor",replaceExisting:true,
+      followerReceipt:{...initialReceipt,writerActorId:v.successor.writerId}};
+    await expect(engine.verifyNormalizedCheckpointSuccessor(successorActivation)).rejects.toThrow("not enrolled");
+    const proof=await engine.preparePredecessorCheckpointRead("catchup-successor");
+    expect(proof).toEqual(v.expectedReadProof);
+    const pointer=proof!.pointer;
+    const activation={stageId:"catchup-predecessor",replaceExisting:true,followerReceipt:{
+      checkpointGeneration:pointer.generation,controlRevision:proof!.controlRevision,installedAt:2401,
+      manifestContentDigest:pointer.manifest.descriptor.contentDigest,manifestObjectKey:pointer.manifest.descriptor.objectKey,
+      manifestTransportObjectId:pointer.manifest.transportObjectId,writerActorId:pointer.writerId,
+    }};
+    const wrong = records(v.predecessorRecords).map(record=>record.registryKey==="00_checkpoint_header"
+      ? createLibraryCoreNormalizedCheckpointRecordV2({...record,payload:{...record.payload,createdAtMs:1}}):record);
+    stageRecords(engine,wrong,activation.stageId,v.predecessor);
+    await expect(engine.activateVerifiedPredecessorCheckpoint(activation,"catchup-successor"))
+      .rejects.toThrow("digest differs from signed consent");
+    expect(database.selectValue("SELECT source_revision FROM library_meta;")).toBe(v.baseline.sourceRevision);
+    expect(database.selectValue("SELECT count(*) FROM library_checkpoint_stages;")).toBe(2);
+    database.exec({sql:"DELETE FROM library_checkpoint_stages WHERE stage_id=?1;",bind:[activation.stageId]});
+    stageRecords(engine,records(v.predecessorRecords),activation.stageId,v.predecessor);
+    // A replacement engine has no in-memory proof from the preparation attempt.
+    const resumed = new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion, { capi: sqlite3.capi });
+    await expect(resumed.activateVerifiedPredecessorCheckpoint(activation,"x".repeat(256))).rejects.toThrow();
+    await expect(resumed.activateVerifiedPredecessorCheckpoint({ ...activation, followerReceipt: {
+      ...activation.followerReceipt, controlRevision: "untrusted",
+    } },"catchup-successor")).rejects.toThrow("receipt differs from signed consent");
+    expect(database.selectValue("SELECT source_revision FROM library_meta;")).toBe(v.baseline.sourceRevision);
+    const installed=await resumed.activateVerifiedPredecessorCheckpoint(activation,"catchup-successor");
+    expect(installed.checkpointDigest).toBe(proof!.checkpointDigest);
+    await engine.verifyNormalizedCheckpointSuccessor(successorActivation);
+    expect(engine.activateNormalizedCheckpointStage(successorActivation).authorityEpoch).toBe(v.successor.authorityEpoch);
+  });
+
   it("pins a verified direct successor at commit and preserves the old consumer enrollment", async () => {
     const handoffVector = recoveredEnrollmentVector;
     const engine = new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion, { capi: sqlite3.capi });
@@ -7191,7 +7236,7 @@ describe("PWA Library Core SQLite engine", () => {
     const revision = Math.max(8, certificate.certificate_body.handoff_authorization.body.final_source_revision);
     const incoming = base.map(record => {
       if (record.registryKey === "00_checkpoint_header") return createLibraryCoreNormalizedCheckpointRecordV2({ ...record, payload: { ...record.payload, authorityEpoch: nextEpoch, sourceRevision: revision, checkpointId: `${pin.libraryId}:${nextEpoch}:${revision}` } });
-      if (record.registryKey === "03_active_authority") return createLibraryCoreNormalizedCheckpointRecordV2({ ...record, payload: { ...record.payload, epochId: nextEpoch, writerId: targetId } });
+      if (record.registryKey === "03_active_authority") return createLibraryCoreNormalizedCheckpointRecordV2({ ...record, payload: { ...record.payload, epochId: nextEpoch, writerId: "primary:desktop" } });
       if (record.registryKey === "90_actor_state" && record.primaryKey === targetId) return createLibraryCoreNormalizedCheckpointRecordV2({ ...record, payload: { ...record.payload, actorKind: "desktop", authorityEpochId: nextEpoch } });
       return record;
     });
@@ -7245,6 +7290,37 @@ describe("PWA Library Core SQLite engine", () => {
       expect(()=>successorEngine.followerMutationContext()).toThrow("unavailable");
     } finally {preferenceDb.close();}
     expect(() => engine.activateNormalizedCheckpointStage(activation)).toThrow(/verified proof/);
+    // An offline consumer may have missed the target's predecessor enrollment.
+    // A valid signed successor does not authorize skipping that local proof.
+    database.exec("SAVEPOINT missing_successor_target;");
+    database.exec({sql:"DELETE FROM library_actors WHERE actor_id=?1;",bind:[targetId]});
+    await expect(engine.verifyNormalizedCheckpointSuccessor(activation))
+      .rejects.toThrow("successor target is not enrolled in the accepted predecessor");
+    expect(database.selectValue("SELECT authority_epoch FROM library_meta;")).toBe(pin.epochId);
+    expect(snapshot()).toEqual(oldEdits);
+    // This retention fixture starts beyond the vector's final source revision.
+    // A read plan must refuse regression, even with a valid predecessor signature.
+    await expect(preparePwaPredecessorCheckpointRead(database, activation.stageId, crypto.subtle))
+      .rejects.toThrow("does not cover the selected source");
+    database.exec({sql:"UPDATE library_meta SET source_revision=?1;",
+      bind:[certificate.certificate_body.handoff_authorization.body.final_source_revision]});
+    const readProof = await preparePwaPredecessorCheckpointRead(database, activation.stageId, crypto.subtle);
+    expect(readProof?.pointer).toEqual(certificate.certificate_body.handoff_authorization.body.source_control);
+    requirePwaPredecessorCheckpointRead(database, activation.stageId, readProof!);
+    expect(() => requirePwaPredecessorCheckpointRead(database, activation.stageId, { ...readProof! })).toThrow("current verified binding");
+    await expect(engine.verifyNormalizedCheckpointSuccessor(activation)).rejects.toThrow("not enrolled");
+    const readRace = preparePwaPredecessorCheckpointRead(database, activation.stageId, crypto.subtle);
+    database.exec("UPDATE library_meta SET source_revision=source_revision+1;");
+    await expect(readRace).rejects.toThrow("changed during verification");
+    expect(() => requirePwaPredecessorCheckpointRead(database, activation.stageId, readProof!)).toThrow("current verified binding");
+    database.exec("ROLLBACK TO missing_successor_target; RELEASE missing_successor_target;");
+    expect(await preparePwaPredecessorCheckpointRead(database, activation.stageId, crypto.subtle)).toBeNull();
+    database.exec("SAVEPOINT retired_successor_target;");
+    database.exec({sql:"UPDATE library_actors SET retired_at=1 WHERE actor_id=?1;",bind:[targetId]});
+    await expect(preparePwaPredecessorCheckpointRead(database, activation.stageId, crypto.subtle))
+      .rejects.toThrow("cannot replace a retired or conflicting target");
+    database.exec("ROLLBACK TO retired_successor_target; RELEASE retired_successor_target;");
+    expect(() => requirePwaPredecessorCheckpointRead(database, activation.stageId, readProof!)).toThrow("current verified binding");
     const pendingProof = engine.verifyNormalizedCheckpointSuccessor(activation);
     database.exec({ sql: "UPDATE library_actors SET public_key = ?1 WHERE actor_id = ?2;", bind: ["7".repeat(64), targetId] });
     await expect(pendingProof).rejects.toThrow(/changed during verification/);

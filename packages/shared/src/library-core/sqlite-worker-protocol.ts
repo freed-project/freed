@@ -1,3 +1,4 @@
+import type { verifyLibraryCoreHandoffPredecessorCheckpointV1 } from "./handoff-certificate.js";
 import { parseLibraryCorePreferenceScopeRequestV1, parseLibraryCorePreferenceScopeResponseV1, type LibraryCorePreferenceScopeRequestV1, type LibraryCorePreferenceScopeResponseV1 } from "./preference-scope-contracts.js";
 import { parseLibraryCorePreferencesRevisionRequestV1, parseLibraryCorePreferencesRevisionResponseV1, type LibraryCorePreferencesRevisionRequestV1, type LibraryCorePreferencesRevisionResponseV1 } from "./preferences-revision-contracts.js";
 import { parseLibraryCoreRankingWeightScopeRequestV1, parseLibraryCoreRankingWeightScopeResponseV1, type LibraryCoreRankingWeightScopeRequestV1, type LibraryCoreRankingWeightScopeResponseV1 } from "./ranking-weight-scope-contracts.js";
@@ -867,6 +868,19 @@ export type LibraryCoreSqliteWorkerRequest =
       requestId: string;
     }>
   | Readonly<{
+      activation: LibraryCoreActivateNormalizedCheckpointStageV2;
+      kind: "activate_verified_predecessor_checkpoint";
+      protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
+      requestId: string;
+      successorStageId: string;
+    }>
+  | Readonly<{
+      kind: "prepare_predecessor_checkpoint_read";
+      protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
+      requestId: string;
+      stageId: string;
+    }>
+  | Readonly<{
       kind: "read_normalized_checkpoint_receipt";
       protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
       requestId: string;
@@ -931,6 +945,8 @@ export interface LibraryCoreSqliteWorkerStatus {
 }
 
 export type LibraryCoreSqliteWorkerResult =
+  | Awaited<ReturnType<typeof verifyLibraryCoreHandoffPredecessorCheckpointV1>>
+  | null
   | LibraryCoreRecoveryReissueReceiptV1
   | LibraryCoreConsumerRecoveryStatusV1
   | LibraryCoreSqliteQueryResponse
@@ -1071,7 +1087,11 @@ export function parseLibraryCoreSqliteWorkerRequest(
   }
   const keys = Object.keys(value).sort();
   const expectedKeys =
-    value.kind === "query" || value.kind === "query_device_contacts"
+    value.kind === "prepare_predecessor_checkpoint_read"
+      ? ["kind", "protocolVersion", "requestId", "stageId"]
+      : value.kind === "activate_verified_predecessor_checkpoint"
+      ? ["activation", "kind", "protocolVersion", "requestId", "successorStageId"]
+      : value.kind === "query" || value.kind === "query_device_contacts"
       ? ["kind", "protocolVersion", "query", "requestId"]
       : value.kind === "mutate_device_graph_layout" ||
           value.kind === "mutate_device_contacts" ||
@@ -1200,6 +1220,8 @@ export function parseLibraryCoreSqliteWorkerRequest(
     keys.some((key, index) => key !== expectedKeys[index]) ||
     ![
       "activate_normalized_checkpoint_stage",
+      "activate_verified_predecessor_checkpoint",
+      "prepare_predecessor_checkpoint_read",
       "abort_content_range_publication",
       "apply_follower_result",
       "append_content_range_publication",
@@ -1266,6 +1288,14 @@ export function parseLibraryCoreSqliteWorkerRequest(
     parseLibraryCoreBeginNormalizedCheckpointStageV2(value.stage);
   } else if (value.kind === "append_normalized_checkpoint_stage_page") {
     parseLibraryCoreNormalizedCheckpointStagePageV2(value.page);
+  } else if (value.kind === "activate_verified_predecessor_checkpoint") {
+    const activation = parseLibraryCoreActivateNormalizedCheckpointStageV2(value.activation);
+    const successor = parseLibraryCoreActivateNormalizedCheckpointStageV2({ ...activation, stageId: value.successorStageId });
+    if (!activation.replaceExisting || activation.followerReceipt === null || activation.stageId === successor.stageId) {
+      throw new TypeError("predecessor import requires distinct stages and a follower receipt");
+    }
+    return Object.freeze({ kind: value.kind, protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+      requestId: value.requestId, activation, successorStageId: successor.stageId });
   } else if (value.kind === "activate_normalized_checkpoint_stage") {
     parseLibraryCoreActivateNormalizedCheckpointStageV2(value.activation);
   } else if (value.kind === "query") {
@@ -1518,6 +1548,8 @@ export function parseLibraryCoreSqliteWorkerRequest(
       Number(value.afterOrdinal) < -1
     )
       throw new TypeError("SQLite scope action page request is invalid");
+  } else if (value.kind === "prepare_predecessor_checkpoint_read") {
+    if (!isBoundedWorkerIdentity(value.stageId)) throw new TypeError("predecessor read stage ID is invalid");
   } else if (value.kind === "close_scope_action") {
     if (!isBoundedWorkerIdentity(value.stageId)) {
       throw new TypeError("SQLite scope action close request is invalid");
@@ -2071,6 +2103,15 @@ export function createLibraryCoreSqliteActivateCheckpointWorkerRequest(
   });
 }
 
+export function createLibraryCoreSqliteActivatePredecessorWorkerRequest(
+  requestId: string,
+  activation: LibraryCoreActivateNormalizedCheckpointStageV2,
+  successorStageId: string,
+): LibraryCoreSqliteWorkerRequest {
+  return parseLibraryCoreSqliteWorkerRequest({ activation, kind: "activate_verified_predecessor_checkpoint",
+    protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION, requestId, successorStageId });
+}
+
 export function createLibraryCoreSqliteReadCheckpointReceiptWorkerRequest(
   requestId: string,
 ): LibraryCoreSqliteWorkerRequest {
@@ -2116,4 +2157,9 @@ export function createLibraryCoreConsumerRecoveryWorkerRequest(
     { kind: "commit_consumer_recovery"; recovery: LibraryCoreCommitConsumerRecoveryV1 },
 ): LibraryCoreSqliteWorkerRequest {
   return parseLibraryCoreSqliteWorkerRequest({ ...action, requestId, protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION });
+}
+
+export function createLibraryCoreSqlitePredecessorReadWorkerRequest(requestId: string, stageId: string): LibraryCoreSqliteWorkerRequest {
+  return parseLibraryCoreSqliteWorkerRequest({ kind: "prepare_predecessor_checkpoint_read",
+    protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION, requestId, stageId });
 }

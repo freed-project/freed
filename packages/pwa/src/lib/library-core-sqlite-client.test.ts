@@ -1,3 +1,4 @@
+import catchupVector from "../../../shared/src/library-core/native-handoff-catchup-vector-v1.json";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   parseLibraryCoreReapplyConsumerIntentV1,
@@ -186,6 +187,15 @@ describe("PWA SQLite worker response boundary", () => {
     expect(onUnavailable).toHaveBeenCalledOnce();
   });
 
+  it.each([null, catchupVector.expectedReadProof])("decodes the predecessor read response without creating an activation token", async (reference) => {
+    const client = new PwaLibraryCoreSqliteClient();
+    const pending = client.preparePredecessorCheckpointRead("successor");
+    const worker = activeWorker();
+    expect(worker.posted.at(-1)).toMatchObject({ kind: "prepare_predecessor_checkpoint_read", stageId: "successor" });
+    worker.respond({ ok: true, requestId: requestId(worker), result: reference });
+    await expect(pending).resolves.toEqual(reference);
+  });
+
   it("retires the complete client generation when a request times out", async () => {
     vi.useFakeTimers();
     const onUnavailable = vi.fn();
@@ -204,12 +214,16 @@ describe("PWA SQLite worker response boundary", () => {
     expect(onUnavailable).toHaveBeenCalledOnce();
   });
 
-  it("keeps queued reads alive only while checkpoint records advance", async () => {
+  it.each(["ordinary", "predecessor"] as const)("keeps queued reads alive only while %s checkpoint records advance", async (kind) => {
     vi.useFakeTimers();
     const client = new PwaLibraryCoreSqliteClient();
-    const activation = client.activateNormalizedCheckpointStage({
+    const activation = kind === "ordinary" ? client.activateNormalizedCheckpointStage({
       followerReceipt: null, replaceExisting: false, stageId: "progress-test",
-    });
+    }) : client.activateVerifiedPredecessorCheckpoint({ stageId: "predecessor", replaceExisting: true,
+      followerReceipt: { checkpointGeneration: 1, controlRevision: "revision", installedAt: 2400,
+        manifestContentDigest: "a".repeat(64) as never, manifestObjectKey: "manifest",
+        manifestTransportObjectId: "object", writerActorId: "writer" },
+    }, "successor");
     const activationFailure = expect(activation).rejects.toThrow("timed out");
     const worker = activeWorker();
     const activationId = requestId(worker);

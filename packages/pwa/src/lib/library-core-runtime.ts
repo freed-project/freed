@@ -79,6 +79,7 @@ import {
   createGoogleDriveLibraryCoreNormalizedFollowerTransportV2,
   discoverPublishedGoogleDriveLibraryCoreControlV1,
   importLibraryCoreNormalizedCheckpointV2,
+  catchUpLibraryCorePredecessorCheckpointV1,
 } from "@freed/sync/cloud/library-core";
 import { registerPwaFactoryResetQuiesceHandler } from "./factory-reset-coordinator";
 import {
@@ -91,6 +92,10 @@ import {
   mutatePwaContentPolicy,
   readPwaFollowerTransportContext,
   readPwaNormalizedCheckpointReceipt,
+  preparePwaNormalizedPredecessorCheckpointRead,
+  activatePwaNormalizedPredecessorCheckpoint,
+  beginPwaNormalizedCheckpointStage,
+  appendPwaNormalizedCheckpointStagePage,
   importPwaNormalizedOperationPage,
   resetPwaNormalizedLibrary,
   closePwaNormalizedLibrary,
@@ -1319,6 +1324,18 @@ export async function syncPwaLibraryCoreFromGoogleDrive(input: {
   });
   const controlRevision = sha256LowerHex(discovered.control.bytes);
   const checkpointWriter = createPwaNormalizedCheckpointWriter({
+    beforeActivate: async activation => {
+      await catchUpLibraryCorePredecessorCheckpointV1({
+        adapter, subtle: crypto.subtle, successorStageId: activation.stageId, installedAt: Date.now(),
+        assertActive: () => input.signal?.throwIfAborted(), runtime: {
+          prepare: preparePwaNormalizedPredecessorCheckpointRead,
+          activate: activatePwaNormalizedPredecessorCheckpoint,
+          begin: beginPwaNormalizedCheckpointStage,
+          appendPage: appendPwaNormalizedCheckpointStagePage,
+        },
+      });
+      input.signal?.throwIfAborted();
+    },
     checkpointGeneration: pointer.generation,
     controlRevision,
     installedAt: Date.now(),

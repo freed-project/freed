@@ -593,6 +593,158 @@ fn replace_projected_successor_checkpoint(
     Ok(installed)
 }
 
+/// Exercise a second real transfer after migrating an enrolled consumer with a
+/// signed pending assignment. This module has no production callers.
+pub(crate) fn check_migrated_repeated_successor(
+    source: &Connection,
+    stage_id: &str,
+    receipt: &crate::NormalizedFollowerCheckpointReceiptV2,
+    actor_store: &dyn crate::ActorKeyStore,
+    witness: &str,
+    certificate: &[u8],
+) {
+    let mut db = Connection::open_in_memory().unwrap();
+    rusqlite::backup::Backup::new(source, &mut db)
+        .unwrap()
+        .run_to_completion(128, std::time::Duration::ZERO, None)
+        .unwrap();
+    db.execute_batch("PRAGMA foreign_keys=ON; PRAGMA synchronous=FULL;")
+        .unwrap();
+    let old_archive: String = db
+        .query_row(
+            "SELECT recovery_id FROM library_local_recovery_archives;",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    let archive_rows = |db: &Connection| {
+        db.prepare("SELECT canonical_row FROM library_local_recovery_rows WHERE recovery_id=?1 ORDER BY table_key,row_ordinal;").unwrap()
+            .query_map([&old_archive], |r|r.get::<_,Vec<u8>>(0)).unwrap().collect::<rusqlite::Result<Vec<_>>>().unwrap()
+    };
+    let retained_archive = archive_rows(&db);
+    let (authority, _, _, _) =
+        crate::normalized_writer_reassignment::current_authority(&db).unwrap();
+    let verified =
+        crate::normalized_enrollment_verifier::verify_actor_enrollment(certificate, &authority)
+            .unwrap();
+    let key = crate::library_core_actor_enrollment::load_actor_key_pair(
+        actor_store,
+        &authority.library_id,
+    )
+    .unwrap();
+    let context = crate::normalized_follower_mutation_context_v1(&db).unwrap();
+    let patch = serde_json::json!({"updates":{"display":{"showEngagementCounts":false}}});
+    let edit =
+        crate::normalized_operation_test_fixtures::tests::signed_envelopes_from_tip_with_payload(
+            &key,
+            &verified,
+            "repeated:migrated",
+            context.next_counter,
+            context.previous_operation_id.as_deref(),
+            &context.previous_chain_digest,
+            &[("preferences", 2390)],
+            "preferences_leaf_assignment",
+            Some(&patch),
+        );
+    crate::enqueue_normalized_follower_intent_v1(&mut db, &edit, 2390).unwrap();
+    migrate(&mut db).unwrap();
+    while !backfill_step(&mut db).unwrap() {}
+    // Read retained history directly after succession: mutation context must
+    // reject the old actor even though its exact tip remains preserved.
+    let stored_tip = |db: &Connection| {
+        db.query_row(
+        "SELECT next_counter,previous_operation_id,previous_chain_digest FROM library_intent_actors WHERE actor_id=?1;",
+        [&context.actor_id], |r| Ok((r.get::<_,i64>(0)?,r.get::<_,Option<String>>(1)?,r.get::<_,String>(2)?)),
+    ).unwrap()
+    };
+    let retained_tip = stored_tip(&db);
+    let members = |db: &Connection| {
+        db.prepare("SELECT canonical_member FROM library_intent_members ORDER BY actor_counter;")
+            .unwrap()
+            .query_map([], |r| r.get::<_, Vec<u8>>(0))
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap()
+    };
+    let retained_members = members(&db);
+    let nodes: i64 = db
+        .query_row(
+            "SELECT count(*) FROM library_local_preference_nodes;",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(nodes >= 2);
+    db.execute_batch("CREATE TEMP TRIGGER repeated_projection_fault AFTER INSERT ON library_local_preference_nodes BEGIN SELECT RAISE(ABORT,'repeated projection fault'); END;").unwrap();
+    assert!(
+        replace_projected_successor_checkpoint(&mut db, stage_id, receipt)
+            .unwrap_err()
+            .to_string()
+            .contains("repeated projection fault")
+    );
+    assert_eq!(stored_tip(&db), retained_tip);
+    assert_eq!(members(&db), retained_members);
+    assert_eq!(archive_rows(&db), retained_archive);
+    db.execute_batch("DROP TRIGGER repeated_projection_fault;")
+        .unwrap();
+    replace_projected_successor_checkpoint(&mut db, stage_id, receipt).unwrap();
+    assert_eq!(stored_tip(&db), retained_tip);
+    assert_eq!(members(&db), retained_members);
+    assert_eq!(
+        db.query_row(
+            "SELECT count(*) FROM library_local_preference_nodes;",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .unwrap(),
+        nodes
+    );
+    assert!(crate::normalized_follower_mutation_context_v1(&db).is_err());
+    let archive = crate::normalized_consumer_recovery::archive_consumer_recovery_with_admission(
+        &mut db,
+        actor_store,
+        2400,
+        |db| {
+            verify_storage(db).map_err(|e| e.to_string())?;
+            Ok(true)
+        },
+        |db| verify_storage(db).map_err(|e| e.to_string()),
+    )
+    .unwrap();
+    assert_ne!(archive, old_archive);
+    let prepared =
+        crate::normalized_consumer_recovery::prepare_consumer_reenrollment_with_admission(
+            &mut db,
+            &archive,
+            witness,
+            actor_store,
+            2401,
+            |db| verify_storage(db).map_err(|e| e.to_string()),
+        )
+        .unwrap();
+    assert_eq!(
+        commit_projected_reenrollment(&mut db, &archive, witness, actor_store, 2402).unwrap(),
+        prepared
+    );
+    assert_eq!(
+        commit_projected_reenrollment(&mut db, &archive, witness, actor_store, 2403).unwrap(),
+        prepared
+    );
+    assert_eq!(
+        db.query_row(
+            "SELECT count(*) FROM library_local_preference_nodes;",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .unwrap(),
+        0
+    );
+    assert_eq!(archive_rows(&db), retained_archive);
+    assert!(crate::normalized_follower_mutation_context_v1(&db).is_err());
+    assert!(crate::normalized_primary_mutation_context_v1(&db).is_err());
+    assert!(crate::require_normalized_provider_handoff_admission_v2(&db).is_err());
+}
+
 pub(crate) fn check_projected_successor_checkpoint(
     source: &Connection,
     stage_id: &str,

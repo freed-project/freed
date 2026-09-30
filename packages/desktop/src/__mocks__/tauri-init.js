@@ -2102,7 +2102,9 @@ export function tauriInitScript() {
       import_normalized_library_operation_page: () => {
         throw new Error("Operation import requires an explicit signed Library fixture.");
       },
-      begin_normalized_library_source_handoff: () => {
+      prepare_normalized_library_predecessor_checkpoint_read: () => { throw new Error("Checkpoint catch-up requires an explicit signed Library fixture."); },
+  activate_normalized_library_predecessor_checkpoint: () => { throw new Error("Checkpoint catch-up requires an explicit signed Library fixture."); },
+  begin_normalized_library_source_handoff: () => {
         throw new Error("Authority transfers require Freed Desktop.");
       },
       accept_normalized_library_target_handoff_cancellation: () => { throw new Error("Authority transfers require Freed Desktop."); },

@@ -243,3 +243,23 @@ authority records, then rereads exact control after verification. Matching write
 and epoch labels alone never resolve an ambiguous transfer. Publication receipts
 use an explicitly writable, descriptor-bound private file; other service inputs
 remain read-only. Ordinary startup cannot substitute for incomplete promotion.
+
+A consumer that missed the successor target's enrollment must first obtain the
+final predecessor checkpoint. Read authentication may verify the canonical
+handoff certificate against the locally trusted predecessor using the target
+key from predecessor-signed readiness. This authenticates the immutable source
+control pointer, final revision and checkpoint digest for a bounded download;
+it does not prove local target enrollment, select a checkpoint or grant writer
+admission. After catch-up, ordinary successor verification must still require
+the enrolled target and recheck the selected predecessor and staged certificate.
+Never use an unverified pointer to start this catch-up. Desktop and PWA perform
+one direct-predecessor download per attempt through the shared coordinator. They
+do not recursively search older epochs. The import transaction must independently
+reconstruct the proof and verify the signed digest before committing; a returned
+read reference is not an activation token.
+
+The native `library_active_authority.writer_id` may contain a local writer label
+such as `primary:desktop`. Resolve the cloud writer identity from the unique
+non-retired Desktop actor in the selected epoch and require the follower receipt
+to name that actor. A local label is not an actor ID or a substitute for the
+receipt and signature checks.

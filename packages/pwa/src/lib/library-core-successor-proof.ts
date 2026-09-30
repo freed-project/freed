@@ -1,6 +1,6 @@
 import type { Database } from "@sqlite.org/sqlite-wasm";
 import {
-  verifyLibraryCoreHandoffCertificateV1, verifyLibraryCoreEd25519WithWebCrypto,
+  verifyLibraryCoreHandoffCertificateV1, verifyLibraryCoreHandoffPredecessorCheckpointV1, verifyLibraryCoreEd25519WithWebCrypto,
   decodeLibraryCoreCanonicalValue, parseLibraryCoreNormalizedCheckpointRecordV2,
 } from "@freed/shared/library-core";
 
@@ -18,16 +18,19 @@ function number(value: unknown): number {
   return value;
 }
 function continuationBinding(database: Database, stageId: string, stage: unknown[], requests: unknown[][]) {
+  // Native checkpoints use a local authority writer label such as primary:desktop.
+  // The cloud writer is the unique active Desktop actor, also pinned by the receipt.
   const accepted = rows(database, `SELECT epoch.epoch_number, epoch.transition_certificate_digest,
-      epoch.authority_key_id, epoch.authority_public_key, epoch.canonical_transition_certificate, active.writer_id,
+      epoch.authority_key_id, epoch.authority_public_key, epoch.canonical_transition_certificate, actor.actor_id,
       actor.public_key, meta.source_revision, receipt.checkpoint_generation
     FROM library_meta AS meta
     JOIN library_active_authority AS active ON active.library_id = meta.library_id AND active.epoch_id = meta.authority_epoch
     JOIN library_authority_epochs AS epoch ON epoch.epoch_id = active.epoch_id
-    JOIN library_actors AS actor ON actor.actor_id = active.writer_id AND actor.authority_epoch_id = epoch.epoch_id
+    JOIN library_actors AS actor ON actor.authority_epoch_id = epoch.epoch_id
     JOIN library_follower_checkpoint_receipt AS receipt ON receipt.singleton_id = 1
       AND receipt.library_id = meta.library_id AND receipt.authority_epoch_id = epoch.epoch_id AND receipt.writer_actor_id = actor.actor_id
-    WHERE meta.singleton_id = 1 AND active.active_key = 'active' AND actor.actor_kind = 'desktop' AND actor.retired_at IS NULL;`);
+    WHERE meta.singleton_id = 1 AND active.active_key = 'active' AND actor.actor_kind = 'desktop' AND actor.retired_at IS NULL
+      AND (SELECT count(*) FROM library_actors WHERE authority_epoch_id = epoch.epoch_id AND actor_kind = 'desktop' AND retired_at IS NULL) = 1;`);
   const history = rows(database, `SELECT epoch_number, transition_certificate_digest, authority_public_key
     FROM library_authority_epochs WHERE library_id = ?1 AND epoch_id = ?2;`, [string(stage[0]), string(requests[0]?.[1])]);
   if (accepted.length !== 1 || history.length !== 1) throw new Error("follower checkpoint requires authority recovery: continuation authority is unavailable");
@@ -52,7 +55,7 @@ function continuationBinding(database: Database, stageId: string, stage: unknown
     snapshot: JSON.stringify({ stageId, stage, accepted, history, requests, record }) };
 }
 
-function binding(database: Database, stageId: string) {
+function binding(database: Database, stageId: string, allowMissingEnrollment = false) {
   const stages = rows(database, `SELECT library_id, authority_epoch, source_revision, expected_record_count, staged_canonical_bytes
     FROM library_checkpoint_stages WHERE stage_id = ?1 AND staged_record_count = expected_record_count;`, [stageId]);
   if (stages.length !== 1) throw new Error("successor checkpoint stage is incomplete");
@@ -85,13 +88,17 @@ function binding(database: Database, stageId: string) {
   const target = JSON.parse(canonical)?.certificate_body?.target_writer_id;
   if (typeof target !== "string" || target.length !== 64 || /[^0-9a-f]/.test(target)) throw new Error("successor target is invalid");
   const enrollment = rows(database, "SELECT public_key FROM library_actors WHERE actor_id = ?1 AND authority_epoch_id = ?2 AND retired_at IS NULL;", [target, string(old[1])]);
-  if (enrollment.length !== 1) throw new Error("successor target is not enrolled in the accepted predecessor");
+  if (enrollment.length !== 1 && (!allowMissingEnrollment || enrollment.length !== 0)) throw new Error("successor target is not enrolled in the accepted predecessor");
+  if (allowMissingEnrollment && enrollment.length === 0 && rows(database,
+    "SELECT actor_id FROM library_actors WHERE actor_id=?1;", [target]).length !== 0) {
+    throw new Error("predecessor catch-up cannot replace a retired or conflicting target");
+  }
   const predecessor = { libraryId: string(old[0]), epochId: string(old[1]), epoch: number(old[2]),
     certificateDigest: string(old[3]), authorityPublicKey: string(old[4]), writerId: string(old[5]) };
   const expected = { libraryId: string(stage[0]), epochId: string(stage[1]), epoch: number(payload.epochNumber),
     certificateDigest: string(payload.transitionCertificateDigest), authorityKeyId: string(payload.authorityKeyId),
     authorityPublicKey: string(payload.authorityPublicKey), writerId: target };
-  const actorKey = string(enrollment[0]![0]);
+  const actorKey = enrollment.length === 1 ? string(enrollment[0]![0]) : null;
   return { predecessor, expected, canonical, actorKey, sourceRevision: number(stage[2]), continuation: false,
     snapshot: JSON.stringify({ stageId, stage, trusted, requests, actorKey, record }) };
 }
@@ -102,6 +109,7 @@ export async function verifyPwaCheckpointSuccessor(
 ): Promise<PwaVerifiedSuccessor | null> {
   const before = binding(database, stageId);
   if (!before) return null;
+  if (before.actorKey === null) throw new Error("successor target is not enrolled in the accepted predecessor");
   const proof = await verifyLibraryCoreHandoffCertificateV1(new TextEncoder().encode(before.canonical), before.predecessor,
     before.actorKey, { verifySignature: input => verifyLibraryCoreEd25519WithWebCrypto(input, subtle) });
   if (before.sourceRevision < proof.finalSourceRevision) throw new Error("successor checkpoint predates the authorized frontier");
@@ -122,4 +130,45 @@ export function requirePwaCheckpointSuccessor(
   if (!current) return null;
   if (!proof || proof.writerId !== writerId || verifiedBindings.get(proof) !== current.snapshot) throw new Error("successor checkpoint requires a current verified proof");
   return current.continuation ? "continuation" : "successor";
+}
+
+export type PwaVerifiedPredecessorRead = Awaited<ReturnType<typeof verifyLibraryCoreHandoffPredecessorCheckpointV1>>;
+const predecessorReads = new WeakMap<object, { database: Database; snapshot: string }>();
+function predecessorReadBinding(database: Database, stageId: string) {
+  const source = binding(database, stageId, true);
+  if (!source || source.continuation || source.actorKey !== null) return null;
+  const localRevision = number(database.selectValue("SELECT source_revision FROM library_meta WHERE singleton_id=1;"));
+  return { source, localRevision, snapshot: JSON.stringify({ stageId, source: source.snapshot, localRevision }) };
+}
+
+/** Read-only preparation. This grants no permission to activate either checkpoint. */
+export async function preparePwaPredecessorCheckpointRead(
+  database: Database, stageId: string, subtle: SubtleCrypto,
+): Promise<PwaVerifiedPredecessorRead | null> {
+  const before = predecessorReadBinding(database, stageId);
+  if (!before) return null;
+  const result = await verifyLibraryCoreHandoffPredecessorCheckpointV1(
+    new TextEncoder().encode(before.source.canonical), before.source.predecessor,
+    { verifySignature: input => verifyLibraryCoreEd25519WithWebCrypto(input, subtle) },
+  );
+  if (result.successorEpochId !== before.source.expected.epochId ||
+      result.sourceRevision < before.localRevision || result.sourceRevision > before.source.sourceRevision) {
+    throw new Error("predecessor checkpoint does not cover the selected source");
+  }
+  if (predecessorReadBinding(database, stageId)?.snapshot !== before.snapshot) {
+    throw new Error("predecessor checkpoint read changed during verification");
+  }
+  predecessorReads.set(result, { database, snapshot: before.snapshot });
+  return result;
+}
+
+/** Recheck before using the read reference. Import still owns all write admission. */
+export function requirePwaPredecessorCheckpointRead(
+  database: Database, stageId: string, proof: PwaVerifiedPredecessorRead,
+): void {
+  const retained = predecessorReads.get(proof);
+  if (!retained || retained.database !== database ||
+      predecessorReadBinding(database, stageId)?.snapshot !== retained.snapshot) {
+    throw new Error("predecessor checkpoint read requires a current verified binding");
+  }
 }

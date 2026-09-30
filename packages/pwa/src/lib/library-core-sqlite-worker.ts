@@ -296,6 +296,22 @@ async function executeActivateCheckpoint(
   );
 }
 
+async function executePreparePredecessorRead(request: WorkerRequest<"prepare_predecessor_checkpoint_read">): Promise<LibraryCoreSqliteWorkerResponse> {
+  return result(request.requestId, await requireEngine().preparePredecessorCheckpointRead(request.stageId));
+}
+
+async function executeActivatePredecessor(
+  request: WorkerRequest<"activate_verified_predecessor_checkpoint">,
+): Promise<LibraryCoreSqliteWorkerResponse> {
+  const receipt = await requireEngine().activateVerifiedPredecessorCheckpoint(
+    request.activation, request.successorStageId, (completedRecords, totalRecords) => {
+      scope.postMessage({ kind: "checkpoint_activation_progress", requestId: request.requestId,
+        completedRecords, totalRecords });
+    },
+  );
+  return result(request.requestId, receipt);
+}
+
 function executeBeginCheckpoint(
   request: WorkerRequest<"begin_normalized_checkpoint_stage">,
 ): LibraryCoreSqliteWorkerResponse {
@@ -678,6 +694,10 @@ function compileCommand(
       return bindCommand(request, executeClose, true);
     case "activate_normalized_checkpoint_stage":
       return bindCommand(request, executeActivateCheckpoint);
+    case "prepare_predecessor_checkpoint_read":
+      return bindCommand(request, executePreparePredecessorRead);
+    case "activate_verified_predecessor_checkpoint":
+      return bindCommand(request, executeActivatePredecessor);
     case "begin_normalized_checkpoint_stage":
       return bindCommand(request, executeBeginCheckpoint);
     case "read_normalized_checkpoint_receipt":

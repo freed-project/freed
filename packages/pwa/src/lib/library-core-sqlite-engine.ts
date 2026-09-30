@@ -17,7 +17,7 @@ import {
 } from "@freed/shared/library-core";
 import { readPwaConsumerRecoveryPlan, readPwaConsumerRecoveryStatus, preparePwaConsumerRecovery, commitPwaConsumerRecovery } from "./library-core-consumer-recovery";
 import { verifyPwaFollowerActorRequest } from "./library-core-follower-request-proof";
-import { verifyPwaCheckpointSuccessor, requirePwaCheckpointSuccessor, type PwaVerifiedSuccessor } from "./library-core-successor-proof";
+import { verifyPwaCheckpointSuccessor, requirePwaCheckpointSuccessor, requirePwaPredecessorCheckpointRead, preparePwaPredecessorCheckpointRead, type PwaVerifiedSuccessor } from "./library-core-successor-proof";
 import { readPwaLibraryStorageIdentity } from "./library-core-recovery-schema";
 import type { CAPI, Database, PreparedStatement, SqlValue } from "@sqlite.org/sqlite-wasm";
 import { CONTENT_SIGNAL_KEYS } from "@freed/shared";
@@ -1604,6 +1604,54 @@ export class PwaLibraryCoreSqliteEngine {
         this.#database, activation.stageId, this.#subtle,
       );
     }
+  }
+
+  async preparePredecessorCheckpointRead(stageId: string) {
+    parseLibraryCoreActivateNormalizedCheckpointStageV2({ stageId, replaceExisting: false, followerReceipt: null });
+    return preparePwaPredecessorCheckpointRead(this.#database, stageId, this.#subtle);
+  }
+
+  /** Rebuild the proof from durable staging on every attempt. No caller-supplied
+   * proof or worker-local token grants admission; the signed digest is checked
+   * before commit, including when invoked by cloud catch-up. */
+  async activateVerifiedPredecessorCheckpoint(
+    input: LibraryCoreActivateNormalizedCheckpointStageV2,
+    successorStageId: string,
+    onProgress?: (completedRecords: number, totalRecords: number) => void,
+  ): Promise<LibraryCoreNormalizedCheckpointActivationReceiptV2> {
+    const activation = parseLibraryCoreActivateNormalizedCheckpointStageV2(input);
+    // Use the same closed stage-ID codec as ordinary checkpoint activation.
+    parseLibraryCoreActivateNormalizedCheckpointStageV2({ ...activation, stageId: successorStageId });
+    const proof = await preparePwaPredecessorCheckpointRead(this.#database, successorStageId, this.#subtle);
+    if (!proof) throw new Error("predecessor read is no longer required");
+    const receipt = activation.followerReceipt;
+    const pointer = proof.pointer;
+    if (!activation.replaceExisting || !receipt || activation.stageId === successorStageId ||
+        receipt.writerActorId !== pointer.writerId || receipt.checkpointGeneration !== pointer.generation ||
+        receipt.controlRevision !== proof.controlRevision || receipt.manifestObjectKey !== pointer.manifest.descriptor.objectKey ||
+        receipt.manifestTransportObjectId !== pointer.manifest.transportObjectId ||
+        receipt.manifestContentDigest !== pointer.manifest.descriptor.contentDigest) {
+      throw new Error("predecessor checkpoint receipt differs from signed consent");
+    }
+    await this.verifyNormalizedCheckpointActorRetirements(activation.stageId);
+    await this.verifyNormalizedCheckpointSuccessor(activation);
+    return this.#activateNormalizedCheckpoint(activation, onProgress, {
+      beforeReplace: () => {
+        requirePwaPredecessorCheckpointRead(this.#database, successorStageId, proof);
+        const stage = this.#database.exec({sql:`SELECT library_id,authority_epoch,source_revision
+          FROM library_checkpoint_stages WHERE stage_id=?1 AND staged_record_count=expected_record_count;`,
+          bind:[activation.stageId],rowMode:"array",returnValue:"resultRows"});
+        if (stage.length!==1 || stage[0]![0]!==pointer.libraryId || stage[0]![1]!==pointer.storageEpoch ||
+            stage[0]![2]!==proof.sourceRevision) throw new Error("predecessor checkpoint stage differs from signed consent");
+      },
+      afterReplace: () => {
+        const installed = this.#database.exec({sql:`SELECT library_id,authority_epoch_id,writer_actor_id,source_revision,checkpoint_digest
+          FROM library_follower_checkpoint_receipt WHERE singleton_id=1;`,rowMode:"array",returnValue:"resultRows"});
+        if (installed.length!==1 || JSON.stringify(installed[0])!==JSON.stringify([
+          pointer.libraryId,pointer.storageEpoch,pointer.writerId,proof.sourceRevision,proof.checkpointDigest,
+        ])) throw new Error("predecessor checkpoint digest differs from signed consent");
+      },
+    });
   }
 
   activateNormalizedCheckpointStage(

@@ -273,3 +273,8 @@ pub use normalized_query_control::{query_normalized_json_with_control_v1, Normal
 pub use normalized_handoff_cancellation::{
     accept_target_handoff_cancellation_v1, cancel_source_handoff_with_proof_v1,
 };
+
+pub use normalized_handoff_writer_certificate::{
+    activate_normalized_predecessor_checkpoint_v1,
+    prepare_normalized_predecessor_checkpoint_read_v1,
+};
