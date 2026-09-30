@@ -381,8 +381,7 @@ async function prepareCanonicalPreferenceSettlement(
   const source = snapshot(db, engine);
   const proof = await preparePwaPreferenceCheckpointVerification(db, engine);
   const identity = (context: typeof source.context) => {
-    const {observed_frontier: _frontier, ...local} = context;
-    return local;
+    return Object.fromEntries(Object.entries(context).filter(([field]) => field !== "observed_frontier"));
   };
   return {
     beforeMaterialize(): void {
@@ -487,8 +486,7 @@ export async function preparePwaPendingPreferenceSettlement(
   // Canonical catch-up may advance frontier/revision in the caller's transaction.
   // Local actor continuity and authority identity must remain exact.
   const localIdentity = (context: typeof source.context) => {
-    const {observed_frontier: _frontier, ...identity}=context;
-    return identity;
+    return Object.fromEntries(Object.entries(context).filter(([field]) => field !== "observed_frontier"));
   };
   return Object.freeze({ commit(capi: TransactionControl): boolean {
     if (!db.pointer || capi.sqlite3_get_autocommit(db.pointer)!==0 || capi.sqlite3_txn_state(db.pointer,"main")!==2) {
@@ -844,7 +842,9 @@ export async function replacePwaProjectedCheckpoint(
         db.exec(`INSERT INTO ${table} SELECT * FROM main.checkpoint_retained_${table}; DROP TABLE main.checkpoint_retained_${table};`);
       }
       const current=snapshot(db,engine);
-      const identity=(context:typeof current.context)=>{const {observed_frontier:_frontier,...value}=context;return value;};
+      const identity=(context:typeof current.context)=>Object.fromEntries(
+        Object.entries(context).filter(([field]) => field !== "observed_frontier"),
+      );
       if (JSON.stringify(identity(current.context))!==JSON.stringify(identity(before.context)) ||
           JSON.stringify(current.cursor)!==JSON.stringify(before.cursor) ||
           JSON.stringify(current.authority.slice(0,5))!==JSON.stringify(before.authority.slice(0,5)) ||

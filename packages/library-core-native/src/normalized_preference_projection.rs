@@ -602,6 +602,7 @@ pub(crate) fn check_migrated_repeated_successor(
     actor_store: &dyn crate::ActorKeyStore,
     witness: &str,
     certificate: &[u8],
+    successor: (&Connection, &dyn crate::AuthorityKeyStore),
 ) {
     let mut db = Connection::open_in_memory().unwrap();
     rusqlite::backup::Backup::new(source, &mut db)
@@ -741,6 +742,61 @@ pub(crate) fn check_migrated_repeated_successor(
     );
     assert_eq!(archive_rows(&db), retained_archive);
     assert!(crate::normalized_follower_mutation_context_v1(&db).is_err());
+    assert!(crate::normalized_primary_mutation_context_v1(&db).is_err());
+    assert!(crate::require_normalized_provider_handoff_admission_v2(&db).is_err());
+    // Use an independent copy of the actual successor so this branch cannot
+    // advance the enclosing return-transfer fixture's canonical frontier.
+    let mut primary = Connection::open_in_memory().unwrap();
+    rusqlite::backup::Backup::new(successor.0, &mut primary)
+        .unwrap()
+        .run_to_completion(128, std::time::Duration::ZERO, None)
+        .unwrap();
+    primary
+        .execute_batch("PRAGMA foreign_keys=ON; PRAGMA synchronous=FULL;")
+        .unwrap();
+    let enrollment = crate::countersign_normalized_follower_actor_request_v2(
+        &mut primary,
+        prepared.canonical_enrollment_request_json.as_bytes(),
+        successor.1,
+        2404,
+    )
+    .unwrap();
+    let certificate = enrollment.canonical_enrollment_certificate_json.as_bytes();
+    let installed = install_projected_enrollment(&mut db, certificate).unwrap();
+    assert_eq!(installed.actor_id, prepared.actor_id);
+    assert_ne!(installed.actor_id, context.actor_id);
+    let authority = crate::normalized_writer_reassignment::current_authority(&db)
+        .unwrap()
+        .0;
+    let verified =
+        crate::normalized_enrollment_verifier::verify_actor_enrollment(certificate, &authority)
+            .unwrap();
+    let next = crate::normalized_follower_mutation_context_v1(&db).unwrap();
+    assert_eq!(next.next_counter, 1);
+    let fresh =
+        crate::normalized_operation_test_fixtures::tests::signed_envelopes_from_tip_with_payload(
+            &key,
+            &verified,
+            "repeated:reenrolled",
+            next.next_counter,
+            next.previous_operation_id.as_deref(),
+            &next.previous_chain_digest,
+            &[("preferences", 2405)],
+            "preferences_leaf_assignment",
+            Some(&patch),
+        );
+    let committed = enqueue_projected_intent(&mut db, &fresh, 2405).unwrap();
+    let tip = context_tip(&db);
+    assert_eq!(
+        enqueue_projected_intent(&mut db, &fresh, 2406).unwrap(),
+        committed
+    );
+    assert_eq!(
+        install_projected_enrollment(&mut db, certificate).unwrap(),
+        installed
+    );
+    assert_eq!(context_tip(&db), tip);
+    assert_eq!(archive_rows(&db), retained_archive);
     assert!(crate::normalized_primary_mutation_context_v1(&db).is_err());
     assert!(crate::require_normalized_provider_handoff_admission_v2(&db).is_err());
 }

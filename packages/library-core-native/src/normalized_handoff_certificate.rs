@@ -6682,6 +6682,7 @@ mod tests {
                 &actor_store,
                 &installation_witness,
                 &next_certificate,
+                (&returning, &retained_old_authority),
             );
             repeated.execute_batch("CREATE TEMP TRIGGER refuse_second_successor AFTER INSERT ON library_follower_checkpoint_receipt BEGIN SELECT RAISE(ABORT,'injected second successor failure'); END;").unwrap();
             let error =

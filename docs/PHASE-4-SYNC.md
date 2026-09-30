@@ -1065,8 +1065,10 @@ pending preference assignment before that second transfer. Late projection-resto
 failure rolls back the checkpoint; retry preserves signed members, the actor tip
 and derived effects. A second explicit recovery archives the old slots and clears
 the projection atomically, with exact commit retry and the first archive intact.
-This fixture stops before the next certificate admission and does not activate
-schema 3 in production.
+The fixture also admits the real successor-signed enrollment certificate and
+commits a fresh preference edit under the new actor. Enrollment and edit retries
+preserve the actor tip and older archive; Primary and provider admission remain
+closed. Schema 3 remains dormant in production.
 
 Offline consumers now attempt one authenticated predecessor checkpoint before
 admitting a direct successor whose target enrollment they missed. Desktop and

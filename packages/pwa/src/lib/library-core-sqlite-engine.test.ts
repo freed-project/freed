@@ -2047,7 +2047,7 @@ describe("PWA Library Core SQLite engine", () => {
     database.exec("INSERT INTO library_preferences(path,value_type,text_value,updated_at) VALUES('v:$.friendSuggestions.dismissedSuggestionIds.old','text','hidden',1);");
     expect(visible(["friendSuggestions","dismissedSuggestionIds","old"]).kind).toBe("absent");
     database.exec({sql:"INSERT INTO library_preferences(path,value_type,text_value,updated_at) VALUES(?1,'text','literal',1);",
-      bind:['v:$."雪.key"."quote\\\"key"']});
+      bind:['v:$."雪.key"."quote\\"key"']});
     expect(visible(["雪.key",'quote"key']).rows[0]?.textValue).toBe("literal");
     database.exec({sql:`INSERT INTO library_local_preference_nodes
       (transaction_id,member_index,actor_id,actor_counter,path,node_kind,value_type,integer_value,updated_at)
