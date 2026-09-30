@@ -156,3 +156,8 @@
 /docs/STABILITY-PROGRAM.md @AubreyF
 /docs/AUTOMATION-CONTROL-PLANE.md @AubreyF
 /docs/roadmap-status.json @AubreyF
+
+# Saved URL recovery can admit content to the Primary fetch policy.
+/packages/desktop/src/components/ConsumerRecoverySavedUrlEditor.tsx @AubreyF
+/packages/pwa/src/components/PwaRecoverySavedUrlEditor.tsx @AubreyF
+/packages/ui/src/components/RecoverySavedUrlFields.tsx @AubreyF

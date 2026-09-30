@@ -31,6 +31,7 @@ vi.mock("./library-core-sqlite-runtime", () => ({
 }));
 
 import {
+  createPwaRecoverySavedUrlAction,
   createPwaRecoveryAccountAction,
   createPwaRecoveryPersonAction,
   createPwaRecoveryFriendAction,
@@ -288,6 +289,42 @@ describe("PWA SQLite follower mutations", () => {
     expect(fresh).toHaveLength(2);
     for (const member of fresh) expect((member.payload as { feed: object }).feed).not.toHaveProperty("lastFetched");
 
+  });
+
+  it("recovers a saved URL with a fixed payload and exact response-loss retry, and refuses a stale review", async () => {
+    const fixture = (await import("../../../shared/src/library-core/recovery-review-vector-v1.json")).default;
+    const item = { globalId: "saved:recovery", platform: "saved", contentType: "article", capturedAt: 1, publishedAt: 1,
+      author: { id: "author", handle: "ada", displayName: "Ada" },
+      content: { text: "Original excerpt", mediaUrls: [], mediaTypes: [], linkPreview: { url: "https://example.org/article", title: "Original" } },
+      topics: [], userState: { hidden: false, saved: true, archived: false, tags: [] }, sourceUrl: "https://example.org/article" };
+    const review = { ...fixture.response, memberCount: 1, nextCursor: null, outcome: { state: "unresolved" }, rows: [{ ...fixture.response.rows[0],
+      memberIndex: 0, entityId: item.globalId, operationType: "feed_item_capture_upsert", itemPresent: false, itemState: "absent",
+      originalEnvelopeJson: new TextDecoder().decode(encodeLibraryCoreCanonicalValue({ entity_type: "FeedItem", entity_id: item.globalId, blob_references: [], payload: { item } })),
+    }] } as unknown as LibraryCoreRecoveryIntentReviewResponseV1;
+    mocks.query.mockResolvedValue(review);
+    mocks.reapply.mockRejectedValueOnce(new Error("response lost")).mockResolvedValueOnce({ replacementTransactionId: "stored" });
+    const edits = [{ entityId: item.globalId, title: "Reviewed", description: "Reviewed description" }];
+    const action = createPwaRecoverySavedUrlAction(review, edits);
+    edits[0]!.title = "Changed after click";
+    await expect(action()).rejects.toThrow("response lost");
+    const request = mocks.reapply.mock.calls[0]![0];
+    const envelopes = decodeCommit(request.intent);
+    expect(envelopes).toHaveLength(1);
+    expect(envelopes[0]).toMatchObject({ entity_id: item.globalId, operation_type: "feed_item_capture_upsert", payload: { item: {
+      ...item, content: { ...item.content, linkPreview: { ...item.content.linkPreview, title: "Reviewed", description: "Reviewed description" } },
+    } } });
+    await action();
+    expect(mocks.reapply.mock.calls[1]![0]).toBe(request);
+    expect(mocks.signFollowerOperation).toHaveBeenCalledTimes(1);
+    expect(mocks.commitFollowerIntent).not.toHaveBeenCalled();
+    mocks.query.mockResolvedValue({ ...review, source: { ...review.source, projectionRevision: review.source.projectionRevision + 1 } });
+    await expect(createPwaRecoverySavedUrlAction(review, edits)()).rejects.toThrow(/Library changed/);
+    expect(mocks.signFollowerOperation).toHaveBeenCalledTimes(1);
+    const receipt = { replacementTransactionId: "already-stored" };
+    mocks.query.mockResolvedValue({ ...review, replacement: receipt });
+    await expect(createPwaRecoverySavedUrlAction(review, edits)()).resolves.toEqual(receipt);
+    expect(mocks.signFollowerOperation).toHaveBeenCalledTimes(1);
+    expect(mocks.reapply).toHaveBeenCalledTimes(2);
   });
 
   it("stores revised RSS names through recovery and retains exact bytes after ambiguity", async () => {

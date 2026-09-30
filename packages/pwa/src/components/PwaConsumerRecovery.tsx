@@ -1,3 +1,4 @@
+import { PwaRecoverySavedUrlEditor } from "./PwaRecoverySavedUrlEditor";
 import { PwaRecoveryPreferenceEditor } from "./PwaRecoveryPreferenceEditor";
 import { PwaRecoveryReachOutEditor } from "./PwaRecoveryReachOutEditor";
 import { PwaRecoveryAccountEditor } from "./PwaRecoveryAccountEditor";
@@ -151,6 +152,7 @@ function PwaRecoveryReview({ recoveryId, transactionId, onBack, allowReapply }: 
   const [page, setPage] = useState<LibraryCoreRecoveryIntentReviewResponseV1 | null>(null);
   const [busy, setBusy] = useState(false), [error, setError] = useState<string | null>(null);
   const generation = useRef(0);
+  const [savedUrlsOpened, setSavedUrlsOpened] = useState(false);
   const reviewed = useRef({ count: 0, eligible: true, rss: true, accounts: true, persons: true, subscriptions: true, removal: true, items: true, people: true, accountRemoval: true, preferences: true, reachOuts: true, accountRecords: true, annotations: true, source: "" });
   const action = useRef<ReturnType<typeof createPwaRecoveryAssignmentAction> | null>(null);
   const actionPending = useRef(false);
@@ -174,7 +176,7 @@ function PwaRecoveryReview({ recoveryId, transactionId, onBack, allowReapply }: 
   async function load(cursor: string | null) {
     if (actionPending.current) return;
     if (cursor === null) { reviewed.current = { count: 0, eligible: true, rss: true, accounts: true, persons: true, subscriptions: true, removal: true, items: true, people: true, accountRemoval: true, preferences: true, reachOuts: true, accountRecords: true, annotations: true, source: "" }; action.current = null; setRetry(false); }
-    setPreferencesComplete(false); setPreferencesOpened(false); setReachOutsComplete(false); setReachOutsOpened(false); setFriendsOpened(false); setPersonsComplete(false); setPersonsOpened(false); setAccountRecordsComplete(false); setAccountRecordsOpened(false); setPeopleComplete(false); setAccountRemovalComplete(false); setAccountsComplete(false); setAccountsOpened(false); setSubscriptionsComplete(false); setSubscriptionsOpened(false); setComplete(false); setRssComplete(false); setRssOpened(false); setAnnotationsComplete(false); setAnnotationsOpened(false); setRemovalComplete(false); setItemsComplete(false);
+    setSavedUrlsOpened(false); setPreferencesComplete(false); setPreferencesOpened(false); setReachOutsComplete(false); setReachOutsOpened(false); setFriendsOpened(false); setPersonsComplete(false); setPersonsOpened(false); setAccountRecordsComplete(false); setAccountRecordsOpened(false); setPeopleComplete(false); setAccountRemovalComplete(false); setAccountsComplete(false); setAccountsOpened(false); setSubscriptionsComplete(false); setSubscriptionsOpened(false); setComplete(false); setRssComplete(false); setRssOpened(false); setAnnotationsComplete(false); setAnnotationsOpened(false); setRemovalComplete(false); setItemsComplete(false);
     const token = ++generation.current;
     setBusy(true); setError(null); setPage(null);
     try {
@@ -260,13 +262,17 @@ function PwaRecoveryReview({ recoveryId, transactionId, onBack, allowReapply }: 
         {row.personState && <p className="text-[var(--theme-text-muted)]">{row.personState === "deleted" ? "Person was deleted. Recovery cannot recreate it." : row.personState === "absent" ? "Person is currently absent. This does not prove whether the original edit was accepted." : "Person is currently present."}</p>}
         {row.authorName && <p className="break-words text-[var(--theme-text-muted)]">{row.authorName}</p>}
         {row.itemText && <p className="break-words text-[var(--theme-text-muted)]">{row.itemText}</p>}
-        {row.itemPresent === false && <p className="text-[var(--theme-text-muted)]">This item is no longer in the current Library.</p>}
+        {row.itemPresent === false && <p className="text-[var(--theme-text-muted)]">{row.itemState === "deleted" ? "Item was deleted. Recovery cannot recreate it." : "Item is currently absent. This does not prove whether the original edit was accepted."}</p>}
       </li>)}</ul>
     </>}
     {applied && <p role="status" className="mt-2 text-xs">Replacement preserved for the new Primary. This does not confirm acceptance.</p>}
     {canApply && <p className="mt-2 text-xs text-[var(--theme-text-secondary)]">Applying again creates a new edit and may override later changes. An unresolved original may already have been accepted.</p>}
-    {page && page.rows[0]?.operationType !== "friend_replace" && !complete && !accountsComplete && !personsComplete && !subscriptionsComplete && !rssComplete && !annotationsComplete && !removalComplete && !peopleComplete && !accountRemovalComplete && !preferencesComplete && !reachOutsComplete && !accountRecordsComplete && !itemsComplete && !page.nextCursor && !applied && <p className="mt-2 text-xs text-[var(--theme-text-muted)]">Other edit types need their original editors. Missing items cannot be reapplied here.</p>}
+    {page && page.rows[0]?.operationType !== "friend_replace" && !complete && !accountsComplete && !personsComplete && !subscriptionsComplete && !rssComplete && !annotationsComplete && !removalComplete && !peopleComplete && !accountRemovalComplete && !preferencesComplete && !reachOutsComplete && !accountRecordsComplete && !itemsComplete && !page.nextCursor && !applied && <p className="mt-2 text-xs text-[var(--theme-text-muted)]">Other edit types need their original editors. Recovery depends on the original edit type and current item state.</p>}
     {!allowReapply && <p className="mt-2 text-xs text-[var(--theme-text-secondary)]">You can review earlier archives now. Finish enrollment with the new Primary before applying edits again.</p>}
+    {page && allowReapply && !applied && page.outcome.state !== "confirmed_accepted" && page.rows.length > 0 && page.rows.every(row => row.operationType === "feed_item_capture_upsert") && (
+      savedUrlsOpened ? <PwaRecoverySavedUrlEditor key={page.transactionDigest} review={page} onReplacement={replaced} onMutating={setBusy} />
+        : <button type="button" disabled={busy} className="btn-secondary rounded-lg px-3 py-2 text-sm" onClick={() => setSavedUrlsOpened(true)}>Review saved URLs</button>
+    )}
     {page && annotationsOpened && !applied && <PwaRecoveryAnnotationEditor review={page} onReplacement={replaced} onMutating={setBusy} />}
     {page && accountsOpened && !applied && <PwaRecoveryAccountLinkEditor key={page.transactionDigest} review={page} onReplacement={replaced} onMutating={setBusy} />}
     {page && friendsOpened && !applied && <PwaRecoveryFriendEditor key={page.transactionDigest} review={page} onReplacement={replaced} onMutating={setBusy} />}

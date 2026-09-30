@@ -1516,6 +1516,9 @@ export const LIBRARY_CORE_SQLITE_QUERY_PROGRAMS = {
       },
       "person_context": {
         "sql": "SELECT CASE WHEN EXISTS(SELECT 1 FROM library_tombstones WHERE entity_type = 'person' AND entity_id = ?1) THEN 'deleted' WHEN EXISTS(SELECT 1 FROM library_persons WHERE id = ?1) THEN 'present' ELSE 'absent' END;"
+      },
+      "item_state": {
+        "sql": "SELECT CASE WHEN EXISTS(SELECT 1 FROM library_tombstones WHERE entity_type = 'feed_item' AND entity_id = ?1) THEN 'deleted' WHEN EXISTS(SELECT 1 FROM library_feed_items WHERE global_id = ?1) THEN 'present' ELSE 'absent' END;"
       }
     }
   },
@@ -1862,6 +1865,21 @@ export const LIBRARY_CORE_SQLITE_QUERY_ROW_MODELS = {
       "minimumInteger": null,
       "minimumUtf8Bytes": null,
       "name": "itemPresent",
+      "nullable": true
+    },
+    {
+      "enumValues": [
+        "absent",
+        "deleted",
+        "present"
+      ],
+      "integerValues": [],
+      "kind": "text",
+      "maximumInteger": null,
+      "maximumUtf8Bytes": 7,
+      "minimumInteger": null,
+      "minimumUtf8Bytes": 6,
+      "name": "itemState",
       "nullable": true
     },
     {

@@ -955,3 +955,26 @@ empty object groups preserve their non-replacement semantics. Every change clear
 confirmation. Once signing starts, inputs lock and response-loss retry retains the
 same prepared action. Closing a pending review cancels its reads. The form never
 loads URLs from preference values or sends provider requests.
+
+### Saved URL capture recovery
+
+Desktop and PWA recover a complete transaction of saved-URL capture members
+through the existing edited recovery protocol. The generated review row reports
+FeedItem state as present, absent or deleted from the same read snapshot. Missing
+rows do not establish whether an old operation was accepted. A tombstone refuses
+this editor and is rechecked inside both persistence transactions before any
+intent, link or actor-counter writes. Capture does not grant restore authority.
+
+The verified draft preserves every original target and URL. Only title and
+description are editable; the remaining capture payload stays archived input.
+The complete draft and editable snapshot each have a 4 MiB ceiling. Every member
+must be viewed before explicit confirmation. Unsupported capture types, mixed
+transactions, inconsistent URL identities and blob-bearing envelopes are refused
+without dropping members. This editor does not reapply separate annotations.
+
+Preparation reloads the verified archive at the reviewed source and uses the
+ordinary capture member factory without ordinary enqueue. The atomic recovery
+submission owns durable intent/link persistence. Lost-response retries retain
+exact finalized bytes. Opening the editor performs no URL requests. After Primary
+acceptance, the restored item may enter the existing content-fetch policy; the
+confirmation describes that possibility. No fetch policy or cadence changes.

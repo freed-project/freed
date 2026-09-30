@@ -2,6 +2,15 @@
 
 > **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, Windows signing plan scaffolded, legal consent gate shipped, tri-state sidebar chrome shipped, public-safe bug reporting shipped, runtime memory telemetry shipped, native startup recovery shipped, bundled recovery updater flow shipped, permanent local social media vault shipped, desktop hot-path side-effect scheduling shipped, bounded SQLite user mutations and queries shipped, visible-scope bulk actions shipped, background runtime coordination shipped, renderer recovery safe mode shipped, deep local WebKit diagnostics shipped, adaptive high-memory scrape budgets shipped, explicit local-only primary Library authority shipped, normalized sample-data accounting, Story Wall candidates, Saved analytics, full-library native search, bounded scheduled RSS refresh, Google Drive checkpoint publication, follower intents, global background activity monitoring, and native terminal sync soaks shipped)
 
+Saved URL recovery now distinguishes absent targets from deleted items. The
+owner reviews every URL, edits its title or description, and explicitly confirms
+one complete replacement. Original targets, URLs and remaining archived content
+stay fixed. Deleted items and unsupported capture types are refused. Opening the
+editor stays offline; after acceptance, the Primary may fetch the publisher under
+its existing content policy. Exact retries retain the signed replacement and use
+the durable archive link. Notes and tags remain separate recovery transactions.
+Installed multi-device acceptance is still outstanding.
+
 Freed Desktop now connects native operation export and consumer import to the
 shared Drive coordinator. Ordinary signed mutations advance a durable operation
 publication cursor while retaining the checkpoint receipt. Consumer revision

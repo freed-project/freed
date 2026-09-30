@@ -1,3 +1,5 @@
+import { snapshotLibraryCoreRecoverySavedUrlEditsV1, reviseLibraryCoreRecoverySavedUrlV1, decodeLibraryCoreFractionalNumbersV1, type RecoverySavedUrlEdit } from "@freed/shared/library-core";
+import { loadRecoverySavedUrlDrafts } from "./library-core-recovery-saved-url-editor";
 import { createLibraryCoreSqliteActivatePredecessorWorkerRequest, createLibraryCoreSqlitePredecessorReadWorkerRequest,
   parseLibraryCorePredecessorCheckpointReadV1, type LibraryCoreActivateNormalizedCheckpointStageV2 } from "@freed/shared/library-core";
 import { snapshotLibraryCoreRecoveryPreferencePatchesV1 } from "@freed/shared/library-core";
@@ -941,23 +943,11 @@ function synchronizedRssFeed(
   >;
 }
 
-async function maybeSubmitFeedItemCaptures(
-  input: readonly FeedItem[],
-  createdAtMs: number,
-): Promise<boolean> {
-  let context = await mutationContext();
-  if (!context) return false;
-  const items = uniqueByIdentity(input, (item) => item.globalId);
-  if (items.length === 0) return true;
-  const batchLimit =
-    LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.feed_item_capture_upsert
-      .maximumMembers;
-  for (let start = 0; start < items.length; start += batchLimit) {
-    const batchContext = context;
-    const batch = items.slice(start, start + batchLimit);
-    const transactionId =
-      `desktop-library-capture:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
-    const members = batch.map((sourceItem, index) => {
+function captureTransactionMembers(
+  batchContext: SqliteLibraryMutationContext, batch: readonly FeedItem[],
+  transactionId: LibraryCoreOperationInstanceId, createdAtMs: number,
+) {
+  return batch.map((sourceItem, index) => {
       const item = sanitizeFeedItemCaptureWrite(sourceItem);
       return FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA.construct(
         {
@@ -989,6 +979,25 @@ async function maybeSubmitFeedItemCaptures(
         { digest: operationDigest },
       );
     });
+}
+
+async function maybeSubmitFeedItemCaptures(
+  input: readonly FeedItem[],
+  createdAtMs: number,
+): Promise<boolean> {
+  let context = await mutationContext();
+  if (!context) return false;
+  const items = uniqueByIdentity(input, (item) => item.globalId);
+  if (items.length === 0) return true;
+  const batchLimit =
+    LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.feed_item_capture_upsert
+      .maximumMembers;
+  for (let start = 0; start < items.length; start += batchLimit) {
+    const batchContext = context;
+    const batch = items.slice(start, start + batchLimit);
+    const transactionId =
+      `desktop-library-capture:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+    const members = captureTransactionMembers(batchContext, batch, transactionId, createdAtMs);
     await finalizeAndSubmitTransaction(batchContext, members, createdAtMs);
     if (start + batch.length < items.length) {
       context = await mutationContext();
@@ -3565,4 +3574,18 @@ export async function resetNormalizedLibrary(): Promise<void> {
 export function readNormalizedLibraryHandoffResultActors(handoffId: string, after: string | null): Promise<string[]> {
   if (!HEX_64.test(handoffId) || (after !== null && !HEX_64.test(after))) throw new TypeError("Invalid handoff result cursor");
   return invoke("read_normalized_library_handoff_result_actors", { handoffId, after });
+}
+
+/** Prepare one complete reviewed capture; native recovery linkage owns persistence. */
+export async function prepareDesktopRecoverySavedUrlTransaction(review: LibraryCoreRecoveryIntentReviewResponseV1, edits: readonly RecoverySavedUrlEdit[]): Promise<readonly string[]> {
+  const selected = snapshotLibraryCoreRecoverySavedUrlEditsV1(edits);
+  const original = await loadRecoverySavedUrlDrafts(review, new AbortController().signal);
+  if (original.replacement) throw new Error("Replacement already exists; reopen its receipt");
+  if (selected.length !== original.drafts.length) throw new Error("Review every saved URL in this transaction");
+  const items = selected.map((edit, i) => decodeLibraryCoreFractionalNumbersV1(reviseLibraryCoreRecoverySavedUrlV1(original.drafts[i]!, edit)) as unknown as FeedItem);
+  const context = await mutationContext(false);
+  if (!context || context.mode !== "follower") throw new Error("Recovery requires an enrolled consumer");
+  const transactionId = `desktop-library-saved-url-recovery:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+  const signed = await finalizeSignedTransaction(context, captureTransactionMembers(context, items, transactionId, Date.now()));
+  return Object.freeze(signed.canonicalEnvelopeJson);
 }
