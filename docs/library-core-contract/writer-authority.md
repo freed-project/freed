@@ -83,3 +83,27 @@ signed transition certificate. Persist exact authorization and adoption bytes in
 the same FULL transaction. The installation-local ledger survives checkpoint
 imports, is excluded from logical checkpoints and grants no authority. Preparation
 keeps the target fenced until the ordinary verified publication and activation.
+
+
+### Consumer admission after multiple transfers
+
+A consumer may verify a chain from its selected authority to the final successor
+without selecting intermediate epochs. Certificate discovery grants no authority.
+Each transition must authenticate the exact predecessor checkpoint reference,
+nonregressing source revision and enrolled target under that predecessor's key.
+An actor row from the latest checkpoint cannot substitute for historical
+enrollment because promotion replaces that row's epoch and role.
+
+Final activation verifies every staged historical checkpoint's canonical bytes,
+digest, identity and enrollment in the transaction that replaces selected state.
+It retains original local enrollment and intents for explicit recovery. Old
+signed edits never acquire a new epoch by relabeling. A later same-epoch refresh
+pins the accepted final authority and retained verified chain while that recovery
+is pending. Historical authority rows remain available after temporary staging
+is consumed.
+
+Only successfully consumed historical stages are deleted, in the same activation
+transaction. Failure restores both selected state and recovery inputs. Unrelated
+staging and local recovery archives are excluded from this deletion. Current
+attempts are bounded to 32 transitions, each at most 16 KiB. Longer chains fail
+closed; this bound is not a claim of arbitrary offline-duration recovery.

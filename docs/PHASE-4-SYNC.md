@@ -1104,9 +1104,9 @@ process-restart durability or installed cross-device acceptance.
 
 Browser successor refresh resolves the cloud writer from the unique active
 Desktop actor, matching native checkpoints with the local writer label
-`primary:desktop`. The follower receipt must name that actor. Multiple missed
-authority transfers, large-checkpoint deadline admission, actual crash/restart
-boundaries and installed Mac acceptance remain unverified. Current local work
+`primary:desktop`. The follower receipt must name that actor. The later missed-transfer evidence
+below extends this direct-transfer path. Large-checkpoint deadline admission,
+OS-crash boundaries and installed Mac acceptance remain unverified. Current local work
 still requires full feature validation, fresh provider review and exact-head CI.
 
 ### Replica audit evidence, September 30, 2026
@@ -1117,3 +1117,21 @@ checkpoint digest from one read snapshot. Compare receipts at the same Library,
 epoch and revision after pending edits settle. Matching counts or a prior import
 receipt alone are not convergence evidence. Installed multi-device acceptance
 and the separate zero-consumer-capture ledger remain required.
+
+### Consumers that missed multiple transfers, September 30, 2026
+
+Desktop and PWA authenticate a bounded chain from their selected authority to
+the current successor. Each attempt accepts at most 32 signed transitions and
+reads the exact immutable predecessor checkpoint for each transition. Historical
+checkpoints are staged without selecting intermediate authorities. Final import
+verifies their canonical contents and historical target enrollments before
+replacing selected rows. Original enrollment and pending signed edits remain
+available for explicit recovery; old edits are never automatically re-signed.
+
+Native and PWA tests cover two real signed transitions, missing or changed
+history, failed cleanup, retained state and response-loss retry. Consumed stages
+are deleted in the successful activation transaction; failures retain them for
+resumption and unrelated staging survives. Longer histories currently refuse;
+resumable traversal beyond 32 transfers remains unfinished. Abandoned staging
+has no automatic age-based deletion. Representative-size latency, installed
+cross-device acceptance and actual new-host transition remain pending.

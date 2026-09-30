@@ -1536,9 +1536,9 @@ process-restart durability or installed cross-device acceptance.
 
 Browser successor refresh resolves the cloud writer from the unique active
 Desktop actor, matching native checkpoints with the local writer label
-`primary:desktop`. The follower receipt must name that actor. Multiple missed
-authority transfers, large-checkpoint deadline admission, actual crash/restart
-boundaries and installed Mac acceptance remain unverified. Current local work
+`primary:desktop`. The follower receipt must name that actor. The later missed-transfer evidence
+below extends this direct-transfer path. Large-checkpoint deadline admission,
+OS-crash boundaries and installed Mac acceptance remain unverified. Current local work
 still requires full feature validation, fresh provider review and exact-head CI.
 
 ### Replica audit evidence, September 30, 2026
@@ -1549,3 +1549,17 @@ the existing reader deadline and cancellation registry. The copied receipt inclu
 interface build metadata; installed native build identity remains separate.
 Focused native, client and rendered control checks pass. This does not establish
 installed Mac acceptance or readiness to move authority.
+
+### Missed-transfer recovery, September 30, 2026
+
+The native importer now authenticates multiple authority transitions using exact
+staged historical checkpoints. It verifies each target's enrollment against its
+historical predecessor authority, then imports only the final successor. A native
+two-transfer fixture preserves the original enrollment and pending intent bytes,
+refuses Primary admission, and archives recovery directly from the original epoch
+to the final epoch. Failed historical-stage cleanup rolls back selection and
+retains recovery inputs; success removes only consumed stages.
+
+The Desktop transport accepts bounded read lists and stages historical downloads
+without activating intermediate epochs. Installed two-Desktop/PWA acceptance,
+representative-size timing and MacBook Pro authority transition remain pending.

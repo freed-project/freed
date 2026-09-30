@@ -1,5 +1,5 @@
 import { createLibraryCoreSqliteActivatePredecessorWorkerRequest, createLibraryCoreSqlitePredecessorReadWorkerRequest,
-  parseLibraryCorePredecessorCheckpointReadV1, type LibraryCoreActivateNormalizedCheckpointStageV2 } from "@freed/shared/library-core";
+  parseLibraryCorePredecessorCheckpointReadsV1, type LibraryCoreActivateNormalizedCheckpointStageV2 } from "@freed/shared/library-core";
 import { snapshotLibraryCoreRecoveryPreferencePatchesV1 } from "@freed/shared/library-core";
 import { PERSON_REACH_OUT_APPEND_PAYLOAD_SCHEMA } from "@freed/shared/library-core";
 import type { RecoveryReachOutDraft } from "@freed/ui/components/RecoveryReachOutFields";
@@ -2529,7 +2529,7 @@ export async function appendNormalizedLibraryCheckpointImportPage(input: {
 export async function prepareNormalizedLibraryPredecessorCheckpointRead(stageId: string) {
   const request = createLibraryCoreSqlitePredecessorReadWorkerRequest("native-predecessor-read", stageId);
   if (request.kind !== "prepare_predecessor_checkpoint_read") throw new Error("invalid predecessor read request");
-  return parseLibraryCorePredecessorCheckpointReadV1(await invoke<unknown>(
+  return parseLibraryCorePredecessorCheckpointReadsV1(await invoke<unknown>(
     "prepare_normalized_library_predecessor_checkpoint_read", { request: { stageId: request.stageId } },
   ));
 }

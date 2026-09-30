@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { webcrypto } from "node:crypto";
 import chain from "./handoff-chain-vectors-v1.json";
 import vector from "./handoff-certificate-vectors-v1.json";
-import { verifyLibraryCoreHandoffCertificateV1, verifyLibraryCoreHandoffPredecessorCheckpointV1, parseLibraryCorePredecessorCheckpointReadV1 } from "./handoff-certificate.js";
+import { verifyLibraryCoreHandoffCertificateV1, verifyLibraryCoreHandoffChainReadsV1, verifyLibraryCoreHandoffPredecessorCheckpointV1, parseLibraryCorePredecessorCheckpointReadV1, parseLibraryCorePredecessorCheckpointReadsV1 } from "./handoff-certificate.js";
 import { verifyLibraryCoreEd25519WithWebCrypto } from "./ed25519-verification.js";
 import { encodeLibraryCoreCanonicalValue } from "./canonical-codec.js";
 
@@ -67,6 +67,46 @@ describe("native cooperative successor certificate parity", () => {
     expect(second.epoch).toBe(first.epoch + 1);
     await expect(verifyLibraryCoreHandoffCertificateV1(new TextEncoder().encode(chain[1]!.canonicalCertificate),
       chain[0]!.predecessor, chain[1]!.enrolledActorPublicKey, { verifySignature })).rejects.toThrow();
+  });
+
+  it("authenticates a complete missed-transfer read chain without accepting a gap or mutable later input", async () => {
+    const inputs = chain.map(entry => new TextEncoder().encode(entry.canonicalCertificate));
+    const original = inputs.map(bytes => bytes.slice());
+    const pin = { ...chain[0]!.predecessor };
+    const signatures = vi.fn(verifySignature);
+    const pending = verifyLibraryCoreHandoffChainReadsV1(inputs, pin, chain[1]!.expected.epochId,
+      { verifySignature: signatures });
+    inputs[1]!.fill(0);
+    pin.authorityPublicKey = "0".repeat(64);
+    const { references, successor } = await pending;
+    expect(successor).toMatchObject(chain[1]!.expected);
+    expect(signatures).toHaveBeenCalledTimes(10);
+    expect(references).toEqual(chain.map(entry => {
+      const grant = JSON.parse(entry.canonicalCertificate).certificate_body.handoff_authorization;
+      return { purpose: "predecessor_checkpoint_read", pointer: grant.body.source_control,
+        controlRevision: grant.body.source_control_revision, controlFileId: grant.body.source_control_file_id,
+        checkpointDigest: grant.body.final_checkpoint_digest, sourceRevision: grant.body.final_source_revision,
+        successorEpochId: entry.expected.epochId, authorizationDigest: grant.authorization_digest };
+    }));
+    expect(Object.isFrozen(references)).toBe(true);
+    expect(parseLibraryCorePredecessorCheckpointReadsV1(references)).toEqual(references);
+    expect(parseLibraryCorePredecessorCheckpointReadsV1(references[0])).toEqual([references[0]]);
+    expect(parseLibraryCorePredecessorCheckpointReadsV1(null)).toBeNull();
+    expect(() => parseLibraryCorePredecessorCheckpointReadsV1([...references].reverse())).toThrow();
+    expect(() => parseLibraryCorePredecessorCheckpointReadsV1([references[0], references[0]])).toThrow();
+    expect(() => parseLibraryCorePredecessorCheckpointReadsV1(Array(33).fill(references[0]))).toThrow();
+    expect(() => parseLibraryCorePredecessorCheckpointReadsV1([null])).toThrow();
+    expect(() => parseLibraryCorePredecessorCheckpointReadsV1(new Array(2))).toThrow();
+    await expect(verifyLibraryCoreHandoffChainReadsV1([original[1]!], chain[0]!.predecessor,
+      chain[1]!.expected.epochId, { verifySignature })).rejects.toThrow();
+    await expect(verifyLibraryCoreHandoffChainReadsV1([original[0]!], chain[0]!.predecessor,
+      chain[1]!.expected.epochId, { verifySignature })).rejects.toThrow();
+    await expect(verifyLibraryCoreHandoffChainReadsV1(original, chain[0]!.predecessor,
+      chain[1]!.expected.epochId, { verifySignature: () => false })).rejects.toThrow();
+    signatures.mockClear();
+    await expect(verifyLibraryCoreHandoffChainReadsV1(Array(33).fill(original[0]), chain[0]!.predecessor,
+      chain[1]!.expected.epochId, { verifySignature: signatures })).rejects.toThrow();
+    expect(signatures).not.toHaveBeenCalled();
   });
 
   it.each(["libraryId", "epochId", "certificateDigest", "authorityPublicKey", "writerId"] as const)("pins trusted predecessor %s", async key => {

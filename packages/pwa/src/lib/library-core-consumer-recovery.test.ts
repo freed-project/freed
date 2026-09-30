@@ -245,12 +245,7 @@ describe("browser explicit consumer recovery", () => {
     expect(() => engine.consumerRecoveryStatus()).toThrow(/differs from its receipt/);
     expect(() => engine.followerMutationContext()).toThrow(/unavailable/);
   });
-  it("completes recovery through two native-signed successors without overwriting the first archive", async () => {
-    const first = engine.consumerRecoveryPlan();
-    const enrolled = await request(next.epochId, old.epoch + 1, next.authorityKeyId, first.recoveryId, 10);
-    await engine.prepareConsumerRecovery(first.recoveryId, enrolled.input);
-    await engine.commitConsumerRecovery(first.recoveryId, 11);
-    const historical = db.exec({ sql: "SELECT * FROM library_local_recovery_rows ORDER BY table_key, row_ordinal;", rowMode: "array", returnValue: "resultRows" });
+  function selectSecondSuccessor() {
     const second = chain[1]!, body = JSON.parse(second.canonicalCertificate).certificate_body;
     const writer: string = body.target_writer_id;
     // Install the already-verified fixture's selected rows. Checkpoint transport is tested separately.
@@ -268,6 +263,41 @@ describe("browser explicit consumer recovery", () => {
     db.exec({ sql: "UPDATE library_active_authority SET epoch_id = ?1, writer_id = ?2;", bind: [second.expected.epochId, writer] });
     db.exec({ sql: "UPDATE library_follower_checkpoint_receipt SET authority_epoch_id = ?1, writer_actor_id = ?2;", bind: [second.expected.epochId, writer] });
     engine = new PwaLibraryCoreSqliteEngine(db, sqlite.version.libVersion, { capi: sqlite.capi }); engine.initialize();
+    return { second, body };
+  }
+  it.each([false, true])("recovers across two missed transfers and rejects changed intermediate proof: %s", async changed => {
+    const { second } = selectSecondSuccessor();
+    const plan = engine.consumerRecoveryPlan();
+    expect(plan.oldActorId).toBe(actorId);
+    const replacement = await request(second.expected.epochId, second.predecessor.epoch + 1,
+      second.expected.authorityKeyId, plan.recoveryId, 30);
+    const pending = engine.prepareConsumerRecovery(plan.recoveryId, replacement.input);
+    if (changed) {
+      db.exec({ sql: "UPDATE library_authority_epochs SET canonical_transition_certificate = '{}' WHERE epoch_id = ?1;", bind: [next.epochId] });
+      await expect(pending).rejects.toThrow();
+      expect(db.selectValue("SELECT count(*) FROM library_intent_transactions;")).toBe(1);
+      expect(db.selectValue("SELECT authority_epoch_id FROM library_follower_actor_request;")).toBe(old.epochId);
+      return;
+    }
+    await pending;
+    expect(db.selectValue("SELECT count(*) FROM library_local_recovery_archives;")).toBe(1);
+    expect(db.selectValue("SELECT predecessor_epoch_id FROM library_local_recovery_archives;")).toBe(old.epochId);
+    expect(db.selectValue("SELECT successor_epoch_id FROM library_local_recovery_archives;")).toBe(second.expected.epochId);
+    await engine.commitConsumerRecovery(plan.recoveryId, 31);
+    expect(engine.consumerRecoveryStatus()).toMatchObject({ state: "following", plan: { recoveryId: plan.recoveryId } });
+    expect(db.selectValue("SELECT count(*) FROM library_local_recovery_archives;")).toBe(1);
+    expect(db.selectValue("SELECT count(*) FROM library_intent_transactions;")).toBe(0);
+    const changes = db.changes(true);
+    await engine.commitConsumerRecovery(plan.recoveryId, 32);
+    expect(db.changes(true)).toBe(changes);
+  });
+  it("completes recovery through two native-signed successors without overwriting the first archive", async () => {
+    const first = engine.consumerRecoveryPlan();
+    const enrolled = await request(next.epochId, old.epoch + 1, next.authorityKeyId, first.recoveryId, 10);
+    await engine.prepareConsumerRecovery(first.recoveryId, enrolled.input);
+    await engine.commitConsumerRecovery(first.recoveryId, 11);
+    const historical = db.exec({ sql: "SELECT * FROM library_local_recovery_rows ORDER BY table_key, row_ordinal;", rowMode: "array", returnValue: "resultRows" });
+    const { second, body } = selectSecondSuccessor();
     // Match the selected checkpoint's materialization source before reading old archives.
     insert("library_materialization_generation", { singleton_id: 1, generation_id: hex });
     db.exec({ sql: "UPDATE library_change_state SET revision = ?1;", bind: [body.handoff_authorization.body.final_source_revision] });

@@ -239,6 +239,73 @@ fn verify_predecessor_checkpoint_read(
     canonical: &[u8],
     predecessor: &HandoffPredecessorV1<'_>,
 ) -> Result<Value, String> {
+    verify_predecessor_checkpoint_reads(&[canonical], predecessor, None)?
+        .pop()
+        .ok_or_else(|| "predecessor read chain is empty".into())
+}
+
+/// Authenticate historical download references only. A verified chain does not
+/// establish historical target enrollment or authorize checkpoint selection.
+pub(crate) fn verify_predecessor_checkpoint_reads(
+    certificates: &[&[u8]],
+    predecessor: &HandoffPredecessorV1<'_>,
+    expected_successor: Option<&str>,
+) -> Result<Vec<Value>, String> {
+    if certificates.is_empty()
+        || certificates.len() > 32
+        || certificates.iter().any(|bytes| bytes.len() > MAX_BYTES)
+    {
+        return Err("predecessor read chain exceeds its bounds".into());
+    }
+    if expected_successor.is_some_and(|epoch| !crate::library_core_hash::is_lower_sha256(epoch)) {
+        return Err("predecessor read chain target is invalid".into());
+    }
+    let mut pin = (
+        predecessor.library_id.to_owned(),
+        predecessor.epoch_id.to_owned(),
+        predecessor.epoch,
+        predecessor.certificate_digest.to_owned(),
+        predecessor.authority_public_key.to_owned(),
+        predecessor.writer_id.to_owned(),
+    );
+    let mut references = Vec::with_capacity(certificates.len());
+    for canonical in certificates {
+        let (reference, certificate) = verify_predecessor_read_proof(
+            canonical,
+            &HandoffPredecessorV1 {
+                library_id: &pin.0,
+                epoch_id: &pin.1,
+                epoch: pin.2,
+                certificate_digest: &pin.3,
+                authority_public_key: &pin.4,
+                writer_id: &pin.5,
+            },
+        )?;
+        let digest = digest_value(
+            "epoch-transition-certificate",
+            &serde_json::to_value(&certificate).map_err(|e| e.to_string())?,
+        )?;
+        let body = certificate.certificate_body;
+        pin = (
+            body.library_id,
+            certificate.epoch_id,
+            u64::try_from(body.target_epoch).map_err(|_| "successor epoch is invalid")?,
+            digest,
+            body.target_authority_public_key,
+            body.target_writer_id,
+        );
+        references.push(reference);
+    }
+    if expected_successor.is_some_and(|epoch| epoch != pin.1) {
+        return Err("predecessor read chain does not reach the selected successor".into());
+    }
+    Ok(references)
+}
+
+fn verify_predecessor_read_proof(
+    canonical: &[u8],
+    predecessor: &HandoffPredecessorV1<'_>,
+) -> Result<(Value, WriterHandoffCertificateV1), String> {
     let decoded = decode_canonical_value(canonical, MAX_BYTES)
         .map_err(|_| "predecessor read proof is not bounded canonical data")?;
     let value = decoded.into_value();
@@ -256,7 +323,7 @@ fn verify_predecessor_checkpoint_read(
         predecessor,
         &grant.body.readiness.body.target_actor_public_key,
     )?;
-    Ok(serde_json::json!({
+    let reference = serde_json::json!({
         "purpose": "predecessor_checkpoint_read", "pointer": grant.body.source_control,
         "controlRevision": grant.body.source_control_revision,
         "controlFileId": grant.body.source_control_file_id,
@@ -264,7 +331,385 @@ fn verify_predecessor_checkpoint_read(
         "sourceRevision": grant.body.final_source_revision,
         "successorEpochId": certificate.epoch_id,
         "authorizationDigest": grant.authorization_digest,
+    });
+    Ok((reference, certificate))
+}
+
+/// Read a bounded certificate path backwards from durable rows, then return it
+/// in verification order. Discovery is not authentication; every returned hop
+/// must still be verified against the locally pinned predecessor.
+pub(crate) fn load_handoff_certificate_chain(
+    connection: &rusqlite::Connection,
+    stage: Option<&str>,
+    predecessor_epoch: &str,
+    successor_epoch: &str,
+) -> Result<Vec<Vec<u8>>, String> {
+    if connection.is_autocommit() || predecessor_epoch == successor_epoch {
+        return Err(
+            "handoff chain discovery requires an owned transaction and changed epoch".into(),
+        );
+    }
+    let mut cursor = successor_epoch.to_owned();
+    let mut certificates = Vec::new();
+    while cursor != predecessor_epoch {
+        if certificates.len() == 32 {
+            return Err("handoff certificate path exceeds its bound".into());
+        }
+        let canonical: Vec<u8> = if let Some(stage) = stage {
+            let identity = encode_canonical_value(&Value::String(cursor.clone()), 4096)
+                .map_err(|_| "handoff epoch identity is invalid")?;
+            let bytes: Vec<u8> = connection.query_row(
+                "SELECT CASE WHEN length(record_canonical)<=?3 THEN record_canonical ELSE NULL END
+                 FROM library_checkpoint_stage_records WHERE stage_id=?1 AND registry_key='01_authority_epoch' AND primary_key_canonical=?2;",
+                rusqlite::params![stage, identity, crate::sqlite_contract_generated::CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES], |r| r.get(0),
+            ).map_err(|_| "handoff chain authority record is missing or oversized")?;
+            let row = crate::normalized_import::record_from_canonical(&bytes)
+                .map_err(|e| e.to_string())?;
+            let text = row.payload["canonicalTransitionCertificate"]
+                .as_str()
+                .ok_or("handoff chain certificate is missing")?;
+            if text.len() > MAX_BYTES {
+                return Err("handoff chain certificate exceeds its bound".into());
+            }
+            text.as_bytes().to_vec()
+        } else {
+            let text: String = connection.query_row(
+                "SELECT CASE WHEN length(CAST(canonical_transition_certificate AS BLOB))<=?2 THEN canonical_transition_certificate ELSE NULL END
+                 FROM library_authority_epochs WHERE epoch_id=?1;",
+                rusqlite::params![cursor, MAX_BYTES], |r| r.get(0),
+            ).map_err(|_| "handoff chain certificate is missing or oversized")?;
+            text.into_bytes()
+        };
+        let value = decode_canonical_value(&canonical, MAX_BYTES)
+            .map_err(|_| "handoff chain certificate bytes are invalid")?
+            .into_value();
+        if encode_canonical_value(&value, MAX_BYTES)
+            .map_err(|_| "handoff chain encoding is invalid")?
+            != canonical
+        {
+            return Err("handoff chain bytes are not canonical".into());
+        }
+        let certificate: WriterHandoffCertificateV1 = serde_json::from_value(value)
+            .map_err(|_| "handoff chain certificate shape is unsupported")?;
+        if certificate.epoch_id != cursor {
+            return Err("handoff chain record identity changed".into());
+        }
+        cursor = certificate
+            .certificate_body
+            .handoff_authorization
+            .body
+            .readiness
+            .body
+            .predecessor_epoch_id;
+        certificates.push(canonical);
+    }
+    certificates.reverse();
+    Ok(certificates)
+}
+
+/// Verify an immutable historical checkpoint without selecting it. The caller
+/// must authenticate `reference` from the accepted authority chain first and
+/// keep this transaction through its later enrollment and admission checks.
+fn verify_staged_predecessor_contents(
+    connection: &rusqlite::Connection,
+    stage_id: &str,
+    reference: &Value,
+) -> Result<(), String> {
+    if connection.is_autocommit() || stage_id.is_empty() || stage_id.len() > 255 {
+        return Err(
+            "historical checkpoint verification requires an owned transaction and stage".into(),
+        );
+    }
+    let pointer: crate::normalized_handoff_certificate::HandoffSourceControlV1 =
+        serde_json::from_value(reference["pointer"].clone()).map_err(|e| e.to_string())?;
+    let revision = reference["sourceRevision"]
+        .as_u64()
+        .ok_or("historical source revision is invalid")?;
+    let expected_digest = reference["checkpointDigest"]
+        .as_str()
+        .ok_or("historical checkpoint digest is missing")?;
+    if !crate::library_core_hash::is_lower_sha256(expected_digest) {
+        return Err("historical checkpoint digest is invalid".into());
+    }
+    let stage: (String, String, u64, u64, u64) = connection.query_row(
+        "SELECT library_id,authority_epoch,source_revision,expected_record_count,staged_canonical_bytes
+         FROM library_checkpoint_stages WHERE stage_id=?1 AND staged_record_count=expected_record_count;",
+        [stage_id], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?,row.get(4)?)),
+    ).map_err(|_| "historical checkpoint stage is incomplete")?;
+    if stage.0 != pointer.library_id || stage.1 != pointer.storage_epoch || stage.2 != revision {
+        return Err("historical checkpoint identity differs from signed consent".into());
+    }
+    let mut digest = crate::normalized_import::NormalizedCheckpointDigestAccumulatorV2::new();
+    let mut statement = connection.prepare(
+        "SELECT CASE WHEN length(record_canonical)<=?2 THEN record_canonical ELSE NULL END
+         FROM library_checkpoint_stage_records WHERE stage_id=?1 ORDER BY registry_key,primary_key_canonical;",
+    ).map_err(|e| e.to_string())?;
+    let mut rows = statement
+        .query(rusqlite::params![
+            stage_id,
+            crate::sqlite_contract_generated::CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES
+        ])
+        .map_err(|e| e.to_string())?;
+    let mut header = false;
+    while let Some(row) = rows.next().map_err(|e| e.to_string())? {
+        let canonical: Vec<u8> = row
+            .get(0)
+            .map_err(|_| "historical checkpoint record exceeds its bound")?;
+        let record = crate::normalized_import::record_from_canonical(&canonical)
+            .map_err(|e| e.to_string())?;
+        if encode_canonical_value(
+            &serde_json::to_value(&record).map_err(|e| e.to_string())?,
+            crate::sqlite_contract_generated::CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES,
+        )
+        .map_err(|_| "historical checkpoint record encoding is invalid")?
+            != canonical
+        {
+            return Err("historical checkpoint record bytes are not canonical".into());
+        }
+        if record.registry_key == "00_checkpoint_header" {
+            if header
+                || record.payload["libraryId"].as_str() != Some(pointer.library_id.as_str())
+                || record.payload["authorityEpoch"].as_str() != Some(pointer.storage_epoch.as_str())
+                || record.payload["sourceRevision"].as_u64() != Some(revision)
+            {
+                return Err("historical checkpoint header differs from signed consent".into());
+            }
+            header = true;
+        }
+        digest.push(&record).map_err(|e| e.to_string())?;
+    }
+    let (actual_digest, records, bytes) = digest.finish();
+    if !header || actual_digest != expected_digest || records != stage.3 || bytes != stage.4 {
+        return Err("historical checkpoint contents differ from signed consent".into());
+    }
+    Ok(())
+}
+
+/// Verify enrollment from the signed historical snapshot, not a current actor
+/// row whose epoch and certificate may have been replaced by promotion.
+fn verify_historical_handoff_target(
+    connection: &rusqlite::Connection,
+    stage: &str,
+    canonical: &[u8],
+    predecessor: &HandoffPredecessorV1<'_>,
+) -> Result<WriterHandoffCertificateV1, String> {
+    let (reference, certificate) = verify_predecessor_read_proof(canonical, predecessor)?;
+    verify_staged_predecessor_contents(connection, stage, &reference)?;
+    let body = &certificate.certificate_body;
+    let identity = encode_canonical_value(&Value::String(body.target_writer_id.clone()), 4096)
+        .map_err(|_| "historical target identity is invalid")?;
+    let bytes: Vec<u8> = connection.query_row(
+        "SELECT CASE WHEN length(record_canonical)<=?3 THEN record_canonical ELSE NULL END FROM library_checkpoint_stage_records
+         WHERE stage_id=?1 AND registry_key='90_actor_state' AND primary_key_canonical=?2;",
+        rusqlite::params![stage, identity, crate::sqlite_contract_generated::CHECKPOINT_RECORD_MAXIMUM_CANONICAL_BYTES],
+        |r| r.get(0),
+    ).map_err(|_| "historical target enrollment is missing or oversized")?;
+    let actor =
+        crate::normalized_import::record_from_canonical(&bytes).map_err(|e| e.to_string())?;
+    let fields = &actor.payload;
+    let key = &body
+        .handoff_authorization
+        .body
+        .readiness
+        .body
+        .target_actor_public_key;
+    if actor.primary_key.as_str() != Some(body.target_writer_id.as_str())
+        || fields["authorityEpochId"].as_str() != Some(predecessor.epoch_id)
+        || fields["publicKey"].as_str() != Some(key.as_str())
+        || fields["actorKind"].as_str() != Some("pwa")
+        || fields.get("retiredAt") != Some(&Value::Null)
+    {
+        return Err("historical target is not an active predecessor consumer".into());
+    }
+    let enrollment_bytes = fields["canonicalEnrollmentCertificate"]
+        .as_str()
+        .ok_or("historical target certificate is missing")?
+        .as_bytes();
+    let decoded = decode_canonical_value(enrollment_bytes, 65536)
+        .map_err(|_| "historical target certificate is invalid")?
+        .into_value();
+    let frontier = crate::normalized_enrollment_verifier::parse_causal_tips(
+        decoded
+            .pointer("/certificate_body/actor_enrollment_body/observed_frontier")
+            .ok_or("historical target frontier is missing")?,
+    )
+    .map_err(|e| e.to_string())?;
+    let authority = NormalizedAuthorityStateV2 {
+        library_id: predecessor.library_id.into(),
+        epoch_id: predecessor.epoch_id.into(),
+        epoch: i64::try_from(predecessor.epoch).map_err(|_| "historical epoch is invalid")?,
+        authority_key_id: authority_key_id(predecessor.authority_public_key)?,
+        authority_public_key: predecessor.authority_public_key.into(),
+        observed_frontier: frontier,
+    };
+    let enrollment = crate::normalized_enrollment_verifier::verify_actor_enrollment(
+        enrollment_bytes,
+        &authority,
+    )
+    .map_err(|e| format!("historical target enrollment is invalid: {e}"))?;
+    if enrollment.actor_id != body.target_writer_id
+        || enrollment.actor_public_key != *key
+        || fields["enrollmentCertificateDigest"].as_str()
+            != Some(enrollment.enrollment_certificate_digest.as_str())
+        || fields["chainGenesisDigest"].as_str() != Some(enrollment.actor_chain_genesis.as_str())
+        || fields["enrollmentOperationId"].as_str()
+            != Some(enrollment.enrollment_operation_id.as_str())
+    {
+        return Err("historical target row differs from its verified enrollment".into());
+    }
+    Ok(certificate)
+}
+
+struct HistoricalChain {
+    certificates: Vec<Vec<u8>>,
+    references: Vec<Value>,
+    library: String,
+    epoch: String,
+    number: u64,
+    digest: String,
+    key: String,
+    writer: String,
+}
+
+/// Bind every read to the selected local authority and the complete final stage.
+/// A direct transfer keeps its established missing-enrollment catch-up path.
+fn staged_historical_chain(
+    connection: &rusqlite::Connection,
+    stage_id: &str,
+) -> Result<Option<HistoricalChain>, String> {
+    use rusqlite::OptionalExtension;
+    if connection.is_autocommit() || stage_id.is_empty() || stage_id.len() > 255 {
+        return Err("historical chain binding requires an owned transaction and stage".into());
+    }
+    let selected: Option<(String, String)> = connection
+        .query_row(
+            "SELECT library_id,authority_epoch FROM library_meta WHERE singleton_id=1;",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+    let Some((library, epoch)) = selected else {
+        return Ok(None);
+    };
+    let stage: (String,String,u64) = connection.query_row(
+        "SELECT library_id,authority_epoch,source_revision FROM library_checkpoint_stages WHERE stage_id=?1 AND staged_record_count=expected_record_count;",
+        [stage_id], |r|Ok((r.get(0)?,r.get(1)?,r.get(2)?)),
+    ).map_err(|_|"historical chain successor stage is incomplete")?;
+    if stage.0 != library {
+        return Err("historical chain changes the selected Library".into());
+    }
+    if stage.1 == epoch {
+        return Ok(None);
+    }
+    let certificates =
+        load_handoff_certificate_chain(connection, Some(stage_id), &epoch, &stage.1)?;
+    if certificates.len() == 1 {
+        return Ok(None);
+    }
+    let (number,digest,key,writer,revision): (u64,String,String,String,u64) = connection.query_row(
+        "SELECT old.epoch_number,old.transition_certificate_digest,old.authority_public_key,actor.actor_id,meta.source_revision
+         FROM library_meta meta JOIN library_active_authority active ON active.library_id=meta.library_id AND active.epoch_id=meta.authority_epoch
+         JOIN library_authority_epochs old ON old.epoch_id=active.epoch_id JOIN library_actors actor ON actor.authority_epoch_id=old.epoch_id
+         WHERE meta.singleton_id=1 AND active.active_key='active' AND actor.actor_kind='desktop' AND actor.retired_at IS NULL
+         AND (SELECT count(*) FROM library_actors WHERE authority_epoch_id=old.epoch_id AND actor_kind='desktop' AND retired_at IS NULL)=1;",
+        [], |r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?)),
+    ).map_err(|_|"historical chain requires one accepted local authority")?;
+    let incompatible: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM library_follower_actor_request WHERE singleton_id=1 AND (library_id!=?1 OR authority_epoch_id!=?2));",
+        rusqlite::params![library,epoch], |r|r.get(0),
+    ).map_err(|e|e.to_string())?;
+    if incompatible {
+        return Err("finish consumer recovery before another authority chain".into());
+    }
+    let references = verify_predecessor_checkpoint_reads(
+        &certificates.iter().map(Vec::as_slice).collect::<Vec<_>>(),
+        &HandoffPredecessorV1 {
+            library_id: &library,
+            epoch_id: &epoch,
+            epoch: number,
+            certificate_digest: &digest,
+            authority_public_key: &key,
+            writer_id: &writer,
+        },
+        Some(&stage.1),
+    )?;
+    let mut previous = revision;
+    for reference in &references {
+        let revision = reference["sourceRevision"]
+            .as_u64()
+            .ok_or("historical source revision is invalid")?;
+        if revision < previous || revision > stage.2 {
+            return Err("historical checkpoints regress the selected source".into());
+        }
+        previous = revision;
+    }
+    Ok(Some(HistoricalChain {
+        certificates,
+        references,
+        library,
+        epoch,
+        number,
+        digest,
+        key,
+        writer,
     }))
+}
+
+/// The importer calls this before replacing any rows, inside its write transaction.
+/// Historical stages use the existing manifest-content-digest stage identity.
+pub(crate) fn verify_staged_writer_handoff_against_local(
+    connection: &rusqlite::Connection,
+    stage_id: &str,
+    canonical: &[u8],
+) -> Result<(WriterHandoffCertificateV1, Vec<String>), String> {
+    let Some(mut chain) = staged_historical_chain(connection, stage_id)? else {
+        return verify_writer_handoff_against_local_v1(connection, canonical)
+            .map(|certificate| (certificate, Vec::new()));
+    };
+    if chain.certificates.last().map(Vec::as_slice) != Some(canonical) {
+        return Err("historical chain final certificate changed".into());
+    }
+    let mut last = None;
+    let mut consumed_stages = Vec::new();
+    for (certificate, reference) in chain.certificates.iter().zip(&chain.references) {
+        let historical_stage = reference
+            .pointer("/pointer/manifest/descriptor/contentDigest")
+            .and_then(Value::as_str)
+            .ok_or("historical manifest identity is missing")?;
+        if historical_stage == stage_id {
+            return Err("historical stage aliases the successor".into());
+        }
+        let verified = verify_historical_handoff_target(
+            connection,
+            historical_stage,
+            certificate,
+            &HandoffPredecessorV1 {
+                library_id: &chain.library,
+                epoch_id: &chain.epoch,
+                epoch: chain.number,
+                certificate_digest: &chain.digest,
+                authority_public_key: &chain.key,
+                writer_id: &chain.writer,
+            },
+        )?;
+        chain.digest = digest_value(
+            "epoch-transition-certificate",
+            &serde_json::to_value(&verified).map_err(|e| e.to_string())?,
+        )?;
+        chain.epoch = verified.epoch_id.clone();
+        chain.number = u64::try_from(verified.certificate_body.target_epoch)
+            .map_err(|_| "historical successor epoch is invalid")?;
+        chain.key = verified
+            .certificate_body
+            .target_authority_public_key
+            .clone();
+        chain.writer = verified.certificate_body.target_writer_id.clone();
+        consumed_stages.push(historical_stage.to_owned());
+        last = Some(verified);
+    }
+    last.map(|certificate| (certificate, consumed_stages))
+        .ok_or_else(|| "historical authority chain is empty".into())
 }
 
 // Binding remains internal and is reconstructed from durable staging.
@@ -393,6 +838,10 @@ pub fn prepare_normalized_predecessor_checkpoint_read_v1(
     successor_stage: &str,
 ) -> Result<Option<Value>, String> {
     let tx = connection.transaction().map_err(|e| e.to_string())?;
+    if let Some(chain) = staged_historical_chain(&tx, successor_stage)? {
+        tx.commit().map_err(|e| e.to_string())?;
+        return Ok(Some(Value::Array(chain.references)));
+    }
     let proof = staged_predecessor_read(&tx, successor_stage)?;
     tx.commit().map_err(|e| e.to_string())?;
     Ok(proof.map(|p| p.reference))
@@ -631,6 +1080,173 @@ pub(crate) fn check_install_verified_predecessor(
 #[cfg(test)]
 mod parity_tests {
     use super::*;
+
+    #[test]
+    fn historical_checkpoint_verification_is_read_only_and_detects_changed_staging() {
+        let fixture: Value = serde_json::from_str(include_str!(
+            "../../shared/src/library-core/native-handoff-catchup-vector-v1.json"
+        ))
+        .unwrap();
+        let records: Vec<crate::normalized_checkpoint::NormalizedCheckpointRecordV2> =
+            serde_json::from_value(fixture["predecessorRecords"].clone()).unwrap();
+        let descriptor = &fixture["predecessor"];
+        let (mut connection, _, _) = crate::normalized_mutation::tests::fixture();
+        let before = crate::describe_normalized_checkpoint_export_v2(&connection).unwrap();
+        crate::begin_normalized_checkpoint_stage_v2(
+            &connection,
+            &crate::BeginNormalizedCheckpointStageV2 {
+                stage_id: "historical-proof".into(),
+                library_id: descriptor["libraryId"].as_str().unwrap().into(),
+                authority_epoch: descriptor["authorityEpoch"].as_str().unwrap().into(),
+                source_revision: descriptor["sourceRevision"].as_u64().unwrap(),
+                expected_record_count: records.len(),
+                created_at: 1,
+            },
+        )
+        .unwrap();
+        for page in records.chunks(16) {
+            crate::append_normalized_checkpoint_stage_page_v2(
+                &mut connection,
+                "historical-proof",
+                page,
+            )
+            .unwrap();
+        }
+        let proof = &fixture["expectedReadProof"];
+        let baseline = &fixture["baseline"];
+        let authority = fixture["baselineRecords"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| {
+                r["registryKey"] == "01_authority_epoch"
+                    && r["primaryKey"] == baseline["authorityEpoch"]
+            })
+            .unwrap();
+        let pin = HandoffPredecessorV1 {
+            library_id: baseline["libraryId"].as_str().unwrap(),
+            epoch_id: baseline["authorityEpoch"].as_str().unwrap(),
+            epoch: authority["payload"]["epochNumber"].as_u64().unwrap(),
+            certificate_digest: authority["payload"]["transitionCertificateDigest"]
+                .as_str()
+                .unwrap(),
+            authority_public_key: authority["payload"]["authorityPublicKey"].as_str().unwrap(),
+            writer_id: baseline["writerId"].as_str().unwrap(),
+        };
+        let certificate = fixture["canonicalCertificate"].as_str().unwrap().as_bytes();
+        assert!(
+            verify_staged_predecessor_contents(&connection, "historical-proof", proof).is_err()
+        );
+        let tx = connection.transaction().unwrap();
+        let changes: u64 = tx
+            .query_row("SELECT total_changes();", [], |r| r.get(0))
+            .unwrap();
+        verify_staged_predecessor_contents(&tx, "historical-proof", proof).unwrap();
+        let verified =
+            verify_historical_handoff_target(&tx, "historical-proof", certificate, &pin).unwrap();
+        assert_eq!(
+            verified.epoch_id,
+            proof["successorEpochId"].as_str().unwrap()
+        );
+        assert_eq!(
+            changes,
+            tx.query_row("SELECT total_changes();", [], |r| r.get::<_, u64>(0))
+                .unwrap()
+        );
+        assert_eq!(
+            before,
+            crate::describe_normalized_checkpoint_export_v2(&tx).unwrap()
+        );
+        tx.execute("UPDATE library_checkpoint_stages SET staged_canonical_bytes=staged_canonical_bytes+1 WHERE stage_id='historical-proof';", []).unwrap();
+        assert!(verify_staged_predecessor_contents(&tx, "historical-proof", proof).is_err());
+        tx.execute("UPDATE library_checkpoint_stages SET staged_canonical_bytes=staged_canonical_bytes-1 WHERE stage_id='historical-proof';", []).unwrap();
+        let original: Vec<u8> = tx.query_row("SELECT record_canonical FROM library_checkpoint_stage_records WHERE stage_id='historical-proof' AND registry_key='00_checkpoint_header';", [], |r| r.get(0)).unwrap();
+        let mut spaced = vec![b' '];
+        spaced.extend_from_slice(&original);
+        tx.execute("UPDATE library_checkpoint_stage_records SET record_canonical=?1 WHERE stage_id='historical-proof' AND registry_key='00_checkpoint_header';", [&spaced]).unwrap();
+        assert!(verify_staged_predecessor_contents(&tx, "historical-proof", proof).is_err());
+        tx.execute("UPDATE library_checkpoint_stage_records SET record_canonical=x'7b7d' WHERE stage_id='historical-proof' AND registry_key='00_checkpoint_header';", []).unwrap();
+        assert!(verify_staged_predecessor_contents(&tx, "historical-proof", proof).is_err());
+        tx.rollback().unwrap();
+        assert_eq!(
+            before,
+            crate::describe_normalized_checkpoint_export_v2(&connection).unwrap()
+        );
+    }
+
+    #[test]
+    fn missed_transfer_reads_require_the_complete_authenticated_chain() {
+        let vectors: Vec<Value> = serde_json::from_str(include_str!(
+            "../../shared/src/library-core/handoff-chain-vectors-v1.json"
+        ))
+        .unwrap();
+        let pin = &vectors[0]["predecessor"];
+        let predecessor = HandoffPredecessorV1 {
+            library_id: pin["libraryId"].as_str().unwrap(),
+            epoch_id: pin["epochId"].as_str().unwrap(),
+            epoch: pin["epoch"].as_u64().unwrap(),
+            certificate_digest: pin["certificateDigest"].as_str().unwrap(),
+            authority_public_key: pin["authorityPublicKey"].as_str().unwrap(),
+            writer_id: pin["writerId"].as_str().unwrap(),
+        };
+        let certificates: Vec<&[u8]> = vectors
+            .iter()
+            .map(|v| v["canonicalCertificate"].as_str().unwrap().as_bytes())
+            .collect();
+        let expected = vectors[1]["expected"]["epochId"].as_str().unwrap();
+        let reads =
+            verify_predecessor_checkpoint_reads(&certificates, &predecessor, Some(expected))
+                .unwrap();
+        for (read, vector) in reads.iter().zip(&vectors) {
+            let certificate: Value =
+                serde_json::from_str(vector["canonicalCertificate"].as_str().unwrap()).unwrap();
+            let grant = &certificate["certificate_body"]["handoff_authorization"];
+            assert_eq!(
+                read,
+                &serde_json::json!({
+                    "purpose":"predecessor_checkpoint_read", "pointer":grant["body"]["source_control"],
+                    "controlRevision":grant["body"]["source_control_revision"],
+                    "controlFileId":grant["body"]["source_control_file_id"],
+                    "checkpointDigest":grant["body"]["final_checkpoint_digest"],
+                    "sourceRevision":grant["body"]["final_source_revision"],
+                    "successorEpochId":vector["expected"]["epochId"],
+                    "authorizationDigest":grant["authorization_digest"],
+                })
+            );
+        }
+        assert!(verify_predecessor_checkpoint_reads(
+            &certificates[1..],
+            &predecessor,
+            Some(expected)
+        )
+        .is_err());
+        assert!(verify_predecessor_checkpoint_reads(
+            &certificates[..1],
+            &predecessor,
+            Some(expected)
+        )
+        .is_err());
+        assert!(verify_predecessor_checkpoint_reads(&[], &predecessor, Some(expected)).is_err());
+        assert!(verify_predecessor_checkpoint_reads(
+            &vec![certificates[0]; 33],
+            &predecessor,
+            Some(expected)
+        )
+        .is_err());
+        let mut corrupted = certificates[1].to_vec();
+        let position = corrupted.len() - 4;
+        corrupted[position] = if corrupted[position] == b'0' {
+            b'1'
+        } else {
+            b'0'
+        };
+        assert!(verify_predecessor_checkpoint_reads(
+            &[certificates[0], &corrupted],
+            &predecessor,
+            Some(expected)
+        )
+        .is_err());
+    }
 
     #[test]
     fn shared_handoff_vector_matches_native_verification() {
