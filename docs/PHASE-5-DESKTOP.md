@@ -1545,10 +1545,9 @@ process-restart durability or installed cross-device acceptance.
 
 Browser successor refresh resolves the cloud writer from the unique active
 Desktop actor, matching native checkpoints with the local writer label
-`primary:desktop`. The follower receipt must name that actor. Multiple missed
-authority transfers, large-checkpoint deadline admission, actual crash/restart
-boundaries and installed Mac acceptance remain unverified. Current local work
-still requires full feature validation, fresh provider review and exact-head CI.
+`primary:desktop`. The follower receipt must name that actor. The later missed-transfer evidence
+below extends this direct-transfer path and records synthetic large-checkpoint
+admission. OS-crash boundaries and installed Mac acceptance remain unverified.
 
 ### Replica audit evidence, September 30, 2026
 
@@ -1558,3 +1557,37 @@ the existing reader deadline and cancellation registry. The copied receipt inclu
 interface build metadata; installed native build identity remains separate.
 Focused native, client and rendered control checks pass. This does not establish
 installed Mac acceptance or readiness to move authority.
+
+### Missed-transfer recovery, September 30, 2026
+
+The native importer now authenticates multiple authority transitions using exact
+staged historical checkpoints. It verifies each target's enrollment against its
+historical predecessor authority, then imports only the final successor. A native
+two-transfer fixture preserves the original enrollment and pending intent bytes,
+refuses Primary admission, and archives recovery directly from the original epoch
+to the final epoch. Failed historical-stage cleanup rolls back selection and
+retains recovery inputs; success removes only consumed stages.
+
+The Desktop transport accepts bounded read lists and stages historical downloads
+without activating intermediate epochs. Installed two-Desktop/PWA acceptance,
+representative-size timing and MacBook Pro authority transition remain pending.
+
+The native two-transfer lifecycle also passes with 100,000 synthetic FeedItems,
+including rollback after a historical-stage cleanup failure, preservation of
+the original pending row, and final recovery archival. Its optimized canonical
+audit completes within the existing 30-second budget and matches the PWA digest.
+This is Linux fixture evidence, not installed Mac acceptance or transfer timing.
+
+### Old Primary recovery after later transfers, September 30, 2026
+
+An old Primary that authorized a transfer and then stayed offline can adopt a
+verified later successor. Desktop stages at most 32 authenticated historical
+checkpoints without activating intermediate authorities. Native adoption pins
+the first signed transfer to the original consent and the final selection to
+the verified cloud winner. Consent, original target identity and signed history
+remain intact. Failed verification or cleanup leaves the old Primary fenced.
+
+The native two-transfer lifecycle covers consent tampering, failed cleanup,
+retry, database reopening, explicit successor enrollment and preparation to
+receive authority again. Adoption alone grants no edit or capture rights.
+Installed multi-device acceptance and actual host transition remain pending.

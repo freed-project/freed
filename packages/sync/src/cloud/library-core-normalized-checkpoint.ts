@@ -11,7 +11,7 @@ import {
   LIBRARY_CORE_WIRE_FRAME_RECORD_LENGTH_BYTES,
   libraryCoreNormalizedCheckpointRecordIdentityV2,
   parseLibraryCoreImmutableObjectDescriptorV1,
-  parseLibraryCorePredecessorCheckpointReadV1,
+  parseLibraryCorePredecessorCheckpointReadsV1,
   parseLibraryCoreNormalizedCheckpointExportDescriptorV2,
   parseLibraryCoreNormalizedCheckpointRecordV2,
   type LibraryCoreCanonicalValue,
@@ -608,51 +608,56 @@ export async function stageLibraryCoreNormalizedCheckpointV2(
 }
 
 
-/** Catch up one authenticated direct predecessor. Never recursively follow
- * remote epochs or treat a transport response as permission to select rows. */
+/** Download runtime-authenticated predecessor checkpoints. A multi-transfer
+ * chain is staged only; final atomic admission remains owned by the runtime. */
 export async function catchUpLibraryCorePredecessorCheckpointV1(input: {
   adapter: LibraryCoreImmutableReadAdapterV1;
   subtle: SubtleCrypto;
   successorStageId: string;
   installedAt: number;
+  /** Source demotion must install history and the final winner in one native transaction. */
+  stageOnly?: boolean;
   assertActive(): void;
   runtime: Pick<LibraryCoreNormalizedCheckpointStageRuntimeV2, "begin" | "appendPage"> & {
-    prepare(stageId: string): Promise<ReturnType<typeof parseLibraryCorePredecessorCheckpointReadV1>>;
+    prepare(stageId: string): Promise<unknown>;
     activate(activation: LibraryCoreActivateNormalizedCheckpointStageV2, successorStageId: string): Promise<LibraryCoreNormalizedCheckpointActivationReceiptV2>;
   };
 }): Promise<void> {
   input.assertActive();
-  const reference = parseLibraryCorePredecessorCheckpointReadV1(await input.runtime.prepare(input.successorStageId));
+  const references = parseLibraryCorePredecessorCheckpointReadsV1(await input.runtime.prepare(input.successorStageId));
   input.assertActive();
-  if (reference === null) return;
-  const pointer = reference.pointer;
-  const staged = await stageLibraryCoreNormalizedCheckpointV2({
-    adapter: { async readImmutable(object) {
-      input.assertActive();
-      const bytes = await input.adapter.readImmutable(object);
-      input.assertActive();
-      return bytes;
-    } },
-    generation: pointer.generation, libraryId: pointer.libraryId, storageEpoch: pointer.storageEpoch,
-    manifest: pointer.manifest, subtle: input.subtle, runtime: {
-      async begin(stage) { input.assertActive(); return input.runtime.begin(stage); },
-      async appendPage(page) { input.assertActive(); return input.runtime.appendPage(page); },
-    },
-  });
-  if (staged.checkpoint.checkpointDigest !== reference.checkpointDigest || staged.sourceRevision !== reference.sourceRevision) {
-    throw new Error("downloaded predecessor differs from signed consent");
+  if (references === null) return;
+  for (const reference of references) {
+    const pointer = reference.pointer;
+    const staged = await stageLibraryCoreNormalizedCheckpointV2({
+      adapter: { async readImmutable(object) {
+        input.assertActive();
+        const bytes = await input.adapter.readImmutable(object);
+        input.assertActive();
+        return bytes;
+      } },
+      generation: pointer.generation, libraryId: pointer.libraryId, storageEpoch: pointer.storageEpoch,
+      manifest: pointer.manifest, subtle: input.subtle, runtime: {
+        async begin(stage) { input.assertActive(); return input.runtime.begin(stage); },
+        async appendPage(page) { input.assertActive(); return input.runtime.appendPage(page); },
+      },
+    });
+    if (staged.checkpoint.checkpointDigest !== reference.checkpointDigest || staged.sourceRevision !== reference.sourceRevision) {
+      throw new Error("downloaded predecessor differs from signed consent");
+    }
+    input.assertActive();
+    if (input.stageOnly || references.length > 1) continue;
+    const receipt = await input.runtime.activate({ stageId: staged.stageId, replaceExisting: true,
+      followerReceipt: { checkpointGeneration: pointer.generation, writerActorId: pointer.writerId,
+        manifestObjectKey: pointer.manifest.descriptor.objectKey, manifestTransportObjectId: pointer.manifest.transportObjectId,
+        manifestContentDigest: pointer.manifest.descriptor.contentDigest, controlRevision: reference.controlRevision,
+        installedAt: input.installedAt },
+    }, input.successorStageId);
+    if (receipt.stageId !== staged.stageId || receipt.libraryId !== staged.libraryId || receipt.authorityEpoch !== staged.authorityEpoch ||
+        receipt.sourceRevision !== staged.sourceRevision || receipt.checkpointDigest !== staged.checkpoint.checkpointDigest ||
+        receipt.recordCount !== staged.checkpoint.recordCount || receipt.canonicalBytes !== staged.checkpoint.canonicalBytes) {
+      throw new Error("predecessor activation receipt differs from verified download");
+    }
+    input.assertActive();
   }
-  input.assertActive();
-  const receipt = await input.runtime.activate({ stageId: staged.stageId, replaceExisting: true,
-    followerReceipt: { checkpointGeneration: pointer.generation, writerActorId: pointer.writerId,
-      manifestObjectKey: pointer.manifest.descriptor.objectKey, manifestTransportObjectId: pointer.manifest.transportObjectId,
-      manifestContentDigest: pointer.manifest.descriptor.contentDigest, controlRevision: reference.controlRevision,
-      installedAt: input.installedAt },
-  }, input.successorStageId);
-  if (receipt.stageId !== staged.stageId || receipt.libraryId !== staged.libraryId || receipt.authorityEpoch !== staged.authorityEpoch ||
-      receipt.sourceRevision !== staged.sourceRevision || receipt.checkpointDigest !== staged.checkpoint.checkpointDigest ||
-      receipt.recordCount !== staged.checkpoint.recordCount || receipt.canonicalBytes !== staged.checkpoint.canonicalBytes) {
-    throw new Error("predecessor activation receipt differs from verified download");
-  }
-  input.assertActive();
 }

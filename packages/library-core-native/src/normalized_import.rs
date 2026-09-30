@@ -1351,6 +1351,7 @@ pub(crate) fn install_checkpoint_with_version_admission(
         }
     }
     let mut verified_successor = false;
+    let mut consumed_historical_stages = Vec::new();
     if replace_existing && follower_receipt.is_some() {
         let current: Option<(String, String)> = transaction
             .query_row(
@@ -1381,8 +1382,8 @@ pub(crate) fn install_checkpoint_with_version_admission(
                     .get("canonicalTransitionCertificate")
                     .and_then(Value::as_str)
                     .ok_or(invalid("successor authority proof is missing"))?;
-                let certificate = crate::normalized_handoff_writer_certificate::verify_writer_handoff_against_local_v1(
-                    transaction, canonical.as_bytes()).map_err(|_| invalid("successor authority is not authorized by the accepted predecessor"))?;
+                let (certificate, historical_stages) = crate::normalized_handoff_writer_certificate::verify_staged_writer_handoff_against_local(
+                    transaction, stage_id, canonical.as_bytes()).map_err(|_| invalid("successor authority is not authorized by the accepted predecessor"))?;
                 let body = &certificate.certificate_body;
                 if certificate.epoch_id != stage.1
                     || record.payload.get("libraryId").and_then(Value::as_str)
@@ -1414,6 +1415,7 @@ pub(crate) fn install_checkpoint_with_version_admission(
                         "successor authority rows differ from the verified proof",
                     ));
                 }
+                consumed_historical_stages = historical_stages;
                 verified_successor = true;
             }
         }
@@ -1572,6 +1574,14 @@ pub(crate) fn install_checkpoint_with_version_admission(
     }
     admit(transaction, &checkpoint_digest, follower_receipt)
         .map_err(NormalizedSqliteError::Transport)?;
+    // Keep recovery inputs until final admission succeeds. These exact stages
+    // were verified under this transaction; rollback restores their rows too.
+    for historical_stage in consumed_historical_stages {
+        transaction.execute(
+            "DELETE FROM library_checkpoint_stages WHERE stage_id = ?1;",
+            [historical_stage],
+        )?;
+    }
     transaction.execute(
         "DELETE FROM library_checkpoint_stages WHERE stage_id = ?1;",
         [stage_id],

@@ -1113,10 +1113,9 @@ process-restart durability or installed cross-device acceptance.
 
 Browser successor refresh resolves the cloud writer from the unique active
 Desktop actor, matching native checkpoints with the local writer label
-`primary:desktop`. The follower receipt must name that actor. Multiple missed
-authority transfers, large-checkpoint deadline admission, actual crash/restart
-boundaries and installed Mac acceptance remain unverified. Current local work
-still requires full feature validation, fresh provider review and exact-head CI.
+`primary:desktop`. The follower receipt must name that actor. The later missed-transfer evidence
+below extends this direct-transfer path and records synthetic large-checkpoint
+admission. OS-crash boundaries and installed Mac acceptance remain unverified.
 
 ### Replica audit evidence, September 30, 2026
 
@@ -1126,3 +1125,42 @@ checkpoint digest from one read snapshot. Compare receipts at the same Library,
 epoch and revision after pending edits settle. Matching counts or a prior import
 receipt alone are not convergence evidence. Installed multi-device acceptance
 and the separate zero-consumer-capture ledger remain required.
+
+### Consumers that missed multiple transfers, September 30, 2026
+
+Desktop and PWA authenticate a bounded chain from their selected authority to
+the current successor. Each attempt accepts at most 32 signed transitions and
+reads the exact immutable predecessor checkpoint for each transition. Historical
+checkpoints are staged without selecting intermediate authorities. Final import
+verifies their canonical contents and historical target enrollments before
+replacing selected rows. Original enrollment and pending signed edits remain
+available for explicit recovery; old edits are never automatically re-signed.
+
+Native and PWA tests cover two real signed transitions, missing or changed
+history, failed cleanup, retained state and response-loss retry. Consumed stages
+are deleted in the successful activation transaction; failures retain them for
+resumption and unrelated staging survives. Longer histories currently refuse;
+resumable traversal beyond 32 transfers remains unfinished. Abandoned staging
+has no automatic age-based deletion. Representative-size latency, installed
+cross-device acceptance and actual new-host transition remain pending.
+
+A signed two-transfer fixture with 100,000 synthetic FeedItems passes native
+activation, late cleanup-failure rollback and retained pending-row checks. The
+PWA activates the same history through its production OPFS worker and retains
+the exact canonical digest after a full browser restart. Native and browser
+audits agree. Synthetic cloud receipts and Linux execution do not establish
+live-cloud or installed multi-device acceptance.
+
+### Old Primary recovery after later transfers, September 30, 2026
+
+An old Primary that authorized a transfer and then stayed offline can adopt a
+verified later successor. Desktop stages at most 32 authenticated historical
+checkpoints without activating intermediate authorities. Native adoption pins
+the first signed transfer to the original consent and the final selection to
+the verified cloud winner. Consent, original target identity and signed history
+remain intact. Failed verification or cleanup leaves the old Primary fenced.
+
+The native two-transfer lifecycle covers consent tampering, failed cleanup,
+retry, database reopening, explicit successor enrollment and preparation to
+receive authority again. Adoption alone grants no edit or capture rights.
+Installed multi-device acceptance and actual host transition remain pending.

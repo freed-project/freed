@@ -1439,10 +1439,9 @@ process-restart durability or installed cross-device acceptance.
 
 Browser successor refresh resolves the cloud writer from the unique active
 Desktop actor, matching native checkpoints with the local writer label
-`primary:desktop`. The follower receipt must name that actor. Multiple missed
-authority transfers, large-checkpoint deadline admission, actual crash/restart
-boundaries and installed Mac acceptance remain unverified. Current local work
-still requires full feature validation, fresh provider review and exact-head CI.
+`primary:desktop`. The follower receipt must name that actor. The later missed-transfer evidence
+below extends this direct-transfer path and records synthetic large-checkpoint
+admission. OS-crash boundaries and installed Mac acceptance remain unverified.
 
 ### Replica audit evidence, September 30, 2026
 
@@ -1460,3 +1459,28 @@ response. Large-record parity covers a byte-boundary stop before the row limit.
 Synthetic Linux probes completed 25,001 items with 1 KiB text each; a 100,001-item
 probe reached the 30-second deadline and released its read transaction. These
 results do not establish representative Library or installed memory acceptance.
+
+### Missed-transfer recovery, September 30, 2026
+
+PWA imports authenticate the same bounded chain and historical enrollments as
+native imports. Historical content verification runs inside the final activation
+transaction. Its actual record progress contributes to the existing stall budget;
+the hard deadline remains unchanged. Same-epoch refresh verifies retained signed
+history while preserving the old enrollment for explicit recovery. Consumed
+historical stages are deleted atomically with activation.
+
+A native-generated two-transfer fixture passes PWA SQLite verification and
+rollback tests. A Linux Chromium OPFS probe resumes partial staging after a full
+browser close, withholds a committed activation response, then reopens with the
+same epoch, revision and checkpoint digest. It uses a synthetic final cloud
+receipt and a small corpus. It does not establish old-intent retention in that
+browser scenario, cooperative cancellation inside the write transaction,
+OS-crash recovery, Mac WebKit behavior or representative-size performance.
+
+A separate Linux Chromium OPFS run activates valid signed history with 100,000
+synthetic FeedItems. Activation takes 39.8 seconds with 490 progress events and
+reaches the same canonical digest as native. A full browser restart preserves
+the receipt, current digest, epoch, writer, revision and frontier. The final
+cloud receipt is synthetic; this does not test old local browser intents or
+OS-crash recovery. Exact-commit macOS WebKit durability CI also passes, while
+installed multi-device acceptance remains outstanding.

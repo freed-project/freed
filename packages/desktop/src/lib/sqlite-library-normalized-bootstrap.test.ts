@@ -71,8 +71,9 @@ describe("Freed Desktop normalized bootstrap projection", () => {
 
   it("bounds native predecessor requests and decodes the shared signed checkpoint reference", async () => {
     mocks.invoke.mockResolvedValueOnce(catchupVector.expectedReadProof);
-    const proof = await prepareNormalizedLibraryPredecessorCheckpointRead("successor");
-    expect(proof).toEqual(catchupVector.expectedReadProof);
+    const proofs = await prepareNormalizedLibraryPredecessorCheckpointRead("successor");
+    expect(proofs).toEqual([catchupVector.expectedReadProof]);
+    const proof = proofs?.[0];
     expect(mocks.invoke).toHaveBeenLastCalledWith("prepare_normalized_library_predecessor_checkpoint_read", { request: { stageId: "successor" } });
     if (!proof) throw new Error("missing read reference");
     const activation = { stageId: "predecessor", replaceExisting: true, followerReceipt: {

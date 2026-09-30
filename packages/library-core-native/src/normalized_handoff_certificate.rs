@@ -277,6 +277,18 @@ fn validate_authorization(
     Ok(())
 }
 
+// Test fixtures reuse the signer without exposing a production bypass around
+// durable source fencing and persisted consent.
+#[cfg(test)]
+pub(crate) fn sign_handoff_authorization_for_test_v1(
+    body: HandoffAuthorizationBodyV1,
+    predecessor: &HandoffPredecessorV1<'_>,
+    enrolled_actor_public_key: &str,
+    key: &Ed25519KeyPair,
+) -> Result<HandoffAuthorizationV1, String> {
+    sign_handoff_authorization_v1(body, predecessor, enrolled_actor_public_key, key)
+}
+
 /// Called only after the exact body and irreversible AUTHORIZED phase commit.
 fn sign_handoff_authorization_v1(
     body: HandoffAuthorizationBodyV1,
@@ -1637,6 +1649,16 @@ pub(crate) fn verify_existing_handoff_checkpoint_install_v1(
     )? {
         return Ok(());
     }
+    let demoted_source: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM library_local_handoff WHERE singleton_id=1 AND installation_role='source' AND phase='demoted');",
+        [], |r|r.get(0),
+    ).map_err(|e|e.to_string())?;
+    if demoted_source {
+        if receipt.is_none() {
+            return Err("source adoption requires a follower receipt".into());
+        }
+        return crate::normalized_source_handoff::verify_demoted_source_selection(connection);
+    }
     let consumer: Option<(String, Vec<u8>)> = connection.query_row(
         "SELECT epoch.canonical_transition_certificate, handoff.canonical_authorization
          FROM library_local_handoff AS handoff JOIN library_meta AS meta
@@ -2608,13 +2630,15 @@ mod tests {
         let library = "a".repeat(64);
         let epoch = "b".repeat(64);
         let writer = "c".repeat(64);
-        let offline_actor = "6".repeat(64);
         let installation_witness = "f".repeat(64);
         let initial_authority = crate::normalized_authority::NormalizedAuthorityStateV2 {
             library_id: library.clone(),
             epoch: 1,
             epoch_id: epoch.clone(),
-            authority_key_id: "e".repeat(64),
+            authority_key_id: crate::normalized_writer_certificate::authority_key_id(&lower_hex(
+                source_key.public_key().as_ref(),
+            ))
+            .unwrap(),
             authority_public_key: lower_hex(source_key.public_key().as_ref()),
             observed_frontier: Vec::new(),
         };
@@ -2626,6 +2650,15 @@ mod tests {
                 &initial_authority, &installation_witness, &actor_store, 1)
         }.unwrap();
         let actor = actor_request.actor_id.clone();
+        let offline_request = crate::library_core_actor_enrollment::prepare_recovery_actor_request(
+            &initial_authority,
+            &installation_witness,
+            &actor_store,
+            1,
+            &"6".repeat(64),
+        )
+        .unwrap();
+        let offline_actor = offline_request.actor_id.clone();
         let digest = "e".repeat(64);
         let actor_public = lower_hex(actor_key.public_key().as_ref());
         database
@@ -2677,8 +2710,42 @@ mod tests {
                 VALUES (?1, ?1, 2, 'editor', 'library_wide', ?2, ?2, ?2, '{}', 1);",
                 params![id, digest]).unwrap();
         }
-        database.execute("UPDATE library_actors SET canonical_enrollment_certificate = ?2 WHERE actor_id = ?1;",
-            params![actor, actor_request.canonical_enrollment_request_json]).unwrap();
+        // Historical handoff verification must see a real authority-signed
+        // enrollment, not the proof-only request used by the older fixture.
+        let initial_certificate =
+            crate::library_core_actor_enrollment::countersign_actor_enrollment_request_bytes(
+                actor_request.canonical_enrollment_request_json.as_bytes(),
+                &source_store,
+            )
+            .unwrap();
+        let initial_enrollment = crate::normalized_enrollment_verifier::verify_actor_enrollment(
+            &initial_certificate,
+            &initial_authority,
+        )
+        .unwrap();
+        database
+            .execute(
+                "UPDATE library_authority_epochs SET authority_key_id=?1 WHERE epoch_id=?2;",
+                params![initial_authority.authority_key_id, epoch],
+            )
+            .unwrap();
+        database.execute("UPDATE library_actors SET canonical_enrollment_certificate=?2,enrollment_operation_id=?3,enrollment_certificate_digest=?4,chain_genesis_digest=?5,accepted_chain_digest=?5 WHERE actor_id=?1;",
+            params![actor,initial_enrollment.canonical_enrollment_certificate_json,initial_enrollment.enrollment_operation_id,
+                initial_enrollment.enrollment_certificate_digest,initial_enrollment.actor_chain_genesis]).unwrap();
+        let offline_certificate =
+            crate::library_core_actor_enrollment::countersign_actor_enrollment_request_bytes(
+                offline_request.canonical_enrollment_request_json.as_bytes(),
+                &source_store,
+            )
+            .unwrap();
+        let offline_enrollment = crate::normalized_enrollment_verifier::verify_actor_enrollment(
+            &offline_certificate,
+            &initial_authority,
+        )
+        .unwrap();
+        database.execute("UPDATE library_actors SET canonical_enrollment_certificate=?2,enrollment_operation_id=?3,enrollment_certificate_digest=?4,chain_genesis_digest=?5,accepted_chain_digest=?5 WHERE actor_id=?1;",
+            params![offline_actor,offline_enrollment.canonical_enrollment_certificate_json,offline_enrollment.enrollment_operation_id,
+                offline_enrollment.enrollment_certificate_digest,offline_enrollment.actor_chain_genesis]).unwrap();
         database
             .execute(
                 "INSERT INTO library_intent_actors VALUES (?1, 1, NULL, ?2);",
@@ -2699,7 +2766,15 @@ mod tests {
                 params![library, epoch, actor, actor_public, digest],
             )
             .unwrap();
-        database.execute("UPDATE library_follower_actor_request SET canonical_enrollment_request = ?1 WHERE singleton_id = 1;", [&actor_request.canonical_enrollment_request_json]).unwrap();
+        database.execute("UPDATE library_follower_actor_request SET canonical_enrollment_request=?1,enrollment_certificate_digest=?2,canonical_enrollment_certificate=?3,actor_chain_genesis=?4 WHERE singleton_id=1;",
+            params![actor_request.canonical_enrollment_request_json,initial_enrollment.enrollment_certificate_digest,
+                initial_enrollment.canonical_enrollment_certificate_json,initial_enrollment.actor_chain_genesis]).unwrap();
+        database
+            .execute(
+                "UPDATE library_intent_actors SET previous_chain_digest=?1 WHERE actor_id=?2;",
+                params![initial_enrollment.actor_chain_genesis, actor],
+            )
+            .unwrap();
         assert_eq!(
             crate::load_normalized_local_actor_id_v2(
                 &database,
@@ -3964,7 +4039,31 @@ mod tests {
                 [],
             )
             .unwrap();
+        consumer.execute("UPDATE library_follower_actor_request SET canonical_enrollment_request=?1,enrollment_request_digest=?2,enrollment_certificate_digest=?3,canonical_enrollment_certificate=?4,actor_chain_genesis=?5 WHERE singleton_id=1;",
+            params![offline_request.canonical_enrollment_request_json,offline_request.enrollment_request_digest,
+                offline_enrollment.enrollment_certificate_digest,offline_enrollment.canonical_enrollment_certificate_json,offline_enrollment.actor_chain_genesis]).unwrap();
+        consumer
+            .execute(
+                "UPDATE library_intent_actors SET previous_chain_digest=?1 WHERE actor_id=?2;",
+                params![offline_enrollment.actor_chain_genesis, offline_actor],
+            )
+            .unwrap();
         consumer.execute_batch("COMMIT;").unwrap();
+        if !recovered_incarnation && !cancelled_consumer {
+            // Keep one genuinely offline consumer and the exact first source
+            // snapshot for the later two-transfer import acceptance below.
+            for (origin, name) in [
+                (&consumer, "missed-consumer.sqlite"),
+                (&source, "missed-first-source.sqlite"),
+            ] {
+                let mut copy =
+                    open_normalized_sqlite_database_v1(&directory.path().join(name), true).unwrap();
+                rusqlite::backup::Backup::new(origin, &mut copy)
+                    .unwrap()
+                    .run_to_completion(64, std::time::Duration::ZERO, None)
+                    .unwrap();
+            }
+        }
         let consumer_cancellation = if cancelled_consumer {
             // Model a prior canceled transfer on this separate consumer. Source
             // and target clocks are independent; the source proof predates its
@@ -5549,6 +5648,16 @@ mod tests {
         adopting
             .execute_batch("DROP TRIGGER fail_source_receipt;")
             .unwrap();
+        // Preserve the authorized source as if it stayed offline through the
+        // target's later transfer. Its original consent must remain unchanged.
+        let delayed_source_path = directory.path().join("delayed-source.sqlite");
+        let mut delayed_source =
+            open_normalized_sqlite_database_v1(&delayed_source_path, true).unwrap();
+        rusqlite::backup::Backup::new(&adopting, &mut delayed_source)
+            .unwrap()
+            .run_to_completion(64, std::time::Duration::ZERO, None)
+            .unwrap();
+        drop(delayed_source);
         let demoted = crate::adopt_source_handoff_after_remote_verification_v1(
             &mut adopting,
             &source_plan,
@@ -6633,6 +6742,353 @@ mod tests {
                     .unwrap(),
                 0
             );
+            // This separate consumer missed both transfers. Download historical
+            // checkpoints without selecting either intermediate state.
+            let mut missed = open_normalized_sqlite_database_v1(
+                &directory.path().join("missed-consumer.sqlite"),
+                false,
+            )
+            .unwrap();
+            let first_source = open_normalized_sqlite_database_v1(
+                &directory.path().join("missed-first-source.sqlite"),
+                false,
+            )
+            .unwrap();
+            let mut delayed_source =
+                open_normalized_sqlite_database_v1(&delayed_source_path, false).unwrap();
+            let original_consent = crate::read_native_handoff_status_v1(&mut delayed_source)
+                .unwrap()
+                .unwrap()
+                .canonical_authorization;
+            stage_replica(&mut delayed_source, &returning, "delayed-source-successor");
+            let delayed_reads = crate::prepare_normalized_predecessor_checkpoint_read_v1(
+                &mut delayed_source,
+                "delayed-source-successor",
+            )
+            .unwrap()
+            .unwrap();
+            let delayed_reads = delayed_reads.as_array().unwrap();
+            assert_eq!(delayed_reads.len(), 2);
+            for (reference, historical) in delayed_reads.iter().zip([&first_source, &leaving]) {
+                let stage_id = reference
+                    .pointer("/pointer/manifest/descriptor/contentDigest")
+                    .unwrap()
+                    .as_str()
+                    .unwrap();
+                stage_replica(&mut delayed_source, historical, stage_id);
+            }
+            let consent_body: Vec<u8> = delayed_source.query_row("SELECT canonical_authorization_body FROM library_local_handoff WHERE singleton_id=1;", [], |r|r.get(0)).unwrap();
+            delayed_source.execute("UPDATE library_local_handoff SET canonical_authorization_body=x'7b7d' WHERE singleton_id=1;", []).unwrap();
+            assert!(crate::source_handoff_verification_plan_v1(
+                &mut delayed_source,
+                id,
+                "delayed-source-successor",
+                &third_bytes
+            )
+            .is_err());
+            delayed_source.execute("UPDATE library_local_handoff SET canonical_authorization_body=?1 WHERE singleton_id=1;", [&consent_body]).unwrap();
+            let delayed_plan = crate::source_handoff_verification_plan_v1(
+                &mut delayed_source,
+                id,
+                "delayed-source-successor",
+                &third_bytes,
+            )
+            .expect("an offline source can verify its authorized successor's later winner");
+            delayed_plan
+                .verify_control_read(&third_bytes, "\"delayed-winner\"")
+                .unwrap();
+            let delayed_pages = delayed_plan.verify_manifest(&third_manifest).unwrap();
+            let mut delayed_verifier = delayed_plan.checkpoint_verifier().unwrap();
+            for (page, bytes) in delayed_pages.iter().zip(&third_pages) {
+                page.verify_stored_bytes(bytes).unwrap();
+                delayed_verifier
+                    .push_manifest_page(flate2::read::MultiGzDecoder::new(bytes.as_slice()), page)
+                    .unwrap();
+            }
+            delayed_verifier.finish().unwrap();
+            let delayed_original =
+                crate::describe_normalized_checkpoint_export_v2(&delayed_source).unwrap();
+            let delayed_history = delayed_reads[1]
+                .pointer("/pointer/manifest/descriptor/contentDigest")
+                .unwrap()
+                .as_str()
+                .unwrap();
+            delayed_source.execute_batch(&format!("CREATE TEMP TRIGGER fail_delayed_cleanup BEFORE DELETE ON library_checkpoint_stages WHEN OLD.stage_id='{delayed_history}' BEGIN SELECT RAISE(ABORT,'delayed cleanup fault'); END;")).unwrap();
+            assert!(crate::adopt_source_handoff_after_remote_verification_v1(
+                &mut delayed_source,
+                &delayed_plan,
+                "\"delayed-winner\"",
+                2400
+            )
+            .is_err());
+            assert_eq!(
+                crate::describe_normalized_checkpoint_export_v2(&delayed_source).unwrap(),
+                delayed_original
+            );
+            assert_eq!(
+                crate::read_native_handoff_status_v1(&mut delayed_source)
+                    .unwrap()
+                    .unwrap()
+                    .phase,
+                crate::HandoffPhaseV1::Authorized
+            );
+            assert_eq!(
+                delayed_source
+                    .query_row(
+                        "SELECT count(*) FROM library_checkpoint_stages WHERE stage_id=?1;",
+                        [delayed_history],
+                        |r| r.get::<_, u64>(0)
+                    )
+                    .unwrap(),
+                1
+            );
+            delayed_source
+                .execute_batch("DROP TRIGGER fail_delayed_cleanup;")
+                .unwrap();
+            let delayed = crate::adopt_source_handoff_after_remote_verification_v1(
+                &mut delayed_source,
+                &delayed_plan,
+                "\"delayed-winner\"",
+                2400,
+            )
+            .unwrap();
+            assert_eq!(delayed.phase, crate::HandoffPhaseV1::Demoted);
+            assert_eq!(
+                delayed.successor_epoch_id.as_deref(),
+                Some(third.authority.epoch_id.as_str())
+            );
+            assert_eq!(delayed.canonical_authorization, original_consent);
+            assert!(
+                crate::require_normalized_provider_handoff_admission_v2(&delayed_source).is_err()
+            );
+            drop(delayed_source);
+            let mut delayed_source =
+                open_normalized_sqlite_database_v1(&delayed_source_path, false).unwrap();
+            assert_eq!(
+                crate::recover_demoted_source_handoff_v1(
+                    &mut delayed_source,
+                    id,
+                    "delayed-source-successor",
+                    &third_bytes
+                )
+                .unwrap(),
+                Some(delayed.clone())
+            );
+            crate::normalized_handoff::require_handoff_follower_edit_admission_v1(&delayed_source)
+                .unwrap();
+            assert_eq!(
+                crate::normalized_source_handoff::source_consumer_incarnation_v1(
+                    &delayed_source,
+                    &library,
+                    &third.authority.epoch_id
+                )
+                .unwrap(),
+                Some(id.to_owned())
+            );
+            {
+                let tx = delayed_source.transaction().unwrap();
+                crate::normalized_source_handoff::retain_demoted_source_for_return(&tx, 2401)
+                    .unwrap();
+                let retained: Vec<u8> = tx.query_row("SELECT canonical_authorization FROM library_local_source_demotions WHERE handoff_id=?1;",[id],|r|r.get(0)).unwrap();
+                assert_eq!(retained, original_consent.as_ref().unwrap().as_bytes());
+                // Probe retention without changing the source lifecycle.
+                tx.rollback().unwrap();
+            }
+            let delayed_actor_bytes =
+                Ed25519KeyPair::generate_pkcs8(&ring::rand::SystemRandom::new()).unwrap();
+            let delayed_actor_store = Store {
+                bytes: RefCell::new(Some(delayed_actor_bytes.as_ref().to_vec())),
+                writes: Cell::new(0),
+            };
+            let delayed_request = crate::prepare_normalized_follower_actor_request_v2(
+                &mut delayed_source,
+                &installation_witness,
+                &delayed_actor_store,
+                2402,
+            )
+            .unwrap();
+            assert_eq!(
+                delayed_request,
+                crate::prepare_normalized_follower_actor_request_v2(
+                    &mut delayed_source,
+                    &installation_witness,
+                    &delayed_actor_store,
+                    2403,
+                )
+                .unwrap()
+            );
+            let delayed_pending = Store::default();
+            assert!(
+                prepare_target_handoff_readiness_v1(
+                    &mut delayed_source,
+                    &delayed_actor_store,
+                    &delayed_pending,
+                    2404,
+                )
+                .is_err(),
+                "later-winner adoption still requires explicit successor enrollment"
+            );
+            let delayed_enrollment =
+                crate::library_core_actor_enrollment::countersign_actor_enrollment_request_bytes(
+                    delayed_request.canonical_enrollment_request_json.as_bytes(),
+                    &retained_old_authority,
+                )
+                .unwrap();
+            crate::install_normalized_follower_actor_enrollment_v2(
+                &mut delayed_source,
+                &delayed_enrollment,
+            )
+            .unwrap();
+            crate::normalized_follower::normalized_follower_mutation_context_v1(&delayed_source)
+                .unwrap();
+            let delayed_readiness = prepare_target_handoff_readiness_v1(
+                &mut delayed_source,
+                &delayed_actor_store,
+                &delayed_pending,
+                2405,
+            )
+            .unwrap();
+            assert_eq!(
+                prepare_target_handoff_readiness_v1(
+                    &mut delayed_source,
+                    &delayed_actor_store,
+                    &delayed_pending,
+                    2406,
+                )
+                .unwrap(),
+                delayed_readiness
+            );
+            assert_eq!(delayed_actor_store.writes.get(), 0);
+            assert!(
+                crate::require_normalized_provider_handoff_admission_v2(&delayed_source).is_err()
+            );
+            let retained: Vec<u8> = delayed_source.query_row(
+                "SELECT canonical_authorization FROM library_local_source_demotions WHERE handoff_id=?1;",
+                [id], |r| r.get(0),
+            ).unwrap();
+            assert_eq!(retained, original_consent.as_ref().unwrap().as_bytes());
+            let original = crate::describe_normalized_checkpoint_export_v2(&missed).unwrap();
+            let original_intent: Vec<u8> = missed.query_row("SELECT canonical_transaction FROM library_intent_transactions WHERE transaction_id='pending';",[],|r|r.get(0)).unwrap();
+            let missed_receipt = stage_replica(&mut missed, &returning, "missed-successor");
+            let reads = crate::prepare_normalized_predecessor_checkpoint_read_v1(
+                &mut missed,
+                "missed-successor",
+            )
+            .unwrap()
+            .unwrap();
+            let reads = reads.as_array().unwrap();
+            assert_eq!(reads.len(), 2);
+            let first_stage = reads[0]
+                .pointer("/pointer/manifest/descriptor/contentDigest")
+                .unwrap()
+                .as_str()
+                .unwrap();
+            let second_stage = reads[1]
+                .pointer("/pointer/manifest/descriptor/contentDigest")
+                .unwrap()
+                .as_str()
+                .unwrap();
+            stage_replica(&mut missed, &first_source, first_stage);
+            assert!(crate::replace_with_normalized_follower_checkpoint_stage_v2(
+                &mut missed,
+                "missed-successor",
+                &missed_receipt
+            )
+            .is_err());
+            assert_eq!(
+                crate::describe_normalized_checkpoint_export_v2(&missed).unwrap(),
+                original
+            );
+            assert_eq!(missed.query_row("SELECT canonical_transaction FROM library_intent_transactions WHERE transaction_id='pending';",[],|r|r.get::<_,Vec<u8>>(0)).unwrap(),original_intent);
+            assert_eq!(
+                missed
+                    .query_row(
+                        "SELECT count(*) FROM library_checkpoint_stages WHERE stage_id=?1;",
+                        [first_stage],
+                        |r| r.get::<_, i64>(0)
+                    )
+                    .unwrap(),
+                1
+            );
+            stage_replica(&mut missed, &first_source, "unrelated-staging");
+            stage_replica(&mut missed, &leaving, second_stage);
+            missed.execute_batch(&format!("CREATE TEMP TRIGGER fail_historical_cleanup BEFORE DELETE ON library_checkpoint_stages WHEN OLD.stage_id='{second_stage}' BEGIN SELECT RAISE(ABORT,'historical cleanup fault'); END;")).unwrap();
+            assert!(crate::replace_with_normalized_follower_checkpoint_stage_v2(
+                &mut missed,
+                "missed-successor",
+                &missed_receipt
+            )
+            .is_err());
+            assert_eq!(
+                crate::describe_normalized_checkpoint_export_v2(&missed).unwrap(),
+                original
+            );
+            assert_eq!(
+                missed
+                    .query_row(
+                        "SELECT count(*) FROM library_checkpoint_stages WHERE stage_id IN (?1,?2);",
+                        rusqlite::params![first_stage, second_stage],
+                        |r| r.get::<_, i64>(0)
+                    )
+                    .unwrap(),
+                2
+            );
+            assert_eq!(missed.query_row("SELECT canonical_transaction FROM library_intent_transactions WHERE transaction_id='pending';",[],|r|r.get::<_,Vec<u8>>(0)).unwrap(),original_intent);
+            missed
+                .execute_batch("DROP TRIGGER fail_historical_cleanup;")
+                .unwrap();
+            crate::replace_with_normalized_follower_checkpoint_stage_v2(
+                &mut missed,
+                "missed-successor",
+                &missed_receipt,
+            )
+            .unwrap();
+            assert_eq!(
+                missed
+                    .query_row(
+                        "SELECT count(*) FROM library_checkpoint_stages WHERE stage_id IN (?1,?2);",
+                        rusqlite::params![first_stage, second_stage],
+                        |r| r.get::<_, i64>(0)
+                    )
+                    .unwrap(),
+                0
+            );
+            assert_eq!(missed.query_row("SELECT count(*) FROM library_checkpoint_stage_records WHERE stage_id IN (?1,?2);",rusqlite::params![first_stage,second_stage],|r|r.get::<_,i64>(0)).unwrap(),0);
+            assert_eq!(missed.query_row("SELECT count(*) FROM library_checkpoint_stages WHERE stage_id='unrelated-staging';",[],|r|r.get::<_,i64>(0)).unwrap(),1);
+            assert_eq!(
+                crate::describe_normalized_checkpoint_export_v2(&missed)
+                    .unwrap()
+                    .authority_epoch,
+                third.authority.epoch_id
+            );
+            assert_eq!(missed.query_row("SELECT authority_epoch_id FROM library_follower_actor_request WHERE singleton_id=1;",[],|r|r.get::<_,String>(0)).unwrap(),original.authority_epoch);
+            assert_eq!(missed.query_row("SELECT canonical_transaction FROM library_intent_transactions WHERE transaction_id='pending';",[],|r|r.get::<_,Vec<u8>>(0)).unwrap(),original_intent);
+            // Provider admission also requires native Primary authority. A
+            // schema-1 consumer has no lifecycle fence until archival begins.
+            assert_eq!(
+                missed
+                    .query_row("SELECT count(*) FROM library_writer_admission;", [], |r| {
+                        r.get::<_, u64>(0)
+                    })
+                    .unwrap(),
+                0
+            );
+            assert!(crate::normalized_primary_mutation_context_v1(&missed).is_err());
+            let missed_archive =
+                crate::archive_consumer_epoch_recovery_v1(&mut missed, &actor_store, 2400).unwrap();
+            assert!(crate::require_normalized_provider_handoff_admission_v2(&missed).is_err());
+            assert_eq!(missed.query_row("SELECT predecessor_epoch_id FROM library_local_recovery_archives WHERE recovery_id=?1;",[&missed_archive],|r|r.get::<_,String>(0)).unwrap(),original.authority_epoch);
+            assert_eq!(
+                missed
+                    .query_row(
+                        "SELECT count(*) FROM library_local_recovery_archives;",
+                        [],
+                        |r| r.get::<_, u64>(0)
+                    )
+                    .unwrap(),
+                1
+            );
+
             // A third installation follows this real second transfer through the
             // complete checkpoint importer, preserving its completed first archive.
             let mut repeated = open_normalized_sqlite_database_v1(

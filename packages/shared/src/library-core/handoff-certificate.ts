@@ -149,7 +149,7 @@ export async function verifyLibraryCoreHandoffCertificateV1(
  * key in the signed readiness proves possession, not local actor enrollment.
  * Callers must still import that predecessor and run ordinary successor admission.
  * This function performs no I/O and grants no selection or writer authority. */
-export async function verifyLibraryCoreHandoffPredecessorCheckpointV1(
+async function verifyPredecessorRead(
   canonicalBytes: Uint8Array,
   predecessor: LibraryCoreHandoffPredecessorV1,
   verifier: { verifySignature(input: LibraryCoreEd25519VerificationInput): boolean | Promise<boolean> },
@@ -173,12 +173,60 @@ export async function verifyLibraryCoreHandoffPredecessorCheckpointV1(
   const control = parseLibraryCoreControlPointerV1(authorization.source_control);
   const pointer = Object.freeze({ ...control, manifest: Object.freeze({ ...control.manifest,
     descriptor: Object.freeze({ ...control.manifest.descriptor }) }) });
-  return Object.freeze({ purpose: "predecessor_checkpoint_read" as const,
+  const reference = Object.freeze({ purpose: "predecessor_checkpoint_read" as const,
     pointer, controlRevision: string(authorization.source_control_revision),
     controlFileId: string(authorization.source_control_file_id),
     checkpointDigest: hex(authorization.final_checkpoint_digest),
     sourceRevision: proof.finalSourceRevision, successorEpochId: proof.epochId,
     authorizationDigest: hex(grant.authorization_digest) });
+  return { reference, proof };
+}
+
+
+/** Authenticate one immutable checkpoint download reference without admitting it. */
+export async function verifyLibraryCoreHandoffPredecessorCheckpointV1(
+  canonicalBytes: Uint8Array,
+  predecessor: LibraryCoreHandoffPredecessorV1,
+  verifier: { verifySignature(input: LibraryCoreEd25519VerificationInput): boolean | Promise<boolean> },
+) {
+  return (await verifyPredecessorRead(canonicalBytes, predecessor, verifier)).reference;
+}
+
+/** Authenticate download references across missed transfers. This is read
+ * permission only: each historical enrollment and checkpoint still needs
+ * verification before the final checkpoint may replace selected state.
+ * Snapshot the whole bounded chain before crypto yields to caller code. */
+export async function verifyLibraryCoreHandoffChainReadsV1(
+  certificates: readonly Uint8Array[],
+  predecessor: LibraryCoreHandoffPredecessorV1,
+  expectedSuccessorEpochId: string,
+  verifier: { verifySignature(input: LibraryCoreEd25519VerificationInput): boolean | Promise<boolean> },
+) {
+  if (!Array.isArray(certificates) || certificates.length < 1 || certificates.length > 32) {
+    throw new Error("handoff read chain must contain between one and 32 certificates");
+  }
+  hex(expectedSuccessorEpochId);
+  let pin = { ...predecessor };
+  const snapshots: Uint8Array[] = [];
+  for (const bytes of certificates) {
+    if (!(bytes instanceof Uint8Array) || bytes.byteLength > bound) {
+      throw new Error("handoff read chain certificate exceeds its bound");
+    }
+    snapshots.push(new Uint8Array(bytes));
+  }
+  const references: Awaited<ReturnType<typeof verifyLibraryCoreHandoffPredecessorCheckpointV1>>[] = [];
+  let successor: Awaited<ReturnType<typeof verifyLibraryCoreHandoffCertificateV1>> | undefined;
+  for (const bytes of snapshots) {
+    const { reference, proof } = await verifyPredecessorRead(bytes, pin, verifier);
+    references.push(reference);
+    successor = proof;
+    pin = { libraryId: proof.libraryId, epochId: proof.epochId, epoch: proof.epoch,
+      certificateDigest: proof.certificateDigest, authorityPublicKey: proof.authorityPublicKey,
+      writerId: proof.writerId };
+  }
+  requireEqual(pin.epochId, expectedSuccessorEpochId);
+  if (!successor) throw new Error("handoff read chain is empty");
+  return Object.freeze({ references: Object.freeze(references), successor });
 }
 
 
@@ -206,4 +254,34 @@ export function parseLibraryCorePredecessorCheckpointReadV1(value: unknown):
   return Object.freeze({ purpose: "predecessor_checkpoint_read" as const, pointer, controlRevision, controlFileId,
     checkpointDigest: hex(input.checkpointDigest), sourceRevision: integer(input.sourceRevision),
     successorEpochId: hex(input.successorEpochId), authorizationDigest: hex(input.authorizationDigest) });
+}
+
+/** Normalize direct and multi-transfer read responses. These are transport
+ * references, never proof that a checkpoint may replace the selected Library. */
+export function parseLibraryCorePredecessorCheckpointReadsV1(value: unknown):
+  readonly NonNullable<ReturnType<typeof parseLibraryCorePredecessorCheckpointReadV1>>[] | null {
+  if (value === null) return null;
+  const inputs = Array.isArray(value) ? value : [value];
+  if (inputs.length < 1 || inputs.length > 32 || Reflect.ownKeys(inputs).length !== inputs.length + 1) {
+    throw new Error("predecessor read chain is outside its bound");
+  }
+  const references: NonNullable<ReturnType<typeof parseLibraryCorePredecessorCheckpointReadV1>>[] = [];
+  const stages = new Set<string>();
+  for (let index = 0; index < inputs.length; index++) {
+    const entry = Object.getOwnPropertyDescriptor(inputs, String(index));
+    if (!entry || !("value" in entry)) throw new Error("predecessor read chain must be dense data");
+    const reference = parseLibraryCorePredecessorCheckpointReadV1(entry.value);
+    if (!reference || reference.pointer.storageEpoch === reference.successorEpochId ||
+        stages.has(reference.pointer.manifest.descriptor.contentDigest)) {
+      throw new Error("predecessor read chain contains an empty or repeated hop");
+    }
+    const previous = references.at(-1);
+    if (previous && (previous.pointer.libraryId !== reference.pointer.libraryId ||
+        previous.successorEpochId !== reference.pointer.storageEpoch || previous.sourceRevision > reference.sourceRevision)) {
+      throw new Error("predecessor read chain is disconnected or regresses its source");
+    }
+    stages.add(reference.pointer.manifest.descriptor.contentDigest);
+    references.push(reference);
+  }
+  return Object.freeze(references);
 }

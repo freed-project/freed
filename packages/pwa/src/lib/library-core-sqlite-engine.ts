@@ -18,7 +18,7 @@ import {
 } from "@freed/shared/library-core";
 import { readPwaConsumerRecoveryPlan, readPwaConsumerRecoveryStatus, preparePwaConsumerRecovery, commitPwaConsumerRecovery } from "./library-core-consumer-recovery";
 import { verifyPwaFollowerActorRequest } from "./library-core-follower-request-proof";
-import { verifyPwaCheckpointSuccessor, requirePwaCheckpointSuccessor, requirePwaPredecessorCheckpointRead, preparePwaPredecessorCheckpointRead, type PwaVerifiedSuccessor } from "./library-core-successor-proof";
+import { describePwaHistoricalVerificationStages, verifyPwaCheckpointSuccessor, requirePwaCheckpointSuccessor, requirePwaPredecessorCheckpointRead, preparePwaHistoricalChainReads, preparePwaPredecessorCheckpointRead, type PwaVerifiedSuccessor } from "./library-core-successor-proof";
 import { readPwaLibraryStorageIdentity } from "./library-core-recovery-schema";
 import type { CAPI, Database, PreparedStatement, SqlValue } from "@sqlite.org/sqlite-wasm";
 import { CONTENT_SIGNAL_KEYS } from "@freed/shared";
@@ -1770,7 +1770,8 @@ export class PwaLibraryCoreSqliteEngine {
 
   async preparePredecessorCheckpointRead(stageId: string) {
     parseLibraryCoreActivateNormalizedCheckpointStageV2({ stageId, replaceExisting: false, followerReceipt: null });
-    return preparePwaPredecessorCheckpointRead(this.#database, stageId, this.#subtle);
+    return await preparePwaHistoricalChainReads(this.#database, stageId, this.#subtle)
+      ?? preparePwaPredecessorCheckpointRead(this.#database, stageId, this.#subtle);
   }
 
   /** Rebuild the proof from durable staging on every attempt. No caller-supplied
@@ -1871,13 +1872,18 @@ export class PwaLibraryCoreSqliteEngine {
         "checkpoint canonical bytes",
       );
       let retainedFollowerTables: string[] = [];
-      onProgress?.(0, expectedRecordCount);
+      const historicalStages = replaceExisting && followerReceipt !== null
+        ? describePwaHistoricalVerificationStages(this.#database,stageId,this.#successorProof) : {recordCount:0,stageIds:[]};
+      const historicalRecords = historicalStages.recordCount;
+      const progressTotal = safeInteger(expectedRecordCount + historicalRecords,"checkpoint total verification records");
+      onProgress?.(0, progressTotal);
       if (replaceExisting) {
         if (followerReceipt !== null) {
           retainedFollowerTables = this.#retainFollowerCheckpointState(
             libraryId, authorityEpoch, sourceRevision, followerReceipt,
             requirePwaCheckpointSuccessor(
               this.#database, stageId, this.#successorProof, followerReceipt.writerActorId,
+              completed => onProgress?.(completed,progressTotal),
             ),
           );
         }
@@ -2064,7 +2070,7 @@ export class PwaLibraryCoreSqliteEngine {
             recordCount % 1_024 === 0 ||
             recordCount === expectedRecordCount
           ) {
-            onProgress?.(recordCount, expectedRecordCount);
+            onProgress?.(historicalRecords + recordCount, progressTotal);
           }
         }
       } finally {
@@ -2251,6 +2257,11 @@ export class PwaLibraryCoreSqliteEngine {
         bind: [stageId],
       });
       projection?.afterReplace();
+      // Delete only inputs admitted by this transaction. Any later failure
+      // rolls these deletions back with the selected checkpoint replacement.
+      for (const historicalStage of historicalStages.stageIds) {
+        this.#database.exec({sql:"DELETE FROM library_checkpoint_stages WHERE stage_id=?1;",bind:[historicalStage]});
+      }
       this.#database.exec("COMMIT;");
       return Object.freeze({
         authorityEpoch,

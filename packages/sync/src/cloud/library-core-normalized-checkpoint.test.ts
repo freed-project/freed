@@ -445,6 +445,10 @@ describe("normalized checkpoint publication", () => {
       })).rejects.toThrow(reason);
       expect(activate).not.toHaveBeenCalled();
     }
+    // Even one predecessor remains unselected for an old source. Native demotion
+    // owns the atomic installation of historical proof and the final winner.
+    await catchUpLibraryCorePredecessorCheckpointV1({ ...catchup, stageOnly: true });
+    expect(activate).not.toHaveBeenCalled();
     await catchUpLibraryCorePredecessorCheckpointV1(catchup);
     expect(activate).toHaveBeenCalledOnce();
     expect(activate).toHaveBeenCalledWith(expect.objectContaining({ stageId: staged.stageId, replaceExisting: true,
@@ -459,5 +463,52 @@ describe("normalized checkpoint publication", () => {
     expect(readImmutable).not.toHaveBeenCalled();
     expect(importedRecords).toEqual(records);
     expect(JSON.stringify(importedRecords)).not.toContain("shell");
+
+    // Runtime signatures are tested by the host suites. This fixture exercises
+    // real immutable wire downloads and idempotent staging across two epochs.
+    adapter.control = { revision: null, bytes: null };
+    const secondEpoch = reference.successorEpochId as LibraryCoreLowercaseHex64;
+    const secondRecords = [createLibraryCoreNormalizedCheckpointRecordV2({ registryKey: "00_checkpoint_header",
+      primaryKey: "checkpoint", payload: { authorityEpoch: secondEpoch, checkpointId: `${libraryId}:${secondEpoch}:8`,
+        createdAtMs: 1001, libraryId, schemaVersion: 1, sourceRevision: 8 } }), ...records.slice(1)];
+    const second = await publishLibraryCoreNormalizedCheckpointV2({ activeTransport: "google_drive_app_data_v1", adapter,
+      descriptor: { format: "freed_normalized_checkpoint_export_v2", protocolVersion: 2, libraryId,
+        authorityEpoch: secondEpoch, writerId, sourceRevision: 8, causalFrontierDigest: frontierDigest,
+        recordCount: secondRecords.length, itemCount: 1 }, expectedControl: { revision: null, pointer: null },
+      generation: 0, records: secondRecords, subtle });
+    if (second.status === "conflict") throw new Error("fixture publication conflicted");
+    const secondDigest = createLibraryCoreNormalizedCheckpointDigestAccumulatorV2();
+    secondRecords.forEach(record => secondDigest.push(record));
+    const secondReference = { ...reference, pointer: second.controlPointer, sourceRevision: 8,
+      checkpointDigest: secondDigest.finish().checkpointDigest, successorEpochId: "9".repeat(64) };
+    const stages = new Map<string, Map<string, typeof records[number]>>();
+    let loseResponse = true;
+    activate.mockClear();
+    const chainInput = { ...catchup, runtime: { ...catchup.runtime,
+      async prepare() { return [reference, secondReference]; },
+      async begin(request: import("@freed/shared/library-core").LibraryCoreBeginNormalizedCheckpointStageV2) {
+        if (!stages.has(request.stageId)) stages.set(request.stageId, new Map());
+        return { stageId: request.stageId, complete: false, expectedRecordCount: request.expectedRecordCount,
+          stagedRecordCount: stages.get(request.stageId)!.size, stagedCanonicalBytes: 0 };
+      },
+      async appendPage(page: { stageId: string; records: readonly typeof records[number][] }) {
+        const stored = stages.get(page.stageId)!;
+        page.records.forEach(record => stored.set(libraryCoreNormalizedCheckpointRecordIdentityV2(record), record));
+        if (page.stageId === second.manifest.descriptor.contentDigest && loseResponse) {
+          loseResponse = false; throw new Error("historical staging response lost");
+        }
+        const digest = createLibraryCoreNormalizedCheckpointDigestAccumulatorV2();
+        stored.forEach(record => digest.push(record));
+        return { stageId: page.stageId, complete: true, expectedRecordCount: records.length,
+          stagedRecordCount: stored.size, stagedCanonicalBytes: digest.finish().canonicalBytes };
+      },
+    } };
+    await expect(catchUpLibraryCorePredecessorCheckpointV1(chainInput)).rejects.toThrow("historical staging response lost");
+    expect(activate).not.toHaveBeenCalled();
+    await catchUpLibraryCorePredecessorCheckpointV1(chainInput);
+    expect(stages.size).toBe(2);
+    expect([...stages.values()].map(stage => stage.size)).toEqual([records.length, secondRecords.length]);
+    expect(activate).not.toHaveBeenCalled();
+
   });
 });

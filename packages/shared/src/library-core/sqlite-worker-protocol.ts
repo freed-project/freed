@@ -959,6 +959,7 @@ export interface LibraryCoreSqliteWorkerStatus {
 export type LibraryCoreSqliteWorkerResult =
   | LibraryCoreNormalizedReplicaAuditV1
   | Awaited<ReturnType<typeof verifyLibraryCoreHandoffPredecessorCheckpointV1>>
+  | readonly Awaited<ReturnType<typeof verifyLibraryCoreHandoffPredecessorCheckpointV1>>[]
   | null
   | LibraryCoreRecoveryReissueReceiptV1
   | LibraryCoreConsumerRecoveryStatusV1
