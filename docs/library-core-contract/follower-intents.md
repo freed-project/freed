@@ -181,6 +181,14 @@ remains visible and an exact result-segment retry resumes the staged operation.
 The overlay is removed inside the successful operation transaction, when an
 exact already-applied operation proof is present, or during same-epoch checkpoint
 activation when a previously verified result is covered by the canonical revision.
+The PWA's local intent `resolved_at` records settlement on the consumer clock,
+using the greater of its first receive time and local enqueue time. The latter
+preserves the local lifecycle constraint after a clock adjustment. The Primary's
+`resolved_at_ms` remains unchanged in the verified canonical result. It is not
+compared with the consumer's unsigned local enqueue time to admit settlement.
+This does not change the signed operation/result timeline checked by canonical
+replication, authority verification, or exact result-sequence admission.
+
 Resuming a locally settled result uses its stored first receive time, not the
 retry's wall clock. Direct and transport-based retries therefore retain the
 same staging identity after an interrupted materialization.

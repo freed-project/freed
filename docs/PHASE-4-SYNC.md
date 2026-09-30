@@ -8,6 +8,13 @@ stable, covered interval with no active provider commands or provider windows.
 Missing or inconsistent evidence is inconclusive. Installed consumer-role and
 multi-device acceptance remain separate requirements.
 
+PWA result settlement keeps the Primary's signed timestamp in the original
+result bytes and records local intent resolution from the consumer's receive
+clock. A result is not rejected merely because the consumer enqueued it after
+the Primary's timestamp. Local resolution cannot precede local enqueue even if
+the consumer clock moves backward. Signature, actor-chain, transaction identity
+and canonical import checks still apply.
+
 PWA checkpoint refresh now preserves pending and published signed edits,
 optimistic fields, actor counters, enrollment and exact transport history in the
 same activation transaction. It requires the verified Library, epoch and writer,
