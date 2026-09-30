@@ -7765,10 +7765,11 @@ describe("PWA Library Core SQLite engine", () => {
     expect(await engine.auditNormalizedReplica({ check() {}, yieldControl: async () => {} })).toEqual(audit);
   });
 
-  it("converges with native recovered-actor signed edits through incremental pages", async () => {
+  it.each([2202, 3300])("converges with native recovered-actor signed edits with consumer enqueue clock %i", async (enqueuedAt) => {
     const fixture = nativeRecoveredBrowser;
     const bytes = (value: string) => Uint8Array.from(new TextEncoder().encode(value));
-    let engine = new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion, { capi: sqlite3.capi, now: () => 2202 });
+    let localNow = enqueuedAt;
+    let engine = new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion, { capi: sqlite3.capi, now: () => localNow });
     engine.initialize();
     const records = fixture.baselineRecords.map(parseLibraryCoreNormalizedCheckpointRecordV2);
     stageRecords(engine, records, "native-recovered-baseline", fixture.baseline);
@@ -7808,16 +7809,25 @@ describe("PWA Library Core SQLite engine", () => {
       if (!page.page.done) {
         expect(database.selectValue("SELECT source_revision FROM library_meta;")).toBe(fixture.baseline.sourceRevision);
         expect(database.selectValue("SELECT count(*) FROM library_optimistic_fields;")).toBe(2);
-        engine = new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion, { capi: sqlite3.capi, now: () => 2202 });
+        engine = new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion, { capi: sqlite3.capi, now: () => localNow });
         engine.initialize();
       }
       await engine.importNormalizedOperationPage(input);
     }
+    // The Primary signed at 2203. A later consumer enqueue and a subsequent
+    // local clock rollback cannot invalidate that exact authority result.
+    localNow = enqueuedAt + (enqueuedAt === 3300 ? -100 : 100);
     for (const result of fixture.results) {
       const input = { canonicalResultBytes: bytes(result.canonicalResultJson) };
       expect(await engine.applyFollowerResult(input)).toMatchObject({ status: "accepted", actorId: fixture.request.actorId });
       await engine.applyFollowerResult(input);
     }
+    expect(database.selectValue("SELECT resolved_at FROM library_intent_transactions;"))
+      .toBe(Math.max(enqueuedAt, localNow));
+    expect(database.selectValue("SELECT received_at FROM library_intent_results;"))
+      .toBe(localNow);
+    expect(Array.from(database.selectValue("SELECT canonical_result FROM library_intent_results;") as Uint8Array))
+      .toEqual(Array.from(bytes(fixture.results[0]!.canonicalResultJson)));
     expect(database.selectValue("SELECT count(*) FROM library_optimistic_fields;")).toBe(0);
     expect(database.exec({ sql: "SELECT read_at FROM library_feed_items ORDER BY global_id;", rowMode: 0, returnValue: "resultRows" })).toEqual([900, 901]);
     const snapshot = engine.describeNormalizedCheckpointExport();

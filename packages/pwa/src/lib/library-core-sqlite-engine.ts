@@ -7919,9 +7919,7 @@ export class PwaLibraryCoreSqliteEngine {
           envelope.intent_epoch_id ||
         !["pending", "published"].includes(
           text(transaction[3], "follower result intent state"),
-        ) ||
-        envelope.resolved_at_ms <
-          safeInteger(transaction[4], "follower result intent creation time")
+        )
       ) {
         throw new Error("follower result does not match its pending intent");
       }
@@ -8083,7 +8081,10 @@ export class PwaLibraryCoreSqliteEngine {
         bind: [
           envelope.transaction_id,
           envelope.status === "rejected" ? "rejected" : "accepted",
-          envelope.resolved_at_ms,
+          // This row tracks the local intent lifecycle. The signed Primary
+          // timestamp remains in canonical_result and is not this clock.
+          // A local clock adjustment must not violate the lifecycle constraint.
+          Math.max(receivedAt, safeInteger(transaction[4], "follower result intent creation time")),
         ],
       });
       this.#database.exec({
