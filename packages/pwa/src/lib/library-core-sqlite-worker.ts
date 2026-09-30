@@ -139,7 +139,7 @@ async function open(): Promise<PwaLibraryCoreSqliteEngine> {
     const next = new PwaLibraryCoreSqliteEngine(
       database,
       sqlite3.version.libVersion,
-      { capi: sqlite3.capi },
+      { capi: sqlite3.capi, persistentAuditTemporaryStorage: pool !== null },
     );
     openingEngine = next;
     next.initialize();
