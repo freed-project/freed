@@ -1148,7 +1148,11 @@ export class PwaLibraryCoreSqliteEngine {
     const afterPrimaryKeyJson = request.after?.primaryKeyJson ?? "";
     if (ownsSnapshot) this.#database.exec("BEGIN;");
     try {
+      // Standalone pages must recheck their caller's descriptor. An audit
+      // already owns one immutable transaction across every page; recounting
+      // the entire checkpoint here would repeat corpus work for each page.
       if (
+        ownsSnapshot &&
         JSON.stringify(this.describeNormalizedCheckpointExport()) !==
         JSON.stringify(snapshot)
       ) {

@@ -7188,7 +7188,10 @@ describe("PWA Library Core SQLite engine", () => {
       yieldControl: async () => { pages += 1; },
     })).rejects.toThrow("AUDIT_INTERRUPTED");
     expect(pages).toBe(2);
+    const describe = vi.spyOn(engine, "describeNormalizedCheckpointExport");
     const audited = await engine.auditNormalizedReplica({ check() {}, yieldControl: async () => {} });
+    expect(describe).toHaveBeenCalledOnce();
+    describe.mockRestore();
     expect(audited.snapshot).toEqual(v.successor);
     expect(audited.checkpointDigest).toBe(digestLibraryCoreNormalizedCheckpointRecordsV2(records(v.successorRecords)));
   });
