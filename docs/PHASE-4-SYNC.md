@@ -8,6 +8,12 @@ stable, covered interval with no active provider commands or provider windows.
 Missing or inconsistent evidence is inconclusive. Installed consumer-role and
 multi-device acceptance remain separate requirements.
 
+PWA convergence audits now stream canonical records through an OPFS-backed sort
+with a bounded cache. Deadline, cancellation and temporary-file failures return no
+receipt and restore the connection settings. Memory-only backends retain bounded
+paging. Synthetic large-Library validation does not replace installed Mac or
+physical iPhone acceptance.
+
 PWA result settlement keeps the Primary's signed timestamp in the original
 result bytes and records local intent resolution from the consumer's receive
 clock. A result is not rejected merely because the consumer enqueued it after
