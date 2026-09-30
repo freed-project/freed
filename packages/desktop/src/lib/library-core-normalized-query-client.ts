@@ -3,6 +3,8 @@ import {
   createLibraryCoreOperationInstanceId,
   createLibraryCoreSqliteQueryWorkerRequest,
   parseLibraryCoreSqliteQueryResponse,
+  parseLibraryCoreNormalizedReplicaAuditV1,
+  type LibraryCoreNormalizedReplicaAuditV1,
   parseLibraryCoreDeviceGraphLayoutMutationResultV1,
   parseLibraryCoreDeviceGraphLayoutMutationV1,
   parseLibraryCoreDeviceContactMutationReceiptV1,
@@ -38,6 +40,24 @@ export async function queryNormalizedLibrary<
   if (validated.kind !== "query") {
     throw new TypeError("normalized Library query validation failed");
   }
+  return invokeControlledLibraryRead("query_normalized_library", { request: validated.query },
+    (response) => parseLibraryCoreSqliteQueryResponse(response, validated.query as T), signal);
+}
+
+/** Explicit local audit; it neither publishes records nor grants authority. */
+export function auditNormalizedLibraryReplica(
+  signal?: AbortSignal,
+): Promise<LibraryCoreNormalizedReplicaAuditV1> {
+  return invokeControlledLibraryRead("audit_normalized_library_replica", {},
+    parseLibraryCoreNormalizedReplicaAuditV1, signal);
+}
+
+async function invokeControlledLibraryRead<T>(
+  command: "query_normalized_library" | "audit_normalized_library_replica",
+  args: Record<string, unknown>,
+  parse: (response: unknown) => T,
+  signal?: AbortSignal,
+): Promise<T> {
   signal?.throwIfAborted();
   let ticket: string | null = null;
   let settled = false;
@@ -54,12 +74,12 @@ export async function queryNormalizedLibrary<
   }) : undefined;
   signal?.addEventListener("abort", cancel, { once: true });
   try {
-    const response = await invoke<unknown>("query_normalized_library", {
-      request: validated.query,
+    const response = await invoke<unknown>(command, {
+      ...args,
       ...(started ? { started } : {}),
     });
     signal?.throwIfAborted();
-    return parseLibraryCoreSqliteQueryResponse(response, validated.query as T);
+    return parse(response);
   } finally {
     settled = true;
     signal?.removeEventListener("abort", cancel);

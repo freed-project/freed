@@ -1540,3 +1540,12 @@ Desktop actor, matching native checkpoints with the local writer label
 authority transfers, large-checkpoint deadline admission, actual crash/restart
 boundaries and installed Mac acceptance remain unverified. Current local work
 still requires full feature validation, fresh provider review and exact-head CI.
+
+### Replica audit evidence, September 30, 2026
+
+Cloud Sync Settings now offers a cancellable Library convergence receipt. Native
+SQLite hashes bounded checkpoint pages on a dedicated read-only connection under
+the existing reader deadline and cancellation registry. The copied receipt includes
+interface build metadata; installed native build identity remains separate.
+Focused native, client and rendered control checks pass. This does not establish
+installed Mac acceptance or readiness to move authority.

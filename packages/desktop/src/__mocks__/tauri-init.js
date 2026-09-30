@@ -1997,6 +1997,16 @@ export function tauriInitScript() {
         return sqliteNormalizedQuery(args);
       },
       cancel_normalized_library_query: () => true,
+      audit_normalized_library_replica: () => ({
+        format: "freed_normalized_replica_audit_v1",
+        checkpointDigest: "d".repeat(64),
+        snapshot: {
+          format: "freed_normalized_checkpoint_export_v2", protocolVersion: 2,
+          libraryId: "a".repeat(64), authorityEpoch: "b".repeat(64),
+          writerId: "6".repeat(64), sourceRevision: 0,
+          causalFrontierDigest: "c".repeat(64), recordCount: 0, itemCount: 0,
+        },
+      }),
       normalized_library_primary_mutation_context: normalizedPrimaryMutationContext,
       normalized_library_follower_mutation_context: normalizedFollowerMutationContext,
       sign_normalized_library_operations: (args) =>

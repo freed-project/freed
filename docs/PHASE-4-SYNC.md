@@ -1095,3 +1095,12 @@ Desktop actor, matching native checkpoints with the local writer label
 authority transfers, large-checkpoint deadline admission, actual crash/restart
 boundaries and installed Mac acceptance remain unverified. Current local work
 still requires full feature validation, fresh provider review and exact-head CI.
+
+### Replica audit evidence, September 30, 2026
+
+Desktop and PWA Settings now expose an explicit canonical replica audit. Its
+receipt binds the existing checkpoint export descriptor and freshly computed
+checkpoint digest from one read snapshot. Compare receipts at the same Library,
+epoch and revision after pending edits settle. Matching counts or a prior import
+receipt alone are not convergence evidence. Installed multi-device acceptance
+and the separate zero-consumer-capture ledger remain required.

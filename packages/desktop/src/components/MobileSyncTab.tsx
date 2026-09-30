@@ -1,3 +1,5 @@
+import { LibraryReplicaAudit } from "@freed/ui/components/settings/LibraryReplicaAudit";
+import { auditNormalizedLibraryReplica } from "../lib/library-core-normalized-query-client";
 /** Google Drive controls for the SQLite Library shared by Desktop and PWA. */
 
 import { describeLibraryFollowerProgress } from "../lib/library-core-follower-status";
@@ -263,6 +265,7 @@ export function MobileSyncTab() {
   return (
     <>
       <LibraryHandoffPanel />
+      <LibraryReplicaAudit key={followerStatus?.authorityEpochId ?? publicationReceipt?.controlPointer.storageEpoch ?? "unselected"} audit={auditNormalizedLibraryReplica} client="desktop" />
       <section id="mobile-sync-section">
         <div className="mb-4 space-y-3">
           <div

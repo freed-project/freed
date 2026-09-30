@@ -196,6 +196,33 @@ describe("PWA SQLite worker response boundary", () => {
     await expect(pending).resolves.toEqual(reference);
   });
 
+  it.each(["abort", "deadline"] as const)("settles an audit %s without retiring other requests", async (mode) => {
+    vi.useFakeTimers();
+    const onUnavailable = vi.fn();
+    const client = new PwaLibraryCoreSqliteClient(onUnavailable);
+    const controller = new AbortController();
+    const audit = client.auditNormalizedReplica(controller.signal);
+    const rejected = expect(audit).rejects.toThrow();
+    const worker = activeWorker();
+    const auditId = requestId(worker);
+    await vi.advanceTimersByTimeAsync(1);
+    const status = client.status();
+    const statusId = requestId(worker);
+    if (mode === "abort") controller.abort();
+    else await vi.advanceTimersByTimeAsync(29_999);
+    await rejected;
+    expect(worker.posted.at(-1)).toMatchObject({
+      kind: "cancel_normalized_replica_audit", auditRequestId: auditId,
+    });
+    expect(worker.terminateCount).toBe(0);
+    expect(onUnavailable).not.toHaveBeenCalled();
+    worker.respond({ ok: true, requestId: statusId, status: validStatus() });
+    await expect(status).resolves.toEqual(validStatus());
+    worker.respond({ ok: true, requestId: auditId, result: { late: true } });
+    expect(worker.terminateCount).toBe(0);
+    client.dispose();
+  });
+
   it("retires the complete client generation when a request times out", async () => {
     vi.useFakeTimers();
     const onUnavailable = vi.fn();

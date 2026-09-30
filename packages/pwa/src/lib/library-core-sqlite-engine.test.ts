@@ -307,7 +307,7 @@ describe("PWA Library Core SQLite engine", () => {
     return value;
   }
 
-  it("exports one descriptor-pinned bounded normalized checkpoint with lossless chunks", () => {
+  it("exports one descriptor-pinned bounded normalized checkpoint with lossless chunks", async () => {
     const engine = new PwaLibraryCoreSqliteEngine(
       database,
       sqlite3.version.libVersion,
@@ -418,6 +418,41 @@ describe("PWA Library Core SQLite engine", () => {
       records.every((record) => !record.registryKey.includes("shell")),
     ).toBe(true);
     expect(reassembleLibraryCoreContentV1(records)).toEqual(chunk);
+
+    // Cross the audit's byte budget before its row limit. The refused next row
+    // must become the first row of the following page, without loss or replay.
+    const extraDigests: string[] = [];
+    for (let index = 1; index <= 15; index += 1) {
+      const extra = chunk.slice(); extra[0] = index;
+      const digest = digestLibraryCoreMediaBlobBytesV1(extra);
+      extraDigests.push(digest);
+      database.exec({sql: `INSERT INTO library_blobs
+        (content_digest,byte_length,chunk_bytes,chunk_count,media_type)
+        VALUES (?,65536,65536,1,'application/octet-stream')`,bind:[digest]});
+      database.exec({sql: `INSERT INTO library_blob_chunks
+        (content_digest,chunk_index,chunk_digest,bytes) VALUES (?,0,?,?)`,bind:[digest,digest,extra]});
+    }
+    const auditSnapshot = engine.describeNormalizedCheckpointExport();
+    const auditRecords: LibraryCoreNormalizedCheckpointRecordV2[] = [];
+    let cursor: ReturnType<PwaLibraryCoreSqliteEngine["exportPinnedNormalizedCheckpointPage"]>["nextCursor"] = null;
+    for (;;) {
+      const page = engine.exportPinnedNormalizedCheckpointPage({snapshot:auditSnapshot,
+        page:{after:cursor,maximumRecords:64,maximumResponseBytes:LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES}});
+      auditRecords.push(...page.records);
+      if (page.done) break;
+      cursor = page.nextCursor;
+    }
+    let auditPages = 0;
+    const audited = await engine.auditNormalizedReplica({check() {},yieldControl:async () => { auditPages++; }});
+    expect(auditSnapshot.recordCount).toBeLessThan(64);
+    expect(auditPages).toBeGreaterThan(1);
+    expect(audited.snapshot).toEqual(auditSnapshot);
+    expect(audited.checkpointDigest).toBe(digestLibraryCoreNormalizedCheckpointRecordsV2(auditRecords));
+    for (const digest of extraDigests) {
+      database.exec({sql:"DELETE FROM library_blob_chunks WHERE content_digest=?",bind:[digest]});
+      database.exec({sql:"DELETE FROM library_blobs WHERE content_digest=?",bind:[digest]});
+    }
+    expect(engine.describeNormalizedCheckpointExport()).toEqual(snapshot);
 
     database.exec({
       sql: `INSERT INTO library_intent_actors
@@ -7180,6 +7215,20 @@ describe("PWA Library Core SQLite engine", () => {
     expect(readImmutable).not.toHaveBeenCalled();
     await engine.verifyNormalizedCheckpointSuccessor(successorActivation);
     expect(engine.activateNormalizedCheckpointStage(successorActivation).authorityEpoch).toBe(v.successor.authorityEpoch);
+    // This native checkpoint spans more than one 64-record audit page.
+    expect(v.successor.recordCount).toBeGreaterThan(64);
+    let pages = 0;
+    await expect(engine.auditNormalizedReplica({
+      check() { if (pages === 2) throw new Error("AUDIT_INTERRUPTED"); },
+      yieldControl: async () => { pages += 1; },
+    })).rejects.toThrow("AUDIT_INTERRUPTED");
+    expect(pages).toBe(2);
+    const describe = vi.spyOn(engine, "describeNormalizedCheckpointExport");
+    const audited = await engine.auditNormalizedReplica({ check() {}, yieldControl: async () => {} });
+    expect(describe).toHaveBeenCalledOnce();
+    describe.mockRestore();
+    expect(audited.snapshot).toEqual(v.successor);
+    expect(audited.checkpointDigest).toBe(digestLibraryCoreNormalizedCheckpointRecordsV2(records(v.successorRecords)));
   });
 
   it("pins a verified direct successor at commit and preserves the old consumer enrollment", async () => {
@@ -7703,6 +7752,17 @@ describe("PWA Library Core SQLite engine", () => {
     }
     expect(records).toHaveLength(fixture.expected.recordCount);
     expect(digestLibraryCoreNormalizedCheckpointRecordsV2(records)).toBe(fixture.expectedCheckpointDigest);
+    const audit = await engine.auditNormalizedReplica({ check() {}, yieldControl: async () => {} });
+    expect(audit.snapshot).toEqual(fixture.expected);
+    expect(audit.checkpointDigest).toBe(fixture.expectedCheckpointDigest);
+    let checkedRecords = 0;
+    await expect(engine.auditNormalizedReplica({
+      check() { if (++checkedRecords === 5) throw new Error("AUDIT_CANCELLED"); },
+      yieldControl: async () => {},
+    })).rejects.toThrow("AUDIT_CANCELLED");
+    expect(checkedRecords).toBe(5);
+    // Cancellation released its snapshot and left the same worker engine usable.
+    expect(await engine.auditNormalizedReplica({ check() {}, yieldControl: async () => {} })).toEqual(audit);
   });
 
   it("converges with native recovered-actor signed edits through incremental pages", async () => {

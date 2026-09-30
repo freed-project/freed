@@ -268,7 +268,10 @@ pub use normalized_recovery_reissue::{
 };
 
 mod normalized_query_control;
-pub use normalized_query_control::{query_normalized_json_with_control_v1, NormalizedQueryControl};
+pub use normalized_query_control::{
+    audit_normalized_replica_with_control_v1, query_normalized_json_with_control_v1,
+    NormalizedQueryControl, NormalizedReplicaAuditV1,
+};
 
 pub use normalized_handoff_cancellation::{
     accept_target_handoff_cancellation_v1, cancel_source_handoff_with_proof_v1,

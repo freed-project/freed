@@ -30,6 +30,31 @@ Keep provider capture on the existing Primary until the explicit transfer test.
    agree and the consumer queued/published counts settle. Record the checkpoint,
    remote revision and actor identity shown in Settings.
 
+## Compare canonical replicas
+
+After sync settles, open **Library convergence receipt** in each client's Cloud
+Sync settings. Choose **Audit this Library**, then **Copy audit receipt**. Keep
+all three receipts with the test timestamps. Compare `libraryId`, `authorityEpoch`,
+`writerId`, `sourceRevision`, `causalFrontierDigest`, `recordCount` and `itemCount`
+inside `audit.snapshot`, plus `audit.checkpointDigest`.
+
+The audit hashes a consistent snapshot of canonical checkpoint records. Pending
+optimistic edits, local recovery archives, caches and provider sessions are not
+part of that digest. Settle consumer intents before comparing receipts. A later
+canonical edit requires new receipts from all clients.
+
+Browser audits start only when the database queue is idle. New Library activity
+interrupts an audit at a bounded page boundary so edits and sync can proceed.
+Retry after activity settles. Cancellation or deadline failure produces no receipt
+and does not establish agreement. Do not disable sync to make divergent receipts
+appear comparable. Audits have a 30-second budget. Large Libraries may reach that
+limit even while idle; a timeout leaves convergence unverified and must not be
+replaced with a matching-count claim.
+
+The copied `interfaceBuild` identifies the loaded interface. Record the installed
+native build separately. These receipts do not prove zero consumer capture, Mac
+OPFS durability or successful host transition.
+
 ## Offline edits and restart
 
 1. Disconnect B and the PWA from the network. Change read, saved, archived and

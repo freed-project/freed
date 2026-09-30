@@ -1,3 +1,4 @@
+import { createLibraryCoreSqliteReplicaAuditWorkerRequest, createLibraryCoreSqliteCancelReplicaAuditWorkerRequest, parseLibraryCoreNormalizedReplicaAuditV1, type LibraryCoreNormalizedReplicaAuditV1 } from "@freed/shared/library-core";
 import {
   parseLibraryCoreReapplyConsumerIntentV1, parseLibraryCoreRecoveryReissueReceiptV1, type LibraryCoreReapplyConsumerIntentV1, type LibraryCoreRecoveryReissueReceiptV1,
   createLibraryCoreConsumerRecoveryWorkerRequest, parseLibraryCoreConsumerRecoveryStatusV1,
@@ -846,6 +847,39 @@ export class PwaLibraryCoreSqliteClient {
     );
   }
 
+  async auditNormalizedReplica(signal?: AbortSignal): Promise<LibraryCoreNormalizedReplicaAuditV1> {
+    signal?.throwIfAborted();
+    let ticket = "";
+    const pending = this.#send((requestId) => {
+      ticket = requestId;
+      return createLibraryCoreSqliteReplicaAuditWorkerRequest(requestId);
+    }, parseLibraryCoreNormalizedReplicaAuditV1);
+    const cancel = () => this.#cancelReplicaAudit(ticket,
+      signal?.reason instanceof Error ? signal.reason : new DOMException("Audit cancelled", "AbortError"));
+    signal?.addEventListener("abort", cancel, { once: true });
+    try {
+      const receipt = await pending;
+      signal?.throwIfAborted();
+      return receipt;
+    } finally {
+      signal?.removeEventListener("abort", cancel);
+    }
+  }
+
+  #cancelReplicaAudit(requestId: string, error: Error): void {
+    const pending = this.#pending.get(requestId);
+    if (!pending || pending.kind !== "audit_normalized_replica") return;
+    this.#pending.delete(requestId);
+    clearTimeout(pending.timeout);
+    pending.reject(error);
+    // This response has no pending promise. Cancellation acknowledges nothing
+    // about durable writes and must never retire their shared worker.
+    try {
+      this.#worker.postMessage(createLibraryCoreSqliteCancelReplicaAuditWorkerRequest(
+        crypto.randomUUID(), requestId));
+    } catch { /* The worker audit retains its own monotonic deadline. */ }
+  }
+
   describeNormalizedCheckpointExport(): Promise<LibraryCoreNormalizedCheckpointExportDescriptorV2> {
     return this.#send(
       (requestId) =>
@@ -914,6 +948,10 @@ export class PwaLibraryCoreSqliteClient {
     const request = createRequest(requestId);
     return new Promise<T>((resolve, reject) => {
       const onTimeout = () => {
+        if (request.kind === "audit_normalized_replica") {
+          this.#cancelReplicaAudit(requestId, new Error("AUDIT_DEADLINE"));
+          return;
+        }
         this.#retireUnavailable(
           new PwaLibraryCoreSqliteWorkerUnavailableError(
             `PWA Library SQLite request timed out (${request.kind})`,
