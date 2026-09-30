@@ -1526,9 +1526,11 @@ The shared coordinator performs no recursive epoch search or new retry loop.
 Cancellation, expired tokens, missing objects and mismatched digests refuse
 activation. A retry after a lost predecessor commit response consults durable
 runtime state. Native fixtures preserve pending signed edits through rollback
-and successful import; browser fixtures import actual native checkpoint records
-and rebuild proof after engine replacement. These fixtures do not establish
-OPFS process-restart durability or installed cross-device acceptance.
+and successful import; the browser fixture downloads and verifies the signed native manifest and 29
+compressed pages through the shared coordinator into real SQLite. A lost response
+after the actual predecessor commit retries from durable state with no second
+download, then admits the successor. These fixtures do not establish OPFS
+process-restart durability or installed cross-device acceptance.
 
 Browser successor refresh resolves the cloud writer from the unique active
 Desktop actor, matching native checkpoints with the local writer label

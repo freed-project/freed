@@ -1,3 +1,4 @@
+import { catchUpLibraryCorePredecessorCheckpointV1 } from "@freed/sync/cloud/library-core";
 import nativeHandoffCatchup from "../../../shared/src/library-core/native-handoff-catchup-vector-v1.json";
 import { preparePwaPredecessorCheckpointRead, requirePwaPredecessorCheckpointRead } from "./library-core-successor-proof";
 import { LIBRARY_CORE_PENDING_PREFERENCE_SCHEMA_SQL, LIBRARY_CORE_PENDING_PREFERENCE_SCHEMA_SHA256, parseLibraryCoreActivateNormalizedCheckpointStageV2, createLibraryCoreShellPreferencesV1, LIBRARY_CORE_SHELL_PREFERENCE_PATHS } from "@freed/shared/library-core";
@@ -7142,7 +7143,6 @@ describe("PWA Library Core SQLite engine", () => {
     expect(database.selectValue("SELECT source_revision FROM library_meta;")).toBe(v.baseline.sourceRevision);
     expect(database.selectValue("SELECT count(*) FROM library_checkpoint_stages;")).toBe(2);
     database.exec({sql:"DELETE FROM library_checkpoint_stages WHERE stage_id=?1;",bind:[activation.stageId]});
-    stageRecords(engine,records(v.predecessorRecords),activation.stageId,v.predecessor);
     // A replacement engine has no in-memory proof from the preparation attempt.
     const resumed = new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion, { capi: sqlite3.capi });
     await expect(resumed.activateVerifiedPredecessorCheckpoint(activation,"x".repeat(256))).rejects.toThrow();
@@ -7150,8 +7150,34 @@ describe("PWA Library Core SQLite engine", () => {
       ...activation.followerReceipt, controlRevision: "untrusted",
     } },"catchup-successor")).rejects.toThrow("receipt differs from signed consent");
     expect(database.selectValue("SELECT source_revision FROM library_meta;")).toBe(v.baseline.sourceRevision);
-    const installed=await resumed.activateVerifiedPredecessorCheckpoint(activation,"catchup-successor");
-    expect(installed.checkpointDigest).toBe(proof!.checkpointDigest);
+    const transport = v.predecessorTransport;
+    const manifest = JSON.parse(transport.manifest);
+    const objects = new Map<string, Uint8Array>([[pointer.manifest.transportObjectId, new TextEncoder().encode(transport.manifest)]]);
+    transport.pagesHex.forEach((hex, index) => objects.set(manifest.pages[index].object.transportObjectId,
+      Uint8Array.from(Buffer.from(hex, "hex"))));
+    const readImmutable = vi.fn(async (reference: { transportObjectId: string }) => {
+      const bytes = objects.get(reference.transportObjectId);
+      if (!bytes) throw new Error("fixture immutable object is missing");
+      return bytes;
+    });
+    const catchup = { adapter: { readImmutable }, subtle: crypto.subtle,
+      successorStageId: "catchup-successor", installedAt: 2401, assertActive: () => {}, runtime: {
+        prepare: (stageId: string) => resumed.preparePredecessorCheckpointRead(stageId),
+        begin: async (request: Parameters<typeof resumed.beginNormalizedCheckpointStage>[0]) => resumed.beginNormalizedCheckpointStage(request),
+        appendPage: async (request: Parameters<typeof resumed.appendNormalizedCheckpointStagePage>[0]) => resumed.appendNormalizedCheckpointStagePage(request),
+        async activate(request: Parameters<typeof resumed.activateVerifiedPredecessorCheckpoint>[0], stageId: string) {
+          const installed = await resumed.activateVerifiedPredecessorCheckpoint(request, stageId);
+          expect(installed.checkpointDigest).toBe(proof!.checkpointDigest);
+          throw new Error("commit response lost");
+        },
+      } };
+    await expect(catchUpLibraryCorePredecessorCheckpointV1(catchup)).rejects.toThrow("commit response lost");
+    expect(readImmutable).toHaveBeenCalledTimes(transport.pagesHex.length + 1);
+    expect(database.selectValue("SELECT checkpoint_digest FROM library_follower_checkpoint_receipt;")).toBe(proof!.checkpointDigest);
+    readImmutable.mockClear();
+    // Durable enrollment readback skips the committed predecessor after response loss.
+    await catchUpLibraryCorePredecessorCheckpointV1(catchup);
+    expect(readImmutable).not.toHaveBeenCalled();
     await engine.verifyNormalizedCheckpointSuccessor(successorActivation);
     expect(engine.activateNormalizedCheckpointStage(successorActivation).authorityEpoch).toBe(v.successor.authorityEpoch);
   });
