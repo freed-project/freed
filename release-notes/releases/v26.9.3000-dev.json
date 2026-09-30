@@ -3,7 +3,7 @@
   "version": "26.9.3000-dev",
   "channel": "dev",
   "dayKey": "26.9.30",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-09-30T05:36:47.466Z",
   "model": "heuristic",
@@ -88,13 +88,20 @@
     ]
   },
   "release": {
-    "deck": "Cooperative Primary handoff and consumer edit recovery and complete headless Library service bootstrap",
+    "deck": "Test cooperative Primary transfer and recovery of offline consumer edits across Freed Desktop and the PWA.",
     "features": [
-      "Cooperative Primary handoff and consumer edit recovery",
-      "Complete headless Library service bootstrap"
+      "Transfer Primary authority through a verified handoff while keeping consumer installations from capturing providers.",
+      "Review archived offline edits and explicitly apply supported edits again with durable protection against duplicate replacements."
     ],
-    "fixes": [],
-    "followUps": []
+    "fixes": [
+      "Catch up through one verified predecessor checkpoint when a consumer reconnects after a transfer.",
+      "Preserve committed recovery state when a response is lost and retry without creating another replacement edit."
+    ],
+    "followUps": [
+      "Installed acceptance with two isolated Freed Desktop installations and the PWA remains outstanding.",
+      "Consumers that missed multiple authority transfers still require further recovery work.",
+      "Headless service delivery and the owner's host transition remain separate from this Desktop test build."
+    ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.9.3000-dev\n\nCooperative Primary handoff and consumer edit recovery and complete headless Library service bootstrap\n\n### Features\n\n- Cooperative Primary handoff and consumer edit recovery\n- Complete headless Library service bootstrap\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.9.3000-dev\n\nTest cooperative Primary transfer and recovery of offline consumer edits across Freed Desktop and the PWA\n\n### Features\n\n- Transfer Primary authority through a verified handoff while keeping consumer installations from capturing providers\n- Review archived offline edits and explicitly apply supported edits again with durable protection against duplicate replacements\n\n### Fixes\n\n- Catch up through one verified predecessor checkpoint when a consumer reconnects after a transfer\n- Preserve committed recovery state when a response is lost and retry without creating another replacement edit\n\n### Follow-ups\n\n- Installed acceptance with two isolated Freed Desktop installations and the PWA remains outstanding\n- Consumers that missed multiple authority transfers still require further recovery work\n- Headless service delivery and the owner's host transition remain separate from this Desktop test build\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
