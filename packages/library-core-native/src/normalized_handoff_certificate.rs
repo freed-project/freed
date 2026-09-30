@@ -277,6 +277,18 @@ fn validate_authorization(
     Ok(())
 }
 
+// Test fixtures reuse the signer without exposing a production bypass around
+// durable source fencing and persisted consent.
+#[cfg(test)]
+pub(crate) fn sign_handoff_authorization_for_test_v1(
+    body: HandoffAuthorizationBodyV1,
+    predecessor: &HandoffPredecessorV1<'_>,
+    enrolled_actor_public_key: &str,
+    key: &Ed25519KeyPair,
+) -> Result<HandoffAuthorizationV1, String> {
+    sign_handoff_authorization_v1(body, predecessor, enrolled_actor_public_key, key)
+}
+
 /// Called only after the exact body and irreversible AUTHORIZED phase commit.
 fn sign_handoff_authorization_v1(
     body: HandoffAuthorizationBodyV1,
