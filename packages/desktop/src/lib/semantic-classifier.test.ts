@@ -94,6 +94,25 @@ async function loadSemanticClassifierModule({
 }
 
 describe("semantic classifier", () => {
+  it.each([true, false])("only restarts classification when its drain is resumable: %s", async (resumable) => {
+    vi.useFakeTimers();
+    const { mod, mockBackfillLibraryContentSignals } = await loadSemanticClassifierModule({ enabled: { current: true } });
+    const { pauseDesktopOperationsForHandoff } = await import("./factory-reset-guard");
+    await expect(mod.stopAndDrain({ resumable: true })).rejects.toThrow("requires the handoff pause");
+    const pause = pauseDesktopOperationsForHandoff();
+    try {
+      await mod.stopAndDrain({ resumable });
+      mod.start({ isEnabled: () => true });
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+      expect(mockBackfillLibraryContentSignals).not.toHaveBeenCalled();
+    } finally {
+      pause.resume();
+    }
+    mod.start({ isEnabled: () => true });
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    expect(mockBackfillLibraryContentSignals).toHaveBeenCalledTimes(resumable ? 1 : 0);
+    mod.stop();
+  });
   afterEach(async () => {
     vi.useRealTimers();
     vi.clearAllMocks();

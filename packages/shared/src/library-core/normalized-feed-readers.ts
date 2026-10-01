@@ -1,9 +1,12 @@
+import { createDefaultPreferences } from "../types.js";
+import { parseLibraryCoreRankingWeightScopeResponseV1 } from "./ranking-weight-scope-contracts.js";
 import { FEED_SIGNAL_FILTER_PRESETS } from "../feed-signal-filters.js";
 import type {
   FeedItem,
   FeedSignalMode,
   RssFeed,
   SavedContentSortMode,
+  WeightPreferences,
 } from "../types.js";
 import {
   LIBRARY_CORE_FEED_BROWSE_PAGE_V3_QUERY_ID,
@@ -23,6 +26,7 @@ import {
 import {
   LIBRARY_CORE_FEED_PAGE_DEFAULT_LIMIT,
   libraryCoreFeedCardToItemV1,
+  type LibraryCoreFeedPageSourceV1,
 } from "./feed-page-contracts.js";
 import {
   LIBRARY_CORE_ITEM_SCAN_MAXIMUM_LIMIT,
@@ -368,8 +372,60 @@ export interface LibraryCorePriorityCandidateV1 {
 }
 
 export interface LibraryCorePriorityCandidateBatchV1 {
+  /** Only keys needed by this candidate batch; absent keys retain ranking defaults. */
+  readonly weights: WeightPreferences;
+  /** Bind scoped weight reads to the same generation and revision as these items. */
+  readonly source: LibraryCoreFeedPageSourceV1;
   readonly items: readonly LibraryCorePriorityCandidateV1[];
   readonly remaining: boolean;
+}
+
+/** Split by encoded bytes as well as key count; valid author IDs can be long. */
+async function readCandidateWeights(
+  runtime: LibraryCoreNormalizedReaderRuntime,
+  items: readonly FeedItem[],
+  source: LibraryCoreFeedPageSourceV1,
+): Promise<WeightPreferences> {
+  const weights = createDefaultPreferences().weights;
+  weights.authors = Object.create(null) as Record<string, number>;
+  weights.platforms = Object.create(null) as Record<string, number>;
+  weights.topics = Object.create(null) as Record<string, number>;
+  const selected = new Map<string, readonly string[]>();
+  const add = (path: readonly string[]) => selected.set(JSON.stringify(path), path);
+  if (items.length) add(["weights", "recency"]);
+  for (const item of items) {
+    add(["weights", "authors", item.author.id]);
+    add(["weights", "platforms", item.platform]);
+    for (const topic of item.topics) add(["weights", "topics", topic]);
+  }
+  const base = { queryId: "ranking_weight_scope_v1" as const, schemaVersion: 1 as const,
+    generationId: source.generationId, sourceRevision: source.projectionRevision };
+  const encoder = new TextEncoder();
+  const emptyBytes = encoder.encode(JSON.stringify({ ...base, paths: [] })).length;
+  let paths: (readonly string[])[] = [];
+  let bytes = emptyBytes;
+  const flush = async () => {
+    if (!paths.length) return;
+    const request = { ...base, paths };
+    const checked = parseLibraryCoreRankingWeightScopeResponseV1(await runtime.query(request), request);
+    if (!checked.ok) throw new Error(checked.error);
+    checked.value.paths.forEach((path, index) => {
+      const value = checked.value.values[index]!;
+      if (value === null) return;
+      if (path[1] === "recency") weights.recency = value;
+      else weights[path[1] as "authors" | "platforms" | "topics"][path[2]!] = value;
+    });
+    paths = []; bytes = emptyBytes;
+  };
+  for (const [encoded, path] of selected) {
+    const size = encoder.encode(encoded).length + (paths.length ? 1 : 0);
+    // Leave response overhead below the wire's 128 KiB aggregate bound.
+    if (paths.length === 64 || bytes + size > 96 * 1024) await flush();
+    paths.push(path); bytes += encoder.encode(encoded).length + (paths.length > 1 ? 1 : 0);
+  }
+  await flush();
+  Object.freeze(weights.authors); Object.freeze(weights.platforms); Object.freeze(weights.topics);
+  return Object.freeze(weights);
 }
 
 /** Read one bounded batch that has not been ranked for this Primary pass. */
@@ -398,7 +454,9 @@ export async function readLibraryCoreNormalizedPriorityCandidateBatchV1(
     schemaVersion: LIBRARY_CORE_ITEM_SCAN_SCHEMA_VERSION,
   });
   const feedItems = itemScanRowsToFeedItems(page.rows);
+  const weights = await readCandidateWeights(runtime, feedItems, page.source);
   return Object.freeze({
+    weights,
     items: Object.freeze(
       page.rows.map((row, index) =>
         Object.freeze({
@@ -408,6 +466,7 @@ export async function readLibraryCoreNormalizedPriorityCandidateBatchV1(
       ),
     ),
     remaining: page.nextCursor !== null,
+    source: page.source,
   });
 }
 

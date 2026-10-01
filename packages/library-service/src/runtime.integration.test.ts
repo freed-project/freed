@@ -327,6 +327,8 @@ async function createHarnessFixture(
       stateRoot,
       admission,
       credential,
+      "",
+      "process-lifecycle-only",
     ],
   };
 }

@@ -336,11 +336,11 @@ continues to fail closed until its service-account named pipe and inherited
 handle contract is complete.
 
 `import-checkpoint` installs the pinned logical source and returns its native
-receipt. The explicit `promote-writer` command requires that exact source control
-pointer and revision, the installation witness, and a fixed request timestamp.
-It retains those inputs before preparing a signed successor epoch. Recovery
-reuses that certificate and verifies the complete committed checkpoint. It
-never adopts an old local database as the cloud head.
+receipt. `promote-writer` now refuses before local or cloud activity with
+`cooperative_handoff_required`. The retired unilateral takeover cannot coexist
+with cooperative Primary fencing. Headless promotion must adopt predecessor-signed
+authorization and verified target activation in its separate delivery. Existing
+private promotion requests remain preserved as recovery evidence.
 
 ### Secrets
 
@@ -603,7 +603,7 @@ review before implementation.
 | 11.4  | Complete    | Add the headless service supervisor, explicit role config, and fail-closed startup                                                                                                                                                                                                                                                                                                                                                 |
 | 11.5 | In Progress | macOS Keychain and Linux versioned sealed-file custody share the existing Drive-only PKCE flow. Linux binds its separate mounted wrapping key and record directory through admitted configuration. Linux system-unit startup and shutdown are proven with synthetic credentials. Complete live account acceptance and the Windows vault adapter. |
 | 11.6  | In Progress | Open final normalized SQLite behind the descriptor-bound sidecar and provide generated bounded checkpoint, atomic pinned export begin, registered query, Primary signing, canonical commit, authority-signed follower enrollment, follower-intent admission, actor state, and result export commands. The installed service now composes one bounded provider-neutral enrollment, intent, and result pass on the existing inbound hook when a transport is injected. The default Drive transport is integrated with authority checks, bounded actor fairness, and staged intent recovery.              |
-| 11.7  | In Progress | Apply exact writer promotion through the generated native sidecar command and bind the shared 15-second revision plus 60-second inbound schedule to native actor and checkpoint identity. The installed macOS service now starts and stops that scheduler with immutable Drive checkpoint publication and durable exact control receipts. Explicit import and promotion now retain exact retry input, verify source and target content, and recheck cloud control before admission. Compiled Linux synthetic proof covers a killed prepared sidecar, lost control response, and replay. Live provider transfer acceptance remains separate.                      |
+| 11.7  | In Progress | Apply exact writer promotion through the generated native sidecar command and bind the shared 15-second revision plus 60-second inbound schedule to native actor and checkpoint identity. The installed macOS service now starts and stops that scheduler with immutable Drive checkpoint publication and durable exact control receipts. Checkpoint import retains exact retry input and verifies content. Unilateral promotion is retired and refuses before activity; cooperative headless promotion and live provider transfer acceptance remain separate.                      |
 | 11.8  | Complete    | Prove actor capability certificates and the frozen transition policy in native SQLite. Phase 6 carries the same proof into PWA SQLite before activation.                                                                                                                                                                                                                                                                           |
 | 11.9  | Complete    | Apply authority-signed actor retirement atomically, return exact replay receipts, and verify the normalized retirement record during native and PWA checkpoint activation                                                                                                                                                                                                                                                          |
 | 11.10 | In Progress | Bind generated local actor protocol 2 to a private macOS and Linux Unix socket with bounded frames, connections, rate, timeout, exact replay, native signed query and intent admission, owned cleanup, and Primary fencing. Complete the Windows service-account named-pipe binding with task 11.14.                                                                                                                               |
@@ -687,3 +687,156 @@ that the Primary is online. Checkpoint revision remains the operation anchor;
 sync events report the verified local canonical revision separately. Native
 settlement and Desktop presentation tests cover these distinctions. Installed
 two-host acceptance remains open.
+
+### Cooperative handoff delivery status, September 18, 2026
+
+The Desktop implementation now has native handoff persistence, source fencing,
+predecessor-signed authorization, target cloud verification before activation,
+and old-consumer intent archives with signature-checked outcome inspection.
+Bounded archive identity pagination uses the shared registered query contract.
+These are implementation and fixture results, not installed handoff acceptance.
+
+Complete archive review and edit recovery, source demotion, repeated transfers,
+PWA successor compatibility and the transfer UI before releasing this workflow.
+Final acceptance still requires two isolated Freed Desktop installations and a
+PWA to converge at the same canonical frontier, with no consumer capture and
+verified crash recovery. Headless service delivery remains separate.
+
+Desktop now exposes read-only archived transaction review through registered
+queries and the existing native dispatcher. Explicit edit recovery, native
+installed transfer acceptance remain open. Desktop reader cancellation and
+30-second budgets now reach native SQLite and archive verification; these
+reader controls do not replace durable transfer cancellation rules.
+
+Desktop now has an explicit Apply again action for complete archived read,
+saved, archive and liked assignment transactions. Native verification and key
+custody precede one atomic replacement/link commit; response-loss retries return
+the stored identity without signing again. Review pins canonical and local
+optimistic revisions. Other edit types still need their original editors.
+Native fault and cross-runtime byte fixtures cover the new boundary; repeated
+transfers, PWA parity, full transfer UI and installed Mac acceptance remain open.
+
+Reopened archive review now shows an existing replacement receipt without
+submitting another mutation. That local receipt remains separate from proof of
+Primary acceptance. Older archive discovery and repeated transfers remain open.
+
+Native consumers can now archive another verified direct successor after a
+completed reenrollment cycle. The prior receipt must exactly match the retained
+actor request. Archive creation and lifecycle replacement share one transaction;
+source, target and unfinished recovery fences remain protected. Fault fixtures
+cover rollback, restart, retained old archive bytes and replacement links.
+Older archive discovery, recovery across older epochs, PWA parity and installed
+Mac acceptance remain unfinished.
+
+Freed Desktop now discovers retained recovery archives through a bounded native
+query and lets the owner select an older archive for transaction review. Pages
+use the archive primary key and bind continuations to the current handoff,
+Library generation and canonical revision. A new archive invalidates the old
+continuation. Displayed counts describe stored edits, not acceptance. Explicit
+reapplication across older transfers and PWA persistence remain unfinished.
+
+Explicit read, saved, archive and liked recovery now accepts older-transfer
+archives under the currently admitted consumer enrollment. Original retries
+retain their first replacement receipt. Recovering a replacement that was later
+archived requires its own review and explicit action. Native fixtures cover
+both paths and preserve per-transaction linkage. Other edit types, PWA parity,
+complete transfer UI and installed host acceptance remain unfinished.
+
+A native editor recovery submission path now validates complete newly signed
+editor transactions and commits them with their archive links. It refuses
+changed targets, incomplete member sets and retroactive linkage of an unrelated
+stored intent. Original-editor UI integration remains unfinished; this path does
+not yet expose recovery for additional edit types to the owner.
+
+Recovery review pagination now accepts independent canonical and local edit
+counters, fixing continuations after offline changes. A changed counter still
+requires a fresh review. Exact editor payload delivery remains unfinished.
+
+Native recovery review now provides opt-in exact original envelopes through
+byte-bounded pages for offline editors. Tests cover cursor-mode isolation and
+large escaped payloads without truncation. Editor UI integration remains open;
+this does not yet add owner-facing recovery for other edit types.
+
+RSS feed-name recovery now opens an offline editor from verified original
+payloads. It shows archived and last-synced names, requires every transaction
+member to be reviewed, and stores revised names only after an explicit action.
+It reuses the existing RSS transaction builder and signer, retaining signed
+bytes through response-loss retries. The native submission atomically links the
+replacement to the archive. Other editor families, PWA parity, complete transfer
+UI and installed Mac acceptance remain unfinished.
+
+Composite annotation recovery now opens an offline editor for complete annotation
+transactions. It preserves item notes, quoted highlights, tags and stored-text
+references while allowing explicit revisions. Last-synced comparison reads only
+the selected item. Submission requires visiting every item and retains signed
+bytes across retries. No URL preview or content fetch occurs. Other edit families,
+PWA recovery, complete handoff UI and installed host acceptance remain open.
+
+Native source adoption now verifies a staged direct successor against the stored
+source consent and bounded remote checkpoint proof, then atomically installs a
+consumer receipt and demotes the old Primary. Offline fixtures cover later
+checkpoint generations, changed-stage refusal, late-write rollback, reopen retry
+and successor enrollment with a retained key and new actor incarnation. Provider
+and canonical writer gates stay closed on the demoted source. Desktop coordination now downloads through the shared staging reader without
+claiming activation, then invokes native verification. A committed demotion retry
+reuses its durable request without another download. The complete transfer UI and
+installed acceptance remain unfinished. Previously promoted
+sources with incompatible retained consumer history remain fenced pending recovery.
+
+The first transfer panel now connects signed readiness and consent exchange,
+source pause and authorization, target staging and activation, and source adoption.
+It also appears on fenced startup and recovers saved phases after restart. Native
+role notifications update the app before services resume. Settings no longer offers
+legacy takeover, and the local-winner conflict shortcut refuses it. Complete
+transfer acceptance remains open, including target cancellation before consent,
+and repeated transfers with retained history.
+The browser restart fixture uses mocked native receipts and is not installed proof.
+
+Saved transfers can now reconnect Google Drive from the fenced startup panel.
+Credentials-only sign-in preserves the handoff pause and starts no ordinary sync.
+Canceling or closing a pending sign-in preserves previous credentials and rejects
+late OAuth results. The owner retries the transfer step after sign-in succeeds.
+
+The remaining direct writer reassignment routes are removed from Desktop and the
+shared native command catalog. Retired sidecar calls fail without database changes.
+Cooperative handoff retains its fenced installer and historical certificate reader.
+This closes the legacy entry points; installed transfer acceptance remains open.
+
+Source cancellation now retains the exact readiness and cancellation time in a
+local ledger, atomically with restored admission. A canceled readiness stays
+retired after restart and after another transfer replaces the current lifecycle.
+Target cancellation still requires a verified source proof exchange; that workflow
+and installed transfer acceptance remain unfinished.
+
+Source cancellation now signs and retains its proof in the admission-restoration
+transaction. Failed key access or proof persistence leaves the source fenced;
+restart retries reuse the stored proof without needing the key. The transfer
+panel exposes the receipt after restart. Target cancellation verification now restores consumer operation only after exact
+native proof and role readback. Same-epoch checkpoint catch-up preserves the proof.
+Fresh preparation retains the pending key and retires the old readiness identity.
+Canceled consumers now follow a verified direct successor while retaining their
+cancellation proof and offline intent bytes. Edits remain fenced until archival
+and explicit reenrollment finish. A successor that reuses locally canceled
+readiness is rejected. Recovered-consumer promotion and installed multi-device
+acceptance remain unfinished.
+
+A settled, reenrolled consumer can prepare as a later handoff target. Native
+preparation verifies its exact committed recovery receipt and current enrollment
+before replacing the completed lifecycle record. Archives and replacement links
+remain intact. Completed recovery lookup uses an indexed Library, epoch and
+receipt-digest key, verifies exact retained request bytes and rejects ambiguity.
+The transfer fence still blocks edits until verified cancellation or activation;
+recovery metadata alone grants no admission. The transfer panel keeps bounded archive discovery and verified review available
+during transfer and after promotion to Primary. These views are read-only;
+Primary reapplication remains unfinished.
+
+Verified target activation archives its complete settled consumer history before
+retiring the live consumer slots. Archive creation, slot retirement and local
+writer admission share one native transaction. A late failure restores the live
+rows and leaves the target fenced. Exact activation retry reuses the committed
+result without creating another archive. Query invalidation sequences remain
+monotonic. Original signed edits and their old enrollment certificate remain preserved.
+When promotion moves the actor record to a new epoch, archive review verifies the
+retained authority-signed enrollment certificate against the historical authority
+before checking the original envelopes. The historical snapshot is read-only and
+cannot grant current edit rights. This does not reapply edits as Primary. Full repeated promotion/demotion acceptance remains pending.

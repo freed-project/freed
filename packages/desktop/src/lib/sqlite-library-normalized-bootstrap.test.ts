@@ -1,5 +1,7 @@
+import catchupVector from "../../../shared/src/library-core/native-handoff-catchup-vector-v1.json";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { FeedItem } from "@freed/shared";
+import { createLibraryCoreNormalizedCheckpointRecordV2, encodeLibraryCoreNormalizedCheckpointRecordV2 } from "@freed/shared/library-core";
 
 const mocks = vi.hoisted(() => ({
   invoke: vi.fn(),
@@ -15,7 +17,10 @@ vi.mock("./library-core-normalized-query-client", () => ({
   queryNormalizedLibrary: mocks.queryNormalizedLibrary,
 }));
 
-const { dispatchSqliteMutation, loadSqliteLibraryState, readSqliteItems } =
+const { dispatchSqliteMutation, loadSqliteLibraryState, readSqliteItems,
+  beginNormalizedLibraryCheckpointExport, readNormalizedLibraryCheckpointPage,
+  prepareNormalizedLibraryPredecessorCheckpointRead, activateNormalizedLibraryPredecessorCheckpoint,
+  readNormalizedLibraryConsumerRecovery, prepareNormalizedLibraryConsumerRecovery, commitNormalizedLibraryConsumerRecovery } =
   await import("./sqlite-library");
 
 function item(): FeedItem {
@@ -36,6 +41,59 @@ describe("Freed Desktop normalized bootstrap projection", () => {
   beforeEach(() => {
     mocks.invoke.mockReset();
     mocks.queryNormalizedLibrary.mockReset();
+  });
+
+  it("keeps the sealed handoff identity on every checkpoint IPC and rejects malformed identities", async () => {
+    const handoffId = "a".repeat(64);
+    const snapshot = {
+      format: "freed_normalized_checkpoint_export_v2", protocolVersion: 2,
+      libraryId: "b".repeat(64), authorityEpoch: "c".repeat(64), writerId: "d".repeat(64),
+      sourceRevision: 7, causalFrontierDigest: "e".repeat(64), recordCount: 1, itemCount: 0,
+    };
+    const record = createLibraryCoreNormalizedCheckpointRecordV2({
+      registryKey: "00_checkpoint_header", primaryKey: "checkpoint",
+      payload: { authorityEpoch: snapshot.authorityEpoch, checkpointId: "fixture", createdAtMs: 1,
+        libraryId: snapshot.libraryId, schemaVersion: 1, sourceRevision: 7 },
+    });
+    mocks.invoke.mockImplementation(async (command: string) => command === "begin_normalized_library_checkpoint_export"
+      ? snapshot : { records: [record], nextCursor: null, done: true,
+        canonicalRecordBytes: encodeLibraryCoreNormalizedCheckpointRecordV2(record).byteLength });
+    const pinned = await beginNormalizedLibraryCheckpointExport(handoffId);
+    await readNormalizedLibraryCheckpointPage({ snapshot: pinned, after: null, handoffId });
+    expect(mocks.invoke).toHaveBeenNthCalledWith(1, "begin_normalized_library_checkpoint_export", { handoffId });
+    expect(mocks.invoke).toHaveBeenNthCalledWith(2, "read_normalized_library_checkpoint_page", expect.objectContaining({ handoffId }));
+    await expect(beginNormalizedLibraryCheckpointExport("invalid")).rejects.toThrow("Invalid handoff identity");
+    await expect(readNormalizedLibraryCheckpointPage({ snapshot: pinned, after: null, handoffId: "invalid" })).rejects.toThrow("Invalid handoff identity");
+    expect(mocks.invoke).toHaveBeenCalledTimes(2);
+    await beginNormalizedLibraryCheckpointExport();
+    expect(mocks.invoke).toHaveBeenLastCalledWith("begin_normalized_library_checkpoint_export");
+  });
+
+  it("bounds native predecessor requests and decodes the shared signed checkpoint reference", async () => {
+    mocks.invoke.mockResolvedValueOnce(catchupVector.expectedReadProof);
+    const proofs = await prepareNormalizedLibraryPredecessorCheckpointRead("successor");
+    expect(proofs).toEqual([catchupVector.expectedReadProof]);
+    const proof = proofs?.[0];
+    expect(mocks.invoke).toHaveBeenLastCalledWith("prepare_normalized_library_predecessor_checkpoint_read", { request: { stageId: "successor" } });
+    if (!proof) throw new Error("missing read reference");
+    const activation = { stageId: "predecessor", replaceExisting: true, followerReceipt: {
+      checkpointGeneration: proof.pointer.generation, writerActorId: proof.pointer.writerId,
+      manifestObjectKey: proof.pointer.manifest.descriptor.objectKey,
+      manifestTransportObjectId: proof.pointer.manifest.transportObjectId,
+      manifestContentDigest: proof.pointer.manifest.descriptor.contentDigest,
+      controlRevision: proof.controlRevision, installedAt: 2400,
+    } };
+    const receipt = { stageId: "predecessor", authorityEpoch: proof.pointer.storageEpoch,
+      libraryId: proof.pointer.libraryId, sourceRevision: proof.sourceRevision, recordCount: 86,
+      canonicalBytes: 1, checkpointDigest: proof.checkpointDigest };
+    mocks.invoke.mockResolvedValueOnce(receipt);
+    await expect(activateNormalizedLibraryPredecessorCheckpoint(activation, "successor")).resolves.toEqual(receipt);
+    expect(mocks.invoke).toHaveBeenLastCalledWith("activate_normalized_library_predecessor_checkpoint", {
+      request: { stageId: "predecessor", successorStageId: "successor", followerReceipt: activation.followerReceipt },
+    });
+    await expect(prepareNormalizedLibraryPredecessorCheckpointRead("x".repeat(256))).rejects.toThrow();
+    await expect(activateNormalizedLibraryPredecessorCheckpoint(activation, "predecessor")).rejects.toThrow();
+    expect(mocks.invoke).toHaveBeenCalledTimes(2);
   });
 
   it("loads only bounded facets and preferences without reading a shell", async () => {
@@ -208,4 +266,19 @@ describe("Freed Desktop normalized bootstrap projection", () => {
       /Normalized SQLite FeedItem mutation context is required/,
     );
   });
+});
+
+it("validates bounded native recovery metadata and sends no renderer clock or witness", async () => {
+  const summary = { recoveryId: "a".repeat(64), libraryId: "b".repeat(64), predecessorEpochId: "c".repeat(64),
+    successorEpochId: "d".repeat(64), state: "prepared", archivedPendingEdits: 4, archivedPublishedEdits: 2 };
+  mocks.invoke.mockResolvedValue(summary);
+  await expect(prepareNormalizedLibraryConsumerRecovery()).resolves.toEqual(summary);
+  expect(mocks.invoke).toHaveBeenLastCalledWith("prepare_normalized_library_consumer_recovery");
+  await expect(commitNormalizedLibraryConsumerRecovery(summary.recoveryId)).resolves.toEqual(summary);
+  expect(mocks.invoke).toHaveBeenLastCalledWith("commit_normalized_library_consumer_recovery", { recoveryId: summary.recoveryId });
+  mocks.invoke.mockResolvedValue({ ...summary, archivedPendingEdits: Number.MAX_SAFE_INTEGER + 1 });
+  await expect(readNormalizedLibraryConsumerRecovery()).rejects.toThrow("Invalid consumer recovery summary");
+  mocks.invoke.mockResolvedValue({ ...summary, unexpected: true });
+  await expect(readNormalizedLibraryConsumerRecovery()).rejects.toThrow("Invalid consumer recovery summary");
+  await expect(commitNormalizedLibraryConsumerRecovery("invalid")).rejects.toThrow("Invalid consumer recovery identity");
 });

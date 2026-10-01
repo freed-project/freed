@@ -1,6 +1,10 @@
+import orderVector from "../../../shared/src/library-core/friend-account-order-vector-v1.json";
 import {
   decodeLibraryCoreCanonicalValue,
+  encodeLibraryCoreCanonicalValue,
+  type LibraryCoreCanonicalValue,
   type LibraryCoreFollowerIntentCommitV1,
+  type LibraryCoreRecoveryIntentReviewResponseV1,
 } from "@freed/shared/library-core";
 import type { Account, Person } from "@freed/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -9,6 +13,9 @@ const mocks = vi.hoisted(() => ({
   commitFollowerIntent: vi.fn(),
   readFollowerMutationContext: vi.fn(),
   signFollowerOperation: vi.fn(),
+  readRecovery: vi.fn(),
+  query: vi.fn(),
+  reapply: vi.fn(),
 }));
 
 vi.mock("./library-core-browser-key-vault", () => ({
@@ -17,10 +24,26 @@ vi.mock("./library-core-browser-key-vault", () => ({
 
 vi.mock("./library-core-sqlite-runtime", () => ({
   commitPwaFollowerIntent: mocks.commitFollowerIntent,
+  queryPwaNormalizedLibrary: mocks.query,
+  reapplyPwaConsumerIntent: mocks.reapply,
   readPwaFollowerMutationContext: mocks.readFollowerMutationContext,
+  readPwaConsumerRecoveryStatus: mocks.readRecovery,
 }));
 
 import {
+  createPwaRecoverySavedUrlAction,
+  createPwaRecoveryAccountAction,
+  createPwaRecoveryPersonAction,
+  createPwaRecoveryFriendAction,
+  createPwaRecoveryAccountLinkAction,
+  createPwaRecoveryAssignmentAction,
+  createPwaRecoveryRssTitleAction,
+  createPwaRecoveryRssUpsertAction,
+  createPwaRecoveryAnnotationAction,
+  createPwaRecoveryRssRemovalAction,
+  createPwaRecoveryItemRemovalAction,
+  createPwaRecoveryAccountRemovalAction,
+  createPwaRecoveryPersonRemovalAction,
   commitPwaLibraryCoreAccountPersonAssignment,
   commitPwaLibraryCoreAccountRemove,
   commitPwaLibraryCoreAccountRemoves,
@@ -82,6 +105,8 @@ function receiptFor(commit: LibraryCoreFollowerIntentCommitV1) {
 
 describe("PWA SQLite follower mutations", () => {
   beforeEach(() => {
+    mocks.query.mockReset(); mocks.reapply.mockReset();
+    mocks.readRecovery.mockResolvedValue({ state: "none" });
     mocks.commitFollowerIntent.mockReset();
     mocks.readFollowerMutationContext.mockReset();
     mocks.signFollowerOperation.mockReset();
@@ -103,6 +128,306 @@ describe("PWA SQLite follower mutations", () => {
     );
   });
 
+  it("keeps replacement bytes after response loss and checks a durable link before signing", async () => {
+    const fixture = (await import("../../../shared/src/library-core/recovery-review-vector-v1.json")).default;
+    const review = { ...fixture.response, nextCursor: null, rows: [0, 1].map(memberIndex => ({ ...fixture.response.rows[0]!, entityId: `rss:item:${memberIndex + 1}`, memberIndex, itemPresent: true })), outcome: { state: "unresolved" } } as unknown as LibraryCoreRecoveryIntentReviewResponseV1;
+    mocks.query.mockResolvedValue(review);
+    mocks.reapply.mockReset();
+    mocks.reapply.mockRejectedValueOnce(new Error("response lost")).mockResolvedValueOnce({ replacementTransactionId: "replacement" });
+    const apply = createPwaRecoveryAssignmentAction(review);
+    await expect(apply()).rejects.toThrow("response lost");
+    expect(mocks.commitFollowerIntent).not.toHaveBeenCalled();
+    const prepared = mocks.reapply.mock.calls[0]![0];
+    const envelopes = decodeCommit(prepared.intent);
+    expect(envelopes.map(row => row.entity_id)).toEqual(review.rows.map(row => row.entityId));
+    expect(envelopes.map(row => row.actor_sequence)).toEqual([4, 5]);
+    expect(envelopes[0]!.transaction_id).not.toBe(review.transactionId);
+    const signatures = mocks.signFollowerOperation.mock.calls.length;
+    await apply();
+    expect(mocks.reapply.mock.calls[1]![0]).toBe(prepared);
+    expect(mocks.signFollowerOperation).toHaveBeenCalledTimes(signatures);
+    expect(mocks.query).toHaveBeenCalledTimes(1);
+    mocks.signFollowerOperation.mockClear(); mocks.readFollowerMutationContext.mockClear();
+    mocks.query.mockResolvedValue({ ...review, source: { ...review.source, projectionRevision: 999 }, replacement: { replacementTransactionId: "durable" } });
+    expect(await createPwaRecoveryAssignmentAction(review)()).toEqual({ replacementTransactionId: "durable" });
+    expect(mocks.signFollowerOperation).not.toHaveBeenCalled();
+    expect(mocks.readFollowerMutationContext).not.toHaveBeenCalled();
+  });
+
+  it("refuses accepted, stale and unsupported whole transactions before signing", async () => {
+    const fixture = (await import("../../../shared/src/library-core/recovery-review-vector-v1.json")).default;
+    const review = { ...fixture.response, nextCursor: null, rows: [0, 1].map(memberIndex => ({ ...fixture.response.rows[0]!, entityId: `rss:item:${memberIndex + 1}`, memberIndex, itemPresent: true })), outcome: { state: "unresolved" } } as unknown as LibraryCoreRecoveryIntentReviewResponseV1;
+    for (const altered of [
+      { ...review, outcome: { state: "confirmed_accepted" } },
+      { ...review, source: { ...review.source, transitionSequence: 99 } },
+      { ...review, rows: review.rows.map((row, index) => index ? { ...row, operationType: "feed_item_annotations_replace" } : row) },
+    ]) {
+      mocks.query.mockResolvedValue(altered);
+      await expect(createPwaRecoveryAssignmentAction(review)()).rejects.toThrow();
+    }
+    expect(mocks.signFollowerOperation).not.toHaveBeenCalled();
+    expect(mocks.commitFollowerIntent).not.toHaveBeenCalled();
+  });
+
+  it("snapshots ordered account links, rechecks people before signing and retries one durable replacement", async () => {
+    const fixture = (await import("../../../shared/src/library-core/recovery-review-vector-v1.json")).default;
+    const review = { ...fixture.response, memberCount: 2, nextCursor: null, outcome: { state: "unresolved" }, rows: [0, 1].map(memberIndex => ({ ...fixture.response.rows[0], memberIndex,
+      entityId: "account:fixed", operationType: "account_person_assignment", itemPresent: null,
+      originalEnvelopeJson: new TextDecoder().decode(encodeLibraryCoreCanonicalValue({ entity_type: "Account", blob_references: [], payload: { assigned_at_ms: 100, person_id: null } })),
+    })) } as unknown as LibraryCoreRecoveryIntentReviewResponseV1;
+    const respond = async (request: { queryId: string; personId?: string }) => request.queryId === "account_detail_v1" ? { source: review.source, account: { id: "account:fixed", personId: null, displayName: "Account" } }
+      : request.queryId === "person_detail_v1" ? { source: review.source, person: { id: request.personId, name: "Chosen" } } : review;
+    mocks.query.mockImplementation(respond);
+    const selected = [{ accountId: "account:fixed", personId: "person:chosen" as string | null }, { accountId: "account:fixed", personId: null }];
+    const action = createPwaRecoveryAccountLinkAction(review, selected);
+    selected[0]!.personId = "person:changed-later";
+    mocks.reapply.mockRejectedValueOnce(new Error("ambiguous")).mockResolvedValueOnce({ replacementTransactionId: "stored" });
+    await expect(action()).rejects.toThrow("ambiguous");
+    const request = mocks.reapply.mock.calls[0]![0];
+    expect(decodeCommit(request.intent).map(e => [e.entity_id, e.payload])).toEqual([
+      ["account:fixed", { assigned_at_ms: expect.any(Number), person_id: "person:chosen" }], ["account:fixed", { assigned_at_ms: expect.any(Number), person_id: null }],
+    ]);
+    mocks.query.mockRejectedValue(new Error("Library changed after signing"));
+    await action();
+    expect(mocks.reapply.mock.calls[1]![0]).toBe(request);
+    expect(mocks.signFollowerOperation).toHaveBeenCalledTimes(2);
+    expect(mocks.commitFollowerIntent).not.toHaveBeenCalled();
+    mocks.signFollowerOperation.mockClear(); mocks.readFollowerMutationContext.mockClear();
+    mocks.query.mockImplementation(async request => request.queryId === "person_detail_v1" ? { source: review.source, person: null } : respond(request));
+    await expect(createPwaRecoveryAccountLinkAction(review, selected)()).rejects.toThrow("selected person");
+    expect(mocks.signFollowerOperation).not.toHaveBeenCalled();
+    expect(mocks.readFollowerMutationContext).not.toHaveBeenCalled();
+    mocks.query.mockResolvedValue({ ...review, replacement: { replacementTransactionId: "already-linked" }, source: { ...review.source, projectionRevision: 999 } });
+    expect(await createPwaRecoveryAccountLinkAction(review, selected)()).toEqual({ replacementTransactionId: "already-linked" });
+    expect(mocks.signFollowerOperation).not.toHaveBeenCalled();
+  });
+
+  it("retains complete ordered Person roots and exact signed bytes after response loss", async () => {
+    const fixture = (await import("../../../shared/src/library-core/recovery-review-vector-v1.json")).default;
+    const person = { id: "person:one", name: "Archived", relationshipStatus: "friend" as const, careLevel: 3 as const, createdAt: 1, updatedAt: 2, tags: ["retained"] };
+    const review = { ...fixture.response, memberCount: 2, nextCursor: null, outcome: { state: "unresolved" }, rows: [0, 1].map(memberIndex => ({ ...fixture.response.rows[0], memberIndex, entityId: person.id, operationType: "person_upsert", personState: "absent", originalEnvelopeJson: new TextDecoder().decode(encodeLibraryCoreCanonicalValue({ entity_type: "Person", blob_references: [], payload: { person } })) })) } as unknown as LibraryCoreRecoveryIntentReviewResponseV1;
+    mocks.query.mockImplementation(async request => request.queryId === "person_root_v1" ? { source: review.source, person: null } : review);
+    mocks.reapply.mockRejectedValueOnce(new Error("ambiguous")).mockResolvedValueOnce({ replacementTransactionId: "stored" });
+    const action = createPwaRecoveryPersonAction(review, [person, { ...person, name: "Second" }]);
+    person.tags.push("late mutation");
+    await expect(action()).rejects.toThrow("ambiguous");
+    const request = mocks.reapply.mock.calls[0]![0];
+    const envelopes = decodeCommit(request.intent);
+    expect(envelopes.map(e => e.entity_id)).toEqual([person.id, person.id]);
+    expect(envelopes.map(e => (e.payload as { person: Person }).person)).toEqual([
+      { ...person, tags: ["retained"], updatedAt: expect.any(Number) },
+      { ...person, name: "Second", tags: ["retained"], updatedAt: expect.any(Number) },
+    ]);
+    mocks.query.mockRejectedValue(new Error("source changed"));
+    await action();
+    expect(mocks.reapply.mock.calls[1]![0]).toBe(request);
+    expect(mocks.signFollowerOperation).toHaveBeenCalledTimes(2);
+    expect(mocks.commitFollowerIntent).not.toHaveBeenCalled();
+  });
+
+  it("retains complete ordered Account roots and exact signed bytes after response loss", async () => {
+    const fixture = (await import("../../../shared/src/library-core/recovery-review-vector-v1.json")).default;
+    const account = { id: "account:one", displayName: "Archived", kind: "social" as const, provider: "x" as const, externalId: "external:one", discoveredFrom: "manual_entry" as const, firstSeenAt: 1, lastSeenAt: 2, createdAt: 1, updatedAt: 2, address: "a".repeat(20000) };
+    const review = { ...fixture.response, memberCount: 2, nextCursor: null, outcome: { state: "unresolved" }, rows: [0, 1].map(memberIndex => ({ ...fixture.response.rows[0], memberIndex, entityId: account.id, operationType: "account_upsert", personState: null, originalEnvelopeJson: new TextDecoder().decode(encodeLibraryCoreCanonicalValue({ entity_type: "Account", blob_references: [], payload: { account } })) })) } as unknown as LibraryCoreRecoveryIntentReviewResponseV1;
+    mocks.query.mockImplementation(async request => request.queryId === "account_root_v1" ? { source: review.source, account: null } : review);
+    mocks.reapply.mockRejectedValueOnce(new Error("ambiguous")).mockResolvedValueOnce({ replacementTransactionId: "stored" });
+    const action = createPwaRecoveryAccountAction(review, [account, { ...account, displayName: "Second" }]);
+    account.displayName = "Changed later";
+    await expect(action()).rejects.toThrow("ambiguous");
+    const request = mocks.reapply.mock.calls[0]![0];
+    const envelopes = decodeCommit(request.intent);
+    expect(envelopes.map(e => e.entity_id)).toEqual([account.id, account.id]);
+    expect(envelopes.map(e => (e.payload as { account: typeof account }).account)).toEqual([
+      { ...account, displayName: "Archived", updatedAt: expect.any(Number) },
+      { ...account, displayName: "Second", updatedAt: expect.any(Number) },
+    ]);
+    mocks.query.mockRejectedValue(new Error("source changed"));
+    await action();
+    expect(mocks.reapply.mock.calls[1]![0]).toBe(request);
+    expect(mocks.signFollowerOperation).toHaveBeenCalledTimes(2);
+    expect(mocks.commitFollowerIntent).not.toHaveBeenCalled();
+    mocks.signFollowerOperation.mockClear(); mocks.readFollowerMutationContext.mockClear();
+    mocks.query.mockImplementation(async request => request.queryId === "account_root_v1" ? { source: review.source, account: null }
+      : request.queryId === "person_detail_v1" ? { source: review.source, person: null } : review);
+    await expect(createPwaRecoveryAccountAction(review, [{ ...account, personId: "person:missing" }, account])()).rejects.toThrow("selected person");
+    expect(mocks.signFollowerOperation).not.toHaveBeenCalled();
+    expect(mocks.readFollowerMutationContext).not.toHaveBeenCalled();
+
+  });
+
+  it("snapshots complete subscription replacements, fixes current history and retries without signing again", async () => {
+    const fixture = (await import("../../../shared/src/library-core/recovery-review-vector-v1.json")).default;
+    const url = "https://example.com/feed.xml";
+    const archived = { url, title: "Archived", enabled: true, trackUnread: false, lastFetched: 1 };
+    const review = { ...fixture.response, memberCount: 2, nextCursor: null, outcome: { state: "unresolved" }, rows: [0, 1].map(memberIndex => ({ ...fixture.response.rows[0], memberIndex,
+      entityId: url, operationType: "rss_feed_upsert", itemPresent: null,
+      personState: null, rssFeedState: null, originalEnvelopeJson: new TextDecoder().decode(encodeLibraryCoreCanonicalValue({ entity_type: "RssFeed", blob_references: [], payload: { feed: archived } })),
+    })) } as unknown as LibraryCoreRecoveryIntentReviewResponseV1;
+    const current = { ...archived, lastFetched: 900, pollInterval: 60, siteUrl: null, imageUrl: null, folder: null, sampleBatchId: null, sampleGeneratedAt: null, sampleGeneratorVersion: null };
+    mocks.query.mockImplementation(async request => request.queryId === "rss_feed_detail_v1" ? { source: review.source, feed: current } : review);
+    mocks.reapply.mockRejectedValueOnce(new Error("ambiguous")).mockResolvedValueOnce({ replacementTransactionId: "stored" });
+    const selected = [{ ...archived, title: "First", enabled: false }, { ...archived, title: "Second", pollInterval: 120 }];
+    const action = createPwaRecoveryRssUpsertAction(review, selected);
+    selected[0]!.title = "Changed later";
+    await expect(action()).rejects.toThrow("ambiguous");
+    const request = mocks.reapply.mock.calls[0]![0];
+    const envelopes = decodeCommit(request.intent);
+    expect(envelopes.map(e => e.entity_id)).toEqual([url, url]);
+    expect(envelopes.map(e => e.payload)).toEqual([
+      { feed: { ...archived, title: "First", enabled: false, lastFetched: 900 } },
+      { feed: { ...archived, title: "Second", pollInterval: 120, lastFetched: 900 } },
+    ]);
+    await action();
+    expect(mocks.reapply.mock.calls[1]![0]).toBe(request);
+    expect(mocks.signFollowerOperation).toHaveBeenCalledTimes(2);
+    expect(mocks.commitFollowerIntent).not.toHaveBeenCalled();
+    const absentReview = { ...review, rows: review.rows.map(row => ({ ...row, personState: null, rssFeedState: "absent" as const })) };
+    mocks.query.mockImplementation(async request => request.queryId === "rss_feed_detail_v1" ? { source: review.source, feed: null } : absentReview);
+    mocks.reapply.mockResolvedValue({ replacementTransactionId: "fresh" });
+    await createPwaRecoveryRssUpsertAction(review, selected)();
+    const fresh = decodeCommit(mocks.reapply.mock.calls[2]![0].intent);
+    expect(fresh).toHaveLength(2);
+    for (const member of fresh) expect((member.payload as { feed: object }).feed).not.toHaveProperty("lastFetched");
+
+  });
+
+  it("recovers a saved URL with a fixed payload and exact response-loss retry, and refuses a stale review", async () => {
+    const fixture = (await import("../../../shared/src/library-core/recovery-review-vector-v1.json")).default;
+    const item = { globalId: "saved:recovery", platform: "saved", contentType: "article", capturedAt: 1, publishedAt: 1,
+      author: { id: "author", handle: "ada", displayName: "Ada" },
+      content: { text: "Original excerpt", mediaUrls: [], mediaTypes: [], linkPreview: { url: "https://example.org/article", title: "Original" } },
+      topics: [], userState: { hidden: false, saved: true, archived: false, tags: [] }, sourceUrl: "https://example.org/article" };
+    const review = { ...fixture.response, memberCount: 1, nextCursor: null, outcome: { state: "unresolved" }, rows: [{ ...fixture.response.rows[0],
+      memberIndex: 0, entityId: item.globalId, operationType: "feed_item_capture_upsert", itemPresent: false, itemState: "absent",
+      originalEnvelopeJson: new TextDecoder().decode(encodeLibraryCoreCanonicalValue({ entity_type: "FeedItem", entity_id: item.globalId, blob_references: [], payload: { item } })),
+    }] } as unknown as LibraryCoreRecoveryIntentReviewResponseV1;
+    mocks.query.mockResolvedValue(review);
+    mocks.reapply.mockRejectedValueOnce(new Error("response lost")).mockResolvedValueOnce({ replacementTransactionId: "stored" });
+    const edits = [{ entityId: item.globalId, title: "Reviewed", description: "Reviewed description" }];
+    const action = createPwaRecoverySavedUrlAction(review, edits);
+    edits[0]!.title = "Changed after click";
+    await expect(action()).rejects.toThrow("response lost");
+    const request = mocks.reapply.mock.calls[0]![0];
+    const envelopes = decodeCommit(request.intent);
+    expect(envelopes).toHaveLength(1);
+    expect(envelopes[0]).toMatchObject({ entity_id: item.globalId, operation_type: "feed_item_capture_upsert", payload: { item: {
+      ...item, content: { ...item.content, linkPreview: { ...item.content.linkPreview, title: "Reviewed", description: "Reviewed description" } },
+    } } });
+    await action();
+    expect(mocks.reapply.mock.calls[1]![0]).toBe(request);
+    expect(mocks.signFollowerOperation).toHaveBeenCalledTimes(1);
+    expect(mocks.commitFollowerIntent).not.toHaveBeenCalled();
+    mocks.query.mockResolvedValue({ ...review, source: { ...review.source, projectionRevision: review.source.projectionRevision + 1 } });
+    await expect(createPwaRecoverySavedUrlAction(review, edits)()).rejects.toThrow(/Library changed/);
+    expect(mocks.signFollowerOperation).toHaveBeenCalledTimes(1);
+    const receipt = { replacementTransactionId: "already-stored" };
+    mocks.query.mockResolvedValue({ ...review, replacement: receipt });
+    await expect(createPwaRecoverySavedUrlAction(review, edits)()).resolves.toEqual(receipt);
+    expect(mocks.signFollowerOperation).toHaveBeenCalledTimes(1);
+    expect(mocks.reapply).toHaveBeenCalledTimes(2);
+  });
+
+  it("stores revised RSS names through recovery and retains exact bytes after ambiguity", async () => {
+    const fixture = (await import("../../../shared/src/library-core/recovery-review-vector-v1.json")).default;
+    const url = "https://example.com/feed.xml";
+    const review = { ...fixture.response, memberCount: 1, nextCursor: null, outcome: { state: "unresolved" }, rows: [{ ...fixture.response.rows[0],
+      entityId: url, operationType: "rss_feed_title_assignment", itemPresent: null,
+      personState: null, rssFeedState: null, originalEnvelopeJson: new TextDecoder().decode(encodeLibraryCoreCanonicalValue({ entity_type: "RssFeed", blob_references: [], payload: { title: "Archived", assigned_at_ms: 1000 } })),
+    }] } as unknown as LibraryCoreRecoveryIntentReviewResponseV1;
+    mocks.query.mockImplementation(async request => request.queryId === "rss_feed_detail_v1" ? { source: review.source, feed: { title: "Last synced" } } : review);
+    mocks.reapply.mockRejectedValueOnce(new Error("ambiguous")).mockResolvedValueOnce({ replacementTransactionId: "stored" });
+    const selected = [{ url, title: " Revised " }];
+    const action = createPwaRecoveryRssTitleAction(review, selected);
+    selected[0]!.title = "Later input must not alter this action";
+    await expect(action()).rejects.toThrow("ambiguous");
+    const request = mocks.reapply.mock.calls[0]![0];
+    expect(decodeCommit(request.intent)[0]).toMatchObject({ operation_type: "rss_feed_title_assignment", entity_id: url, payload: { title: "Revised" } });
+    await action();
+    expect(mocks.reapply.mock.calls[1]![0]).toBe(request);
+    expect(mocks.signFollowerOperation).toHaveBeenCalledOnce();
+    expect(mocks.commitFollowerIntent).not.toHaveBeenCalled();
+  });
+
+  it("signs a revised complete annotation set once, preserving unloaded quotes across retry", async () => {
+    const fixture = (await import("../../../shared/src/library-core/recovery-review-vector-v1.json")).default;
+    const highlights = [{ text: null, textBlobDigest: "b".repeat(64), note: "Original note", createdAt: 500 }];
+    const review = { ...fixture.response, memberCount: 1, nextCursor: null, outcome: { state: "unresolved" }, rows: [{ ...fixture.response.rows[0],
+      entityId: "rss:item:1", operationType: "feed_item_annotations_replace", itemPresent: true,
+      personState: null, rssFeedState: null, originalEnvelopeJson: new TextDecoder().decode(encodeLibraryCoreCanonicalValue({ entity_type: "FeedItem", blob_references: [], payload: { highlights, tags: ["old"], assigned_at_ms: 1000 } })),
+    }] } as unknown as LibraryCoreRecoveryIntentReviewResponseV1;
+    mocks.query.mockResolvedValue(review);
+    mocks.reapply.mockRejectedValueOnce(new Error("ambiguous")).mockResolvedValueOnce({ replacementTransactionId: "stored" });
+    const selected = [{ entityId: "rss:item:1", highlights, tags: ["revised"] }];
+    const action = createPwaRecoveryAnnotationAction(review, selected);
+    highlights[0]!.note = "Later input";
+    await expect(action()).rejects.toThrow("ambiguous");
+    const request = mocks.reapply.mock.calls[0]![0];
+    expect(decodeCommit(request.intent)[0]).toMatchObject({ operation_type: "feed_item_annotations_replace", payload: {
+      highlights: [{ text: null, textBlobDigest: "b".repeat(64), note: "Original note", createdAt: 500 }], tags: ["revised"],
+    } });
+    await action();
+    expect(mocks.reapply.mock.calls[1]![0]).toBe(request);
+    expect(mocks.signFollowerOperation).toHaveBeenCalledOnce(); expect(mocks.commitFollowerIntent).not.toHaveBeenCalled();
+  });
+
+  it("requires deletion confirmation before signing and preserves unsubscribe scope across retry", async () => {
+    const fixture = (await import("../../../shared/src/library-core/recovery-review-vector-v1.json")).default;
+    const url = "https://example.com/feed.xml";
+    const review = { ...fixture.response, memberCount: 1, nextCursor: null, outcome: { state: "unresolved" }, rows: [{ ...fixture.response.rows[0],
+      entityId: url, operationType: "rss_feed_remove_with_items", itemPresent: null,
+      personState: null, rssFeedState: null, originalEnvelopeJson: new TextDecoder().decode(encodeLibraryCoreCanonicalValue({ entity_type: "RssFeed", blob_references: [], payload: { removed_at_ms: 1000 } })),
+    }] } as unknown as LibraryCoreRecoveryIntentReviewResponseV1;
+    mocks.query.mockImplementation(async request => request.queryId === "rss_feed_detail_v1" ? { source: review.source, feed: { title: "Current feed" } } : review);
+    await expect(createPwaRecoveryRssRemovalAction(review, false)()).rejects.toThrow("Confirm deletion");
+    expect(mocks.signFollowerOperation).not.toHaveBeenCalled(); expect(mocks.reapply).not.toHaveBeenCalled();
+    mocks.reapply.mockRejectedValueOnce(new Error("ambiguous")).mockResolvedValueOnce({ replacementTransactionId: "stored" });
+    const apply = createPwaRecoveryRssRemovalAction(review, true);
+    await expect(apply()).rejects.toThrow("ambiguous");
+    const request = mocks.reapply.mock.calls[0]![0];
+    expect(decodeCommit(request.intent)[0]).toMatchObject({ operation_type: "rss_feed_remove_with_items", entity_id: url });
+    expect((decodeCommit(request.intent)[0]!.payload as { removed_at_ms: number }).removed_at_ms).toBeGreaterThan(1000);
+    await apply();
+    expect(mocks.reapply.mock.calls[1]![0]).toBe(request);
+    expect(mocks.signFollowerOperation).toHaveBeenCalledOnce(); expect(mocks.commitFollowerIntent).not.toHaveBeenCalled();
+  });
+
+  it.each(["items", "people", "accounts"])("retains absent and duplicate %s deletion targets and reuses one signed replacement", async mode => {
+    const operation = mode === "accounts" ? "account_remove" : mode === "people" ? "person_remove_and_accounts" : "feed_item_remove";
+    const createAction = mode === "accounts" ? createPwaRecoveryAccountRemovalAction : mode === "people" ? createPwaRecoveryPersonRemovalAction : createPwaRecoveryItemRemovalAction;
+    const fixture = (await import("../../../shared/src/library-core/recovery-review-vector-v1.json")).default;
+    const ids = ["rss:first", "rss:absent", "rss:first"];
+    const review = { ...fixture.response, memberCount: 3, nextCursor: null, outcome: { state: "unresolved" }, rows: ids.map((entityId, memberIndex) => ({
+      ...fixture.response.rows[0], entityId, memberIndex, operationType: operation, itemPresent: memberIndex !== 1,
+      personState: null, rssFeedState: null, originalEnvelopeJson: new TextDecoder().decode(encodeLibraryCoreCanonicalValue({ entity_type: mode === "accounts" ? "Account" : mode === "people" ? "Person" : "FeedItem", blob_references: [], payload: { removed_at_ms: 1000 } })),
+    })) } as unknown as LibraryCoreRecoveryIntentReviewResponseV1;
+    mocks.query.mockImplementation(async request => request.queryId === "account_detail_v1" ? { source: review.source, account: null } : request.queryId === "person_detail_v1" ? { source: review.source, person: null } : review);
+    await expect(createAction(review, false)()).rejects.toThrow("Confirm deletion");
+    expect(mocks.signFollowerOperation).not.toHaveBeenCalled();
+    mocks.reapply.mockRejectedValueOnce(new Error("ambiguous")).mockResolvedValueOnce({ replacementTransactionId: "stored" });
+    const apply = createAction(review, true);
+    await expect(apply()).rejects.toThrow("ambiguous");
+    const request = mocks.reapply.mock.calls[0]![0];
+    const members = decodeCommit(request.intent);
+    expect(members.map(value => value.entity_id)).toEqual(ids);
+    expect(members.every(value => value.operation_type === operation && value.transaction_member_count === 3)).toBe(true);
+    mocks.query.mockRejectedValue(new Error("later queries unavailable"));
+    await apply();
+    expect(mocks.reapply.mock.calls[1]![0]).toBe(request);
+    expect(mocks.signFollowerOperation).toHaveBeenCalledTimes(3);
+    expect(mocks.commitFollowerIntent).not.toHaveBeenCalled();
+  });
+
+  it("uses the committed recovery incarnation and refuses a stale recovery epoch", async () => {
+    const plan = { recoveryId: "7".repeat(64), actorPublicKey: HEX.publicKey,
+      authority: { library_id: HEX.library, epoch_id: HEX.epoch } };
+    mocks.readRecovery.mockResolvedValue({ state: "following", plan });
+    await commitPwaLibraryCoreReadAssignments(["item:1"], 1000);
+    expect(mocks.signFollowerOperation.mock.calls[0]![2]).toBe(plan.recoveryId);
+    mocks.signFollowerOperation.mockClear(); mocks.commitFollowerIntent.mockClear();
+    mocks.readRecovery.mockResolvedValue({ state: "following", plan: { ...plan, authority: { ...plan.authority, epoch_id: "8".repeat(64) } } });
+    await expect(commitPwaLibraryCoreReadAssignments(["item:1"], 1001)).rejects.toThrow(/recovery enrollment changed/);
+    expect(mocks.signFollowerOperation).not.toHaveBeenCalled(); expect(mocks.commitFollowerIntent).not.toHaveBeenCalled();
+  });
   it("constructs one signed SQLite transaction for deduplicated reads", async () => {
     await commitPwaLibraryCoreReadAssignments(
       ["item:1", "item:1", "item:2"],
@@ -465,6 +790,31 @@ describe("PWA SQLite follower mutations", () => {
     ]);
   });
 
+  it("snapshots a whole Friend recovery and retries the same signed request after ambiguity", async () => {
+    const fixture = (await import("../../../shared/src/library-core/recovery-review-vector-v1.json")).default;
+    const person = { id: "person:one", name: "Selected", relationshipStatus: "friend" as const, careLevel: 3 as const, createdAt: 1, updatedAt: 2 };
+    const account = { id: "account:one", personId: person.id, kind: "social" as const, provider: "instagram" as const, externalId: "one", discoveredFrom: "manual_entry" as const, firstSeenAt: 1, lastSeenAt: 2, createdAt: 1, updatedAt: 2 };
+    const review = { ...fixture.response, memberCount: 1, nextCursor: null, outcome: { state: "unresolved" }, rows: [{ ...fixture.response.rows[0], entityId: person.id, operationType: "friend_replace", itemPresent: null, personState: "absent", rssFeedState: null,
+      originalEnvelopeJson: new TextDecoder().decode(encodeLibraryCoreCanonicalValue({ entity_type: "Person", blob_references: [], payload: { accounts: [account], person } })) }] } as unknown as LibraryCoreRecoveryIntentReviewResponseV1;
+    mocks.query.mockImplementation(async request => {
+      if (request.queryId === "person_root_v1") return { source: review.source, person: null };
+      if (request.queryId === "person_account_page_v1") return { source: review.source, rows: [], nextCursor: null };
+      if (request.queryId === "account_root_v1") return { source: review.source, account: null };
+      return review;
+    });
+    mocks.reapply.mockRejectedValueOnce(new Error("ambiguous")).mockResolvedValueOnce({ replacementTransactionId: "stored" });
+    const action = createPwaRecoveryFriendAction(review, person, [account]);
+    person.name = "Changed later"; account.externalId = "Changed later";
+    await expect(action()).rejects.toThrow("ambiguous");
+    const request = mocks.reapply.mock.calls[0]![0];
+    expect(decodeCommit(request.intent)[0]).toMatchObject({ operation_type: "friend_replace", transaction_member_count: 1,
+      payload: { person: { name: "Selected", createdAt: 1 }, accounts: [{ externalId: "one", createdAt: 1 }] } });
+    await action();
+    expect(mocks.reapply.mock.calls[1]![0]).toBe(request);
+    expect(mocks.signFollowerOperation).toHaveBeenCalledOnce();
+    expect(mocks.commitFollowerIntent).not.toHaveBeenCalled();
+  });
+
   it("commits one signed Friend replacement instead of partial Person and Account writes", async () => {
     const person = {
       id: "person:friend",
@@ -486,7 +836,8 @@ describe("PWA SQLite follower mutations", () => {
       createdAt: 1,
       updatedAt: 2,
     } satisfies Account;
-    await commitPwaLibraryCoreFriendReplace(person, [account], 8_000);
+    const inputAccounts = [...orderVector.binaryOrder].reverse().map(id => ({ ...account, id }));
+    await commitPwaLibraryCoreFriendReplace(person, inputAccounts, 8_000);
 
     expect(mocks.signFollowerOperation).toHaveBeenCalledOnce();
     const [envelope] = decodeCommit(
@@ -496,9 +847,65 @@ describe("PWA SQLite follower mutations", () => {
       entity_id: person.id,
       entity_type: "Person",
       operation_type: "friend_replace",
-      payload: { accounts: [account], person },
+      payload: { accounts: orderVector.binaryOrder.map(id => ({ ...account, id })), person },
       transaction_member_count: 1,
     });
+  });
+
+  it("snapshots and encodes fractional preference weights before key access", async () => {
+    const updates = { weights: { topics: { alpha: 0.125 } } };
+    const pending = commitPwaLibraryCorePreferencesPatch(updates as never, 6000);
+    updates.weights.topics.alpha = 0.5;
+    await pending;
+    expect(decodeCommit(mocks.commitFollowerIntent.mock.calls[0]![0])[0]).toMatchObject({
+      operation_type: "preferences_leaf_assignment", payload: { updates: { weights: { topics: { alpha: { bits: "3fc0000000000000", codec: "ieee754_binary64_hex_v1" } } } } },
+    });
+  });
+
+  it("retries one ordered preference replacement without resigning or ordinary enqueue", async () => {
+    const { createPwaRecoveryPreferenceAction } = await import("./library-core-pwa-follower-mutations");
+    const fixture = (await import("../../../shared/src/library-core/recovery-review-vector-v1.json")).default;
+    const patches: { display: Record<string, LibraryCoreCanonicalValue> }[] = [{ display: { reading: {}, showEngagementCounts: false } }, { display: { showEngagementCounts: true } }];
+    const review = { ...fixture.response, memberCount: 2, nextCursor: null, outcome: { state: "unresolved" }, rows: patches.map((updates, index) => ({ ...fixture.response.rows[0], memberIndex: index,
+      entityId: "preferences", operationType: "preferences_leaf_assignment", originalEnvelopeJson: new TextDecoder().decode(encodeLibraryCoreCanonicalValue({ entity_type: "UserPreferences", blob_references: [], payload: { updates } })) })) } as unknown as LibraryCoreRecoveryIntentReviewResponseV1;
+    mocks.query.mockImplementation(async request => request.queryId === "preferences_snapshot_v1" ? { source: review.source, rows: [] } : review);
+    mocks.reapply.mockRejectedValueOnce(new Error("ambiguous")).mockResolvedValueOnce({ replacementTransactionId: "stored" });
+    const action = createPwaRecoveryPreferenceAction(review, patches);
+    patches[0]!.display.showEngagementCounts = true;
+    await expect(action()).rejects.toThrow("ambiguous");
+    const request = mocks.reapply.mock.calls[0]![0];
+    const values = decodeCommit(request.intent);
+    expect(values.map(value => value.payload)).toEqual([{ updates: { display: { reading: {}, showEngagementCounts: false } } }, { updates: { display: { showEngagementCounts: true } } }]);
+    expect(values.map(value => value.transaction_member_index)).toEqual([0, 1]);
+    await action(); expect(mocks.reapply.mock.calls[1]![0]).toBe(request);
+    expect(mocks.signFollowerOperation).toHaveBeenCalledTimes(2);
+    expect(mocks.commitFollowerIntent).not.toHaveBeenCalled();
+    mocks.signFollowerOperation.mockClear();
+    await expect(createPwaRecoveryPreferenceAction(review, [{ display: { showEngagementCounts: false } }, patches[1]])()).rejects.toThrow("without adding or dropping");
+    expect(mocks.signFollowerOperation).not.toHaveBeenCalled();
+    mocks.query.mockResolvedValue({ ...review, replacement: { replacementTransactionId: "existing" } });
+    expect(await createPwaRecoveryPreferenceAction(review, patches)()).toEqual({ replacementTransactionId: "existing" });
+    expect(mocks.signFollowerOperation).not.toHaveBeenCalled();
+  });
+
+  it("preserves historical reach-out times and retries one fresh signed transaction", async () => {
+    const { createPwaRecoveryReachOutAction } = await import("./library-core-pwa-follower-mutations");
+    const fixture = (await import("../../../shared/src/library-core/recovery-review-vector-v1.json")).default;
+    const event = { channel: "email" as const, logged_at_ms: 1000, notes: "Historical" };
+    const review = { ...fixture.response, memberCount: 1, nextCursor: null, outcome: { state: "unresolved" }, rows: [{ ...fixture.response.rows[0], entityId: "person:event", operationType: "person_reach_out_append",
+      originalEnvelopeJson: new TextDecoder().decode(encodeLibraryCoreCanonicalValue({ entity_type: "Person", operation_id: "old:event", blob_references: [], payload: event })) }] } as unknown as LibraryCoreRecoveryIntentReviewResponseV1;
+    mocks.query.mockImplementation(async request => request.queryId === "person_detail_v1" ? { source: review.source, person: { id: "person:event", name: "Current", reachOuts: [] } } : review);
+    mocks.reapply.mockRejectedValueOnce(new Error("ambiguous")).mockResolvedValueOnce({ replacementTransactionId: "stored" });
+    const action = createPwaRecoveryReachOutAction(review, [{ personId: "person:event", originalOperationId: "old:event", archived: event, event }]);
+    event.notes = "Changed later"; event.logged_at_ms = 9999;
+    await expect(action()).rejects.toThrow("ambiguous");
+    const request = mocks.reapply.mock.calls[0]![0];
+    const envelope = decodeCommit(request.intent)[0];
+    expect(envelope).toMatchObject({ operation_type: "person_reach_out_append", payload: { channel: "email", logged_at_ms: 1000, notes: "Historical" } });
+    expect(envelope!.created_at_ms).toBeGreaterThan(1000);
+    await action(); expect(mocks.reapply.mock.calls[1]![0]).toBe(request);
+    expect(mocks.signFollowerOperation).toHaveBeenCalledOnce();
+    expect(mocks.commitFollowerIntent).not.toHaveBeenCalled();
   });
 
   it("commits closed Person relationship mutations without rewriting a shell", async () => {

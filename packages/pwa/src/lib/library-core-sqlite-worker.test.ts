@@ -1,8 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createLibraryCoreSqliteWorkerRequest } from "@freed/shared/library-core";
+import { createLibraryCoreSqliteReplicaAuditWorkerRequest, createLibraryCoreSqliteCancelReplicaAuditWorkerRequest, createLibraryCoreSqliteWorkerRequest, createLibraryCoreSqliteQueryWorkerRequest, createLibraryCoreSqliteActivatePredecessorWorkerRequest, createLibraryCoreSqlitePredecessorReadWorkerRequest } from "@freed/shared/library-core";
 
 const storage = vi.hoisted(() => ({
+  query: vi.fn(),
+  audit: vi.fn(),
+  predecessor: vi.fn(),
+  predecessorRead: vi.fn(),
   memoryOpen: vi.fn(),
+  engineOpen: vi.fn(),
   installOpfs: vi.fn(),
   reconcile: vi.fn(),
   vaultStorage: vi.fn(),
@@ -13,6 +18,11 @@ vi.mock("@sqlite.org/sqlite-wasm", () => ({ default: async () => ({
   installOpfsSAHPoolVfs: storage.installOpfs,
 }) }));
 vi.mock("./library-core-sqlite-engine", () => ({ PwaLibraryCoreSqliteEngine: class {
+  constructor(...args: unknown[]) { storage.engineOpen(...args); }
+  queryWithVerification = storage.query;
+  auditNormalizedReplica = storage.audit;
+  activateVerifiedPredecessorCheckpoint = storage.predecessor;
+  preparePredecessorCheckpointRead = storage.predecessorRead;
   initialize() {}
   status() { return { synthetic: true }; }
 } }));
@@ -25,10 +35,11 @@ describe("demo worker storage isolation", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    storage.audit.mockReset();
     vi.stubEnv("VITE_FREED_DEMO", "0");
     vi.stubEnv("VITE_FREED_PWA_SQLITE_MEMORY_E2E", "0");
   });
-  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
+  afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
   it.each(["released", "occupied", "rejected"])("bounds ownership acquisition when the previous worker is %s", async (outcome) => {
     vi.useFakeTimers();
@@ -96,6 +107,90 @@ describe("demo worker storage isolation", () => {
     expect(storage.memoryOpen).toHaveBeenCalledOnce();
   });
 
+  it.each(["cancel", "deadline", "product-work"] as const)(
+    "settles an audit on %s without stopping later worker commands", async (mode) => {
+      let now = 100;
+      vi.spyOn(performance, "now").mockImplementation(() => now);
+      vi.stubGlobal("navigator", {});
+      vi.stubGlobal("location", new URL("https://demo.freed.wtf/"));
+      vi.stubGlobal("name", "freed-library-core-sqlite-demo");
+      vi.stubGlobal("onmessage", null);
+      const replies: { requestId: string; ok: boolean; message?: string }[] = [];
+      vi.stubGlobal("postMessage", (reply: typeof replies[number]) => replies.push(reply));
+      let resume!: () => void;
+      const held = new Promise<void>((resolve) => { resume = resolve; });
+      storage.audit.mockImplementationOnce(async (control) => {
+        await held;
+        control.check();
+        throw new Error("audit should have stopped");
+      });
+      await import("./library-core-sqlite-worker");
+      const send = (data: unknown) => (globalThis.onmessage as unknown as (event: MessageEvent) => void)({
+        data, isTrusted: true, source: null, origin: "https://demo.freed.wtf",
+      } as MessageEvent);
+      send(createLibraryCoreSqliteWorkerRequest("open", "open"));
+      // A diagnostic never waits behind another operation, including startup.
+      send(createLibraryCoreSqliteReplicaAuditWorkerRequest("busy-audit"));
+      expect(replies.at(-1)).toMatchObject({ requestId: "busy-audit", ok: false, message: expect.stringContaining("Library is busy") });
+      await vi.waitFor(() => expect(replies.some(reply => reply.requestId === "open")).toBe(true));
+      send(createLibraryCoreSqliteReplicaAuditWorkerRequest("audit"));
+      await vi.waitFor(() => expect(storage.audit).toHaveBeenCalledOnce());
+      send(createLibraryCoreSqliteReplicaAuditWorkerRequest("second-audit"));
+      expect(replies.at(-1)).toMatchObject({ requestId: "second-audit", ok: false, message: expect.stringContaining("Library is busy") });
+      if (mode === "deadline") now += 30_001;
+      else if (mode === "cancel") {
+        send(createLibraryCoreSqliteCancelReplicaAuditWorkerRequest("cancel", "audit"));
+        // This reply precedes release of the database queue.
+        expect(replies.at(-1)).toMatchObject({ requestId: "cancel", ok: true });
+      } else {
+        send(createLibraryCoreSqliteWorkerRequest("status", "after-audit"));
+        expect(replies.some(reply => reply.requestId === "after-audit")).toBe(false);
+      }
+      resume();
+      await vi.waitFor(() => expect(replies.some(reply => reply.requestId === "audit")).toBe(true));
+      expect(replies.find(reply => reply.requestId === "audit")).toMatchObject({
+        ok: false, message: mode === "deadline" ? "AUDIT_DEADLINE" : mode === "cancel" ? "AUDIT_CANCELLED"
+          : "Replica audit interrupted by Library activity. Retry after sync finishes.",
+      });
+      if (mode !== "product-work") send(createLibraryCoreSqliteWorkerRequest("status", "after-audit"));
+      await vi.waitFor(() => expect(replies.at(-1)).toMatchObject({ requestId: "after-audit", ok: true }));
+      expect(storage.audit).toHaveBeenCalledOnce();
+    });
+
+  it.each(["review", "predecessor", "predecessor read"] as const)("holds later commands behind asynchronous %s and releases them after verification failure", async (operation) => {
+    vi.stubGlobal("navigator", {});
+    vi.stubGlobal("location", new URL("https://demo.freed.wtf/"));
+    vi.stubGlobal("name", "freed-library-core-sqlite-demo");
+    vi.stubGlobal("onmessage", null);
+    const replies: { requestId: string; ok: boolean }[] = [];
+    vi.stubGlobal("postMessage", (reply: { requestId: string; ok: boolean }) => replies.push(reply));
+    let reject!: (error: Error) => void;
+    const verification = operation === "review" ? storage.query : operation === "predecessor" ? storage.predecessor : storage.predecessorRead;
+    verification.mockImplementationOnce(() => new Promise((_resolve, fail) => { reject = fail; }));
+    await import("./library-core-sqlite-worker");
+    const send = (data: unknown) => (globalThis.onmessage as unknown as (event: MessageEvent) => void)({
+      data, isTrusted: true, source: null, origin: "https://demo.freed.wtf",
+    } as MessageEvent);
+    send(createLibraryCoreSqliteWorkerRequest("open", "open"));
+    send(operation === "review" ? createLibraryCoreSqliteQueryWorkerRequest("review", { queryId: "recovery_intent_review_v1", schemaVersion: 1,
+      recoveryId: "a".repeat(64), transactionId: "preserved-edit", cursor: null, limit: 1,
+      cancellationId: "review-cancel", readerSessionId: "review-reader" }) :
+      operation === "predecessor read" ? createLibraryCoreSqlitePredecessorReadWorkerRequest("review", "successor") :
+      createLibraryCoreSqliteActivatePredecessorWorkerRequest("review", {
+        stageId: "predecessor", replaceExisting: true, followerReceipt: {
+          checkpointGeneration: 1, controlRevision: "revision", installedAt: 2400,
+          manifestContentDigest: "a".repeat(64) as never, manifestObjectKey: "manifest",
+          manifestTransportObjectId: "object", writerActorId: "writer",
+        },
+      }, "successor"));
+    send(createLibraryCoreSqliteWorkerRequest("status", "after-review"));
+    await vi.waitFor(() => expect(verification).toHaveBeenCalledOnce());
+    expect(replies.map(reply => reply.requestId)).toEqual(["open"]);
+    reject(new Error("signature rejected"));
+    await vi.waitFor(() => expect(replies).toHaveLength(3));
+    expect(replies).toMatchObject([{ requestId: "open", ok: true }, { requestId: "review", ok: false }, { requestId: "after-review", ok: true }]);
+  });
+
   it.each([
     ["demo.freed.wtf", "freed-library-core-sqlite-demo", true],
     ["preview.vercel.app", "freed-library-core-sqlite-demo", true],
@@ -122,6 +217,8 @@ describe("demo worker storage isolation", () => {
     if (disposable) {
       expect(lockRequest).not.toHaveBeenCalled();
       expect(storage.memoryOpen).toHaveBeenCalledExactlyOnceWith(":memory:", "c");
+      expect(storage.engineOpen).toHaveBeenCalledWith(expect.anything(), "test",
+        expect.objectContaining({ persistentAuditTemporaryStorage: false }));
       expect(storage.vaultStorage).toHaveBeenCalledWith(expect.objectContaining({
         read: expect.any(Function), create: expect.any(Function),
       }));

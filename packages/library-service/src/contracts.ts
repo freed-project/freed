@@ -23,6 +23,7 @@ export const LIBRARY_SERVICE_FAILURE_CODES = Object.freeze([
   "acl_probe_malformed",
   "acl_probe_unavailable",
   "bound_input_changed",
+  "cooperative_handoff_required",
   "config_invalid",
   "config_missing",
   "config_not_private",

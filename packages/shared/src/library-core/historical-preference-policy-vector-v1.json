@@ -1,0 +1,288 @@
+[
+  {
+    "name": "historical unsupported display field",
+    "updates": {
+      "display": {
+        "markReadOnScroll": false
+      }
+    },
+    "supported": true
+  },
+  {
+    "name": "historical null section",
+    "updates": {
+      "display": null
+    },
+    "supported": true
+  },
+  {
+    "name": "historical array section",
+    "updates": {
+      "display": [
+        false
+      ]
+    },
+    "supported": true
+  },
+  {
+    "name": "unknown top level",
+    "updates": {
+      "unknown": true
+    },
+    "supported": false
+  },
+  {
+    "name": "empty patch",
+    "updates": {},
+    "supported": false
+  },
+  {
+    "name": "historical section weights",
+    "updates": {
+      "weights": {
+        "oldField": true
+      }
+    },
+    "supported": true
+  },
+  {
+    "name": "historical section ulysses",
+    "updates": {
+      "ulysses": {
+        "oldField": true
+      }
+    },
+    "supported": true
+  },
+  {
+    "name": "historical section display",
+    "updates": {
+      "display": {
+        "oldField": true
+      }
+    },
+    "supported": true
+  },
+  {
+    "name": "historical section xCapture",
+    "updates": {
+      "xCapture": {
+        "oldField": true
+      }
+    },
+    "supported": true
+  },
+  {
+    "name": "historical section fbCapture",
+    "updates": {
+      "fbCapture": {
+        "oldField": true
+      }
+    },
+    "supported": true
+  },
+  {
+    "name": "historical section friendSuggestions",
+    "updates": {
+      "friendSuggestions": {
+        "oldField": true
+      }
+    },
+    "supported": true
+  },
+  {
+    "name": "historical section ai",
+    "updates": {
+      "ai": {
+        "oldField": true
+      }
+    },
+    "supported": true
+  },
+  {
+    "name": "historical section storyWall",
+    "updates": {
+      "storyWall": {
+        "oldField": true
+      }
+    },
+    "supported": true
+  },
+  {
+    "name": "device local display.themeId",
+    "updates": {
+      "display": {
+        "themeId": null
+      }
+    },
+    "supported": false
+  },
+  {
+    "name": "device local display.sidebarWidth",
+    "updates": {
+      "display": {
+        "sidebarWidth": null
+      }
+    },
+    "supported": false
+  },
+  {
+    "name": "device local display.sidebarMode",
+    "updates": {
+      "display": {
+        "sidebarMode": null
+      }
+    },
+    "supported": false
+  },
+  {
+    "name": "device local display.friendsSidebarWidth",
+    "updates": {
+      "display": {
+        "friendsSidebarWidth": null
+      }
+    },
+    "supported": false
+  },
+  {
+    "name": "device local display.friendsSidebarOpen",
+    "updates": {
+      "display": {
+        "friendsSidebarOpen": null
+      }
+    },
+    "supported": false
+  },
+  {
+    "name": "device local display.friendsMode",
+    "updates": {
+      "display": {
+        "friendsMode": null
+      }
+    },
+    "supported": false
+  },
+  {
+    "name": "device local display.debugPanelWidth",
+    "updates": {
+      "display": {
+        "debugPanelWidth": null
+      }
+    },
+    "supported": false
+  },
+  {
+    "name": "device local display.mapMode",
+    "updates": {
+      "display": {
+        "mapMode": null
+      }
+    },
+    "supported": false
+  },
+  {
+    "name": "device local display.mapTimeMode",
+    "updates": {
+      "display": {
+        "mapTimeMode": null
+      }
+    },
+    "supported": false
+  },
+  {
+    "name": "device local display.feedSignalMode",
+    "updates": {
+      "display": {
+        "feedSignalMode": null
+      }
+    },
+    "supported": false
+  },
+  {
+    "name": "device local display.feedSignalModes",
+    "updates": {
+      "display": {
+        "feedSignalModes": null
+      }
+    },
+    "supported": false
+  },
+  {
+    "name": "device local display.savedContentSortMode",
+    "updates": {
+      "display": {
+        "savedContentSortMode": null
+      }
+    },
+    "supported": false
+  },
+  {
+    "name": "device local ai.provider",
+    "updates": {
+      "ai": {
+        "provider": null
+      }
+    },
+    "supported": false
+  },
+  {
+    "name": "device local ai.model",
+    "updates": {
+      "ai": {
+        "model": null
+      }
+    },
+    "supported": false
+  },
+  {
+    "name": "device local ai.ollamaUrl",
+    "updates": {
+      "ai": {
+        "ollamaUrl": null
+      }
+    },
+    "supported": false
+  },
+  {
+    "name": "device local fbCapture.knownGroups",
+    "updates": {
+      "fbCapture": {
+        "knownGroups": null
+      }
+    },
+    "supported": false
+  },
+  {
+    "name": "device local reading.dualColumnMode",
+    "updates": {
+      "display": {
+        "reading": {
+          "dualColumnMode": null
+        }
+      }
+    },
+    "supported": false
+  },
+  {
+    "name": "device local publishTarget.status",
+    "updates": {
+      "storyWall": {
+        "publishTarget": {
+          "status": null
+        }
+      }
+    },
+    "supported": false
+  },
+  {
+    "name": "device local publishTarget.lastError",
+    "updates": {
+      "storyWall": {
+        "publishTarget": {
+          "lastError": null
+        }
+      }
+    },
+    "supported": false
+  }
+]

@@ -1,0 +1,9 @@
+{
+  "sql": "SELECT NULL, 9223372036854775807, -9223372036854775808, -0.0, 1.5, CAST(X'610062ff' AS TEXT), X'0001ff';",
+  "canonicalRow": "[[\"null\"],[\"integer\",\"9223372036854775807\"],[\"integer\",\"-9223372036854775808\"],[\"real\",\"8000000000000000\"],[\"real\",\"3ff8000000000000\"],[\"text\",\"YQBi/w==\"],[\"blob\",\"AAH/\"]]",
+  "rowDigest": "2a0df63e1b02b18624e61e2a1c2d3b39637eb3114e4757b92788c4ce3b48c571",
+  "columnsJson": "[\"n\",\"hi\",\"lo\",\"zero\",\"fraction\",\"text\",\"blob\"]",
+  "commitment": "[\"library_intent_members\",0,\"[\\\"n\\\",\\\"hi\\\",\\\"lo\\\",\\\"zero\\\",\\\"fraction\\\",\\\"text\\\",\\\"blob\\\"]\",\"2a0df63e1b02b18624e61e2a1c2d3b39637eb3114e4757b92788c4ce3b48c571\",\"transaction-1\"]",
+  "archiveDigest": "6293ba4be6961ef55680a4458af4be9a2decf42aa703129c7fe3b376779b4213",
+  "emptyLibraryArchiveDigest": "5018381196f37d1ced885448d2378e1eb444de1b86fa6e60e8aa81e340ff9340"
+}

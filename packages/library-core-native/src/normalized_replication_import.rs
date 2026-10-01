@@ -227,6 +227,14 @@ pub fn import_normalized_operation_page_v2(
     connection: &mut Connection,
     input: &NormalizedOperationImportPageV2,
 ) -> Result<NormalizedOperationImportReceiptV2, NormalizedSqliteError> {
+    import_operations_with_reconciliation(connection, input, &|_| Ok(()))
+}
+
+pub(crate) fn import_operations_with_reconciliation(
+    connection: &mut Connection,
+    input: &NormalizedOperationImportPageV2,
+    reconcile: &impl Fn(&rusqlite::Transaction<'_>) -> Result<(), NormalizedSqliteError>,
+) -> Result<NormalizedOperationImportReceiptV2, NormalizedSqliteError> {
     validate_page(input)?;
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let revision = consumer_revision(&transaction, &input.snapshot)?;
@@ -292,7 +300,7 @@ pub fn import_normalized_operation_page_v2(
     // One bounded page can complete at most this many transactions. More durable
     // staged work resumes on the next pass rather than monopolizing the runtime.
     while applied < NORMALIZED_OPERATION_SEGMENT_MAXIMUM_RECORDS
-        && apply_next(connection, &input.snapshot)?
+        && apply_next(connection, &input.snapshot, reconcile)?
     {
         applied += 1;
     }
@@ -308,6 +316,7 @@ pub fn import_normalized_operation_page_v2(
 fn apply_next(
     connection: &mut Connection,
     snapshot: &NormalizedOperationExportDescriptorV2,
+    reconcile: &impl Fn(&rusqlite::Transaction<'_>) -> Result<(), NormalizedSqliteError>,
 ) -> Result<bool, NormalizedSqliteError> {
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let previous = consumer_revision(&transaction, snapshot)?;
@@ -436,6 +445,7 @@ fn apply_next(
         "DELETE FROM library_operation_replication_stages WHERE source_revision=?1;",
         [next],
     )?;
+    reconcile(&transaction)?;
     transaction.commit()?;
     Ok(true)
 }

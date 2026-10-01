@@ -1,3 +1,4 @@
+import { LibraryHandoffPanel } from "./LibraryHandoffPanel";
 import { useEffect, useRef, useState } from "react";
 import { GoogleDriveLibrarySelectionRequiredError } from "@freed/sync/cloud/library-core";
 import {
@@ -102,7 +103,7 @@ export function DesktopLibrarySetup({ status, initialError, onReady }: {
           </button>}
           {!status && !initialError && <p role="status" className="text-sm text-[var(--theme-text-secondary)]">Checking the local Library...</p>}
           {!status && initialError && <button type="button" className={buttonClass} disabled={busy} onClick={() => void run(async () => onReady(await refreshLibraryCoreDesktopRole()))}>Retry native setup check</button>}
-          {status?.state === "fenced" && <p className="text-sm text-[var(--theme-text-secondary)]">This installation has no active writer or consumer authority. Its Library is preserved and requires recovery.</p>}
+          {status?.state === "fenced" && <LibraryHandoffPanel />}
           {busy && <button type="button" className={buttonClass} onClick={() => { operation.current?.abort(); stopCloudSync("gdrive"); }}>Cancel</button>}
         </div>
       </section>

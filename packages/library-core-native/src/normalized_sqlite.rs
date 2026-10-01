@@ -5,9 +5,10 @@ use crate::normalized_checkpoint::{
 };
 use crate::sqlite_contract_generated::{
     CHECKPOINT_PAGE_MAXIMUM_DECODED_BYTES, CHECKPOINT_PAGE_MAXIMUM_RECORDS,
-    NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES, NORMALIZED_CHECKPOINT_EXPORT_FORMAT,
-    NORMALIZED_SCHEMA_SHA256, NORMALIZED_SCHEMA_SQL, SQLITE_APPLICATION_ID,
-    SQLITE_CONTRACT_VERSION, SQLITE_PROTOCOL_VERSION, SQLITE_SCHEMA_VERSION,
+    NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES, NATIVE_STORAGE_SCHEMA_VERSION,
+    NORMALIZED_CHECKPOINT_EXPORT_FORMAT, NORMALIZED_NATIVE_SCHEMA_EXTENSION_SQL,
+    NORMALIZED_NATIVE_SCHEMA_SHA256, NORMALIZED_SCHEMA_SHA256, NORMALIZED_SCHEMA_SQL,
+    SQLITE_APPLICATION_ID, SQLITE_CONTRACT_VERSION, SQLITE_PROTOCOL_VERSION, SQLITE_SCHEMA_VERSION,
 };
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
@@ -269,20 +270,28 @@ pub fn install_normalized_schema_v1(connection: &Connection) -> Result<(), Norma
         )?;
         connection.pragma_update(None, "user_version", SQLITE_SCHEMA_VERSION)?;
     } else {
-        if user_version != SQLITE_SCHEMA_VERSION || application_id != SQLITE_APPLICATION_ID {
+        if ![SQLITE_SCHEMA_VERSION, NATIVE_STORAGE_SCHEMA_VERSION].contains(&user_version)
+            || application_id != SQLITE_APPLICATION_ID
+        {
             return Err(NormalizedSqliteError::InvalidRequest(
                 "normalized SQLite version identity is unsupported",
             ));
         }
+        let schema_digest = if user_version == NATIVE_STORAGE_SCHEMA_VERSION {
+            verify_native_handoff_catalog(connection)?;
+            NORMALIZED_NATIVE_SCHEMA_SHA256
+        } else {
+            NORMALIZED_SCHEMA_SHA256
+        };
         let matches: bool = connection.query_row(
             "SELECT contract_version = ?1 AND schema_version = ?2
                     AND protocol_version = ?3 AND schema_sha256 = ?4
              FROM library_storage_meta WHERE singleton_id = 1;",
             params![
                 SQLITE_CONTRACT_VERSION,
-                SQLITE_SCHEMA_VERSION,
+                user_version,
                 SQLITE_PROTOCOL_VERSION,
-                NORMALIZED_SCHEMA_SHA256,
+                schema_digest,
             ],
             |row| row.get(0),
         )?;
@@ -293,6 +302,89 @@ pub fn install_normalized_schema_v1(connection: &Connection) -> Result<(), Norma
         }
     }
     Ok(())
+}
+
+fn verify_native_handoff_catalog(connection: &Connection) -> Result<(), NormalizedSqliteError> {
+    let declarations = NORMALIZED_NATIVE_SCHEMA_EXTENSION_SQL
+        .split(';')
+        .map(str::trim)
+        .filter(|sql| !sql.is_empty())
+        .collect::<Vec<_>>();
+    let objects = [
+        ("table", "library_local_handoff"),
+        ("table", "library_local_recovery_archives"),
+        ("table", "library_local_recovery_rows"),
+        ("index", "library_local_recovery_transaction_rows"),
+        ("table", "library_local_recovery_reissues"),
+        ("table", "library_local_handoff_cancellations"),
+        ("index", "library_local_recovery_enrollment"),
+        ("table", "library_local_source_demotions"),
+    ];
+    if declarations.len() != objects.len() {
+        return Err(NormalizedSqliteError::InvalidRequest(
+            "native lifecycle schema declarations are invalid",
+        ));
+    }
+    for ((kind, name), expected) in objects.iter().zip(declarations) {
+        let sql: Option<String> = connection
+            .query_row(
+                "SELECT sql FROM sqlite_schema WHERE type = ?1 AND name = ?2;",
+                [kind, name],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if sql.as_deref() != Some(expected) {
+            return Err(NormalizedSqliteError::InvalidRequest(
+                "normalized native handoff catalog does not match this build",
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Upgrade only within the transaction that records the installation's handoff.
+/// Logical checkpoint records and their historical schema digest stay unchanged.
+pub(crate) fn migrate_native_handoff_schema_v2(
+    transaction: &rusqlite::Transaction<'_>,
+) -> Result<(), NormalizedSqliteError> {
+    let version: u32 = transaction.pragma_query_value(None, "user_version", |row| row.get(0))?;
+    if ![SQLITE_SCHEMA_VERSION, NATIVE_STORAGE_SCHEMA_VERSION].contains(&version) {
+        return Err(NormalizedSqliteError::InvalidRequest(
+            "native handoff requires an existing supported Library",
+        ));
+    }
+    install_normalized_schema_v1(transaction)?;
+    if version == NATIVE_STORAGE_SCHEMA_VERSION {
+        return Ok(());
+    }
+    let exists: bool = transaction.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE name = 'library_local_handoff');",
+        [],
+        |row| row.get(0),
+    )?;
+    if exists {
+        return Err(NormalizedSqliteError::InvalidRequest(
+            "unversioned native handoff catalog exists",
+        ));
+    }
+    transaction.execute_batch(NORMALIZED_NATIVE_SCHEMA_EXTENSION_SQL)?;
+    let updated = transaction.execute(
+        "UPDATE library_storage_meta SET schema_version = ?1, schema_sha256 = ?2
+         WHERE singleton_id = 1 AND schema_version = ?3 AND schema_sha256 = ?4;",
+        params![
+            NATIVE_STORAGE_SCHEMA_VERSION,
+            NORMALIZED_NATIVE_SCHEMA_SHA256,
+            SQLITE_SCHEMA_VERSION,
+            NORMALIZED_SCHEMA_SHA256
+        ],
+    )?;
+    if updated != 1 {
+        return Err(NormalizedSqliteError::InvalidRequest(
+            "native handoff migration source changed",
+        ));
+    }
+    transaction.pragma_update(None, "user_version", NATIVE_STORAGE_SCHEMA_VERSION)?;
+    install_normalized_schema_v1(transaction)
 }
 
 fn stage_status(
@@ -534,7 +626,7 @@ fn checkpoint_response_upper_bound(record_count: usize, canonical_record_bytes: 
         .saturating_add(CHECKPOINT_RESPONSE_ENVELOPE_MAXIMUM_BYTES)
 }
 
-fn checkpoint_frontier_digest_v2(
+pub(crate) fn checkpoint_frontier_digest_v2(
     connection: &Connection,
     authority_epoch: &str,
 ) -> Result<String, NormalizedSqliteError> {
@@ -1040,6 +1132,126 @@ mod tests {
     }
 
     #[test]
+    fn public_browser_vectors_match_native_checkpoint_frontiers() {
+        // One public signed vector is consumed by both runtimes. Keep historical
+        // envelopes intact while checking the current export frontier contract.
+        for wire in [
+            include_str!("../../shared/src/library-core/native-recovered-browser-vector-v1.json"),
+            include_str!(
+                "../../shared/src/library-core/historical-native-preference-vector-v1.json"
+            ),
+        ] {
+            let vector: Value = serde_json::from_str(wire).unwrap();
+            let baseline: NormalizedCheckpointExportDescriptorV2 =
+                serde_json::from_value(vector["baseline"].clone()).unwrap();
+            let records: Vec<NormalizedCheckpointRecordV2> =
+                serde_json::from_value(vector["baselineRecords"].clone()).unwrap();
+            let mut connection = fixture();
+            begin_normalized_checkpoint_stage_v2(
+                &connection,
+                &BeginNormalizedCheckpointStageV2 {
+                    stage_id: "browser-vector".into(),
+                    library_id: baseline.library_id.clone(),
+                    authority_epoch: baseline.authority_epoch.clone(),
+                    source_revision: baseline.source_revision,
+                    expected_record_count: records.len(),
+                    created_at: 2200,
+                },
+            )
+            .unwrap();
+            append_normalized_checkpoint_stage_page_v2(&mut connection, "browser-vector", &records)
+                .unwrap();
+            finalize_normalized_checkpoint_stage_v2(&mut connection, "browser-vector").unwrap();
+            let mut current_baseline = baseline.clone();
+            if vector["sourceCommit"] == "17743c0e074b2b8ca27ff1c560a76854984410d7" {
+                // The published source included zero-counter enrollment in its
+                // frontier. Current readers carry the authenticated predecessor
+                // frontier until accepted work exists. Keep the old descriptor.
+                assert_eq!(baseline.source_revision, 0);
+                assert_eq!(
+                    connection
+                        .query_row(
+                            "SELECT max(accepted_counter) FROM library_actors;",
+                            [],
+                            |row| row.get::<_, i64>(0)
+                        )
+                        .unwrap(),
+                    0
+                );
+                assert_eq!(
+                    normalized_checkpoint_digest_v2(&records).unwrap(),
+                    vector["baselineCheckpointDigest"].as_str().unwrap()
+                );
+                current_baseline.causal_frontier_digest = records
+                    .iter()
+                    .find(|record| record.registry_key == "01_authority_epoch")
+                    .unwrap()
+                    .payload["checkpointFrontierDigest"]
+                    .as_str()
+                    .unwrap()
+                    .to_owned();
+                assert_ne!(
+                    current_baseline.causal_frontier_digest,
+                    baseline.causal_frontier_digest
+                );
+            }
+            assert_eq!(
+                describe_normalized_checkpoint_export_v2(&connection).unwrap(),
+                current_baseline
+            );
+            for page in vector["operationPages"].as_array().unwrap() {
+                let input = serde_json::from_value(page.clone()).unwrap();
+                crate::import_normalized_operation_page_v2(&mut connection, &input).unwrap();
+                crate::import_normalized_operation_page_v2(&mut connection, &input).unwrap();
+            }
+            if let Some(original) = vector["canonicalResultJson"].as_str() {
+                let stored: Vec<u8> = connection
+                    .query_row(
+                        "SELECT canonical_result FROM library_operation_replication_results;",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .unwrap();
+                assert_eq!(stored, original.as_bytes());
+                let envelope: Vec<u8> = connection
+                    .query_row(
+                        "SELECT canonical_envelope FROM library_operations;",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .unwrap();
+                assert_eq!(
+                    envelope,
+                    vector["envelopes"][0].as_str().unwrap().as_bytes()
+                );
+            }
+            let expected: NormalizedCheckpointExportDescriptorV2 =
+                serde_json::from_value(vector["expected"].clone()).unwrap();
+            assert_eq!(
+                describe_normalized_checkpoint_export_v2(&connection).unwrap(),
+                expected
+            );
+            let mut records = Vec::new();
+            let mut request = NormalizedCheckpointExportRequestV2 {
+                maximum_records: 3,
+                ..Default::default()
+            };
+            loop {
+                let page = export_normalized_checkpoint_page_v2(&connection, &request).unwrap();
+                records.extend(page.records);
+                if page.done {
+                    break;
+                }
+                request.after = page.next_cursor;
+            }
+            assert_eq!(
+                normalized_checkpoint_digest_v2(&records).unwrap(),
+                vector["expectedCheckpointDigest"].as_str().unwrap()
+            );
+        }
+    }
+
+    #[test]
     fn platform_path_opener_creates_and_reopens_the_normalized_schema() {
         let root = tempfile::TempDir::new().expect("create database root");
         let path = root
@@ -1061,6 +1273,101 @@ mod tests {
                 .expect("schema version"),
             i64::from(SQLITE_SCHEMA_VERSION)
         );
+    }
+
+    #[test]
+    fn native_handoff_schema_upgrade_is_atomic_and_preserves_logical_checkpoint() {
+        let directory = tempfile::tempdir().unwrap();
+        let database_path = directory.path().join("library.sqlite");
+        let mut connection = open_normalized_sqlite_database_v1(&database_path, true).unwrap();
+        install_test_authority(&connection, 0);
+        connection
+            .execute(
+                "INSERT INTO library_meta VALUES (1, 'library-1', 1, 'epoch-1', 7, 1000);",
+                [],
+            )
+            .unwrap();
+        let before = export_normalized_checkpoint_page_v2(
+            &connection,
+            &NormalizedCheckpointExportRequestV2::default(),
+        )
+        .unwrap();
+        {
+            let transaction = connection.transaction().unwrap();
+            migrate_native_handoff_schema_v2(&transaction).unwrap();
+            assert_eq!(
+                export_normalized_checkpoint_page_v2(
+                    &transaction,
+                    &NormalizedCheckpointExportRequestV2::default()
+                )
+                .unwrap(),
+                before
+            );
+            // Simulates a failure while recording the handoff before the owning commit.
+        }
+        assert_eq!(
+            connection
+                .pragma_query_value(None, "user_version", |row| row.get::<_, u32>(0))
+                .unwrap(),
+            1
+        );
+        assert!(!connection
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE name = 'library_local_handoff');",
+                [],
+                |row| row.get::<_, bool>(0)
+            )
+            .unwrap());
+        let transaction = connection.transaction().unwrap();
+        migrate_native_handoff_schema_v2(&transaction).unwrap();
+        transaction
+            .execute(
+                "INSERT INTO library_local_handoff
+             (singleton_id, handoff_id, library_id, installation_role, phase,
+              predecessor_epoch_id, target_writer_id, target_authority_public_key,
+              canonical_readiness, created_at, updated_at)
+             VALUES (1, ?1, ?2, 'target', 'preparing', ?3, ?4, ?5, ?6, 1, 1);",
+                params![
+                    "1".repeat(64),
+                    "2".repeat(64),
+                    "3".repeat(64),
+                    "4".repeat(64),
+                    "5".repeat(64),
+                    b"{}".as_slice()
+                ],
+            )
+            .unwrap();
+        transaction.commit().unwrap();
+        drop(connection);
+        let mut connection = open_normalized_sqlite_database_v1(&database_path, false).unwrap();
+        assert_eq!(
+            connection
+                .query_row("SELECT count(*) FROM library_local_handoff;", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            connection
+                .pragma_query_value(None, "user_version", |row| row.get::<_, u32>(0))
+                .unwrap(),
+            2
+        );
+        assert_eq!(
+            export_normalized_checkpoint_page_v2(
+                &connection,
+                &NormalizedCheckpointExportRequestV2::default()
+            )
+            .unwrap(),
+            before
+        );
+        let transaction = connection.transaction().unwrap();
+        migrate_native_handoff_schema_v2(&transaction).unwrap();
+        transaction.commit().unwrap();
+        connection
+            .execute_batch("ALTER TABLE library_local_handoff ADD COLUMN unexpected TEXT;")
+            .unwrap();
+        assert!(install_normalized_schema_v1(&connection).is_err());
     }
 
     fn install_test_authority(connection: &Connection, accepted_counter: i64) {
@@ -2100,6 +2407,90 @@ mod tests {
     }
 
     #[test]
+    fn caller_owned_checkpoint_install_rolls_back_rows_receipt_and_consumed_stage() {
+        let page = normalized_source_page();
+        let mut target = fixture();
+        begin_stage(&target, "initial", &page.records);
+        append_normalized_checkpoint_stage_page_v2(&mut target, "initial", &page.records).unwrap();
+        finalize_normalized_checkpoint_stage_v2(&mut target, "initial").unwrap();
+        target.execute("INSERT INTO library_preferences (path, value_type, updated_at) VALUES ('v:$.retained', 'null', 1);", []).unwrap();
+        begin_stage(&target, "candidate", &page.records);
+        append_normalized_checkpoint_stage_page_v2(&mut target, "candidate", &page.records)
+            .unwrap();
+        let before = export_normalized_checkpoint_page_v2(
+            &target,
+            &NormalizedCheckpointExportRequestV2::default(),
+        )
+        .unwrap();
+        let stage_before = stage_status(&target, "candidate").unwrap();
+        let receipt = NormalizedFollowerCheckpointReceiptV2 {
+            checkpoint_generation: 9,
+            writer_actor_id: "actor-1".into(),
+            manifest_object_key: "manifest-key".into(),
+            manifest_transport_object_id: "drive-object-1".into(),
+            manifest_content_digest: "9".repeat(64),
+            control_revision: "control-revision-1".into(),
+            installed_at: 2000,
+        };
+        let tx = target.transaction().unwrap();
+        let candidate =
+            crate::normalized_import::install_normalized_checkpoint_stage_in_transaction_v2(
+                &tx,
+                "candidate",
+                true,
+                Some(&receipt),
+                None,
+            )
+            .unwrap();
+        assert_eq!(candidate.record_count, page.records.len());
+        assert_eq!(
+            tx.query_row("SELECT count(*) FROM library_preferences", [], |r| r
+                .get::<_, u32>(0))
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            tx.query_row(
+                "SELECT count(*) FROM library_follower_checkpoint_receipt",
+                [],
+                |r| r.get::<_, u32>(0)
+            )
+            .unwrap(),
+            1
+        );
+        assert!(stage_status(&tx, "candidate").is_err());
+        // Model a later lifecycle/key/remote-proof check refusing admission.
+        tx.rollback().unwrap();
+        assert_eq!(
+            export_normalized_checkpoint_page_v2(
+                &target,
+                &NormalizedCheckpointExportRequestV2::default()
+            )
+            .unwrap()
+            .records,
+            before.records
+        );
+        assert_eq!(stage_status(&target, "candidate").unwrap(), stage_before);
+        assert_eq!(
+            target
+                .query_row(
+                    "SELECT count(*) FROM library_follower_checkpoint_receipt",
+                    [],
+                    |r| r.get::<_, u32>(0)
+                )
+                .unwrap(),
+            0
+        );
+        let committed = replace_with_normalized_follower_checkpoint_stage_v2(
+            &mut target,
+            "candidate",
+            &receipt,
+        )
+        .unwrap();
+        assert_eq!(committed.checkpoint_digest, candidate.checkpoint_digest);
+    }
+
+    #[test]
     fn replacement_preserves_current_state_when_local_operations_are_unresolved() {
         let page = normalized_source_page();
         let mut target = fixture();
@@ -2356,6 +2747,59 @@ mod tests {
         .expect("begin");
         append_normalized_checkpoint_stage_page_v2(&mut target, "stage-activation", &page.records)
             .expect("stage");
+        // A new handoff target must not activate an arbitrary checkpoint before
+        // accepting consent. Exercise refusal at the real commit boundary.
+        let mut fenced = fixture();
+        begin_normalized_checkpoint_stage_v2(
+            &fenced,
+            &BeginNormalizedCheckpointStageV2 {
+                stage_id: "fenced-import".into(),
+                library_id: "library-1".into(),
+                authority_epoch: "epoch-1".into(),
+                source_revision: 7,
+                expected_record_count: page.records.len(),
+                created_at: 1000,
+            },
+        )
+        .unwrap();
+        append_normalized_checkpoint_stage_page_v2(&mut fenced, "fenced-import", &page.records)
+            .unwrap();
+        let transaction = fenced.transaction().unwrap();
+        migrate_native_handoff_schema_v2(&transaction).unwrap();
+        transaction.execute("INSERT INTO library_local_handoff
+            (singleton_id, handoff_id, library_id, installation_role, phase, predecessor_epoch_id,
+             target_writer_id, target_authority_public_key, canonical_readiness, created_at, updated_at)
+            VALUES (1, ?1, ?2, 'target', 'preparing', ?3, ?4, ?5, ?6, 1, 1);",
+            params!["1".repeat(64), "2".repeat(64), "3".repeat(64), "4".repeat(64), "5".repeat(64), b"{}".as_slice()],
+        ).unwrap();
+        transaction.commit().unwrap();
+        let failure =
+            finalize_normalized_checkpoint_stage_v2(&mut fenced, "fenced-import").unwrap_err();
+        assert!(failure
+            .to_string()
+            .contains("accepted target handoff consent"));
+        assert_eq!(
+            fenced
+                .query_row("SELECT count(*) FROM library_feed_items;", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            fenced
+                .query_row("SELECT count(*) FROM library_meta;", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            fenced
+                .query_row("SELECT count(*) FROM library_local_handoff;", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+        assert_eq!(fenced.query_row("SELECT count(*) FROM library_checkpoint_stage_records WHERE stage_id = 'fenced-import';", [], |row| row.get::<_, i64>(0)).unwrap(), page.records.len() as i64);
         let receipt = finalize_normalized_checkpoint_stage_v2(&mut target, "stage-activation")
             .expect("activate");
         assert_eq!(receipt.checkpoint_digest, digest);
@@ -2446,6 +2890,145 @@ mod tests {
                 .unwrap()
                 .staged_record_count,
             page.records.len()
+        );
+    }
+    // Dormant schema contract only: no application open or migration invokes this SQL yet.
+    #[test]
+    fn dormant_preference_projection_schema_preserves_intent_lifetimes() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        connection.execute_batch("PRAGMA foreign_keys=ON;
+            CREATE TABLE library_intent_actors(actor_id TEXT PRIMARY KEY);
+            CREATE TABLE library_intent_members(transaction_id TEXT,member_index INTEGER,actor_id TEXT,actor_counter INTEGER,
+                PRIMARY KEY(transaction_id,member_index),UNIQUE(actor_id,actor_counter));
+            INSERT INTO library_intent_actors VALUES('actor');
+            INSERT INTO library_intent_members VALUES('first',0,'actor',1),('second',0,'actor',2);").unwrap();
+        let sql = include_str!("normalized_local_preferences_schema_v3.sql");
+        {
+            let tx = connection.transaction().unwrap();
+            tx.execute_batch(sql).unwrap();
+            // A crash or failed backfill initialization cannot leave half a catalog.
+        }
+        assert_eq!(connection.query_row("SELECT count(*) FROM sqlite_schema WHERE name LIKE 'library_local_preference%';", [], |r|r.get::<_,i64>(0)).unwrap(),0);
+        connection.execute_batch(sql).unwrap();
+        connection
+            .execute(
+                "INSERT INTO library_local_preference_projection VALUES(1,'actor',0,2,NULL,printf('%064d',0));",
+                [],
+            )
+            .unwrap();
+        assert!(connection
+            .execute(
+                "UPDATE library_local_preference_projection SET last_counter=3;",
+                []
+            )
+            .is_err());
+        let insert = "INSERT INTO library_local_preference_nodes(transaction_id,member_index,actor_id,actor_counter,path,node_kind,value_type,integer_value,updated_at)
+            VALUES(?1,0,'actor',?2,'$.friendSuggestions.dismissedSuggestionIds','array','integer',1,10);";
+        connection.execute(insert, params!["first", 1]).unwrap();
+        connection.execute(insert, params!["second", 2]).unwrap();
+        assert!(connection.execute(insert, params!["missing", 3]).is_err());
+        assert!(connection
+            .execute(
+                "UPDATE library_local_preference_nodes SET boolean_value=1;",
+                []
+            )
+            .is_err());
+        assert!(connection
+            .execute(
+                "UPDATE library_local_preference_nodes SET integer_value=512;",
+                []
+            )
+            .is_err());
+        assert!(connection
+            .execute(
+                "UPDATE library_local_preference_nodes SET path='caller sql';",
+                []
+            )
+            .is_err());
+        // A later object merge does not erase an earlier non-object replacement barrier.
+        connection.execute_batch("INSERT INTO library_local_preference_nodes(transaction_id,member_index,actor_id,actor_counter,path,node_kind,value_type,integer_value,updated_at)
+          VALUES('first',0,'actor',1,'$.parent','value','integer',1,10);
+          INSERT INTO library_local_preference_nodes(transaction_id,member_index,actor_id,actor_counter,path,node_kind,value_type,updated_at)
+          VALUES('second',0,'actor',2,'$.parent','object','null',11);").unwrap();
+        let program = |id| {
+            crate::sqlite_contract_generated::PENDING_PREFERENCE_QUERY_PROGRAMS
+                .iter()
+                .find(|(name, _)| *name == id)
+                .unwrap()
+                .1
+        };
+        assert_eq!(
+            connection
+                .query_row(
+                    program("latest_node_v1"),
+                    params!["actor", "$.parent"],
+                    |r| r.get::<_, i64>(2)
+                )
+                .unwrap(),
+            2
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    program("replacement_barrier_v1"),
+                    params!["actor", "$.parent"],
+                    |r| r.get::<_, i64>(0)
+                )
+                .unwrap(),
+            1
+        );
+        for (id, index) in [
+            ("latest_node_v1", "library_local_preference_node_lookup"),
+            (
+                "replacement_barrier_v1",
+                "library_local_preference_replacement_lookup",
+            ),
+        ] {
+            let plan = connection
+                .prepare(&format!("EXPLAIN QUERY PLAN {}", program(id)))
+                .unwrap()
+                .query_map(params!["actor", "$.parent"], |r| r.get::<_, String>(3))
+                .unwrap()
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .unwrap()
+                .join(" ");
+            assert!(plan.contains(index), "{plan}");
+            assert!(!plan.contains("TEMP B-TREE"), "{plan}");
+        }
+        let newest = "SELECT actor_counter FROM library_local_preference_nodes INDEXED BY library_local_preference_node_lookup WHERE actor_id='actor' AND path='$.friendSuggestions.dismissedSuggestionIds' ORDER BY actor_counter DESC LIMIT 1;";
+        assert_eq!(
+            connection
+                .query_row(newest, [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            2
+        );
+        connection
+            .execute(
+                "DELETE FROM library_intent_members WHERE transaction_id='second';",
+                [],
+            )
+            .unwrap();
+        assert_eq!(
+            connection
+                .query_row(newest, [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+        connection
+            .execute(
+                "DELETE FROM library_intent_actors WHERE actor_id='actor';",
+                [],
+            )
+            .unwrap();
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT count(*) FROM library_local_preference_projection",
+                    [],
+                    |r| r.get::<_, i64>(0)
+                )
+                .unwrap(),
+            0
         );
     }
 }

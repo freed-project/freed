@@ -1,0 +1,1100 @@
+{
+  "baseline": {
+    "authorityEpoch": "3ab4a1ef22a3e2d7290782d53013ffedf86f1614273807a55f75d3028d4deb39",
+    "causalFrontierDigest": "24ccb461b9e6d763be3033eb714f0a757099dcc3dcd9cbb787b0b20319173149",
+    "format": "freed_normalized_checkpoint_export_v2",
+    "itemCount": 2,
+    "libraryId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "protocolVersion": 2,
+    "recordCount": 62,
+    "sourceRevision": 1,
+    "writerId": "36e9ebf952724953d85a4b133013623ae5f80789c49aac4cb384d42fc9962344"
+  },
+  "baselineRecords": [
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "authorityEpoch": "3ab4a1ef22a3e2d7290782d53013ffedf86f1614273807a55f75d3028d4deb39",
+        "checkpointId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:3ab4a1ef22a3e2d7290782d53013ffedf86f1614273807a55f75d3028d4deb39:1",
+        "createdAtMs": 2201,
+        "libraryId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "schemaVersion": 1,
+        "sourceRevision": 1
+      },
+      "primaryKey": "checkpoint",
+      "protocolVersion": 2,
+      "registryKey": "00_checkpoint_header"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "acceptedAt": 101,
+        "acceptedManifestGeneration": 0,
+        "authorityKeyId": "bf03b09b0dc5d71b6096dc7e4e16e20bc3c52c6ead5143caadcaf1fb3b28b76b",
+        "authorityPublicKey": "87d6a451e123dc0e001aa79f109f1e2518ea79a7ab4accc310ca9e61aab778f7",
+        "canonicalTransitionCertificate": "{\"authority_key_possession_signature\":\"1477d7e566207036eb18d92489b06db81492734add38c00a0ba1752732f04fa1e4a4aed89d1e3f050b73f4b7cdc108ad468efeeba9e3eed6fe14cea39a0da705\",\"certificate_body\":{\"format\":\"freed_library_core_writer_epoch_handoff_v1\",\"handoff_authorization\":{\"authorization_digest\":\"b0702f8c382fbd0e7bef7c73da8193c53b4e539c9ce0ba7967cef6c20b9b308a\",\"body\":{\"final_checkpoint_digest\":\"e40e33b4332b1e563936b3032e2e87b01a6c043b6fb44de95091a42276286e80\",\"final_source_revision\":0,\"format\":\"freed_library_handoff_authorization_v1\",\"predecessor_authority_public_key\":\"74c50ec69c1e084792dd3150993fb46f33039ab595520cb5a71f27469f32b291\",\"readiness\":{\"actor_signature\":\"372d4728f2bf9048deaf49383bd50c27b8ed47adf9d55c1ab751db0f9eda703de26d99e6c895514981cfea97a3cf8f734791675aba56734a96b9616bdec81206\",\"authority_possession_signature\":\"842466601bff9a21dae1cff2798078ef6fcd0e890b544b5464cd783fc659259e7373d02a9198432a2dbf9061a2bc28cd0cd121e53d6c7172a04dfee54aa23501\",\"body\":{\"checkpoint_schema_version\":1,\"created_at_ms\":4,\"format\":\"freed_library_handoff_readiness_v1\",\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"native_storage_version\":2,\"predecessor_certificate_digest\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"predecessor_epoch_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"replication_protocol_version\":2,\"target_actor_id\":\"36e9ebf952724953d85a4b133013623ae5f80789c49aac4cb384d42fc9962344\",\"target_actor_public_key\":\"4f2d2ee0608be31f2dd78f19a40c19254d5b77f57a6fde9f6086887899c82005\",\"target_authority_public_key\":\"87d6a451e123dc0e001aa79f109f1e2518ea79a7ab4accc310ca9e61aab778f7\"},\"handoff_id\":\"6655f189547068c6a09912820bbbb7e13943a39c8f938ac254cb5baba04c35b3\"},\"source_control\":{\"activeTransport\":\"google_drive_app_data_v1\",\"causalFrontierDigest\":\"24ccb461b9e6d763be3033eb714f0a757099dcc3dcd9cbb787b0b20319173149\",\"generation\":2,\"libraryId\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"manifest\":{\"descriptor\":{\"byteLength\":100,\"contentDigest\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"objectKey\":\"freed-v2-manifest~aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa~ebbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb~g2~eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee.json\"},\"transportObjectId\":\"final-checkpoint\"},\"protocolVersion\":1,\"schemaVersion\":1,\"storageEpoch\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"writerId\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\"},\"source_control_file_id\":\"control-file\",\"source_control_revision\":\"\\\"final-head\\\"\",\"successor_epoch\":2},\"predecessor_signature\":\"8a7e0046ed144b30424c8bffa5e7254d07e10cfa2b9892c16ae68686c9782494bef760b8953ca75964b939895a3c8b96080f082dc56d6b5feb447ab7776dd009\"},\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"signature_algorithm\":\"ed25519\",\"source_control\":{\"activeTransport\":\"google_drive_app_data_v1\",\"causalFrontierDigest\":\"24ccb461b9e6d763be3033eb714f0a757099dcc3dcd9cbb787b0b20319173149\",\"generation\":2,\"libraryId\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"manifest\":{\"descriptor\":{\"byteLength\":100,\"contentDigest\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"objectKey\":\"freed-v2-manifest~aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa~ebbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb~g2~eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee.json\"},\"transportObjectId\":\"final-checkpoint\"},\"protocolVersion\":1,\"schemaVersion\":1,\"storageEpoch\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"writerId\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\"},\"target_authority_key_id\":\"bf03b09b0dc5d71b6096dc7e4e16e20bc3c52c6ead5143caadcaf1fb3b28b76b\",\"target_authority_public_key\":\"87d6a451e123dc0e001aa79f109f1e2518ea79a7ab4accc310ca9e61aab778f7\",\"target_epoch\":2,\"target_writer_id\":\"36e9ebf952724953d85a4b133013623ae5f80789c49aac4cb384d42fc9962344\"},\"epoch_id\":\"3ab4a1ef22a3e2d7290782d53013ffedf86f1614273807a55f75d3028d4deb39\",\"epoch_signature\":\"f33cbca9fc07266e1b987177ee60821057f92bc181ff81d01cfbfc5b076eaaa1dbcae07c82471cc47d1b80088c071ceb622bcc855a42c387f5084d26cf3c8200\"}",
+        "checkpointFrontierDigest": "24ccb461b9e6d763be3033eb714f0a757099dcc3dcd9cbb787b0b20319173149",
+        "epochNumber": 2,
+        "libraryId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "materializedStateDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "transitionCertificateDigest": "0187915d95bfb3726e7e9eecf81593036ef013ecbe03a5f27a9bcbeb637631b5"
+      },
+      "primaryKey": "3ab4a1ef22a3e2d7290782d53013ffedf86f1614273807a55f75d3028d4deb39",
+      "protocolVersion": 2,
+      "registryKey": "01_authority_epoch"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "acceptedAt": 1,
+        "acceptedManifestGeneration": 1,
+        "authorityKeyId": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "authorityPublicKey": "74c50ec69c1e084792dd3150993fb46f33039ab595520cb5a71f27469f32b291",
+        "canonicalTransitionCertificate": "{}",
+        "checkpointFrontierDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "epochNumber": 1,
+        "libraryId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "materializedStateDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "transitionCertificateDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      "primaryKey": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "protocolVersion": 2,
+      "registryKey": "01_authority_epoch"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "acceptedManifestGeneration": 0,
+        "activatedAt": 101,
+        "activeKey": "active",
+        "epochId": "3ab4a1ef22a3e2d7290782d53013ffedf86f1614273807a55f75d3028d4deb39",
+        "libraryId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "writerId": "primary:desktop"
+      },
+      "primaryKey": "active",
+      "protocolVersion": 2,
+      "registryKey": "03_active_authority"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "archived": false,
+        "archivedAt": null,
+        "authorAvatarUrl": null,
+        "authorDisplayName": "Author",
+        "authorHandle": "author",
+        "authorId": "author",
+        "capturedAt": 1,
+        "contentText": null,
+        "contentTextBlobDigest": null,
+        "contentType": "article",
+        "engagementComments": null,
+        "engagementLikes": null,
+        "engagementReposts": null,
+        "engagementViews": null,
+        "fbGroupId": null,
+        "fbGroupName": null,
+        "fbGroupUrl": null,
+        "hidden": false,
+        "liked": null,
+        "likedAt": null,
+        "likedSyncedAt": null,
+        "linkDescription": null,
+        "linkTitle": null,
+        "linkUrl": null,
+        "locationLat": null,
+        "locationLng": null,
+        "locationName": null,
+        "locationSource": null,
+        "locationUrl": null,
+        "platform": "rss",
+        "preservedAt": null,
+        "preservedAuthor": null,
+        "preservedPublishedAt": null,
+        "preservedReadingTime": null,
+        "preservedText": null,
+        "preservedTextBlobDigest": null,
+        "preservedWordCount": null,
+        "priority": null,
+        "priorityComputedAt": null,
+        "publishedAt": 1,
+        "readAt": null,
+        "rssFeedTitle": null,
+        "rssFeedUrl": null,
+        "rssSiteUrl": null,
+        "sampleBatchId": null,
+        "sampleGeneratedAt": null,
+        "sampleGeneratorVersion": null,
+        "saved": false,
+        "savedAt": null,
+        "seenSyncedAt": null,
+        "sourceUrl": null,
+        "timeRangeEndsAt": null,
+        "timeRangeKind": null,
+        "timeRangeStartsAt": null,
+        "updatedAt": 1
+      },
+      "primaryKey": "rss:item:1",
+      "protocolVersion": 2,
+      "registryKey": "10_feed_item"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "archived": false,
+        "archivedAt": null,
+        "authorAvatarUrl": null,
+        "authorDisplayName": "Author",
+        "authorHandle": "author",
+        "authorId": "author",
+        "capturedAt": 1,
+        "contentText": null,
+        "contentTextBlobDigest": null,
+        "contentType": "article",
+        "engagementComments": null,
+        "engagementLikes": null,
+        "engagementReposts": null,
+        "engagementViews": null,
+        "fbGroupId": null,
+        "fbGroupName": null,
+        "fbGroupUrl": null,
+        "hidden": false,
+        "liked": null,
+        "likedAt": null,
+        "likedSyncedAt": null,
+        "linkDescription": null,
+        "linkTitle": null,
+        "linkUrl": null,
+        "locationLat": null,
+        "locationLng": null,
+        "locationName": null,
+        "locationSource": null,
+        "locationUrl": null,
+        "platform": "rss",
+        "preservedAt": null,
+        "preservedAuthor": null,
+        "preservedPublishedAt": null,
+        "preservedReadingTime": null,
+        "preservedText": null,
+        "preservedTextBlobDigest": null,
+        "preservedWordCount": null,
+        "priority": null,
+        "priorityComputedAt": null,
+        "publishedAt": 1,
+        "readAt": null,
+        "rssFeedTitle": null,
+        "rssFeedUrl": null,
+        "rssSiteUrl": null,
+        "sampleBatchId": null,
+        "sampleGeneratedAt": null,
+        "sampleGeneratorVersion": null,
+        "saved": false,
+        "savedAt": null,
+        "seenSyncedAt": null,
+        "sourceUrl": null,
+        "timeRangeEndsAt": null,
+        "timeRangeKind": null,
+        "timeRangeStartsAt": null,
+        "updatedAt": 1
+      },
+      "primaryKey": "rss:item:2",
+      "protocolVersion": 2,
+      "registryKey": "10_feed_item"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "acceptedChainDigest": "5d9531f99deff12c08ce038b1438540a14e9f9c474e94c27186943d0e2b5a829",
+        "acceptedCounter": 0,
+        "acceptedOperationId": null,
+        "actorKind": "desktop",
+        "authorityEpochId": "3ab4a1ef22a3e2d7290782d53013ffedf86f1614273807a55f75d3028d4deb39",
+        "canonicalEnrollmentCertificate": "{\"authority_signature\":\"e2df4807a48e3fc9e170d53ad4dbed17dc68c7c5ea1cd471cd1d76337e142f04a9897fdb378e0cc55d2a3318b54df091a7d534edd1af3affde3ddde79a2c4005\",\"certificate_body\":{\"actor_capability_body\":{\"actor_class\":\"editor\",\"actor_id\":\"36e9ebf952724953d85a4b133013623ae5f80789c49aac4cb384d42fc9962344\",\"actor_public_key\":\"4f2d2ee0608be31f2dd78f19a40c19254d5b77f57a6fde9f6086887899c82005\",\"allowed_operation_types\":[\"account_person_assignment\",\"account_remove\",\"account_upsert\",\"feed_item_analysis_replace\",\"feed_item_annotations_replace\",\"feed_item_archive_assignment\",\"feed_item_capture_upsert\",\"feed_item_like_assignment\",\"feed_item_like_sync_receipt\",\"feed_item_priority_assignment\",\"feed_item_read_assignment\",\"feed_item_remove\",\"feed_item_saved_assignment\",\"feed_item_seen_sync_receipt\",\"friend_replace\",\"person_reach_out_append\",\"person_remove_and_accounts\",\"person_remove_detach_accounts\",\"person_upsert\",\"preferences_leaf_assignment\",\"rss_feed_remove_keep_items\",\"rss_feed_remove_with_items\",\"rss_feed_title_assignment\",\"rss_feed_upsert\"],\"allowed_query_ids\":[],\"authority_key_id\":\"bf03b09b0dc5d71b6096dc7e4e16e20bc3c52c6ead5143caadcaf1fb3b28b76b\",\"epoch\":2,\"epoch_id\":\"3ab4a1ef22a3e2d7290782d53013ffedf86f1614273807a55f75d3028d4deb39\",\"format\":\"freed_library_core_actor_capability_v2\",\"issuance_identity\":\"ad434c8bba450bd5d682d1121e1cb3334643f4ae1b177207547e34f70155020f\",\"issued_at_ms\":101,\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"retirement_identity\":\"79c319bae889d40de9a34f028b28c9f9c59c1e7c48bbde95125cf57eddbfac8b\",\"scope\":{\"mode\":\"library_wide\"},\"signature_algorithm\":\"ed25519\"},\"actor_capability_body_digest\":\"ee492379e5b973412e61bff6a6d302bfc22fe5e1489efecadc7a5ec6b862b15b\",\"actor_enrollment_body\":{\"actor_id\":\"36e9ebf952724953d85a4b133013623ae5f80789c49aac4cb384d42fc9962344\",\"actor_incarnation_nonce\":\"27572db7104cc28f53aa86a472169e5ace53ce2d4c56d8fe099c7da44644c0a1\",\"actor_public_key\":\"4f2d2ee0608be31f2dd78f19a40c19254d5b77f57a6fde9f6086887899c82005\",\"actor_public_key_fingerprint\":\"4dbed3f07a121656178375309f3fadfef7caf15788be2fb71ea0aedf811ae143\",\"authority_key_id\":\"bf03b09b0dc5d71b6096dc7e4e16e20bc3c52c6ead5143caadcaf1fb3b28b76b\",\"created_at_ms\":101,\"epoch\":2,\"epoch_id\":\"3ab4a1ef22a3e2d7290782d53013ffedf86f1614273807a55f75d3028d4deb39\",\"installation_incarnation\":\"7648f43b926e129b2418761d323f8779e6898077cb7c03307e00749b5e343eab\",\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"observed_frontier\":[],\"operation_id\":\"actor-enrolled:36e9ebf952724953d85a4b133013623ae5f80789c49aac4cb384d42fc9962344\",\"operation_type\":\"actor_enrolled\",\"schema_version\":1,\"signature_algorithm\":\"ed25519\"},\"actor_proof\":\"61806b95287c6c32f52868c3a0e42ace6153ca5e523f9f42e378eac68a0462fa7374e9acdb808af961b1efebed5a81f7050a1e46d8219b9afe7bde674dcc2a00\",\"enrollment_body_digest\":\"63f6c2ccd4a269694f29e33cb4554356175592a7eeb81c1c76c462cce10302a2\"},\"certificate_digest\":\"3c02ce7972b9f13a1ea4d4469132cac675996ac90ebcba8e0f062be48da00595\"}",
+        "chainGenesisDigest": "5d9531f99deff12c08ce038b1438540a14e9f9c474e94c27186943d0e2b5a829",
+        "createdAt": 101,
+        "enrollmentCertificateDigest": "3c02ce7972b9f13a1ea4d4469132cac675996ac90ebcba8e0f062be48da00595",
+        "enrollmentOperationId": "actor-enrolled:36e9ebf952724953d85a4b133013623ae5f80789c49aac4cb384d42fc9962344",
+        "publicKey": "4f2d2ee0608be31f2dd78f19a40c19254d5b77f57a6fde9f6086887899c82005",
+        "retiredAt": null,
+        "updatedAt": 101
+      },
+      "primaryKey": "36e9ebf952724953d85a4b133013623ae5f80789c49aac4cb384d42fc9962344",
+      "protocolVersion": 2,
+      "registryKey": "90_actor_state"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "acceptedChainDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "acceptedCounter": 0,
+        "acceptedOperationId": null,
+        "actorKind": "pwa",
+        "authorityEpochId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "canonicalEnrollmentCertificate": "{}",
+        "chainGenesisDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "createdAt": 1,
+        "enrollmentCertificateDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "enrollmentOperationId": "6666666666666666666666666666666666666666666666666666666666666666",
+        "publicKey": "4f2d2ee0608be31f2dd78f19a40c19254d5b77f57a6fde9f6086887899c82005",
+        "retiredAt": null,
+        "updatedAt": 1
+      },
+      "primaryKey": "6666666666666666666666666666666666666666666666666666666666666666",
+      "protocolVersion": 2,
+      "registryKey": "90_actor_state"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "acceptedChainDigest": "06d6e924b83c3825de6b9de96f7b376e4d36bf25ef7b07c7c29970d05def01e1",
+        "acceptedCounter": 0,
+        "acceptedOperationId": null,
+        "actorKind": "pwa",
+        "authorityEpochId": "3ab4a1ef22a3e2d7290782d53013ffedf86f1614273807a55f75d3028d4deb39",
+        "canonicalEnrollmentCertificate": "{\"authority_signature\":\"203644056384f4dbf7dcad1a29661bfb5aad3c0c2411212c3d33838d5109c0ad3de109123217959bbe26a272f3c90142ee89db91d643ff246566ec4dc92e5300\",\"certificate_body\":{\"actor_capability_body\":{\"actor_class\":\"editor\",\"actor_id\":\"a33b46f3a0d3c03f24d7538f0a58b1d5dd56840300338790a0410c19f7290f99\",\"actor_public_key\":\"4f2d2ee0608be31f2dd78f19a40c19254d5b77f57a6fde9f6086887899c82005\",\"allowed_operation_types\":[\"account_person_assignment\",\"account_remove\",\"account_upsert\",\"feed_item_analysis_replace\",\"feed_item_annotations_replace\",\"feed_item_archive_assignment\",\"feed_item_capture_upsert\",\"feed_item_like_assignment\",\"feed_item_like_sync_receipt\",\"feed_item_priority_assignment\",\"feed_item_read_assignment\",\"feed_item_remove\",\"feed_item_saved_assignment\",\"feed_item_seen_sync_receipt\",\"friend_replace\",\"person_reach_out_append\",\"person_remove_and_accounts\",\"person_remove_detach_accounts\",\"person_upsert\",\"preferences_leaf_assignment\",\"rss_feed_remove_keep_items\",\"rss_feed_remove_with_items\",\"rss_feed_title_assignment\",\"rss_feed_upsert\"],\"allowed_query_ids\":[],\"authority_key_id\":\"bf03b09b0dc5d71b6096dc7e4e16e20bc3c52c6ead5143caadcaf1fb3b28b76b\",\"epoch\":2,\"epoch_id\":\"3ab4a1ef22a3e2d7290782d53013ffedf86f1614273807a55f75d3028d4deb39\",\"format\":\"freed_library_core_actor_capability_v2\",\"issuance_identity\":\"510859bc8eb5eb027d26d0d31244a98b7188110b5108fee228032cc3202e2562\",\"issued_at_ms\":123,\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"retirement_identity\":\"4a431535f08d141ead847a5620e8875de20f036c66e614bf8599a54d36fed531\",\"scope\":{\"mode\":\"library_wide\"},\"signature_algorithm\":\"ed25519\"},\"actor_capability_body_digest\":\"706f4302421f0c8eaf5a789a74ff772d0e3c33ed633ca5164feb552c97a37ae1\",\"actor_enrollment_body\":{\"actor_id\":\"a33b46f3a0d3c03f24d7538f0a58b1d5dd56840300338790a0410c19f7290f99\",\"actor_incarnation_nonce\":\"11ef1bb05d1de61c0b45a11c09f1da49296e393c1ea3cb3fe6b5fc05123009ee\",\"actor_public_key\":\"4f2d2ee0608be31f2dd78f19a40c19254d5b77f57a6fde9f6086887899c82005\",\"actor_public_key_fingerprint\":\"4dbed3f07a121656178375309f3fadfef7caf15788be2fb71ea0aedf811ae143\",\"authority_key_id\":\"bf03b09b0dc5d71b6096dc7e4e16e20bc3c52c6ead5143caadcaf1fb3b28b76b\",\"created_at_ms\":123,\"epoch\":2,\"epoch_id\":\"3ab4a1ef22a3e2d7290782d53013ffedf86f1614273807a55f75d3028d4deb39\",\"installation_incarnation\":\"7648f43b926e129b2418761d323f8779e6898077cb7c03307e00749b5e343eab\",\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"observed_frontier\":[],\"operation_id\":\"actor-enrolled:a33b46f3a0d3c03f24d7538f0a58b1d5dd56840300338790a0410c19f7290f99\",\"operation_type\":\"actor_enrolled\",\"schema_version\":1,\"signature_algorithm\":\"ed25519\"},\"actor_proof\":\"94bd4e12239611ba90eaf26347df8e709766e26c2b7b5475bd9726224ec8fe0554b3008d46dfc94b5ca3a128c3ddf4bb0aca0074df1ace9efe328c8224198405\",\"enrollment_body_digest\":\"e3e6a77b47c3cb1004a2624a8774401e0a101d32df99a0210eb60f34678e11e7\"},\"certificate_digest\":\"8ad09f4eaf76a88d3a63269e4f9d635608e730bb273beecc8d387cf5880388a9\"}",
+        "chainGenesisDigest": "06d6e924b83c3825de6b9de96f7b376e4d36bf25ef7b07c7c29970d05def01e1",
+        "createdAt": 123,
+        "enrollmentCertificateDigest": "8ad09f4eaf76a88d3a63269e4f9d635608e730bb273beecc8d387cf5880388a9",
+        "enrollmentOperationId": "actor-enrolled:a33b46f3a0d3c03f24d7538f0a58b1d5dd56840300338790a0410c19f7290f99",
+        "publicKey": "4f2d2ee0608be31f2dd78f19a40c19254d5b77f57a6fde9f6086887899c82005",
+        "retiredAt": null,
+        "updatedAt": 123
+      },
+      "primaryKey": "a33b46f3a0d3c03f24d7538f0a58b1d5dd56840300338790a0410c19f7290f99",
+      "protocolVersion": 2,
+      "registryKey": "90_actor_state"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "acceptedChainDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "acceptedCounter": 0,
+        "acceptedOperationId": null,
+        "actorKind": "desktop",
+        "authorityEpochId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "canonicalEnrollmentCertificate": "{}",
+        "chainGenesisDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "createdAt": 1,
+        "enrollmentCertificateDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "enrollmentOperationId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "publicKey": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "retiredAt": null,
+        "updatedAt": 1
+      },
+      "primaryKey": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "protocolVersion": 2,
+      "registryKey": "90_actor_state"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "actorClass": "editor",
+        "actorId": "36e9ebf952724953d85a4b133013623ae5f80789c49aac4cb384d42fc9962344",
+        "canonicalCertificate": "{\"authority_signature\":\"e2df4807a48e3fc9e170d53ad4dbed17dc68c7c5ea1cd471cd1d76337e142f04a9897fdb378e0cc55d2a3318b54df091a7d534edd1af3affde3ddde79a2c4005\",\"certificate_body\":{\"actor_capability_body\":{\"actor_class\":\"editor\",\"actor_id\":\"36e9ebf952724953d85a4b133013623ae5f80789c49aac4cb384d42fc9962344\",\"actor_public_key\":\"4f2d2ee0608be31f2dd78f19a40c19254d5b77f57a6fde9f6086887899c82005\",\"allowed_operation_types\":[\"account_person_assignment\",\"account_remove\",\"account_upsert\",\"feed_item_analysis_replace\",\"feed_item_annotations_replace\",\"feed_item_archive_assignment\",\"feed_item_capture_upsert\",\"feed_item_like_assignment\",\"feed_item_like_sync_receipt\",\"feed_item_priority_assignment\",\"feed_item_read_assignment\",\"feed_item_remove\",\"feed_item_saved_assignment\",\"feed_item_seen_sync_receipt\",\"friend_replace\",\"person_reach_out_append\",\"person_remove_and_accounts\",\"person_remove_detach_accounts\",\"person_upsert\",\"preferences_leaf_assignment\",\"rss_feed_remove_keep_items\",\"rss_feed_remove_with_items\",\"rss_feed_title_assignment\",\"rss_feed_upsert\"],\"allowed_query_ids\":[],\"authority_key_id\":\"bf03b09b0dc5d71b6096dc7e4e16e20bc3c52c6ead5143caadcaf1fb3b28b76b\",\"epoch\":2,\"epoch_id\":\"3ab4a1ef22a3e2d7290782d53013ffedf86f1614273807a55f75d3028d4deb39\",\"format\":\"freed_library_core_actor_capability_v2\",\"issuance_identity\":\"ad434c8bba450bd5d682d1121e1cb3334643f4ae1b177207547e34f70155020f\",\"issued_at_ms\":101,\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"retirement_identity\":\"79c319bae889d40de9a34f028b28c9f9c59c1e7c48bbde95125cf57eddbfac8b\",\"scope\":{\"mode\":\"library_wide\"},\"signature_algorithm\":\"ed25519\"},\"actor_capability_body_digest\":\"ee492379e5b973412e61bff6a6d302bfc22fe5e1489efecadc7a5ec6b862b15b\",\"actor_enrollment_body\":{\"actor_id\":\"36e9ebf952724953d85a4b133013623ae5f80789c49aac4cb384d42fc9962344\",\"actor_incarnation_nonce\":\"27572db7104cc28f53aa86a472169e5ace53ce2d4c56d8fe099c7da44644c0a1\",\"actor_public_key\":\"4f2d2ee0608be31f2dd78f19a40c19254d5b77f57a6fde9f6086887899c82005\",\"actor_public_key_fingerprint\":\"4dbed3f07a121656178375309f3fadfef7caf15788be2fb71ea0aedf811ae143\",\"authority_key_id\":\"bf03b09b0dc5d71b6096dc7e4e16e20bc3c52c6ead5143caadcaf1fb3b28b76b\",\"created_at_ms\":101,\"epoch\":2,\"epoch_id\":\"3ab4a1ef22a3e2d7290782d53013ffedf86f1614273807a55f75d3028d4deb39\",\"installation_incarnation\":\"7648f43b926e129b2418761d323f8779e6898077cb7c03307e00749b5e343eab\",\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"observed_frontier\":[],\"operation_id\":\"actor-enrolled:36e9ebf952724953d85a4b133013623ae5f80789c49aac4cb384d42fc9962344\",\"operation_type\":\"actor_enrolled\",\"schema_version\":1,\"signature_algorithm\":\"ed25519\"},\"actor_proof\":\"61806b95287c6c32f52868c3a0e42ace6153ca5e523f9f42e378eac68a0462fa7374e9acdb808af961b1efebed5a81f7050a1e46d8219b9afe7bde674dcc2a00\",\"enrollment_body_digest\":\"63f6c2ccd4a269694f29e33cb4554356175592a7eeb81c1c76c462cce10302a2\"},\"certificate_digest\":\"3c02ce7972b9f13a1ea4d4469132cac675996ac90ebcba8e0f062be48da00595\"}",
+        "certificateDigest": "3c02ce7972b9f13a1ea4d4469132cac675996ac90ebcba8e0f062be48da00595",
+        "certificateVersion": 2,
+        "issuanceIdentity": "ad434c8bba450bd5d682d1121e1cb3334643f4ae1b177207547e34f70155020f",
+        "issuedAt": 101,
+        "retiredAt": null,
+        "retirementCertificateDigest": null,
+        "retirementIdentity": "79c319bae889d40de9a34f028b28c9f9c59c1e7c48bbde95125cf57eddbfac8b",
+        "scopeId": null,
+        "scopeKind": null,
+        "scopeMode": "library_wide"
+      },
+      "primaryKey": "3c02ce7972b9f13a1ea4d4469132cac675996ac90ebcba8e0f062be48da00595",
+      "protocolVersion": 2,
+      "registryKey": "91_actor_capability"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "actorClass": "editor",
+        "actorId": "6666666666666666666666666666666666666666666666666666666666666666",
+        "canonicalCertificate": "{}",
+        "certificateDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "certificateVersion": 2,
+        "issuanceIdentity": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "issuedAt": 1,
+        "retiredAt": null,
+        "retirementCertificateDigest": null,
+        "retirementIdentity": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "scopeId": null,
+        "scopeKind": null,
+        "scopeMode": "library_wide"
+      },
+      "primaryKey": "6666666666666666666666666666666666666666666666666666666666666666",
+      "protocolVersion": 2,
+      "registryKey": "91_actor_capability"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "actorClass": "editor",
+        "actorId": "a33b46f3a0d3c03f24d7538f0a58b1d5dd56840300338790a0410c19f7290f99",
+        "canonicalCertificate": "{\"authority_signature\":\"203644056384f4dbf7dcad1a29661bfb5aad3c0c2411212c3d33838d5109c0ad3de109123217959bbe26a272f3c90142ee89db91d643ff246566ec4dc92e5300\",\"certificate_body\":{\"actor_capability_body\":{\"actor_class\":\"editor\",\"actor_id\":\"a33b46f3a0d3c03f24d7538f0a58b1d5dd56840300338790a0410c19f7290f99\",\"actor_public_key\":\"4f2d2ee0608be31f2dd78f19a40c19254d5b77f57a6fde9f6086887899c82005\",\"allowed_operation_types\":[\"account_person_assignment\",\"account_remove\",\"account_upsert\",\"feed_item_analysis_replace\",\"feed_item_annotations_replace\",\"feed_item_archive_assignment\",\"feed_item_capture_upsert\",\"feed_item_like_assignment\",\"feed_item_like_sync_receipt\",\"feed_item_priority_assignment\",\"feed_item_read_assignment\",\"feed_item_remove\",\"feed_item_saved_assignment\",\"feed_item_seen_sync_receipt\",\"friend_replace\",\"person_reach_out_append\",\"person_remove_and_accounts\",\"person_remove_detach_accounts\",\"person_upsert\",\"preferences_leaf_assignment\",\"rss_feed_remove_keep_items\",\"rss_feed_remove_with_items\",\"rss_feed_title_assignment\",\"rss_feed_upsert\"],\"allowed_query_ids\":[],\"authority_key_id\":\"bf03b09b0dc5d71b6096dc7e4e16e20bc3c52c6ead5143caadcaf1fb3b28b76b\",\"epoch\":2,\"epoch_id\":\"3ab4a1ef22a3e2d7290782d53013ffedf86f1614273807a55f75d3028d4deb39\",\"format\":\"freed_library_core_actor_capability_v2\",\"issuance_identity\":\"510859bc8eb5eb027d26d0d31244a98b7188110b5108fee228032cc3202e2562\",\"issued_at_ms\":123,\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"retirement_identity\":\"4a431535f08d141ead847a5620e8875de20f036c66e614bf8599a54d36fed531\",\"scope\":{\"mode\":\"library_wide\"},\"signature_algorithm\":\"ed25519\"},\"actor_capability_body_digest\":\"706f4302421f0c8eaf5a789a74ff772d0e3c33ed633ca5164feb552c97a37ae1\",\"actor_enrollment_body\":{\"actor_id\":\"a33b46f3a0d3c03f24d7538f0a58b1d5dd56840300338790a0410c19f7290f99\",\"actor_incarnation_nonce\":\"11ef1bb05d1de61c0b45a11c09f1da49296e393c1ea3cb3fe6b5fc05123009ee\",\"actor_public_key\":\"4f2d2ee0608be31f2dd78f19a40c19254d5b77f57a6fde9f6086887899c82005\",\"actor_public_key_fingerprint\":\"4dbed3f07a121656178375309f3fadfef7caf15788be2fb71ea0aedf811ae143\",\"authority_key_id\":\"bf03b09b0dc5d71b6096dc7e4e16e20bc3c52c6ead5143caadcaf1fb3b28b76b\",\"created_at_ms\":123,\"epoch\":2,\"epoch_id\":\"3ab4a1ef22a3e2d7290782d53013ffedf86f1614273807a55f75d3028d4deb39\",\"installation_incarnation\":\"7648f43b926e129b2418761d323f8779e6898077cb7c03307e00749b5e343eab\",\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"observed_frontier\":[],\"operation_id\":\"actor-enrolled:a33b46f3a0d3c03f24d7538f0a58b1d5dd56840300338790a0410c19f7290f99\",\"operation_type\":\"actor_enrolled\",\"schema_version\":1,\"signature_algorithm\":\"ed25519\"},\"actor_proof\":\"94bd4e12239611ba90eaf26347df8e709766e26c2b7b5475bd9726224ec8fe0554b3008d46dfc94b5ca3a128c3ddf4bb0aca0074df1ace9efe328c8224198405\",\"enrollment_body_digest\":\"e3e6a77b47c3cb1004a2624a8774401e0a101d32df99a0210eb60f34678e11e7\"},\"certificate_digest\":\"8ad09f4eaf76a88d3a63269e4f9d635608e730bb273beecc8d387cf5880388a9\"}",
+        "certificateDigest": "8ad09f4eaf76a88d3a63269e4f9d635608e730bb273beecc8d387cf5880388a9",
+        "certificateVersion": 2,
+        "issuanceIdentity": "510859bc8eb5eb027d26d0d31244a98b7188110b5108fee228032cc3202e2562",
+        "issuedAt": 123,
+        "retiredAt": null,
+        "retirementCertificateDigest": null,
+        "retirementIdentity": "4a431535f08d141ead847a5620e8875de20f036c66e614bf8599a54d36fed531",
+        "scopeId": null,
+        "scopeKind": null,
+        "scopeMode": "library_wide"
+      },
+      "primaryKey": "8ad09f4eaf76a88d3a63269e4f9d635608e730bb273beecc8d387cf5880388a9",
+      "protocolVersion": 2,
+      "registryKey": "91_actor_capability"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "actorClass": "editor",
+        "actorId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "canonicalCertificate": "{}",
+        "certificateDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "certificateVersion": 2,
+        "issuanceIdentity": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "issuedAt": 1,
+        "retiredAt": null,
+        "retirementCertificateDigest": null,
+        "retirementIdentity": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "scopeId": null,
+        "scopeKind": null,
+        "scopeMode": "library_wide"
+      },
+      "primaryKey": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "protocolVersion": 2,
+      "registryKey": "91_actor_capability"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "account_person_assignment"
+      },
+      "primaryKey": [
+        "3c02ce7972b9f13a1ea4d4469132cac675996ac90ebcba8e0f062be48da00595",
+        "account_person_assignment"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "account_remove"
+      },
+      "primaryKey": [
+        "3c02ce7972b9f13a1ea4d4469132cac675996ac90ebcba8e0f062be48da00595",
+        "account_remove"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "account_upsert"
+      },
+      "primaryKey": [
+        "3c02ce7972b9f13a1ea4d4469132cac675996ac90ebcba8e0f062be48da00595",
+        "account_upsert"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "feed_item_analysis_replace"
+      },
+      "primaryKey": [
+        "3c02ce7972b9f13a1ea4d4469132cac675996ac90ebcba8e0f062be48da00595",
+        "feed_item_analysis_replace"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "feed_item_annotations_replace"
+      },
+      "primaryKey": [
+        "3c02ce7972b9f13a1ea4d4469132cac675996ac90ebcba8e0f062be48da00595",
+        "feed_item_annotations_replace"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "feed_item_archive_assignment"
+      },
+      "primaryKey": [
+        "3c02ce7972b9f13a1ea4d4469132cac675996ac90ebcba8e0f062be48da00595",
+        "feed_item_archive_assignment"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "feed_item_capture_upsert"
+      },
+      "primaryKey": [
+        "3c02ce7972b9f13a1ea4d4469132cac675996ac90ebcba8e0f062be48da00595",
+        "feed_item_capture_upsert"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "feed_item_like_assignment"
+      },
+      "primaryKey": [
+        "3c02ce7972b9f13a1ea4d4469132cac675996ac90ebcba8e0f062be48da00595",
+        "feed_item_like_assignment"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "feed_item_like_sync_receipt"
+      },
+      "primaryKey": [
+        "3c02ce7972b9f13a1ea4d4469132cac675996ac90ebcba8e0f062be48da00595",
+        "feed_item_like_sync_receipt"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "feed_item_priority_assignment"
+      },
+      "primaryKey": [
+        "3c02ce7972b9f13a1ea4d4469132cac675996ac90ebcba8e0f062be48da00595",
+        "feed_item_priority_assignment"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "feed_item_read_assignment"
+      },
+      "primaryKey": [
+        "3c02ce7972b9f13a1ea4d4469132cac675996ac90ebcba8e0f062be48da00595",
+        "feed_item_read_assignment"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "feed_item_remove"
+      },
+      "primaryKey": [
+        "3c02ce7972b9f13a1ea4d4469132cac675996ac90ebcba8e0f062be48da00595",
+        "feed_item_remove"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "feed_item_saved_assignment"
+      },
+      "primaryKey": [
+        "3c02ce7972b9f13a1ea4d4469132cac675996ac90ebcba8e0f062be48da00595",
+        "feed_item_saved_assignment"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "feed_item_seen_sync_receipt"
+      },
+      "primaryKey": [
+        "3c02ce7972b9f13a1ea4d4469132cac675996ac90ebcba8e0f062be48da00595",
+        "feed_item_seen_sync_receipt"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "friend_replace"
+      },
+      "primaryKey": [
+        "3c02ce7972b9f13a1ea4d4469132cac675996ac90ebcba8e0f062be48da00595",
+        "friend_replace"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "person_reach_out_append"
+      },
+      "primaryKey": [
+        "3c02ce7972b9f13a1ea4d4469132cac675996ac90ebcba8e0f062be48da00595",
+        "person_reach_out_append"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "person_remove_and_accounts"
+      },
+      "primaryKey": [
+        "3c02ce7972b9f13a1ea4d4469132cac675996ac90ebcba8e0f062be48da00595",
+        "person_remove_and_accounts"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "person_remove_detach_accounts"
+      },
+      "primaryKey": [
+        "3c02ce7972b9f13a1ea4d4469132cac675996ac90ebcba8e0f062be48da00595",
+        "person_remove_detach_accounts"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "person_upsert"
+      },
+      "primaryKey": [
+        "3c02ce7972b9f13a1ea4d4469132cac675996ac90ebcba8e0f062be48da00595",
+        "person_upsert"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "preferences_leaf_assignment"
+      },
+      "primaryKey": [
+        "3c02ce7972b9f13a1ea4d4469132cac675996ac90ebcba8e0f062be48da00595",
+        "preferences_leaf_assignment"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "rss_feed_remove_keep_items"
+      },
+      "primaryKey": [
+        "3c02ce7972b9f13a1ea4d4469132cac675996ac90ebcba8e0f062be48da00595",
+        "rss_feed_remove_keep_items"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "rss_feed_remove_with_items"
+      },
+      "primaryKey": [
+        "3c02ce7972b9f13a1ea4d4469132cac675996ac90ebcba8e0f062be48da00595",
+        "rss_feed_remove_with_items"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "rss_feed_title_assignment"
+      },
+      "primaryKey": [
+        "3c02ce7972b9f13a1ea4d4469132cac675996ac90ebcba8e0f062be48da00595",
+        "rss_feed_title_assignment"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "rss_feed_upsert"
+      },
+      "primaryKey": [
+        "3c02ce7972b9f13a1ea4d4469132cac675996ac90ebcba8e0f062be48da00595",
+        "rss_feed_upsert"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "account_person_assignment"
+      },
+      "primaryKey": [
+        "8ad09f4eaf76a88d3a63269e4f9d635608e730bb273beecc8d387cf5880388a9",
+        "account_person_assignment"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "account_remove"
+      },
+      "primaryKey": [
+        "8ad09f4eaf76a88d3a63269e4f9d635608e730bb273beecc8d387cf5880388a9",
+        "account_remove"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "account_upsert"
+      },
+      "primaryKey": [
+        "8ad09f4eaf76a88d3a63269e4f9d635608e730bb273beecc8d387cf5880388a9",
+        "account_upsert"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "feed_item_analysis_replace"
+      },
+      "primaryKey": [
+        "8ad09f4eaf76a88d3a63269e4f9d635608e730bb273beecc8d387cf5880388a9",
+        "feed_item_analysis_replace"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "feed_item_annotations_replace"
+      },
+      "primaryKey": [
+        "8ad09f4eaf76a88d3a63269e4f9d635608e730bb273beecc8d387cf5880388a9",
+        "feed_item_annotations_replace"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "feed_item_archive_assignment"
+      },
+      "primaryKey": [
+        "8ad09f4eaf76a88d3a63269e4f9d635608e730bb273beecc8d387cf5880388a9",
+        "feed_item_archive_assignment"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "feed_item_capture_upsert"
+      },
+      "primaryKey": [
+        "8ad09f4eaf76a88d3a63269e4f9d635608e730bb273beecc8d387cf5880388a9",
+        "feed_item_capture_upsert"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "feed_item_like_assignment"
+      },
+      "primaryKey": [
+        "8ad09f4eaf76a88d3a63269e4f9d635608e730bb273beecc8d387cf5880388a9",
+        "feed_item_like_assignment"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "feed_item_like_sync_receipt"
+      },
+      "primaryKey": [
+        "8ad09f4eaf76a88d3a63269e4f9d635608e730bb273beecc8d387cf5880388a9",
+        "feed_item_like_sync_receipt"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "feed_item_priority_assignment"
+      },
+      "primaryKey": [
+        "8ad09f4eaf76a88d3a63269e4f9d635608e730bb273beecc8d387cf5880388a9",
+        "feed_item_priority_assignment"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "feed_item_read_assignment"
+      },
+      "primaryKey": [
+        "8ad09f4eaf76a88d3a63269e4f9d635608e730bb273beecc8d387cf5880388a9",
+        "feed_item_read_assignment"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "feed_item_remove"
+      },
+      "primaryKey": [
+        "8ad09f4eaf76a88d3a63269e4f9d635608e730bb273beecc8d387cf5880388a9",
+        "feed_item_remove"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "feed_item_saved_assignment"
+      },
+      "primaryKey": [
+        "8ad09f4eaf76a88d3a63269e4f9d635608e730bb273beecc8d387cf5880388a9",
+        "feed_item_saved_assignment"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "feed_item_seen_sync_receipt"
+      },
+      "primaryKey": [
+        "8ad09f4eaf76a88d3a63269e4f9d635608e730bb273beecc8d387cf5880388a9",
+        "feed_item_seen_sync_receipt"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "friend_replace"
+      },
+      "primaryKey": [
+        "8ad09f4eaf76a88d3a63269e4f9d635608e730bb273beecc8d387cf5880388a9",
+        "friend_replace"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "person_reach_out_append"
+      },
+      "primaryKey": [
+        "8ad09f4eaf76a88d3a63269e4f9d635608e730bb273beecc8d387cf5880388a9",
+        "person_reach_out_append"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "person_remove_and_accounts"
+      },
+      "primaryKey": [
+        "8ad09f4eaf76a88d3a63269e4f9d635608e730bb273beecc8d387cf5880388a9",
+        "person_remove_and_accounts"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "person_remove_detach_accounts"
+      },
+      "primaryKey": [
+        "8ad09f4eaf76a88d3a63269e4f9d635608e730bb273beecc8d387cf5880388a9",
+        "person_remove_detach_accounts"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "person_upsert"
+      },
+      "primaryKey": [
+        "8ad09f4eaf76a88d3a63269e4f9d635608e730bb273beecc8d387cf5880388a9",
+        "person_upsert"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "preferences_leaf_assignment"
+      },
+      "primaryKey": [
+        "8ad09f4eaf76a88d3a63269e4f9d635608e730bb273beecc8d387cf5880388a9",
+        "preferences_leaf_assignment"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "rss_feed_remove_keep_items"
+      },
+      "primaryKey": [
+        "8ad09f4eaf76a88d3a63269e4f9d635608e730bb273beecc8d387cf5880388a9",
+        "rss_feed_remove_keep_items"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "rss_feed_remove_with_items"
+      },
+      "primaryKey": [
+        "8ad09f4eaf76a88d3a63269e4f9d635608e730bb273beecc8d387cf5880388a9",
+        "rss_feed_remove_with_items"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "rss_feed_title_assignment"
+      },
+      "primaryKey": [
+        "8ad09f4eaf76a88d3a63269e4f9d635608e730bb273beecc8d387cf5880388a9",
+        "rss_feed_title_assignment"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    },
+    {
+      "format": "freed_normalized_checkpoint_v2",
+      "payload": {
+        "mutationId": "rss_feed_upsert"
+      },
+      "primaryKey": [
+        "8ad09f4eaf76a88d3a63269e4f9d635608e730bb273beecc8d387cf5880388a9",
+        "rss_feed_upsert"
+      ],
+      "protocolVersion": 2,
+      "registryKey": "92_actor_capability_mutation"
+    }
+  ],
+  "certificate": "{\"authority_signature\":\"203644056384f4dbf7dcad1a29661bfb5aad3c0c2411212c3d33838d5109c0ad3de109123217959bbe26a272f3c90142ee89db91d643ff246566ec4dc92e5300\",\"certificate_body\":{\"actor_capability_body\":{\"actor_class\":\"editor\",\"actor_id\":\"a33b46f3a0d3c03f24d7538f0a58b1d5dd56840300338790a0410c19f7290f99\",\"actor_public_key\":\"4f2d2ee0608be31f2dd78f19a40c19254d5b77f57a6fde9f6086887899c82005\",\"allowed_operation_types\":[\"account_person_assignment\",\"account_remove\",\"account_upsert\",\"feed_item_analysis_replace\",\"feed_item_annotations_replace\",\"feed_item_archive_assignment\",\"feed_item_capture_upsert\",\"feed_item_like_assignment\",\"feed_item_like_sync_receipt\",\"feed_item_priority_assignment\",\"feed_item_read_assignment\",\"feed_item_remove\",\"feed_item_saved_assignment\",\"feed_item_seen_sync_receipt\",\"friend_replace\",\"person_reach_out_append\",\"person_remove_and_accounts\",\"person_remove_detach_accounts\",\"person_upsert\",\"preferences_leaf_assignment\",\"rss_feed_remove_keep_items\",\"rss_feed_remove_with_items\",\"rss_feed_title_assignment\",\"rss_feed_upsert\"],\"allowed_query_ids\":[],\"authority_key_id\":\"bf03b09b0dc5d71b6096dc7e4e16e20bc3c52c6ead5143caadcaf1fb3b28b76b\",\"epoch\":2,\"epoch_id\":\"3ab4a1ef22a3e2d7290782d53013ffedf86f1614273807a55f75d3028d4deb39\",\"format\":\"freed_library_core_actor_capability_v2\",\"issuance_identity\":\"510859bc8eb5eb027d26d0d31244a98b7188110b5108fee228032cc3202e2562\",\"issued_at_ms\":123,\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"retirement_identity\":\"4a431535f08d141ead847a5620e8875de20f036c66e614bf8599a54d36fed531\",\"scope\":{\"mode\":\"library_wide\"},\"signature_algorithm\":\"ed25519\"},\"actor_capability_body_digest\":\"706f4302421f0c8eaf5a789a74ff772d0e3c33ed633ca5164feb552c97a37ae1\",\"actor_enrollment_body\":{\"actor_id\":\"a33b46f3a0d3c03f24d7538f0a58b1d5dd56840300338790a0410c19f7290f99\",\"actor_incarnation_nonce\":\"11ef1bb05d1de61c0b45a11c09f1da49296e393c1ea3cb3fe6b5fc05123009ee\",\"actor_public_key\":\"4f2d2ee0608be31f2dd78f19a40c19254d5b77f57a6fde9f6086887899c82005\",\"actor_public_key_fingerprint\":\"4dbed3f07a121656178375309f3fadfef7caf15788be2fb71ea0aedf811ae143\",\"authority_key_id\":\"bf03b09b0dc5d71b6096dc7e4e16e20bc3c52c6ead5143caadcaf1fb3b28b76b\",\"created_at_ms\":123,\"epoch\":2,\"epoch_id\":\"3ab4a1ef22a3e2d7290782d53013ffedf86f1614273807a55f75d3028d4deb39\",\"installation_incarnation\":\"7648f43b926e129b2418761d323f8779e6898077cb7c03307e00749b5e343eab\",\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"observed_frontier\":[],\"operation_id\":\"actor-enrolled:a33b46f3a0d3c03f24d7538f0a58b1d5dd56840300338790a0410c19f7290f99\",\"operation_type\":\"actor_enrolled\",\"schema_version\":1,\"signature_algorithm\":\"ed25519\"},\"actor_proof\":\"94bd4e12239611ba90eaf26347df8e709766e26c2b7b5475bd9726224ec8fe0554b3008d46dfc94b5ca3a128c3ddf4bb0aca0074df1ace9efe328c8224198405\",\"enrollment_body_digest\":\"e3e6a77b47c3cb1004a2624a8774401e0a101d32df99a0210eb60f34678e11e7\"},\"certificate_digest\":\"8ad09f4eaf76a88d3a63269e4f9d635608e730bb273beecc8d387cf5880388a9\"}",
+  "envelopes": [
+    "{\"actor_chain_digest\":\"b40e34f06f2ad105956f4b2d78150e9fc7237a21eb9e13974c91c479e2e7853b\",\"actor_id\":\"a33b46f3a0d3c03f24d7538f0a58b1d5dd56840300338790a0410c19f7290f99\",\"actor_sequence\":1,\"blob_references\":[],\"causal_frontier\":[],\"created_at_ms\":1000,\"entity_id\":\"rss:item:1\",\"entity_type\":\"FeedItem\",\"epoch\":2,\"epoch_id\":\"3ab4a1ef22a3e2d7290782d53013ffedf86f1614273807a55f75d3028d4deb39\",\"hlc_counter\":0,\"hlc_wall_ms\":1000,\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"operation_id\":\"tx:read:native-verified:member:0\",\"operation_type\":\"feed_item_read_assignment\",\"payload\":{\"read_at_ms\":900},\"payload_digest\":\"974ea35667cab4f2c8320fe2b1a182c11f69d1ac9813aede57441b9c6eec8e79\",\"previous_actor_chain_digest\":\"06d6e924b83c3825de6b9de96f7b376e4d36bf25ef7b07c7c29970d05def01e1\",\"previous_actor_operation_id\":null,\"schema_version\":1,\"signature\":\"8c54e4696b31954a39d6cf0d6204908eadaf66db5fab7bab2363be4fd09e31ed285275c3100ac1caf5c3a8a51a6660e11bd5391a414d82c401072a0a0be43a0a\",\"signature_algorithm\":\"ed25519\",\"transaction_digest\":\"4338c0898d883e53e2d0e5987b1da52fb65dabf5917f4fef4df75b5602c19072\",\"transaction_id\":\"tx:read:native-verified\",\"transaction_member_count\":2,\"transaction_member_index\":0}",
+    "{\"actor_chain_digest\":\"e052ccbee068f38eaef53c975eeb730bf92d4d3acd8da4252c2b66dec85192e9\",\"actor_id\":\"a33b46f3a0d3c03f24d7538f0a58b1d5dd56840300338790a0410c19f7290f99\",\"actor_sequence\":2,\"blob_references\":[],\"causal_frontier\":[],\"created_at_ms\":1001,\"entity_id\":\"rss:item:2\",\"entity_type\":\"FeedItem\",\"epoch\":2,\"epoch_id\":\"3ab4a1ef22a3e2d7290782d53013ffedf86f1614273807a55f75d3028d4deb39\",\"hlc_counter\":0,\"hlc_wall_ms\":1001,\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"operation_id\":\"tx:read:native-verified:member:1\",\"operation_type\":\"feed_item_read_assignment\",\"payload\":{\"read_at_ms\":901},\"payload_digest\":\"9f1dc2f387f52d3f4871995fa259211d7ce2d94ddb052f480aa60ebb522ce959\",\"previous_actor_chain_digest\":\"b40e34f06f2ad105956f4b2d78150e9fc7237a21eb9e13974c91c479e2e7853b\",\"previous_actor_operation_id\":\"tx:read:native-verified:member:0\",\"schema_version\":1,\"signature\":\"9e829852367814a27d862bc957e92c525c781d0e93e758376958b84adbb85eb39b85e59d6c57eae28ca62049f3c1568704faf8ff2c96c71f650d0d595673c40e\",\"signature_algorithm\":\"ed25519\",\"transaction_digest\":\"4338c0898d883e53e2d0e5987b1da52fb65dabf5917f4fef4df75b5602c19072\",\"transaction_id\":\"tx:read:native-verified\",\"transaction_member_count\":2,\"transaction_member_index\":1}"
+  ],
+  "expected": {
+    "authorityEpoch": "3ab4a1ef22a3e2d7290782d53013ffedf86f1614273807a55f75d3028d4deb39",
+    "causalFrontierDigest": "f35d0ce17ab9efc4dc17be3a5ac1f616e245501a8e2dcd4df117db6114509d72",
+    "format": "freed_normalized_checkpoint_export_v2",
+    "itemCount": 2,
+    "libraryId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "protocolVersion": 2,
+    "recordCount": 66,
+    "sourceRevision": 2,
+    "writerId": "36e9ebf952724953d85a4b133013623ae5f80789c49aac4cb384d42fc9962344"
+  },
+  "expectedCheckpointDigest": "34a4b4ef1f9d975e92043c8c5dc310a94c99c8f62f744b10aa32ce750d56694e",
+  "operationPages": [
+    {
+      "page": {
+        "canonicalRecordBytes": 1685,
+        "done": false,
+        "nextCursor": {
+          "kind": "accepted_transaction",
+          "memberIndex": -1,
+          "recordDigest": "dc9041943cd86627485e79d14d0e0eab0218c45dcd295c22ca8178b9357867a2",
+          "sourceRevision": 2
+        },
+        "records": [
+          {
+            "canonicalRecordJson": "{\"actor_id\":\"a33b46f3a0d3c03f24d7538f0a58b1d5dd56840300338790a0410c19f7290f99\",\"authoritative_source_revision\":2,\"authority_key_id\":\"bf03b09b0dc5d71b6096dc7e4e16e20bc3c52c6ead5143caadcaf1fb3b28b76b\",\"canonical_operation_ids\":[\"tx:read:native-verified:member:0\",\"tx:read:native-verified:member:1\"],\"epoch\":2,\"epoch_id\":\"3ab4a1ef22a3e2d7290782d53013ffedf86f1614273807a55f75d3028d4deb39\",\"format\":\"freed_follower_result_v1\",\"intent_epoch\":2,\"intent_epoch_id\":\"3ab4a1ef22a3e2d7290782d53013ffedf86f1614273807a55f75d3028d4deb39\",\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"original_result_digest\":null,\"previous_result_digest\":null,\"receipt_ids\":[\"83d8168e19a52a539ef8bc4f8998a90a344984b2323df5203bf48d7f6dd6535a\",\"ee6fee5feecaa3a52031ab65f9bad3fc4d0862020ccce820a3c190ae7bebbe82\"],\"rejection_reason\":null,\"replacement_fields\":[{\"boolean_value\":null,\"entity_id\":\"rss:item:1\",\"entity_type\":\"FeedItem\",\"field_path\":\"read_at\",\"integer_value\":900,\"real_value\":null,\"text_value\":null,\"value_type\":\"integer\"},{\"boolean_value\":null,\"entity_id\":\"rss:item:2\",\"entity_type\":\"FeedItem\",\"field_path\":\"read_at\",\"integer_value\":901,\"real_value\":null,\"text_value\":null,\"value_type\":\"integer\"}],\"resolved_at_ms\":2203,\"result_body_digest\":\"dc9041943cd86627485e79d14d0e0eab0218c45dcd295c22ca8178b9357867a2\",\"result_sequence\":1,\"schema_version\":1,\"signature\":\"292d0bf8f2f17671db5562e40e612400f59c61265ffa9cd558167faa4c1c259a5b5e41c4c5fa68d6a596c3a1547a534c18560b27a8aa50d771641253dff2490a\",\"signature_algorithm\":\"ed25519\",\"status\":\"accepted\",\"transaction_digest\":\"4338c0898d883e53e2d0e5987b1da52fb65dabf5917f4fef4df75b5602c19072\",\"transaction_id\":\"tx:read:native-verified\"}",
+            "kind": "accepted_transaction",
+            "memberIndex": -1,
+            "recordDigest": "dc9041943cd86627485e79d14d0e0eab0218c45dcd295c22ca8178b9357867a2",
+            "sourceRevision": 2,
+            "transactionDigest": "4338c0898d883e53e2d0e5987b1da52fb65dabf5917f4fef4df75b5602c19072",
+            "transactionId": "tx:read:native-verified"
+          }
+        ]
+      },
+      "receivedAt": 2206,
+      "snapshot": {
+        "authorityEpoch": "3ab4a1ef22a3e2d7290782d53013ffedf86f1614273807a55f75d3028d4deb39",
+        "firstAvailableRevision": 2,
+        "format": "freed_normalized_operation_export_v2",
+        "libraryId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "operationCount": 2,
+        "protocolVersion": 2,
+        "sourceRevision": 2,
+        "transactionCount": 1,
+        "writerId": "36e9ebf952724953d85a4b133013623ae5f80789c49aac4cb384d42fc9962344"
+      }
+    },
+    {
+      "page": {
+        "canonicalRecordBytes": 1225,
+        "done": false,
+        "nextCursor": {
+          "kind": "operation",
+          "memberIndex": 0,
+          "recordDigest": "83d8168e19a52a539ef8bc4f8998a90a344984b2323df5203bf48d7f6dd6535a",
+          "sourceRevision": 2
+        },
+        "records": [
+          {
+            "canonicalRecordJson": "{\"actor_chain_digest\":\"b40e34f06f2ad105956f4b2d78150e9fc7237a21eb9e13974c91c479e2e7853b\",\"actor_id\":\"a33b46f3a0d3c03f24d7538f0a58b1d5dd56840300338790a0410c19f7290f99\",\"actor_sequence\":1,\"blob_references\":[],\"causal_frontier\":[],\"created_at_ms\":1000,\"entity_id\":\"rss:item:1\",\"entity_type\":\"FeedItem\",\"epoch\":2,\"epoch_id\":\"3ab4a1ef22a3e2d7290782d53013ffedf86f1614273807a55f75d3028d4deb39\",\"hlc_counter\":0,\"hlc_wall_ms\":1000,\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"operation_id\":\"tx:read:native-verified:member:0\",\"operation_type\":\"feed_item_read_assignment\",\"payload\":{\"read_at_ms\":900},\"payload_digest\":\"974ea35667cab4f2c8320fe2b1a182c11f69d1ac9813aede57441b9c6eec8e79\",\"previous_actor_chain_digest\":\"06d6e924b83c3825de6b9de96f7b376e4d36bf25ef7b07c7c29970d05def01e1\",\"previous_actor_operation_id\":null,\"schema_version\":1,\"signature\":\"8c54e4696b31954a39d6cf0d6204908eadaf66db5fab7bab2363be4fd09e31ed285275c3100ac1caf5c3a8a51a6660e11bd5391a414d82c401072a0a0be43a0a\",\"signature_algorithm\":\"ed25519\",\"transaction_digest\":\"4338c0898d883e53e2d0e5987b1da52fb65dabf5917f4fef4df75b5602c19072\",\"transaction_id\":\"tx:read:native-verified\",\"transaction_member_count\":2,\"transaction_member_index\":0}",
+            "kind": "operation",
+            "memberIndex": 0,
+            "recordDigest": "83d8168e19a52a539ef8bc4f8998a90a344984b2323df5203bf48d7f6dd6535a",
+            "sourceRevision": 2,
+            "transactionDigest": "4338c0898d883e53e2d0e5987b1da52fb65dabf5917f4fef4df75b5602c19072",
+            "transactionId": "tx:read:native-verified"
+          }
+        ]
+      },
+      "receivedAt": 2206,
+      "snapshot": {
+        "authorityEpoch": "3ab4a1ef22a3e2d7290782d53013ffedf86f1614273807a55f75d3028d4deb39",
+        "firstAvailableRevision": 2,
+        "format": "freed_normalized_operation_export_v2",
+        "libraryId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "operationCount": 2,
+        "protocolVersion": 2,
+        "sourceRevision": 2,
+        "transactionCount": 1,
+        "writerId": "36e9ebf952724953d85a4b133013623ae5f80789c49aac4cb384d42fc9962344"
+      }
+    },
+    {
+      "page": {
+        "canonicalRecordBytes": 1255,
+        "done": true,
+        "nextCursor": {
+          "kind": "operation",
+          "memberIndex": 1,
+          "recordDigest": "ee6fee5feecaa3a52031ab65f9bad3fc4d0862020ccce820a3c190ae7bebbe82",
+          "sourceRevision": 2
+        },
+        "records": [
+          {
+            "canonicalRecordJson": "{\"actor_chain_digest\":\"e052ccbee068f38eaef53c975eeb730bf92d4d3acd8da4252c2b66dec85192e9\",\"actor_id\":\"a33b46f3a0d3c03f24d7538f0a58b1d5dd56840300338790a0410c19f7290f99\",\"actor_sequence\":2,\"blob_references\":[],\"causal_frontier\":[],\"created_at_ms\":1001,\"entity_id\":\"rss:item:2\",\"entity_type\":\"FeedItem\",\"epoch\":2,\"epoch_id\":\"3ab4a1ef22a3e2d7290782d53013ffedf86f1614273807a55f75d3028d4deb39\",\"hlc_counter\":0,\"hlc_wall_ms\":1001,\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"operation_id\":\"tx:read:native-verified:member:1\",\"operation_type\":\"feed_item_read_assignment\",\"payload\":{\"read_at_ms\":901},\"payload_digest\":\"9f1dc2f387f52d3f4871995fa259211d7ce2d94ddb052f480aa60ebb522ce959\",\"previous_actor_chain_digest\":\"b40e34f06f2ad105956f4b2d78150e9fc7237a21eb9e13974c91c479e2e7853b\",\"previous_actor_operation_id\":\"tx:read:native-verified:member:0\",\"schema_version\":1,\"signature\":\"9e829852367814a27d862bc957e92c525c781d0e93e758376958b84adbb85eb39b85e59d6c57eae28ca62049f3c1568704faf8ff2c96c71f650d0d595673c40e\",\"signature_algorithm\":\"ed25519\",\"transaction_digest\":\"4338c0898d883e53e2d0e5987b1da52fb65dabf5917f4fef4df75b5602c19072\",\"transaction_id\":\"tx:read:native-verified\",\"transaction_member_count\":2,\"transaction_member_index\":1}",
+            "kind": "operation",
+            "memberIndex": 1,
+            "recordDigest": "ee6fee5feecaa3a52031ab65f9bad3fc4d0862020ccce820a3c190ae7bebbe82",
+            "sourceRevision": 2,
+            "transactionDigest": "4338c0898d883e53e2d0e5987b1da52fb65dabf5917f4fef4df75b5602c19072",
+            "transactionId": "tx:read:native-verified"
+          }
+        ]
+      },
+      "receivedAt": 2206,
+      "snapshot": {
+        "authorityEpoch": "3ab4a1ef22a3e2d7290782d53013ffedf86f1614273807a55f75d3028d4deb39",
+        "firstAvailableRevision": 2,
+        "format": "freed_normalized_operation_export_v2",
+        "libraryId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "operationCount": 2,
+        "protocolVersion": 2,
+        "sourceRevision": 2,
+        "transactionCount": 1,
+        "writerId": "36e9ebf952724953d85a4b133013623ae5f80789c49aac4cb384d42fc9962344"
+      }
+    }
+  ],
+  "request": {
+    "actorId": "a33b46f3a0d3c03f24d7538f0a58b1d5dd56840300338790a0410c19f7290f99",
+    "actorPublicKey": "4f2d2ee0608be31f2dd78f19a40c19254d5b77f57a6fde9f6086887899c82005",
+    "authorityEpochId": "3ab4a1ef22a3e2d7290782d53013ffedf86f1614273807a55f75d3028d4deb39",
+    "canonicalEnrollmentRequestJson": "{\"certificate_body\":{\"actor_capability_body\":{\"actor_class\":\"editor\",\"actor_id\":\"a33b46f3a0d3c03f24d7538f0a58b1d5dd56840300338790a0410c19f7290f99\",\"actor_public_key\":\"4f2d2ee0608be31f2dd78f19a40c19254d5b77f57a6fde9f6086887899c82005\",\"allowed_operation_types\":[\"account_person_assignment\",\"account_remove\",\"account_upsert\",\"feed_item_analysis_replace\",\"feed_item_annotations_replace\",\"feed_item_archive_assignment\",\"feed_item_capture_upsert\",\"feed_item_like_assignment\",\"feed_item_like_sync_receipt\",\"feed_item_priority_assignment\",\"feed_item_read_assignment\",\"feed_item_remove\",\"feed_item_saved_assignment\",\"feed_item_seen_sync_receipt\",\"friend_replace\",\"person_reach_out_append\",\"person_remove_and_accounts\",\"person_remove_detach_accounts\",\"person_upsert\",\"preferences_leaf_assignment\",\"rss_feed_remove_keep_items\",\"rss_feed_remove_with_items\",\"rss_feed_title_assignment\",\"rss_feed_upsert\"],\"allowed_query_ids\":[],\"authority_key_id\":\"bf03b09b0dc5d71b6096dc7e4e16e20bc3c52c6ead5143caadcaf1fb3b28b76b\",\"epoch\":2,\"epoch_id\":\"3ab4a1ef22a3e2d7290782d53013ffedf86f1614273807a55f75d3028d4deb39\",\"format\":\"freed_library_core_actor_capability_v2\",\"issuance_identity\":\"510859bc8eb5eb027d26d0d31244a98b7188110b5108fee228032cc3202e2562\",\"issued_at_ms\":123,\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"retirement_identity\":\"4a431535f08d141ead847a5620e8875de20f036c66e614bf8599a54d36fed531\",\"scope\":{\"mode\":\"library_wide\"},\"signature_algorithm\":\"ed25519\"},\"actor_capability_body_digest\":\"706f4302421f0c8eaf5a789a74ff772d0e3c33ed633ca5164feb552c97a37ae1\",\"actor_enrollment_body\":{\"actor_id\":\"a33b46f3a0d3c03f24d7538f0a58b1d5dd56840300338790a0410c19f7290f99\",\"actor_incarnation_nonce\":\"11ef1bb05d1de61c0b45a11c09f1da49296e393c1ea3cb3fe6b5fc05123009ee\",\"actor_public_key\":\"4f2d2ee0608be31f2dd78f19a40c19254d5b77f57a6fde9f6086887899c82005\",\"actor_public_key_fingerprint\":\"4dbed3f07a121656178375309f3fadfef7caf15788be2fb71ea0aedf811ae143\",\"authority_key_id\":\"bf03b09b0dc5d71b6096dc7e4e16e20bc3c52c6ead5143caadcaf1fb3b28b76b\",\"created_at_ms\":123,\"epoch\":2,\"epoch_id\":\"3ab4a1ef22a3e2d7290782d53013ffedf86f1614273807a55f75d3028d4deb39\",\"installation_incarnation\":\"7648f43b926e129b2418761d323f8779e6898077cb7c03307e00749b5e343eab\",\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"observed_frontier\":[],\"operation_id\":\"actor-enrolled:a33b46f3a0d3c03f24d7538f0a58b1d5dd56840300338790a0410c19f7290f99\",\"operation_type\":\"actor_enrolled\",\"schema_version\":1,\"signature_algorithm\":\"ed25519\"},\"actor_proof\":\"94bd4e12239611ba90eaf26347df8e709766e26c2b7b5475bd9726224ec8fe0554b3008d46dfc94b5ca3a128c3ddf4bb0aca0074df1ace9efe328c8224198405\",\"enrollment_body_digest\":\"e3e6a77b47c3cb1004a2624a8774401e0a101d32df99a0210eb60f34678e11e7\"},\"certificate_digest\":\"8ad09f4eaf76a88d3a63269e4f9d635608e730bb273beecc8d387cf5880388a9\"}",
+    "createdAt": 123,
+    "enrollmentRequestDigest": "8ad09f4eaf76a88d3a63269e4f9d635608e730bb273beecc8d387cf5880388a9",
+    "libraryId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "results": [
+    {
+      "actorId": "a33b46f3a0d3c03f24d7538f0a58b1d5dd56840300338790a0410c19f7290f99",
+      "authoritativeSourceRevision": 2,
+      "authorityEpochId": "3ab4a1ef22a3e2d7290782d53013ffedf86f1614273807a55f75d3028d4deb39",
+      "canonicalResultJson": "{\"actor_id\":\"a33b46f3a0d3c03f24d7538f0a58b1d5dd56840300338790a0410c19f7290f99\",\"authoritative_source_revision\":2,\"authority_key_id\":\"bf03b09b0dc5d71b6096dc7e4e16e20bc3c52c6ead5143caadcaf1fb3b28b76b\",\"canonical_operation_ids\":[\"tx:read:native-verified:member:0\",\"tx:read:native-verified:member:1\"],\"epoch\":2,\"epoch_id\":\"3ab4a1ef22a3e2d7290782d53013ffedf86f1614273807a55f75d3028d4deb39\",\"format\":\"freed_follower_result_v1\",\"intent_epoch\":2,\"intent_epoch_id\":\"3ab4a1ef22a3e2d7290782d53013ffedf86f1614273807a55f75d3028d4deb39\",\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"original_result_digest\":null,\"previous_result_digest\":null,\"receipt_ids\":[\"83d8168e19a52a539ef8bc4f8998a90a344984b2323df5203bf48d7f6dd6535a\",\"ee6fee5feecaa3a52031ab65f9bad3fc4d0862020ccce820a3c190ae7bebbe82\"],\"rejection_reason\":null,\"replacement_fields\":[{\"boolean_value\":null,\"entity_id\":\"rss:item:1\",\"entity_type\":\"FeedItem\",\"field_path\":\"read_at\",\"integer_value\":900,\"real_value\":null,\"text_value\":null,\"value_type\":\"integer\"},{\"boolean_value\":null,\"entity_id\":\"rss:item:2\",\"entity_type\":\"FeedItem\",\"field_path\":\"read_at\",\"integer_value\":901,\"real_value\":null,\"text_value\":null,\"value_type\":\"integer\"}],\"resolved_at_ms\":2203,\"result_body_digest\":\"dc9041943cd86627485e79d14d0e0eab0218c45dcd295c22ca8178b9357867a2\",\"result_sequence\":1,\"schema_version\":1,\"signature\":\"292d0bf8f2f17671db5562e40e612400f59c61265ffa9cd558167faa4c1c259a5b5e41c4c5fa68d6a596c3a1547a534c18560b27a8aa50d771641253dff2490a\",\"signature_algorithm\":\"ed25519\",\"status\":\"accepted\",\"transaction_digest\":\"4338c0898d883e53e2d0e5987b1da52fb65dabf5917f4fef4df75b5602c19072\",\"transaction_id\":\"tx:read:native-verified\"}",
+      "enqueuedAt": 2203,
+      "intentEpochId": "3ab4a1ef22a3e2d7290782d53013ffedf86f1614273807a55f75d3028d4deb39",
+      "originalResultDigest": null,
+      "previousResultDigest": null,
+      "rejectionReason": null,
+      "resultDigest": "dc9041943cd86627485e79d14d0e0eab0218c45dcd295c22ca8178b9357867a2",
+      "resultSequence": 1,
+      "status": "accepted",
+      "transactionDigest": "4338c0898d883e53e2d0e5987b1da52fb65dabf5917f4fef4df75b5602c19072",
+      "transactionId": "tx:read:native-verified"
+    }
+  ]
+}

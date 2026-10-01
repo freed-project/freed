@@ -23,6 +23,7 @@
     "./components/UpdateProgressBar": "./src/components/UpdateProgressBar.tsx",
     "./components/settings/GoogleContactsSection": "./src/components/settings/GoogleContactsSection.tsx",
     "./components/settings/FeedsSection": "./src/components/settings/FeedsSection.tsx",
+    "./components/settings/LibraryReplicaAudit": "./src/components/settings/LibraryReplicaAudit.tsx",
     "./components/settings/SettingsListPanel": "./src/components/settings/SettingsListPanel.tsx",
     "./components/BugReportBoundary": "./src/components/BugReportBoundary.tsx",
     "./components/FatalErrorScreen": "./src/components/FatalErrorScreen.tsx",
@@ -65,6 +66,15 @@
     "./hooks/useLibraryRssFeedDetail": "./src/hooks/useLibraryRssFeedDetail.ts",
     "./context": "./src/context/index.ts",
     "./components/friends": "./src/components/friends/index.ts",
+    "./components/RecoveryAnnotationFields": "./src/components/RecoveryAnnotationFields.tsx",
+    "./components/RecoveryRssSubscriptionFields": "./src/components/RecoveryRssSubscriptionFields.tsx",
+    "./components/RecoverySavedUrlFields": "./src/components/RecoverySavedUrlFields.tsx",
+    "./components/RecoveryAccountFields": "./src/components/RecoveryAccountFields.tsx",
+    "./components/RecoveryPreferenceFields": "./src/components/RecoveryPreferenceFields.tsx",
+    "./components/RecoveryReachOutFields": "./src/components/RecoveryReachOutFields.tsx",
+    "./components/RecoveryPersonFields": "./src/components/RecoveryPersonFields.tsx",
+    "./components/RecoveryAccountLinkFields": "./src/components/RecoveryAccountLinkFields.tsx",
+    "./components/RecoveryFriendFields": "./src/components/RecoveryFriendFields.tsx",
     "./components/settings/AISection": "./src/components/settings/AISection.tsx"
   },
   "peerDependencies": {

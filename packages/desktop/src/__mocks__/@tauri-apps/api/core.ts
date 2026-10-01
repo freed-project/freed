@@ -218,6 +218,17 @@ function normalizedLibraryCloudIdentity(): Record<string, unknown> {
 
 /** Default handlers for every command the app calls on startup. */
 const handlers: Record<string, Handler> = {
+  cancel_normalized_library_query: () => true,
+      audit_normalized_library_replica: () => ({
+        format: "freed_normalized_replica_audit_v1",
+        checkpointDigest: "d".repeat(64),
+        snapshot: {
+          format: "freed_normalized_checkpoint_export_v2", protocolVersion: 2,
+          libraryId: "a".repeat(64), authorityEpoch: "b".repeat(64),
+          writerId: "6".repeat(64), sourceRevision: 0,
+          causalFrontierDigest: "c".repeat(64), recordCount: 0, itemCount: 0,
+        },
+      }),
   // Normalized Library commands come from the shared HTML/init bootstrap.
   // Keep one query implementation for previews and injected test fixtures.
   get_jev_api_key: () => null,
@@ -286,6 +297,41 @@ const handlers: Record<string, Handler> = {
   },
   import_normalized_library_operation_page: () => {
     throw new Error("Operation import requires an explicit signed Library fixture.");
+  },
+  prepare_normalized_library_predecessor_checkpoint_read: () => { throw new Error("Checkpoint catch-up requires an explicit signed Library fixture."); },
+  activate_normalized_library_predecessor_checkpoint: () => { throw new Error("Checkpoint catch-up requires an explicit signed Library fixture."); },
+  begin_normalized_library_source_handoff: () => {
+    throw new Error("Authority transfers require Freed Desktop.");
+  },
+  accept_normalized_library_target_handoff_cancellation: () => { throw new Error("Authority transfers require Freed Desktop."); },
+  cancel_normalized_library_source_handoff: () => {
+    throw new Error("Authority transfers require Freed Desktop.");
+  },
+  seal_normalized_library_source_handoff: () => {
+    throw new Error("Authority transfers require Freed Desktop.");
+  },
+  prepare_normalized_library_handoff_activation: () => { throw new Error("Authority transfers require Freed Desktop."); },
+  stage_normalized_library_target_handoff: () => { throw new Error("Authority transfers require Freed Desktop."); },
+  read_normalized_library_handoff_result_actors: () => { throw new Error("Authority transfers require Freed Desktop."); },
+  adopt_normalized_library_source_handoff: () => { throw new Error("Authority transfers require Freed Desktop."); },
+  activate_normalized_library_target_handoff: () => { throw new Error("Authority transfers require Freed Desktop."); },
+  accept_normalized_library_target_handoff_authorization: () => {
+    throw new Error("Authority transfers require Freed Desktop.");
+  },
+  prepare_normalized_library_handoff_authorization: () => {
+    throw new Error("Authority transfers require Freed Desktop.");
+  },
+  authorize_normalized_library_source_handoff: () => {
+    throw new Error("Authority transfers require Freed Desktop.");
+  },
+  read_normalized_library_consumer_recovery: () => null,
+  reapply_normalized_library_archived_editor_transaction: () => { throw new Error("Library recovery requires Freed Desktop."); },
+  reapply_normalized_library_archived_assignments: () => { throw new Error("Library recovery requires Freed Desktop."); },
+  prepare_normalized_library_consumer_recovery: () => { throw new Error("Library recovery requires Freed Desktop."); },
+  commit_normalized_library_consumer_recovery: () => { throw new Error("Library recovery requires Freed Desktop."); },
+  read_normalized_library_handoff_status: () => null,
+  prepare_normalized_library_handoff_readiness: () => {
+    throw new Error("Authority transfers require Freed Desktop.");
   },
   normalized_library_follower_runtime_status: () => ({
     state: "awaiting_checkpoint",
@@ -357,6 +403,10 @@ const handlers: Record<string, Handler> = {
       storedSegmentDigest: publication.storedSegmentDigest,
     };
   },
+  fetch_background_article_url: (args: Record<string, unknown>) =>
+    proxyFetch({ url: args.url, method: "GET" }),
+  fetch_rss_url: (args: Record<string, unknown>) =>
+    proxyFetch({ url: args.url, method: "GET" }),
   fetch_url: (args: Record<string, unknown>) =>
     proxyFetch({ url: args.url, method: "GET" }),
   google_api_request: (args: Record<string, unknown>) =>
@@ -706,4 +756,10 @@ export function isTauri(): boolean {
 
 export function convertFileSrc(filePath: string, protocol = "asset"): string {
   return `${protocol}://localhost/${encodeURIComponent(filePath)}`;
+}
+
+/** Query registration callback for the headless native fixture. */
+export class Channel<T> {
+  onmessage: (message: T) => void;
+  constructor(onmessage: (message: T) => void = () => {}) { this.onmessage = onmessage; }
 }

@@ -2,6 +2,28 @@
 
 > **Status:** 🚧 In Progress (the official SQLite WebAssembly engine, exact schema identity, single-worker OPFS runtime, normalized checkpoint import, product mutation entrypoints, bounded product queries, follower transport, recovery UI, selective content, and IndexedDB Library deletion are implemented; physical iPhone acceptance remains open)
 
+Saved URL recovery now distinguishes absent targets from deleted items. The
+owner reviews every URL, edits its title or description, and explicitly confirms
+one complete replacement. Original targets, URLs and remaining archived content
+stay fixed. Deleted items and unsupported capture types are refused. Opening the
+editor stays offline; after acceptance, the Primary may fetch the publisher under
+its existing content policy. Exact retries retain the signed replacement and use
+the durable archive link. Notes and tags remain separate recovery transactions.
+Installed multi-device acceptance is still outstanding.
+
+PWA convergence audits now stream canonical records through an OPFS-backed sort
+with a bounded cache. Deadline, cancellation and temporary-file failures return no
+receipt and restore the connection settings. Memory-only backends retain bounded
+paging. Synthetic large-Library validation does not replace installed Mac or
+physical iPhone acceptance.
+
+PWA result settlement keeps the Primary's signed timestamp in the original
+result bytes and records local intent resolution from the consumer's receive
+clock. A result is not rejected merely because the consumer enqueued it after
+the Primary's timestamp. Local resolution cannot precede local enqueue even if
+the consumer clock moves backward. Signature, actor-chain, transaction identity
+and canonical import checks still apply.
+
 PWA checkpoint refresh now preserves pending and published signed edits,
 optimistic fields, actor counters, enrollment and exact transport history in the
 same activation transaction. It requires the verified Library, epoch and writer,
@@ -999,3 +1021,466 @@ The public demo exposes presentation controls and session-only relationship and 
 Empty demo scopes offer a return to the sample feed; connection and sample-data population or deletion controls remain hidden.
 
 Vercel demo links retain their accepted demo parameter through navigation and reload, preserving memory-only session behavior after the router canonicalizes a route. Other hosts cannot enable demo mode through this parameter.
+
+### Cooperative handoff compatibility under development, September 18, 2026
+
+The shared protocol now recognizes the bounded recovery archive identity query.
+PWA physical schema 2 now supports bounded archive discovery and verified intent
+review. Explicit reapplication remains unfinished. Successor authority handling, durable
+old-intent recovery and mixed-version installed acceptance remain required
+before cooperative handoff is ready across Desktop and PWA consumers.
+
+The shared wire contract also recognizes verified transaction review. PWA
+storage now verifies archived transactions through its serialized worker reader.
+Read-only review does not close the browser reapplication requirement.
+
+The shared TypeScript successor verifier now matches a native-produced handoff
+certificate, including the epoch and complete certificate digests. It checks the
+closed fields, pinned predecessor and enrolled target key, compatibility versions,
+predecessor authorization and all target possession signatures within a bounded
+canonical input. Native Rust, Node Web Crypto and headless Chromium verify the
+same fixture. Shared hex parsing now rejects trailing newlines with exact-length
+checks. Browser checkpoint activation now verifies a direct successor against
+the locally accepted predecessor and enrolled target key before replacement.
+
+Browser storage now recognizes the same physical schema 2 local recovery catalog
+as native storage, while logical checkpoints remain schema 1. It verifies exact
+version/hash pairs and catalog declarations without upgrading during ordinary
+open. The migration helper requires an owned FULL write transaction, so a failed
+recovery write also rolls back tables, metadata and the physical version. Worker
+status reports the actual physical identity. Existing intent and archive rows
+survive same-epoch checkpoint replacement and rollback in both physical versions.
+The previous engine from the fetched dev commit refuses the upgraded SQLite
+file. OPFS browser-restart acceptance remains unfinished; schema support alone does
+not establish installed compatibility.
+
+Direct-successor activation binds asynchronous signature verification to the
+selected predecessor and staged authority record, then rechecks that proof inside
+the write transaction. The receipt must name the signed target, and the checkpoint
+cannot predate the authorized source revision. Old enrollment, intent bytes, actor
+counters and optimistic state survive activation and rollback. Editing remains
+fenced by the old enrollment epoch. Explicit archive and reenrollment are now available through Settings. Archived
+edit reapplication remains unfinished; another transition refuses unfinished recovery.
+
+Browser archive storage now streams the native row format with exact SQLite
+integers, floating point bits, text bytes and binary values. Rust and WASM agree
+on cell bytes and the complete empty-library archive digest. Storage tests cover
+retry without writes, live-row changes, transaction indexes, pending and published
+counts, corruption and rollback. The engine recovery lifecycle uses this helper;
+OPFS restart acceptance remains unfinished.
+
+The browser engine now prepares recovery by verifying the selected successor and
+a new enrollment request signed by the retained actor key. It stores the archive
+and exact prepared request in one transaction. Explicit commit verifies the
+archive, retires old active slots and installs that request atomically; the archive
+remains intact and editing waits for successor enrollment. Engine tests cover
+response-loss retry, engine reconstruction, stale verification, corrupted archives
+and rollback. Repeated cycles and OPFS restart acceptance remain unfinished. The key vault can derive recovery actors
+without replacing its original key record.
+
+Settings now offers explicit enrollment with the new Primary through closed worker
+commands. A retry resumes the exact prepared request without signing another;
+committed recovery returns its existing result. The retained key signs new edits
+with the recovered actor identity, while stale epochs refuse signing. The control
+reports preserved pending and published edits and does not resend them. Focused
+tests cover duplicate clicks, missing keys and ambiguous commit responses. A
+narrow-screen Chromium check covers the real control with a mocked lifecycle;
+it does not establish OPFS persistence or installed acceptance.
+
+Browser recovery can replace a completed prior consumer lifecycle after matching
+its committed receipt to the exact retained enrollment and verifying the full
+historical archive. The prior archive stays intact; lifecycle replacement and
+creation of the next archive share one transaction. Focused tests cover receipt
+drift, corrupted rows, unfinished recovery, time regression and late rollback.
+These synthetic local-history tests do not establish two signed transfers or
+OPFS restart acceptance.
+
+The native return-transfer fixture now supplies a linked pair of signed handoff
+certificates. Rust and TypeScript independently verify both, including their
+predecessor digest and key continuity. Browser engine recovery follows both
+certificates with distinct actor incarnations, retains the first archive and
+retries the second commit without writes. That test installs selected checkpoint
+rows directly; full checkpoint transport and OPFS restart acceptance remain open.
+
+A PWA with old edits awaiting recovery can refresh checkpoints within its already
+accepted successor epoch. A fresh signature proof binds the retained predecessor,
+current authority and staged certificate, then is checked again inside activation.
+The refresh preserves archived and live old edits, rejects revision or checkpoint
+generation regression, and keeps editing fenced. Historical authority records must
+remain unchanged so later recovery can still verify the original work.
+
+PWA Settings now lists recovery archives on demand after recovery preparation or
+commit. It holds eight rows at a time, replaces each page when advancing and drops
+late responses after close. Counts identify pending and published work at archival;
+they are not acceptance receipts. The query uses the shared generated SQL and cursor
+format, rejects stale lifecycle or Library sources, and validates the lookahead row.
+Verified transaction review is now available; explicit reapplication remains unfinished.
+
+Browser Settings can now select an archive and load one eight-row transaction
+identity page. Generated SQL and shared cursors bind each page to the archive
+digest, Library generation and revision. The reader checks the lookahead row and
+refuses stale continuations. Opening a transaction list releases the archive page;
+back navigation discards pending results. These identities do not establish valid
+signatures, acceptance or rejection. Explicit reapplication remains open.
+
+Browser archive review now checks exact archived row bytes, completed historical
+enrollment, every original operation signature and canonical acceptance receipts.
+It reports rejection only from a verified original-authority result and keeps
+missing evidence unresolved. Partial receipts, conflicting acceptance/rejection,
+changed signatures and stale cursors fail closed. The worker preserves one read
+snapshot across asynchronous verification, serializes later commands and releases
+the snapshot on failure. Review pages retain at most 16 members and 512 KiB;
+Settings displays eight members with current item context and never resends edits.
+Native-produced public fixtures prove response parity in WASM. Real OPFS reopen,
+installed cross-device convergence and duplicate-safe reapplication remain open.
+
+Fresh browser intent commits now recheck this installation's completed enrollment
+and recovery state inside the write transaction. The enrolled actor must match the
+request's public key, certificate digest and chain genesis. A valid signature from
+another enrolled actor is insufficient. Existing pending or published exact retries
+remain readable; resolved intents retain their existing refusal. Signature preparation
+is separate from private transaction-owned persistence so recovery can add its durable
+link in the same commit. Atomic browser reapplication itself remains unfinished.
+
+The browser worker now has an atomic recovery replacement command. It verifies the
+original archive and outcome, pins the reviewed Library generation, canonical revision
+and local optimistic sequence, requires the current successor enrollment, and preserves
+the complete ordered operation and target set. Fresh intent rows and their durable
+archive link share one FULL SQLite transaction. A link-insertion failure rolls all new
+intent state back. A stored link resolves response-loss retry before current enrollment
+or source checks, including after replacement settlement. The client validates the
+returned receipt and does not automatically replay an ambiguous mutation. Settings now offers explicit assignment recovery after every member has been reviewed
+at one source snapshot. The action rechecks the verified archive before signing and
+uses the existing shared transaction builder with the retained browser key. Read,
+saved, archived and liked assignments receive fresh action timestamps; unsupported
+members or missing items refuse the whole transaction. A response-loss retry retains
+the exact finalized bytes, while reopening first checks for a durable replacement
+before signing. Other edit families still need their original editors. This does not
+establish OPFS crash recovery, installed convergence or new-host readiness.
+
+
+Browser recovery also opens an explicit RSS name editor for complete feed-name
+transactions. It verifies original envelopes, loads each existing feed's last-synced
+name from local SQLite, and allows revised names without fetching feed URLs. The
+editor displays eight fields at a time and requires every field to be visited. It
+warns that last-synced names omit pending edits and that a replacement may override
+newer or queued names. Missing feeds, mixed families, changed Library source or
+incomplete member sets refuse the whole action. The shared browser action boundary
+retains finalized bytes and locks revised names across response-loss retry. Other
+RSS operations and remaining editor families are still open.
+
+
+Browser annotation recovery now uses the same note, highlight and tag fields as
+Freed Desktop. It retains the complete archived set, including unloaded stored-text
+references, and shows one last-synced item comparison at a time. Every item must be
+visited before explicit submission. Changed Library state, missing items, mixed
+families or unsupported outer blob members refuse the entire transaction. Revised
+sets are copied before signing and stay locked across an ambiguous response; retry
+uses the same finalized bytes and durable replacement link. Last-synced comparisons
+omit pending annotations, and the editor warns about replacing newer or queued sets.
+Other operation families and mixed transactions remain unfinished.
+
+
+Earlier recovery archives remain available for read-only review while a later
+successor enrollment is required or prepared. The archive view resets when that
+lifecycle changes, and reapplication controls remain hidden until the browser reaches
+its following state. Actual writes still require accepted current actor enrollment.
+Archive-reader unavailability is reported separately and does not block enrollment;
+the UI does not infer that no archives exist from a failed read.
+
+
+Browser unsubscribe recovery preserves the complete archived feed set and its original
+keep-articles or delete-articles operation. It reads current subscriptions locally,
+refuses absent subscriptions without inferring acceptance, and requires every feed to
+be visited. The destructive form additionally requires explicit confirmation that all
+articles and reading history will be removed, including content added since the original
+edit or before acceptance. It does not silently change deletion scope. A fresh signed
+transaction uses the existing unsubscribe schema; ambiguous retry retains its exact
+bytes and durable archive link. Mixed unsubscribe scopes refuse the whole action.
+No URL is fetched during review or signing. Once accepted, ordinary Primary polling
+stops for those subscriptions under the reviewed Level 5 behavior scope.
+
+Browser enrollment installation rechecks the selected authority and exact pending
+request inside its write transaction after asynchronous signature verification.
+A changed request or authority leaves enrollment and actor counters untouched.
+
+Browser enrollment accepts an exact signed grant already delivered by a native
+checkpoint, reusing its stored capability ID after checking actor identity and
+permissions. Conflicting identity or extra permissions abort the transaction.
+A native-generated protocol fixture now proves browser incremental convergence
+through partial pages, engine reconstruction, duplicate delivery and signed
+acceptance, including the complete logical checkpoint digest. This uses in-memory
+SQLite; OPFS persistence and installed multi-device acceptance remain unverified.
+
+Browser recovery now offers explicit item deletion review with the same fixed
+original target set as Freed Desktop. Every target remains in order, including
+absent items. Confirmation precedes signing, and a lost-response retry reuses
+the same signed replacement through the durable recovery link. This does not
+reevaluate an old bulk filter or include later Library additions.
+
+
+Archived full-record RSS edits have an explicit recovery editor shared with Freed
+Desktop. Existing subscriptions start from last-synced settings beside archived
+values. An absent subscription can be recreated under its exact archived URL with
+polling initially disabled and no old fetch history. The query distinguishes absent,
+present and deleted targets at the reviewed canonical frontier; this is not proof
+of the original outcome.
+
+Every subscription must be visited and changes clear confirmation. The browser
+snapshots selected settings, rechecks all original targets, and signs one complete
+replacement without batching or deduplication. Existing fetch history and sample
+provenance come from verified rows. An ambiguous retry retains finalized envelopes
+and uses the worker's atomic recovery link. Native and browser write owners refuse
+tombstones before persistence. No provider requests occur during review or signing.
+
+PWA account-link recovery now shares the Desktop review form and bounded person
+search. It preserves every ordered original Account target, including duplicates,
+and snapshots owner selections before asynchronous work. Preparation reloads the
+verified archive and current Accounts, checks selected People at the reviewed
+Library generation and revision before key access, and uses the normal registered
+assignment builder. A lost response retries the same finalized signed transaction
+through the worker's atomic recovery link. Missing Accounts and unsupported
+members refuse the entire edit; an absent archived Person requires another
+selection or unlinking. Other Friends and preference recovery remain unfinished.
+
+PWA recovery now offers explicit Person deletion review. Every original target,
+including absent people, remains in one signed transaction. Confirmation names
+notes, reach-out history and accounts linked at Primary acceptance, including
+links added after review. Current Person details must match the reviewed source;
+response-loss retries retain the exact finalized action and durable recovery link.
+
+Recovery review distinguishes present, absent and deleted Person targets through
+indexed lookups at the reviewed source. Tombstones take precedence over live rows.
+Native and PWA recovery refuse fresh Person upserts and Friend replacements that
+target a deleted Person before storing intents or recovery links. An existing
+durable replacement remains retrievable after a later deletion. This supplies the
+state and write guard needed by the unfinished Person/Friend recovery editors;
+it does not offer restoration of deleted people.
+
+PWA Person root recovery uses the shared explicit editor, bounded source-pinned review, tombstone refusal and full ordered records. Selected roots are snapshotted before asynchronous work, and exact finalized intents survive response-loss retries within the recovery action. Absent avatars start empty. Friend replacement recovery and installed acceptance remain incomplete.
+
+Person recovery reads the complete editable root through person_root_v1 on native and PWA SQLite. The query preserves up to 4,096 tags within the canonical 65,536-byte root limit, rejects overflow before returning a partial record, and excludes child history. Both recovery loaders use this query instead of the truncated display detail.
+
+Ordinary Person and Friend editor reads also use the complete root. Bounded history and account context must match its generation and revision before an editable record is returned; stale combinations fail instead of losing tags outside the display window.
+
+Friend recovery admission now refuses selected Account IDs with deletion tombstones inside the same transaction that creates the replacement intent and recovery link. A previously committed replacement still returns its exact receipt after later deletion. The complete Friend recovery editor remains unfinished.
+
+A native-produced Friend archive with a signed enrollment certificate now verifies through PWA recovery without substituting the original transaction. The test covers deleted-account refusal, unchanged archived bytes, and exact retry after a later deletion and revision change. Successor admission uses synthetic local receipts; this is not installed handoff or OPFS evidence.
+
+Friend account construction and validation now use UTF-8 binary ID order on Desktop and PWA, matching native verification. Shared mixed-case and Unicode vectors cover locale and UTF-16 ordering differences. Existing signed envelopes are not reordered or rewritten.
+
+PWA Settings now exposes the shared Friend recovery form. Desktop and PWA share one bounded, revision-pinned context reader. The browser action verifies the original scope, snapshots selected values before key access, and retains the finalized replacement across ambiguous responses. Focused tests cover retry identity and absence of ordinary enqueue. Desktop headless browser coverage now verifies both review steps, complete account-page review, confirmation reset, omission warnings and identical signed-envelope retry after a simulated lost response. The rendered form was inspected. Native IPC and signing are mocked in this workflow. A separate PWA browser harness verifies the platform editor wrapper at phone width, including one retained action across response loss, locked editing and completed account review. Its verification and signing boundaries are mocked; the full PWA Settings/archive workflow, oversized-context coverage and installed acceptance remain pending.
+
+Friend recovery now reads complete Account roots through `account_root_v1` on both runtimes. Native SQLite and browser SQLite tests preserve a 20,000-character field and reject oversized roots; optional roster fields retain their types. This closes the Account display-field limit. Linked-account paging is described below; installed acceptance remains unfinished.
+
+The registered Person account-ID page query now reads through the existing index with a revision-bound cursor. Native and browser SQLite tests enumerate 130 links; Friend recovery no longer depends on the Person display projection. The shared editor now reviews large current-link sets in eight-account pages, starts them unselected, and retains at most 64 selections. Every current page and archived account requires review. Stale pages block submission; the final replacement remains one bounded signed transaction.
+
+PWA archive verification now has a separate read-only path for the former locale-based Friend account order. A real Ed25519 test verifies untouched historical bytes and rejects reuse through normal assembly, signing and verification. New replacements remain strictly ordered. PWA WASM SQLite coverage now verifies a signed historical enrollment and out-of-order original, commits a correctly ordered fresh replacement, refuses deleted selections without writes, and returns the same durable link after revision changes while preserving archive bytes. Successor admission is synthetic; this is not cloud, OPFS or installed-build proof.
+
+
+Account deletion recovery now uses the existing paged deletion review on Desktop
+and PWA. It retains every original ordered target, including duplicates and
+currently absent Accounts, and reads current labels at the reviewed Library
+revision. Explicit confirmation covers account details and links changed before
+Primary acceptance. It removes Library records without deleting provider accounts
+or linked people. New signatures use the ordinary Account removal builder; the
+existing recovery transaction owns intent and linkage atomicity. Ambiguous retries
+retain the same signed bytes. Focused loader, signing and component tests cover both
+platforms; a Desktop Settings browser test covers confirmation and response loss
+with mocked native commands. This is not installed or OPFS acceptance.
+
+
+Full Account recovery now has a native and browser write guard against Account
+tombstones. It runs after exact durable-link lookup and before enqueue, so a
+fresh replacement cannot recreate a deleted Account and a later deletion does
+not invalidate an existing replacement receipt. Native signed fixtures and a
+PWA WASM SQLite test with real historical enrollment and operation signatures
+cover refusal without writes, unchanged archives and exact retry. These checks do not prove installed or OPFS behavior.
+
+
+Full Account recovery is available in Desktop and PWA Settings. The shared form
+reviews one complete record at a time, starts from current details when present,
+and offers archived details, contact-field edits, unlinking and avatar clearing.
+Every original ordered target remains, including duplicates. Changes clear the
+explicit whole-record confirmation. Missing records start without avatar URLs;
+the SQLite boundary refuses deleted Accounts. Selected person links must exist
+at the reviewed source before signing.
+
+The loader uses complete `account_root_v1` rows, with at most the registered
+Account member limit and 64 KiB per root. Field edits cannot retain an oversized
+root. Original and finalized transaction byte limits remain enforced. This is a
+bounded design, not measured global renderer memory admission. Both platforms
+reuse ordinary Account member builders, retain finalized bytes on ambiguous
+responses and use atomic recovery linkage. Desktop browser coverage exercises
+Settings entry, complete review, field edits, confirmation and exact retry with
+mocked native commands. Installed and OPFS acceptance remain separate.
+
+
+Reach-out recovery now refuses a replacement when the original event ID remains
+in current history, independently on native and browser write boundaries. The
+whole transaction refuses without intent or linkage writes; an existing replacement
+receipt remains available on retry. Missing history does not prove failure because
+only the latest 20 events are retained. Desktop and PWA now provide explicit reach-out editors.
+
+
+Reach-out recovery compares each archived event with last-synced recent history,
+requires every event to be visited and confirmed, and preserves historical dates
+while signing a new action. Revised values are snapshotted before signing and
+response-loss retry reuses the exact replacement. No message or provider request
+is sent. Focused editor and signing tests pass; full feature, installed acceptance
+and maximum legal detail coverage remain separate requirements.
+
+
+Preference recovery now enforces the original object assignment paths inside
+native and browser write transactions. Added, dropped or collapsed object paths
+refuse before intent writes, while durable replacement receipts remain available
+on retry. Historical import coverage remains unfinished.
+
+
+Native fresh preference writes now use the generated field policy, with shared
+vectors proving nested field, array and map behavior against the PWA sanitizer.
+Unsupported writes refuse without preference or actor-counter changes; historical
+signature inspection remains separate. Finite fractional weights now validate and
+read consistently on both platforms, using the existing binary64 wire encoding.
+Stored preference nodes and signed archive bytes remain unchanged. Recovery treats
+encoded numbers as scalar assignments, including fractional-to-integer changes.
+Historical canonical import coverage remains unfinished.
+
+Preference recovery now has shared read-only comparison context. Both platform
+loaders preserve member order and compare exact assignment paths against one
+source-fenced snapshot, distinguishing stored settings from defaults. Arrays
+remain whole assignments and empty groups remain in the original patch. The
+Desktop and PWA Settings forms now connect this context to signing adapters. They
+retain every ordered patch, snapshot inputs before asynchronous work, and reuse
+the normal preference member builders. The PWA checks original assignment scope
+before signing and retains the exact request after an ambiguous response.
+
+The preference recovery form requires review of every setting and explicit
+confirmation. It compares archived and current values, preserves whole-array
+assignments and empty groups, and clears confirmation whenever a value changes.
+After signing, the form locks its inputs and retries the same replacement after
+an ambiguous response. Focused platform tests and the Desktop browser workflow
+pass. Installed Mac acceptance and full multi-device convergence remain pending.
+
+Friend recovery clears its editor by unmounting during review reload and by
+keying each archived transaction by digest. Its load effect only commits verified
+results; closing or replacing the review aborts the pending load.
+
+
+PWA historical preference verification now matches the native historical field
+policy while fresh writes retain the current policy. Archive review preserves
+authenticated old fields, and incremental catch-up checks the authority-signed
+acceptance receipt before materializing them. Historical constructions cannot
+be finalized or reused as fresh verified transactions. Shared cryptographic and
+PWA SQLite tests cover unchanged bytes, mixed-member completeness, device-local
+exclusions, tampering, mismatched receipts and exact retry. Live cloud joining across versions and installed Mac acceptance remain unverified.
+
+The Rust historical validator and shared verifier also pass the same 32 policy
+cases, covering all historical sections and device-local exclusions. This is
+policy parity; installed Mac proof remains separate.
+
+A signed historical preference fixture now comes from published native source
+`v26.9.1700-dev`. Current native SQLite and PWA preserve its envelope and acceptance
+receipt, replay duplicate pages, and match its final revision, actor frontier and
+checkpoint digest. The original zero-operation descriptor remains intact; the
+tests explicitly check current carried-frontier normalization at that baseline.
+Checkpoint admission is synthetic, and this does not prove live cloud joining
+or an installed build.
+
+Preference recovery now reads only the selected setting through a source-bound
+query shared by native SQLite and the PWA. The form retains one current value,
+requires each comparison before confirmation, cancels abandoned reads and keeps
+the same prepared edit after response loss. Group summaries cannot be used as
+replacement values. Native/PWA fixture tests cover oversized unrelated trees,
+exact values and invalid rows; a headless Desktop workflow verifies two scoped
+reads and identical retry submissions. Ordinary startup still has the global
+preference snapshot limit, and installed Mac acceptance remains incomplete.
+
+Primary ranking now retrieves only the weights needed by each bounded candidate
+batch. Native SQLite and PWA share a grouped read with exact source checks;
+Desktop uses it without retaining a full weight map for the pass. Tests cover
+large candidate scopes, long literal IDs, stale chunks, numeric validation and
+preference changes during an in-flight batch. Startup still uses the global
+preference snapshot, and installed Mac acceptance remains incomplete.
+
+Ranking invalidation now compares a compact, indexed preference revision and
+materialization generation instead of the renderer's full weight-map identity.
+Native and PWA expose the same bounded marker. Preference changes during a pass
+and checkpoint replacement request another pass; item-only writes do not change
+the marker. Failed completion reads remain retryable. Startup's whole-preference
+snapshot limit still needs removal.
+
+A dormant browser preference projection now mirrors native schema 3 migration,
+signed backfill and bounded reads. Receipt settlement, canonical catch-up and
+checkpoint recovery preserve signed intent bytes and roll back derived effects
+with the surrounding transaction. Recovered-consumer fixtures execute the real
+migration and shared canonical value vectors in the WASM test VFS. Production
+query routing and startup remain unchanged; OPFS restart durability, large-journal
+latency and installed cross-device acceptance remain unverified.
+
+Offline consumers now attempt one authenticated predecessor checkpoint before
+admitting a direct successor whose target enrollment they missed. Desktop and
+PWA use the same bounded downloader and coordinator. The native or worker read
+command verifies all handoff signatures against locally selected authority;
+the returned download reference grants no enrollment or writer admission.
+Activation independently reconstructs the proof, checks the signed receipt and
+source revision, and verifies the installed digest before commit. Ordinary
+successor verification then requires the enrolled target as before.
+
+The shared coordinator performs no recursive epoch search or new retry loop.
+Cancellation, expired tokens, missing objects and mismatched digests refuse
+activation. A retry after a lost predecessor commit response consults durable
+runtime state. Native fixtures preserve pending signed edits through rollback
+and successful import; the browser fixture downloads and verifies the signed native manifest and 29
+compressed pages through the shared coordinator into real SQLite. A lost response
+after the actual predecessor commit retries from durable state with no second
+download, then admits the successor. These fixtures do not establish OPFS
+process-restart durability or installed cross-device acceptance.
+
+Browser successor refresh resolves the cloud writer from the unique active
+Desktop actor, matching native checkpoints with the local writer label
+`primary:desktop`. The follower receipt must name that actor. The later missed-transfer evidence
+below extends this direct-transfer path and records synthetic large-checkpoint
+admission. OS-crash boundaries and installed Mac acceptance remain unverified.
+
+### Replica audit evidence, September 30, 2026
+
+Cloud Sync Settings now offers the same canonical replica receipt as Freed
+Desktop. The worker hashes bounded checkpoint pages in one read transaction.
+Audits start only when its database queue is idle, and incoming ordinary work
+interrupts an audit at the next page boundary. Cancellation and deadline settlement
+affect only that audit; they do not retire the worker. Native fixture parity and
+worker cancellation tests pass. Physical Mac OPFS and installed cross-device
+acceptance remain separate requirements.
+
+The explicit audit selects a bounded page of canonical keys before constructing
+payloads, then hashes rows through SQLite's callback without retaining an IPC
+response. Large-record parity covers a byte-boundary stop before the row limit.
+Synthetic Linux probes completed 25,001 items with 1 KiB text each; a 100,001-item
+probe reached the 30-second deadline and released its read transaction. These
+results do not establish representative Library or installed memory acceptance.
+
+### Missed-transfer recovery, September 30, 2026
+
+PWA imports authenticate the same bounded chain and historical enrollments as
+native imports. Historical content verification runs inside the final activation
+transaction. Its actual record progress contributes to the existing stall budget;
+the hard deadline remains unchanged. Same-epoch refresh verifies retained signed
+history while preserving the old enrollment for explicit recovery. Consumed
+historical stages are deleted atomically with activation.
+
+A native-generated two-transfer fixture passes PWA SQLite verification and
+rollback tests. A Linux Chromium OPFS probe resumes partial staging after a full
+browser close, withholds a committed activation response, then reopens with the
+same epoch, revision and checkpoint digest. It uses a synthetic final cloud
+receipt and a small corpus. It does not establish old-intent retention in that
+browser scenario, cooperative cancellation inside the write transaction,
+OS-crash recovery, Mac WebKit behavior or representative-size performance.
+
+A separate Linux Chromium OPFS run activates valid signed history with 100,000
+synthetic FeedItems. Activation takes 39.8 seconds with 490 progress events and
+reaches the same canonical digest as native. A full browser restart preserves
+the receipt, current digest, epoch, writer, revision and frontier. The final
+cloud receipt is synthetic; this does not test old local browser intents or
+OS-crash recovery. Exact-commit macOS WebKit durability CI also passes, while
+installed multi-device acceptance remains outstanding.

@@ -1,3 +1,11 @@
+import { snapshotLibraryCoreRecoverySavedUrlEditsV1, reviseLibraryCoreRecoverySavedUrlV1, decodeLibraryCoreFractionalNumbersV1, type RecoverySavedUrlEdit } from "@freed/shared/library-core";
+import { loadRecoverySavedUrlDrafts } from "./library-core-recovery-saved-url-editor";
+import { createLibraryCoreSqliteActivatePredecessorWorkerRequest, createLibraryCoreSqlitePredecessorReadWorkerRequest,
+  parseLibraryCorePredecessorCheckpointReadsV1, type LibraryCoreActivateNormalizedCheckpointStageV2 } from "@freed/shared/library-core";
+import { snapshotLibraryCoreRecoveryPreferencePatchesV1 } from "@freed/shared/library-core";
+import { PERSON_REACH_OUT_APPEND_PAYLOAD_SCHEMA } from "@freed/shared/library-core";
+import type { RecoveryReachOutDraft } from "@freed/ui/components/RecoveryReachOutFields";
+import type { LibraryCoreRecoveryIntentReviewResponseV1 } from "@freed/shared/library-core";
 /**
  * SQLite-only Freed Desktop Library runtime.
  */
@@ -52,6 +60,8 @@ import {
   FEED_ITEM_ANNOTATIONS_REPLACE_TRANSACTION_MEMBER_SCHEMA,
   FRIEND_REPLACE_MAXIMUM_ACCOUNTS,
   FRIEND_REPLACE_TRANSACTION_MEMBER_SCHEMA,
+  compareLibraryCoreUtf8V1,
+  FRIEND_REPLACE_PAYLOAD_SCHEMA,
   finalizeLibraryCoreTransactionV1,
   LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_RECORDS,
   LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES,
@@ -60,8 +70,6 @@ import {
   LIBRARY_CORE_FACET_SUMMARY_SCHEMA_VERSION,
   LIBRARY_CORE_ACCOUNT_DETAIL_QUERY_ID,
   LIBRARY_CORE_ACCOUNT_DETAIL_SCHEMA_VERSION,
-  LIBRARY_CORE_PERSON_DETAIL_QUERY_ID,
-  LIBRARY_CORE_PERSON_DETAIL_SCHEMA_VERSION,
   LIBRARY_CORE_RSS_FEED_DETAIL_QUERY_ID,
   LIBRARY_CORE_RSS_FEED_DETAIL_SCHEMA_VERSION,
   libraryCoreRuntimeStateFromFacetSummaryV1,
@@ -157,11 +165,6 @@ export interface NormalizedLibraryCloudIdentity extends LibraryCoreNormalizedChe
   readonly localActorId: string;
 }
 
-export interface NormalizedLibraryWriterEpochReassignment {
-  readonly authority: SqliteLibraryAcceptedAuthority;
-  readonly canonicalEpochCertificateJson: string;
-}
-
 export interface SqliteLibraryCloudWriterAdmissionStatus {
   readonly configured: boolean;
   readonly allowed: boolean;
@@ -177,6 +180,7 @@ export interface NormalizedLibraryFollowerRuntimeStatus {
     | "awaiting_checkpoint"
     | "awaiting_enrollment"
     | "enrollment_pending"
+    | "authority_recovery_required"
     | "active";
   readonly libraryId: string | null;
   readonly authorityEpochId: string | null;
@@ -648,11 +652,10 @@ function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
   );
 }
 
-async function finalizeAndSubmitTransaction(
+async function finalizeSignedTransaction(
   context: SqliteLibraryMutationContext,
   members: Parameters<typeof assembleLibraryCoreTransactionV1>[0],
-  committedAtMs: number,
-): Promise<void> {
+) {
   const assembled = assembleLibraryCoreTransactionV1(
     members,
     context.previousChainDigest as LibraryCoreLowercaseHex64,
@@ -726,6 +729,15 @@ async function finalizeAndSubmitTransaction(
       ),
     ),
   );
+  return { canonicalEnvelopeJson, finalized };
+}
+
+async function finalizeAndSubmitTransaction(
+  context: SqliteLibraryMutationContext,
+  members: Parameters<typeof assembleLibraryCoreTransactionV1>[0],
+  committedAtMs: number,
+): Promise<void> {
+  const { canonicalEnvelopeJson, finalized } = await finalizeSignedTransaction(context, members);
   if (context.mode === "follower") {
     await enqueueNormalizedLibraryFollowerIntent(canonicalEnvelopeJson);
     return;
@@ -931,23 +943,11 @@ function synchronizedRssFeed(
   >;
 }
 
-async function maybeSubmitFeedItemCaptures(
-  input: readonly FeedItem[],
-  createdAtMs: number,
-): Promise<boolean> {
-  let context = await mutationContext();
-  if (!context) return false;
-  const items = uniqueByIdentity(input, (item) => item.globalId);
-  if (items.length === 0) return true;
-  const batchLimit =
-    LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.feed_item_capture_upsert
-      .maximumMembers;
-  for (let start = 0; start < items.length; start += batchLimit) {
-    const batchContext = context;
-    const batch = items.slice(start, start + batchLimit);
-    const transactionId =
-      `desktop-library-capture:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
-    const members = batch.map((sourceItem, index) => {
+function captureTransactionMembers(
+  batchContext: SqliteLibraryMutationContext, batch: readonly FeedItem[],
+  transactionId: LibraryCoreOperationInstanceId, createdAtMs: number,
+) {
+  return batch.map((sourceItem, index) => {
       const item = sanitizeFeedItemCaptureWrite(sourceItem);
       return FEED_ITEM_CAPTURE_UPSERT_TRANSACTION_MEMBER_SCHEMA.construct(
         {
@@ -979,6 +979,25 @@ async function maybeSubmitFeedItemCaptures(
         { digest: operationDigest },
       );
     });
+}
+
+async function maybeSubmitFeedItemCaptures(
+  input: readonly FeedItem[],
+  createdAtMs: number,
+): Promise<boolean> {
+  let context = await mutationContext();
+  if (!context) return false;
+  const items = uniqueByIdentity(input, (item) => item.globalId);
+  if (items.length === 0) return true;
+  const batchLimit =
+    LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.feed_item_capture_upsert
+      .maximumMembers;
+  for (let start = 0; start < items.length; start += batchLimit) {
+    const batchContext = context;
+    const batch = items.slice(start, start + batchLimit);
+    const transactionId =
+      `desktop-library-capture:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+    const members = captureTransactionMembers(batchContext, batch, transactionId, createdAtMs);
     await finalizeAndSubmitTransaction(batchContext, members, createdAtMs);
     if (start + batch.length < items.length) {
       context = await mutationContext();
@@ -989,6 +1008,62 @@ async function maybeSubmitFeedItemCaptures(
     }
   }
   return true;
+}
+
+type NormalizedAnnotationAssignment = Readonly<{
+  entityId: string;
+  highlights: ReturnType<typeof canonicalizeFeedItemHighlightsV1>;
+  tags: readonly string[];
+}>;
+
+function annotationTransactionMembers(
+  batchContext: SqliteLibraryMutationContext,
+  batch: readonly NormalizedAnnotationAssignment[],
+  transactionId: LibraryCoreOperationInstanceId,
+  assignedAtMs: number,
+) {
+  return batch.map((assignment, index) =>
+      FEED_ITEM_ANNOTATIONS_REPLACE_TRANSACTION_MEMBER_SCHEMA.construct(
+        {
+          operation_id: `${transactionId}:${index}`,
+          library_id: batchContext.libraryId,
+          epoch: batchContext.epoch,
+          epoch_id: batchContext.epochId,
+          actor_id: batchContext.actorId,
+          actor_sequence: batchContext.nextSequence + index,
+          previous_actor_operation_id:
+            index === 0
+              ? batchContext.previousOperationId
+              : `${transactionId}:${index - 1}`,
+          causal_frontier: batchContext.observedFrontier,
+          hlc_wall_ms: assignedAtMs,
+          hlc_counter: index,
+          transaction_id: transactionId,
+          transaction_member_index: index,
+          transaction_member_count: batch.length,
+          entity_id: assignment.entityId,
+          payload: {
+            assigned_at_ms: assignedAtMs,
+            highlights: assignment.highlights,
+            tags: assignment.tags,
+          },
+          created_at_ms: assignedAtMs,
+        } satisfies FeedItemAnnotationsReplaceTransactionMemberInputV1,
+        { digest: operationDigest },
+      ),
+    );
+}
+
+/** Preserve normalized annotations, including blob locators, without ordinary enqueue. */
+export async function prepareDesktopRecoveryAnnotationTransaction(
+  assignments: readonly NormalizedAnnotationAssignment[],
+): Promise<readonly string[]> {
+  if (assignments.length === 0 || assignments.length > 1000) throw new Error("Recovery transaction exceeds its bounds");
+  const context = await mutationContext(false);
+  if (!context || context.mode !== "follower") throw new Error("Recovery requires an enrolled consumer");
+  const transactionId = `desktop-library-annotation-recovery:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+  const members = annotationTransactionMembers(context, assignments, transactionId, Date.now());
+  return Object.freeze((await finalizeSignedTransaction(context, members)).canonicalEnvelopeJson);
 }
 
 async function maybeSubmitFeedItemAnnotationSets(
@@ -1027,36 +1102,7 @@ async function maybeSubmitFeedItemAnnotationSets(
     const batch = assignments.slice(start, start + batchLimit);
     const transactionId =
       `desktop-library-annotations:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
-    const members = batch.map((assignment, index) =>
-      FEED_ITEM_ANNOTATIONS_REPLACE_TRANSACTION_MEMBER_SCHEMA.construct(
-        {
-          operation_id: `${transactionId}:${index}`,
-          library_id: batchContext.libraryId,
-          epoch: batchContext.epoch,
-          epoch_id: batchContext.epochId,
-          actor_id: batchContext.actorId,
-          actor_sequence: batchContext.nextSequence + index,
-          previous_actor_operation_id:
-            index === 0
-              ? batchContext.previousOperationId
-              : `${transactionId}:${index - 1}`,
-          causal_frontier: batchContext.observedFrontier,
-          hlc_wall_ms: assignedAtMs,
-          hlc_counter: index,
-          transaction_id: transactionId,
-          transaction_member_index: index,
-          transaction_member_count: batch.length,
-          entity_id: assignment.entityId,
-          payload: {
-            assigned_at_ms: assignedAtMs,
-            highlights: assignment.highlights,
-            tags: assignment.tags,
-          },
-          created_at_ms: assignedAtMs,
-        } satisfies FeedItemAnnotationsReplaceTransactionMemberInputV1,
-        { digest: operationDigest },
-      ),
-    );
+    const members = annotationTransactionMembers(batchContext, batch, transactionId, assignedAtMs);
     await finalizeAndSubmitTransaction(batchContext, members, assignedAtMs);
     if (start + batch.length < assignments.length) {
       context = await mutationContext();
@@ -1237,24 +1283,11 @@ export async function commitDesktopLibraryFeedItemPriorities(
   }
 }
 
-async function maybeSubmitFeedItemRemoves(
-  entityIds: readonly string[],
-  removedAtMs: number,
-): Promise<boolean> {
-  let context = await mutationContext();
-  if (!context) return false;
-  const uniqueIds = [...new Set(entityIds)];
-  if (uniqueIds.length === 0) return true;
-  for (
-    let start = 0;
-    start < uniqueIds.length;
-    start += FOLLOWER_ENTITY_BATCH_LIMIT
-  ) {
-    const batchContext = context;
-    const batch = uniqueIds.slice(start, start + FOLLOWER_ENTITY_BATCH_LIMIT);
-    const transactionId =
-      `desktop-library-remove:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
-    const members = batch.map((entityId, index) =>
+function feedItemRemovalTransactionMembers(
+  batchContext: SqliteLibraryMutationContext, batch: readonly string[],
+  transactionId: LibraryCoreOperationInstanceId, removedAtMs: number,
+) {
+  return batch.map((entityId, index) =>
       FEED_ITEM_REMOVE_TRANSACTION_MEMBER_SCHEMA.construct(
         {
           operation_id: `${transactionId}:${index}`,
@@ -1280,6 +1313,41 @@ async function maybeSubmitFeedItemRemoves(
         { digest: operationDigest },
       ),
     );
+}
+
+/** Sign the complete reviewed target set; native recovery owns atomic enqueue. */
+export async function prepareDesktopRecoveryItemRemovalTransaction(
+  entityIds: readonly string[], confirmed: boolean,
+): Promise<readonly string[]> {
+  if (!confirmed) throw new Error("Confirm item deletion before preparing this edit");
+  if (entityIds.length === 0 || entityIds.length > LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.feed_item_remove.maximumMembers)
+    throw new Error("Recovery transaction exceeds its bounds");
+  const context = await mutationContext(false);
+  if (!context || context.mode !== "follower") throw new Error("Recovery requires an enrolled consumer");
+  const transactionId = `desktop-library-item-removal-recovery:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+  const members = feedItemRemovalTransactionMembers(context, entityIds, transactionId, Date.now());
+  const signed = await finalizeSignedTransaction(context, members);
+  return Object.freeze(signed.canonicalEnvelopeJson);
+}
+
+async function maybeSubmitFeedItemRemoves(
+  entityIds: readonly string[],
+  removedAtMs: number,
+): Promise<boolean> {
+  let context = await mutationContext();
+  if (!context) return false;
+  const uniqueIds = [...new Set(entityIds)];
+  if (uniqueIds.length === 0) return true;
+  for (
+    let start = 0;
+    start < uniqueIds.length;
+    start += FOLLOWER_ENTITY_BATCH_LIMIT
+  ) {
+    const batchContext = context;
+    const batch = uniqueIds.slice(start, start + FOLLOWER_ENTITY_BATCH_LIMIT);
+    const transactionId =
+      `desktop-library-remove:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+    const members = feedItemRemovalTransactionMembers(batchContext, batch, transactionId, removedAtMs);
     await finalizeAndSubmitTransaction(batchContext, members, removedAtMs);
     if (start + batch.length < uniqueIds.length) {
       context = await mutationContext();
@@ -1300,31 +1368,46 @@ async function maybeSubmitRssFeedUpsert(
   if (!context) return false;
   const transactionId =
     `desktop-library-rss-upsert:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
-  const member = RSS_FEED_UPSERT_TRANSACTION_MEMBER_SCHEMA.construct(
+  const members = rssUpsertTransactionMembers(context, [feed], transactionId, createdAtMs);
+  await finalizeAndSubmitTransaction(context, members, createdAtMs);
+  return true;
+}
+
+function rssUpsertTransactionMembers(
+  context: SqliteLibraryMutationContext, feeds: readonly RssFeed[],
+  transactionId: LibraryCoreOperationInstanceId, createdAtMs: number,
+) {
+  return feeds.map((feed, index) => RSS_FEED_UPSERT_TRANSACTION_MEMBER_SCHEMA.construct(
     {
-      operation_id: `${transactionId}:0`,
+      operation_id: `${transactionId}:${index}`,
       library_id: context.libraryId,
       epoch: context.epoch,
       epoch_id: context.epochId,
       actor_id: context.actorId,
-      actor_sequence: context.nextSequence,
-      previous_actor_operation_id: context.previousOperationId,
+      actor_sequence: context.nextSequence + index,
+      previous_actor_operation_id: index === 0 ? context.previousOperationId : `${transactionId}:${index - 1}`,
       causal_frontier: context.observedFrontier,
       hlc_wall_ms: createdAtMs,
-      hlc_counter: 0,
+      hlc_counter: index,
       transaction_id: transactionId,
-      transaction_member_index: 0,
-      transaction_member_count: 1,
+      transaction_member_index: index,
+      transaction_member_count: feeds.length,
       entity_id: feed.url,
-      payload: {
-        feed: synchronizedRssFeed(feed),
-      },
+      payload: { feed: synchronizedRssFeed(feed) },
       created_at_ms: createdAtMs,
     } satisfies RssFeedUpsertTransactionMemberInputV1,
     { digest: operationDigest },
-  );
-  await finalizeAndSubmitTransaction(context, [member], createdAtMs);
-  return true;
+  ));
+}
+
+/** Finalize one complete reviewed replacement; native linkage owns enqueue. */
+export async function prepareDesktopRecoveryRssUpsertTransaction(feeds: readonly RssFeed[]): Promise<readonly string[]> {
+  if (feeds.length === 0 || feeds.length > 1000) throw new Error("Recovery transaction exceeds its bounds");
+  const context = await mutationContext(false);
+  if (!context || context.mode !== "follower") throw new Error("Recovery requires an enrolled consumer");
+  const transactionId = `desktop-library-rss-recovery:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+  const signed = await finalizeSignedTransaction(context, rssUpsertTransactionMembers(context, feeds, transactionId, Date.now()));
+  return Object.freeze(signed.canonicalEnvelopeJson);
 }
 
 async function maybeSubmitRssFeedRemove(input: {
@@ -1348,9 +1431,6 @@ async function maybeSubmitRssFeedRemoves(
   if (!context) return false;
   const uniqueUrls = [...new Set(urls)];
   if (uniqueUrls.length === 0) return true;
-  const schema = includeItems
-    ? RSS_FEED_REMOVE_WITH_ITEMS_TRANSACTION_MEMBER_SCHEMA
-    : RSS_FEED_REMOVE_KEEP_ITEMS_TRANSACTION_MEMBER_SCHEMA;
   for (
     let start = 0;
     start < uniqueUrls.length;
@@ -1360,7 +1440,30 @@ async function maybeSubmitRssFeedRemoves(
     const batch = uniqueUrls.slice(start, start + FOLLOWER_ENTITY_BATCH_LIMIT);
     const transactionId =
       `desktop-library-rss-remove:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
-    const members = batch.map((url, index) =>
+    const members = rssRemovalTransactionMembers(batchContext, batch, transactionId, removedAtMs, includeItems);
+    await finalizeAndSubmitTransaction(batchContext, members, removedAtMs);
+    if (start + batch.length < uniqueUrls.length) {
+      context = await mutationContext();
+      if (!context)
+        throw new Error(
+          "Library mutation context changed during RSS Feed removal",
+        );
+    }
+  }
+  return true;
+}
+
+function rssRemovalTransactionMembers(
+  batchContext: SqliteLibraryMutationContext,
+  batch: readonly string[],
+  transactionId: LibraryCoreOperationInstanceId,
+  removedAtMs: number,
+  includeItems: boolean,
+) {
+  const schema = includeItems
+    ? RSS_FEED_REMOVE_WITH_ITEMS_TRANSACTION_MEMBER_SCHEMA
+    : RSS_FEED_REMOVE_KEEP_ITEMS_TRANSACTION_MEMBER_SCHEMA;
+  return batch.map((url, index) =>
       schema.construct(
         {
           operation_id: `${transactionId}:${index}`,
@@ -1386,42 +1489,30 @@ async function maybeSubmitRssFeedRemoves(
         { digest: operationDigest },
       ),
     );
-    await finalizeAndSubmitTransaction(batchContext, members, removedAtMs);
-    if (start + batch.length < uniqueUrls.length) {
-      context = await mutationContext();
-      if (!context)
-        throw new Error(
-          "Library mutation context changed during RSS Feed removal",
-        );
-    }
-  }
-  return true;
 }
 
-async function maybeSubmitRssFeedTitleAssignments(
-  assignments: readonly Readonly<{
-    readonly title: string;
-    readonly url: string;
-  }>[],
+/** Sign one complete reviewed unsubscribe; native recovery owns atomic enqueue. */
+export async function prepareDesktopRecoveryRssRemovalTransaction(
+  urls: readonly string[], includeItems: boolean, confirmedDeleteItems: boolean,
+): Promise<readonly string[]> {
+  const program = includeItems ? LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.rss_feed_remove_with_items : LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.rss_feed_remove_keep_items;
+  if (urls.length === 0 || urls.length > program.maximumMembers) throw new Error("Recovery transaction exceeds its bounds");
+  if (includeItems && !confirmedDeleteItems) throw new Error("Confirm article deletion before preparing this unsubscribe");
+  const context = await mutationContext(false);
+  if (!context || context.mode !== "follower") throw new Error("Recovery requires an enrolled consumer");
+  const transactionId = `desktop-library-rss-recovery:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+  const members = rssRemovalTransactionMembers(context, urls, transactionId, Date.now(), includeItems);
+  const signed = await finalizeSignedTransaction(context, members);
+  return Object.freeze(signed.canonicalEnvelopeJson);
+}
+
+function rssTitleTransactionMembers(
+  batchContext: SqliteLibraryMutationContext,
+  batch: readonly Readonly<{ title: string; url: string }>[],
+  transactionId: LibraryCoreOperationInstanceId,
   assignedAtMs: number,
-): Promise<boolean> {
-  let context = await mutationContext();
-  if (!context) return false;
-  const uniqueAssignments = uniqueByIdentity(assignments, (entry) => entry.url);
-  if (uniqueAssignments.length === 0) return true;
-  for (
-    let start = 0;
-    start < uniqueAssignments.length;
-    start += FOLLOWER_ENTITY_BATCH_LIMIT
-  ) {
-    const batchContext = context;
-    const batch = uniqueAssignments.slice(
-      start,
-      start + FOLLOWER_ENTITY_BATCH_LIMIT,
-    );
-    const transactionId =
-      `desktop-library-rss-title:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
-    const members = batch.map((assignment, index) =>
+) {
+  return batch.map((assignment, index) =>
       RSS_FEED_TITLE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA.construct(
         {
           operation_id: `${transactionId}:${index}`,
@@ -1450,6 +1541,45 @@ async function maybeSubmitRssFeedTitleAssignments(
         { digest: operationDigest },
       ),
     );
+}
+
+/** Prepare the complete reviewed editor transaction without ordinary enqueue. */
+export async function prepareDesktopRecoveryRssTitleTransaction(
+  assignments: readonly Readonly<{ title: string; url: string }>[],
+): Promise<readonly string[]> {
+  if (assignments.length === 0 || assignments.length > 1000) throw new Error("Recovery transaction exceeds its bounds");
+  const context = await mutationContext(false);
+  if (!context || context.mode !== "follower") throw new Error("Recovery requires an enrolled consumer");
+  const transactionId = `desktop-library-rss-recovery:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+  const members = rssTitleTransactionMembers(context, assignments, transactionId, Date.now());
+  const signed = await finalizeSignedTransaction(context, members);
+  return Object.freeze(signed.canonicalEnvelopeJson);
+}
+
+async function maybeSubmitRssFeedTitleAssignments(
+  assignments: readonly Readonly<{
+    readonly title: string;
+    readonly url: string;
+  }>[],
+  assignedAtMs: number,
+): Promise<boolean> {
+  let context = await mutationContext();
+  if (!context) return false;
+  const uniqueAssignments = uniqueByIdentity(assignments, (entry) => entry.url);
+  if (uniqueAssignments.length === 0) return true;
+  for (
+    let start = 0;
+    start < uniqueAssignments.length;
+    start += FOLLOWER_ENTITY_BATCH_LIMIT
+  ) {
+    const batchContext = context;
+    const batch = uniqueAssignments.slice(
+      start,
+      start + FOLLOWER_ENTITY_BATCH_LIMIT,
+    );
+    const transactionId =
+      `desktop-library-rss-title:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+    const members = rssTitleTransactionMembers(batchContext, batch, transactionId, assignedAtMs);
     await finalizeAndSubmitTransaction(batchContext, members, assignedAtMs);
     if (start + batch.length < uniqueAssignments.length) {
       context = await mutationContext();
@@ -1521,35 +1651,83 @@ async function maybeSubmitPreferences(
   if (Object.keys(synchronized).length === 0) return true;
   const transactionId =
     `desktop-library-preferences:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
-  const member =
-    PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA.construct(
-      {
-        operation_id: `${transactionId}:0`,
-        library_id: context.libraryId,
-        epoch: context.epoch,
-        epoch_id: context.epochId,
-        actor_id: context.actorId,
-        actor_sequence: context.nextSequence,
-        previous_actor_operation_id: context.previousOperationId,
-        causal_frontier: context.observedFrontier,
-        hlc_wall_ms: createdAtMs,
-        hlc_counter: 0,
-        transaction_id: transactionId,
-        transaction_member_index: 0,
-        transaction_member_count: 1,
-        entity_id: "preferences",
-        payload: {
-          updates: encodeLibraryCoreFractionalNumbersV1(synchronized) as Record<
-            string,
-            LibraryCoreCanonicalValue
-          >,
-        },
-        created_at_ms: createdAtMs,
-      } satisfies PreferencesLeafAssignmentTransactionMemberInputV1,
-      { digest: operationDigest },
-    );
-  await finalizeAndSubmitTransaction(context, [member], createdAtMs);
+  await finalizeAndSubmitTransaction(context, preferenceTransactionMembers(context,
+    [encodeLibraryCoreFractionalNumbersV1(synchronized) as Readonly<Record<string, LibraryCoreCanonicalValue>>], transactionId, createdAtMs), createdAtMs);
   return true;
+}
+
+function preferenceTransactionMembers(context: SqliteLibraryMutationContext,
+  patches: readonly Readonly<Record<string, LibraryCoreCanonicalValue>>[], transactionId: LibraryCoreOperationInstanceId, createdAtMs: number) {
+  return patches.map((updates, index) => PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA.construct({
+    operation_id: `${transactionId}:${index}`,
+    library_id: context.libraryId, epoch: context.epoch, epoch_id: context.epochId,
+    actor_id: context.actorId, actor_sequence: context.nextSequence + index,
+    previous_actor_operation_id: index === 0 ? context.previousOperationId : `${transactionId}:${index - 1}`,
+    causal_frontier: context.observedFrontier, hlc_wall_ms: createdAtMs, hlc_counter: 0,
+    transaction_id: transactionId, transaction_member_index: index, transaction_member_count: patches.length,
+    entity_id: "preferences", payload: { updates }, created_at_ms: createdAtMs,
+  } satisfies PreferencesLeafAssignmentTransactionMemberInputV1, { digest: operationDigest }));
+}
+
+/** Sign the complete reviewed wire patches; the recovery command owns atomic admission and linkage. */
+export async function prepareDesktopRecoveryPreferenceTransaction(patches: readonly unknown[]): Promise<readonly string[]> {
+  const selected = snapshotLibraryCoreRecoveryPreferencePatchesV1(patches);
+  const context = await mutationContext(false);
+  if (!context || context.mode !== "follower") throw new Error("Recovery requires an enrolled consumer");
+  const now = Date.now(), transactionId = `desktop-library-preference-recovery:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+  const signed = await finalizeSignedTransaction(context, preferenceTransactionMembers(context, selected, transactionId, now));
+  return Object.freeze(signed.canonicalEnvelopeJson);
+}
+
+function personUpsertTransactionMembers(
+  context: SqliteLibraryMutationContext, persons: readonly Person[],
+  transactionId: LibraryCoreOperationInstanceId, createdAtMs: number,
+) {
+  return persons.map((person, index) =>
+      PERSON_UPSERT_TRANSACTION_MEMBER_SCHEMA.construct(
+        {
+          operation_id: `${transactionId}:${index}`,
+          library_id: context.libraryId,
+          epoch: context.epoch,
+          epoch_id: context.epochId,
+          actor_id: context.actorId,
+          actor_sequence: context.nextSequence + index,
+          previous_actor_operation_id:
+            index === 0
+              ? context.previousOperationId
+              : `${transactionId}:${index - 1}`,
+          causal_frontier: context.observedFrontier,
+          hlc_wall_ms: createdAtMs,
+          hlc_counter: index,
+          transaction_id: transactionId,
+          transaction_member_index: index,
+          transaction_member_count: persons.length,
+          entity_id: person.id,
+          payload: {
+            person: sanitizePersonRootWrite(person) as unknown as Record<
+              string,
+              LibraryCoreCanonicalValue
+            >,
+          },
+          created_at_ms: createdAtMs,
+        } satisfies PersonUpsertTransactionMemberInputV1,
+        { digest: operationDigest },
+      ),
+    );
+}
+
+/** Freeze the complete reviewed roots before key access; native recovery owns enqueue. */
+export async function prepareDesktopRecoveryPersonTransaction(persons: readonly Person[]): Promise<readonly string[]> {
+  if (persons.length === 0 || persons.length > LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.person_upsert.maximumMembers)
+    throw new Error("Recovery transaction exceeds its member bound");
+  const selected = structuredClone(persons.map(person => sanitizePersonRootWrite(person))) as Person[];
+  const context = await mutationContext(false);
+  if (!context || context.mode !== "follower") throw new Error("Recovery requires an enrolled consumer");
+  const now = Date.now();
+  const transactionId = `desktop-library-person-recovery:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+  const signed = await finalizeSignedTransaction(context, personUpsertTransactionMembers(context,
+    selected.map(person => ({ ...person, updatedAt: now })), transactionId, now));
+  return Object.freeze(signed.canonicalEnvelopeJson);
 }
 
 async function maybeSubmitPersonUpserts(
@@ -1569,37 +1747,7 @@ async function maybeSubmitPersonUpserts(
     const batch = persons.slice(start, start + FOLLOWER_ENTITY_BATCH_LIMIT);
     const transactionId =
       `desktop-library-person-upsert:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
-    const members = batch.map((person, index) =>
-      PERSON_UPSERT_TRANSACTION_MEMBER_SCHEMA.construct(
-        {
-          operation_id: `${transactionId}:${index}`,
-          library_id: batchContext.libraryId,
-          epoch: batchContext.epoch,
-          epoch_id: batchContext.epochId,
-          actor_id: batchContext.actorId,
-          actor_sequence: batchContext.nextSequence + index,
-          previous_actor_operation_id:
-            index === 0
-              ? batchContext.previousOperationId
-              : `${transactionId}:${index - 1}`,
-          causal_frontier: batchContext.observedFrontier,
-          hlc_wall_ms: createdAtMs,
-          hlc_counter: index,
-          transaction_id: transactionId,
-          transaction_member_index: index,
-          transaction_member_count: batch.length,
-          entity_id: person.id,
-          payload: {
-            person: sanitizePersonRootWrite(person) as unknown as Record<
-              string,
-              LibraryCoreCanonicalValue
-            >,
-          },
-          created_at_ms: createdAtMs,
-        } satisfies PersonUpsertTransactionMemberInputV1,
-        { digest: operationDigest },
-      ),
-    );
+    const members = personUpsertTransactionMembers(batchContext, batch, transactionId, createdAtMs);
     await finalizeAndSubmitTransaction(batchContext, members, createdAtMs);
     if (start + batch.length < persons.length) {
       context = await mutationContext();
@@ -1642,7 +1790,97 @@ export async function appendSqliteLibraryPersonReachOut(
   const synchronized = sanitizeReachOutLogWrite(entry);
   const transactionId =
     `desktop-library-person-reach-out:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
-  const member = PERSON_REACH_OUT_APPEND_TRANSACTION_MEMBER_SCHEMA.construct(
+  await finalizeAndSubmitTransaction(context, reachOutTransactionMembers(context, [{ personId, event: {
+    channel: synchronized.channel ?? null, logged_at_ms: synchronized.loggedAt ?? entry.loggedAt, notes: synchronized.notes ?? null,
+  } }], transactionId, createdAtMs), createdAtMs);
+}
+
+function reachOutTransactionMembers(context: SqliteLibraryMutationContext,
+  entries: readonly { personId: string; event: RecoveryReachOutDraft["event"] }[],
+  transactionId: LibraryCoreOperationInstanceId, createdAtMs: number) {
+  return entries.map(({ personId, event }, index) => PERSON_REACH_OUT_APPEND_TRANSACTION_MEMBER_SCHEMA.construct(
+    {
+      operation_id: `${transactionId}:${index}`,
+      library_id: context.libraryId,
+      epoch: context.epoch,
+      epoch_id: context.epochId,
+      actor_id: context.actorId,
+      actor_sequence: context.nextSequence + index,
+      previous_actor_operation_id: index === 0 ? context.previousOperationId : `${transactionId}:${index - 1}`,
+      causal_frontier: context.observedFrontier,
+      hlc_wall_ms: createdAtMs,
+      hlc_counter: index,
+      transaction_id: transactionId,
+      transaction_member_index: index,
+      transaction_member_count: entries.length,
+      entity_id: personId,
+      payload: event,
+      created_at_ms: createdAtMs,
+    } satisfies PersonReachOutAppendTransactionMemberInputV1,
+    { digest: operationDigest },
+  ));
+}
+
+/** Preserve the historical event time while signing a fresh explicit action. */
+export async function prepareDesktopRecoveryReachOutTransaction(drafts: readonly RecoveryReachOutDraft[]): Promise<readonly string[]> {
+  if (!drafts.length || drafts.length > LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.person_reach_out_append.maximumMembers) throw new Error("Recovery exceeds its member bound");
+  const selected = drafts.map(draft => {
+    const payload = PERSON_REACH_OUT_APPEND_PAYLOAD_SCHEMA.validate(draft.event);
+    if (!payload.ok) throw new Error("Reach-out event is invalid");
+    return { personId: draft.personId, event: structuredClone(payload.value) };
+  });
+  const context = await mutationContext(false);
+  if (!context || context.mode !== "follower") throw new Error("Recovery requires an enrolled consumer");
+  const now = Date.now(), transactionId = `desktop-library-reach-out-recovery:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+  const signed = await finalizeSignedTransaction(context, reachOutTransactionMembers(context, selected, transactionId, now));
+  return Object.freeze(signed.canonicalEnvelopeJson);
+}
+
+export async function assignSqliteLibraryAccountToPerson(
+  accountId: string,
+  personId: string | null,
+  assignedAtMs = Date.now(),
+): Promise<void> {
+  const context = await mutationContext();
+  if (!context) {
+    throw new Error("Library mutation context is unavailable");
+  }
+  const transactionId = `desktop-library-account-person:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+  await finalizeAndSubmitTransaction(context, accountPersonTransactionMembers(context, [{ accountId, personId }], transactionId, assignedAtMs), assignedAtMs);
+}
+
+function accountPersonTransactionMembers(context: SqliteLibraryMutationContext,
+  assignments: readonly { accountId: string; personId: string | null }[],
+  transactionId: LibraryCoreOperationInstanceId, assignedAtMs: number,
+) {
+  return assignments.map(({ accountId, personId }, index) => ACCOUNT_PERSON_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA.construct({
+    operation_id: `${transactionId}:${index}`, library_id: context.libraryId, epoch: context.epoch,
+    epoch_id: context.epochId, actor_id: context.actorId, actor_sequence: context.nextSequence + index,
+    previous_actor_operation_id: index === 0 ? context.previousOperationId : `${transactionId}:${index - 1}`,
+    causal_frontier: context.observedFrontier, hlc_wall_ms: assignedAtMs, hlc_counter: index,
+    transaction_id: transactionId, transaction_member_index: index, transaction_member_count: assignments.length,
+    entity_id: accountId, payload: { assigned_at_ms: assignedAtMs, person_id: personId }, created_at_ms: assignedAtMs,
+  } satisfies AccountPersonAssignmentTransactionMemberInputV1, { digest: operationDigest }));
+}
+
+/** Sign the whole reviewed target set; only recovery submission may enqueue it. */
+export async function prepareDesktopRecoveryAccountPersonTransaction(
+  assignments: readonly { accountId: string; personId: string | null }[],
+): Promise<readonly string[]> {
+  if (assignments.length === 0 || assignments.length > 1000) throw new Error("Recovery transaction exceeds its member bound");
+  const selected = assignments.map(({ accountId, personId }) => ({ accountId, personId }));
+  const context = await mutationContext(false);
+  if (!context || context.mode !== "follower") throw new Error("Recovery requires an enrolled consumer");
+  const transactionId = `desktop-library-account-person-recovery:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+  const signed = await finalizeSignedTransaction(context, accountPersonTransactionMembers(context, selected, transactionId, Date.now()));
+  return Object.freeze(signed.canonicalEnvelopeJson);
+}
+
+function friendReplacementMember(
+  context: SqliteLibraryMutationContext, person: Person, accounts: readonly Account[],
+  transactionId: LibraryCoreOperationInstanceId, createdAtMs: number,
+) {
+  return FRIEND_REPLACE_TRANSACTION_MEMBER_SCHEMA.construct(
     {
       operation_id: `${transactionId}:0`,
       library_id: context.libraryId,
@@ -1657,55 +1895,37 @@ export async function appendSqliteLibraryPersonReachOut(
       transaction_id: transactionId,
       transaction_member_index: 0,
       transaction_member_count: 1,
-      entity_id: personId,
+      entity_id: person.id,
       payload: {
-        channel: synchronized.channel ?? null,
-        logged_at_ms: synchronized.loggedAt ?? entry.loggedAt,
-        notes: synchronized.notes ?? null,
+        accounts: accounts as unknown as readonly Readonly<
+          Record<string, LibraryCoreCanonicalValue>
+        >[],
+        person: person as unknown as Readonly<
+          Record<string, LibraryCoreCanonicalValue>
+        >,
       },
       created_at_ms: createdAtMs,
-    } satisfies PersonReachOutAppendTransactionMemberInputV1,
+    } satisfies FriendReplaceTransactionMemberInputV1,
     { digest: operationDigest },
   );
-  await finalizeAndSubmitTransaction(context, [member], createdAtMs);
 }
 
-export async function assignSqliteLibraryAccountToPerson(
-  accountId: string,
-  personId: string | null,
-  assignedAtMs = Date.now(),
-): Promise<void> {
-  const context = await mutationContext();
-  if (!context) {
-    throw new Error("Library mutation context is unavailable");
-  }
-  const transactionId =
-    `desktop-library-account-person:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
-  const member = ACCOUNT_PERSON_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA.construct(
-    {
-      operation_id: `${transactionId}:0`,
-      library_id: context.libraryId,
-      epoch: context.epoch,
-      epoch_id: context.epochId,
-      actor_id: context.actorId,
-      actor_sequence: context.nextSequence,
-      previous_actor_operation_id: context.previousOperationId,
-      causal_frontier: context.observedFrontier,
-      hlc_wall_ms: assignedAtMs,
-      hlc_counter: 0,
-      transaction_id: transactionId,
-      transaction_member_index: 0,
-      transaction_member_count: 1,
-      entity_id: accountId,
-      payload: {
-        assigned_at_ms: assignedAtMs,
-        person_id: personId,
-      },
-      created_at_ms: assignedAtMs,
-    } satisfies AccountPersonAssignmentTransactionMemberInputV1,
-    { digest: operationDigest },
-  );
-  await finalizeAndSubmitTransaction(context, [member], assignedAtMs);
+/** Sign one explicit Friend replacement; the recovery boundary owns its durable enqueue. */
+export async function prepareDesktopRecoveryFriendTransaction(person: Person, accounts: readonly Account[]): Promise<readonly string[]> {
+  // Snapshot before key access, preserving every selected field and rejecting an
+  // invalid whole payload instead of sanitizing away unknown archived details.
+  const selected = FRIEND_REPLACE_PAYLOAD_SCHEMA.validate({ accounts: [...accounts].sort((a, b) => compareLibraryCoreUtf8V1(a.id, b.id)), person });
+  if (!selected.ok) throw new Error("The complete Friend replacement is invalid or oversized");
+  const snapshot = structuredClone(selected.value);
+  const context = await mutationContext(false);
+  if (!context || context.mode !== "follower") throw new Error("Recovery requires an enrolled consumer");
+  const now = Date.now();
+  const transactionId = `desktop-library-friend-recovery:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+  const member = friendReplacementMember(context,
+    { ...snapshot.person, updatedAt: now } as unknown as Person,
+    snapshot.accounts.map(account => ({ ...account, updatedAt: now })) as unknown as Account[], transactionId, now);
+  const signed = await finalizeSignedTransaction(context, [member]);
+  return Object.freeze(signed.canonicalEnvelopeJson);
 }
 
 export async function replaceSqliteLibraryFriend(
@@ -1748,7 +1968,7 @@ export async function replaceSqliteLibraryFriend(
       }) as Account;
     }),
   );
-  resolvedAccounts.sort((left, right) => left.id.localeCompare(right.id));
+  resolvedAccounts.sort((left, right) => compareLibraryCoreUtf8V1(left.id, right.id));
   if (
     new Set(resolvedAccounts.map((account) => account.id)).size !==
     resolvedAccounts.length
@@ -1757,34 +1977,7 @@ export async function replaceSqliteLibraryFriend(
   }
   const transactionId =
     `desktop-library-friend-replace:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
-  const member = FRIEND_REPLACE_TRANSACTION_MEMBER_SCHEMA.construct(
-    {
-      operation_id: `${transactionId}:0`,
-      library_id: context.libraryId,
-      epoch: context.epoch,
-      epoch_id: context.epochId,
-      actor_id: context.actorId,
-      actor_sequence: context.nextSequence,
-      previous_actor_operation_id: context.previousOperationId,
-      causal_frontier: context.observedFrontier,
-      hlc_wall_ms: createdAtMs,
-      hlc_counter: 0,
-      transaction_id: transactionId,
-      transaction_member_index: 0,
-      transaction_member_count: 1,
-      entity_id: person.id,
-      payload: {
-        accounts: resolvedAccounts as unknown as readonly Readonly<
-          Record<string, LibraryCoreCanonicalValue>
-        >[],
-        person: resolvedPerson as unknown as Readonly<
-          Record<string, LibraryCoreCanonicalValue>
-        >,
-      },
-      created_at_ms: createdAtMs,
-    } satisfies FriendReplaceTransactionMemberInputV1,
-    { digest: operationDigest },
-  );
+  const member = friendReplacementMember(context, resolvedPerson as Person, resolvedAccounts, transactionId, createdAtMs);
   await finalizeAndSubmitTransaction(context, [member], createdAtMs);
 }
 
@@ -1793,6 +1986,53 @@ async function maybeSubmitPersonRemove(
   removedAtMs: number,
 ): Promise<boolean> {
   return maybeSubmitPersonRemoves([personId], removedAtMs);
+}
+
+function personRemovalTransactionMembers(
+  context: SqliteLibraryMutationContext, personIds: readonly string[],
+  transactionId: LibraryCoreOperationInstanceId, removedAtMs: number,
+) {
+  return personIds.map((personId, index) =>
+      PERSON_REMOVE_AND_ACCOUNTS_TRANSACTION_MEMBER_SCHEMA.construct(
+        {
+          operation_id: `${transactionId}:${index}`,
+          library_id: context.libraryId,
+          epoch: context.epoch,
+          epoch_id: context.epochId,
+          actor_id: context.actorId,
+          actor_sequence: context.nextSequence + index,
+          previous_actor_operation_id:
+            index === 0
+              ? context.previousOperationId
+              : `${transactionId}:${index - 1}`,
+          causal_frontier: context.observedFrontier,
+          hlc_wall_ms: removedAtMs,
+          hlc_counter: index,
+          transaction_id: transactionId,
+          transaction_member_index: index,
+          transaction_member_count: personIds.length,
+          entity_id: personId,
+          payload: { removed_at_ms: removedAtMs },
+          created_at_ms: removedAtMs,
+        } satisfies PersonRemoveTransactionMemberInputV1,
+        { digest: operationDigest },
+      ),
+    );
+}
+
+/** Sign fixed ordered targets; recovery owns the durable intent and link commit. */
+export async function prepareDesktopRecoveryPersonRemovalTransaction(
+  personIds: readonly string[], confirmed: boolean,
+): Promise<readonly string[]> {
+  if (!confirmed) throw new Error("Confirm people and linked account deletion before preparing this edit");
+  if (personIds.length === 0 || personIds.length > LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.person_remove_and_accounts.maximumMembers)
+    throw new Error("Recovery transaction exceeds its bounds");
+  const targets = [...personIds];
+  const context = await mutationContext(false);
+  if (!context || context.mode !== "follower") throw new Error("Recovery requires an enrolled consumer");
+  const transactionId = `desktop-library-person-removal-recovery:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+  const signed = await finalizeSignedTransaction(context, personRemovalTransactionMembers(context, targets, transactionId, Date.now()));
+  return Object.freeze(signed.canonicalEnvelopeJson);
 }
 
 async function maybeSubmitPersonRemoves(
@@ -1811,32 +2051,7 @@ async function maybeSubmitPersonRemoves(
     const batch = uniqueIds.slice(start, start + batchLimit);
     const transactionId =
       `desktop-library-person-remove:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
-    const members = batch.map((personId, index) =>
-      PERSON_REMOVE_AND_ACCOUNTS_TRANSACTION_MEMBER_SCHEMA.construct(
-        {
-          operation_id: `${transactionId}:${index}`,
-          library_id: batchContext.libraryId,
-          epoch: batchContext.epoch,
-          epoch_id: batchContext.epochId,
-          actor_id: batchContext.actorId,
-          actor_sequence: batchContext.nextSequence + index,
-          previous_actor_operation_id:
-            index === 0
-              ? batchContext.previousOperationId
-              : `${transactionId}:${index - 1}`,
-          causal_frontier: batchContext.observedFrontier,
-          hlc_wall_ms: removedAtMs,
-          hlc_counter: index,
-          transaction_id: transactionId,
-          transaction_member_index: index,
-          transaction_member_count: batch.length,
-          entity_id: personId,
-          payload: { removed_at_ms: removedAtMs },
-          created_at_ms: removedAtMs,
-        } satisfies PersonRemoveTransactionMemberInputV1,
-        { digest: operationDigest },
-      ),
-    );
+    const members = personRemovalTransactionMembers(batchContext, batch, transactionId, removedAtMs);
     await finalizeAndSubmitTransaction(batchContext, members, removedAtMs);
     if (start + batch.length < uniqueIds.length) {
       context = await mutationContext();
@@ -1859,6 +2074,60 @@ export async function removeSqliteLibraryPerson(
   }
 }
 
+function accountUpsertTransactionMembers(context: SqliteLibraryMutationContext, accounts: readonly Account[],
+  transactionId: LibraryCoreOperationInstanceId, createdAtMs: number) {
+  return accounts.map((account, index) =>
+      ACCOUNT_UPSERT_TRANSACTION_MEMBER_SCHEMA.construct(
+        {
+          operation_id: `${transactionId}:${index}`,
+          library_id: context.libraryId,
+          epoch: context.epoch,
+          epoch_id: context.epochId,
+          actor_id: context.actorId,
+          actor_sequence: context.nextSequence + index,
+          previous_actor_operation_id:
+            index === 0
+              ? context.previousOperationId
+              : `${transactionId}:${index - 1}`,
+          causal_frontier: context.observedFrontier,
+          hlc_wall_ms: createdAtMs,
+          hlc_counter: index,
+          transaction_id: transactionId,
+          transaction_member_index: index,
+          transaction_member_count: accounts.length,
+          entity_id: account.id,
+          payload: {
+            account: sanitizeAccountWrite(account) as unknown as Record<
+              string,
+              LibraryCoreCanonicalValue
+            >,
+          },
+          created_at_ms: createdAtMs,
+        } satisfies AccountUpsertTransactionMemberInputV1,
+        { digest: operationDigest },
+      ),
+    );
+}
+
+/** Freeze the reviewed complete roots before signing; recovery owns enqueue. */
+export async function prepareDesktopRecoveryAccountTransaction(accounts: readonly Account[], review: LibraryCoreRecoveryIntentReviewResponseV1): Promise<readonly string[]> {
+  if (!accounts.length || accounts.length > LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.account_upsert.maximumMembers)
+    throw new Error("Recovery transaction exceeds its member bound");
+  const selected = structuredClone(accounts.map(account => sanitizeAccountWrite(account))) as Account[];
+  for (const account of selected) {
+    if (!account.personId) continue;
+    const current = await queryNormalizedLibrary({ queryId: "person_detail_v1", schemaVersion: 1, personId: account.personId });
+    if (!current.person || current.person.id !== account.personId || current.source.generationId !== review.source.generationId || current.source.projectionRevision !== review.source.projectionRevision)
+      throw new Error("The selected person or Library changed. Review the Account details again.");
+  }
+  const context = await mutationContext(false);
+  if (!context || context.mode !== "follower") throw new Error("Recovery requires an enrolled consumer");
+  const now = Date.now();
+  const transactionId = `desktop-library-account-recovery:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+  const signed = await finalizeSignedTransaction(context, accountUpsertTransactionMembers(context, selected.map(account => ({ ...account, updatedAt: now })), transactionId, now));
+  return Object.freeze(signed.canonicalEnvelopeJson);
+}
+
 async function maybeSubmitAccountUpserts(
   input: readonly Account[],
   createdAtMs: number,
@@ -1876,37 +2145,7 @@ async function maybeSubmitAccountUpserts(
     const batch = accounts.slice(start, start + FOLLOWER_ENTITY_BATCH_LIMIT);
     const transactionId =
       `desktop-library-account-upsert:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
-    const members = batch.map((account, index) =>
-      ACCOUNT_UPSERT_TRANSACTION_MEMBER_SCHEMA.construct(
-        {
-          operation_id: `${transactionId}:${index}`,
-          library_id: batchContext.libraryId,
-          epoch: batchContext.epoch,
-          epoch_id: batchContext.epochId,
-          actor_id: batchContext.actorId,
-          actor_sequence: batchContext.nextSequence + index,
-          previous_actor_operation_id:
-            index === 0
-              ? batchContext.previousOperationId
-              : `${transactionId}:${index - 1}`,
-          causal_frontier: batchContext.observedFrontier,
-          hlc_wall_ms: createdAtMs,
-          hlc_counter: index,
-          transaction_id: transactionId,
-          transaction_member_index: index,
-          transaction_member_count: batch.length,
-          entity_id: account.id,
-          payload: {
-            account: sanitizeAccountWrite(account) as unknown as Record<
-              string,
-              LibraryCoreCanonicalValue
-            >,
-          },
-          created_at_ms: createdAtMs,
-        } satisfies AccountUpsertTransactionMemberInputV1,
-        { digest: operationDigest },
-      ),
-    );
+    const members = accountUpsertTransactionMembers(batchContext, batch, transactionId, createdAtMs);
     await finalizeAndSubmitTransaction(batchContext, members, createdAtMs);
     if (start + batch.length < accounts.length) {
       context = await mutationContext();
@@ -1937,6 +2176,53 @@ export async function upsertSqliteLibraryAccounts(
   }
 }
 
+function accountRemovalTransactionMembers(
+  context: SqliteLibraryMutationContext, accountIds: readonly string[],
+  transactionId: LibraryCoreOperationInstanceId, removedAtMs: number,
+) {
+  return accountIds.map((accountId, index) =>
+      ACCOUNT_REMOVE_TRANSACTION_MEMBER_SCHEMA.construct(
+        {
+          operation_id: `${transactionId}:${index}`,
+          library_id: context.libraryId,
+          epoch: context.epoch,
+          epoch_id: context.epochId,
+          actor_id: context.actorId,
+          actor_sequence: context.nextSequence + index,
+          previous_actor_operation_id:
+            index === 0
+              ? context.previousOperationId
+              : `${transactionId}:${index - 1}`,
+          causal_frontier: context.observedFrontier,
+          hlc_wall_ms: removedAtMs,
+          hlc_counter: index,
+          transaction_id: transactionId,
+          transaction_member_index: index,
+          transaction_member_count: accountIds.length,
+          entity_id: accountId,
+          payload: { removed_at_ms: removedAtMs },
+          created_at_ms: removedAtMs,
+        } satisfies AccountRemoveTransactionMemberInputV1,
+        { digest: operationDigest },
+      ),
+    );
+}
+
+/** Sign the complete original Account target set without ordinary enqueue. */
+export async function prepareDesktopRecoveryAccountRemovalTransaction(
+  accountIds: readonly string[], confirmed: boolean,
+): Promise<readonly string[]> {
+  if (!confirmed) throw new Error("Confirm account deletion before preparing this edit");
+  if (accountIds.length === 0 || accountIds.length > LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.account_remove.maximumMembers)
+    throw new Error("Recovery transaction exceeds its bounds");
+  const targets = [...accountIds];
+  const context = await mutationContext(false);
+  if (!context || context.mode !== "follower") throw new Error("Recovery requires an enrolled consumer");
+  const transactionId = `desktop-library-account-removal-recovery:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+  const signed = await finalizeSignedTransaction(context, accountRemovalTransactionMembers(context, targets, transactionId, Date.now()));
+  return Object.freeze(signed.canonicalEnvelopeJson);
+}
+
 async function maybeSubmitAccountRemoves(
   accountIds: readonly string[],
   removedAtMs: number,
@@ -1952,32 +2238,7 @@ async function maybeSubmitAccountRemoves(
     const batch = uniqueIds.slice(start, start + batchLimit);
     const transactionId =
       `desktop-library-account-remove:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
-    const members = batch.map((accountId, index) =>
-      ACCOUNT_REMOVE_TRANSACTION_MEMBER_SCHEMA.construct(
-        {
-          operation_id: `${transactionId}:${index}`,
-          library_id: batchContext.libraryId,
-          epoch: batchContext.epoch,
-          epoch_id: batchContext.epochId,
-          actor_id: batchContext.actorId,
-          actor_sequence: batchContext.nextSequence + index,
-          previous_actor_operation_id:
-            index === 0
-              ? batchContext.previousOperationId
-              : `${transactionId}:${index - 1}`,
-          causal_frontier: batchContext.observedFrontier,
-          hlc_wall_ms: removedAtMs,
-          hlc_counter: index,
-          transaction_id: transactionId,
-          transaction_member_index: index,
-          transaction_member_count: batch.length,
-          entity_id: accountId,
-          payload: { removed_at_ms: removedAtMs },
-          created_at_ms: removedAtMs,
-        } satisfies AccountRemoveTransactionMemberInputV1,
-        { digest: operationDigest },
-      ),
-    );
+    const members = accountRemovalTransactionMembers(batchContext, batch, transactionId, removedAtMs);
     await finalizeAndSubmitTransaction(batchContext, members, removedAtMs);
     if (start + batch.length < uniqueIds.length) {
       context = await mutationContext();
@@ -2072,10 +2333,135 @@ export async function describeNormalizedLibraryCheckpoint(): Promise<LibraryCore
 }
 
 /** Begin one pinned checkpoint export and return its exact read-transaction descriptor. */
-export async function beginNormalizedLibraryCheckpointExport(): Promise<LibraryCoreNormalizedCheckpointExportDescriptorV2> {
+export async function beginNormalizedLibraryCheckpointExport(handoffId?: string): Promise<LibraryCoreNormalizedCheckpointExportDescriptorV2> {
+  if (handoffId !== undefined && !HEX_64.test(handoffId)) throw new TypeError("Invalid handoff identity");
   return parseLibraryCoreNormalizedCheckpointExportDescriptorV2(
-    await invoke<unknown>("begin_normalized_library_checkpoint_export"),
+    await (handoffId === undefined
+      ? invoke<unknown>("begin_normalized_library_checkpoint_export")
+      : invoke<unknown>("begin_normalized_library_checkpoint_export", { handoffId })),
   );
+}
+
+export interface NormalizedLibraryConsumerRecoverySummary {
+  readonly recoveryId: string;
+  readonly libraryId: string;
+  readonly predecessorEpochId: string;
+  readonly successorEpochId: string;
+  readonly state: "archived" | "prepared" | "following";
+  readonly archivedPendingEdits: number;
+  readonly archivedPublishedEdits: number;
+}
+
+function parseConsumerRecoverySummary(value: unknown): NormalizedLibraryConsumerRecoverySummary {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new TypeError("Invalid consumer recovery summary");
+  const row = value as Record<string, unknown>;
+  const ids = ["recoveryId", "libraryId", "predecessorEpochId", "successorEpochId"] as const;
+  const counts = ["archivedPendingEdits", "archivedPublishedEdits"] as const;
+  if (Object.keys(row).length !== 7 || ids.some((key) => typeof row[key] !== "string" || !HEX_64.test(row[key] as string))
+    || counts.some((key) => !Number.isSafeInteger(row[key]) || (row[key] as number) < 0)
+    || !["archived", "prepared", "following"].includes(row.state as string)) {
+    throw new TypeError("Invalid consumer recovery summary");
+  }
+  return row as unknown as NormalizedLibraryConsumerRecoverySummary;
+}
+
+export async function readNormalizedLibraryConsumerRecovery(): Promise<NormalizedLibraryConsumerRecoverySummary | null> {
+  const value = await invoke<unknown>("read_normalized_library_consumer_recovery");
+  return value === null ? null : parseConsumerRecoverySummary(value);
+}
+
+export async function prepareNormalizedLibraryConsumerRecovery(): Promise<NormalizedLibraryConsumerRecoverySummary> {
+  return parseConsumerRecoverySummary(await invoke<unknown>("prepare_normalized_library_consumer_recovery"));
+}
+
+export async function commitNormalizedLibraryConsumerRecovery(recoveryId: string): Promise<NormalizedLibraryConsumerRecoverySummary> {
+  if (!HEX_64.test(recoveryId)) throw new TypeError("Invalid consumer recovery identity");
+  return parseConsumerRecoverySummary(await invoke<unknown>("commit_normalized_library_consumer_recovery", { recoveryId }));
+}
+
+export interface NormalizedLibraryHandoffStatus {
+  readonly handoffId: string;
+  readonly libraryId: string;
+  readonly installationRole: "source" | "target" | "consumer";
+  readonly phase: "preparing" | "sealed" | "authorized" | "cas_pending" | "committed" | "active" | "demoted" | "cancelled" | "recovery" | "following";
+  readonly predecessorEpochId: string;
+  readonly successorEpochId: string | null;
+  readonly canonicalReadiness: string;
+  readonly canonicalAuthorizationBody: string | null;
+  readonly canonicalAuthorization: string | null;
+  readonly canonicalActivation: string | null;
+  readonly canonicalCancellation?: string | null;
+  readonly expectedControlRevision: string | null;
+  readonly observedControlRevision: string | null;
+  readonly updatedAtMs: number;
+}
+
+/** Native validates the persisted schema and bounded canonical recovery receipts. */
+export function readNormalizedLibraryHandoffStatus(): Promise<NormalizedLibraryHandoffStatus | null> {
+  return invoke("read_normalized_library_handoff_status");
+}
+
+export function prepareNormalizedLibraryHandoffReadiness(): Promise<string> {
+  return invoke("prepare_normalized_library_handoff_readiness", { createdAtMs: Date.now() });
+}
+
+export function beginNormalizedLibrarySourceHandoff(canonicalReadiness: string, selectedTargetActorId: string): Promise<string> {
+  return invoke("begin_normalized_library_source_handoff", {
+    canonicalReadiness, selectedTargetActorId, preparedAtMs: Date.now(),
+  });
+}
+
+export async function sealNormalizedLibrarySourceHandoff(
+  handoffId: string,
+  expected: LibraryCoreNormalizedCheckpointExportDescriptorV2,
+): Promise<LibraryCoreNormalizedCheckpointExportDescriptorV2> {
+  return parseLibraryCoreNormalizedCheckpointExportDescriptorV2(await invoke("seal_normalized_library_source_handoff", {
+    handoffId, expected, sealedAtMs: Date.now(),
+  }));
+}
+
+export function cancelNormalizedLibrarySourceHandoff(handoffId: string): Promise<void> {
+  return invoke("cancel_normalized_library_source_handoff", { handoffId, cancelledAtMs: Date.now() });
+}
+
+export function prepareNormalizedLibraryHandoffAuthorization(
+  handoffId: string, canonicalControl: string, controlRevision: string, controlFileId: string,
+): Promise<string> {
+  return invoke("prepare_normalized_library_handoff_authorization", { handoffId, canonicalControl, controlRevision, controlFileId });
+}
+
+export function authorizeNormalizedLibrarySourceHandoff(handoffId: string, canonicalBody: string): Promise<string> {
+  return invoke("authorize_normalized_library_source_handoff", { handoffId, canonicalBody, authorizedAtMs: Date.now() });
+}
+
+export function prepareNormalizedLibraryHandoffActivation(handoffId: string, controlFileId: string, canonicalControl: string): Promise<string> {
+  if (!HEX_64.test(handoffId)) throw new TypeError("Invalid handoff identity");
+  return invoke("prepare_normalized_library_handoff_activation", { handoffId, controlFileId, canonicalControl, preparedAtMs: Date.now() });
+}
+
+export function adoptNormalizedLibrarySourceHandoff(input: {
+  handoffId: string; stageId: string; canonicalControl: string; accessToken: string;
+}): Promise<NormalizedLibraryHandoffStatus> {
+  if (!HEX_64.test(input.handoffId) || !input.stageId || input.stageId.length > 255) throw new TypeError("Invalid source adoption identity");
+  return invoke("adopt_normalized_library_source_handoff", input);
+}
+
+export function activateNormalizedLibraryTargetHandoff(handoffId: string, accessToken: string): Promise<NormalizedLibraryHandoffStatus> {
+  if (!HEX_64.test(handoffId)) throw new TypeError("Invalid handoff identity");
+  return invoke("activate_normalized_library_target_handoff", { handoffId, accessToken });
+}
+
+export function stageNormalizedLibraryTargetHandoff(handoffId: string): Promise<string> {
+  if (!HEX_64.test(handoffId)) throw new TypeError("Invalid handoff identity");
+  return invoke("stage_normalized_library_target_handoff", { handoffId, stagedAtMs: Date.now() });
+}
+
+export function acceptNormalizedLibraryTargetHandoffCancellation(canonicalCancellation: string): Promise<string> {
+  return invoke("accept_normalized_library_target_handoff_cancellation", { canonicalCancellation, appliedAtMs: Date.now() });
+}
+
+export function acceptNormalizedLibraryTargetHandoffAuthorization(canonicalAuthorization: string): Promise<string> {
+  return invoke("accept_normalized_library_target_handoff_authorization", { canonicalAuthorization, acceptedAtMs: Date.now() });
 }
 
 export async function describeNormalizedLibraryCloudIdentity(): Promise<NormalizedLibraryCloudIdentity> {
@@ -2107,9 +2493,12 @@ export async function describeNormalizedLibraryCloudIdentity(): Promise<Normaliz
 export async function readNormalizedLibraryCheckpointPage(input: {
   readonly snapshot: LibraryCoreNormalizedCheckpointExportDescriptorV2;
   readonly after: LibraryCoreNormalizedCheckpointCursorV2 | null;
+  readonly handoffId?: string;
 }): Promise<LibraryCoreNormalizedCheckpointExportPageV2> {
+  if (input.handoffId !== undefined && !HEX_64.test(input.handoffId)) throw new TypeError("Invalid handoff identity");
   return parseLibraryCoreNormalizedCheckpointExportPageV2(
     await invoke<unknown>("read_normalized_library_checkpoint_page", {
+      ...(input.handoffId === undefined ? {} : { handoffId: input.handoffId }),
       request: {
         snapshot: input.snapshot,
         page: {
@@ -2146,6 +2535,25 @@ export async function appendNormalizedLibraryCheckpointImportPage(input: {
   );
 }
 
+export async function prepareNormalizedLibraryPredecessorCheckpointRead(stageId: string) {
+  const request = createLibraryCoreSqlitePredecessorReadWorkerRequest("native-predecessor-read", stageId);
+  if (request.kind !== "prepare_predecessor_checkpoint_read") throw new Error("invalid predecessor read request");
+  return parseLibraryCorePredecessorCheckpointReadsV1(await invoke<unknown>(
+    "prepare_normalized_library_predecessor_checkpoint_read", { request: { stageId: request.stageId } },
+  ));
+}
+
+export async function activateNormalizedLibraryPredecessorCheckpoint(
+  activation: LibraryCoreActivateNormalizedCheckpointStageV2, successorStageId: string,
+): Promise<LibraryCoreNormalizedCheckpointActivationReceiptV2> {
+  const request = createLibraryCoreSqliteActivatePredecessorWorkerRequest("native-predecessor-import", activation, successorStageId);
+  if (request.kind !== "activate_verified_predecessor_checkpoint") throw new Error("invalid predecessor import request");
+  return parseLibraryCoreNormalizedCheckpointActivationReceiptV2(await invoke<unknown>(
+    "activate_normalized_library_predecessor_checkpoint", { request: { stageId: request.activation.stageId,
+      successorStageId: request.successorStageId, followerReceipt: request.activation.followerReceipt } },
+  ));
+}
+
 export async function activateNormalizedLibraryCheckpointImport(
   input: Readonly<{
     stageId: string;
@@ -2165,41 +2573,6 @@ export async function activateNormalizedLibraryCheckpointImport(
       request: input,
     }),
   );
-}
-
-export async function reassignNormalizedLibraryWriterEpoch(input: {
-  readonly canonicalSourceControlJson: string;
-  readonly targetWriterId: string;
-}): Promise<NormalizedLibraryWriterEpochReassignment> {
-  if (!HEX_64.test(input.targetWriterId)) {
-    throw new TypeError("normalized target writer ID is invalid");
-  }
-  const installationWitness = await invoke<string>(
-    "get_desktop_installation_witness",
-  );
-  if (!HEX_64.test(installationWitness)) {
-    throw new TypeError(
-      "Freed Desktop returned an invalid installation witness",
-    );
-  }
-  const reassignment = await invoke<NormalizedLibraryWriterEpochReassignment>(
-    "reassign_normalized_library_writer_epoch",
-    {
-      request: {
-        ...input,
-        installationWitness,
-        acceptedAtMs: Date.now(),
-      },
-    },
-  );
-  if (
-    reassignment.authority.library_id.length !== 64 ||
-    reassignment.authority.epoch_id.length !== 64 ||
-    reassignment.canonicalEpochCertificateJson.length === 0
-  ) {
-    throw new TypeError("normalized writer reassignment receipt is invalid");
-  }
-  return Object.freeze(reassignment);
 }
 
 const HEX_64 = /^[a-f0-9]{64}$/;
@@ -2419,46 +2792,8 @@ function normalizedSampleFingerprint(
 }
 
 async function readNormalizedPerson(personId: string): Promise<Person | null> {
-  const response = await queryNormalizedLibrary({
-    personId,
-    queryId: LIBRARY_CORE_PERSON_DETAIL_QUERY_ID,
-    schemaVersion: LIBRARY_CORE_PERSON_DETAIL_SCHEMA_VERSION,
-  });
-  const person = response.person;
-  if (!person) return null;
-  const sampleDataFingerprint = normalizedSampleFingerprint(
-    person.sampleBatchId,
-    person.sampleGeneratedAt,
-    person.sampleGeneratorVersion,
-  );
-  return {
-    id: person.id,
-    name: person.name,
-    relationshipStatus:
-      person.relationshipStatus as Person["relationshipStatus"],
-    careLevel: person.careLevel as Person["careLevel"],
-    createdAt: person.createdAt,
-    updatedAt: person.updatedAt,
-    ...(person.avatarUrl === null ? {} : { avatarUrl: person.avatarUrl }),
-    ...(person.bio === null ? {} : { bio: person.bio }),
-    ...(person.reachOutIntervalDays === null
-      ? {}
-      : { reachOutIntervalDays: person.reachOutIntervalDays }),
-    ...(person.notes === null ? {} : { notes: person.notes }),
-    ...(person.tags.length === 0 ? {} : { tags: [...person.tags] }),
-    ...(person.reachOuts.length === 0
-      ? {}
-      : {
-          reachOutLog: person.reachOuts.map((entry) => ({
-            loggedAt: entry.loggedAt,
-            ...(entry.channel === null
-              ? {}
-              : { channel: entry.channel as ReachOutLog["channel"] }),
-            ...(entry.notes === null ? {} : { notes: entry.notes }),
-          })),
-        }),
-    ...(sampleDataFingerprint === undefined ? {} : { sampleDataFingerprint }),
-  };
+  const response = await queryNormalizedLibrary({ personId, queryId: "person_root_v1", schemaVersion: 1 });
+  return response.person as unknown as Person | null;
 }
 
 async function readNormalizedAccount(
@@ -3047,9 +3382,21 @@ export async function dispatchSqliteMutation(
     }
     case "UPDATE_RSS_FEED": {
       const feed = await readNormalizedRssFeed(message.url);
-      const updated = feed ? { ...feed, ...message.updates } : null;
-      if (!updated) break;
-      if (!(await maybeSubmitRssFeedUpsert(updated, timestamp))) {
+      if (!feed) break;
+      // A rename must not resend stale polling settings or fetch history. Use
+      // the same field assignment as PWA and the recovery name editor.
+      const submitted =
+        Object.keys(message.updates).length === 1 &&
+        typeof message.updates.title === "string"
+          ? await maybeSubmitRssFeedTitleAssignments(
+              [{ url: message.url, title: message.updates.title }],
+              timestamp,
+            )
+          : await maybeSubmitRssFeedUpsert(
+              { ...feed, ...message.updates },
+              timestamp,
+            );
+      if (!submitted) {
         throw new Error(
           "Normalized SQLite RSS Feed mutation context is required",
         );
@@ -3222,4 +3569,23 @@ export async function clearNormalizedLocalSnapshots(): Promise<void> {
 export async function resetNormalizedLibrary(): Promise<void> {
   await invoke("reset_normalized_library");
   sqliteActive = false;
+}
+
+export function readNormalizedLibraryHandoffResultActors(handoffId: string, after: string | null): Promise<string[]> {
+  if (!HEX_64.test(handoffId) || (after !== null && !HEX_64.test(after))) throw new TypeError("Invalid handoff result cursor");
+  return invoke("read_normalized_library_handoff_result_actors", { handoffId, after });
+}
+
+/** Prepare one complete reviewed capture; native recovery linkage owns persistence. */
+export async function prepareDesktopRecoverySavedUrlTransaction(review: LibraryCoreRecoveryIntentReviewResponseV1, edits: readonly RecoverySavedUrlEdit[]): Promise<readonly string[]> {
+  const selected = snapshotLibraryCoreRecoverySavedUrlEditsV1(edits);
+  const original = await loadRecoverySavedUrlDrafts(review, new AbortController().signal);
+  if (original.replacement) throw new Error("Replacement already exists; reopen its receipt");
+  if (selected.length !== original.drafts.length) throw new Error("Review every saved URL in this transaction");
+  const items = selected.map((edit, i) => decodeLibraryCoreFractionalNumbersV1(reviseLibraryCoreRecoverySavedUrlV1(original.drafts[i]!, edit)) as unknown as FeedItem);
+  const context = await mutationContext(false);
+  if (!context || context.mode !== "follower") throw new Error("Recovery requires an enrolled consumer");
+  const transactionId = `desktop-library-saved-url-recovery:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+  const signed = await finalizeSignedTransaction(context, captureTransactionMembers(context, items, transactionId, Date.now()));
+  return Object.freeze(signed.canonicalEnvelopeJson);
 }

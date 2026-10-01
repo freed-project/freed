@@ -7,6 +7,7 @@ import {
   encodeLibraryCoreNormalizedCheckpointRecordV2,
   libraryCoreNormalizedCheckpointRecordIdentityV2,
   parseLibraryCoreNormalizedCheckpointRecordV2,
+  parseLibraryCoreNormalizedReplicaAuditV1,
   parseLibraryCoreNormalizedCheckpointExportDescriptorV2,
   parseLibraryCoreNormalizedCheckpointExportPageV2,
   reassembleLibraryCoreContentV1,
@@ -58,6 +59,39 @@ describe("normalized SQLite checkpoint contract", () => {
           encodeLibraryCoreNormalizedCheckpointRecordV2(record).byteLength,
       }),
     ).toMatchObject({ done: true, records: [record] });
+  });
+
+  it("rejects malformed or widened replica audit receipts", () => {
+    const receipt = {
+      format: "freed_normalized_replica_audit_v1",
+      checkpointDigest: "12".repeat(32),
+      snapshot: {
+        format: "freed_normalized_checkpoint_export_v2", protocolVersion: 2,
+        libraryId: "ab".repeat(32), authorityEpoch: "cd".repeat(32),
+        writerId: "ef".repeat(32), sourceRevision: 7,
+        causalFrontierDigest: "34".repeat(32), recordCount: 1, itemCount: 0,
+      },
+    };
+    expect(parseLibraryCoreNormalizedReplicaAuditV1(receipt)).toEqual(receipt);
+    for (const invalid of [
+      { ...receipt, writerAdmission: true },
+      { ...receipt, format: "freed_normalized_replica_audit_v2" },
+      { ...receipt, checkpointDigest: "12" },
+      { ...receipt, snapshot: { ...receipt.snapshot, sourceRevision: -1 } },
+      { ...receipt, snapshot: { ...receipt.snapshot, localCache: true } },
+      { ...receipt, snapshot: null },
+    ]) expect(() => parseLibraryCoreNormalizedReplicaAuditV1(invalid)).toThrow();
+    let accessorRead = false;
+    const accessor = { ...receipt };
+    Object.defineProperty(accessor, "checkpointDigest", { enumerable: true, get() {
+      accessorRead = true;
+      return receipt.checkpointDigest;
+    } });
+    expect(() => parseLibraryCoreNormalizedReplicaAuditV1(accessor)).toThrow();
+    expect(accessorRead).toBe(false);
+    const hidden = { ...receipt };
+    Object.defineProperty(hidden, "extra", { value: true });
+    expect(() => parseLibraryCoreNormalizedReplicaAuditV1(hidden)).toThrow();
   });
 
   it("matches the native normalized checkpoint digest vector", () => {

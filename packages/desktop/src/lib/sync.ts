@@ -20,7 +20,6 @@ import {
 import {
   type LibraryCoreCloudPublishResult,
   isSqliteLibraryGoogleDriveSyncEnabled,
-  makeThisSqliteLibraryDesktopWriter,
   publishCurrentSqliteLibraryToGoogleDrive,
   startSqliteLibraryGoogleDriveFollowerSync,
   startSqliteLibraryGoogleDriveSync,
@@ -32,7 +31,6 @@ import { reloadSqliteLibraryState } from "./library-client";
 import { base64ToBytes } from "./google-drive";
 import {
   refreshLibraryCoreDesktopRole,
-  requirePrimaryLibraryCoreDesktopRole,
 } from "./library-core-desktop-role";
 import { safeUnlisten } from "./safe-unlisten";
 
@@ -707,36 +705,12 @@ export async function syncCloudProviderNow(
   markConnected(result);
 }
 
-export async function transferSqliteLibraryWriterToThisDesktop(): Promise<void> {
-  requirePrimaryLibraryCoreDesktopRole();
-  const accessToken = await getValidCloudToken("gdrive");
-  if (!accessToken)
-    throw new Error("Reconnect Google Drive to transfer ownership.");
-  const result = await makeThisSqliteLibraryDesktopWriter({
-    accessToken,
-    googleFetch: activeGoogleDriveFetch(),
-    signal: cloudAborts.get("gdrive")?.signal,
-  });
-  if (result.status === "bootstrap_required") {
-    throw new Error(
-      "Download the current cloud Library before taking ownership.",
-    );
-  }
-  if (result.status === "ownership_required") {
-    throw new Error(
-      "Library ownership changed. Review the current owner and try again.",
-    );
-  }
-  await reloadSqliteLibraryState();
-  await startCloudSync("gdrive", accessToken);
-}
-
 export async function resolveCloudSyncConflict(
   provider: CloudProvider,
   winner: CloudConflictWinner,
 ): Promise<void> {
   if (winner === "local") {
-    await transferSqliteLibraryWriterToThisDesktop();
+    throw new Error("Moving Primary requires the current Primary’s signed handoff. Open Primary transfer in Settings.");
   } else {
     await restartCloudSync(provider);
   }

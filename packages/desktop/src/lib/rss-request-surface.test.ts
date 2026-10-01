@@ -81,7 +81,7 @@ describe("RSS request surface counters", () => {
         state: "standalone_primary", role: "primary", libraryId: "a".repeat(64),
         authorityEpochId: "b".repeat(64), actorId: "c".repeat(64),
       };
-      if (command === "fetch_url") return FEED_XML;
+      if (command === "fetch_rss_url") return FEED_XML;
       if (command === "query_normalized_library") {
         const request = (args as {
           request?: { queryId?: string; schemaVersion?: number };
@@ -135,6 +135,8 @@ describe("RSS request surface counters", () => {
     await refreshRssFeeds();
     await refreshScheduledRssFeeds();
 
+    expect(mocks.invoke.mock.calls.filter(([command]) => command === "fetch_rss_url")).toHaveLength(3);
+    expect(mocks.invoke).not.toHaveBeenCalledWith("fetch_url", expect.anything());
     expect(mocks.recordRssPullAttempt.mock.calls).toEqual([
       [{ trigger: "subscription" }],
       [{ trigger: "manual" }],

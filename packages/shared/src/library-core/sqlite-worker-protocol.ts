@@ -1,3 +1,27 @@
+import type { LibraryCoreNormalizedReplicaAuditV1 } from "./normalized-checkpoint-contracts.js";
+import type { verifyLibraryCoreHandoffPredecessorCheckpointV1 } from "./handoff-certificate.js";
+import { parseLibraryCorePreferenceScopeRequestV1, parseLibraryCorePreferenceScopeResponseV1, type LibraryCorePreferenceScopeRequestV1, type LibraryCorePreferenceScopeResponseV1 } from "./preference-scope-contracts.js";
+import { parseLibraryCorePreferencesRevisionRequestV1, parseLibraryCorePreferencesRevisionResponseV1, type LibraryCorePreferencesRevisionRequestV1, type LibraryCorePreferencesRevisionResponseV1 } from "./preferences-revision-contracts.js";
+import { parseLibraryCoreRankingWeightScopeRequestV1, parseLibraryCoreRankingWeightScopeResponseV1, type LibraryCoreRankingWeightScopeRequestV1, type LibraryCoreRankingWeightScopeResponseV1 } from "./ranking-weight-scope-contracts.js";
+import { parseLibraryCorePreferenceValueRequestV1, parseLibraryCorePreferenceValueResponseV1, type LibraryCorePreferenceValueRequestV1, type LibraryCorePreferenceValueResponseV1 } from "./preference-value-contracts.js";
+import { parseLibraryCorePersonAccountPageRequestV1, parseLibraryCorePersonAccountPageResponseV1, type LibraryCorePersonAccountPageRequestV1, type LibraryCorePersonAccountPageResponseV1 } from "./person-account-page-contracts.js";
+import { parseLibraryCoreAccountRootRequestV1, parseLibraryCoreAccountRootResponseV1, type LibraryCoreAccountRootRequestV1, type LibraryCoreAccountRootResponseV1 } from "./account-root-contracts.js";
+import { parseLibraryCorePersonRootRequestV1, parseLibraryCorePersonRootResponseV1, type LibraryCorePersonRootRequestV1, type LibraryCorePersonRootResponseV1 } from "./person-root-contracts.js";
+import type { LibraryCoreRecoveryReissueReceiptV1 } from "./recovery-intent-page-contracts.js";
+import {
+  parseLibraryCoreReapplyConsumerIntentV1, type LibraryCoreReapplyConsumerIntentV1,
+  parseLibraryCorePrepareConsumerRecoveryV1, parseLibraryCoreCommitConsumerRecoveryV1,
+  type LibraryCorePrepareConsumerRecoveryV1, type LibraryCoreCommitConsumerRecoveryV1,
+  type LibraryCoreConsumerRecoveryStatusV1,
+} from "./consumer-recovery-contracts.js";
+import { LIBRARY_CORE_LOCAL_STORAGE_SCHEMA_VERSION, LIBRARY_CORE_LOCAL_SCHEMA_SHA256 } from "./sqlite-contract.generated.js";
+import { parseLibraryCoreRecoveryArchivePageRequestV1, parseLibraryCoreRecoveryArchivePageResponseV1, type LibraryCoreRecoveryArchivePageRequestV1, type LibraryCoreRecoveryArchivePageResponseV1 } from "./recovery-intent-page-contracts.js";
+import {
+  parseLibraryCoreRecoveryIntentReviewRequestV1, parseLibraryCoreRecoveryIntentReviewResponseV1,
+  type LibraryCoreRecoveryIntentReviewRequestV1, type LibraryCoreRecoveryIntentReviewResponseV1,
+  parseLibraryCoreRecoveryIntentPageRequestV1, parseLibraryCoreRecoveryIntentPageResponseV1,
+  type LibraryCoreRecoveryIntentPageRequestV1, type LibraryCoreRecoveryIntentPageResponseV1,
+} from "./recovery-intent-page-contracts.js";
 import { parseLibraryCoreItemAnnotationsRequestV1, parseLibraryCoreItemAnnotationsResponseV1, type LibraryCoreItemAnnotationsRequestV1, type LibraryCoreItemAnnotationsResponseV1 } from "./item-annotations-contracts.js";
 import { parseLibraryCoreRssItemSummaryRequestV1, parseLibraryCoreRssItemSummaryResponseV1, type LibraryCoreRssItemSummaryRequestV1, type LibraryCoreRssItemSummaryResponseV1 } from "./rss-item-summary-contracts.js";
 import {
@@ -317,6 +341,9 @@ import {
 export const LIBRARY_CORE_SQLITE_WORKER_MAXIMUM_PENDING_REQUESTS = 128 as const;
 
 export type LibraryCoreSqliteQueryRequest =
+  | LibraryCoreRecoveryIntentReviewRequestV1
+  | LibraryCoreRecoveryArchivePageRequestV1
+  | LibraryCoreRecoveryIntentPageRequestV1
   | LibraryCoreAccountDetailRequestV1
   | LibraryCoreAccountGraphPageRequestV1
   | LibraryCoreAccountLinkCandidatesRequestV1
@@ -339,6 +366,9 @@ export type LibraryCoreSqliteQueryRequest =
   | LibraryCoreItemScanRequestV1
   | LibraryCoreContentFetchPageRequestV1
   | LibraryCoreMapMarkersRequestV1
+  | LibraryCorePersonAccountPageRequestV1
+  | LibraryCoreAccountRootRequestV1
+  | LibraryCorePersonRootRequestV1
   | LibraryCorePersonDetailRequestV1
   | LibraryCorePersonGraphPageRequestV1
   | LibraryCorePersonPickerPageRequestV1
@@ -351,11 +381,15 @@ export type LibraryCoreSqliteQueryRequest =
   | LibraryCoreSavedFeedPageRequestV2
   | LibraryCoreSearchPageRequestV1
   | LibraryCoreStoryWallCandidatesRequestV1
-  | LibraryCorePreferencesSnapshotRequestV1;
+  | LibraryCorePreferencesSnapshotRequestV1
+  | LibraryCorePreferenceValueRequestV1
+  | LibraryCoreRankingWeightScopeRequestV1
+  | LibraryCorePreferencesRevisionRequestV1
+  | LibraryCorePreferenceScopeRequestV1;
 
 export type LibraryCoreSqliteQueryResponseFor<
   T extends LibraryCoreSqliteQueryRequest,
-> = T extends LibraryCoreRssItemSummaryRequestV1
+> = T extends LibraryCorePreferenceScopeRequestV1 ? LibraryCorePreferenceScopeResponseV1 : T extends LibraryCorePreferencesRevisionRequestV1 ? LibraryCorePreferencesRevisionResponseV1 : T extends LibraryCoreRankingWeightScopeRequestV1 ? LibraryCoreRankingWeightScopeResponseV1 : T extends LibraryCorePreferenceValueRequestV1 ? LibraryCorePreferenceValueResponseV1 : T extends LibraryCoreRssItemSummaryRequestV1
   ? LibraryCoreRssItemSummaryResponseV1
   : T extends LibraryCoreItemAnnotationsRequestV1
   ? LibraryCoreItemAnnotationsResponseV1
@@ -375,7 +409,13 @@ export type LibraryCoreSqliteQueryResponseFor<
               ? LibraryCoreAccountTimelineResponseV1
               : T extends LibraryCoreChangeFeedRequestV1
                 ? LibraryCoreChangeFeedResponseV1
-                : T extends LibraryCoreLocalChangeFeedRequestV1
+                : T extends LibraryCoreRecoveryIntentReviewRequestV1
+                  ? LibraryCoreRecoveryIntentReviewResponseV1
+                  : T extends LibraryCoreRecoveryArchivePageRequestV1
+                  ? LibraryCoreRecoveryArchivePageResponseV1
+                  : T extends LibraryCoreRecoveryIntentPageRequestV1
+                  ? LibraryCoreRecoveryIntentPageResponseV1
+                  : T extends LibraryCoreLocalChangeFeedRequestV1
                   ? LibraryCoreLocalChangeFeedResponseV1
                   : T extends LibraryCoreOptimisticFieldsRequestV1
                     ? LibraryCoreOptimisticFieldsResponseV1
@@ -399,6 +439,12 @@ export type LibraryCoreSqliteQueryResponseFor<
                                   ? LibraryCoreContentFetchPageResponseV1
                                   : T extends LibraryCoreMapMarkersRequestV1
                                     ? LibraryCoreMapMarkersResponseV1
+                                    : T extends LibraryCorePersonAccountPageRequestV1
+                                      ? LibraryCorePersonAccountPageResponseV1
+                                    : T extends LibraryCoreAccountRootRequestV1
+                                      ? LibraryCoreAccountRootResponseV1
+                                    : T extends LibraryCorePersonRootRequestV1
+                                      ? LibraryCorePersonRootResponseV1
                                     : T extends LibraryCorePersonDetailRequestV1
                                       ? LibraryCorePersonDetailResponseV1
                                       : T extends LibraryCorePersonGraphPageRequestV1
@@ -435,7 +481,7 @@ export function parseLibraryCoreSqliteQueryResponse<
   T extends LibraryCoreSqliteQueryRequest,
 >(value: unknown, request: T): LibraryCoreSqliteQueryResponseFor<T> {
   const parsed =
-    request.queryId === "rss_item_summary_v1"
+    request.queryId === "preference_scope_v1" ? parseLibraryCorePreferenceScopeResponseV1(value, request) : request.queryId === "preferences_revision_v1" ? parseLibraryCorePreferencesRevisionResponseV1(value) : request.queryId === "ranking_weight_scope_v1" ? parseLibraryCoreRankingWeightScopeResponseV1(value, request) : request.queryId === "preference_value_v1" ? parseLibraryCorePreferenceValueResponseV1(value, request) : request.queryId === "rss_item_summary_v1"
       ? parseLibraryCoreRssItemSummaryResponseV1(value)
       : request.queryId === "item_annotations_v1"
       ? parseLibraryCoreItemAnnotationsResponseV1(value, request)
@@ -453,7 +499,13 @@ export function parseLibraryCoreSqliteQueryResponse<
                 ? parseLibraryCoreAccountTimelineResponseV1(value, request)
                 : request.queryId === "change_feed_v1"
                   ? parseLibraryCoreChangeFeedResponseV1(value, request)
-                  : request.queryId === "local_change_feed_v1"
+                  : request.queryId === "recovery_intent_review_v1"
+                    ? parseLibraryCoreRecoveryIntentReviewResponseV1(value, request)
+                    : request.queryId === "recovery_archive_page_v1"
+                    ? parseLibraryCoreRecoveryArchivePageResponseV1(value, request)
+                    : request.queryId === "recovery_intent_page_v1"
+                    ? parseLibraryCoreRecoveryIntentPageResponseV1(value, request)
+                    : request.queryId === "local_change_feed_v1"
                     ? parseLibraryCoreLocalChangeFeedResponseV1(value, request)
                     : request.queryId === "optimistic_fields_v1"
                       ? parseLibraryCoreOptimisticFieldsResponseV1(
@@ -514,6 +566,12 @@ export function parseLibraryCoreSqliteQueryResponse<
                                               value,
                                               request,
                                             )
+                                          : request.queryId === "person_account_page_v1"
+                                            ? parseLibraryCorePersonAccountPageResponseV1(value, request)
+                                          : request.queryId === "account_root_v1"
+                                            ? parseLibraryCoreAccountRootResponseV1(value, request)
+                                          : request.queryId === "person_root_v1"
+                                            ? parseLibraryCorePersonRootResponseV1(value, request)
                                           : request.queryId ===
                                               "person_detail_v1"
                                             ? parseLibraryCorePersonDetailResponseV1(
@@ -753,6 +811,29 @@ export type LibraryCoreSqliteWorkerRequest =
       requestId: string;
     }>
   | Readonly<{
+      kind: "reapply_consumer_intent";
+      recovery: LibraryCoreReapplyConsumerIntentV1;
+      protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
+      requestId: string;
+    }>
+  | Readonly<{
+      kind: "read_consumer_recovery";
+      protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
+      requestId: string;
+    }>
+  | Readonly<{
+      kind: "prepare_consumer_recovery";
+      recovery: LibraryCorePrepareConsumerRecoveryV1;
+      protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
+      requestId: string;
+    }>
+  | Readonly<{
+      kind: "commit_consumer_recovery";
+      recovery: LibraryCoreCommitConsumerRecoveryV1;
+      protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
+      requestId: string;
+    }>
+  | Readonly<{
       kind: "read_follower_actor_enrollment_context";
       protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
       requestId: string;
@@ -788,9 +869,33 @@ export type LibraryCoreSqliteWorkerRequest =
       requestId: string;
     }>
   | Readonly<{
+      activation: LibraryCoreActivateNormalizedCheckpointStageV2;
+      kind: "activate_verified_predecessor_checkpoint";
+      protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
+      requestId: string;
+      successorStageId: string;
+    }>
+  | Readonly<{
+      kind: "prepare_predecessor_checkpoint_read";
+      protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
+      requestId: string;
+      stageId: string;
+    }>
+  | Readonly<{
       kind: "read_normalized_checkpoint_receipt";
       protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
       requestId: string;
+    }>
+  | Readonly<{
+      kind: "audit_normalized_replica";
+      protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
+      requestId: string;
+    }>
+  | Readonly<{
+      kind: "cancel_normalized_replica_audit";
+      protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
+      requestId: string;
+      auditRequestId: string;
     }>
   | Readonly<{
       kind: "describe_normalized_checkpoint_export";
@@ -845,13 +950,19 @@ export interface LibraryCoreSqliteWorkerStatus {
   readonly contractVersion: typeof LIBRARY_CORE_SQLITE_CONTRACT_VERSION;
   readonly engine: "sqlite-wasm-opfs-sahpool";
   readonly protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
-  readonly schemaSha256: typeof LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256;
-  readonly schemaVersion: typeof LIBRARY_CORE_SQLITE_SCHEMA_VERSION;
+  readonly schemaSha256: typeof LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256 | typeof LIBRARY_CORE_LOCAL_SCHEMA_SHA256;
+  readonly schemaVersion: typeof LIBRARY_CORE_SQLITE_SCHEMA_VERSION | typeof LIBRARY_CORE_LOCAL_STORAGE_SCHEMA_VERSION;
   readonly sqliteVersion: string;
   readonly storage: "opfs";
 }
 
 export type LibraryCoreSqliteWorkerResult =
+  | LibraryCoreNormalizedReplicaAuditV1
+  | Awaited<ReturnType<typeof verifyLibraryCoreHandoffPredecessorCheckpointV1>>
+  | readonly Awaited<ReturnType<typeof verifyLibraryCoreHandoffPredecessorCheckpointV1>>[]
+  | null
+  | LibraryCoreRecoveryReissueReceiptV1
+  | LibraryCoreConsumerRecoveryStatusV1
   | LibraryCoreSqliteQueryResponse
   | LibraryCoreNormalizedCheckpointExportDescriptorV2
   | LibraryCoreNormalizedCheckpointExportPageV2
@@ -949,8 +1060,8 @@ export function parseLibraryCoreSqliteWorkerStatus(
     value.contractVersion !== LIBRARY_CORE_SQLITE_CONTRACT_VERSION ||
     value.engine !== "sqlite-wasm-opfs-sahpool" ||
     value.protocolVersion !== LIBRARY_CORE_SQLITE_PROTOCOL_VERSION ||
-    value.schemaSha256 !== LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256 ||
-    value.schemaVersion !== LIBRARY_CORE_SQLITE_SCHEMA_VERSION ||
+    !((value.schemaVersion === LIBRARY_CORE_SQLITE_SCHEMA_VERSION && value.schemaSha256 === LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256) ||
+      (value.schemaVersion === LIBRARY_CORE_LOCAL_STORAGE_SCHEMA_VERSION && value.schemaSha256 === LIBRARY_CORE_LOCAL_SCHEMA_SHA256)) ||
     typeof value.sqliteVersion !== "string" ||
     value.sqliteVersion.length < 1 ||
     value.sqliteVersion.length > 64 ||
@@ -963,8 +1074,8 @@ export function parseLibraryCoreSqliteWorkerStatus(
     contractVersion: LIBRARY_CORE_SQLITE_CONTRACT_VERSION,
     engine: "sqlite-wasm-opfs-sahpool",
     protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
-    schemaSha256: LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256,
-    schemaVersion: LIBRARY_CORE_SQLITE_SCHEMA_VERSION,
+    schemaSha256: value.schemaSha256 as LibraryCoreSqliteWorkerStatus["schemaSha256"],
+    schemaVersion: value.schemaVersion as LibraryCoreSqliteWorkerStatus["schemaVersion"],
     sqliteVersion: value.sqliteVersion,
     storage: "opfs",
   });
@@ -990,7 +1101,13 @@ export function parseLibraryCoreSqliteWorkerRequest(
   }
   const keys = Object.keys(value).sort();
   const expectedKeys =
-    value.kind === "query" || value.kind === "query_device_contacts"
+    value.kind === "cancel_normalized_replica_audit"
+      ? ["auditRequestId", "kind", "protocolVersion", "requestId"]
+      : value.kind === "prepare_predecessor_checkpoint_read"
+      ? ["kind", "protocolVersion", "requestId", "stageId"]
+      : value.kind === "activate_verified_predecessor_checkpoint"
+      ? ["activation", "kind", "protocolVersion", "requestId", "successorStageId"]
+      : value.kind === "query" || value.kind === "query_device_contacts"
       ? ["kind", "protocolVersion", "query", "requestId"]
       : value.kind === "mutate_device_graph_layout" ||
           value.kind === "mutate_device_contacts" ||
@@ -1024,7 +1141,9 @@ export function parseLibraryCoreSqliteWorkerRequest(
                             "import_normalized_follower_result_transport" ||
                           value.kind === "import_normalized_operation_page"
                         ? ["import", "kind", "protocolVersion", "requestId"]
-                        : value.kind === "store_follower_actor_request"
+                        : value.kind === "prepare_consumer_recovery" || value.kind === "commit_consumer_recovery" || value.kind === "reapply_consumer_intent"
+                          ? ["kind", "protocolVersion", "recovery", "requestId"]
+                          : value.kind === "store_follower_actor_request"
                           ? ["kind", "protocolVersion", "requestId", "store"]
                           : value.kind === "install_follower_actor_enrollment"
                             ? [
@@ -1117,6 +1236,8 @@ export function parseLibraryCoreSqliteWorkerRequest(
     keys.some((key, index) => key !== expectedKeys[index]) ||
     ![
       "activate_normalized_checkpoint_stage",
+      "activate_verified_predecessor_checkpoint",
+      "prepare_predecessor_checkpoint_read",
       "abort_content_range_publication",
       "apply_follower_result",
       "append_content_range_publication",
@@ -1128,6 +1249,8 @@ export function parseLibraryCoreSqliteWorkerRequest(
       "close_scope_action",
       "commit_follower_intent",
       "describe_normalized_checkpoint_export",
+      "audit_normalized_replica",
+      "cancel_normalized_replica_audit",
       "append_scope_action",
       "finalize_scope_action",
       "finalize_content_range_publication",
@@ -1154,6 +1277,10 @@ export function parseLibraryCoreSqliteWorkerRequest(
       "read_normalized_checkpoint_export_page",
       "read_content_state",
       "read_content_range",
+      "reapply_consumer_intent",
+      "read_consumer_recovery",
+      "prepare_consumer_recovery",
+      "commit_consumer_recovery",
       "read_follower_actor_enrollment_context",
       "store_follower_actor_request",
       "status",
@@ -1165,6 +1292,12 @@ export function parseLibraryCoreSqliteWorkerRequest(
     value.requestId.length > 255
   ) {
     throw new TypeError("SQLite worker request identity is invalid");
+  }
+  if (value.kind === "cancel_normalized_replica_audit") {
+    if (typeof value.auditRequestId !== "string" || value.auditRequestId.length < 1 ||
+        value.auditRequestId.length > 255 || value.auditRequestId === value.requestId) {
+      throw new TypeError("replica audit cancellation identity is invalid");
+    }
   }
   if (value.kind === "read_normalized_checkpoint_export_page") {
     return Object.freeze({
@@ -1179,11 +1312,19 @@ export function parseLibraryCoreSqliteWorkerRequest(
     parseLibraryCoreBeginNormalizedCheckpointStageV2(value.stage);
   } else if (value.kind === "append_normalized_checkpoint_stage_page") {
     parseLibraryCoreNormalizedCheckpointStagePageV2(value.page);
+  } else if (value.kind === "activate_verified_predecessor_checkpoint") {
+    const activation = parseLibraryCoreActivateNormalizedCheckpointStageV2(value.activation);
+    const successor = parseLibraryCoreActivateNormalizedCheckpointStageV2({ ...activation, stageId: value.successorStageId });
+    if (!activation.replaceExisting || activation.followerReceipt === null || activation.stageId === successor.stageId) {
+      throw new TypeError("predecessor import requires distinct stages and a follower receipt");
+    }
+    return Object.freeze({ kind: value.kind, protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+      requestId: value.requestId, activation, successorStageId: successor.stageId });
   } else if (value.kind === "activate_normalized_checkpoint_stage") {
     parseLibraryCoreActivateNormalizedCheckpointStageV2(value.activation);
   } else if (value.kind === "query") {
     const query = isClosedRecord(value.query)
-      ? value.query.queryId === "rss_item_summary_v1"
+      ? value.query.queryId === "preference_scope_v1" ? parseLibraryCorePreferenceScopeRequestV1(value.query) : value.query.queryId === "preferences_revision_v1" ? parseLibraryCorePreferencesRevisionRequestV1(value.query) : value.query.queryId === "ranking_weight_scope_v1" ? parseLibraryCoreRankingWeightScopeRequestV1(value.query) : value.query.queryId === "preference_value_v1" ? parseLibraryCorePreferenceValueRequestV1(value.query) : value.query.queryId === "rss_item_summary_v1"
         ? parseLibraryCoreRssItemSummaryRequestV1(value.query)
         : value.query.queryId === "item_annotations_v1"
         ? parseLibraryCoreItemAnnotationsRequestV1(value.query)
@@ -1203,7 +1344,13 @@ export function parseLibraryCoreSqliteWorkerRequest(
                     ? parseLibraryCoreFacetSummaryRequestV1(value.query)
                     : value.query.queryId === "change_feed_v1"
                       ? parseLibraryCoreChangeFeedRequestV1(value.query)
-                      : value.query.queryId === "local_change_feed_v1"
+                      : value.query.queryId === "recovery_intent_review_v1"
+                        ? parseLibraryCoreRecoveryIntentReviewRequestV1(value.query)
+                        : value.query.queryId === "recovery_archive_page_v1"
+                        ? parseLibraryCoreRecoveryArchivePageRequestV1(value.query)
+                        : value.query.queryId === "recovery_intent_page_v1"
+                        ? parseLibraryCoreRecoveryIntentPageRequestV1(value.query)
+                        : value.query.queryId === "local_change_feed_v1"
                         ? parseLibraryCoreLocalChangeFeedRequestV1(value.query)
                         : value.query.queryId === "optimistic_fields_v1"
                           ? parseLibraryCoreOptimisticFieldsRequestV1(
@@ -1254,6 +1401,12 @@ export function parseLibraryCoreSqliteWorkerRequest(
                                           ? parseLibraryCoreMapMarkersRequestV1(
                                               value.query,
                                             )
+                                          : value.query.queryId === "person_account_page_v1"
+                                            ? parseLibraryCorePersonAccountPageRequestV1(value.query)
+                                          : value.query.queryId === "account_root_v1"
+                                            ? parseLibraryCoreAccountRootRequestV1(value.query)
+                                          : value.query.queryId === "person_root_v1"
+                                            ? parseLibraryCorePersonRootRequestV1(value.query)
                                           : value.query.queryId ===
                                               "person_detail_v1"
                                             ? parseLibraryCorePersonDetailRequestV1(
@@ -1419,6 +1572,8 @@ export function parseLibraryCoreSqliteWorkerRequest(
       Number(value.afterOrdinal) < -1
     )
       throw new TypeError("SQLite scope action page request is invalid");
+  } else if (value.kind === "prepare_predecessor_checkpoint_read") {
+    if (!isBoundedWorkerIdentity(value.stageId)) throw new TypeError("predecessor read stage ID is invalid");
   } else if (value.kind === "close_scope_action") {
     if (!isBoundedWorkerIdentity(value.stageId)) {
       throw new TypeError("SQLite scope action close request is invalid");
@@ -1484,6 +1639,15 @@ export function parseLibraryCoreSqliteWorkerRequest(
       protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
       requestId: value.requestId,
     });
+  } else if (value.kind === "reapply_consumer_intent") {
+    return Object.freeze({ kind: value.kind, protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+      requestId: value.requestId, recovery: parseLibraryCoreReapplyConsumerIntentV1(value.recovery) });
+  } else if (value.kind === "prepare_consumer_recovery") {
+    return Object.freeze({ kind: value.kind, protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+      requestId: value.requestId, recovery: parseLibraryCorePrepareConsumerRecoveryV1(value.recovery) });
+  } else if (value.kind === "commit_consumer_recovery") {
+    return Object.freeze({ kind: value.kind, protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
+      requestId: value.requestId, recovery: parseLibraryCoreCommitConsumerRecoveryV1(value.recovery) });
   } else if (value.kind === "store_follower_actor_request") {
     return Object.freeze({
       kind: "store_follower_actor_request",
@@ -1963,6 +2127,15 @@ export function createLibraryCoreSqliteActivateCheckpointWorkerRequest(
   });
 }
 
+export function createLibraryCoreSqliteActivatePredecessorWorkerRequest(
+  requestId: string,
+  activation: LibraryCoreActivateNormalizedCheckpointStageV2,
+  successorStageId: string,
+): LibraryCoreSqliteWorkerRequest {
+  return parseLibraryCoreSqliteWorkerRequest({ activation, kind: "activate_verified_predecessor_checkpoint",
+    protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION, requestId, successorStageId });
+}
+
 export function createLibraryCoreSqliteReadCheckpointReceiptWorkerRequest(
   requestId: string,
 ): LibraryCoreSqliteWorkerRequest {
@@ -1971,6 +2144,21 @@ export function createLibraryCoreSqliteReadCheckpointReceiptWorkerRequest(
     protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
     requestId,
   });
+}
+
+export function createLibraryCoreSqliteReplicaAuditWorkerRequest(
+  requestId: string,
+): LibraryCoreSqliteWorkerRequest {
+  return parseLibraryCoreSqliteWorkerRequest({ kind: "audit_normalized_replica",
+    protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION, requestId });
+}
+
+export function createLibraryCoreSqliteCancelReplicaAuditWorkerRequest(
+  requestId: string,
+  auditRequestId: string,
+): LibraryCoreSqliteWorkerRequest {
+  return parseLibraryCoreSqliteWorkerRequest({ kind: "cancel_normalized_replica_audit",
+    protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION, requestId, auditRequestId });
 }
 
 export function createLibraryCoreSqliteDescribeCheckpointExportWorkerRequest(
@@ -1999,4 +2187,18 @@ export function parseLibraryCoreSqliteCheckpointSelectionResponse(
   value: unknown,
 ): LibraryCoreNormalizedCheckpointSelectionV2 {
   return parseLibraryCoreNormalizedCheckpointSelectionV2(value);
+}
+
+export function createLibraryCoreConsumerRecoveryWorkerRequest(
+  requestId: string,
+  action: { kind: "reapply_consumer_intent"; recovery: LibraryCoreReapplyConsumerIntentV1 } | { kind: "read_consumer_recovery" } |
+    { kind: "prepare_consumer_recovery"; recovery: LibraryCorePrepareConsumerRecoveryV1 } |
+    { kind: "commit_consumer_recovery"; recovery: LibraryCoreCommitConsumerRecoveryV1 },
+): LibraryCoreSqliteWorkerRequest {
+  return parseLibraryCoreSqliteWorkerRequest({ ...action, requestId, protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION });
+}
+
+export function createLibraryCoreSqlitePredecessorReadWorkerRequest(requestId: string, stageId: string): LibraryCoreSqliteWorkerRequest {
+  return parseLibraryCoreSqliteWorkerRequest({ kind: "prepare_predecessor_checkpoint_read",
+    protocolVersion: LIBRARY_CORE_SQLITE_PROTOCOL_VERSION, requestId, stageId });
 }

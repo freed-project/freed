@@ -117,7 +117,9 @@ describe("PWA normalized checkpoint writer", () => {
       stagedRecordCount: 1,
       stageId: DIGEST.checkpoint,
     }));
+    const beforeActivate = vi.fn(async () => {});
     const writer = createPwaNormalizedCheckpointWriter({
+      beforeActivate,
       checkpointGeneration: 7,
       controlRevision: DIGEST.control,
       installedAt: 2_000,
@@ -135,6 +137,10 @@ describe("PWA normalized checkpoint writer", () => {
     );
     await writer.beginImport({ header, manifest, manifestReference: reference });
     await writer.appendPage(0, [header]);
+    beforeActivate.mockRejectedValueOnce(new Error("predecessor verification failed"));
+    await expect(writer.finalizeImport({ canonicalBytes: 512,
+      checkpointDigest: lowercaseHex64(DIGEST.checkpoint), recordCount: 1 })).rejects.toThrow("predecessor verification failed");
+    expect(activate).not.toHaveBeenCalled();
     await writer.finalizeImport({
       canonicalBytes: 512,
       checkpointDigest: lowercaseHex64(DIGEST.checkpoint),

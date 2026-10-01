@@ -33,6 +33,7 @@ const mocks = vi.hoisted(() => ({
   createFollowerTransport: vi.fn(),
   discoverControl: vi.fn(),
   importCheckpoint: vi.fn(),
+  catchup: vi.fn(),
   syncFollower: vi.fn(),
   queryNormalizedLibrary: vi.fn(),
   mutateContentPolicy: vi.fn(),
@@ -78,6 +79,7 @@ vi.mock("@freed/sync/cloud/library-core", async (importOriginal) => ({
     mocks.createFollowerTransport,
   discoverPublishedGoogleDriveLibraryCoreControlV1: mocks.discoverControl,
   importLibraryCoreNormalizedCheckpointV2: mocks.importCheckpoint,
+  catchUpLibraryCorePredecessorCheckpointV1: mocks.catchup,
 }));
 
 vi.mock("./library-core-pwa-follower-sync", () => ({
@@ -108,6 +110,8 @@ vi.mock("./library-core-sqlite-runtime", () => ({
   mutatePwaContentPolicy: mocks.mutateContentPolicy,
   readPwaFollowerTransportContext: mocks.readFollowerTransportContext,
   readPwaNormalizedCheckpointReceipt: mocks.readNormalizedCheckpointReceipt,
+  preparePwaNormalizedPredecessorCheckpointRead: vi.fn(),
+  activatePwaNormalizedPredecessorCheckpoint: vi.fn(),
   describePwaNormalizedCheckpointExport:
     mocks.describeNormalizedCheckpointExport,
   readPwaNormalizedCheckpointExportPage:
@@ -393,6 +397,8 @@ describe("PWA Library Core bounded scanner", () => {
     mocks.createFollowerTransport.mockReturnValue({});
     mocks.discoverControl.mockReset();
     mocks.importCheckpoint.mockReset();
+    mocks.catchup.mockReset();
+    mocks.catchup.mockResolvedValue(undefined);
     mocks.syncFollower.mockReset();
     mocks.syncFollower.mockResolvedValue({});
     mocks.queryNormalizedLibrary.mockReset();
@@ -583,6 +589,12 @@ describe("PWA Library Core bounded scanner", () => {
     ).resolves.toEqual(
       expect.not.objectContaining({ items: expect.anything() }),
     );
+    const beforeActivate = mocks.createNormalizedCheckpointWriter.mock.calls.at(-1)![0].beforeActivate;
+    await beforeActivate({ stageId: "signed-successor-stage" });
+    expect(mocks.catchup).toHaveBeenCalledWith(expect.objectContaining({ successorStageId: "signed-successor-stage",
+      adapter: { readImmutable }, runtime: expect.objectContaining({ prepare: expect.any(Function), activate: expect.any(Function) }) }));
+    mocks.catchup.mockRejectedValueOnce(new Error("predecessor unavailable"));
+    await expect(beforeActivate({ stageId: "signed-successor-stage" })).rejects.toThrow("predecessor unavailable");
     expect(onSyncStage.mock.calls.map(([message]) => message)).toEqual([
       "Reading the local Library checkpoint.",
       "Finding the published Library in Google Drive.",
@@ -928,8 +940,10 @@ describe("PWA Library Core bounded scanner", () => {
           return { nextCursor: null, rows: [rssRow] };
         case "person_graph_page_v1":
           return { nextCursor: null, rows: [personGraphRow] };
+        case "person_root_v1": return { person: { id: "person-sample", name: "Sample Person", careLevel: 3, relationshipStatus: "friend", createdAt: 1, updatedAt: 1, tags: [], sampleDataFingerprint: sample }, source: { generationId: "a".repeat(64), projectionRevision: 7, transitionSequence: 7 } };
         case "person_detail_v1":
           return {
+            source: { generationId: "a".repeat(64), projectionRevision: 7, transitionSequence: 7 },
             person: {
               avatarUrl: null,
               bio: null,
