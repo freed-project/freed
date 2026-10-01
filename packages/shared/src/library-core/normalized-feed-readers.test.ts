@@ -26,6 +26,10 @@ import {
   searchLibraryCoreNormalizedItemsV1,
 } from "./normalized-surface-readers.js";
 import { CONTENT_SIGNAL_KEYS } from "../content-signals.js";
+import {
+  createLibraryCoreSqliteQueryWorkerRequest,
+  type LibraryCoreSqliteQueryRequest,
+} from "./sqlite-worker-protocol.js";
 
 const feedCard = (globalId: string) => ({
   archived: false,
@@ -921,9 +925,12 @@ describe("cross-platform normalized feed readers", () => {
   });
 
   it("derives all signal counts through the same normalized executor", async () => {
-    const query = vi.fn(async () => ({
-      totalCount: 42,
-    })) as unknown as LibraryCoreNormalizedQueryExecutor;
+    const query = vi.fn(async (request: LibraryCoreSqliteQueryRequest) => {
+      // Exercise the real host boundary: menu preset order is not necessarily
+      // the canonical set order required by SQLite's closed query contract.
+      createLibraryCoreSqliteQueryWorkerRequest("signal-count-request", request);
+      return { totalCount: 42 };
+    }) as unknown as LibraryCoreNormalizedQueryExecutor;
     const counts = await readLibraryCoreNormalizedFeedSignalCountsV1(
       { query, randomId: () => "test" },
       { platform: "rss" },

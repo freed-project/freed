@@ -70,3 +70,39 @@ test("integrated AI settings offer a recommended local pack ladder", async ({ ap
   await providerSelector.getByRole("button", { name: /Off/ }).click();
   await expect(settingsDialog.getByRole("switch", { name: "Summaries and extraction" })).toHaveCount(0);
 });
+
+// Tier 1: client-owned credentials, explicit cloud actions and independent Jev settings.
+test("Jev settings manage a user key without changing the summary provider", async ({ app, page }) => {
+  let requests = 0;
+  await page.route("**/api/jev-preview/classify", async route => {
+    requests += 1;
+    expect(route.request().headers().authorization).toBe("Bearer jev-settings-test-key");
+    await route.fulfill({ json: { model: "jev-1.13.0", contentSignals: { method: "ai" } } });
+  });
+  await app.goto();
+  await app.waitForReady();
+  await page.locator("button").filter({ hasText: /settings/i }).first().click();
+  await page.getByRole("button", { name: "AI", exact: true }).click();
+  const section = page.getByRole("region", { name: "Jev settings" });
+  await section.getByLabel("jev API key").fill("jev-settings-test-key");
+  await section.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(section.getByPlaceholder("Key saved. Paste a replacement")).toBeVisible();
+  expect(requests).toBe(0);
+  await section.getByRole("button", { name: "Test connection", exact: true }).click();
+  await expect(section.getByText("Connected to Jev. Ready to evaluate posts.")).toBeVisible();
+  expect(requests).toBe(1);
+  await expect(page.getByTestId("ai-provider-selector").getByRole("button", { name: /Off/ })).toHaveAttribute("aria-pressed", "true");
+  expect(await page.evaluate(() => JSON.stringify({ ...localStorage, ...sessionStorage }))).not.toContain("jev-settings-test-key");
+  await section.getByLabel("jev API key").fill("replacement-test-key");
+  await section.getByRole("button", { name: "Replace", exact: true }).click();
+  await expect(section.getByLabel("jev API key")).toHaveValue("");
+  await section.getByRole("button", { name: "Jev classification", exact: true }).click();
+  await section.getByRole("tab", { name: "People I can help", exact: true }).click();
+  await section.getByRole("button", { name: "Preview example matches", exact: true }).click();
+  await expect(section.locator("[data-jev-opportunity-id]")).toHaveCount(4);
+  await section.getByRole("button", { name: "Clear", exact: true }).click();
+  await expect(section.getByPlaceholder("Paste API key")).toBeVisible();
+  await expect(section.getByText("Key not configured", { exact: true })).toBeVisible();
+  await expect(section.getByRole("button", { name: "Find matches with Jev", exact: true })).toBeDisabled();
+  expect(requests).toBe(1);
+});

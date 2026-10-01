@@ -14,6 +14,14 @@ keeps search, count, and sort above one divider, with results scrolling below.
 Contact tracking, outreach, and reconnection controls are withheld until the
 underlying feature is available.
 
+The Jev section in AI settings provides People I can help and Make something
+together for bounded local-post evaluation. It reads exact Account-to-Person
+links for relationship context and keeps unresolved authors labeled Relationship
+unknown. Matching compares explicit requests or invitations with skills the
+reader declares; identity records and relationship notes stay local. Results are
+ephemeral and add no Friends writer or outreach action. The browser preview also
+provides authored examples. See the [Jev evaluation runbook](JEV-CLASSIFICATION-PREVIEW.md).
+
 Care levels map to Connection at one or two, Friend at three or four, and Fam
 at five. Editable identity details, directory cards, collapsed selection cards,
 and the identity editor share a keyboard-accessible rating control with category

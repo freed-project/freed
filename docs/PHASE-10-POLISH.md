@@ -271,6 +271,28 @@ struct LiquidGlassButton: View {
 
 ## AI-Powered Features
 
+### Jev evaluation
+
+Freed Desktop has a dedicated Jev section under AI settings with user-managed
+credentials, replacement, removal, and an explicit connection test. Native keys
+use the system credential vault. Jev operates independently of the summary
+provider, and no key comes from repository or host configuration.
+
+Explicit evaluation reads up to 100 local social posts through bounded SQLite
+queries and sends text to Jev for 26 independent scores. People I can help and
+Make something together compare explicit requests with declared skills. Exact
+local relationships supply context without sending identity records. Native
+requests are bounded, cancellable, and never trigger social-provider capture.
+
+This dev slice keeps native results in the evaluation view. Durable classification,
+feed-filter replacement, background jobs, and live quality measurements remain
+unfinished. Six additional signals stay experimental. The synthetic browser
+preview retains sample-feed comparison and authored example matches. Preset counts
+canonicalize their signal arrays before crossing the query boundary.
+
+See the [Jev evaluation runbook](JEV-CLASSIFICATION-PREVIEW.md) for credential
+handling, request bounds, and validation limits. Phase 10 remains `upcoming`.
+
 ### Topic Extraction
 
 Automatically tag feed items with relevant topics using local LLM or API.

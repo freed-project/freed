@@ -8,6 +8,7 @@ import { fileURLToPath } from "url";
 import pkg from "./package.json" with { type: "json" };
 import { getBuildMetadata } from "../../scripts/lib/build-metadata.mjs";
 import { assertNoRetiredAutomergeRollupBundle } from "../../scripts/lib/retired-automerge-runtime.mjs";
+import { jevPreviewPlugin } from "./dev/jev-preview-server.mjs";
 
 // Resolve workspace packages directly from their TypeScript source so that
 // worktrees don't need to build dist/ artifacts before running the dev server.
@@ -106,6 +107,7 @@ export default defineConfig({
     ],
   },
   plugins: [
+    jevPreviewPlugin(),
     ...(process.env.VITE_TEST_TAURI
       ? [{
           name: "desktop-mock-bootstrap",

@@ -910,7 +910,7 @@ export interface PlatformConfig {
   getLocalContent?: (globalId: string) => Promise<string | null>;
 
   /**
-   * Encrypted device-local API key store (desktop only).
+   * Device-local API key store (desktop only).
    * Used by the AI settings UI to read/write/clear API keys.
    */
   secureStorage?: {
@@ -921,6 +921,9 @@ export interface PlatformConfig {
 
   /** Device-local optional model downloads for offline AI. */
   localAIModels?: LocalAIModelControls;
+
+  /** Independent, device-local specialist AI controls supplied by the host. */
+  AISettingsContent?: ComponentType;
 
   /** Check the configured Ollama endpoint through the host telemetry boundary. */
   checkOllamaReachable?: (ollamaUrl: string) => Promise<boolean>;
