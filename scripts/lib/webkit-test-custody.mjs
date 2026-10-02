@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { existsSync, lstatSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, constants, fstatSync, lstatSync, mkdtempSync, openSync, readFileSync, readSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -18,16 +18,52 @@ export function requirePrivateSyntheticProfile(profileRoot) {
   }
 }
 
+function readPrivateSyntheticFile(path, size) {
+  let descriptor;
+  try {
+    descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    const stat = fstatSync(descriptor);
+    if (!stat.isFile() || stat.uid !== process.getuid?.() || (stat.mode & 0o777) !== 0o600 || stat.size !== size) {
+      throw new Error("Synthetic WebKit file has invalid ownership, permissions or size");
+    }
+    // Validate and read the same descriptor, without reopening a checked path.
+    const bytes = Buffer.alloc(size + 1);
+    if (readSync(descriptor, bytes, 0, bytes.length, 0) !== size) {
+      throw new Error("Synthetic WebKit file changed size while reading");
+    }
+    return bytes.subarray(0, size);
+  } catch (error) {
+    if (error.code === "ENOENT") throw error;
+    throw new Error("Synthetic WebKit file is invalid", { cause: error });
+  } finally {
+    if (descriptor !== undefined) closeSync(descriptor);
+  }
+}
+
+export function readSyntheticMasterKey(profileRoot) {
+  requirePrivateSyntheticProfile(profileRoot);
+  return readPrivateSyntheticFile(join(profileRoot, WEBKIT_TEST_MASTER_KEY), 16);
+}
+
 export function prepareSyntheticMasterKey(profileRoot, reopening = false) {
   requirePrivateSyntheticProfile(profileRoot);
   const path = join(profileRoot, WEBKIT_TEST_MASTER_KEY);
-  if (!existsSync(path)) {
-    if (reopening) throw new Error("Synthetic WebKit master key missing on reopen; refusing replacement");
-    writeFileSync(path, randomBytes(16), { flag: "wx", mode: 0o600 });
+  if (!reopening) {
+    let descriptor;
+    try {
+      // Exclusive creation is the existence decision; never check then create.
+      descriptor = openSync(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+    } catch (error) {
+      if (error.code !== "EEXIST") throw error;
+    }
+    if (descriptor !== undefined) {
+      try { writeFileSync(descriptor, randomBytes(16)); } finally { closeSync(descriptor); }
+    }
   }
-  const stat = lstatSync(path);
-  if (!stat.isFile() || stat.isSymbolicLink() || stat.uid !== process.getuid?.() || (stat.mode & 0o777) !== 0o600 || stat.size !== 16) {
-    throw new Error("Synthetic WebKit master key has invalid ownership, permissions or size");
+  try { readPrivateSyntheticFile(path, 16).fill(0); }
+  catch (error) {
+    if (reopening && error.code === "ENOENT") throw new Error("Synthetic WebKit master key missing on reopen; refusing replacement");
+    throw error;
   }
   return path;
 }
@@ -62,9 +98,10 @@ export function prepareWebKitTestCustody(profileRoot, browserLauncher, reopening
       FREED_WEBKIT_TEST_BROWSER_BINARY: binary, FREED_WEBKIT_TEST_MASTER_KEY_FILE: keyPath,
       FREED_WEBKIT_TEST_ADAPTER_RECEIPT_FILE: receiptPath } },
     verifyLoaded() {
-      const stat = lstatSync(receiptPath);
-      if (!stat.isFile() || stat.isSymbolicLink() || stat.uid !== process.getuid?.() || (stat.mode & 0o777) !== 0o600 ||
-          readFileSync(receiptPath, "utf8") !== "freed-webkit-custody-adapter-v1\n") throw new Error("WebKit custody adapter was not verified in this browser launch");
+      const expected = "freed-webkit-custody-adapter-v1\n";
+      if (readPrivateSyntheticFile(receiptPath, Buffer.byteLength(expected)).toString("utf8") !== expected) {
+        throw new Error("WebKit custody adapter was not verified in this browser launch");
+      }
       rmSync(receiptPath);
     },
   };
