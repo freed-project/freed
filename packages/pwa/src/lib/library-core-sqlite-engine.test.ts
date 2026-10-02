@@ -5802,6 +5802,21 @@ describe("PWA Library Core SQLite engine", () => {
       rankingEngagementViews: 99,
       topics: ["sqlite"],
     });
+    // Tier 1: source-fenced time-only progress and full restart fallback.
+    database.exec(`UPDATE library_feed_items SET priority_computed_at=published_at+604800000 WHERE global_id='item-1';
+      UPDATE library_feed_items SET priority_computed_at=published_at+604800000-1 WHERE global_id='item-2';`);
+    const timeRequest = { queryId: "priority_time_page_v1" as const, schemaVersion: 1 as const,
+      cancellationId: operationId("cancel-time-page"), readerSessionId: operationId("reader-time-page"), limit: 64,
+      priorityComputedBeforeMs: 604801000, generationId: stalePriorityScan.source.generationId,
+      sourceRevision: stalePriorityScan.source.projectionRevision };
+    const timePage = engine.query(timeRequest);
+    expect(timePage.rows.map(row=>row.globalId)).toEqual(["hidden","item-2"]);
+    database.exec(`UPDATE library_feed_items SET priority_computed_at=604801000 WHERE global_id IN ('hidden','item-2');`);
+    expect(engine.query({...timeRequest,priorityComputedBeforeMs:604801001}).rows).toEqual([]);
+    expect(engine.query({...scanRequest,limit:64,priorityComputedBeforeMs:604801001}).rows).toHaveLength(3);
+    database.exec("UPDATE library_meta SET source_revision=source_revision+1; UPDATE library_change_state SET revision=revision+1;");
+    expect(()=>engine.query(timeRequest)).toThrow("CURSOR_STALE");
+    database.exec("UPDATE library_meta SET source_revision=source_revision-1; UPDATE library_change_state SET revision=revision-1;");
     const contentFetchRequest = {
       cancellationId: operationId("cancel-content-fetch-1"),
       cursor: null,

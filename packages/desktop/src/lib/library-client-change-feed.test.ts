@@ -88,7 +88,7 @@ describe("Desktop Library client canonical invalidations", () => {
     mocks.query.mockResolvedValue({ nextCursor: null, queryId: "local_change_feed_v1", rows: [], schemaVersion: 1,
       source: { generationId: "a".repeat(64), projectionRevision: 1, transitionSequence: 0 } });
     const result = await backfillLibraryPriorities(1000, 64, false);
-    expect(result).toEqual({ passStartedAt: 1000, remaining: 0, updated: 1 });
+    expect(result).toEqual({ passStartedAt: 1000, remaining: 0, updated: 1, source: { generationId: "a".repeat(64), projectionRevision: 1, transitionSequence: 1 } });
     expect(mocks.commitPriorities).toHaveBeenCalledWith([{ entityId: "rank-1",
       priorityBasisPoints: calculatePriority(item, weights, 1000, { careLevel: 5 }) * 100 }], 1000);
     mocks.priorityCandidates.mockRejectedValueOnce(new Error("CURSOR_STALE"));

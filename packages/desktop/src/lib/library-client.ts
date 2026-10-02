@@ -1,3 +1,4 @@
+import type { LibraryCoreFeedPageSourceV1 } from "@freed/shared/library-core";
 /**
  * Freed Desktop Library client.
  *
@@ -595,6 +596,7 @@ export async function backfillLibraryContentSignals(
 }
 
 export interface LibraryPriorityBackfillSummary {
+  readonly source: LibraryCoreFeedPageSourceV1;
   readonly passStartedAt: number;
   readonly remaining: number;
   readonly updated: number;
@@ -604,6 +606,7 @@ export async function backfillLibraryPriorities(
   passStartedAt: number,
   batchSize = 64,
   publishRuntimeUpdate = true,
+  timeOnlySource?: LibraryCoreFeedPageSourceV1,
 ): Promise<LibraryPriorityBackfillSummary> {
   if (
     !Number.isSafeInteger(passStartedAt) ||
@@ -620,6 +623,7 @@ export async function backfillLibraryPriorities(
     const batch = await readLibraryCorePriorityCandidateBatch(
       passStartedAt,
       batchSize,
+      timeOnlySource,
     );
     if (batch.items.length > 0) {
       await commitDesktopLibraryFeedItemPriorities(
@@ -634,6 +638,7 @@ export async function backfillLibraryPriorities(
       if (publishRuntimeUpdate) await reloadSqliteLibraryState();
     }
     summary = Object.freeze({
+      source: batch.source,
       passStartedAt,
       remaining: batch.remaining ? 1 : 0,
       updated: batch.items.length,

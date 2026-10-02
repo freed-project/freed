@@ -1,3 +1,4 @@
+import type { LibraryCoreFeedPageSourceV1 } from "./feed-page-contracts.js";
 import { calculatePriority } from "../ranking.js";
 import { encodeLibraryCoreFeedBrowsePageCursorV2, decodeLibraryCoreFeedBrowsePageCursorV2 } from "./feed-browse-page-contracts.js";
 import { encodeLibraryCoreSavedFeedPageCursorV2, decodeLibraryCoreSavedFeedPageCursorV2 } from "./saved-feed-page-contracts.js";
@@ -541,6 +542,15 @@ describe("cross-platform normalized feed readers", () => {
       readerSessionId: "priority-reader:test",
       schemaVersion: 1,
     });
+  });
+
+  it("routes selective candidates through their exact source fence and retains scoped weights", async () => {
+    const query = vi.fn(async request => request.queryId === "priority_time_page_v1"
+      ? {rows:[backgroundCard("recent")], nextCursor:null, source:querySource}
+      : {queryId:request.queryId,schemaVersion:1,paths:request.paths,values:request.paths.map(()=>null),source:querySource}) as unknown as LibraryCoreNormalizedQueryExecutor;
+    const batch = await readLibraryCoreNormalizedPriorityCandidateBatchV1({query,randomId:()=>"time-test"},1000,64,querySource as LibraryCoreFeedPageSourceV1);
+    expect(batch.items).toHaveLength(1);
+    expect(query).toHaveBeenCalledWith(expect.objectContaining({queryId:"priority_time_page_v1",generationId:querySource.generationId,sourceRevision:querySource.projectionRevision,priorityComputedBeforeMs:1000}));
   });
 
   // Tier 1: bounded ranking must not materialize unrelated weights or accept mixed sources.

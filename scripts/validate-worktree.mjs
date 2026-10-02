@@ -368,6 +368,8 @@ export function isPwaOpfsDurabilityPath(filePath) {
     filePath === "packages/pwa/src/main.tsx" ||
     filePath === "packages/pwa/tests/opfs-e2e-settings.ts" ||
     filePath === "packages/pwa/tests/sqlite-opfs-durability.spec.ts" ||
+    filePath.startsWith("scripts/lib/webkit-test-custody") ||
+    filePath === "scripts/webkit-test-custody.test.mjs" ||
     filePath.startsWith("packages/pwa/src/lib/library-core-sqlite") ||
     filePath.startsWith("packages/shared/src/library-core/")
   );
@@ -1466,6 +1468,10 @@ export function buildValidationPlan(mode, changedFiles) {
 
   if (stabilityStatusChanged) {
     addCommand(plan, stabilityStatusTestsCommand());
+  }
+
+  if (changedFiles.some(filePath => filePath.startsWith("scripts/lib/webkit-test-custody") || filePath === "scripts/webkit-test-custody.test.mjs")) {
+    addCommand(plan, nodeCommand("WebKit test custody fixture contracts", ["--test", "scripts/webkit-test-custody.test.mjs"]));
   }
 
   if (roadmapStatusChanged) {

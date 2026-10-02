@@ -164,6 +164,7 @@ import {
   type LibraryCoreItemScanRequestV1,
   type LibraryCoreItemScanResponseV1,
 } from "./item-scan-contracts.js";
+import { parseLibraryCorePriorityTimePageRequestV1, parseLibraryCorePriorityTimePageResponseV1, type LibraryCorePriorityTimePageRequestV1, type LibraryCorePriorityTimePageResponseV1 } from "./priority-time-page-contracts.js";
 import {
   parseLibraryCoreContentFetchPageRequestV1,
   parseLibraryCoreContentFetchPageResponseV1,
@@ -363,6 +364,7 @@ export type LibraryCoreSqliteQueryRequest =
   | LibraryCoreItemAnnotationsRequestV1
   | LibraryCoreRssItemSummaryRequestV1
   | LibraryCoreItemReaderBodyRequestV1
+  | LibraryCorePriorityTimePageRequestV1
   | LibraryCoreItemScanRequestV1
   | LibraryCoreContentFetchPageRequestV1
   | LibraryCoreMapMarkersRequestV1
@@ -433,6 +435,8 @@ export type LibraryCoreSqliteQueryResponseFor<
                             ? LibraryCoreItemDetailResponseV1
                             : T extends LibraryCoreItemReaderBodyRequestV1
                               ? LibraryCoreItemReaderBodyResponseV1
+                              : T extends LibraryCorePriorityTimePageRequestV1
+                                ? LibraryCorePriorityTimePageResponseV1
                               : T extends LibraryCoreItemScanRequestV1
                                 ? LibraryCoreItemScanResponseV1
                                 : T extends LibraryCoreContentFetchPageRequestV1
@@ -481,7 +485,7 @@ export function parseLibraryCoreSqliteQueryResponse<
   T extends LibraryCoreSqliteQueryRequest,
 >(value: unknown, request: T): LibraryCoreSqliteQueryResponseFor<T> {
   const parsed =
-    request.queryId === "preference_scope_v1" ? parseLibraryCorePreferenceScopeResponseV1(value, request) : request.queryId === "preferences_revision_v1" ? parseLibraryCorePreferencesRevisionResponseV1(value) : request.queryId === "ranking_weight_scope_v1" ? parseLibraryCoreRankingWeightScopeResponseV1(value, request) : request.queryId === "preference_value_v1" ? parseLibraryCorePreferenceValueResponseV1(value, request) : request.queryId === "rss_item_summary_v1"
+    request.queryId === "priority_time_page_v1" ? parseLibraryCorePriorityTimePageResponseV1(value, request) : request.queryId === "preference_scope_v1" ? parseLibraryCorePreferenceScopeResponseV1(value, request) : request.queryId === "preferences_revision_v1" ? parseLibraryCorePreferencesRevisionResponseV1(value) : request.queryId === "ranking_weight_scope_v1" ? parseLibraryCoreRankingWeightScopeResponseV1(value, request) : request.queryId === "preference_value_v1" ? parseLibraryCorePreferenceValueResponseV1(value, request) : request.queryId === "rss_item_summary_v1"
       ? parseLibraryCoreRssItemSummaryResponseV1(value)
       : request.queryId === "item_annotations_v1"
       ? parseLibraryCoreItemAnnotationsResponseV1(value, request)
@@ -1324,7 +1328,7 @@ export function parseLibraryCoreSqliteWorkerRequest(
     parseLibraryCoreActivateNormalizedCheckpointStageV2(value.activation);
   } else if (value.kind === "query") {
     const query = isClosedRecord(value.query)
-      ? value.query.queryId === "preference_scope_v1" ? parseLibraryCorePreferenceScopeRequestV1(value.query) : value.query.queryId === "preferences_revision_v1" ? parseLibraryCorePreferencesRevisionRequestV1(value.query) : value.query.queryId === "ranking_weight_scope_v1" ? parseLibraryCoreRankingWeightScopeRequestV1(value.query) : value.query.queryId === "preference_value_v1" ? parseLibraryCorePreferenceValueRequestV1(value.query) : value.query.queryId === "rss_item_summary_v1"
+      ? value.query.queryId === "priority_time_page_v1" ? parseLibraryCorePriorityTimePageRequestV1(value.query) : value.query.queryId === "preference_scope_v1" ? parseLibraryCorePreferenceScopeRequestV1(value.query) : value.query.queryId === "preferences_revision_v1" ? parseLibraryCorePreferencesRevisionRequestV1(value.query) : value.query.queryId === "ranking_weight_scope_v1" ? parseLibraryCoreRankingWeightScopeRequestV1(value.query) : value.query.queryId === "preference_value_v1" ? parseLibraryCorePreferenceValueRequestV1(value.query) : value.query.queryId === "rss_item_summary_v1"
         ? parseLibraryCoreRssItemSummaryRequestV1(value.query)
         : value.query.queryId === "item_annotations_v1"
         ? parseLibraryCoreItemAnnotationsRequestV1(value.query)

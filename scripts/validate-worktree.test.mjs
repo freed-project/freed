@@ -93,6 +93,10 @@ test("OPFS durability changes run the persistent WebKit data integrity proof", (
     "packages/pwa/src/main.tsx",
     "packages/pwa/tests/opfs-e2e-settings.ts",
     "packages/pwa/tests/sqlite-opfs-durability.spec.ts",
+    "scripts/lib/webkit-test-custody.mjs",
+    "scripts/lib/webkit-test-custody-adapter.m",
+    "scripts/lib/webkit-test-custody.d.mts",
+    "scripts/webkit-test-custody.test.mjs",
     "packages/shared/src/library-core/normalized-schema-v1.sql",
   ];
   try {
@@ -1236,4 +1240,20 @@ test("release identity execution separates modern releases, historical correctio
     ],
     cwd: REPO_ROOT,
   });
+});
+
+
+test("custody adapter changes retain the macOS proof and focused fixture contracts", () => {
+  const previous = process.env.FREED_SKIP_PWA_OPFS_DURABILITY;
+  delete process.env.FREED_SKIP_PWA_OPFS_DURABILITY;
+  try {
+    const path = "scripts/lib/webkit-test-custody-adapter.m";
+    const plan = describePlan(buildValidationPlan("feature", [path]));
+    assert.ok(plan.includes("pwa WebKit OPFS durability"));
+    assert.ok(plan.includes("WebKit test custody fixture contracts"));
+    assert.ok(FOCUSED_FEATURE_VALIDATION_PATHS.has(path));
+  } finally {
+    if (previous === undefined) delete process.env.FREED_SKIP_PWA_OPFS_DURABILITY;
+    else process.env.FREED_SKIP_PWA_OPFS_DURABILITY = previous;
+  }
 });

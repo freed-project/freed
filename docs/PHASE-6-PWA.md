@@ -1484,3 +1484,11 @@ the receipt, current digest, epoch, writer, revision and frontier. The final
 cloud receipt is synthetic; this does not test old local browser intents or
 OS-crash recovery. Exact-commit macOS WebKit durability CI also passes, while
 installed multi-device acceptance remains outstanding.
+
+
+The headless macOS actor-vault restart proof uses a narrowly scoped Playwright
+embedder custody fixture to supply its missing native master-key callback. The
+proof includes nonextractability, signing-only usage, PKCS8/JWK export refusal,
+and wrong-wrapping-key rejection without actor replacement. Native WebKit
+wrapping and IndexedDB remain exercised. This does not establish Keychain
+custody or physical Safari/iOS acceptance; see the Testing Standard for scope.

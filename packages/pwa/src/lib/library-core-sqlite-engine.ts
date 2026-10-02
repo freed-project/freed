@@ -1,4 +1,5 @@
 import { LIBRARY_TRANSFER_ENABLED, requireLibraryTransferCapability } from "./library-transfer-capability";
+import { parseLibraryCorePriorityTimePageRequestV1, parseLibraryCorePriorityTimePageResponseV1, priorityTimeItemScanRequest, LIBRARY_CORE_PRIORITY_TIME_MAXIMUM_CORPUS, type LibraryCorePriorityTimePageRequestV1, type LibraryCorePriorityTimePageResponseV1 } from "@freed/shared/library-core";
 import { createLibraryCoreNormalizedCheckpointDigestAccumulatorV2, parseLibraryCoreNormalizedReplicaAuditV1, type LibraryCoreNormalizedReplicaAuditV1 } from "@freed/shared/library-core";
 import { parseLibraryCorePreferenceScopeRequestV1, parseLibraryCorePreferenceScopeResponseV1, type LibraryCorePreferenceScopeRequestV1, type LibraryCorePreferenceScopeResponseV1 } from "@freed/shared/library-core";
 import { parseLibraryCorePreferencesRevisionRequestV1, parseLibraryCorePreferencesRevisionResponseV1, type LibraryCorePreferencesRevisionRequestV1, type LibraryCorePreferencesRevisionResponseV1 } from "@freed/shared/library-core";
@@ -8588,6 +8589,8 @@ export class PwaLibraryCoreSqliteEngine {
         return this.#queryItemReaderBody(
           input,
         ) as LibraryCoreSqliteQueryResponseFor<T>;
+      case "priority_time_page_v1":
+        return this.#queryPriorityTimePage(input) as LibraryCoreSqliteQueryResponseFor<T>;
       case "background_item_page_v1":
         return this.#queryItemScan(
           input,
@@ -10788,8 +10791,20 @@ export class PwaLibraryCoreSqliteEngine {
     return parsed.value;
   }
 
+  #queryPriorityTimePage(input: LibraryCorePriorityTimePageRequestV1): LibraryCorePriorityTimePageResponseV1 {
+    const checked = parseLibraryCorePriorityTimePageRequestV1(input);
+    if (!checked.ok) throw new TypeError(checked.error);
+    return this.#database.transaction(() => {
+      const page = this.#queryItemScan(priorityTimeItemScanRequest(checked.value), checked.value);
+      const parsed = parseLibraryCorePriorityTimePageResponseV1({ ...page, queryId: "priority_time_page_v1" }, checked.value);
+      if (!parsed.ok) throw new Error(parsed.error);
+      return parsed.value;
+    });
+  }
+
   #queryItemScan(
     input: LibraryCoreItemScanRequestV1,
+    timeOnly?: LibraryCorePriorityTimePageRequestV1,
   ): LibraryCoreItemScanResponseV1 {
     const request = parseLibraryCoreItemScanRequestV1(input);
     if (!request.ok) throw new TypeError(request.error);
@@ -10807,11 +10822,18 @@ export class PwaLibraryCoreSqliteEngine {
       }
       afterGlobalId = cursor.value.globalId;
     }
+    const timeProgram = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.priority_time_page_v1;
+    if (timeOnly) {
+      if (generationId !== timeOnly.generationId || sourceRevision !== timeOnly.sourceRevision) throw new Error("CURSOR_STALE");
+      const census = this.#database.exec({ sql: timeProgram.countSql, rowMode: "object", returnValue: "resultRows" });
+      const total = safeInteger(census[0]?.total_count, "priority time corpus count");
+      if (total > LIBRARY_CORE_PRIORITY_TIME_MAXIMUM_CORPUS) throw new Error("priority time corpus exceeds admission");
+    }
     const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.background_item_page_v1;
     const priorityScan = request.value.priorityComputedBeforeMs !== null;
     const priorityVariant = program.variants.priority;
     const rows = this.#database.exec({
-      sql: priorityScan ? priorityVariant.sql : program.sql,
+      sql: timeOnly ? timeProgram.sql : priorityScan ? priorityVariant.sql : program.sql,
       bind: priorityScan
         ? [request.value.priorityComputedBeforeMs, request.value.limit + 1]
         : [
