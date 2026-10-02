@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { expect, it, vi } from "vitest";
 import type { NormalizedLibraryHandoffStatus } from "./sqlite-library";
 const mocks = vi.hoisted(() => ({
   cancelTarget: vi.fn(),
