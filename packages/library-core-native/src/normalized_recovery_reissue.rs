@@ -143,6 +143,7 @@ pub fn reapply_archived_assignments_v1(
     key_store: &dyn ActorKeyStore,
     now: i64,
 ) -> Result<RecoveryReissueReceiptV1, String> {
+    crate::require_library_transfer_capability()?;
     reapply_archived_transaction(
         connection,
         request,
@@ -159,6 +160,7 @@ pub fn reapply_archived_editor_transaction_v1(
     canonical_envelopes: &[Vec<u8>],
     now: i64,
 ) -> Result<RecoveryReissueReceiptV1, String> {
+    crate::require_library_transfer_capability()?;
     if canonical_envelopes.len() > 1000
         || canonical_envelopes.iter().any(|v| v.len() > 131072)
         || canonical_envelopes.iter().map(Vec::len).sum::<usize>() > 4194304

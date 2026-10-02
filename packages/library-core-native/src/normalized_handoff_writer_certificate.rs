@@ -837,6 +837,7 @@ pub fn prepare_normalized_predecessor_checkpoint_read_v1(
     connection: &mut rusqlite::Connection,
     successor_stage: &str,
 ) -> Result<Option<Value>, String> {
+    crate::require_checkpoint_transfer_capability(connection, successor_stage)?;
     let tx = connection.transaction().map_err(|e| e.to_string())?;
     if let Some(chain) = staged_historical_chain(&tx, successor_stage)? {
         tx.commit().map_err(|e| e.to_string())?;
@@ -855,6 +856,7 @@ pub fn activate_normalized_predecessor_checkpoint_v1(
     predecessor_stage: &str,
     receipt: &crate::NormalizedFollowerCheckpointReceiptV2,
 ) -> Result<crate::NormalizedCheckpointActivationReceiptV2, String> {
+    crate::require_library_transfer_capability()?;
     if predecessor_stage.is_empty() || predecessor_stage.len() > 255 {
         return Err("predecessor import stage identity is invalid".into());
     }

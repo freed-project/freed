@@ -406,6 +406,8 @@ pub fn seal_source_handoff_v1(
     sealed_at_ms: u64,
 ) -> Result<crate::normalized_sqlite::NormalizedCheckpointExportDescriptorV2, NormalizedSqliteError>
 {
+    crate::require_library_transfer_capability()
+        .map_err(crate::NormalizedSqliteError::Transport)?;
     let invalid = NormalizedSqliteError::InvalidRequest;
     if !crate::library_core_hash::is_lower_sha256(handoff_id)
         || sealed_at_ms > 9_007_199_254_740_991

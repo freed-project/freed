@@ -1,3 +1,4 @@
+import { requireLibraryTransferCapability } from "./library-transfer-capability";
 import type { LibraryCoreConsumerRecoveryStatusV1 } from "@freed/shared/library-core";
 import { readPwaLibraryCoreRecoveryActorIdentity, signPwaLibraryCoreRecoveryActorProof } from "./library-core-browser-key-vault";
 import { constructPwaFollowerEnrollmentRequest } from "./library-core-pwa-follower-enrollment";
@@ -9,6 +10,7 @@ const runtime = {
 };
 /** Call only after the owner explicitly elects to enroll with the selected successor. */
 export async function continuePwaConsumerRecovery(dependencies: typeof runtime = runtime): Promise<LibraryCoreConsumerRecoveryStatusV1> {
+  requireLibraryTransferCapability();
   let status = await dependencies.read();
   if (status.state === "none") throw new Error("This browser has no authority recovery to continue.");
   if (status.state === "following") return status;

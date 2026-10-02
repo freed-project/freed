@@ -69,6 +69,7 @@ pub fn cancel_source_handoff_with_proof_v1(
     cancelled_at_ms: u64,
     authority_store: &dyn AuthorityKeyStore,
 ) -> Result<String, String> {
+    crate::require_library_transfer_capability()?;
     if !connection.is_autocommit()
         || !is_lower_sha256(handoff_id)
         || cancelled_at_ms > MAX_SAFE_INTEGER
@@ -379,6 +380,7 @@ pub fn accept_target_handoff_cancellation_v1(
     canonical_cancellation: &[u8],
     applied_at_ms: u64,
 ) -> Result<String, String> {
+    crate::require_library_transfer_capability()?;
     if !connection.is_autocommit() || applied_at_ms > MAX_SAFE_INTEGER {
         return Err("target cancellation input or transaction is invalid".into());
     }

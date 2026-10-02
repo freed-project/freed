@@ -347,6 +347,8 @@ fn verify_native_handoff_catalog(connection: &Connection) -> Result<(), Normaliz
 pub(crate) fn migrate_native_handoff_schema_v2(
     transaction: &rusqlite::Transaction<'_>,
 ) -> Result<(), NormalizedSqliteError> {
+    crate::require_library_transfer_capability()
+        .map_err(crate::NormalizedSqliteError::Transport)?;
     let version: u32 = transaction.pragma_query_value(None, "user_version", |row| row.get(0))?;
     if ![SQLITE_SCHEMA_VERSION, NATIVE_STORAGE_SCHEMA_VERSION].contains(&version) {
         return Err(NormalizedSqliteError::InvalidRequest(

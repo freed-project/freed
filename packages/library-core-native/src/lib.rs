@@ -35,6 +35,11 @@ mod normalized_checkpoint;
 mod normalized_desktop_setup;
 mod normalized_enrollment_verifier;
 mod normalized_follower;
+pub use normalized_import::require_checkpoint_transfer_capability;
+mod transfer_capability;
+pub use transfer_capability::{
+    require_library_transfer_capability, LIBRARY_TRANSFER_ENABLED, LIBRARY_TRANSFER_UNAVAILABLE,
+};
 mod normalized_handoff;
 mod normalized_handoff_activation;
 mod normalized_handoff_cancellation;
@@ -199,13 +204,14 @@ pub use normalized_query::{
     NormalizedPersonDetailRequestV1, NormalizedPersonDetailResponseV1, NormalizedPersonDetailV1,
     NormalizedPersonGraphPageRequestV1, NormalizedPersonGraphPageResponseV1,
     NormalizedPersonGraphRowV1, NormalizedPersonReachOutV1, NormalizedPersonTimelineRequestV1,
-    NormalizedPersonTimelineResponseV1, NormalizedQueryRequestV1, NormalizedQueryResponseV1,
-    NormalizedRssFeedPageRequestV1, NormalizedRssFeedPageResponseV1, NormalizedRssFeedPageRowV1,
-    NormalizedSavedAnalyticsCountV2, NormalizedSavedAnalyticsRequestV2,
-    NormalizedSavedAnalyticsResponseV2, NormalizedSavedAnalyticsWindowV2,
-    NormalizedSavedFeedCardV2, NormalizedSavedFeedEdgeOrderV2, NormalizedSavedFeedPageRequestV2,
-    NormalizedSavedFeedPageResponseV2, NormalizedStoryWallCandidateV1,
-    NormalizedStoryWallCandidatesRequestV1, NormalizedStoryWallCandidatesResponseV1,
+    NormalizedPersonTimelineResponseV1, NormalizedPriorityTimePageRequestV1,
+    NormalizedQueryRequestV1, NormalizedQueryResponseV1, NormalizedRssFeedPageRequestV1,
+    NormalizedRssFeedPageResponseV1, NormalizedRssFeedPageRowV1, NormalizedSavedAnalyticsCountV2,
+    NormalizedSavedAnalyticsRequestV2, NormalizedSavedAnalyticsResponseV2,
+    NormalizedSavedAnalyticsWindowV2, NormalizedSavedFeedCardV2, NormalizedSavedFeedEdgeOrderV2,
+    NormalizedSavedFeedPageRequestV2, NormalizedSavedFeedPageResponseV2,
+    NormalizedStoryWallCandidateV1, NormalizedStoryWallCandidatesRequestV1,
+    NormalizedStoryWallCandidatesResponseV1,
 };
 pub use normalized_replication::{
     describe_normalized_operation_export_v2, export_normalized_operation_page_v2,

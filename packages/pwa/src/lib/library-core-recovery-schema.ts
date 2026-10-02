@@ -1,3 +1,4 @@
+import { requireLibraryTransferCapability } from "./library-transfer-capability";
 import type { Database, Sqlite3Static } from "@sqlite.org/sqlite-wasm";
 import {
   LIBRARY_CORE_LOCAL_STORAGE_SCHEMA_VERSION, LIBRARY_CORE_LOCAL_SCHEMA_SHA256,
@@ -60,6 +61,7 @@ export function migratePwaLibraryRecoverySchema(
   database: Database,
   capi: Pick<Sqlite3Static["capi"], "sqlite3_get_autocommit" | "sqlite3_txn_state">,
 ): void {
+  requireLibraryTransferCapability();
   if (!database.pointer || capi.sqlite3_get_autocommit(database.pointer) !== 0 ||
       capi.sqlite3_txn_state(database.pointer, "main") !== 2 ||
       scalar(database, "PRAGMA synchronous;") !== 2 || scalar(database, "PRAGMA foreign_keys;") !== 1) {

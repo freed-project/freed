@@ -345,6 +345,7 @@ pub fn prepare_source_handoff_authorization_v1(
     control_revision: &str,
     control_file_id: &str,
 ) -> Result<String, String> {
+    crate::require_library_transfer_capability()?;
     let decoded = decode_canonical_value(canonical_control, MAX_BYTES)
         .map_err(|_| "handoff source control is not bounded canonical data")?;
     let control: HandoffSourceControlV1 = serde_json::from_value(decoded.into_value())
@@ -430,6 +431,7 @@ pub fn authorize_source_handoff_v1(
     authority_store: &dyn crate::normalized_authority_credentials::AuthorityKeyStore,
     authorized_at_ms: u64,
 ) -> Result<String, String> {
+    crate::require_library_transfer_capability()?;
     if !connection.is_autocommit() || authorized_at_ms > MAX_SAFE_INTEGER {
         return Err("handoff authorization input or transaction is invalid".into());
     }
@@ -726,6 +728,7 @@ pub fn begin_source_handoff_v1(
     authority_store: &dyn crate::normalized_authority_credentials::AuthorityKeyStore,
     prepared_at_ms: u64,
 ) -> Result<String, String> {
+    crate::require_library_transfer_capability()?;
     if prepared_at_ms > MAX_SAFE_INTEGER
         || !connection.is_autocommit()
         || !is_lower_sha256(selected_target_actor_id)
@@ -888,6 +891,7 @@ pub fn accept_target_handoff_authorization_v1(
     pending_authority_store: &dyn crate::normalized_authority_credentials::AuthorityKeyStore,
     accepted_at_ms: u64,
 ) -> Result<String, String> {
+    crate::require_library_transfer_capability()?;
     if !connection.is_autocommit() || accepted_at_ms > MAX_SAFE_INTEGER {
         return Err("target consent input or transaction is invalid".into());
     }
@@ -1061,6 +1065,7 @@ pub fn stage_target_handoff_v1(
     pending_authority_store: &dyn crate::normalized_authority_credentials::AuthorityKeyStore,
     staged_at_ms: u64,
 ) -> Result<crate::normalized_writer_certificate::WriterEpochReassignment, String> {
+    crate::require_library_transfer_capability()?;
     use crate::normalized_writer_reassignment::{
         current_authority, install_prepared_writer_epoch_v2, WriterEpochAdmission,
         WriterEpochInstallation,
@@ -1347,6 +1352,7 @@ pub fn prepare_target_handoff_activation_v1(
     canonical_control: &[u8],
     prepared_at_ms: u64,
 ) -> Result<String, String> {
+    crate::require_library_transfer_capability()?;
     if !connection.is_autocommit()
         || prepared_at_ms > MAX_SAFE_INTEGER
         || !is_lower_sha256(handoff_id)
@@ -1748,6 +1754,7 @@ pub fn prepare_target_handoff_readiness_v1(
     pending_authority_store: &dyn crate::normalized_authority_credentials::AuthorityKeyStore,
     created_at_ms: u64,
 ) -> Result<String, String> {
+    crate::require_library_transfer_capability()?;
     if created_at_ms > MAX_SAFE_INTEGER || !connection.is_autocommit() {
         return Err("handoff readiness time or transaction is invalid".into());
     }
