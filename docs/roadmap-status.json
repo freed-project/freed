@@ -27,7 +27,7 @@
     {
       "id": 5,
       "status": "current",
-      "reviewedAt": "2026-10-02T00:53:25Z",
+      "reviewedAt": "2026-10-02T03:22:21.152196Z",
       "source": "docs/PHASE-5-DESKTOP.md"
     },
     {
@@ -45,7 +45,7 @@
     {
       "id": 8,
       "status": "current",
-      "reviewedAt": "2026-09-29T23:17:07Z",
+      "reviewedAt": "2026-10-02T05:00:00Z",
       "source": "docs/PHASE-8-FRIENDS.md"
     },
     {
@@ -56,7 +56,7 @@
     {
       "id": 10,
       "status": "upcoming",
-      "reviewedAt": "2026-10-02T02:15:05Z",
+      "reviewedAt": "2026-10-02T05:00:00Z",
       "source": "docs/PHASE-10-POLISH.md"
     },
     {

@@ -573,3 +573,26 @@ hook tests verify visibility transitions and cleanup. This does not establish
 a hardware frame rate or a fix for the reported freeze. The existing app-wide
 heartbeat remains separate, and unsupported LongTask observation still needs
 an explicit diagnostic state.
+
+### Jev spending admission
+
+Jev requests require saved device-local spending limits. Defaults are $1 per
+UTC day and $10 per UTC calendar month; an optional lifetime limit never resets.
+All enabled limits apply before transport. A durable SQLite transaction reserves
+$0.002752512 per request: Jev 1.13's conservative 65,536-token interpretation of the published 64k ceiling at
+$0.042 per million, with free output. This conservative allowance is not a bill.
+Reservation precedes credential access. Even missing-key failures retain the
+allowance without implying provider contact or billing. No refund is inferred
+for success, cancellation, timeout, or uncertain outcomes;
+retries reserve again and duplicate request IDs are rejected. Default limits
+permit at most 363 requests daily and 3,633 monthly, even when actual short
+requests cost less. At a limit, settings offers local GLiClass when available, or a limit change.
+
+The ledger is under the compiled app's config directory, outside Library
+snapshots. Ordinary app replacement and Library restore do not reset it; a
+missing established ledger, corruption, or a backwards clock blocks requests.
+Removing an entire device profile removes its history; other clients/devices
+and vendor price changes are outside this local estimate-based allowance. The
+ledger is bounded to 100,000 reservations and then fails closed. Browser preview
+paid transport is disabled because it lacks the native ledger. Pricing evidence:
+https://docs.typesafe.ai/models (verified 2026-10-02).

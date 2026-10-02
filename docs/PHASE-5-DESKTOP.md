@@ -2,6 +2,15 @@
 
 > **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, Windows signing plan scaffolded, legal consent gate shipped, tri-state sidebar chrome shipped, public-safe bug reporting shipped, runtime memory telemetry shipped, native startup recovery shipped, bundled recovery updater flow shipped, permanent local social media vault shipped, desktop hot-path side-effect scheduling shipped, bounded SQLite user mutations and queries shipped, visible-scope bulk actions shipped, background runtime coordination shipped, renderer recovery safe mode shipped, deep local WebKit diagnostics shipped, adaptive high-memory scrape budgets shipped, explicit local-only primary Library authority shipped, normalized sample-data accounting, Story Wall candidates, Saved analytics, full-library native search, bounded scheduled RSS refresh, Google Drive checkpoint publication, follower intents, global background activity monitoring, and native terminal sync soaks shipped)
 
+The Jev evaluation MVP includes an optional GLiClass Base v3.0 classifier.
+Selection downloads pinned official Apache-2.0 weights and tokenizer with
+progress, cancel/resume, integrity checks and removal controls. A bundled ONNX
+graph references those exact safetensors bytes. Native CPU inference uses one
+worker and one thread, releases idle model residency, and has no cloud fallback
+or end-user Python dependency. Unchanged evidence reuses a bounded session cache.
+The Jev API remains available. App release acceptance, persistent incremental
+classification and accuracy evaluation remain open.
+
 Saved URL recovery now distinguishes absent targets from deleted items. The
 owner reviews every URL, edits its title or description, and explicitly confirms
 one complete replacement. Original targets, URLs and remaining archived content
@@ -1612,3 +1621,9 @@ pages, and checks an identical re-export. This is checkpoint reconstruction,
 not a signed successor restore or binary downgrade proof. Its conservative
 database/journal budget can refuse small volumes before target creation;
 temporary allocations and other processes' disk use remain separate limits.
+
+### Offline predecessor export compatibility
+
+The offline recovery runner detects a computed checkpoint-export view and copies it once, under one read-only attached-source transaction, into a task-private indexed staging file. It preserves the pinned metadata and canonical records without migrating the source or creating another Library runtime. Subsequent export pages seek that staging tree instead of repeatedly scanning and sorting the predecessor view.
+
+The staging file has a SQLite page cap and bounded cache. Initial admission reserves 10 GiB plus 128 MiB overhead and budgets the staging database/journal conservatively; exact archive admission runs after measurement. Successful capture verifies every canonical record and removes the private staging file. Failed staging preserves the source and fails closed. Synthetic tests cover source immutability, URI read-only enforcement, index use, page-cap refusal, frontier stability after a source writer advances, and isolated reconstruction. Current-corpus capture, reconstruction and signed-successor recovery remain separate operator evidence.

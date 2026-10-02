@@ -1,4 +1,4 @@
-import { generateKeyPairSync, sign } from "node:crypto";
+import { generateKeyPairSync, sign, type KeyObject } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import sqlite3InitModule, { type Database, type Sqlite3Static, type SqlValue } from "@sqlite.org/sqlite-wasm";
 import {
@@ -25,7 +25,7 @@ const revision: number = certificate.certificate_body.handoff_authorization.body
 // Signed authority/enrollment proofs are real; pending intent bytes below test storage retention only.
 describe("browser explicit consumer recovery", () => {
   let sqlite: Sqlite3Static, db: Database, engine: PwaLibraryCoreSqliteEngine;
-  let keys: ReturnType<typeof generateKeyPairSync>, publicKey: string, actorId: string;
+  let keys: { publicKey: KeyObject; privateKey: KeyObject }, publicKey: string, actorId: string;
   function insert(table: string, row: Record<string, SqlValue>) {
     db.exec({ sql: `INSERT INTO ${table} (${Object.keys(row).join(",")}) VALUES (${Object.keys(row).map(() => "?").join(",")});`, bind: Object.values(row) });
   }
