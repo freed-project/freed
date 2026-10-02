@@ -1597,3 +1597,18 @@ Installed multi-device acceptance and actual host transition remain pending.
 An update from an active Library now waits for an existing normalized local snapshot before downloading and replacing the app. Snapshot failure prevents installation. Startup repair can still install a compatible successor when the Library cannot open. This does not claim that an older binary can read a newer physical catalog.
 
 Snapshot capture hashes and then writes bounded checkpoint pages from one pinned read transaction. The unchanged canonical archive format needs one temporary archive rather than a second complete records file. A concurrent-writer fixture verifies both passes retain the same frontier; existing restore and corruption checks remain applicable. Logical snapshots contain the selected checkpoint records, including inline content chunks, but external content and installation-local lifecycle state still require their own recovery evidence. Installed current-frontier capture and prior-build compatibility remain to be verified before rollout.
+
+The native `snapshot_recovery` example supplies an offline first-upgrade bridge:
+`capture <database> <new-private-archive-directory>` acquires the existing
+Library process lease, opens the source read-only, verifies its existing
+catalog, measures bounded canonical pages, and requires a 10 GiB free-space
+reserve plus 128 MiB overhead before using the normal capture implementation.
+The installed app must quit cleanly first; the helper never starts a runtime,
+reads credentials, or contacts providers. `verify <archive-directory> <id>`
+checks every canonical record and its commitment without a restore.
+`reconstruct <archive-directory> <id> <new-private-target-directory>` uses
+the existing importer only on an empty isolated database, caps main-database
+pages, and checks an identical re-export. This is checkpoint reconstruction,
+not a signed successor restore or binary downgrade proof. Its conservative
+database/journal budget can refuse small volumes before target creation;
+temporary allocations and other processes' disk use remain separate limits.

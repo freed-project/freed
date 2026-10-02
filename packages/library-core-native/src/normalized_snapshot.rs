@@ -778,6 +778,94 @@ fn create_normalized_local_snapshot_in_v1(
     archive_from_name(snapshot_root, final_name).map(|archive| archive_summary(&archive))
 }
 
+/// Inspect one read transaction without creating an archive or changing rows.
+pub fn inspect_normalized_local_snapshot_source_v1(
+    connection: &mut Connection,
+) -> Result<(NormalizedCheckpointExportDescriptorV2, String, u64), NormalizedSqliteError> {
+    let transaction = connection.transaction()?;
+    let descriptor = describe_normalized_checkpoint_export_v2(&transaction)?;
+    let (digest, count, bytes) = write_snapshot_records(&transaction, &mut std::io::sink())?;
+    if usize::try_from(count).ok() != Some(descriptor.record_count) {
+        return Err(snapshot_error(
+            "normalized snapshot inspection count changed",
+        ));
+    }
+    transaction.commit()?;
+    Ok((descriptor, digest, bytes))
+}
+
+/// Verify every canonical record against the existing archive commitment.
+pub fn verify_normalized_local_snapshot_v1(
+    snapshot_root: &Path,
+    snapshot_id: &str,
+) -> Result<NormalizedLocalSnapshotSummaryV1, NormalizedSqliteError> {
+    if !valid_digest(snapshot_id) {
+        return Err(snapshot_error("normalized snapshot identity is invalid"));
+    }
+    let snapshot_root = SnapshotDirectory::open_or_create(snapshot_root)?;
+    let _operation = acquire_snapshot_operation(&snapshot_root)?;
+    let archive = archive_from_name(
+        &snapshot_root,
+        format!("{snapshot_id}{SNAPSHOT_FILE_SUFFIX}"),
+    )?;
+    verify_archive_records(&snapshot_root, &archive)?;
+    Ok(archive_summary(&archive))
+}
+
+/// Reconstruct only an empty, isolated database through the existing checkpoint
+/// importer. This never replaces a selected Library or creates authority keys.
+pub fn verify_normalized_local_snapshot_in_empty_database_v1(
+    connection: &mut Connection,
+    snapshot_root: &Path,
+    snapshot_id: &str,
+) -> Result<NormalizedLocalSnapshotSummaryV1, NormalizedSqliteError> {
+    if !valid_digest(snapshot_id) {
+        return Err(snapshot_error("normalized snapshot identity is invalid"));
+    }
+    let occupied: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM library_meta) OR EXISTS(SELECT 1 FROM library_checkpoint_stages);",
+        [], |row| row.get(0),
+    )?;
+    if occupied {
+        return Err(snapshot_error("snapshot verification target is not empty"));
+    }
+    let snapshot_root = SnapshotDirectory::open_or_create(snapshot_root)?;
+    let _operation = acquire_snapshot_operation(&snapshot_root)?;
+    let archive = archive_from_name(
+        &snapshot_root,
+        format!("{snapshot_id}{SNAPSHOT_FILE_SUFFIX}"),
+    )?;
+    verify_archive_records(&snapshot_root, &archive)?;
+    let stage_id = format!("snapshot-verification:{snapshot_id}");
+    begin_normalized_checkpoint_stage_v2(
+        connection,
+        &BeginNormalizedCheckpointStageV2 {
+            stage_id: stage_id.clone(),
+            library_id: archive.manifest.identity.checkpoint.library_id.clone(),
+            authority_epoch: archive.manifest.identity.checkpoint.authority_epoch.clone(),
+            source_revision: archive.manifest.identity.checkpoint.source_revision,
+            expected_record_count: archive.manifest.identity.checkpoint.record_count,
+            created_at: archive.manifest.identity.created_at_ms,
+        },
+    )?;
+    append_archive_to_stage(connection, &snapshot_root, &archive, &stage_id)?;
+    let receipt =
+        crate::normalized_import::finalize_normalized_checkpoint_stage_v2(connection, &stage_id)?;
+    if receipt.checkpoint_digest != archive.manifest.identity.checkpoint_digest {
+        return Err(snapshot_error(
+            "snapshot verification target digest changed",
+        ));
+    }
+    let (descriptor, digest, bytes) = inspect_normalized_local_snapshot_source_v1(connection)?;
+    if descriptor != archive.manifest.identity.checkpoint
+        || digest != archive.manifest.identity.checkpoint_digest
+        || bytes != archive.manifest.identity.canonical_record_bytes
+    {
+        return Err(snapshot_error("snapshot verification re-export changed"));
+    }
+    Ok(archive_summary(&archive))
+}
+
 pub fn list_normalized_local_snapshots_v1(
     snapshot_root: &Path,
 ) -> Result<Vec<NormalizedLocalSnapshotSummaryV1>, NormalizedSqliteError> {
@@ -1311,6 +1399,56 @@ mod tests {
     }
 
     #[test]
+    fn archive_verification_reconstructs_only_an_empty_database() {
+        let actor = key_store();
+        let authority = key_store();
+        let mut source = Connection::open_in_memory().unwrap();
+        install_normalized_schema_v1(&source).unwrap();
+        prepare_fresh_normalized_desktop_library_v1(
+            &mut source,
+            &"6".repeat(64),
+            &actor,
+            &authority,
+            1_000,
+        )
+        .unwrap();
+        let directory = tempdir().unwrap();
+        let summary = create_normalized_local_snapshot_v1(
+            &mut source,
+            directory.path(),
+            2_000,
+            NormalizedLocalSnapshotReasonV1::Manual,
+        )
+        .unwrap();
+        assert_eq!(
+            verify_normalized_local_snapshot_v1(directory.path(), &summary.snapshot_id).unwrap(),
+            summary
+        );
+        let mut target = Connection::open_in_memory().unwrap();
+        install_normalized_schema_v1(&target).unwrap();
+        assert_eq!(
+            verify_normalized_local_snapshot_in_empty_database_v1(
+                &mut target,
+                directory.path(),
+                &summary.snapshot_id,
+            )
+            .unwrap(),
+            summary
+        );
+        assert!(verify_normalized_local_snapshot_in_empty_database_v1(
+            &mut target,
+            directory.path(),
+            &summary.snapshot_id,
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("not empty"));
+        let (_, digest, bytes) = inspect_normalized_local_snapshot_source_v1(&mut target).unwrap();
+        assert_eq!(digest, summary.checkpoint_digest);
+        assert_eq!(bytes, summary.canonical_record_bytes);
+    }
+
+    #[test]
     fn bound_snapshot_directory_never_reopens_its_authority_path() {
         let actor = key_store();
         let authority = key_store();
@@ -1377,6 +1515,9 @@ mod tests {
         let last = bytes.len() - 2;
         bytes[last] ^= 1;
         fs::write(&path, bytes).expect("change snapshot");
+        assert!(
+            verify_normalized_local_snapshot_v1(directory.path(), &summary.snapshot_id).is_err()
+        );
         let before = describe_normalized_checkpoint_export_v2(&connection).expect("before");
         let error = restore_normalized_local_snapshot_v1(
             &mut connection,

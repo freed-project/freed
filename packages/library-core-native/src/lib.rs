@@ -215,8 +215,10 @@ pub use normalized_replication::{
 };
 pub use normalized_snapshot::{
     clear_normalized_local_snapshots_v1, create_normalized_local_snapshot_v1,
-    list_normalized_local_snapshots_v1, restore_normalized_local_snapshot_v1,
-    NormalizedLocalSnapshotReasonV1, NormalizedLocalSnapshotSummaryV1,
+    inspect_normalized_local_snapshot_source_v1, list_normalized_local_snapshots_v1,
+    restore_normalized_local_snapshot_v1, verify_normalized_local_snapshot_in_empty_database_v1,
+    verify_normalized_local_snapshot_v1, NormalizedLocalSnapshotReasonV1,
+    NormalizedLocalSnapshotSummaryV1,
 };
 pub use normalized_sqlite::{
     append_normalized_checkpoint_stage_page_v2, begin_normalized_checkpoint_stage_v2,
