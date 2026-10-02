@@ -103,7 +103,7 @@
     ]
   },
   "release": {
-    "deck": "Evaluate Jev with a personal key, recover missed Library transfers, and preserve snapshots before future desktop updates.",
+    "deck": "Jev evaluation, personal keys, and recovery for missed Library transfers.",
     "features": [
       "Jev evaluation and personal keys to AI settings",
       "Recover consumers and old Primaries after missed transfers",
@@ -120,5 +120,5 @@
       "Cooperative Primary handoff and consumer edit recovery"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.10.200-dev\n\nEvaluate Jev with a personal key, recover missed Library transfers, and preserve snapshots before future desktop updates\n\n### Features\n\n- Jev evaluation and personal keys to AI settings\n- Recover consumers and old Primaries after missed transfers\n- Recover archived saved URLs with durable replacement links\n\n### Fixes\n\n- Settle consumer results using local lifecycle time\n- Preserve consumer edits across checkpoint handoffs\n- Anchor PWA preview build paths to repository root\n\n### Follow-ups\n\n- Stream persistent PWA replica audits through bounded sorting\n- Cooperative Primary handoff and consumer edit recovery\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.10.200-dev\n\nJev evaluation, personal keys, and recovery for missed Library transfers\n\n### Features\n\n- Jev evaluation and personal keys to AI settings\n- Recover consumers and old Primaries after missed transfers\n- Recover archived saved URLs with durable replacement links\n\n### Fixes\n\n- Preserve a Library snapshot before desktop updates\n- Settle consumer results using local lifecycle time\n- Preserve consumer edits across checkpoint handoffs\n- Anchor PWA preview build paths to repository root\n\n### Follow-ups\n\n- Stream persistent PWA replica audits through bounded sorting\n- Cooperative Primary handoff and consumer edit recovery\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
