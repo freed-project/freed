@@ -564,6 +564,16 @@ parameters. Live output quality and account access require API validation.
 
 The demo keeps appearance, filters, reader navigation, relationship controls, graph pins, and Story Wall previews. Story Wall publishing credentials and archive imports require Freed Desktop. Unavailable maintenance and diagnostic controls are hidden, including overflow menus and command-triggered dialogs. Failed reader photographs retain readable content with a placeholder. Map loading errors switch to the simplified view without new retries. Newsletter failures preserve the form and show recoverable public copy rather than raw backend errors.
 
+### Foreground frame diagnostics
+
+The Performance tab pauses its frame sampler while the document is hidden and
+resumes one loop when it becomes visible. Hidden time does not count as a
+foreground dropped frame; real foreground stalls remain visible. Synthetic
+hook tests verify visibility transitions and cleanup. This does not establish
+a hardware frame rate or a fix for the reported freeze. The existing app-wide
+heartbeat remains separate, and unsupported LongTask observation still needs
+an explicit diagnostic state.
+
 ### Jev spending admission
 
 Jev requests require saved device-local spending limits. Defaults are $1 per
@@ -586,3 +596,14 @@ and vendor price changes are outside this local estimate-based allowance. The
 ledger is bounded to 100,000 reservations and then fails closed. Browser preview
 paid transport is disabled because it lacks the native ledger. Pricing evidence:
 https://docs.typesafe.ai/models (verified 2026-10-02).
+
+
+### Selected-post reader identity
+
+The reader clears the previous selection's cached title, body and lead media
+before committing a different post identity. Reply hydration settles only in
+the selection generation that requested it, including returning to the same
+post and unmounting. Synthetic regressions cover adjacent posts, A-to-B-to-A,
+late success/failure and out-of-order local cache responses. These tests confirm
+the source defects; they do not attribute the exact installed incident or prove
+all native cache associations. Requests and provider cadence are unchanged.

@@ -58,6 +58,7 @@ function isProviderAdmissionEnvelope(value, expected) {
         Number.isSafeInteger(envelope.observationGeneration) &&
         ((_a = envelope.observationGeneration) !== null && _a !== void 0 ? _a : 0) > 0 &&
         Array.isArray(envelope.evidenceCodes) &&
+        envelope.evidenceCodes.length === 0 &&
         Array.isArray(envelope.reasons));
 }
   return {

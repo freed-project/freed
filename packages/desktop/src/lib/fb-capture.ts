@@ -467,7 +467,7 @@ async function fetchFbFeedInternal(
   }
 
   const allRawPosts: RawFbPost[] = [];
-  const seenIds = new Set<string>();
+  const observationIndexByKey = new Map<string, number>();
   let unlisten: UnlistenFn | null = null;
   let unlistenDiag: UnlistenFn | null = null;
 
@@ -616,9 +616,29 @@ async function fetchFbFeedInternal(
           post.id ??
           post.url ??
           `${post.authorName}:${(post.text ?? "").slice(0, 80)}`;
-        if (key && !seenIds.has(key)) {
-          seenIds.add(key);
+        if (!key) continue;
+        const existingIndex = observationIndexByKey.get(key);
+        if (existingIndex === undefined) {
+          observationIndexByKey.set(key, allRawPosts.length);
           allRawPosts.push(post);
+        } else {
+          const existing = allRawPosts[existingIndex];
+          // A later pass may expand a known post. Retain its richer text without
+          // replacing first-seen identity, admission proof, order or metadata.
+          // Content-hash fallbacks without a permalink keep their prior behavior.
+          if (
+            post.id &&
+            existing.id === post.id &&
+            post.url &&
+            existing.url &&
+            (post.text?.length ?? 0) > (existing.text?.length ?? 0)
+          ) {
+            allRawPosts[existingIndex] = {
+              ...existing,
+              text: post.text,
+              hashtags: post.hashtags,
+            };
+          }
         }
       }
     });
