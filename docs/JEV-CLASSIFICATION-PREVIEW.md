@@ -37,6 +37,42 @@ The base 20 signals retain the existing classifier contract. Help offered,
 Collaboration, Work in progress, Appreciation, Humor & play, and Correction remain
 separate experimental scores until their quality is evaluated.
 
+## Optional local GLiClass Base
+
+Choose **GLiClass Base v3.0 · local CPU** in the classifier selector. Selection
+downloads the official weights and tokenizer from Hugging Face, about 755 MB.
+Progress, cancellation with retained partial files, resume, integrity checks,
+and model removal use the existing local model downloader. The selector is
+separate from summary-provider preferences. Model files and selection stay on
+this device. Jev remains available through an explicit switch.
+
+The download pins `knowledgator/gliclass-base-v3.0` at
+`77a70e6cd52e602ed18184ef37d18bdd3741e3d5`. A 1.3 MB bundled full-logits ONNX graph
+references exact byte ranges in the official safetensors file. Its provenance
+and Apache-2.0 notice live in `packages/desktop/src-tauri/models/gliclass-base/`.
+The application uses native ONNX Runtime and a native tokenizer; Python is used
+only for reproducible conversion tooling. No third-party model artifact enters
+the automatic download chain.
+
+Inference runs off the UI thread, with one resident session, one inference thread,
+one post at a time and a 30-second deadline. Cancellation terminates active
+inference and drains it before another request. Idle residency expires after
+60 seconds. There are 26 Freed signals and a 25-class checkpoint bound, so a post
+uses two serial forward passes. Inputs above 512 tokens abstain without silently
+truncating source text or labels. Local failures never fall back to a cloud call.
+
+A bounded cache holds up to 512 score results for this application session.
+SHA-256 keys include source evidence, checkpoint, actual label schema,
+preprocessing and scoring version. Unchanged evidence skips new inference;
+changed evidence or schema produces a new key. Counters record cache hits,
+misses, inference calls and abstentions without source text. The cache is not a
+persistent background classification index. This MVP evaluates a bounded Library
+window and leaves durable classifications untouched.
+
+The local label hypotheses and 0.5 signal threshold are experimental. Synthetic
+output comparisons verify runtime conversion, not accuracy parity with Jev.
+Capability matching remains available only through an explicit switch to Jev.
+
 ## People I can help and Make something together
 
 Enter one to eight skills, one per line. An explicit matching run sends those

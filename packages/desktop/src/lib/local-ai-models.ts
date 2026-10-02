@@ -322,7 +322,9 @@ function cleanState(
 export function createLocalAIModelService(
   deps: LocalAIModelServiceDeps = defaultDeps,
   manifest: readonly LocalAIModelManifestEntry[] = LOCAL_AI_MODEL_MANIFEST,
+  options: { stateFile?: string } = {},
 ) {
+  if (options.stateFile && !/^[a-z0-9-]+\.json$/.test(options.stateFile)) throw new Error("Invalid local model state filename.");
   const activeDownloads = new Map<LocalAIModelId, AbortController>();
   const byId = (id: LocalAIModelId) => findManifestEntry(manifest, id);
 
@@ -331,7 +333,7 @@ export function createLocalAIModelService(
   }
 
   async function statePath(): Promise<string> {
-    return joinPath(await rootDir(), STATE_FILE);
+    return joinPath(await rootDir(), options.stateFile ?? STATE_FILE);
   }
 
   async function modelDir(model: LocalAIModelManifestEntry): Promise<string> {
@@ -800,6 +802,11 @@ export function createLocalAIModelService(
     return listModels();
   }
 
+  async function invalidateModel(id: LocalAIModelId, error: string): Promise<LocalAIModelViewState[]> {
+    await updateModelState(id, current => ({ ...current, status: "error", lastError: error, updatedAt: deps.now() }));
+    return listModels();
+  }
+
   async function updateHealth(
     id: LocalAIModelId,
     health: LocalAIModelHealth,
@@ -835,6 +842,7 @@ export function createLocalAIModelService(
     removeModel,
     getHardwareProfile,
     updateHealth,
+    invalidateModel,
   };
 }
 

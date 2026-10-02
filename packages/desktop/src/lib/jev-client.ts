@@ -57,6 +57,7 @@ async function requestNative(payload: unknown, signal: AbortSignal): Promise<unk
     // Native errors are sanitized; never include request payloads or raw vendor responses.
     throw new Error(typeof error === "string" ? error : "Jev request failed.");
   } finally {
+    for (const listener of budgetListeners) listener();
     signal.removeEventListener("abort", abort);
     stopListening();
   }
@@ -88,11 +89,14 @@ export async function testJevConnection(signal: AbortSignal): Promise<void> {
     sampleDataFingerprint: { marker: "freed.sample-data.v1", batchId: "connection-test", generatedAt: 0, generatorVersion: 1 },
   } as unknown as FeedItem;
   if (isJevNative) { await requestNativeJev("/api/jev-preview/classify", { item }, signal); return; }
-  const response = await fetch("/api/jev-preview/classify", {
-    method: "POST", headers: { "Content-Type": "application/json", "x-freed-jev-preview": "1", ...await jevPreviewHeaders() },
-    body: JSON.stringify({ item, reclassify: true }), signal,
-  });
-  if (!response.ok) throw new Error("Jev connection failed. Check your key and try again.");
-  const body = await response.json();
-  if (body.model !== JEV_MODEL || !body.contentSignals) throw new Error("Jev returned an invalid test result.");
+  throw new Error("Paid Jev requests require Freed Desktop spending controls.");
+
 }
+
+export interface JevLimits { dailyNanoUsd: number; monthlyNanoUsd: number; totalNanoUsd: number | null }
+export interface JevBudgetStatus { limits: JevLimits; dailyReservedNanoUsd: number; monthlyReservedNanoUsd: number; totalReservedNanoUsd: number }
+export const getJevBudget = () => isJevNative ? invoke<JevBudgetStatus | null>("get_jev_budget") : Promise.resolve(null);
+export const setJevBudget = (limits: JevLimits) => isJevNative ? invoke<JevBudgetStatus>("set_jev_budget", { limits }) : Promise.reject(new Error("Spending controls require Freed Desktop. Browser preview paid requests are disabled."));
+
+const budgetListeners = new Set<() => void>();
+export function onJevBudgetChange(listener: () => void) { budgetListeners.add(listener); return () => { budgetListeners.delete(listener); }; }

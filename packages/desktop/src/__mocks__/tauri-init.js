@@ -1974,6 +1974,8 @@ export function tauriInitScript() {
   get_jev_api_key: () => null,
   set_jev_api_key: () => { throw new Error("Use the browser preview credential controls."); },
   clear_jev_api_key: () => undefined,
+  get_jev_budget: () => null,
+  set_jev_budget: () => { throw new Error("Jev budget requires an explicit test handler."); },
   request_jev: () => { throw new Error("Native Jev requests require an explicit test handler."); },
   cancel_jev_request: () => undefined,
       normalized_desktop_installation_status: () => window.__TAURI_MOCK_LIBRARY_INSTALLATION__ ?? ({
@@ -2224,6 +2226,9 @@ export function tauriInitScript() {
       sha256_file: () => '',
       download_local_ai_model_file: (args) => args && args.request ? args.request.expectedSizeBytes || 0 : 0,
       cancel_local_ai_model_download: () => null,
+      request_gliclass: () => { throw new Error("Native GLiClass inference is unavailable in the browser preview."); },
+      cancel_gliclass_request: () => null,
+      unload_gliclass: () => null,
       get_desktop_installation_witness: () => 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       get_desktop_session_state: () => window.__TAURI_MOCK_DESKTOP_SESSION_STATE__ || ({
         available: true,
