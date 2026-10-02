@@ -113,6 +113,8 @@ test("Jev browser settings manage a tab-local key without paid requests or summa
   await page.locator("button").filter({ hasText: /settings/i }).first().click();
   await page.getByRole("button", { name: "AI", exact: true }).click();
   await expect(section.getByPlaceholder("Paste API key")).toBeVisible();
+  await section.getByRole("button", { name: "Jev classification", exact: true }).click();
   await expect(section.getByText("Key not configured", { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => JSON.stringify({ ...localStorage, ...sessionStorage }))).not.toContain("reload-only-test-key");
   expect(requests).toBe(0);
 });
