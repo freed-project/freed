@@ -596,3 +596,14 @@ and vendor price changes are outside this local estimate-based allowance. The
 ledger is bounded to 100,000 reservations and then fails closed. Browser preview
 paid transport is disabled because it lacks the native ledger. Pricing evidence:
 https://docs.typesafe.ai/models (verified 2026-10-02).
+
+
+### Selected-post reader identity
+
+The reader clears the previous selection's cached title, body and lead media
+before committing a different post identity. Reply hydration settles only in
+the selection generation that requested it, including returning to the same
+post and unmounting. Synthetic regressions cover adjacent posts, A-to-B-to-A,
+late success/failure and out-of-order local cache responses. These tests confirm
+the source defects; they do not attribute the exact installed incident or prove
+all native cache associations. Requests and provider cadence are unchanged.
