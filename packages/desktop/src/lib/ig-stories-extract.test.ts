@@ -29,6 +29,14 @@ describe("ig-stories-extract.js", () => {
     const image = document.querySelector("img") as HTMLImageElement;
     setReadonlyNumber(image, "width", 1080);
     setReadonlyNumber(image, "height", 1350);
+    let mediaReads = 0;
+    Object.defineProperty(image, "src", {
+      configurable: true,
+      get() {
+        mediaReads += 1;
+        throw new Error("Non-story feed chrome must not read a story media URL");
+      },
+    });
 
     const payloads: Array<{ posts: unknown[]; strategy: string }> = [];
     (
@@ -48,6 +56,7 @@ describe("ig-stories-extract.js", () => {
     expect(payloads).toHaveLength(1);
     expect(payloads[0].strategy).toBe("story-viewer-skip");
     expect(payloads[0].posts).toHaveLength(0);
+    expect(mediaReads).toBe(0);
   });
 
   it("keeps alphanumeric story IDs stable across repeated injections", () => {

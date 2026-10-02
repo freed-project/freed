@@ -563,3 +563,13 @@ parameters. Live output quality and account access require API validation.
 ## Demo error prevention
 
 The demo keeps appearance, filters, reader navigation, relationship controls, graph pins, and Story Wall previews. Story Wall publishing credentials and archive imports require Freed Desktop. Unavailable maintenance and diagnostic controls are hidden, including overflow menus and command-triggered dialogs. Failed reader photographs retain readable content with a placeholder. Map loading errors switch to the simplified view without new retries. Newsletter failures preserve the form and show recoverable public copy rather than raw backend errors.
+
+### Foreground frame diagnostics
+
+The Performance tab pauses its frame sampler while the document is hidden and
+resumes one loop when it becomes visible. Hidden time does not count as a
+foreground dropped frame; real foreground stalls remain visible. Synthetic
+hook tests verify visibility transitions and cleanup. This does not establish
+a hardware frame rate or a fix for the reported freeze. The existing app-wide
+heartbeat remains separate, and unsupported LongTask observation still needs
+an explicit diagnostic state.
