@@ -1,0 +1,139 @@
+{
+  "tag": "v26.10.200-dev",
+  "version": "26.10.200-dev",
+  "channel": "dev",
+  "dayKey": "26.10.2",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-10-02T21:04:55.783Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.9.1700-dev",
+    "previousPublishedDayTag": "v26.9.1700-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "a9cf6e35d42ded6f19232d568fe6a2a3e1c53b14",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.9.1700-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "3040c7805152f79fae6a966213849fdae8a882cb",
+        "toInclusiveProductCommitSha": "a9cf6e35d42ded6f19232d568fe6a2a3e1c53b14"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:709197038cc687ff0889d7e28497c08704b0a1f7096f4348479ea36bf5896ccb",
+        "currentDigest": "sha256:87ced2658785f1d28753666537ab09bef76d45848f728aeb12343f22ee70d6d1"
+      },
+      "transitions": [
+        {
+          "activationId": "consumer-successor-archive-and-reissue-v1",
+          "gate": "F",
+          "kind": "recovery_activation",
+          "failureResponse": "Preserve old signed intents and archive bytes. Refuse unverified successors, stale review inputs and unsupported complete transactions. Retain an exact durable replacement link atomically with the new intent; ambiguous responses retry that replacement without signing another action.",
+          "receiptExpectations": [
+            "recovery_receipt",
+            "roll_forward_recovery_receipt"
+          ]
+        },
+        {
+          "activationId": "cooperative-handoff-local-schema-v2",
+          "gate": "F",
+          "kind": "schema_version_activation",
+          "failureResponse": "Refuse an unknown or mismatched physical catalog before mutation. Migrate installation-local handoff and recovery tables atomically with their first durable lifecycle record. Preserve schema 2 databases and use a compatible successor build; never reopen them with a schema 1 binary or delete local recovery state to downgrade.",
+          "receiptExpectations": [
+            "roll_forward_recovery_receipt",
+            "schema_migration_receipt"
+          ]
+        },
+        {
+          "activationId": "cooperative-primary-authority-handoff-v1",
+          "gate": "F",
+          "kind": "authority_key_rotation",
+          "failureResponse": "Before signed source authorization, resume only through the verified cancellation path. After authorization, keep the predecessor fenced and recover the exact saved target transition. Admit the target only after independently verified cloud publication; never infer a winner or restore predecessor writes after ambiguous publication.",
+          "receiptExpectations": [
+            "authority_rotation_receipt",
+            "authority_transition_certificate",
+            "roll_forward_recovery_receipt"
+          ]
+        }
+      ],
+      "inspectionDigest": "sha256:0ce1de8d670f89c44f66dda91ac58f78a0c7918680ec895d02fffda05fd8129e",
+      "decision": {
+        "state": "review_required",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.10.200-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.10.200-dev"
+    ],
+    "prNumbers": [
+      2060,
+      2061,
+      2062,
+      2064,
+      2065,
+      2068,
+      2070,
+      2071,
+      2072
+    ],
+    "commitSubjects": [
+      "fix: repair Jev browser settings regression (#2072)",
+      "fix: hold Library transfers and reduce settled ranking writes (#2071)",
+      "fix: harden recovery and scope Instagram disclosures (#2070)",
+      "fix: preserve social capture content and selected-post identity (#2065)",
+      "feat: add Jev spending limits and local GLiClass previews (#2068)",
+      "fix: bound predecessor offline snapshot export",
+      "fix: preserve a Library snapshot before desktop updates (#2064)",
+      "feat: add Jev evaluation and personal keys to AI settings",
+      "feat: recover consumers and old Primaries after missed transfers (#2062)",
+      "feat: recover archived saved URLs with durable replacement links (#2061)",
+      "perf: stream persistent PWA replica audits through bounded sorting (#2060)",
+      "fix: settle consumer results using local lifecycle time",
+      "feat: add cancellable canonical replica audit receipts",
+      "fix: recognize version-only lockfile backflow",
+      "fix: validate preference projection recovery",
+      "fix: preserve consumer edits across checkpoint handoffs",
+      "feat: add cooperative Primary handoff and consumer edit recovery",
+      "feat: complete headless Library service bootstrap",
+      "fix: anchor PWA preview build paths to repository root",
+      "docs: show local previews before deployment approval"
+    ]
+  },
+  "release": {
+    "deck": "Jev spending limits and local GLiClass previews, jev evaluation and personal keys to AI settings, and harden recovery and scope Instagram disclosures",
+    "features": [
+      "Jev spending limits and local GLiClass previews",
+      "Jev evaluation and personal keys to AI settings",
+      "Recover consumers and old Primaries after missed transfers"
+    ],
+    "fixes": [
+      "Hold Library transfers and reduce settled ranking writes",
+      "Preserve social capture content and selected-post identity",
+      "Bound predecessor offline snapshot export",
+      "Preserve a Library snapshot before desktop updates",
+      "Settle consumer results using local lifecycle time",
+      "Recognize version-only lockfile backflow",
+      "Validate preference projection recovery",
+      "Preserve consumer edits across checkpoint handoffs",
+      "Anchor PWA preview build paths to repository root"
+    ],
+    "followUps": [
+      "Recover archived saved URLs with durable replacement links",
+      "Stream persistent PWA replica audits through bounded sorting",
+      "Cooperative Primary handoff and consumer edit recovery"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.10.200-dev\n\nJev spending limits and local GLiClass previews, jev evaluation and personal keys to AI settings, and harden recovery and scope Instagram disclosures\n\n### Features\n\n- Jev spending limits and local GLiClass previews\n- Jev evaluation and personal keys to AI settings\n- Recover consumers and old Primaries after missed transfers\n\n### Fixes\n\n- Hold Library transfers and reduce settled ranking writes\n- Preserve social capture content and selected-post identity\n- Bound predecessor offline snapshot export\n- Preserve a Library snapshot before desktop updates\n- Settle consumer results using local lifecycle time\n- Recognize version-only lockfile backflow\n- Validate preference projection recovery\n- Preserve consumer edits across checkpoint handoffs\n- Anchor PWA preview build paths to repository root\n\n### Follow-ups\n\n- Recover archived saved URLs with durable replacement links\n- Stream persistent PWA replica audits through bounded sorting\n- Cooperative Primary handoff and consumer edit recovery\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
