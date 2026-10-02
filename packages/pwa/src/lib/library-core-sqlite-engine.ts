@@ -1,3 +1,4 @@
+import { LIBRARY_TRANSFER_ENABLED, requireLibraryTransferCapability } from "./library-transfer-capability";
 import { createLibraryCoreNormalizedCheckpointDigestAccumulatorV2, parseLibraryCoreNormalizedReplicaAuditV1, type LibraryCoreNormalizedReplicaAuditV1 } from "@freed/shared/library-core";
 import { parseLibraryCorePreferenceScopeRequestV1, parseLibraryCorePreferenceScopeResponseV1, type LibraryCorePreferenceScopeRequestV1, type LibraryCorePreferenceScopeResponseV1 } from "@freed/shared/library-core";
 import { parseLibraryCorePreferencesRevisionRequestV1, parseLibraryCorePreferencesRevisionResponseV1, type LibraryCorePreferencesRevisionRequestV1, type LibraryCorePreferencesRevisionResponseV1 } from "@freed/shared/library-core";
@@ -1755,12 +1756,21 @@ export class PwaLibraryCoreSqliteEngine {
       DROP TABLE main.checkpoint_retained_actor_tip;`);
   }
 
+  requireCheckpointTransferCapability(stageId: string): void {
+    if (LIBRARY_TRANSFER_ENABLED) return;
+    const changesAuthority = this.#database.selectValue(`SELECT EXISTS(
+      SELECT 1 FROM library_meta m JOIN library_checkpoint_stages s ON s.stage_id=?1
+      WHERE m.singleton_id=1 AND (m.library_id != s.library_id OR m.authority_epoch != s.authority_epoch));`, [stageId]);
+    if (changesAuthority) requireLibraryTransferCapability();
+  }
+
   /** Prepare async crypto only; activation rechecks this proof under its write lock. */
   async verifyNormalizedCheckpointSuccessor(
     input: LibraryCoreActivateNormalizedCheckpointStageV2,
   ): Promise<void> {
     this.#successorProof = null;
     const activation = parseLibraryCoreActivateNormalizedCheckpointStageV2(input);
+    this.requireCheckpointTransferCapability(activation.stageId);
     if (activation.replaceExisting && activation.followerReceipt !== null) {
       this.#successorProof = await verifyPwaCheckpointSuccessor(
         this.#database, activation.stageId, this.#subtle,
@@ -1769,6 +1779,7 @@ export class PwaLibraryCoreSqliteEngine {
   }
 
   async preparePredecessorCheckpointRead(stageId: string) {
+    this.requireCheckpointTransferCapability(stageId);
     parseLibraryCoreActivateNormalizedCheckpointStageV2({ stageId, replaceExisting: false, followerReceipt: null });
     return await preparePwaHistoricalChainReads(this.#database, stageId, this.#subtle)
       ?? preparePwaPredecessorCheckpointRead(this.#database, stageId, this.#subtle);
@@ -1782,6 +1793,7 @@ export class PwaLibraryCoreSqliteEngine {
     successorStageId: string,
     onProgress?: (completedRecords: number, totalRecords: number) => void,
   ): Promise<LibraryCoreNormalizedCheckpointActivationReceiptV2> {
+    requireLibraryTransferCapability();
     const activation = parseLibraryCoreActivateNormalizedCheckpointStageV2(input);
     // Use the same closed stage-ID codec as ordinary checkpoint activation.
     parseLibraryCoreActivateNormalizedCheckpointStageV2({ ...activation, stageId: successorStageId });
@@ -1842,6 +1854,7 @@ export class PwaLibraryCoreSqliteEngine {
     const { followerReceipt, replaceExisting, stageId } = activation;
     this.#database.exec("BEGIN IMMEDIATE;");
     try {
+      this.requireCheckpointTransferCapability(stageId);
       projection?.beforeReplace();
       this.#database.exec("PRAGMA defer_foreign_keys = ON;");
       const stages = this.#database.exec({
@@ -4365,12 +4378,14 @@ export class PwaLibraryCoreSqliteEngine {
   }
 
   async prepareConsumerRecovery(recoveryId: string, request: LibraryCoreStoreFollowerActorRequestV2): Promise<void> {
+    requireLibraryTransferCapability();
     if (!this.#capi) throw new Error("PWA recovery SQLite transaction API is unavailable");
     await preparePwaConsumerRecovery(this.#database, this.#capi, this.#subtle,
       this.followerActorEnrollmentContext().authority, recoveryId, request);
   }
 
   async commitConsumerRecovery(recoveryId: string, committedAt: number): Promise<void> {
+    requireLibraryTransferCapability();
     if (!this.#capi) throw new Error("PWA recovery SQLite transaction API is unavailable");
     await commitPwaConsumerRecovery(this.#database, this.#capi, this.#subtle,
       this.followerActorEnrollmentContext().authority, recoveryId, committedAt);
@@ -5071,6 +5086,7 @@ export class PwaLibraryCoreSqliteEngine {
   }
 
   async reapplyConsumerIntent(input: LibraryCoreReapplyConsumerIntentV1): Promise<LibraryCoreRecoveryReissueReceiptV1> {
+    requireLibraryTransferCapability();
     const { review, intent } = parseLibraryCoreReapplyConsumerIntentV1(input);
     if (!this.#capi || !this.#database.pointer || this.#capi.sqlite3_get_autocommit(this.#database.pointer) !== 1) {
       throw new Error("Recovery replacement requires its own transaction");

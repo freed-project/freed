@@ -386,6 +386,9 @@ test("feature plan runs strict reusable Library Core checks", () => {
 
   assert.ok(clippy);
   assert.ok(tests);
+  const held = plan.find((item) => item.label === "Library Core default-off transfer tests");
+  assert.ok(held);
+  assert.deepEqual(held.args, ["test", "--no-default-features", "--test", "transfer_hold"]);
   assert.match(clippy.cwd, /\/packages\/library-core-native$/);
   assert.ok(plan.some((item) => item.label === "desktop production build"));
   assert.ok(plan.some((item) => item.label === "native rust clippy"));

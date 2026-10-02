@@ -35,6 +35,11 @@ mod normalized_checkpoint;
 mod normalized_desktop_setup;
 mod normalized_enrollment_verifier;
 mod normalized_follower;
+pub use normalized_import::require_checkpoint_transfer_capability;
+mod transfer_capability;
+pub use transfer_capability::{
+    require_library_transfer_capability, LIBRARY_TRANSFER_ENABLED, LIBRARY_TRANSFER_UNAVAILABLE,
+};
 mod normalized_handoff;
 mod normalized_handoff_activation;
 mod normalized_handoff_cancellation;

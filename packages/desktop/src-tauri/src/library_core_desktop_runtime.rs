@@ -1391,6 +1391,7 @@ pub(super) fn activate_normalized_library_predecessor_checkpoint(
     app: tauri::AppHandle,
     request: ActivatePredecessorCheckpointRequest,
 ) -> Result<freed_library_core::NormalizedCheckpointActivationReceiptV2, String> {
+    freed_library_core::require_library_transfer_capability()?;
     let mut connection = open_checkpoint_import_database(&app)?;
     let library_id: String = connection
         .query_row(
@@ -1522,6 +1523,7 @@ pub(super) async fn reapply_normalized_library_archived_assignments(
     app: tauri::AppHandle,
     request: freed_library_core::RecoveryReissueRequestV1,
 ) -> Result<freed_library_core::RecoveryReissueReceiptV1, String> {
+    freed_library_core::require_library_transfer_capability()?;
     run_normalized_query_off_main(move || {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -1558,6 +1560,7 @@ pub(super) async fn reapply_normalized_library_archived_editor_transaction(
     request: freed_library_core::RecoveryReissueRequestV1,
     canonical_envelope_json: Vec<String>,
 ) -> Result<freed_library_core::RecoveryReissueReceiptV1, String> {
+    freed_library_core::require_library_transfer_capability()?;
     run_normalized_query_off_main(move || {
         let envelopes: Vec<Vec<u8>> = canonical_envelope_json
             .into_iter()
@@ -1606,6 +1609,7 @@ pub(super) async fn read_normalized_library_consumer_recovery(
 pub(super) async fn prepare_normalized_library_consumer_recovery(
     app: tauri::AppHandle,
 ) -> Result<freed_library_core::ConsumerRecoverySummaryV1, String> {
+    freed_library_core::require_library_transfer_capability()?;
     run_normalized_query_off_main(move || {
         let witness = crate::get_desktop_installation_witness()?;
         let now = std::time::SystemTime::now()
@@ -1642,6 +1646,7 @@ pub(super) async fn commit_normalized_library_consumer_recovery(
     app: tauri::AppHandle,
     recovery_id: String,
 ) -> Result<freed_library_core::ConsumerRecoverySummaryV1, String> {
+    freed_library_core::require_library_transfer_capability()?;
     run_normalized_query_off_main(move || {
         let witness = crate::get_desktop_installation_witness()?;
         let now = std::time::SystemTime::now()
@@ -1682,6 +1687,7 @@ pub(super) async fn prepare_normalized_library_handoff_readiness(
     app: tauri::AppHandle,
     created_at_ms: u64,
 ) -> Result<String, String> {
+    freed_library_core::require_library_transfer_capability()?;
     run_normalized_query_off_main(move || {
         #[cfg(unix)]
         {
@@ -1719,6 +1725,7 @@ pub(super) async fn begin_normalized_library_source_handoff(
     selected_target_actor_id: String,
     prepared_at_ms: u64,
 ) -> Result<String, String> {
+    freed_library_core::require_library_transfer_capability()?;
     let provider_gate = {
         use tauri::Manager;
         app.state::<crate::CaptureState>()
@@ -1769,6 +1776,7 @@ pub(super) async fn seal_normalized_library_source_handoff(
     expected: freed_library_core::NormalizedCheckpointExportDescriptorV2,
     sealed_at_ms: u64,
 ) -> Result<freed_library_core::NormalizedCheckpointExportDescriptorV2, String> {
+    freed_library_core::require_library_transfer_capability()?;
     let provider_gate = {
         use tauri::Manager;
         app.state::<crate::CaptureState>()
@@ -1844,6 +1852,7 @@ pub(super) async fn adopt_normalized_library_source_handoff(
     canonical_control: String,
     access_token: String,
 ) -> Result<freed_library_core::NativeHandoffStatusV1, String> {
+    freed_library_core::require_library_transfer_capability()?;
     if canonical_control.len() > 16384 || stage_id.is_empty() || stage_id.len() > 255 {
         return Err("source adoption request exceeds its bounds".into());
     }
@@ -1959,6 +1968,7 @@ pub(super) async fn activate_normalized_library_target_handoff(
     handoff_id: String,
     access_token: String,
 ) -> Result<freed_library_core::NativeHandoffStatusV1, String> {
+    freed_library_core::require_library_transfer_capability()?;
     enum Preparation {
         Active(freed_library_core::NativeHandoffStatusV1),
         Pending(freed_library_core::HandoffVerificationPlanV1),
@@ -2073,6 +2083,7 @@ pub(super) async fn prepare_normalized_library_handoff_activation(
     canonical_control: String,
     prepared_at_ms: u64,
 ) -> Result<String, String> {
+    freed_library_core::require_library_transfer_capability()?;
     run_normalized_query_off_main(move || {
         #[cfg(unix)]
         {
@@ -2111,6 +2122,7 @@ pub(super) async fn stage_normalized_library_target_handoff(
     handoff_id: String,
     staged_at_ms: u64,
 ) -> Result<String, String> {
+    freed_library_core::require_library_transfer_capability()?;
     run_normalized_query_off_main(move || {
         let witness = crate::get_desktop_installation_witness()?;
         #[cfg(unix)]
@@ -2153,6 +2165,7 @@ pub(super) async fn accept_normalized_library_target_handoff_cancellation(
     canonical_cancellation: String,
     applied_at_ms: u64,
 ) -> Result<String, String> {
+    freed_library_core::require_library_transfer_capability()?;
     run_normalized_query_off_main(move || {
         #[cfg(unix)]
         {
@@ -2187,6 +2200,7 @@ pub(super) async fn accept_normalized_library_target_handoff_authorization(
     canonical_authorization: String,
     accepted_at_ms: u64,
 ) -> Result<String, String> {
+    freed_library_core::require_library_transfer_capability()?;
     run_normalized_query_off_main(move || {
         #[cfg(unix)]
         {
@@ -2227,6 +2241,7 @@ pub(super) async fn prepare_normalized_library_handoff_authorization(
     control_revision: String,
     control_file_id: String,
 ) -> Result<String, String> {
+    freed_library_core::require_library_transfer_capability()?;
     run_normalized_query_off_main(move || {
         #[cfg(unix)]
         {
@@ -2266,6 +2281,7 @@ pub(super) async fn authorize_normalized_library_source_handoff(
     canonical_body: String,
     authorized_at_ms: u64,
 ) -> Result<String, String> {
+    freed_library_core::require_library_transfer_capability()?;
     let provider_gate = {
         use tauri::Manager;
         app.state::<crate::CaptureState>()
@@ -2322,6 +2338,7 @@ pub(super) async fn cancel_normalized_library_source_handoff(
     handoff_id: String,
     cancelled_at_ms: u64,
 ) -> Result<(), String> {
+    freed_library_core::require_library_transfer_capability()?;
     let provider_gate = {
         use tauri::Manager;
         app.state::<crate::CaptureState>()

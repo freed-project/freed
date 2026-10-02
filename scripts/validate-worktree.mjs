@@ -727,6 +727,11 @@ function libraryCoreNativeRustChecks() {
       ["test", "--all-features"],
       "packages/library-core-native",
     ),
+    cargoCommand(
+      "Library Core default-off transfer tests",
+      ["test", "--no-default-features", "--test", "transfer_hold"],
+      "packages/library-core-native",
+    ),
   ];
 }
 

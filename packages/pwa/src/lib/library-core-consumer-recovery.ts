@@ -1,3 +1,4 @@
+import { requireLibraryTransferCapability } from "./library-transfer-capability";
 import type { CAPI, Database } from "@sqlite.org/sqlite-wasm";
 import {
   decodeLibraryCoreCanonicalValue, encodeLibraryCoreCanonicalValue,
@@ -210,6 +211,7 @@ function retireCompletedConsumerCycle(db: Database, capi: CAPI, before: ReturnTy
 /** Persist the archive and exact replacement request together, without clearing active slots. */
 export async function preparePwaConsumerRecovery(db: Database, capi: CAPI, subtle: SubtleCrypto, authority: Authority,
   recoveryId: string, input: LibraryCoreStoreFollowerActorRequestV2): Promise<void> {
+  requireLibraryTransferCapability();
   return preparePwaConsumerRecoveryWithStorageAdmission(db, capi, subtle, authority, recoveryId, input);
 }
 
@@ -218,6 +220,7 @@ export async function preparePwaConsumerRecoveryWithStorageAdmission(
   db: Database, capi: CAPI, subtle: SubtleCrypto, authority: Authority,
   recoveryId: string, input: LibraryCoreStoreFollowerActorRequestV2, admitStorage?: () => void,
 ): Promise<void> {
+  requireLibraryTransferCapability();
   if (!isLibraryCoreLowercaseHex64(recoveryId)) throw new Error("consumer recovery identity is invalid");
   input = parseLibraryCoreStoreFollowerActorRequestV2(input);
   const before = candidate(db, authority);
@@ -276,6 +279,7 @@ export async function preparePwaConsumerRecoveryWithStorageAdmission(
 /** Explicitly retire archived slots and install the persisted request in one transaction. */
 export async function commitPwaConsumerRecovery(db: Database, capi: CAPI, subtle: SubtleCrypto, authority: Authority,
   recoveryId: string, committedAt: number): Promise<void> {
+  requireLibraryTransferCapability();
   return commitPwaConsumerRecoveryWithLocalProjection(db,capi,subtle,authority,recoveryId,committedAt);
 }
 
@@ -285,6 +289,7 @@ export async function commitPwaConsumerRecoveryWithLocalProjection(
   recoveryId: string, committedAt: number,
   projection?: { before(): void; admitArchiveStorage(): void; after(fresh: boolean): void },
 ): Promise<void> {
+  requireLibraryTransferCapability();
   if (!isLibraryCoreLowercaseHex64(recoveryId) || !isLibraryCoreNonnegativeSafeInteger(committedAt)) throw new Error("consumer recovery commit identity is invalid");
   const before = archivedRequest(db, recoveryId);
   const verified = await verifyPwaFollowerActorRequest(before.input, authority, subtle);

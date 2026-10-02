@@ -1,3 +1,4 @@
+import { LIBRARY_TRANSFER_ENABLED } from "../lib/library-transfer-capability";
 import { ConsumerRecoverySavedUrlEditor } from "./ConsumerRecoverySavedUrlEditor";
 import { ConsumerRecoveryPreferenceEditor } from "./ConsumerRecoveryPreferenceEditor";
 import { ConsumerRecoveryReachOutEditor } from "./ConsumerRecoveryReachOutEditor";
@@ -52,6 +53,7 @@ export function ConsumerRecoveryReview({ recoveryId: currentRecoveryId = null, r
   recoveryId?: string | null;
   readOnly?: boolean;
 }) {
+  readOnly = readOnly || !LIBRARY_TRANSFER_ENABLED;
   const [recoveryId, setRecoveryId] = useState(currentRecoveryId);
   const [archives, setArchives] = useState<LibraryCoreRecoveryArchivePageResponseV1 | null>(null);
   const [page, setPage] = useState<LibraryCoreRecoveryIntentPageResponseV1 | null>(null);

@@ -1,3 +1,4 @@
+import { LIBRARY_TRANSFER_ENABLED, LIBRARY_TRANSFER_UNAVAILABLE } from "../lib/library-transfer-capability";
 import { ConsumerRecoveryReview } from "./ConsumerRecoveryReview";
 import { useCloudProviders } from "../hooks/useCloudProviders";
 import { useEffect, useRef, useState } from "react";
@@ -17,6 +18,11 @@ const field = "w-full rounded-lg border border-[var(--theme-border-strong)] bg-[
 
 /** Durable phase readback decides which action is available after every restart. */
 export function LibraryHandoffPanel() {
+  if (!LIBRARY_TRANSFER_ENABLED) return <section aria-label="Primary transfer"><h2>Primary transfer</h2><p>{LIBRARY_TRANSFER_UNAVAILABLE}</p><ConsumerRecoveryReview readOnly /></section>;
+  return <EnabledLibraryHandoffPanel />;
+}
+
+function EnabledLibraryHandoffPanel() {
   const credentials = useCloudProviders({ credentialsOnly: true });
   const signingIn = credentials.providers.gdrive.status === "connecting";
   const [cancellationInput, setCancellationInput] = useState("");

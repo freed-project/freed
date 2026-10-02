@@ -94,6 +94,8 @@ custom-protocol = ["tauri/custom-protocol"]
 # Select a closed, nonproduction application data root for local release-build
 # verification. Production and dev release workflows never enable this feature.
 isolated-preview-data-root = []
+# Only isolated workflow acceptance builds may opt in.
+library-transfer-acceptance = ["freed-library-core/library-transfer-acceptance"]
 # Enable structured tracing instrumentation for performance analysis.
 # cargo build --features perf  /  RUST_LOG=freed_desktop=trace cargo run
 perf = ["dep:tracing", "dep:tracing-subscriber"]

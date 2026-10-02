@@ -1,3 +1,4 @@
+import { LIBRARY_TRANSFER_ENABLED, LIBRARY_TRANSFER_UNAVAILABLE } from "../lib/library-transfer-capability";
 import { PwaRecoverySavedUrlEditor } from "./PwaRecoverySavedUrlEditor";
 import { PwaRecoveryPreferenceEditor } from "./PwaRecoveryPreferenceEditor";
 import { PwaRecoveryReachOutEditor } from "./PwaRecoveryReachOutEditor";
@@ -53,6 +54,7 @@ export function PwaConsumerRecovery() {
   const following = status?.state === "following";
   const count = status && status.state !== "none" ? status.pendingIntentCount + status.publishedIntentCount : 0;
   return <section className="theme-card-soft rounded-xl p-4" aria-label="Browser recovery">
+    {!LIBRARY_TRANSFER_ENABLED && <p className="text-sm">{LIBRARY_TRANSFER_UNAVAILABLE}</p>}
     <p className="text-sm font-semibold">{!status ? "Browser recovery unavailable" : following ? "Previous edits preserved" : "Your Primary has changed"}</p>
     <p className="mt-2 text-xs text-[var(--theme-text-secondary)]">
       {!status ? "Check this browser’s recovery status again before continuing." : following ? "Your previous edits are archived. They will not be sent automatically." :
@@ -63,12 +65,12 @@ export function PwaConsumerRecovery() {
     </p>}
     {error && <p role="alert" className="theme-feedback-text-danger mt-2 break-words text-xs">{error}</p>}
     {!status && error && <button type="button" onClick={() => void refreshStatus()} className="btn-secondary mt-3 rounded-lg px-3 py-2 text-sm">Check again</button>}
-    {!following && status && status.state !== "none" && <button type="button" disabled={busy}
+    {!following && status && status.state !== "none" && <button type="button" disabled={!LIBRARY_TRANSFER_ENABLED || busy}
       className="btn-secondary mt-3 w-full rounded-lg px-3 py-2 text-sm disabled:opacity-50"
       onClick={() => void continueRecovery()}>
       {busy ? "Preserving edits" : status.state === "prepared" ? "Continue enrollment" : "Enroll with new Primary"}
     </button>}
-    {status && status.state !== "none" && <PwaRecoveryArchives key={`${status.plan.recoveryId}:${status.state}`} allowReapply={following} />}
+    {status && status.state !== "none" && <PwaRecoveryArchives key={`${status.plan.recoveryId}:${status.state}`} allowReapply={LIBRARY_TRANSFER_ENABLED && following} />}
   </section>;
 }
 
