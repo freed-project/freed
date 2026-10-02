@@ -13,6 +13,51 @@ function setReadonlyNumber(target: object, key: string, value: number) {
 }
 
 describe("ig-stories-extract.js", () => {
+  it.each([
+    { name: "accessible header descendant", marker: '<span aria-label="Sponsored">Sponsored</span>', count: 0 },
+    { name: "accessible header itself", headerAttribute: 'aria-label="Sponsored"', count: 0 },
+    { name: "organic media story", count: 1 },
+    { name: "commercial organic header", marker: '<span>New handmade mugs in our shop</span>', count: 1 },
+    { name: "plain text only is outside accessible scope", marker: '<span>Sponsored</span>', count: 1 },
+    { name: "author named Sponsored", author: "Sponsored", count: 1 },
+    { name: "accessible marker outside header", outside: '<span aria-label="Sponsored">Sponsored</span>', count: 1 },
+  ])("rejects only an explicit accessible Sponsored story header: $name", (fixture) => {
+    window.history.replaceState({}, "", "/stories/alice/ABC123xyz/");
+    document.body.innerHTML = `
+      <div role="dialog">
+        <header ${fixture.headerAttribute ?? ""}>
+          <a href="https://www.instagram.com/alice/">${fixture.author ?? "alice"}</a>
+          ${fixture.marker ?? ""}
+        </header>
+        ${fixture.outside ?? ""}
+        <img src="https://scontent.example/story-frame.jpg" width="1080" height="1920" />
+        <time datetime="2026-03-23T12:00:00.000Z"></time>
+      </div>
+    `;
+    const dialog = document.querySelector('[role="dialog"]') as HTMLElement;
+    setReadonlyNumber(dialog, "offsetHeight", 800);
+    const payloads: Array<{
+      posts: Array<{ shortcode: string; postType: string; mediaUrls: string[] }>;
+      candidateCount: number;
+      rejected?: { suggestedOrSponsored: number };
+    }> = [];
+    (window as unknown as { __TAURI__: unknown }).__TAURI__ = {
+      event: { emit: (_name: string, payload: typeof payloads[number]) => payloads.push(payload) },
+    };
+    window.eval(script);
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0].posts).toHaveLength(fixture.count);
+    if (fixture.count === 0) {
+      expect(payloads[0].candidateCount).toBe(1);
+      expect(payloads[0].rejected?.suggestedOrSponsored).toBe(1);
+    } else {
+      expect(payloads[0].posts[0]).toMatchObject({
+        shortcode: "story_ABC123xyz", postType: "story",
+        mediaUrls: ["https://scontent.example/story-frame.jpg"],
+      });
+    }
+  });
+
   it("does not emit feed cards as stories when no story viewer exists", () => {
     window.history.replaceState({}, "", "/?variant=following");
 

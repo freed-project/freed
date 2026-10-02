@@ -40,7 +40,8 @@
       "id": 7,
       "status": "current",
       "reviewedAt": "2026-10-02T15:35:11.161147Z",
-      "source": "docs/PHASE-7-SOCIAL-CAPTURE.md"
+      "source": "docs/PHASE-7-SOCIAL-CAPTURE.md",
+      "updatedAt": "2026-10-02T16:47:14.397502+00:00"
     },
     {
       "id": 8,
@@ -63,7 +64,8 @@
       "id": 11,
       "status": "current",
       "reviewedAt": "2026-09-29",
-      "source": "docs/PHASE-11-OPENCLAW.md"
+      "source": "docs/PHASE-11-OPENCLAW.md",
+      "updatedAt": "2026-10-02T16:35:26.021676+00:00"
     },
     {
       "id": 12,

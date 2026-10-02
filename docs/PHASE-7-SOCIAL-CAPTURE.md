@@ -505,3 +505,16 @@ These offline regressions do not prove current live markup coverage or zero ads.
 Recommendation-caption false rejection, permalink-less dedup collisions, Facebook
 identity drift and Instagram story paid origin remain separate measured risks.
 Broader extraction changes require their own scoped provider review.
+
+### Scoped Instagram header corrections, October 2, 2026
+
+Approved recommendation detection now checks only exact existing header labels
+for Suggested for you, Suggested Posts and Reels you might like. Personal caption
+uses of suggested and organic commercial captions remain eligible. Existing Follow
+and Sponsored feed exclusions are preserved. Story extraction separately rejects
+only an exact accessible Sponsored marker on the story header or its descendants.
+Author names, commercial wording and accessible markers outside the header are
+not treated as this ad proof. IDs, media/author extraction, navigation and cadence
+are unchanged. Synthetic positive and negative controls protect these scopes;
+installed coverage, other disclosure locations/locales and fallback identity
+collisions remain separate and no live completeness guarantee is claimed.
