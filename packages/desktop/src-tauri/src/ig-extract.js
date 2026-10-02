@@ -328,12 +328,6 @@
   // ── Filter suggested / sponsored / non-following content ─────────────────
 
   function isSuggestedOrSponsored(article) {
-    // "Suggested for you" / "Suggested Posts" label anywhere in article
-    var fullText = textValue(article, 2000);
-    if (/suggested|reels you might like/i.test(fullText)) {
-      return true;
-    }
-
     // Follow button in the header = post from a non-followed account
     var header = article.querySelector("header");
     if (header) {
@@ -343,19 +337,20 @@
         if (btnText === "Follow" || btnText === "Follow Back") return true;
       }
 
-      // A plain disclosure can lack aria-label. Inspect only standalone header
-      // labels; caption wording and text inside author links are not ad proof.
+      // Inspect only standalone header disclosure/recommendation labels;
+      // caption wording and text inside author links are not placement proof.
+      var excludedHeaderLabel = /^(sponsored|suggested for you|suggested posts|reels you might like)$/i;
       var labels = header.querySelectorAll("span, div");
       for (var l = 0; l < labels.length && l < 64; l++) {
         var label = labels[l];
         if (label.closest("a[href]") || label.querySelector("a[href]")) continue;
-        if (/^sponsored$/i.test(textValue(label, 80))) return true;
+        if (excludedHeaderLabel.test(textValue(label, 80))) return true;
       }
       var headerNodes = header.childNodes;
       for (var n = 0; n < headerNodes.length && n < 64; n++) {
         if (
           headerNodes[n].nodeType === 3 &&
-          /^sponsored$/i.test(textValue(headerNodes[n], 80))
+          excludedHeaderLabel.test(textValue(headerNodes[n], 80))
         ) return true;
       }
     }

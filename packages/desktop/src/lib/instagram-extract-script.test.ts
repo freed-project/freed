@@ -55,6 +55,40 @@ describe("Instagram injected extractor", () => {
   });
 
   it.each([
+    { name: "personal suggested caption", caption: "A friend suggested this beautiful hiking trail for our weekend walk.", count: 1 },
+    { name: "discussion of suggested posts", caption: "We discussed suggested posts and how feeds shape our communities.", count: 1 },
+    { name: "commercial organic", caption: "Our handmade mugs are available in the shop this week.", count: 1 },
+    { name: "Suggested for you header", header: "<span>Suggested for you</span>", count: 0 },
+    { name: "Suggested Posts header", header: "<div>Suggested Posts</div>", count: 0 },
+    { name: "Reels header", header: "Reels you might like", count: 0 },
+    { name: "author display name", author: "<span>Suggested Posts</span>", count: 1 },
+    { name: "longer header phrase", header: "<span>Suggested by neighbors</span>", count: 1 },
+    { name: "non-followed header", header: "<button>Follow</button>", count: 0 },
+  ])("checks recommendation labels only in the post header: $name", (fixture) => {
+    const event = runInstagramExtractor(`
+      <body><main><article data-freed-test-height="520">
+        <header>
+          <a href="https://www.instagram.com/synthetic.example/">${fixture.author ?? "synthetic.example"}</a>
+          ${fixture.header ?? ""}
+        </header>
+        <a href="https://www.instagram.com/p/synthetic123/">Open post</a>
+        <div dir="auto">${fixture.caption ?? "An ordinary synthetic caption with enough text."}</div>
+        <img src="https://scontent.cdninstagram.com/synthetic.jpg" width="640" height="640" />
+      </article></main></body>
+    `);
+    expect(event.error).toBeUndefined();
+    expect(event.candidateCount).toBe(1);
+    expect(event.posts).toHaveLength(fixture.count);
+    expect(event.rejected).toMatchObject({ suggestedOrSponsored: 1 - fixture.count });
+    if (fixture.count === 1) {
+      expect(event.posts?.[0]).toMatchObject({
+        shortcode: "synthetic123",
+        mediaUrls: ["https://scontent.cdninstagram.com/synthetic.jpg"],
+      });
+    }
+  });
+
+  it.each([
     { name: "plain header span", disclosure: "<span>Sponsored</span>", count: 0 },
     { name: "plain header div", disclosure: "<div> Sponsored </div>", count: 0 },
     { name: "direct header text", disclosure: "Sponsored", count: 0 },
