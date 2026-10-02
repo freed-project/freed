@@ -748,7 +748,6 @@ test("feature plan routes Library Core release activation changes through the fo
     "--test",
     "scripts/release-receipt.test.mjs",
     "scripts/library-core-release-activation.test.mjs",
-    "scripts/prepare-dev-release-owner-confirmation.test.mjs",
     "scripts/lib/git-path-at-ref.test.mjs",
     "scripts/lib/github-release-publications.test.mjs",
     "scripts/lib/library-core-release-activation.test.mjs",

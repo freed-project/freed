@@ -1,21 +1,30 @@
 # Standing dev release authority
 
+Preserve the owner's actual dated English grant and stable transcript reference
+privately across tasks. A source SHA, test repair, release version or short-lived
+receipt expiry does not revoke standing dev authority. Stop relying on the grant
+only when revoked, explicitly expired, or exceeded. This provenance is
+cooperative task evidence, not owner authentication or a new permission broker.
 
-Retain the actual dated English grant and stable transcript reference in a private
-mode `0600` file outside the repo, inside a mode `0700` directory. Use the
-`standing-dev-release-authority` schema in
-`scripts/prepare-dev-release-owner-confirmation.mjs`: active grant ID, owner,
-original grant time, optional explicit expiry/revocation, transcript provenance,
-and dev-only scope with the previously reviewed manifest and transition digests.
-Never invent, expire without cause or broaden the owner's grant.
+For each nonempty activation manifest delta, review the exact candidate's scope
+using the shipping reference. A previously approved disabled manifest may remain
+within standing publication authority across source repairs. Changed activation
+scope or enabling dormant transitions requires its separate applicable decision.
+Dev publication never grants production, new provider behavior, runtime Library
+activation, primary migration or expanded access. Existing checks stay mandatory.
 
-Run `node scripts/prepare-dev-release-owner-confirmation.mjs` with
-`--artifact=release-notes/releases/<dev-tag>.json`,
-`--authority-file=<absolute-private-grant>`, `--output=<new-private-receipt>` and
-`--task-reference=<active-task>`. It binds the current proposal, preserves grant
-provenance, and refuses changed activation scope or enabled ordinary transfer
-acceptance. Record its one-day receipt through the shipping reference's existing
-`record-owner-approval` flow. Receipt expiry does not expire a standing grant.
-Production, new provider behavior, runtime activation, primary migration and
-expanded access retain separate gates. Empty deltas need no activation receipt.
-Main receives this workflow through normal promotion; www remains lane-specific.
+Run the existing `library-core-release-activation.mjs approval-intent` command for
+the current reviewed artifact. Prepare a fresh private mode `0600` current-task
+confirmation in a mode `0700` directory outside the repository, with that exact
+intent and digest. Retain the original grant time, English decision and transcript
+reference in `ownerApprovalReference` and identify the current task plus grant
+provenance in `approvalSource.reference`. Its issuance timestamp records the new
+exact-operation binding, not another human approval. Preserve the original grant
+separately; never copy an old intent or decision digest to a new candidate.
+
+Record the receipt with the existing `record-owner-approval` command, then run
+normal validation, exact-head CI, protected merge and dedicated tag publication.
+Keep the existing confirmation validity bound of at most seven days; expiry of
+that receipt does not expire an unrevoked standing grant. Empty transition deltas
+need no activation receipt. Main receives this instruction through normal
+promotion; www retains its separate production release authority.
