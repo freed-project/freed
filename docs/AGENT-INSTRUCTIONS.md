@@ -128,6 +128,10 @@ All workflows inherit the root initiative contract, including builds, reviews, r
 - **Ask and continue:** Ask a focused question when a preference materially improves the result. Continue independent authorized work. For optional unanswered preferences, use a stated, reversible default after a reasonable response opportunity; silence never supplies approval.
 - **Pause the affected action:** Stop dependent work for missing authority, an explicit owner review checkpoint, or uncertainty about scope, privacy, durable data, substantial cost, or a difficult-to-reverse choice that cannot be resolved from available evidence. Explain the concrete blocker and cite the exact instruction if one causes the stop. Complete independent preparation first. Do not fabricate an approval or weaken runtime authority.
 
+### Standing authorization
+
+Preserve an explicit standing grant until the owner revokes it, its stated expiry arrives, or the action exceeds its scope. A new candidate SHA, test repair or release version does not itself revoke dev release authority. Retain the original dated owner message and its stable transcript reference privately, then generate fresh exact-candidate evidence through the shipping workflow. Never present a new machine binding as a new human decision. Standing dev authority does not include production, new provider behavior, Library activation, primary migration or expanded access. Those scopes retain their existing gates.
+
 ### Decision updates and closeout
 
 For authorized file-writing work, create `TASK-DECISIONS.local.md` at the first meaningful choice or unanswered question. Read-only tasks report decisions in the response; do not create a log when writes are prohibited. Worktree creation initializes the private log. For simple tasks, a short statement that no material trade-offs arose is sufficient. Ready publication requires a nonempty, ignored, untracked log; drafts still enforce privacy. These checks do not prove reasoning quality or owner acknowledgement.
