@@ -437,6 +437,9 @@ const handlers: Record<string, Handler> = {
     return request?.expectedSizeBytes ?? 0;
   },
   cancel_local_ai_model_download: () => null,
+      request_gliclass: () => { throw new Error("Native GLiClass inference is unavailable in the browser preview."); },
+      cancel_gliclass_request: () => null,
+      unload_gliclass: () => null,
   get_desktop_session_state: () =>
     (
       window as unknown as {

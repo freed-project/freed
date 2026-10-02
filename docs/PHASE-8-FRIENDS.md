@@ -22,6 +22,12 @@ reader declares; identity records and relationship notes stay local. Results are
 ephemeral and add no Friends writer or outreach action. The browser preview also
 provides authored examples. See the [Jev evaluation runbook](JEV-CLASSIFICATION-PREVIEW.md).
 
+GLiClass Base is an optional local provider for post signals in this evaluation
+view. Capability matching still requires the Jev API and an explicit provider
+switch. Selecting GLiClass never silently sends matching or classification text
+to Jev. The local signal labels and thresholds remain experimental.
+
+
 Care levels map to Connection at one or two, Friend at three or four, and Fam
 at five. Editable identity details, directory cards, collapsed selection cards,
 and the identity editor share a keyboard-accessible rating control with category

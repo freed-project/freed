@@ -2226,6 +2226,9 @@ export function tauriInitScript() {
       sha256_file: () => '',
       download_local_ai_model_file: (args) => args && args.request ? args.request.expectedSizeBytes || 0 : 0,
       cancel_local_ai_model_download: () => null,
+      request_gliclass: () => { throw new Error("Native GLiClass inference is unavailable in the browser preview."); },
+      cancel_gliclass_request: () => null,
+      unload_gliclass: () => null,
       get_desktop_installation_witness: () => 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       get_desktop_session_state: () => window.__TAURI_MOCK_DESKTOP_SESSION_STATE__ || ({
         available: true,

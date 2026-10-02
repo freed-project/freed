@@ -2,6 +2,15 @@
 
 > **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, Windows signing plan scaffolded, legal consent gate shipped, tri-state sidebar chrome shipped, public-safe bug reporting shipped, runtime memory telemetry shipped, native startup recovery shipped, bundled recovery updater flow shipped, permanent local social media vault shipped, desktop hot-path side-effect scheduling shipped, bounded SQLite user mutations and queries shipped, visible-scope bulk actions shipped, background runtime coordination shipped, renderer recovery safe mode shipped, deep local WebKit diagnostics shipped, adaptive high-memory scrape budgets shipped, explicit local-only primary Library authority shipped, normalized sample-data accounting, Story Wall candidates, Saved analytics, full-library native search, bounded scheduled RSS refresh, Google Drive checkpoint publication, follower intents, global background activity monitoring, and native terminal sync soaks shipped)
 
+The Jev evaluation MVP includes an optional GLiClass Base v3.0 classifier.
+Selection downloads pinned official Apache-2.0 weights and tokenizer with
+progress, cancel/resume, integrity checks and removal controls. A bundled ONNX
+graph references those exact safetensors bytes. Native CPU inference uses one
+worker and one thread, releases idle model residency, and has no cloud fallback
+or end-user Python dependency. Unchanged evidence reuses a bounded session cache.
+The Jev API remains available. App release acceptance, persistent incremental
+classification and accuracy evaluation remain open.
+
 Saved URL recovery now distinguishes absent targets from deleted items. The
 owner reviews every URL, edits its title or description, and explicitly confirms
 one complete replacement. Original targets, URLs and remaining archived content

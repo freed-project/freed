@@ -13,6 +13,8 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "=2.6.3", features = [] }
 
 [dependencies]
+ort = { version = "=2.0.0-rc.10", default-features = false, features = ["std", "download-binaries", "copy-dylibs"] }
+tokenizers = { version = "=0.21.4", default-features = false, features = ["onig"] }
 freed-library-core = { path = "../../library-core-native" }
 # Decode bounded immutable checkpoint pages during native handoff verification.
 flate2 = "1"
