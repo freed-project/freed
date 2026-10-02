@@ -840,3 +840,17 @@ When promotion moves the actor record to a new epoch, archive review verifies th
 retained authority-signed enrollment certificate against the historical authority
 before checking the original envelopes. The historical snapshot is read-only and
 cannot grant current edit rights. This does not reapply edits as Primary. Full repeated promotion/demotion acceptance remains pending.
+
+### Recovery durability fault coverage, October 2, 2026
+
+Native archived transaction reapplication now refuses SQLite durability below
+FULL before allocating a replacement intent or accessing signing keys. Existing
+recovery links, old signed edits and actor counters remain unchanged on refusal.
+The same recovery transaction tests exercise SIGKILL around source authorization,
+consumer archive and reenrollment, target activation and lost committed responses.
+Real SQLite max-page-count failures cover source signing, archive preparation and
+target activation, with exact persisted-state retry after capacity is restored.
+These are deterministic synthetic process and SQLite-capacity proofs, not physical
+power-loss, full-filesystem exhaustion or installed multi-device acceptance.
+Primary transfer and schema-v2 workflow acceptance remains open; this hardening
+does not grant release activation or remove any existing admission fence.

@@ -187,6 +187,12 @@ fn reapply_archived_transaction(
     if !valid_request(request) || !(0..=MAX_SAFE_INTEGER).contains(&now) {
         return Err("recovery reapplication request is invalid".into());
     }
+    let durability: u32 = connection
+        .pragma_query_value(None, "synchronous", |r| r.get(0))
+        .map_err(|e| e.to_string())?;
+    if durability < 2 {
+        return Err("recovery reapplication requires full SQLite durability".into());
+    }
     let tx = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(|e| e.to_string())?;
@@ -2073,6 +2079,256 @@ mod tests {
             reapply_archived_assignments_v1(&mut db, &request, &NoKeyAccess, 2001).unwrap(),
             receipt
         );
+    }
+
+    #[test]
+    fn recovery_reissue_rejects_weakened_durability_without_allocating() {
+        for mode in ["OFF", "NORMAL"] {
+            let (mut db, request, _) = fixture("feed_item_read_assignment", false);
+            db.pragma_update(None, "synchronous", mode).unwrap();
+            assert!(
+                reapply_archived_assignments_v1(&mut db, &request, &NoKeyAccess, 2000)
+                    .unwrap_err()
+                    .contains("full SQLite durability")
+            );
+            assert_eq!(
+                db.query_row("SELECT next_counter FROM library_intent_actors", [], |r| {
+                    r.get::<_, i64>(0)
+                })
+                .unwrap(),
+                1
+            );
+            assert_eq!(
+                db.query_row(
+                    "SELECT count(*) FROM library_local_recovery_reissues",
+                    [],
+                    |r| r.get::<_, i64>(0)
+                )
+                .unwrap(),
+                0
+            );
+        }
+    }
+
+    #[test]
+    fn recovery_reissue_sqlite_full_rolls_back_link_intent_and_counter() {
+        let (db, request, keys) = fixture("feed_item_read_assignment", false);
+        let root = tempfile::tempdir().unwrap();
+        let mut disk = Connection::open(root.path().join("full.sqlite")).unwrap();
+        rusqlite::backup::Backup::new(&db, &mut disk)
+            .unwrap()
+            .run_to_completion(128, std::time::Duration::ZERO, None)
+            .unwrap();
+        // Small physical pages force signed envelopes to allocate overflow pages.
+        disk.execute_batch(
+            "PRAGMA page_size=512; VACUUM; PRAGMA foreign_keys=ON; PRAGMA synchronous=FULL;",
+        )
+        .unwrap();
+        let pages: u64 = disk
+            .pragma_query_value(None, "page_count", |r| r.get(0))
+            .unwrap();
+        disk.pragma_update(None, "max_page_count", pages).unwrap();
+        let error = reapply_archived_assignments_v1(&mut disk, &request, &keys, 2000).unwrap_err();
+        assert!(error.contains("database or disk is full"), "{error}");
+        assert_eq!(
+            disk.query_row("SELECT next_counter FROM library_intent_actors", [], |r| {
+                r.get::<_, i64>(0)
+            })
+            .unwrap(),
+            1
+        );
+        for table in [
+            "library_local_recovery_reissues",
+            "library_intent_transactions",
+            "library_intent_members",
+        ] {
+            assert_eq!(
+                disk.query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r
+                    .get::<_, i64>(0))
+                    .unwrap(),
+                0
+            );
+        }
+        disk.pragma_update(None, "max_page_count", pages + 1000)
+            .unwrap();
+        let receipt = reapply_archived_assignments_v1(&mut disk, &request, &keys, 2001).unwrap();
+        assert_eq!(
+            reapply_archived_assignments_v1(&mut disk, &request, &NoKeyAccess, 2002).unwrap(),
+            receipt
+        );
+        assert_eq!(
+            disk.query_row("SELECT next_counter FROM library_intent_actors", [], |r| {
+                r.get::<_, i64>(0)
+            })
+            .unwrap(),
+            3
+        );
+    }
+
+    // Runs only when invoked by the parent below, against its synthetic fixture.
+    #[cfg(unix)]
+    #[test]
+    fn recovery_reissue_crash_child() {
+        let Ok(root) = std::env::var("FREED_REISSUE_CRASH_ROOT") else {
+            return;
+        };
+        let root = std::path::Path::new(&root);
+        let request: RecoveryReissueRequestV1 =
+            serde_json::from_slice(&std::fs::read(root.join("request.json")).unwrap()).unwrap();
+        let keys = KeyStore(std::fs::read(root.join("synthetic-key")).unwrap());
+        let mut db =
+            crate::open_normalized_sqlite_database_v1(&root.join("consumer.sqlite"), false)
+                .unwrap();
+        if std::env::var("FREED_REISSUE_CRASH_POINT").unwrap() == "before_commit" {
+            db.commit_hook(Some(|| {
+                unsafe {
+                    libc::raise(libc::SIGKILL);
+                }
+                unreachable!()
+            }));
+        }
+        let receipt = reapply_archived_assignments_v1(&mut db, &request, &keys, 2000).unwrap();
+        std::fs::write(
+            root.join("receipt.json"),
+            serde_json::to_vec(&receipt).unwrap(),
+        )
+        .unwrap();
+        unsafe {
+            libc::raise(libc::SIGKILL);
+        }
+        unreachable!()
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn recovery_reissue_survives_sigkill_at_commit_and_response_loss() {
+        use std::os::unix::process::ExitStatusExt;
+        for point in ["before_commit", "after_commit"] {
+            let root = tempfile::tempdir().unwrap();
+            let (db, request, keys) = fixture("feed_item_read_assignment", false);
+            let writer_admission_count: i64 = db
+                .query_row("SELECT count(*) FROM library_writer_admission", [], |r| {
+                    r.get(0)
+                })
+                .unwrap();
+            let archive_digest: String = db
+                .query_row(
+                    "SELECT archive_digest FROM library_local_recovery_archives",
+                    [],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            let archive_bytes = |db: &Connection| -> Vec<Vec<u8>> {
+                db.prepare("SELECT canonical_row FROM library_local_recovery_rows ORDER BY table_key,row_ordinal").unwrap()
+                    .query_map([], |r| r.get(0)).unwrap().collect::<rusqlite::Result<_>>().unwrap()
+            };
+            let archived = archive_bytes(&db);
+            let path = root.path().join("consumer.sqlite");
+            let mut disk = Connection::open(&path).unwrap();
+            rusqlite::backup::Backup::new(&db, &mut disk)
+                .unwrap()
+                .run_to_completion(128, std::time::Duration::ZERO, None)
+                .unwrap();
+            drop(disk);
+            std::fs::write(
+                root.path().join("request.json"),
+                serde_json::to_vec(&request).unwrap(),
+            )
+            .unwrap();
+            std::fs::write(root.path().join("synthetic-key"), &keys.0).unwrap();
+            let status = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "normalized_recovery_reissue::tests::recovery_reissue_crash_child",
+                    "--nocapture",
+                ])
+                .env("FREED_REISSUE_CRASH_ROOT", root.path())
+                .env("FREED_REISSUE_CRASH_POINT", point)
+                .status()
+                .unwrap();
+            assert_eq!(status.signal(), Some(libc::SIGKILL));
+            let mut disk = crate::open_normalized_sqlite_database_v1(&path, false).unwrap();
+            assert_eq!(
+                disk.query_row("PRAGMA integrity_check", [], |r| r.get::<_, String>(0))
+                    .unwrap(),
+                "ok"
+            );
+            let committed = point == "after_commit";
+            assert_eq!(
+                disk.query_row(
+                    "SELECT count(*) FROM library_local_recovery_reissues",
+                    [],
+                    |r| r.get::<_, i64>(0)
+                )
+                .unwrap(),
+                i64::from(committed)
+            );
+            assert_eq!(
+                disk.query_row("SELECT next_counter FROM library_intent_actors", [], |r| {
+                    r.get::<_, i64>(0)
+                })
+                .unwrap(),
+                if committed { 3 } else { 1 }
+            );
+            let receipt = if committed {
+                let expected: RecoveryReissueReceiptV1 = serde_json::from_slice(
+                    &std::fs::read(root.path().join("receipt.json")).unwrap(),
+                )
+                .unwrap();
+                assert_eq!(
+                    reapply_archived_assignments_v1(&mut disk, &request, &NoKeyAccess, 2001)
+                        .unwrap(),
+                    expected
+                );
+                expected
+            } else {
+                reapply_archived_assignments_v1(&mut disk, &request, &keys, 2001).unwrap()
+            };
+            assert_eq!(
+                reapply_archived_assignments_v1(&mut disk, &request, &NoKeyAccess, 2002).unwrap(),
+                receipt
+            );
+            assert_eq!(
+                disk.query_row("SELECT next_counter FROM library_intent_actors", [], |r| {
+                    r.get::<_, i64>(0)
+                })
+                .unwrap(),
+                3
+            );
+            assert_eq!(
+                disk.query_row(
+                    "SELECT count(*) FROM library_intent_transactions",
+                    [],
+                    |r| r.get::<_, i64>(0)
+                )
+                .unwrap(),
+                1
+            );
+            assert_eq!(
+                disk.query_row("SELECT count(*) FROM library_intent_members", [], |r| r
+                    .get::<_, i64>(0))
+                    .unwrap(),
+                2
+            );
+            assert_eq!(
+                disk.query_row("SELECT count(*) FROM library_writer_admission", [], |r| r
+                    .get::<_, i64>(
+                    0
+                ))
+                .unwrap(),
+                writer_admission_count
+            );
+            assert_eq!(
+                disk.query_row(
+                    "SELECT archive_digest FROM library_local_recovery_archives",
+                    [],
+                    |r| r.get::<_, String>(0)
+                )
+                .unwrap(),
+                archive_digest
+            );
+            assert_eq!(archive_bytes(&disk), archived);
+        }
     }
 
     #[test]
