@@ -342,6 +342,22 @@
         var btnText = (buttons[b].textContent || "").trim();
         if (btnText === "Follow" || btnText === "Follow Back") return true;
       }
+
+      // A plain disclosure can lack aria-label. Inspect only standalone header
+      // labels; caption wording and text inside author links are not ad proof.
+      var labels = header.querySelectorAll("span, div");
+      for (var l = 0; l < labels.length && l < 64; l++) {
+        var label = labels[l];
+        if (label.closest("a[href]") || label.querySelector("a[href]")) continue;
+        if (/^sponsored$/i.test(textValue(label, 80))) return true;
+      }
+      var headerNodes = header.childNodes;
+      for (var n = 0; n < headerNodes.length && n < 64; n++) {
+        if (
+          headerNodes[n].nodeType === 3 &&
+          /^sponsored$/i.test(textValue(headerNodes[n], 80))
+        ) return true;
+      }
     }
 
     // Sponsored indicator: aria-label="Sponsored" or link to /ads/

@@ -12,6 +12,7 @@ type IgFeedEvent = {
   strategy?: string;
   candidateCount?: number;
   rejected?: {
+    suggestedOrSponsored?: number;
     tinyOrInvisible?: number;
     missingContent?: number;
   };
@@ -51,6 +52,42 @@ function runInstagramExtractor(html: string): IgFeedEvent {
 describe("Instagram injected extractor", () => {
   beforeEach(() => {
     document.documentElement.innerHTML = "";
+  });
+
+  it.each([
+    { name: "plain header span", disclosure: "<span>Sponsored</span>", count: 0 },
+    { name: "plain header div", disclosure: "<div> Sponsored </div>", count: 0 },
+    { name: "direct header text", disclosure: "Sponsored", count: 0 },
+    { name: "accessible header", disclosure: '<span aria-label="Sponsored">Sponsored</span>', count: 0 },
+    { name: "commercial organic", caption: "Our handmade mugs are available in the shop this week.", count: 1 },
+    { name: "caption discussion", caption: "We discussed how sponsored posts affect our community today.", count: 1 },
+    { name: "caption marker", caption: "<span>Sponsored</span>", count: 1 },
+    { name: "author display name", author: "<span>Sponsored</span>", count: 1 },
+    { name: "header phrase", disclosure: "<span>Sponsored by local volunteers</span>", count: 1 },
+  ])("scopes plain Sponsored disclosure to the header: $name", (fixture) => {
+    const caption = fixture.caption ?? "A synthetic product announcement with enough text.";
+    const event = runInstagramExtractor(`
+      <body><main><article data-freed-test-height="520">
+        <header>
+          <a href="https://www.instagram.com/synthetic.example/">${fixture.author ?? "synthetic.example"}</a>
+          ${fixture.disclosure ?? ""}
+        </header>
+        <a href="https://www.instagram.com/p/synthetic123/">Open post</a>
+        <div dir="auto">${caption}</div>
+        <img src="https://scontent.cdninstagram.com/synthetic.jpg" width="640" height="640" />
+      </article></main></body>
+    `);
+    expect(event.error).toBeUndefined();
+    expect(event.candidateCount).toBe(1);
+    expect(event.posts).toHaveLength(fixture.count);
+    expect(event.rejected).toMatchObject({ suggestedOrSponsored: 1 - fixture.count });
+    if (fixture.count === 1) {
+      expect(event.posts?.[0]).toMatchObject({
+        shortcode: "synthetic123",
+        authorHandle: "synthetic.example",
+        mediaUrls: ["https://scontent.cdninstagram.com/synthetic.jpg"],
+      });
+    }
   });
 
   it("extracts a single rendered article without requiring div fallback candidates", () => {

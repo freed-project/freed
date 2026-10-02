@@ -485,3 +485,23 @@ Profile whether the HashMap → Vec ordered header change in x_api_request meani
 ## Deliverable
 
 `@freed/capture-facebook` and `@freed/capture-instagram` packages for DOM-based feed capture via Tauri WebView. Location data from these sources feeds into Phase 8 (Friend Map).
+
+
+### Scoped organic retention and paid-disclosure regressions
+
+Facebook admission rejects contradictory or empty evidence envelopes. For already
+admitted observations sharing the existing permalink identity, the capture
+accumulator retains longer text and its matching hashtags while preserving the
+original author, URL, media, metadata and first-seen order. No-permalink identity
+behavior remains unchanged.
+
+Instagram rejects an exact standalone Sponsored disclosure in the article header
+using bounded label reads. Existing accessible disclosure and ads-link rejection
+remain intact. Commercial wording, caption sponsorship discussions and an author
+named Sponsored are organic controls and remain eligible. Requests, clicks,
+scrolling, cookies, retries and capture cadence are unchanged.
+
+These offline regressions do not prove current live markup coverage or zero ads.
+Recommendation-caption false rejection, permalink-less dedup collisions, Facebook
+identity drift and Instagram story paid origin remain separate measured risks.
+Broader extraction changes require their own scoped provider review.
