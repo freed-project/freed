@@ -65,4 +65,3 @@
 8. Never expose a reusable release App token or push the tag with a user credential. The trusted broker must recheck the exact tag, commit, branch tip, receipt digest, and absence preconditions at push time, obtain a short-lived installation token, and permit no arbitrary ref, update, or deletion operation. The tag workflow independently proves the tag SHA belongs to protected `main` for production or protected `dev` for dev. It uses recorded release receipts rather than comparing against a moving live dev tip.
 9. Monitor the tag workflow until every required job for the exact release SHA succeeds. A canceled, stale, different-SHA, or release-identity-invalid run is not evidence for this release.
 10. Repair failures through a new PR in the correct lane, then cut a new version. Do not move or reuse a failed tag.
-
