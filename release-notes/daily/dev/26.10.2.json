@@ -2,13 +2,21 @@
   "channel": "dev",
   "dayKey": "26.10.2",
   "date": "2026-10-02",
-  "preferredDeck": null,
+  "preferredDeck": "Jev spending controls and local GLiClass previews arrive with more reliable social capture and cheaper settled ranking refreshes.",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
     "Demote internal cleanup unless it clearly changes the shipped product."
   ],
-  "pinnedHighlights": [],
-  "editorialNotes": [],
-  "updatedAt": "2026-10-02T21:04:55.784Z"
+  "pinnedHighlights": [
+    "Try Jev with a personal key and conservative USD1 daily and USD10 calendar-month spending limits.",
+    "Run GLiClass Base locally with verified official model downloads and no hosted fallback."
+  ],
+  "editorialNotes": [
+    "Reviewed exact merged source a9cf6e35d42ded6f19232d568fe6a2a3e1c53b14, including the test-only Jev browser refusal repair from PR2072. Source feature validation and security checks passed; post-merge dev integration must pass before publication. This is editorial approval only, not separate owner Library Core review or publication.",
+    "Ordinary build configuration keeps authority transfer, consumer recovery, reenrollment and schema-v2 lifecycle operations disabled. Existing readonly status/fences remain. No runtime migration or authority transition is authorized by these release notes.",
+    "Jev amounts are conservative app reservations, not a provider-account billing ceiling. GLiClass is a local CPU preview with a bounded session cache; persistent background classification is outside this slice.",
+    "Manual native GLiClass UI acceptance was waived by the user and remainsUNTESTED. Synthetic macOSWebKit persistence/nonextractability proves neither Keychain custody nor physicalSafari/iOS acceptance. No real provider calls or primaryLibrary writes were made in this release task."
+  ],
+  "updatedAt": "2026-10-02T21:04:55.893161+00:00"
 }

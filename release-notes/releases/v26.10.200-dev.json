@@ -3,8 +3,13 @@
   "version": "26.10.200-dev",
   "channel": "dev",
   "dayKey": "26.10.2",
-  "approved": false,
-  "editorialNotes": [],
+  "approved": true,
+  "editorialNotes": [
+    "Reviewed exact merged source a9cf6e35d42ded6f19232d568fe6a2a3e1c53b14, including the test-only Jev browser refusal repair from PR2072. Source feature validation and security checks passed; post-merge dev integration must pass before publication. This is editorial approval only, not separate owner Library Core review or publication.",
+    "Ordinary build configuration keeps authority transfer, consumer recovery, reenrollment and schema-v2 lifecycle operations disabled. Existing readonly status/fences remain. No runtime migration or authority transition is authorized by these release notes.",
+    "Jev amounts are conservative app reservations, not a provider-account billing ceiling. GLiClass is a local CPU preview with a bounded session cache; persistent background classification is outside this slice.",
+    "Manual native GLiClass UI acceptance was waived by the user and remainsUNTESTED. Synthetic macOSWebKit persistence/nonextractability proves neither Keychain custody nor physicalSafari/iOS acceptance. No real provider calls or primaryLibrary writes were made in this release task."
+  ],
   "generatedAt": "2026-10-02T21:04:55.783Z",
   "model": "heuristic",
   "source": {
@@ -112,28 +117,26 @@
     ]
   },
   "release": {
-    "deck": "Jev spending limits and local GLiClass previews, jev evaluation and personal keys to AI settings, and harden recovery and scope Instagram disclosures",
+    "deck": "Jev spending controls and local GLiClass previews arrive with more reliable social capture and cheaper settled ranking refreshes.",
     "features": [
-      "Jev spending limits and local GLiClass previews",
-      "Jev evaluation and personal keys to AI settings",
-      "Recover consumers and old Primaries after missed transfers"
+      "Try Jev with a personal key and conservative USD1 daily and USD10 calendar-month spending limits.",
+      "Run GLiClass Base locally with verified official model downloads and no hosted fallback."
     ],
     "fixes": [
-      "Hold Library transfers and reduce settled ranking writes",
-      "Preserve social capture content and selected-post identity",
-      "Bound predecessor offline snapshot export",
-      "Preserve a Library snapshot before desktop updates",
-      "Settle consumer results using local lifecycle time",
-      "Recognize version-only lockfile backflow",
-      "Validate preference projection recovery",
-      "Preserve consumer edits across checkpoint handoffs",
-      "Anchor PWA preview build paths to repository root"
+      "Retain richer Facebook captures for existing post links.",
+      "Reject contradictory social admission and recognize exact Instagram Sponsored headers in feeds and Stories.",
+      "Scope Instagram recommendation labels to feed headers, preserving ordinary captions.",
+      "Keep title, image and replies tied to the selected post.",
+      "Stop FPS diagnostics sampling hidden windows and counting hidden time as dropped frames.",
+      "Use the existing priority/time index for settled ranking refreshes, retaining full scans when state is uncertain.",
+      "Refuse Library signing transactions when SQLite durability is weakened.",
+      "Keep authority-changing Library transfer and consumer recovery unavailable in ordinary builds."
     ],
     "followUps": [
-      "Recover archived saved URLs with durable replacement links",
-      "Stream persistent PWA replica audits through bounded sorting",
-      "Cooperative Primary handoff and consumer edit recovery"
+      "GLiClass remains a preview with a bounded session cache; durable background classification is not included.",
+      "Social fallback identities and live capture completeness still need follow-up.",
+      "Library transfer and schema-v2 lifecycle activation require a separate owner decision before they can be enabled."
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.10.200-dev\n\nJev spending limits and local GLiClass previews, jev evaluation and personal keys to AI settings, and harden recovery and scope Instagram disclosures\n\n### Features\n\n- Jev spending limits and local GLiClass previews\n- Jev evaluation and personal keys to AI settings\n- Recover consumers and old Primaries after missed transfers\n\n### Fixes\n\n- Hold Library transfers and reduce settled ranking writes\n- Preserve social capture content and selected-post identity\n- Bound predecessor offline snapshot export\n- Preserve a Library snapshot before desktop updates\n- Settle consumer results using local lifecycle time\n- Recognize version-only lockfile backflow\n- Validate preference projection recovery\n- Preserve consumer edits across checkpoint handoffs\n- Anchor PWA preview build paths to repository root\n\n### Follow-ups\n\n- Recover archived saved URLs with durable replacement links\n- Stream persistent PWA replica audits through bounded sorting\n- Cooperative Primary handoff and consumer edit recovery\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.10.200-dev\n\nJev spending controls and local GLiClass previews arrive with more reliable social capture and cheaper settled ranking refreshes.\n\n### Features\n\n- Try Jev with a personal key and conservative USD1 daily and USD10 calendar-month spending limits.\n- Run GLiClass Base locally with verified official model downloads and no hosted fallback.\n\n### Fixes\n\n- Retain richer Facebook captures for existing post links.\n- Reject contradictory social admission and recognize exact Instagram Sponsored headers in feeds and Stories.\n- Scope Instagram recommendation labels to feed headers, preserving ordinary captions.\n- Keep title, image and replies tied to the selected post.\n- Stop FPS diagnostics sampling hidden windows and counting hidden time as dropped frames.\n- Use the existing priority/time index for settled ranking refreshes, retaining full scans when state is uncertain.\n- Refuse Library signing transactions when SQLite durability is weakened.\n- Keep authority-changing Library transfer and consumer recovery unavailable in ordinary builds.\n\n### Follow-ups\n\n- GLiClass remains a preview with a bounded session cache; durable background classification is not included.\n- Social fallback identities and live capture completeness still need follow-up.\n- Library transfer and schema-v2 lifecycle activation require a separate owner decision before they can be enabled.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
