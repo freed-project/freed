@@ -69,10 +69,10 @@
       ],
       "inspectionDigest": "sha256:0ce1de8d670f89c44f66dda91ac58f78a0c7918680ec895d02fffda05fd8129e",
       "decision": {
-        "state": "review_required",
-        "ownerApprovalReference": null,
-        "approvedInspectionDigest": null,
-        "approvedReleaseArtifactDigest": null
+        "state": "owner_approved",
+        "ownerApprovalReference": "current-task:release-26-10-200-dev#sha256:d62dc2a8a67c62389108fc236880bdc46555242255737b00c8154d45cb8f6efe",
+        "approvedInspectionDigest": "sha256:0ce1de8d670f89c44f66dda91ac58f78a0c7918680ec895d02fffda05fd8129e",
+        "approvedReleaseArtifactDigest": "sha256:dd08b3cc33c5861cc2cca4aacff153cefa631938d2ca1be53af1c591634d33ee"
       }
     },
     "isLatestOfDay": true,
