@@ -1612,3 +1612,9 @@ pages, and checks an identical re-export. This is checkpoint reconstruction,
 not a signed successor restore or binary downgrade proof. Its conservative
 database/journal budget can refuse small volumes before target creation;
 temporary allocations and other processes' disk use remain separate limits.
+
+### Offline predecessor export compatibility
+
+The offline recovery runner detects a computed checkpoint-export view and copies it once, under one read-only attached-source transaction, into a task-private indexed staging file. It preserves the pinned metadata and canonical records without migrating the source or creating another Library runtime. Subsequent export pages seek that staging tree instead of repeatedly scanning and sorting the predecessor view.
+
+The staging file has a SQLite page cap and bounded cache. Initial admission reserves 10 GiB plus 128 MiB overhead and budgets the staging database/journal conservatively; exact archive admission runs after measurement. Successful capture verifies every canonical record and removes the private staging file. Failed staging preserves the source and fails closed. Synthetic tests cover source immutability, URI read-only enforcement, index use, page-cap refusal, frontier stability after a source writer advances, and isolated reconstruction. Current-corpus capture, reconstruction and signed-successor recovery remain separate operator evidence.
