@@ -1,0 +1,111 @@
+{
+  "tag": "v26.9.2900-dev",
+  "version": "26.9.2900-dev",
+  "channel": "dev",
+  "dayKey": "26.9.29",
+  "approved": true,
+  "editorialNotes": [
+    "Reviewed against the immutable product source. This candidate covers cooperative Desktop transfer and consumer edit recovery; headless authority transfer remains separate. Installed acceptance is still required."
+  ],
+  "generatedAt": "2026-09-29T20:04:41.453Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.9.1700-dev",
+    "previousPublishedDayTag": "v26.9.1700-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "45332a4d2e21c03df275f6f446b0d26c10ef5213",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.9.1700-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "3040c7805152f79fae6a966213849fdae8a882cb",
+        "toInclusiveProductCommitSha": "45332a4d2e21c03df275f6f446b0d26c10ef5213"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:709197038cc687ff0889d7e28497c08704b0a1f7096f4348479ea36bf5896ccb",
+        "currentDigest": "sha256:87ced2658785f1d28753666537ab09bef76d45848f728aeb12343f22ee70d6d1"
+      },
+      "transitions": [
+        {
+          "activationId": "consumer-successor-archive-and-reissue-v1",
+          "gate": "F",
+          "kind": "recovery_activation",
+          "failureResponse": "Preserve old signed intents and archive bytes. Refuse unverified successors, stale review inputs and unsupported complete transactions. Retain an exact durable replacement link atomically with the new intent; ambiguous responses retry that replacement without signing another action.",
+          "receiptExpectations": [
+            "recovery_receipt",
+            "roll_forward_recovery_receipt"
+          ]
+        },
+        {
+          "activationId": "cooperative-handoff-local-schema-v2",
+          "gate": "F",
+          "kind": "schema_version_activation",
+          "failureResponse": "Refuse an unknown or mismatched physical catalog before mutation. Migrate installation-local handoff and recovery tables atomically with their first durable lifecycle record. Preserve schema 2 databases and use a compatible successor build; never reopen them with a schema 1 binary or delete local recovery state to downgrade.",
+          "receiptExpectations": [
+            "roll_forward_recovery_receipt",
+            "schema_migration_receipt"
+          ]
+        },
+        {
+          "activationId": "cooperative-primary-authority-handoff-v1",
+          "gate": "F",
+          "kind": "authority_key_rotation",
+          "failureResponse": "Before signed source authorization, resume only through the verified cancellation path. After authorization, keep the predecessor fenced and recover the exact saved target transition. Admit the target only after independently verified cloud publication; never infer a winner or restore predecessor writes after ambiguous publication.",
+          "receiptExpectations": [
+            "authority_rotation_receipt",
+            "authority_transition_certificate",
+            "roll_forward_recovery_receipt"
+          ]
+        }
+      ],
+      "inspectionDigest": "sha256:48b389f8088c24dc707498d905a006eac0ab2a664c60369fbbc95af36adbef4e",
+      "decision": {
+        "state": "review_required",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.9.2900-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.9.2900-dev"
+    ],
+    "prNumbers": [],
+    "commitSubjects": [
+      "feat: add cooperative Primary handoff and consumer edit recovery",
+      "feat: complete headless Library service bootstrap",
+      "fix: anchor PWA preview build paths to repository root",
+      "docs: show local previews before deployment approval"
+    ]
+  },
+  "release": {
+    "deck": "Cooperative Primary transfers and explicit recovery for offline consumer edits",
+    "features": [
+      "Freed Desktop can transfer Primary authority to another enrolled installation and resume the transfer after restart",
+      "Desktop and PWA consumers can review archived edits and explicitly apply eligible changes again after an authority transfer",
+      "The former Primary can join the successor as a consumer, and later transfers retain access to earlier recovery archives"
+    ],
+    "fixes": [
+      "The source stops capture before authorizing a transfer, and the target stays fenced until it verifies the published successor",
+      "Retrying a recovery action after a lost response returns its original replacement instead of creating a duplicate edit",
+      "Recovery editors preserve complete transactions and compare archived values with current Library state before signing",
+      "Closing or replacing an archive review cancels its pending native read",
+      "An activated target can prepare a later transfer back to another enrolled installation"
+    ],
+    "followUps": [
+      "This dev candidate requires end-to-end acceptance with two isolated Desktop installations and the matching PWA before moving the owner Library",
+      "After transfer or recovery activates local schema 2, preserve the database and use a compatible successor build. Do not downgrade it with an older binary",
+      "Headless authority transfer remains a separate delivery; unilateral headless promotion is refused"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.9.2900-dev\n\nCooperative Primary transfers and explicit recovery for offline consumer edits\n\n### Features\n\n- Freed Desktop can transfer Primary authority to another enrolled installation and resume the transfer after restart\n- Desktop and PWA consumers can review archived edits and explicitly apply eligible changes again after an authority transfer\n- The former Primary can join the successor as a consumer, and later transfers retain access to earlier recovery archives\n\n### Fixes\n\n- The source stops capture before authorizing a transfer, and the target stays fenced until it verifies the published successor\n- Retrying a recovery action after a lost response returns its original replacement instead of creating a duplicate edit\n- Recovery editors preserve complete transactions and compare archived values with current Library state before signing\n- Closing or replacing an archive review cancels its pending native read\n- An activated target can prepare a later transfer back to another enrolled installation\n\n### Follow-ups\n\n- This dev candidate requires end-to-end acceptance with two isolated Desktop installations and the matching PWA before moving the owner Library\n- After transfer or recovery activates local schema 2, preserve the database and use a compatible successor build. Do not downgrade it with an older binary\n- Headless authority transfer remains a separate delivery; unilateral headless promotion is refused\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
