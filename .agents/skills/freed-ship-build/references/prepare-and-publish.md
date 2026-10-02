@@ -22,6 +22,10 @@
    requires exactly one nonempty `review_required` activation. It cannot admit
    a no-activation or already approved release.
 
+   For a standing dev grant, first read
+   [standing-authority evidence](../../../../docs/DEV-RELEASE-AUTHORITY.md).
+   Do not ask again because the source SHA or version changed.
+
    If the owner has approved the exact release and activation in the active
    task, run
    `node scripts/library-core-release-activation.mjs approval-intent --artifact=release-notes/releases/<tag>.json`.
@@ -41,7 +45,10 @@
    source product commit, manifest digest, inspection digest, transition set,
    tag, channel, and artifact path. This is cooperative evidence, not owner
    authentication, so it is valid only when the active task contains the
-   owner's explicit English decision. Never invent that decision, reuse a
+   owner's explicit English decision, including a standing grant that covers
+   this dev publication. Preserve the original grant time and transcript
+   reference; a fresh receipt issuance time is not a new human approval. Never
+   invent that decision, reuse a
    confirmation for another operation, hand-edit the decision fields, or
    confuse release authority with runtime activation authority. The older
    authenticated GitHub comment route remains an optional compatibility path
