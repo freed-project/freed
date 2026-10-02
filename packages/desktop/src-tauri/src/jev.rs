@@ -5,6 +5,7 @@ use std::{
     sync::{LazyLock, Mutex},
     time::Duration,
 };
+use tauri::Manager;
 use tokio::sync::oneshot;
 
 const ENDPOINT: &str = "https://api.typesafe.ai/v1/systemone";
@@ -228,13 +229,19 @@ pub async fn request_jev(
         return Err("Invalid Jev request identity.".into());
     }
     let body = validate_payload(&payload)?;
+    let budget_root = budget_root(&window)?;
+    let reservation_id = request_id.clone();
     let (_slot, receiver) = RequestSlot::acquire(request_id)?;
     tokio::select! {
         _ = receiver => Err("Jev request cancelled.".into()),
         result = tokio::time::timeout(Duration::from_secs(30), async {
+            // Fail closed before credential access as well as provider contact.
+            tauri::async_runtime::spawn_blocking(move || crate::jev_budget::reserve(&budget_root, &reservation_id)).await.map_err(|_| "Jev budget check interrupted.".to_string())??;
             let _credentials = CREDENTIAL_LOCK.read().await;
             let key = read_key_async().await?.ok_or("Add your Jev API key in AI settings.")?;
             validate_key(&key)?;
+            // No refund even for a missing key: this is conservative allowance,
+            // not evidence of provider contact or an actual billed charge.
             send_request(body, key).await
         }) => result.unwrap_or_else(|_| Err("Jev request timed out.".into())),
     }
@@ -378,4 +385,34 @@ mod tests {
         .is_err());
         server.abort();
     }
+}
+
+fn budget_root(window: &tauri::WebviewWindow) -> Result<std::path::PathBuf, String> {
+    window
+        .app_handle()
+        .path()
+        .app_config_dir()
+        .map(|root| root.join("jev-spend"))
+        .map_err(|_| "Jev budget location unavailable.".into())
+}
+#[tauri::command]
+pub async fn get_jev_budget(
+    window: tauri::WebviewWindow,
+) -> Result<Option<crate::jev_budget::Status>, String> {
+    check_window(&window)?;
+    let root = budget_root(&window)?;
+    tauri::async_runtime::spawn_blocking(move || crate::jev_budget::status(&root))
+        .await
+        .map_err(|_| "Jev budget check interrupted.".to_string())?
+}
+#[tauri::command]
+pub async fn set_jev_budget(
+    window: tauri::WebviewWindow,
+    limits: crate::jev_budget::Limits,
+) -> Result<crate::jev_budget::Status, String> {
+    check_window(&window)?;
+    let root = budget_root(&window)?;
+    tauri::async_runtime::spawn_blocking(move || crate::jev_budget::configure(&root, limits))
+        .await
+        .map_err(|_| "Jev budget update interrupted.".to_string())?
 }

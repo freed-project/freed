@@ -1974,6 +1974,8 @@ export function tauriInitScript() {
   get_jev_api_key: () => null,
   set_jev_api_key: () => { throw new Error("Use the browser preview credential controls."); },
   clear_jev_api_key: () => undefined,
+  get_jev_budget: () => null,
+  set_jev_budget: () => { throw new Error("Jev budget requires an explicit test handler."); },
   request_jev: () => { throw new Error("Native Jev requests require an explicit test handler."); },
   cancel_jev_request: () => undefined,
       normalized_desktop_installation_status: () => window.__TAURI_MOCK_LIBRARY_INSTALLATION__ ?? ({

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ApiKeyInput } from "@freed/ui/components/settings/AISection";
 import { isJevNative, jevCredentials, testJevConnection } from "../lib/jev-client";
+import { JevSpendingLimits } from "./JevSpendingLimits";
 import { JevClassificationPreview } from "./JevClassificationPreview";
 
 /** Jev is independent of the summary provider and never updates synced AI preferences. */
@@ -23,6 +24,7 @@ export function JevSettingsSection() {
   return <section aria-label="Jev settings" className="space-y-3 rounded-lg border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-surface)] p-4">
     <h3 className="text-sm font-semibold text-[var(--theme-text-primary)]">Jev</h3>
     <p className="text-xs leading-5 text-[var(--theme-text-muted)]">Classify posts, find people you can help, and explore collaboration. Bring your own TypeSafe API key. Jev runs separately from your summary provider.</p>
+    <JevSpendingLimits />
     <ApiKeyInput provider="jev" {...jevCredentials} onChanged={() => { controller.current?.abort(); setTesting(false); setMessage(null); }} />
     <p className="text-xs text-[var(--theme-text-soft)]">{isJevNative ? "Stored in this device’s system credential vault. Never synced." : "Browser preview: the key stays in this tab’s memory until reload. Requests pass through this private preview server without saving the key."}</p>
     <div className="flex flex-wrap items-center gap-2">
