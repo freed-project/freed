@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockCheck, mockInvoke } = vi.hoisted(() => ({
+const { mockCheck, mockInvoke, mockSnapshot, mockLibraryActive } = vi.hoisted(() => ({
   mockCheck: vi.fn(),
   mockInvoke: vi.fn(),
+  mockSnapshot: vi.fn(),
+  mockLibraryActive: vi.fn(),
 }));
 
 vi.mock("@tauri-apps/plugin-updater", () => ({
@@ -13,7 +15,12 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: mockInvoke,
 }));
 
+vi.mock("./snapshots", () => ({ createSnapshot: mockSnapshot }));
+vi.mock("./sqlite-library", () => ({ isSqliteLibraryActive: mockLibraryActive }));
+
 import {
+  installPendingDesktopUpdate,
+  type PendingDesktopUpdate,
   checkDesktopUpdate,
   getDesktopDownloadFallbackUrl,
   mapUpdaterTargetToDownloadTarget,
@@ -21,9 +28,47 @@ import {
 
 describe("desktop updater helpers", () => {
   beforeEach(() => {
+    mockSnapshot.mockReset().mockResolvedValue({ id: "snapshot-before-update" });
+    mockLibraryActive.mockReset().mockReturnValue(true);
     mockCheck.mockReset();
     mockInvoke.mockReset();
     mockInvoke.mockResolvedValue("darwin-aarch64");
+  });
+
+  function pending(downloadAndInstall = vi.fn().mockResolvedValue(undefined)) {
+    return {
+      channel: "dev", nativeUpdaterTarget: "darwin-aarch64", fallbackDownloadUrl: "https://dev.freed.wtf/get",
+      update: { version: "26.10.200", downloadAndInstall },
+    } as unknown as PendingDesktopUpdate;
+  }
+
+  it("does not replace the installed build until its Library snapshot completes", async () => {
+    let finish!: (value: unknown) => void;
+    mockSnapshot.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    const update = pending();
+    const install = installPendingDesktopUpdate(update);
+    expect(mockSnapshot).toHaveBeenCalledWith("manual");
+    expect(update.update.downloadAndInstall).not.toHaveBeenCalled();
+    finish({ id: "snapshot-before-update" });
+    await expect(install).resolves.toBe("26.10.200");
+    expect(update.update.downloadAndInstall).toHaveBeenCalledOnce();
+  });
+
+  it("refuses installation when snapshot capture fails or the active Library disappears", async () => {
+    const update = pending();
+    mockSnapshot.mockRejectedValueOnce(new Error("insufficient space"));
+    await expect(installPendingDesktopUpdate(update)).rejects.toThrow("insufficient space");
+    mockSnapshot.mockResolvedValueOnce(null);
+    await expect(installPendingDesktopUpdate(update)).rejects.toThrow("update was not installed");
+    expect(update.update.downloadAndInstall).not.toHaveBeenCalled();
+  });
+
+  it("keeps a repair update possible when startup could not open the Library", async () => {
+    mockLibraryActive.mockReturnValue(false);
+    const update = pending();
+    await expect(installPendingDesktopUpdate(update)).resolves.toBe("26.10.200");
+    expect(mockSnapshot).not.toHaveBeenCalled();
+    expect(update.update.downloadAndInstall).toHaveBeenCalledOnce();
   });
 
   it("maps supported updater targets to website download targets", () => {

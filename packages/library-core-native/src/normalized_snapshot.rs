@@ -661,6 +661,40 @@ pub fn create_normalized_local_snapshot_v1(
     create_normalized_local_snapshot_in_v1(connection, &snapshot_root, created_at_ms, reason)
 }
 
+// Traverse bounded pages at one pinned SQLite revision. The first pass hashes
+// into a sink; the second writes the identical records after their manifest.
+fn write_snapshot_records(
+    connection: &Connection,
+    writer: &mut impl Write,
+) -> Result<(String, u64, u64), NormalizedSqliteError> {
+    let mut cursor = None;
+    let mut accumulator = NormalizedCheckpointDigestAccumulatorV2::new();
+    loop {
+        let page = export_normalized_checkpoint_page_v2(
+            connection,
+            &NormalizedCheckpointExportRequestV2 {
+                after: cursor,
+                ..NormalizedCheckpointExportRequestV2::default()
+            },
+        )?;
+        for record in &page.records {
+            accumulator.push(record)?;
+            writer
+                .write_all(&canonical_record(record)?)
+                .and_then(|_| writer.write_all(b"\n"))
+                .map_err(|error| snapshot_error(error.to_string()))?;
+        }
+        cursor = page.next_cursor;
+        if page.done {
+            break;
+        }
+        if cursor.is_none() {
+            return Err(snapshot_error("normalized snapshot export lost its cursor"));
+        }
+    }
+    Ok(accumulator.finish())
+}
+
 fn create_normalized_local_snapshot_in_v1(
     connection: &mut Connection,
     snapshot_root: &SnapshotDirectory,
@@ -673,40 +707,8 @@ fn create_normalized_local_snapshot_in_v1(
 
     let transaction = connection.transaction()?;
     let descriptor = describe_normalized_checkpoint_export_v2(&transaction)?;
-    let records_file = snapshot_root.create_private_file(SNAPSHOT_RECORDS_PENDING_FILE)?;
-    let mut records_writer = BufWriter::new(records_file);
-    let mut cursor = None;
-    let mut accumulator = NormalizedCheckpointDigestAccumulatorV2::new();
-    loop {
-        let page = export_normalized_checkpoint_page_v2(
-            &transaction,
-            &NormalizedCheckpointExportRequestV2 {
-                after: cursor,
-                ..NormalizedCheckpointExportRequestV2::default()
-            },
-        )?;
-        for record in &page.records {
-            accumulator.push(record)?;
-            records_writer
-                .write_all(&canonical_record(record)?)
-                .and_then(|_| records_writer.write_all(b"\n"))
-                .map_err(|error| snapshot_error(error.to_string()))?;
-        }
-        cursor = page.next_cursor;
-        if page.done {
-            break;
-        }
-        if cursor.is_none() {
-            return Err(snapshot_error("normalized snapshot export lost its cursor"));
-        }
-    }
-    transaction.commit()?;
-    records_writer
-        .flush()
-        .and_then(|_| records_writer.get_ref().sync_all())
-        .map_err(|error| snapshot_error(error.to_string()))?;
-    drop(records_writer);
-    let (checkpoint_digest, record_count, canonical_record_bytes) = accumulator.finish();
+    let (checkpoint_digest, record_count, canonical_record_bytes) =
+        write_snapshot_records(&transaction, &mut std::io::sink())?;
     if usize::try_from(record_count).ok() != Some(descriptor.record_count) {
         return Err(snapshot_error(
             "normalized snapshot export record count changed",
@@ -746,14 +748,22 @@ fn create_normalized_local_snapshot_in_v1(
         .write_all(&canonical_manifest(&manifest)?)
         .and_then(|_| archive_writer.write_all(b"\n"))
         .map_err(|error| snapshot_error(error.to_string()))?;
-    let mut records_reader = snapshot_root.open_private_file(SNAPSHOT_RECORDS_PENDING_FILE)?;
-    std::io::copy(&mut records_reader, &mut archive_writer)
-        .map_err(|error| snapshot_error(error.to_string()))?;
+    let written = write_snapshot_records(&transaction, &mut archive_writer)?;
+    if written
+        != (
+            manifest.identity.checkpoint_digest.clone(),
+            manifest.identity.checkpoint.record_count as u64,
+            manifest.identity.canonical_record_bytes,
+        )
+    {
+        return Err(snapshot_error("normalized snapshot replay changed"));
+    }
     archive_writer
         .flush()
         .and_then(|_| archive_writer.get_ref().sync_all())
         .map_err(|error| snapshot_error(error.to_string()))?;
     drop(archive_writer);
+    transaction.commit()?;
     snapshot_root.rename(SNAPSHOT_PENDING_FILE, &final_name)?;
     snapshot_root.sync()?;
     snapshot_root.remove_file(SNAPSHOT_RECORDS_PENDING_FILE)?;
@@ -1215,6 +1225,51 @@ mod tests {
                 .as_ref()
                 .to_vec(),
         )
+    }
+
+    #[test]
+    fn snapshot_hash_and_write_passes_keep_one_frontier_while_other_writers_advance() {
+        let directory = tempdir().unwrap();
+        let database = directory.path().join("library.sqlite");
+        let mut connection = Connection::open(&database).unwrap();
+        connection
+            .pragma_update(None, "journal_mode", "WAL")
+            .unwrap();
+        install_normalized_schema_v1(&connection).unwrap();
+        prepare_fresh_normalized_desktop_library_v1(
+            &mut connection,
+            &"5".repeat(64),
+            &key_store(),
+            &key_store(),
+            1_000,
+        )
+        .unwrap();
+        connection
+            .execute(
+                "INSERT INTO library_preferences (path, value_type, text_value, updated_at)
+             VALUES ('v:$.display.theme', 'text', 'before', 1_100);",
+                [],
+            )
+            .unwrap();
+        let transaction = connection.transaction().unwrap();
+        let first = write_snapshot_records(&transaction, &mut std::io::sink()).unwrap();
+        let writer = Connection::open(&database).unwrap();
+        writer.execute_batch(
+            "UPDATE library_preferences SET text_value = 'after', updated_at = 2_100
+             WHERE path = 'v:$.display.theme';
+             UPDATE library_meta SET source_revision = 1, updated_at = 2_100 WHERE singleton_id = 1;",
+        ).unwrap();
+        let mut archive_records = Vec::new();
+        let written = write_snapshot_records(&transaction, &mut archive_records).unwrap();
+        assert_eq!(written, first);
+        let text = String::from_utf8(archive_records).unwrap();
+        assert!(text.contains("before"));
+        assert!(!text.contains("after"));
+        transaction.commit().unwrap();
+        assert_ne!(
+            write_snapshot_records(&connection, &mut std::io::sink()).unwrap(),
+            first
+        );
     }
 
     #[test]

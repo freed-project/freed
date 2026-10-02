@@ -1591,3 +1591,9 @@ The native two-transfer lifecycle covers consent tampering, failed cleanup,
 retry, database reopening, explicit successor enrollment and preparation to
 receive authority again. Adoption alone grants no edit or capture rights.
 Installed multi-device acceptance and actual host transition remain pending.
+
+### Pre-upgrade Library snapshots, October 2, 2026
+
+An update from an active Library now waits for an existing normalized local snapshot before downloading and replacing the app. Snapshot failure prevents installation. Startup repair can still install a compatible successor when the Library cannot open. This does not claim that an older binary can read a newer physical catalog.
+
+Snapshot capture hashes and then writes bounded checkpoint pages from one pinned read transaction. The unchanged canonical archive format needs one temporary archive rather than a second complete records file. A concurrent-writer fixture verifies both passes retain the same frontier; existing restore and corruption checks remain applicable. Logical snapshots contain the selected checkpoint records, including inline content chunks, but external content and installation-local lifecycle state still require their own recovery evidence. Installed current-frontier capture and prior-build compatibility remain to be verified before rollout.

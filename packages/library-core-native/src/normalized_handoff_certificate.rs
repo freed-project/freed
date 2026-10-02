@@ -3990,11 +3990,14 @@ mod tests {
         .unwrap();
         let prior =
             crate::normalized_sqlite::describe_normalized_checkpoint_export_v2(&consumer).unwrap();
+        // ATTACH inherits SQLITE_OPEN_NOFOLLOW. Resolve the macOS temporary-root
+        // symlink just as the platform path opener does for the main database.
+        let original_consumer_path = std::fs::canonicalize(&path).unwrap();
         // Carry the enrolled consumer's original local bytes into this replica.
         consumer
             .execute(
                 "ATTACH DATABASE ?1 AS original_consumer;",
-                [path.to_str().unwrap()],
+                [original_consumer_path.to_str().unwrap()],
             )
             .unwrap();
         for table in [
