@@ -1640,3 +1640,5 @@ Synthetic signed handoff coverage verifies retained actor identity across promot
 An explicit transfer-acceptance build pairs native and frontend capabilities, requires the isolated preview data root, and disables update endpoints. Ordinary release transfer holds remain in place. Installed multi-device acceptance is still required.
 
 The dev release workflow also builds a separately named, signed and notarized Apple Silicon transfer-acceptance app. It uses the explicit acceptance configuration, has no updater endpoint, and cannot be selected by the ordinary updater asset pattern. Signing-job success and actual installed multi-device acceptance remain separate evidence.
+
+Updater manifests select the ordinary artifact filename for the exact release version on every platform. An earlier preview upload or a differently versioned asset cannot substitute for a missing ordinary build, even if it carries a signature.

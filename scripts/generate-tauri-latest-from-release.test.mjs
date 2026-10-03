@@ -58,6 +58,9 @@ test("generates updater platforms from Tauri release assets", () => {
       // They have no updater signature and must never become an update.
       { name: "Freed-Transfer-Acceptance_26.4.2304_aarch64.app.tar.gz",
         browser_download_url: "https://example.test/acceptance.app.tar.gz" },
+      { name: "Freed_Preview_26.4.2304_aarch64.app.tar.gz",
+        browser_download_url: "https://example.test/preview.app.tar.gz" },
+      ...updaterAssets("26.4.2303"),
       ...updaterAssets(),
     ],
   };
@@ -88,6 +91,19 @@ test("generates updater platforms from Tauri release assets", () => {
     manifest.platforms["linux-x86_64"].signature,
     "appimage-signature",
   );
+});
+
+test("a signed preview or older asset cannot replace a missing ordinary release", () => {
+  const preview = "Freed_Preview_26.4.2304_aarch64.app.tar.gz";
+  assert.throws(() => generateLatestManifest({
+    release: { tag_name: "v26.4.2304-dev", assets: [
+      { name: preview, browser_download_url: "https://example.test/preview.app.tar.gz" },
+      ...updaterAssets("26.4.2303"),
+      ...updaterAssets().filter(asset => !asset.name.endsWith("_aarch64.app.tar.gz")),
+    ] },
+    signatureDir: signatureDir({ ...updaterSignatures(), ...updaterSignatures("26.4.2303"),
+      [`${preview}.sig`]: "preview-signature" }),
+  }), /Missing required updater platforms: darwin-aarch64/);
 });
 
 test("throws when an updater artifact has no signature", () => {
