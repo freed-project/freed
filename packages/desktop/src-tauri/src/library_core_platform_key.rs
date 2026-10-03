@@ -26,6 +26,82 @@ pub(crate) const KEYRING_SERVICE: &str = "wtf.freed.library-core";
 pub(crate) const KEYRING_SERVICE: &str = "wtf.freed.library-core.sqlite-native-preview";
 const MAXIMUM_SUBJECT_BYTES: usize = 128;
 
+#[cfg(feature = "isolated-preview-data-root")]
+fn preview_keyring_service(config: Option<&str>) -> Result<String, String> {
+    let Some(config) = config else {
+        return Ok(KEYRING_SERVICE.to_string());
+    };
+    let value: serde_json::Value = serde_json::from_str(config)
+        .map_err(|_| "invalid isolated Library Core configuration".to_string())?;
+    let identifier = value
+        .get("identifier")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "missing isolated Library Core identifier".to_string())?;
+    if identifier.len() > 128
+        || !identifier
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-'))
+        || !(identifier == "wtf.freed.desktop.sqlite-native-preview"
+            || identifier
+                .strip_prefix("wtf.freed.desktop.preview.")
+                .is_some_and(|suffix| !suffix.is_empty()))
+    {
+        return Err("invalid isolated Library Core identifier".to_string());
+    }
+    // Preserve every existing preview service. Only new measurement candidates
+    // receive a distinct service; legacy account reads remain inside that service.
+    if let Some(suffix) = identifier.strip_prefix("wtf.freed.desktop.preview.measurement.") {
+        if suffix.is_empty() {
+            return Err("missing measurement identity".to_string());
+        }
+        return Ok(format!("{KEYRING_SERVICE}.{identifier}"));
+    }
+    Ok(KEYRING_SERVICE.to_string())
+}
+
+#[cfg(all(test, feature = "isolated-preview-data-root"))]
+mod measurement_namespace_tests {
+    use super::*;
+    fn service(id: &str) -> Result<String, String> {
+        preview_keyring_service(Some(&serde_json::json!({"identifier": id}).to_string()))
+    }
+    #[test]
+    fn existing_services_are_preserved() {
+        assert_eq!(preview_keyring_service(None).unwrap(), KEYRING_SERVICE);
+        for id in [
+            "wtf.freed.desktop.sqlite-native-preview",
+            "wtf.freed.desktop.preview.gliclass20261002",
+            "wtf.freed.desktop.preview.transfer-acceptance",
+        ] {
+            assert_eq!(service(id).unwrap(), KEYRING_SERVICE);
+        }
+    }
+    #[test]
+    fn fresh_measurements_cannot_read_existing_preview_service() {
+        let a = service("wtf.freed.desktop.preview.measurement.r1.a1").unwrap();
+        let b = service("wtf.freed.desktop.preview.measurement.r1.a2").unwrap();
+        assert_ne!(a, b);
+        assert_ne!(a, KEYRING_SERVICE);
+    }
+    #[test]
+    fn invalid_configuration_fails_before_vault_access() {
+        for id in [
+            "wtf.freed.desktop",
+            "wtf.freed.desktop.preview.",
+            "wtf.freed.desktop.preview.measurement.",
+            "wtf.freed.desktop.preview.measurement../x",
+        ] {
+            assert!(service(id).is_err());
+        }
+        assert!(preview_keyring_service(Some("not-json")).is_err());
+        assert!(service(&format!(
+            "wtf.freed.desktop.preview.measurement.{}",
+            "x".repeat(128)
+        ))
+        .is_err());
+    }
+}
+
 /// One named private key: which vault account holds it, and how its envelope
 /// is tagged. Both are stable identifiers, so changing either orphans the key
 /// already stored under the old pair rather than reading it as something else.
@@ -61,7 +137,11 @@ pub(crate) fn validate_subject(value: &str) -> Result<(), String> {
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 fn keyring_entry(account: &str) -> Result<Entry, String> {
-    Entry::new(KEYRING_SERVICE, account)
+    #[cfg(feature = "isolated-preview-data-root")]
+    let service = preview_keyring_service(option_env!("TAURI_CONFIG"))?;
+    #[cfg(not(feature = "isolated-preview-data-root"))]
+    let service = KEYRING_SERVICE;
+    Entry::new(&service, account)
         .map_err(|_| "Library Core could not open the platform credential vault".to_string())
 }
 

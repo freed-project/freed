@@ -51,6 +51,8 @@ const LIBRARY_CORE_RELEASE_ACTIVATION_PATHS = new Set([
   "scripts/lib/library-core-release-activation.mjs",
   "scripts/lib/library-core-release-activation.test.mjs",
   "scripts/prepare-release-notes.mjs",
+  "scripts/prepare-signed-measurement.mjs",
+  "scripts/prepare-signed-measurement.test.mjs",
   "scripts/release-receipt.mjs",
   "scripts/release-receipt.test.mjs",
   "scripts/validate-library-core-activation-manifest.mjs",
@@ -1413,6 +1415,10 @@ export function buildValidationPlan(mode, changedFiles) {
     addCommand(plan, nodeCommand("cloud release request tests", ["--test", "scripts/cloud-release-request.test.mjs", "scripts/cloud-release-policy.test.mjs"]));
   }
 
+  if (changedFiles.some(file => [".github/workflows/release.yml", "scripts/prepare-signed-measurement.mjs", "scripts/prepare-signed-measurement.test.mjs"].includes(file))) {
+    addCommand(plan, nodeCommand("signed measurement identity tests", ["--test", "scripts/prepare-signed-measurement.test.mjs"]));
+  }
+
   if (releasePublisherToolingChanged) {
     addCommand(
       plan,
@@ -1444,6 +1450,16 @@ export function buildValidationPlan(mode, changedFiles) {
         path.join("scripts", "run-tooling-smoke-shard.test.mjs"),
       ]),
     );
+  }
+
+  if (changedFiles.some((file) => [
+    "scripts/vercel-deploy-preview.sh",
+    "scripts/lib/vercel-project-link.mjs",
+    "scripts/lib/vercel-project-link.test.mjs",
+  ].includes(file))) {
+    addCommand(plan, nodeCommand("Vercel preview deployment tests", [
+      "--test", path.join("scripts", "lib", "vercel-project-link.test.mjs"),
+    ]));
   }
 
   if (retiredAutomergeRuntimeGuardChanged) {
