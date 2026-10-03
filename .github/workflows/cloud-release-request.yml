@@ -1,0 +1,101 @@
+name: Governed Cloud Release Request
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: Explicit release channel
+        required: true
+        type: choice
+        options: [dev, production]
+      tag:
+        description: Reviewed immutable CalVer tag
+        required: true
+        type: string
+      source_sha:
+        description: Exact merged protected branch SHA
+        required: true
+        type: string
+      receipt_sha256:
+        description: Reviewed release JSON SHA256
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+concurrency:
+  group: cloud-release-publisher
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.repository == 'freed-project/freed' && github.ref == 'refs/heads/release-controller'
+    runs-on: macos-latest
+    timeout-minutes: 15
+    environment: release-publisher
+    env:
+      APPROVED_CONTROLLER_SHA: ${{ vars.RELEASE_CONTROLLER_SHA }}
+      RELEASE_CHANNEL: ${{ inputs.channel }}
+      RELEASE_TAG: ${{ inputs.tag }}
+      RELEASE_SOURCE_SHA: ${{ inputs.source_sha }}
+      RELEASE_RECEIPT_SHA256: ${{ inputs.receipt_sha256 }}
+    steps:
+      - name: Checkout reviewed controller
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          ref: ${{ github.sha }}
+          path: controller
+          persist-credentials: false
+      - name: Setup pinned controller Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: controller/.nvmrc
+      - name: Checkout candidate as data
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          ref: ${{ inputs.source_sha }}
+          path: candidate
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prepare protected branch identity using controller code
+        run: node controller/scripts/cloud-release-request.mjs prepare-candidate candidate
+      - name: Validate controller policy and exact candidate without App key
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node controller/scripts/cloud-release-request.mjs preflight candidate
+      - name: Build reviewed native broker before mounting key
+        working-directory: controller
+        run: node scripts/release-tag-publisher-install.mjs prepare
+      - name: Publish one immutable tag through dedicated App
+        env:
+          RELEASE_APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+        shell: bash
+        working-directory: controller
+        run: |
+          set -euo pipefail
+          set +x
+          umask 077
+          test -n "$RELEASE_APP_PRIVATE_KEY"
+          KEY_DIRECTORY="$HOME/.freed/credentials/github-apps"
+          mkdir -p "$KEY_DIRECTORY"
+          chmod 700 "$HOME/.freed" "$HOME/.freed/credentials" "$KEY_DIRECTORY"
+          KEY_FILE="$KEY_DIRECTORY/freed-release-publisher.private-key.pem"
+          test ! -e "$KEY_FILE"
+          trap 'rm -f -- "$KEY_FILE"' EXIT
+          printf '%s' "$RELEASE_APP_PRIVATE_KEY" > "$KEY_FILE"
+          chmod 600 "$KEY_FILE"
+          unset RELEASE_APP_PRIVATE_KEY
+          node scripts/release-tag-publisher-install.mjs activate --app-id 4296969 --app-slug freed-release-publisher
+          node scripts/release-tag-publisher-install.mjs finalize
+          BRANCH=main
+          if [[ "$RELEASE_CHANNEL" == dev ]]; then BRANCH=dev; fi
+          cd "$GITHUB_WORKSPACE/candidate"
+          node "$GITHUB_WORKSPACE/controller/scripts/release-tag-publisher.mjs" publish \
+            --repo freed-project/freed --worktree "$GITHUB_WORKSPACE/candidate" \
+            --tag "$RELEASE_TAG" --channel "$RELEASE_CHANNEL" \
+            --commit "$RELEASE_SOURCE_SHA" --branch "$BRANCH" \
+            --release-file "release-notes/releases/$RELEASE_TAG.json" \
+            --release-file-sha256 "$RELEASE_RECEIPT_SHA256"
+      - name: Record immutable request identity
+        if: success()
+        run: |
+          node -e 'require("fs").writeFileSync(process.env.GITHUB_STEP_SUMMARY, JSON.stringify({tag:process.env.RELEASE_TAG, source:process.env.RELEASE_SOURCE_SHA, receipt:process.env.RELEASE_RECEIPT_SHA256})+"\n", {flag:"a"})'

@@ -455,3 +455,7 @@ Expected public objects:
 The index must include production releases and dev prereleases. The changelog
 must stay a checked-in static build snapshot so public website visitors never
 wait on release metadata fetches.
+
+## Portable cloud publisher
+
+See [portable release publication](CLOUD-RELEASE-PUBLISHER.md) for the reviewed controller, environment restrictions, explicit dev/production requests and remaining credential activation requirements. Existing signing credentials stay in GitHub. Until cloud activation is proven, the installed dedicated publisher remains the operational tag path.

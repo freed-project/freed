@@ -1257,3 +1257,12 @@ test("custody adapter changes retain the macOS proof and focused fixture contrac
     else process.env.FREED_SKIP_PWA_OPFS_DURABILITY = previous;
   }
 });
+
+// Changed-path tier: cloud authority contract cannot fall out of CI routing.
+test("cloud release workflow and entrypoint run their focused authority tests", () => {
+  for (const changed of [".github/workflows/cloud-release-request.yml", "scripts/cloud-release-request.mjs", "scripts/cloud-release-request.test.mjs"]) {
+    const plan=buildValidationPlan("feature", [changed]);
+    assert.ok(plan.some(item => item.label === "cloud release request tests"));
+    assert.ok(FOCUSED_FEATURE_VALIDATION_PATHS.has(changed));
+  }
+});

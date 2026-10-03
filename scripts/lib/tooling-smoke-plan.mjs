@@ -42,6 +42,10 @@ export const FOCUSED_FEATURE_VALIDATION_PATHS = Object.freeze(
     ".github/dependabot.yml",
     ".github/workflows/main-release-validation.yml",
     ".github/workflows/release.yml",
+    ".github/workflows/cloud-release-request.yml",
+    "scripts/cloud-release-request.mjs",
+    "scripts/cloud-release-request.test.mjs",
+
     ".agents/skills/freed-library-core/SKILL.md",
     ".agents/skills/freed-ship-build/SKILL.md",
     "docs/LIBRARY-CORE-CONTRACT.md",
