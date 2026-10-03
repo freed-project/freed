@@ -11,8 +11,19 @@ consumer recovery until installed convergence acceptance is complete. Their
 join and same-epoch edit paths can be tested, but they cannot complete the
 transfer steps below. An unavailable transfer control is expected in those builds.
 
-For isolated workflow acceptance, build both clients from the same reviewed
-source. From `packages/desktop`, run
+For isolated workflow acceptance, build both clients from the same reviewed,
+clean source. Verify `git status --short` is empty, then set the existing build
+metadata in the shell used for both commands. Local builds do not infer these
+values from Git:
+
+```sh
+export FREED_BUILD_KIND=preview
+export FREED_BUILD_CHANNEL=dev
+export FREED_BUILD_COMMIT_SHA="$(git rev-parse HEAD)"
+export FREED_BUILD_COMMIT_REF="$(git branch --show-current)"
+```
+
+From `packages/desktop`, run
 `npm run tauri:build:transfer-acceptance -- --bundles app` on macOS. The named
 configuration enables the frontend acceptance mode and native transfer feature,
 uses application identifier `wtf.freed.desktop.preview.transfer-acceptance`,
