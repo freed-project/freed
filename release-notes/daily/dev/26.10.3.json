@@ -2,13 +2,15 @@
   "channel": "dev",
   "dayKey": "26.10.3",
   "date": "2026-10-03",
-  "preferredDeck": null,
+  "preferredDeck": "Clearer update status and accurate item totals during refresh.",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
     "Demote internal cleanup unless it clearly changes the shipped product."
   ],
   "pinnedHighlights": [],
-  "editorialNotes": [],
-  "updatedAt": "2026-10-03T21:41:47.710Z"
+  "editorialNotes": [
+    "Reviewed around the installed updater/refresh/count incident. Preserve same-day published highlights and dormant transfer scope. Local native archive verification passed; no broad performance, social-quality or writer-health claim."
+  ],
+  "updatedAt": "2026-10-03T21:45:18.395Z"
 }
