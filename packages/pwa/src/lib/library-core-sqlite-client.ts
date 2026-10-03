@@ -10,7 +10,7 @@ import {
   createLibraryCoreSqliteActivateCheckpointWorkerRequest,
   createLibraryCoreSqliteActivatePredecessorWorkerRequest,
   createLibraryCoreSqlitePredecessorReadWorkerRequest,
-  parseLibraryCorePredecessorCheckpointReadV1,
+  parseLibraryCorePredecessorCheckpointReadsV1,
   createLibraryCoreSqliteAppendCheckpointPageWorkerRequest,
   createLibraryCoreSqliteBeginCheckpointWorkerRequest,
   createLibraryCoreSqliteQueryWorkerRequest,
@@ -826,7 +826,7 @@ export class PwaLibraryCoreSqliteClient {
 
   preparePredecessorCheckpointRead(stageId: string) {
     return this.#send((requestId) => createLibraryCoreSqlitePredecessorReadWorkerRequest(requestId, stageId),
-      parseLibraryCorePredecessorCheckpointReadV1);
+      parseLibraryCorePredecessorCheckpointReadsV1);
   }
 
   activateVerifiedPredecessorCheckpoint(

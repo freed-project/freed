@@ -21,6 +21,8 @@ import { FeedView } from "@freed/ui/components/feed";
 import { BugReportBoundary } from "@freed/ui/components/BugReportBoundary";
 import { FatalErrorScreen } from "@freed/ui/components/FatalErrorScreen";
 import { LocalPreviewBadge } from "@freed/ui/components/LocalPreviewBadge";
+import { JevSettingsSection } from "./components/JevSettingsSection";
+import { generateJevPreviewExamples } from "./lib/jev-preview-examples";
 import { FREED_NEWSLETTER_TURNSTILE_TEST_SITE_KEY } from "@freed/shared";
 import { NewsletterSignup } from "@freed/ui/components/NewsletterSignup";
 import { LegalGate } from "@freed/ui/components/legal/LegalGate";
@@ -1461,6 +1463,9 @@ function App() {
         ...useAppStore.getState(),
         seedSocialConnections,
       });
+      if (import.meta.env.DEV && IS_FEATURE_PREVIEW && import.meta.env.VITE_TEST_TAURI === "1") {
+        await useAppStore.getState().addSampleLibraryData(generateJevPreviewExamples());
+      }
       sessionStorage.setItem(guardKey, "1");
     })().catch((error) => {
       log.error(
@@ -1625,12 +1630,13 @@ function App() {
       youtube: {
         addToOfflinePlaylist: addYouTubeVideoToOfflinePlaylist,
       },
-      // Encrypted API key store (type-widened: ApiKeyProvider -> string for PlatformConfig interface)
+      // Device-local API key store (type-widened: ApiKeyProvider -> string for PlatformConfig interface)
       secureStorage: secureStorage as {
         getApiKey: (provider: string) => Promise<string | null>;
         setApiKey: (provider: string, key: string) => Promise<void>;
         clearApiKey: (provider: string) => Promise<void>;
       },
+      AISettingsContent: JevSettingsSection,
       localAIModels,
       checkOllamaReachable,
       importInstagramStoryWallArchive: (files) => importMetaExportFiles("instagram", files),

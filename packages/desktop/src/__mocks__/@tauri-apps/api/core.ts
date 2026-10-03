@@ -231,6 +231,13 @@ const handlers: Record<string, Handler> = {
       }),
   // Normalized Library commands come from the shared HTML/init bootstrap.
   // Keep one query implementation for previews and injected test fixtures.
+  get_jev_api_key: () => null,
+  set_jev_api_key: () => { throw new Error("Use the browser preview credential controls."); },
+  clear_jev_api_key: () => undefined,
+  get_jev_budget: () => null,
+  set_jev_budget: () => { throw new Error("Jev budget requires an explicit test handler."); },
+  request_jev: () => { throw new Error("Native Jev requests require an explicit test handler."); },
+  cancel_jev_request: () => undefined,
   normalized_desktop_installation_status: () => (window as unknown as Record<string, unknown>).__TAURI_MOCK_LIBRARY_INSTALLATION__ ?? ({
     state: "standalone_primary", role: "primary", libraryId: "a".repeat(64),
     authorityEpochId: "b".repeat(64), actorId: "6".repeat(64),
@@ -430,6 +437,9 @@ const handlers: Record<string, Handler> = {
     return request?.expectedSizeBytes ?? 0;
   },
   cancel_local_ai_model_download: () => null,
+      request_gliclass: () => { throw new Error("Native GLiClass inference is unavailable in the browser preview."); },
+      cancel_gliclass_request: () => null,
+      unload_gliclass: () => null,
   get_desktop_session_state: () =>
     (
       window as unknown as {

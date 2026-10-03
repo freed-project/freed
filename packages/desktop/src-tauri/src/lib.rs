@@ -3,6 +3,9 @@
 //! Native desktop app that bundles capture and the reader UI.
 
 mod avatar_cache;
+mod jev;
+mod gliclass;
+mod jev_budget;
 mod library_core_actor_key_store;
 mod library_core_authority_key_store;
 mod library_core_desktop_runtime;
@@ -14424,6 +14427,16 @@ pub fn run() {
             fetch_url,
             fetch_rss_url,
             fetch_background_article_url,
+            gliclass::request_gliclass,
+            gliclass::cancel_gliclass_request,
+            gliclass::unload_gliclass,
+            jev::get_jev_api_key,
+            jev::set_jev_api_key,
+            jev::clear_jev_api_key,
+            jev::request_jev,
+            jev::get_jev_budget,
+            jev::set_jev_budget,
+            jev::cancel_jev_request,
             google_api_request,
             google_oauth_proxy_request,
             google_drive_request,

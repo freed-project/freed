@@ -1,3 +1,4 @@
+import { LIBRARY_CORE_PRIORITY_TIME_QUERY_ID } from "./priority-time-page-contracts.js";
 import { createDefaultPreferences } from "../types.js";
 import { parseLibraryCoreRankingWeightScopeResponseV1 } from "./ranking-weight-scope-contracts.js";
 import { FEED_SIGNAL_FILTER_PRESETS } from "../feed-signal-filters.js";
@@ -433,6 +434,7 @@ export async function readLibraryCoreNormalizedPriorityCandidateBatchV1(
   runtime: LibraryCoreNormalizedReaderRuntime,
   priorityComputedBeforeMs: number,
   maximumItems: number,
+  timeOnlySource?: LibraryCoreFeedPageSourceV1,
 ): Promise<LibraryCorePriorityCandidateBatchV1> {
   if (
     !Number.isSafeInteger(priorityComputedBeforeMs) ||
@@ -443,7 +445,15 @@ export async function readLibraryCoreNormalizedPriorityCandidateBatchV1(
   ) {
     throw new TypeError("priority candidate batch bounds are invalid");
   }
-  const page: LibraryCoreItemScanResponseV1 = await runtime.query({
+  if (timeOnlySource && timeOnlySource.projectionRevision !== timeOnlySource.transitionSequence) throw new Error("CURSOR_STALE");
+  const page = timeOnlySource ? await runtime.query({
+    cancellationId: operationId(runtime, "priority-page"),
+    generationId: timeOnlySource.generationId,
+    sourceRevision: timeOnlySource.projectionRevision,
+    limit: maximumItems, priorityComputedBeforeMs,
+    queryId: LIBRARY_CORE_PRIORITY_TIME_QUERY_ID,
+    readerSessionId: operationId(runtime, "priority-reader"), schemaVersion: 1,
+  }) : await runtime.query({
     analysisVersion: null,
     cancellationId: operationId(runtime, "priority-page"),
     cursor: null,
@@ -734,7 +744,8 @@ export async function readLibraryCoreNormalizedFeedSignalCountsV1(
     FEED_SIGNAL_FILTER_PRESETS.map(async (preset) => {
       const signalFilter: LibraryCoreFeedBrowseFilterV1 = {
         ...filter,
-        signals: preset.mode === "all" ? [] : preset.signals,
+        // Presets use presentation order; the wire contract requires a sorted set.
+        signals: preset.mode === "all" ? [] : [...preset.signals].sort(),
       };
       const page = await runtime.query({
         cancellationId: operationId(runtime, "signal-count"),

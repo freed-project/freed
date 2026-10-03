@@ -143,6 +143,7 @@ pub fn reapply_archived_assignments_v1(
     key_store: &dyn ActorKeyStore,
     now: i64,
 ) -> Result<RecoveryReissueReceiptV1, String> {
+    crate::require_library_transfer_capability()?;
     reapply_archived_transaction(
         connection,
         request,
@@ -159,6 +160,7 @@ pub fn reapply_archived_editor_transaction_v1(
     canonical_envelopes: &[Vec<u8>],
     now: i64,
 ) -> Result<RecoveryReissueReceiptV1, String> {
+    crate::require_library_transfer_capability()?;
     if canonical_envelopes.len() > 1000
         || canonical_envelopes.iter().any(|v| v.len() > 131072)
         || canonical_envelopes.iter().map(Vec::len).sum::<usize>() > 4194304
@@ -186,6 +188,12 @@ fn reapply_archived_transaction(
 ) -> Result<RecoveryReissueReceiptV1, String> {
     if !valid_request(request) || !(0..=MAX_SAFE_INTEGER).contains(&now) {
         return Err("recovery reapplication request is invalid".into());
+    }
+    let durability: u32 = connection
+        .pragma_query_value(None, "synchronous", |r| r.get(0))
+        .map_err(|e| e.to_string())?;
+    if durability < 2 {
+        return Err("recovery reapplication requires full SQLite durability".into());
     }
     let tx = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -1885,8 +1893,146 @@ mod tests {
     #[test]
     fn demoted_source_recovers_old_edits_only_with_current_consumer_selection() {
         fn demote(db: &Connection) {
+            let tx = db.unchecked_transaction().unwrap();
+            tx.pragma_update(None, "defer_foreign_keys", true).unwrap();
+            let db = &*tx;
+            use crate::normalized_handoff_certificate::*;
+            // Keep this reapplication fixture synthetic, but authenticate its
+            // source consent with the same production signers as a real transfer.
+            // The lifecycle suite separately proves atomic adoption and enrollment.
+            let old = Ed25519KeyPair::from_seed_unchecked(&[19; 32]).unwrap();
+            let actor = Ed25519KeyPair::from_seed_unchecked(&[31; 32]).unwrap();
+            let target = Ed25519KeyPair::from_seed_unchecked(&[32; 32]).unwrap();
+            let actor_public = lower_hex(actor.public_key().as_ref());
+            let old_public = lower_hex(old.public_key().as_ref());
+            let library = "1".repeat(64);
+            let epoch = "2".repeat(64);
+            let digest = "8".repeat(64);
+            let writer = "6".repeat(64);
+            let predecessor = HandoffPredecessorV1 {
+                library_id: &library,
+                epoch_id: &epoch,
+                epoch: 1,
+                certificate_digest: &digest,
+                authority_public_key: &old_public,
+                writer_id: &writer,
+            };
+            let readiness = sign_handoff_readiness_v1(
+                HandoffReadinessBodyV1 {
+                    format: "freed_library_handoff_readiness_v1".into(),
+                    library_id: library.clone(),
+                    predecessor_epoch_id: epoch.clone(),
+                    predecessor_certificate_digest: digest.clone(),
+                    target_actor_id: "7".repeat(64),
+                    target_actor_public_key: actor_public.clone(),
+                    target_authority_public_key: lower_hex(target.public_key().as_ref()),
+                    native_storage_version: 2,
+                    checkpoint_schema_version: 1,
+                    replication_protocol_version: 2,
+                    created_at_ms: 100,
+                },
+                &actor,
+                &target,
+            )
+            .unwrap();
+            let content = "f".repeat(64);
+            let control = HandoffSourceControlV1 {
+                schema_version: 1,
+                protocol_version: 1,
+                library_id: library.clone(),
+                storage_epoch: epoch.clone(),
+                writer_id: writer.clone(),
+                active_transport: "google_drive_app_data_v1".into(),
+                generation: 1,
+                causal_frontier_digest: "9".repeat(64),
+                manifest: HandoffObjectReferenceV1 {
+                    descriptor: HandoffObjectDescriptorV1 {
+                        object_key: format!(
+                            "freed-v2-manifest~{library}~e{epoch}~g1~{content}.json"
+                        ),
+                        content_digest: content.clone(),
+                        byte_length: 1200,
+                    },
+                    transport_object_id: "manifest".into(),
+                },
+            };
+            let grant = sign_handoff_authorization_for_test_v1(
+                HandoffAuthorizationBodyV1 {
+                    format: "freed_library_handoff_authorization_v1".into(),
+                    readiness,
+                    predecessor_authority_public_key: old_public.clone(),
+                    successor_epoch: 2,
+                    final_source_revision: 0,
+                    final_checkpoint_digest: "a".repeat(64),
+                    source_control: control.clone(),
+                    source_control_revision: "\"fixture\"".into(),
+                    source_control_file_id: "control".into(),
+                },
+                &predecessor,
+                &actor_public,
+                &old,
+            )
+            .unwrap();
+            let current = crate::normalized_authority::NormalizedAuthorityStateV2 {
+                library_id: library.clone(),
+                epoch: 1,
+                epoch_id: epoch.clone(),
+                authority_key_id: crate::normalized_writer_certificate::authority_key_id(
+                    &old_public,
+                )
+                .unwrap(),
+                authority_public_key: old_public,
+                observed_frontier: Vec::new(),
+            };
+            let next = crate::normalized_handoff_writer_certificate::prepare_writer_handoff_certificate_v1(
+                &current, &writer, &digest, &canonical_handoff_bytes(&grant).unwrap(), &actor_public, &target,
+            ).unwrap();
+            let mut final_control = control;
+            final_control.storage_epoch = next.authority.epoch_id.clone();
+            final_control.writer_id = grant.body.readiness.body.target_actor_id.clone();
+            final_control.manifest.descriptor.object_key = format!(
+                "freed-v2-manifest~{library}~e{}~g1~{content}.json",
+                next.authority.epoch_id
+            );
+            let adoption = json!({"format":"freed_library_source_adoption_v1","stage_id":"fixture-stage",
+            "activation": HandoffActivationProposalV1 {
+                format: "freed_library_handoff_activation_proposal_v1".into(), handoff_id: grant.body.readiness.handoff_id.clone(),
+                control_file_id: "control".into(), expected_control_revision: "\"fixture\"".into(),
+                successor_checkpoint_digest: "a".repeat(64), control: final_control,
+            }});
+            db.execute("UPDATE library_authority_epochs SET epoch_id=?1,authority_key_id=?2,authority_public_key=?3,transition_certificate_digest=?4,canonical_transition_certificate=?5 WHERE epoch_id=?6;",
+                params![next.authority.epoch_id,next.authority.authority_key_id,next.authority.authority_public_key,next.transition_certificate_digest,next.canonical_certificate_json,"b".repeat(64)]).unwrap();
+            for (table, column) in [
+                ("library_meta", "authority_epoch"),
+                ("library_active_authority", "epoch_id"),
+                ("library_actors", "authority_epoch_id"),
+                ("library_follower_actor_request", "authority_epoch_id"),
+                ("library_local_recovery_archives", "successor_epoch_id"),
+                ("library_local_handoff", "successor_epoch_id"),
+            ] {
+                db.execute(
+                    &format!("UPDATE {table} SET {column}=?1 WHERE {column}=?2;"),
+                    params![next.authority.epoch_id, "b".repeat(64)],
+                )
+                .unwrap();
+            }
+            db.execute("INSERT INTO library_actors SELECT ?1, authority_epoch_id, 'desktop', ?2, 'fixture:handoff-target', enrollment_certificate_digest, canonical_enrollment_certificate, chain_genesis_digest, 0, NULL, chain_genesis_digest, NULL, 1100, 1100 FROM library_actors WHERE actor_id=?3;",
+                params![grant.body.readiness.body.target_actor_id,actor_public,"c".repeat(64)]).unwrap();
+            db.execute(
+                "UPDATE library_active_authority SET writer_id=?1;",
+                [&grant.body.readiness.body.target_actor_id],
+            )
+            .unwrap();
+            db.execute("UPDATE library_local_handoff SET handoff_id=?1,target_writer_id=?2,target_authority_public_key=?3,canonical_readiness=?4,canonical_authorization_body=?5,canonical_authorization=?6,canonical_activation=?7;",
+                params![grant.body.readiness.handoff_id,grant.body.readiness.body.target_actor_id,grant.body.readiness.body.target_authority_public_key,
+                    canonical_handoff_bytes(&grant.body.readiness).unwrap(),canonical_handoff_bytes(&grant.body).unwrap(),canonical_handoff_bytes(&grant).unwrap(),canonical_handoff_bytes(&adoption).unwrap()]).unwrap();
+            db.execute(
+                "UPDATE library_local_handoff SET expected_control_revision=?1;",
+                [&grant.body.source_control_revision],
+            )
+            .unwrap();
             db.execute_batch(
-                "UPDATE library_local_handoff SET installation_role = 'source', phase = 'demoted', canonical_authorization = X'7B7D', canonical_activation = X'7B7D', observed_control_revision = 'after';
+                "UPDATE library_local_handoff SET installation_role = 'source', phase = 'demoted', observed_control_revision = 'after';
                 DELETE FROM library_writer_admission;
                 DELETE FROM library_local_cloud_writer_admission;
                 INSERT INTO library_follower_checkpoint_receipt
@@ -1899,8 +2045,12 @@ mod tests {
             assert!(crate::read_consumer_recovery_summary_v1(db)
                 .unwrap()
                 .is_none());
+            tx.commit().unwrap();
         }
         for fault in [
+            "UPDATE library_local_handoff SET canonical_authorization=X'7B7D';",
+            "UPDATE library_local_handoff SET canonical_activation=X'7B7D';",
+            "UPDATE library_authority_epochs SET canonical_transition_certificate='{}' WHERE epoch_id=(SELECT successor_epoch_id FROM library_local_handoff);",
             "DELETE FROM library_follower_checkpoint_receipt;",
             "INSERT INTO library_writer_admission VALUES (1, 'stale-writer', 'stale-writer', 1, 1200);",
             "UPDATE library_follower_checkpoint_receipt SET writer_actor_id = (SELECT actor_id FROM library_actors WHERE authority_epoch_id = (SELECT predecessor_epoch_id FROM library_local_handoff) LIMIT 1);",
@@ -1931,6 +2081,256 @@ mod tests {
             reapply_archived_assignments_v1(&mut db, &request, &NoKeyAccess, 2001).unwrap(),
             receipt
         );
+    }
+
+    #[test]
+    fn recovery_reissue_rejects_weakened_durability_without_allocating() {
+        for mode in ["OFF", "NORMAL"] {
+            let (mut db, request, _) = fixture("feed_item_read_assignment", false);
+            db.pragma_update(None, "synchronous", mode).unwrap();
+            assert!(
+                reapply_archived_assignments_v1(&mut db, &request, &NoKeyAccess, 2000)
+                    .unwrap_err()
+                    .contains("full SQLite durability")
+            );
+            assert_eq!(
+                db.query_row("SELECT next_counter FROM library_intent_actors", [], |r| {
+                    r.get::<_, i64>(0)
+                })
+                .unwrap(),
+                1
+            );
+            assert_eq!(
+                db.query_row(
+                    "SELECT count(*) FROM library_local_recovery_reissues",
+                    [],
+                    |r| r.get::<_, i64>(0)
+                )
+                .unwrap(),
+                0
+            );
+        }
+    }
+
+    #[test]
+    fn recovery_reissue_sqlite_full_rolls_back_link_intent_and_counter() {
+        let (db, request, keys) = fixture("feed_item_read_assignment", false);
+        let root = tempfile::tempdir().unwrap();
+        let mut disk = Connection::open(root.path().join("full.sqlite")).unwrap();
+        rusqlite::backup::Backup::new(&db, &mut disk)
+            .unwrap()
+            .run_to_completion(128, std::time::Duration::ZERO, None)
+            .unwrap();
+        // Small physical pages force signed envelopes to allocate overflow pages.
+        disk.execute_batch(
+            "PRAGMA page_size=512; VACUUM; PRAGMA foreign_keys=ON; PRAGMA synchronous=FULL;",
+        )
+        .unwrap();
+        let pages: u64 = disk
+            .pragma_query_value(None, "page_count", |r| r.get(0))
+            .unwrap();
+        disk.pragma_update(None, "max_page_count", pages).unwrap();
+        let error = reapply_archived_assignments_v1(&mut disk, &request, &keys, 2000).unwrap_err();
+        assert!(error.contains("database or disk is full"), "{error}");
+        assert_eq!(
+            disk.query_row("SELECT next_counter FROM library_intent_actors", [], |r| {
+                r.get::<_, i64>(0)
+            })
+            .unwrap(),
+            1
+        );
+        for table in [
+            "library_local_recovery_reissues",
+            "library_intent_transactions",
+            "library_intent_members",
+        ] {
+            assert_eq!(
+                disk.query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r
+                    .get::<_, i64>(0))
+                    .unwrap(),
+                0
+            );
+        }
+        disk.pragma_update(None, "max_page_count", pages + 1000)
+            .unwrap();
+        let receipt = reapply_archived_assignments_v1(&mut disk, &request, &keys, 2001).unwrap();
+        assert_eq!(
+            reapply_archived_assignments_v1(&mut disk, &request, &NoKeyAccess, 2002).unwrap(),
+            receipt
+        );
+        assert_eq!(
+            disk.query_row("SELECT next_counter FROM library_intent_actors", [], |r| {
+                r.get::<_, i64>(0)
+            })
+            .unwrap(),
+            3
+        );
+    }
+
+    // Runs only when invoked by the parent below, against its synthetic fixture.
+    #[cfg(unix)]
+    #[test]
+    fn recovery_reissue_crash_child() {
+        let Ok(root) = std::env::var("FREED_REISSUE_CRASH_ROOT") else {
+            return;
+        };
+        let root = std::path::Path::new(&root);
+        let request: RecoveryReissueRequestV1 =
+            serde_json::from_slice(&std::fs::read(root.join("request.json")).unwrap()).unwrap();
+        let keys = KeyStore(std::fs::read(root.join("synthetic-key")).unwrap());
+        let mut db =
+            crate::open_normalized_sqlite_database_v1(&root.join("consumer.sqlite"), false)
+                .unwrap();
+        if std::env::var("FREED_REISSUE_CRASH_POINT").unwrap() == "before_commit" {
+            db.commit_hook(Some(|| {
+                unsafe {
+                    libc::raise(libc::SIGKILL);
+                }
+                unreachable!()
+            }));
+        }
+        let receipt = reapply_archived_assignments_v1(&mut db, &request, &keys, 2000).unwrap();
+        std::fs::write(
+            root.join("receipt.json"),
+            serde_json::to_vec(&receipt).unwrap(),
+        )
+        .unwrap();
+        unsafe {
+            libc::raise(libc::SIGKILL);
+        }
+        unreachable!()
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn recovery_reissue_survives_sigkill_at_commit_and_response_loss() {
+        use std::os::unix::process::ExitStatusExt;
+        for point in ["before_commit", "after_commit"] {
+            let root = tempfile::tempdir().unwrap();
+            let (db, request, keys) = fixture("feed_item_read_assignment", false);
+            let writer_admission_count: i64 = db
+                .query_row("SELECT count(*) FROM library_writer_admission", [], |r| {
+                    r.get(0)
+                })
+                .unwrap();
+            let archive_digest: String = db
+                .query_row(
+                    "SELECT archive_digest FROM library_local_recovery_archives",
+                    [],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            let archive_bytes = |db: &Connection| -> Vec<Vec<u8>> {
+                db.prepare("SELECT canonical_row FROM library_local_recovery_rows ORDER BY table_key,row_ordinal").unwrap()
+                    .query_map([], |r| r.get(0)).unwrap().collect::<rusqlite::Result<_>>().unwrap()
+            };
+            let archived = archive_bytes(&db);
+            let path = root.path().join("consumer.sqlite");
+            let mut disk = Connection::open(&path).unwrap();
+            rusqlite::backup::Backup::new(&db, &mut disk)
+                .unwrap()
+                .run_to_completion(128, std::time::Duration::ZERO, None)
+                .unwrap();
+            drop(disk);
+            std::fs::write(
+                root.path().join("request.json"),
+                serde_json::to_vec(&request).unwrap(),
+            )
+            .unwrap();
+            std::fs::write(root.path().join("synthetic-key"), &keys.0).unwrap();
+            let status = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "normalized_recovery_reissue::tests::recovery_reissue_crash_child",
+                    "--nocapture",
+                ])
+                .env("FREED_REISSUE_CRASH_ROOT", root.path())
+                .env("FREED_REISSUE_CRASH_POINT", point)
+                .status()
+                .unwrap();
+            assert_eq!(status.signal(), Some(libc::SIGKILL));
+            let mut disk = crate::open_normalized_sqlite_database_v1(&path, false).unwrap();
+            assert_eq!(
+                disk.query_row("PRAGMA integrity_check", [], |r| r.get::<_, String>(0))
+                    .unwrap(),
+                "ok"
+            );
+            let committed = point == "after_commit";
+            assert_eq!(
+                disk.query_row(
+                    "SELECT count(*) FROM library_local_recovery_reissues",
+                    [],
+                    |r| r.get::<_, i64>(0)
+                )
+                .unwrap(),
+                i64::from(committed)
+            );
+            assert_eq!(
+                disk.query_row("SELECT next_counter FROM library_intent_actors", [], |r| {
+                    r.get::<_, i64>(0)
+                })
+                .unwrap(),
+                if committed { 3 } else { 1 }
+            );
+            let receipt = if committed {
+                let expected: RecoveryReissueReceiptV1 = serde_json::from_slice(
+                    &std::fs::read(root.path().join("receipt.json")).unwrap(),
+                )
+                .unwrap();
+                assert_eq!(
+                    reapply_archived_assignments_v1(&mut disk, &request, &NoKeyAccess, 2001)
+                        .unwrap(),
+                    expected
+                );
+                expected
+            } else {
+                reapply_archived_assignments_v1(&mut disk, &request, &keys, 2001).unwrap()
+            };
+            assert_eq!(
+                reapply_archived_assignments_v1(&mut disk, &request, &NoKeyAccess, 2002).unwrap(),
+                receipt
+            );
+            assert_eq!(
+                disk.query_row("SELECT next_counter FROM library_intent_actors", [], |r| {
+                    r.get::<_, i64>(0)
+                })
+                .unwrap(),
+                3
+            );
+            assert_eq!(
+                disk.query_row(
+                    "SELECT count(*) FROM library_intent_transactions",
+                    [],
+                    |r| r.get::<_, i64>(0)
+                )
+                .unwrap(),
+                1
+            );
+            assert_eq!(
+                disk.query_row("SELECT count(*) FROM library_intent_members", [], |r| r
+                    .get::<_, i64>(0))
+                    .unwrap(),
+                2
+            );
+            assert_eq!(
+                disk.query_row("SELECT count(*) FROM library_writer_admission", [], |r| r
+                    .get::<_, i64>(
+                    0
+                ))
+                .unwrap(),
+                writer_admission_count
+            );
+            assert_eq!(
+                disk.query_row(
+                    "SELECT archive_digest FROM library_local_recovery_archives",
+                    [],
+                    |r| r.get::<_, String>(0)
+                )
+                .unwrap(),
+                archive_digest
+            );
+            assert_eq!(archive_bytes(&disk), archived);
+        }
     }
 
     #[test]

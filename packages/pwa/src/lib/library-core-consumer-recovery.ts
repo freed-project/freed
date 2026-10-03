@@ -1,3 +1,4 @@
+import { requireLibraryTransferCapability } from "./library-transfer-capability";
 import type { CAPI, Database } from "@sqlite.org/sqlite-wasm";
 import {
   decodeLibraryCoreCanonicalValue, encodeLibraryCoreCanonicalValue,
@@ -5,7 +6,7 @@ import {
   type LibraryCoreConsumerRecoveryPlanV1, type LibraryCoreConsumerRecoveryStatusV1,
   isLibraryCoreLowercaseHex64, isLibraryCoreNonnegativeSafeInteger, parseLibraryCoreStoreFollowerActorRequestV2,
   LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256, sha256LowerHex,
-  verifyLibraryCoreEd25519WithWebCrypto, verifyLibraryCoreHandoffCertificateV1,
+  verifyLibraryCoreEd25519WithWebCrypto, verifyLibraryCoreHandoffChainReadsV1,
   type LibraryCoreCanonicalValue, type LibraryCoreFollowerActorEnrollmentContextV2,
   type LibraryCoreStoreFollowerActorRequestV2,
 } from "@freed/shared/library-core";
@@ -47,6 +48,26 @@ function selected(db: Database, authority: Authority) {
   }
   return result[0]!;
 }
+// Discovery grants no authority. Preserve every bounded certificate in the
+// candidate snapshot so a history change during crypto invalidates preparation.
+export function readPwaRetainedHandoffCertificates(db: Database, oldEpoch: string, successorEpoch: string): string[] {
+  const chain: string[] = [];
+  let epoch = successorEpoch;
+  while (epoch !== oldEpoch) {
+    if (chain.length === 32) throw new Error("consumer recovery certificate path exceeds its bound");
+    const result = rows(db, `SELECT CASE WHEN length(CAST(canonical_transition_certificate AS BLOB)) <= 16384
+      THEN canonical_transition_certificate ELSE NULL END FROM library_authority_epochs WHERE epoch_id = ?1;`, [epoch]);
+    if (result.length !== 1) throw new Error("consumer recovery intermediate authority is missing");
+    const value = text(result[0]![0]);
+    const certificate = object(decodeLibraryCoreCanonicalValue(encodeText(value), { maximumBytes: 16_384 }));
+    if (certificate.epoch_id !== epoch) throw new Error("consumer recovery certificate identity changed");
+    const body = object(certificate.certificate_body), grant = object(body.handoff_authorization);
+    const ready = object(object(object(grant.body).readiness).body);
+    epoch = text(ready.predecessor_epoch_id);
+    chain.push(value);
+  }
+  return chain.reverse();
+}
 function candidate(db: Database, authority: Authority) {
   const current = selected(db, authority);
   const requests = rows(db, `SELECT library_id, authority_epoch_id, actor_id, actor_public_key,
@@ -61,7 +82,7 @@ function candidate(db: Database, authority: Authority) {
   const certificate = object(decodeLibraryCoreCanonicalValue(encodeText(text(current[5])), { maximumBytes: 16_384 }));
   const body = object(certificate.certificate_body), grant = object(body.handoff_authorization);
   const grantBody = object(grant.body), readiness = object(grantBody.readiness), ready = object(readiness.body);
-  if (ready.predecessor_epoch_id !== old[1]) throw new Error("consumer recovery requires the direct successor");
+  const chain = readPwaRetainedHandoffCertificates(db, text(old[1]), authority.epoch_id);
   const oldRequest = object(decodeLibraryCoreCanonicalValue(encodeText(text(old[5])), { maximumBytes: 65_536 }));
   const enrollment = object(object(oldRequest.certificate_body).actor_enrollment_body);
   const installation = text(enrollment.installation_incarnation);
@@ -70,15 +91,17 @@ function candidate(db: Database, authority: Authority) {
   }
   const id = sha256LowerHex(canonical({ library: authority.library_id, oldEpoch: old[1], newEpoch: authority.epoch_id,
     actor: old[2], request: old[4] }));
-  return { id, old, current, history: history[0]!, installation, grant, grantBody, readiness, ready,
-    snapshot: JSON.stringify([old, current, history]) };
+  return { id, old, current, history: history[0]!, installation, grant, grantBody, readiness, ready, chain,
+    snapshot: JSON.stringify([old, current, history, chain]) };
 }
 async function verifySuccessor(value: ReturnType<typeof candidate>, authority: Authority, subtle: SubtleCrypto) {
-  const control = object(value.grantBody.source_control);
-  const proof = await verifyLibraryCoreHandoffCertificateV1(encodeText(text(value.current[5])), {
+  const first = object(decodeLibraryCoreCanonicalValue(encodeText(value.chain[0]!), { maximumBytes: 16_384 }));
+  const firstBody = object(object(object(first.certificate_body).handoff_authorization).body);
+  const control = object(firstBody.source_control);
+  const { successor: proof } = await verifyLibraryCoreHandoffChainReadsV1(value.chain.map(encodeText), {
     libraryId: authority.library_id, epochId: text(value.old[1]), epoch: integer(value.history[0]),
     certificateDigest: text(value.history[1]), authorityPublicKey: text(value.history[2]), writerId: text(control.writerId),
-  }, text(value.ready.target_actor_public_key), { verifySignature: input => verifyLibraryCoreEd25519WithWebCrypto(input, subtle) });
+  }, authority.epoch_id, { verifySignature: input => verifyLibraryCoreEd25519WithWebCrypto(input, subtle) });
   if (proof.epochId !== authority.epoch_id || proof.epoch !== authority.epoch || proof.authorityKeyId !== authority.authority_key_id ||
       proof.authorityPublicKey !== authority.authority_public_key || proof.certificateDigest !== value.current[4] || proof.writerId !== value.current[6] || integer(value.current[7]) < proof.finalSourceRevision) {
     throw new Error("consumer recovery successor proof changed");
@@ -188,6 +211,7 @@ function retireCompletedConsumerCycle(db: Database, capi: CAPI, before: ReturnTy
 /** Persist the archive and exact replacement request together, without clearing active slots. */
 export async function preparePwaConsumerRecovery(db: Database, capi: CAPI, subtle: SubtleCrypto, authority: Authority,
   recoveryId: string, input: LibraryCoreStoreFollowerActorRequestV2): Promise<void> {
+  requireLibraryTransferCapability();
   return preparePwaConsumerRecoveryWithStorageAdmission(db, capi, subtle, authority, recoveryId, input);
 }
 
@@ -196,6 +220,7 @@ export async function preparePwaConsumerRecoveryWithStorageAdmission(
   db: Database, capi: CAPI, subtle: SubtleCrypto, authority: Authority,
   recoveryId: string, input: LibraryCoreStoreFollowerActorRequestV2, admitStorage?: () => void,
 ): Promise<void> {
+  requireLibraryTransferCapability();
   if (!isLibraryCoreLowercaseHex64(recoveryId)) throw new Error("consumer recovery identity is invalid");
   input = parseLibraryCoreStoreFollowerActorRequestV2(input);
   const before = candidate(db, authority);
@@ -254,6 +279,7 @@ export async function preparePwaConsumerRecoveryWithStorageAdmission(
 /** Explicitly retire archived slots and install the persisted request in one transaction. */
 export async function commitPwaConsumerRecovery(db: Database, capi: CAPI, subtle: SubtleCrypto, authority: Authority,
   recoveryId: string, committedAt: number): Promise<void> {
+  requireLibraryTransferCapability();
   return commitPwaConsumerRecoveryWithLocalProjection(db,capi,subtle,authority,recoveryId,committedAt);
 }
 
@@ -263,6 +289,7 @@ export async function commitPwaConsumerRecoveryWithLocalProjection(
   recoveryId: string, committedAt: number,
   projection?: { before(): void; admitArchiveStorage(): void; after(fresh: boolean): void },
 ): Promise<void> {
+  requireLibraryTransferCapability();
   if (!isLibraryCoreLowercaseHex64(recoveryId) || !isLibraryCoreNonnegativeSafeInteger(committedAt)) throw new Error("consumer recovery commit identity is invalid");
   const before = archivedRequest(db, recoveryId);
   const verified = await verifyPwaFollowerActorRequest(before.input, authority, subtle);

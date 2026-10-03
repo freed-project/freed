@@ -233,7 +233,7 @@ node scripts/release-tag-publisher-install.mjs verify
 node scripts/validate-release-tag-authority.mjs --repo=freed-project/freed
 ```
 
-`./scripts/release-publish.sh <version>` remains the only release entry point.
+`./scripts/release-publish.sh <version>` is the installed-broker release entry point. The owner-approved protected cloud controller provides the portable route described in [portable release publication](CLOUD-RELEASE-PUBLISHER.md); it reuses the same bounded App broker and never substitutes caller tag credentials.
 It rejects a dirty or wrong branch, a commit that differs from the protected
 remote tip, an unapproved or mismatched release receipt, an existing tag, a
 missing live policy, a changed publisher digest, or a mismatched App
@@ -455,3 +455,7 @@ Expected public objects:
 The index must include production releases and dev prereleases. The changelog
 must stay a checked-in static build snapshot so public website visitors never
 wait on release metadata fetches.
+
+## Portable cloud publisher
+
+See [portable release publication](CLOUD-RELEASE-PUBLISHER.md) for the reviewed controller, environment restrictions, explicit dev/production requests and remaining credential activation requirements. Existing signing credentials stay in GitHub. Until cloud activation is proven, the installed dedicated publisher remains the operational tag path.

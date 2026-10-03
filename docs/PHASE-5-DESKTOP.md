@@ -8,6 +8,15 @@ stable, covered interval with no active provider commands or provider windows.
 Missing or inconsistent evidence is inconclusive. Installed consumer-role and
 multi-device acceptance remain separate requirements.
 
+The Jev evaluation MVP includes an optional GLiClass Base v3.0 classifier.
+Selection downloads pinned official Apache-2.0 weights and tokenizer with
+progress, cancel/resume, integrity checks and removal controls. A bundled ONNX
+graph references those exact safetensors bytes. Native CPU inference uses one
+worker and one thread, releases idle model residency, and has no cloud fallback
+or end-user Python dependency. Unchanged evidence reuses a bounded session cache.
+The Jev API remains available. App release acceptance, persistent incremental
+classification and accuracy evaluation remain open.
+
 Saved URL recovery now distinguishes absent targets from deleted items. The
 owner reviews every URL, edits its title or description, and explicitly confirms
 one complete replacement. Original targets, URLs and remaining archived content
@@ -828,7 +837,7 @@ export async function captureDomFeed(
 | 5.183 | Delete the Friends Galaxy worker's direct whole-source request and its caller-side queue. The shipping worker accepts only source-fenced person, Account, and RSS pages from the registered SQLite queries, stages one normalized job at a time, and commits the GPU scene only after all query families close | High       | ✓ Complete |
 | 5.184 | Give synchronized FeedItem annotations and analysis distinct normalized ownership. Tags and highlights replace atomically under one deterministic clock, content signals and event candidates replace under another, provider capture strips both child sets, and native Rust materializes only verified bounded payloads with blob foreign-key enforcement | High       | ✓ Complete |
 | 5.185 | Replace the fake semantic backfill result and retired deduplication command with a version-filtered, source-fenced SQLite candidate batch. Freed Desktop retains at most 1,000 compact candidates, infers signals and event candidates locally, rechecks the source revision, and commits bounded signed `feed_item_analysis_replace` transactions. RSS title repair now runs through its real frozen SQLite scope instead of an unreachable compatibility branch | High       | ✓ Complete |
-| 5.186 | Make recommendation priority canonical Primary-owned SQLite state. A bounded 64-row indexed scheduler snapshots one weight policy and monotone pass time, commits signed `feed_item_priority_assignment` operations, coalesces invalidations, refreshes recent decay hourly, and removes dead renderer ranking, identity, and compatibility helpers | High       | ✓ Complete |
+| 5.186 | Make recommendation priority canonical Primary-owned SQLite state. A bounded 64-row indexed scheduler snapshots one weight policy and monotone pass time, commits signed `feed_item_priority_assignment` operations, coalesces invalidations, refreshes recent decay hourly, and removes dead renderer ranking, identity, and compatibility helpers. Exact-source time-only hourly passes use the existing index to omit settled rows within a 25,000-item admission envelope; invalidation, restart, and source drift retain full signed passes | High       | ✓ Complete |
 | 5.187 | Close the remaining internal Desktop Library helper surface. Follower mutation context, signing, and enqueue helpers stay private to the typed SQLite dispatcher, while the uncalled preserved-text whole-item getter is deleted instead of remaining as a public bypass candidate | Medium     | ✓ Complete |
 | 5.188 | Construct normalized FeedItem capture payloads through the shared pure capture projector used by the PWA. Desktop cannot submit Primary-owned analysis, device-authored highlights, or capture tags through a root upsert, and no host-specific projection can drift from the contract | Medium     | ✓ Complete |
 | 5.189 | Close the Desktop acceptance boundary around authoritative SQLite rows. Likes, read receipts, archive scopes, RSS health search, Person and Account promotion, candidate ranking, graph linkage, map timelines, and social filtering now validate native query and mutation projections instead of inspecting a renderer corpus. The dual-column reader pins only its visible bounded window while SQLite refreshes beneath it, and device-local RSS health can join that bounded Feed window without loading the subscription catalog | High       | ✓ Complete |
@@ -1551,10 +1560,9 @@ process-restart durability or installed cross-device acceptance.
 
 Browser successor refresh resolves the cloud writer from the unique active
 Desktop actor, matching native checkpoints with the local writer label
-`primary:desktop`. The follower receipt must name that actor. Multiple missed
-authority transfers, large-checkpoint deadline admission, actual crash/restart
-boundaries and installed Mac acceptance remain unverified. Current local work
-still requires full feature validation, fresh provider review and exact-head CI.
+`primary:desktop`. The follower receipt must name that actor. The later missed-transfer evidence
+below extends this direct-transfer path and records synthetic large-checkpoint
+admission. OS-crash boundaries and installed Mac acceptance remain unverified.
 
 ### Replica audit evidence, September 30, 2026
 
@@ -1564,3 +1572,64 @@ the existing reader deadline and cancellation registry. The copied receipt inclu
 interface build metadata; installed native build identity remains separate.
 Focused native, client and rendered control checks pass. This does not establish
 installed Mac acceptance or readiness to move authority.
+
+### Missed-transfer recovery, September 30, 2026
+
+The native importer now authenticates multiple authority transitions using exact
+staged historical checkpoints. It verifies each target's enrollment against its
+historical predecessor authority, then imports only the final successor. A native
+two-transfer fixture preserves the original enrollment and pending intent bytes,
+refuses Primary admission, and archives recovery directly from the original epoch
+to the final epoch. Failed historical-stage cleanup rolls back selection and
+retains recovery inputs; success removes only consumed stages.
+
+The Desktop transport accepts bounded read lists and stages historical downloads
+without activating intermediate epochs. Installed two-Desktop/PWA acceptance,
+representative-size timing and MacBook Pro authority transition remain pending.
+
+The native two-transfer lifecycle also passes with 100,000 synthetic FeedItems,
+including rollback after a historical-stage cleanup failure, preservation of
+the original pending row, and final recovery archival. Its optimized canonical
+audit completes within the existing 30-second budget and matches the PWA digest.
+This is Linux fixture evidence, not installed Mac acceptance or transfer timing.
+
+### Old Primary recovery after later transfers, September 30, 2026
+
+An old Primary that authorized a transfer and then stayed offline can adopt a
+verified later successor. Desktop stages at most 32 authenticated historical
+checkpoints without activating intermediate authorities. Native adoption pins
+the first signed transfer to the original consent and the final selection to
+the verified cloud winner. Consent, original target identity and signed history
+remain intact. Failed verification or cleanup leaves the old Primary fenced.
+
+The native two-transfer lifecycle covers consent tampering, failed cleanup,
+retry, database reopening, explicit successor enrollment and preparation to
+receive authority again. Adoption alone grants no edit or capture rights.
+Installed multi-device acceptance and actual host transition remain pending.
+
+### Pre-upgrade Library snapshots, October 2, 2026
+
+An update from an active Library now waits for an existing normalized local snapshot before downloading and replacing the app. Snapshot failure prevents installation. Startup repair can still install a compatible successor when the Library cannot open. This does not claim that an older binary can read a newer physical catalog.
+
+Snapshot capture hashes and then writes bounded checkpoint pages from one pinned read transaction. The unchanged canonical archive format needs one temporary archive rather than a second complete records file. A concurrent-writer fixture verifies both passes retain the same frontier; existing restore and corruption checks remain applicable. Logical snapshots contain the selected checkpoint records, including inline content chunks, but external content and installation-local lifecycle state still require their own recovery evidence. Installed current-frontier capture and prior-build compatibility remain to be verified before rollout.
+
+The native `snapshot_recovery` example supplies an offline first-upgrade bridge:
+`capture <database> <new-private-archive-directory>` acquires the existing
+Library process lease, opens the source read-only, verifies its existing
+catalog, measures bounded canonical pages, and requires a 10 GiB free-space
+reserve plus 128 MiB overhead before using the normal capture implementation.
+The installed app must quit cleanly first; the helper never starts a runtime,
+reads credentials, or contacts providers. `verify <archive-directory> <id>`
+checks every canonical record and its commitment without a restore.
+`reconstruct <archive-directory> <id> <new-private-target-directory>` uses
+the existing importer only on an empty isolated database, caps main-database
+pages, and checks an identical re-export. This is checkpoint reconstruction,
+not a signed successor restore or binary downgrade proof. Its conservative
+database/journal budget can refuse small volumes before target creation;
+temporary allocations and other processes' disk use remain separate limits.
+
+### Offline predecessor export compatibility
+
+The offline recovery runner detects a computed checkpoint-export view and copies it once, under one read-only attached-source transaction, into a task-private indexed staging file. It preserves the pinned metadata and canonical records without migrating the source or creating another Library runtime. Subsequent export pages seek that staging tree instead of repeatedly scanning and sorting the predecessor view.
+
+The staging file has a SQLite page cap and bounded cache. Initial admission reserves 10 GiB plus 128 MiB overhead and budgets the staging database/journal conservatively; exact archive admission runs after measurement. Successful capture verifies every canonical record and removes the private staging file. Failed staging preserves the source and fails closed. Synthetic tests cover source immutability, URI read-only enforcement, index use, page-cap refusal, frontier stability after a source writer advances, and isolated reconstruction. Current-corpus capture, reconstruction and signed-successor recovery remain separate operator evidence.

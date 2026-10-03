@@ -840,3 +840,23 @@ When promotion moves the actor record to a new epoch, archive review verifies th
 retained authority-signed enrollment certificate against the historical authority
 before checking the original envelopes. The historical snapshot is read-only and
 cannot grant current edit rights. This does not reapply edits as Primary. Full repeated promotion/demotion acceptance remains pending.
+
+### Recovery durability fault coverage, October 2, 2026
+
+Native archived transaction reapplication now refuses SQLite durability below
+FULL before allocating a replacement intent or accessing signing keys. Existing
+recovery links, old signed edits and actor counters remain unchanged on refusal.
+The same recovery transaction tests exercise SIGKILL around source authorization,
+consumer archive and reenrollment, target activation and lost committed responses.
+Real SQLite max-page-count failures cover source signing, archive preparation and
+target activation, with exact persisted-state retry after capacity is restored.
+These are deterministic synthetic process and SQLite-capacity proofs, not physical
+power-loss, full-filesystem exhaustion or installed multi-device acceptance.
+Primary transfer and schema-v2 workflow acceptance remains open; this hardening
+does not grant release activation or remove any existing admission fence.
+
+### Ordinary-build transfer hold
+
+Ordinary Desktop and PWA builds leave Primary transfer and consumer recovery unavailable until installed convergence acceptance is complete. Native lifecycle calls and PWA worker/SQLite mutations refuse before schema migration, key access, provider drain or recovery archive writes. Checkpoint activation refuses a change of the selected Library or authority epoch under the write lock. First-consumer bootstrap and refresh within the currently accepted epoch remain available; an older enrollment still awaiting recovery remains fenced. Status and retained archive inspection remain available. The build never clears persisted transfer fences to resume capture or edits. A device already in a transfer must use a compatible recovery build.
+
+Isolated acceptance builds require the explicit `library-transfer-acceptance` Cargo feature and matching Vite mode. Unit workflow fixtures use the enabled test mode; separate default-feature native tests and default-off PWA engine tests verify refusal. These build capabilities grant no authority and bypass no signature, activation or release review. Ordinary package and release commands must leave the acceptance feature and mode absent. Committed target activation verification remains available for existing-state safety and does not perform schema-v2 migration or grant a new writer.

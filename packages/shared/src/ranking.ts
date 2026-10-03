@@ -72,7 +72,8 @@ function relationshipPriorityBoost(
  * Calculate a priority score (0-100) for a feed item
  */
 /** Hours after which the recency term reaches zero and stops changing. */
-const RECENCY_HORIZON_HOURS = 168;
+export const PRIORITY_RECENCY_HORIZON_MS = 168 * 60 * 60 * 1000;
+const RECENCY_HORIZON_HOURS = PRIORITY_RECENCY_HORIZON_MS / (60 * 60 * 1000);
 
 /**
  * The recency term, which is the ONLY part of priority that varies with time.

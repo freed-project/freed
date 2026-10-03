@@ -23,6 +23,7 @@ pub fn source_handoff_verification_plan_v1(
     stage_id: &str,
     canonical_control: &[u8],
 ) -> Result<HandoffVerificationPlanV1, String> {
+    crate::require_library_transfer_capability()?;
     if !crate::library_core_hash::is_lower_sha256(handoff_id)
         || stage_id.is_empty()
         || stage_id.len() > 255
@@ -63,15 +64,27 @@ fn source_plan_in_snapshot(
          AND json_extract(record_canonical, '$.primaryKey') = ?2;", params![stage_id, successor], |r| r.get(0),
     ).map_err(|_| "source successor certificate is missing")?;
     let epoch = record_from_canonical(&epoch_bytes).map_err(|e| e.to_string())?;
-    let certificate =
-        crate::normalized_handoff_writer_certificate::verify_writer_handoff_against_local_v1(
+    let (certificate, _) =
+        crate::normalized_handoff_writer_certificate::verify_staged_writer_handoff_against_local(
             connection,
+            stage_id,
             epoch.payload["canonicalTransitionCertificate"]
                 .as_str()
                 .ok_or("successor certificate is missing")?
                 .as_bytes(),
         )?;
-    let grant = &certificate.certificate_body.handoff_authorization;
+    // Consent belongs to the first transition, even when the verified winner
+    // is a later descendant. Never overwrite the original target identity.
+    let chain = crate::normalized_handoff_writer_certificate::load_handoff_certificate_chain(
+        connection,
+        Some(stage_id),
+        &predecessor,
+        &successor,
+    )?;
+    let first: crate::normalized_handoff_writer_certificate::WriterHandoffCertificateV1 =
+        serde_json::from_slice(chain.first().ok_or("source successor chain is empty")?)
+            .map_err(|_| "source first successor certificate is invalid")?;
+    let grant = &first.certificate_body.handoff_authorization;
     if certificate.epoch_id != successor
         || canonical_handoff_bytes(grant)? != authorization
         || canonical_handoff_bytes(&grant.body)? != body
@@ -86,7 +99,7 @@ fn source_plan_in_snapshot(
     {
         return Err("staged successor differs from the source's frozen consent or frontier".into());
     }
-    let exact_local: bool = connection.query_row("SELECT target_writer_id = ?1 AND target_authority_public_key = ?2 FROM library_local_handoff WHERE singleton_id = 1;", params![certificate.certificate_body.target_writer_id, certificate.certificate_body.target_authority_public_key], |r| r.get(0)).map_err(|e| e.to_string())?;
+    let exact_local: bool = connection.query_row("SELECT target_writer_id = ?1 AND target_authority_public_key = ?2 FROM library_local_handoff WHERE singleton_id = 1;", params![first.certificate_body.target_writer_id, first.certificate_body.target_authority_public_key], |r| r.get(0)).map_err(|e| e.to_string())?;
     let orphaned_history: bool = connection.query_row("SELECT NOT EXISTS(SELECT 1 FROM library_follower_actor_request) AND (EXISTS(SELECT 1 FROM library_intent_transactions) OR EXISTS(SELECT 1 FROM library_intent_actors));", [], |r| r.get(0)).map_err(|e| e.to_string())?;
     if !exact_local || orphaned_history {
         return Err("source identity or retained consumer history requires recovery".into());
@@ -194,18 +207,128 @@ pub fn recover_demoted_source_handoff_v1(
     Ok(Some(status))
 }
 
-fn verify_demoted_source_selection(connection: &Connection) -> Result<(), String> {
+pub(crate) fn verify_demoted_source_selection(connection: &Connection) -> Result<(), String> {
+    if connection.is_autocommit() {
+        let snapshot = connection
+            .unchecked_transaction()
+            .map_err(|e| e.to_string())?;
+        verify_demoted_source_in_snapshot(&snapshot)?;
+        return snapshot.commit().map_err(|e| e.to_string());
+    }
+    verify_demoted_source_in_snapshot(connection)
+}
+
+fn verify_demoted_source_in_snapshot(connection: &Connection) -> Result<(), String> {
     let valid: bool = connection.query_row(
         "SELECT EXISTS(SELECT 1 FROM library_local_handoff AS handoff JOIN library_meta AS meta
           ON meta.library_id = handoff.library_id AND meta.authority_epoch = handoff.successor_epoch_id
          JOIN library_follower_checkpoint_receipt AS receipt ON receipt.singleton_id = 1
           AND receipt.library_id = meta.library_id AND receipt.authority_epoch_id = meta.authority_epoch
-          AND receipt.writer_actor_id = handoff.target_writer_id
+          AND receipt.writer_actor_id = json_extract(CAST(handoff.canonical_activation AS TEXT), '$.activation.control.writerId')
          WHERE handoff.singleton_id = 1 AND handoff.installation_role = 'source' AND handoff.phase = 'demoted')
          AND NOT EXISTS(SELECT 1 FROM library_writer_admission) AND NOT EXISTS(SELECT 1 FROM library_local_cloud_writer_admission);", [], |r| r.get(0),
     ).map_err(|e| e.to_string())?;
     if !valid {
         return Err("source demotion is not backed by its consumer selection".into());
+    }
+    struct RetainedConsent {
+        id: String,
+        library: String,
+        old_epoch: String,
+        new_epoch: String,
+        authorization: Vec<u8>,
+        body: Vec<u8>,
+        readiness: Vec<u8>,
+        adoption: Vec<u8>,
+        revision: String,
+        target: String,
+        target_key: String,
+    }
+    let RetainedConsent { id, library, old_epoch, new_epoch, authorization, body, readiness, adoption, revision, target, target_key } = connection.query_row(
+        "SELECT handoff_id,library_id,predecessor_epoch_id,successor_epoch_id,canonical_authorization,
+                canonical_authorization_body,canonical_readiness,canonical_activation,expected_control_revision,target_writer_id,target_authority_public_key
+         FROM library_local_handoff WHERE singleton_id=1 AND installation_role='source' AND phase='demoted';",
+        [], |r| Ok(RetainedConsent { id: r.get(0)?, library: r.get(1)?, old_epoch: r.get(2)?, new_epoch: r.get(3)?,
+            authorization: r.get(4)?, body: r.get(5)?, readiness: r.get(6)?, adoption: r.get(7)?, revision: r.get(8)?,
+            target: r.get(9)?, target_key: r.get(10)? }),
+    ).map_err(|e| e.to_string())?;
+    let grant: crate::normalized_handoff_certificate::HandoffAuthorizationV1 =
+        serde_json::from_value(
+            decode_canonical_value(&authorization, 16_384)
+                .map_err(|_| "source consent is invalid")?
+                .into_value(),
+        )
+        .map_err(|_| "source consent shape is invalid")?;
+    let ready = &grant.body.readiness;
+    if canonical_handoff_bytes(&grant)? != authorization
+        || canonical_handoff_bytes(&grant.body)? != body
+        || canonical_handoff_bytes(ready)? != readiness
+        || ready.handoff_id != id
+        || ready.body.library_id != library
+        || ready.body.predecessor_epoch_id != old_epoch
+        || ready.body.target_actor_id != target
+        || ready.body.target_authority_public_key != target_key
+        || grant.body.source_control_revision != revision
+    {
+        return Err("source demotion consent records disagree".into());
+    }
+    let chain = crate::normalized_handoff_writer_certificate::load_handoff_certificate_chain(
+        connection, None, &old_epoch, &new_epoch,
+    )?;
+    // Historical enrollment was checked in the installing transaction. On
+    // restart, authenticate the retained chain against the original local
+    // consent, not a predecessor key supplied by the newly imported checkpoint.
+    crate::normalized_handoff_writer_certificate::verify_predecessor_checkpoint_reads(
+        &chain.iter().map(Vec::as_slice).collect::<Vec<_>>(),
+        &crate::normalized_handoff_certificate::HandoffPredecessorV1 {
+            library_id: &library,
+            epoch_id: &old_epoch,
+            epoch: grant
+                .body
+                .successor_epoch
+                .checked_sub(1)
+                .ok_or("source predecessor epoch is invalid")?,
+            certificate_digest: &ready.body.predecessor_certificate_digest,
+            authority_public_key: &grant.body.predecessor_authority_public_key,
+            writer_id: &grant.body.source_control.writer_id,
+        },
+        Some(&new_epoch),
+    )?;
+    let first: crate::normalized_handoff_writer_certificate::WriterHandoffCertificateV1 =
+        serde_json::from_slice(chain.first().ok_or("source chain is empty")?)
+            .map_err(|_| "source first certificate is invalid")?;
+    let last: crate::normalized_handoff_writer_certificate::WriterHandoffCertificateV1 =
+        serde_json::from_slice(chain.last().ok_or("source chain is empty")?)
+            .map_err(|_| "source final certificate is invalid")?;
+    let receipt: SourceProposal = serde_json::from_value(
+        decode_canonical_value(&adoption, 32_768)
+            .map_err(|_| "source adoption receipt is invalid")?
+            .into_value(),
+    )
+    .map_err(|_| "source adoption receipt shape is invalid")?;
+    if canonical_handoff_bytes(&first.certificate_body.handoff_authorization)? != authorization
+        || canonical_handoff_bytes(&receipt)? != adoption
+        || receipt.format != "freed_library_source_adoption_v1"
+        || receipt.stage_id.is_empty()
+        || receipt.stage_id.len() > 255
+        || receipt.activation.handoff_id != id
+        || receipt.activation.control.library_id != library
+        || receipt.activation.control.storage_epoch != new_epoch
+        || receipt.activation.control.writer_id != last.certificate_body.target_writer_id
+        || receipt.activation.expected_control_revision != revision
+        || receipt.activation.control_file_id != grant.body.source_control_file_id
+    {
+        return Err("source demotion differs from its original consent or final winner".into());
+    }
+    let selected: bool = connection.query_row(
+        "SELECT epoch_number=?3 AND authority_key_id=?4 AND authority_public_key=?5 AND transition_certificate_digest=?6
+         FROM library_authority_epochs WHERE library_id=?1 AND epoch_id=?2;",
+        params![library,new_epoch,last.certificate_body.target_epoch,last.certificate_body.target_authority_key_id,
+            last.certificate_body.target_authority_public_key,crate::normalized_writer_certificate::digest_value("epoch-transition-certificate", &serde_json::to_value(&last).map_err(|e| e.to_string())?)?],
+        |r|r.get(0),
+    ).map_err(|e|e.to_string())?;
+    if !selected {
+        return Err("source selected successor authority changed".into());
     }
     Ok(())
 }
@@ -218,6 +341,7 @@ pub fn adopt_source_handoff_after_remote_verification_v1(
     verified_revision: &str,
     adopted_at: u64,
 ) -> Result<crate::NativeHandoffStatusV1, String> {
+    crate::require_library_transfer_capability()?;
     let stage = plan
         .source_stage_id
         .as_deref()
@@ -317,83 +441,6 @@ pub(crate) fn retain_demoted_source_for_return(
     ).map_err(|e| e.to_string())?;
     if created_at <= completed {
         return Err("return target readiness requires a later local creation time".into());
-    }
-    let certificate: String = tx.query_row(
-        "SELECT canonical_transition_certificate FROM library_authority_epochs WHERE library_id = ?1 AND epoch_id = ?2;",
-        params![library, new_epoch], |row| row.get(0),
-    ).map_err(|e| e.to_string())?;
-    let proof: crate::normalized_handoff_writer_certificate::WriterHandoffCertificateV1 =
-        serde_json::from_value(
-            decode_canonical_value(certificate.as_bytes(), 16384)
-                .map_err(|_| "return target successor proof is invalid")?
-                .into_value(),
-        )
-        .map_err(|_| "return target successor proof shape is invalid")?;
-    let selected_proof: bool = tx.query_row(
-        "SELECT epoch_number = ?3 AND authority_key_id = ?4 AND authority_public_key = ?5 AND transition_certificate_digest = ?6
-         FROM library_authority_epochs WHERE library_id = ?1 AND epoch_id = ?2;",
-        params![library, new_epoch, proof.certificate_body.target_epoch, proof.certificate_body.target_authority_key_id,
-            proof.certificate_body.target_authority_public_key, crate::normalized_writer_certificate::digest_value("epoch-transition-certificate", &serde_json::to_value(&proof).map_err(|e| e.to_string())?)?],
-        |row| row.get(0),
-    ).map_err(|e| e.to_string())?;
-    if !selected_proof {
-        return Err("return target successor authority fields changed".into());
-    }
-    let grant = &proof.certificate_body.handoff_authorization;
-    let (epoch, digest, public): (u64, String, String) = tx.query_row(
-        "SELECT epoch_number, transition_certificate_digest, authority_public_key FROM library_authority_epochs WHERE library_id = ?1 AND epoch_id = ?2;",
-        params![library, old_epoch], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-    ).map_err(|e| e.to_string())?;
-    crate::normalized_handoff_writer_certificate::verify_writer_handoff_certificate_v1(
-        &proof,
-        &crate::normalized_handoff_certificate::HandoffPredecessorV1 {
-            library_id: &library,
-            epoch_id: &old_epoch,
-            epoch,
-            certificate_digest: &digest,
-            authority_public_key: &public,
-            writer_id: &grant.body.source_control.writer_id,
-        },
-        &grant.body.readiness.body.target_actor_public_key,
-    )?;
-    let receipt: SourceProposal = serde_json::from_value(
-        decode_canonical_value(&adoption, 32768)
-            .map_err(|_| "return target source receipt is invalid")?
-            .into_value(),
-    )
-    .map_err(|_| "return target source receipt shape is invalid")?;
-    if canonical_handoff_bytes(&proof)? != certificate.as_bytes()
-        || proof.epoch_id != new_epoch
-        || canonical_handoff_bytes(grant)? != authorization
-        || grant.body.readiness.handoff_id != id
-        || canonical_handoff_bytes(&receipt)? != adoption
-        || receipt.format != "freed_library_source_adoption_v1"
-        || receipt.activation.handoff_id != id
-        || receipt.activation.control.library_id != library
-        || receipt.activation.control.storage_epoch != new_epoch
-        || receipt.activation.control.writer_id != proof.certificate_body.target_writer_id
-        || receipt.activation.expected_control_revision != grant.body.source_control_revision
-        || receipt.activation.control_file_id != grant.body.source_control_file_id
-    {
-        return Err("return target source proof differs from its selected successor".into());
-    }
-    let retained: bool = tx
-        .query_row(
-            "SELECT canonical_readiness = ?1 AND canonical_authorization_body = ?2
-          AND target_writer_id = ?3 AND target_authority_public_key = ?4
-          AND expected_control_revision = ?5 FROM library_local_handoff WHERE singleton_id = 1;",
-            params![
-                canonical_handoff_bytes(&grant.body.readiness)?,
-                canonical_handoff_bytes(&grant.body)?,
-                proof.certificate_body.target_writer_id,
-                proof.certificate_body.target_authority_public_key,
-                grant.body.source_control_revision
-            ],
-            |row| row.get(0),
-        )
-        .map_err(|e| e.to_string())?;
-    if !retained {
-        return Err("return target source consent records disagree".into());
     }
     tx.execute(
         "INSERT INTO library_local_source_demotions (handoff_id, library_id, predecessor_epoch_id, successor_epoch_id, canonical_authorization, canonical_adoption, completed_at)

@@ -3,9 +3,7 @@ use crate::library_core_actor_enrollment::{load_actor_key_pair, ActorKeyStore};
 use crate::library_core_canonical::encode_canonical_value;
 use crate::library_core_hash::lower_hex;
 use crate::normalized_handoff_certificate::{canonical_handoff_bytes, HandoffPredecessorV1};
-use crate::normalized_handoff_writer_certificate::{
-    verify_writer_handoff_certificate_v1, WriterHandoffCertificateV1,
-};
+use crate::normalized_handoff_writer_certificate::WriterHandoffCertificateV1;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use ring::signature::KeyPair;
 use rusqlite::{params, types::ValueRef, Connection, OptionalExtension};
@@ -17,6 +15,16 @@ fn verify_selected_consumer_successor(
     library: &str,
     old_epoch: &str,
 ) -> Result<WriterHandoffCertificateV1, String> {
+    // Read-only callers need the same coherent authority snapshot as import's
+    // existing write transaction. This never upgrades read proof into admission.
+    if connection.is_autocommit() {
+        let tx = connection
+            .unchecked_transaction()
+            .map_err(|e| e.to_string())?;
+        let certificate = verify_selected_consumer_successor(&tx, library, old_epoch)?;
+        tx.commit().map_err(|e| e.to_string())?;
+        return Ok(certificate);
+    }
     let (new_epoch, certificate_json, certificate_digest): (String, String, String) = connection.query_row(
         "SELECT epoch.epoch_id, epoch.canonical_transition_certificate, epoch.transition_certificate_digest
          FROM library_meta AS meta JOIN library_authority_epochs AS epoch ON epoch.epoch_id = meta.authority_epoch
@@ -38,25 +46,31 @@ fn verify_selected_consumer_successor(
     {
         return Err("consumer successor proof identity changed".into());
     }
-    let grant = &certificate.certificate_body.handoff_authorization;
-    if grant.body.readiness.body.predecessor_epoch_id != old_epoch {
-        return Err("consumer recovery requires the direct authorized successor".into());
-    }
+    let chain = crate::normalized_handoff_writer_certificate::load_handoff_certificate_chain(
+        connection, None, old_epoch, &new_epoch,
+    )?;
+    let first: WriterHandoffCertificateV1 =
+        serde_json::from_slice(&chain[0]).map_err(|_| "consumer predecessor chain is invalid")?;
     let (number, digest, key): (u64, String, String) = connection.query_row(
         "SELECT epoch_number, transition_certificate_digest, authority_public_key FROM library_authority_epochs WHERE library_id = ?1 AND epoch_id = ?2;",
         params![library, old_epoch], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
     ).map_err(|_| "consumer predecessor proof is missing")?;
-    verify_writer_handoff_certificate_v1(
-        &certificate,
+    crate::normalized_handoff_writer_certificate::verify_predecessor_checkpoint_reads(
+        &chain.iter().map(Vec::as_slice).collect::<Vec<_>>(),
         &HandoffPredecessorV1 {
             library_id: library,
             epoch_id: old_epoch,
             epoch: number,
             certificate_digest: &digest,
             authority_public_key: &key,
-            writer_id: &grant.body.source_control.writer_id,
+            writer_id: &first
+                .certificate_body
+                .handoff_authorization
+                .body
+                .source_control
+                .writer_id,
         },
-        &grant.body.readiness.body.target_actor_public_key,
+        Some(&new_epoch),
     )?;
     Ok(certificate)
 }
@@ -99,6 +113,7 @@ pub fn archive_consumer_epoch_recovery_v1(
     actor_store: &dyn ActorKeyStore,
     created_at: u64,
 ) -> Result<String, String> {
+    crate::require_library_transfer_capability()?;
     archive_consumer_recovery_with_admission(
         connection,
         actor_store,
@@ -397,6 +412,7 @@ pub fn prepare_consumer_epoch_reenrollment_v1(
     actor_store: &dyn ActorKeyStore,
     created_at: u64,
 ) -> Result<crate::normalized_follower::NormalizedFollowerActorRequestV2, String> {
+    crate::require_library_transfer_capability()?;
     prepare_consumer_reenrollment_with_admission(
         connection,
         recovery_id,
@@ -558,6 +574,7 @@ pub fn commit_consumer_epoch_reenrollment_v1(
     actor_store: &dyn ActorKeyStore,
     committed_at: u64,
 ) -> Result<crate::normalized_follower::NormalizedFollowerActorRequestV2, String> {
+    crate::require_library_transfer_capability()?;
     commit_consumer_reenrollment_with_admission(
         connection,
         recovery_id,
@@ -735,6 +752,7 @@ pub fn prepare_consumer_recovery_v1(
     actor_store: &dyn ActorKeyStore,
     created_at: u64,
 ) -> Result<ConsumerRecoverySummaryV1, String> {
+    crate::require_library_transfer_capability()?;
     let existing = read_consumer_recovery_summary_v1(connection)?;
     if let Some(summary) = existing
         .as_ref()
@@ -1179,5 +1197,97 @@ mod archive_parity_tests {
         assert_eq!(count, 1);
         assert_eq!(digest, vector["emptyLibraryArchiveDigest"]);
         tx.commit().unwrap();
+    }
+}
+
+#[cfg(test)]
+mod missed_transfer_tests {
+    use super::*;
+
+    #[test]
+    fn selected_consumer_proof_follows_every_retained_authority_certificate() {
+        let vectors: Vec<serde_json::Value> = serde_json::from_str(include_str!(
+            "../../shared/src/library-core/handoff-chain-vectors-v1.json"
+        ))
+        .unwrap();
+        let connection = Connection::open_in_memory().unwrap();
+        connection.execute_batch("CREATE TABLE library_meta(singleton_id INTEGER, library_id TEXT, authority_epoch TEXT);
+            CREATE TABLE library_follower_checkpoint_receipt(singleton_id INTEGER, library_id TEXT, authority_epoch_id TEXT);
+            CREATE TABLE library_authority_epochs(epoch_id TEXT PRIMARY KEY,library_id TEXT,epoch_number INTEGER,
+                transition_certificate_digest TEXT,authority_public_key TEXT,canonical_transition_certificate TEXT);").unwrap();
+        let pin = &vectors[0]["predecessor"];
+        let library = pin["libraryId"].as_str().unwrap();
+        let old = pin["epochId"].as_str().unwrap();
+        connection
+            .execute(
+                "INSERT INTO library_authority_epochs VALUES(?1,?2,?3,?4,?5,'{}');",
+                params![
+                    old,
+                    library,
+                    pin["epoch"].as_u64().unwrap(),
+                    pin["certificateDigest"].as_str().unwrap(),
+                    pin["authorityPublicKey"].as_str().unwrap()
+                ],
+            )
+            .unwrap();
+        for vector in &vectors {
+            let canonical = vector["canonicalCertificate"].as_str().unwrap();
+            let certificate: WriterHandoffCertificateV1 = serde_json::from_str(canonical).unwrap();
+            let digest = crate::normalized_writer_certificate::digest_value(
+                "epoch-transition-certificate",
+                &serde_json::to_value(&certificate).unwrap(),
+            )
+            .unwrap();
+            connection
+                .execute(
+                    "INSERT INTO library_authority_epochs VALUES(?1,?2,?3,?4,?5,?6);",
+                    params![
+                        certificate.epoch_id,
+                        library,
+                        certificate.certificate_body.target_epoch,
+                        digest,
+                        certificate.certificate_body.target_authority_public_key,
+                        canonical
+                    ],
+                )
+                .unwrap();
+        }
+        let final_epoch = vectors[1]["expected"]["epochId"].as_str().unwrap();
+        connection
+            .execute(
+                "INSERT INTO library_meta VALUES(1,?1,?2);",
+                params![library, final_epoch],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO library_follower_checkpoint_receipt VALUES(1,?1,?2);",
+                params![library, final_epoch],
+            )
+            .unwrap();
+        let changes: u64 = connection
+            .query_row("SELECT total_changes();", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(
+            verify_selected_consumer_successor(&connection, library, old)
+                .unwrap()
+                .epoch_id,
+            final_epoch
+        );
+        assert!(connection.is_autocommit());
+        assert_eq!(
+            changes,
+            connection
+                .query_row("SELECT total_changes();", [], |r| r.get::<_, u64>(0))
+                .unwrap()
+        );
+        connection
+            .execute(
+                "DELETE FROM library_authority_epochs WHERE epoch_id=?1;",
+                [vectors[0]["expected"]["epochId"].as_str().unwrap()],
+            )
+            .unwrap();
+        assert!(verify_selected_consumer_successor(&connection, library, old).is_err());
+        assert!(connection.is_autocommit());
     }
 }

@@ -1,3 +1,4 @@
+import { requireLibraryTransferCapability } from "./library-transfer-capability";
 import { queryNormalizedLibrary } from "./library-core-normalized-query-client";
 import { isDesktopHandoffPaused } from "./factory-reset-guard";
 import { waitForFactoryResetDrain } from "@freed/ui/lib/factory-reset";
@@ -1216,6 +1217,7 @@ function requireOrdinarySyncAllowed(): void {
 /** Native lifecycle changes share the sync owner. A cancelled network pass must
  * actually finish before source preparation can change its authority. */
 export async function runSqliteLibraryHandoffLifecycle<T>(work: () => Promise<T>): Promise<T> {
+  requireLibraryTransferCapability();
   if (!isDesktopHandoffPaused()) throw new Error("Library handoff requires the renderer pause");
   stopSqliteLibraryCloudSync();
   await waitForFactoryResetDrain(
@@ -1370,6 +1372,7 @@ export function publishSealedSqliteLibraryCheckpoint(input: {
   readonly controlRevision: string;
   readonly controlFileId: string;
 }> {
+  requireLibraryTransferCapability();
   return runBoundedPublication(input, (request) => withCheckpointExport(async () => {
     const requireSealed = async () => {
       throwIfPublicationCanceled(request.signal);
@@ -1474,6 +1477,7 @@ export function publishSealedSqliteLibraryCheckpoint(input: {
 export function stageSqliteLibraryHandoffSource(input: {
   handoffId: string; accessToken: string; googleFetch?: GoogleDriveFetch; signal?: AbortSignal;
 }): Promise<{ stageId: string; canonicalControl: string }> {
+  requireLibraryTransferCapability();
   return runBoundedPublication(input, async (request) => {
     const status = await readNormalizedLibraryHandoffStatus();
     if (!status || status.handoffId !== input.handoffId || status.installationRole !== "source"
@@ -1492,20 +1496,37 @@ export function stageSqliteLibraryHandoffSource(input: {
     if (!pointer || !control.revision || pointer.libraryId !== status.libraryId || pointer.storageEpoch === status.predecessorEpochId) {
       throw new Error("The authorized successor has not published a checkpoint");
     }
+    const runtime = {
+      async begin(stage: Parameters<typeof beginNormalizedLibraryCheckpointImport>[0]) {
+        throwIfPublicationCanceled(request.signal);
+        request.deadline?.beginCheckpoint(stage.expectedRecordCount);
+        return beginNormalizedLibraryCheckpointImport(stage);
+      },
+      async appendPage(page: Parameters<typeof appendNormalizedLibraryCheckpointImportPage>[0]) {
+        throwIfPublicationCanceled(request.signal);
+        const receipt = await appendNormalizedLibraryCheckpointImportPage(page);
+        request.deadline?.advanceRecords(receipt.stagedRecordCount);
+        return receipt;
+      },
+    };
     const staged = await stageLibraryCoreNormalizedCheckpointV2({
       adapter, generation: pointer.generation, libraryId: pointer.libraryId, storageEpoch: pointer.storageEpoch,
-      manifest: pointer.manifest, subtle: crypto.subtle, runtime: {
-        async begin(stage) {
-          throwIfPublicationCanceled(request.signal);
-          request.deadline?.beginCheckpoint(stage.expectedRecordCount);
-          return beginNormalizedLibraryCheckpointImport(stage);
-        },
+      manifest: pointer.manifest, subtle: crypto.subtle, runtime,
+    });
+    await catchUpLibraryCorePredecessorCheckpointV1({
+      adapter, subtle: crypto.subtle, successorStageId: staged.stageId, installedAt: Date.now(), stageOnly: true,
+      assertActive: () => throwIfPublicationCanceled(request.signal),
+      runtime: {
+        ...runtime,
+        prepare: prepareNormalizedLibraryPredecessorCheckpointRead,
         async appendPage(page) {
-          throwIfPublicationCanceled(request.signal);
-          const receipt = await appendNormalizedLibraryCheckpointImportPage(page);
-          request.deadline?.advanceRecords(receipt.stagedRecordCount);
+          const receipt = await runtime.appendPage(page);
+          // The final checkpoint has already exhausted its record counter.
+          // Distinct historical pages renew idle time without extending the total cap.
+          request.deadline?.verifiedObject(`predecessor:${page.stageId}:${receipt.stagedRecordCount}`);
           return receipt;
         },
+        async activate() { throw new Error("Source history must remain staged until verified demotion"); },
       },
     });
     const current = await readNormalizedLibraryHandoffStatus();
@@ -1527,6 +1548,7 @@ export function catchUpSqliteLibraryHandoffTarget(input: {
   googleFetch?: GoogleDriveFetch;
   signal?: AbortSignal;
 }): Promise<LibraryCoreNormalizedCheckpointExportDescriptorV2> {
+  requireLibraryTransferCapability();
   return runBoundedPublication(input, async (request) => {
     const status = await readNormalizedLibraryHandoffStatus();
     if (!status || status.handoffId !== input.handoffId || status.installationRole !== "target"
@@ -1575,6 +1597,7 @@ export function catchUpSqliteLibraryHandoffTarget(input: {
 export function publishSqliteLibraryHandoffTarget(input: {
   handoffId: string; accessToken: string; googleFetch?: GoogleDriveFetch; signal?: AbortSignal;
 }): Promise<{ controlPointer: LibraryCoreControlPointerV1; controlRevision: string }> {
+  requireLibraryTransferCapability();
   return runBoundedPublication(input, (request) => withCheckpointExport(async () => {
     const initial = await readNormalizedLibraryHandoffStatus();
     if (!initial || initial.handoffId !== input.handoffId || initial.installationRole !== "target"

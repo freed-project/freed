@@ -197,6 +197,11 @@ test("release admission and repository configuration changes use focused feature
   const selection = selectApplicableSuites([
     ".github/dependabot.yml",
     ".github/workflows/release.yml",
+    ".github/workflows/cloud-release-request.yml",
+    ".github/workflows/cloud-release-inbox.yml",
+    "scripts/cloud-release-request.mjs",
+    "scripts/cloud-release-request.test.mjs",
+
     "scripts/generate-tauri-latest-from-release.mjs",
     "scripts/generate-tauri-latest-from-release.test.mjs",
     "scripts/lib/tooling-smoke-plan.mjs",

@@ -522,6 +522,40 @@ mod tests {
         )
     }
     #[test]
+    fn owner_scale_manifest_fits_but_serial_latency_requires_admission() {
+        // Synthetic metadata only: no corpus allocation, network or real sleeps.
+        let records = 5_072_539u64;
+        let page_count = records.div_ceil(CHECKPOINT_PAGE_MAXIMUM_RECORDS as u64);
+        assert_eq!(page_count, 1239);
+        let mut manifest = manifest_fixture();
+        manifest["totalRecordCount"] = json!(records);
+        manifest["pages"] = json!((0..page_count).map(|index| {
+            let first = index * CHECKPOINT_PAGE_MAXIMUM_RECORDS as u64;
+            let count = (records - first).min(CHECKPOINT_PAGE_MAXIMUM_RECORDS as u64);
+            json!({"firstRecordIdentity": format!("10_feed_item:[\"rss:synthetic:{first:010}\"]"),
+                "lastRecordIdentity": format!("10_feed_item:[\"rss:synthetic:{:010}\"]", first+count-1),
+                "pageIndex":index,"recordCount":count,"object":{"transportObjectId":format!("synthetic-drive-object-{index:040}"),
+                    "descriptor":{"contentDigest":"d".repeat(64),"byteLength":262144,
+                    "objectKey":format!("freed-v2-checkpoint~{}~e{}~g0~p{index}~{}.fpage.gz","a".repeat(64),"b".repeat(64),"d".repeat(64))}}})
+        }).collect::<Vec<_>>());
+        let (mut plan, bytes) = manifest_plan(&manifest);
+        plan.expected_records = records;
+        assert_eq!(
+            plan.verify_manifest(&bytes).unwrap().len(),
+            page_count as usize
+        );
+        let deadline_ms = 900_000u64;
+        // Seven reads: two three-read consistent controls and one manifest.
+        // Per-page CPU cost is deliberately explicit, not a measured estimate.
+        let simulated = |request_ms: u64, verify_ms: u64| {
+            (page_count + 7) * request_ms + page_count * verify_ms
+        };
+        assert!(simulated(500, 5) < deadline_ms);
+        assert!(simulated(750, 5) > deadline_ms);
+        eprintln!("owner scale: records={records}, pages={page_count}, manifest_bytes={}, 500ms reads+5ms verify={}ms, 750ms reads+5ms verify={}ms; no live latency claim", bytes.len(), simulated(500,5), simulated(750,5));
+    }
+
+    #[test]
     fn binds_manifest_bytes_and_successor_identity() {
         let manifest = manifest_fixture();
         let (plan, bytes) = manifest_plan(&manifest);

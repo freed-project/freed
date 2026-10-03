@@ -79,6 +79,7 @@ const mocks = vi.hoisted(() => ({
   publish: vi.fn(),
   reassign: vi.fn(),
   stageCheckpoint: vi.fn(),
+  prepareHistory: vi.fn(async () => null),
   importCheckpoint: vi.fn(),
   discoverPublishedControl: vi.fn(),
   discoverEnrollmentRequests: vi.fn(async (): Promise<unknown[]> => []),
@@ -144,7 +145,7 @@ vi.mock("./sqlite-library", () => ({
   readNormalizedLibraryOperationPage: vi.fn(),
   importNormalizedLibraryOperationPage: vi.fn(),
   activateNormalizedLibraryCheckpointImport: mocks.activateNormalizedImport,
-  prepareNormalizedLibraryPredecessorCheckpointRead: vi.fn(async () => null),
+  prepareNormalizedLibraryPredecessorCheckpointRead: mocks.prepareHistory,
   activateNormalizedLibraryPredecessorCheckpoint: vi.fn(),
   appendNormalizedLibraryCheckpointImportPage: mocks.appendNormalizedPage,
   beginNormalizedLibraryCheckpointExport: mocks.beginNormalizedExport,
@@ -396,6 +397,7 @@ describe("SQLite Library Google Drive production wiring", () => {
     mocks.controlReadFault = null; mocks.controlTokens = [];
     mocks.handoffStatus.mockReset().mockResolvedValue(null);
     mocks.stageCheckpoint.mockReset();
+    mocks.prepareHistory.mockReset().mockResolvedValue(null);
     mocks.stageHandoff.mockReset(); mocks.proposal.mockReset(); mocks.cas.mockReset();
     vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("Unexpected network request in offline sync test"); }));
     mocks.discoverOperationHead.mockReset().mockResolvedValue(null);
@@ -709,7 +711,7 @@ describe("SQLite Library Google Drive production wiring", () => {
     expect(mocks.setWriterAdmission).not.toHaveBeenCalled();
   });
 
-  it.each(["verified", "predecessor", "changed-local", "canceled"] as const)("stages a source successor without activation: %s", async (mode) => {
+  it.each(["verified", "predecessor", "changed-local", "canceled", "missing-history"] as const)("stages a source successor without activation: %s", async (mode) => {
     await publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "fixture" });
     const saved = mocks.nativeState as { lastPublishedCheckpoint: { controlPointer: Record<string, unknown>; controlRevision: string } };
     const pointer = saved.lastPublishedCheckpoint.controlPointer;
@@ -727,11 +729,15 @@ describe("SQLite Library Google Drive production wiring", () => {
       return { stageId: "verified-stage" };
     });
     mocks.activateNormalizedImport.mockClear(); mocks.setWriterAdmission.mockClear(); mocks.publish.mockClear();
+    mocks.prepareHistory.mockClear();
+    if (mode === "missing-history") mocks.prepareHistory.mockRejectedValueOnce(new Error("historical proof unavailable"));
     const result = stageSqliteLibraryHandoffSource({ handoffId, accessToken: "fixture", signal: controller.signal });
     if (mode === "verified") {
       await expect(result).resolves.toEqual({ stageId: "verified-stage", canonicalControl: new TextDecoder().decode(encodeLibraryCoreCanonicalValue(pointer as never)) });
       expect(mocks.stageCheckpoint).toHaveBeenCalledWith(expect.objectContaining({ manifest: pointer.manifest, storageEpoch: pointer.storageEpoch }));
-    } else if (mode === "canceled") await expect(result).rejects.toMatchObject({ name: "AbortError" });
+      expect(mocks.prepareHistory).toHaveBeenCalledWith("verified-stage");
+    } else if (mode === "missing-history") await expect(result).rejects.toThrow("historical proof unavailable");
+    else if (mode === "canceled") await expect(result).rejects.toMatchObject({ name: "AbortError" });
     else await expect(result).rejects.toThrow(mode === "predecessor" ? "has not published" : "changed during");
     if (mode === "predecessor") expect(mocks.stageCheckpoint).not.toHaveBeenCalled();
     expect(mocks.activateNormalizedImport).not.toHaveBeenCalled();

@@ -1,3 +1,4 @@
+import { requireLibraryTransferCapability } from "./library-transfer-capability";
 import { refreshLibraryCoreDesktopRole, type DesktopLibraryInstallationStatus } from "./library-core-desktop-role";
 import { pauseDesktopOperationsForHandoff } from "./factory-reset-guard";
 import { stopRssPollerAndDrain } from "./rss-poller";
@@ -58,6 +59,7 @@ export async function restoreDesktopLibraryHandoffPause(): Promise<NormalizedLib
 /** Stop new work, persist native preparation, finish accepted writes, then seal
  * the exact final checkpoint. A persisted or unreadable transfer stays paused on failure. */
 export function prepareDesktopLibraryTargetReadiness(): Promise<string> {
+  requireLibraryTransferCapability();
   return exclusively(async () => {
     const owner = ownPause();
     try {
@@ -84,6 +86,7 @@ export function prepareDesktopLibrarySourceHandoff(input: {
   canonicalReadiness: string;
   selectedTargetActorId: string;
 }): Promise<NormalizedLibraryHandoffStatus> {
+  requireLibraryTransferCapability();
   return exclusively(async () => {
     const owner = ownPause();
     try {
@@ -135,6 +138,7 @@ export function prepareDesktopLibrarySourceHandoff(input: {
 /** Cancellation is confirmed durably before service-start subscribers run. An
  * unsigned AUTHORIZED record already crossed the cutoff and native refuses it. */
 export function cancelDesktopLibrarySourceHandoff(handoffId: string): Promise<void> {
+  requireLibraryTransferCapability();
   return exclusively(async () => {
     const owner = ownPause();
     await runSqliteLibraryHandoffLifecycle(async () => {
@@ -159,6 +163,7 @@ export function authorizeDesktopLibrarySourceHandoff(input: {
   googleFetch?: GoogleDriveFetch;
   signal?: AbortSignal;
 }): Promise<string> {
+  requireLibraryTransferCapability();
   return exclusively(async () => {
     ownPause();
     const status = await readNormalizedLibraryHandoffStatus();
@@ -196,6 +201,7 @@ export function authorizeDesktopLibrarySourceHandoff(input: {
 /** Store verified consent while native keeps the target fenced. This does not
  * activate a successor or claim that its final checkpoint has been downloaded. */
 export function acceptDesktopLibraryTargetHandoffCancellation(canonicalCancellation: string): Promise<void> {
+  requireLibraryTransferCapability();
   return exclusively(async () => {
     const owner = ownPause();
     await owner.drain(180_000);
@@ -220,6 +226,7 @@ export function acceptDesktopLibraryTargetHandoffCancellation(canonicalCancellat
 }
 
 export function acceptDesktopLibraryTargetHandoffAuthorization(canonicalAuthorization: string): Promise<NormalizedLibraryHandoffStatus> {
+  requireLibraryTransferCapability();
   return exclusively(async () => {
     ownPause();
     return runSqliteLibraryHandoffLifecycle(async () => {
@@ -238,6 +245,7 @@ export function acceptDesktopLibraryTargetHandoffAuthorization(canonicalAuthoriz
 
 /** Keep ordinary sync and user writes paused while installing the signed final state. */
 export function catchUpDesktopLibraryTargetHandoff(input: Parameters<typeof catchUpSqliteLibraryHandoffTarget>[0]) {
+  requireLibraryTransferCapability();
   return exclusively(async () => {
     ownPause();
     return catchUpSqliteLibraryHandoffTarget(input);
@@ -246,6 +254,7 @@ export function catchUpDesktopLibraryTargetHandoff(input: Parameters<typeof catc
 
 /** Prepare successor state without opening admission or releasing the sync pause. */
 export function stageDesktopLibraryTargetHandoff(handoffId: string): Promise<string> {
+  requireLibraryTransferCapability();
   return exclusively(async () => {
     ownPause();
     return runSqliteLibraryHandoffLifecycle(async () => {
@@ -271,6 +280,7 @@ export function stageDesktopLibraryTargetHandoff(handoffId: string): Promise<str
 
 /** Publish under the same pause owner; native activation remains a separate step. */
 export function publishDesktopLibraryTargetHandoff(input: Parameters<typeof publishSqliteLibraryHandoffTarget>[0]) {
+  requireLibraryTransferCapability();
   return exclusively(async () => {
     ownPause();
     return publishSqliteLibraryHandoffTarget(input);
@@ -284,6 +294,7 @@ export function activateDesktopLibraryTargetHandoff(input: {
   accessToken: string;
   onActivated: (installation: DesktopLibraryInstallationStatus) => void | Promise<void>;
 }): Promise<NormalizedLibraryHandoffStatus> {
+  requireLibraryTransferCapability();
   return exclusively(async () => {
     const owner = ownPause();
     const result = await runSqliteLibraryHandoffLifecycle(async () => {
@@ -342,6 +353,7 @@ function withConsumerRecovery<T>(work: () => Promise<T>): Promise<T> {
 }
 
 export function prepareDesktopLibraryConsumerRecovery(): Promise<NormalizedLibraryConsumerRecoverySummary> {
+  requireLibraryTransferCapability();
   return withConsumerRecovery(async () => {
     const prepared = await prepareNormalizedLibraryConsumerRecovery();
     const stored = await readNormalizedLibraryConsumerRecovery();
@@ -354,6 +366,7 @@ export function prepareDesktopLibraryConsumerRecovery(): Promise<NormalizedLibra
 }
 
 export function commitDesktopLibraryConsumerRecovery(recoveryId: string): Promise<NormalizedLibraryConsumerRecoverySummary> {
+  requireLibraryTransferCapability();
   return withConsumerRecovery(async () => {
     const before = await readNormalizedLibraryConsumerRecovery();
     if (!before || before.recoveryId !== recoveryId || before.state === "archived") {
@@ -375,6 +388,7 @@ export function commitDesktopLibraryConsumerRecovery(recoveryId: string): Promis
 export function adoptDesktopLibrarySourceHandoff(input: {
   handoffId: string; accessToken: string; googleFetch?: GoogleDriveFetch; signal?: AbortSignal;
 }): Promise<NormalizedLibraryHandoffStatus> {
+  requireLibraryTransferCapability();
   return exclusively(async () => {
     const owner = ownPause();
     await owner.drain(180_000);

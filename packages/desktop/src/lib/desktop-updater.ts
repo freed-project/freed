@@ -9,6 +9,9 @@ import {
   getNativeUpdaterTarget,
 } from "./release-channel";
 
+import { createSnapshot } from "./snapshots";
+import { isSqliteLibraryActive } from "./sqlite-library";
+
 export const JUST_UPDATED_KEY = "freed-updated-to";
 
 export type DesktopDownloadTarget =
@@ -121,6 +124,15 @@ export async function installPendingDesktopUpdate(
   pendingUpdate: PendingDesktopUpdate,
   onProgress?: (progress: DesktopInstallProgress) => void,
 ): Promise<string> {
+  // Capture using the currently installed build before replacing its executable.
+  // Recovery updates remain available when startup could not open the Library.
+  if (isSqliteLibraryActive()) {
+    const snapshot = await createSnapshot("manual");
+    if (!snapshot) {
+      throw new Error("Could not save a Library snapshot. The update was not installed.");
+    }
+  }
+
   let totalBytes = 0;
   let downloadedBytes = 0;
 

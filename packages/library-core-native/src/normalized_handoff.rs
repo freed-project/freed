@@ -287,7 +287,7 @@ pub(crate) fn require_existing_handoff_follower_edit_admission(
           JOIN library_follower_checkpoint_receipt AS receipt ON receipt.singleton_id = 1
             AND receipt.library_id = meta.library_id AND receipt.authority_epoch_id = meta.authority_epoch
           WHERE handoff.singleton_id = 1 AND handoff.installation_role = 'source' AND handoff.phase = 'demoted'
-            AND receipt.writer_actor_id = handoff.target_writer_id)
+            AND receipt.writer_actor_id = json_extract(CAST(handoff.canonical_activation AS TEXT), '$.activation.control.writerId'))
           AND NOT EXISTS(SELECT 1 FROM library_writer_admission) AND NOT EXISTS(SELECT 1 FROM library_local_cloud_writer_admission);",
         [], |row| row.get(0),
     )?;
@@ -305,6 +305,10 @@ pub(crate) fn require_existing_handoff_follower_edit_admission(
          WHERE handoff.singleton_id = 1 AND handoff.installation_role = 'consumer' AND handoff.phase = 'following');",
         [], |row| row.get(0),
     )?;
+    if source {
+        crate::normalized_source_handoff::verify_demoted_source_selection(connection)
+            .map_err(NormalizedSqliteError::Transport)?;
+    }
     if !source
         && !recovered
         && crate::normalized_handoff_cancellation::require_cancelled_target_admission_v1(connection)
@@ -402,6 +406,8 @@ pub fn seal_source_handoff_v1(
     sealed_at_ms: u64,
 ) -> Result<crate::normalized_sqlite::NormalizedCheckpointExportDescriptorV2, NormalizedSqliteError>
 {
+    crate::require_library_transfer_capability()
+        .map_err(crate::NormalizedSqliteError::Transport)?;
     let invalid = NormalizedSqliteError::InvalidRequest;
     if !crate::library_core_hash::is_lower_sha256(handoff_id)
         || sealed_at_ms > 9_007_199_254_740_991

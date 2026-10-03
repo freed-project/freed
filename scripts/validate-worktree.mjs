@@ -368,6 +368,8 @@ export function isPwaOpfsDurabilityPath(filePath) {
     filePath === "packages/pwa/src/main.tsx" ||
     filePath === "packages/pwa/tests/opfs-e2e-settings.ts" ||
     filePath === "packages/pwa/tests/sqlite-opfs-durability.spec.ts" ||
+    filePath.startsWith("scripts/lib/webkit-test-custody") ||
+    filePath === "scripts/webkit-test-custody.test.mjs" ||
     filePath.startsWith("packages/pwa/src/lib/library-core-sqlite") ||
     filePath.startsWith("packages/shared/src/library-core/")
   );
@@ -725,6 +727,11 @@ function libraryCoreNativeRustChecks() {
     cargoCommand(
       "Library Core native rust tests",
       ["test", "--all-features"],
+      "packages/library-core-native",
+    ),
+    cargoCommand(
+      "Library Core default-off transfer tests",
+      ["test", "--no-default-features", "--test", "transfer_hold"],
       "packages/library-core-native",
     ),
   ];
@@ -1402,6 +1409,10 @@ export function buildValidationPlan(mode, changedFiles) {
     );
   }
 
+  if (changedFiles.some(file => [".github/workflows/cloud-release-request.yml", ".github/workflows/cloud-release-inbox.yml", ".github/workflows/cloud-release-policy-probe.yml", ".github/workflows/cloud-release-policy-response.yml", "scripts/cloud-release-policy.mjs", "scripts/cloud-release-policy.test.mjs", "scripts/cloud-release-request.mjs", "scripts/cloud-release-request.test.mjs"].includes(file))) {
+    addCommand(plan, nodeCommand("cloud release request tests", ["--test", "scripts/cloud-release-request.test.mjs", "scripts/cloud-release-policy.test.mjs"]));
+  }
+
   if (releasePublisherToolingChanged) {
     addCommand(
       plan,
@@ -1461,6 +1472,10 @@ export function buildValidationPlan(mode, changedFiles) {
 
   if (stabilityStatusChanged) {
     addCommand(plan, stabilityStatusTestsCommand());
+  }
+
+  if (changedFiles.some(filePath => filePath.startsWith("scripts/lib/webkit-test-custody") || filePath === "scripts/webkit-test-custody.test.mjs")) {
+    addCommand(plan, nodeCommand("WebKit test custody fixture contracts", ["--test", "scripts/webkit-test-custody.test.mjs"]));
   }
 
   if (roadmapStatusChanged) {

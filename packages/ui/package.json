@@ -74,7 +74,8 @@
     "./components/RecoveryReachOutFields": "./src/components/RecoveryReachOutFields.tsx",
     "./components/RecoveryPersonFields": "./src/components/RecoveryPersonFields.tsx",
     "./components/RecoveryAccountLinkFields": "./src/components/RecoveryAccountLinkFields.tsx",
-    "./components/RecoveryFriendFields": "./src/components/RecoveryFriendFields.tsx"
+    "./components/RecoveryFriendFields": "./src/components/RecoveryFriendFields.tsx",
+    "./components/settings/AISection": "./src/components/settings/AISection.tsx"
   },
   "peerDependencies": {
     "react": ">=19",

@@ -193,7 +193,7 @@ describe("PWA SQLite worker response boundary", () => {
     const worker = activeWorker();
     expect(worker.posted.at(-1)).toMatchObject({ kind: "prepare_predecessor_checkpoint_read", stageId: "successor" });
     worker.respond({ ok: true, requestId: requestId(worker), result: reference });
-    await expect(pending).resolves.toEqual(reference);
+    await expect(pending).resolves.toEqual(reference === null ? null : [reference]);
   });
 
   it.each(["abort", "deadline"] as const)("settles an audit %s without retiring other requests", async (mode) => {

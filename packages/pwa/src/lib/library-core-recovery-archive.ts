@@ -1,3 +1,4 @@
+import { requireLibraryTransferCapability } from "./library-transfer-capability";
 import type { CAPI, Database, PreparedStatement } from "@sqlite.org/sqlite-wasm";
 import {
   decodeLibraryCoreCanonicalBase64, decodeLibraryCoreCanonicalValue,
@@ -102,6 +103,7 @@ export function archivePwaFollowerRows(db: Database, capi: CAPI, recoveryId: str
 export function archivePwaFollowerRowsWithStorageAdmission(
   db: Database, capi: CAPI, recoveryId: string, admitStorage?: () => void,
 ): void {
+  requireLibraryTransferCapability();
   requireTransaction(db, capi, admitStorage);
   const old = metadata(db, recoveryId);
   if (old[0] !== 0 || old[1] !== "0".repeat(64)) {
