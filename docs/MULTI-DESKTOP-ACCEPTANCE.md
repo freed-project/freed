@@ -4,6 +4,47 @@ This is the installed test plan for cooperative Primary handoff. A passing build
 alone does not establish installed acceptance or readiness to move the owner's
 Library. Headless promotion remains separate.
 
+## Select the acceptance build
+
+Ordinary dev and production builds deliberately disable Primary transfer and
+consumer recovery until installed convergence acceptance is complete. Their
+join and same-epoch edit paths can be tested, but they cannot complete the
+transfer steps below. An unavailable transfer control is expected in those builds.
+
+For isolated workflow acceptance, build both clients from the same reviewed,
+clean source. Verify `git status --short` is empty, then set the existing build
+metadata in the shell used for both commands. Local builds do not infer these
+values from Git:
+
+```sh
+export FREED_BUILD_KIND=preview
+export FREED_BUILD_CHANNEL=dev
+export FREED_BUILD_COMMIT_SHA="$(git rev-parse HEAD)"
+export FREED_BUILD_COMMIT_REF="$(git branch --show-current)"
+```
+
+From `packages/desktop`, run
+`npm run tauri:build:transfer-acceptance -- --bundles app` on macOS. The named
+configuration enables the frontend acceptance mode and native transfer feature,
+uses application identifier `wtf.freed.desktop.preview.transfer-acceptance`,
+disables updater endpoints and omits updater artifacts. The native feature also
+requires the isolated preview data root. This local app is not a signed dev
+release or evidence that the ordinary release has enabled transfer.
+
+From `packages/pwa`, run `npm run build:transfer-acceptance`. Serve the resulting
+build through the task's approved preview service on a dedicated test origin and
+browser profile. Do not deploy this build to the production PWA origin. Record
+both source identities and the acceptance commands with the artifact digests.
+A frontend acceptance mode alone cannot enable the native lifecycle.
+
+Use separate macOS user accounts or separate Macs even for the isolated app:
+preview builds share a preview keyring service within one user. Create and join
+a synthetic test Library first. Do not copy an existing installation's private
+keys, database or provider sessions into these test identities. Transferring the
+owner's actual Library remains a later, separately evidenced operation. After
+isolated acceptance, a reviewed release must explicitly address the ordinary
+build's hold before claiming the signed release supports transfer.
+
 ## Record the candidate
 
 Record the dev release tag, source commit, artifact digest and installed version
