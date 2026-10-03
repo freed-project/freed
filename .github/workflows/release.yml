@@ -555,6 +555,50 @@ jobs:
             exit 1
           fi
 
+      - name: Build and release transfer acceptance
+        id: transfer-acceptance-build
+        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_PROVIDER_SHORT_NAME: ${{ secrets.APPLE_PROVIDER_SHORT_NAME }}
+          VITE_DROPBOX_CLIENT_ID: yaqbppqya009gky
+          VITE_GDRIVE_DESKTOP_CLIENT_ID: 304530272769-fkbpan1l071vdvum1j6kufvo8rbq6sm1.apps.googleusercontent.com
+          VITE_GDRIVE_TOKEN_PROXY_URL: https://app.freed.wtf/api/oauth/google
+          VITE_GDRIVE_FORCE_TOKEN_PROXY: "1"
+          FREED_BUILD_CHANNEL: dev
+          VITE_ENABLE_DEV_SYNC_TRIGGERS: "1"
+        with:
+          projectPath: packages/desktop
+          tauriScript: npx tauri
+          releaseId: ${{ needs.create-release.outputs.release_id }}
+          tagName: ${{ github.ref_name }}
+          releaseDraft: true
+          prerelease: true
+          uploadUpdaterJson: false
+          uploadUpdaterSignatures: false
+          releaseAssetNamePattern: Freed-Transfer-Acceptance_[version]_aarch64[ext]
+          args: --target aarch64-apple-darwin --bundles app --features library-transfer-acceptance --config src-tauri/tauri.transfer-acceptance.conf.json
+
+      - name: Verify transfer acceptance identity and notarization
+        shell: bash
+        run: |
+          APP_PATH="packages/desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Freed Transfer Acceptance.app"
+          test -d "$APP_PATH"
+          codesign --verify --deep --strict "$APP_PATH"
+          spctl --assess --type execute --verbose=2 "$APP_PATH"
+          xcrun stapler validate "$APP_PATH"
+          BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print:CFBundleIdentifier' "$APP_PATH/Contents/Info.plist")
+          if [ "$BUNDLE_ID" != "wtf.freed.desktop.preview.transfer-acceptance" ]; then
+            echo "Unexpected transfer acceptance bundle identifier: $BUNDLE_ID"
+            exit 1
+          fi
+
   updater-manifest:
     needs: [release, notes, create-release]
     runs-on: ubuntu-latest

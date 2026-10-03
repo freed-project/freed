@@ -452,6 +452,29 @@ test("dev releases publish a signed isolated Apple Silicon verifier without upda
   );
 });
 
+test("dev transfer acceptance stays isolated and outside the updater", () => {
+  const job = releaseWorkflow.slice(
+    releaseWorkflow.indexOf("\n  isolated-dev-macos:"),
+    releaseWorkflow.indexOf("\n  updater-manifest:"),
+  );
+  const acceptance = job.slice(job.indexOf("      - name: Build and release transfer acceptance"));
+  assert.match(job, /release_channel == 'dev'/);
+  assert.match(acceptance, /--features library-transfer-acceptance --config src-tauri\/tauri\.transfer-acceptance\.conf\.json/);
+  assert.match(acceptance, /releaseAssetNamePattern: Freed-Transfer-Acceptance_\[version\]_aarch64\[ext\]/);
+  assert.match(acceptance, /uploadUpdaterJson: false/);
+  assert.match(acceptance, /uploadUpdaterSignatures: false/);
+  assert.match(acceptance, /codesign --verify --deep --strict/);
+  assert.match(acceptance, /spctl --assess --type execute/);
+  assert.match(acceptance, /xcrun stapler validate/);
+  assert.match(acceptance, /Print:CFBundleIdentifier[\s\S]*wtf\.freed\.desktop\.preview\.transfer-acceptance/);
+  const config = JSON.parse(readFileSync(path.join(scriptsDir, "..",
+    "packages/desktop/src-tauri/tauri.transfer-acceptance.conf.json"), "utf8"));
+  assert.equal(config.identifier, "wtf.freed.desktop.preview.transfer-acceptance");
+  assert.equal(config.build.beforeBuildCommand, "npm run build:transfer-acceptance");
+  assert.equal(config.bundle.createUpdaterArtifacts, false);
+  assert.deepEqual(config.plugins.updater.endpoints, []);
+});
+
 test("production releases publish an exact-tag PWA showcase with reviewed media", () => {
   const websiteJobHeader = releaseWorkflow.slice(
     releaseWorkflow.indexOf("\n  publish-website:"),
