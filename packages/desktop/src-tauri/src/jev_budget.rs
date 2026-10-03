@@ -194,14 +194,13 @@ fn reserve_at(root: &Path, id: &str, time: i64) -> Result<(), String> {
 mod tests {
     use super::*;
     fn fixture() -> std::path::PathBuf {
-        let p = std::env::temp_dir().join(format!(
-            "freed-budget-{}-{}",
-            std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        // Wall-clock nanoseconds are not unique on every supported host. Reserve
+        // the directory atomically so parallel tests cannot share spending history.
+        let p = tempfile::Builder::new()
+            .prefix("freed-budget-")
+            .tempdir()
+            .unwrap()
+            .keep();
         configure(
             &p,
             Limits {
@@ -212,6 +211,33 @@ mod tests {
         )
         .unwrap();
         p
+    }
+    #[test]
+    fn concurrent_fixtures_have_independent_spending_history() {
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(16));
+        let handles: Vec<_> = (0..16)
+            .map(|_| {
+                let barrier = barrier.clone();
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    let p = fixture();
+                    reserve(&p, "same-request-id").unwrap();
+                    assert_eq!(
+                        status(&p).unwrap().unwrap().total_reserved_nano_usd,
+                        MAX_REQUEST_NANO_USD
+                    );
+                    p
+                })
+            })
+            .collect();
+        let paths: Vec<_> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+        assert_eq!(
+            paths.iter().collect::<std::collections::HashSet<_>>().len(),
+            16
+        );
+        for p in paths {
+            std::fs::remove_dir_all(p).unwrap();
+        }
     }
     #[test]
     fn missing_corrupt_and_lost_history_fail_closed() {
