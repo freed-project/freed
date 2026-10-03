@@ -270,6 +270,7 @@ import {
   resolveDesktopDownloadFallbackUrl,
 } from "./lib/desktop-updater";
 import { rendererHeartbeatTiming } from "./lib/renderer-heartbeat";
+import { RendererResponsivenessMonitor } from "./lib/renderer-responsiveness";
 import { DESKTOP_CHANGELOG_PREVIEW } from "./lib/changelog-preview";
 import { useClipboardSaveShortcut } from "./hooks/useClipboardSaveShortcut";
 import { clearClipboardSaveShortcutConfig } from "./lib/clipboard-save-shortcut";
@@ -856,6 +857,7 @@ function App() {
       import.meta.env.VITE_TEST_TAURI === "1" || isTauri() || hasTauriMock;
     if (!canEmitRendererHeartbeat) return;
 
+    const responsiveness = new RendererResponsivenessMonitor();
     let heartbeatSeq = 0;
     const pageLoadId =
       typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -879,6 +881,7 @@ function App() {
         };
       };
       const visibility = document.visibilityState;
+      const surfacePerf = collectSurfacePerf();
       const timing = rendererHeartbeatTiming(
         visibility,
         now,
@@ -903,7 +906,9 @@ function App() {
         settingsOpen: Boolean(document.querySelector(".theme-settings-shell")),
         dialogOpen: Boolean(document.querySelector(".theme-dialog-shell")),
         backgroundRuntime: getBackgroundRuntimeStatus(),
-        surfacePerf: collectSurfacePerf(),
+        surfacePerf,
+        activeSurface: surfacePerf.activeSurface,
+        responsiveness: responsiveness.snapshot(),
       };
       expectedHeartbeatAt = now + RENDERER_HEARTBEAT_INTERVAL_MS;
       noteRendererHeartbeat(payload);
@@ -947,6 +952,7 @@ function App() {
       window.removeEventListener("keydown", noteInput);
       window.removeEventListener("pagehide", handlePageHide);
       sendRendererHeartbeat("cleanup");
+      responsiveness.dispose();
     };
   }, [legalAccepted]);
 

@@ -233,7 +233,7 @@ node scripts/release-tag-publisher-install.mjs verify
 node scripts/validate-release-tag-authority.mjs --repo=freed-project/freed
 ```
 
-`./scripts/release-publish.sh <version>` is the installed-broker release entry point. The owner-approved protected cloud controller provides the portable route described in [portable release publication](CLOUD-RELEASE-PUBLISHER.md); it reuses the same bounded App broker and never substitutes caller tag credentials.
+`./scripts/release-publish.sh <version>` remains the only release entry point.
 It rejects a dirty or wrong branch, a commit that differs from the protected
 remote tip, an unapproved or mismatched release receipt, an existing tag, a
 missing live policy, a changed publisher digest, or a mismatched App
@@ -241,6 +241,11 @@ installation. The native host requests one short-lived installation token
 scoped to `freed-project/freed`, rechecks the remote branch and committed
 receipt, creates one annotated tag, verifies the result, and revokes the token.
 It exposes no arbitrary ref, update, or deletion operation.
+
+The installed-broker route above remains operational until the owner-approved
+protected cloud controller is activated and verified. The pending portable route
+is described in [portable release publication](CLOUD-RELEASE-PUBLISHER.md); it
+reuses the same bounded App broker and never substitutes caller tag credentials.
 
 Read-only GitHub checks may use the current `gh` login. Tag creation never
 falls back to `GITHUB_TOKEN`, `GH_TOKEN`, a personal access token, a user push,

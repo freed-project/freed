@@ -19,8 +19,9 @@ export interface FriendsGalaxyLongTaskSnapshot {
   latestStartTime: number | null;
 }
 
-function browserLongTaskObserverFactory(
+export function observeBrowserLongTasks(
   onEntries: (entries: readonly FriendsGalaxyLongTaskEntry[]) => void,
+  buffered = true,
 ): FriendsGalaxyLongTaskObserver | null {
   if (
     typeof PerformanceObserver === "undefined" ||
@@ -28,14 +29,15 @@ function browserLongTaskObserverFactory(
   ) {
     return null;
   }
-  const observer = new PerformanceObserver((list) => {
-    onEntries(list.getEntries());
-  });
+  let observer: PerformanceObserver | null = null;
   try {
-    observer.observe({ type: "longtask", buffered: true });
+    observer = new PerformanceObserver((list) => {
+      onEntries(list.getEntries());
+    });
+    observer.observe({ type: "longtask", buffered });
     return observer;
   } catch {
-    observer.disconnect();
+    observer?.disconnect();
     return null;
   }
 }
@@ -48,7 +50,7 @@ export class FriendsGalaxyLongTaskMonitor {
   private latestStartTime = 0;
 
   constructor(
-    factory: FriendsGalaxyLongTaskObserverFactory = browserLongTaskObserverFactory,
+    factory: FriendsGalaxyLongTaskObserverFactory = observeBrowserLongTasks,
   ) {
     this.observer = factory((entries) => this.record(entries));
   }
