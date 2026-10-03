@@ -8,14 +8,15 @@ import type { RecoveryReissueReceipt } from "../lib/library-core-recovery-reissu
 import { useRecoveryEditorCommit } from "../hooks/useRecoveryEditorCommit";
 
 /** Recovery signs through the normal builder and commits only through native linkage. */
-export function ConsumerRecoveryAccountLinkEditor({ review, onReplacement, onMutating }: {
+export function ConsumerRecoveryAccountLinkEditor({ primary = false, review, onReplacement, onMutating }: {
+  primary?: boolean;
   review: LibraryCoreRecoveryIntentReviewResponseV1;
   onReplacement: (receipt: RecoveryReissueReceipt) => void;
   onMutating: (value: boolean) => void;
 }) {
   const [drafts, setDrafts] = useState<readonly RecoveryAccountLinkDraft[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const commit = useRecoveryEditorCommit(review, onReplacement, onMutating);
+  const commit = useRecoveryEditorCommit(review, onReplacement, onMutating, primary);
   const searches = useRef(new Set<AbortController>());
   const query = useCallback<LibraryCoreNormalizedQueryExecutor>(async request => {
     const controller = new AbortController();
@@ -43,6 +44,6 @@ export function ConsumerRecoveryAccountLinkEditor({ review, onReplacement, onMut
     {(error || commit.error) && <p role="alert" className="theme-feedback-text-danger">{error || commit.error}</p>}
     {!drafts && !error && <p role="status">Loading verified account links...</p>}
     {drafts && (!error || commit.locked) && <RecoveryAccountLinkFields drafts={drafts} query={query} sourceVersion={review.source.projectionRevision} saving={commit.saving} locked={commit.locked}
-      onSubmit={assignments => void commit.submit(() => prepareDesktopRecoveryAccountPersonTransaction(assignments))} />}
+      onSubmit={assignments => void commit.submit(() => prepareDesktopRecoveryAccountPersonTransaction(assignments, primary))} />}
   </div>;
 }

@@ -492,17 +492,25 @@ impl LibraryCoreDesktopBinding {
         &self,
         request: &crate::RecoveryReissueRequestV1,
         actor_store: &dyn crate::ActorKeyStore,
+        authority_store: Option<&dyn crate::AuthorityKeyStore>,
         now: i64,
     ) -> Result<crate::RecoveryReissueReceiptV1, LibraryCoreStorageError> {
         let _reset = self.reset_gate.lock().map_err(|_| {
             LibraryCoreStorageError::from("Desktop Library reset gate is poisoned".to_string())
         })?;
-        crate::reapply_archived_assignments_v1(
-            &mut self.connect_selected_normalized()?,
-            request,
-            actor_store,
-            now,
-        )
+        let mut connection = self.connect_selected_normalized()?;
+        match authority_store {
+            Some(store) => crate::reapply_archived_primary_assignments_v1(
+                &mut connection,
+                request,
+                actor_store,
+                store,
+                now,
+            ),
+            None => {
+                crate::reapply_archived_assignments_v1(&mut connection, request, actor_store, now)
+            }
+        }
         .map_err(LibraryCoreStorageError::from)
     }
 
@@ -510,17 +518,28 @@ impl LibraryCoreDesktopBinding {
         &self,
         request: &crate::RecoveryReissueRequestV1,
         canonical_envelopes: &[Vec<u8>],
+        authority_store: Option<&dyn crate::AuthorityKeyStore>,
         now: i64,
     ) -> Result<crate::RecoveryReissueReceiptV1, LibraryCoreStorageError> {
         let _reset = self.reset_gate.lock().map_err(|_| {
             LibraryCoreStorageError::from("Desktop Library reset gate is poisoned".to_string())
         })?;
-        crate::reapply_archived_editor_transaction_v1(
-            &mut self.connect_selected_normalized()?,
-            request,
-            canonical_envelopes,
-            now,
-        )
+        let mut connection = self.connect_selected_normalized()?;
+        match authority_store {
+            Some(store) => crate::reapply_archived_primary_editor_transaction_v1(
+                &mut connection,
+                request,
+                canonical_envelopes,
+                store,
+                now,
+            ),
+            None => crate::reapply_archived_editor_transaction_v1(
+                &mut connection,
+                request,
+                canonical_envelopes,
+                now,
+            ),
+        }
         .map_err(LibraryCoreStorageError::from)
     }
 

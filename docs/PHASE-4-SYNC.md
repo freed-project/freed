@@ -1164,3 +1164,8 @@ The native two-transfer lifecycle covers consent tampering, failed cleanup,
 retry, database reopening, explicit successor enrollment and preparation to
 receive authority again. Adoption alone grants no edit or capture rights.
 Installed multi-device acceptance and actual host transition remain pending.
+
+
+### Primary archive reapplication, October 3, 2026
+
+An active promoted Desktop Primary can explicitly recover archived edits through canonical operation resolution. Canonical state and the unique installation-local replacement link share one SQLite commit. Consumers continue to use the durable intent path. Both routes preserve original envelopes and return an existing replacement before allocating another counter, including after restart or later authority fencing. The logical checkpoint and replication protocol are unchanged; installed multi-installation convergence remains required.

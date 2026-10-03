@@ -645,6 +645,15 @@ async function mutationContext(
   };
 }
 
+/** Explicit recovery mode never falls back to another installation role. */
+async function recoveryMutationContext(primary: boolean): Promise<SqliteLibraryMutationContext> {
+  const context = primary ? await primaryMutationContext() : await mutationContext(false);
+  if (!context || context.mode !== (primary ? "primary" : "follower")) {
+    throw new Error("Recovery requires the selected active Primary or enrolled consumer");
+  }
+  return context;
+}
+
 function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
   return (
     left.byteLength === right.byteLength &&
@@ -1056,11 +1065,9 @@ function annotationTransactionMembers(
 
 /** Preserve normalized annotations, including blob locators, without ordinary enqueue. */
 export async function prepareDesktopRecoveryAnnotationTransaction(
-  assignments: readonly NormalizedAnnotationAssignment[],
-): Promise<readonly string[]> {
+  assignments: readonly NormalizedAnnotationAssignment[], primary = false): Promise<readonly string[]> {
   if (assignments.length === 0 || assignments.length > 1000) throw new Error("Recovery transaction exceeds its bounds");
-  const context = await mutationContext(false);
-  if (!context || context.mode !== "follower") throw new Error("Recovery requires an enrolled consumer");
+  const context = await recoveryMutationContext(primary);
   const transactionId = `desktop-library-annotation-recovery:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
   const members = annotationTransactionMembers(context, assignments, transactionId, Date.now());
   return Object.freeze((await finalizeSignedTransaction(context, members)).canonicalEnvelopeJson);
@@ -1317,13 +1324,11 @@ function feedItemRemovalTransactionMembers(
 
 /** Sign the complete reviewed target set; native recovery owns atomic enqueue. */
 export async function prepareDesktopRecoveryItemRemovalTransaction(
-  entityIds: readonly string[], confirmed: boolean,
-): Promise<readonly string[]> {
+  entityIds: readonly string[], confirmed: boolean, primary = false): Promise<readonly string[]> {
   if (!confirmed) throw new Error("Confirm item deletion before preparing this edit");
   if (entityIds.length === 0 || entityIds.length > LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.feed_item_remove.maximumMembers)
     throw new Error("Recovery transaction exceeds its bounds");
-  const context = await mutationContext(false);
-  if (!context || context.mode !== "follower") throw new Error("Recovery requires an enrolled consumer");
+  const context = await recoveryMutationContext(primary);
   const transactionId = `desktop-library-item-removal-recovery:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
   const members = feedItemRemovalTransactionMembers(context, entityIds, transactionId, Date.now());
   const signed = await finalizeSignedTransaction(context, members);
@@ -1401,10 +1406,9 @@ function rssUpsertTransactionMembers(
 }
 
 /** Finalize one complete reviewed replacement; native linkage owns enqueue. */
-export async function prepareDesktopRecoveryRssUpsertTransaction(feeds: readonly RssFeed[]): Promise<readonly string[]> {
+export async function prepareDesktopRecoveryRssUpsertTransaction(feeds: readonly RssFeed[], primary = false): Promise<readonly string[]> {
   if (feeds.length === 0 || feeds.length > 1000) throw new Error("Recovery transaction exceeds its bounds");
-  const context = await mutationContext(false);
-  if (!context || context.mode !== "follower") throw new Error("Recovery requires an enrolled consumer");
+  const context = await recoveryMutationContext(primary);
   const transactionId = `desktop-library-rss-recovery:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
   const signed = await finalizeSignedTransaction(context, rssUpsertTransactionMembers(context, feeds, transactionId, Date.now()));
   return Object.freeze(signed.canonicalEnvelopeJson);
@@ -1493,13 +1497,11 @@ function rssRemovalTransactionMembers(
 
 /** Sign one complete reviewed unsubscribe; native recovery owns atomic enqueue. */
 export async function prepareDesktopRecoveryRssRemovalTransaction(
-  urls: readonly string[], includeItems: boolean, confirmedDeleteItems: boolean,
-): Promise<readonly string[]> {
+  urls: readonly string[], includeItems: boolean, confirmedDeleteItems: boolean, primary = false): Promise<readonly string[]> {
   const program = includeItems ? LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.rss_feed_remove_with_items : LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.rss_feed_remove_keep_items;
   if (urls.length === 0 || urls.length > program.maximumMembers) throw new Error("Recovery transaction exceeds its bounds");
   if (includeItems && !confirmedDeleteItems) throw new Error("Confirm article deletion before preparing this unsubscribe");
-  const context = await mutationContext(false);
-  if (!context || context.mode !== "follower") throw new Error("Recovery requires an enrolled consumer");
+  const context = await recoveryMutationContext(primary);
   const transactionId = `desktop-library-rss-recovery:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
   const members = rssRemovalTransactionMembers(context, urls, transactionId, Date.now(), includeItems);
   const signed = await finalizeSignedTransaction(context, members);
@@ -1545,11 +1547,9 @@ function rssTitleTransactionMembers(
 
 /** Prepare the complete reviewed editor transaction without ordinary enqueue. */
 export async function prepareDesktopRecoveryRssTitleTransaction(
-  assignments: readonly Readonly<{ title: string; url: string }>[],
-): Promise<readonly string[]> {
+  assignments: readonly Readonly<{ title: string; url: string }>[], primary = false): Promise<readonly string[]> {
   if (assignments.length === 0 || assignments.length > 1000) throw new Error("Recovery transaction exceeds its bounds");
-  const context = await mutationContext(false);
-  if (!context || context.mode !== "follower") throw new Error("Recovery requires an enrolled consumer");
+  const context = await recoveryMutationContext(primary);
   const transactionId = `desktop-library-rss-recovery:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
   const members = rssTitleTransactionMembers(context, assignments, transactionId, Date.now());
   const signed = await finalizeSignedTransaction(context, members);
@@ -1670,10 +1670,9 @@ function preferenceTransactionMembers(context: SqliteLibraryMutationContext,
 }
 
 /** Sign the complete reviewed wire patches; the recovery command owns atomic admission and linkage. */
-export async function prepareDesktopRecoveryPreferenceTransaction(patches: readonly unknown[]): Promise<readonly string[]> {
+export async function prepareDesktopRecoveryPreferenceTransaction(patches: readonly unknown[], primary = false): Promise<readonly string[]> {
   const selected = snapshotLibraryCoreRecoveryPreferencePatchesV1(patches);
-  const context = await mutationContext(false);
-  if (!context || context.mode !== "follower") throw new Error("Recovery requires an enrolled consumer");
+  const context = await recoveryMutationContext(primary);
   const now = Date.now(), transactionId = `desktop-library-preference-recovery:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
   const signed = await finalizeSignedTransaction(context, preferenceTransactionMembers(context, selected, transactionId, now));
   return Object.freeze(signed.canonicalEnvelopeJson);
@@ -1717,12 +1716,11 @@ function personUpsertTransactionMembers(
 }
 
 /** Freeze the complete reviewed roots before key access; native recovery owns enqueue. */
-export async function prepareDesktopRecoveryPersonTransaction(persons: readonly Person[]): Promise<readonly string[]> {
+export async function prepareDesktopRecoveryPersonTransaction(persons: readonly Person[], primary = false): Promise<readonly string[]> {
   if (persons.length === 0 || persons.length > LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.person_upsert.maximumMembers)
     throw new Error("Recovery transaction exceeds its member bound");
   const selected = structuredClone(persons.map(person => sanitizePersonRootWrite(person))) as Person[];
-  const context = await mutationContext(false);
-  if (!context || context.mode !== "follower") throw new Error("Recovery requires an enrolled consumer");
+  const context = await recoveryMutationContext(primary);
   const now = Date.now();
   const transactionId = `desktop-library-person-recovery:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
   const signed = await finalizeSignedTransaction(context, personUpsertTransactionMembers(context,
@@ -1822,15 +1820,14 @@ function reachOutTransactionMembers(context: SqliteLibraryMutationContext,
 }
 
 /** Preserve the historical event time while signing a fresh explicit action. */
-export async function prepareDesktopRecoveryReachOutTransaction(drafts: readonly RecoveryReachOutDraft[]): Promise<readonly string[]> {
+export async function prepareDesktopRecoveryReachOutTransaction(drafts: readonly RecoveryReachOutDraft[], primary = false): Promise<readonly string[]> {
   if (!drafts.length || drafts.length > LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.person_reach_out_append.maximumMembers) throw new Error("Recovery exceeds its member bound");
   const selected = drafts.map(draft => {
     const payload = PERSON_REACH_OUT_APPEND_PAYLOAD_SCHEMA.validate(draft.event);
     if (!payload.ok) throw new Error("Reach-out event is invalid");
     return { personId: draft.personId, event: structuredClone(payload.value) };
   });
-  const context = await mutationContext(false);
-  if (!context || context.mode !== "follower") throw new Error("Recovery requires an enrolled consumer");
+  const context = await recoveryMutationContext(primary);
   const now = Date.now(), transactionId = `desktop-library-reach-out-recovery:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
   const signed = await finalizeSignedTransaction(context, reachOutTransactionMembers(context, selected, transactionId, now));
   return Object.freeze(signed.canonicalEnvelopeJson);
@@ -1865,12 +1862,10 @@ function accountPersonTransactionMembers(context: SqliteLibraryMutationContext,
 
 /** Sign the whole reviewed target set; only recovery submission may enqueue it. */
 export async function prepareDesktopRecoveryAccountPersonTransaction(
-  assignments: readonly { accountId: string; personId: string | null }[],
-): Promise<readonly string[]> {
+  assignments: readonly { accountId: string; personId: string | null }[], primary = false): Promise<readonly string[]> {
   if (assignments.length === 0 || assignments.length > 1000) throw new Error("Recovery transaction exceeds its member bound");
   const selected = assignments.map(({ accountId, personId }) => ({ accountId, personId }));
-  const context = await mutationContext(false);
-  if (!context || context.mode !== "follower") throw new Error("Recovery requires an enrolled consumer");
+  const context = await recoveryMutationContext(primary);
   const transactionId = `desktop-library-account-person-recovery:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
   const signed = await finalizeSignedTransaction(context, accountPersonTransactionMembers(context, selected, transactionId, Date.now()));
   return Object.freeze(signed.canonicalEnvelopeJson);
@@ -1911,14 +1906,13 @@ function friendReplacementMember(
 }
 
 /** Sign one explicit Friend replacement; the recovery boundary owns its durable enqueue. */
-export async function prepareDesktopRecoveryFriendTransaction(person: Person, accounts: readonly Account[]): Promise<readonly string[]> {
+export async function prepareDesktopRecoveryFriendTransaction(person: Person, accounts: readonly Account[], primary = false): Promise<readonly string[]> {
   // Snapshot before key access, preserving every selected field and rejecting an
   // invalid whole payload instead of sanitizing away unknown archived details.
   const selected = FRIEND_REPLACE_PAYLOAD_SCHEMA.validate({ accounts: [...accounts].sort((a, b) => compareLibraryCoreUtf8V1(a.id, b.id)), person });
   if (!selected.ok) throw new Error("The complete Friend replacement is invalid or oversized");
   const snapshot = structuredClone(selected.value);
-  const context = await mutationContext(false);
-  if (!context || context.mode !== "follower") throw new Error("Recovery requires an enrolled consumer");
+  const context = await recoveryMutationContext(primary);
   const now = Date.now();
   const transactionId = `desktop-library-friend-recovery:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
   const member = friendReplacementMember(context,
@@ -2022,14 +2016,12 @@ function personRemovalTransactionMembers(
 
 /** Sign fixed ordered targets; recovery owns the durable intent and link commit. */
 export async function prepareDesktopRecoveryPersonRemovalTransaction(
-  personIds: readonly string[], confirmed: boolean,
-): Promise<readonly string[]> {
+  personIds: readonly string[], confirmed: boolean, primary = false): Promise<readonly string[]> {
   if (!confirmed) throw new Error("Confirm people and linked account deletion before preparing this edit");
   if (personIds.length === 0 || personIds.length > LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.person_remove_and_accounts.maximumMembers)
     throw new Error("Recovery transaction exceeds its bounds");
   const targets = [...personIds];
-  const context = await mutationContext(false);
-  if (!context || context.mode !== "follower") throw new Error("Recovery requires an enrolled consumer");
+  const context = await recoveryMutationContext(primary);
   const transactionId = `desktop-library-person-removal-recovery:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
   const signed = await finalizeSignedTransaction(context, personRemovalTransactionMembers(context, targets, transactionId, Date.now()));
   return Object.freeze(signed.canonicalEnvelopeJson);
@@ -2110,7 +2102,7 @@ function accountUpsertTransactionMembers(context: SqliteLibraryMutationContext, 
 }
 
 /** Freeze the reviewed complete roots before signing; recovery owns enqueue. */
-export async function prepareDesktopRecoveryAccountTransaction(accounts: readonly Account[], review: LibraryCoreRecoveryIntentReviewResponseV1): Promise<readonly string[]> {
+export async function prepareDesktopRecoveryAccountTransaction(accounts: readonly Account[], review: LibraryCoreRecoveryIntentReviewResponseV1, primary = false): Promise<readonly string[]> {
   if (!accounts.length || accounts.length > LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.account_upsert.maximumMembers)
     throw new Error("Recovery transaction exceeds its member bound");
   const selected = structuredClone(accounts.map(account => sanitizeAccountWrite(account))) as Account[];
@@ -2120,8 +2112,7 @@ export async function prepareDesktopRecoveryAccountTransaction(accounts: readonl
     if (!current.person || current.person.id !== account.personId || current.source.generationId !== review.source.generationId || current.source.projectionRevision !== review.source.projectionRevision)
       throw new Error("The selected person or Library changed. Review the Account details again.");
   }
-  const context = await mutationContext(false);
-  if (!context || context.mode !== "follower") throw new Error("Recovery requires an enrolled consumer");
+  const context = await recoveryMutationContext(primary);
   const now = Date.now();
   const transactionId = `desktop-library-account-recovery:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
   const signed = await finalizeSignedTransaction(context, accountUpsertTransactionMembers(context, selected.map(account => ({ ...account, updatedAt: now })), transactionId, now));
@@ -2210,14 +2201,12 @@ function accountRemovalTransactionMembers(
 
 /** Sign the complete original Account target set without ordinary enqueue. */
 export async function prepareDesktopRecoveryAccountRemovalTransaction(
-  accountIds: readonly string[], confirmed: boolean,
-): Promise<readonly string[]> {
+  accountIds: readonly string[], confirmed: boolean, primary = false): Promise<readonly string[]> {
   if (!confirmed) throw new Error("Confirm account deletion before preparing this edit");
   if (accountIds.length === 0 || accountIds.length > LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.account_remove.maximumMembers)
     throw new Error("Recovery transaction exceeds its bounds");
   const targets = [...accountIds];
-  const context = await mutationContext(false);
-  if (!context || context.mode !== "follower") throw new Error("Recovery requires an enrolled consumer");
+  const context = await recoveryMutationContext(primary);
   const transactionId = `desktop-library-account-removal-recovery:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
   const signed = await finalizeSignedTransaction(context, accountRemovalTransactionMembers(context, targets, transactionId, Date.now()));
   return Object.freeze(signed.canonicalEnvelopeJson);
@@ -3577,14 +3566,13 @@ export function readNormalizedLibraryHandoffResultActors(handoffId: string, afte
 }
 
 /** Prepare one complete reviewed capture; native recovery linkage owns persistence. */
-export async function prepareDesktopRecoverySavedUrlTransaction(review: LibraryCoreRecoveryIntentReviewResponseV1, edits: readonly RecoverySavedUrlEdit[]): Promise<readonly string[]> {
+export async function prepareDesktopRecoverySavedUrlTransaction(review: LibraryCoreRecoveryIntentReviewResponseV1, edits: readonly RecoverySavedUrlEdit[], primary = false): Promise<readonly string[]> {
   const selected = snapshotLibraryCoreRecoverySavedUrlEditsV1(edits);
   const original = await loadRecoverySavedUrlDrafts(review, new AbortController().signal);
   if (original.replacement) throw new Error("Replacement already exists; reopen its receipt");
   if (selected.length !== original.drafts.length) throw new Error("Review every saved URL in this transaction");
   const items = selected.map((edit, i) => decodeLibraryCoreFractionalNumbersV1(reviseLibraryCoreRecoverySavedUrlV1(original.drafts[i]!, edit)) as unknown as FeedItem);
-  const context = await mutationContext(false);
-  if (!context || context.mode !== "follower") throw new Error("Recovery requires an enrolled consumer");
+  const context = await recoveryMutationContext(primary);
   const transactionId = `desktop-library-saved-url-recovery:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
   const signed = await finalizeSignedTransaction(context, captureTransactionMembers(context, items, transactionId, Date.now()));
   return Object.freeze(signed.canonicalEnvelopeJson);

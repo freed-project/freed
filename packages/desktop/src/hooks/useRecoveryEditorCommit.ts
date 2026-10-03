@@ -4,7 +4,7 @@ import { reapplyArchivedEditorTransaction, type RecoveryReissueReceipt } from ".
 
 /** Keep exact finalized bytes until this reviewed editor closes. Native linkage owns durability. */
 export function useRecoveryEditorCommit(review: LibraryCoreRecoveryIntentReviewResponseV1,
-  onReplacement: (receipt: RecoveryReissueReceipt) => void, onMutating: (value: boolean) => void) {
+  onReplacement: (receipt: RecoveryReissueReceipt) => void, onMutating: (value: boolean) => void, primary = false) {
   const [saving, setSaving] = useState(false);
   const [locked, setLocked] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -20,7 +20,7 @@ export function useRecoveryEditorCommit(review: LibraryCoreRecoveryIntentReviewR
     try {
       frames.current ??= await prepare();
       if (alive.current) setLocked(true);
-      const receipt = await reapplyArchivedEditorTransaction(review, frames.current);
+      const receipt = await reapplyArchivedEditorTransaction(review, frames.current, primary);
       if (alive.current) onReplacement(receipt);
     } catch {
       if (alive.current) setError(frames.current ? "No replacement was confirmed. Retry checks the stored link using the same signed edit. If the Library changed, start again to review it." : "This edit could not be prepared. Check its values and size, or start again if the Library changed.");

@@ -8,14 +8,15 @@ import type { RecoveryReissueReceipt } from "../lib/library-core-recovery-reissu
 import { useRecoveryEditorCommit } from "../hooks/useRecoveryEditorCommit";
 
 /** One saved URL per page; preserve the complete transaction and exact retry bytes. */
-export function ConsumerRecoverySavedUrlEditor({ review, onReplacement, onMutating }: {
+export function ConsumerRecoverySavedUrlEditor({ primary = false, review, onReplacement, onMutating }: {
+  primary?: boolean;
   review: LibraryCoreRecoveryIntentReviewResponseV1;
   onReplacement: (receipt: RecoveryReissueReceipt) => void;
   onMutating: (value: boolean) => void;
 }) {
   const [drafts, setDrafts] = useState<readonly RecoverySavedUrlDraft[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const commit = useRecoveryEditorCommit(review, onReplacement, onMutating);
+  const commit = useRecoveryEditorCommit(review, onReplacement, onMutating, primary);
   useEffect(() => {
     const controller = new AbortController();
     void loadRecoverySavedUrlDrafts(review, controller.signal).then((result) => {
@@ -32,5 +33,5 @@ export function ConsumerRecoverySavedUrlEditor({ review, onReplacement, onMutati
   if (!drafts) return <p role={error ? "alert" : "status"}>{error ?? "Loading verified saved URLs..."}</p>;
   return <RecoverySavedUrlFields drafts={drafts} onChange={setDrafts}
     saving={commit.saving} locked={commit.locked} error={error || commit.error}
-    onSubmit={(feeds) => commit.submit(() => prepareDesktopRecoverySavedUrlTransaction(review, feeds))} />;
+    onSubmit={(feeds) => commit.submit(() => prepareDesktopRecoverySavedUrlTransaction(review, feeds, primary))} />;
 }
