@@ -49,9 +49,10 @@ function failureMessage(error: unknown): string {
 }
 
 /** Keep one archive page and one verified transaction page in renderer memory. */
-export function ConsumerRecoveryReview({ recoveryId: currentRecoveryId = null, readOnly = false }: {
+export function ConsumerRecoveryReview({ recoveryId: currentRecoveryId = null, readOnly = false, primary = false }: {
   recoveryId?: string | null;
   readOnly?: boolean;
+  primary?: boolean;
 }) {
   readOnly = readOnly || !LIBRARY_TRANSFER_ENABLED;
   const [recoveryId, setRecoveryId] = useState(currentRecoveryId);
@@ -75,7 +76,7 @@ export function ConsumerRecoveryReview({ recoveryId: currentRecoveryId = null, r
     setEditingOriginal(false);
     coverage.current = { count: 0, eligible: false, identity: "", cursor: null };
     return () => { generation.current += 1; activeRead.current?.abort(); };
-  }, [currentRecoveryId, readOnly]);
+  }, [currentRecoveryId, readOnly, primary]);
 
   const loadPage = async (cursor: string | null = null, selectedId = recoveryId) => {
     if (selectedId === null) return loadArchives();
@@ -161,7 +162,7 @@ export function ConsumerRecoveryReview({ recoveryId: currentRecoveryId = null, r
     const owner = generation.current;
     setApplying(true); setError(null);
     try {
-      const receipt = await reapplyArchivedAssignments(review);
+      const receipt = await reapplyArchivedAssignments(review, primary);
       if (generation.current === owner) setReplacement(receipt);
     } catch (error) {
       if (generation.current === owner) setError(String(error).includes("RECOVERY_REVIEW_STALE")
@@ -224,62 +225,62 @@ export function ConsumerRecoveryReview({ recoveryId: currentRecoveryId = null, r
         </ul>
         <p className="mt-2">Reviewing does not resend or change an edit.</p>
         {!readOnly && !replacement && review.outcome.state !== "confirmed_accepted" && review.rows.length > 0 && review.rows.every(row => row.operationType === "feed_item_capture_upsert") && (
-          editingOriginal ? <ConsumerRecoverySavedUrlEditor key={review.transactionDigest} review={review} onReplacement={setReplacement} onMutating={setApplying} />
+          editingOriginal ? <ConsumerRecoverySavedUrlEditor key={review.transactionDigest} primary={primary} review={review} onReplacement={setReplacement} onMutating={setApplying} />
             : <button type="button" className="btn-secondary mt-2 rounded-lg px-3 py-1.5 text-xs" disabled={busy || applying} onClick={() => setEditingOriginal(true)}>Review saved URLs</button>
         )}
         {!readOnly && !replacement && review.outcome.state !== "confirmed_accepted" && review.memberCount === 1 && review.rows.length === 1 && review.rows[0]?.operationType === "friend_replace" && (
-          editingOriginal ? <ConsumerRecoveryFriendEditor key={review.transactionDigest} review={review} onReplacement={setReplacement} onMutating={setApplying} />
+          editingOriginal ? <ConsumerRecoveryFriendEditor key={review.transactionDigest} primary={primary} review={review} onReplacement={setReplacement} onMutating={setApplying} />
             : <button type="button" className="btn-secondary mt-2 rounded-lg px-3 py-1.5 text-xs" disabled={busy || applying} onClick={() => setEditingOriginal(true)}>Review Friend and accounts</button>
         )}
         {!readOnly && !replacement && review.outcome.state !== "confirmed_accepted" && review.rows.length > 0 && review.rows.every(row => row.operationType === "person_upsert") && (
-          editingOriginal ? <ConsumerRecoveryPersonEditor key={review.transactionDigest} review={review} onReplacement={setReplacement} onMutating={setApplying} />
+          editingOriginal ? <ConsumerRecoveryPersonEditor key={review.transactionDigest} primary={primary} review={review} onReplacement={setReplacement} onMutating={setApplying} />
             : <button type="button" className="btn-secondary mt-2 rounded-lg px-3 py-1.5 text-xs" disabled={busy || applying} onClick={() => setEditingOriginal(true)}>Review people</button>
         )}
         {!readOnly && !replacement && review.outcome.state !== "confirmed_accepted" && review.rows.length > 0 && review.rows.every(row => row.operationType === "account_person_assignment") && (
-          editingOriginal ? <ConsumerRecoveryAccountLinkEditor key={review.transactionDigest} review={review} onReplacement={setReplacement} onMutating={setApplying} />
+          editingOriginal ? <ConsumerRecoveryAccountLinkEditor key={review.transactionDigest} primary={primary} review={review} onReplacement={setReplacement} onMutating={setApplying} />
             : <button type="button" className="btn-secondary mt-2 rounded-lg px-3 py-1.5 text-xs" disabled={busy || applying} onClick={() => setEditingOriginal(true)}>Review account links</button>
         )}
         {!readOnly && !replacement && review.outcome.state !== "confirmed_accepted" && review.rows.length > 0 && review.rows.every((row) => row.operationType === "rss_feed_upsert") && (
-          editingOriginal ? <ConsumerRecoveryRssUpsertEditor key={review.transactionDigest} review={review} onReplacement={setReplacement} onMutating={setApplying} />
+          editingOriginal ? <ConsumerRecoveryRssUpsertEditor key={review.transactionDigest} primary={primary} review={review} onReplacement={setReplacement} onMutating={setApplying} />
             : <button type="button" className="btn-secondary mt-2 rounded-lg px-3 py-1.5 text-xs" disabled={busy || applying} onClick={() => setEditingOriginal(true)}>Review subscription settings</button>
         )}
         {!readOnly && !replacement && review.outcome.state !== "confirmed_accepted" && review.rows.length > 0 && review.rows.every(row => row.operationType === "preferences_leaf_assignment") && (
-          editingOriginal ? <ConsumerRecoveryPreferenceEditor key={review.transactionDigest} review={review} onReplacement={setReplacement} onMutating={setApplying} />
+          editingOriginal ? <ConsumerRecoveryPreferenceEditor key={review.transactionDigest} primary={primary} review={review} onReplacement={setReplacement} onMutating={setApplying} />
             : <button type="button" className="btn-secondary mt-2 rounded-lg px-3 py-1.5 text-xs" disabled={busy || applying} onClick={() => setEditingOriginal(true)}>Review preferences</button>
         )}
         {!readOnly && !replacement && review.outcome.state !== "confirmed_accepted" && review.rows.length > 0 && review.rows.every(row => row.operationType === "person_reach_out_append") && (
-          editingOriginal ? <ConsumerRecoveryReachOutEditor key={review.transactionDigest} review={review} onReplacement={setReplacement} onMutating={setApplying} />
+          editingOriginal ? <ConsumerRecoveryReachOutEditor key={review.transactionDigest} primary={primary} review={review} onReplacement={setReplacement} onMutating={setApplying} />
             : <button type="button" className="btn-secondary mt-2 rounded-lg px-3 py-1.5 text-xs" disabled={busy || applying} onClick={() => setEditingOriginal(true)}>Review reach-out history</button>
         )}
         {!readOnly && !replacement && review.outcome.state !== "confirmed_accepted" && review.rows.length > 0 && review.rows.every(row => row.operationType === "account_upsert") && (
-          editingOriginal ? <ConsumerRecoveryAccountEditor key={review.transactionDigest} review={review} onReplacement={setReplacement} onMutating={setApplying} />
+          editingOriginal ? <ConsumerRecoveryAccountEditor key={review.transactionDigest} primary={primary} review={review} onReplacement={setReplacement} onMutating={setApplying} />
             : <button type="button" className="btn-secondary mt-2 rounded-lg px-3 py-1.5 text-xs" disabled={busy || applying} onClick={() => setEditingOriginal(true)}>Review account details</button>
         )}
         {!readOnly && !replacement && review.outcome.state !== "confirmed_accepted" && review.rows.length > 0 && review.rows.every(row => row.operationType === "account_remove") && (
-          editingOriginal ? <ConsumerRecoveryItemRemovalEditor key={review.transactionDigest} mode="accounts" review={review} onReplacement={setReplacement} onMutating={setApplying} />
+          editingOriginal ? <ConsumerRecoveryItemRemovalEditor key={review.transactionDigest} primary={primary} mode="accounts" review={review} onReplacement={setReplacement} onMutating={setApplying} />
             : <button type="button" className="btn-secondary mt-2 rounded-lg px-3 py-1.5 text-xs" disabled={busy || applying} onClick={() => setEditingOriginal(true)}>Review account deletion</button>
         )}
         {!readOnly && !replacement && review.outcome.state !== "confirmed_accepted" && review.rows.length > 0 && review.rows.every((row) => row.operationType === "person_remove_and_accounts") && (
-          editingOriginal ? <ConsumerRecoveryItemRemovalEditor key={review.transactionDigest} mode="people" review={review} onReplacement={setReplacement} onMutating={setApplying} />
+          editingOriginal ? <ConsumerRecoveryItemRemovalEditor key={review.transactionDigest} primary={primary} mode="people" review={review} onReplacement={setReplacement} onMutating={setApplying} />
             : <button type="button" className="btn-secondary mt-2 rounded-lg px-3 py-1.5 text-xs" disabled={busy || applying} onClick={() => setEditingOriginal(true)}>Review people deletion</button>
         )}
         {!readOnly && !replacement && review.outcome.state !== "confirmed_accepted" && review.rows.length > 0 && review.rows.every((row) => row.operationType === "feed_item_remove") && (
-          editingOriginal ? <ConsumerRecoveryItemRemovalEditor key={review.transactionDigest} review={review} onReplacement={setReplacement} onMutating={setApplying} />
+          editingOriginal ? <ConsumerRecoveryItemRemovalEditor key={review.transactionDigest} primary={primary} review={review} onReplacement={setReplacement} onMutating={setApplying} />
             : <button type="button" className="btn-secondary mt-2 rounded-lg px-3 py-1.5 text-xs" disabled={busy || applying} onClick={() => setEditingOriginal(true)}>Review item deletion</button>
         )}
         {!readOnly && !replacement && review.outcome.state !== "confirmed_accepted" && review.rows.length > 0 && review.rows.every((row) => ["rss_feed_remove_keep_items", "rss_feed_remove_with_items"].includes(row.operationType)) && (
-          editingOriginal ? <ConsumerRecoveryRssEditor key={review.transactionDigest} mode="remove" review={review} onReplacement={setReplacement} onMutating={setApplying} />
+          editingOriginal ? <ConsumerRecoveryRssEditor key={review.transactionDigest} primary={primary} mode="remove" review={review} onReplacement={setReplacement} onMutating={setApplying} />
             : <button type="button" className="btn-secondary mt-2 rounded-lg px-3 py-1.5 text-xs" disabled={busy || applying} onClick={() => setEditingOriginal(true)}>Review unsubscribe</button>
         )}
         {!readOnly && !replacement && review.outcome.state !== "confirmed_accepted" && review.rows.every((row) => row.operationType === "rss_feed_title_assignment") && (
-          editingOriginal ? <ConsumerRecoveryRssEditor key={review.transactionDigest} review={review} onReplacement={setReplacement} onMutating={setApplying} />
+          editingOriginal ? <ConsumerRecoveryRssEditor key={review.transactionDigest} primary={primary} review={review} onReplacement={setReplacement} onMutating={setApplying} />
             : <button type="button" className="btn-secondary mt-2 rounded-lg px-3 py-1.5 text-xs" disabled={busy || applying} onClick={() => setEditingOriginal(true)}>Review feed names</button>
         )}
         {!readOnly && !replacement && review.outcome.state !== "confirmed_accepted" && review.rows.every((row) => row.operationType === "feed_item_annotations_replace") && (
-          editingOriginal ? <ConsumerRecoveryAnnotationEditor key={review.transactionDigest} review={review} onReplacement={setReplacement} onMutating={setApplying} />
+          editingOriginal ? <ConsumerRecoveryAnnotationEditor key={review.transactionDigest} primary={primary} review={review} onReplacement={setReplacement} onMutating={setApplying} />
             : <button type="button" className="btn-secondary mt-2 rounded-lg px-3 py-1.5 text-xs" disabled={busy || applying} onClick={() => setEditingOriginal(true)}>Review notes, highlights and tags</button>
         )}
-        {replacement ? <p role="status" className="mt-2">Replacement ...{replacement.replacementTransactionId.slice(-8)} was stored. Check sync status for Primary acceptance. If it belongs to an earlier Primary, browse the archive starting at epoch ...{replacement.replacementEpochId.slice(-8)} and review that replacement edit. This original edit will not create another replacement.</p>
+        {replacement ? <p role="status" className="mt-2">Replacement ...{replacement.replacementTransactionId.slice(-8)} was stored. Its durable link prevents this original edit from creating a duplicate. If it belongs to an earlier Primary, browse the archive starting at epoch ...{replacement.replacementEpochId.slice(-8)} and review that replacement edit. This original edit will not create another replacement.</p>
           : !readOnly && review.outcome.state !== "confirmed_accepted" && coverage.current.eligible && coverage.current.count === review.memberCount && <div className="mt-3">
             <p>Applying again creates fresh assignments for every change in this edit. It can replace newer Saved, Archive or liked choices. An unknown original outcome does not mean the edit failed.</p>
             <button type="button" disabled={busy || applying} className="btn-primary mt-2 rounded-lg px-3 py-1.5 text-xs disabled:opacity-50" onClick={() => void applyAgain()}>{applying ? "Storing replacement..." : "Apply again"}</button>

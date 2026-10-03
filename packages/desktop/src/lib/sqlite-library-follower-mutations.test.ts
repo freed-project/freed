@@ -750,6 +750,23 @@ describe("SQLite Primary mutations", () => {
     });
   });
 
+  it("prepares Primary archive recovery with the selected actor and never commits outside recovery", async () => {
+    const frames = await prepareDesktopRecoveryItemRemovalTransaction(["rss:first", "rss:second"], true, true);
+    expect(frames.map(frame => JSON.parse(frame).actor_id)).toEqual(["12".repeat(32), "12".repeat(32)]);
+    expect(frames.map(frame => JSON.parse(frame).entity_id)).toEqual(["rss:first", "rss:second"]);
+    const commands = mocks.invoke.mock.calls.map(([command]) => command);
+    expect(commands).toContain("normalized_library_primary_mutation_context");
+    expect(commands).not.toContain("normalized_library_follower_mutation_context");
+    expect(commands).not.toContain("enqueue_normalized_library_follower_intent");
+    expect(commands).not.toContain("commit_normalized_library_transaction");
+  });
+
+  it("does not fall back to the consumer when explicit Primary recovery is fenced", async () => {
+    mocks.invoke.mockRejectedValueOnce(new Error("native handoff fences this authority operation"));
+    await expect(prepareDesktopRecoveryItemRemovalTransaction(["rss:first"], true, true)).rejects.toThrow("fences");
+    expect(mocks.invoke.mock.calls.map(([command]) => command)).toEqual(["normalized_library_primary_mutation_context"]);
+  });
+
   it("encodes fractional synchronized preferences in the canonical envelope", async () => {
     const storyWall = createDefaultPreferences().storyWall;
     await dispatchSqliteMutation({
