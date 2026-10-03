@@ -178,6 +178,39 @@ After the first transfer settles, repeat the transfer back to A. Verify older
 archives remain browsable on both consumers and that no old signed envelope was
 rewritten into a new epoch.
 
+## Native background admission evidence
+
+Keep the existing soak collector running for each installed consumer. After
+closing provider windows and settling active work, wait for the first native
+sample before beginning the measured actions. End the actions before the final
+native sample. Preserve native consumer-role and installed-build evidence for
+that same interval. A transfer or process restart starts a new interval.
+
+`soak-assert.mjs` now includes
+`eventSummaries.nativeProviderAdmissions`. It requires healthy source coverage,
+attributable runtime identity, one continuous app-alive segment, and at least
+three covered native samples. Each sample brackets its counter and window
+observation with timestamps. `windowStart` follows the first observation by one
+millisecond; `windowEnd` precedes the last observation. Log append time never
+extends these bounds. Acceptance actions must fit entirely inside them. A
+positive count can include work at the observation edges; zero applies to the
+inner interval.
+
+An available result with `admittedCount: 0` proves no new admission through the
+instrumented native provider-command gate during that interval. Every sample
+must have stable schema-1 counters from the same gate instance, no active
+operations, and no provider windows. Missing or malformed fields, saturation,
+counter regression, changed instance identity, duplicate timestamps, or weak
+coverage produce `inconclusive`, never an inferred zero. These cumulative
+counters can detect completed operations between samples even when an individual
+renderer log event is absent.
+
+The gate covers RSS, background article hydration, and native social operations.
+Explicit reader article loading and Save URL previews use the foreground URL
+path and are outside this count. A count measures admitted commands, not network
+requests. The summary does not establish consumer role, installed build identity
+on its own, or complete multi-device acceptance. Keep those proofs alongside it.
+
 ## Evidence required for acceptance
 
 Record exact build identity and test timestamps. Preserve transfer receipts,
