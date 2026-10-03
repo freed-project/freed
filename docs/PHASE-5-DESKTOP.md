@@ -1635,3 +1635,7 @@ temporary allocations and other processes' disk use remain separate limits.
 The offline recovery runner detects a computed checkpoint-export view and copies it once, under one read-only attached-source transaction, into a task-private indexed staging file. It preserves the pinned metadata and canonical records without migrating the source or creating another Library runtime. Subsequent export pages seek that staging tree instead of repeatedly scanning and sorting the predecessor view.
 
 The staging file has a SQLite page cap and bounded cache. Initial admission reserves 10 GiB plus 128 MiB overhead and budgets the staging database/journal conservatively; exact archive admission runs after measurement. Successful capture verifies every canonical record and removes the private staging file. Failed staging preserves the source and fails closed. Synthetic tests cover source immutability, URI read-only enforcement, index use, page-cap refusal, frontier stability after a source writer advances, and isolated reconstruction. Current-corpus capture, reconstruction and signed-successor recovery remain separate operator evidence.
+
+### Isolated transfer acceptance, October 3, 2026
+
+An explicit transfer-acceptance build pairs native and frontend capabilities, requires the isolated preview data root, and disables update endpoints. Ordinary release transfer holds remain in place. Installed multi-device acceptance is still required.
