@@ -24,7 +24,24 @@ fn direct_lifecycle_calls_refuse_before_schema_or_keys() {
     let before: i64 = db
         .query_row("PRAGMA schema_version", [], |r| r.get(0))
         .unwrap();
+    let recovery = RecoveryReissueRequestV1 {
+        schema_version: 1,
+        recovery_id: String::new(),
+        archive_digest: String::new(),
+        transaction_id: String::new(),
+        transaction_digest: String::new(),
+        reviewed_generation_id: String::new(),
+        reviewed_revision: 0,
+        reviewed_local_sequence: 0,
+        member_count: 0,
+    };
     let failures = [
+        reapply_archived_assignments_v1(&mut db, &recovery, &NoKeys, 0).unwrap_err(),
+        reapply_archived_editor_transaction_v1(&mut db, &recovery, &[], 0).unwrap_err(),
+        reapply_archived_primary_assignments_v1(&mut db, &recovery, &NoKeys, &NoKeys, 0)
+            .unwrap_err(),
+        reapply_archived_primary_editor_transaction_v1(&mut db, &recovery, &[], &NoKeys, 0)
+            .unwrap_err(),
         prepare_target_handoff_readiness_v1(&mut db, &NoKeys, &NoKeys, 0).unwrap_err(),
         begin_source_handoff_v1(&mut db, b"", "", &NoKeys, 0).unwrap_err(),
         archive_consumer_epoch_recovery_v1(&mut db, &NoKeys, 0).unwrap_err(),

@@ -440,6 +440,25 @@ that action creates a separate atomic link for the replacement transaction.
 Neither review nor retry automatically follows or re-signs a replacement chain.
 The Desktop receipt displays the replacement epoch to locate its later archive.
 
+### Explicit recovery on the active Primary
+
+Desktop may explicitly reapply a verified archived transaction after promotion.
+The Primary route rechecks native writer admission, the current epoch and actor,
+and established authority-key custody inside one immediate SQLite transaction.
+It uses canonical operation resolution and commits the replacement with the
+installation-local archive link. A failed link write rolls back materialization,
+receipts, outboxes and actor counters. Rejected resolution does not leave an
+unlinked replacement behind.
+
+Promotion may retain the actor ID; the replacement must belong to a different
+epoch from the original. The existing Consumer route still requires successor
+enrollment. Selecting Primary never falls back to Consumer after an admission
+failure. Both routes verify the original signed transaction, refuse confirmed
+acceptance, pin the reviewed state, and preserve every ordered member. Existing
+links return before key loading or fresh admission, including after restart.
+The link receipt identifies a durable replacement; it is not portable proof of
+Primary acceptance. Ordinary builds retain the transfer capability hold.
+
 ### Edited recovery transactions
 
 The native editor recovery submission path accepts at most 1,000 canonical

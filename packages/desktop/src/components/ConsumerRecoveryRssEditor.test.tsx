@@ -19,25 +19,25 @@ beforeEach(() => {
   container = document.createElement("div"); document.body.appendChild(container); root = createRoot(container);
 });
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); });
-it("requires every page and explicit submission, then retries identical signatures after response loss", async () => {
+it.each([false, true])("primary=%s requires every page and explicit submission, then retries identical signatures after response loss", async (primary) => {
   const drafts = Array.from({ length: 9 }, (_, i) => ({ url: `https://example.com/${i}`, title: `  Name ${i}  `, archivedTitle: `Old ${i}`, currentTitle: `Current ${i}` }));
   mocks.load.mockResolvedValue({ replacement: null, drafts });
   const frames = ["signed first", "signed second"];
   mocks.prepare.mockResolvedValue(frames);
   const receipt = { transactionId: "replacement" };
   mocks.submit.mockRejectedValueOnce(new Error("response lost")).mockResolvedValueOnce(receipt);
-  await act(async () => root.render(<ConsumerRecoveryRssEditor review={review} onReplacement={replacement} onMutating={mutating} />));
+  await act(async () => root.render(<ConsumerRecoveryRssEditor primary={primary} review={review} onReplacement={replacement} onMutating={mutating} />));
   expect(container.querySelectorAll("input")).toHaveLength(8);
   await click("Store revised names"); expect(mocks.prepare).not.toHaveBeenCalled();
   await click("Next names"); expect(container.querySelectorAll("input")).toHaveLength(1);
   expect(mocks.prepare).not.toHaveBeenCalled();
   await click("Store revised names");
-  expect(mocks.prepare).toHaveBeenCalledExactlyOnceWith(drafts.map((d) => ({ url: d.url, title: d.title.trim() })));
+  expect(mocks.prepare).toHaveBeenCalledExactlyOnceWith(drafts.map((d) => ({ url: d.url, title: d.title.trim() })), primary);
   expect(container.querySelector("input")!.disabled).toBe(true);
   expect(replacement).not.toHaveBeenCalled();
   await click("Store revised names");
   expect(mocks.prepare).toHaveBeenCalledTimes(1);
-  expect(mocks.submit.mock.calls).toEqual([[review, frames], [review, frames]]);
+  expect(mocks.submit.mock.calls).toEqual([[review, frames, primary], [review, frames, primary]]);
   expect(replacement).toHaveBeenCalledWith(receipt);
   expect(mutating.mock.calls.map(([value]) => value)).toEqual([true, false, true, false]);
 });
@@ -70,9 +70,9 @@ it("requires explicit article deletion confirmation and retains exact unsubscrib
   const checkbox = container.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
   await act(async () => checkbox.click());
   await click("Store unsubscribe");
-  expect(mocks.prepare).toHaveBeenCalledExactlyOnceWith(["https://example.com/feed"], true, true);
+  expect(mocks.prepare).toHaveBeenCalledExactlyOnceWith(["https://example.com/feed"], true, true, false);
   expect(checkbox.disabled).toBe(true);
   await click("Store unsubscribe");
   expect(mocks.prepare).toHaveBeenCalledTimes(1);
-  expect(mocks.submit.mock.calls).toEqual([[review, frames], [review, frames]]);
+  expect(mocks.submit.mock.calls).toEqual([[review, frames, false], [review, frames, false]]);
 });

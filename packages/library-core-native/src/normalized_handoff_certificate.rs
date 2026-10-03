@@ -6807,6 +6807,164 @@ mod tests {
             .unwrap();
         drop(database);
         let mut database = open_normalized_sqlite_database_v1(&path, false).unwrap();
+        // Keep the larger fault matrix's deliberately malformed historical row
+        // intact. A separate target copy carries genuine signed historical bytes
+        // through production activation and then the explicit Primary recovery API.
+        if !recovered_incarnation && !cancelled_consumer {
+            let recovery_path = directory.path().join("promoted-primary-recovery.sqlite");
+            let mut recovery = open_normalized_sqlite_database_v1(&recovery_path, true).unwrap();
+            rusqlite::backup::Backup::new(&database, &mut recovery)
+                .unwrap()
+                .run_to_completion(128, std::time::Duration::ZERO, None)
+                .unwrap();
+            let frames =
+                crate::normalized_operation_test_fixtures::tests::signed_envelopes_from_tip(
+                    &actor_key,
+                    &initial_enrollment,
+                    "pending",
+                    1,
+                    None,
+                    &initial_enrollment.actor_chain_genesis,
+                    &[("rss:item:1", 1)],
+                    "feed_item_read_assignment",
+                );
+            let (original, _) =
+                crate::normalized_operation_verifier::verify_operation_transaction_for_resolution(
+                    &frames,
+                    |_| {
+                        Ok(crate::normalized_operation::ActorState {
+                            library_id: initial_enrollment.library_id.clone(),
+                            epoch: initial_enrollment.epoch,
+                            epoch_id: initial_enrollment.epoch_id.clone(),
+                            actor_id: initial_enrollment.actor_id.clone(),
+                            actor_public_key: initial_enrollment.actor_public_key.clone(),
+                            enrollment_operation_id: initial_enrollment
+                                .enrollment_operation_id
+                                .clone(),
+                            enrollment_certificate_digest: initial_enrollment
+                                .enrollment_certificate_digest
+                                .clone(),
+                            canonical_enrollment_certificate_json: initial_enrollment
+                                .canonical_enrollment_certificate_json
+                                .clone(),
+                            actor_chain_genesis: initial_enrollment.actor_chain_genesis.clone(),
+                            next_sequence: 1,
+                            previous_operation_id: None,
+                            previous_chain_digest: initial_enrollment.actor_chain_genesis.clone(),
+                            retired: false,
+                            capability: initial_enrollment.capability.clone(),
+                        })
+                    },
+                )
+                .unwrap();
+            let member = &original.members[0];
+            // A retained local rejection flag is not signed rejection evidence.
+            // Recovery must classify this historical outcome as unresolved.
+            recovery.execute("UPDATE library_intent_transactions SET transaction_digest=?1,previous_chain_digest=?2,ending_operation_id=?3,ending_chain_digest=?4,canonical_member_bytes=?5,canonical_transaction=?6 WHERE transaction_id='pending';",
+                params![original.transaction_digest,initial_enrollment.actor_chain_genesis,member.operation_id,member.actor_chain_digest,original.canonical_envelope_bytes,crate::library_core_canonical::encode_canonical_value(&json!({"actor_id":original.actor_id,"member_count":1,"transaction_digest":original.transaction_digest,"transaction_id":original.transaction_id}),131072).unwrap()]).unwrap();
+            recovery.execute("INSERT INTO library_intent_members VALUES ('pending',?1,0,?2,1,'feed_item_read_assignment','FeedItem','rss:item:1',?3,?4);",
+                params![actor,member.operation_id,frames[0],member.member_digest]).unwrap();
+            let recovery_current = Store::default();
+            activate(
+                &mut recovery,
+                &plan,
+                "\"winning-head\"",
+                &actor_store,
+                &pending,
+                &recovery_current,
+                107,
+            )
+            .unwrap();
+            // Content only. Enrollment, predecessor authorization, checkpoint
+            // verification, activation, archive creation and recovery stay real.
+            recovery.execute("INSERT INTO library_feed_items (global_id,platform,content_type,captured_at,published_at,author_id,author_handle,author_display_name,hidden,saved,archived,updated_at)
+                VALUES ('rss:item:1','rss','article',1,1,'author','author','Author',0,0,0,1);",[]).unwrap();
+            let (archived, outcome) =
+                crate::normalized_recovery_input::inspect_archived_intent_for_review(
+                    &recovery, id, "pending",
+                )
+                .unwrap();
+            assert!(matches!(
+                outcome,
+                crate::ArchivedIntentOutcomeV1::Unresolved
+            ));
+            assert_eq!(
+                archived.members[0].canonical_envelope_json.as_bytes(),
+                frames[0]
+            );
+            let context = crate::normalized_primary_mutation_context_v1(&recovery).unwrap();
+            assert_eq!(
+                context.actor_id, actor,
+                "promotion retains this installation's actor identity"
+            );
+            assert_ne!(context.epoch_id, initial_enrollment.epoch_id);
+            let source =
+                crate::normalized_recovery_reissue::recovery_review_source(&recovery).unwrap();
+            let request = crate::RecoveryReissueRequestV1 {
+                schema_version:1,recovery_id:id.into(),
+                archive_digest:recovery.query_row("SELECT archive_digest FROM library_local_recovery_archives WHERE recovery_id=?1;",[id],|r|r.get(0)).unwrap(),
+                transaction_id:original.transaction_id.clone(),transaction_digest:original.transaction_digest.clone(),
+                reviewed_generation_id:source.0,reviewed_revision:source.1,reviewed_local_sequence:source.2,member_count:1,
+            };
+            let archive_bytes = |db: &rusqlite::Connection| {
+                db.prepare("SELECT canonical_row FROM library_local_recovery_rows WHERE recovery_id=?1 ORDER BY table_key,row_ordinal;").unwrap()
+                    .query_map([id],|r|r.get::<_,Vec<u8>>(0)).unwrap().collect::<rusqlite::Result<Vec<_>>>().unwrap()
+            };
+            let before = archive_bytes(&recovery);
+            recovery.execute_batch("CREATE TEMP TRIGGER reject_primary_recovery_link BEFORE INSERT ON library_local_recovery_reissues BEGIN SELECT RAISE(ABORT,'recovery link fault'); END;").unwrap();
+            assert!(crate::reapply_archived_primary_assignments_v1(
+                &mut recovery,
+                &request,
+                &actor_store,
+                &recovery_current,
+                108
+            )
+            .unwrap_err()
+            .contains("recovery link fault"));
+            assert_eq!(
+                crate::normalized_primary_mutation_context_v1(&recovery).unwrap(),
+                context
+            );
+            assert_eq!(archive_bytes(&recovery), before);
+            recovery
+                .execute_batch("DROP TRIGGER reject_primary_recovery_link;")
+                .unwrap();
+            let receipt = crate::reapply_archived_primary_assignments_v1(
+                &mut recovery,
+                &request,
+                &actor_store,
+                &recovery_current,
+                108,
+            )
+            .unwrap();
+            assert_eq!(receipt.replacement_actor_id, actor);
+            assert_eq!(
+                recovery
+                    .query_row(
+                        "SELECT read_at FROM library_feed_items WHERE global_id='rss:item:1';",
+                        [],
+                        |r| r.get::<_, i64>(0)
+                    )
+                    .unwrap(),
+                108
+            );
+            assert_eq!(archive_bytes(&recovery), before);
+            drop(recovery);
+            let mut recovery = open_normalized_sqlite_database_v1(&recovery_path, false).unwrap();
+            let unavailable = Store::default();
+            assert_eq!(
+                crate::reapply_archived_primary_assignments_v1(
+                    &mut recovery,
+                    &request,
+                    &unavailable,
+                    &unavailable,
+                    109
+                )
+                .unwrap(),
+                receipt
+            );
+            assert_eq!(archive_bytes(&recovery), before);
+        }
         let active = activate(
             &mut database,
             &plan,
