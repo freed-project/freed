@@ -70,9 +70,9 @@
       "inspectionDigest": "sha256:3960945068a22f8fad49b83bfda0546b8b0d586a2f643e719afc35c64061dcdf",
       "decision": {
         "state": "owner_approved",
-        "ownerApprovalReference": "current-task:release-26-10-200-dev#sha256:ed0d2d99ec2d7f17cc213ee89d4f3f4ecaee4400a0d933f4d3a1a6ed29ec8e41",
+        "ownerApprovalReference": "current-task:release-26-10-200-dev#sha256:a98007182d33f9a00cf9208eac3aef075a2093b14cecfbe1afa889f20f8c3ff6",
         "approvedInspectionDigest": "sha256:3960945068a22f8fad49b83bfda0546b8b0d586a2f643e719afc35c64061dcdf",
-        "approvedReleaseArtifactDigest": "sha256:72e8415c6bbb087c9e8355f9b19dbf39053dc759945548778ec51cecbfb54f88"
+        "approvedReleaseArtifactDigest": "sha256:cdb8b21aef35600bd53d17ebd2324e88b9102288dc1ef6dd2db8217ea07b5900"
       }
     },
     "isLatestOfDay": true,
