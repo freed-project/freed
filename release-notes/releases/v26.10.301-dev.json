@@ -80,22 +80,25 @@
     "deck": "This dev build adds evidence for checking consumer capture and preserves build identity from the first renderer heartbeat.",
     "features": [
       "Measure native background-command admissions over covered runtime intervals for multi-desktop acceptance",
-      "Provide separate transfer-acceptance builds for cooperative Primary handoff and explicit archived-edit recovery tests",
-      "Record renderer stalls and keep signed measurement profiles separate from existing installations"
+      "Record foreground renderer stalls between the existing health-heartbeat ticks",
+      "Provide a signed measurement build with its own profile and credential namespaces"
     ],
     "fixes": [
       "Retain build and session identity in the first renderer heartbeat, including before legal acceptance",
       "Keep preview and transfer-acceptance artifacts out of ordinary updater downloads",
-      "Isolate parallel Jev budget test ledgers"
+      "Isolate parallel Jev budget test ledgers",
+      "Report unsupported long-task monitoring as unavailable",
+      "Preserve primary and existing preview credential-service identities"
     ],
     "followUps": [
       "A zero admission count applies only to the measured native-command interval; consumer role and installed build identity require separate evidence",
       "Two independent Desktop installations and the matching PWA still require installed convergence, offline restart and transfer acceptance",
-      "Ordinary Primary transfer and recovery remain disabled pending installed acceptance; no owner Library move has occurred",
       "Diagnostics do not establish a freeze fix or measured performance improvement",
-      "Portable cloud release publication still requires provisioning; headless cooperative handoff remains separate",
-      "GLiClass first-use/native UI acceptance and live Jev quality remain unverified"
+      "GLiClass first-use/native UI acceptance and live Jev quality remain unverified",
+      "Transfer-acceptance builds remain separate opt-in test artifacts; ordinary Library transfer and schema-v2 operations remain disabled",
+      "Portable cloud publication still awaits owner setup; this release uses the existing publisher",
+      "Headless cooperative handoff and the owner Library move remain unverified"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.10.301-dev\n\nThis dev build adds evidence for checking consumer capture and preserves build identity from the first renderer heartbeat\n\n### Features\n\n- Measure native background-command admissions over covered runtime intervals for multi-desktop acceptance\n- Provide separate transfer-acceptance builds for cooperative Primary handoff and explicit archived-edit recovery tests\n- Record renderer stalls and keep signed measurement profiles separate from existing installations\n\n### Fixes\n\n- Retain build and session identity in the first renderer heartbeat, including before legal acceptance\n- Keep preview and transfer-acceptance artifacts out of ordinary updater downloads\n- Isolate parallel Jev budget test ledgers\n\n### Follow-ups\n\n- A zero admission count applies only to the measured native-command interval; consumer role and installed build identity require separate evidence\n- Two independent Desktop installations and the matching PWA still require installed convergence, offline restart and transfer acceptance\n- Ordinary Primary transfer and recovery remain disabled pending installed acceptance; no owner Library move has occurred\n- Diagnostics do not establish a freeze fix or measured performance improvement\n- Portable cloud release publication still requires provisioning; headless cooperative handoff remains separate\n- GLiClass first-use/native UI acceptance and live Jev quality remain unverified\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.10.301-dev\n\nThis dev build adds evidence for checking consumer capture and preserves build identity from the first renderer heartbeat\n\n### Features\n\n- Measure native background-command admissions over covered runtime intervals for multi-desktop acceptance\n- Record foreground renderer stalls between the existing health-heartbeat ticks\n- Provide a signed measurement build with its own profile and credential namespaces\n\n### Fixes\n\n- Retain build and session identity in the first renderer heartbeat, including before legal acceptance\n- Keep preview and transfer-acceptance artifacts out of ordinary updater downloads\n- Isolate parallel Jev budget test ledgers\n- Report unsupported long-task monitoring as unavailable\n- Preserve primary and existing preview credential-service identities\n\n### Follow-ups\n\n- A zero admission count applies only to the measured native-command interval; consumer role and installed build identity require separate evidence\n- Two independent Desktop installations and the matching PWA still require installed convergence, offline restart and transfer acceptance\n- Diagnostics do not establish a freeze fix or measured performance improvement\n- GLiClass first-use/native UI acceptance and live Jev quality remain unverified\n- Transfer-acceptance builds remain separate opt-in test artifacts; ordinary Library transfer and schema-v2 operations remain disabled\n- Portable cloud publication still awaits owner setup; this release uses the existing publisher\n- Headless cooperative handoff and the owner Library move remain unverified\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
