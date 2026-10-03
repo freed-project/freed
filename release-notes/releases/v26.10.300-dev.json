@@ -1,0 +1,84 @@
+{
+  "tag": "v26.10.300-dev",
+  "version": "26.10.300-dev",
+  "channel": "dev",
+  "dayKey": "26.10.3",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-10-03T11:22:29.189Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.10.200-dev",
+    "previousPublishedDayTag": "v26.10.200-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "c686c4e1dbc5eeb43d2613f35979fd8e274a09a2",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.10.200-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "41bfd134bd913a7d76497f9c013b0f3b3b16b672",
+        "toInclusiveProductCommitSha": "c686c4e1dbc5eeb43d2613f35979fd8e274a09a2"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:87ced2658785f1d28753666537ab09bef76d45848f728aeb12343f22ee70d6d1",
+        "currentDigest": "sha256:87ced2658785f1d28753666537ab09bef76d45848f728aeb12343f22ee70d6d1"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:3997d2fdd77eeb7e02d1338c26a47fcddd5185eb19e2c181deccd9fd32ca0d64",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.10.300-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.10.300-dev"
+    ],
+    "prNumbers": [
+      2077,
+      2079,
+      2080,
+      2081,
+      2082,
+      2083,
+      2084
+    ],
+    "commitSubjects": [
+      "fix: isolate parallel Jev budget test ledgers (#2084)",
+      "perf: record bounded app-wide renderer stall probes (#2080)",
+      "fix: isolate signed measurement profiles and credential services (#2081)",
+      "feat: deliver signed and PWA transfer acceptance builds (#2083)",
+      "feat: recover archived edits on the active Primary (#2082)",
+      "feat: add isolated multi-desktop acceptance builds (#2079)",
+      "feat: add governed portable cloud release requests (#2077)"
+    ]
+  },
+  "release": {
+    "deck": "Isolated multi-desktop acceptance builds, deliver signed and PWA transfer acceptance builds, and archived edits on the active Primary",
+    "features": [
+      "Deliver signed and PWA transfer acceptance builds",
+      "Isolated multi-desktop acceptance builds",
+      "Recover archived edits on the active Primary"
+    ],
+    "fixes": [
+      "Isolate parallel Jev budget test ledgers",
+      "Isolate signed measurement profiles and credential services"
+    ],
+    "followUps": [
+      "Bounded app-wide responsiveness probes",
+      "Governed portable cloud release requests"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.10.300-dev\n\nIsolated multi-desktop acceptance builds, deliver signed and PWA transfer acceptance builds, and archived edits on the active Primary\n\n### Features\n\n- Deliver signed and PWA transfer acceptance builds\n- Isolated multi-desktop acceptance builds\n- Recover archived edits on the active Primary\n\n### Fixes\n\n- Isolate parallel Jev budget test ledgers\n- Isolate signed measurement profiles and credential services\n\n### Follow-ups\n\n- Bounded app-wide responsiveness probes\n- Governed portable cloud release requests\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
