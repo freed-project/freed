@@ -82,111 +82,107 @@ var rejectRetiredDesktopLibraryAssets = {
     },
 };
 var buildMetadata = getBuildMetadata(pkg.version);
-export default defineConfig(function (_a) {
-    var mode = _a.mode;
-    return ({
-        // Development and production-React test servers must not replace each
-        // other's optimized dependency graph when the complete suite runs both.
-        cacheDir: process.env.FREED_E2E_PERF === "1"
-            ? rootFile("node_modules/.vite-feed-perf")
-            : undefined,
-        define: {
-            __LIBRARY_TRANSFER_ACCEPTANCE__: mode === "library-transfer-acceptance" || mode === "test",
-            __APP_VERSION__: JSON.stringify(buildMetadata.appVersion),
-            __BUILD_KIND__: JSON.stringify(buildMetadata.buildKind),
-            __BUILD_CHANNEL__: JSON.stringify(buildMetadata.channel),
-            __BUILD_COMMIT_SHA__: JSON.stringify(buildMetadata.commitSha),
-            __BUILD_COMMIT_REF__: JSON.stringify(buildMetadata.commitRef),
-            __BUILD_DEPLOYED_AT__: JSON.stringify(buildMetadata.deployedAt),
-        },
-        resolve: {
-            alias: __assign(__assign({ '@freed/ui': src('ui'), '@freed/shared': src('shared'), '@freed/sync': src('sync'), '@freed/capture-rss': src('capture-rss'), '@freed/capture-x': src('capture-x'), '@freed/capture-save': src('capture-save'), '@freed/capture-facebook': src('capture-facebook'), '@freed/capture-instagram': src('capture-instagram'), '@freed/capture-linkedin': src('capture-linkedin') }, libraryClientTestAliases), tauriMockAliases),
-        },
-        // Production bundles reject retired document workers and WASM artifacts.
-        worker: {
-            format: "es",
-            plugins: function () { return [
-                rejectRetiredDesktopLibraryAssets,
-                wasm(),
-                topLevelAwait(),
-            ]; },
-        },
-        plugins: __spreadArray(__spreadArray([
-            jevPreviewPlugin()
-        ], (process.env.VITE_TEST_TAURI
-            ? [{
-                    name: "desktop-mock-bootstrap",
-                    transformIndexHtml: function () { return [{
-                            tag: "meta",
-                            attrs: { name: "freed-e2e-render-mode", content: process.env.NODE_ENV === "production" ? "production" : "development" },
-                            injectTo: "head-prepend",
-                        }, {
-                            tag: "script",
-                            children: tauriInitScript(),
-                            injectTo: "head-prepend",
-                        }]; },
-                }]
-            : []), true), [
+export default defineConfig({
+    // Development and production-React test servers must not replace each
+    // other's optimized dependency graph when the complete suite runs both.
+    cacheDir: process.env.FREED_E2E_PERF === "1"
+        ? rootFile("node_modules/.vite-feed-perf")
+        : undefined,
+    define: {
+        __APP_VERSION__: JSON.stringify(buildMetadata.appVersion),
+        __BUILD_KIND__: JSON.stringify(buildMetadata.buildKind),
+        __BUILD_CHANNEL__: JSON.stringify(buildMetadata.channel),
+        __BUILD_COMMIT_SHA__: JSON.stringify(buildMetadata.commitSha),
+        __BUILD_COMMIT_REF__: JSON.stringify(buildMetadata.commitRef),
+        __BUILD_DEPLOYED_AT__: JSON.stringify(buildMetadata.deployedAt),
+    },
+    resolve: {
+        alias: __assign(__assign({ '@freed/ui': src('ui'), '@freed/shared': src('shared'), '@freed/sync': src('sync'), '@freed/capture-rss': src('capture-rss'), '@freed/capture-x': src('capture-x'), '@freed/capture-save': src('capture-save'), '@freed/capture-facebook': src('capture-facebook'), '@freed/capture-instagram': src('capture-instagram'), '@freed/capture-linkedin': src('capture-linkedin') }, libraryClientTestAliases), tauriMockAliases),
+    },
+    // Production bundles reject retired document workers and WASM artifacts.
+    worker: {
+        format: "es",
+        plugins: function () { return [
             rejectRetiredDesktopLibraryAssets,
             wasm(),
             topLevelAwait(),
-            react(),
+        ]; },
+    },
+    plugins: __spreadArray(__spreadArray([
+        jevPreviewPlugin()
+    ], (process.env.VITE_TEST_TAURI
+        ? [{
+                name: "desktop-mock-bootstrap",
+                transformIndexHtml: function () { return [{
+                        tag: "meta",
+                        attrs: { name: "freed-e2e-render-mode", content: process.env.NODE_ENV === "production" ? "production" : "development" },
+                        injectTo: "head-prepend",
+                    }, {
+                        tag: "script",
+                        children: tauriInitScript(),
+                        injectTo: "head-prepend",
+                    }]; },
+            }]
+        : []), true), [
+        rejectRetiredDesktopLibraryAssets,
+        wasm(),
+        topLevelAwait(),
+        react(),
+    ], false),
+    optimizeDeps: {
+        exclude: __spreadArray(__spreadArray([], tauriMockExclude, true), [
+            "maplibre-gl/dist/maplibre-gl-worker.mjs",
         ], false),
-        optimizeDeps: {
-            exclude: __spreadArray(__spreadArray([], tauriMockExclude, true), [
-                "maplibre-gl/dist/maplibre-gl-worker.mjs",
-            ], false),
+    },
+    // Tauri development server.
+    // strictPort is only enforced when running with the real Tauri binary (tauri:dev),
+    // because tauri.conf.json hardcodes http://localhost:1420 as the devUrl.
+    // In mock mode (VITE_TEST_TAURI=1) we let Vite pick any free port so that
+    // multiple worktrees can run in parallel without colliding.
+    clearScreen: false,
+    server: {
+        port: 1420,
+        strictPort: !process.env.VITE_TEST_TAURI,
+        fs: {
+            allow: fsAllow,
         },
-        // Tauri development server.
-        // strictPort is only enforced when running with the real Tauri binary (tauri:dev),
-        // because tauri.conf.json hardcodes http://localhost:1420 as the devUrl.
-        // In mock mode (VITE_TEST_TAURI=1) we let Vite pick any free port so that
-        // multiple worktrees can run in parallel without colliding.
-        clearScreen: false,
+        watch: {
+            ignored: [
+                "**/src-tauri/**",
+                "**/playwright-report",
+                "**/playwright-report/**",
+                "**/test-results",
+                "**/test-results/**",
+            ],
+        },
+    },
+    // Optimize for Tauri
+    build: {
+        target: "esnext",
+        minify: !process.env.TAURI_DEBUG ? "esbuild" : false,
+        sourcemap: !!process.env.TAURI_DEBUG,
+        rollupOptions: {
+            input: {
+                main: rootFile("index.html"),
+                startupRecovery: rootFile("startup-recovery.html"),
+            },
+        },
+    },
+    // Unit test configuration
+    test: {
+        environment: "jsdom",
+        include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+        // Polyfill Blob.prototype.text (missing from jsdom's older Blob spec).
+        setupFiles: ["./src/vitest.setup.ts"],
+        // Tauri IPC and plugins are unavailable in the test environment, so we
+        // mock their modules via vi.mock() inside each test file.
+        globals: true,
+        // Force workspace packages through vitest's transform pipeline so that
+        // vi.mock() can intercept their imports correctly.
         server: {
-            port: 1420,
-            strictPort: !process.env.VITE_TEST_TAURI,
-            fs: {
-                allow: fsAllow,
-            },
-            watch: {
-                ignored: [
-                    "**/src-tauri/**",
-                    "**/playwright-report",
-                    "**/playwright-report/**",
-                    "**/test-results",
-                    "**/test-results/**",
-                ],
+            deps: {
+                inline: [/@freed\//],
             },
         },
-        // Optimize for Tauri
-        build: {
-            target: "esnext",
-            minify: !process.env.TAURI_DEBUG ? "esbuild" : false,
-            sourcemap: !!process.env.TAURI_DEBUG,
-            rollupOptions: {
-                input: {
-                    main: rootFile("index.html"),
-                    startupRecovery: rootFile("startup-recovery.html"),
-                },
-            },
-        },
-        // Unit test configuration
-        test: {
-            environment: "jsdom",
-            include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
-            // Polyfill Blob.prototype.text (missing from jsdom's older Blob spec).
-            setupFiles: ["./src/vitest.setup.ts"],
-            // Tauri IPC and plugins are unavailable in the test environment, so we
-            // mock their modules via vi.mock() inside each test file.
-            globals: true,
-            // Force workspace packages through vitest's transform pipeline so that
-            // vi.mock() can intercept their imports correctly.
-            server: {
-                deps: {
-                    inline: [/@freed\//],
-                },
-            },
-        },
-    });
+    },
 });
