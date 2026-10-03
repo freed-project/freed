@@ -1631,3 +1631,17 @@ The staging file has a SQLite page cap and bounded cache. Initial admission rese
 ### Isolated transfer acceptance, October 3, 2026
 
 An explicit transfer-acceptance build pairs native and frontend capabilities, requires the isolated preview data root, and disables update endpoints. Ordinary release transfer holds remain in place. Installed multi-device acceptance is still required.
+
+### Fresh signed measurement candidates
+
+The dev release's isolated ARM64 verifier uses a new measurement identifier for
+ each workflow run and attempt. Its Library profile, Jev service and Library Core
+ key service are separate from primary and existing previews. The default preview
+ configuration and all existing key services retain their identities. The normal
+ signing/notarization job remains responsible for the artifact; no new credentials
+ or authority transfer feature is enabled.
+
+Measurement starts only after artifact identity/signature verification and a check
+ that the target profile is absent. Legal acceptance is never seeded. A legal-gate
+ startup sample can report process memory and probe counters, but does not prove
+ Feed performance, provider admission, full UI acceptance or a before/after gain.

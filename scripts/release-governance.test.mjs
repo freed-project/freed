@@ -432,7 +432,7 @@ test("dev releases publish a signed isolated Apple Silicon verifier without upda
   assert.match(isolatedJob, /--target aarch64-apple-darwin/);
   assert.match(isolatedJob, /--bundles app/);
   assert.match(isolatedJob, /--features isolated-preview-data-root/);
-  assert.match(isolatedJob, /--config src-tauri\/tauri\.preview\.conf\.json/);
+  assert.match(isolatedJob, /--config \$\{\{ steps\.measurement-config\.outputs\.config_path \}\}/);
   assert.match(
     isolatedJob,
     /releaseAssetNamePattern: Freed_Preview_\[version\]_aarch64\[ext\]/,
@@ -443,7 +443,7 @@ test("dev releases publish a signed isolated Apple Silicon verifier without upda
   assert.match(isolatedJob, /xcrun stapler validate/);
   assert.match(
     isolatedJob,
-    /Print:CFBundleIdentifier[\s\S]*wtf\.freed\.desktop\.sqlite-native-preview/,
+    /Print:CFBundleIdentifier[\s\S]*steps\.measurement-config\.outputs\.identifier/,
   );
 
   assert.match(
