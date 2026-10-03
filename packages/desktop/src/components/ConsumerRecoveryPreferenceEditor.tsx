@@ -10,7 +10,8 @@ import type { RecoveryReissueReceipt } from "../lib/library-core-recovery-reissu
 import { useRecoveryEditorCommit } from "../hooks/useRecoveryEditorCommit";
 
 /** Review exact preference assignments and retain finalized bytes for retry. */
-export function ConsumerRecoveryPreferenceEditor({ review, onReplacement, onMutating }: {
+export function ConsumerRecoveryPreferenceEditor({ primary = false, review, onReplacement, onMutating }: {
+  primary?: boolean;
   review: LibraryCoreRecoveryIntentReviewResponseV1;
   onReplacement: (receipt: RecoveryReissueReceipt) => void;
   onMutating: (value: boolean) => void;
@@ -18,7 +19,7 @@ export function ConsumerRecoveryPreferenceEditor({ review, onReplacement, onMuta
   const [loaded, setLoaded] = useState<{ review: LibraryCoreRecoveryIntentReviewResponseV1; drafts: readonly RecoveryPreferenceDraft[] } | null>(null);
   const drafts = loaded?.review === review ? loaded.drafts : null;
   const [error, setError] = useState<string | null>(null);
-  const commit = useRecoveryEditorCommit(review, onReplacement, onMutating);
+  const commit = useRecoveryEditorCommit(review, onReplacement, onMutating, primary);
   useEffect(() => {
     const controller = new AbortController();
     void loadRecoveryPreferenceDrafts(review, controller.signal).then((result) => {
@@ -36,5 +37,5 @@ export function ConsumerRecoveryPreferenceEditor({ review, onReplacement, onMuta
   if (!drafts) return <p role={error ? "alert" : "status"}>{error ?? "Loading verified settings..."}</p>;
   return <RecoveryPreferenceFields drafts={drafts} readCurrent={readCurrent}
     saving={commit.saving} locked={commit.locked} error={error || commit.error}
-    onSubmit={(drafts) => commit.submit(() => prepareDesktopRecoveryPreferenceTransaction(drafts))} />;
+    onSubmit={(drafts) => commit.submit(() => prepareDesktopRecoveryPreferenceTransaction(drafts, primary))} />;
 }

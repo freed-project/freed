@@ -7,14 +7,15 @@ import type { RecoveryReissueReceipt } from "../lib/library-core-recovery-reissu
 import { useRecoveryEditorCommit } from "../hooks/useRecoveryEditorCommit";
 
 /** One subscription per page; preserve the complete transaction and exact retry bytes. */
-export function ConsumerRecoveryRssUpsertEditor({ review, onReplacement, onMutating }: {
+export function ConsumerRecoveryRssUpsertEditor({ primary = false, review, onReplacement, onMutating }: {
+  primary?: boolean;
   review: LibraryCoreRecoveryIntentReviewResponseV1;
   onReplacement: (receipt: RecoveryReissueReceipt) => void;
   onMutating: (value: boolean) => void;
 }) {
   const [drafts, setDrafts] = useState<readonly RecoveryRssUpsertDraft[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const commit = useRecoveryEditorCommit(review, onReplacement, onMutating);
+  const commit = useRecoveryEditorCommit(review, onReplacement, onMutating, primary);
   useEffect(() => {
     const controller = new AbortController();
     void loadRecoveryRssUpsertDrafts(review, controller.signal).then((result) => {
@@ -31,5 +32,5 @@ export function ConsumerRecoveryRssUpsertEditor({ review, onReplacement, onMutat
   if (!drafts) return <p role={error ? "alert" : "status"}>{error ?? "Loading verified subscriptions..."}</p>;
   return <RecoveryRssSubscriptionFields drafts={drafts} onChange={setDrafts}
     saving={commit.saving} locked={commit.locked} error={error || commit.error}
-    onSubmit={(feeds) => commit.submit(() => prepareDesktopRecoveryRssUpsertTransaction(feeds))} />;
+    onSubmit={(feeds) => commit.submit(() => prepareDesktopRecoveryRssUpsertTransaction(feeds, primary))} />;
 }

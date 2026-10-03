@@ -8,14 +8,15 @@ import type { RecoveryReissueReceipt } from "../lib/library-core-recovery-reissu
 import { useRecoveryEditorCommit } from "../hooks/useRecoveryEditorCommit";
 
 /** One person per page; preserve the complete transaction and exact retry bytes. */
-export function ConsumerRecoveryPersonEditor({ review, onReplacement, onMutating }: {
+export function ConsumerRecoveryPersonEditor({ primary = false, review, onReplacement, onMutating }: {
+  primary?: boolean;
   review: LibraryCoreRecoveryIntentReviewResponseV1;
   onReplacement: (receipt: RecoveryReissueReceipt) => void;
   onMutating: (value: boolean) => void;
 }) {
   const [drafts, setDrafts] = useState<readonly RecoveryPersonDraft[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const commit = useRecoveryEditorCommit(review, onReplacement, onMutating);
+  const commit = useRecoveryEditorCommit(review, onReplacement, onMutating, primary);
   useEffect(() => {
     const controller = new AbortController();
     void loadRecoveryPersonDrafts(review, controller.signal).then((result) => {
@@ -32,5 +33,5 @@ export function ConsumerRecoveryPersonEditor({ review, onReplacement, onMutating
   if (!drafts) return <p role={error ? "alert" : "status"}>{error ?? "Loading verified people..."}</p>;
   return <RecoveryPersonFields drafts={drafts} onChange={setDrafts}
     saving={commit.saving} locked={commit.locked} error={error || commit.error}
-    onSubmit={(feeds) => commit.submit(() => prepareDesktopRecoveryPersonTransaction(feeds))} />;
+    onSubmit={(feeds) => commit.submit(() => prepareDesktopRecoveryPersonTransaction(feeds, primary))} />;
 }

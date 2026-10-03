@@ -6,8 +6,9 @@ import type { RecoveryReissueReceipt } from "../lib/library-core-recovery-reissu
 import { useRecoveryEditorCommit } from "../hooks/useRecoveryEditorCommit";
 
 /** Review the fixed original target set in bounded pages before signing deletion. */
-export function ConsumerRecoveryItemRemovalEditor({ review, onReplacement, onMutating, mode = "items" }: {
+export function ConsumerRecoveryItemRemovalEditor({ primary = false, review, onReplacement, onMutating, mode = "items" }: {
   mode?: "items" | "people" | "accounts";
+  primary?: boolean;
   review: LibraryCoreRecoveryIntentReviewResponseV1;
   onReplacement: (receipt: RecoveryReissueReceipt) => void;
   onMutating: (value: boolean) => void;
@@ -19,7 +20,7 @@ export function ConsumerRecoveryItemRemovalEditor({ review, onReplacement, onMut
   const [page, setPage] = useState(0), [seen, setSeen] = useState(0);
   const [confirmed, setConfirmed] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const commit = useRecoveryEditorCommit(review, onReplacement, onMutating);
+  const commit = useRecoveryEditorCommit(review, onReplacement, onMutating, primary);
   useEffect(() => {
     const controller = new AbortController();
     void load(review, controller.signal).then((result) => {
@@ -48,7 +49,7 @@ export function ConsumerRecoveryItemRemovalEditor({ review, onReplacement, onMut
         {page > 0 && <button type="button" className={button} disabled={commit.saving} onClick={() => setPage(page - 1)}>{accounts ? "Previous accounts" : people ? "Previous people" : "Previous items"}</button>}
         {(page + 1) * 8 < drafts.length && <button type="button" className={button} disabled={commit.saving} onClick={() => { setPage(page + 1); setSeen(Math.max(seen, Math.min((page + 2) * 8, drafts.length))); }}>{accounts ? "Next accounts" : people ? "Next people" : "Next items"}</button>}
         <button type="button" className="btn-primary rounded-lg px-3 py-1.5 disabled:opacity-50" disabled={commit.saving || !!error || !confirmed || seen < drafts.length || drafts.length === 0}
-          onClick={() => void commit.submit(() => prepare(drafts.map((draft) => draft.entityId), confirmed))}>{commit.saving ? "Storing replacement..." : accounts ? "Store account deletion" : people ? "Store people deletion" : "Store item deletion"}</button>
+          onClick={() => void commit.submit(() => prepare(drafts.map((draft) => draft.entityId), confirmed, primary))}>{commit.saving ? "Storing replacement..." : accounts ? "Store account deletion" : people ? "Store people deletion" : "Store item deletion"}</button>
       </div>
     </>}
   </div>;

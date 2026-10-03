@@ -10,7 +10,8 @@ import { useRecoveryEditorCommit } from "../hooks/useRecoveryEditorCommit";
 const button = "btn-secondary rounded-lg px-3 py-1.5 disabled:opacity-50";
 
 /** Keep one current comparison and one transaction draft, never an item corpus. */
-export function ConsumerRecoveryAnnotationEditor({ review, onReplacement, onMutating }: {
+export function ConsumerRecoveryAnnotationEditor({ primary = false, review, onReplacement, onMutating }: {
+  primary?: boolean;
   review: LibraryCoreRecoveryIntentReviewResponseV1;
   onReplacement: (receipt: RecoveryReissueReceipt) => void;
   onMutating: (value: boolean) => void;
@@ -21,7 +22,7 @@ export function ConsumerRecoveryAnnotationEditor({ review, onReplacement, onMuta
   const sizes = useRef<number[]>([]);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const commit = useRecoveryEditorCommit(review, onReplacement, onMutating);
+  const commit = useRecoveryEditorCommit(review, onReplacement, onMutating, primary);
   useEffect(() => {
     const controller = new AbortController();
     void loadRecoveryAnnotationDrafts(review, controller.signal).then((result) => {
@@ -63,7 +64,7 @@ export function ConsumerRecoveryAnnotationEditor({ review, onReplacement, onMuta
       <div className="flex flex-wrap gap-2">
         {page > 0 && <button type="button" className={button} disabled={commit.saving} onClick={() => setPage(page - 1)}>Previous item</button>}
         {page + 1 < drafts!.length && <button type="button" className={button} disabled={commit.saving || !contextReady || !!error} onClick={() => setPage(page + 1)}>Next item</button>}
-        <button type="button" className="btn-primary rounded-lg px-3 py-1.5 disabled:opacity-50" disabled={commit.saving || !contextReady || !!error || seen < drafts!.length} onClick={() => void commit.submit(() => prepareDesktopRecoveryAnnotationTransaction(drafts!.map((row) => ({ ...row, tags: canonicalizeFeedItemTagsV1(row.tags) }))))}>{commit.saving ? "Storing replacement..." : "Store revised annotations"}</button>
+        <button type="button" className="btn-primary rounded-lg px-3 py-1.5 disabled:opacity-50" disabled={commit.saving || !contextReady || !!error || seen < drafts!.length} onClick={() => void commit.submit(() => prepareDesktopRecoveryAnnotationTransaction(drafts!.map((row) => ({ ...row, tags: canonicalizeFeedItemTagsV1(row.tags) })), primary))}>{commit.saving ? "Storing replacement..." : "Store revised annotations"}</button>
       </div>
     </>}
   </div>;

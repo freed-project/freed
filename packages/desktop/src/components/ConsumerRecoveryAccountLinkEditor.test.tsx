@@ -37,11 +37,11 @@ it("requires all accounts, resets confirmation after selection, and retries iden
   expect(confirmation().checked).toBe(false);
   await act(async () => confirmation().click());
   await click("Store account links");
-  expect(mocks.prepare).toHaveBeenCalledExactlyOnceWith([{ accountId: "account:0", personId: "person:old" }, { accountId: "account:1", personId: "person:new" }]);
+  expect(mocks.prepare).toHaveBeenCalledExactlyOnceWith([{ accountId: "account:0", personId: "person:old" }, { accountId: "account:1", personId: "person:new" }], false);
   expect(confirmation().disabled).toBe(true);
   await click("Store account links");
   expect(mocks.prepare).toHaveBeenCalledTimes(1);
-  expect(mocks.submit.mock.calls).toEqual([[review, frames], [review, frames]]);
+  expect(mocks.submit.mock.calls).toEqual([[review, frames, false], [review, frames, false]]);
   expect(replacement).toHaveBeenCalledWith(receipt);
 });
 it("refuses a changed person search frontier before signing", async () => {
@@ -74,5 +74,5 @@ it("keeps exact-retry access when a late search reports a changed frontier after
   expect(container.textContent).toContain("The Library changed");
   await click("Store account links");
   expect(mocks.prepare).toHaveBeenCalledTimes(1);
-  expect(mocks.submit.mock.calls).toEqual([[review, frames], [review, frames]]);
+  expect(mocks.submit.mock.calls).toEqual([[review, frames, false], [review, frames, false]]);
 });

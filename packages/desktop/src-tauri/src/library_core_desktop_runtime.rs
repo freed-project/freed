@@ -1522,9 +1522,15 @@ static HANDOFF_RESET_GATE: Mutex<()> = Mutex::new(());
 pub(super) async fn reapply_normalized_library_archived_assignments(
     app: tauri::AppHandle,
     request: freed_library_core::RecoveryReissueRequestV1,
+    primary: Option<bool>,
 ) -> Result<freed_library_core::RecoveryReissueReceiptV1, String> {
     freed_library_core::require_library_transfer_capability()?;
     run_normalized_query_off_main(move || {
+        // This selects a verifier, never an authority grant. Native admission
+        // is rechecked inside the atomic recovery transaction without fallback.
+        let authority_store = primary
+            .unwrap_or(false)
+            .then_some(&PlatformAuthorityKeyStore as &dyn freed_library_core::AuthorityKeyStore);
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_err(|_| "native recovery clock is invalid")?
@@ -1535,7 +1541,12 @@ pub(super) async fn reapply_normalized_library_archived_assignments(
             let _ = app;
             freed_library_core::desktop_binding()
                 .map_err(|e| e.to_string())?
-                .reapply_archived_assignments_v1(&request, &PlatformActorKeyStore, now)
+                .reapply_archived_assignments_v1(
+                    &request,
+                    &PlatformActorKeyStore,
+                    authority_store,
+                    now,
+                )
                 .map_err(|e| e.to_string())
         }
         #[cfg(not(unix))]
@@ -1543,12 +1554,22 @@ pub(super) async fn reapply_normalized_library_archived_assignments(
             let _gate = HANDOFF_RESET_GATE
                 .lock()
                 .map_err(|_| "Desktop Library handoff/reset gate is poisoned")?;
-            freed_library_core::reapply_archived_assignments_v1(
-                &mut open_normalized_database(&app)?,
-                &request,
-                &PlatformActorKeyStore,
-                now,
-            )
+            let mut connection = open_normalized_database(&app)?;
+            match authority_store {
+                Some(store) => freed_library_core::reapply_archived_primary_assignments_v1(
+                    &mut connection,
+                    &request,
+                    &PlatformActorKeyStore,
+                    store,
+                    now,
+                ),
+                None => freed_library_core::reapply_archived_assignments_v1(
+                    &mut connection,
+                    &request,
+                    &PlatformActorKeyStore,
+                    now,
+                ),
+            }
         }
     })
     .await
@@ -1558,10 +1579,16 @@ pub(super) async fn reapply_normalized_library_archived_assignments(
 pub(super) async fn reapply_normalized_library_archived_editor_transaction(
     app: tauri::AppHandle,
     request: freed_library_core::RecoveryReissueRequestV1,
+    primary: Option<bool>,
     canonical_envelope_json: Vec<String>,
 ) -> Result<freed_library_core::RecoveryReissueReceiptV1, String> {
     freed_library_core::require_library_transfer_capability()?;
     run_normalized_query_off_main(move || {
+        // This selects a verifier, never an authority grant. Native admission
+        // is rechecked inside the atomic recovery transaction without fallback.
+        let authority_store = primary
+            .unwrap_or(false)
+            .then_some(&PlatformAuthorityKeyStore as &dyn freed_library_core::AuthorityKeyStore);
         let envelopes: Vec<Vec<u8>> = canonical_envelope_json
             .into_iter()
             .map(String::into_bytes)
@@ -1576,7 +1603,7 @@ pub(super) async fn reapply_normalized_library_archived_editor_transaction(
             let _ = app;
             freed_library_core::desktop_binding()
                 .map_err(|e| e.to_string())?
-                .reapply_archived_editor_transaction_v1(&request, &envelopes, now)
+                .reapply_archived_editor_transaction_v1(&request, &envelopes, authority_store, now)
                 .map_err(|e| e.to_string())
         }
         #[cfg(not(unix))]
@@ -1584,12 +1611,22 @@ pub(super) async fn reapply_normalized_library_archived_editor_transaction(
             let _gate = HANDOFF_RESET_GATE
                 .lock()
                 .map_err(|_| "Desktop Library handoff/reset gate is poisoned")?;
-            freed_library_core::reapply_archived_editor_transaction_v1(
-                &mut open_normalized_database(&app)?,
-                &request,
-                &envelopes,
-                now,
-            )
+            let mut connection = open_normalized_database(&app)?;
+            match authority_store {
+                Some(store) => freed_library_core::reapply_archived_primary_editor_transaction_v1(
+                    &mut connection,
+                    &request,
+                    &envelopes,
+                    store,
+                    now,
+                ),
+                None => freed_library_core::reapply_archived_editor_transaction_v1(
+                    &mut connection,
+                    &request,
+                    &envelopes,
+                    now,
+                ),
+            }
         }
     })
     .await
