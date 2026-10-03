@@ -1446,6 +1446,16 @@ export function buildValidationPlan(mode, changedFiles) {
     );
   }
 
+  if (changedFiles.some((file) => [
+    "scripts/vercel-deploy-preview.sh",
+    "scripts/lib/vercel-project-link.mjs",
+    "scripts/lib/vercel-project-link.test.mjs",
+  ].includes(file))) {
+    addCommand(plan, nodeCommand("Vercel preview deployment tests", [
+      "--test", path.join("scripts", "lib", "vercel-project-link.test.mjs"),
+    ]));
+  }
+
   if (retiredAutomergeRuntimeGuardChanged) {
     addCommand(plan, retiredAutomergeRuntimeGuardTestsCommand());
   }
