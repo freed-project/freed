@@ -3,8 +3,13 @@
   "version": "26.10.300-dev",
   "channel": "dev",
   "dayKey": "26.10.3",
-  "approved": false,
-  "editorialNotes": [],
+  "approved": true,
+  "editorialNotes": [
+    "Reviewed protected product source c686c4e1dbc5eeb43d2613f35979fd8e274a09a2, including independently approved cfg(test)-only Jev fixture isolation. Exact merged-source integration must pass before tagging. Production budget logic and provider behavior are unchanged by the test repair.",
+    "Library activation manifest digest is unchanged and the canonical generator declared no activation delta. Ordinary transfer/schema-v2 holds remain; auxiliary acceptance artifacts do not authorize runtime activation.",
+    "Preserve the installed 26.10.200 primary/profile. Launch only the separate measurement artifact after signature/source/compiled namespace/absent-profile checks; never seed legal consent or credentials. No new social changes or cloud setup is included.",
+    "No paid evaluation or paid release-note generation was run. Local package proof was unsigned and not launched; release signing and actual isolated startup metrics remain separate pending evidence."
+  ],
   "generatedAt": "2026-10-03T11:22:29.189Z",
   "model": "heuristic",
   "source": {
@@ -65,20 +70,22 @@
     ]
   },
   "release": {
-    "deck": "Isolated multi-desktop acceptance builds, deliver signed and PWA transfer acceptance builds, and archived edits on the active Primary",
+    "deck": "This dev build records short renderer stalls and separates signed test builds from existing profiles",
     "features": [
-      "Deliver signed and PWA transfer acceptance builds",
-      "Isolated multi-desktop acceptance builds",
-      "Recover archived edits on the active Primary"
+      "Record foreground renderer stalls between the existing health-heartbeat ticks",
+      "Provide a signed measurement build with its own profile and credential namespaces"
     ],
     "fixes": [
-      "Isolate parallel Jev budget test ledgers",
-      "Isolate signed measurement profiles and credential services"
+      "Report unsupported long-task monitoring as unavailable",
+      "Keep signed preview and transfer-acceptance assets out of ordinary updater manifests",
+      "Preserve primary and existing preview credential-service identities"
     ],
     "followUps": [
-      "Bounded app-wide responsiveness probes",
-      "Governed portable cloud release requests"
+      "Diagnostics do not establish a freeze fix or measured performance improvement",
+      "Transfer-acceptance builds remain separate opt-in test artifacts; ordinary Library transfer and schema-v2 operations remain disabled",
+      "Portable cloud publication still awaits owner setup; this release uses the existing publisher",
+      "GLiClass first-use/native UI acceptance and live Jev quality remain unverified"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.10.300-dev\n\nIsolated multi-desktop acceptance builds, deliver signed and PWA transfer acceptance builds, and archived edits on the active Primary\n\n### Features\n\n- Deliver signed and PWA transfer acceptance builds\n- Isolated multi-desktop acceptance builds\n- Recover archived edits on the active Primary\n\n### Fixes\n\n- Isolate parallel Jev budget test ledgers\n- Isolate signed measurement profiles and credential services\n\n### Follow-ups\n\n- Bounded app-wide responsiveness probes\n- Governed portable cloud release requests\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.10.300-dev\n\nThis dev build records short renderer stalls and separates signed test builds from existing profiles\n\n### Features\n\n- Record foreground renderer stalls between the existing health-heartbeat ticks\n- Provide a signed measurement build with its own profile and credential namespaces\n\n### Fixes\n\n- Report unsupported long-task monitoring as unavailable\n- Keep signed preview and transfer-acceptance assets out of ordinary updater manifests\n- Preserve primary and existing preview credential-service identities\n\n### Follow-ups\n\n- Diagnostics do not establish a freeze fix or measured performance improvement\n- Transfer-acceptance builds remain separate opt-in test artifacts; ordinary Library transfer and schema-v2 operations remain disabled\n- Portable cloud publication still awaits owner setup; this release uses the existing publisher\n- GLiClass first-use/native UI acceptance and live Jev quality remain unverified\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
