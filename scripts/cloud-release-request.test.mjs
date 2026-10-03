@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
+import {createHash} from "node:crypto";
+import {execFileSync} from "node:child_process";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
-import {readFileSync} from "node:fs";
-import {validateRequest,validateController,validateCloudCaller} from "./cloud-release-request.mjs";
+import {readFileSync,writeFileSync,mkdirSync,mkdtempSync,rmSync} from "node:fs";
+import {validateRequest,validateController,validateCloudCaller,preflight} from "./cloud-release-request.mjs";
 const request={channel:"dev",tag:"v26.10.200-dev",source_sha:"a".repeat(40),receipt_sha256:"b".repeat(64)};
 const policy=()=>({repository:"freed-project/freed",ref:"refs/heads/release-controller",sha:"a".repeat(40),approvedSha:"a".repeat(40),environment:{deployment_branch_policy:{custom_branch_policies:true,protected_branches:false}},policies:[{name:"release-controller",type:"branch"}],rulesets:[{target:"branch",enforcement:"active",bypass_actors:[],conditions:{ref_name:{include:["refs/heads/release-controller"],exclude:[]}},rules:[{type:"pull_request",parameters:{required_approving_review_count:1,require_code_owner_review:true,dismiss_stale_reviews_on_push:true,require_last_push_approval:true}},{type:"deletion"},{type:"non_fast_forward"}]}]});
 test("explicit channel is bound to immutable source and receipt",()=>{
@@ -38,4 +42,22 @@ test("cloud inbox cannot forge owner identity or substitute immutable request co
  assert.doesNotMatch(inbox,/secrets\.|checkout@|npm |release-tag-publisher/);
  assert.match(inbox,/actions: write/);
  assert.match(inbox,/request_run_id:process.env.GITHUB_RUN_ID/);
+});
+
+test("real candidate metadata is bound before trusted CLI validation and remote settlement",()=>{
+ const directory=mkdtempSync(path.join(os.tmpdir(),"freed-cloud-preflight-"));
+ try {
+  const git=(...args)=>execFileSync("git",args,{cwd:directory,encoding:"utf8"}).trim();
+  git("init","--initial-branch=dev");git("config","user.email","fixture@example.invalid");git("config","user.name","Synthetic Fixture");
+  mkdirSync(path.join(directory,"release-notes/releases"),{recursive:true});
+  const bytes=JSON.stringify({synthetic:true});writeFileSync(path.join(directory,`release-notes/releases/${request.tag}.json`),bytes);
+  git("add",".");git("commit","-m","synthetic admission fixture");const sha=git("rev-parse","HEAD");git("update-ref","refs/remotes/origin/dev",sha);
+  const digest=createHash("sha256").update(bytes).digest("hex"),bound={...request,source_sha:sha,receipt_sha256:digest},calls=[];
+  const run=(file,args)=>{calls.push({file,args});return file==="synthetic-gh" ? JSON.stringify({object:{sha}}) : "";};
+  assert.equal(preflight(bound,directory,{run,gh:"synthetic-gh"}).source_sha,sha);
+  assert.ok(calls.some(call=>call.args[0].endsWith("/scripts/validate-release-identity.mjs") && call.args.includes(`--cwd=${directory}`) && call.args.includes(`--head-ref=${sha}`)));
+  assert.ok(calls.every(call=>!call.args[0].startsWith(directory)));
+  assert.throws(()=>preflight({...bound,receipt_sha256:"f".repeat(64)},directory,{run,gh:"synthetic-gh"}),/digest mismatch/);
+  assert.throws(()=>preflight(bound,directory,{run:(file,args)=>file==="synthetic-gh"?JSON.stringify({object:{sha:"d".repeat(40)}}):run(file,args),gh:"synthetic-gh"}),/advanced/);
+ } finally {rmSync(directory,{recursive:true,force:true});}
 });

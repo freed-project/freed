@@ -4,7 +4,6 @@ import {createHash} from "node:crypto";
 import {readFileSync} from "node:fs";
 import path from "node:path";
 import {fileURLToPath} from "node:url";
-import {validateReleaseIdentity} from "./validate-release-identity.mjs";
 import {resolveGitHubCli} from "./lib/github-tooling.mjs";
 
 export const CONTROLLER_BRANCH = "release-controller";
@@ -44,8 +43,10 @@ export function preflight(request, candidate, {run=execFileSync, gh=resolveGitHu
   const receiptPath=`release-notes/releases/${input.tag}.json`;
   const actual=createHash("sha256").update(readFileSync(path.join(candidate,receiptPath))).digest("hex");
   if (actual !== input.receipt_sha256) throw new Error("Candidate release receipt digest mismatch.");
-  validateReleaseIdentity({cwd:candidate,tag:input.tag,headRef:input.source_sha,branchRef:`origin/${branch}`});
   const controller=path.dirname(fileURLToPath(import.meta.url));
+  // The CLI loads authoritative GitHub publication facts; the pure API requires
+  // those to be injected and must not guess the previous release boundary.
+  run(process.execPath,[path.join(controller,"validate-release-identity.mjs"),`--cwd=${candidate}`,`--tag=${input.tag}`,`--head-ref=${input.source_sha}`,`--branch-ref=origin/${branch}`],{stdio:"inherit"});
   run(process.execPath,[path.join(controller,"validate-release-tag-authority.mjs"),`--repo=${REPO}`],{stdio:"inherit"});
   if (input.channel === "dev") run(process.execPath,[path.join(controller,"validate-dev-integration-receipt.mjs"),`--repo=${REPO}`,`--sha=${input.source_sha}`,"--branch=dev","--workflow=ci.yml"],{stdio:"inherit"});
   const remote=run(gh,["api",`repos/${REPO}/git/ref/heads/${branch}`],{encoding:"utf8"});
