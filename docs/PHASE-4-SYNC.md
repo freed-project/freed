@@ -2,6 +2,12 @@
 
 > **Status:** 🚧 In Progress
 
+Native provider admission now has bounded lifetime counters in the existing
+runtime-health sampler. The soak verdict reports their delta only across a
+stable, covered interval with no active provider commands or provider windows.
+Missing or inconsistent evidence is inconclusive. Installed consumer-role and
+multi-device acceptance remain separate requirements.
+
 Saved URL recovery now distinguishes absent targets from deleted items. The
 owner reviews every URL, edits its title or description, and explicitly confirms
 one complete replacement. Original targets, URLs and remaining archived content
