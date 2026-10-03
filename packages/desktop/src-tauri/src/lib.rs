@@ -21,7 +21,9 @@ use base64::Engine;
 use futures_util::StreamExt;
 use log::{error, info, warn};
 use rand::RngExt;
-use renderer_responsiveness::{RendererActiveSurface, RendererResponsivenessPayload};
+use renderer_responsiveness::{
+    RendererActiveSurface, RendererResponsivenessPayload, RendererRuntimeIdentity,
+};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet, VecDeque};
 #[cfg(unix)]
@@ -3553,6 +3555,8 @@ struct RendererHeartbeatPayload {
     dialog_open: Option<bool>,
     active_surface: Option<RendererActiveSurface>,
     responsiveness: Option<RendererResponsivenessPayload>,
+    #[serde(flatten)]
+    identity: RendererRuntimeIdentity,
 }
 
 struct RendererHeartbeatStatus {
@@ -4886,6 +4890,7 @@ mod renderer_watchdog_tests {
             dialog_open: Some(false),
             active_surface: None,
             responsiveness: None,
+            identity: RendererRuntimeIdentity::default(),
         };
         let (_first_heartbeat, _gap_ms, recovered) =
             status.note_heartbeat(&payload, std::time::Instant::now());
@@ -4939,6 +4944,7 @@ mod renderer_watchdog_tests {
             dialog_open: Some(false),
             active_surface: None,
             responsiveness: None,
+            identity: RendererRuntimeIdentity::default(),
         };
         let (_first_heartbeat, _gap_ms, recovered) =
             status.note_heartbeat(&payload, std::time::Instant::now());
@@ -4976,6 +4982,7 @@ mod renderer_watchdog_tests {
             dialog_open: Some(false),
             active_surface: None,
             responsiveness: None,
+            identity: RendererRuntimeIdentity::default(),
         };
 
         let (_first_heartbeat, _gap_ms, recovered) =
@@ -13618,6 +13625,7 @@ pub fn run() {
                 });
                 if let Some(fields) = health_payload.as_object_mut() {
                     fields.extend(memory_health_fields);
+                    fields.extend(payload.identity.health_fields());
                     fields.extend(renderer_responsiveness::health_fields(
                         payload.active_surface.as_ref(),
                         payload.responsiveness.as_ref(),

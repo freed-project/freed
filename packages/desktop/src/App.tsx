@@ -270,6 +270,7 @@ import {
   resolveDesktopDownloadFallbackUrl,
 } from "./lib/desktop-updater";
 import { rendererHeartbeatTiming } from "./lib/renderer-heartbeat";
+import { withRuntimeHealthIdentity } from "./lib/runtime-health-events";
 import { RendererResponsivenessMonitor } from "./lib/renderer-responsiveness";
 import { DESKTOP_CHANGELOG_PREVIEW } from "./lib/changelog-preview";
 import { useClipboardSaveShortcut } from "./hooks/useClipboardSaveShortcut";
@@ -888,7 +889,7 @@ function App() {
         expectedHeartbeatAt,
         RENDERER_HEARTBEAT_INTERVAL_MS,
       );
-      const payload = {
+      const payload = withRuntimeHealthIdentity({
         seq: heartbeatSeq,
         ts: Date.now(),
         reason,
@@ -909,7 +910,7 @@ function App() {
         surfacePerf,
         activeSurface: surfacePerf.activeSurface,
         responsiveness: responsiveness.snapshot(),
-      };
+      });
       expectedHeartbeatAt = now + RENDERER_HEARTBEAT_INTERVAL_MS;
       noteRendererHeartbeat(payload);
       if (import.meta.env.VITE_TEST_TAURI === "1") {
