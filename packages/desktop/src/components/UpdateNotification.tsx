@@ -11,6 +11,7 @@ export type UpdateState =
   | { phase: "idle" }
   | { phase: "checking" }
   | { phase: "available"; update: Update; channel: ReleaseChannel }
+  | { phase: "backing-up" }
   | { phase: "downloading"; percent: number }
   | { phase: "ready" }
   | { phase: "error"; message: string };
@@ -48,7 +49,7 @@ export function UpdateNotification({
             />
           </div>
 
-          {state.phase !== "downloading" && (
+          {state.phase !== "downloading" && state.phase !== "backing-up" && (
             <button
               onClick={onDismiss}
               className="shrink-0 text-text-muted hover:text-text-primary transition-colors"
@@ -120,6 +121,8 @@ function UpdateContent({
       : null;
 
   switch (state.phase) {
+    case "backing-up":
+      return <p className="text-sm text-text-secondary" role="status">Saving Library backup before updating...</p>;
     case "available":
       return (
         <>

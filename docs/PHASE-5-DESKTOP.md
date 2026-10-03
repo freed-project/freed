@@ -20,10 +20,21 @@ its existing content policy. Exact retries retain the signed replacement and use
 the durable archive link. Notes and tags remain separate recovery transactions.
 Installed multi-device acceptance is still outstanding.
 
+Local snapshots now reuse the transaction-pinned indexed checkpoint export cache
+for both canonical passes. Update status distinguishes Library backup from network
+download, and failed backup still blocks installation. Real-library installed
+interaction and fresh rollback verification remain outstanding.
+
 The first renderer heartbeat now carries the existing frontend build and app-session
 identity through the native typed payload, including hidden legal-gate startup.
 Legacy heartbeat identity remains unavailable; this diagnostic provenance does not
 replace artifact verification or legal consent.
+
+Changed-item resolution processes each bounded invalidation page with four
+concurrent item readers, draining siblings before a failure reaches the reset
+fallback. This prevents a 512-identity page from flooding the native 64-reader
+registry. Regression coverage resolves a 22,007-post corpus in bounded pages;
+installed refresh-loop effectiveness remains to be verified.
 
 The renderer heartbeat carries cumulative foreground timer and animation-frame callback
 responsiveness counters across all app views. Probes pause while hidden and

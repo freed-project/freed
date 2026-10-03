@@ -13,6 +13,7 @@ use crate::normalized_operation::VerifiedActorEnrollment;
 use crate::normalized_sqlite::{
     append_normalized_checkpoint_stage_page_v2, begin_normalized_checkpoint_stage_v2,
     describe_normalized_checkpoint_export_v2, export_normalized_checkpoint_page_v2,
+    materialize_normalized_checkpoint_export_v2, release_normalized_checkpoint_export_cache_v2,
     BeginNormalizedCheckpointStageV2, NormalizedCheckpointExportDescriptorV2,
     NormalizedCheckpointExportRequestV2, NormalizedSqliteError,
 };
@@ -706,6 +707,7 @@ fn create_normalized_local_snapshot_in_v1(
     snapshot_root.remove_file(SNAPSHOT_PENDING_FILE)?;
 
     let transaction = connection.transaction()?;
+    materialize_normalized_checkpoint_export_v2(&transaction)?;
     let descriptor = describe_normalized_checkpoint_export_v2(&transaction)?;
     let (checkpoint_digest, record_count, canonical_record_bytes) =
         write_snapshot_records(&transaction, &mut std::io::sink())?;
@@ -763,6 +765,7 @@ fn create_normalized_local_snapshot_in_v1(
         .and_then(|_| archive_writer.get_ref().sync_all())
         .map_err(|error| snapshot_error(error.to_string()))?;
     drop(archive_writer);
+    release_normalized_checkpoint_export_cache_v2(&transaction)?;
     transaction.commit()?;
     snapshot_root.rename(SNAPSHOT_PENDING_FILE, &final_name)?;
     snapshot_root.sync()?;
@@ -783,6 +786,7 @@ pub fn inspect_normalized_local_snapshot_source_v1(
     connection: &mut Connection,
 ) -> Result<(NormalizedCheckpointExportDescriptorV2, String, u64), NormalizedSqliteError> {
     let transaction = connection.transaction()?;
+    materialize_normalized_checkpoint_export_v2(&transaction)?;
     let descriptor = describe_normalized_checkpoint_export_v2(&transaction)?;
     let (digest, count, bytes) = write_snapshot_records(&transaction, &mut std::io::sink())?;
     if usize::try_from(count).ok() != Some(descriptor.record_count) {
@@ -790,6 +794,7 @@ pub fn inspect_normalized_local_snapshot_source_v1(
             "normalized snapshot inspection count changed",
         ));
     }
+    release_normalized_checkpoint_export_cache_v2(&transaction)?;
     transaction.commit()?;
     Ok((descriptor, digest, bytes))
 }
@@ -1341,6 +1346,21 @@ mod tests {
             .unwrap();
         let transaction = connection.transaction().unwrap();
         let first = write_snapshot_records(&transaction, &mut std::io::sink()).unwrap();
+        materialize_normalized_checkpoint_export_v2(&transaction).unwrap();
+        let plan: Vec<String> = transaction
+            .prepare("EXPLAIN QUERY PLAN SELECT registry_key, primary_key_json, payload_json, chunk_bytes
+                      FROM library_checkpoint_export
+                      WHERE (registry_key, primary_key_json) > ('a0_receipt', 'late-cursor')
+                      ORDER BY registry_key, primary_key_json LIMIT 129")
+            .unwrap()
+            .query_map([], |row| row.get(3))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert!(plan
+            .iter()
+            .any(|row| row.contains("library_checkpoint_export_order")));
+        assert!(!plan.iter().any(|row| row.contains("TEMP B-TREE")));
         let writer = Connection::open(&database).unwrap();
         writer.execute_batch(
             "UPDATE library_preferences SET text_value = 'after', updated_at = 2_100
@@ -1353,11 +1373,39 @@ mod tests {
         let text = String::from_utf8(archive_records).unwrap();
         assert!(text.contains("before"));
         assert!(!text.contains("after"));
+        release_normalized_checkpoint_export_cache_v2(&transaction).unwrap();
         transaction.commit().unwrap();
+        assert_eq!(connection.query_row(
+            "SELECT count(*) FROM sqlite_temp_master WHERE name = 'library_checkpoint_export'",
+            [], |row| row.get::<_, i64>(0),
+        ).unwrap(), 0);
         assert_ne!(
             write_snapshot_records(&connection, &mut std::io::sink()).unwrap(),
             first
         );
+    }
+
+    #[test]
+    fn aborted_snapshot_export_releases_temporary_cache() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut connection = crate::open_normalized_sqlite_database_v1(
+            &directory.path().join("library.sqlite"),
+            true,
+        )
+        .unwrap();
+        {
+            let transaction = connection.transaction().unwrap();
+            materialize_normalized_checkpoint_export_v2(&transaction).unwrap();
+            // A failed archive write drops the read transaction before cleanup/commit.
+        }
+        assert_eq!(connection.query_row(
+            "SELECT count(*) FROM sqlite_temp_master WHERE name = 'library_checkpoint_export'",
+            [], |row| row.get::<_, i64>(0),
+        ).unwrap(), 0);
+        let transaction = connection.transaction().unwrap();
+        materialize_normalized_checkpoint_export_v2(&transaction).unwrap();
+        release_normalized_checkpoint_export_cache_v2(&transaction).unwrap();
+        transaction.commit().unwrap();
     }
 
     #[test]

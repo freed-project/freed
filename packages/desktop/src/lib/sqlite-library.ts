@@ -2586,15 +2586,28 @@ export async function readSqliteItems(
   ids: readonly string[],
 ): Promise<FeedItem[]> {
   if (ids.length === 0) return [];
-  const items = await Promise.all(
-    ids.map((globalId) =>
-      readLibraryCoreNormalizedItemDetailV1(
-        NORMALIZED_MUTATION_READER_RUNTIME,
-        globalId,
+  const items: FeedItem[] = [];
+  // A change-feed page can contain 512 identities, while native admits 64
+  // readers and executes eight. Keep this resolver below that admission limit
+  // and leave execution capacity for visible queries and background preflight.
+  const detailConcurrency = 4;
+  for (let offset = 0; offset < ids.length; offset += detailConcurrency) {
+    const batch = await Promise.allSettled(
+      ids.slice(offset, offset + detailConcurrency).map((globalId) =>
+        readLibraryCoreNormalizedItemDetailV1(
+          NORMALIZED_MUTATION_READER_RUNTIME,
+          globalId,
+        ),
       ),
-    ),
-  );
-  return items.filter((item): item is FeedItem => item !== null);
+    );
+    // Drain the batch before propagating a failure; abandoned sibling reads
+    // must not accumulate across a retry/reset loop.
+    for (const result of batch) {
+      if (result.status === "rejected") throw result.reason;
+      if (result.value !== null) items.push(result.value);
+    }
+  }
+  return items;
 }
 
 async function insertMissingSqliteItems(
