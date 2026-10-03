@@ -84,6 +84,7 @@ interface AppStoreHook {
  * are represented by `null` (no active download).
  */
 export type UpdateDownloadProgress =
+  | { phase: "backing-up" }
   | { phase: "downloading"; percent: number }
   | { phase: "error"; message: string };
 

@@ -15,6 +15,8 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: mockInvoke,
 }));
 
+vi.mock("./runtime-health-events", () => ({ recordRuntimeHealthEvent: vi.fn() }));
+
 vi.mock("./snapshots", () => ({ createSnapshot: mockSnapshot }));
 vi.mock("./sqlite-library", () => ({ isSqliteLibraryActive: mockLibraryActive }));
 
@@ -46,12 +48,18 @@ describe("desktop updater helpers", () => {
     let finish!: (value: unknown) => void;
     mockSnapshot.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
     const update = pending();
-    const install = installPendingDesktopUpdate(update);
+    const progress = vi.fn();
+    const install = installPendingDesktopUpdate(update, progress);
     expect(mockSnapshot).toHaveBeenCalledWith("manual");
     expect(update.update.downloadAndInstall).not.toHaveBeenCalled();
+    expect(progress.mock.calls).toEqual([[{ phase: "backing-up" }]]);
     finish({ id: "snapshot-before-update" });
     await expect(install).resolves.toBe("26.10.200");
     expect(update.update.downloadAndInstall).toHaveBeenCalledOnce();
+    expect(progress.mock.calls).toEqual([
+      [{ phase: "backing-up" }],
+      [{ phase: "downloading", percent: 0 }],
+    ]);
   });
 
   it("refuses installation when snapshot capture fails or the active Library disappears", async () => {

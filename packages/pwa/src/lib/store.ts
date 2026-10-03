@@ -290,7 +290,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           },
     );
   },
-  visibleFeedTotalCount: 0,
+  visibleFeedTotalCount: { status: "loading", lastKnownCount: null },
   syncConnected: false,
   isLoading: true,
   isSyncing: false,

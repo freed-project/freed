@@ -1108,13 +1108,17 @@ function App() {
       jobKind: "update",
       label: "Update",
       source: "desktop-download",
-      message: "Downloading Freed Desktop update.",
-      progress: 0,
+      message: "Preparing Freed Desktop update.",
     });
-    setUpdateState({ phase: "downloading", percent: 0 });
+    setUpdateState({ phase: "backing-up" });
 
     try {
       const version = await installPendingDesktopUpdate(pending, (progress) => {
+        if (progress.phase === "backing-up") {
+          setUpdateState(progress);
+          updateBackgroundActivity(activityId, { message: "Saving Library backup before updating." });
+          return;
+        }
         if (progress.phase === "downloading") {
           setUpdateState({
             phase: "downloading",
@@ -1793,6 +1797,7 @@ function App() {
           }
         : undefined,
       updateDownloadProgress: ((): UpdateDownloadProgress | null => {
+        if (updateState.phase === "backing-up") return { phase: "backing-up" };
         if (updateState.phase === "downloading") return { phase: "downloading", percent: updateState.percent };
         if (updateState.phase === "error") return { phase: "error", message: updateState.message };
         return null;

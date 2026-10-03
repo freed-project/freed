@@ -3,6 +3,16 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { UpdateNotification } from "./UpdateNotification";
 
 describe("UpdateNotification", () => {
+  it("shows backup work without a download percentage or duplicate install action", () => {
+    const html = renderToStaticMarkup(
+      <UpdateNotification state={{ phase: "backing-up" }}
+        onInstall={() => {}} onRelaunch={() => {}} onDismiss={() => {}} />,
+    );
+    expect(html).toContain("Saving Library backup before updating...");
+    expect(html).not.toContain("Downloading");
+    expect(html).not.toContain('role="progressbar"');
+    expect(html).not.toContain("<button");
+  });
   it("shows only the single release heading preview for an available update", () => {
     const html = renderToStaticMarkup(
       <UpdateNotification

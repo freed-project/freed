@@ -10,6 +10,7 @@ import { create } from "zustand";
 import { isTauri } from "@tauri-apps/api/core";
 import type {
   BaseAppState,
+  VisibleFeedTotalCount,
   FeedItem,
   FilterOptions,
   RemoveFeedOptions,
@@ -284,7 +285,7 @@ interface AppState {
   mapFriendLocationCount: number;
   mapAllContentLocationCount: number;
   setMapLocationCounts: (friendCount: number, allContentCount: number) => void;
-  visibleFeedTotalCount: number;
+  visibleFeedTotalCount: VisibleFeedTotalCount;
 
   // X auth state
   xAuth: XAuthState;
@@ -311,7 +312,7 @@ interface AppState {
   selectedItemId: string | null;
   selectedPersonId: string | null;
   selectedAccountId: string | null;
-  setVisibleFeedTotalCount: (totalCount: number) => void;
+  setVisibleFeedTotalCount: (totalCount: VisibleFeedTotalCount) => void;
 
   // Initialization
   initialize: () => Promise<void>;
@@ -695,7 +696,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           },
     );
   },
-  visibleFeedTotalCount: 0,
+  visibleFeedTotalCount: { status: "loading", lastKnownCount: null },
   xAuth: { isAuthenticated: false },
   fbAuth: { isAuthenticated: false },
   igAuth: { isAuthenticated: false },

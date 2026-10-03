@@ -852,13 +852,7 @@ impl NormalizedCheckpointExportSessionV2 {
         // the order index serves every later page. The temporary object shadows
         // the main-schema view only for this export session and disappears with
         // the connection.
-        connection.execute_batch(
-            "CREATE TEMP TABLE library_checkpoint_export AS
-               SELECT registry_key, primary_key_json, payload_json, chunk_bytes
-               FROM main.library_checkpoint_export;
-             CREATE UNIQUE INDEX temp.library_checkpoint_export_order
-               ON library_checkpoint_export(registry_key, primary_key_json);",
-        )?;
+        materialize_normalized_checkpoint_export_v2(&connection)?;
         Ok(Self {
             connection,
             snapshot,
@@ -903,6 +897,33 @@ impl Drop for NormalizedCheckpointExportSessionV2 {
             let _ = self.connection.execute_batch("ROLLBACK;");
         }
     }
+}
+
+/// Index the pinned export once in connection-local SQLite temporary storage.
+/// The caller owns the read transaction; this does not change the main catalog.
+pub(crate) fn materialize_normalized_checkpoint_export_v2(
+    connection: &Connection,
+) -> Result<(), NormalizedSqliteError> {
+    if connection.is_autocommit() {
+        return Err(NormalizedSqliteError::InvalidRequest(
+            "normalized checkpoint cache requires a pinned transaction",
+        ));
+    }
+    connection.execute_batch(
+        "CREATE TEMP TABLE library_checkpoint_export AS
+           SELECT registry_key, primary_key_json, payload_json, chunk_bytes
+           FROM main.library_checkpoint_export;
+         CREATE UNIQUE INDEX temp.library_checkpoint_export_order
+           ON library_checkpoint_export(registry_key, primary_key_json);",
+    )?;
+    Ok(())
+}
+
+pub(crate) fn release_normalized_checkpoint_export_cache_v2(
+    connection: &Connection,
+) -> Result<(), NormalizedSqliteError> {
+    connection.execute_batch("DROP TABLE temp.library_checkpoint_export;")?;
+    Ok(())
 }
 
 // A tuple comparison lets SQLite seek the export order index. An optional-
