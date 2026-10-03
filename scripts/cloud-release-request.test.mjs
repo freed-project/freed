@@ -130,16 +130,29 @@ test("cloud inbox cannot forge owner identity or substitute immutable request co
   const bound = { ...request, request_run_id: "42" };
   const run = {
     id: 42,
+    triggering_actor: { login: "AubreyF" },
+    run_attempt: 1,
+    workflow_id: 7,
+    path: ".github/workflows/cloud-release-inbox.yml",
+    status: "completed",
+    conclusion: "success",
+    created_at: new Date().toISOString(),
     event: "push",
     actor: { login: "AubreyF" },
     head_repository: { full_name: "freed-project/freed" },
     head_branch: "release-requests/demo",
     head_sha: "c".repeat(40),
   };
+  const inboxWorkflow = {
+    id: 7,
+    path: ".github/workflows/cloud-release-inbox.yml",
+    state: "active",
+  };
   assert.doesNotThrow(() => validateCloudCaller({ actor: "AubreyF", request }));
   assert.doesNotThrow(() =>
     validateCloudCaller({
       actor: "github-actions[bot]",
+      inboxWorkflow,
       run,
       committedRequest: request,
       request: bound,
@@ -147,6 +160,22 @@ test("cloud inbox cannot forge owner identity or substitute immutable request co
   );
   for (const bad of [
     { actor: "collaborator" },
+    { triggeringActor: "collaborator" },
+    { controllerAttempt: 2 },
+    { run: { ...run, triggering_actor: { login: "collaborator" } } },
+    { run: { ...run, run_attempt: 2 } },
+    { run: { ...run, workflow_id: 8 } },
+    { run: { ...run, path: ".github/workflows/unrelated.yml" } },
+    { inboxWorkflow: { ...inboxWorkflow, state: "disabled_manually" } },
+    { run: { ...run, status: "completed", conclusion: "cancelled" } },
+    { run: { ...run, status: "completed", conclusion: "failure" } },
+    {
+      run: {
+        ...run,
+        created_at: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString(),
+      },
+    },
+    { run: { ...run, created_at: "invalid" } },
     { run: { ...run, event: "workflow_dispatch" } },
     { run: { ...run, actor: { login: "collaborator" } } },
     { run: { ...run, head_branch: "dev" } },
@@ -162,6 +191,7 @@ test("cloud inbox cannot forge owner identity or substitute immutable request co
     assert.throws(() =>
       validateCloudCaller({
         actor: "github-actions[bot]",
+        inboxWorkflow,
         run,
         committedRequest: request,
         request: bound,
@@ -241,4 +271,21 @@ test("real candidate metadata is bound before trusted CLI validation and remote 
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+test("runner policy probe is credential-free and cannot activate the publisher", () => {
+  const probe = readFileSync(
+    new URL(
+      "../.github/workflows/cloud-release-policy-probe.yml",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  assert.doesNotMatch(
+    probe,
+    /secrets\.|checkout@|write|release-tag-publisher|environment:/,
+  );
+  assert.match(probe, /Object.hasOwn\(rule, "bypass_actors"\)/);
+  assert.match(probe, /appCredentialUsed: false/);
+  assert.match(probe, /pull-requests: read/);
 });

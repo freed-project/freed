@@ -96,7 +96,20 @@ export function validateController({
     );
 }
 
-export function validateCloudCaller({ actor, run, committedRequest, request }) {
+export function validateCloudCaller({
+  actor,
+  triggeringActor = actor,
+  controllerAttempt = 1,
+  run,
+  inboxWorkflow,
+  committedRequest,
+  request,
+  now = Date.now(),
+}) {
+  if (Number(controllerAttempt) !== 1 || triggeringActor !== actor)
+    throw new Error(
+      "Release requests cannot be rerun or attributed to another triggering actor.",
+    );
   if (actor === "AubreyF") return;
   if (
     actor !== "github-actions[bot]" ||
@@ -104,6 +117,19 @@ export function validateCloudCaller({ actor, run, committedRequest, request }) {
     String(run?.id) !== request.request_run_id ||
     run.event !== "push" ||
     run.actor?.login !== "AubreyF" ||
+    run.triggering_actor?.login !== "AubreyF" ||
+    run.run_attempt !== 1 ||
+    inboxWorkflow?.path !== ".github/workflows/cloud-release-inbox.yml" ||
+    inboxWorkflow.state !== "active" ||
+    run.workflow_id !== inboxWorkflow.id ||
+    run.path !== inboxWorkflow.path ||
+    !(
+      ["in_progress", "queued"].includes(run.status) ||
+      (run.status === "completed" && run.conclusion === "success")
+    ) ||
+    !Number.isFinite(Date.parse(run.created_at)) ||
+    now < Date.parse(run.created_at) ||
+    now - Date.parse(run.created_at) > 24 * 60 * 60 * 1000 ||
     run.head_repository?.full_name !== REPO ||
     !/^release-requests\/[a-zA-Z0-9_-]+$/.test(run.head_branch ?? "") ||
     !/^[0-9a-f]{40}$/.test(run.head_sha ?? "")
@@ -247,8 +273,10 @@ function main() {
         }),
       );
     let run = null,
-      committedRequest = null;
+      committedRequest = null,
+      inboxWorkflow = null;
     if (process.env.GITHUB_ACTOR !== "AubreyF" && request.request_run_id) {
+      inboxWorkflow = api("actions/workflows/cloud-release-inbox.yml");
       run = api(`actions/runs/${request.request_run_id}`);
       if (!/^[0-9a-f]{40}$/.test(run.head_sha ?? ""))
         throw new Error("Invalid owner request commit.");
@@ -263,6 +291,9 @@ function main() {
     }
     validateCloudCaller({
       actor: process.env.GITHUB_ACTOR,
+      triggeringActor: process.env.GITHUB_TRIGGERING_ACTOR,
+      controllerAttempt: process.env.GITHUB_RUN_ATTEMPT,
+      inboxWorkflow,
       run,
       committedRequest,
       request,

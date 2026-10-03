@@ -7,7 +7,7 @@ permissions:
   actions: write
 jobs:
   request:
-    if: github.repository == 'freed-project/freed' && github.actor == 'AubreyF'
+    if: github.repository == 'freed-project/freed' && github.actor == 'AubreyF' && github.triggering_actor == 'AubreyF' && github.run_attempt == 1
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

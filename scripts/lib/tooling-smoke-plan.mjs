@@ -43,7 +43,7 @@ export const FOCUSED_FEATURE_VALIDATION_PATHS = Object.freeze(
     ".github/workflows/main-release-validation.yml",
     ".github/workflows/release.yml",
     ".github/workflows/cloud-release-request.yml",
-    ".github/workflows/cloud-release-inbox.yml",
+    ".github/workflows/cloud-release-inbox.yml", ".github/workflows/cloud-release-policy-probe.yml",
     "scripts/cloud-release-request.mjs",
     "scripts/cloud-release-request.test.mjs",
 

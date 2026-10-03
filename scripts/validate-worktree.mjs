@@ -1409,7 +1409,7 @@ export function buildValidationPlan(mode, changedFiles) {
     );
   }
 
-  if (changedFiles.some(file => [".github/workflows/cloud-release-request.yml", ".github/workflows/cloud-release-inbox.yml", "scripts/cloud-release-request.mjs", "scripts/cloud-release-request.test.mjs"].includes(file))) {
+  if (changedFiles.some(file => [".github/workflows/cloud-release-request.yml", ".github/workflows/cloud-release-inbox.yml", ".github/workflows/cloud-release-policy-probe.yml", "scripts/cloud-release-request.mjs", "scripts/cloud-release-request.test.mjs"].includes(file))) {
     addCommand(plan, nodeCommand("cloud release request tests", ["--test", "scripts/cloud-release-request.test.mjs"]));
   }
 
