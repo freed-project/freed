@@ -1680,3 +1680,5 @@ Measurement starts only after artifact identity/signature verification and a che
  that the target profile is absent. Legal acceptance is never seeded. A legal-gate
  startup sample can report process memory and probe counters, but does not prove
  Feed performance, provider admission, full UI acceptance or a before/after gain.
+
+Saved and other bounded feed counts distinguish pending/failed reads from a verified empty result. A same-selection refresh retains its proved count with explicit updating/failure wording; selection changes clear that count. This presentation fix does not prove that saved records loaded or change query/retry behavior.
