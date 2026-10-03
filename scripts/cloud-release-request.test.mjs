@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {readFileSync} from "node:fs";
-import {validateRequest,validateController} from "./cloud-release-request.mjs";
+import {validateRequest,validateController,validateCloudCaller} from "./cloud-release-request.mjs";
 const request={channel:"dev",tag:"v26.10.200-dev",source_sha:"a".repeat(40),receipt_sha256:"b".repeat(64)};
 const policy=()=>({repository:"freed-project/freed",ref:"refs/heads/release-controller",sha:"a".repeat(40),approvedSha:"a".repeat(40),environment:{deployment_branch_policy:{custom_branch_policies:true,protected_branches:false}},policies:[{name:"release-controller",type:"branch"}],rulesets:[{target:"branch",enforcement:"active",bypass_actors:[],conditions:{ref_name:{include:["refs/heads/release-controller"],exclude:[]}},rules:[{type:"pull_request",parameters:{required_approving_review_count:1,require_code_owner_review:true,dismiss_stale_reviews_on_push:true,require_last_push_approval:true}},{type:"deletion"},{type:"non_fast_forward"}]}]});
 test("explicit channel is bound to immutable source and receipt",()=>{
@@ -26,4 +26,16 @@ test("credential scope follows preflight and never runs candidate scripts",()=>{
  assert.match(workflow,/cd "\$GITHUB_WORKSPACE\/candidate"/);
  assert.match(workflow,/node "\$GITHUB_WORKSPACE\/controller\/scripts\/release-tag-publisher.mjs" publish/);
  assert.match(workflow,/trap 'rm -f --/);
+});
+
+test("cloud inbox cannot forge owner identity or substitute immutable request content",()=>{
+ const bound={...request,request_run_id:"42"};
+ const run={id:42,event:"push",actor:{login:"AubreyF"},head_repository:{full_name:"freed-project/freed"},head_branch:"release-requests/demo",head_sha:"c".repeat(40)};
+ assert.doesNotThrow(()=>validateCloudCaller({actor:"AubreyF",request}));
+ assert.doesNotThrow(()=>validateCloudCaller({actor:"github-actions[bot]",run,committedRequest:request,request:bound}));
+ for(const bad of [{actor:"collaborator"},{run:{...run,event:"workflow_dispatch"}},{run:{...run,actor:{login:"collaborator"}}},{run:{...run,head_branch:"dev"}},{run:{...run,head_repository:{full_name:"fork/freed"}}},{committedRequest:{...request,channel:"production",tag:"v26.10.200"}}])assert.throws(()=>validateCloudCaller({actor:"github-actions[bot]",run,committedRequest:request,request:bound,...bad}));
+ const inbox=readFileSync(new URL("../.github/workflows/cloud-release-inbox.yml",import.meta.url),"utf8");
+ assert.doesNotMatch(inbox,/secrets\.|checkout@|npm |release-tag-publisher/);
+ assert.match(inbox,/actions: write/);
+ assert.match(inbox,/request_run_id:process.env.GITHUB_RUN_ID/);
 });

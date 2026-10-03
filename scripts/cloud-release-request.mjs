@@ -18,7 +18,8 @@ export function validateRequest(value) {
   if (value.tag.endsWith("-dev") !== (value.channel === "dev")) throw new Error("Release tag/channel mismatch.");
   if (!/^[0-9a-f]{40}$/.test(value.source_sha ?? "")) throw new Error("Require full immutable source SHA.");
   if (!/^[0-9a-f]{64}$/.test(value.receipt_sha256 ?? "")) throw new Error("Require release receipt SHA256.");
-  return Object.freeze({channel:value.channel, tag:value.tag, source_sha:value.source_sha, receipt_sha256:value.receipt_sha256});
+  if (value.request_run_id !== undefined && value.request_run_id !== "" && !/^[1-9][0-9]*$/.test(String(value.request_run_id))) throw new Error("Invalid request workflow run identity.");
+  return Object.freeze({...((value.request_run_id !== undefined && value.request_run_id !== "") ? {request_run_id:String(value.request_run_id)} : {}), channel:value.channel, tag:value.tag, source_sha:value.source_sha, receipt_sha256:value.receipt_sha256});
 }
 
 export function validateController({repository, ref, sha, approvedSha, environment, policies, rulesets}) {
@@ -26,6 +27,13 @@ export function validateController({repository, ref, sha, approvedSha, environme
   if (environment?.deployment_branch_policy?.custom_branch_policies !== true || environment.deployment_branch_policy.protected_branches !== false || policies?.length !== 1 || policies[0].name !== CONTROLLER_BRANCH || policies[0].type !== "branch") throw new Error("Publisher environment must admit only the controller branch, never tags or product branches.");
   const protectedController = rulesets?.some(rule => rule.target === "branch" && rule.enforcement === "active" && rule.bypass_actors?.length === 0 && rule.conditions?.ref_name?.include?.includes(`refs/heads/${CONTROLLER_BRANCH}`) && rule.conditions.ref_name.exclude?.length === 0 && rule.rules?.some(item => item.type === "pull_request" && item.parameters?.required_approving_review_count >= 1 && item.parameters.require_code_owner_review === true && item.parameters.dismiss_stale_reviews_on_push === true && item.parameters.require_last_push_approval === true) && ["deletion", "non_fast_forward"].every(type => rule.rules.some(item => item.type === type)));
   if (!protectedController) throw new Error("Controller requires active no-bypass owner review and immutable history protection.");
+}
+
+export function validateCloudCaller({actor, run, committedRequest, request}) {
+  if (actor === "AubreyF") return;
+  if (actor !== "github-actions[bot]" || !request.request_run_id || String(run?.id) !== request.request_run_id || run.event !== "push" || run.actor?.login !== "AubreyF" || run.head_repository?.full_name !== REPO || !/^release-requests\/[a-zA-Z0-9_-]+$/.test(run.head_branch ?? "") || !/^[0-9a-f]{40}$/.test(run.head_sha ?? "")) throw new Error("Cloud request must be attributed to an immutable owner-created request push.");
+  const bound=validateRequest(committedRequest);
+  if (["channel", "tag", "source_sha", "receipt_sha256"].some(key => bound[key] !== request[key]) || bound.request_run_id) throw new Error("Cloud dispatch does not match the owner's committed request.");
 }
 
 function git(args,cwd) { return execFileSync("git", args,{cwd,encoding:"utf8"}).trim(); }
@@ -47,7 +55,7 @@ export function preflight(request, candidate, {run=execFileSync, gh=resolveGitHu
 
 function main() {
   const [command,candidate]=process.argv.slice(2);
-  const request=validateRequest({channel:process.env.RELEASE_CHANNEL,tag:process.env.RELEASE_TAG,source_sha:process.env.RELEASE_SOURCE_SHA,receipt_sha256:process.env.RELEASE_RECEIPT_SHA256});
+  const request=validateRequest({channel:process.env.RELEASE_CHANNEL,tag:process.env.RELEASE_TAG,source_sha:process.env.RELEASE_SOURCE_SHA,receipt_sha256:process.env.RELEASE_RECEIPT_SHA256,request_run_id:process.env.RELEASE_REQUEST_RUN_ID});
   const gh=resolveGitHubCli();
   if (command === "dispatch") {
     execFileSync(gh,["workflow","run","cloud-release-request.yml","--repo",REPO,"--ref",CONTROLLER_BRANCH,"--json"],{input:JSON.stringify(request),stdio:["pipe","inherit","inherit"]});
@@ -61,6 +69,15 @@ function main() {
   if (command !== "preflight" || !candidate) throw new Error("Usage: cloud-release-request.mjs dispatch|preflight <candidate>; set RELEASE_CHANNEL, RELEASE_TAG, RELEASE_SOURCE_SHA, RELEASE_RECEIPT_SHA256.");
   if (process.env.GITHUB_ACTIONS === "true") {
     const api=(route)=>JSON.parse(execFileSync(gh,["api",`repos/${REPO}/${route}`],{encoding:"utf8"}));
+    let run=null, committedRequest=null;
+    if (process.env.GITHUB_ACTOR !== "AubreyF" && request.request_run_id) {
+      run=api(`actions/runs/${request.request_run_id}`);
+      if (!/^[0-9a-f]{40}$/.test(run.head_sha ?? "")) throw new Error("Invalid owner request commit.");
+      const blob=api(`contents/release-requests/request.json?ref=${run.head_sha}`);
+      if (blob.encoding !== "base64" || blob.size > 8192) throw new Error("Invalid owner request blob.");
+      committedRequest=JSON.parse(Buffer.from(blob.content,"base64").toString("utf8"));
+    }
+    validateCloudCaller({actor:process.env.GITHUB_ACTOR,run,committedRequest,request});
     const summaries=api("rulesets?targets=branch&per_page=100");
     validateController({repository:process.env.GITHUB_REPOSITORY,ref:process.env.GITHUB_REF,sha:process.env.GITHUB_SHA,approvedSha:process.env.APPROVED_CONTROLLER_SHA,environment:api(`environments/${PUBLISHER_ENVIRONMENT}`),policies:api(`environments/${PUBLISHER_ENVIRONMENT}/deployment-branch-policies`).branch_policies,rulesets:summaries.map(item=>api(`rulesets/${item.id}`))});
   }

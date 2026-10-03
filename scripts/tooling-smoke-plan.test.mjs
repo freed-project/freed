@@ -198,6 +198,7 @@ test("release admission and repository configuration changes use focused feature
     ".github/dependabot.yml",
     ".github/workflows/release.yml",
     ".github/workflows/cloud-release-request.yml",
+    ".github/workflows/cloud-release-inbox.yml",
     "scripts/cloud-release-request.mjs",
     "scripts/cloud-release-request.test.mjs",
 

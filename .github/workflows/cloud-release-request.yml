@@ -19,6 +19,10 @@ on:
         description: Reviewed release JSON SHA256
         required: true
         type: string
+      request_run_id:
+        description: Immutable owner request push run, only for cloud inbox delivery
+        required: false
+        type: string
 permissions:
   contents: read
   actions: read
@@ -34,6 +38,7 @@ jobs:
     environment: release-publisher
     env:
       APPROVED_CONTROLLER_SHA: ${{ vars.RELEASE_CONTROLLER_SHA }}
+      RELEASE_REQUEST_RUN_ID: ${{ inputs.request_run_id }}
       RELEASE_CHANNEL: ${{ inputs.channel }}
       RELEASE_TAG: ${{ inputs.tag }}
       RELEASE_SOURCE_SHA: ${{ inputs.source_sha }}
