@@ -1496,3 +1496,7 @@ custody or physical Safari/iOS acceptance; see the Testing Standard for scope.
 ### Isolated transfer acceptance, October 3, 2026
 
 An explicit transfer-acceptance build selects the matching frontend mode for isolated multi-device testing. Ordinary PWA builds retain the transfer and recovery hold. A dedicated test origin and browser profile remain required; this does not establish installed acceptance.
+
+### Transfer acceptance preview delivery, October 3, 2026
+
+The explicit PWA transfer-acceptance preview command stages a clean committed source, records its build identity and checks existing preview OAuth configuration before deployment. It reuses the approved Vercel preview callback relay without changing production builds. A configured deployment, successful sign-in and installed browser durability still require actual acceptance evidence.

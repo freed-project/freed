@@ -19,10 +19,16 @@ Freed Desktop downloads retain the transfer hold. The acceptance app has no
 updater endpoint and is excluded from the ordinary updater asset selection.
 A successful workflow proves packaging, not installed transfer acceptance.
 
-The matching PWA still needs a dedicated test deployment with its Google web
-client ID, registered callback origin and token endpoint configured. A locally
-compiled archive without that configuration cannot establish cloud sync
-acceptance. Do not substitute the production PWA for a matching test candidate.
+Deploy the matching PWA from the same clean source with
+`./scripts/vercel-deploy-preview.sh pwa-transfer-acceptance`. This explicit
+preview mode stages committed files only, stamps the exact source identity,
+builds with the transfer-acceptance mode, and checks that the existing Vercel
+preview environment contains its Google web client and matching server
+credentials. It uses the existing approved Vercel preview OAuth relay through
+`app.freed.wtf`; it does not register a new Google callback or deploy production.
+Credential presence does not prove a successful OAuth exchange. Verify sign-in
+on the resulting dedicated preview origin and use a separate browser profile.
+Do not substitute the production PWA for a matching test candidate.
 
 For isolated workflow acceptance, build both clients from the same reviewed,
 clean source. Verify `git status --short` is empty, then set the existing build
