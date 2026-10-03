@@ -1631,3 +1631,5 @@ The staging file has a SQLite page cap and bounded cache. Initial admission rese
 ### Isolated transfer acceptance, October 3, 2026
 
 An explicit transfer-acceptance build pairs native and frontend capabilities, requires the isolated preview data root, and disables update endpoints. Ordinary release transfer holds remain in place. Installed multi-device acceptance is still required.
+
+The dev release workflow also builds a separately named, signed and notarized Apple Silicon transfer-acceptance app. It uses the explicit acceptance configuration, has no updater endpoint, and cannot be selected by the ordinary updater asset pattern. Signing-job success and actual installed multi-device acceptance remain separate evidence.

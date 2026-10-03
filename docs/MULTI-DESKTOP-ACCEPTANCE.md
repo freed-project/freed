@@ -11,6 +11,19 @@ consumer recovery until installed convergence acceptance is complete. Their
 join and same-epoch edit paths can be tested, but they cannot complete the
 transfer steps below. An unavailable transfer control is expected in those builds.
 
+Dev releases can include the separately named
+`Freed-Transfer-Acceptance_<version>_aarch64.app.tar.gz`. Its release job verifies
+Apple signing, notarization and the acceptance bundle identifier before
+publication. Select this artifact explicitly; `Freed_Preview` and ordinary
+Freed Desktop downloads retain the transfer hold. The acceptance app has no
+updater endpoint and is excluded from the ordinary updater asset selection.
+A successful workflow proves packaging, not installed transfer acceptance.
+
+The matching PWA still needs a dedicated test deployment with its Google web
+client ID, registered callback origin and token endpoint configured. A locally
+compiled archive without that configuration cannot establish cloud sync
+acceptance. Do not substitute the production PWA for a matching test candidate.
+
 For isolated workflow acceptance, build both clients from the same reviewed,
 clean source. Verify `git status --short` is empty, then set the existing build
 metadata in the shell used for both commands. Local builds do not infer these

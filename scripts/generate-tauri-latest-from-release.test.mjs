@@ -53,7 +53,13 @@ test("generates updater platforms from Tauri release assets", () => {
   const release = {
     tag_name: "v26.4.2304-dev",
     created_at: "2026-04-24T01:08:00.000Z",
-    assets: updaterAssets(),
+    assets: [
+      // Acceptance assets may upload before ordinary release artifacts.
+      // They have no updater signature and must never become an update.
+      { name: "Freed-Transfer-Acceptance_26.4.2304_aarch64.app.tar.gz",
+        browser_download_url: "https://example.test/acceptance.app.tar.gz" },
+      ...updaterAssets(),
+    ],
   };
 
   const manifest = generateLatestManifest({
