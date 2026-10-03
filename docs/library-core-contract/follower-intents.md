@@ -463,21 +463,21 @@ Primary acceptance. Ordinary builds retain the transfer capability hold.
 
 The native editor recovery submission path accepts at most 1,000 canonical
 signed envelopes, each at most 131,072 bytes and together at most 4 MiB. It uses
-the same current-consumer admission, review-source check and atomic replacement
-link as assignment recovery. The existing operation verifier validates the
+the same explicitly selected Primary or Consumer admission, review-source check
+and atomic replacement link as assignment recovery. The existing operation verifier validates the
 editor's signed output. The complete ordered operation types, entity types and
 target IDs must match the verified original transaction. An editor may change
 payload values after explicit review; it cannot drop or redirect members.
 
 A transaction already stored without this recovery link cannot be retroactively
 attached. A prior link returns its original receipt without preparing or signing
-anything. New intent rows, optimistic fields, counters and the recovery link
-commit together or roll back together. This native path does not itself sign,
-open editors or enable automatic replay. Editor callers must retain finalized
+anything. Consumer intent rows, optimistic fields, counters and the recovery link
+commit together or roll back together. Primary canonical acceptance and its link
+use the same atomic boundary. This native path does not sign replacement
+operation envelopes, open editors or enable automatic replay. Editor callers must retain finalized
 bytes through retries and check the stored receipt on reopen before signing.
 
-Original-editor wiring remains unfinished. Saved notes occupy a reserved
-highlight inside a complete annotation replacement, so recovery must not silently
+Saved notes occupy a reserved highlight inside a complete annotation replacement, so recovery must not silently
 discard other highlights or tags. The existing Saved Content dialog also starts
 URL previews; the recovery editor path must remain offline until an explicitly
 authorized action requires network access.
