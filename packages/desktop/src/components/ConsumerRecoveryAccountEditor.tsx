@@ -8,14 +8,15 @@ import type { RecoveryReissueReceipt } from "../lib/library-core-recovery-reissu
 import { useRecoveryEditorCommit } from "../hooks/useRecoveryEditorCommit";
 
 /** One account per page; preserve the complete transaction and exact retry bytes. */
-export function ConsumerRecoveryAccountEditor({ review, onReplacement, onMutating }: {
+export function ConsumerRecoveryAccountEditor({ primary = false, review, onReplacement, onMutating }: {
+  primary?: boolean;
   review: LibraryCoreRecoveryIntentReviewResponseV1;
   onReplacement: (receipt: RecoveryReissueReceipt) => void;
   onMutating: (value: boolean) => void;
 }) {
   const [drafts, setDrafts] = useState<readonly RecoveryAccountDraft[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const commit = useRecoveryEditorCommit(review, onReplacement, onMutating);
+  const commit = useRecoveryEditorCommit(review, onReplacement, onMutating, primary);
   useEffect(() => {
     const controller = new AbortController();
     void loadRecoveryAccountDrafts(review, controller.signal).then((result) => {
@@ -30,5 +31,5 @@ export function ConsumerRecoveryAccountEditor({ review, onReplacement, onMutatin
   if (!drafts) return <p role={error ? "alert" : "status"}>{error ?? "Loading verified accounts..."}</p>;
   return <RecoveryAccountFields drafts={drafts} onChange={setDrafts}
     saving={commit.saving} locked={commit.locked} error={error || commit.error}
-    onSubmit={(accounts) => commit.submit(() => prepareDesktopRecoveryAccountTransaction(accounts, review))} />;
+    onSubmit={(accounts) => commit.submit(() => prepareDesktopRecoveryAccountTransaction(accounts, review, primary))} />;
 }

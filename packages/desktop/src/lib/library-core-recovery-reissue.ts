@@ -4,8 +4,8 @@ import { parseLibraryCoreRecoveryReissueReceiptV1, type LibraryCoreRecoveryReiss
 export type RecoveryReissueReceipt = LibraryCoreRecoveryReissueReceiptV1;
 
 /** Native owns key custody, fresh identities, archive verification and retry. */
-export async function reapplyArchivedAssignments(review: LibraryCoreRecoveryIntentReviewResponseV1): Promise<RecoveryReissueReceipt> {
-  const value = await invoke<unknown>("reapply_normalized_library_archived_assignments", { request: recoveryRequest(review) });
+export async function reapplyArchivedAssignments(review: LibraryCoreRecoveryIntentReviewResponseV1, primary = false): Promise<RecoveryReissueReceipt> {
+  const value = await invoke<unknown>("reapply_normalized_library_archived_assignments", { request: recoveryRequest(review), ...(primary ? { primary: true } : {}) });
   const parsed = parseLibraryCoreRecoveryReissueReceiptV1(value, review);
   if (!parsed.ok) throw new Error("Recovery returned a mismatched receipt");
   return parsed.value;
@@ -21,9 +21,9 @@ function recoveryRequest(review: LibraryCoreRecoveryIntentReviewResponseV1) {
 }
 
 /** Retry with the same finalized envelopes; native linkage decides the result. */
-export async function reapplyArchivedEditorTransaction(review: LibraryCoreRecoveryIntentReviewResponseV1, canonicalEnvelopeJson: readonly string[]): Promise<RecoveryReissueReceipt> {
+export async function reapplyArchivedEditorTransaction(review: LibraryCoreRecoveryIntentReviewResponseV1, canonicalEnvelopeJson: readonly string[], primary = false): Promise<RecoveryReissueReceipt> {
   const value = await invoke<unknown>("reapply_normalized_library_archived_editor_transaction", {
-    request: recoveryRequest(review), canonicalEnvelopeJson,
+    request: recoveryRequest(review), canonicalEnvelopeJson, ...(primary ? { primary: true } : {}),
   });
   const parsed = parseLibraryCoreRecoveryReissueReceiptV1(value, review);
   if (!parsed.ok) throw new Error("Recovery returned a mismatched receipt");

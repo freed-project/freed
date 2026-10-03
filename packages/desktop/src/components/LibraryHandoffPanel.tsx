@@ -139,7 +139,7 @@ function EnabledLibraryHandoffPanel() {
     </div>}
     {status && status.installationRole !== "consumer" && (role !== "follower" || (source && status.phase === "demoted")) && <div className="border-t border-[var(--theme-border-subtle)] pt-3">
       <h3 className="text-sm font-semibold">Preserved edits</h3>
-      <ConsumerRecoveryReview key={`${status.handoffId}:${status.phase}`} readOnly={!(source && status.phase === "demoted" && role === "follower")} />
+      <ConsumerRecoveryReview key={`${status.handoffId}:${status.phase}:${role}`} primary={role === "primary"} readOnly={!((source && status.phase === "demoted" && role === "follower") || (targetRole && status.phase === "active" && role === "primary"))} />
     </div>}
     {busy && <p role="status" className="text-sm">Transfer step is running. Native work may finish after this view closes; the saved receipt determines the next step.</p>}
     {error && <p role="alert" className="text-sm theme-feedback-text-danger">{error}</p>}

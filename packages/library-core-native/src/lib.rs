@@ -272,6 +272,7 @@ pub use normalized_consumer_recovery::{
 pub use normalized_recovery_input::ArchivedIntentOutcomeV1;
 pub use normalized_recovery_reissue::{
     reapply_archived_assignments_v1, reapply_archived_editor_transaction_v1,
+    reapply_archived_primary_assignments_v1, reapply_archived_primary_editor_transaction_v1,
     RecoveryReissueReceiptV1, RecoveryReissueRequestV1,
 };
 

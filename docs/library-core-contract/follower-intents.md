@@ -440,25 +440,44 @@ that action creates a separate atomic link for the replacement transaction.
 Neither review nor retry automatically follows or re-signs a replacement chain.
 The Desktop receipt displays the replacement epoch to locate its later archive.
 
+### Explicit recovery on the active Primary
+
+Desktop may explicitly reapply a verified archived transaction after promotion.
+The Primary route rechecks native writer admission, the current epoch and actor,
+and established authority-key custody inside one immediate SQLite transaction.
+It uses canonical operation resolution and commits the replacement with the
+installation-local archive link. A failed link write rolls back materialization,
+receipts, outboxes and actor counters. Rejected resolution does not leave an
+unlinked replacement behind.
+
+Promotion may retain the actor ID; the replacement must belong to a different
+epoch from the original. The existing Consumer route still requires successor
+enrollment. Selecting Primary never falls back to Consumer after an admission
+failure. Both routes verify the original signed transaction, refuse confirmed
+acceptance, pin the reviewed state, and preserve every ordered member. Existing
+links return before key loading or fresh admission, including after restart.
+The link receipt identifies a durable replacement; it is not portable proof of
+Primary acceptance. Ordinary builds retain the transfer capability hold.
+
 ### Edited recovery transactions
 
 The native editor recovery submission path accepts at most 1,000 canonical
 signed envelopes, each at most 131,072 bytes and together at most 4 MiB. It uses
-the same current-consumer admission, review-source check and atomic replacement
-link as assignment recovery. The existing operation verifier validates the
+the same explicitly selected Primary or Consumer admission, review-source check
+and atomic replacement link as assignment recovery. The existing operation verifier validates the
 editor's signed output. The complete ordered operation types, entity types and
 target IDs must match the verified original transaction. An editor may change
 payload values after explicit review; it cannot drop or redirect members.
 
 A transaction already stored without this recovery link cannot be retroactively
 attached. A prior link returns its original receipt without preparing or signing
-anything. New intent rows, optimistic fields, counters and the recovery link
-commit together or roll back together. This native path does not itself sign,
-open editors or enable automatic replay. Editor callers must retain finalized
+anything. Consumer intent rows, optimistic fields, counters and the recovery link
+commit together or roll back together. Primary canonical acceptance and its link
+use the same atomic boundary. This native path does not sign replacement
+operation envelopes, open editors or enable automatic replay. Editor callers must retain finalized
 bytes through retries and check the stored receipt on reopen before signing.
 
-Original-editor wiring remains unfinished. Saved notes occupy a reserved
-highlight inside a complete annotation replacement, so recovery must not silently
+Saved notes occupy a reserved highlight inside a complete annotation replacement, so recovery must not silently
 discard other highlights or tags. The existing Saved Content dialog also starts
 URL previews; the recovery editor path must remain offline until an explicitly
 authorized action requires network access.

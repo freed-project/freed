@@ -42,11 +42,11 @@ it("reviews all Account records before confirmation and retries exact signed byt
   await click("Use archived details, including link and avatar URL");
   await act(async () => confirmation.click());
   await click("Store revised accounts");
-  expect(mocks.prepare).toHaveBeenCalledExactlyOnceWith(drafts.map(({ account, archived }, index) => index === 1 ? archived : account), review);
+  expect(mocks.prepare).toHaveBeenCalledExactlyOnceWith(drafts.map(({ account, archived }, index) => index === 1 ? archived : account), review, false);
   expect(container.querySelector<HTMLInputElement>('[aria-label="Name"]')!.disabled).toBe(true);
   await click("Retry same Account edit");
   expect(mocks.prepare).toHaveBeenCalledTimes(1);
-  expect(mocks.submit.mock.calls).toEqual([[review, frames], [review, frames]]);
+  expect(mocks.submit.mock.calls).toEqual([[review, frames, false], [review, frames, false]]);
 });
 it("aborts pending review on close without signing", async () => {
   mocks.load.mockImplementation(() => new Promise(() => {}));

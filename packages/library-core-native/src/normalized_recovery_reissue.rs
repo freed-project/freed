@@ -3,8 +3,15 @@
 use crate::library_core_actor_enrollment::{load_actor_key_pair, ActorKeyStore};
 use crate::library_core_canonical::{encode_canonical_value, encode_operation_signature_input};
 use crate::library_core_hash::{is_lower_sha256, lower_hex};
+use crate::normalized_authority_credentials::{
+    load_established_authority_key_pair, AuthorityKeyStore,
+};
 use crate::normalized_follower::{
     enqueue_normalized_follower_intent_in_transaction_v1, normalized_follower_mutation_context_v1,
+};
+use crate::normalized_mutation::{
+    normalized_primary_mutation_context_v1,
+    resolve_normalized_operation_transaction_in_transaction_v1, NormalizedMutationResolutionV1,
 };
 use crate::normalized_operation::VerifiedOperation;
 use crate::normalized_operation_verifier::digest_hex;
@@ -149,6 +156,7 @@ pub fn reapply_archived_assignments_v1(
         request,
         now,
         Replacement::Assignments(key_store),
+        None,
     )
 }
 
@@ -172,6 +180,51 @@ pub fn reapply_archived_editor_transaction_v1(
         request,
         now,
         Replacement::Editor(canonical_envelopes),
+        None,
+    )
+}
+
+/// Explicit Primary recovery. The supplied store grants no authority: current
+/// native writer admission and key custody are checked in the link transaction.
+pub fn reapply_archived_primary_assignments_v1(
+    connection: &mut Connection,
+    request: &RecoveryReissueRequestV1,
+    actor_store: &dyn ActorKeyStore,
+    authority_store: &dyn AuthorityKeyStore,
+    now: i64,
+) -> Result<RecoveryReissueReceiptV1, String> {
+    crate::require_library_transfer_capability()?;
+    reapply_archived_transaction(
+        connection,
+        request,
+        now,
+        Replacement::Assignments(actor_store),
+        Some(authority_store),
+    )
+}
+
+/// Preserve the entire explicitly edited transaction and commit its canonical
+/// acceptance with the archive link. A rejected resolution rolls back both.
+pub fn reapply_archived_primary_editor_transaction_v1(
+    connection: &mut Connection,
+    request: &RecoveryReissueRequestV1,
+    canonical_envelopes: &[Vec<u8>],
+    authority_store: &dyn AuthorityKeyStore,
+    now: i64,
+) -> Result<RecoveryReissueReceiptV1, String> {
+    crate::require_library_transfer_capability()?;
+    if canonical_envelopes.len() > 1000
+        || canonical_envelopes.iter().any(|v| v.len() > 131072)
+        || canonical_envelopes.iter().map(Vec::len).sum::<usize>() > 4194304
+    {
+        return Err("recovery editor transaction exceeds its bounds".into());
+    }
+    reapply_archived_transaction(
+        connection,
+        request,
+        now,
+        Replacement::Editor(canonical_envelopes),
+        Some(authority_store),
     )
 }
 
@@ -185,6 +238,7 @@ fn reapply_archived_transaction(
     request: &RecoveryReissueRequestV1,
     now: i64,
     replacement: Replacement<'_>,
+    authority_store: Option<&dyn AuthorityKeyStore>,
 ) -> Result<RecoveryReissueReceiptV1, String> {
     if !valid_request(request) || !(0..=MAX_SAFE_INTEGER).contains(&now) {
         return Err("recovery reapplication request is invalid".into());
@@ -236,46 +290,54 @@ fn reapply_archived_transaction(
             "RECOVERY_REVIEW_STALE: review the current Library before applying again".into(),
         );
     }
-    crate::normalized_handoff::require_handoff_follower_edit_admission_v1(&tx)
-        .map_err(|e| e.to_string())?;
-    let context = normalized_follower_mutation_context_v1(&tx).map_err(|e| e.to_string())?;
-    // Historical archives are independent of the current consumer lifecycle.
-    // A former Primary uses verified demotion plus normal successor enrollment;
-    // other consumers retain the completed archive reenrollment receipt.
-    let demoted = crate::normalized_source_handoff::source_consumer_incarnation_v1(
-        &tx,
-        &context.library_id,
-        &context.epoch_id,
-    )?
-    .is_some();
-    let reenrolled = if demoted {
-        true
+    let context = if authority_store.is_some() {
+        normalized_primary_mutation_context_v1(&tx).map_err(|e| e.to_string())?
     } else {
-        let current_recovery = crate::read_consumer_recovery_summary_v1(&tx)?
-            .filter(|recovery| {
-                recovery.state == "following"
-                    && recovery.library_id == context.library_id
-                    && recovery.successor_epoch_id == context.epoch_id
-            })
-            .ok_or("recovery reapplication requires the current enrolled consumer")?;
-        tx.query_row(
-            "SELECT EXISTS(SELECT 1 FROM library_local_recovery_archives AS archive
+        crate::normalized_handoff::require_handoff_follower_edit_admission_v1(&tx)
+            .map_err(|e| e.to_string())?;
+        let context = normalized_follower_mutation_context_v1(&tx).map_err(|e| e.to_string())?;
+        // Historical archives are independent of the current consumer lifecycle.
+        // A former Primary uses verified demotion plus normal successor enrollment;
+        // other consumers retain the completed archive reenrollment receipt.
+        let demoted = crate::normalized_source_handoff::source_consumer_incarnation_v1(
+            &tx,
+            &context.library_id,
+            &context.epoch_id,
+        )?
+        .is_some();
+        let reenrolled = if demoted {
+            true
+        } else {
+            let current_recovery = crate::read_consumer_recovery_summary_v1(&tx)?
+                .filter(|recovery| {
+                    recovery.state == "following"
+                        && recovery.library_id == context.library_id
+                        && recovery.successor_epoch_id == context.epoch_id
+                })
+                .ok_or("recovery reapplication requires the current enrolled consumer")?;
+            tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM library_local_recovery_archives AS archive
              WHERE recovery_id = ?1 AND library_id = ?2 AND successor_epoch_id = ?3
               AND reenrollment_committed_at IS NOT NULL
               AND json_extract(CAST(reenrollment_receipt AS TEXT), '$.actorId') = ?4);",
-            params![
-                current_recovery.recovery_id,
-                context.library_id,
-                context.epoch_id,
-                context.actor_id
-            ],
-            |r| r.get(0),
-        )
-        .map_err(|e| e.to_string())?
+                params![
+                    current_recovery.recovery_id,
+                    context.library_id,
+                    context.epoch_id,
+                    context.actor_id
+                ],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?
+        };
+        if !reenrolled || context.actor_id == original.actor_id {
+            return Err("recovery reapplication requires the enrolled successor actor".into());
+        }
+        context
     };
-    if !reenrolled || context.actor_id == original.actor_id || context.epoch_id == original.epoch_id
-    {
-        return Err("recovery reapplication requires the enrolled successor actor".into());
+    // Promotion may retain the actor's identity while restarting its epoch chain.
+    if context.epoch_id == original.epoch_id {
+        return Err("recovery reapplication requires a successor epoch".into());
     }
     let (transaction_id, envelopes) = match replacement {
         Replacement::Assignments(key_store) => {
@@ -428,7 +490,8 @@ fn reapply_archived_transaction(
     };
     let already_stored: bool = tx
         .query_row(
-            "SELECT EXISTS(SELECT 1 FROM library_intent_transactions WHERE transaction_id = ?1);",
+            "SELECT EXISTS(SELECT 1 FROM library_intent_transactions WHERE transaction_id = ?1)
+                 OR EXISTS(SELECT 1 FROM library_transactions WHERE transaction_id = ?1);",
             [&transaction_id],
             |r| r.get(0),
         )
@@ -436,15 +499,37 @@ fn reapply_archived_transaction(
     if already_stored {
         return Err("recovery cannot attach an existing unlinked intent".into());
     }
-    let committed = enqueue_normalized_follower_intent_in_transaction_v1(&tx, &envelopes, now)
-        .map_err(|e| e.to_string())?;
-    let replacement_digest: String = tx
-        .query_row(
-            "SELECT transaction_digest FROM library_intent_transactions WHERE transaction_id = ?1;",
-            [&transaction_id],
-            |r| r.get(0),
+    let (replacement_digest, first_counter, last_counter, member_count) = if let Some(store) =
+        authority_store
+    {
+        let key = load_established_authority_key_pair(store, &context.library_id)?;
+        match resolve_normalized_operation_transaction_in_transaction_v1(&tx, &envelopes, &key, now)
+            .map_err(|e| e.to_string())?
+        {
+            NormalizedMutationResolutionV1::Accepted(committed) => (
+                committed.transaction_digest,
+                committed.first_counter,
+                committed.last_counter,
+                committed.member_count,
+            ),
+            NormalizedMutationResolutionV1::FollowerResult(_) => {
+                return Err("recovery replacement was not accepted by the current Primary".into());
+            }
+        }
+    } else {
+        let committed = enqueue_normalized_follower_intent_in_transaction_v1(&tx, &envelopes, now)
+            .map_err(|e| e.to_string())?;
+        let digest = tx.query_row(
+                "SELECT transaction_digest FROM library_intent_transactions WHERE transaction_id = ?1;",
+                [&transaction_id], |r| r.get(0),
+            ).map_err(|e| e.to_string())?;
+        (
+            digest,
+            committed.first_counter,
+            committed.last_counter,
+            committed.member_count,
         )
-        .map_err(|e| e.to_string())?;
+    };
     let receipt = RecoveryReissueReceiptV1 {
         schema_version: 1,
         recovery_id: request.recovery_id.clone(),
@@ -453,9 +538,9 @@ fn reapply_archived_transaction(
         replacement_transaction_digest: replacement_digest,
         replacement_epoch_id: context.epoch_id,
         replacement_actor_id: context.actor_id,
-        first_counter: committed.first_counter,
-        last_counter: committed.last_counter,
-        member_count: committed.member_count,
+        first_counter,
+        last_counter,
+        member_count,
         created_at: now,
     };
     tx.execute(
@@ -658,6 +743,232 @@ mod tests {
         fn store(&self, _: &str, _: &[u8]) -> Result<(), String> {
             panic!("retry must not create signing keys")
         }
+    }
+
+    impl AuthorityKeyStore for KeyStore {
+        fn load(&self, _: &str) -> Result<Option<Vec<u8>>, String> {
+            Ok(Some(self.0.clone()))
+        }
+        fn store(&self, _: &str, _: &[u8]) -> Result<(), String> {
+            panic!("recovery must not create authority keys")
+        }
+    }
+    impl AuthorityKeyStore for NoKeyAccess {
+        fn load(&self, _: &str) -> Result<Option<Vec<u8>>, String> {
+            panic!("retry must not load authority keys")
+        }
+        fn store(&self, _: &str, _: &[u8]) -> Result<(), String> {
+            panic!("retry must not create authority keys")
+        }
+    }
+
+    // Isolate canonical recovery from transfer certification. The handoff suite
+    // separately proves that this active state requires the verified cloud CAS.
+    fn primary_fixture(
+        operation: &str,
+    ) -> (Connection, RecoveryReissueRequestV1, KeyStore, KeyStore) {
+        let (db, request, actor) = fixture(operation, false);
+        let authority = KeyStore(
+            Ed25519KeyPair::generate_pkcs8(&SystemRandom::new())
+                .unwrap()
+                .as_ref()
+                .to_vec(),
+        );
+        let key = Ed25519KeyPair::from_pkcs8(&authority.0).unwrap();
+        let public = lower_hex(key.public_key().as_ref());
+        let key_id = digest_hex(
+            "authority-key",
+            &json!({"signature_algorithm":"ed25519", "authority_public_key":public}),
+            0,
+        )
+        .unwrap();
+        db.execute("UPDATE library_authority_epochs SET authority_key_id=?1,authority_public_key=?2 WHERE epoch_id=(SELECT authority_epoch FROM library_meta);", params![key_id,public]).unwrap();
+        db.execute_batch("UPDATE library_writer_admission SET observed_manifest_generation=1; UPDATE library_local_handoff SET installation_role='target',phase='active',canonical_authorization=X'7B7D',canonical_activation=X'7B7D',observed_control_revision='fixture'; DELETE FROM library_follower_actor_request; DELETE FROM library_intent_actors;").unwrap();
+        normalized_primary_mutation_context_v1(&db).unwrap();
+        (db, request, actor, authority)
+    }
+
+    #[test]
+    fn primary_recovery_canonical_commit_and_link_are_atomic_and_retry_needs_no_keys() {
+        let (mut db, request, actor, authority) = primary_fixture("feed_item_read_assignment");
+        let context = normalized_primary_mutation_context_v1(&db).unwrap();
+        let original_rows = db.prepare("SELECT canonical_row FROM library_local_recovery_rows ORDER BY table_key,row_ordinal;").unwrap()
+            .query_map([], |r| r.get::<_, Vec<u8>>(0)).unwrap().collect::<rusqlite::Result<Vec<_>>>().unwrap();
+        db.execute_batch("CREATE TEMP TRIGGER fail_recovery_link BEFORE INSERT ON library_local_recovery_reissues BEGIN SELECT RAISE(ABORT, 'primary link fault'); END;").unwrap();
+        assert!(reapply_archived_primary_assignments_v1(
+            &mut db, &request, &actor, &authority, 2000
+        )
+        .unwrap_err()
+        .contains("primary link fault"));
+        assert_eq!(
+            normalized_primary_mutation_context_v1(&db).unwrap(),
+            context
+        );
+        assert_eq!(recovery_review_source(&db).unwrap().1, 0);
+        for table in [
+            "library_transactions",
+            "library_operations",
+            "library_receipts",
+            "library_replication_outbox",
+            "library_follower_result_outbox",
+            "library_local_recovery_reissues",
+        ] {
+            assert_eq!(
+                db.query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r
+                    .get::<_, i64>(0))
+                    .unwrap(),
+                0,
+                "{table}"
+            );
+        }
+        db.execute_batch("DROP TRIGGER fail_recovery_link;")
+            .unwrap();
+        let receipt =
+            reapply_archived_primary_assignments_v1(&mut db, &request, &actor, &authority, 2001)
+                .unwrap();
+        assert_eq!(recovery_review_source(&db).unwrap().1, 1);
+        assert_eq!(receipt.first_counter, 1);
+        assert_eq!(receipt.last_counter, 2);
+        assert_eq!(
+            db.query_row(
+                "SELECT transaction_digest FROM library_transactions WHERE transaction_id=?1",
+                [&receipt.replacement_transaction_id],
+                |r| r.get::<_, String>(0)
+            )
+            .unwrap(),
+            receipt.replacement_transaction_digest
+        );
+        assert_eq!(
+            db.query_row(
+                "SELECT count(*) FROM library_intent_transactions",
+                [],
+                |r| r.get::<_, i64>(0)
+            )
+            .unwrap(),
+            0
+        );
+        // A later fence and missing keys cannot create or prevent reading the link.
+        db.execute_batch("UPDATE library_local_handoff SET phase='committed';")
+            .unwrap();
+        assert_eq!(
+            reapply_archived_primary_assignments_v1(
+                &mut db,
+                &request,
+                &NoKeyAccess,
+                &NoKeyAccess,
+                2002
+            )
+            .unwrap(),
+            receipt
+        );
+        let remaining_rows = db.prepare("SELECT canonical_row FROM library_local_recovery_rows ORDER BY table_key,row_ordinal;").unwrap()
+            .query_map([], |r| r.get::<_, Vec<u8>>(0)).unwrap().collect::<rusqlite::Result<Vec<_>>>().unwrap();
+        assert_eq!(original_rows, remaining_rows);
+    }
+
+    #[test]
+    fn primary_recovery_refuses_staging_and_mismatched_authority_without_partial_commit() {
+        let (mut db, request, actor, authority) = primary_fixture("feed_item_read_assignment");
+        db.execute_batch("UPDATE library_local_handoff SET phase='committed';")
+            .unwrap();
+        assert!(reapply_archived_primary_assignments_v1(
+            &mut db,
+            &request,
+            &NoKeyAccess,
+            &NoKeyAccess,
+            2000
+        )
+        .unwrap_err()
+        .contains("fences"));
+        db.execute_batch("UPDATE library_local_handoff SET phase='active';")
+            .unwrap();
+        let wrong = KeyStore(
+            Ed25519KeyPair::generate_pkcs8(&SystemRandom::new())
+                .unwrap()
+                .as_ref()
+                .to_vec(),
+        );
+        assert!(
+            reapply_archived_primary_assignments_v1(&mut db, &request, &actor, &wrong, 2000)
+                .is_err()
+        );
+        assert_eq!(recovery_review_source(&db).unwrap().1, 0);
+        assert_eq!(
+            normalized_primary_mutation_context_v1(&db)
+                .unwrap()
+                .next_counter,
+            1
+        );
+        assert_eq!(
+            db.query_row(
+                "SELECT count(*) FROM library_local_recovery_reissues",
+                [],
+                |r| r.get::<_, i64>(0)
+            )
+            .unwrap(),
+            0
+        );
+        reapply_archived_primary_assignments_v1(&mut db, &request, &actor, &authority, 2001)
+            .unwrap();
+    }
+
+    #[test]
+    fn primary_editor_recovery_preserves_whole_transaction_and_canonical_retry() {
+        let (mut db, request, actor, authority) = primary_fixture("feed_item_remove");
+        let context = normalized_primary_mutation_context_v1(&db).unwrap();
+        let partial = editor_envelopes_from_context(
+            &db,
+            &actor,
+            "feed_item_remove",
+            &[("rss:item:1", 2000)],
+            None,
+            context.clone(),
+        );
+        assert!(reapply_archived_primary_editor_transaction_v1(
+            &mut db,
+            &request,
+            &partial,
+            &NoKeyAccess,
+            2000
+        )
+        .unwrap_err()
+        .contains("complete ordered"));
+        let complete = editor_envelopes_from_context(
+            &db,
+            &actor,
+            "feed_item_remove",
+            &[("rss:item:1", 2000), ("rss:item:2", 2000)],
+            None,
+            context,
+        );
+        let receipt = reapply_archived_primary_editor_transaction_v1(
+            &mut db, &request, &complete, &authority, 2000,
+        )
+        .unwrap();
+        assert_eq!(receipt.member_count, 2);
+        assert_eq!(
+            db.query_row("SELECT count(*) FROM library_feed_items", [], |r| r
+                .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            reapply_archived_primary_editor_transaction_v1(
+                &mut db,
+                &request,
+                &complete,
+                &NoKeyAccess,
+                2001
+            )
+            .unwrap(),
+            receipt
+        );
+        assert_eq!(
+            db.query_row("SELECT count(*) FROM library_transactions", [], |r| r
+                .get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
     }
 
     fn certified_original_fixture() -> (
@@ -1098,6 +1409,17 @@ mod tests {
         payload: Option<&Value>,
     ) -> Vec<Vec<u8>> {
         let context = normalized_follower_mutation_context_v1(db).unwrap();
+        editor_envelopes_from_context(db, keys, operation, entities, payload, context)
+    }
+
+    fn editor_envelopes_from_context(
+        db: &Connection,
+        keys: &KeyStore,
+        operation: &str,
+        entities: &[(&str, i64)],
+        payload: Option<&Value>,
+        context: NormalizedMutationContextV1,
+    ) -> Vec<Vec<u8>> {
         let state = crate::normalized_mutation::actor_state_at(
             db,
             &crate::normalized_operation_verifier::OperationIdentity {
