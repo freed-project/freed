@@ -3,8 +3,8 @@
 //! Native desktop app that bundles capture and the reader UI.
 
 mod avatar_cache;
-mod jev;
 mod gliclass;
+mod jev;
 mod jev_budget;
 mod library_core_actor_key_store;
 mod library_core_authority_key_store;
@@ -14,12 +14,14 @@ mod library_core_handoff_remote;
 mod library_core_platform_key;
 mod library_core_query_control;
 mod provider_operation_gate;
+mod renderer_responsiveness;
 mod youtube;
 
 use base64::Engine;
 use futures_util::StreamExt;
 use log::{error, info, warn};
 use rand::RngExt;
+use renderer_responsiveness::{RendererActiveSurface, RendererResponsivenessPayload};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet, VecDeque};
 #[cfg(unix)]
@@ -3549,6 +3551,8 @@ struct RendererHeartbeatPayload {
     last_input_age_ms: Option<u64>,
     settings_open: Option<bool>,
     dialog_open: Option<bool>,
+    active_surface: Option<RendererActiveSurface>,
+    responsiveness: Option<RendererResponsivenessPayload>,
 }
 
 struct RendererHeartbeatStatus {
@@ -4880,6 +4884,8 @@ mod renderer_watchdog_tests {
             last_input_age_ms: Some(600_000),
             settings_open: Some(false),
             dialog_open: Some(false),
+            active_surface: None,
+            responsiveness: None,
         };
         let (_first_heartbeat, _gap_ms, recovered) =
             status.note_heartbeat(&payload, std::time::Instant::now());
@@ -4931,6 +4937,8 @@ mod renderer_watchdog_tests {
             last_input_age_ms: Some(50),
             settings_open: Some(false),
             dialog_open: Some(false),
+            active_surface: None,
+            responsiveness: None,
         };
         let (_first_heartbeat, _gap_ms, recovered) =
             status.note_heartbeat(&payload, std::time::Instant::now());
@@ -4966,6 +4974,8 @@ mod renderer_watchdog_tests {
             last_input_age_ms: Some(50),
             settings_open: Some(false),
             dialog_open: Some(false),
+            active_surface: None,
+            responsiveness: None,
         };
 
         let (_first_heartbeat, _gap_ms, recovered) =
@@ -13608,6 +13618,10 @@ pub fn run() {
                 });
                 if let Some(fields) = health_payload.as_object_mut() {
                     fields.extend(memory_health_fields);
+                    fields.extend(renderer_responsiveness::health_fields(
+                        payload.active_surface.as_ref(),
+                        payload.responsiveness.as_ref(),
+                    ));
                 }
                 append_runtime_health(&app_for_renderer_listener, health_payload);
                 if recovered {

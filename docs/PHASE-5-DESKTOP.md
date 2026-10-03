@@ -20,6 +20,14 @@ its existing content policy. Exact retries retain the signed replacement and use
 the durable archive link. Notes and tags remain separate recovery transactions.
 Installed multi-device acceptance is still outstanding.
 
+The renderer heartbeat carries cumulative foreground timer and animation-frame callback
+responsiveness counters across all app views. Probes pause while hidden and
+request at most four samples per second. Unsupported LongTask observation stays
+explicitly unavailable. Native health logs retain the aggregate counters and
+active surface without input or content payloads. Synthetic regression coverage
+is in place; native validation and installed manual-freeze attribution remain
+open. Sampled callback delays do not establish frame rate or input latency.
+
 Freed Desktop now connects native operation export and consumer import to the
 shared Drive coordinator. Ordinary signed mutations advance a durable operation
 publication cursor while retaining the checkpoint receipt. Consumer revision
