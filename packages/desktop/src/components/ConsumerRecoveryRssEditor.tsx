@@ -6,8 +6,9 @@ import { prepareDesktopRecoveryRssTitleTransaction, prepareDesktopRecoveryRssRem
 import { type RecoveryReissueReceipt } from "../lib/library-core-recovery-reissue";
 
 /** One bounded transaction draft; render at most eight fields at a time. */
-export function ConsumerRecoveryRssEditor({ review, onReplacement, onMutating, mode = "title" }: {
+export function ConsumerRecoveryRssEditor({ primary = false, review, onReplacement, onMutating, mode = "title" }: {
   mode?: "title" | "remove";
+  primary?: boolean;
   review: LibraryCoreRecoveryIntentReviewResponseV1;
   onReplacement: (receipt: RecoveryReissueReceipt) => void;
   onMutating: (value: boolean) => void;
@@ -17,7 +18,7 @@ export function ConsumerRecoveryRssEditor({ review, onReplacement, onMutating, m
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const [seen, setSeen] = useState(0);
-  const commit = useRecoveryEditorCommit(review, onReplacement, onMutating);
+  const commit = useRecoveryEditorCommit(review, onReplacement, onMutating, primary);
   const { saving } = commit;
   const alive = useRef(false);
   useEffect(() => {
@@ -39,7 +40,7 @@ export function ConsumerRecoveryRssEditor({ review, onReplacement, onMutating, m
     if (mode === "remove") {
       if (includeItems && !confirmedDeleteItems) return;
       setError(null);
-      await commit.submit(() => prepareDesktopRecoveryRssRemovalTransaction(drafts.map((row) => row.url), includeItems, confirmedDeleteItems));
+      await commit.submit(() => prepareDesktopRecoveryRssRemovalTransaction(drafts.map((row) => row.url), includeItems, confirmedDeleteItems, primary));
       return;
     }
     const assignments = drafts.map((row) => ({ url: row.url, title: row.title.trim() }));
@@ -47,7 +48,7 @@ export function ConsumerRecoveryRssEditor({ review, onReplacement, onMutating, m
       setError(`Each name must contain text and be ${Number(4096).toLocaleString()} bytes or fewer.`); return;
     }
     setError(null);
-    await commit.submit(() => prepareDesktopRecoveryRssTitleTransaction(assignments));
+    await commit.submit(() => prepareDesktopRecoveryRssTitleTransaction(assignments, primary));
   };
   return <div className="mt-3 space-y-3" data-testid="recovery-rss-editor">
     <p>{mode === "remove"

@@ -35,11 +35,11 @@ it("requires every URL and confirmation, then retries exact signed bytes after r
   await click("Store revised saved URLs"); expect(mocks.prepare).not.toHaveBeenCalled();
   await act(async () => container.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click());
   await click("Store revised saved URLs");
-  expect(mocks.prepare).toHaveBeenCalledExactlyOnceWith(review, drafts.map(({ entityId, title, description }) => ({ entityId, title, description })));
+  expect(mocks.prepare).toHaveBeenCalledExactlyOnceWith(review, drafts.map(({ entityId, title, description }) => ({ entityId, title, description })), false);
   expect(container.querySelector<HTMLTextAreaElement>('[aria-label="Title"]')!.disabled).toBe(true);
   await click("Retry same replacement");
   expect(mocks.prepare).toHaveBeenCalledTimes(1);
-  expect(mocks.submit.mock.calls).toEqual([[review, frames], [review, frames]]);
+  expect(mocks.submit.mock.calls).toEqual([[review, frames, false], [review, frames, false]]);
 });
 it("aborts pending review on close without signing", async () => {
   mocks.load.mockImplementation(() => new Promise(() => {}));

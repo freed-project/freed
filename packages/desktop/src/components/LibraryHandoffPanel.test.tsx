@@ -93,7 +93,7 @@ it.each(["preparing", "active", "demoted"])("keeps archive discovery available i
   await render();
   expect(container.textContent).toContain("Preserved edits");
   expect(buttons().some(button => button.textContent === "Browse recovery archives")).toBe(true);
-  expect(container.textContent?.includes("Applying them again is unavailable")).toBe(phase !== "demoted");
+  expect(container.textContent?.includes("Applying them again is unavailable")).toBe(phase === "preparing");
 });
 
 it.each(["preparing", "cas_pending", "active"])("offers a subsequent source transfer only after target activation: %s", async phase => {
