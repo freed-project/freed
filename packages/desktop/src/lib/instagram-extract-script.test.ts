@@ -124,6 +124,38 @@ describe("Instagram injected extractor", () => {
     }
   });
 
+  it.each([
+    { name: "adjacent split disclosure", header: "<span>Spon</span><span>sored</span>", count: 0 },
+    { name: "three split fragments", header: "<span>S</span><span>pon</span><span>sored</span>", count: 0 },
+    { name: "nested split disclosure", header: "<div><span>Spon</span><span>sored</span></div>", count: 0 },
+    { name: "nested organic phrase", header: "<div><span>Sponsored</span> by local volunteers</div>", count: 1 },
+    { name: "nested organic spans", header: "<div><span>Sponsored</span><span> by local volunteers</span></div>", count: 1 },
+    { name: "nested split with timestamp", header: "<div><span>Spon</span><span>sored</span><span>1 h</span></div>", count: 0 },
+    { name: "wrapped timestamp", header: "<div><span>Sponsored</span><time>1 h</time></div>", count: 0 },
+    { name: "wrapped span timestamp", header: "<div><span>Sponsored</span><span>1 h</span></div>", count: 0 },
+    { name: "link separates fragments", header: '<span>Spon</span><a href="/synthetic/">author</a><span>sored</span>', count: 1 },
+    { name: "control separates fragments", header: "<span>Spon</span><button>Menu</button><span>sored</span>", count: 1 },
+    { name: "block separates fragments", header: "<span>Spon</span><div>Context</div><span>sored</span>", count: 1 },
+    { name: "split then direct prose", header: "<span>Spon</span><span>sored</span> by local volunteers", count: 1 },
+    { name: "split then span prose", header: "<span>Spon</span><span>sored</span><span> by local volunteers</span>", count: 1 },
+    { name: "split then linked author", header: '<span>Spon</span><span>sored</span><span><a href="/synthetic/">author</a></span>', count: 0 },
+    { name: "split then timestamp", header: "<span>Spon</span><span>sored</span><time>1 h</time>", count: 0 },
+    { name: "split longer phrase", header: "<span>Spon</span><span>sored by local volunteers</span>", count: 1 },
+    { name: "split author link", header: '<a href="/synthetic/"><span>Spon</span><span>sored</span></a>', count: 1 },
+  ])("preserves disclosure label boundaries: $name", ({ header, count }) => {
+    const event = runInstagramExtractor(`<main><article data-freed-test-height="520">
+      <header><a href="https://www.instagram.com/synthetic/">synthetic</a>${header}</header>
+      <a href="https://www.instagram.com/p/stable/">Open post</a>
+      <div dir="auto">A synthetic caption with enough organic text.</div>
+      <img src="https://scontent.cdninstagram.com/fixture.jpg" width="640" height="640" />
+    </article></main>`);
+    expect(event.error).toBeUndefined();
+    expect(event.candidateCount).toBe(1);
+    expect(event.posts).toHaveLength(count);
+    expect(event.rejected?.suggestedOrSponsored).toBe(1 - count);
+    if (count) expect(event.posts?.[0]).toMatchObject({shortcode: "stable", mediaUrls: ["https://scontent.cdninstagram.com/fixture.jpg"]});
+  });
+
   it("extracts a single rendered article without requiring div fallback candidates", () => {
     const event = runInstagramExtractor(`
       <body>

@@ -925,9 +925,21 @@
   }
 
   function isRecommendation(el) {
-    var fullText = textValue(el, 2000);
-    if (/suggested for you|people you may know|recommended for you|recommended/i.test(fullText)) {
-      return true;
+    // Recommendation labels belong to the placement header, not organic prose.
+    // Prefer its outer header so labels beside a nested author heading are seen.
+    var recommendationHeader = el.querySelector("header") || el.querySelector("h3, h4");
+    var recommendationLabel = /^(suggested for you|people you may know|recommended for you)$/i;
+    if (recommendationHeader) {
+      var labels = recommendationHeader.querySelectorAll("span, div");
+      for (var labelIndex = 0; labelIndex < labels.length && labelIndex < 64; labelIndex++) {
+        var label = labels[labelIndex];
+        if (label.closest("a[href]") || label.querySelector("a[href]")) continue;
+        if (recommendationLabel.test(textValue(label, 80))) return true;
+      }
+      for (var textIndex = 0; textIndex < recommendationHeader.childNodes.length && textIndex < 64; textIndex++) {
+        var child = recommendationHeader.childNodes[textIndex];
+        if (child.nodeType === 3 && recommendationLabel.test((child.textContent || "").trim())) return true;
+      }
     }
 
     var header = el.querySelector("h3, h4, header");

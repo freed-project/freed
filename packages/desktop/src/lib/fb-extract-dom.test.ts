@@ -47,6 +47,34 @@ function runExtractor(
 }
 
 describe("Facebook DOM extractor", () => {
+  it.each([
+    ["recommended caption", "", "Synthetic Example", "My friend recommended a walking route.", 1],
+    ["settings discussion", "", "Synthetic Example", "I discussed suggested for you settings.", 1],
+    ["commercial organic", "", "Synthetic Example", "Our shop sells handmade mugs.", 1],
+    ["missing header", null, "Synthetic Example", "A recommended walking route.", 1],
+    ["suggested header", "<span>Suggested for you</span>", "Synthetic Example", "A personal event.", 0],
+    ["people header", "<div>People you may know</div>", "Synthetic Example", "A personal event.", 0],
+    ["recommended header", "Recommended for you", "Synthetic Example", "A personal event.", 0],
+    ["author label", "", "Recommended for you", "A personal event.", 1],
+    ["longer header phrase", "<span>A route recommended for you by friends</span>", "Synthetic Example", "A personal event.", 1],
+    ["Follow control", '<button>Follow</button>', "Synthetic Example", "A personal event.", 0],
+    ["Follow Back control", '<div role="button">Follow Back</div>', "Synthetic Example", "A personal event.", 0],
+  ])("scopes recommendation evidence: %s", (_name, label, author, text, retained) => {
+    const authorHtml = `<h3><a href="https://www.facebook.com/synthetic.example"><span>${author}</span></a></h3>`;
+    const headerHtml = label === null ? authorHtml : `<header>${authorHtml}${label}</header>`;
+    const payload = runExtractor(`<div role="main"><div role="article">${headerHtml}
+      <a href="https://www.facebook.com/synthetic.example/posts/123456789">1 h</a>
+      <div dir="auto">${text}</div></div></div>`);
+    expect(payload?.candidateCount).toBe(1);
+    expect(payload?.posts).toHaveLength(retained);
+    expect(payload?.rejected).toMatchObject({ recommendation: 1 - retained, advertising: 0 });
+    if (retained) {
+      expect(payload?.posts).toEqual([expect.objectContaining({
+        id: "123456789", url: "https://www.facebook.com/synthetic.example/posts/123456789", text,
+      })]);
+    }
+  });
+
   it("reports an auth error when Facebook renders the logged-out shell", () => {
     const payload = runExtractor(
       `

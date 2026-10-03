@@ -344,7 +344,46 @@
       for (var l = 0; l < labels.length && l < 64; l++) {
         var label = labels[l];
         if (label.closest("a[href]") || label.querySelector("a[href]")) continue;
-        if (excludedHeaderLabel.test(textValue(label, 80))) return true;
+        // A child word in a longer inline label is not a standalone disclosure.
+        var parent = label.parentElement;
+        var longerLabel = false;
+        if (parent && /^(SPAN|DIV)$/.test(parent.tagName) && !parent.querySelector("a[href]")) {
+          var parentText = textValue(parent, 160);
+          if (!excludedHeaderLabel.test(parentText)) {
+            var siblings = parent.childNodes;
+            for (var si = 0; si < siblings.length && si < 64; si++) {
+              var sibling = siblings[si];
+              if (sibling === label || (sibling.nodeType !== 3 && !/^(SPAN|DIV)$/.test(sibling.nodeName))) continue;
+              var siblingText = textValue(sibling, 80);
+              // Separate timestamp labels do not turn Sponsored into prose.
+              if (siblingText && !/^(?:[·•]\s*)?\d+\s*(?:s|m|h|d|w|min|hr|hours?|days?)?$/i.test(siblingText) && !excludedHeaderLabel.test(siblingText)) {
+                longerLabel = true;
+                break;
+              }
+            }
+          }
+        }
+        var labelText = textValue(label, 80);
+        if (longerLabel && excludedHeaderLabel.test(labelText)) continue;
+        if (excludedHeaderLabel.test(labelText)) return true;
+        // Reconstruct only contiguous inline fragments of the exact disclosure.
+        var fragment = labelText.replace(/\s+/g, "").toLowerCase();
+        if (/^(?:s|sp|spo|spon|spons|sponso|sponsor|sponsore)$/.test(fragment)) {
+          var next = label.nextSibling;
+          for (var part = 0; next && part < 10; part++, next = next.nextSibling) {
+            if (next.nodeType === 3 && !textValue(next, 80)) continue;
+            if (next.nodeType !== 1 || next.nodeName !== "SPAN" || next.querySelector("a[href]") || next.closest("a[href]")) break;
+            fragment += textValue(next, 80).replace(/\s+/g, "").toLowerCase();
+            if (fragment === "sponsored") {
+              var tail = next.nextSibling;
+              for (var ti = 0; tail && ti < 10 && tail.nodeType === 3 && !textValue(tail, 80); ti++) tail = tail.nextSibling;
+              var tailText = tail && (tail.nodeType === 3 || (tail.nodeName === "SPAN" && !tail.querySelector("a[href]"))) ? textValue(tail, 80) : "";
+              if (!tailText || excludedHeaderLabel.test(tailText) || /^(?:[·•]\s*)?\d+\s*(?:s|m|h|d|w|min|hr|hours?|days?)?$/i.test(tailText)) return true;
+              break;
+            }
+            if ("sponsored".indexOf(fragment) !== 0) break;
+          }
+        }
       }
       var headerNodes = header.childNodes;
       for (var n = 0; n < headerNodes.length && n < 64; n++) {
