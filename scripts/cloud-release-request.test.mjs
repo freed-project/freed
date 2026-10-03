@@ -124,13 +124,19 @@ test("credential scope follows preflight and never runs candidate scripts", () =
     /node "\$GITHUB_WORKSPACE\/controller\/scripts\/release-tag-publisher.mjs" publish/,
   );
   assert.match(workflow, /trap 'rm -f --/);
+  assert.ok(
+    workflow.indexOf("Wait for original owner-authenticated") <
+      workflow.indexOf("secrets.RELEASE_APP_PRIVATE_KEY"),
+  );
+  assert.match(workflow, /preflight-attested/);
+  assert.match(workflow, /--policy-valid-until/);
 });
 
 test("cloud inbox cannot forge owner identity or substitute immutable request content", () => {
   const bound = { ...request, request_run_id: "42" };
   const run = {
     id: 42,
-    triggering_actor: { login: "AubreyF" },
+    triggering_actor: { login: "AubreyF", id: 2789037 },
     run_attempt: 1,
     workflow_id: 7,
     path: ".github/workflows/cloud-release-inbox.yml",
@@ -138,7 +144,7 @@ test("cloud inbox cannot forge owner identity or substitute immutable request co
     conclusion: "success",
     created_at: new Date().toISOString(),
     event: "push",
-    actor: { login: "AubreyF" },
+    actor: { login: "AubreyF", id: 2789037 },
     head_repository: { full_name: "freed-project/freed" },
     head_branch: "release-requests/demo",
     head_sha: "c".repeat(40),
@@ -148,7 +154,9 @@ test("cloud inbox cannot forge owner identity or substitute immutable request co
     path: ".github/workflows/cloud-release-inbox.yml",
     state: "active",
   };
-  assert.doesNotThrow(() => validateCloudCaller({ actor: "AubreyF", request }));
+  assert.doesNotThrow(() =>
+    validateCloudCaller({ actor: "AubreyF", actorId: 2789037, request }),
+  );
   assert.doesNotThrow(() =>
     validateCloudCaller({
       actor: "github-actions[bot]",
@@ -160,6 +168,7 @@ test("cloud inbox cannot forge owner identity or substitute immutable request co
   );
   for (const bad of [
     { actor: "collaborator" },
+    { run: { ...run, actor: { login: "AubreyF", id: 123 } } },
     { triggeringActor: "collaborator" },
     { controllerAttempt: 2 },
     { run: { ...run, triggering_actor: { login: "collaborator" } } },

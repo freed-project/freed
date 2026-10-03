@@ -63,22 +63,38 @@ jobs:
           persist-credentials: false
       - name: Prepare protected branch identity using controller code
         run: node controller/scripts/cloud-release-request.mjs prepare-candidate candidate
-      - name: Validate controller policy and exact candidate without App key
+      - name: Validate requester, controller identity and exact candidate without App key
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node controller/scripts/cloud-release-request.mjs preflight candidate
+        run: node controller/scripts/cloud-release-request.mjs prepare-admission candidate
       - name: Build reviewed native broker before mounting key
         working-directory: controller
         run: node scripts/release-tag-publisher-install.mjs prepare
+      - name: Issue fresh owner policy challenge after runner admission
+        run: node controller/scripts/cloud-release-policy.mjs issue "$GITHUB_WORKSPACE/policy-challenge.json"
+      - name: Expose request-bound challenge without private policy details
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-policy-challenge-${{ github.run_id }}-${{ github.run_attempt }}
+          path: policy-challenge.json
+          if-no-files-found: error
+          retention-days: 1
+      - name: Wait for original owner-authenticated live policy response
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node controller/scripts/cloud-release-policy.mjs wait "$GITHUB_WORKSPACE/policy-challenge.json" "$GITHUB_WORKSPACE/policy-proof.json"
       - name: Publish one immutable tag through dedicated App
         env:
           RELEASE_APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         working-directory: controller
         run: |
           set -euo pipefail
           set +x
           umask 077
+          node scripts/cloud-release-request.mjs preflight-attested "$GITHUB_WORKSPACE/candidate" "$GITHUB_WORKSPACE/policy-challenge.json" "$GITHUB_WORKSPACE/policy-admission.json"
+          POLICY_VALID_UNTIL="$(node -e 'process.stdout.write(String(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).policyValidUntil))' "$GITHUB_WORKSPACE/policy-admission.json")"
           test -n "$RELEASE_APP_PRIVATE_KEY"
           KEY_DIRECTORY="$HOME/.freed/credentials/github-apps"
           mkdir -p "$KEY_DIRECTORY"
@@ -99,7 +115,8 @@ jobs:
             --tag "$RELEASE_TAG" --channel "$RELEASE_CHANNEL" \
             --commit "$RELEASE_SOURCE_SHA" --branch "$BRANCH" \
             --release-file "release-notes/releases/$RELEASE_TAG.json" \
-            --release-file-sha256 "$RELEASE_RECEIPT_SHA256"
+            --release-file-sha256 "$RELEASE_RECEIPT_SHA256" \
+            --policy-valid-until "$POLICY_VALID_UNTIL"
       - name: Record immutable request identity
         if: success()
         run: |

@@ -1260,7 +1260,7 @@ test("custody adapter changes retain the macOS proof and focused fixture contrac
 
 // Changed-path tier: cloud authority contract cannot fall out of CI routing.
 test("cloud release workflow and entrypoint run their focused authority tests", () => {
-  for (const changed of [".github/workflows/cloud-release-request.yml", ".github/workflows/cloud-release-inbox.yml", "scripts/cloud-release-request.mjs", "scripts/cloud-release-request.test.mjs"]) {
+  for (const changed of [".github/workflows/cloud-release-request.yml", ".github/workflows/cloud-release-inbox.yml", "scripts/cloud-release-request.mjs", "scripts/cloud-release-request.test.mjs", ".github/workflows/cloud-release-policy-probe.yml", ".github/workflows/cloud-release-policy-response.yml", "scripts/cloud-release-policy.mjs", "scripts/cloud-release-policy.test.mjs"]) {
     const plan=buildValidationPlan("feature", [changed]);
     assert.ok(plan.some(item => item.label === "cloud release request tests"));
     assert.ok(FOCUSED_FEATURE_VALIDATION_PATHS.has(changed));

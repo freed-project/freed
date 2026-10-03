@@ -1,10 +1,19 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveGitHubCli } from "./lib/github-tooling.mjs";
+import {
+  assertFreshPolicyEvidence,
+  readAuthenticatedResponse,
+  validateChallengeContext,
+  parseEnvelope,
+  consumeNonce,
+  OWNER_ID,
+} from "./cloud-release-policy.mjs";
+const CANDIDATE_ONLY = Symbol("read-only candidate admission");
 
 export const CONTROLLER_BRANCH = "release-controller";
 export const PUBLISHER_ENVIRONMENT = "release-publisher";
@@ -43,7 +52,7 @@ export function validateRequest(value) {
   });
 }
 
-export function validateController({
+export function validateControllerIdentity({
   repository,
   ref,
   sha,
@@ -69,6 +78,14 @@ export function validateController({
     throw new Error(
       "Publisher environment must admit only the controller branch, never tags or product branches.",
     );
+}
+
+export function validateController(input) {
+  validateControllerIdentity(input);
+  validateControllerRules(input.rulesets);
+}
+
+export function validateControllerRules(rulesets) {
   const protectedController = rulesets?.some(
     (rule) =>
       rule.target === "branch" &&
@@ -98,6 +115,7 @@ export function validateController({
 
 export function validateCloudCaller({
   actor,
+  actorId,
   triggeringActor = actor,
   controllerAttempt = 1,
   run,
@@ -110,14 +128,16 @@ export function validateCloudCaller({
     throw new Error(
       "Release requests cannot be rerun or attributed to another triggering actor.",
     );
-  if (actor === "AubreyF") return;
+  if (actor === "AubreyF" && actorId === OWNER_ID) return;
   if (
     actor !== "github-actions[bot]" ||
     !request.request_run_id ||
     String(run?.id) !== request.request_run_id ||
     run.event !== "push" ||
     run.actor?.login !== "AubreyF" ||
+    run.actor?.id !== OWNER_ID ||
     run.triggering_actor?.login !== "AubreyF" ||
+    run.triggering_actor?.id !== OWNER_ID ||
     run.run_attempt !== 1 ||
     inboxWorkflow?.path !== ".github/workflows/cloud-release-inbox.yml" ||
     inboxWorkflow.state !== "active" ||
@@ -155,7 +175,12 @@ function git(args, cwd) {
 export function preflight(
   request,
   candidate,
-  { run = execFileSync, gh = resolveGitHubCli() } = {},
+  {
+    run = execFileSync,
+    gh = resolveGitHubCli(),
+    policyEvidence,
+    admissionMode,
+  } = {},
 ) {
   const input = validateRequest(request);
   const branch = input.channel === "dev" ? "dev" : "main";
@@ -188,14 +213,16 @@ export function preflight(
     ],
     { stdio: "inherit" },
   );
-  run(
-    process.execPath,
-    [
-      path.join(controller, "validate-release-tag-authority.mjs"),
-      `--repo=${REPO}`,
-    ],
-    { stdio: "inherit" },
-  );
+  if (policyEvidence) assertFreshPolicyEvidence(policyEvidence);
+  else if (admissionMode !== CANDIDATE_ONLY)
+    run(
+      process.execPath,
+      [
+        path.join(controller, "validate-release-tag-authority.mjs"),
+        `--repo=${REPO}`,
+      ],
+      { stdio: "inherit" },
+    );
   if (input.channel === "dev")
     run(
       process.execPath,
@@ -213,11 +240,27 @@ export function preflight(
   });
   if (JSON.parse(remote).object?.sha !== input.source_sha)
     throw new Error("Protected branch advanced during admission.");
-  return { ...input, branch, release_file: receiptPath };
+  if (policyEvidence) assertFreshPolicyEvidence(policyEvidence);
+  return {
+    ...input,
+    branch,
+    release_file: receiptPath,
+    ...(policyEvidence
+      ? {
+          policyValidUntil: policyEvidence.expiresAtMs,
+          ownerPolicyRunId: policyEvidence.runId,
+          ownerPolicyResponseSha: policyEvidence.responseSha,
+          policyNonce: policyEvidence.nonce,
+          policyDigest: policyEvidence.policyDigest,
+        }
+      : {}),
+  };
 }
 
 function main() {
-  const [command, candidate] = process.argv.slice(2);
+  const [command, candidate, challengeFile, admissionFile] =
+    process.argv.slice(2);
+  let policyEvidence;
   const request = validateRequest({
     channel: process.env.RELEASE_CHANNEL,
     tag: process.env.RELEASE_TAG,
@@ -261,7 +304,12 @@ function main() {
     );
     return;
   }
-  if (command !== "preflight" || !candidate)
+  if (
+    !["preflight", "prepare-admission", "preflight-attested"].includes(
+      command,
+    ) ||
+    !candidate
+  )
     throw new Error(
       "Usage: cloud-release-request.mjs dispatch|preflight <candidate>; set RELEASE_CHANNEL, RELEASE_TAG, RELEASE_SOURCE_SHA, RELEASE_RECEIPT_SHA256.",
     );
@@ -291,6 +339,7 @@ function main() {
     }
     validateCloudCaller({
       actor: process.env.GITHUB_ACTOR,
+      actorId: Number(process.env.GITHUB_ACTOR_ID),
       triggeringActor: process.env.GITHUB_TRIGGERING_ACTOR,
       controllerAttempt: process.env.GITHUB_RUN_ATTEMPT,
       inboxWorkflow,
@@ -298,8 +347,7 @@ function main() {
       committedRequest,
       request,
     });
-    const summaries = api("rulesets?targets=branch&per_page=100");
-    validateController({
+    const controllerFacts = {
       repository: process.env.GITHUB_REPOSITORY,
       ref: process.env.GITHUB_REF,
       sha: process.env.GITHUB_SHA,
@@ -308,12 +356,64 @@ function main() {
       policies: api(
         `environments/${PUBLISHER_ENVIRONMENT}/deployment-branch-policies`,
       ).branch_policies,
-      rulesets: summaries.map((item) => api(`rulesets/${item.id}`)),
+    };
+    if (command === "preflight") {
+      const summaries = api("rulesets?targets=branch&per_page=100");
+      validateController({
+        ...controllerFacts,
+        rulesets: summaries.map((item) => api(`rulesets/${item.id}`)),
+      });
+    } else {
+      validateControllerIdentity(controllerFacts);
+      if (command === "preflight-attested") {
+        const challenge = parseEnvelope(readFileSync(challengeFile, "utf8"));
+        validateChallengeContext(challenge, request, {
+          controllerSha: process.env.GITHUB_SHA,
+          publisherRunId: process.env.GITHUB_RUN_ID,
+          publisherAttempt: process.env.GITHUB_RUN_ATTEMPT,
+        });
+        const locator = JSON.parse(
+          readFileSync(
+            path.join(path.dirname(challengeFile), "policy-proof.json"),
+            "utf8",
+          ),
+        );
+        if (
+          Object.keys(locator).length !== 1 ||
+          !Number.isSafeInteger(locator.runId)
+        )
+          throw new Error("Invalid policy response locator.");
+        policyEvidence = readAuthenticatedResponse(challenge, locator.runId);
+      }
+    }
+  }
+  if (command === "preflight-attested" && !policyEvidence)
+    throw new Error(
+      "Owner-attested publication requires the actual authenticated Actions context.",
+    );
+  const result = preflight(request, path.resolve(candidate), {
+    policyEvidence,
+    ...(command === "prepare-admission"
+      ? { admissionMode: CANDIDATE_ONLY }
+      : {}),
+  });
+  if (command === "prepare-admission") result.policyVerificationPending = true;
+  if (policyEvidence)
+    consumeNonce(
+      policyEvidence,
+      path.join(path.dirname(challengeFile), "policy-nonce-consumed.json"),
+    );
+  if (command === "preflight-attested") {
+    if (!admissionFile)
+      throw new Error(
+        "Attested admission requires a private structured result path.",
+      );
+    writeFileSync(admissionFile, JSON.stringify(result) + "\n", {
+      flag: "wx",
+      mode: 0o600,
     });
   }
-  process.stdout.write(
-    JSON.stringify(preflight(request, path.resolve(candidate))) + "\n",
-  );
+  process.stdout.write(JSON.stringify(result) + "\n");
 }
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   try {

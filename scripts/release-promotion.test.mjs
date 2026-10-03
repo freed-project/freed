@@ -1706,15 +1706,3 @@ test("validate-main-pr rejects release-only metadata on a non-release branch", (
     /must come from a branch named chore\/release-\*/,
   );
 });
-
-// Release-discovery backports must contain exact reviewed workflow bytes only.
-test("cloud workflow discovery backport preserves dev provenance and excludes product changes", (t) => {
- const cwd=makeTempRepo();t.after(()=>rmSync(cwd,{recursive:true,force:true}));
- const files=[".github/workflows/cloud-release-request.yml",".github/workflows/cloud-release-inbox.yml"];
- git(cwd,["checkout","dev"]);for(const file of files)writeRepoFile(cwd,file,"name: reviewed cloud workflow\n");commitAll(cwd,"feat: reviewed controller discovery");updateOriginRef(cwd,"dev");
- git(cwd,["checkout","-b","fix/main-governance-cloud-release","main"]);for(const file of files)writeRepoFile(cwd,file,"name: reviewed cloud workflow\n");commitAll(cwd,"fix: exact cloud discovery backport");
- const validate=()=>runNode(VALIDATE_MAIN_PR,[`--cwd=${cwd}`,"--base-ref=origin/main","--head-ref=HEAD","--head-branch=fix/main-governance-cloud-release"]);
- assert.equal(validate().status,0);
- writeRepoFile(cwd,files[0],"name: unreviewed drift\n");commitAll(cwd,"fix: drift control");assert.match(validate().stderr,/must exactly match origin\/dev/);
- writeRepoFile(cwd,files[0],"name: reviewed cloud workflow\n");writeRepoFile(cwd,"packages/pwa/src/app.ts","export const value = 'unapproved';\n");commitAll(cwd,"fix: product mutation control");assert.match(validate().stderr,/unsupported files/);
-});

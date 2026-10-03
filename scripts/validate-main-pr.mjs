@@ -21,8 +21,6 @@ const GOVERNANCE_BACKPORT_BRANCH_PATTERN =
   /^fix\/main-governance-[a-z0-9._-]+$/;
 const GOVERNANCE_BACKPORT_FILES = new Set([
   ...PROMOTION_CONTROL_FILES,
-  ".github/workflows/cloud-release-request.yml",
-  ".github/workflows/cloud-release-inbox.yml",
   ".github/CODEOWNERS",
   ".github/ISSUE_TEMPLATE/debt.yml",
   ".agents/skills/freed-build-feature/SKILL.md",
