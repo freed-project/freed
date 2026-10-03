@@ -71,6 +71,8 @@ jobs:
         working-directory: controller
         run: node scripts/release-tag-publisher-install.mjs prepare
       - name: Issue fresh owner policy challenge after runner admission
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: node controller/scripts/cloud-release-policy.mjs issue "$GITHUB_WORKSPACE/policy-challenge.json"
       - name: Expose request-bound challenge without private policy details
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

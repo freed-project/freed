@@ -369,6 +369,8 @@ function main() {
         const challenge = parseEnvelope(readFileSync(challengeFile, "utf8"));
         validateChallengeContext(challenge, request, {
           controllerSha: process.env.GITHUB_SHA,
+          controllerWorkflowId: api(`actions/runs/${process.env.GITHUB_RUN_ID}`)
+            .workflow_id,
           publisherRunId: process.env.GITHUB_RUN_ID,
           publisherAttempt: process.env.GITHUB_RUN_ATTEMPT,
         });

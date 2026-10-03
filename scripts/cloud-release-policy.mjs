@@ -52,6 +52,7 @@ const challengeKeys = [
   "repository",
   "repositoryId",
   "controllerSha",
+  "controllerWorkflowId",
   "publisherRunId",
   "publisherAttempt",
   "channel",
@@ -92,6 +93,8 @@ export function validateChallenge(value, now = Date.now()) {
     value.repository !== REPOSITORY ||
     value.repositoryId !== REPOSITORY_ID ||
     !/^[0-9a-f]{40}$/.test(value.controllerSha) ||
+    !Number.isSafeInteger(value.controllerWorkflowId) ||
+    value.controllerWorkflowId <= 0 ||
     !/^[1-9][0-9]*$/.test(value.publisherRunId) ||
     value.publisherAttempt !== 1 ||
     !/^[0-9a-f]{64}$/.test(value.nonce) ||
@@ -119,6 +122,7 @@ export function createChallenge(
       repository: REPOSITORY,
       repositoryId: REPOSITORY_ID,
       controllerSha: context.controllerSha,
+      controllerWorkflowId: context.controllerWorkflowId,
       publisherRunId: String(context.publisherRunId),
       publisherAttempt: Number(context.publisherAttempt),
       channel: input.channel,
@@ -146,6 +150,7 @@ export function validateChallengeContext(
       (key) => input[key] !== challenge[key],
     ) ||
     context.controllerSha !== challenge.controllerSha ||
+    context.controllerWorkflowId !== challenge.controllerWorkflowId ||
     String(context.publisherRunId) !== challenge.publisherRunId ||
     Number(context.publisherAttempt) !== challenge.publisherAttempt
   )
@@ -284,6 +289,18 @@ export function readAuthenticatedResponse(challenge, runId) {
 async function main() {
   const [command, challengeFile, output] = process.argv.slice(2);
   if (command === "issue" && challengeFile) {
+    const currentRun = repoApi(`actions/runs/${process.env.GITHUB_RUN_ID}`);
+    if (
+      currentRun.event !== "workflow_dispatch" ||
+      currentRun.path !== ".github/workflows/cloud-release-request.yml" ||
+      currentRun.head_sha !== process.env.GITHUB_SHA ||
+      currentRun.head_branch !== "release-controller" ||
+      currentRun.head_repository?.id !== REPOSITORY_ID ||
+      currentRun.run_attempt !== 1
+    )
+      throw new Error(
+        "Challenge issuer is not the current original publisher run.",
+      );
     const challenge = createChallenge(
       {
         channel: process.env.RELEASE_CHANNEL,
@@ -293,6 +310,7 @@ async function main() {
       },
       {
         controllerSha: process.env.GITHUB_SHA,
+        controllerWorkflowId: currentRun.workflow_id,
         publisherRunId: process.env.GITHUB_RUN_ID,
         publisherAttempt: process.env.GITHUB_RUN_ATTEMPT,
       },
@@ -348,16 +366,14 @@ async function main() {
     if (collector.id !== OWNER_ID || collector.login !== "AubreyF")
       throw new Error("Collector requires the existing owner identity.");
     const run = repoApi(`actions/runs/${challenge.publisherRunId}`);
-    const workflow = repoApi("actions/workflows/cloud-release-request.yml");
     if (
       run.event !== "workflow_dispatch" ||
       run.head_repository?.id !== REPOSITORY_ID ||
       run.head_repository?.full_name !== REPOSITORY ||
       run.head_sha !== challenge.controllerSha ||
       run.head_branch !== "release-controller" ||
-      run.path !== workflow.path ||
-      workflow.path !== ".github/workflows/cloud-release-request.yml" ||
-      run.workflow_id !== workflow.id ||
+      run.path !== ".github/workflows/cloud-release-request.yml" ||
+      run.workflow_id !== challenge.controllerWorkflowId ||
       run.run_attempt !== 1 ||
       run.status !== "in_progress"
     )

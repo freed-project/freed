@@ -26,6 +26,7 @@ const request = {
 };
 const context = {
   controllerSha: "c".repeat(40),
+  controllerWorkflowId: 99,
   publisherRunId: "1234",
   publisherAttempt: 1,
 };
@@ -56,6 +57,7 @@ test("challenge binds repository/controller/run/attempt and every release field"
   );
   for (const changed of [
     { publisherRunId: "2345" },
+    { controllerWorkflowId: 100 },
     { publisherAttempt: 2 },
     { controllerSha: "f".repeat(40) },
   ])
