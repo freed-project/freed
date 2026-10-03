@@ -1648,3 +1648,17 @@ An explicit transfer-acceptance build pairs native and frontend capabilities, re
 The dev release workflow also builds a separately named, signed and notarized Apple Silicon transfer-acceptance app. It uses the explicit acceptance configuration, has no updater endpoint, and cannot be selected by the ordinary updater asset pattern. Signing-job success and actual installed multi-device acceptance remain separate evidence.
 
 Updater manifests select the ordinary artifact filename for the exact release version on every platform. An earlier preview upload or a differently versioned asset cannot substitute for a missing ordinary build, even if it carries a signature.
+
+### Fresh signed measurement candidates
+
+The dev release's isolated ARM64 verifier uses a new measurement identifier for
+ each workflow run and attempt. Its Library profile, Jev service and Library Core
+ key service are separate from primary and existing previews. The default preview
+ configuration and all existing key services retain their identities. The normal
+ signing/notarization job remains responsible for the artifact; no new credentials
+ or authority transfer feature is enabled.
+
+Measurement starts only after artifact identity/signature verification and a check
+ that the target profile is absent. Legal acceptance is never seeded. A legal-gate
+ startup sample can report process memory and probe counters, but does not prove
+ Feed performance, provider admission, full UI acceptance or a before/after gain.

@@ -51,6 +51,8 @@ const LIBRARY_CORE_RELEASE_ACTIVATION_PATHS = new Set([
   "scripts/lib/library-core-release-activation.mjs",
   "scripts/lib/library-core-release-activation.test.mjs",
   "scripts/prepare-release-notes.mjs",
+  "scripts/prepare-signed-measurement.mjs",
+  "scripts/prepare-signed-measurement.test.mjs",
   "scripts/release-receipt.mjs",
   "scripts/release-receipt.test.mjs",
   "scripts/validate-library-core-activation-manifest.mjs",
@@ -1411,6 +1413,10 @@ export function buildValidationPlan(mode, changedFiles) {
 
   if (changedFiles.some(file => [".github/workflows/cloud-release-request.yml", ".github/workflows/cloud-release-inbox.yml", ".github/workflows/cloud-release-policy-probe.yml", ".github/workflows/cloud-release-policy-response.yml", "scripts/cloud-release-policy.mjs", "scripts/cloud-release-policy.test.mjs", "scripts/cloud-release-request.mjs", "scripts/cloud-release-request.test.mjs"].includes(file))) {
     addCommand(plan, nodeCommand("cloud release request tests", ["--test", "scripts/cloud-release-request.test.mjs", "scripts/cloud-release-policy.test.mjs"]));
+  }
+
+  if (changedFiles.some(file => [".github/workflows/release.yml", "scripts/prepare-signed-measurement.mjs", "scripts/prepare-signed-measurement.test.mjs"].includes(file))) {
+    addCommand(plan, nodeCommand("signed measurement identity tests", ["--test", "scripts/prepare-signed-measurement.test.mjs"]));
   }
 
   if (releasePublisherToolingChanged) {

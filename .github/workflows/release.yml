@@ -459,6 +459,11 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci --ignore-scripts
 
+      - name: Prepare fresh signed measurement identity
+        id: measurement-config
+        shell: bash
+        run: node scripts/prepare-signed-measurement.mjs "$RUNNER_TEMP/freed-measurement.json"
+
       - name: Build workspace dependencies
         shell: bash
         run: |
@@ -534,7 +539,7 @@ jobs:
           uploadUpdaterJson: false
           uploadUpdaterSignatures: false
           releaseAssetNamePattern: Freed_Preview_[version]_aarch64[ext]
-          args: --target aarch64-apple-darwin --bundles app --features isolated-preview-data-root --config src-tauri/tauri.preview.conf.json
+          args: --target aarch64-apple-darwin --bundles app --features isolated-preview-data-root --config ${{ steps.measurement-config.outputs.config_path }}
 
       - name: Verify isolated verifier identity and notarization
         shell: bash
@@ -545,7 +550,7 @@ jobs:
           spctl --assess --type execute --verbose=2 "$APP_PATH"
           xcrun stapler validate "$APP_PATH"
           BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print:CFBundleIdentifier' "$APP_PATH/Contents/Info.plist")
-          if [ "$BUNDLE_ID" != "wtf.freed.desktop.sqlite-native-preview" ]; then
+          if [ "$BUNDLE_ID" != "${{ steps.measurement-config.outputs.identifier }}" ]; then
             echo "Unexpected isolated verifier bundle identifier: $BUNDLE_ID"
             exit 1
           fi
