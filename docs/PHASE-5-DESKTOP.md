@@ -1634,3 +1634,7 @@ The staging file has a SQLite page cap and bounded cache. Initial admission rese
 Explicit archived edit recovery now supports an active promoted Primary as well as an enrolled consumer. Native Primary recovery commits canonical acceptance and the archive link atomically; failed linkage restores materialization, receipts, outboxes and counters. Retry after restart returns the stored replacement without loading signing keys. All existing recovery editors carry explicit role selection, with no fallback from fenced Primary admission. Original signatures, whole-transaction scope and archive bytes remain preserved.
 
 Synthetic signed handoff coverage verifies retained actor identity across promotion and subsequent recovery. Focused Desktop tests cover explicit review, editor signing and response-loss retries. These checks do not establish installed Mac convergence or authorize removing the ordinary-build transfer hold.
+
+### Isolated transfer acceptance, October 3, 2026
+
+An explicit transfer-acceptance build pairs native and frontend capabilities, requires the isolated preview data root, and disables update endpoints. Ordinary release transfer holds remain in place. Installed multi-device acceptance is still required.
