@@ -26,6 +26,11 @@ its existing content policy. Exact retries retain the signed replacement and use
 the durable archive link. Notes and tags remain separate recovery transactions.
 Installed multi-device acceptance is still outstanding.
 
+The first renderer heartbeat now carries the existing frontend build and app-session
+identity through the native typed payload, including hidden legal-gate startup.
+Legacy heartbeat identity remains unavailable; this diagnostic provenance does not
+replace artifact verification or legal consent.
+
 The renderer heartbeat carries cumulative foreground timer and animation-frame callback
 responsiveness counters across all app views. Probes pause while hidden and
 request at most four samples per second. Unsupported LongTask observation stays
