@@ -358,10 +358,21 @@
         }
         return pending.length > 0;
       }
+      var suppressedLabels = [];
       var labels = header.querySelectorAll("span, div");
       for (var l = 0; l < labels.length && l < 64; l++) {
         var label = labels[l];
-        if (label.closest("a[href]") || label.querySelector("a[href]")) continue;
+        var inSuppressedLabel = false;
+        for (var sl = 0; sl < suppressedLabels.length; sl++) {
+          if (suppressedLabels[sl].contains(label)) { inSuppressedLabel = true; break; }
+        }
+        if (inSuppressedLabel || hasLabelBoundary(label) || label.closest("a[href]") || label.querySelector("a[href]")) continue;
+        var ancestor = label.parentElement;
+        var inControl = false;
+        for (var ac = 0; ancestor && ancestor !== header && ac < 64; ac++, ancestor = ancestor.parentElement) {
+          if (ancestor.nodeName === "BUTTON" || ancestor.nodeName === "TIME" || ancestor.getAttribute("role") === "button") { inControl = true; break; }
+        }
+        if (inControl || ancestor !== header) continue;
         // A child word in a longer inline label is not a standalone disclosure.
         var parent = label.parentElement;
         var longerLabel = false;
@@ -383,7 +394,10 @@
           }
         }
         var labelText = textValue(label, 80);
-        if (longerLabel && excludedHeaderLabel.test(labelText)) continue;
+        if (longerLabel && excludedHeaderLabel.test(labelText)) {
+          suppressedLabels.push(label);
+          continue;
+        }
         if (excludedHeaderLabel.test(labelText)) return true;
         // Reconstruct only contiguous inline fragments of the exact disclosure.
         var fragment = labelText.replace(/\s+/g, "").toLowerCase();
@@ -396,7 +410,7 @@
             if (fragment === "sponsored") {
               var tail = next.nextSibling;
               for (var ti = 0; tail && ti < 10 && tail.nodeType === 3 && !textValue(tail, 80); ti++) tail = tail.nextSibling;
-              var tailText = tail && (tail.nodeType === 3 || (tail.nodeName === "SPAN" && !hasLabelBoundary(tail) && !tail.querySelector("a[href]"))) ? textValue(tail, 80) : "";
+              var tailText = tail && (tail.nodeType === 3 || (/^(SPAN|DIV)$/.test(tail.nodeName) && !hasLabelBoundary(tail) && !tail.querySelector("a[href]"))) ? textValue(tail, 80) : "";
               if (!tailText || excludedHeaderLabel.test(tailText) || /^(?:[·•]+|(?:[·•]\s*)?\d+\s*(?:s|m|h|d|w|min|hr|hours?|days?)?)$/i.test(tailText)) return true;
               break;
             }
