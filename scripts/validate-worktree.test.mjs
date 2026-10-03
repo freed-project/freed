@@ -457,6 +457,12 @@ test("feature plan for validation runner changes runs only runner tests", () => 
   assert.deepEqual(labels, ["validation runner tests"]);
 });
 
+test("PWA preview changes run the deployment contract", () => {
+  for (const file of ["scripts/vercel-deploy-preview.sh", "scripts/lib/vercel-project-link.mjs", "scripts/lib/vercel-project-link.test.mjs"]) {
+    assert.ok(describePlan(buildValidationPlan("feature", [file])).includes("Vercel preview deployment tests"));
+  }
+});
+
 test("retired Automerge runtime guard changes run the focused contract", () => {
   const paths = [
     "scripts/lib/retired-automerge-runtime.d.mts",
