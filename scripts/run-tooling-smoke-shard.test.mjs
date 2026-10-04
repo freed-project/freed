@@ -11,6 +11,7 @@ import {
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import yaml from "js-yaml";
 
 import {
   DARWIN_ONLY_TEST_FILES,
@@ -393,7 +394,7 @@ test("validation workflow preserves the complete tooling smoke gate", () => {
   // The gate observes the planner, the shards, and the native lane together.
   assert.match(
     workflow,
-    /needs: \[tooling-smoke-plan, tooling-smoke-shards, native-acceptance\]/,
+    /needs: \[tooling-smoke-plan, tooling-smoke-shards, native-acceptance, feature, pwa-opfs-acceptance\]/,
   );
   assert.match(workflow, /^  tooling-smoke:\n    name: Tooling smoke$/m);
 
@@ -412,4 +413,148 @@ test("validation workflow preserves the complete tooling smoke gate", () => {
 
   // Superseded dev runs cancel.
   assert.match(workflow, /^  cancel-in-progress: true$/m);
+});
+
+test("required aggregate settles cancellation and enforces the native OPFS result matrix", () => {
+  const workflow = yaml.load(readFileSync(".github/workflows/ci.yml", "utf8"));
+  const gate = workflow.jobs["tooling-smoke"];
+  assert.equal(gate.if, "${{ always() }}");
+  assert.equal(gate["timeout-minutes"], 2);
+  assert.deepEqual(gate.needs, [
+    "tooling-smoke-plan",
+    "tooling-smoke-shards",
+    "native-acceptance",
+    "feature",
+    "pwa-opfs-acceptance",
+  ]);
+  assert.equal(
+    gate.steps.length,
+    1,
+    "status-only gate has no checkout or install",
+  );
+  assert.equal(gate["continue-on-error"] ?? false, false);
+  const step = gate.steps[0];
+  assert.equal(step.if, "${{ always() }}");
+  assert.equal(step["continue-on-error"] ?? false, false);
+  for (const [name, expression] of Object.entries({
+    WORKFLOW_CANCELLED: "cancelled()",
+    EVENT_NAME: "github.event_name",
+    BASE_REF: "github.base_ref",
+    REF: "github.ref",
+    FEATURE_RESULT: "needs.feature.result",
+    OPFS_REQUIRED: "needs.feature.outputs.needs-webkit",
+    OPFS_RESULT: "needs.pwa-opfs-acceptance.result",
+  }))
+    assert.equal(step.env[name], "${{ " + expression + " }}");
+  assert.equal(
+    workflow.jobs.feature.outputs["needs-webkit"],
+    "${{ steps.feature-plan.outputs.needs_webkit }}",
+  );
+  const opfs = workflow.jobs["pwa-opfs-acceptance"];
+  assert.equal(opfs.needs, "feature");
+  assert.equal(opfs["runs-on"], "macos-latest");
+  assert.equal(opfs["timeout-minutes"], 20);
+  assert.equal(opfs["continue-on-error"] ?? false, false);
+  assert.ok(opfs.steps.every((entry) => !entry["continue-on-error"]));
+  assert.match(opfs.if, /needs\.feature\.outputs\.needs-webkit == 'true'/);
+  assert.match(opfs.if, /github\.event_name == 'push'/);
+  assert.ok(
+    opfs.steps.some(
+      (entry) =>
+        entry.run === "npm run test:e2e:opfs" &&
+        entry["working-directory"] === "packages/pwa",
+    ),
+  );
+
+  const defaults = {
+    WORKFLOW_CANCELLED: "false",
+    EVENT_NAME: "pull_request",
+    BASE_REF: "dev",
+    REF: "refs/pull/1/merge",
+    FEATURE_RESULT: "success",
+    OPFS_REQUIRED: "true",
+    OPFS_RESULT: "success",
+    PLAN_RESULT: "success",
+    SHARD_RESULT: "success",
+    APPLICABLE: "true",
+    JOB_COUNT: "2",
+    NATIVE_REQUIRED: "false",
+    NATIVE_RESULT: "skipped",
+  };
+  function check(overrides, accepted) {
+    const result = spawnSync(
+      "bash",
+      ["--noprofile", "--norc", "-e", "-o", "pipefail", "-c", step.run],
+      {
+        env: { ...process.env, ...defaults, ...overrides },
+        encoding: "utf8",
+        timeout: 5000,
+      },
+    );
+    assert.equal(
+      result.status,
+      accepted ? 0 : 1,
+      `${JSON.stringify(overrides)}: ${result.stdout}${result.stderr}`,
+    );
+  }
+  const results = ["success", "failure", "cancelled", "skipped", "", "unknown"];
+  for (const required of ["true", "false", "", "TRUE", " true", "null"]) {
+    for (const result of results) {
+      check(
+        { OPFS_REQUIRED: required, OPFS_RESULT: result },
+        (required === "true" && result === "success") ||
+          (required === "false" && result === "skipped"),
+      );
+    }
+  }
+  for (const feature of results) {
+    for (const required of ["true", "false"]) {
+      check(
+        {
+          FEATURE_RESULT: feature,
+          OPFS_REQUIRED: required,
+          OPFS_RESULT: required === "true" ? "success" : "skipped",
+        },
+        feature === "success",
+      );
+    }
+    for (const opfsResult of results) {
+      check(
+        {
+          EVENT_NAME: "push",
+          BASE_REF: "",
+          REF: "refs/heads/dev",
+          FEATURE_RESULT: feature,
+          OPFS_REQUIRED: "",
+          OPFS_RESULT: opfsResult,
+        },
+        feature === "skipped" && opfsResult === "success",
+      );
+      check(
+        {
+          BASE_REF: "main",
+          FEATURE_RESULT: feature,
+          OPFS_REQUIRED: "",
+          OPFS_RESULT: opfsResult,
+        },
+        feature === "skipped" && opfsResult === "skipped",
+      );
+    }
+  }
+  for (const cancellation of ["true", "", "unknown"]) {
+    check({ WORKFLOW_CANCELLED: cancellation }, false);
+  }
+  for (const event of ["workflow_dispatch", "schedule", "", "unknown"]) {
+    check({ EVENT_NAME: event }, false);
+  }
+  check({ BASE_REF: "other" }, false);
+  check({ EVENT_NAME: "push", BASE_REF: "", REF: "refs/heads/main" }, false);
+  for (const result of results) {
+    check({ PLAN_RESULT: result }, result === "success");
+    check({ SHARD_RESULT: result }, result === "success");
+    check({ APPLICABLE: "false", SHARD_RESULT: result }, result === "skipped");
+    // Actor acceptance remains observe-only when selected, including cancellation.
+    check({ NATIVE_REQUIRED: "true", NATIVE_RESULT: result }, true);
+    check({ NATIVE_RESULT: result }, result === "skipped");
+  }
 });
