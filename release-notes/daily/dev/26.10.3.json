@@ -2,7 +2,7 @@
   "channel": "dev",
   "dayKey": "26.10.3",
   "date": "2026-10-03",
-  "preferredDeck": "Keep manual map navigation steady and verify Library reads with one connection",
+  "preferredDeck": "More predictable navigation and less repeated native setup",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
