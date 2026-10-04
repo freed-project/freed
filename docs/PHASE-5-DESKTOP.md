@@ -1744,13 +1744,6 @@ content, errors or thread identities are logged. Invocation queueing and native
 execution-thread ownership remain unmeasured. This attribution change does not
 establish an installed responsiveness improvement.
 
-### Linked URL projection
-
-Compact feed and item-detail cards preserve a linked article URL independently
-from the post source URL. A missing linked URL does not fabricate a preview,
-and existing title priority remains unchanged. This corrects metadata projection
-provenance; it does not establish the cause of the original selection complaint.
-
 ### Runtime-owned navigation counts
 
 Desktop publishes one immutable navigation count resource only after facet, RSS

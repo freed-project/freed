@@ -48,7 +48,6 @@ function row(globalId: string) {
     likedAt: null,
     likedSyncedAt: null,
     linkPreviewTitle: null,
-    linkPreviewUrl: null,
     linkUrl: "https://example.test/video",
     locationName: null,
     mediaTypes: ["video"],

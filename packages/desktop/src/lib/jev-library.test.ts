@@ -15,7 +15,7 @@ const card = (id: string, platform = "x") => ({
   archived: false, capturedAt: 1, publishedAt: 1, contentSignalTags: [], contentText: "Lossy card prefix", saved: false,
   readAt: null, liked: false, likedAt: null, likedSyncedAt: null, sourceUrl: null, tags: [], mediaTypes: [], mediaUrls: [],
   eventConfidenceBasisPoints: null, eventStartsAt: null, locationName: null, readingTimeMinutes: null,
-  engagementComments: null, engagementLikes: null, linkPreviewTitle: null, linkPreviewUrl: null,
+  engagementComments: null, engagementLikes: null, linkPreviewTitle: null,
 });
 
 // Tier 1: bounded native reads, complete supplied evidence and fail-closed source checks before cloud contact.

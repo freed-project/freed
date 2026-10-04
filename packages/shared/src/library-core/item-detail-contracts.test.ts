@@ -28,7 +28,6 @@ const card = {
   likedAt: null,
   likedSyncedAt: null,
   linkPreviewTitle: null,
-  linkPreviewUrl: null,
   locationName: null,
   mediaTypes: [],
   mediaUrls: [],

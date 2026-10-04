@@ -12,8 +12,6 @@ import {
   parseLibraryCoreFeedPageRequestV1,
   parseLibraryCoreFeedPageResponseV1,
   projectLibraryCoreFeedCardV1,
-  libraryCoreFeedCardToItemV1,
-  parseLibraryCoreFeedCardV1,
   type LibraryCoreFeedPageCursorV1,
 } from "./feed-page-contracts.js";
 import {
@@ -81,7 +79,6 @@ function feedCard(
     likedAt: 1_780_000_000_002,
     likedSyncedAt: null,
     linkPreviewTitle: "Example",
-    linkPreviewUrl: null,
     locationName: null,
     mediaTypes: ["image"],
     mediaUrls: ["https://example.test/media.jpg"],
@@ -213,41 +210,6 @@ describe("Library Core feed-page request v1", () => {
 });
 
 describe("Library Core feed-page response v1", () => {
-  it("round-trips external preview URLs separately from post identities and source URLs", () => {
-    for (const suffix of ["a", "b"]) {
-      const sourceUrl = `https://x.test/post/${suffix}`;
-      const articleUrl = `https://article.test/${suffix}`;
-      const card = projectLibraryCoreFeedCardV1({
-        globalId: `x:synthetic-${suffix}`, platform: "x", contentType: "post",
-        sourceUrl, publishedAt: 1, capturedAt: 1, topics: [],
-        author: { id: suffix, handle: suffix, displayName: suffix },
-        content: { text: `Post body ${suffix}`, mediaUrls: [`https://media.test/${suffix}`], mediaTypes: ["image"],
-          linkPreview: { title: `Article title ${suffix}`, url: articleUrl } },
-        userState: { hidden: false, saved: false, archived: false, tags: [] },
-      });
-      const parsed = parseLibraryCoreFeedCardV1(JSON.parse(JSON.stringify(card)));
-      expect(parsed.ok).toBe(true);
-      if (!parsed.ok) return;
-      expect(libraryCoreFeedCardToItemV1(parsed.value)).toMatchObject({ globalId: `x:synthetic-${suffix}`, sourceUrl,
-        content: { text: `Post body ${suffix}`, mediaUrls: [`https://media.test/${suffix}`],
-          linkPreview: { title: `Article title ${suffix}`, url: articleUrl } } });
-    }
-  });
-
-  it("does not invent an article URL and rejects missing or unbounded URL fields", () => {
-    const parsed = parseLibraryCoreFeedCardV1(feedCard("x:synthetic", {
-      sourceUrl: "https://x.test/post", linkPreviewTitle: "Article with unknown URL", linkPreviewUrl: null,
-    }));
-    if (!parsed.ok) throw new Error(parsed.error);
-    const card = parsed.value;
-    expect(card.linkPreviewUrl).toBeNull();
-    expect(libraryCoreFeedCardToItemV1(card).content.linkPreview).toBeUndefined();
-    expect(parseLibraryCoreFeedCardV1({ ...card, linkPreviewUrl: "x".repeat(2049) }).ok).toBe(false);
-    const { linkPreviewUrl: _removed, ...missing } = card;
-    expect(parseLibraryCoreFeedCardV1(missing).ok).toBe(false);
-    expect(parseLibraryCoreFeedCardV1({ ...card, linkPreviewUrl: 7 }).ok).toBe(false);
-  });
-
   it("accepts a bounded page and detaches every retained row and nested array", () => {
     const row = feedCard();
     expect(Object.keys(row).sort()).toStrictEqual(

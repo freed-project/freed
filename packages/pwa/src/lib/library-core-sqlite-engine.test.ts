@@ -5619,12 +5619,9 @@ describe("PWA Library Core SQLite engine", () => {
       readerSessionId: operationId("reader-1"),
       schemaVersion: 1 as const,
     };
-    database.exec(`UPDATE library_feed_items SET source_url='https://social.test/post/' || global_id,
-      link_title='Article ' || global_id WHERE global_id IN ('item-1','item-2');`);
     const first = engine.query(request);
     expect(first.totalCount).toBe(2);
     expect(first.rows.map((row) => row.globalId)).toEqual(["item-2"]);
-    expect(first.rows[0]).toMatchObject({ linkPreviewTitle: "Article item-2", linkPreviewUrl: "https://example.com/two", sourceUrl: "https://social.test/post/item-2" });
     expect(first.rows[0]?.tags).toEqual(["favorite"]);
     expect(first.rows[0]?.mediaUrls).toEqual(["https://example.com/image"]);
     expect(first.nextCursor).not.toBeNull();
@@ -5633,7 +5630,6 @@ describe("PWA Library Core SQLite engine", () => {
       cursor: first.nextCursor,
     });
     expect(second.rows.map((row) => row.globalId)).toEqual(["item-1"]);
-    expect(second.rows[0]).toMatchObject({ linkPreviewTitle: "Article item-1", linkPreviewUrl: "https://example.com/one", sourceUrl: "https://social.test/post/item-1" });
     expect(second.nextCursor).toBeNull();
     const timelineRequest = {
       cancellationId: operationId("cancel-person-timeline-1"),
@@ -5901,7 +5897,7 @@ describe("PWA Library Core SQLite engine", () => {
       }),
     ).toMatchObject({
       item: {
-        card: { contentText: "newer", globalId: "item-2", linkPreviewTitle: "Article item-2", linkPreviewUrl: "https://example.com/two", sourceUrl: "https://social.test/post/item-2" },
+        card: { contentText: "newer", globalId: "item-2" },
         contentBody: { blobDigest: null, storage: "inline" },
         mediaBlobDigests: [blobDigest],
         preservedBody: { blobDigest, storage: "blob" },

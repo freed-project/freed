@@ -761,7 +761,6 @@ function feedCardFromSqliteRow(
       true,
     ),
     linkPreviewTitle: nullableText(row.linkPreviewTitle, "feed link title"),
-    linkPreviewUrl: nullableText(row.linkPreviewUrl, "feed link URL"),
     locationName: nullableText(row.locationName, "feed location"),
     mediaTypes: stringArray(row.mediaTypesJson, "feed media types"),
     mediaUrls: stringArray(row.mediaUrlsJson, "feed media URLs"),

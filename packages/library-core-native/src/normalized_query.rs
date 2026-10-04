@@ -715,7 +715,6 @@ pub struct NormalizedFeedCardV1 {
     pub liked_at: Option<i64>,
     pub liked_synced_at: Option<i64>,
     pub link_preview_title: Option<String>,
-    pub link_preview_url: Option<String>,
     pub location_name: Option<String>,
     pub media_types: Vec<String>,
     pub media_urls: Vec<String>,
@@ -2416,7 +2415,6 @@ fn feed_card(row: &Row<'_>) -> rusqlite::Result<NormalizedFeedCardV1> {
         liked_at: row.get("likedAt")?,
         liked_synced_at: row.get("likedSyncedAt")?,
         link_preview_title: row.get("linkPreviewTitle")?,
-        link_preview_url: row.get("linkPreviewUrl")?,
         location_name: row.get("locationName")?,
         media_types: string_array(row, "mediaTypesJson", 8, 64)?,
         media_urls: string_array(row, "mediaUrlsJson", 8, 8_192)?,
@@ -9657,18 +9655,6 @@ mod tests {
                 "a".repeat(64)
             ))
             .expect("fixture");
-        connection.execute_batch("UPDATE library_feed_items SET source_url='https://social.test/post/' || global_id,
-            link_url='https://article.test/' || global_id, link_title='Article ' || global_id
-            WHERE global_id IN ('item-1','item-2');").expect("link provenance fixture");
-        for id in ["item-1", "item-2"] {
-            let NormalizedQueryResponseV1::ItemDetail(detail) = query_normalized_v1(&mut connection,
-                NormalizedQueryRequestV1::ItemDetail(NormalizedItemDetailRequestV1 { global_id: id.to_owned(), schema_version: 1 }))
-                .expect("linked item detail") else { panic!("detail response"); };
-            let card = detail.item.expect("item").card;
-            assert_eq!(card.link_preview_url, Some(format!("https://article.test/{id}")));
-            assert_eq!(card.source_url, Some(format!("https://social.test/post/{id}")));
-            assert_eq!(card.link_preview_title, Some(format!("Article {id}")));
-        }
         let request = NormalizedFeedPageRequestV1 {
             cancellation_id: "cancel-1".to_owned(),
             cursor: None,
@@ -9685,8 +9671,6 @@ mod tests {
         };
         assert_eq!(first.total_count, 2);
         assert_eq!(first.rows[0].global_id, "item-2");
-        assert_eq!(first.rows[0].link_preview_url.as_deref(), Some("https://article.test/item-2"));
-        assert_eq!(first.rows[0].source_url.as_deref(), Some("https://social.test/post/item-2"));
         assert_eq!(first.rows[0].tags, ["favorite"]);
         let cursor = first.next_cursor.expect("cursor");
         assert_eq!(
@@ -9704,7 +9688,6 @@ mod tests {
             panic!("feed page response");
         };
         assert_eq!(second.rows[0].global_id, "item-1");
-        assert_eq!(second.rows[0].link_preview_url.as_deref(), Some("https://article.test/item-1"));
         assert!(second.next_cursor.is_none());
         connection
             .execute_batch(

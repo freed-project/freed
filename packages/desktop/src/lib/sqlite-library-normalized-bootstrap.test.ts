@@ -261,7 +261,6 @@ describe("Freed Desktop normalized bootstrap projection", () => {
                   likedAt: null,
                   likedSyncedAt: null,
                   linkPreviewTitle: null,
-                  linkPreviewUrl: null,
                   locationName: null,
                   mediaTypes: [],
                   mediaUrls: [],
@@ -312,7 +311,7 @@ describe("Freed Desktop normalized bootstrap projection", () => {
         details++;
         return { source, item: { card: { archived: false, authorAvatarUrl: null, authorDisplayName: "Synthetic author", authorHandle: "synthetic", authorId: "synthetic-author", capturedAt: 20,
           contentSignalTags: [], contentText: "Synthetic stored post body. ".repeat(64), contentType: "post", engagementComments: 2, engagementLikes: 10, eventConfidenceBasisPoints: null, eventStartsAt: null,
-          globalId: request.globalId, liked: false, likedAt: null, likedSyncedAt: null, linkPreviewTitle: null, linkPreviewUrl: null, locationName: null, mediaTypes: [], mediaUrls: [], platform: "rss", publishedAt: 10,
+          globalId: request.globalId, liked: false, likedAt: null, likedSyncedAt: null, linkPreviewTitle: null, locationName: null, mediaTypes: [], mediaUrls: [], platform: "rss", publishedAt: 10,
           readAt: null, readingTimeMinutes: null, saved: false, sourceUrl: null, tags: [] }, contentBody: { blobDigest: null, storage: "inline" }, mediaBlobDigests: [], preservedBody: { blobDigest: null, storage: "none" } } };
       } finally { active--; }
     });

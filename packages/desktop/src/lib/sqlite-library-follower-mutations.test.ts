@@ -58,7 +58,6 @@ function normalizedRow(globalId = ITEM_ID) {
     likedAt: null,
     likedSyncedAt: null,
     linkPreviewTitle: null,
-    linkPreviewUrl: null,
     locationName: null,
     mediaTypes: [],
     mediaUrls: [],

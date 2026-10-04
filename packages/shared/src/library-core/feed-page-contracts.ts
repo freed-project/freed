@@ -106,7 +106,6 @@ export const LIBRARY_CORE_FEED_PAGE_PROJECTION = Object.freeze({
     "mediaUrls",
     "mediaTypes",
     "linkPreviewTitle",
-    "linkPreviewUrl",
     "tags",
     "engagementLikes",
     "engagementComments",
@@ -145,7 +144,6 @@ const FEED_CARD_KEYS = [
   "likedAt",
   "likedSyncedAt",
   "linkPreviewTitle",
-  "linkPreviewUrl",
   "locationName",
   "mediaTypes",
   "mediaUrls",
@@ -218,7 +216,6 @@ export interface LibraryCoreFeedCardV1 {
   readonly likedAt: number | null;
   readonly likedSyncedAt: number | null;
   readonly linkPreviewTitle: string | null;
-  readonly linkPreviewUrl: string | null;
   readonly locationName: string | null;
   readonly mediaTypes: readonly string[];
   readonly mediaUrls: readonly string[];
@@ -275,8 +272,8 @@ export function libraryCoreFeedCardToItemV1(card: LibraryCoreFeedCardV1): FeedIt
       mediaTypes: card.mediaTypes.filter(
         (value): value is MediaType => FEED_CARD_MEDIA_TYPES.has(value as MediaType),
       ),
-      ...(card.linkPreviewTitle && card.linkPreviewUrl
-        ? { linkPreview: { url: card.linkPreviewUrl, title: card.linkPreviewTitle } }
+      ...(card.linkPreviewTitle && card.sourceUrl
+        ? { linkPreview: { url: card.sourceUrl, title: card.linkPreviewTitle } }
         : {}),
     },
     ...(card.engagementLikes !== null || card.engagementComments !== null
@@ -420,7 +417,6 @@ export function projectLibraryCoreFeedCardV1(
     likedAt: projectedSafeInteger(userState?.likedAt),
     likedSyncedAt: projectedLikeSyncTimestamp(userState?.likedSyncedAt),
     linkPreviewTitle: projectedBoundedString(linkPreview?.title, 512),
-    linkPreviewUrl: projectedBoundedString(linkPreview?.url, 2_048),
     locationName: projectedBoundedString(location?.name, 512),
     mediaTypes: projectedBoundedStringArray(content?.mediaTypes, 8, 16),
     mediaUrls: projectedBoundedStringArray(content?.mediaUrls, 8, 2_048),
@@ -835,7 +831,6 @@ export function parseLibraryCoreFeedCardV1(
     !mediaUrls ||
     !mediaTypes ||
     !optionalBoundedString(row.linkPreviewTitle, 512, 2_048) ||
-    !optionalBoundedString(row.linkPreviewUrl, 2_048, 8_192) ||
     !tags ||
     !optionalNonnegativeSafeInteger(row.engagementLikes) ||
     !optionalNonnegativeSafeInteger(row.engagementComments) ||
@@ -870,7 +865,6 @@ export function parseLibraryCoreFeedCardV1(
       likedAt: row.likedAt,
       likedSyncedAt: row.likedSyncedAt,
       linkPreviewTitle: row.linkPreviewTitle,
-      linkPreviewUrl: row.linkPreviewUrl,
       locationName: row.locationName,
       mediaTypes,
       mediaUrls,

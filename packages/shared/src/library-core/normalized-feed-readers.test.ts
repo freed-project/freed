@@ -51,7 +51,6 @@ const feedCard = (globalId: string) => ({
   likedAt: null,
   likedSyncedAt: null,
   linkPreviewTitle: null,
-  linkPreviewUrl: null,
   locationName: null,
   mediaTypes: [],
   mediaUrls: [],
