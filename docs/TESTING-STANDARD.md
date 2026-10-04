@@ -96,6 +96,10 @@ normal scheduling (20 milliseconds); child cleanup has a separate 5-second
 budget. A blocked JavaScript event loop cannot disable these deadlines.
 Timeout diagnostics identify the active test and operation. The supervisor
 fails the shard even when an imported function would swallow a subprocess error.
+The supervisor keeps Git automatic maintenance in the foreground within its
+child environment, preserving inherited Git configuration and maintenance work.
+It does not change repository or global configuration, or exempt Git descendants
+from orphan detection.
 
 On Linux, a private subreaper adopts orphaned descendants and signals captured
 process generations through pidfds. On macOS, a private kernel responsibility

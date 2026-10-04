@@ -126,6 +126,14 @@ def supervise(command, operation_ms, test_ms, shard_ms):
     temporary.mkdir()
     environment = dict(os.environ, FREED_NIGHTLY_SUPERVISION=str(events),
                        TMPDIR=str(temporary), TMP=str(temporary), TEMP=str(temporary))
+    # Git 2.55 detaches automatic maintenance even for tiny fixture commits.
+    # Keep that work inside the supervised operation, without disabling it or
+    # changing any repository/global config. Append to preserve inherited Git
+    # parameters; these fixed pairs also override inherited detach settings.
+    environment["GIT_CONFIG_PARAMETERS"] = (
+        environment.get("GIT_CONFIG_PARAMETERS", "")
+        + " 'maintenance.autoDetach=false' 'gc.autoDetach=false'"
+    ).strip()
     child = None
     cleaned = False
     reason = None

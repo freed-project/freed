@@ -276,6 +276,51 @@ function processGeneration(pid) {
   return JSON.parse(result.stdout);
 }
 
+test("nightly shard keeps real Git maintenance attached and preserves inherited configuration", (t) => {
+  const directory = mkdtempSync(path.join(os.tmpdir(), "freed-nightly-git-maintenance-"));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const fixture = path.join(directory, "git-maintenance.test.mjs");
+  const trace = path.join(directory, "git-trace.jsonl");
+  writeFileSync(fixture, `
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+test('real Git commit with automatic maintenance', () => {
+  const repo = mkdtempSync(path.join(os.tmpdir(), 'git-maintenance-'));
+  const git = (...args) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+  git('init', '--quiet');
+  writeFileSync(path.join(repo, 'fixture.txt'), 'fixture');
+  git('add', 'fixture.txt');
+  git('commit', '--quiet', '-m', 'fixture');
+  assert.equal(git('show', '-s', '--format=%an <%ae>').trim(), 'Inherited Fixture <fixture@example.com>');
+});
+`);
+  const plan = { suite: "nightly-self-improve", shardIndex: 1, shardCount: 1,
+    shellFiles: [], testFiles: [fixture], testNames: [], testNamePattern: null };
+  const env = { ...process.env,
+    GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "user.name", GIT_CONFIG_VALUE_0: "Inherited Fixture",
+    GIT_CONFIG_PARAMETERS: "'user.email=fixture@example.com' 'maintenance.auto=true' 'maintenance.autoDetach=true' 'gc.autoDetach=true'",
+    GIT_TRACE2_EVENT: trace,
+  };
+  delete env.NODE_TEST_CONTEXT;
+  const result = spawnSync(process.execPath, ["--input-type=module", "-e", `
+import { runToolingSmokeShard } from ${JSON.stringify(new URL("./run-tooling-smoke-shard.mjs", import.meta.url).href)};
+runToolingSmokeShard(${JSON.stringify(plan)}, { repoRoot: ${JSON.stringify(directory)} });
+`], { env, encoding: "utf8", timeout: 15_000 });
+  const output = result.stdout + result.stderr;
+  assert.equal(result.error, undefined, output);
+  assert.equal(result.status, 0, output);
+  assert.match(output, /"remaining": \[\].*fixtureRemoved=True/);
+  const events = readFileSync(trace, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+  const maintenance = events.filter((entry) => entry.event === "child_start" && entry.argv?.includes("maintenance"));
+  assert.ok(maintenance.length > 0, "automatic maintenance must execute, not be disabled");
+  assert.ok(maintenance.every((entry) => entry.argv.includes("--auto") && !entry.argv.includes("--detach")));
+  assert.equal(events.some((entry) => entry.event === "region_enter" && entry.category === "maintenance" && entry.label === "detach"), false);
+});
+
 for (const operation of ["git", "gh", "local-timeout", "double-fork"]) {
   test(`nightly shard bounds imported ${operation} and reaps escaped descendants`, async (t) => {
     const directory = mkdtempSync(path.join(os.tmpdir(), "freed-nightly-deadline-"));
