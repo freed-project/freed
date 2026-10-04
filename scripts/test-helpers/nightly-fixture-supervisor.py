@@ -134,6 +134,11 @@ def supervise(command, operation_ms, test_ms, shard_ms):
         environment.get("GIT_CONFIG_PARAMETERS", "")
         + " 'maintenance.autoDetach=false' 'gc.autoDetach=false'"
     ).strip()
+    # Local transport strips Git config parameters before receive-pack. Git's
+    # own test-suite default survives that boundary and keeps its automatic
+    # maintenance attached too. Explicit remote config still takes precedence;
+    # any resulting orphan must fail supervision, never receive an exemption.
+    environment["GIT_TEST_MAINT_AUTO_DETACH"] = "false"
     child = None
     cleaned = False
     reason = None

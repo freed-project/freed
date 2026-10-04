@@ -288,7 +288,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-test('real Git commit with automatic maintenance', () => {
+test('real Git commit and local push with automatic maintenance', () => {
   const repo = mkdtempSync(path.join(os.tmpdir(), 'git-maintenance-'));
   const git = (...args) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
   git('init', '--quiet');
@@ -296,6 +296,14 @@ test('real Git commit with automatic maintenance', () => {
   git('add', 'fixture.txt');
   git('commit', '--quiet', '-m', 'fixture');
   assert.equal(git('show', '-s', '--format=%an <%ae>').trim(), 'Inherited Fixture <fixture@example.com>');
+  const origin = path.join(repo, 'origin.git');
+  const peer = path.join(repo, 'peer');
+  git('init', '--bare', '--quiet', origin);
+  git('--git-dir', origin, 'config', 'receive.autoGC', 'true');
+  git('--git-dir', origin, 'config', 'maintenance.auto', 'true');
+  git('push', origin, 'HEAD:refs/heads/dev');
+  git('clone', '--branch', 'dev', origin, peer);
+  assert.equal(git('-C', peer, 'show', '-s', '--format=%an <%ae>').trim(), 'Inherited Fixture <fixture@example.com>');
 });
 `);
   const plan = { suite: "nightly-self-improve", shardIndex: 1, shardCount: 1,
@@ -303,6 +311,7 @@ test('real Git commit with automatic maintenance', () => {
   const env = { ...process.env,
     GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "user.name", GIT_CONFIG_VALUE_0: "Inherited Fixture",
     GIT_CONFIG_PARAMETERS: "'user.email=fixture@example.com' 'maintenance.auto=true' 'maintenance.autoDetach=true' 'gc.autoDetach=true'",
+    GIT_TEST_MAINT_AUTO_DETACH: "true",
     GIT_TRACE2_EVENT: trace,
   };
   delete env.NODE_TEST_CONTEXT;
@@ -315,6 +324,24 @@ runToolingSmokeShard(${JSON.stringify(plan)}, { repoRoot: ${JSON.stringify(direc
   assert.equal(result.status, 0, output);
   assert.match(output, /"remaining": \[\].*fixtureRemoved=True/);
   const events = readFileSync(trace, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+  const versions = new Map(events.filter((entry) => entry.event === "version").map((entry) => [entry.sid, entry.exe]));
+  const expectedVersion = versions.values().next().value;
+  assert.ok(expectedVersion, "Git must report its version in the trace");
+  for (const entry of events.filter((entry) => entry.event === "start")) {
+    assert.equal(versions.get(entry.sid), expectedVersion, `mixed Git versions: ${entry.argv.join(" ")}`);
+  }
+  // Checking the caller alone misses an older git-receive-pack/upload-pack
+  // found through PATH when a scratch Git build lacks those entrypoints.
+  for (const name of ["receive-pack", "upload-pack"]) {
+    const commands = events.filter((entry) => entry.event === "cmd_name" && entry.name === name);
+    assert.ok(commands.length > 0, `local transport must execute ${name}`);
+    assert.ok(commands.every((entry) => versions.get(entry.sid) === expectedVersion));
+  }
+  const receiver = events.find((entry) => entry.event === "cmd_name" && entry.name === "receive-pack");
+  const remoteMaintenance = events.filter((entry) => entry.event === "child_start" && entry.sid === receiver.sid
+    && (entry.argv?.includes("maintenance") || entry.argv?.includes("gc")));
+  assert.ok(remoteMaintenance.length > 0, "receive-pack must execute automatic maintenance (gc on older Git)");
+  assert.ok(remoteMaintenance.every((entry) => entry.argv.includes("--auto") && !entry.argv.includes("--detach")));
   const maintenance = events.filter((entry) => entry.event === "child_start" && entry.argv?.includes("maintenance"));
   assert.ok(maintenance.length > 0, "automatic maintenance must execute, not be disabled");
   assert.ok(maintenance.every((entry) => entry.argv.includes("--auto") && !entry.argv.includes("--detach")));

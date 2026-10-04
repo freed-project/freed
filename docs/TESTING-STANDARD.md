@@ -98,6 +98,11 @@ Timeout diagnostics identify the active test and operation. The supervisor
 fails the shard even when an imported function would swallow a subprocess error.
 The supervisor keeps Git automatic maintenance in the foreground within its
 child environment, preserving inherited Git configuration and maintenance work.
+Local transport strips Git configuration parameters before `receive-pack`, so
+the child environment also sets Git's test-only `GIT_TEST_MAINT_AUTO_DETACH=false`
+default. Explicit remote configuration still takes precedence and any resulting
+orphan still fails the shard. The regression covers commit, local push and clone,
+including maintenance traces and matching Git versions for transport helpers.
 It does not change repository or global configuration, or exempt Git descendants
 from orphan detection.
 
