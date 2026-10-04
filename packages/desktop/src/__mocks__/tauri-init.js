@@ -453,6 +453,7 @@ export function tauriInitScript() {
         likedAt: user.likedAt == null ? null : user.likedAt,
         likedSyncedAt: user.likedSyncedAt == null ? null : user.likedSyncedAt,
         linkPreviewTitle: content.linkPreview && content.linkPreview.title || null,
+        linkPreviewUrl: content.linkPreview && content.linkPreview.url || null,
         locationName: item.location && item.location.name || null,
         mediaTypes: content.mediaTypes || [],
         mediaUrls: content.mediaUrls || [],
