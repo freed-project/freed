@@ -544,6 +544,11 @@ test("mixed feature plans retain repository configuration coverage", () => {
 
 test("feature plan routes tooling smoke workflow and helper changes through focused tests", () => {
   const paths = [
+    ".github/workflows/nightly-fixture-acceptance.yml",
+    "scripts/nightly-fixture-acceptance.mjs",
+    "scripts/test-helpers/nightly-fixture-preload.mjs",
+    "scripts/test-helpers/nightly-fixture-supervisor.py",
+    "scripts/test-helpers/nightly_fixture_darwin.py",
     ".github/workflows/ci.yml",
     ".github/workflows/tooling-nightly.yml",
     "scripts/measure-tooling-smoke.mjs",

@@ -515,6 +515,7 @@ export function runToolingSmokeShard(
     // The Python parent remains runnable during imported synchronous operations.
     // The outer bound also covers a blocked event loop or stalled module setup.
     runChecked("python3", [
+      "-B",
       path.join(REPO_ROOT, NIGHTLY_SUPERVISOR),
       String(nightlyDeadlines.operationMs ?? 30_000),
       String(nightlyDeadlines.testMs ?? SHARD_TEST_TIMEOUT_MS),

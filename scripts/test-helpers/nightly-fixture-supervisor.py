@@ -1,8 +1,8 @@
-"""Test-only Linux subreaper. Never signal a PID without a pinned generation.
+"""Test-only subprocess supervision. Never signal a bare, unverified PID.
 
-Unlike a session scan, adoption retains ownership when a descendant double-forks,
-changes session, or outlives its immediate parent. Only this live supervisor's
-direct children can be signaled. No production lifecycle imports or killpg.
+Linux adoption and Darwin private responsibility retain ownership when a
+descendant double-forks or outlives its parent. Signals bind to captured process
+generations. No production lifecycle imports or killpg.
 """
 
 import ctypes
@@ -16,10 +16,32 @@ import sys
 import tempfile
 import time
 
+DARWIN_CUSTODY = None
+
+
+def process_snapshot(pid):
+    """Read-only generation evidence for native fixture assertions."""
+    if sys.platform == "darwin":
+        from nightly_fixture_darwin import DarwinCustody
+        return DarwinCustody(observe_only=True).inspect(pid)
+    info = identity(pid)
+    if not info:
+        return None
+    fields = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()
+    return {"pid": pid, "parentPid": info[1], "startTicks": info[2],
+            "birth": Path("/proc/sys/kernel/random/boot_id").read_text().strip() + ":" + info[2],
+            "zombie": fields[0] == "Z"}
+
 
 def confine():
+    global DARWIN_CUSTODY
+    if sys.platform == "darwin":
+        from nightly_fixture_darwin import DarwinCustody, ensure_private_responsibility
+        ensure_private_responsibility()
+        DARWIN_CUSTODY = DarwinCustody()
+        return
     if sys.platform != "linux":
-        raise RuntimeError("nightly fixture confinement requires Linux subreaper + pidfd; refusing launch")
+        raise RuntimeError("nightly fixture confinement requires Linux or macOS; refusing launch")
     if not hasattr(signal, "pidfd_send_signal"):
         raise RuntimeError("pidfd signaling unavailable; refusing launch")
     fd = os.pidfd_open(os.getpid())
@@ -74,6 +96,8 @@ def reap(child):
 
 
 def cleanup(child):
+    if DARWIN_CUSTODY is not None:
+        return DARWIN_CUSTODY.cleanup(child, reap)
     deadline = time.monotonic() + 5
     killed = {}
     reaped = []
@@ -113,11 +137,19 @@ def supervise(command, operation_ms, test_ms, shard_ms):
     for sig in (signal.SIGTERM, signal.SIGINT):
         signal.signal(sig, lambda number, frame: interrupted.append(number))
     print(f"[nightly supervisor] fixture={root}", file=sys.stderr, flush=True)
+    if DARWIN_CUSTODY is not None:
+        print(f"[nightly supervisor] Darwin responsibility anchor={json.dumps(DARWIN_CUSTODY.anchor)}",
+              file=sys.stderr, flush=True)
     try:
         child = subprocess.Popen(command, env=environment)
         while True:
             adopted = [pid for pid in reap(child) if pid != child.pid]
-            extra = [pid for pid in children() if pid != child.pid]
+            if DARWIN_CUSTODY is None:
+                extra = [pid for pid in children() if pid != child.pid]
+            else:
+                members = DARWIN_CUSTODY.inventory()
+                parents = {os.getpid(), *(entry["pid"] for entry in members)}
+                extra = [entry["pid"] for entry in members if entry["parentPid"] not in parents]
             if adopted or extra:
                 reason = f"orphaned fixture descendants: {adopted + extra}"
                 break
@@ -148,13 +180,22 @@ def supervise(command, operation_ms, test_ms, shard_ms):
             time.sleep(0.02)
     finally:
         if reason:
+            # A fast orphan can arrive before the first progress poll. Read its
+            # still-active operation before terminating the blocked caller.
+            for entry in events.glob("*.json"):
+                try:
+                    candidate = json.loads(entry.read_text())
+                    if candidate["kind"] == "operation":
+                        last_record = candidate
+                except FileNotFoundError:
+                    continue
             if last_record and "test=" not in reason:
                 reason += f" last test={last_record['name']} operation={last_record['label']}"
             print(f"[nightly supervisor] FAIL {reason}", file=sys.stderr, flush=True)
         if child is not None:
             receipt = cleanup(child)
-        # Delete only the allocated fixture generation, after all children were
-        # reaped. shutil's fd-based traversal refuses substituted symlinks.
+        # Delete only the allocated fixture generation, after owned processes
+        # disappeared. shutil's fd-based traversal refuses substituted symlinks.
         current = root.lstat()
         if (current.st_dev, current.st_ino) != (root_identity.st_dev, root_identity.st_ino):
             raise RuntimeError("fixture root changed; retaining fixture")
@@ -169,6 +210,9 @@ def supervise(command, operation_ms, test_ms, shard_ms):
 
 if __name__ == "__main__":
     try:
+        if len(sys.argv) == 3 and sys.argv[1] == "--inspect":
+            print(json.dumps(process_snapshot(int(sys.argv[2]))))
+            sys.exit(0)
         budgets = [int(value) for value in sys.argv[1:4]]
         if len(budgets) != 3 or any(value <= 0 for value in budgets) or not sys.argv[4:]:
             raise ValueError("expected positive operation/test/shard deadlines and command")

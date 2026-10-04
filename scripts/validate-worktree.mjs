@@ -166,6 +166,8 @@ const PULL_REQUEST_PUBLISHER_TOOLING_PATHS = new Set([
 const PULL_REQUEST_PUBLISHER_TEST_FILES = ["scripts/worktree-publish.test.mjs", "scripts/task-decisions.test.mjs"];
 
 const TOOLING_SMOKE_RUNNER_PATHS = new Set([
+  ".github/workflows/nightly-fixture-acceptance.yml",
+  "scripts/nightly-fixture-acceptance.mjs",
   ".github/workflows/ci.yml",
   ".github/workflows/tooling-nightly.yml",
   "scripts/lib/tooling-smoke-plan.mjs",
@@ -178,6 +180,7 @@ const TOOLING_SMOKE_RUNNER_PATHS = new Set([
   "scripts/run-tooling-smoke-shard.test.mjs",
   "scripts/test-helpers/nightly-fixture-preload.mjs",
   "scripts/test-helpers/nightly-fixture-supervisor.py",
+  "scripts/test-helpers/nightly_fixture_darwin.py",
   "scripts/tooling-smoke-plan.test.mjs",
 ]);
 

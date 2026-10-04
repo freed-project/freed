@@ -97,14 +97,23 @@ budget. A blocked JavaScript event loop cannot disable these deadlines.
 Timeout diagnostics identify the active test and operation. The supervisor
 fails the shard even when an imported function would swallow a subprocess error.
 
-On Linux, a private subreaper adopts orphaned descendants, including detached
-children. Cleanup signals only its own current children through pidfds and
-reaps them before removing its private temporary fixture directory. Unrelated
-processes and shared process groups are never cleanup targets. An orphan fails
-the shard even if the tests otherwise passed. Unsupported confinement, including
-macOS without equivalent descendant custody, refuses before launch. Cleanup
-failure retains the fixture and reports failure; it never claims orphan-free
-success. This is test infrastructure, not production lifecycle authority.
+On Linux, a private subreaper adopts orphaned descendants and signals captured
+process generations through pidfds. On macOS, a private kernel responsibility
+anchor identifies descendants even after their intermediate parent exits;
+cleanup signals captured PID-version audit tokens. The Darwin supervisor reaps
+its direct children and requires nonchildren, including zombies, to disappear
+after their parents or launchd reap them. It does not claim Linux subreaper
+semantics on macOS. Both paths remove their private temporary fixture directory
+only after cleanup succeeds. Unrelated processes and shared process groups are
+never cleanup targets. An orphan fails the shard even if tests otherwise pass.
+Unavailable confinement fails before launch; cleanup failure retains the fixture
+and reports failure. This is test infrastructure, not production lifecycle authority.
+
+The `Nightly fixture supervision` workflow exercises failing actual shards,
+healthy nightly fixtures and the measurement command on Linux and macOS.
+Run `node scripts/nightly-fixture-acceptance.mjs` for the healthy execution checks.
+Direct `node --test scripts/nightly-self-improve.test.mjs` does not install the
+external supervisor; use the shard runner when validating these guarantees.
 
 ## Performance gates
 

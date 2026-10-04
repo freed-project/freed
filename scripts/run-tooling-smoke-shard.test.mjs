@@ -267,16 +267,23 @@ test("shard execution preserves JUnit unit timings", (t) => {
   assert.match(junit, /<testcase name="measured"/);
 });
 
-for (const operation of ["git", "gh", "local-timeout"]) {
+const supervisorPath = new URL("./test-helpers/nightly-fixture-supervisor.py", import.meta.url).pathname;
+function processGeneration(pid) {
+  const result = spawnSync("python3", ["-B", supervisorPath, "--inspect", String(pid)], {
+    encoding: "utf8", timeout: 5000,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  return JSON.parse(result.stdout);
+}
+
+for (const operation of ["git", "gh", "local-timeout", "double-fork"]) {
   test(`nightly shard bounds imported ${operation} and reaps escaped descendants`, async (t) => {
     const directory = mkdtempSync(path.join(os.tmpdir(), "freed-nightly-deadline-"));
     t.after(() => rmSync(directory, { recursive: true, force: true }));
     const env = { ...process.env };
     delete env.NODE_TEST_CONTEXT;
     const unrelated = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
-    const unrelatedStart = process.platform === "linux"
-      ? readFileSync(`/proc/${unrelated.pid}/stat`, "utf8").split(")").at(-1).trim().split(/\s+/)[19]
-      : null;
+    const unrelatedStart = processGeneration(unrelated.pid);
     t.after(async () => {
       if (unrelated.exitCode !== null || unrelated.signalCode !== null) return;
       const exited = once(unrelated, "exit");
@@ -293,12 +300,46 @@ for (const operation of ["git", "gh", "local-timeout"]) {
   const fs = require('node:fs');
   const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { detached: true, stdio: 'ignore' });
   function generation(pid) {
-    const stat = fs.readFileSync('/proc/' + pid + '/stat', 'utf8').split(')').at(-1).trim().split(/\\s+/);
-    return { pid, parentPid: Number(stat[1]), startTicks: stat[19], bootId: fs.readFileSync('/proc/sys/kernel/random/boot_id', 'utf8').trim() };
+    return JSON.parse(require('node:child_process').execFileSync('python3', ['-B', ${JSON.stringify(supervisorPath)}, '--inspect', String(pid)], { encoding: 'utf8' }));
   }
   fs.writeFileSync(${JSON.stringify(evidence)}, JSON.stringify({ child: process.pid, descendant: child.pid, childGeneration: generation(process.pid), descendantGeneration: generation(child.pid), fixture: process.env.TMPDIR }));
   setInterval(() => {}, 1000);
   `, { mode: 0o700 });
+    if (operation === "double-fork") {
+      writeFileSync(path.join(bin, "git"), `#!/usr/bin/env python3
+import importlib.util, json, os, sys, time
+sys.dont_write_bytecode = True
+sys.path.insert(0, ${JSON.stringify(path.dirname(supervisorPath))})
+spec = importlib.util.spec_from_file_location('supervisor', ${JSON.stringify(supervisorPath)})
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+root = module.process_snapshot(os.getpid())
+intermediate = os.fork()
+if intermediate == 0:
+    os.setsid()
+    parent = module.process_snapshot(os.getpid())
+    reader, writer = os.pipe()
+    descendant = os.fork()
+    if descendant:
+        os.close(writer)
+        os.read(reader, 1)
+        os._exit(0)
+    os.close(reader)
+    evidence = dict(child=root['pid'], childGeneration=root, descendant=os.getpid(),
+                    descendantGeneration=module.process_snapshot(os.getpid()),
+                    intermediate=parent['pid'], intermediateGeneration=parent,
+                    fixture=os.environ['TMPDIR'])
+    with open(${JSON.stringify(evidence)}, 'w') as stream:
+        json.dump(evidence, stream)
+    os.write(writer, b'1')
+    os.close(writer)
+    while True:
+        time.sleep(60)
+os.waitpid(intermediate, 0)
+while True:
+    time.sleep(60)
+`, { mode: 0o700 });
+    }
     const fixture = path.join(directory, "stall.test.mjs");
     writeFileSync(fixture, `
 import test from 'node:test';
@@ -311,7 +352,7 @@ import { execFileSync } from 'node:child_process';
   test('deliberately stalled imported ${operation}', () => withNightlyFixture('deliberately stalled imported ${operation}', () => {
     const root = mkdtempSync(path.join(os.tmpdir(), 'fixture-'));
     writeFileSync(path.join(root, 'owned-fixture'), 'cleanup required');
-  ${operation === "git" ? "collectRepoSnapshot(root)" : operation === "gh" ? "collectPeerWorktrees(root, [], false)" : "try { execFileSync('git', [], { timeout: 1000, killSignal: 'SIGKILL' }); } catch {}"};
+  ${["git", "double-fork"].includes(operation) ? "collectRepoSnapshot(root)" : operation === "gh" ? "collectPeerWorktrees(root, [], false)" : "try { execFileSync('git', [], { timeout: 1000, killSignal: 'SIGKILL' }); } catch {}"};
   }));
   `);
     const plan = { suite: "nightly-self-improve", shardIndex: 1, shardCount: 1,
@@ -325,40 +366,44 @@ import { execFileSync } from 'node:child_process';
     const output = result.stdout + result.stderr;
     assert.equal(result.error, undefined, output);
     assert.equal(result.status, 1, output);
-    if (process.platform !== "linux") {
-      assert.match(output, /confinement requires Linux.*refusing launch/);
-      assert.equal(existsSync(evidence), false);
-      return;
-    }
-    assert.match(output, operation === "local-timeout"
-      ? /orphaned fixture descendants: .*test=deliberately stalled imported local-timeout operation=execFileSync git/
+    assert.match(output, ["local-timeout", "double-fork"].includes(operation)
+      ? new RegExp(`orphaned fixture descendants: .*test=deliberately stalled imported ${operation} operation=execFileSync git`)
       : new RegExp(`operation deadline 2000ms test=deliberately stalled imported ${operation} operation=execFileSync ${operation}`));
     assert.match(output, /fixtureRemoved=True/);
     assert.ok(performance.now() - start < 10_000, output);
     const identities = JSON.parse(readFileSync(evidence, "utf8"));
-    assert.equal(identities.descendantGeneration.parentPid, identities.child);
-    assert.match(identities.childGeneration.startTicks, /^\d+$/);
-    assert.match(identities.descendantGeneration.startTicks, /^\d+$/);
-    for (const pid of [identities.child, identities.descendant]) {
-      assert.equal(existsSync(`/proc/${pid}`), false, `PID ${pid} must be reaped, not merely a zombie`);
+    assert.equal(identities.descendantGeneration.parentPid, identities.intermediate ?? identities.child);
+    assert.ok(identities.childGeneration.birth);
+    assert.ok(identities.descendantGeneration.birth);
+    for (const pid of [identities.child, identities.descendant, identities.intermediate].filter(Boolean)) {
+      assert.equal(processGeneration(pid), null, `PID ${pid} must disappear, not merely become a zombie`);
     }
     assert.equal(existsSync(identities.fixture), false);
     assert.equal(process.kill(unrelated.pid, 0), true, "unrelated process survives");
-    const unrelatedNow = readFileSync(`/proc/${unrelated.pid}/stat`, "utf8").split(")").at(-1).trim().split(/\s+/);
-    assert.equal(unrelatedNow[19], unrelatedStart, "unrelated generation is unchanged");
-    assert.notEqual(unrelatedNow[0], "Z", "unrelated process is alive, not a zombie");
+    const unrelatedNow = processGeneration(unrelated.pid);
+    assert.equal(unrelatedNow.birth, unrelatedStart.birth, "unrelated generation is unchanged");
+    assert.equal(unrelatedNow.zombie, false, "unrelated process is alive, not a zombie");
     console.log(output.split("\n").filter((line) => line.startsWith("[nightly supervisor]")).join("\n"));
     console.log(JSON.stringify({ contract: `imported ${operation} stall`, status: result.status,
-      elapsedMs: performance.now() - start, ...identities, childAndDescendantReaped: true,
+      elapsedMs: performance.now() - start, ...identities, childAndDescendantGone: true,
       fixtureRemoved: true, unrelatedAlive: true }));
   });
 }
 
-test("nightly supervisor refuses stale generations and foreign parents", () => {
+test("nightly supervisor refuses stale generations and foreign parents", async (t) => {
+  const foreign = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+  const foreignBefore = processGeneration(foreign.pid);
+  t.after(async () => {
+    if (foreign.exitCode !== null || foreign.signalCode !== null) return;
+    const exited = once(foreign, "exit");
+    foreign.kill("SIGKILL");
+    await exited;
+  });
   const helper = new URL("./test-helpers/nightly-fixture-supervisor.py", import.meta.url).pathname;
   const result = spawnSync("python3", ["-c", `
-import importlib.util, os, subprocess, sys
+import ctypes, errno, importlib.util, os, signal, subprocess, sys
 sys.dont_write_bytecode = True
+sys.path.insert(0, os.path.dirname(${JSON.stringify(helper)}))
 spec = importlib.util.spec_from_file_location('supervisor', ${JSON.stringify(helper)})
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
@@ -386,8 +431,36 @@ if platform == 'linux':
     finally:
         module.cleanup(child)
     assert not os.path.exists('/proc/' + str(child.pid))
+elif platform == 'darwin':
+    module.confine()
+    custody = module.DARWIN_CUSTODY
+    child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'])
+    try:
+        members = custody.inventory()
+        expected = next(entry for entry in members if entry['pid'] == child.pid)
+        assert custody.send(dict(expected, birth='stale'), signal.SIGKILL) is False
+        assert custody.send(dict(expected, pidversion=expected['pidversion'] + 1), signal.SIGKILL) is False
+        # Exercise the kernel's token check too, not just the userspace check.
+        from nightly_fixture_darwin import AuditToken
+        stale = AuditToken()
+        stale.val[5] = child.pid
+        stale.val[7] = (expected['pidversion'] + 1) & 0xffffffff
+        assert custody.lib.proc_signal_with_audittoken(ctypes.byref(stale), signal.SIGKILL) == errno.ESRCH
+        outsider = custody.inspect(${foreign.pid})
+        try:
+            custody.send(outsider, signal.SIGKILL)
+            raise AssertionError('foreign responsibility accepted')
+        except RuntimeError:
+            pass
+        assert child.poll() is None
+    finally:
+        module.cleanup(child)
+    assert custody.inspect(child.pid) is None
 `], { encoding: "utf8", timeout: 10_000 });
   assert.equal(result.status, 0, result.stderr);
+  const foreignAfter = processGeneration(foreign.pid);
+  assert.equal(foreignAfter.birth, foreignBefore.birth);
+  assert.equal(foreignAfter.zombie, false);
 });
 
 test("nightly shard deadline remains independent of a blocked test event loop", (t) => {
@@ -410,13 +483,9 @@ runToolingSmokeShard(${JSON.stringify(plan)}, { repoRoot: ${JSON.stringify(direc
     const output = result.stdout + result.stderr;
     assert.equal(result.error, undefined, output);
     assert.equal(result.status, 1, output);
-    if (process.platform !== "linux") {
-      assert.match(output, /refusing launch/);
-    } else {
-      assert.match(output, deadline === "test" ? /test deadline 200ms test=blocked loop/ : /independent shard deadline/);
-      assert.match(output, /"remaining": \[\]/);
-      assert.match(output, /fixtureRemoved=True/);
-    }
+    assert.match(output, deadline === "test" ? /test deadline 200ms test=blocked loop/ : /independent shard deadline/);
+    assert.match(output, /"remaining": \[\]/);
+    assert.match(output, /fixtureRemoved=True/);
   }
 });
 
