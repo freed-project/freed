@@ -1221,3 +1221,14 @@ duplicate facet or RSS reads. Retries drain sibling reads and stop after three
 attempts. This is source-coherent composition, not a shared SQL transaction or
 new write authority. External generation ABA and installed visual stability
 remain unproven.
+
+### Linked URL projection
+
+Compact feed and item-detail cards preserve the stored linked article URL
+independently from the post source URL. Missing links do not fabricate article
+fetch targets. Existing reader, pinning and item-change fetch flows can therefore
+request the stored publisher instead of the social post; response images and
+existing optional summarization remain governed by their existing settings. This
+exact correction was explicitly approved on 2026-10-04; no cadence, credential or
+AI-setting change is introduced. The original selection complaint remains
+unattributed.

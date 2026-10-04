@@ -834,13 +834,15 @@ describe("command palette", () => {
     expect(document.body.textContent).toContain("https://broken.example/feed.xml");
   });
 
-  it("routes demo promotions through session care and hides creation for unlinked accounts", async () => {
+  it("routes demo care and read-only Map navigation without creating unlinked relationships", async () => {
     const person: Person = { id: "demo-person", name: "Demo Mina", relationshipStatus: "connection", careLevel: 2, createdAt: 1, updatedAt: 1 };
     const account: Account = { id: "demo-account", personId: person.id, kind: "social", provider: "instagram", externalId: "demo-mina", displayName: person.name, firstSeenAt: 1, lastSeenAt: 1, discoveredFrom: "captured_item", createdAt: 1, updatedAt: 1 };
     const unlinked: Account = { ...account, id: "unlinked", personId: undefined, externalId: "demo-unlinked", displayName: "Demo Unlinked" };
     const upsertLibraryPerson = vi.fn();
     const onReadOnlyPersonCareChange = vi.fn(async () => {});
-    const platform = createPlatform(createTestStore(), {
+    const setSelectedPerson = vi.fn();
+    const setSelectedAccount = vi.fn();
+    const platform = createPlatform(createTestStore({ setSelectedPerson, setSelectedAccount }), {
       interactionMode: "read-only",
       queryLibraryCore: identityQueryFixture({ accounts: { linked: account, unlinked }, persons: { [person.id]: person } }),
       readLibraryPersonDetail: async () => person,
@@ -867,8 +869,14 @@ describe("command palette", () => {
     await flush();
     expect(document.body.textContent).not.toContain("Promote Demo Mina");
     expect(document.body.textContent).not.toContain("Promote Demo Unlinked");
-    expect(document.body.textContent).not.toContain("Demo Unlinked on Map");
     expect(document.body.textContent).toContain("Demo Unlinked's Friends view");
+    const mapAction = Array.from(document.querySelectorAll('[role="option"]')).find((node) => node.textContent?.includes("Demo Unlinked on Map"));
+    expect(mapAction).toBeDefined();
+    click(mapAction!);
+    await flush();
+    expect(setSelectedPerson).toHaveBeenCalledWith(null);
+    expect(setSelectedAccount).toHaveBeenCalledWith(unlinked.id);
+    expect(upsertLibraryPerson).not.toHaveBeenCalled();
   });
 
   it("archives current scope read items from bounded SQLite pages", async () => {

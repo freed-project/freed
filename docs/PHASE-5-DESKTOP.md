@@ -1767,3 +1767,14 @@ do not gain tracked relationship eligibility from discovery, activity, pins or
 roster flags alone. Profile Map navigation selects an existing Person or an
 unlinked Account in all-content mode, without creating a Connection. Historical
 relationship provenance remains unverified; this change does not clean up data.
+
+### Linked URL projection
+
+Compact feed and item-detail cards preserve the stored linked article URL
+independently from the post source URL. Missing links do not fabricate article
+fetch targets. Existing reader, pinning and item-change fetch flows can therefore
+request the stored publisher instead of the social post; response images and
+existing optional summarization remain governed by their existing settings. This
+exact correction was explicitly approved on 2026-10-04; no cadence, credential or
+AI-setting change is introduced. The original selection complaint remains
+unattributed.
