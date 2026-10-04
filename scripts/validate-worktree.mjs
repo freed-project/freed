@@ -1439,6 +1439,18 @@ export function buildValidationPlan(mode, changedFiles) {
     );
   }
 
+  if (changedFiles.some((file) => [
+    "scripts/worktree-preview.sh",
+    "scripts/worktree-processes.sh",
+    "scripts/lib/worktree-runtime.sh",
+    "scripts/lib/preview-processes.py",
+    "scripts/worktree-preview.test.mjs",
+  ].includes(file))) {
+    addCommand(plan, nodeCommand("worktree preview process tests", [
+      "--test", "scripts/worktree-preview.test.mjs", "scripts/task-decisions.test.mjs",
+    ]));
+  }
+
   if (toolingSmokeRunnerChanged) {
     addCommand(
       plan,

@@ -31,6 +31,7 @@ jobs:
       applicable: ${{ steps.plan.outputs.applicable }}
       job-count: ${{ steps.plan.outputs.job-count }}
       native: ${{ steps.plan.outputs.native }}
+      preview-native: ${{ steps.plan.outputs.preview-native }}
       reason: ${{ steps.plan.outputs.reason }}
     steps:
       - name: Checkout
@@ -76,6 +77,7 @@ jobs:
             echo "- jobs: ${{ steps.plan.outputs.job-count }} (cap 16, was a fixed 32)"
             echo "- reason: ${{ steps.plan.outputs.reason }}"
             echo "- native acceptance lane: ${{ steps.plan.outputs.native }}"
+            echo "- preview process acceptance: ${{ steps.plan.outputs.preview-native }}"
           } >> "$GITHUB_STEP_SUMMARY"
 
   tooling-smoke-shards:
@@ -150,7 +152,7 @@ jobs:
   tooling-smoke:
     name: Tooling smoke
     if: ${{ !cancelled() }}
-    needs: [tooling-smoke-plan, tooling-smoke-shards, native-acceptance]
+    needs: [tooling-smoke-plan, tooling-smoke-shards, native-acceptance, preview-process-acceptance]
     runs-on: ubuntu-latest
     steps:
       - name: Require the planned tooling smoke result
@@ -160,6 +162,8 @@ jobs:
           NATIVE_RESULT: ${{ needs.native-acceptance.result }}
           APPLICABLE: ${{ needs.tooling-smoke-plan.outputs.applicable }}
           NATIVE_REQUIRED: ${{ needs.tooling-smoke-plan.outputs.native }}
+          PREVIEW_REQUIRED: ${{ needs.tooling-smoke-plan.outputs.preview-native }}
+          PREVIEW_RESULT: ${{ needs.preview-process-acceptance.result }}
           JOB_COUNT: ${{ needs.tooling-smoke-plan.outputs.job-count }}
         run: |
           # A cancelled dependency can still reach here when individual jobs were
@@ -203,6 +207,18 @@ jobs:
               exit 1
             fi
             echo "No changed path reaches the tooling smoke lane."
+          fi
+
+          # Cleanup can terminate processes and remove a worktree. Its native
+          # proof is mandatory whenever selected, including skipped/cancelled jobs.
+          if [ "$PREVIEW_REQUIRED" = "true" ]; then
+            if [ "$PREVIEW_RESULT" != "success" ]; then
+              echo "Preview process acceptance did not pass: $PREVIEW_RESULT"
+              exit 1
+            fi
+          elif [ "$PREVIEW_REQUIRED" != "false" ] || [ "$PREVIEW_RESULT" != "skipped" ]; then
+            echo "Invalid preview acceptance plan/result: $PREVIEW_REQUIRED/$PREVIEW_RESULT"
+            exit 1
           fi
 
           # Observe-only for now, deliberately.
@@ -253,6 +269,28 @@ jobs:
 
       - name: Run native acceptance tests
         run: node scripts/run-native-acceptance.mjs
+
+  # These builtin-only fixtures exercise the real libproc generation boundary.
+  # Keep them separate from actor provisioning and Windows product compilation.
+  preview-process-acceptance:
+    name: Preview process acceptance (macOS)
+    needs: tooling-smoke-plan
+    if: needs.tooling-smoke-plan.outputs.preview-native == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ".nvmrc"
+
+      - name: Verify platform and preview process contracts
+        run: |
+          node -e 'if (process.platform !== "darwin") process.exit(1)'
+          node --test --test-timeout=30000 scripts/worktree-preview.test.mjs scripts/task-decisions.test.mjs
 
   main-pr-guard:
     name: Main PR guard

@@ -1272,3 +1272,20 @@ test("cloud release workflow and entrypoint run their focused authority tests", 
     assert.ok(FOCUSED_FEATURE_VALIDATION_PATHS.has(changed));
   }
 });
+
+
+test("preview process changes run scoped cleanup proof without product suites", () => {
+  for (const file of [
+    "scripts/worktree-preview.sh",
+    "scripts/worktree-processes.sh",
+    "scripts/lib/worktree-runtime.sh",
+    "scripts/lib/preview-processes.py",
+    "scripts/worktree-preview.test.mjs",
+  ]) {
+    const plan = buildValidationPlan("feature", [file]);
+    assert.deepEqual(describePlan(plan), ["root typecheck", "worktree preview process tests"]);
+    assert.deepEqual(plan[1].args, [
+      "--test", "scripts/worktree-preview.test.mjs", "scripts/task-decisions.test.mjs",
+    ]);
+  }
+});

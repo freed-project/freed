@@ -422,6 +422,25 @@ export function selectNativeAcceptance(
   return Object.freeze({ required: reached.length > 0, files: reached });
 }
 
+// Preview cleanup has real Darwin signaling contracts, independent of the
+// observe-only actor lane and its Windows compile selection.
+export function selectPreviewNativeAcceptance(changedFiles) {
+  const files = [...new Set(changedFiles.map(toPosix))].filter(Boolean);
+  const inputs = new Set([
+    "scripts/lib/preview-processes.py",
+    "scripts/lib/worktree-runtime.sh",
+    "scripts/worktree-processes.sh",
+    "scripts/worktree-preview.sh",
+    "scripts/worktree-preview.test.mjs",
+    "scripts/task-decisions.test.mjs",
+    "scripts/plan-tooling-smoke.mjs",
+    "scripts/lib/tooling-smoke-plan.mjs",
+  ]);
+  return files.length === 0 || files.some((file) =>
+    GLOBAL_INVALIDATION_PATHS.has(file) || inputs.has(file),
+  );
+}
+
 export const DURATIONS_FILE = "scripts/tooling-smoke-durations.json";
 
 /**
