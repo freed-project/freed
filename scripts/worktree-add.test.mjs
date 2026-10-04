@@ -120,7 +120,7 @@ test("worktree-add forwards newer Git switches before the destination", async (t
         ? [option, "-b", "fix/unborn", "../requested", "--install=none"]
         : [option, "--detach", "../requested", "HEAD", "--install=none"];
       const result = f.run(args);
-      const supported = `${help.stdout}${help.stderr}`.includes(option.replace("--no-", "--"));
+      const supported = `${help.stdout}${help.stderr}`.replaceAll("[no-]", "").includes(option.replace("--no-", "--"));
       if (supported) {
         assert.equal(result.status, 0, result.stderr);
         assert.equal(await readFile(path.join(f.root, "requested/decisions-initialized"), "utf8"), "yes");
