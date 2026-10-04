@@ -2,7 +2,7 @@
   "channel": "dev",
   "dayKey": "26.10.4",
   "date": "2026-10-04",
-  "preferredDeck": "Less work during startup",
+  "preferredDeck": "Clearer Library counts and backup status",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
@@ -10,7 +10,8 @@
   ],
   "pinnedHighlights": [],
   "editorialNotes": [
-    "Reviewed exact2098 product delta: distinct count-free metadata identity, fresh snapshot authority and actor checks preserved, full counted descriptor/export unchanged. No installed latency or CPU improvement claim before signed acceptance. Generated activation manifest delta is empty and unchanged."
+    "Reviewed exact2098 product delta: distinct count-free metadata identity, fresh snapshot authority and actor checks preserved, full counted descriptor/export unchanged. No installed latency or CPU improvement claim before signed acceptance. Generated activation manifest delta is empty and unchanged.",
+    "Regenerated source identity after protected test-only PR2113 corrected the two graph integration contracts. Four runtime repair scopes remain byte-identical to reviewed product0360e4d5."
   ],
-  "updatedAt": "2026-10-04T14:57:29.118Z"
+  "updatedAt": "2026-10-04T22:52:45.079Z"
 }
