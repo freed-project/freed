@@ -396,6 +396,7 @@ function shallowEqualRecord(
   );
 }
 
+// Resolved, time-filtered map counts belong to MapView, not runtime DTO placeholders.
 function runtimeStatePatch(state: LibraryCoreRuntimeStateV1): Pick<
   AppState,
   | "archivableCountByPlatform"
@@ -405,8 +406,6 @@ function runtimeStatePatch(state: LibraryCoreRuntimeStateV1): Pick<
   | "archivedItemCount"
   | "friendPersonCount"
   | "socialAccountCount"
-  | "mapAllContentLocationCount"
-  | "mapFriendLocationCount"
   | "preferences"
   | "searchCorpusVersion"
   | "totalArchivableCount"
@@ -422,8 +421,6 @@ function runtimeStatePatch(state: LibraryCoreRuntimeStateV1): Pick<
     archivedItemCount: state.archivedItemCount,
     friendPersonCount: state.friendPersonCount,
     socialAccountCount: state.socialAccountCount,
-    mapAllContentLocationCount: state.mapAllContentLocationCount,
-    mapFriendLocationCount: state.mapFriendLocationCount,
     preferences: state.preferences,
     searchCorpusVersion: state.searchCorpusVersion,
     totalArchivableCount: state.totalArchivableCount,
