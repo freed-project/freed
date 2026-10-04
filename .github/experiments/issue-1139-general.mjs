@@ -8,7 +8,23 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 export const SOURCE = "1d7045a16e01e5551dc452b62734bec0130473fb";
-export const MODES = ["bytes", "durations", "durations", "bytes"];
+// One complete paired comparison per runner, two independent runner-level repeats.
+// ABBA / BAAB counterbalances mode order for each shard index. Do not pool
+// individual shard times across CPUs or call these four repeats per runner.
+export const SCHEDULES = {
+  1: [
+    { mode: "bytes", shardIndex: 1 },
+    { mode: "durations", shardIndex: 1 },
+    { mode: "durations", shardIndex: 2 },
+    { mode: "bytes", shardIndex: 2 },
+  ],
+  2: [
+    { mode: "durations", shardIndex: 1 },
+    { mode: "bytes", shardIndex: 1 },
+    { mode: "bytes", shardIndex: 2 },
+    { mode: "durations", shardIndex: 2 },
+  ],
+};
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const save = (file, value) => writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
 
@@ -34,15 +50,16 @@ export function makePlans(build, repoRoot, catalog, files) {
 
 // The caller supplies the frozen runner and parser. Tests use a tiny real fixture;
 // the production CLI below permits only SOURCE and exactly 71 general files.
-export function measure({ repoRoot, outputDir, shardIndex, plans, runnerPath, parseJUnitTestCases, unitDurationsForSuite, metadata, assertFrozen = () => {} }) {
-  assert.ok([1, 2].includes(shardIndex));
+export function measure({ repoRoot, outputDir, replicate, plans, runnerPath, parseJUnitTestCases, unitDurationsForSuite, metadata, assertFrozen = () => {} }) {
+  assert.ok([1, 2].includes(replicate));
   mkdirSync(outputDir, { recursive: true });
-  const report = { ...metadata, shardIndex, modes: MODES, plans, runs: [] };
+  const schedule = SCHEDULES[replicate];
+  const report = { schemaVersion: 2, ...metadata, replicate, schedule, plans, runs: [] };
   save(path.join(outputDir, "report.json"), report);
-  for (const [round, mode] of MODES.entries()) {
+  for (const [round, { mode, shardIndex }] of schedule.entries()) {
     assertFrozen();
     const plan = plans[mode][shardIndex - 1];
-    const name = `${round + 1}-${mode}`;
+    const name = `${round + 1}-${mode}-shard-${shardIndex}`;
     const planFile = path.join(outputDir, `${name}.plan.json`);
     save(planFile, plan);
     const junit = path.join(repoRoot, "tooling-smoke-results", `general-${shardIndex}-of-2.xml`);
@@ -57,7 +74,7 @@ export function measure({ repoRoot, outputDir, shardIndex, plans, runnerPath, pa
     } finally {
       closeSync(log);
     }
-    const run = { round: round + 1, mode, startedAt, endedAt: new Date().toISOString(), seconds: Number(process.hrtime.bigint() - start) / 1e9, status: result.status, signal: result.signal, error: result.error?.message, valid: false };
+    const run = { round: round + 1, mode, shardIndex, startedAt, endedAt: new Date().toISOString(), seconds: Number(process.hrtime.bigint() - start) / 1e9, status: result.status, signal: result.signal, error: result.error?.message, valid: false };
     report.runs.push(run);
     try {
       if (existsSync(junit)) copyFileSync(junit, path.join(outputDir, `${name}.xml`));
@@ -77,11 +94,21 @@ export function measure({ repoRoot, outputDir, shardIndex, plans, runnerPath, pa
     }
     console.log(`${name}: ${run.seconds.toFixed(3)}s, ${run.observedFiles.toLocaleString()} files, pass`);
   }
+  // Both shard observations in each mode belong to this one runner/CPU.
+  report.comparison = Object.fromEntries(["bytes", "durations"].map((mode) => {
+    const runs = report.runs.filter((run) => run.mode === mode)
+      .sort((left, right) => left.shardIndex - right.shardIndex);
+    assert.deepEqual(runs.map((run) => run.shardIndex), [1, 2]);
+    assert.ok(runs.every((run) => run.valid));
+    const seconds = runs.map((run) => run.seconds);
+    return [mode, { seconds, spread: Math.max(...seconds) / Math.min(...seconds) }];
+  }));
+  save(path.join(outputDir, "report.json"), report);
   return report;
 }
 
 async function main(args) {
-  assert.equal(args.length, 3, "Usage: issue-1139-general.mjs <candidate> <receipts> <1|2>");
+  assert.equal(args.length, 3, "Usage: issue-1139-general.mjs <candidate> <receipts> <replicate:1|2>");
   const [source, output, index] = args;
   assert.match(index, /^[12]$/u);
   const repoRoot = path.resolve(source);
@@ -111,12 +138,13 @@ async function main(args) {
   const files = generalTestFiles(repoRoot);
   assert.equal(files.length, 71);
   const plans = makePlans(buildToolingSmokeShardPlan, repoRoot, JSON.parse(catalogBytes), files);
-  measure({ repoRoot, outputDir, shardIndex: Number(index), plans, runnerPath, parseJUnitTestCases, unitDurationsForSuite, assertFrozen, metadata: {
+  measure({ repoRoot, outputDir, replicate: Number(index), plans, runnerPath, parseJUnitTestCases, unitDurationsForSuite, assertFrozen, metadata: {
     source: SOURCE, experiment: process.env.GITHUB_SHA ?? null, catalogSha256,
     node: process.version, npm: "11.11.0", go: "1.27.1", platform: process.platform, arch: process.arch,
     availableParallelism: os.availableParallelism(), cpuModel: os.cpus()[0]?.model, totalMemory: os.totalmem(),
     kernel: os.release(), image: process.env.ImageOS ?? null, imageVersion: process.env.ImageVersion ?? null,
-    files, timing: "Monotonic subprocess wall seconds, excluding install and artifact upload. No planner estimates.",
+    files, comparisonUnit: "One full byte/duration comparison on this runner; two runners provide two repeats. Do not pool shard times across runners.",
+    timing: "Monotonic subprocess wall seconds, excluding install and artifact upload. No planner estimates.",
   } });
 }
 

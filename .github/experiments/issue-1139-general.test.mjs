@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import yaml from "js-yaml";
-import { makePlans, measure, MODES, SOURCE } from "./issue-1139-general.mjs";
+import { makePlans, measure, SCHEDULES, SOURCE } from "./issue-1139-general.mjs";
 import { buildToolingSmokeShardPlan } from "../../scripts/run-tooling-smoke-shard.mjs";
 import { parseJUnitTestCases, unitDurationsForSuite } from "../../scripts/measure-tooling-smoke.mjs";
 
@@ -25,7 +25,7 @@ function fixture(t, failing = false) {
   return { root, repoRoot, plans, runnerPath, parseJUnitTestCases, unitDurationsForSuite, metadata: { source: "synthetic fixture" } };
 }
 
-test("manual workflow freezes source and caps work at two jobs and eight shard runs", () => {
+test("manual workflow freezes source and caps work at two paired comparisons and eight shard runs", () => {
   assert.equal(existsSync(".github/workflows/issue-1139-general-experiment.yml"), false);
   const workflow = yaml.load(readFileSync(".github/workflows/tooling-nightly.yml", "utf8"));
   assert.deepEqual(Object.keys(workflow.on), ["workflow_dispatch"]);
@@ -34,10 +34,17 @@ test("manual workflow freezes source and caps work at two jobs and eight shard r
   const job = workflow.jobs.measure;
   assert.equal(job["runs-on"], "ubuntu-24.04");
   assert.equal(job["timeout-minutes"], 50);
-  assert.deepEqual(job.strategy.matrix, { shard: [1, 2] });
+  assert.deepEqual(job.strategy.matrix, { replicate: [1, 2] });
   assert.equal(job.strategy["max-parallel"], 2);
   assert.equal(job.strategy["fail-fast"], false);
-  assert.deepEqual(MODES, ["bytes", "durations", "durations", "bytes"]);
+  assert.deepEqual(SCHEDULES[1], [
+    { mode: "bytes", shardIndex: 1 }, { mode: "durations", shardIndex: 1 },
+    { mode: "durations", shardIndex: 2 }, { mode: "bytes", shardIndex: 2 },
+  ]);
+  assert.deepEqual(SCHEDULES[2], [
+    { mode: "durations", shardIndex: 1 }, { mode: "bytes", shardIndex: 1 },
+    { mode: "bytes", shardIndex: 2 }, { mode: "durations", shardIndex: 2 },
+  ]);
   for (const step of job.steps.filter((step) => step.uses)) assert.match(step.uses, /@[a-f0-9]{40}$/u);
   const checkout = job.steps.find((step) => step.with?.path === "candidate");
   assert.equal(checkout.with.ref, SOURCE);
@@ -53,17 +60,21 @@ test("plans reject duplicate or missing files before execution", () => {
   assert.throws(() => makePlans(missing, "/unused", {}, ["a", "b", "c"]), /incomplete/);
 });
 
-test("real synthetic shards retain eight passing ABBA observations and complete coverage", (t) => {
+test("each runner measures both indices and modes with real complete synthetic coverage", (t) => {
   const options = fixture(t);
-  const reports = [1, 2].map((shardIndex) => measure({ ...options, shardIndex, outputDir: path.join(options.root, `receipts-${shardIndex}`) }));
+  const reports = [1, 2].map((replicate) => measure({ ...options, replicate, outputDir: path.join(options.root, `receipts-${replicate}`) }));
   assert.equal(reports.flatMap((report) => report.runs).length, 8);
-  for (let round = 0; round < 4; round += 1) {
-    assert.equal(reports.reduce((count, report) => count + report.runs[round].observedFiles, 0), 3);
-    for (const report of reports) {
-      const run = report.runs[round];
-      assert.equal(run.valid, true);
-      assert.equal(run.mode, MODES[round]);
-      assert.ok(run.seconds > 0);
+  for (const report of reports) {
+    assert.deepEqual(report.runs.map(({ mode, shardIndex }) => ({ mode, shardIndex })), SCHEDULES[report.replicate]);
+    for (const mode of ["bytes", "durations"]) {
+      const runs = report.runs.filter((run) => run.mode === mode)
+        .sort((a, b) => a.shardIndex - b.shardIndex);
+      assert.deepEqual(runs.map((run) => run.shardIndex), [1, 2]);
+      assert.equal(runs.reduce((n, run) => n + run.observedFiles, 0), 3);
+      assert.ok(runs.every((run) => run.valid && run.seconds > 0));
+      const seconds = runs.map((run) => run.seconds);
+      assert.deepEqual(report.comparison[mode].seconds, seconds);
+      assert.equal(report.comparison[mode].spread, Math.max(...seconds) / Math.min(...seconds));
     }
   }
 });
@@ -71,7 +82,7 @@ test("real synthetic shards retain eight passing ABBA observations and complete 
 test("failed shard preserves invalid receipt and stops before later rounds", (t) => {
   const options = fixture(t, true);
   const outputDir = path.join(options.root, "failed-receipts");
-  assert.throws(() => measure({ ...options, shardIndex: 1, outputDir }), /failed or timed out/);
+  assert.throws(() => measure({ ...options, replicate: 1, outputDir }), /failed or timed out/);
   const report = JSON.parse(readFileSync(path.join(outputDir, "report.json")));
   assert.equal(report.runs.length, 1);
   assert.equal(report.runs[0].valid, false);
@@ -83,7 +94,7 @@ test("a changed frozen input invalidates the observation and stops subsequent ro
   const outputDir = path.join(options.root, "changed-input-receipts");
   let checks = 0;
   assert.throws(() => measure({
-    ...options, shardIndex: 1, outputDir,
+    ...options, replicate: 1, outputDir,
     assertFrozen() {
       checks += 1;
       assert.equal(checks, 1, "catalog changed");
