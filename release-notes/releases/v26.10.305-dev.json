@@ -3,8 +3,10 @@
   "version": "26.10.305-dev",
   "channel": "dev",
   "dayKey": "26.10.3",
-  "approved": false,
-  "editorialNotes": [],
+  "approved": true,
+  "editorialNotes": [
+    "Reviewed exact new product delta: map-count ownership fix plus bounded default-off priority/social diagnostics and passive native stage timing. Preserve cumulative same-day history. Earlier social-build CPU follow-up refers to303; native timing adds attribution, not an optimization claim. No extra capture or new provider behavior, no Facebook mixed-discovery activation, and generated Library activation delta is empty. Native/UI acceptance is pending signed installation."
+  ],
   "generatedAt": "2026-10-04T06:41:14.226Z",
   "model": "heuristic",
   "source": {
@@ -99,15 +101,15 @@
     ]
   },
   "release": {
-    "deck": "More predictable navigation and less repeated native setup",
+    "deck": "Stable map totals and better visibility into startup work",
     "features": [
       "Report bounded native capture admission evidence",
       "Deliver signed and PWA transfer acceptance builds",
       "Isolated multi-desktop acceptance builds"
     ],
     "fixes": [
+      "Preserve resolved map header counts when unrelated Library events arrive",
       "Reader, feed, and header polish",
-      "Isolate parallel Jev budget test ledgers",
       "Show Library backup preparation before downloading an update",
       "Capture and scraper reliability fixes",
       "Report unsupported long-task monitoring as unavailable",
@@ -132,8 +134,10 @@
       "Facebook and Instagram completeness and sponsored-ad exclusion remain under verification",
       "More accurate Facebook and Instagram header filtering while preserving organic captions",
       "Live Facebook and Instagram acceptance remains scoped to observed placements with explicit paid-provenance evidence",
-      "High native CPU remains under investigation; this social update does not include pending performance fixes"
+      "High native CPU remains under investigation; this social update does not include pending performance fixes",
+      "Isolate parallel Jev budget test ledgers",
+      "Priority and social pass diagnostics remain default-off; sampled native startup stages are included without a CPU or latency improvement claim"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.10.305-dev\n\nMore predictable navigation and less repeated native setup\n\n### Features\n\n- Report bounded native capture admission evidence\n- Deliver signed and PWA transfer acceptance builds\n- Isolated multi-desktop acceptance builds\n\n### Fixes\n\n- Reader, feed, and header polish\n- Isolate parallel Jev budget test ledgers\n- Show Library backup preparation before downloading an update\n- Capture and scraper reliability fixes\n- Report unsupported long-task monitoring as unavailable\n- Keep signed preview and transfer-acceptance assets out of ordinary updater manifests\n- Preserve primary and existing preview credential-service identities\n- Keep large changed-post refresh batches from overwhelming local reads\n- Optimized repeated work during Library snapshot hashing and archive writing\n- Retain known feed counts during refreshes and distinguish unavailable counts from an empty Library\n- Retain identity in first renderer heartbeat\n- Isolate signed measurement profiles and credential services\n- Keep ordinary Facebook captions when recommendation words appear outside the post header\n- Reject split Instagram Sponsored headers while retaining longer organic labels\n- Preserve manual map navigation while pins load and verify selected Library authority on one configured connection\n\n### Follow-ups\n\n- Reader, sidebar, and settings UX work\n- Release workflow and build-system work\n- Transfer-acceptance builds remain separate opt-in test artifacts; ordinary Library transfer and schema-v2 operations remain disabled\n- Sync, cloud, and pairing infrastructure\n- Capture, login, and scraping platform work\n- Clearer update status and accurate item totals during refresh\n- Facebook and Instagram completeness and sponsored-ad exclusion remain under verification\n- More accurate Facebook and Instagram header filtering while preserving organic captions\n- Live Facebook and Instagram acceptance remains scoped to observed placements with explicit paid-provenance evidence\n- High native CPU remains under investigation; this social update does not include pending performance fixes\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.10.305-dev\n\nStable map totals and better visibility into startup work\n\n### Features\n\n- Report bounded native capture admission evidence\n- Deliver signed and PWA transfer acceptance builds\n- Isolated multi-desktop acceptance builds\n\n### Fixes\n\n- Preserve resolved map header counts when unrelated Library events arrive\n- Reader, feed, and header polish\n- Show Library backup preparation before downloading an update\n- Capture and scraper reliability fixes\n- Report unsupported long-task monitoring as unavailable\n- Keep signed preview and transfer-acceptance assets out of ordinary updater manifests\n- Preserve primary and existing preview credential-service identities\n- Keep large changed-post refresh batches from overwhelming local reads\n- Optimized repeated work during Library snapshot hashing and archive writing\n- Retain known feed counts during refreshes and distinguish unavailable counts from an empty Library\n- Retain identity in first renderer heartbeat\n- Isolate signed measurement profiles and credential services\n- Keep ordinary Facebook captions when recommendation words appear outside the post header\n- Reject split Instagram Sponsored headers while retaining longer organic labels\n- Preserve manual map navigation while pins load and verify selected Library authority on one configured connection\n\n### Follow-ups\n\n- Reader, sidebar, and settings UX work\n- Release workflow and build-system work\n- Transfer-acceptance builds remain separate opt-in test artifacts; ordinary Library transfer and schema-v2 operations remain disabled\n- Sync, cloud, and pairing infrastructure\n- Capture, login, and scraping platform work\n- Clearer update status and accurate item totals during refresh\n- Facebook and Instagram completeness and sponsored-ad exclusion remain under verification\n- More accurate Facebook and Instagram header filtering while preserving organic captions\n- Live Facebook and Instagram acceptance remains scoped to observed placements with explicit paid-provenance evidence\n- High native CPU remains under investigation; this social update does not include pending performance fixes\n- Isolate parallel Jev budget test ledgers\n- Priority and social pass diagnostics remain default-off; sampled native startup stages are included without a CPU or latency improvement claim\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
