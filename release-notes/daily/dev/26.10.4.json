@@ -2,7 +2,7 @@
   "channel": "dev",
   "dayKey": "26.10.4",
   "date": "2026-10-04",
-  "preferredDeck": "Less work during startup",
+  "preferredDeck": "Clearer Library counts and backup status",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
@@ -10,7 +10,8 @@
   ],
   "pinnedHighlights": [],
   "editorialNotes": [
-    "Reviewed exact2098 product delta: distinct count-free metadata identity, fresh snapshot authority and actor checks preserved, full counted descriptor/export unchanged. No installed latency or CPU improvement claim before signed acceptance. Generated activation manifest delta is empty and unchanged."
+    "Reviewed exact2098 product delta: distinct count-free metadata identity, fresh snapshot authority and actor checks preserved, full counted descriptor/export unchanged. No installed latency or CPU improvement claim before signed acceptance. Generated activation manifest delta is empty and unchanged.",
+    "Reviewed the actual protected product merge and all four repair scopes. Article target behavior carries the explicit 20:01 UTC owner approval. Generated activation delta is empty; physical SQL schema is unchanged."
   ],
   "updatedAt": "2026-10-04T21:38:46.569Z"
 }

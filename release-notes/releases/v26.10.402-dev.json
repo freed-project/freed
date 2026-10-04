@@ -3,8 +3,10 @@
   "version": "26.10.402-dev",
   "channel": "dev",
   "dayKey": "26.10.4",
-  "approved": false,
-  "editorialNotes": [],
+  "approved": true,
+  "editorialNotes": [
+    "Reviewed the actual protected product merge and all four repair scopes. Article target behavior carries the explicit 20:01 UTC owner approval. Generated activation delta is empty; physical SQL schema is unchanged."
+  ],
   "generatedAt": "2026-10-04T21:38:46.566Z",
   "model": "heuristic",
   "source": {
@@ -68,26 +70,21 @@
     ]
   },
   "release": {
-    "deck": "Less work during startup",
+    "deck": "Clearer Library counts and backup status",
     "features": [],
     "fixes": [
-      "Keep Library counts coherent and preserve article targets",
-      "Align feed scroll checks with current card heights",
-      "Constrain mobile settings navigation scrolling",
-      "Avoid counting every checkpoint record during routine Library sync checks",
-      "Record bounded timing for Library checkpoint preparation"
+      "Keep navigation counts tied to one coherent Library state and retain verified counts while refreshing.",
+      "Show elapsed backup time in the update notification and Settings.",
+      "Keep discovered accounts out of the tracked relationship graph and open their Map location without creating a connection.",
+      "Use the stored article link consistently when opening, saving, and processing linked articles.",
+      "Keep mobile Settings navigation within the available screen height.",
+      "Avoid counting every checkpoint record during routine Library sync checks."
     ],
     "followUps": [
-      "Prepare v26.10.401-dev",
-      "Attribute native checkpoint preparation substages",
-      "Skip checkpoint census during cloud preflight",
-      "Full checkpoint preparation retains complete validation and can still take time",
-      "Installed startup and manual responsiveness verification remain separate from synthetic benchmarks",
-      "Priority and social diagnostics remain off; provider and schema activation boundaries are unchanged",
-      "Clearer diagnostics for slow Library sync",
-      "Writer admission delays remain a separate investigation",
-      "This build adds attribution; no reduction in stalls or CPU use is claimed"
+      "The elapsed timer reports time spent; it does not shorten a full Library backup.",
+      "Installed responsiveness and count stability still require verification on the signed build.",
+      "Existing AI preferences and provider schedules are unchanged."
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.10.402-dev\n\nLess work during startup\n\n### Fixes\n\n- Keep Library counts coherent and preserve article targets\n- Align feed scroll checks with current card heights\n- Constrain mobile settings navigation scrolling\n- Avoid counting every checkpoint record during routine Library sync checks\n- Record bounded timing for Library checkpoint preparation\n\n### Follow-ups\n\n- Prepare v26.10.401-dev\n- Attribute native checkpoint preparation substages\n- Skip checkpoint census during cloud preflight\n- Full checkpoint preparation retains complete validation and can still take time\n- Installed startup and manual responsiveness verification remain separate from synthetic benchmarks\n- Priority and social diagnostics remain off; provider and schema activation boundaries are unchanged\n- Clearer diagnostics for slow Library sync\n- Writer admission delays remain a separate investigation\n- This build adds attribution; no reduction in stalls or CPU use is claimed\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.10.402-dev\n\nClearer Library counts and backup status\n\n### Fixes\n\n- Keep navigation counts tied to one coherent Library state and retain verified counts while refreshing\n- Show elapsed backup time in the update notification and Settings\n- Keep discovered accounts out of the tracked relationship graph and open their Map location without creating a connection\n- The stored article link consistently when opening, saving, and processing linked articles. now uses the correct path\n- Keep mobile Settings navigation within the available screen height\n- Avoid counting every checkpoint record during routine Library sync checks\n\n### Follow-ups\n\n- The elapsed timer reports time spent; it does not shorten a full Library backup\n- Installed responsiveness and count stability still require verification on the signed build\n- Existing AI preferences and provider schedules are unchanged\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
