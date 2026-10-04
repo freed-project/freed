@@ -429,15 +429,25 @@ test("required aggregate settles cancellation and enforces the native OPFS resul
   ]);
   assert.equal(
     gate.steps.length,
-    1,
+    2,
     "status-only gate has no checkout or install",
   );
   assert.equal(gate["continue-on-error"] ?? false, false);
   const step = gate.steps[0];
   assert.equal(step.if, "${{ always() }}");
   assert.equal(step["continue-on-error"] ?? false, false);
+  const cancellationStep = gate.steps[1];
+  assert.equal(cancellationStep.if, "${{ cancelled() }}");
+  assert.equal(cancellationStep["timeout-minutes"], 1);
+  assert.equal(cancellationStep["continue-on-error"] ?? false, false);
+  assert.ok(gate.steps.every((entry) => entry.run && !entry.uses));
+  // Guard the invalid Actions context that YAML parsing alone admitted.
+  for (const entry of gate.steps) {
+    for (const value of Object.values(entry.env ?? {})) {
+      assert.doesNotMatch(value, /\b(?:always|cancelled|success|failure)\s*\(/);
+    }
+  }
   for (const [name, expression] of Object.entries({
-    WORKFLOW_CANCELLED: "cancelled()",
     EVENT_NAME: "github.event_name",
     BASE_REF: "github.base_ref",
     REF: "github.ref",
@@ -467,7 +477,6 @@ test("required aggregate settles cancellation and enforces the native OPFS resul
   );
 
   const defaults = {
-    WORKFLOW_CANCELLED: "false",
     EVENT_NAME: "pull_request",
     BASE_REF: "dev",
     REF: "refs/pull/1/merge",
@@ -482,20 +491,33 @@ test("required aggregate settles cancellation and enforces the native OPFS resul
     NATIVE_RESULT: "skipped",
   };
   function check(overrides, accepted) {
-    const result = spawnSync(
-      "bash",
-      ["--noprofile", "--norc", "-e", "-o", "pipefail", "-c", step.run],
-      {
-        env: { ...process.env, ...defaults, ...overrides },
-        encoding: "utf8",
-        timeout: 5000,
-      },
-    );
-    assert.equal(
-      result.status,
-      accepted ? 0 : 1,
-      `${JSON.stringify(overrides)}: ${result.stdout}${result.stderr}`,
-    );
+    // Execute both real shell bodies with the two exact conditions asserted
+    // above. This models their outcome composition, not GitHub scheduling.
+    for (const cancelled of [false, true]) {
+      const outcomes = gate.steps.map((entry) => {
+        const shouldRun = entry.if === "${{ always() }}" || cancelled;
+        if (!shouldRun) return "skipped";
+        const result = spawnSync(
+          "bash",
+          ["--noprofile", "--norc", "-e", "-o", "pipefail", "-c", entry.run],
+          {
+            env: { ...process.env, ...defaults, ...overrides },
+            encoding: "utf8",
+            timeout: 5000,
+          },
+        );
+        assert.equal(result.error, undefined);
+        assert.equal(result.signal, null);
+        assert.ok([0, 1].includes(result.status), result.stdout + result.stderr);
+        return result.status === 0 ? "success" : "failure";
+      });
+      assert.deepEqual(
+        outcomes,
+        [accepted ? "success" : "failure", cancelled ? "failure" : "skipped"],
+        `${JSON.stringify(overrides)}; cancelled=${cancelled}`,
+      );
+      assert.equal(outcomes.includes("failure"), cancelled || !accepted);
+    }
   }
   const results = ["success", "failure", "cancelled", "skipped", "", "unknown"];
   for (const required of ["true", "false", "", "TRUE", " true", "null"]) {
@@ -540,9 +562,6 @@ test("required aggregate settles cancellation and enforces the native OPFS resul
         feature === "skipped" && opfsResult === "skipped",
       );
     }
-  }
-  for (const cancellation of ["true", "", "unknown"]) {
-    check({ WORKFLOW_CANCELLED: cancellation }, false);
   }
   for (const event of ["workflow_dispatch", "schedule", "", "unknown"]) {
     check({ EVENT_NAME: event }, false);

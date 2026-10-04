@@ -153,7 +153,6 @@ jobs:
       - name: Require the planned tooling smoke result
         if: ${{ always() }}
         env:
-          WORKFLOW_CANCELLED: ${{ cancelled() }}
           EVENT_NAME: ${{ github.event_name }}
           BASE_REF: ${{ github.base_ref }}
           REF: ${{ github.ref }}
@@ -167,11 +166,6 @@ jobs:
           NATIVE_REQUIRED: ${{ needs.tooling-smoke-plan.outputs.native }}
           JOB_COUNT: ${{ needs.tooling-smoke-plan.outputs.job-count }}
         run: |
-          if [ "$WORKFLOW_CANCELLED" != "false" ]; then
-            echo "Workflow cancellation prevents an acceptance verdict."
-            exit 1
-          fi
-
           # Feature planning only runs for dev PRs. Never interpret a missing
           # selection as permission to omit the mandatory native proof.
           case "$EVENT_NAME/$BASE_REF/$REF" in
@@ -239,6 +233,15 @@ jobs:
             echo "Native acceptance was not required but reported $NATIVE_RESULT"
             exit 1
           fi
+
+      # Status functions are supported in step conditions, not step env values.
+      # Run after the result check even when it fails or cancellation arrives.
+      - name: Reject workflow cancellation
+        if: ${{ cancelled() }}
+        timeout-minutes: 1
+        run: |
+          echo "Workflow cancellation prevents an acceptance verdict."
+          exit 1
 
   # These assertions no-op on Linux. Running them on a real macOS runner is the
   # only way the launchd, Keychain, and signed-broker paths are actually proven.
