@@ -2106,8 +2106,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         <div
           data-testid="settings-nav-panel"
           className={`
-            theme-dialog-divider flex shrink-0 flex-col
-            sm:w-52 sm:border-r
+            theme-dialog-divider flex min-h-0 flex-1 flex-col
+            sm:w-52 sm:flex-none sm:border-r
             ${mobileView === "section" ? "hidden sm:flex" : "flex"}
           `}
         >
