@@ -229,13 +229,15 @@ pub use normalized_snapshot::{
 pub use normalized_sqlite::{
     append_normalized_checkpoint_stage_page_v2, begin_normalized_checkpoint_stage_v2,
     describe_normalized_checkpoint_export_v2,
-    describe_normalized_checkpoint_export_with_observer_v2, export_normalized_checkpoint_page_v2,
+    describe_normalized_checkpoint_export_with_observer_v2,
+    describe_normalized_cloud_preflight_identity_v1, export_normalized_checkpoint_page_v2,
     export_pinned_normalized_checkpoint_page_v2, install_normalized_schema_v1,
     open_normalized_sqlite_database_v1, verify_normalized_library_selection_v1,
     BeginNormalizedCheckpointStageV2, NormalizedCheckpointCursorV2,
     NormalizedCheckpointDescriptionStageV2, NormalizedCheckpointExportDescriptorV2,
     NormalizedCheckpointExportPageV2, NormalizedCheckpointExportRequestV2,
-    NormalizedCheckpointExportSessionV2, NormalizedCheckpointStageStatusV2, NormalizedSqliteError,
+    NormalizedCheckpointExportSessionV2, NormalizedCheckpointStageStatusV2,
+    NormalizedCloudPreflightIdentityV1, NormalizedSqliteError,
     PinnedNormalizedCheckpointExportRequestV2,
 };
 pub use normalized_writer_certificate::{

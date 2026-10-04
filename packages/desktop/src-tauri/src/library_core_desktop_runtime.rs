@@ -154,6 +154,14 @@ pub(super) struct DesktopNormalizedLibraryCloudIdentity {
     local_actor_id: String,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DesktopNormalizedCloudPreflightIdentity {
+    #[serde(flatten)]
+    identity: freed_library_core::NormalizedCloudPreflightIdentityV1,
+    local_actor_id: String,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct SetCloudWriterAdmissionRequest {
@@ -299,10 +307,16 @@ fn app_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 }
 
 fn open_normalized_database(app: &tauri::AppHandle) -> Result<Connection, String> {
+    open_normalized_database_with_identity(app).map(|(connection, _)| connection)
+}
+
+fn open_normalized_database_with_identity(
+    app: &tauri::AppHandle,
+) -> Result<(Connection, String), String> {
     #[cfg(unix)]
     if let Ok(binding) = freed_library_core::desktop_binding() {
         return binding
-            .connect_selected_normalized()
+            .connect_selected_normalized_with_identity()
             .map_err(|error| error.to_string());
     }
     #[cfg(unix)]
@@ -330,7 +344,7 @@ fn open_normalized_database(app: &tauri::AppHandle) -> Result<Connection, String
             &selection.library_id,
         )
         .map_err(|error| error.to_string())?;
-        Ok(connection)
+        Ok((connection, selection.library_id))
     }
 }
 
@@ -1284,6 +1298,49 @@ pub(super) fn describe_normalized_library_cloud_identity(
             )?;
             Ok(DesktopNormalizedLibraryCloudIdentity {
                 checkpoint,
+                local_actor_id,
+            })
+        },
+    )
+}
+
+#[tauri::command]
+pub(super) fn describe_normalized_library_cloud_preflight_identity(
+    app: tauri::AppHandle,
+    installation_witness: String,
+) -> Result<DesktopNormalizedCloudPreflightIdentity, String> {
+    use super::library_core_native_timings::{
+        global_limiter, monotonic_us, with_trace, Scope, Stage,
+    };
+    with_trace(
+        Scope::CloudPreflightIdentity,
+        log::log_enabled!(log::Level::Info),
+        global_limiter(),
+        monotonic_us,
+        |event| log::info!("[library-native-timing] {event:?}"),
+        |timing| {
+            timing.stage(Stage::SelectedOpen);
+            let (mut connection, selected_library_id) =
+                open_normalized_database_with_identity(&app)?;
+            let transaction = connection
+                .transaction()
+                .map_err(|error| error.to_string())?;
+            timing.stage(Stage::WriterIdentity);
+            let identity = freed_library_core::describe_normalized_cloud_preflight_identity_v1(
+                &transaction,
+                &selected_library_id,
+            )
+            .map_err(|error| error.to_string())?;
+            timing.stage(Stage::ActorIdentity);
+            let local_actor_id = load_normalized_local_actor_id_v2(
+                &transaction,
+                &identity.library_id,
+                &installation_witness,
+                &PlatformActorKeyStore,
+            )?;
+            transaction.commit().map_err(|error| error.to_string())?;
+            Ok(DesktopNormalizedCloudPreflightIdentity {
+                identity,
                 local_actor_id,
             })
         },
