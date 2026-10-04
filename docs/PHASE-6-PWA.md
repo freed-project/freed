@@ -1500,3 +1500,9 @@ An explicit transfer-acceptance build selects the matching frontend mode for iso
 ### Transfer acceptance preview delivery, October 3, 2026
 
 The explicit PWA transfer-acceptance preview command stages a clean committed source, records its build identity and checks existing preview OAuth configuration before deployment. It reuses the approved Vercel preview callback relay without changing production builds. A configured deployment, successful sign-in and installed browser durability still require actual acceptance evidence.
+
+### Linked URL projection
+
+PWA SQLite cards use the same generated linked-URL column and closed nullable
+row contract as Freed Desktop. The shared adapter preserves the canonical post
+URL and linked article URL as separate values.

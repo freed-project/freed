@@ -1208,3 +1208,9 @@ terminal evidence under a shared budget is inconclusive. No identifiers,
 content, errors or thread identities are logged. Invocation queueing and native
 execution-thread ownership remain unmeasured. This attribution change does not
 establish an installed responsiveness improvement.
+
+### Linked URL projection
+
+Generated compact-card queries now return the existing linked URL separately
+from the canonical post URL. Native and PWA projections preserve that bounded,
+nullable value without changing the physical SQLite schema or mutation path.
