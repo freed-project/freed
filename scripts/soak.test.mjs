@@ -278,6 +278,12 @@ test("soak collector excludes itself and descendants from app identity", () => {
   const appBinary = "Freed Preview.app/Contents/MacOS/freed-desktop";
   const rows = [
     {
+      pid: 24586,
+      ppid: 24585,
+      rssKb: 3_000,
+      command: `/Applications/${appBinary}`,
+    },
+    {
       pid: 24584,
       ppid: 1,
       rssKb: 1_000,
@@ -306,6 +312,38 @@ test("soak collector excludes itself and descendants from app identity", () => {
   assert.equal(sample.appPid, 59726);
   assert.equal(sample.appRssKb, 500_000);
 
+  const unrelatedRows = parsePsTable("500 1 1000 /usr/bin/unrelated");
+  for (const invalid of [undefined, null, 0, false, {}, [], "", " ", "\t\n"]) {
+    for (const psRows of [[], unrelatedRows]) {
+      assert.throws(
+        () => buildSample(psRows, { appBinary: invalid, tsMs: sample.tsMs }),
+        /app-binary requires a nonblank string/,
+      );
+    }
+  }
+
+  const missing = buildSample(rows.filter((row) => row.pid !== 59726), {
+    appBinary,
+    collectorPid: 24584,
+    tsMs: sample.tsMs,
+  });
+  assert.equal(missing.appPid, 0);
+  assert.equal(missing.appRssKb, 0);
+
+  // Valid selectors retain their exact bytes, including surrounding whitespace.
+  const spacedSelector = ` ${appBinary} `;
+  assert.equal(
+    buildSample(rows, { appBinary: spacedSelector, tsMs: sample.tsMs }).appPid,
+    0,
+  );
+  assert.equal(
+    buildSample(
+      [{ pid: 59726, ppid: 1, rssKb: 500_000, command: spacedSelector }],
+      { appBinary: spacedSelector, tsMs: sample.tsMs },
+    ).appPid,
+    59726,
+  );
+
   assert.throws(
     () =>
       buildSample(
@@ -328,6 +366,25 @@ test("soak-collect parseArgs derives a soaks dir under ~/.freed/automation", () 
   const args = parseCollectArgs([], new Date("2026-07-02T10:00:00Z"));
   assert.ok(args.soakDir.includes(path.join(".freed", "automation", "soaks")));
   assert.ok(args.pointer.endsWith("current-soak-dir"));
+  assert.equal(args.appBinary, "Freed.app/Contents/MacOS");
+  for (const help of ["--help", "-h"]) {
+    assert.equal(parseCollectArgs([help]).help, true);
+  }
+  for (const argv of [
+    ["--app-binary"],
+    ...[undefined, null, 0, false, {}, [], "", " ", "\t\n", "--once", "--help", "-h"]
+      .map((value) => ["--app-binary", value]),
+  ]) {
+    assert.throws(() => parseCollectArgs(argv), /app-binary requires/);
+  }
+  for (const appBinary of [
+    "Freed Preview.app/Contents/MacOS/freed-desktop",
+    " Freed Preview.app/Contents/MacOS/freed-desktop ",
+  ]) {
+    const parsed = parseCollectArgs(["--app-binary", appBinary, "--once"]);
+    assert.equal(parsed.appBinary, appBinary);
+    assert.equal(parsed.once, true);
+  }
   assert.throws(
     () => parseCollectArgs(["--interval-seconds", "1"]),
     /at least 5/,
