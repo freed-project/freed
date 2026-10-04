@@ -1,0 +1,21 @@
+{
+  "sourceRepo": "knowledgator/gliclass-base-v3.0",
+  "sourceRevision": "77a70e6cd52e602ed18184ef37d18bdd3741e3d5",
+  "sourceWeightsSha256": "4f1043b82812a8f5ec7ff9f97c6744758f47836f9872ba0dbeb3a8e2b0b92a26",
+  "codeRepo": "https://github.com/Knowledgator/GLiClass",
+  "codeRevision": "68132def761c2dccc20d1a71c04abdc5db35463f",
+  "license": "Apache-2.0",
+  "torch": "2.7.1",
+  "transformers": "4.48.2",
+  "onnx": "1.18.0",
+  "opset": 17,
+  "constantFolding": false,
+  "batchSize": 1,
+  "maxClasses": 25,
+  "maxTokens": 512,
+  "graphSha256": "b2aea77ee6f7c9b7a852bcc9128af450f95ed73c396ef105ef181ed6acf8a043",
+  "graphBytes": 1326390,
+  "externalInitializerBytes": 746183684,
+  "unmatchedInitializerBytes": 0,
+  "conversionMethod": "Export eval-mode full GLiClass logits, with dynamic sequence length and constant folding disabled. SHA256-match each initializer to a raw pinned safetensors tensor, then reference its exact byte offset as ONNX external data. No third-party model artifact or end-user Python dependency."
+}

@@ -1,6 +1,6 @@
 # Phase 11: Headless Library Authority and Agent Integrations
 
-> **Status:** 🚧 In Progress (the shared transport-neutral Primary scheduler, normalized native SQLite authority, local process lease, native and PWA actor capability enforcement with separate signed mutation and query grants, authority-signed actor enrollment and retirement, fail-closed service supervisor, descriptor-bound normalized sidecar startup, bounded checkpoint and query ingress, native mutation and signed agent query admission, exact local writer reassignment, production macOS and Linux ACL proofs, deterministic service definitions, macOS Drive PKCE and Keychain custody, installed immutable checkpoint publication, and provider-neutral bounded enrollment, intent, and result orchestration have landed; installed inbound transport binding, Linux and Windows Drive secret custody, Windows service transport, and capture workers remain open)
+> **Status:** 🚧 In Progress. Native SQLite authority, bounded commands, actor capabilities, the service supervisor, platform ACL proofs, macOS Keychain custody, Linux sealed OAuth records, and checkpoint publication are implemented. Installed bidirectional acceptance, Linux service lifecycle acceptance, Windows vault and service transport, and capture workers remain open. The default inbound transport and staged-intent recovery have offline coverage.
 
 > **Architecture:** The headless Primary and Freed Desktop consume the
 > same extracted native Rust Library Core and the same stock SQLite contract.
@@ -13,6 +13,32 @@
 ---
 
 ## Objective
+
+PWA checkpoint refresh now preserves pending and published signed edits,
+optimistic fields, actor counters, enrollment and exact transport history in the
+same activation transaction. It requires the verified Library, epoch and writer,
+nonregressing checkpoint history, unchanged authority certificate and a compatible
+actor chain. Failed activation leaves the old state intact. An accepted result
+clears its overlay only when the new canonical frontier covers that result;
+checkpoint effects alone never acknowledge pending work. Installed multi-client
+acceptance remains open.
+
+Desktop and PWA now consume a shared bounded operation chain after checkpoint
+bootstrap. Native consumer import verifies signed results and actor operations,
+stages incomplete transactions, and advances canonical state without authority
+keys or writer admission. This Desktop delivery does not activate the headless
+transport. Cooperative Primary handoff and installed transition acceptance remain
+open.
+
+Native same-epoch follower checkpoint refresh preserves pending and published
+signed edits, enrollment, optimistic fields, and transport history. Native
+SQLite tests verify exact retention and rollback. Consumer activation removes
+prior writer and provider admission atomically. Freed Desktop now chooses and
+pins a native setup role before fresh genesis, with receipt-backed consumer
+selection and explicit refusal to replace an independent Library. This does not
+change the headless bootstrap workflow. The installed edit round trip
+and Primary handoff acceptance below remain open; this does not complete the
+headless host's transport or promotion work.
 
 Freed must support one authoritative Library Core on an always-on machine while
 Freed Desktop and the PWA remain fully editable clients. The authority may run
@@ -84,8 +110,8 @@ The current product already provides the protocol foundation:
   enrollment, intent, and result coordinators. They verify exact immutable
   descriptors, canonical segment chains, actor and epoch identity, native
   counter advancement, result-head compare and swap, and publication readback.
-  The installed Google Drive discovery and publication adapter remains open and
-  requires its exact provider behavior approval before it can add live traffic.
+  The default Google Drive adapter is implemented; installed acceptance remains
+  open before this path can be described as production verified.
 - `@freed/library-service` binds those coordinators to the generated native
   command channel without keeping authority or transport cursors in Node. A
   sequence-bound result export command resolves the prior result digest inside
@@ -95,8 +121,11 @@ The current product already provides the protocol foundation:
   identity from native SQLite, processes one bounded enrollment page, then one
   bounded intent and result page per discovered actor. Actor discovery carries
   a bounded in-memory continuation between passes and restarts safely from the
-  beginning. The default Google Drive host does not inject this transport yet,
-  so this composition adds no live provider requests or cadence change.
+  beginning. The default Google Drive host now supplies this transport after
+  checking the remote writer and epoch. It reuses that pass's credential and
+  cancellation signal, then rereads the native revision after inbound work.
+  The existing schedule is unchanged. Nonempty installed round-trip acceptance
+  remains open.
 - Freed Desktop is the production consumer of that shared coordinator.
 - Freed Desktop performs one immediate publication attempt, checks local
   revisions every 15 seconds, and refreshes inbound actor work every 60
@@ -136,8 +165,10 @@ existing immutable checkpoint protocol, and persists only the committed
 control receipt through an already-bound private state-file descriptor. The
 coordinator stops before service settlement. A missing token, changed Library
 identity, cloud writer conflict, malformed response, or unavailable secret
-backend fails closed. Linux sealed credential custody and complete inbound
-enrollment, intent, and result processing remain open.
+backend fails closed. Linux sealed credential custody has an explicit bound
+configuration and shared authorization/refresh store; installed Linux lifecycle
+acceptance remains open. Complete inbound enrollment, intent, and result
+processing has offline coverage; installed signed roundtrip acceptance remains open.
 
 The native sidecar acquires the
 data-root lease before opening only the final normalized SQLite catalog in the
@@ -296,16 +327,20 @@ freed-library doctor
 ```
 
 `service-definition` is implemented. It emits a digest-bound macOS LaunchAgent
-plist or Linux systemd user unit from one fully verified service configuration.
+plist or Linux systemd system unit running as the verified non-root user,
+from one fully verified service configuration.
 It uses exact argument elements without a shell, applies mode `0077`, contains
 the service process group, and grants Linux writes only to the configured data
 and state roots. It does not install, load, enable, or start a service. Windows
 continues to fail closed until its service-account named pipe and inherited
 handle contract is complete.
 
-`promote` requires the exact expected cloud control revision, manifest digest,
-source receipt, and owner confirmation. It creates a new writer epoch. It
-never adopts an old local database as the cloud head.
+`import-checkpoint` installs the pinned logical source and returns its native
+receipt. `promote-writer` now refuses before local or cloud activity with
+`cooperative_handoff_required`. The retired unilateral takeover cannot coexist
+with cooperative Primary fencing. Headless promotion must adopt predecessor-signed
+authorization and verified target activation in its separate delivery. Existing
+private promotion requests remain preserved as recovery evidence.
 
 ### Secrets
 
@@ -315,10 +350,20 @@ credentials remain separate secret records. They never appear in SQLite,
 backups, cloud objects, command arguments, environment values, logs, or bug
 reports.
 
-macOS and Windows use their platform credential vaults. Linux uses an injected
-secret store. The first Linux implementation should use a versioned sealed
-file whose wrapping key is supplied as a mounted credential file. An
-environment variable is not an acceptable wrapping-key source.
+macOS uses Keychain. Windows vault support remains open. Linux uses the explicit
+`linux-sealed-file-v1` store shared by CLI authorization and runtime refresh.
+Its configuration binds a private record directory, a separate mounted 32-byte
+wrapping-key file and its SHA-256 digest into the admitted configuration hash.
+The key cannot live inside the writable record directory or reuse the native
+signing bundle. Environment values are not acceptable wrapping-key sources.
+
+Bounded AES-256-GCM records authenticate their format and record identity. The
+store checks owner, mode, link count, ACLs, descriptor identity and key digest;
+it atomically replaces sealed files and verifies stored bytes before returning.
+Corrupt existing records are preserved. Linux consent uses the existing PKCE
+flow with an interactive-terminal URL and loopback forwarding instructions for
+remote hosts. It does not log tokens or open a browser automatically. Installed
+Linux acceptance and Windows custody remain required before this phase closes.
 
 Headless Drive authorization uses PKCE through the existing Freed OAuth proxy.
 It requests only the Drive scopes needed by Library Core. Google Contacts
@@ -450,6 +495,16 @@ supervisor proves the state root around socket creation, refuses foreign path
 replacement, removes only its exact owned socket, and fences the Primary if
 the listener fails.
 
+Linux long-path endpoints now use a verified private systemd runtime directory
+outside the unit's private `/tmp` namespace. Directory descriptors remain held
+through socket cleanup. Synthetic Linux tests prove external-process
+reachability, ownership and ACL refusal, and cleanup after directory replacement
+without deleting the replacement path. The compiled Linux ARM64 service also
+passed generated system-unit startup, external-process socket reachability with
+a long state root, native-child settlement, and runtime-directory cleanup under
+systemd. It runs as the verified non-root user. Live Drive account acceptance
+is separate from this network-disabled, synthetic Library proof.
+
 Windows remains fail closed. Task 11.14 supplies the service-account named
 pipe and proves its ACL before the shared protocol processor can accept a
 request. Signature verification does not replace those transport controls.
@@ -546,18 +601,18 @@ review before implementation.
 | 11.2  | Complete    | Enforce one operating system backed Library data-root lease before SQLite opens                                                                                                                                                                                                                                                                                                                                                    |
 | 11.3  | Complete    | Extract the reusable native SQLite authority package without changing Tauri behavior                                                                                                                                                                                                                                                                                                                                               |
 | 11.4  | Complete    | Add the headless service supervisor, explicit role config, and fail-closed startup                                                                                                                                                                                                                                                                                                                                                 |
-| 11.5  | In Progress | macOS `drive-auth` now uses PKCE through the existing OAuth proxy, requests only Library Core Drive scopes, stores only the refresh token in Keychain, and keeps access tokens memory-only. Complete the versioned Linux sealed credential store and Windows vault adapter next.                                                                                                                                                   |
-| 11.6  | In Progress | Open final normalized SQLite behind the descriptor-bound sidecar and provide generated bounded checkpoint, atomic pinned export begin, registered query, Primary signing, canonical commit, authority-signed follower enrollment, follower-intent admission, actor state, and result export commands. The installed service now composes one bounded provider-neutral enrollment, intent, and result pass on the existing inbound hook when a transport is injected. Complete the Google Drive transport adapter after its exact behavior approval.              |
-| 11.7  | In Progress | Apply exact writer promotion through the generated native sidecar command and bind the shared 15-second revision plus 60-second inbound schedule to native actor and checkpoint identity. The installed macOS service now starts and stops that scheduler with immutable Drive checkpoint publication and durable exact control receipts. Complete installed promotion and competing-Primary acceptance next.                      |
+| 11.5 | In Progress | macOS Keychain and Linux versioned sealed-file custody share the existing Drive-only PKCE flow. Linux binds its separate mounted wrapping key and record directory through admitted configuration. Linux system-unit startup and shutdown are proven with synthetic credentials. Complete live account acceptance and the Windows vault adapter. |
+| 11.6  | In Progress | Open final normalized SQLite behind the descriptor-bound sidecar and provide generated bounded checkpoint, atomic pinned export begin, registered query, Primary signing, canonical commit, authority-signed follower enrollment, follower-intent admission, actor state, and result export commands. The installed service now composes one bounded provider-neutral enrollment, intent, and result pass on the existing inbound hook when a transport is injected. The default Drive transport is integrated with authority checks, bounded actor fairness, and staged intent recovery.              |
+| 11.7  | In Progress | Apply exact writer promotion through the generated native sidecar command and bind the shared 15-second revision plus 60-second inbound schedule to native actor and checkpoint identity. The installed macOS service now starts and stops that scheduler with immutable Drive checkpoint publication and durable exact control receipts. Checkpoint import retains exact retry input and verifies content. Unilateral promotion is retired and refuses before activity; cooperative headless promotion and live provider transfer acceptance remain separate.                      |
 | 11.8  | Complete    | Prove actor capability certificates and the frozen transition policy in native SQLite. Phase 6 carries the same proof into PWA SQLite before activation.                                                                                                                                                                                                                                                                           |
 | 11.9  | Complete    | Apply authority-signed actor retirement atomically, return exact replay receipts, and verify the normalized retirement record during native and PWA checkpoint activation                                                                                                                                                                                                                                                          |
 | 11.10 | In Progress | Bind generated local actor protocol 2 to a private macOS and Linux Unix socket with bounded frames, connections, rate, timeout, exact replay, native signed query and intent admission, owned cleanup, and Primary fencing. Complete the Windows service-account named-pipe binding with task 11.14.                                                                                                                               |
 | 11.11 | Complete    | Bind exact generated search, item, Saved, and Friends query grants into signed version 2 agent capabilities, normalized SQLite, and checkpoints. Canonical signed query bytes now cross local actor protocol 2, and native SQLite proves the active actor, exact capability certificate, Library-wide scope, registered query grant, body digest, and Ed25519 signature before dispatch. Signed edits use the local intent method. |
 | 11.12 | Open        | Add provider-neutral RSS and explicit-save workers                                                                                                                                                                                                                                                                                                                                                                                 |
 | 11.13 | Blocked     | Add social capture workers after provider-specific owner approval                                                                                                                                                                                                                                                                                                                                                                  |
-| 11.14 | In Progress | Emit deterministic digest-bound macOS LaunchAgent and Linux systemd user-service definitions from one verified config with no shell, mode `0077`, exact writable roots, bounded restart behavior, and production ACL proofs. Complete installed lifecycle receipts and the Windows service-account inherited-handle plus named-pipe ACL contract.                                                                                  |
-| 11.15 | In Progress | The installed supervisor now proves Primary actor identity across a second real command frame after startup inspection, through the descriptor-bound native sidecar and normalized SQLite without provider traffic. Complete migrated-library activation plus editable follower intent and result survival across checkpoint refresh.                                                                                                  |
-| 11.16 | Open        | Complete forward recovery, competing-Primary, and fault-injection acceptance                                                                                                                                                                                                                                                                                                                                                       |
+| 11.14 | In Progress | Emit deterministic digest-bound macOS LaunchAgent and Linux systemd system-service definitions from one verified config with no shell, mode `0077`, exact writable roots, bounded restart behavior, and production ACL proofs. Linux ARM64 system-unit startup, external socket reachability and clean child settlement are proven. Complete the Windows service-account inherited-handle plus named-pipe ACL contract.                                                                                  |
+| 11.15 | In Progress | The installed supervisor now proves Primary actor identity across a second real command frame after startup inspection, through the descriptor-bound native sidecar and normalized SQLite without provider traffic. Compiled Linux synthetic proof imports a signed logical checkpoint, transfers authority, accepts a signed follower edit, changes the canonical saved state through the real socket, independently verifies the signed result after restart, and preserves exact replay.                                                                                                  |
+| 11.16 | In Progress | Exact native preparation and cloud response-loss recovery, changed-input refusal, and competing-control verification have deterministic coverage. Complete installed live-provider acceptance                                                                                                                                                                                                                                                                                                                                                       |
 | 11.20 | Open        | Define the signed Omi actor and user-triggered voice capture contract                                                                                                                                                                                                                                                                                                                                                              |
 | 11.21 | Open        | Implement authenticated Omi ingress with bounded retention                                                                                                                                                                                                                                                                                                                                                                         |
 | 11.22 | Open        | Implement the separately approved bounded reading-context export                                                                                                                                                                                                                                                                                                                                                                   |
@@ -612,3 +667,196 @@ Freed Desktop and the PWA remain ordinary editable clients. Agents and capture
 workers use narrow signed capabilities, while the authority database, cloud
 credentials, and provider sessions stay isolated. The system can move Primary
 authority forward without creating split heads or copying live database files.
+
+### Desktop consumer lifecycle proof, September 17, 2026
+
+Desktop cloud publication, consumer synchronization, and writer reassignment
+now retain one local work owner through cancellation and native settlement.
+Consumer startup failure remains recoverable at the existing polling interval.
+Offline fault tests cover overlapping callers, cancellation before checkpoint
+activation, canceled preflight, and replacement timer ownership. This completes
+the local sync ownership boundary, not cooperative authority transfer or
+installed host-transition acceptance.
+
+### Consumer synchronization status, September 17, 2026
+
+Freed Desktop reports enrollment, edits waiting to upload, edits awaiting Primary
+acceptance, and accepted changes awaiting canonical application from native
+SQLite state. Successful transport does not imply all edits have synchronized or
+that the Primary is online. Checkpoint revision remains the operation anchor;
+sync events report the verified local canonical revision separately. Native
+settlement and Desktop presentation tests cover these distinctions. Installed
+two-host acceptance remains open.
+
+### Cooperative handoff delivery status, September 18, 2026
+
+The Desktop implementation now has native handoff persistence, source fencing,
+predecessor-signed authorization, target cloud verification before activation,
+and old-consumer intent archives with signature-checked outcome inspection.
+Bounded archive identity pagination uses the shared registered query contract.
+These are implementation and fixture results, not installed handoff acceptance.
+
+Complete archive review and edit recovery, source demotion, repeated transfers,
+PWA successor compatibility and the transfer UI before releasing this workflow.
+Final acceptance still requires two isolated Freed Desktop installations and a
+PWA to converge at the same canonical frontier, with no consumer capture and
+verified crash recovery. Headless service delivery remains separate.
+
+Desktop now exposes read-only archived transaction review through registered
+queries and the existing native dispatcher. Explicit edit recovery, native
+installed transfer acceptance remain open. Desktop reader cancellation and
+30-second budgets now reach native SQLite and archive verification; these
+reader controls do not replace durable transfer cancellation rules.
+
+Desktop now has an explicit Apply again action for complete archived read,
+saved, archive and liked assignment transactions. Native verification and key
+custody precede one atomic replacement/link commit; response-loss retries return
+the stored identity without signing again. Review pins canonical and local
+optimistic revisions. Other edit types still need their original editors.
+Native fault and cross-runtime byte fixtures cover the new boundary; repeated
+transfers, PWA parity, full transfer UI and installed Mac acceptance remain open.
+
+Reopened archive review now shows an existing replacement receipt without
+submitting another mutation. That local receipt remains separate from proof of
+Primary acceptance. Older archive discovery and repeated transfers remain open.
+
+Native consumers can now archive another verified direct successor after a
+completed reenrollment cycle. The prior receipt must exactly match the retained
+actor request. Archive creation and lifecycle replacement share one transaction;
+source, target and unfinished recovery fences remain protected. Fault fixtures
+cover rollback, restart, retained old archive bytes and replacement links.
+Older archive discovery, recovery across older epochs, PWA parity and installed
+Mac acceptance remain unfinished.
+
+Freed Desktop now discovers retained recovery archives through a bounded native
+query and lets the owner select an older archive for transaction review. Pages
+use the archive primary key and bind continuations to the current handoff,
+Library generation and canonical revision. A new archive invalidates the old
+continuation. Displayed counts describe stored edits, not acceptance. Explicit
+reapplication across older transfers and PWA persistence remain unfinished.
+
+Explicit read, saved, archive and liked recovery now accepts older-transfer
+archives under the currently admitted consumer enrollment. Original retries
+retain their first replacement receipt. Recovering a replacement that was later
+archived requires its own review and explicit action. Native fixtures cover
+both paths and preserve per-transaction linkage. Other edit types, PWA parity,
+complete transfer UI and installed host acceptance remain unfinished.
+
+A native editor recovery submission path now validates complete newly signed
+editor transactions and commits them with their archive links. It refuses
+changed targets, incomplete member sets and retroactive linkage of an unrelated
+stored intent. Original-editor UI integration remains unfinished; this path does
+not yet expose recovery for additional edit types to the owner.
+
+Recovery review pagination now accepts independent canonical and local edit
+counters, fixing continuations after offline changes. A changed counter still
+requires a fresh review. Exact editor payload delivery remains unfinished.
+
+Native recovery review now provides opt-in exact original envelopes through
+byte-bounded pages for offline editors. Tests cover cursor-mode isolation and
+large escaped payloads without truncation. Editor UI integration remains open;
+this does not yet add owner-facing recovery for other edit types.
+
+RSS feed-name recovery now opens an offline editor from verified original
+payloads. It shows archived and last-synced names, requires every transaction
+member to be reviewed, and stores revised names only after an explicit action.
+It reuses the existing RSS transaction builder and signer, retaining signed
+bytes through response-loss retries. The native submission atomically links the
+replacement to the archive. Other editor families, PWA parity, complete transfer
+UI and installed Mac acceptance remain unfinished.
+
+Composite annotation recovery now opens an offline editor for complete annotation
+transactions. It preserves item notes, quoted highlights, tags and stored-text
+references while allowing explicit revisions. Last-synced comparison reads only
+the selected item. Submission requires visiting every item and retains signed
+bytes across retries. No URL preview or content fetch occurs. Other edit families,
+PWA recovery, complete handoff UI and installed host acceptance remain open.
+
+Native source adoption now verifies a staged direct successor against the stored
+source consent and bounded remote checkpoint proof, then atomically installs a
+consumer receipt and demotes the old Primary. Offline fixtures cover later
+checkpoint generations, changed-stage refusal, late-write rollback, reopen retry
+and successor enrollment with a retained key and new actor incarnation. Provider
+and canonical writer gates stay closed on the demoted source. Desktop coordination now downloads through the shared staging reader without
+claiming activation, then invokes native verification. A committed demotion retry
+reuses its durable request without another download. The complete transfer UI and
+installed acceptance remain unfinished. Previously promoted
+sources with incompatible retained consumer history remain fenced pending recovery.
+
+The first transfer panel now connects signed readiness and consent exchange,
+source pause and authorization, target staging and activation, and source adoption.
+It also appears on fenced startup and recovers saved phases after restart. Native
+role notifications update the app before services resume. Settings no longer offers
+legacy takeover, and the local-winner conflict shortcut refuses it. Complete
+transfer acceptance remains open, including target cancellation before consent,
+and repeated transfers with retained history.
+The browser restart fixture uses mocked native receipts and is not installed proof.
+
+Saved transfers can now reconnect Google Drive from the fenced startup panel.
+Credentials-only sign-in preserves the handoff pause and starts no ordinary sync.
+Canceling or closing a pending sign-in preserves previous credentials and rejects
+late OAuth results. The owner retries the transfer step after sign-in succeeds.
+
+The remaining direct writer reassignment routes are removed from Desktop and the
+shared native command catalog. Retired sidecar calls fail without database changes.
+Cooperative handoff retains its fenced installer and historical certificate reader.
+This closes the legacy entry points; installed transfer acceptance remains open.
+
+Source cancellation now retains the exact readiness and cancellation time in a
+local ledger, atomically with restored admission. A canceled readiness stays
+retired after restart and after another transfer replaces the current lifecycle.
+Target cancellation still requires a verified source proof exchange; that workflow
+and installed transfer acceptance remain unfinished.
+
+Source cancellation now signs and retains its proof in the admission-restoration
+transaction. Failed key access or proof persistence leaves the source fenced;
+restart retries reuse the stored proof without needing the key. The transfer
+panel exposes the receipt after restart. Target cancellation verification now restores consumer operation only after exact
+native proof and role readback. Same-epoch checkpoint catch-up preserves the proof.
+Fresh preparation retains the pending key and retires the old readiness identity.
+Canceled consumers now follow a verified direct successor while retaining their
+cancellation proof and offline intent bytes. Edits remain fenced until archival
+and explicit reenrollment finish. A successor that reuses locally canceled
+readiness is rejected. Recovered-consumer promotion and installed multi-device
+acceptance remain unfinished.
+
+A settled, reenrolled consumer can prepare as a later handoff target. Native
+preparation verifies its exact committed recovery receipt and current enrollment
+before replacing the completed lifecycle record. Archives and replacement links
+remain intact. Completed recovery lookup uses an indexed Library, epoch and
+receipt-digest key, verifies exact retained request bytes and rejects ambiguity.
+The transfer fence still blocks edits until verified cancellation or activation;
+recovery metadata alone grants no admission. The transfer panel keeps bounded archive discovery and verified review available
+during transfer and after promotion to Primary. These views are read-only;
+Primary reapplication remains unfinished.
+
+Verified target activation archives its complete settled consumer history before
+retiring the live consumer slots. Archive creation, slot retirement and local
+writer admission share one native transaction. A late failure restores the live
+rows and leaves the target fenced. Exact activation retry reuses the committed
+result without creating another archive. Query invalidation sequences remain
+monotonic. Original signed edits and their old enrollment certificate remain preserved.
+When promotion moves the actor record to a new epoch, archive review verifies the
+retained authority-signed enrollment certificate against the historical authority
+before checking the original envelopes. The historical snapshot is read-only and
+cannot grant current edit rights. This does not reapply edits as Primary. Full repeated promotion/demotion acceptance remains pending.
+
+### Recovery durability fault coverage, October 2, 2026
+
+Native archived transaction reapplication now refuses SQLite durability below
+FULL before allocating a replacement intent or accessing signing keys. Existing
+recovery links, old signed edits and actor counters remain unchanged on refusal.
+The same recovery transaction tests exercise SIGKILL around source authorization,
+consumer archive and reenrollment, target activation and lost committed responses.
+Real SQLite max-page-count failures cover source signing, archive preparation and
+target activation, with exact persisted-state retry after capacity is restored.
+These are deterministic synthetic process and SQLite-capacity proofs, not physical
+power-loss, full-filesystem exhaustion or installed multi-device acceptance.
+Primary transfer and schema-v2 workflow acceptance remains open; this hardening
+does not grant release activation or remove any existing admission fence.
+
+### Ordinary-build transfer hold
+
+Ordinary Desktop and PWA builds leave Primary transfer and consumer recovery unavailable until installed convergence acceptance is complete. Native lifecycle calls and PWA worker/SQLite mutations refuse before schema migration, key access, provider drain or recovery archive writes. Checkpoint activation refuses a change of the selected Library or authority epoch under the write lock. First-consumer bootstrap and refresh within the currently accepted epoch remain available; an older enrollment still awaiting recovery remains fenced. Status and retained archive inspection remain available. The build never clears persisted transfer fences to resume capture or edits. A device already in a transfer must use a compatible recovery build.
+
+Isolated acceptance builds require the explicit `library-transfer-acceptance` Cargo feature and matching Vite mode. Unit workflow fixtures use the enabled test mode; separate default-feature native tests and default-off PWA engine tests verify refusal. These build capabilities grant no authority and bypass no signature, activation or release review. Ordinary package and release commands must leave the acceptance feature and mode absent. Committed target activation verification remains available for existing-state safety and does not perform schema-v2 migration or grant a new writer.

@@ -49,35 +49,35 @@ describe("desktop hot-path contract", () => {
     expect(syncSource).not.toContain("freed.automerge");
   });
 
-  it("routes cloud sync by role and keeps writer transfer Primary-only", () => {
+  it("routes cloud sync by role and removes legacy takeover", () => {
     const syncSource = readFileSync(join(LIB_DIR, "sync.ts"), "utf8");
     const startCloud = syncSource.slice(
       syncSource.indexOf("export async function startCloudSync"),
       syncSource.indexOf("function stopCloudSync"),
     );
-    expect(startCloud).toContain("readLibraryCoreDesktopRole()");
+    expect(startCloud).toContain("refreshLibraryCoreDesktopRole()");
     expect(startCloud).toContain("startSqliteLibraryGoogleDriveFollowerSync");
     expect(startCloud).toContain("startSqliteLibraryGoogleDriveSync");
 
     const syncNow = syncSource.slice(
       syncSource.indexOf("export async function syncCloudProviderNow"),
       syncSource.indexOf(
-        "export async function transferSqliteLibraryWriterToThisDesktop",
-      ),
-    );
-    expect(syncNow).toContain("readLibraryCoreDesktopRole()");
-    expect(syncNow).toContain("syncSqliteLibraryFollowerGoogleDriveOnce");
-    expect(syncNow).toContain("publishCurrentSqliteLibraryToGoogleDrive");
-
-    const transfer = syncSource.slice(
-      syncSource.indexOf(
-        "export async function transferSqliteLibraryWriterToThisDesktop",
-      ),
-      syncSource.indexOf(
         "export async function resolveCloudSyncConflict",
       ),
     );
-    expect(transfer).toContain("requirePrimaryLibraryCoreDesktopRole();");
+    expect(syncNow).toContain("refreshLibraryCoreDesktopRole()");
+    expect(syncNow).toContain("syncSqliteLibraryFollowerGoogleDriveOnce");
+    expect(syncNow).toContain("publishCurrentSqliteLibraryToGoogleDrive");
+
+    expect(syncSource).not.toContain("makeThisSqliteLibraryDesktopWriter");
+    expect(syncSource).not.toContain("transferSqliteLibraryWriterToThisDesktop");
+    expect(syncSource).toContain("signed handoff");
+    const cloud = readFileSync(join(LIB_DIR, "library-core-cloud-sync.ts"), "utf8");
+    const sqlite = readFileSync(join(LIB_DIR, "sqlite-library.ts"), "utf8");
+    const native = readFileSync(join(LIB_DIR, "../../src-tauri/src/lib.rs"), "utf8");
+    expect(cloud).not.toContain("makeThisSqliteLibraryDesktopWriter");
+    expect(sqlite).not.toContain("reassignNormalizedLibraryWriterEpoch");
+    expect(native).not.toContain("library_core_desktop_runtime::reassign_normalized_library_writer_epoch");
   });
 
   it("keeps provider outbox drains wired to Library mutation metadata", () => {

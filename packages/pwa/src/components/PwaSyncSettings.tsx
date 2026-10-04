@@ -1,3 +1,6 @@
+import { LibraryReplicaAudit } from "@freed/ui/components/settings/LibraryReplicaAudit";
+import { auditPwaNormalizedReplica } from "../lib/library-core-sqlite-runtime";
+import { PwaConsumerRecovery } from "./PwaConsumerRecovery";
 /**
  * PwaSyncSettings, sync section content for the Settings panel on the PWA.
  *
@@ -394,6 +397,8 @@ export function PwaSyncSettings() {
 
   return (
     <div className="space-y-4">
+      {selectedCheckpoint && <PwaConsumerRecovery key={selectedCheckpoint.authorityEpoch} />}
+      {selectedCheckpoint && <LibraryReplicaAudit key={`audit:${selectedCheckpoint.authorityEpoch}`} audit={auditPwaNormalizedReplica} client="pwa" />}
       {libraryChoices.length > 0 && (
         <div className="theme-card-soft rounded-xl p-4" data-testid="pwa-library-choice">
           <p className="text-sm font-semibold">Choose your Library</p>

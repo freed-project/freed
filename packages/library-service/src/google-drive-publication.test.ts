@@ -1,9 +1,14 @@
+import { mkdtemp, writeFile, rm, realpath } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { createNodeLibraryServicePorts } from "./node-ports.js";
 import { createHash, webcrypto } from "node:crypto";
 
 import {
   createLibraryCoreNormalizedCheckpointRecordV2,
   encodeLibraryCoreNormalizedCheckpointRecordV2,
   parseLibraryCoreImmutableObjectDescriptorV1,
+  parseLibraryCoreControlPointerV1,
   type LibraryCoreImmutableObjectDescriptorV1,
 } from "@freed/shared/library-core";
 import type {
@@ -16,8 +21,10 @@ import type {
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import type { LibraryCoreNativeCommandClientV1 } from "./native-command.js";
+import { verifyPreparedWriterCheckpoint } from "./writer-promotion-verification.js";
 import {
   createLibraryServiceGoogleDrivePublicationV1,
+  createBoundGoogleDrivePublicationStatePortV1,
   type LibraryServiceGoogleDrivePublicationStateV1,
 } from "./google-drive-publication.js";
 
@@ -59,7 +66,9 @@ function descriptor(writer = writerId) {
   });
 }
 
-class MemoryAdapter implements LibraryCoreImmutablePublicationAdapterV1<Uint8Array> {
+class MemoryAdapter
+  implements LibraryCoreImmutablePublicationAdapterV1<Uint8Array>
+{
   readonly objects = new Map<
     string,
     {
@@ -71,6 +80,12 @@ class MemoryAdapter implements LibraryCoreImmutablePublicationAdapterV1<Uint8Arr
     revision: "control-0",
     bytes: new TextEncoder().encode("{}"),
   };
+
+  async readImmutable(receipt: LibraryCorePublishedImmutableObjectReceiptV1) {
+    const stored = this.objects.get(receipt.transportObjectId);
+    if (!stored) throw new Error("missing object");
+    return stored.bytes.slice();
+  }
 
   async readControl(): Promise<LibraryCoreControlReadV1> {
     return {
@@ -114,18 +129,24 @@ class MemoryAdapter implements LibraryCoreImmutablePublicationAdapterV1<Uint8Arr
   }
 }
 
-function native(checkpoint = descriptor()): LibraryCoreNativeCommandClientV1 {
+function native(
+  checkpoint = descriptor(),
+  exportedRecord = record,
+): LibraryCoreNativeCommandClientV1 {
   return {
     execute: vi.fn(async (commandId: string) => {
+      if (commandId === "cloud_writer_clear_v1") return { allowed: false };
+      if (commandId === "cloud_writer_observe_v1") return { allowed: true };
       if (commandId === "describe_checkpoint_export_v2") return checkpoint;
       if (commandId === "begin_checkpoint_export_v2") return checkpoint;
       if (commandId === "export_checkpoint_page_v2") {
         return {
           canonicalRecordBytes:
-            encodeLibraryCoreNormalizedCheckpointRecordV2(record).byteLength,
+            encodeLibraryCoreNormalizedCheckpointRecordV2(exportedRecord)
+              .byteLength,
           done: true,
           nextCursor: null,
-          records: [record],
+          records: [exportedRecord],
         };
       }
       throw new Error(`unexpected command ${commandId}`);
@@ -134,6 +155,77 @@ function native(checkpoint = descriptor()): LibraryCoreNativeCommandClientV1 {
 }
 
 describe("headless Google Drive checkpoint publication", () => {
+  it("persists and reopens the receipt through an explicitly writable native file descriptor", async () => {
+    const root = await realpath(
+      await mkdtemp(path.join(os.tmpdir(), "headless-cloud-state-")),
+    );
+    const filePath = path.join(root, "receipt.json");
+    const ports = createNodeLibraryServicePorts();
+    const state = {
+      schemaVersion: 1 as const,
+      libraryId,
+      authorityEpoch,
+      writerId,
+      controlFileId: "control",
+      controlRevision: "revision",
+      lastPublishedRevision: 7,
+    };
+    try {
+      await writeFile(filePath, "", { mode: 0o600 });
+      const writable = await ports.fileSystem.openBoundPath(
+        filePath,
+        "read-write",
+      );
+      try {
+        await createBoundGoogleDrivePublicationStatePortV1(
+          writable,
+          ports.fileSystem,
+        ).write(state);
+      } finally {
+        await writable.close();
+      }
+      const reader = await ports.fileSystem.openBoundPath(filePath);
+      try {
+        expect(
+          await createBoundGoogleDrivePublicationStatePortV1(
+            reader,
+            ports.fileSystem,
+          ).read(),
+        ).toEqual(state);
+      } finally {
+        await reader.close();
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("clears native admission before token work and leaves it cleared after failure", async () => {
+    const client = native();
+    const publication = createLibraryServiceGoogleDrivePublicationV1({
+      state: { read: async () => null, write: async () => undefined },
+      token: {
+        accessToken: async () => {
+          throw new Error("token unavailable");
+        },
+      },
+    });
+    await expect(
+      publication.publish({
+        native: client,
+        reason: "initial",
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toThrow("token unavailable");
+    expect(
+      vi.mocked(client.execute).mock.calls.map(([command]) => command),
+    ).toEqual([
+      "cloud_writer_clear_v1",
+      "describe_checkpoint_export_v2",
+      "cloud_writer_clear_v1",
+    ]);
+  });
+
   it("publishes bounded native records and persists only the committed receipt", async () => {
     const adapter = new MemoryAdapter();
     let state: LibraryServiceGoogleDrivePublicationStateV1 | null = null;
@@ -175,14 +267,74 @@ describe("headless Google Drive checkpoint publication", () => {
         ([commandId]) => commandId,
       ),
     ).toEqual([
+      "cloud_writer_clear_v1",
       "describe_checkpoint_export_v2",
       "begin_checkpoint_export_v2",
       "export_checkpoint_page_v2",
+      "cloud_writer_observe_v1",
     ]);
     await expect(publication.lastPublishedRevision()).resolves.toBe(7);
+
+    // A matching writer and epoch cannot substitute for exact transferred content.
+    const verification = {
+      adapter: {
+        async readImmutable(
+          reference: LibraryCorePublishedImmutableObjectReceiptV1,
+        ) {
+          const stored = adapter.objects.get(reference.transportObjectId);
+          if (stored === undefined) throw new Error("missing object");
+          return stored.bytes.slice();
+        },
+      },
+      pointer: parseLibraryCoreControlPointerV1(
+        JSON.parse(new TextDecoder().decode(adapter.control.bytes!)),
+      ),
+      signal: new AbortController().signal,
+      subtle: webcrypto.subtle as SubtleCrypto,
+    };
+    await expect(
+      verifyPreparedWriterCheckpoint({ ...verification, native: client }),
+    ).resolves.toMatchObject({ recordCount: 1 });
+    const changedRecord = createLibraryCoreNormalizedCheckpointRecordV2({
+      registryKey: record.registryKey,
+      primaryKey: record.primaryKey,
+      payload: { ...record.payload, createdAtMs: 1_001 },
+    });
+    await expect(
+      verifyPreparedWriterCheckpoint({
+        ...verification,
+        native: native(descriptor(), changedRecord),
+      }),
+    ).rejects.toMatchObject({ code: "bound_input_changed" });
+
+    const drifting = native();
+    const stableExecute = vi.mocked(drifting.execute).getMockImplementation()!;
+    vi.mocked(drifting.execute).mockImplementation(async (command, payload) => {
+      if (command === "describe_checkpoint_export_v2") {
+        return { ...descriptor(), sourceRevision: 8 };
+      }
+      return stableExecute(command, payload);
+    });
+    await expect(
+      verifyPreparedWriterCheckpoint({
+        ...verification,
+        native: drifting,
+      }),
+    ).rejects.toMatchObject({ code: "bound_input_changed" });
+
+    const cancelled = native();
+    await expect(
+      verifyPreparedWriterCheckpoint({
+        ...verification,
+        native: cancelled,
+        signal: AbortSignal.abort(),
+      }),
+    ).rejects.toThrow();
+    expect(cancelled.execute).not.toHaveBeenCalled();
   });
 
   it("returns ownership_required without exporting when Drive names another writer", async () => {
+    const refreshInbound = vi.fn();
     const adapter = new MemoryAdapter();
     const remotePublication = createLibraryServiceGoogleDrivePublicationV1({
       state: { read: async () => null, write: async () => undefined },
@@ -199,6 +351,7 @@ describe("headless Google Drive checkpoint publication", () => {
     });
     const objectCountAfterRemotePublication = adapter.objects.size;
     const publication = createLibraryServiceGoogleDrivePublicationV1({
+      refreshInbound,
       state: { read: async () => null, write: async () => undefined },
       token: { accessToken: async () => "access-token" },
       transport: {
@@ -219,7 +372,64 @@ describe("headless Google Drive checkpoint publication", () => {
       currentWriterId: "f".repeat(64),
       localWriterId: writerId,
     });
-    expect(client.execute).toHaveBeenCalledTimes(1);
+    expect(client.execute).toHaveBeenCalledTimes(3);
     expect(adapter.objects.size).toBe(objectCountAfterRemotePublication);
+    expect(refreshInbound).not.toHaveBeenCalled();
+  });
+
+  it("checks cloud authority before inbound work and observes its new revision", async () => {
+    const adapter = new MemoryAdapter();
+    let state: LibraryServiceGoogleDrivePublicationStateV1 | null = null;
+    let revision = 7;
+    const refreshInbound = vi.fn(async () => {
+      revision = 8;
+    });
+    const publication = createLibraryServiceGoogleDrivePublicationV1({
+      refreshInbound,
+      state: {
+        read: async () => state,
+        write: async (next) => {
+          state = next;
+        },
+      },
+      token: { accessToken: async () => "access-token" },
+      transport: {
+        provision: async () => ({ controlFileId: "control-file" }),
+        adapter: () => adapter,
+      },
+    });
+    const client = native();
+    const originalExecute = client.execute;
+    client.execute = vi.fn(async (command: string, payload: unknown) => {
+      if (command === "describe_checkpoint_export_v2") {
+        return { ...descriptor(), sourceRevision: revision };
+      }
+      if (command === "begin_checkpoint_export_v2" && revision === 8) {
+        // Stop at the export boundary: the distinct contract here is that a
+        // successful inbound edit cannot take the stale 'current' shortcut.
+        throw new Error("fresh export reached");
+      }
+      return originalExecute(command as never, payload as never);
+    }) as typeof client.execute;
+    await publication.publish({
+      native: client,
+      reason: "initial",
+      signal: new AbortController().signal,
+    });
+    expect(refreshInbound).not.toHaveBeenCalled();
+    const signal = new AbortController().signal;
+    await expect(
+      publication.publish({
+        native: client,
+        reason: "inbound_refresh",
+        signal,
+      }),
+    ).rejects.toThrow("fresh export reached");
+    expect(refreshInbound).toHaveBeenCalledExactlyOnceWith({
+      accessToken: "access-token",
+      controlFileId: "control-file",
+      descriptor: descriptor(),
+      signal,
+    });
   });
 });

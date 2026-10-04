@@ -65,6 +65,22 @@ async function flushScheduler(): Promise<void> {
 }
 
 describe("provider sync scheduler", () => {
+  it("does not reinitialize provider scheduling until the handoff pause ends", async () => {
+    const scheduler = await loadScheduler();
+    const { pauseDesktopOperationsForHandoff } = await import("./factory-reset-guard");
+    const pause = pauseDesktopOperationsForHandoff();
+    try {
+      scheduler.startProviderSyncScheduler();
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(initializeProviderSchedules).not.toHaveBeenCalled();
+      expect(runScheduledProviderAdapter).not.toHaveBeenCalled();
+    } finally {
+      pause.resume();
+    }
+    scheduler.startProviderSyncScheduler();
+    expect(initializeProviderSchedules).toHaveBeenCalledOnce();
+    scheduler.stopProviderSyncScheduler();
+  });
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();

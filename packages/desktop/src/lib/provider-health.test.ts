@@ -142,6 +142,11 @@ async function loadProviderHealthModule(options: { native?: boolean } = {}) {
     storeMediumAuthState: vi.fn(),
   }));
 
+  // Keep auth persistence isolated, including YouTube's capture dependencies.
+  vi.doMock("./youtube-auth", () => ({
+    storeYouTubeAuthState: vi.fn(),
+  }));
+
   const debugStore = await import("@freed/ui/lib/debug-store");
   debugStore.useDebugStore.setState({ health: null });
 

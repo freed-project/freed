@@ -1,4 +1,9 @@
-import { useEffect, useMemo, useCallback, useRef, useState, Profiler, type ProfilerOnRenderCallback } from "react";
+import { desktopLibraryCountResource } from "./lib/library-count-resource";
+import { DesktopLibrarySetup } from "./components/DesktopLibrarySetup";
+import { subscribeDesktopLibraryInstallation, readDesktopLibraryInstallationError, readDesktopLibraryInstallation, refreshLibraryCoreDesktopRole, type DesktopLibraryInstallationStatus } from "./lib/library-core-desktop-role";
+import { useEffect, useMemo, useCallback, useRef, useState, useSyncExternalStore, Profiler, type ProfilerOnRenderCallback } from "react";
+import { isDesktopHandoffPaused, subscribeDesktopHandoffPause } from "./lib/factory-reset-guard";
+import { restoreDesktopLibraryHandoffPause } from "./lib/library-core-handoff";
 import {
   formatReleaseVersion,
   getWebsiteHostForChannel,
@@ -17,6 +22,8 @@ import { FeedView } from "@freed/ui/components/feed";
 import { BugReportBoundary } from "@freed/ui/components/BugReportBoundary";
 import { FatalErrorScreen } from "@freed/ui/components/FatalErrorScreen";
 import { LocalPreviewBadge } from "@freed/ui/components/LocalPreviewBadge";
+import { JevSettingsSection } from "./components/JevSettingsSection";
+import { generateJevPreviewExamples } from "./lib/jev-preview-examples";
 import { FREED_NEWSLETTER_TURNSTILE_TEST_SITE_KEY } from "@freed/shared";
 import { NewsletterSignup } from "@freed/ui/components/NewsletterSignup";
 import { LegalGate } from "@freed/ui/components/legal/LegalGate";
@@ -264,6 +271,8 @@ import {
   resolveDesktopDownloadFallbackUrl,
 } from "./lib/desktop-updater";
 import { rendererHeartbeatTiming } from "./lib/renderer-heartbeat";
+import { withRuntimeHealthIdentity } from "./lib/runtime-health-events";
+import { RendererResponsivenessMonitor } from "./lib/renderer-responsiveness";
 import { DESKTOP_CHANGELOG_PREVIEW } from "./lib/changelog-preview";
 import { useClipboardSaveShortcut } from "./hooks/useClipboardSaveShortcut";
 import { clearClipboardSaveShortcutConfig } from "./lib/clipboard-save-shortcut";
@@ -546,6 +555,29 @@ function App() {
     () => !isTouchOnlyInputSurface(),
   );
   const fatalError = useFatalRuntimeError();
+  const [installation, setInstallation] = useState<DesktopLibraryInstallationStatus | null>(null);
+  useEffect(() => subscribeDesktopLibraryInstallation(() => {
+    setInstallation(readDesktopLibraryInstallation());
+    setInstallationError(readDesktopLibraryInstallationError());
+  }), []);
+  const [installationError, setInstallationError] = useState<string | null>(null);
+  const handoffPaused = useSyncExternalStore(subscribeDesktopHandoffPause, isDesktopHandoffPaused);
+  const installationReady = installation !== null && ["standalone_primary", "shared_primary", "awaiting_enrollment", "editable_consumer"].includes(installation.state);
+
+  useEffect(() => {
+    if (!legalAccepted || lockedStartupState !== "ready") return;
+    let disposed = false;
+    void refreshLibraryCoreDesktopRole().then(async (status) => {
+      if (status.state === "fenced" || (status.libraryId !== null && status.authorityEpochId !== null)) {
+        await restoreDesktopLibraryHandoffPause();
+      }
+      if (!disposed) { setInstallation(status); setInstallationError(null); }
+    }).catch((failure) => {
+      if (!disposed) setInstallationError(failure instanceof Error ? failure.message : "Native Library setup is unavailable.");
+    });
+    return () => { disposed = true; };
+  }, [legalAccepted, lockedStartupState]);
+
 
   useDesktopNavigationHistory(legalAccepted);
 
@@ -679,30 +711,30 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!legalAccepted || lockedStartupState !== "ready") return;
+    if (!legalAccepted || lockedStartupState !== "ready" || !installationReady) return;
     initialize();
-  }, [initialize, legalAccepted, lockedStartupState]);
+  }, [initialize, legalAccepted, lockedStartupState, installationReady]);
 
   useEffect(() => {
-    if (!legalAccepted || !isInitialized || !tauriRuntimeAvailable) return;
+    if (!legalAccepted || !isInitialized || !tauriRuntimeAvailable || handoffPaused) return;
     return startAvatarBackfill(queryNormalizedLibrary,
       invalidate => subscribeDesktopLibraryRuntime((_state, event) => {
         if (event.requiresFullScan) invalidate();
       }), message => { void log.info(message); });
-  }, [isInitialized, legalAccepted, tauriRuntimeAvailable]);
+  }, [isInitialized, legalAccepted, tauriRuntimeAvailable, handoffPaused]);
 
   useEffect(() => {
-    if (!legalAccepted || !isInitialized || !tauriRuntimeAvailable) return;
+    if (!legalAccepted || !isInitialized || !tauriRuntimeAvailable || handoffPaused) return;
     void startAllCloudSyncs().catch((error) => {
       log.warn(
         `[cloud] Failed to resume configured sync: ${error instanceof Error ? error.message : String(error)}`,
       );
     });
     return () => stopAllCloudSyncs();
-  }, [isInitialized, legalAccepted, tauriRuntimeAvailable]);
+  }, [isInitialized, legalAccepted, tauriRuntimeAvailable, handoffPaused]);
 
   useEffect(() => {
-    if (!legalAccepted || !isInitialized) return;
+    if (!legalAccepted || !isInitialized || handoffPaused) return;
     startMemoryMonitor({
       onCriticalPressure: () => {
         stopContentFetcher();
@@ -720,10 +752,12 @@ function App() {
       },
     });
     void initProviderHealth();
-    startRssPoller();
-    startProviderSyncScheduler({
-      existingInstall: wasDesktopClientRegistrationCreatedThisLaunch() !== true,
-    });
+    if (installation?.role === "primary") {
+      startRssPoller();
+      startProviderSyncScheduler({
+        existingInstall: wasDesktopClientRegistrationCreatedThisLaunch() !== true,
+      });
+    }
     // SQLite synchronization starts only through the typed Library Core path.
     if (isTauri()) {
       void startSnapshotManager().catch((error) => {
@@ -736,7 +770,9 @@ function App() {
     }
     // Start background content fetcher, which processes the article HTML queue.
     void contentCache.pruneOversized();
-    startContentFetcher({ startupDelayMs: 5 * 60_000, memoryGuard: true });
+    if (installation?.role === "primary") {
+      startContentFetcher({ startupDelayMs: 5 * 60_000, memoryGuard: true });
+    }
     startSemanticClassifier({
       isEnabled: () => {
         const prefs = useDesktopStore.getState().preferences.ai;
@@ -755,15 +791,7 @@ function App() {
         };
       },
     });
-    startPriorityIndexer({
-      getWeights: () => useDesktopStore.getState().preferences.weights,
-      subscribeToWeightChanges: (callback) =>
-        useDesktopStore.subscribe((state, previous) => {
-          if (state.preferences.weights !== previous.preferences.weights) {
-            callback();
-          }
-        }),
-    });
+    startPriorityIndexer();
     return () => {
       stopRssPoller();
       stopProviderSyncScheduler();
@@ -775,7 +803,7 @@ function App() {
       stopSemanticClassifier();
       stopMemoryMonitor();
     };
-  }, [isInitialized, legalAccepted]);
+  }, [isInitialized, legalAccepted, installation?.role, handoffPaused]);
 
   // Log OS sleep/wake transitions so the log file shows where overnight
   // freezes begin. These events are emitted by Tauri on macOS suspend/resume.
@@ -831,6 +859,7 @@ function App() {
       import.meta.env.VITE_TEST_TAURI === "1" || isTauri() || hasTauriMock;
     if (!canEmitRendererHeartbeat) return;
 
+    const responsiveness = new RendererResponsivenessMonitor();
     let heartbeatSeq = 0;
     const pageLoadId =
       typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -854,13 +883,14 @@ function App() {
         };
       };
       const visibility = document.visibilityState;
+      const surfacePerf = collectSurfacePerf();
       const timing = rendererHeartbeatTiming(
         visibility,
         now,
         expectedHeartbeatAt,
         RENDERER_HEARTBEAT_INTERVAL_MS,
       );
-      const payload = {
+      const payload = withRuntimeHealthIdentity({
         seq: heartbeatSeq,
         ts: Date.now(),
         reason,
@@ -878,8 +908,10 @@ function App() {
         settingsOpen: Boolean(document.querySelector(".theme-settings-shell")),
         dialogOpen: Boolean(document.querySelector(".theme-dialog-shell")),
         backgroundRuntime: getBackgroundRuntimeStatus(),
-        surfacePerf: collectSurfacePerf(),
-      };
+        surfacePerf,
+        activeSurface: surfacePerf.activeSurface,
+        responsiveness: responsiveness.snapshot(),
+      });
       expectedHeartbeatAt = now + RENDERER_HEARTBEAT_INTERVAL_MS;
       noteRendererHeartbeat(payload);
       if (import.meta.env.VITE_TEST_TAURI === "1") {
@@ -922,6 +954,7 @@ function App() {
       window.removeEventListener("keydown", noteInput);
       window.removeEventListener("pagehide", handlePageHide);
       sendRendererHeartbeat("cleanup");
+      responsiveness.dispose();
     };
   }, [legalAccepted]);
 
@@ -1076,13 +1109,18 @@ function App() {
       jobKind: "update",
       label: "Update",
       source: "desktop-download",
-      message: "Downloading Freed Desktop update.",
-      progress: 0,
+      message: "Preparing Freed Desktop update.",
     });
-    setUpdateState({ phase: "downloading", percent: 0 });
+    const backupStartedAt = performance.now();
+    setUpdateState({ phase: "backing-up", startedAtMonotonicMs: backupStartedAt });
 
     try {
       const version = await installPendingDesktopUpdate(pending, (progress) => {
+        if (progress.phase === "backing-up") {
+          setUpdateState({ phase: "backing-up", startedAtMonotonicMs: backupStartedAt });
+          updateBackgroundActivity(activityId, { message: "Saving Library backup before updating." });
+          return;
+        }
         if (progress.phase === "downloading") {
           setUpdateState({
             phase: "downloading",
@@ -1176,83 +1214,88 @@ function App() {
   );
 
   const handleFactoryReset = useCallback(async (deleteFromCloud: boolean) => {
-    await runFactoryResetWithRecovery({
-      reset: async () => {
-        beginFactoryResetBoundary();
-        stopRssPoller();
-        stopProviderSyncScheduler();
-        stopSync();
-        stopAllCloudSyncs();
-        stopSnapshotManager();
-        stopContentFetcher();
-        stopPriorityIndexer();
-        stopSemanticClassifier();
-        await runFactoryResetOperations({
-          phaseTimeoutMs: 255_000,
-          trackedWorkDrainTimeoutMs: 240_000,
-          quiesceLocalWriters: [
-            quiesceDesktopProviderAuthForFactoryReset,
-            quiesceDesktopOAuthForFactoryReset,
-            quiesceDesktopStoreForFactoryReset,
-            stopRssPollerAndDrain,
-            stopProviderSyncSchedulerAndDrain,
-            stopAndDrainContentFetcher,
-            stopAndDrainPriorityIndexer,
-            stopAndDrainSemanticClassifier,
-          ],
-          clearDeviceStores: () => [
-            clearDeviceDisplayPreferences(),
-            clearDeviceAIPreferences(),
-            clearLegacyDeviceGraphLayoutImport(),
-          ],
-          clearLocalSettings: [
-            resetFeedCardDensity,
-            resetInterfaceZoom,
-            resetThemePreference,
-            clearStoredCookies,
-            clearProviderScheduleStateForFactoryReset,
-            clearRssSyncScheduleForFactoryReset,
-          ],
-          clearLocalData: [
-            clearSnapshots,
-            clearClipboardSaveShortcutConfig,
-            async () => {
-              await invoke("clear_factory_reset_runtime_artifacts");
-            },
-          ],
-          clearProviderDataAndConnections: async () => {
-            stopAllCloudSyncs();
-            await clearStoredCloudDataForFactoryReset(deleteFromCloud);
-            const disconnectFailures: unknown[] = [];
-            for (const disconnectProvider of [
-              disconnectFbForFactoryReset,
-              disconnectIgForFactoryReset,
-              disconnectLiForFactoryReset,
-              disconnectSubstackForFactoryReset,
-              disconnectMediumForFactoryReset,
-              disconnectYouTubeForFactoryReset,
-            ]) {
-              try {
-                await disconnectProvider();
-              } catch (error) {
-                disconnectFailures.push(error);
+    const finishCountsTransition = desktopLibraryCountResource.beginTransition();
+    try {
+      await runFactoryResetWithRecovery({
+        reset: async () => {
+          beginFactoryResetBoundary();
+          stopRssPoller();
+          stopProviderSyncScheduler();
+          stopSync();
+          stopAllCloudSyncs();
+          stopSnapshotManager();
+          stopContentFetcher();
+          stopPriorityIndexer();
+          stopSemanticClassifier();
+          await runFactoryResetOperations({
+            phaseTimeoutMs: 255_000,
+            trackedWorkDrainTimeoutMs: 240_000,
+            quiesceLocalWriters: [
+              quiesceDesktopProviderAuthForFactoryReset,
+              quiesceDesktopOAuthForFactoryReset,
+              quiesceDesktopStoreForFactoryReset,
+              stopRssPollerAndDrain,
+              stopProviderSyncSchedulerAndDrain,
+              stopAndDrainContentFetcher,
+              stopAndDrainPriorityIndexer,
+              stopAndDrainSemanticClassifier,
+            ],
+            clearDeviceStores: () => [
+              clearDeviceDisplayPreferences(),
+              clearDeviceAIPreferences(),
+              clearLegacyDeviceGraphLayoutImport(),
+            ],
+            clearLocalSettings: [
+              resetFeedCardDensity,
+              resetInterfaceZoom,
+              resetThemePreference,
+              clearStoredCookies,
+              clearProviderScheduleStateForFactoryReset,
+              clearRssSyncScheduleForFactoryReset,
+            ],
+            clearLocalData: [
+              clearSnapshots,
+              clearClipboardSaveShortcutConfig,
+              async () => {
+                await invoke("clear_factory_reset_runtime_artifacts");
+              },
+            ],
+            clearProviderDataAndConnections: async () => {
+              stopAllCloudSyncs();
+              await clearStoredCloudDataForFactoryReset(deleteFromCloud);
+              const disconnectFailures: unknown[] = [];
+              for (const disconnectProvider of [
+                disconnectFbForFactoryReset,
+                disconnectIgForFactoryReset,
+                disconnectLiForFactoryReset,
+                disconnectSubstackForFactoryReset,
+                disconnectMediumForFactoryReset,
+                disconnectYouTubeForFactoryReset,
+              ]) {
+                try {
+                  await disconnectProvider();
+                } catch (error) {
+                  disconnectFailures.push(error);
+                }
               }
-            }
-            if (disconnectFailures.length > 0) throw disconnectFailures[0];
-          },
-          clearLibrary: async () => {
-            await resetLocalLibrary();
-          },
-        });
-        clearFactoryResetCloudCleanupBarrier();
-      },
-      reload: () => location.reload(),
-      onFailure: (error) => {
-        const cloudCleanupPaused = hasFactoryResetCloudCleanupBarrier();
-        const recovery = getDesktopFactoryResetFailureRecovery(error, cloudCleanupPaused);
-        toast.error(recovery.message);
-      },
-    });
+              if (disconnectFailures.length > 0) throw disconnectFailures[0];
+            },
+            clearLibrary: async () => {
+              await resetLocalLibrary();
+            },
+          });
+          clearFactoryResetCloudCleanupBarrier();
+        },
+        reload: () => location.reload(),
+        onFailure: (error) => {
+          const cloudCleanupPaused = hasFactoryResetCloudCleanupBarrier();
+          const recovery = getDesktopFactoryResetFailureRecovery(error, cloudCleanupPaused);
+          toast.error(recovery.message);
+        },
+      });
+    } finally {
+      finishCountsTransition();
+    }
   }, []);
 
   const retryCloudProvider = useCallback(async (provider: CloudProvider) => {
@@ -1438,6 +1481,9 @@ function App() {
         ...useAppStore.getState(),
         seedSocialConnections,
       });
+      if (import.meta.env.DEV && IS_FEATURE_PREVIEW && import.meta.env.VITE_TEST_TAURI === "1") {
+        await useAppStore.getState().addSampleLibraryData(generateJevPreviewExamples());
+      }
       sessionStorage.setItem(guardKey, "1");
     })().catch((error) => {
       log.error(
@@ -1602,12 +1648,13 @@ function App() {
       youtube: {
         addToOfflinePlaylist: addYouTubeVideoToOfflinePlaylist,
       },
-      // Encrypted API key store (type-widened: ApiKeyProvider -> string for PlatformConfig interface)
+      // Device-local API key store (type-widened: ApiKeyProvider -> string for PlatformConfig interface)
       secureStorage: secureStorage as {
         getApiKey: (provider: string) => Promise<string | null>;
         setApiKey: (provider: string, key: string) => Promise<void>;
         clearApiKey: (provider: string) => Promise<void>;
       },
+      AISettingsContent: JevSettingsSection,
       localAIModels,
       checkOllamaReachable,
       importInstagramStoryWallArchive: (files) => importMetaExportFiles("instagram", files),
@@ -1647,6 +1694,7 @@ function App() {
         tauriRuntimeAvailable && isInitialized && isSqliteLibraryActive()
           ? readDesktopFeedSignalCounts
           : undefined,
+      libraryCountResource: tauriRuntimeAvailable && isInitialized ? desktopLibraryCountResource : undefined,
       readLibraryFacetSummary:
         tauriRuntimeAvailable && isInitialized
           ? readLibraryCoreFacetSummary
@@ -1757,6 +1805,7 @@ function App() {
           }
         : undefined,
       updateDownloadProgress: ((): UpdateDownloadProgress | null => {
+        if (updateState.phase === "backing-up") return updateState;
         if (updateState.phase === "downloading") return { phase: "downloading", percent: updateState.percent };
         if (updateState.phase === "error") return { phase: "error", message: updateState.message };
         return null;
@@ -1807,6 +1856,13 @@ function App() {
         }}
       />
     );
+  }
+
+  if (!installationReady) {
+    return <DesktopLibrarySetup status={installation} initialError={installationError} onReady={(status) => {
+      setInstallation(status);
+      setInstallationError(null);
+    }} />;
   }
 
   return (

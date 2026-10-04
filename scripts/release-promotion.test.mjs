@@ -1156,6 +1156,20 @@ test("validate-main-backflow ignores release-only main metadata", (t) => {
   const cwd = makeTempRepo();
   t.after(() => rmSync(cwd, { recursive: true, force: true }));
 
+  // Squash promotion shares product bytes without advancing the merge base.
+  git(cwd, ["checkout", "dev"]);
+  writeCargoLock(cwd, "26.4.2002", { dependencyVersion: "1.5.0" });
+  commitAll(cwd, "feat: shared dependency update");
+  git(cwd, ["checkout", "main"]);
+  writeCargoLock(cwd, "26.4.2002", { dependencyVersion: "1.5.0" });
+  commitAll(cwd, "chore: promote dev into main for production release");
+
+  // Dev then advances dependencies while main only bumps its release version.
+  git(cwd, ["checkout", "dev"]);
+  writeCargoLock(cwd, "26.4.2200", { dependencyVersion: "2.0.0" });
+  commitAll(cwd, "feat: update dev dependency");
+  updateOriginRef(cwd, "dev");
+
   git(cwd, ["checkout", "main"]);
   writeRepoFile(
     cwd,
@@ -1167,7 +1181,7 @@ test("validate-main-backflow ignores release-only main metadata", (t) => {
     "packages/pwa/package.json",
     '{\n  "name": "@freed/pwa",\n  "version": "26.4.2100"\n}\n',
   );
-  writeCargoLock(cwd, "26.4.2100");
+  writeCargoLock(cwd, "26.4.2100", { dependencyVersion: "1.5.0" });
   commitAll(cwd, "release metadata");
   updateOriginRef(cwd, "main");
 

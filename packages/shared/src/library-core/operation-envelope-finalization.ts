@@ -23,6 +23,7 @@ import {
   type PreferencesLeafAssignmentSigningBodyV1,
   type PersonReachOutAppendSigningBodyV1,
   type PersonUpsertSigningBodyV1,
+  type FriendReplaceSigningBodyV1,
   type PersonRemoveSigningBodyV1,
   type AccountPersonAssignmentSigningBodyV1,
   type AccountUpsertSigningBodyV1,
@@ -78,6 +79,10 @@ export interface PreferencesLeafAssignmentEnvelopeV1 extends PreferencesLeafAssi
   readonly signature: LibraryCoreEd25519SignatureHex;
 }
 
+export interface FriendReplaceEnvelopeV1 extends FriendReplaceSigningBodyV1 {
+  readonly signature: LibraryCoreEd25519SignatureHex;
+}
+
 export interface PersonUpsertEnvelopeV1 extends PersonUpsertSigningBodyV1 {
   readonly signature: LibraryCoreEd25519SignatureHex;
 }
@@ -113,6 +118,7 @@ export type LibraryCoreOperationEnvelopeV1 =
   | RssFeedRemoveEnvelopeV1
   | RssFeedTitleAssignmentEnvelopeV1
   | PreferencesLeafAssignmentEnvelopeV1
+  | FriendReplaceEnvelopeV1
   | PersonUpsertEnvelopeV1
   | PersonReachOutAppendEnvelopeV1
   | PersonRemoveEnvelopeV1

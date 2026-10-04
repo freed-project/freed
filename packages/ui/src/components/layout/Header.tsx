@@ -1,3 +1,4 @@
+import { formatFeedItemCount } from "../../lib/feed-count-presentation.js";
 import { usePlatformCapabilities } from "../../context/PlatformContext.js";
 import {
   useState,
@@ -131,10 +132,6 @@ const SAVED_SORT_OPTIONS: Array<{ value: SavedContentSortMode; label: string }> 
   { value: "recommended", label: "Recommended" },
   { value: "shortest_read", label: "Shortest read" },
 ];
-
-function formatItemCount(count: number): string {
-  return `${count.toLocaleString()} item${count === 1 ? "" : "s"}`;
-}
 
 function parsePixelValue(value: string, fallback: number): number {
   const parsed = Number.parseFloat(value);
@@ -299,12 +296,12 @@ function contextualFeedTitle({
   activeSignalModes: readonly FeedSignalMode[];
   allSignalsSelected: boolean;
 }): string {
-  if (filter.savedOnly || filter.archivedOnly) return scopeLabel;
+  if (filter.archivedOnly) return scopeLabel;
 
   const signalPart = allSignalsSelected ? null : signalTitlePart(activeSignalModes);
   const kindPart = contentKindTitlePart(filter);
   const providerPart =
-    filter.platform && filter.platform !== "rss"
+    filter.savedOnly || (filter.platform && filter.platform !== "rss")
       ? scopeLabel
       : null;
   const hasContentFilter = !!signalPart || filter.socialContentFilter === "posts" || filter.socialContentFilter === "stories";
@@ -600,7 +597,7 @@ export function Header({
       if (searchUnavailable) return "Search is temporarily unavailable";
       return `${resultCount.toLocaleString()} result${resultCount === 1 ? "" : "s"} in ${scopeLabel}`;
     }
-    return formatItemCount(
+    return formatFeedItemCount(
       fullScopeItemCount ??
         (isSearching ? filteredItems.length : visibleFeedTotalCount),
     );

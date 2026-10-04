@@ -1,4 +1,10 @@
+import { requireLibraryTransferCapability } from "./library-transfer-capability";
+import { queryNormalizedLibrary } from "./library-core-normalized-query-client";
+import { isDesktopHandoffPaused } from "./factory-reset-guard";
+import { waitForFactoryResetDrain } from "@freed/ui/lib/factory-reset";
 import {
+  LIBRARY_CORE_OPTIMISTIC_FIELDS_QUERY_ID,
+  LIBRARY_CORE_OPTIMISTIC_FIELDS_SCHEMA_VERSION,
   createLibraryCoreImmutableObjectKey,
   decodeLibraryCoreCanonicalValue,
   encodeLibraryCoreCanonicalValue,
@@ -17,6 +23,11 @@ import {
 } from "@freed/shared/library-core";
 import {
   createGoogleDriveLibraryCoreAdapterV1,
+  createGoogleDriveLibraryCoreOperationAdapterV2,
+  discoverGoogleDriveLibraryCoreOperationHeadV2,
+  provisionGoogleDriveLibraryCoreOperationHeadV2,
+  publishLibraryCoreNormalizedOperationsOnceV2,
+  syncLibraryCoreNormalizedOperationsOnceV2,
   createGoogleDriveLibraryCoreNormalizedFollowerTransportV2,
   createGoogleDriveLibraryCoreNormalizedIntentAdapterV2,
   createGoogleDriveLibraryCoreNormalizedResultAdapterV2,
@@ -32,6 +43,8 @@ import {
   importLibraryCoreNormalizedIntentSegmentV2,
   importLibraryCoreNormalizedResultSegmentV2,
   importLibraryCoreNormalizedCheckpointV2,
+  stageLibraryCoreNormalizedCheckpointV2,
+  catchUpLibraryCorePredecessorCheckpointV1,
   provisionGoogleDriveLibraryCoreControlV1,
   provisionGoogleDriveLibraryCoreNormalizedResultHeadV2,
   publishLibraryCoreNormalizedCheckpointV2,
@@ -48,10 +61,15 @@ import { recordCloudProviderEvent } from "@freed/ui/lib/debug-store";
 import { log } from "./logger";
 import {
   activateNormalizedLibraryCheckpointImport,
+  activateNormalizedLibraryPredecessorCheckpoint,
+  prepareNormalizedLibraryPredecessorCheckpointRead,
   appendNormalizedLibraryCheckpointImportPage,
   beginNormalizedLibraryCheckpointExport,
   beginNormalizedLibraryCheckpointImport,
-  describeNormalizedLibraryCloudIdentity,
+  describeNormalizedLibraryCloudPreflightIdentity,
+  describeNormalizedLibraryOperationExport,
+  readNormalizedLibraryOperationPage,
+  importNormalizedLibraryOperationPage,
   describeNormalizedLibraryCheckpoint,
   installNormalizedLibraryFollowerActorEnrollment,
   importNormalizedLibraryFollowerResultTransport,
@@ -60,20 +78,25 @@ import {
   readNormalizedLibraryCheckpointPage,
   readNormalizedPrimaryFollowerActorTransportState,
   readNormalizedPrimaryFollowerResultPage,
+  readNormalizedLibraryHandoffResultActors,
   prepareNormalizedLibraryFollowerActorRequest,
   pageNormalizedLibraryFollowerTransport,
   readNormalizedLibraryFollowerRuntimeStatus,
+  readNormalizedLibraryHandoffStatus,
+  prepareNormalizedLibraryHandoffActivation,
+  stageNormalizedLibraryTargetHandoff,
   readNormalizedLibraryFollowerTransportContext,
-  reassignNormalizedLibraryWriterEpoch,
   recordNormalizedLibraryFollowerIntentTransportPublication,
   setSqliteLibraryCloudWriterAdmission as setNativeWriterAdmission,
-  type NormalizedLibraryCloudIdentity,
+  type NormalizedLibraryCloudPreflightIdentity,
+  type NormalizedLibraryFollowerRuntimeStatus,
   type SqliteLibraryPersistedCloudIdentity,
 } from "./sqlite-library";
 import { readNativeJsonValue, writeNativeJsonValue } from "./native-json-store";
 import { createCheckpointPublicationDeadline } from "./checkpoint-publication-deadline";
 import {
   readLibraryCoreDesktopRole,
+  refreshLibraryCoreDesktopRole,
   requireFollowerLibraryCoreDesktopRole,
   requirePrimaryLibraryCoreDesktopRole,
 } from "./library-core-desktop-role";
@@ -90,6 +113,7 @@ interface LocalLibraryCoreCloudStateV2 {
   readonly writerId: string;
   readonly controlFileId: string | null;
   readonly lastPublishedRevision: number | null;
+  readonly lastPublishedOperationRevision?: number | null;
   readonly lastPublishedActorDigest: string | null;
   readonly lastPublishedCheckpoint?: LibraryCorePublishedCheckpointReceiptV1 | null;
 }
@@ -107,7 +131,7 @@ export interface LibraryCorePublishedCheckpointReceiptV1 {
 export type LibraryCoreCloudPublishResult =
   | { readonly status: "published"; readonly revision: number }
   | { readonly status: "current"; readonly revision: number }
-  | { readonly status: "follower_synced"; readonly revision: number }
+  | { readonly status: "follower_synced"; readonly revision: number; readonly follower: NormalizedLibraryFollowerRuntimeStatus }
   | { readonly status: "writer_transferred"; readonly revision: number }
   | { readonly status: "bootstrap_required" }
   | {
@@ -142,6 +166,8 @@ export function isSqliteLibraryGoogleDriveSyncEnabled(): boolean {
 function isCloudState(value: unknown): value is LocalLibraryCoreCloudStateV2 {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const candidate = value as Partial<LocalLibraryCoreCloudStateV2>;
+  if (candidate.lastPublishedOperationRevision !== undefined && candidate.lastPublishedOperationRevision !== null
+    && (!Number.isSafeInteger(candidate.lastPublishedOperationRevision) || candidate.lastPublishedOperationRevision < 0)) return false;
   return (
     candidate.version === 2 &&
     typeof candidate.libraryId === "string" &&
@@ -242,11 +268,11 @@ function checkpointReceiptForState(
 }
 
 async function loadOrCreateCloudState(
-  identity: NormalizedLibraryCloudIdentity,
+  identity: NormalizedLibraryCloudPreflightIdentity,
 ): Promise<{
   readonly state: LocalLibraryCoreCloudStateV2;
   readonly currentWriterId: string;
-  readonly identity: NormalizedLibraryCloudIdentity;
+  readonly identity: NormalizedLibraryCloudPreflightIdentity;
 }> {
   const stored = await readNativeJsonValue(STATE_FILE, STATE_KEY);
   if (stored !== null && stored !== undefined && !isCloudState(stored)) {
@@ -445,6 +471,7 @@ async function* normalizedCheckpointRecords(
   snapshot: LibraryCoreNormalizedCheckpointExportDescriptorV2,
   signal?: AbortSignal,
   advanceRecords?: (count: number) => void,
+  handoffId?: string,
 ): AsyncIterable<LibraryCoreNormalizedCheckpointRecordV2> {
   let after: Parameters<
     typeof readNormalizedLibraryCheckpointPage
@@ -452,7 +479,7 @@ async function* normalizedCheckpointRecords(
   let recordCount = 0;
   for (;;) {
     throwIfPublicationCanceled(signal);
-    const page = await readNormalizedLibraryCheckpointPage({ snapshot, after });
+    const page = await readNormalizedLibraryCheckpointPage({ snapshot, after, ...(handoffId === undefined ? {} : { handoffId }) });
     throwIfPublicationCanceled(signal);
     for (const record of page.records) {
       yield record;
@@ -745,6 +772,7 @@ async function flushNormalizedFollowerResults(input: {
   readonly googleFetch?: GoogleDriveFetch;
   readonly libraryId: string;
   readonly signal?: AbortSignal;
+  readonly requireComplete?: boolean;
 }): Promise<void> {
   for (const actorId of input.actorIds) {
     let locator = await discoverGoogleDriveLibraryCoreResultHeadV1({
@@ -778,6 +806,7 @@ async function flushNormalizedFollowerResults(input: {
       resultHeadFileId: locator.resultHeadFileId,
       signal: input.signal,
     });
+    let complete = false;
     for (let pageIndex = 0; pageIndex < 100; pageIndex += 1) {
       const head = parseLibraryCoreNormalizedResultHeadV2(
         (await adapter.readHead()).head,
@@ -851,7 +880,10 @@ async function flushNormalizedFollowerResults(input: {
         actorId,
         after,
       });
-      if (page.records.length === 0) break;
+      if (page.records.length === 0) {
+        if (input.requireComplete && !page.done) throw new Error("Handoff result page did not advance");
+        complete = true; break;
+      }
       const published = await publishLibraryCoreNormalizedResultSegmentV2({
         adapter,
         canonicalResults: page.records.map((record) =>
@@ -865,17 +897,20 @@ async function flushNormalizedFollowerResults(input: {
       ) {
         throw new Error("normalized result publication changed sequence");
       }
-      if (page.done) break;
+      if (page.done) { complete = true; break; }
     }
+    if (input.requireComplete && !complete) throw new Error("Handoff result publication reached its batch limit; retry before consent");
   }
 }
 
-async function bootstrapCloudCheckpointIntoSqlite(input: {
+async function importCloudCheckpointIntoSqlite(input: {
   readonly adapter: LibraryCoreImmutableReadAdapterV1;
   readonly controlRevision: string;
   readonly pointer: LibraryCoreControlPointerV1;
   readonly follower: boolean;
-}): Promise<NormalizedLibraryCloudIdentity> {
+  readonly signal?: AbortSignal;
+  readonly deadline?: ReturnType<typeof createCheckpointPublicationDeadline>;
+}): Promise<void> {
   const installedAt = Date.now();
   await importLibraryCoreNormalizedCheckpointV2({
     adapter: input.adapter,
@@ -889,201 +924,49 @@ async function bootstrapCloudCheckpointIntoSqlite(input: {
       controlRevision: input.controlRevision,
       installedAt,
       runtime: {
-        activate: (request) =>
-          activateNormalizedLibraryCheckpointImport({
+        activate: async (request) => {
+          throwIfPublicationCanceled(input.signal);
+          if (input.follower) await catchUpLibraryCorePredecessorCheckpointV1({
+            adapter: input.adapter, subtle: crypto.subtle, successorStageId: request.stageId, installedAt,
+            assertActive: () => throwIfPublicationCanceled(input.signal), runtime: {
+              prepare: prepareNormalizedLibraryPredecessorCheckpointRead,
+              activate: activateNormalizedLibraryPredecessorCheckpoint,
+              begin: beginNormalizedLibraryCheckpointImport,
+              async appendPage(page) {
+                const receipt = await appendNormalizedLibraryCheckpointImportPage(page);
+                input.deadline?.verifiedObject(`predecessor:${page.stageId}:${receipt.stagedRecordCount}`);
+                return receipt;
+              },
+            },
+          });
+          throwIfPublicationCanceled(input.signal);
+          return activateNormalizedLibraryCheckpointImport({
             followerReceipt: request.followerReceipt ?? undefined,
             stageId: request.stageId,
-          }),
-        appendPage: appendNormalizedLibraryCheckpointImportPage,
-        begin: beginNormalizedLibraryCheckpointImport,
+          });
+        },
+        async appendPage(request) {
+          throwIfPublicationCanceled(input.signal);
+          const receipt = await appendNormalizedLibraryCheckpointImportPage(request);
+          input.deadline?.advanceRecords(receipt.stagedRecordCount);
+          return receipt;
+        },
+        async begin(request) {
+          throwIfPublicationCanceled(input.signal);
+          input.deadline?.beginCheckpoint(request.expectedRecordCount);
+          return beginNormalizedLibraryCheckpointImport(request);
+        },
       },
       writerActorId: input.follower ? input.pointer.writerId : null,
     }),
   });
-  return describeNormalizedLibraryCloudIdentity();
 }
 
-/**
- * Transfer one current remote Library to this restored Desktop installation.
- *
- * The local SQLite revision must be the exact last revision published by the
- * copied cloud state. A stale or independently advanced copy must bootstrap
- * from the active immutable checkpoint before it may replace authority.
- */
-export function makeThisSqliteLibraryDesktopWriter(input: {
-  readonly accessToken: string;
-  readonly googleFetch?: GoogleDriveFetch;
-  readonly signal?: AbortSignal;
-}): Promise<LibraryCoreCloudPublishResult> {
-  return withCheckpointExport(() =>
-    makeThisSqliteLibraryDesktopWriterInternal(input),
-  );
-}
-
-async function makeThisSqliteLibraryDesktopWriterInternal(input: {
-  readonly accessToken: string;
-  readonly googleFetch?: GoogleDriveFetch;
-  readonly signal?: AbortSignal;
-}): Promise<LibraryCoreCloudPublishResult> {
-  let descriptor = await describeNormalizedLibraryCloudIdentity();
-  const loaded = await loadOrCreateCloudState(descriptor);
-  let state = loaded.state;
-  const provisioned = await provisionGoogleDriveLibraryCoreControlV1({
-    accessToken: input.accessToken,
-    googleFetch: input.googleFetch,
-    libraryId: state.libraryId,
-    signal: input.signal,
-  });
-  if (state.controlFileId !== provisioned.controlFileId) {
-    state = Object.freeze({
-      ...state,
-      controlFileId: provisioned.controlFileId,
-    });
-    await persistCloudState(state);
-  }
-  const adapter = createGoogleDriveLibraryCoreAdapterV1({
-    accessToken: input.accessToken,
-    controlFileId: provisioned.controlFileId,
-    googleFetch: input.googleFetch,
-    libraryId: state.libraryId,
-    signal: input.signal,
-  });
-  const controlRead = await adapter.readControl();
-  const pointer = parseControl(controlRead);
-  if (pointer === null || controlRead.revision === null) {
-    throw new Error("The cloud Library has no writer to transfer");
-  }
-  if (pointer.writerId === loaded.currentWriterId) {
-    await persistVerifiedWriterAdmission({
-      localWriterId: loaded.currentWriterId,
-      pointer,
-      revision: controlRead.revision,
-    });
-    if (
-      state.writerId !== pointer.writerId ||
-      state.storageEpoch !== pointer.storageEpoch ||
-      state.lastPublishedRevision !== descriptor.sourceRevision
-    ) {
-      state = Object.freeze({
-        ...state,
-        lastPublishedRevision: descriptor.sourceRevision,
-        storageEpoch: pointer.storageEpoch,
-        writerId: pointer.writerId,
-      });
-      await persistCloudState(state);
-    }
-    return { status: "current", revision: descriptor.sourceRevision };
-  }
-  if (
-    state.lastPublishedRevision !== descriptor.sourceRevision ||
-    pointer.storageEpoch !== state.storageEpoch ||
-    pointer.writerId !== state.writerId
-  ) {
-    descriptor = await bootstrapCloudCheckpointIntoSqlite({
-      adapter,
-      controlRevision: controlRead.revision,
-      follower: false,
-      pointer,
-    });
-    state = Object.freeze({
-      ...state,
-      lastPublishedRevision: descriptor.sourceRevision,
-      storageEpoch: pointer.storageEpoch,
-      writerId: pointer.writerId,
-    });
-    await persistCloudState(state);
-  }
-
-  const canonicalSourceControlJson = new TextDecoder("utf-8", {
-    fatal: true,
-  }).decode(
-    encodeLibraryCoreCanonicalValue(
-      pointer as unknown as LibraryCoreCanonicalValue,
-    ),
-  );
-  const normalizedSource = await describeNormalizedLibraryCheckpoint();
-  if (
-    String(normalizedSource.libraryId) !== String(pointer.libraryId) ||
-    String(normalizedSource.authorityEpoch) !== String(pointer.storageEpoch) ||
-    String(normalizedSource.writerId) !== String(pointer.writerId) ||
-    normalizedSource.causalFrontierDigest !== pointer.causalFrontierDigest
-  ) {
-    throw new Error(
-      "Normalized SQLite authority does not match the cloud writer source",
-    );
-  }
-  const reassigned = await reassignNormalizedLibraryWriterEpoch({
-    canonicalSourceControlJson,
-    targetWriterId: loaded.currentWriterId,
-  });
-  const targetStorageEpoch = reassigned.authority.epoch_id;
-  const normalizedTarget = await beginNormalizedLibraryCheckpointExport();
-  if (
-    normalizedTarget.libraryId !== state.libraryId ||
-    normalizedTarget.authorityEpoch !== targetStorageEpoch ||
-    normalizedTarget.writerId !== loaded.currentWriterId ||
-    normalizedTarget.sourceRevision !== normalizedSource.sourceRevision
-  ) {
-    throw new Error("Normalized SQLite writer reassignment is incomplete");
-  }
-  const targetState: LocalLibraryCoreCloudStateV2 = Object.freeze({
-    ...state,
-    lastPublishedCheckpoint: null,
-    lastPublishedRevision: null,
-    storageEpoch: targetStorageEpoch,
-    writerId: loaded.currentWriterId,
-  });
-  const result = await reassignLibraryCoreNormalizedCheckpointV2({
-    activeTransport: "google_drive_app_data_v1",
-    adapter,
-    descriptor: normalizedTarget,
-    epochCertificate: await prepareWriterEpochCertificate({
-      canonicalCertificateJson: reassigned.canonicalEpochCertificateJson,
-      libraryId: state.libraryId,
-      targetStorageEpoch,
-    }),
-    expectedControl: { pointer, revision: controlRead.revision },
-    generation: 0,
-    records: normalizedCheckpointRecords(normalizedTarget, input.signal),
-    subtle: crypto.subtle,
-  });
-  if (result.status === "conflict") {
-    const currentPointer = result.currentControlPointer ?? pointer;
-    await persistVerifiedWriterAdmission({
-      localWriterId: loaded.currentWriterId,
-      pointer: currentPointer,
-      revision: result.currentRevision ?? controlRead.revision,
-    });
-    return {
-      status: "ownership_required",
-      currentWriterId: currentPointer.writerId,
-      localWriterId: loaded.currentWriterId,
-    };
-  }
-  await persistCloudState(
-    Object.freeze({
-      ...targetState,
-      lastPublishedActorDigest: null,
-      lastPublishedCheckpoint: checkpointPublicationReceipt({
-        localRevision: normalizedTarget.sourceRevision,
-        itemCount: normalizedTarget.itemCount,
-        checkpointStoredByteLength: checkpointStoredByteLength(result),
-        controlRevision: result.revision,
-        controlPointer: result.controlPointer,
-      }),
-      lastPublishedRevision: normalizedTarget.sourceRevision,
-    }),
-  );
-  await setSqliteLibraryCloudWriterAdmission({
-    localWriterId: loaded.currentWriterId,
-    activeWriterId: loaded.currentWriterId,
-    storageEpoch: targetStorageEpoch,
-    controlRevision: result.revision,
-  });
-  return {
-    status: "writer_transferred",
-    revision: normalizedTarget.sourceRevision,
-  };
+async function bootstrapCloudCheckpointIntoSqlite(
+  input: Parameters<typeof importCloudCheckpointIntoSqlite>[0],
+): Promise<NormalizedLibraryCloudPreflightIdentity> {
+  await importCloudCheckpointIntoSqlite(input);
+  return describeNormalizedLibraryCloudPreflightIdentity();
 }
 
 async function publishCurrentSqliteLibraryToGoogleDriveInternal(input: {
@@ -1094,7 +977,7 @@ async function publishCurrentSqliteLibraryToGoogleDriveInternal(input: {
 }): Promise<LibraryCoreCloudPublishResult> {
   const descriptor = await tracedPublicationStage(
     "read local SQLite revision",
-    describeNormalizedLibraryCloudIdentity,
+    describeNormalizedLibraryCloudPreflightIdentity,
   );
   throwIfPublicationCanceled(input.signal);
   const loaded = await tracedPublicationStage(
@@ -1192,6 +1075,40 @@ async function publishCurrentSqliteLibraryToGoogleDriveInternal(input: {
     signal: input.signal,
   }));
   throwIfPublicationCanceled(input.signal);
+  const checkpointReceipt = checkpointReceiptForState(state);
+  if (pointer && checkpointReceipt && controlRead.revision === checkpointReceipt.controlRevision
+    && controlPointersEqual(pointer, checkpointReceipt.controlPointer)) {
+    const anchor = { libraryId: pointer.libraryId, storageEpoch: pointer.storageEpoch, writerId: pointer.writerId,
+      checkpointDigest: pointer.manifest.descriptor.contentDigest, checkpointRevision: checkpointReceipt.localRevision };
+    const operationHeadFileId = await provisionGoogleDriveLibraryCoreOperationHeadV2({
+      accessToken: input.accessToken, googleFetch: input.googleFetch, signal: input.signal,
+      head: { ...anchor, format: "freed_normalized_operation_head_v2", protocolVersion: 2, segmentCount: 0, tail: null },
+    });
+    const incremental = await publishLibraryCoreNormalizedOperationsOnceV2({
+      anchor,
+      transport: createGoogleDriveLibraryCoreOperationAdapterV2({
+        accessToken: input.accessToken, libraryId: state.libraryId, epochId: state.storageEpoch,
+        writerId: state.writerId, controlFileId: provisioned.controlFileId, operationHeadFileId,
+        googleFetch: input.googleFetch, signal: input.signal,
+      }),
+      source: { describe: describeNormalizedLibraryOperationExport, read: readNormalizedLibraryOperationPage },
+      async assertCurrentAuthority() {
+        await refreshLibraryCoreDesktopRole();
+        requirePrimaryLibraryCoreDesktopRole();
+        const current = await adapter.readControl();
+        const active = parseControl(current);
+        if (current.revision !== controlRead.revision || !active || !controlPointersEqual(active,pointer)) {
+          throw new Error("Library authority changed during operation publication.");
+        }
+      },
+      signal: input.signal,
+    });
+    if (incremental.status !== "checkpoint_required") {
+      state = Object.freeze({ ...state, lastPublishedOperationRevision: incremental.revision });
+      await persistCloudState(state);
+      return { status: incremental.status, revision: incremental.revision };
+    }
+  }
   return withCheckpointExport(async () => {
     const normalizedCheckpoint =
       await tracedPublicationStage("prepare checkpoint snapshot", () =>
@@ -1210,17 +1127,28 @@ async function publishCurrentSqliteLibraryToGoogleDriveInternal(input: {
     throwIfPublicationCanceled(input.signal);
     if (state.lastPublishedRevision === normalizedCheckpoint.sourceRevision) {
       const receipt = checkpointReceiptForState(state);
-      if (
-        receipt === null ||
-        pointer === null ||
-        controlRead.revision !== receipt.controlRevision ||
-        !controlPointersEqual(pointer, receipt.controlPointer)
-      ) {
+      if (receipt !== null && pointer !== null
+        && controlRead.revision === receipt.controlRevision
+        && controlPointersEqual(pointer, receipt.controlPointer)) {
+        return { status: "current", revision: normalizedCheckpoint.sourceRevision };
+      }
+      // Final publication may reach Drive before its local receipt reaches disk.
+      // A cancelled, never-authorized source may republish its unchanged frontier
+      // through ordinary CAS. Do not extend this recovery to unknown authority.
+      const handoff = await readNormalizedLibraryHandoffStatus();
+      if (!handoff || handoff.installationRole !== "source" || handoff.phase !== "cancelled"
+        || handoff.libraryId !== state.libraryId || handoff.predecessorEpochId !== state.storageEpoch
+        || handoff.canonicalAuthorizationBody !== null || handoff.canonicalAuthorization !== null
+        || handoff.canonicalActivation !== null || pointer === null
+        || String(pointer.libraryId) !== normalizedCheckpoint.libraryId
+        || String(pointer.storageEpoch) !== normalizedCheckpoint.authorityEpoch
+        || String(pointer.writerId) !== normalizedCheckpoint.writerId
+        || pointer.causalFrontierDigest !== normalizedCheckpoint.causalFrontierDigest
+        || (receipt !== null && pointer.generation < receipt.controlPointer.generation)) {
         throw new Error(
           "Stored Library Core publication receipt does not match Drive control",
         );
       }
-      return { status: "current", revision: normalizedCheckpoint.sourceRevision };
     }
     const generation = pointer === null ? 0 : pointer.generation + 1;
     const result = await publishLibraryCoreNormalizedCheckpointV2({
@@ -1272,9 +1200,50 @@ async function publishCurrentSqliteLibraryToGoogleDriveInternal(input: {
         controlPointer: result.controlPointer,
       }),
       lastPublishedRevision: normalizedCheckpoint.sourceRevision,
+      lastPublishedOperationRevision: normalizedCheckpoint.sourceRevision,
     });
     await persistCloudState(state);
     return { status: "published", revision: normalizedCheckpoint.sourceRevision };
+  });
+}
+
+let activeSyncWork: Promise<unknown> | null = null;
+let activeSyncAbort: (() => void) | null = null;
+
+function requireOrdinarySyncAllowed(): void {
+  if (isDesktopHandoffPaused()) throw new Error("Library transfer is pausing ordinary synchronization");
+}
+
+/** Native lifecycle changes share the sync owner. A cancelled network pass must
+ * actually finish before source preparation can change its authority. */
+export async function runSqliteLibraryHandoffLifecycle<T>(work: () => Promise<T>): Promise<T> {
+  requireLibraryTransferCapability();
+  if (!isDesktopHandoffPaused()) throw new Error("Library handoff requires the renderer pause");
+  stopSqliteLibraryCloudSync();
+  await waitForFactoryResetDrain(
+    () => activeSyncWork === null ? [] : [activeSyncWork.catch(() => undefined)],
+    "Library synchronization", 180_000,
+  );
+  return retainSyncWork(work);
+}
+
+function syncWorkBusyError(): Error {
+  return new Error("SQLite Library sync is still finishing. Try Sync now again shortly.");
+}
+
+function retainSyncWork<T>(
+  work: () => Promise<T>,
+  abort?: () => void,
+): Promise<T> {
+  if (activeSyncWork !== null) return Promise.reject(syncWorkBusyError());
+  const completion = Promise.resolve().then(work);
+  activeSyncWork = completion;
+  activeSyncAbort = abort ?? null;
+  return completion.finally(() => {
+    if (activeSyncWork === completion) {
+      activeSyncWork = null;
+      activeSyncAbort = null;
+    }
   });
 }
 
@@ -1320,15 +1289,22 @@ function publicationAbortError(message: string): Error {
  * Native SQLite and Keychain commands cannot be interrupted after Tauri has
  * accepted them. Their result is still safe to ignore because every cloud
  * mutation below rechecks the supplied signal before the request and Drive
- * publication ends in an exact control CAS. Canceled preflight work may be
- * abandoned. Once export starts, withCheckpointExport retains ownership until
- * the underlying work settles; callers receive a bounded busy error meanwhile.
+ * publication ends in an exact control CAS. All underlying work retains its
+ * installation-wide ownership until it settles, including canceled preflight.
+ * Callers receive a bounded busy error while that work is still finishing.
  */
-async function runBoundedPublication(input: {
+async function runBoundedPublication<T>(input: {
   readonly accessToken: string;
   readonly googleFetch?: GoogleDriveFetch;
   readonly signal?: AbortSignal;
-}): Promise<LibraryCoreCloudPublishResult> {
+}, work: (input: {
+  readonly accessToken: string;
+  readonly googleFetch?: GoogleDriveFetch;
+  readonly signal?: AbortSignal;
+  readonly deadline?: ReturnType<typeof createCheckpointPublicationDeadline>;
+}) => Promise<T>, handoffPublication = false): Promise<T> {
+  if (!handoffPublication) requireOrdinarySyncAllowed();
+  if (activeSyncWork !== null) throw syncWorkBusyError();
   if (input.signal?.aborted) {
     throw publicationAbortError("SQLite Library publication was canceled.");
   }
@@ -1371,17 +1347,370 @@ async function runBoundedPublication(input: {
   });
   try {
     return await Promise.race([
-      publishCurrentSqliteLibraryToGoogleDriveInternal({
+      retainSyncWork(() => work({
         ...input,
         signal: combinedController.signal,
         deadline,
-      }),
+      }), abortCombined),
       canceled,
     ]);
   } finally {
     deadline.dispose();
     input.signal?.removeEventListener("abort", abortCombined);
   }
+}
+
+/** Publish the frozen predecessor without ordinary sync's admission side effects. */
+export function publishSealedSqliteLibraryCheckpoint(input: {
+  readonly accessToken: string;
+  readonly handoffId: string;
+  readonly googleFetch?: GoogleDriveFetch;
+  readonly signal?: AbortSignal;
+}): Promise<{
+  readonly checkpoint: LibraryCoreNormalizedCheckpointExportDescriptorV2;
+  readonly controlPointer: LibraryCoreControlPointerV1;
+  readonly controlRevision: string;
+  readonly controlFileId: string;
+}> {
+  requireLibraryTransferCapability();
+  return runBoundedPublication(input, (request) => withCheckpointExport(async () => {
+    const requireSealed = async () => {
+      throwIfPublicationCanceled(request.signal);
+      const status = await readNormalizedLibraryHandoffStatus();
+      if (!status || status.handoffId !== input.handoffId || status.installationRole !== "source"
+        || status.phase !== "sealed" || status.canonicalAuthorizationBody !== null) {
+        throw new Error("Final checkpoint publication requires this sealed, unsigned source transfer");
+      }
+      return status;
+    };
+    const status = await requireSealed();
+    const checkpoint = await beginNormalizedLibraryCheckpointExport(input.handoffId);
+    if (checkpoint.libraryId !== status.libraryId || checkpoint.authorityEpoch !== status.predecessorEpochId) {
+      throw new Error("Sealed checkpoint belongs to a different handoff predecessor");
+    }
+    const stored = await readNativeJsonValue(STATE_FILE, STATE_KEY);
+    if (!isCloudState(stored) || !stored.controlFileId || stored.libraryId !== checkpoint.libraryId
+      || stored.storageEpoch !== checkpoint.authorityEpoch || stored.writerId !== checkpoint.writerId) {
+      throw new Error("Final checkpoint publication requires the existing predecessor cloud identity");
+    }
+    const adapter = createGoogleDriveLibraryCoreAdapterV1({
+      ...request, libraryId: checkpoint.libraryId, controlFileId: stored.controlFileId,
+    });
+    const control = await adapter.readControl();
+    const pointer = parseControl(control);
+    if (!pointer || control.revision === null || String(pointer.libraryId) !== checkpoint.libraryId
+      || String(pointer.storageEpoch) !== checkpoint.authorityEpoch || String(pointer.writerId) !== checkpoint.writerId) {
+      throw new Error("Cloud authority no longer matches the sealed predecessor");
+    }
+    let after: string | null = null;
+    for (;;) {
+      await requireSealed();
+      const actors = await readNormalizedLibraryHandoffResultActors(input.handoffId, after);
+      if (actors.length === 0) break;
+      if (actors.length > 100 || actors.some((id, index) => !/^[a-f0-9]{64}$/.test(id)
+        || id <= (index === 0 ? after ?? "" : actors[index - 1]!))) {
+        throw new Error("Handoff result actor page did not advance");
+      }
+      await flushNormalizedFollowerResults({
+        accessToken: request.accessToken, actorIds: actors, controlFileId: stored.controlFileId,
+        epochId: checkpoint.authorityEpoch, libraryId: checkpoint.libraryId,
+        googleFetch: request.googleFetch, signal: request.signal, requireComplete: true,
+      });
+      after = actors.at(-1)!;
+      request.deadline?.check();
+    }
+    request.deadline?.beginCheckpoint(checkpoint.recordCount);
+    const result = await publishLibraryCoreNormalizedCheckpointV2({
+      activeTransport: "google_drive_app_data_v1",
+      adapter: {
+        ...adapter,
+        async compareAndSwapControl(change) {
+          await requireSealed();
+          return adapter.compareAndSwapControl(change);
+        },
+        async verifyImmutable(receipt) {
+          const verified = await adapter.verifyImmutable(receipt);
+          if (verified.objectKey === receipt.descriptor.objectKey
+            && verified.contentDigest === receipt.descriptor.contentDigest
+            && verified.byteLength === receipt.descriptor.byteLength) {
+            request.deadline?.verifiedObject(verified.objectKey);
+          }
+          return verified;
+        },
+      },
+      descriptor: checkpoint,
+      expectedControl: { revision: control.revision, pointer },
+      generation: pointer.generation + 1,
+      records: normalizedCheckpointRecords(checkpoint, request.signal, request.deadline?.advanceRecords, input.handoffId),
+      subtle: crypto.subtle,
+    });
+    if (result.status === "conflict") throw new Error("Cloud authority changed during final checkpoint publication");
+    const verified = await adapter.readControl();
+    const verifiedPointer = parseControl(verified);
+    if (verified.revision !== result.revision || !verifiedPointer || !controlPointersEqual(verifiedPointer, result.controlPointer)) {
+      throw new Error("Final checkpoint cloud head could not be verified");
+    }
+    await requireSealed();
+    request.deadline?.check();
+    // Preserve ordinary sync continuity if the owner cancels before consent.
+    // This receipt records verified publication; it does not restore admission.
+    await persistCloudState(Object.freeze({
+      ...stored,
+      lastPublishedActorDigest: null,
+      lastPublishedRevision: checkpoint.sourceRevision,
+      lastPublishedOperationRevision: checkpoint.sourceRevision,
+      lastPublishedCheckpoint: checkpointPublicationReceipt({
+        localRevision: checkpoint.sourceRevision,
+        itemCount: checkpoint.itemCount,
+        checkpointStoredByteLength: checkpointStoredByteLength(result),
+        controlRevision: result.revision,
+        controlPointer: verifiedPointer,
+      }),
+    }));
+    throwIfPublicationCanceled(request.signal);
+    return { checkpoint, controlPointer: verifiedPointer, controlRevision: result.revision, controlFileId: stored.controlFileId };
+  }), true);
+}
+
+/** The source stays selected and fenced while successor pages are downloaded.
+ * Native code independently checks the signed successor and remote proof. */
+export function stageSqliteLibraryHandoffSource(input: {
+  handoffId: string; accessToken: string; googleFetch?: GoogleDriveFetch; signal?: AbortSignal;
+}): Promise<{ stageId: string; canonicalControl: string }> {
+  requireLibraryTransferCapability();
+  return runBoundedPublication(input, async (request) => {
+    const status = await readNormalizedLibraryHandoffStatus();
+    if (!status || status.handoffId !== input.handoffId || status.installationRole !== "source"
+      || status.phase !== "authorized" || !status.canonicalAuthorizationBody || !status.canonicalAuthorization) {
+      throw new Error("Source download requires its durable handoff consent");
+    }
+    const body = decodeLibraryCoreCanonicalValue(exactBytes(new TextEncoder().encode(status.canonicalAuthorizationBody))) as {
+      source_control_file_id?: unknown;
+    };
+    if (typeof body.source_control_file_id !== "string" || !/^[A-Za-z0-9_-]{1,1024}$/.test(body.source_control_file_id)) {
+      throw new Error("Source consent control identity is invalid");
+    }
+    const adapter = createGoogleDriveLibraryCoreAdapterV1({ ...request, libraryId: status.libraryId, controlFileId: body.source_control_file_id });
+    const control = await adapter.readControl();
+    const pointer = parseControl(control);
+    if (!pointer || !control.revision || pointer.libraryId !== status.libraryId || pointer.storageEpoch === status.predecessorEpochId) {
+      throw new Error("The authorized successor has not published a checkpoint");
+    }
+    const runtime = {
+      async begin(stage: Parameters<typeof beginNormalizedLibraryCheckpointImport>[0]) {
+        throwIfPublicationCanceled(request.signal);
+        request.deadline?.beginCheckpoint(stage.expectedRecordCount);
+        return beginNormalizedLibraryCheckpointImport(stage);
+      },
+      async appendPage(page: Parameters<typeof appendNormalizedLibraryCheckpointImportPage>[0]) {
+        throwIfPublicationCanceled(request.signal);
+        const receipt = await appendNormalizedLibraryCheckpointImportPage(page);
+        request.deadline?.advanceRecords(receipt.stagedRecordCount);
+        return receipt;
+      },
+    };
+    const staged = await stageLibraryCoreNormalizedCheckpointV2({
+      adapter, generation: pointer.generation, libraryId: pointer.libraryId, storageEpoch: pointer.storageEpoch,
+      manifest: pointer.manifest, subtle: crypto.subtle, runtime,
+    });
+    await catchUpLibraryCorePredecessorCheckpointV1({
+      adapter, subtle: crypto.subtle, successorStageId: staged.stageId, installedAt: Date.now(), stageOnly: true,
+      assertActive: () => throwIfPublicationCanceled(request.signal),
+      runtime: {
+        ...runtime,
+        prepare: prepareNormalizedLibraryPredecessorCheckpointRead,
+        async appendPage(page) {
+          const receipt = await runtime.appendPage(page);
+          // The final checkpoint has already exhausted its record counter.
+          // Distinct historical pages renew idle time without extending the total cap.
+          request.deadline?.verifiedObject(`predecessor:${page.stageId}:${receipt.stagedRecordCount}`);
+          return receipt;
+        },
+        async activate() { throw new Error("Source history must remain staged until verified demotion"); },
+      },
+    });
+    const current = await readNormalizedLibraryHandoffStatus();
+    if (!current || current.handoffId !== status.handoffId || current.phase !== "authorized"
+      || current.installationRole !== "source" || current.canonicalAuthorization !== status.canonicalAuthorization
+      || current.canonicalAuthorizationBody !== status.canonicalAuthorizationBody) {
+      throw new Error("Source handoff changed during checkpoint download");
+    }
+    throwIfPublicationCanceled(request.signal);
+    return { stageId: staged.stageId, canonicalControl: new TextDecoder().decode(encodeLibraryCoreCanonicalValue(pointer as unknown as LibraryCoreCanonicalValue)) };
+  }, true);
+}
+
+/** Import only the immutable predecessor checkpoint named by accepted consent.
+ * Native activation checks its complete logical digest before committing rows. */
+export function catchUpSqliteLibraryHandoffTarget(input: {
+  handoffId: string;
+  accessToken: string;
+  googleFetch?: GoogleDriveFetch;
+  signal?: AbortSignal;
+}): Promise<LibraryCoreNormalizedCheckpointExportDescriptorV2> {
+  requireLibraryTransferCapability();
+  return runBoundedPublication(input, async (request) => {
+    const status = await readNormalizedLibraryHandoffStatus();
+    if (!status || status.handoffId !== input.handoffId || status.installationRole !== "target"
+      || status.phase !== "preparing" || status.canonicalAuthorization === null
+      || status.canonicalAuthorizationBody === null) {
+      throw new Error("Target catch-up requires accepted predecessor consent");
+    }
+    const body = decodeLibraryCoreCanonicalValue(exactBytes(new TextEncoder().encode(status.canonicalAuthorizationBody))) as {
+      source_control?: unknown; source_control_revision?: unknown; source_control_file_id?: unknown; final_source_revision?: unknown;
+    };
+    const expected = parseLibraryCoreControlPointerV1(body.source_control);
+    if (expected.libraryId !== status.libraryId || expected.storageEpoch !== status.predecessorEpochId
+      || typeof body.source_control_revision !== "string" || typeof body.source_control_file_id !== "string"
+      || !/^[A-Za-z0-9_-]{1,1024}$/.test(body.source_control_file_id) || !Number.isSafeInteger(body.final_source_revision)) {
+      throw new Error("Target consent checkpoint identity is invalid");
+    }
+    const adapter = createGoogleDriveLibraryCoreAdapterV1({
+      ...request, libraryId: status.libraryId, controlFileId: body.source_control_file_id,
+    });
+    const control = await adapter.readControl();
+    const pointer = parseControl(control);
+    if (!pointer || control.revision !== body.source_control_revision || !controlPointersEqual(pointer, expected)) {
+      throw new Error("Cloud authority changed since the Primary authorized this handoff");
+    }
+    await importCloudCheckpointIntoSqlite({
+      adapter, controlRevision: body.source_control_revision, pointer: expected,
+      follower: true, signal: request.signal, deadline: request.deadline,
+    });
+    const checkpoint = await describeNormalizedLibraryCheckpoint();
+    const current = await readNormalizedLibraryHandoffStatus();
+    if (!current || current.handoffId !== status.handoffId || current.installationRole !== "target"
+      || current.phase !== "preparing" || current.canonicalAuthorization !== status.canonicalAuthorization
+      || current.canonicalAuthorizationBody !== status.canonicalAuthorizationBody
+      || checkpoint.libraryId !== String(expected.libraryId) || checkpoint.authorityEpoch !== String(expected.storageEpoch)
+      || checkpoint.writerId !== String(expected.writerId) || checkpoint.sourceRevision !== body.final_source_revision
+      || checkpoint.causalFrontierDigest !== expected.causalFrontierDigest) {
+      throw new Error("Target checkpoint or local handoff continuity could not be verified");
+    }
+    throwIfPublicationCanceled(request.signal);
+    return checkpoint;
+  }, true);
+}
+
+/** Publish a prepared successor while native admission remains fenced. Returning
+ * a verified cloud pointer is not permission to activate the local writer. */
+export function publishSqliteLibraryHandoffTarget(input: {
+  handoffId: string; accessToken: string; googleFetch?: GoogleDriveFetch; signal?: AbortSignal;
+}): Promise<{ controlPointer: LibraryCoreControlPointerV1; controlRevision: string }> {
+  requireLibraryTransferCapability();
+  return runBoundedPublication(input, (request) => withCheckpointExport(async () => {
+    const initial = await readNormalizedLibraryHandoffStatus();
+    if (!initial || initial.handoffId !== input.handoffId || initial.installationRole !== "target"
+      || initial.phase !== "cas_pending" || initial.successorEpochId === null
+      || initial.canonicalAuthorizationBody === null || initial.canonicalAuthorization === null) {
+      throw new Error("Successor publication requires a staged, authorized target");
+    }
+    const body = decodeLibraryCoreCanonicalValue(exactBytes(new TextEncoder().encode(initial.canonicalAuthorizationBody))) as {
+      source_control?: unknown; source_control_revision?: unknown; source_control_file_id?: unknown; final_source_revision?: unknown;
+    };
+    const predecessor = parseLibraryCoreControlPointerV1(body.source_control);
+    if (String(predecessor.libraryId) !== initial.libraryId || String(predecessor.storageEpoch) !== initial.predecessorEpochId
+      || typeof body.source_control_revision !== "string" || typeof body.source_control_file_id !== "string"
+      || !/^[A-Za-z0-9_-]{1,1024}$/.test(body.source_control_file_id) || !Number.isSafeInteger(body.final_source_revision)) {
+      throw new Error("Successor publication predecessor consent is invalid");
+    }
+    const expectedRevision = body.source_control_revision;
+    const requireTarget = async () => {
+      throwIfPublicationCanceled(request.signal);
+      const current = await readNormalizedLibraryHandoffStatus();
+      if (!current || current.handoffId !== initial.handoffId || current.phase !== "cas_pending"
+        || current.installationRole !== "target" || current.successorEpochId !== initial.successorEpochId
+        || current.canonicalAuthorization !== initial.canonicalAuthorization
+        || current.canonicalAuthorizationBody !== initial.canonicalAuthorizationBody) {
+        throw new Error("Staged target changed during publication");
+      }
+      return current;
+    };
+    const matches = (read: LibraryCoreControlReadV1, expected: LibraryCoreControlPointerV1) => {
+      const pointer = parseControl(read);
+      return pointer !== null && controlPointersEqual(pointer, expected);
+    };
+    const encode = (value: unknown) => new TextDecoder().decode(
+      encodeLibraryCoreCanonicalValue(value as LibraryCoreCanonicalValue));
+    // A persisted proposal fixes transport object IDs as well as content digests.
+    // Recover it directly; rebuilding a manifest could create another identity.
+    if (initial.canonicalActivation !== null) {
+      const proposal = decodeLibraryCoreCanonicalValue(exactBytes(new TextEncoder().encode(initial.canonicalActivation))) as {
+        format?: unknown; handoff_id?: unknown; control_file_id?: unknown;
+        expected_control_revision?: unknown; control?: unknown;
+      };
+      if (proposal.format !== "freed_library_handoff_activation_proposal_v1" || proposal.handoff_id !== input.handoffId
+        || proposal.control_file_id !== body.source_control_file_id || proposal.expected_control_revision !== expectedRevision) {
+        throw new Error("Persisted activation proposal is invalid");
+      }
+      const target = parseLibraryCoreControlPointerV1(proposal.control);
+      const canonicalControl = encode(target);
+      const native = await prepareNormalizedLibraryHandoffActivation(input.handoffId, proposal.control_file_id, canonicalControl);
+      if (native !== initial.canonicalActivation) throw new Error("Native activation proposal changed");
+      const adapter = createGoogleDriveLibraryCoreAdapterV1({ ...request,
+        libraryId: initial.libraryId, controlFileId: proposal.control_file_id });
+      let read = await adapter.readControl();
+      if (!matches(read, target)) {
+        if (read.revision !== expectedRevision || !matches(read, predecessor)) {
+          throw new Error("Another authority change won the handoff");
+        }
+        await requireTarget();
+        try {
+          await adapter.compareAndSwapControl({ expectedRevision, bytes: new TextEncoder().encode(canonicalControl) });
+        } catch {
+          // A failed response is ambiguous. Only an exact durable readback wins.
+        }
+        read = await adapter.readControl();
+      }
+      if (read.revision === null || !matches(read, target)) {
+        throw new Error("Proposed successor cloud head could not be verified");
+      }
+      await requireTarget();
+      return { controlPointer: target, controlRevision: read.revision };
+    }
+    const certificate = await stageNormalizedLibraryTargetHandoff(input.handoffId);
+    const checkpoint = await beginNormalizedLibraryCheckpointExport(input.handoffId);
+    if (checkpoint.libraryId !== initial.libraryId || checkpoint.authorityEpoch !== initial.successorEpochId
+      || checkpoint.sourceRevision !== body.final_source_revision) {
+      throw new Error("Successor checkpoint does not match the staged transfer");
+    }
+    const controlFileId = body.source_control_file_id;
+    const adapter = createGoogleDriveLibraryCoreAdapterV1({ ...request,
+      libraryId: initial.libraryId, controlFileId });
+    request.deadline?.beginCheckpoint(checkpoint.recordCount);
+    const result = await reassignLibraryCoreNormalizedCheckpointV2({
+      activeTransport: "google_drive_app_data_v1",
+      adapter: { ...adapter, async compareAndSwapControl(change) {
+        await requireTarget();
+        if (change.expectedRevision !== expectedRevision) throw new Error("Handoff predecessor revision changed");
+        const canonicalControl = new TextDecoder("utf-8", { fatal: true }).decode(change.bytes);
+        const proposal = await prepareNormalizedLibraryHandoffActivation(input.handoffId, controlFileId, canonicalControl);
+        const current = await requireTarget();
+        if (current.canonicalActivation !== proposal) throw new Error("Activation proposal was not durably recorded");
+        return adapter.compareAndSwapControl(change);
+      }, async verifyImmutable(receipt) {
+        const verified = await adapter.verifyImmutable(receipt);
+        if (verified.objectKey === receipt.descriptor.objectKey && verified.contentDigest === receipt.descriptor.contentDigest
+          && verified.byteLength === receipt.descriptor.byteLength) request.deadline?.verifiedObject(verified.objectKey);
+        return verified;
+      } },
+      descriptor: checkpoint,
+      epochCertificate: await prepareWriterEpochCertificate({ canonicalCertificateJson: certificate,
+        libraryId: initial.libraryId, targetStorageEpoch: initial.successorEpochId }),
+      expectedControl: { pointer: predecessor, revision: expectedRevision }, generation: 0,
+      handoffFrontiers: { kind: "cooperative_handoff_v1", predecessor: predecessor.causalFrontierDigest,
+        successor: checkpoint.causalFrontierDigest },
+      records: normalizedCheckpointRecords(checkpoint, request.signal, request.deadline?.advanceRecords, input.handoffId),
+      subtle: crypto.subtle,
+    });
+    if (result.status === "conflict") throw new Error("Cloud authority changed during handoff publication");
+    const read = await adapter.readControl();
+    if (read.revision === null || read.revision !== result.revision || !matches(read, result.controlPointer)) {
+      throw new Error("Successor cloud head could not be verified");
+    }
+    await requireTarget();
+    return { controlPointer: result.controlPointer, controlRevision: read.revision };
+  }), true);
 }
 
 let activePublication: Promise<LibraryCoreCloudPublishResult> | null = null;
@@ -1403,7 +1732,7 @@ export function publishCurrentSqliteLibraryToGoogleDrive(input: {
   if (checkpointExportInProgress) {
     return Promise.reject(checkpointExportBusyError());
   }
-  const publication = runBoundedPublication(input).finally(() => {
+  const publication = runBoundedPublication(input, publishCurrentSqliteLibraryToGoogleDriveInternal).finally(() => {
     if (activePublication === publication) activePublication = null;
   });
   activePublication = publication;
@@ -1412,6 +1741,9 @@ export function publishCurrentSqliteLibraryToGoogleDrive(input: {
 
 async function prepareDesktopNormalizedFollowerEnrollment() {
   const status = await readNormalizedLibraryFollowerRuntimeStatus();
+  if (status.state === "authority_recovery_required") {
+    throw new Error("Primary changed. Previous enrollment and edits are preserved; recover enrollment before syncing edits.");
+  }
   if (status.state === "active") return null;
   const request = await prepareNormalizedLibraryFollowerActorRequest();
   const source = new TextEncoder().encode(
@@ -1467,13 +1799,35 @@ function createDesktopNormalizedFollowerRuntime(): LibraryCoreNormalizedFollower
   return Object.freeze(runtime);
 }
 
-export async function syncSqliteLibraryFollowerGoogleDriveOnce(input: {
+let activeFollowerPass: Promise<LibraryCoreCloudPublishResult> | null = null;
+
+export function syncSqliteLibraryFollowerGoogleDriveOnce(input: {
   readonly accessToken: string;
   readonly googleFetch?: GoogleDriveFetch;
   readonly signal?: AbortSignal;
 }): Promise<LibraryCoreCloudPublishResult> {
+  if (input.signal?.aborted) return Promise.reject(publicationAbortError("SQLite Library sync was canceled."));
+  if (activeFollowerPass !== null) return activeFollowerPass;
+  const pass = runBoundedPublication(input, syncSqliteLibraryFollowerGoogleDriveOnceInternal).finally(() => {
+    if (activeFollowerPass === pass) activeFollowerPass = null;
+  });
+  activeFollowerPass = pass;
+  return pass;
+}
+
+async function syncSqliteLibraryFollowerGoogleDriveOnceInternal(input: {
+  readonly accessToken: string;
+  readonly googleFetch?: GoogleDriveFetch;
+  readonly signal?: AbortSignal;
+  readonly deadline?: ReturnType<typeof createCheckpointPublicationDeadline>;
+}): Promise<LibraryCoreCloudPublishResult> {
+  throwIfPublicationCanceled(input.signal);
+  const installation = await refreshLibraryCoreDesktopRole();
+  throwIfPublicationCanceled(input.signal);
   requireFollowerLibraryCoreDesktopRole();
+  if (!installation.libraryId) throw new Error("Select a Library before consumer sync.");
   const discovered = await discoverPublishedGoogleDriveLibraryCoreControlV1({
+    libraryId: installation.libraryId,
     accessToken: input.accessToken,
     googleFetch: input.googleFetch,
     signal: input.signal,
@@ -1497,6 +1851,7 @@ export async function syncSqliteLibraryFollowerGoogleDriveOnce(input: {
     );
   }
   const before = await readNormalizedLibraryFollowerRuntimeStatus();
+  throwIfPublicationCanceled(input.signal);
   if (
     before.libraryId !== pointer.libraryId ||
     before.authorityEpochId !== pointer.storageEpoch ||
@@ -1506,32 +1861,70 @@ export async function syncSqliteLibraryFollowerGoogleDriveOnce(input: {
       adapter,
       controlRevision: control.revision,
       follower: true,
+      signal: input.signal,
+      deadline: input.deadline,
       pointer,
     });
   }
-  await syncLibraryCoreNormalizedFollowerV2(
-    createGoogleDriveLibraryCoreNormalizedFollowerTransportV2({
-      accessToken: input.accessToken,
-      beforeProviderOperation: requireFollowerLibraryCoreDesktopRole,
-      controlFileId: discovered.controlFileId,
-      googleFetch: input.googleFetch,
-      libraryId: pointer.libraryId,
-      signal: input.signal,
-    }),
-    createDesktopNormalizedFollowerRuntime(),
-    { signal: input.signal },
-  );
-  const descriptor = await describeNormalizedLibraryCloudIdentity();
-  return { status: "follower_synced", revision: descriptor.sourceRevision };
+  const enrollment = await readNormalizedLibraryFollowerRuntimeStatus();
+  // Recovery keeps the new canonical replica readable, but old signed intents
+  // must not be relabeled or submitted through the successor's enrollment.
+  if (enrollment.state !== "authority_recovery_required") {
+    await syncLibraryCoreNormalizedFollowerV2(
+      createGoogleDriveLibraryCoreNormalizedFollowerTransportV2({
+        accessToken: input.accessToken,
+        beforeProviderOperation: requireFollowerLibraryCoreDesktopRole,
+        controlFileId: discovered.controlFileId,
+        googleFetch: input.googleFetch,
+        libraryId: pointer.libraryId,
+        signal: input.signal,
+      }),
+      createDesktopNormalizedFollowerRuntime(),
+      { signal: input.signal },
+    );
+  }
+  throwIfPublicationCanceled(input.signal);
+  const replica = await readNormalizedLibraryFollowerRuntimeStatus();
+  const operationHeadFileId = await discoverGoogleDriveLibraryCoreOperationHeadV2({
+    accessToken: input.accessToken, libraryId: pointer.libraryId, epochId: pointer.storageEpoch,
+    googleFetch: input.googleFetch, signal: input.signal,
+  });
+  if (operationHeadFileId && replica.sourceRevision !== null) {
+    await syncLibraryCoreNormalizedOperationsOnceV2({
+      anchor: { libraryId: pointer.libraryId, storageEpoch: pointer.storageEpoch, writerId: pointer.writerId,
+        checkpointDigest: pointer.manifest.descriptor.contentDigest, checkpointRevision: replica.sourceRevision },
+      transport: createGoogleDriveLibraryCoreOperationAdapterV2({
+        accessToken: input.accessToken, libraryId: pointer.libraryId, epochId: pointer.storageEpoch,
+        writerId: pointer.writerId, controlFileId: discovered.controlFileId, operationHeadFileId,
+        googleFetch: input.googleFetch, signal: input.signal,
+      }),
+      runtime: {
+        async readRevision() {
+          const response = await queryNormalizedLibrary({ entityIds: [],
+            queryId: LIBRARY_CORE_OPTIMISTIC_FIELDS_QUERY_ID,
+            schemaVersion: LIBRARY_CORE_OPTIMISTIC_FIELDS_SCHEMA_VERSION });
+          return response.source.projectionRevision;
+        },
+        importPage: importNormalizedLibraryOperationPage,
+      },
+      now: Date.now, signal: input.signal,
+    });
+  }
+  const descriptor = await describeNormalizedLibraryCloudPreflightIdentity();
+  throwIfPublicationCanceled(input.signal);
+  const follower = await readNormalizedLibraryFollowerRuntimeStatus();
+  throwIfPublicationCanceled(input.signal);
+  return { status: "follower_synced", revision: descriptor.sourceRevision, follower };
 }
 
 export async function startSqliteLibraryGoogleDriveFollowerSync(input: {
   readonly accessToken: string;
   readonly googleFetch?: GoogleDriveFetch;
   readonly onError?: (error: unknown) => void;
-  readonly onSynced?: () => Promise<void>;
+  readonly onSynced?: (result: LibraryCoreCloudPublishResult) => Promise<void>;
   readonly resolveAccessToken: () => Promise<string>;
 }): Promise<LibraryCoreCloudPublishResult> {
+  requireOrdinarySyncAllowed();
   stopSqliteLibraryCloudSync();
   const abortController = new AbortController();
   running = { abortController, timer: null };
@@ -1541,42 +1934,41 @@ export async function startSqliteLibraryGoogleDriveFollowerSync(input: {
       googleFetch: input.googleFetch,
       signal: abortController.signal,
     });
-  const initial = await sync(input.accessToken);
-  await input.onSynced?.();
-  const poll = async (): Promise<void> => {
-    if (
-      running?.abortController !== abortController ||
-      abortController.signal.aborted
-    ) {
-      return;
+  const ownsLifecycle = () => running?.abortController === abortController && !abortController.signal.aborted;
+  const scheduleNext = () => {
+    if (ownsLifecycle()) {
+      running!.timer = setTimeout(() => void poll().catch(console.error), FOLLOWER_SYNC_POLL_MS);
     }
+  };
+  const notifySynced = async (result: LibraryCoreCloudPublishResult) => {
+    if (ownsLifecycle()) await input.onSynced?.(result);
+  };
+  const poll = async (): Promise<void> => {
+    if (!ownsLifecycle()) return;
     if (readLibraryCoreDesktopRole() !== "follower") {
       stopSqliteLibraryCloudSync();
       return;
     }
     try {
-      await sync(await input.resolveAccessToken());
-      await input.onSynced?.();
+      const result = await sync(await input.resolveAccessToken());
+      await notifySynced(result);
     } catch (error) {
-      input.onError?.(error);
+      if (ownsLifecycle()) input.onError?.(error);
       throw error;
     } finally {
-      if (
-        running?.abortController === abortController &&
-        !abortController.signal.aborted
-      ) {
-        running.timer = setTimeout(
-          () => void poll().catch(console.error),
-          FOLLOWER_SYNC_POLL_MS,
-        );
-      }
+      scheduleNext();
     }
   };
-  running.timer = setTimeout(
-    () => void poll().catch(console.error),
-    FOLLOWER_SYNC_POLL_MS,
-  );
-  return initial;
+  try {
+    const initial = await sync(input.accessToken);
+    await notifySynced(initial);
+    return initial;
+  } catch (error) {
+    if (ownsLifecycle()) input.onError?.(error);
+    throw error;
+  } finally {
+    scheduleNext();
+  }
 }
 
 export async function startSqliteLibraryGoogleDriveSync(input: {
@@ -1584,6 +1976,7 @@ export async function startSqliteLibraryGoogleDriveSync(input: {
   readonly googleFetch?: GoogleDriveFetch;
   readonly resolveAccessToken: () => Promise<string>;
 }): Promise<LibraryCoreCloudPublishResult> {
+  requireOrdinarySyncAllowed();
   stopSqliteLibraryCloudSync();
   const coordinator = createLibraryCorePrimaryCoordinatorV1<
     LibraryCoreCloudPublishResult,
@@ -1601,13 +1994,13 @@ export async function startSqliteLibraryGoogleDriveSync(input: {
             lastPublishedRevision: null,
           };
         }
-        const identity = await describeNormalizedLibraryCloudIdentity();
+        const identity = await describeNormalizedLibraryCloudPreflightIdentity();
         const state = await readNativeJsonValue(STATE_FILE, STATE_KEY);
         if (!isCloudState(state)) return null;
         return {
           active: true,
           localRevision: identity.sourceRevision,
-          lastPublishedRevision: state.lastPublishedRevision,
+          lastPublishedRevision: state.lastPublishedOperationRevision ?? state.lastPublishedRevision,
         };
       },
     },
@@ -1648,6 +2041,7 @@ export async function startSqliteLibraryGoogleDriveSync(input: {
 }
 
 export function stopSqliteLibraryCloudSync(): void {
+  activeSyncAbort?.();
   const primaryCoordinator = runningPrimaryCoordinator;
   runningPrimaryCoordinator = null;
   primaryCoordinator?.stop();

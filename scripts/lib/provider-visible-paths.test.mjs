@@ -45,6 +45,9 @@ const ALL_PROVIDER_SCOPES = [
 ];
 
 const CRITICAL_EXACT_SCOPE_CASES = [
+  ["packages/desktop/src/components/ConsumerRecoverySavedUrlEditor.tsx", ["facebook", "instagram", "linkedin", "medium", "other", "substack", "x", "youtube"]],
+  ["packages/pwa/src/components/PwaRecoverySavedUrlEditor.tsx", ["facebook", "instagram", "linkedin", "medium", "other", "substack", "x", "youtube"]],
+  ["packages/ui/src/components/RecoverySavedUrlFields.tsx", ["facebook", "instagram", "linkedin", "medium", "other", "substack", "x", "youtube"]],
   ["packages/desktop/src-tauri/src/lib.rs", ALL_PROVIDER_SCOPES],
   ["packages/desktop/src/App.tsx", ALL_PROVIDER_SCOPES],
   [

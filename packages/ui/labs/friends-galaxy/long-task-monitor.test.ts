@@ -1,6 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   FriendsGalaxyLongTaskMonitor,
+  observeBrowserLongTasks,
   type FriendsGalaxyLongTaskEntry,
   type FriendsGalaxyLongTaskObserverFactory,
 } from "../../src/lib/friends-galaxy-long-tasks.js";
@@ -43,5 +44,42 @@ describe("Friends Galaxy long-task monitor", () => {
     });
     monitor.dispose();
     expect(disconnect).toHaveBeenCalledOnce();
+  });
+});
+
+afterEach(() => vi.unstubAllGlobals());
+describe("browser LongTask support", () => {
+  it("reports unavailable when the API or entry type is absent", () => {
+    vi.stubGlobal("PerformanceObserver", undefined);
+    expect(observeBrowserLongTasks(() => {})).toBeNull();
+    vi.stubGlobal("PerformanceObserver", class { static supportedEntryTypes = ["mark"]; });
+    expect(observeBrowserLongTasks(() => {})).toBeNull();
+  });
+  it("fails safely on observer construction or registration failure", () => {
+    vi.stubGlobal("PerformanceObserver", class {
+      static supportedEntryTypes = ["longtask"];
+      constructor() { throw new Error("unavailable"); }
+    });
+    expect(observeBrowserLongTasks(() => {})).toBeNull();
+    const disconnect = vi.fn();
+    vi.stubGlobal("PerformanceObserver", class {
+      static supportedEntryTypes = ["longtask"];
+      observe() { throw new Error("unavailable"); }
+      disconnect = disconnect;
+    });
+    expect(observeBrowserLongTasks(() => {})).toBeNull();
+    expect(disconnect).toHaveBeenCalledOnce();
+  });
+  it("can exclude historical entries without changing the graph default", () => {
+    const observe = vi.fn();
+    vi.stubGlobal("PerformanceObserver", class {
+      static supportedEntryTypes = ["longtask"];
+      observe = observe;
+      disconnect() {}
+    });
+    expect(observeBrowserLongTasks(() => {}, false)).not.toBeNull();
+    expect(observe).toHaveBeenLastCalledWith({ type: "longtask", buffered: false });
+    expect(observeBrowserLongTasks(() => {})).not.toBeNull();
+    expect(observe).toHaveBeenLastCalledWith({ type: "longtask", buffered: true });
   });
 });

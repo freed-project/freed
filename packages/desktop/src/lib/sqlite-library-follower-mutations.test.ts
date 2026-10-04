@@ -1,3 +1,4 @@
+import orderVector from "../../../shared/src/library-core/friend-account-order-vector-v1.json";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createDefaultPreferences } from "@freed/shared";
 
@@ -13,6 +14,16 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 import {
+  prepareDesktopRecoveryAccountTransaction,
+  prepareDesktopRecoveryPersonTransaction,
+  prepareDesktopRecoveryFriendTransaction,
+  prepareDesktopRecoveryAccountPersonTransaction,
+  prepareDesktopRecoveryAnnotationTransaction,
+  prepareDesktopRecoveryRssUpsertTransaction,
+  prepareDesktopRecoveryRssRemovalTransaction,
+  prepareDesktopRecoveryItemRemovalTransaction,
+  prepareDesktopRecoveryAccountRemovalTransaction,
+  prepareDesktopRecoveryPersonRemovalTransaction,
   appendSqliteLibraryPersonReachOut,
   assignSqliteLibraryAccountToPerson,
   commitDesktopLibraryFeedItemAnalysisSets,
@@ -47,6 +58,7 @@ function normalizedRow(globalId = ITEM_ID) {
     likedAt: null,
     likedSyncedAt: null,
     linkPreviewTitle: null,
+    linkPreviewUrl: null,
     locationName: null,
     mediaTypes: [],
     mediaUrls: [],
@@ -86,6 +98,9 @@ describe("SQLite editable follower mutations", () => {
     mocks.scopeActionKind = null;
     mocks.invoke.mockReset();
     mocks.invoke.mockImplementation(async (command: string, args?: unknown) => {
+      if (command === "normalized_desktop_installation_status") {
+        return { state: "editable_consumer", role: "follower", libraryId: "ab".repeat(32), authorityEpochId: "cd".repeat(32), actorId: "12".repeat(32) };
+      }
       if (command === "normalized_library_primary_mutation_context") {
         throw new Error("normalized SQLite authority is not selected");
       }
@@ -140,6 +155,9 @@ describe("SQLite editable follower mutations", () => {
           projectionRevision: 2,
           transitionSequence: 2,
         };
+        if (request.queryId === "rss_item_summary_v1") {
+          return { queryId: request.queryId, schemaVersion: request.schemaVersion, source, totalCount: 1, unreadCount: 0 };
+        }
         if (request.queryId === "library_facet_summary_v1") {
           return {
             queryId: request.queryId,
@@ -230,6 +248,173 @@ describe("SQLite editable follower mutations", () => {
       }
       throw new Error(`Unexpected native command: ${command}`);
     });
+  });
+
+  it("signs Friend recovery account IDs in native binary order without reordering the caller", async () => {
+    const person = { id: "person:one", name: "First", relationshipStatus: "friend" as const, careLevel: 3 as const, createdAt: 1, updatedAt: 2 };
+    const accounts = [...orderVector.binaryOrder].reverse().map(id => ({ id, personId: person.id, kind: "social" as const, provider: "instagram" as const,
+      externalId: "selected", discoveredFrom: "manual_entry" as const, firstSeenAt: 1, lastSeenAt: 2, createdAt: 1, updatedAt: 2 }));
+    const frames = await prepareDesktopRecoveryFriendTransaction(person, accounts);
+    expect(JSON.parse(frames[0]!).payload.accounts.map((account: { id: string }) => account.id)).toEqual(orderVector.binaryOrder);
+    expect(accounts.map(account => account.id)).toEqual([...orderVector.binaryOrder].reverse());
+  });
+
+  it("snapshots a complete Friend selection before signing and never enqueues outside recovery", async () => {
+    const person = { id: "person:one", name: "First", relationshipStatus: "friend" as const, careLevel: 3 as const, createdAt: 12, updatedAt: 13 };
+    const account = { id: "account:one", personId: person.id, kind: "social" as const, provider: "instagram" as const, externalId: "one", discoveredFrom: "manual_entry" as const, firstSeenAt: 1, lastSeenAt: 2, createdAt: 1, updatedAt: 2, followRosterRoles: ["following" as const] };
+    const pending = prepareDesktopRecoveryFriendTransaction(person, [account]);
+    person.name = "Changed"; account.followRosterRoles.length = 0;
+    const frames = await pending;
+    expect(frames).toHaveLength(1);
+    expect(JSON.parse(frames[0]!)).toMatchObject({ operation_type: "friend_replace", transaction_member_count: 1,
+      payload: { person: { name: "First", createdAt: 12 }, accounts: [{ id: account.id, followRosterRoles: ["following"], createdAt: 1 }] } });
+    expect(mocks.enqueuedEnvelopes).toEqual([]);
+    await expect(prepareDesktopRecoveryFriendTransaction(person, [account, account])).rejects.toThrow("invalid or oversized");
+  });
+
+  it("snapshots complete Account roots and keeps duplicate targets without ordinary enqueue", async () => {
+    const account = { id: "account:one", displayName: "First", kind: "social" as const, provider: "x" as const, externalId: "external:one", discoveredFrom: "manual_entry" as const, firstSeenAt: 1, lastSeenAt: 2, createdAt: 1, updatedAt: 2, address: "a".repeat(20000) };
+    const review = {} as Parameters<typeof prepareDesktopRecoveryAccountTransaction>[1];
+    const pending = prepareDesktopRecoveryAccountTransaction([account, { ...account, displayName: "Second" }], review);
+    account.displayName = "Changed";
+    const values = (await pending).map(frame => JSON.parse(frame));
+    expect(values.map(value => value.payload.account.displayName)).toEqual(["First", "Second"]);
+    expect(values.map(value => value.entity_id)).toEqual(["account:one", "account:one"]);
+    expect(values.every(value => value.payload.account.address.length === 20000 && value.payload.account.updatedAt > 2 && value.operation_type === "account_upsert")).toBe(true);
+    expect(mocks.enqueuedEnvelopes).toEqual([]);
+  });
+
+  it("snapshots whole Person roots before key access and preserves ordered duplicate targets", async () => {
+    const person = { id: "person:one", name: "First", relationshipStatus: "friend" as const, careLevel: 3 as const, tags: ["retained"], notes: "notes", createdAt: 12, updatedAt: 13 };
+    const pending = prepareDesktopRecoveryPersonTransaction([person, { ...person, name: "Second" }]);
+    person.name = "Changed"; person.tags.push("late mutation");
+    const values = (await pending).map(frame => JSON.parse(frame));
+    expect(values.map(value => value.payload.person.name)).toEqual(["First", "Second"]);
+    expect(values.map(value => value.payload.person.tags)).toEqual([["retained"], ["retained"]]);
+    expect(values.map(value => [value.entity_id, value.transaction_member_index, value.transaction_member_count])).toEqual([["person:one", 0, 2], ["person:one", 1, 2]]);
+    expect(values.every(value => value.operation_type === "person_upsert" && value.payload.person.createdAt === 12 && value.payload.person.updatedAt > 13)).toBe(true);
+    expect(mocks.enqueuedEnvelopes).toEqual([]);
+    await expect(prepareDesktopRecoveryPersonTransaction([])).rejects.toThrow("member bound");
+  });
+
+  it("signs the entire RSS recovery transaction in order without enqueue or deduplication", async () => {
+    const feeds = [
+      { url: "https://example.com/feed", title: "First", enabled: false, trackUnread: true, lastFetched: 700, pollInterval: 60 },
+      { url: "https://example.com/feed", title: "Second", enabled: true, trackUnread: false },
+    ];
+    const frames = await prepareDesktopRecoveryRssUpsertTransaction(feeds);
+    const envelopes = frames.map((frame) => JSON.parse(frame));
+    expect(envelopes.map((envelope) => envelope.payload.feed)).toEqual(feeds);
+    expect(envelopes.map((envelope) => [envelope.operation_type, envelope.transaction_member_index, envelope.transaction_member_count])).toEqual([
+      ["rss_feed_upsert", 0, 2], ["rss_feed_upsert", 1, 2],
+    ]);
+    expect(mocks.enqueuedEnvelopes).toEqual([]);
+    expect(mocks.invoke.mock.calls.some(([command]) => command === "commit_normalized_library_transaction")).toBe(false);
+  });
+
+  it("signs all ordered account links without deduplication or ordinary enqueue", async () => {
+    const assignments = [{ accountId: "account-2", personId: "person-2" }, { accountId: "account-2", personId: null }];
+    const frames = await prepareDesktopRecoveryAccountPersonTransaction(assignments);
+    expect(frames.map(frame => { const e = JSON.parse(frame); return [e.operation_type, e.entity_id, e.payload.person_id, e.transaction_member_index, e.transaction_member_count]; })).toEqual([
+      ["account_person_assignment", "account-2", "person-2", 0, 2], ["account_person_assignment", "account-2", null, 1, 2],
+    ]);
+    expect(mocks.enqueuedEnvelopes).toEqual([]);
+    await expect(prepareDesktopRecoveryAccountPersonTransaction([])).rejects.toThrow("member bound");
+  });
+
+  it("prepares every preference patch with fresh signatures and no ordinary enqueue", async () => {
+    const { prepareDesktopRecoveryPreferenceTransaction } = await import("./sqlite-library");
+    const patches = [{ display: { reading: {}, showEngagementCounts: false } }, { display: { showEngagementCounts: true } }];
+    const pending = prepareDesktopRecoveryPreferenceTransaction(patches);
+    patches[0]!.display.showEngagementCounts = true;
+    const values = (await pending).map(value => JSON.parse(value));
+    expect(values.map(value => value.payload.updates)).toEqual([{ display: { reading: {}, showEngagementCounts: false } }, { display: { showEngagementCounts: true } }]);
+    expect(values.map(value => value.transaction_member_index)).toEqual([0, 1]);
+    expect(values.every(value => value.operation_type === "preferences_leaf_assignment" && value.entity_id === "preferences")).toBe(true);
+    expect(values[1].actor_sequence).toBe(values[0].actor_sequence + 1);
+    expect(values[1].previous_actor_operation_id).toBe(values[0].operation_id);
+    expect(mocks.invoke.mock.calls.filter(([command]) => command === "enqueue_normalized_library_follower_intent")).toHaveLength(0);
+    await expect(prepareDesktopRecoveryPreferenceTransaction([{ display: { unsupported: true } }])).rejects.toThrow();
+  });
+
+  it("snapshots reach-out history with fresh signing time and ordered duplicate targets", async () => {
+    const { prepareDesktopRecoveryReachOutTransaction } = await import("./sqlite-library");
+    const event = { channel: "email" as const, logged_at_ms: 1000, notes: "Historical" };
+    const drafts = [0, 1].map(i => ({ personId: "person:event", originalOperationId: `old:${i}`, archived: event, event }));
+    const pending = prepareDesktopRecoveryReachOutTransaction(drafts);
+    event.logged_at_ms = 9999; event.notes = "Changed later";
+    const values = (await pending).map(value => JSON.parse(value));
+    expect(values.map(value => value.entity_id)).toEqual(["person:event", "person:event"]);
+    expect(values.map(value => value.transaction_member_index)).toEqual([0, 1]);
+    for (const value of values) {
+      expect(value.operation_type).toBe("person_reach_out_append");
+      expect(value.payload).toEqual({ channel: "email", logged_at_ms: 1000, notes: "Historical" });
+      expect(value.created_at_ms).toBeGreaterThan(1000);
+    }
+    expect(mocks.invoke.mock.calls.filter(([command]) => command === "enqueue_normalized_library_follower_intent")).toHaveLength(0);
+  });
+
+  it("prepares complete annotation recovery without enqueue or descriptor loss", async () => {
+    const highlights = [
+      { createdAt: 1, note: "Whole item note", text: "\u2063", textBlobDigest: null },
+      { createdAt: 2, note: "Preserved note", text: "Original quotation", textBlobDigest: null },
+      { createdAt: 3, note: null, text: null, textBlobDigest: "a".repeat(64) },
+    ];
+    const frames = await prepareDesktopRecoveryAnnotationTransaction([
+      { entityId: ITEM_ID, highlights, tags: ["alpha", "zebra"] },
+      { entityId: "rss:second", highlights: [], tags: [] },
+    ]);
+    const values = frames.map((frame) => JSON.parse(frame));
+    expect(values[0].payload.highlights).toEqual(highlights);
+    expect(values[0].payload.tags).toEqual(["alpha", "zebra"]);
+    expect(values.map((value) => value.entity_id)).toEqual([ITEM_ID, "rss:second"]);
+    expect(values.map((value) => value.transaction_member_index)).toEqual([0, 1]);
+    expect(values.every((value) => value.transaction_member_count === 2)).toBe(true);
+    expect(mocks.invoke.mock.calls.filter(([command]) => command === "sign_normalized_library_follower_operation")).toHaveLength(2);
+    expect(mocks.invoke.mock.calls.filter(([command]) => command === "enqueue_normalized_library_follower_intent")).toHaveLength(0);
+  });
+
+  it("prepares whole unsubscribe recovery only after deletion confirmation and never ordinary enqueue", async () => {
+    const urls = ["https://example.com/one", "https://example.com/two"];
+    await expect(prepareDesktopRecoveryRssRemovalTransaction(urls, true, false)).rejects.toThrow("Confirm article deletion");
+    expect(mocks.invoke).not.toHaveBeenCalled();
+    for (const includeItems of [true, false]) {
+      const frames = await prepareDesktopRecoveryRssRemovalTransaction(urls, includeItems, includeItems);
+      const values = frames.map((frame) => JSON.parse(frame));
+      expect(values.map((value) => value.entity_id)).toEqual(urls);
+      expect(values.every((value) => value.operation_type === (includeItems ? "rss_feed_remove_with_items" : "rss_feed_remove_keep_items"))).toBe(true);
+      expect(values.map((value) => value.transaction_member_index)).toEqual([0, 1]);
+      expect(values.every((value) => value.transaction_member_count === 2 && value.payload.removed_at_ms > 0)).toBe(true);
+    }
+    expect(mocks.invoke.mock.calls.filter(([command]) => command === "enqueue_normalized_library_follower_intent")).toHaveLength(0);
+  });
+
+  it("signs the complete ordered item deletion only after confirmation, without enqueue", async () => {
+    const ids = [ITEM_ID, "rss:second", ITEM_ID];
+    await expect(prepareDesktopRecoveryItemRemovalTransaction(ids, false)).rejects.toThrow("Confirm item deletion");
+    expect(mocks.invoke).not.toHaveBeenCalled();
+    const frames = await prepareDesktopRecoveryItemRemovalTransaction(ids, true);
+    const values = frames.map((frame) => JSON.parse(frame));
+    expect(values.map((value) => value.entity_id)).toEqual(ids);
+    expect(values.map((value) => value.transaction_member_index)).toEqual([0, 1, 2]);
+    expect(values.every((value) => value.operation_type === "feed_item_remove" && value.transaction_member_count === 3 && value.payload.removed_at_ms > 0)).toBe(true);
+    expect(mocks.invoke.mock.calls.filter(([command]) => command === "enqueue_normalized_library_follower_intent")).toHaveLength(0);
+  });
+
+  it.each([
+    ["person_remove_and_accounts", prepareDesktopRecoveryPersonRemovalTransaction, "Confirm people"],
+    ["account_remove", prepareDesktopRecoveryAccountRemovalTransaction, "Confirm account"],
+  ] as const)("snapshots every ordered %s deletion before context lookup and never enqueues", async (operation, prepare, confirmation) => {
+    const ids = ["person:one", "person:two", "person:one"];
+    await expect(prepare(ids, false)).rejects.toThrow(confirmation);
+    expect(mocks.invoke).not.toHaveBeenCalled();
+    const pending = prepare(ids, true);
+    ids.splice(0, ids.length, "person:changed");
+    const values = (await pending).map(frame => JSON.parse(frame));
+    expect(values.map(value => value.entity_id)).toEqual(["person:one", "person:two", "person:one"]);
+    expect(values.map(value => value.transaction_member_index)).toEqual([0, 1, 2]);
+    expect(values.every(value => value.operation_type === operation && value.transaction_member_count === 3 && value.payload.removed_at_ms > 0)).toBe(true);
+    expect(mocks.invoke.mock.calls.filter(([command]) => command === "enqueue_normalized_library_follower_intent")).toHaveLength(0);
   });
 
   it("signs and enqueues a read intent without using writer mutation authority", async () => {
@@ -326,6 +511,9 @@ describe("SQLite Primary mutations", () => {
     mocks.enqueuedEnvelopes = [];
     mocks.invoke.mockReset();
     mocks.invoke.mockImplementation(async (command: string, args?: unknown) => {
+      if (command === "normalized_desktop_installation_status") {
+        return { state: "standalone_primary", role: "primary", libraryId: "ab".repeat(32), authorityEpochId: "cd".repeat(32), actorId: "12".repeat(32) };
+      }
       if (command === "normalized_library_primary_mutation_context") {
         return {
           libraryId: "ab".repeat(32),
@@ -455,13 +643,16 @@ describe("SQLite Primary mutations", () => {
       if (command === "close_normalized_scope_action") return undefined;
       if (command === "query_normalized_library") {
         const request = (
-          args as { request: { queryId: string; schemaVersion: number } }
+          args as { request: { queryId: string; schemaVersion: number; personId?: string } }
         ).request;
         const source = {
           generationId: "bc".repeat(32),
           projectionRevision: 2,
           transitionSequence: 2,
         };
+        if (request.queryId === "rss_item_summary_v1") {
+          return { queryId: request.queryId, schemaVersion: request.schemaVersion, source, totalCount: 1, unreadCount: 0 };
+        }
         if (request.queryId === "library_facet_summary_v1") {
           return {
             queryId: request.queryId,
@@ -517,6 +708,8 @@ describe("SQLite Primary mutations", () => {
             source,
           };
         }
+        if (request.queryId === "person_root_v1") return { queryId: request.queryId, schemaVersion: 1, personId: request.personId, source,
+          person: { id: request.personId, name: "Ada", careLevel: 3, createdAt: 10, updatedAt: 20, relationshipStatus: "friend", tags: ["mathematician"] } };
         if (request.queryId === "person_detail_v1") {
           return {
             linkedAccountCount: 0,
@@ -570,12 +763,30 @@ describe("SQLite Primary mutations", () => {
     });
   });
 
+  it("prepares Primary archive recovery with the selected actor and never commits outside recovery", async () => {
+    const frames = await prepareDesktopRecoveryItemRemovalTransaction(["rss:first", "rss:second"], true, true);
+    expect(frames.map(frame => JSON.parse(frame).actor_id)).toEqual(["12".repeat(32), "12".repeat(32)]);
+    expect(frames.map(frame => JSON.parse(frame).entity_id)).toEqual(["rss:first", "rss:second"]);
+    const commands = mocks.invoke.mock.calls.map(([command]) => command);
+    expect(commands).toContain("normalized_library_primary_mutation_context");
+    expect(commands).not.toContain("normalized_library_follower_mutation_context");
+    expect(commands).not.toContain("enqueue_normalized_library_follower_intent");
+    expect(commands).not.toContain("commit_normalized_library_transaction");
+  });
+
+  it("does not fall back to the consumer when explicit Primary recovery is fenced", async () => {
+    mocks.invoke.mockRejectedValueOnce(new Error("native handoff fences this authority operation"));
+    await expect(prepareDesktopRecoveryItemRemovalTransaction(["rss:first"], true, true)).rejects.toThrow("fences");
+    expect(mocks.invoke.mock.calls.map(([command]) => command)).toEqual(["normalized_library_primary_mutation_context"]);
+  });
+
   it("encodes fractional synchronized preferences in the canonical envelope", async () => {
     const storyWall = createDefaultPreferences().storyWall;
     await dispatchSqliteMutation({
       reqId: 5,
       type: "UPDATE_PREFERENCES",
       updates: {
+        weights: { ...createDefaultPreferences().weights, topics: { alpha: 0.125 } },
         storyWall: {
           ...storyWall,
           style: { ...storyWall.style, mediaDensity: 0.95 },
@@ -585,6 +796,7 @@ describe("SQLite Primary mutations", () => {
     const [envelope] = mocks.enqueuedEnvelopes.map((value) =>
       JSON.parse(value),
     );
+    expect(envelope.payload.updates.weights.topics.alpha).toEqual({ bits: "3fc0000000000000", codec: "ieee754_binary64_hex_v1" });
     expect(envelope.operation_type).toBe("preferences_leaf_assignment");
     expect(envelope.payload.updates.storyWall.style.mediaDensity).not.toBe(
       0.95,
@@ -629,7 +841,7 @@ describe("SQLite Primary mutations", () => {
                 transitionSequence: 2,
               },
             };
-          if (request.queryId === "person_detail_v1") {
+          if (request.queryId === "person_root_v1") {
             const response = await original(command, args);
             return {
               ...response,
@@ -849,12 +1061,46 @@ describe("SQLite Primary mutations", () => {
     });
   });
 
-  it("reads an exact RSS Feed before applying a partial normalized update", async () => {
+  it.each(["primary", "follower"])("renames an RSS feed as %s without resending polling settings or fetch history", async (role) => {
+    if (role === "follower") {
+      const previous = mocks.invoke.getMockImplementation()!;
+      mocks.invoke.mockImplementation(async (command: string, args?: unknown) => {
+        if (command === "normalized_library_primary_mutation_context") {
+          throw new Error("normalized SQLite authority is not selected");
+        }
+        return previous(command, args);
+      });
+    }
     await dispatchSqliteMutation({
       reqId: 7,
       type: "UPDATE_RSS_FEED",
       url: "https://example.com/feed.xml",
       updates: { title: "Renamed Feed" },
+    });
+
+    const [envelope] = mocks.enqueuedEnvelopes.map((value) => JSON.parse(value));
+    expect(envelope).toMatchObject({
+      operation_type: "rss_feed_title_assignment",
+      entity_id: "https://example.com/feed.xml",
+    });
+    expect(envelope.payload).toEqual({
+      assigned_at_ms: expect.any(Number),
+      title: "Renamed Feed",
+    });
+    expect(mocks.enqueuedEnvelopes).toHaveLength(1);
+    const commands = mocks.invoke.mock.calls.map(([command]) => command);
+    expect(commands.filter((command) => command === "enqueue_normalized_library_follower_intent"))
+      .toHaveLength(role === "follower" ? 1 : 0);
+    expect(commands.filter((command) => command === "commit_normalized_library_transaction"))
+      .toHaveLength(role === "primary" ? 1 : 0);
+  });
+
+  it("reads an exact RSS Feed before applying another partial normalized update", async () => {
+    await dispatchSqliteMutation({
+      reqId: 7,
+      type: "UPDATE_RSS_FEED",
+      url: "https://example.com/feed.xml",
+      updates: { enabled: false, title: "Renamed Feed" },
     });
 
     const [envelope] = mocks.enqueuedEnvelopes.map((value) =>
@@ -865,7 +1111,7 @@ describe("SQLite Primary mutations", () => {
       entity_id: "https://example.com/feed.xml",
       payload: {
         feed: {
-          enabled: true,
+          enabled: false,
           folder: "Research",
           imageUrl: "https://example.com/icon.png",
           lastFetched: 100,
