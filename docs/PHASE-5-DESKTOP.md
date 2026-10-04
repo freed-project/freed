@@ -26,6 +26,14 @@ its existing content policy. Exact retries retain the signed replacement and use
 the durable archive link. Notes and tags remain separate recovery transactions.
 Installed multi-device acceptance is still outstanding.
 
+Selected normalized connections now verify the canonical authority selector and
+native receipt on the same configured descriptor-bound handle returned to the
+caller. Each call retains factory-reset, schema, storage and Library checks without
+caching authority between calls. Synthetic regression coverage checks one open and
+configuration per call, identity drift rejection, and independent concurrent readers.
+Installed CPU improvement remains unmeasured; renderer query demand is a separate
+investigation.
+
 Local snapshots now reuse the transaction-pinned indexed checkpoint export cache
 for both canonical passes. Update status distinguishes Library backup from network
 download, and failed backup still blocks installation. Real-library installed
