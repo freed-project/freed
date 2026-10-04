@@ -1723,3 +1723,23 @@ Actual checkpoint preparation retains the full census and export validation.
 Synthetic regressions cover identity parity, census avoidance, native refusal,
 closed DTOs and concurrent snapshot/reopen behavior. Installed latency and
 manual responsiveness acceptance remain pending with the release owner.
+
+### Bounded checkpoint preparation attribution
+
+Desktop checkpoint preparation records fixed native durations for selected open,
+authority admission, reaper initialization, transaction begin, descriptor identity
+and census, frontier validation, temporary materialization, order-index creation,
+descriptor clone, session-lock acquisition and replacement of the previous export.
+The observer preserves the full counted descriptor, pinned transaction, export
+order and authority checks. Existing callers retain no-op observer wrappers.
+
+The new scope emits at most a start marker and terminal summary, sharing the
+existing twelve-event rolling minute cap and one sampled in-flight trace per
+scope. A fixed entered-stage mask distinguishes skipped stages from measured
+zero durations. Checkpoint duration slots use hexadecimal microseconds to keep
+worst-case records below 512 bytes; legacy scope log layouts and stage ordinals
+remain unchanged. Logging occurs outside session and diagnostic locks. Missing
+terminal evidence under a shared budget is inconclusive. No identifiers,
+content, errors or thread identities are logged. Invocation queueing and native
+execution-thread ownership remain unmeasured. This attribution change does not
+establish an installed responsiveness improvement.

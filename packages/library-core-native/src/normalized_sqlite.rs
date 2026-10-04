@@ -884,6 +884,15 @@ pub fn export_pinned_normalized_checkpoint_page_v2(
     Ok(page)
 }
 
+/// Fixed preparation boundaries only; no records or authority values are exposed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NormalizedCheckpointPreparationStageV2 {
+    TransactionBegin,
+    Descriptor(NormalizedCheckpointDescriptionStageV2),
+    TemporaryMaterialization,
+    OrderIndex,
+}
+
 /// Hold one SQLite read transaction across a complete bounded checkpoint export.
 ///
 /// Hosts retain this session outside their ordinary command connection so
@@ -902,7 +911,7 @@ impl NormalizedCheckpointExportSessionV2 {
         connection: Connection,
         snapshot: NormalizedCheckpointExportDescriptorV2,
     ) -> Result<Self, NormalizedSqliteError> {
-        Self::begin_inner(connection, Some(snapshot))
+        Self::begin_inner(connection, Some(snapshot), |_| {})
     }
 
     /// Open a pinned export and return the descriptor from that same read transaction.
@@ -911,20 +920,33 @@ impl NormalizedCheckpointExportSessionV2 {
     /// checkpoint on one connection and opening the export on another leaves a
     /// race where a concurrent writer can advance the revision between calls.
     pub fn begin_current(connection: Connection) -> Result<Self, NormalizedSqliteError> {
-        Self::begin_inner(connection, None)
+        Self::begin_current_with_observer(connection, |_| {})
+    }
+
+    /// Identical pinned export with content-free preparation boundaries.
+    pub fn begin_current_with_observer(
+        connection: Connection,
+        observe: impl FnMut(NormalizedCheckpointPreparationStageV2),
+    ) -> Result<Self, NormalizedSqliteError> {
+        Self::begin_inner(connection, None, observe)
     }
 
     fn begin_inner(
         connection: Connection,
         expected_snapshot: Option<NormalizedCheckpointExportDescriptorV2>,
+        mut observe: impl FnMut(NormalizedCheckpointPreparationStageV2),
     ) -> Result<Self, NormalizedSqliteError> {
         if !connection.is_autocommit() {
             return Err(NormalizedSqliteError::InvalidRequest(
                 "normalized checkpoint export connection is already in a transaction",
             ));
         }
+        observe(NormalizedCheckpointPreparationStageV2::TransactionBegin);
         connection.execute_batch("BEGIN DEFERRED TRANSACTION;")?;
-        let snapshot = describe_normalized_checkpoint_export_v2(&connection)?;
+        let snapshot =
+            describe_normalized_checkpoint_export_with_observer_v2(&connection, |stage| {
+                observe(NormalizedCheckpointPreparationStageV2::Descriptor(stage));
+            })?;
         if expected_snapshot
             .as_ref()
             .is_some_and(|expected| expected != &snapshot)
@@ -941,7 +963,7 @@ impl NormalizedCheckpointExportSessionV2 {
         // the order index serves every later page. The temporary object shadows
         // the main-schema view only for this export session and disappears with
         // the connection.
-        materialize_normalized_checkpoint_export_v2(&connection)?;
+        materialize_normalized_checkpoint_export_with_observer_v2(&connection, &mut observe)?;
         Ok(Self {
             connection,
             snapshot,
@@ -993,16 +1015,27 @@ impl Drop for NormalizedCheckpointExportSessionV2 {
 pub(crate) fn materialize_normalized_checkpoint_export_v2(
     connection: &Connection,
 ) -> Result<(), NormalizedSqliteError> {
+    materialize_normalized_checkpoint_export_with_observer_v2(connection, |_| {})
+}
+
+fn materialize_normalized_checkpoint_export_with_observer_v2(
+    connection: &Connection,
+    mut observe: impl FnMut(NormalizedCheckpointPreparationStageV2),
+) -> Result<(), NormalizedSqliteError> {
     if connection.is_autocommit() {
         return Err(NormalizedSqliteError::InvalidRequest(
             "normalized checkpoint cache requires a pinned transaction",
         ));
     }
+    observe(NormalizedCheckpointPreparationStageV2::TemporaryMaterialization);
     connection.execute_batch(
         "CREATE TEMP TABLE library_checkpoint_export AS
            SELECT registry_key, primary_key_json, payload_json, chunk_bytes
-           FROM main.library_checkpoint_export;
-         CREATE UNIQUE INDEX temp.library_checkpoint_export_order
+           FROM main.library_checkpoint_export;",
+    )?;
+    observe(NormalizedCheckpointPreparationStageV2::OrderIndex);
+    connection.execute_batch(
+        "CREATE UNIQUE INDEX temp.library_checkpoint_export_order
            ON library_checkpoint_export(registry_key, primary_key_json);",
     )?;
     Ok(())
@@ -2255,6 +2288,145 @@ mod tests {
     }
 
     #[test]
+    fn checkpoint_observer_preserves_descriptor_pages_and_incomplete_drop() {
+        let connection = checkpoint_identity_fixture();
+        let expected = describe_normalized_checkpoint_export_v2(&connection).unwrap();
+        let mut observed =
+            NormalizedCheckpointExportSessionV2::begin_current_with_observer(connection, |_| {})
+                .unwrap();
+        let mut plain = NormalizedCheckpointExportSessionV2::begin(
+            checkpoint_identity_fixture(),
+            expected.clone(),
+        )
+        .unwrap();
+        assert_eq!(observed.snapshot(), plain.snapshot());
+        let request = PinnedNormalizedCheckpointExportRequestV2 {
+            snapshot: expected,
+            page: NormalizedCheckpointExportRequestV2 {
+                after: None,
+                maximum_records: 2,
+                maximum_response_bytes: NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES,
+            },
+        };
+        let left = observed.read_page(&request).unwrap();
+        let right = plain.read_page(&request).unwrap();
+        assert_eq!(
+            serde_json::to_value(left).unwrap(),
+            serde_json::to_value(right).unwrap()
+        );
+        assert!(!observed.connection.is_autocommit());
+        // An unfinished session must release its read transaction on drop.
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("pinned.sqlite");
+        checkpoint_identity_fixture()
+            .backup(rusqlite::DatabaseName::Main, &path, None)
+            .unwrap();
+        let reader = open_normalized_sqlite_database_v1(&path, false).unwrap();
+        let export =
+            NormalizedCheckpointExportSessionV2::begin_current_with_observer(reader, |_| {})
+                .unwrap();
+        let writer = open_normalized_sqlite_database_v1(&path, false).unwrap();
+        writer
+            .execute(
+                "UPDATE library_meta SET source_revision = source_revision + 1",
+                [],
+            )
+            .unwrap();
+        writer.pragma_update(None, "busy_timeout", 0).unwrap();
+        let before: i64 = writer
+            .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(before, 1);
+        drop(export);
+        let after: i64 = writer
+            .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(after, 0);
+    }
+
+    #[test]
+    fn checkpoint_preparation_failures_preserve_error_boundary_and_rollback() {
+        use rusqlite::hooks::{AuthAction, AuthContext, Authorization};
+        use NormalizedCheckpointPreparationStageV2 as Preparation;
+        for failed_stage in [
+            Preparation::Descriptor(NormalizedCheckpointDescriptionStageV2::WriterIdentity),
+            Preparation::TemporaryMaterialization,
+            Preparation::OrderIndex,
+        ] {
+            let directory = tempfile::tempdir().unwrap();
+            let path = directory.path().join("failure.sqlite");
+            checkpoint_identity_fixture()
+                .backup(rusqlite::DatabaseName::Main, &path, None)
+                .unwrap();
+            let reader = open_normalized_sqlite_database_v1(&path, false).unwrap();
+            let before = describe_normalized_checkpoint_export_v2(&reader).unwrap();
+            reader.authorizer(Some(move |ctx: AuthContext<'_>| {
+                let deny = matches!(
+                    (failed_stage, ctx.action),
+                    (
+                        Preparation::Descriptor(_),
+                        AuthAction::Read {
+                            table_name: "library_meta",
+                            ..
+                        },
+                    ) | (
+                        Preparation::TemporaryMaterialization,
+                        AuthAction::CreateTempTable { .. }
+                    ) | (Preparation::OrderIndex, AuthAction::CreateTempIndex { .. })
+                );
+                if deny {
+                    Authorization::Deny
+                } else {
+                    Authorization::Allow
+                }
+            }));
+            let mut stages = Vec::new();
+            assert!(matches!(
+                NormalizedCheckpointExportSessionV2::begin_current_with_observer(reader, |s| {
+                    stages.push(s)
+                }),
+                Err(NormalizedSqliteError::Sqlite(_))
+            ));
+            assert_eq!(stages.last(), Some(&failed_stage));
+            let writer = open_normalized_sqlite_database_v1(&path, false).unwrap();
+            assert_eq!(
+                describe_normalized_checkpoint_export_v2(&writer).unwrap(),
+                before
+            );
+            writer
+                .execute(
+                    "UPDATE library_meta SET source_revision = source_revision + 1",
+                    [],
+                )
+                .unwrap();
+            assert_eq!(
+                writer
+                    .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |r| r
+                        .get::<_, i64>(0))
+                    .unwrap(),
+                0
+            );
+            assert_eq!(writer.query_row("SELECT count(*) FROM sqlite_schema WHERE name='library_checkpoint_export' AND type='table'", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
+        }
+        // The borrowed helper retains caller transaction ownership on failure.
+        let connection = checkpoint_identity_fixture();
+        connection.execute_batch("BEGIN DEFERRED").unwrap();
+        connection.authorizer(Some(|ctx: AuthContext<'_>| {
+            if matches!(ctx.action, AuthAction::CreateTempIndex { .. }) {
+                Authorization::Deny
+            } else {
+                Authorization::Allow
+            }
+        }));
+        assert!(
+            materialize_normalized_checkpoint_export_with_observer_v2(&connection, |_| {}).is_err()
+        );
+        assert!(!connection.is_autocommit());
+        connection.execute_batch("ROLLBACK").unwrap();
+        assert_eq!(connection.query_row("SELECT count(*) FROM sqlite_temp_schema WHERE name='library_checkpoint_export'", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
+    }
+
+    #[test]
     fn pinned_checkpoint_export_session_keeps_one_revision_while_writes_continue() {
         let directory = tempfile::tempdir().expect("temporary Library");
         let database_path = directory.path().join("library.sqlite");
@@ -2319,8 +2491,26 @@ mod tests {
                 ],
             )
             .expect("actor");
-        let mut export = NormalizedCheckpointExportSessionV2::begin_current(connection)
+        let mut observed = Vec::new();
+        let mut export =
+            NormalizedCheckpointExportSessionV2::begin_current_with_observer(connection, |stage| {
+                observed.push(stage)
+            })
             .expect("begin current pinned export");
+        use NormalizedCheckpointDescriptionStageV2 as Description;
+        use NormalizedCheckpointPreparationStageV2 as Preparation;
+        assert_eq!(
+            observed,
+            [
+                Preparation::TransactionBegin,
+                Preparation::Descriptor(Description::WriterIdentity),
+                Preparation::Descriptor(Description::ExportCount),
+                Preparation::Descriptor(Description::ItemCount),
+                Preparation::Descriptor(Description::FrontierAndValidation),
+                Preparation::TemporaryMaterialization,
+                Preparation::OrderIndex,
+            ]
+        );
         let snapshot = export.snapshot().clone();
         assert_eq!(snapshot.library_id, library_id);
         assert_eq!(snapshot.authority_epoch, epoch_id);
