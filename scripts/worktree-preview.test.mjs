@@ -168,7 +168,7 @@ m.send(json.loads(sys.argv[2]), signal.SIGKILL)
       }
       if (launcher.exitCode === null && launcher.signalCode === null) {
         const exited = once(launcher, "exit");
-        launcher.kill("SIGKILL");
+        launcher.kill("SIGUSR2");
         await exited;
       }
       launcher.stdout.destroy();
@@ -204,6 +204,13 @@ m.send(json.loads(sys.argv[2]), signal.SIGKILL)
         stdio: ['ignore', 'ignore', 'inherit', 'ipc'],
       });
       child.on('message', (info) => console.log(JSON.stringify(info)));
+      // Fixture-only teardown must work even when native capability inspection
+      // fails. Production cleanup never sends this signal.
+      process.on('SIGUSR2', () => {
+        if (child.exitCode !== null || child.signalCode !== null) process.exit(0);
+        child.once('exit', () => process.exit(0));
+        child.kill('SIGKILL');
+      });
       setInterval(() => {}, 1000);
     `], { cwd: worktree, detached: true, stdio: ["ignore", "pipe", "pipe"] });
     const record = { launcher };
@@ -313,8 +320,9 @@ test("stale, legacy and cross-session manifests fail closed without killing thei
 
 test("process generation checks cover escalation, pidfd pinning, late children and ambiguous anchors", () => {
   const result = spawnSync("python3", ["-B", "-c", `
-import importlib.util, signal, sys
-from unittest.mock import patch
+import ctypes, errno, importlib.util, signal, sys
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 spec = importlib.util.spec_from_file_location('preview', sys.argv[1])
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 root = dict(pid=400, session=400, group=400, birth='root', zombie=False)
@@ -365,12 +373,33 @@ with patch.object(m, 'inspect', return_value=root), patch.object(m, 'active', re
     except RuntimeError: pass
     else: raise AssertionError('late child reported stopped')
 
-# Successful escalation reaches only the unchanged generation.
-with patch.object(m, 'inspect', return_value=child), patch.object(m.os, 'kill') as kill, patch.object(m.sys, 'platform', 'darwin'):
-    m.send(child, signal.SIGKILL)
-    kill.assert_called_once_with(401, signal.SIGKILL)
-with patch.object(m, 'inspect', return_value=replacement), patch.object(m.os, 'kill') as kill, patch.object(m.sys, 'platform', 'darwin'):
-    m.send(child, signal.SIGKILL)
+# Darwin must pass the captured PID version into the kernel, even if the
+# numeric PID changes generation after the last userspace inspection.
+darwin_child = dict(child, pidversion=72)
+tokens = []
+def kernel_signal(pointer, sig):
+    token = ctypes.cast(pointer, ctypes.POINTER(m.AuditToken)).contents
+    tokens.append((token.val[5], token.val[7], sig))
+    return errno.ESRCH  # Kernel rejects the captured version after PID reuse.
+libproc = SimpleNamespace(proc_signal_with_audittoken=kernel_signal)
+with patch.object(m, 'inspect', return_value=darwin_child), patch.object(m.os, 'kill') as kill, patch.object(m.sys, 'platform', 'darwin'), patch.object(m, 'darwin_libproc', return_value=libproc):
+    m.send(darwin_child, signal.SIGKILL)
+    assert tokens == [(401, 72, signal.SIGKILL)]
+    kill.assert_not_called()
+with patch.object(m, 'inspect', return_value=dict(darwin_child, pidversion=73)), patch.object(m.os, 'kill') as kill, patch.object(m.sys, 'platform', 'darwin'), patch.object(m, 'darwin_libproc') as library:
+    m.send(darwin_child, signal.SIGKILL)
+    library.assert_not_called()
+    kill.assert_not_called()
+
+# Missing SPI or denied signals must fail, never choose a numeric-PID fallback.
+with patch.object(m.ctypes, 'CDLL', return_value=SimpleNamespace(proc_pidinfo=Mock())):
+    try: m.darwin_libproc()
+    except RuntimeError: pass
+    else: raise AssertionError('missing generation-bound API accepted')
+with patch.object(m, 'inspect', return_value=darwin_child), patch.object(m.os, 'kill') as kill, patch.object(m.sys, 'platform', 'darwin'), patch.object(m, 'darwin_libproc', return_value=SimpleNamespace(proc_signal_with_audittoken=lambda *args: errno.EPERM)):
+    try: m.send(darwin_child, signal.SIGKILL)
+    except PermissionError: pass
+    else: raise AssertionError('denied signal reported success')
     kill.assert_not_called()
 
 # Acquiring a pidfd before verification and signaling through it closes the
@@ -384,4 +413,55 @@ with patch.object(m.sys, 'platform', 'linux'), patch.object(m.os, 'pidfd_open', 
 print('generation and escalation contracts passed')
 `, processHelper], { encoding: "utf8", timeout: 5000 });
   assert.equal(result.status, 0, result.stdout + result.stderr);
+});
+
+
+test("macOS kernel rejects an obsolete PID version without signaling the live preview", {
+  skip: process.platform !== "darwin",
+}, async (t) => {
+  const fixture = processFixture(t);
+  const owned = await fixture.start("kernel token");
+  const result = spawnSync("python3", ["-B", "-c", `
+import ctypes, errno, importlib.util, json, signal, sys
+spec = importlib.util.spec_from_file_location('preview', sys.argv[1])
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+identity = json.loads(sys.argv[2])
+assert ctypes.sizeof(m.BsdInfo) == 136
+assert ctypes.sizeof(m.UniqueInfo) == 56
+assert ctypes.sizeof(m.BsdWithUniqueInfo) == 192
+assert ctypes.sizeof(m.AuditToken) == 32
+assert isinstance(identity['pidversion'], int)
+token = m.AuditToken()
+token.val[5] = identity['pid']
+token.val[7] = (identity['pidversion'] + 1) & 0xffffffff
+result = m.darwin_libproc().proc_signal_with_audittoken(ctypes.byref(token), signal.SIGTERM)
+assert result == errno.ESRCH, result
+assert m.active(identity)
+print('kernel rejected obsolete version')
+`, processHelper, JSON.stringify(owned.info.identities[0])], { encoding: "utf8", timeout: 5000 });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(await request(owned.info.port), /alive/);
+});
+
+
+test("preview refuses unavailable generation-bound signaling before bootstrap or launch", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "freed-preview-preflight-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const bin = path.join(root, "bin");
+  fs.mkdirSync(bin);
+  const marker = path.join(root, "calls");
+  fs.writeFileSync(path.join(bin, "python3"),
+    '#!/bin/sh\nprintf "%s\\n" "$*" >> "$PREVIEW_CALLS"\necho "generation-bound signaling unavailable" >&2\nexit 1\n',
+    { mode: 0o700 });
+  const result = spawnSync("bash", [path.join(repoRoot, "scripts/worktree-preview.sh"),
+    "pwa", "--worktree", root], {
+    env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}`,
+      NODE_BIN: process.execPath, PREVIEW_CALLS: marker },
+    encoding: "utf8", timeout: 5000,
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /generation-bound signaling unavailable/);
+  assert.doesNotMatch(result.stdout, /Bootstrapping|Started/);
+  assert.equal(readFileSync(marker, "utf8").trim(), `${processHelper} check`);
+  assert.equal(fs.existsSync(path.join(root, "node_modules")), false);
 });

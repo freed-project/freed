@@ -1,6 +1,7 @@
 """Bind preview cleanup to process generations, never a bare PID or killpg."""
 
 import ctypes
+import errno
 import json
 import os
 from pathlib import Path
@@ -25,6 +26,40 @@ class BsdInfo(ctypes.Structure):
     ] + [("start_sec", ctypes.c_uint64), ("start_usec", ctypes.c_uint64)]
 
 
+class UniqueInfo(ctypes.Structure):
+    # Stable 56-byte ABI from Apple's proc_info_private.h. The reserved words
+    # are not used; only the version accompanying this BSD snapshot is needed.
+    _fields_ = [
+        ("uuid", ctypes.c_uint8 * 16), ("uniqueid", ctypes.c_uint64),
+        ("parent_uniqueid", ctypes.c_uint64), ("pidversion", ctypes.c_int32),
+        ("reserved", ctypes.c_uint32), ("reserved2", ctypes.c_uint64),
+        ("reserved3", ctypes.c_uint64),
+    ]
+
+
+class BsdWithUniqueInfo(ctypes.Structure):
+    _fields_ = [("bsd", BsdInfo), ("unique", UniqueInfo)]
+
+
+class AuditToken(ctypes.Structure):
+    _fields_ = [("val", ctypes.c_uint32 * 8)]
+
+
+def darwin_libproc():
+    libproc = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True)
+    libproc.proc_pidinfo.argtypes = [
+        ctypes.c_int, ctypes.c_int, ctypes.c_uint64, ctypes.c_void_p, ctypes.c_int,
+    ]
+    libproc.proc_pidinfo.restype = ctypes.c_int
+    try:
+        bound_signal = libproc.proc_signal_with_audittoken
+    except AttributeError as error:
+        raise RuntimeError("macOS generation-bound signaling is unavailable; retaining preview") from error
+    bound_signal.argtypes = [ctypes.POINTER(AuditToken), ctypes.c_int]
+    bound_signal.restype = ctypes.c_int
+    return libproc
+
+
 def inspect(pid):
     if pid <= 1:
         raise ValueError("refusing a non-process PID")
@@ -37,20 +72,21 @@ def inspect(pid):
                 "birth": f"{boot}:{stat[19]}", "zombie": stat[0] == "Z",
             }
         if sys.platform == "darwin":
-            libproc = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True)
-            libproc.proc_pidinfo.argtypes = [
-                ctypes.c_int, ctypes.c_int, ctypes.c_uint64, ctypes.c_void_p, ctypes.c_int,
-            ]
-            libproc.proc_pidinfo.restype = ctypes.c_int
-            info = BsdInfo()
-            size = libproc.proc_pidinfo(pid, 3, 0, ctypes.byref(info), ctypes.sizeof(info))
-            if size != ctypes.sizeof(info):
-                if ctypes.get_errno() == 3:  # ESRCH
+            libproc = darwin_libproc()
+            snapshot = BsdWithUniqueInfo()
+            # One kernel-held process reference supplies birth AND pidversion.
+            # Separate reads could combine the old birth with a reused PID's token.
+            ctypes.set_errno(0)
+            size = libproc.proc_pidinfo(pid, 18, 0, ctypes.byref(snapshot), ctypes.sizeof(snapshot))
+            if size != ctypes.sizeof(snapshot):
+                if ctypes.get_errno() == errno.ESRCH:
                     return None
-                raise RuntimeError(f"cannot read process generation for {pid}")
+                raise RuntimeError(f"cannot read combined process generation for {pid}")
+            info = snapshot.bsd
             return {
                 "pid": pid, "session": os.getsid(pid), "group": info.pgid,
                 "birth": f"{info.start_sec}:{info.start_usec}", "zombie": info.status == 5,
+                "pidversion": snapshot.unique.pidversion,
             }
         raise RuntimeError(f"unsupported preview process platform: {sys.platform}")
     except (FileNotFoundError, ProcessLookupError):
@@ -59,7 +95,7 @@ def inspect(pid):
 
 def same_process(expected, current):
     return current is not None and all(
-        expected.get(key) == current.get(key) for key in ("pid", "birth", "session", "group")
+        expected.get(key) == current.get(key) for key in ("pid", "birth", "session", "group", "pidversion")
     )
 
 
@@ -98,8 +134,22 @@ def send(expected, sig):
             return
         if fd is not None:
             signal.pidfd_send_signal(fd, sig)
+        elif sys.platform == "darwin":
+            # This exported libproc SPI validates PID+version in the kernel and
+            # holds the process reference through psignal. Never fall back to
+            # kill(pid): a userspace birth check cannot close that reuse race.
+            # XNU: libsyscall/wrappers/libproc/libproc.c, bsd/kern/proc_info.c.
+            version = expected.get("pidversion")
+            if not isinstance(version, int):
+                raise RuntimeError("missing macOS PID version; retaining preview")
+            token = AuditToken()
+            token.val[5] = pid
+            token.val[7] = version & 0xffffffff
+            result = darwin_libproc().proc_signal_with_audittoken(ctypes.byref(token), sig)
+            if result not in (0, errno.ESRCH):
+                raise OSError(result, "generation-bound preview signal failed")
         else:
-            os.kill(pid, sig)
+            raise RuntimeError("generation-bound preview signaling is unavailable")
     except ProcessLookupError:
         return
     finally:
@@ -143,9 +193,24 @@ def stop(expected, grace=2.0):
         raise RuntimeError("preview session still has live processes; retaining record")
 
 
+def check_signaling():
+    if sys.platform == "darwin":
+        if inspect(os.getpid()) is None:
+            raise RuntimeError("cannot verify macOS process identity support")
+    elif sys.platform == "linux":
+        if not hasattr(signal, "pidfd_send_signal"):
+            raise RuntimeError("Python pidfd signaling is unavailable")
+        fd = os.pidfd_open(os.getpid())
+        os.close(fd)
+    else:
+        raise RuntimeError("generation-bound preview signaling is unavailable")
+
+
 def main():
     action = sys.argv[1]
-    if action == "capture":
+    if action == "check":
+        check_signaling()
+    elif action == "capture":
         print(json.dumps(capture(int(sys.argv[2])), separators=(",", ":")))
     elif action == "stop":
         expected = json.loads(sys.argv[2])
