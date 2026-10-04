@@ -1,6 +1,6 @@
 // Experiment-local contract checks; not added to required validation lanes.
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -26,7 +26,8 @@ function fixture(t, failing = false) {
 }
 
 test("manual workflow freezes source and caps work at two jobs and eight shard runs", () => {
-  const workflow = yaml.load(readFileSync(".github/workflows/issue-1139-general-experiment.yml", "utf8"));
+  assert.equal(existsSync(".github/workflows/issue-1139-general-experiment.yml"), false);
+  const workflow = yaml.load(readFileSync(".github/workflows/tooling-nightly.yml", "utf8"));
   assert.deepEqual(Object.keys(workflow.on), ["workflow_dispatch"]);
   assert.deepEqual(workflow.permissions, { contents: "read" });
   assert.deepEqual(Object.keys(workflow.jobs), ["measure"]);
