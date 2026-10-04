@@ -5,13 +5,16 @@ use std::time::Instant;
 
 const WINDOW_US: u64 = 60_000_000;
 const MAX_EVENTS: usize = 12;
-const STAGE_COUNT: usize = 7;
+const LEGACY_STAGE_COUNT: usize = 7;
+const STAGE_COUNT: usize = 15;
+const SCOPE_COUNT: usize = 4;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Scope {
     InstallationWitness,
     CloudIdentity,
     CloudPreflightIdentity,
+    CheckpointPrepare,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -23,6 +26,14 @@ pub(crate) enum Stage {
     ItemCount,
     FrontierAndValidation,
     ActorIdentity,
+    CheckpointAdmission,
+    ExportReaper,
+    SnapshotBegin,
+    TemporaryMaterialization,
+    OrderIndex,
+    DescriptorClone,
+    SessionLock,
+    SessionReplacement,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -34,27 +45,63 @@ pub(crate) enum Phase {
 }
 
 // The record deliberately cannot carry an identifier, content or error text.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Event {
     pub scope: Scope,
     pub phase: Phase,
     pub stage: Option<Stage>,
     pub total_us: u64,
+    pub entered_stages: u16,
     // Fixed order is the Stage declaration above. Values are accumulated time.
     pub durations_us: [u64; STAGE_COUNT],
 }
 
+// Preserve the legacy decimal record layout. Checkpoint durations use a fixed
+// hexadecimal array to keep even saturated u64 values within 512 log bytes.
+impl std::fmt::Debug for Event {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut record = f.debug_struct("Event");
+        record
+            .field("scope", &self.scope)
+            .field("phase", &self.phase)
+            .field("stage", &self.stage)
+            .field("total_us", &self.total_us);
+        if self.scope == Scope::CheckpointPrepare {
+            record
+                .field("entered_stages", &self.entered_stages)
+                .field("durations_us_hex", &HexDurations(&self.durations_us));
+        } else {
+            record.field("durations_us", &&self.durations_us[..LEGACY_STAGE_COUNT]);
+        }
+        record.finish()
+    }
+}
+
+struct HexDurations<'a>(&'a [u64; STAGE_COUNT]);
+impl std::fmt::Debug for HexDurations<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("[")?;
+        for (index, duration) in self.0.iter().enumerate() {
+            if index > 0 {
+                f.write_str(",")?;
+            }
+            write!(f, "{duration:x}")?;
+        }
+        f.write_str("]")
+    }
+}
+
 pub(crate) struct Limiter {
-    last_started: [Option<u64>; 3],
-    in_flight: [bool; 3],
+    last_started: [Option<u64>; SCOPE_COUNT],
+    in_flight: [bool; SCOPE_COUNT],
     emitted_at: [Option<u64>; MAX_EVENTS],
 }
 
 impl Limiter {
     const fn new() -> Self {
         Self {
-            last_started: [None; 3],
-            in_flight: [false; 3],
+            last_started: [None; SCOPE_COUNT],
+            in_flight: [false; SCOPE_COUNT],
             emitted_at: [None; MAX_EVENTS],
         }
     }
@@ -84,6 +131,11 @@ impl Limiter {
         *slot = Some(now);
         true
     }
+}
+
+#[cfg(test)]
+pub(crate) fn test_limiter() -> Mutex<Limiter> {
+    Mutex::new(Limiter::new())
 }
 
 pub(crate) fn global_limiter() -> &'static Mutex<Limiter> {
@@ -149,8 +201,11 @@ impl<Clock: FnMut() -> u64, Sink: FnMut(Event)> Trace<'_, Clock, Sink> {
         let now = (self.clock)();
         self.finish_stage(now);
         self.event.stage = Some(stage);
+        self.event.entered_stages |= 1 << (stage as usize);
         self.stage_started_at = now;
-        self.emit(now, Phase::StageStarted);
+        if self.event.scope != Scope::CheckpointPrepare {
+            self.emit(now, Phase::StageStarted);
+        }
     }
 
     fn finish(&mut self, success: bool) {
@@ -203,6 +258,7 @@ where
             phase: Phase::Started,
             stage: None,
             total_us: 0,
+            entered_stages: 0,
             durations_us: [0; STAGE_COUNT],
         },
     };
@@ -305,7 +361,7 @@ mod tests {
         );
         assert!(called.get());
         assert_eq!(result, Ok(5));
-        assert_eq!(limiter.lock().unwrap().last_started, [None; 3]);
+        assert_eq!(limiter.lock().unwrap().last_started, [None; SCOPE_COUNT]);
     }
 
     #[test]
@@ -375,14 +431,135 @@ mod tests {
 
     #[test]
     fn maximum_scalar_values_keep_each_event_below_512_bytes() {
-        let event = Event {
+        for scope in [
+            Scope::InstallationWitness,
+            Scope::CloudIdentity,
+            Scope::CloudPreflightIdentity,
+            Scope::CheckpointPrepare,
+        ] {
+            for stage in [
+                Stage::FrontierAndValidation,
+                Stage::TemporaryMaterialization,
+                Stage::SessionReplacement,
+            ] {
+                let event = Event {
+                    scope,
+                    phase: Phase::StageStarted,
+                    stage: Some(stage),
+                    total_us: u64::MAX,
+                    entered_stages: u16::MAX,
+                    durations_us: [u64::MAX; STAGE_COUNT],
+                };
+                assert!(format!("[library-native-timing] {event:?}").len() < 512);
+            }
+        }
+    }
+
+    #[test]
+    fn checkpoint_summary_separates_zero_duration_from_unentered_and_preserves_legacy_layout() {
+        assert_eq!(Stage::ActorIdentity as usize, 6);
+        assert_eq!(Stage::CheckpointAdmission as usize, 7);
+        let limiter = Mutex::new(Limiter::new());
+        let now = Cell::new(0);
+        let events = RefCell::new(Vec::new());
+        let result: Result<u32, &str> = with_trace(
+            Scope::CheckpointPrepare,
+            true,
+            &limiter,
+            || now.get(),
+            |e| events.borrow_mut().push(e),
+            |trace| {
+                trace.stage(Stage::SelectedOpen); // Entered, measured zero.
+                trace.stage(Stage::SessionLock);
+                now.set(10);
+                trace.stage(Stage::SessionReplacement);
+                now.set(30);
+                Ok(9)
+            },
+        );
+        assert_eq!(result, Ok(9));
+        let events = events.borrow();
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].phase, Phase::Started);
+        let end = events[1];
+        assert_eq!(end.phase, Phase::Completed);
+        assert_eq!(end.durations_us[Stage::SessionLock as usize], 10);
+        assert_eq!(end.durations_us[Stage::SessionReplacement as usize], 20);
+        assert_eq!(
+            end.entered_stages,
+            (1 << Stage::SelectedOpen as usize)
+                | (1 << Stage::SessionLock as usize)
+                | (1 << Stage::SessionReplacement as usize)
+        );
+        assert_eq!(end.durations_us[Stage::SelectedOpen as usize], 0);
+        assert_eq!(end.durations_us[Stage::OrderIndex as usize], 0);
+        let legacy = Event {
             scope: Scope::CloudIdentity,
-            phase: Phase::StageStarted,
-            stage: Some(Stage::FrontierAndValidation),
-            total_us: u64::MAX,
-            durations_us: [u64::MAX; STAGE_COUNT],
+            phase: Phase::Completed,
+            stage: None,
+            total_us: 0,
+            entered_stages: 0,
+            durations_us: [0; STAGE_COUNT],
         };
-        assert!(format!("[library-native-timing] {event:?}").len() < 512);
+        assert_eq!(format!("{legacy:?}"), "Event { scope: CloudIdentity, phase: Completed, stage: None, total_us: 0, durations_us: [0, 0, 0, 0, 0, 0, 0] }");
+    }
+
+    #[test]
+    fn checkpoint_failure_sampling_and_shared_event_cap_preserve_work() {
+        let limiter = Mutex::new(Limiter::new());
+        let events = RefCell::new(Vec::new());
+        for i in 0..2 {
+            let result: Result<(), &str> = with_trace(
+                Scope::CheckpointPrepare,
+                true,
+                &limiter,
+                || 0,
+                |e| events.borrow_mut().push(e),
+                |trace| {
+                    trace.stage(Stage::OrderIndex);
+                    Err("private error")
+                },
+            );
+            assert_eq!(result, Err("private error"));
+            assert_eq!(
+                events.borrow().len(),
+                2,
+                "same scope must be suppressed on run {i}"
+            );
+        }
+        assert_eq!(events.borrow()[1].phase, Phase::Failed);
+        assert_eq!(
+            events.borrow()[1].entered_stages,
+            1 << Stage::OrderIndex as usize
+        );
+        assert!(!format!("{:?}", events.borrow()).contains("private"));
+        let mut locked = limiter.lock().unwrap();
+        for _ in 2..MAX_EVENTS {
+            assert!(locked.event(0));
+        }
+        drop(locked);
+        let result: Result<u32, ()> = with_trace(
+            Scope::CloudIdentity,
+            true,
+            &limiter,
+            || 0,
+            |_| panic!("global cap exceeded"),
+            |_| Ok(3),
+        );
+        assert_eq!(result, Ok(3));
+        let calls = Cell::new(0);
+        let _: Result<(), ()> = with_trace(
+            Scope::CheckpointPrepare,
+            true,
+            &limiter,
+            || WINDOW_US,
+            |_| calls.set(calls.get() + 1),
+            |trace| {
+                trace.stage(Stage::OrderIndex);
+                Ok(())
+            },
+        );
+        assert_eq!(calls.get(), 2);
     }
 
     #[test]
@@ -442,7 +619,7 @@ mod tests {
             );
         });
         assert!(panicked.is_err());
-        assert_eq!(limiter.lock().unwrap().in_flight, [false; 3]);
+        assert_eq!(limiter.lock().unwrap().in_flight, [false; SCOPE_COUNT]);
         let emitted = Cell::new(0);
         let next: Result<(), ()> = with_trace(
             Scope::CloudIdentity,

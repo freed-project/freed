@@ -1,5 +1,8 @@
 //! Freed Desktop native routing for the normalized SQLite Library Core.
 
+#[path = "library_core_checkpoint_session.rs"]
+mod checkpoint_session;
+
 use freed_library_core::{
     accept_normalized_operation_transaction_v1, load_normalized_local_actor_id_v2,
     normalized_primary_mutation_context_v1, NormalizedMutationContextV1,
@@ -1233,20 +1236,60 @@ pub(super) fn begin_normalized_library_checkpoint_export(
     app: tauri::AppHandle,
     handoff_id: Option<String>,
 ) -> Result<freed_library_core::NormalizedCheckpointExportDescriptorV2, String> {
-    let connection = open_normalized_database(&app)?;
-    require_checkpoint_export_admission(&connection, handoff_id.as_deref())?;
-    ensure_checkpoint_export_reaper()?;
-    let export = freed_library_core::NormalizedCheckpointExportSessionV2::begin_current(connection)
-        .map_err(|error| error.to_string())?;
-    let snapshot = export.snapshot().clone();
-    let mut guard = checkpoint_export_session()
-        .lock()
-        .map_err(|_| "normalized checkpoint export session lock failed".to_owned())?;
-    *guard = Some(DesktopCheckpointExportSession {
-        export,
-        last_touched: Instant::now(),
-    });
-    Ok(snapshot)
+    use super::library_core_native_timings::{
+        global_limiter, monotonic_us, with_trace, Scope, Stage,
+    };
+    use freed_library_core::{
+        NormalizedCheckpointDescriptionStageV2 as DescriptorStage,
+        NormalizedCheckpointPreparationStageV2 as PreparationStage,
+    };
+    with_trace(
+        Scope::CheckpointPrepare,
+        log::log_enabled!(log::Level::Info),
+        global_limiter(),
+        monotonic_us,
+        |event| log::info!("[library-native-timing] {event:?}"),
+        |timing| {
+            timing.stage(Stage::SelectedOpen);
+            let connection = open_normalized_database(&app)?;
+            timing.stage(Stage::CheckpointAdmission);
+            require_checkpoint_export_admission(&connection, handoff_id.as_deref())?;
+            timing.stage(Stage::ExportReaper);
+            ensure_checkpoint_export_reaper()?;
+            let export = freed_library_core::NormalizedCheckpointExportSessionV2::begin_current_with_observer(
+                connection,
+                |stage| timing.stage(match stage {
+                    PreparationStage::TransactionBegin => Stage::SnapshotBegin,
+                    PreparationStage::Descriptor(descriptor) => match descriptor {
+                        DescriptorStage::WriterIdentity => Stage::WriterIdentity,
+                        DescriptorStage::ExportCount => Stage::ExportCount,
+                        DescriptorStage::ItemCount => Stage::ItemCount,
+                        DescriptorStage::FrontierAndValidation => Stage::FrontierAndValidation,
+                    },
+                    PreparationStage::TemporaryMaterialization => Stage::TemporaryMaterialization,
+                    PreparationStage::OrderIndex => Stage::OrderIndex,
+                }),
+            ).map_err(|error| error.to_string())?;
+            timing.stage(Stage::DescriptorClone);
+            let snapshot = export.snapshot().clone();
+            checkpoint_session::replace(
+                checkpoint_export_session(),
+                || DesktopCheckpointExportSession {
+                    export,
+                    last_touched: Instant::now(),
+                },
+                |stage| {
+                    timing.stage(match stage {
+                        checkpoint_session::Stage::Acquire => Stage::SessionLock,
+                        checkpoint_session::Stage::Replace => Stage::SessionReplacement,
+                    })
+                },
+            )
+            .map_err(str::to_owned)?;
+            // replace released its guard before with_trace emits the summary.
+            Ok(snapshot)
+        },
+    )
 }
 
 #[tauri::command]

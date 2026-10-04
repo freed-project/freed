@@ -236,8 +236,8 @@ pub use normalized_sqlite::{
     BeginNormalizedCheckpointStageV2, NormalizedCheckpointCursorV2,
     NormalizedCheckpointDescriptionStageV2, NormalizedCheckpointExportDescriptorV2,
     NormalizedCheckpointExportPageV2, NormalizedCheckpointExportRequestV2,
-    NormalizedCheckpointExportSessionV2, NormalizedCheckpointStageStatusV2,
-    NormalizedCloudPreflightIdentityV1, NormalizedSqliteError,
+    NormalizedCheckpointExportSessionV2, NormalizedCheckpointPreparationStageV2,
+    NormalizedCheckpointStageStatusV2, NormalizedCloudPreflightIdentityV1, NormalizedSqliteError,
     PinnedNormalizedCheckpointExportRequestV2,
 };
 pub use normalized_writer_certificate::{
