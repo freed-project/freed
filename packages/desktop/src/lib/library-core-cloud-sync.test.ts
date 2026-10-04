@@ -151,7 +151,7 @@ vi.mock("./sqlite-library", () => ({
   beginNormalizedLibraryCheckpointExport: mocks.beginNormalizedExport,
   beginNormalizedLibraryCheckpointImport: mocks.beginNormalizedImport,
   describeNormalizedLibraryCheckpoint: mocks.describeNormalizedCheckpoint,
-  describeNormalizedLibraryCloudIdentity: mocks.describeCloudIdentity,
+  describeNormalizedLibraryCloudPreflightIdentity: mocks.describeCloudIdentity,
   countersignNormalizedLibraryFollowerActorRequest:
     mocks.countersignNormalizedEnrollment,
   ingestNormalizedLibraryFollowerIntentPage:
@@ -605,15 +605,13 @@ describe("SQLite Library Google Drive production wiring", () => {
         reference.descriptor
       );
     mocks.describeCloudIdentity.mockReset().mockResolvedValue({
-      format: "freed_normalized_checkpoint_export_v2",
+      format: "freed_normalized_cloud_preflight_identity_v1",
       protocolVersion: 2,
       libraryId: "ab".repeat(32),
       authorityEpoch: "cd".repeat(32),
       writerId: "12".repeat(32),
       sourceRevision: 7,
       causalFrontierDigest: "66".repeat(32),
-      recordCount: 1,
-      itemCount: 2,
       localActorId: "12".repeat(32),
     });
   });
@@ -1802,15 +1800,13 @@ describe("SQLite Library Google Drive production wiring", () => {
   it("reuses normalized persisted identity and chains the previous manifest", async () => {
     await publishCurrentSqliteLibraryToGoogleDrive({ accessToken: "token" });
     mocks.describeCloudIdentity.mockResolvedValue({
-      format: "freed_normalized_checkpoint_export_v2",
+      format: "freed_normalized_cloud_preflight_identity_v1",
       protocolVersion: 2,
       libraryId: "ab".repeat(32),
       authorityEpoch: "cd".repeat(32),
       writerId: "12".repeat(32),
       sourceRevision: 8,
       causalFrontierDigest: "68".repeat(32),
-      recordCount: 1,
-      itemCount: 2,
       localActorId: "12".repeat(32),
     });
     mocks.describeNormalizedCheckpoint.mockResolvedValue({

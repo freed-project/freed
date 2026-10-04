@@ -141,6 +141,13 @@ export function tauriInitScript() {
       }
       return btoa(binary).replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/g, '');
     }
+    function normalizedLibraryCloudPreflightIdentity() {
+      return {
+        format: 'freed_normalized_cloud_preflight_identity_v1', protocolVersion: 2,
+        libraryId: '2'.repeat(64), authorityEpoch: '3'.repeat(64), writerId: '6'.repeat(64),
+        sourceRevision: sqliteState().sourceRevision, causalFrontierDigest: 'a'.repeat(64), localActorId: '6'.repeat(64),
+      };
+    }
     function normalizedLibraryCloudIdentity() {
       var state = sqliteState();
       var items = Object.values(state.items).filter(function(item) { return !item.__deleted; });
@@ -1999,6 +2006,7 @@ export function tauriInitScript() {
         return true;
       }),
       describe_normalized_library_cloud_identity: normalizedLibraryCloudIdentity,
+      describe_normalized_library_cloud_preflight_identity: normalizedLibraryCloudPreflightIdentity,
       query_normalized_library: (args) => {
         args.started?.onmessage?.("00000000000000000000000000000001");
         return sqliteNormalizedQuery(args);

@@ -743,6 +743,67 @@ pub(crate) fn normalized_writer_identity(
     Ok((library_id, authority_epoch, writer_id, source_revision))
 }
 
+/// Metadata identity only. This is not an export descriptor or an exportability
+/// certificate: it neither counts nor traverses checkpoint or feed-item trees.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedCloudPreflightIdentityV1 {
+    pub format: String,
+    pub protocol_version: u32,
+    pub library_id: String,
+    pub authority_epoch: String,
+    pub writer_id: String,
+    pub source_revision: u64,
+    pub causal_frontier_digest: String,
+}
+
+/// Read within the host's transaction, which also contains local actor checks.
+/// The freshly opened selector identity must be revalidated in that snapshot;
+/// an earlier autocommit verification cannot authorize later metadata reads.
+pub fn describe_normalized_cloud_preflight_identity_v1(
+    connection: &Connection,
+    selected_library_id: &str,
+) -> Result<NormalizedCloudPreflightIdentityV1, NormalizedSqliteError> {
+    if connection.is_autocommit() {
+        return Err(NormalizedSqliteError::InvalidRequest(
+            "cloud preflight requires a read snapshot",
+        ));
+    }
+    // Opening already configured the handle. Recheck supported schema/storage
+    // identity in the pinned snapshot without replaying DDL or migrating.
+    let schema: u32 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
+    if ![SQLITE_SCHEMA_VERSION, NATIVE_STORAGE_SCHEMA_VERSION].contains(&schema) {
+        return Err(NormalizedSqliteError::InvalidRequest(
+            "normalized SQLite version identity is unsupported",
+        ));
+    }
+    install_normalized_schema_v1(connection)?;
+    verify_normalized_library_selection_v1(connection, selected_library_id)?;
+    let (library_id, authority_epoch, writer_id, source_revision) =
+        normalized_writer_identity(connection)?;
+    if !checkpoint_hex_identity(&library_id)
+        || !checkpoint_hex_identity(&authority_epoch)
+        || !checkpoint_hex_identity(&writer_id)
+    {
+        return Err(NormalizedSqliteError::Transport(
+            "normalized checkpoint authority identity is invalid".into(),
+        ));
+    }
+    Ok(NormalizedCloudPreflightIdentityV1 {
+        format: "freed_normalized_cloud_preflight_identity_v1".into(),
+        protocol_version: SQLITE_PROTOCOL_VERSION,
+        library_id,
+        authority_epoch: authority_epoch.clone(),
+        writer_id,
+        source_revision: u64::try_from(source_revision).map_err(|_| {
+            NormalizedSqliteError::Transport(
+                "normalized checkpoint source revision is invalid".into(),
+            )
+        })?,
+        causal_frontier_digest: checkpoint_frontier_digest_v2(connection, &authority_epoch)?,
+    })
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NormalizedCheckpointDescriptionStageV2 {
     WriterIdentity,
@@ -1182,8 +1243,7 @@ mod tests {
         connection
     }
 
-    #[test]
-    fn checkpoint_stage_observer_preserves_descriptor_and_each_failure_boundary() {
+    fn checkpoint_identity_fixture() -> Connection {
         let vector: Value = serde_json::from_str(include_str!(
             "../../shared/src/library-core/native-recovered-browser-vector-v1.json"
         ))
@@ -1197,8 +1257,8 @@ mod tests {
             &connection,
             &BeginNormalizedCheckpointStageV2 {
                 stage_id: "timing-fixture".into(),
-                library_id: baseline.library_id,
-                authority_epoch: baseline.authority_epoch,
+                library_id: baseline.library_id.clone(),
+                authority_epoch: baseline.authority_epoch.clone(),
                 source_revision: baseline.source_revision,
                 expected_record_count: records.len(),
                 created_at: 2200,
@@ -1207,7 +1267,204 @@ mod tests {
         .unwrap();
         append_normalized_checkpoint_stage_page_v2(&mut connection, "timing-fixture", &records)
             .unwrap();
-        finalize_normalized_checkpoint_stage_v2(&mut connection, "timing-fixture").unwrap();
+        replace_with_normalized_follower_checkpoint_stage_v2(
+            &mut connection,
+            "timing-fixture",
+            &NormalizedFollowerCheckpointReceiptV2 {
+                checkpoint_generation: 1,
+                writer_actor_id: baseline.writer_id,
+                manifest_object_key: "synthetic-manifest".into(),
+                manifest_transport_object_id: "synthetic-object".into(),
+                manifest_content_digest: "9".repeat(64),
+                control_revision: "synthetic-control".into(),
+                installed_at: 2200,
+            },
+        )
+        .unwrap();
+        connection
+    }
+
+    #[test]
+    fn cloud_preflight_identity_matches_full_descriptor_without_census() {
+        let mut connection = checkpoint_identity_fixture();
+        let full = describe_normalized_checkpoint_export_v2(&connection).unwrap();
+        assert!(
+            describe_normalized_cloud_preflight_identity_v1(&connection, &full.library_id).is_err()
+        );
+        let tx = connection.transaction().unwrap();
+        let identity =
+            describe_normalized_cloud_preflight_identity_v1(&tx, &full.library_id).unwrap();
+        assert_eq!(identity.library_id, full.library_id);
+        assert_eq!(identity.authority_epoch, full.authority_epoch);
+        assert_eq!(identity.writer_id, full.writer_id);
+        assert_eq!(identity.source_revision, full.source_revision);
+        assert_eq!(identity.causal_frontier_digest, full.causal_frontier_digest);
+        assert_eq!(identity.protocol_version, full.protocol_version);
+        assert!(describe_normalized_cloud_preflight_identity_v1(&tx, &"0".repeat(64)).is_err());
+        // Census failures retain their original full-descriptor semantics.
+        // Preflight deliberately cannot certify either tree's exportability.
+        for view in ["library_checkpoint_export", "library_feed_items"] {
+            tx.execute_batch(&format!(
+                "CREATE TEMP VIEW {view} AS SELECT * FROM missing_preflight_fixture;"
+            ))
+            .unwrap();
+            assert_eq!(
+                describe_normalized_cloud_preflight_identity_v1(&tx, &full.library_id).unwrap(),
+                identity
+            );
+            assert!(describe_normalized_checkpoint_export_v2(&tx).is_err());
+            tx.execute_batch(&format!("DROP VIEW temp.{view};"))
+                .unwrap();
+            assert_eq!(describe_normalized_checkpoint_export_v2(&tx).unwrap(), full);
+        }
+        tx.commit().unwrap();
+    }
+
+    #[test]
+    fn cloud_preflight_rechecks_selection_schema_authority_and_frontier_in_snapshot() {
+        let mut connection = checkpoint_identity_fixture();
+        let full = describe_normalized_checkpoint_export_v2(&connection).unwrap();
+        for sql in [
+            "UPDATE library_meta SET library_id = printf('%064d', 0)",
+            "UPDATE library_materialization_generation SET generation_id = printf('%064d', 0)",
+            "UPDATE library_actors SET retired_at = 1 WHERE actor_kind = 'desktop'",
+            "UPDATE library_storage_meta SET schema_sha256 = printf('%064d', 0)",
+            "PRAGMA user_version = 99",
+            "CREATE TEMP VIEW library_authority_epochs AS SELECT * FROM missing_preflight_fixture",
+            "CREATE TEMP VIEW library_meta AS SELECT library_id, authority_epoch, -1 AS source_revision, singleton_id FROM main.library_meta",
+        ] {
+            let tx = connection.transaction().unwrap();
+            tx.execute_batch(sql).unwrap();
+            assert!(describe_normalized_cloud_preflight_identity_v1(&tx, &full.library_id).is_err(), "accepted {sql}");
+            tx.rollback().unwrap();
+        }
+        let tx = connection.transaction().unwrap();
+        assert_eq!(
+            describe_normalized_cloud_preflight_identity_v1(&tx, &full.library_id)
+                .unwrap()
+                .source_revision,
+            full.source_revision
+        );
+        tx.commit().unwrap();
+        assert_eq!(
+            describe_normalized_checkpoint_export_v2(&connection).unwrap(),
+            full
+        );
+    }
+
+    #[test]
+    fn cloud_preflight_snapshot_stays_pinned_and_reopen_rechecks_generation() {
+        let fixture = tempfile::tempdir().unwrap();
+        let path = fixture.path().join("synthetic.sqlite");
+        let source = checkpoint_identity_fixture();
+        source
+            .backup(rusqlite::DatabaseName::Main, &path, None)
+            .unwrap();
+        let mut reader = Connection::open(&path).unwrap();
+        configure_normalized_sqlite_connection(&reader).unwrap();
+        let writer = Connection::open(&path).unwrap();
+        configure_normalized_sqlite_connection(&writer).unwrap();
+        let full = describe_normalized_checkpoint_export_v2(&reader).unwrap();
+        let tx = reader.transaction().unwrap();
+        let before =
+            describe_normalized_cloud_preflight_identity_v1(&tx, &full.library_id).unwrap();
+        writer
+            .execute(
+                "UPDATE library_meta SET source_revision = source_revision + 1",
+                [],
+            )
+            .unwrap();
+        assert_eq!(
+            describe_normalized_cloud_preflight_identity_v1(&tx, &full.library_id).unwrap(),
+            before
+        );
+        assert_eq!(describe_normalized_checkpoint_export_v2(&tx).unwrap(), full);
+        tx.commit().unwrap();
+        let tx = reader.transaction().unwrap();
+        assert_eq!(
+            describe_normalized_cloud_preflight_identity_v1(&tx, &full.library_id)
+                .unwrap()
+                .source_revision,
+            before.source_revision + 1
+        );
+        tx.commit().unwrap();
+        writer
+            .execute(
+                "UPDATE library_materialization_generation SET generation_id = ?1",
+                ["0".repeat(64)],
+            )
+            .unwrap();
+        drop(reader);
+        let mut reopened = Connection::open(&path).unwrap();
+        configure_normalized_sqlite_connection(&reopened).unwrap();
+        let tx = reopened.transaction().unwrap();
+        assert!(describe_normalized_cloud_preflight_identity_v1(&tx, &full.library_id).is_err());
+    }
+
+    #[test]
+    fn cloud_preflight_never_reads_receipt_or_item_census_and_preserves_actor_refusals() {
+        use crate::library_core_actor_enrollment::{
+            load_normalized_local_actor_id_v2, ActorKeyStore,
+        };
+        use rusqlite::hooks::{AuthAction, AuthContext, Authorization};
+        struct Store(std::sync::Mutex<Option<Vec<u8>>>);
+        impl ActorKeyStore for Store {
+            fn load(&self, _: &str) -> Result<Option<Vec<u8>>, String> {
+                Ok(self.0.lock().unwrap().clone())
+            }
+            fn store(&self, _: &str, bytes: &[u8]) -> Result<(), String> {
+                *self.0.lock().unwrap() = Some(bytes.to_vec());
+                Ok(())
+            }
+        }
+        let store = Store(std::sync::Mutex::new(None));
+        let mut connection = checkpoint_identity_fixture();
+        let full = describe_normalized_checkpoint_export_v2(&connection).unwrap();
+        let witness = "8".repeat(64);
+        let actor =
+            load_normalized_local_actor_id_v2(&connection, &full.library_id, &witness, &store)
+                .unwrap();
+        connection.execute_batch("WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<8192)
+            INSERT INTO library_receipts(actor_id, operation_id, status, digest, result_text, accepted_at)
+            SELECT 'synthetic-actor', printf('synthetic-%d',x), 'accepted', printf('%064d',0), printf('%02048d',0), 1 FROM n;").unwrap();
+        let counted = describe_normalized_checkpoint_export_v2(&connection).unwrap();
+        assert_eq!(counted.record_count, full.record_count + 8192);
+        connection.authorizer(Some(|ctx: AuthContext<'_>| match ctx.action {
+            AuthAction::Read {
+                table_name: "library_receipts" | "library_feed_items",
+                ..
+            } => Authorization::Deny,
+            _ => Authorization::Allow,
+        }));
+        let tx = connection.transaction().unwrap();
+        let identity =
+            describe_normalized_cloud_preflight_identity_v1(&tx, &full.library_id).unwrap();
+        assert_eq!(identity.source_revision, full.source_revision);
+        assert_eq!(identity.causal_frontier_digest, full.causal_frontier_digest);
+        assert_eq!(
+            load_normalized_local_actor_id_v2(&tx, &identity.library_id, &witness, &store).unwrap(),
+            actor
+        );
+        assert!(load_normalized_local_actor_id_v2(
+            &tx,
+            &identity.library_id,
+            "bad-witness",
+            &store
+        )
+        .unwrap_err()
+        .contains("invalid"));
+        *store.0.lock().unwrap() = Some(vec![0, 1, 2]);
+        assert!(
+            load_normalized_local_actor_id_v2(&tx, &identity.library_id, &witness, &store)
+                .unwrap_err()
+                .contains("corrupt")
+        );
+        assert!(describe_normalized_checkpoint_export_v2(&tx).is_err());
+    }
+
+    #[test]
+    fn checkpoint_stage_observer_preserves_descriptor_and_each_failure_boundary() {
+        let connection = checkpoint_identity_fixture();
         let expected = describe_normalized_checkpoint_export_v2(&connection).unwrap();
         let stages = [
             NormalizedCheckpointDescriptionStageV2::WriterIdentity,

@@ -1175,3 +1175,16 @@ Installed multi-device acceptance and actual host transition remain pending.
 ### Primary archive reapplication, October 3, 2026
 
 An active promoted Desktop Primary can explicitly recover archived edits through canonical operation resolution. Canonical state and the unique installation-local replacement link share one SQLite commit. Consumers continue to use the durable intent path. Both routes preserve original envelopes and return an existing replacement before allocating another counter, including after restart or later authority fencing. The logical checkpoint and replication protocol are unchanged; installed multi-installation convergence remains required.
+
+### Count-free Desktop cloud preflight
+
+Desktop cloud coordination reads a distinct closed metadata identity containing
+Library, epoch, admitted writer, canonical source revision, causal frontier and
+installation-local actor identity. Native code rechecks the freshly selected
+Library, schema/storage identity and generation receipt inside the same read
+transaction as the writer, frontier and actor checks. This identity does not
+certify checkpoint exportability or traverse receipt and feed-item census trees.
+Full checkpoint preparation still reads the counted descriptor and enforces its
+pinned snapshot and publication admission rules. Missing or corrupt census
+objects remain full descriptor/export errors. Wire protocol, schema, authority
+and provider cadence are unchanged. Installed startup acceptance is pending.

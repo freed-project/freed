@@ -165,6 +165,18 @@ export interface NormalizedLibraryCloudIdentity extends LibraryCoreNormalizedChe
   readonly localActorId: string;
 }
 
+/** Metadata preflight only; it does not certify checkpoint exportability. */
+export interface NormalizedLibraryCloudPreflightIdentity {
+  readonly format: "freed_normalized_cloud_preflight_identity_v1";
+  readonly protocolVersion: 2;
+  readonly libraryId: string;
+  readonly authorityEpoch: string;
+  readonly writerId: string;
+  readonly sourceRevision: number;
+  readonly causalFrontierDigest: string;
+  readonly localActorId: string;
+}
+
 export interface SqliteLibraryCloudWriterAdmissionStatus {
   readonly configured: boolean;
   readonly allowed: boolean;
@@ -2451,6 +2463,35 @@ export function acceptNormalizedLibraryTargetHandoffCancellation(canonicalCancel
 
 export function acceptNormalizedLibraryTargetHandoffAuthorization(canonicalAuthorization: string): Promise<string> {
   return invoke("accept_normalized_library_target_handoff_authorization", { canonicalAuthorization, acceptedAtMs: Date.now() });
+}
+
+export async function describeNormalizedLibraryCloudPreflightIdentity(): Promise<NormalizedLibraryCloudPreflightIdentity> {
+  const installationWitness = await invoke<unknown>("get_desktop_installation_witness");
+  if (typeof installationWitness !== "string" || !HEX_64.test(installationWitness)) {
+    throw new TypeError("Freed Desktop returned an invalid installation witness");
+  }
+  const value = await invoke<unknown>("describe_normalized_library_cloud_preflight_identity", { installationWitness });
+  const keys = ["format", "protocolVersion", "libraryId", "authorityEpoch", "writerId", "sourceRevision", "causalFrontierDigest", "localActorId"] as const;
+  if (!value || typeof value !== "object" || Array.isArray(value)
+    || ![Object.prototype, null].includes(Object.getPrototypeOf(value))
+    || Reflect.ownKeys(value).length !== keys.length) {
+    throw new TypeError("Freed Desktop returned an invalid cloud preflight identity");
+  }
+  const fields = Object.getOwnPropertyDescriptors(value);
+  if (keys.some((key) => !fields[key] || !fields[key].enumerable || !("value" in fields[key]))) {
+    throw new TypeError("Freed Desktop returned an invalid cloud preflight identity");
+  }
+  const row = Object.fromEntries(keys.map((key) => [key, fields[key].value]));
+  if (row.format !== "freed_normalized_cloud_preflight_identity_v1" || row.protocolVersion !== 2
+    || ["libraryId", "authorityEpoch", "writerId", "causalFrontierDigest", "localActorId"].some((key) => typeof row[key] !== "string" || !HEX_64.test(row[key]))
+    || !Number.isSafeInteger(row.sourceRevision) || row.sourceRevision < 0) {
+    throw new TypeError("Freed Desktop returned an invalid cloud preflight identity");
+  }
+  return Object.freeze({
+    format: "freed_normalized_cloud_preflight_identity_v1", protocolVersion: 2,
+    libraryId: row.libraryId, authorityEpoch: row.authorityEpoch, writerId: row.writerId,
+    sourceRevision: row.sourceRevision, causalFrontierDigest: row.causalFrontierDigest, localActorId: row.localActorId,
+  });
 }
 
 export async function describeNormalizedLibraryCloudIdentity(): Promise<NormalizedLibraryCloudIdentity> {

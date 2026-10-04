@@ -18,6 +18,7 @@ vi.mock("./library-core-normalized-query-client", () => ({
 }));
 
 const { dispatchSqliteMutation, loadSqliteLibraryState, readSqliteItems,
+  describeNormalizedLibraryCloudPreflightIdentity, describeNormalizedLibraryCloudIdentity,
   beginNormalizedLibraryCheckpointExport, readNormalizedLibraryCheckpointPage,
   prepareNormalizedLibraryPredecessorCheckpointRead, activateNormalizedLibraryPredecessorCheckpoint,
   readNormalizedLibraryConsumerRecovery, prepareNormalizedLibraryConsumerRecovery, commitNormalizedLibraryConsumerRecovery } =
@@ -41,6 +42,44 @@ describe("Freed Desktop normalized bootstrap projection", () => {
   beforeEach(() => {
     mocks.invoke.mockReset();
     mocks.queryNormalizedLibrary.mockReset();
+  });
+
+  it("validates a closed count-free identity and preserves full descriptor and native refusal behavior", async () => {
+    const identity = { format: "freed_normalized_cloud_preflight_identity_v1", protocolVersion: 2,
+      libraryId: "a".repeat(64), authorityEpoch: "b".repeat(64), writerId: "c".repeat(64),
+      sourceRevision: 7, causalFrontierDigest: "d".repeat(64), localActorId: "e".repeat(64) };
+    const respond = (value: unknown) => mocks.invoke.mockImplementation(async (command: string) =>
+      command === "get_desktop_installation_witness" ? "f".repeat(64) : value);
+    respond(identity);
+    const result = await describeNormalizedLibraryCloudPreflightIdentity();
+    expect(result).toEqual(identity);
+    expect(Object.isFrozen(result)).toBe(true);
+    expect(result.localActorId).not.toBe(result.writerId);
+    expect(mocks.invoke).toHaveBeenLastCalledWith("describe_normalized_library_cloud_preflight_identity", { installationWitness: "f".repeat(64) });
+    for (const invalid of [null, [], { ...identity, recordCount: 0 }, { ...identity, itemCount: 0 },
+      { ...identity, format: "freed_normalized_checkpoint_export_v2" }, { ...identity, protocolVersion: 3 },
+      { ...identity, sourceRevision: -1 }, { ...identity, sourceRevision: Number.MAX_SAFE_INTEGER + 1 },
+      { ...identity, sourceRevision: 1.5 }, { ...identity, localActorId: "invalid" },
+      { ...identity, writerId: "C".repeat(64) }, { ...identity, libraryId: undefined },
+      { ...identity, [Symbol("extra")]: 1 }, Object.assign(Object.create({ extra: 1 }), identity)]) {
+      respond(invalid);
+      await expect(describeNormalizedLibraryCloudPreflightIdentity()).rejects.toThrow("invalid cloud preflight identity");
+    }
+    const getter = vi.fn(() => identity.libraryId);
+    const accessor = { ...identity };
+    Object.defineProperty(accessor, "libraryId", { enumerable: true, get: getter });
+    respond(accessor);
+    await expect(describeNormalizedLibraryCloudPreflightIdentity()).rejects.toThrow();
+    expect(getter).not.toHaveBeenCalled();
+    mocks.invoke.mockResolvedValueOnce("invalid witness");
+    await expect(describeNormalizedLibraryCloudPreflightIdentity()).rejects.toThrow("installation witness");
+    const refusal = new Error("native authority refused");
+    mocks.invoke.mockResolvedValueOnce("f".repeat(64)).mockRejectedValueOnce(refusal);
+    await expect(describeNormalizedLibraryCloudPreflightIdentity()).rejects.toBe(refusal);
+    const full = { ...identity, format: "freed_normalized_checkpoint_export_v2", recordCount: 17, itemCount: 2 };
+    respond(full);
+    await expect(describeNormalizedLibraryCloudIdentity()).resolves.toEqual(full);
+    expect(mocks.invoke).toHaveBeenLastCalledWith("describe_normalized_library_cloud_identity", { installationWitness: "f".repeat(64) });
   });
 
   it("keeps the sealed handoff identity on every checkpoint IPC and rejects malformed identities", async () => {

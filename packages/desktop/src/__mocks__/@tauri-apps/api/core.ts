@@ -199,6 +199,14 @@ function sqliteLibrary(): MockSqliteLibrary {
   return w.__TAURI_MOCK_SQLITE_LIBRARY__;
 }
 
+function normalizedLibraryCloudPreflightIdentity(): Record<string, unknown> {
+  return {
+    format: "freed_normalized_cloud_preflight_identity_v1", protocolVersion: 2,
+    libraryId: "2".repeat(64), authorityEpoch: "3".repeat(64), writerId: "6".repeat(64),
+    sourceRevision: sqliteLibrary().sourceRevision, causalFrontierDigest: "a".repeat(64), localActorId: "6".repeat(64),
+  };
+}
+
 function normalizedLibraryCloudIdentity(): Record<string, unknown> {
   const state = sqliteLibrary();
   const items = Object.values(state.items).filter((item) => !item.__deleted);
@@ -259,6 +267,7 @@ const handlers: Record<string, Handler> = {
     return true;
   },
   describe_normalized_library_cloud_identity: normalizedLibraryCloudIdentity,
+      describe_normalized_library_cloud_preflight_identity: normalizedLibraryCloudPreflightIdentity,
   set_sqlite_library_cloud_writer_admission: (
     args: Record<string, unknown>,
   ) => {

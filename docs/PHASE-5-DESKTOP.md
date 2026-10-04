@@ -1711,3 +1711,15 @@ Measurement starts only after artifact identity/signature verification and a che
  Feed performance, provider admission, full UI acceptance or a before/after gain.
 
 Saved and other bounded feed counts distinguish pending/failed reads from a verified empty result. A same-selection refresh retains its proved count with explicit updating/failure wording; selection changes clear that count. This presentation fix does not prove that saved records loaded or change query/retry behavior.
+
+### Cloud startup metadata preflight
+
+The installed 305 sample attributed 147.166 seconds to checkpoint export count
+inside the cloud identity command. Cloud startup and revision coordination now
+use a count-free metadata command with an independently bounded timing scope.
+It preserves fresh selection, storage, authority, generation, writer, frontier,
+installation witness and actor-key checks within a consistent read snapshot.
+Actual checkpoint preparation retains the full census and export validation.
+Synthetic regressions cover identity parity, census avoidance, native refusal,
+closed DTOs and concurrent snapshot/reopen behavior. Installed latency and
+manual responsiveness acceptance remain pending with the release owner.

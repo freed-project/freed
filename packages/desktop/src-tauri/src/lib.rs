@@ -14506,6 +14506,7 @@ pub fn run() {
             library_core_desktop_runtime::begin_normalized_library_checkpoint_export,
             library_core_desktop_runtime::describe_normalized_library_checkpoint,
             library_core_desktop_runtime::describe_normalized_library_cloud_identity,
+            library_core_desktop_runtime::describe_normalized_library_cloud_preflight_identity,
             library_core_desktop_runtime::read_normalized_library_checkpoint_page,
             library_core_desktop_runtime::begin_normalized_library_checkpoint_import,
             library_core_desktop_runtime::append_normalized_library_checkpoint_import_page,

@@ -11,6 +11,7 @@ const STAGE_COUNT: usize = 7;
 pub(crate) enum Scope {
     InstallationWitness,
     CloudIdentity,
+    CloudPreflightIdentity,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -44,16 +45,16 @@ pub(crate) struct Event {
 }
 
 pub(crate) struct Limiter {
-    last_started: [Option<u64>; 2],
-    in_flight: [bool; 2],
+    last_started: [Option<u64>; 3],
+    in_flight: [bool; 3],
     emitted_at: [Option<u64>; MAX_EVENTS],
 }
 
 impl Limiter {
     const fn new() -> Self {
         Self {
-            last_started: [None; 2],
-            in_flight: [false; 2],
+            last_started: [None; 3],
+            in_flight: [false; 3],
             emitted_at: [None; MAX_EVENTS],
         }
     }
@@ -304,7 +305,7 @@ mod tests {
         );
         assert!(called.get());
         assert_eq!(result, Ok(5));
-        assert_eq!(limiter.lock().unwrap().last_started, [None; 2]);
+        assert_eq!(limiter.lock().unwrap().last_started, [None; 3]);
     }
 
     #[test]
@@ -315,7 +316,9 @@ mod tests {
         for scope in [
             Scope::InstallationWitness,
             Scope::CloudIdentity,
+            Scope::CloudPreflightIdentity,
             Scope::CloudIdentity,
+            Scope::CloudPreflightIdentity,
         ] {
             let result: Result<(), ()> = with_trace(
                 scope,
@@ -331,8 +334,8 @@ mod tests {
             );
             assert!(result.is_ok());
         }
-        assert_eq!(calls.get(), 3);
-        assert_eq!(events.borrow().len(), 6);
+        assert_eq!(calls.get(), 5);
+        assert_eq!(events.borrow().len(), 9);
     }
 
     #[test]
@@ -439,7 +442,7 @@ mod tests {
             );
         });
         assert!(panicked.is_err());
-        assert_eq!(limiter.lock().unwrap().in_flight, [false; 2]);
+        assert_eq!(limiter.lock().unwrap().in_flight, [false; 3]);
         let emitted = Cell::new(0);
         let next: Result<(), ()> = with_trace(
             Scope::CloudIdentity,

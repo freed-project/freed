@@ -66,7 +66,7 @@ import {
   appendNormalizedLibraryCheckpointImportPage,
   beginNormalizedLibraryCheckpointExport,
   beginNormalizedLibraryCheckpointImport,
-  describeNormalizedLibraryCloudIdentity,
+  describeNormalizedLibraryCloudPreflightIdentity,
   describeNormalizedLibraryOperationExport,
   readNormalizedLibraryOperationPage,
   importNormalizedLibraryOperationPage,
@@ -88,7 +88,7 @@ import {
   readNormalizedLibraryFollowerTransportContext,
   recordNormalizedLibraryFollowerIntentTransportPublication,
   setSqliteLibraryCloudWriterAdmission as setNativeWriterAdmission,
-  type NormalizedLibraryCloudIdentity,
+  type NormalizedLibraryCloudPreflightIdentity,
   type NormalizedLibraryFollowerRuntimeStatus,
   type SqliteLibraryPersistedCloudIdentity,
 } from "./sqlite-library";
@@ -268,11 +268,11 @@ function checkpointReceiptForState(
 }
 
 async function loadOrCreateCloudState(
-  identity: NormalizedLibraryCloudIdentity,
+  identity: NormalizedLibraryCloudPreflightIdentity,
 ): Promise<{
   readonly state: LocalLibraryCoreCloudStateV2;
   readonly currentWriterId: string;
-  readonly identity: NormalizedLibraryCloudIdentity;
+  readonly identity: NormalizedLibraryCloudPreflightIdentity;
 }> {
   const stored = await readNativeJsonValue(STATE_FILE, STATE_KEY);
   if (stored !== null && stored !== undefined && !isCloudState(stored)) {
@@ -964,9 +964,9 @@ async function importCloudCheckpointIntoSqlite(input: {
 
 async function bootstrapCloudCheckpointIntoSqlite(
   input: Parameters<typeof importCloudCheckpointIntoSqlite>[0],
-): Promise<NormalizedLibraryCloudIdentity> {
+): Promise<NormalizedLibraryCloudPreflightIdentity> {
   await importCloudCheckpointIntoSqlite(input);
-  return describeNormalizedLibraryCloudIdentity();
+  return describeNormalizedLibraryCloudPreflightIdentity();
 }
 
 async function publishCurrentSqliteLibraryToGoogleDriveInternal(input: {
@@ -977,7 +977,7 @@ async function publishCurrentSqliteLibraryToGoogleDriveInternal(input: {
 }): Promise<LibraryCoreCloudPublishResult> {
   const descriptor = await tracedPublicationStage(
     "read local SQLite revision",
-    describeNormalizedLibraryCloudIdentity,
+    describeNormalizedLibraryCloudPreflightIdentity,
   );
   throwIfPublicationCanceled(input.signal);
   const loaded = await tracedPublicationStage(
@@ -1910,7 +1910,7 @@ async function syncSqliteLibraryFollowerGoogleDriveOnceInternal(input: {
       now: Date.now, signal: input.signal,
     });
   }
-  const descriptor = await describeNormalizedLibraryCloudIdentity();
+  const descriptor = await describeNormalizedLibraryCloudPreflightIdentity();
   throwIfPublicationCanceled(input.signal);
   const follower = await readNormalizedLibraryFollowerRuntimeStatus();
   throwIfPublicationCanceled(input.signal);
@@ -1994,7 +1994,7 @@ export async function startSqliteLibraryGoogleDriveSync(input: {
             lastPublishedRevision: null,
           };
         }
-        const identity = await describeNormalizedLibraryCloudIdentity();
+        const identity = await describeNormalizedLibraryCloudPreflightIdentity();
         const state = await readNativeJsonValue(STATE_FILE, STATE_KEY);
         if (!isCloudState(state)) return null;
         return {

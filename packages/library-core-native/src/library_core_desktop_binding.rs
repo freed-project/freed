@@ -203,6 +203,15 @@ impl LibraryCoreDesktopBinding {
 
     /// Opens normalized SQLite only after its authority selector is verified.
     pub fn connect_selected_normalized(&self) -> Result<Connection, LibraryCoreStorageError> {
+        self.connect_selected_normalized_with_identity()
+            .map(|(connection, _)| connection)
+    }
+
+    /// Carries the freshly verified selector identity for revalidation inside a
+    /// caller-owned read snapshot. The identity is never cached across calls.
+    pub fn connect_selected_normalized_with_identity(
+        &self,
+    ) -> Result<(Connection, String), LibraryCoreStorageError> {
         self.require_factory_reset_complete_v1()?;
         let selection = self.read_authority_selection()?.ok_or_else(|| {
             LibraryCoreStorageError::from("normalized SQLite authority is not selected".to_string())
@@ -213,7 +222,7 @@ impl LibraryCoreDesktopBinding {
         // No selector or verification result is retained between calls.
         crate::verify_normalized_library_selection_v1(&connection, &selection.library_id)
             .map_err(|error| LibraryCoreStorageError::from(error.to_string()))?;
-        Ok(connection)
+        Ok((connection, selection.library_id))
     }
 
     pub fn publish_content_range_from_reader_v1<R: Read>(
