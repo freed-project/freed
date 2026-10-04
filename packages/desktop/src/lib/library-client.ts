@@ -1,3 +1,4 @@
+import type { LibraryCoreFeedPageSourceV1 } from "@freed/shared/library-core";
 /**
  * Freed Desktop Library client.
  *
@@ -22,7 +23,6 @@ import {
   type RssFeed,
   type SampleDataClearSummary,
   type UserPreferences,
-  type WeightPreferences,
 } from "@freed/shared";
 import type {
   LibraryMutationEvent,
@@ -596,16 +596,20 @@ export async function backfillLibraryContentSignals(
 }
 
 export interface LibraryPriorityBackfillSummary {
+  /** Local diagnostic only: queue wait before initialization; zero when not measured. */
+  readonly queueWaitMs: number;
+  readonly source: LibraryCoreFeedPageSourceV1;
   readonly passStartedAt: number;
   readonly remaining: number;
   readonly updated: number;
 }
 
 export async function backfillLibraryPriorities(
-  weights: WeightPreferences,
   passStartedAt: number,
   batchSize = 64,
   publishRuntimeUpdate = true,
+  timeOnlySource?: LibraryCoreFeedPageSourceV1,
+  measureQueueWait = false,
 ): Promise<LibraryPriorityBackfillSummary> {
   if (
     !Number.isSafeInteger(passStartedAt) ||
@@ -617,18 +621,21 @@ export async function backfillLibraryPriorities(
     throw new TypeError("priority backfill bounds are invalid");
   }
   let summary!: LibraryPriorityBackfillSummary;
+  const queuedAt = measureQueueWait ? performance.now() : 0;
   const operation = mutationQueue.then(async () => {
+    const queueWaitMs = measureQueueWait ? Math.max(0, performance.now() - queuedAt) : 0;
     await ensureInitialized();
     const batch = await readLibraryCorePriorityCandidateBatch(
       passStartedAt,
       batchSize,
+      timeOnlySource,
     );
     if (batch.items.length > 0) {
       await commitDesktopLibraryFeedItemPriorities(
         batch.items.map(({ careLevel, item }) => ({
           entityId: item.globalId,
           priorityBasisPoints:
-            calculatePriority(item, weights, passStartedAt, { careLevel }) *
+            calculatePriority(item, batch.weights, passStartedAt, { careLevel }) *
             100,
         })),
         passStartedAt,
@@ -636,6 +643,8 @@ export async function backfillLibraryPriorities(
       if (publishRuntimeUpdate) await reloadSqliteLibraryState();
     }
     summary = Object.freeze({
+      queueWaitMs,
+      source: batch.source,
       passStartedAt,
       remaining: batch.remaining ? 1 : 0,
       updated: batch.items.length,

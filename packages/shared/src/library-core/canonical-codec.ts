@@ -57,6 +57,9 @@ export const LIBRARY_CORE_DIGEST_DOMAINS = [
   "native-sqlite-library-identity",
   "installation-incarnation",
   "actor-incarnation-nonce",
+  "handoff-readiness-body",
+  "handoff-authorization-body",
+  "handoff-cancellation-body",
 ] as const;
 
 export type LibraryCoreDigestDomain =
@@ -96,6 +99,10 @@ export const LIBRARY_CORE_SIGNATURE_DOMAINS = [
   "authority-key-possession",
   "follower-result-envelope",
   "legacy-source-admission-claim-key",
+  "handoff-readiness-actor",
+  "handoff-readiness-authority",
+  "handoff-predecessor-authorization",
+  "handoff-predecessor-cancellation",
 ] as const;
 
 assertMatchesSharedSource(

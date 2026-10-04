@@ -386,6 +386,119 @@ afterEach(() => {
 });
 
 describe("content fetcher", () => {
+  it("lets handoff drain an accepted article write and preserves queued work for resumption", async () => {
+    vi.useFakeTimers();
+    let releaseWrite!: () => void;
+    const pendingWrite = new Promise<void>((resolve) => { releaseWrite = resolve; });
+    const { mod, subscriberRef, mockInvoke, mockCacheSet, mockUpdateLibraryFeedItem } =
+      await loadContentFetcherModule({ cacheSetImpl: () => pendingWrite });
+    const { pauseDesktopOperationsForHandoff } = await import("./factory-reset-guard");
+    mod.start();
+    subscriberRef.emitItems([makeStubItem("rss:1"), makeStubItem("rss:2")]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mockCacheSet).toHaveBeenCalledOnce();
+    const pause = pauseDesktopOperationsForHandoff();
+    try {
+      const drained = vi.fn();
+      const draining = Promise.all([
+        mod.stopAndDrain({ resumable: true }),
+        pause.drain(1_000),
+      ]).then(drained);
+      mod.start();
+      await Promise.resolve();
+      expect(drained).not.toHaveBeenCalled();
+      await expect(mod.pinReaderItem(makeStubItem("rss:new"))).rejects.toThrow("pausing");
+      releaseWrite();
+      await draining;
+      expect(mockUpdateLibraryFeedItem).toHaveBeenCalledOnce();
+      expect(mockInvoke).toHaveBeenCalledOnce();
+    } finally { pause.resume(); }
+    mod.start();
+    await vi.advanceTimersByTimeAsync(200_000);
+    expect(mockUpdateLibraryFeedItem).toHaveBeenCalledTimes(2);
+    mod.stop();
+  });
+
+  it("drains a pending memory check without admitting an article request after stop", async () => {
+    vi.useFakeTimers();
+    const { mod, subscriberRef, mockInvoke } = await loadContentFetcherModule();
+    let releaseMemoryCheck!: (result: string) => void;
+    mockInvoke.mockImplementationOnce(() => new Promise<string>((resolve) => {
+      releaseMemoryCheck = resolve;
+    }));
+
+    mod.start({ memoryGuard: true });
+    subscriberRef.emitItems([makeStubItem()]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mockInvoke).toHaveBeenCalledExactlyOnceWith("get_runtime_memory_stats");
+
+    const drained = vi.fn();
+    const drain = mod.stopAndDrain().then(drained);
+    await Promise.resolve();
+    expect(drained).not.toHaveBeenCalled();
+    releaseMemoryCheck(SAMPLE_HTML);
+    await drain;
+    mod.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mockInvoke).toHaveBeenCalledTimes(1);
+    expect(mod.getStatus().pending).toBe(1);
+  });
+
+  it("restarts after a stale memory check without letting that check admit work", async () => {
+    vi.useFakeTimers();
+    const { mod, subscriberRef, mockInvoke, mockUpdateLibraryFeedItem } =
+      await loadContentFetcherModule();
+    let releaseMemoryCheck!: (result: string) => void;
+    mockInvoke.mockImplementationOnce(() => new Promise<string>((resolve) => {
+      releaseMemoryCheck = resolve;
+    }));
+
+    mod.start({ memoryGuard: true });
+    subscriberRef.emitItems([makeStubItem()]);
+    await vi.advanceTimersByTimeAsync(0);
+    mod.stop();
+    mod.start({ memoryGuard: true });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mockInvoke).toHaveBeenCalledTimes(1);
+
+    releaseMemoryCheck(SAMPLE_HTML);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(mockInvoke).toHaveBeenCalledTimes(3);
+    expect(mockInvoke).toHaveBeenNthCalledWith(1, "get_runtime_memory_stats");
+    expect(mockInvoke).toHaveBeenNthCalledWith(2, "get_runtime_memory_stats");
+    expect(mockInvoke).toHaveBeenNthCalledWith(3, "fetch_background_article_url", {
+      url: SAMPLE_URL,
+      maxBytes: 2 * 1024 * 1024,
+    });
+    expect(mockUpdateLibraryFeedItem).toHaveBeenCalledOnce();
+    mod.stop();
+  });
+
+  it("refuses a background job whose runtime admission completes after stop", async () => {
+    vi.useFakeTimers();
+    const { mod, subscriberRef, mockInvoke } = await loadContentFetcherModule();
+    const runtime = await import("./background-runtime-coordinator.js");
+    let releaseAdmission!: () => void;
+    const admission = new Promise<void>((resolve) => { releaseAdmission = resolve; });
+    const run = vi.spyOn(runtime, "runBackgroundJob").mockImplementationOnce(async (job) => {
+      await admission;
+      return job.run();
+    });
+    mod.start();
+    subscriberRef.emitItems([makeStubItem()]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(run).toHaveBeenCalledOnce();
+    const drained = vi.fn();
+    const drain = mod.stopAndDrain().then(drained);
+    await Promise.resolve();
+    expect(drained).not.toHaveBeenCalled();
+    releaseAdmission();
+    await drain;
+    expect(mockInvoke).not.toHaveBeenCalled();
+    expect(mod.getStatus().pending).toBe(1);
+    run.mockRestore();
+  });
+
   it("discovers new article stubs through bounded SQLite pages", async () => {
     vi.useFakeTimers();
     const {
@@ -416,7 +529,7 @@ describe("content fetcher", () => {
     expect(mockScanLibraryCoreContentFetchCandidates).toHaveBeenCalledWith(
       expect.any(Function),
     );
-    expect(mockInvoke).toHaveBeenCalledWith("fetch_url", {
+    expect(mockInvoke).toHaveBeenCalledWith("fetch_background_article_url", {
       url: SAMPLE_URL,
       maxBytes: 2 * 1024 * 1024,
     });
@@ -454,6 +567,31 @@ describe("content fetcher", () => {
     expect(writeSettled.mock.invocationCallOrder[0]).toBeLessThan(
       cleanupStarted.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
     );
+  });
+
+  it("retains an admitted write across a coordinator timeout and restart", async () => {
+    vi.useFakeTimers();
+    let releaseWrite!: () => void;
+    const writeGate = new Promise<void>((resolve) => { releaseWrite = resolve; });
+    const { mod, subscriberRef, mockCacheSet, mockInvoke, mockUpdateLibraryFeedItem } =
+      await loadContentFetcherModule({ cacheSetImpl: () => writeGate });
+    mod.start();
+    subscriberRef.emitItems([makeStubItem("rss:1"), makeStubItem("rss:2")]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mockCacheSet).toHaveBeenCalledOnce();
+
+    await vi.advanceTimersByTimeAsync(180_000);
+    mod.stop();
+    mod.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mockInvoke).toHaveBeenCalledOnce();
+    expect(mockUpdateLibraryFeedItem).not.toHaveBeenCalled();
+
+    releaseWrite();
+    await vi.advanceTimersByTimeAsync(200_000);
+    expect(mockInvoke).toHaveBeenCalledTimes(2);
+    expect(mockUpdateLibraryFeedItem).toHaveBeenCalledTimes(2);
+    mod.stop();
   });
 
   it.each(["openai", "anthropic", "gemini"] as const)(
@@ -556,7 +694,7 @@ describe("content fetcher", () => {
     await vi.advanceTimersByTimeAsync(0);
     mod.stop();
 
-    expect(mockInvoke).toHaveBeenCalledWith("fetch_url", {
+    expect(mockInvoke).toHaveBeenCalledWith("fetch_background_article_url", {
       url: SAMPLE_URL,
       maxBytes: 2 * 1024 * 1024,
     });
@@ -844,7 +982,7 @@ describe("content fetcher", () => {
     mod.stop();
 
     expect(mockInvoke).toHaveBeenCalledWith(
-      "fetch_url",
+      "fetch_background_article_url",
       expect.objectContaining({ url: SAMPLE_URL }),
     );
   });
@@ -874,7 +1012,7 @@ describe("content fetcher", () => {
     window.removeEventListener("freed:save-content-details-error", listener);
 
     expect(mockInvoke).toHaveBeenCalledWith(
-      "fetch_url",
+      "fetch_background_article_url",
       expect.objectContaining({ url: SAMPLE_URL }),
     );
     expect(events).toEqual([
@@ -909,7 +1047,7 @@ describe("content fetcher", () => {
     subscriberRef.emitItems([makeStubItem()]);
     await vi.advanceTimersByTimeAsync(0);
 
-    const fetchCallsBeforeRecovery = mockInvoke.mock.calls.filter(([cmd]) => cmd === "fetch_url");
+    const fetchCallsBeforeRecovery = mockInvoke.mock.calls.filter(([cmd]) => cmd === "fetch_background_article_url");
     expect(fetchCallsBeforeRecovery).toHaveLength(0);
     expect(mod.getStatus()).toEqual(expect.objectContaining({
       pending: 1,
@@ -921,7 +1059,7 @@ describe("content fetcher", () => {
     await vi.advanceTimersByTimeAsync(5 * 60_000);
     mod.stop();
 
-    const fetchCallsAfterRecovery = mockInvoke.mock.calls.filter(([cmd]) => cmd === "fetch_url");
+    const fetchCallsAfterRecovery = mockInvoke.mock.calls.filter(([cmd]) => cmd === "fetch_background_article_url");
     expect(fetchCallsAfterRecovery).toHaveLength(1);
   });
 });

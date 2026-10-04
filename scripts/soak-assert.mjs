@@ -744,6 +744,84 @@ export function computeRuntimeHealthCoverage(
   };
 }
 
+/** Native command admission evidence, not a consumer-role or network-traffic verdict.
+ * The measured interval is bounded by actual native samples, not the outer soak.
+ * Raw records already participate in the composite evidence fingerprint.
+ */
+export function summarizeNativeProviderAdmissions(
+  healthLines,
+  metricsRows,
+  { runtimeEvidenceActionable = false, collectorExpectedIntervalMs = DEFAULT_COLLECTOR_INTERVAL_MS } = {},
+) {
+  const unavailable = (reason) => ({ status: "inconclusive", reason, admittedCount: null });
+  if (!runtimeEvidenceActionable) return unavailable("Runtime identity or source coverage is insufficient.");
+  const native = healthLines.filter(({ entry }) => entry?.event === "native_runtime_memory_sample");
+  const counterKeys = "active,admitted,completed,healthy,instanceId,schemaVersion";
+  let priorTimestamp = 0;
+  let priorObservationEnd = 0;
+  for (const { entry } of native) {
+    const counter = entry.providerOperations;
+    if (!Number.isSafeInteger(entry.tsMs) || entry.tsMs <= 0 || !Number.isFinite(new Date(entry.tsMs).getTime())
+      || !counter || typeof counter !== "object" || Array.isArray(counter)
+      || Object.keys(counter).sort().join(",") !== counterKeys
+      || counter.schemaVersion !== 1 || counter.healthy !== true
+      || typeof counter.instanceId !== "string" || !/^[a-f0-9]{32}$/.test(counter.instanceId)
+      || ![counter.admitted, counter.completed, counter.active].every(value =>
+        Number.isSafeInteger(value) && value >= 0 && value < Number.MAX_SAFE_INTEGER)
+      || counter.active !== counter.admitted - counter.completed
+      || ![entry.providerObservationStartMs, entry.providerObservationEndMs].every(value =>
+        Number.isSafeInteger(value) && value > 0 && Number.isFinite(new Date(value).getTime()))
+      || entry.providerObservationStartMs > entry.providerObservationEndMs
+      || entry.providerObservationEndMs > entry.tsMs
+      || entry.providerObservationStable !== true
+      || !Array.isArray(entry.providerWindows) || entry.providerWindows.length > 32
+      || !entry.providerWindows.every(label => typeof label === "string" && label.length > 0 && label.length <= 128)) {
+      return unavailable("A native admission sample is missing, malformed, unstable or saturated.");
+    }
+    if (entry.tsMs <= priorTimestamp) return unavailable("Native sample timestamps repeat or regress in source order.");
+    if (entry.providerObservationStartMs <= priorObservationEnd) return unavailable("Native observation bounds overlap or regress.");
+    priorTimestamp = entry.tsMs;
+    priorObservationEnd = entry.providerObservationEndMs;
+  }
+  const coverage = computeRuntimeHealthCoverage(native, metricsRows, { collectorExpectedIntervalMs });
+  if (!coverage.runtimeHealthCoverageHealthy || coverage.runtimeHealthAppAliveSegmentCount !== 1) {
+    return unavailable("Native admission samples do not cover one continuous app-alive interval.");
+  }
+  const intervals = appAliveIntervals(metricsRows, { expectedIntervalMs: collectorExpectedIntervalMs });
+  const samples = native.map(({ entry }) => entry)
+    .filter(entry => entry.tsMs >= intervals[0].startMs && entry.tsMs <= intervals[0].endMs);
+  const first = samples[0];
+  for (let index = 0; index < samples.length; index += 1) {
+    const current = samples[index].providerOperations;
+    const previous = samples[Math.max(0, index - 1)].providerOperations;
+    if (current.instanceId !== first.providerOperations.instanceId
+      || current.admitted < previous.admitted || current.completed < previous.completed) {
+      return unavailable("Native admission identity changed or cumulative counters regressed.");
+    }
+    if (current.active !== 0 || samples[index].providerWindows.length !== 0) {
+      return unavailable("Active provider work or a persistent provider window prevents absence evidence.");
+    }
+  }
+  const last = samples.at(-1);
+  // Unix millisecond timestamps truncate. Move past the first observation
+  // millisecond and stop before the last observation begins. Log append time
+  // cannot extend the proven interval beyond either counter read.
+  const windowStartMs = first.providerObservationEndMs + 1;
+  const windowEndMs = last.providerObservationStartMs;
+  if (windowStartMs >= windowEndMs) return unavailable("Native observations leave no measured interval.");
+  return {
+    status: "available",
+    reason: null,
+    instanceId: first.providerOperations.instanceId,
+    windowStart: new Date(windowStartMs).toISOString(),
+    windowEnd: new Date(windowEndMs).toISOString(),
+    sampleCount: samples.length,
+    admittedCount: last.providerOperations.admitted - first.providerOperations.admitted,
+    completedCount: last.providerOperations.completed - first.providerOperations.completed,
+    scope: "Native provider commands only. Counts include observation-edge uncertainty; zero applies to the inner bounds. Foreground URL reading is excluded. Consumer role and installed build acceptance require separate evidence for these exact bounds.",
+  };
+}
+
 function nearestRankPercentile(values, percentile) {
   if (!Array.isArray(values) || values.length === 0) return null;
   const sorted = values.toSorted((left, right) => left - right);
@@ -2669,6 +2747,10 @@ export function buildVerdict({
       workerIdleTerminations: summarizeWorkerIdleTerminations(healthLines),
       requestSurface,
       providerScheduleIntegrity,
+      nativeProviderAdmissions: summarizeNativeProviderAdmissions(healthLines, metricsRows, {
+        runtimeEvidenceActionable,
+        collectorExpectedIntervalMs: expectedIntervalMs,
+      }),
     },
     measurements,
     runtimeIdentity,

@@ -319,6 +319,23 @@ function fileStateWasReverseIntegrated(
   });
 }
 
+// Release commits may obscure the last promoted lockfile blob. Strip only
+// proven application-version-only changes, preserving dependency provenance.
+function cargoLockProductRef(ref, { cwd }) {
+  let current = ref;
+  for (;;) {
+    const change = latestFileCommit(current, CARGO_LOCK_PATH, { cwd });
+    if (!change) return current;
+    const parent = tryRunGit(["rev-parse", `${change.commit}^`], { cwd });
+    if (!parent || !isCargoLockReleaseOnlyChange({
+      fromRef: parent,
+      toRef: change.commit,
+      cwd,
+    })) return current;
+    current = parent;
+  }
+}
+
 export function listMainBackflowDiffFiles({ devRef, mainRef, cwd }) {
   const mainChangedFiles = uniqueSorted(
     splitLines(
@@ -349,9 +366,12 @@ export function listMainBackflowDiffFiles({ devRef, mainRef, cwd }) {
         }),
     )
     .filter((filePath) => {
-      const mainBlobId = readBlobId(mainRef, filePath, { cwd });
+      const productMainRef = filePath === CARGO_LOCK_PATH
+        ? cargoLockProductRef(mainRef, { cwd })
+        : mainRef;
+      const mainBlobId = readBlobId(productMainRef, filePath, { cwd });
       const devBlobId = readBlobId(devRef, filePath, { cwd });
-      const mainChange = latestFileCommit(mainRef, filePath, { cwd });
+      const mainChange = latestFileCommit(productMainRef, filePath, { cwd });
 
       if (!mainBlobId) {
         if (!mainChange) {

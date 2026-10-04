@@ -327,6 +327,23 @@ describe("store startup migrations", () => {
     expect(mockStartOutboxProcessor).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps resolved map counts through runtime updates until the map publishes a new snapshot", async () => {
+    const { useAppStore } = await import("./store");
+    await useAppStore.getState().initialize();
+    const subscriber = mockSubscribe.mock.calls.at(-1)![0];
+    useAppStore.getState().setMapLocationCounts(3, 22);
+    for (const source of ["state_update", "item_patch", "preferences_patch", "feeds_patch"]) {
+      subscriber(createLibraryState(), { source });
+      expect(useAppStore.getState()).toMatchObject({ mapFriendLocationCount: 3, mapAllContentLocationCount: 22 });
+    }
+    // New filtered/resolved marker snapshots remain authoritative, including empty.
+    useAppStore.getState().setMapLocationCounts(0, 5);
+    subscriber(createLibraryState(), { source: "state_update" });
+    expect(useAppStore.getState()).toMatchObject({ mapFriendLocationCount: 0, mapAllContentLocationCount: 5 });
+    useAppStore.getState().setMapLocationCounts(0, 0);
+    expect(useAppStore.getState()).toMatchObject({ mapFriendLocationCount: 0, mapAllContentLocationCount: 0 });
+  });
+
   it("does not report weight changes when SQLite reloads identical preferences", async () => {
     const { useAppStore } = await import("./store");
     await useAppStore.getState().initialize();

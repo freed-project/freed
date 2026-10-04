@@ -294,6 +294,21 @@
       return;
     }
 
+    // Accessible Sponsored evidence must belong to the story header. Keep
+    // ordinary overlays and commercial wording outside this narrow proof.
+    if (container.querySelector('header[aria-label="Sponsored"], header [aria-label="Sponsored"]')) {
+      emit("ig-feed-data", {
+        posts: [],
+        extractedAt: Date.now(),
+        url: window.location.href,
+        candidateCount: 1,
+        scrollY: 0,
+        strategy: "story-viewer-sponsored",
+        rejected: { suggestedOrSponsored: 1 },
+      });
+      return;
+    }
+
     var author = extractAuthor(container, urlInfo);
     var media = extractMedia(container);
     if (isGenericHandle(author.handle) || media.urls.length === 0) {

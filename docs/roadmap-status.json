@@ -4,7 +4,7 @@
     {
       "id": 1,
       "status": "complete",
-      "reviewedAt": "2026-09-07",
+      "reviewedAt": "2026-10-03T02:53:41.070017Z",
       "source": "docs/PHASE-1-FOUNDATION.md"
     },
     {
@@ -21,31 +21,32 @@
     {
       "id": 4,
       "status": "current",
-      "reviewedAt": "2026-09-14",
+      "reviewedAt": "2026-10-04T20:04:57.315221+00:00",
       "source": "docs/PHASE-4-SYNC.md"
     },
     {
       "id": 5,
       "status": "current",
-      "reviewedAt": "2026-09-07",
+      "reviewedAt": "2026-10-04T20:04:57.315438+00:00",
       "source": "docs/PHASE-5-DESKTOP.md"
     },
     {
       "id": 6,
       "status": "current",
-      "reviewedAt": "2026-09-09",
+      "reviewedAt": "2026-10-04T20:04:57.315440+00:00",
       "source": "docs/PHASE-6-PWA.md"
     },
     {
       "id": 7,
       "status": "current",
-      "reviewedAt": "2026-09-09",
-      "source": "docs/PHASE-7-SOCIAL-CAPTURE.md"
+      "reviewedAt": "2026-10-04T06:01:53.365152+00:00",
+      "source": "docs/PHASE-7-SOCIAL-CAPTURE.md",
+      "updatedAt": "2026-10-02T16:47:14.397502+00:00"
     },
     {
       "id": 8,
       "status": "current",
-      "reviewedAt": "2026-09-10",
+      "reviewedAt": "2026-10-04T05:38:50.491795+00:00",
       "source": "docs/PHASE-8-FRIENDS.md"
     },
     {
@@ -56,13 +57,15 @@
     {
       "id": 10,
       "status": "upcoming",
-      "reviewedAt": "2026-09-09",
+      "reviewedAt": "2026-10-02T15:46:27.526709Z",
       "source": "docs/PHASE-10-POLISH.md"
     },
     {
       "id": 11,
       "status": "current",
-      "source": "docs/PHASE-11-OPENCLAW.md"
+      "reviewedAt": "2026-09-29",
+      "source": "docs/PHASE-11-OPENCLAW.md",
+      "updatedAt": "2026-10-02T17:30:00.538870+00:00"
     },
     {
       "id": 12,

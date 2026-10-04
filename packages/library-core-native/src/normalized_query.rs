@@ -211,6 +211,18 @@ pub struct NormalizedItemScanRequestV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedPriorityTimePageRequestV1 {
+    pub cancellation_id: String,
+    pub reader_session_id: String,
+    pub limit: usize,
+    pub priority_computed_before_ms: i64,
+    pub generation_id: String,
+    pub source_revision: i64,
+    pub schema_version: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedContentFetchPageRequestV1 {
     pub cancellation_id: String,
     pub cursor: Option<String>,
@@ -268,6 +280,80 @@ pub struct NormalizedSavedAnalyticsRequestV2 {
     pub daily_windows: Vec<NormalizedSavedAnalyticsWindowV2>,
     pub hourly_windows: Vec<NormalizedSavedAnalyticsWindowV2>,
     pub schema_version: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedPreferenceValueRequestV1 {
+    pub schema_version: u32,
+    pub path: Vec<String>,
+    pub generation_id: String,
+    pub source_revision: i64,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedPreferenceValueResponseV1 {
+    pub query_id: String,
+    pub schema_version: u32,
+    pub path: Vec<String>,
+    pub kind: String,
+    pub rows: Vec<NormalizedPreferenceLeafV1>,
+    pub source: NormalizedFeedPageSourceV1,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedPreferenceScopeRequestV1 {
+    pub schema_version: u32,
+    pub paths: Vec<Vec<String>>,
+    pub generation_id: String,
+    pub source_revision: i64,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedRankingWeightScopeRequestV1 {
+    pub schema_version: u32,
+    pub paths: Vec<Vec<String>>,
+    pub generation_id: String,
+    pub source_revision: i64,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedRankingWeightScopeResponseV1 {
+    pub query_id: String,
+    pub schema_version: u32,
+    pub paths: Vec<Vec<String>>,
+    pub values: Vec<Option<f64>>,
+    pub source: NormalizedFeedPageSourceV1,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedPreferenceScopeResponseV1 {
+    pub query_id: String,
+    pub schema_version: u32,
+    pub results: Vec<NormalizedPreferenceValueResponseV1>,
+    pub source: NormalizedFeedPageSourceV1,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RankingWeightSelection {
+    ordinal: usize,
+    path: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedPreferencesRevisionResponseV1 {
+    pub query_id: String,
+    pub schema_version: u32,
+    pub revision: i64,
+    pub source: NormalizedFeedPageSourceV1,
+}
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PreferencesRevisionRow {
+    revision: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -442,8 +528,119 @@ pub struct NormalizedItemReaderBodyRequestV1 {
     pub schema_version: u32,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedRecoveryIntentPageRequestV1 {
+    pub recovery_id: String,
+    pub cancellation_id: String,
+    pub cursor: Option<String>,
+    pub limit: usize,
+    pub reader_session_id: String,
+    pub schema_version: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedRecoveryArchivePageRequestV1 {
+    pub cancellation_id: String,
+    pub cursor: Option<String>,
+    pub limit: usize,
+    pub reader_session_id: String,
+    pub schema_version: u32,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedRecoveryArchiveRowV1 {
+    pub recovery_id: String,
+    pub predecessor_epoch_id: String,
+    pub successor_epoch_id: String,
+    pub pending_edits: i64,
+    pub published_edits: i64,
+    pub created_at: i64,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedRecoveryArchivePageResponseV1 {
+    pub query_id: String,
+    pub schema_version: u32,
+    pub handoff_id: String,
+    pub rows: Vec<NormalizedRecoveryArchiveRowV1>,
+    pub next_cursor: Option<String>,
+    pub source: NormalizedFeedPageSourceV1,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedRecoveryIntentRowV1 {
+    pub ordinal: i64,
+    pub transaction_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedRecoveryIntentPageResponseV1 {
+    pub query_id: String,
+    pub schema_version: u32,
+    pub recovery_id: String,
+    pub archive_digest: String,
+    pub rows: Vec<NormalizedRecoveryIntentRowV1>,
+    pub next_cursor: Option<String>,
+    pub source: NormalizedFeedPageSourceV1,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedRecoveryIntentReviewRequestV1 {
+    #[serde(default)]
+    pub include_original: bool,
+    pub recovery_id: String,
+    pub transaction_id: String,
+    pub cancellation_id: String,
+    pub cursor: Option<String>,
+    pub limit: usize,
+    pub reader_session_id: String,
+    pub schema_version: u32,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedRecoveryEditRowV1 {
+    pub rss_feed_state: Option<String>,
+    pub person_state: Option<String>,
+    pub original_envelope_json: Option<String>,
+    pub author_name: Option<String>,
+    pub item_present: Option<bool>,
+    pub item_state: Option<String>,
+    pub item_text: Option<String>,
+    pub assigned: Option<bool>,
+    pub assigned_at: Option<i64>,
+    pub created_at: i64,
+    pub entity_id: String,
+    pub member_index: usize,
+    pub operation_type: String,
+    pub read_at: Option<i64>,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NormalizedRecoveryIntentReviewResponseV1 {
+    pub query_id: String,
+    pub schema_version: u32,
+    pub recovery_id: String,
+    pub archive_digest: String,
+    pub transaction_id: String,
+    pub transaction_digest: String,
+    pub member_count: usize,
+    pub outcome: crate::normalized_recovery_input::ArchivedIntentOutcomeV1,
+    pub replacement: Option<crate::RecoveryReissueReceiptV1>,
+    pub rows: Vec<NormalizedRecoveryEditRowV1>,
+    pub next_cursor: Option<String>,
+    pub source: NormalizedFeedPageSourceV1,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NormalizedQueryRequestV1 {
+    RecoveryIntentReview(NormalizedRecoveryIntentReviewRequestV1),
+    RecoveryArchivePage(NormalizedRecoveryArchivePageRequestV1),
+    RecoveryIntentPage(NormalizedRecoveryIntentPageRequestV1),
     AccountDetail(NormalizedAccountDetailRequestV1),
     AccountGraphPage(NormalizedAccountGraphPageRequestV1),
     AccountLinkCandidates(NormalizedAccountLinkCandidatesRequestV1),
@@ -464,15 +661,23 @@ pub enum NormalizedQueryRequestV1 {
     RssItemSummary(NormalizedFacetSummaryRequestV1),
     ItemReaderBody(NormalizedItemReaderBodyRequestV1),
     ItemScan(NormalizedItemScanRequestV1),
+    PriorityTimePage(NormalizedPriorityTimePageRequestV1),
     ContentFetchPage(NormalizedContentFetchPageRequestV1),
     ProviderMediaPage(NormalizedProviderMediaPageRequestV1),
     MapMarkers(NormalizedMapMarkersRequestV1),
+    PersonAccountPage(NormalizedPersonAccountPageRequestV1),
+    AccountRoot(NormalizedAccountDetailRequestV1),
+    PersonRoot(NormalizedPersonDetailRequestV1),
     PersonDetail(NormalizedPersonDetailRequestV1),
     PersonGraphPage(NormalizedPersonGraphPageRequestV1),
     PersonPickerPage(NormalizedPersonPickerPageRequestV1),
     PersonTimeline(NormalizedPersonTimelineRequestV1),
     PersonsGraph(NormalizedPersonsGraphRequestV1),
+    PreferenceValue(NormalizedPreferenceValueRequestV1),
+    RankingWeightScope(NormalizedRankingWeightScopeRequestV1),
     PreferencesSnapshot(NormalizedPreferencesSnapshotRequestV1),
+    PreferencesRevision(NormalizedPreferencesSnapshotRequestV1),
+    PreferenceScope(NormalizedPreferenceScopeRequestV1),
     RssFeedDetail(NormalizedRssFeedDetailRequestV1),
     RssFeedPage(NormalizedRssFeedPageRequestV1),
     SavedAnalytics(NormalizedSavedAnalyticsRequestV2),
@@ -510,6 +715,7 @@ pub struct NormalizedFeedCardV1 {
     pub liked_at: Option<i64>,
     pub liked_synced_at: Option<i64>,
     pub link_preview_title: Option<String>,
+    pub link_preview_url: Option<String>,
     pub location_name: Option<String>,
     pub media_types: Vec<String>,
     pub media_urls: Vec<String>,
@@ -1415,6 +1621,9 @@ pub struct NormalizedFriendCandidateReviewResponseV1 {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum NormalizedQueryResponseV1 {
+    RecoveryIntentReview(NormalizedRecoveryIntentReviewResponseV1),
+    RecoveryArchivePage(NormalizedRecoveryArchivePageResponseV1),
+    RecoveryIntentPage(NormalizedRecoveryIntentPageResponseV1),
     AccountDetail(Box<NormalizedAccountDetailResponseV1>),
     AccountGraphPage(NormalizedAccountGraphPageResponseV1),
     AccountLinkCandidates(NormalizedAccountLinkCandidatesResponseV1),
@@ -1438,12 +1647,19 @@ pub enum NormalizedQueryResponseV1 {
     ContentFetchPage(NormalizedContentFetchPageResponseV1),
     ProviderMediaPage(NormalizedProviderMediaPageResponseV1),
     MapMarkers(NormalizedMapMarkersResponseV1),
+    PersonAccountPage(NormalizedPersonAccountPageResponseV1),
+    AccountRoot(NormalizedAccountRootResponseV1),
+    PersonRoot(NormalizedPersonRootResponseV1),
     PersonDetail(Box<NormalizedPersonDetailResponseV1>),
     PersonGraphPage(NormalizedPersonGraphPageResponseV1),
     PersonPickerPage(NormalizedPersonPickerPageResponseV1),
     PersonTimeline(NormalizedPersonTimelineResponseV1),
     PersonsGraph(NormalizedPersonsGraphResponseV1),
+    PreferenceValue(NormalizedPreferenceValueResponseV1),
+    RankingWeightScope(NormalizedRankingWeightScopeResponseV1),
     PreferencesSnapshot(NormalizedPreferencesSnapshotResponseV1),
+    PreferencesRevision(NormalizedPreferencesRevisionResponseV1),
+    PreferenceScope(NormalizedPreferenceScopeResponseV1),
     RssFeedDetail(NormalizedRssFeedDetailResponseV1),
     RssFeedPage(NormalizedRssFeedPageResponseV1),
     SavedAnalytics(NormalizedSavedAnalyticsResponseV2),
@@ -1500,7 +1716,7 @@ fn invalid(message: &'static str) -> NormalizedSqliteError {
     NormalizedSqliteError::InvalidRequest(message)
 }
 
-fn decode_generated_query_row<T: serde::de::DeserializeOwned>(
+pub(crate) fn decode_generated_query_row<T: serde::de::DeserializeOwned>(
     row: &Row<'_>,
     query_id: &str,
 ) -> rusqlite::Result<T> {
@@ -1510,9 +1726,8 @@ fn decode_generated_query_row<T: serde::de::DeserializeOwned>(
         .ok_or(rusqlite::Error::InvalidQuery)?;
     let mut object = serde_json::Map::with_capacity(model.fields.len());
     for field in model.fields {
-        let raw = row.get_ref(field.name)?;
-        let value = match raw {
-            ValueRef::Null if field.nullable => serde_json::Value::Null,
+        let value = match row.get_ref(field.name)? {
+            ValueRef::Null => serde_json::Value::Null,
             ValueRef::Integer(value) if field.kind == SqliteQueryRowFieldKind::Boolean => {
                 match value {
                     0 => serde_json::Value::Bool(false),
@@ -1520,38 +1735,83 @@ fn decode_generated_query_row<T: serde::de::DeserializeOwned>(
                     _ => return Err(rusqlite::Error::InvalidQuery),
                 }
             }
-            ValueRef::Integer(value) if field.kind == SqliteQueryRowFieldKind::Integer => {
-                if field.minimum_integer.is_none_or(|minimum| value >= minimum)
-                    && field.maximum_integer.is_none_or(|maximum| value <= maximum)
-                    && (field.integer_values.is_empty() || field.integer_values.contains(&value))
-                {
-                    serde_json::Value::Number(value.into())
-                } else {
-                    return Err(rusqlite::Error::InvalidQuery);
-                }
+            ValueRef::Integer(value) => serde_json::Value::Number(value.into()),
+            ValueRef::Real(value) if field.kind == SqliteQueryRowFieldKind::Real => {
+                serde_json::Value::Number(
+                    serde_json::Number::from_f64(value).ok_or(rusqlite::Error::InvalidQuery)?,
+                )
             }
-            ValueRef::Text(bytes) if field.kind == SqliteQueryRowFieldKind::Text => {
-                if field
-                    .minimum_utf8_bytes
-                    .is_some_and(|minimum| bytes.len() < minimum)
+            ValueRef::Text(bytes) => {
+                // Reject oversized SQLite text before allocating its owned copy.
+                if field.kind != SqliteQueryRowFieldKind::Text
+                    || field
+                        .minimum_utf8_bytes
+                        .is_some_and(|minimum| bytes.len() < minimum)
                     || field
                         .maximum_utf8_bytes
                         .is_some_and(|maximum| bytes.len() > maximum)
                 {
                     return Err(rusqlite::Error::InvalidQuery);
                 }
-                let text = std::str::from_utf8(bytes).map_err(|_| rusqlite::Error::InvalidQuery)?;
-                if !field.enum_values.is_empty() && !field.enum_values.contains(&text) {
-                    return Err(rusqlite::Error::InvalidQuery);
-                }
-                serde_json::Value::String(text.to_owned())
+                serde_json::Value::String(
+                    std::str::from_utf8(bytes)
+                        .map_err(|_| rusqlite::Error::InvalidQuery)?
+                        .to_owned(),
+                )
             }
             _ => return Err(rusqlite::Error::InvalidQuery),
         };
         object.insert(field.name.to_owned(), value);
     }
-    serde_json::from_value(serde_json::Value::Object(object))
-        .map_err(|_| rusqlite::Error::InvalidQuery)
+    decode_generated_query_value(serde_json::Value::Object(object), query_id)
+}
+
+// Cryptographically verified projections and SQLite rows share one descriptor.
+// Only the SQLite adapter above may coerce integer booleans.
+fn decode_generated_query_value<T: serde::de::DeserializeOwned>(
+    value: serde_json::Value,
+    query_id: &str,
+) -> rusqlite::Result<T> {
+    let model = SQLITE_QUERY_ROW_MODELS
+        .iter()
+        .find(|model| model.query_id == query_id)
+        .ok_or(rusqlite::Error::InvalidQuery)?;
+    let object = value.as_object().ok_or(rusqlite::Error::InvalidQuery)?;
+    if object.len() != model.fields.len() {
+        return Err(rusqlite::Error::InvalidQuery);
+    }
+    for field in model.fields {
+        let cell = object
+            .get(field.name)
+            .ok_or(rusqlite::Error::InvalidQuery)?;
+        let valid = if cell.is_null() {
+            field.nullable
+        } else {
+            match field.kind {
+                SqliteQueryRowFieldKind::Boolean => cell.is_boolean(),
+                SqliteQueryRowFieldKind::Real => cell.as_f64().is_some_and(f64::is_finite),
+                SqliteQueryRowFieldKind::Integer => cell.as_i64().is_some_and(|value| {
+                    field.minimum_integer.is_none_or(|minimum| value >= minimum)
+                        && field.maximum_integer.is_none_or(|maximum| value <= maximum)
+                        && (field.integer_values.is_empty()
+                            || field.integer_values.contains(&value))
+                }),
+                SqliteQueryRowFieldKind::Text => cell.as_str().is_some_and(|text| {
+                    field
+                        .minimum_utf8_bytes
+                        .is_none_or(|minimum| text.len() >= minimum)
+                        && field
+                            .maximum_utf8_bytes
+                            .is_none_or(|maximum| text.len() <= maximum)
+                        && (field.enum_values.is_empty() || field.enum_values.contains(&text))
+                }),
+            }
+        };
+        if !valid {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+    }
+    serde_json::from_value(value).map_err(|_| rusqlite::Error::InvalidQuery)
 }
 
 fn valid_operation_instance_id(value: &str) -> bool {
@@ -2156,6 +2416,7 @@ fn feed_card(row: &Row<'_>) -> rusqlite::Result<NormalizedFeedCardV1> {
         liked_at: row.get("likedAt")?,
         liked_synced_at: row.get("likedSyncedAt")?,
         link_preview_title: row.get("linkPreviewTitle")?,
+        link_preview_url: row.get("linkPreviewUrl")?,
         location_name: row.get("locationName")?,
         media_types: string_array(row, "mediaTypesJson", 8, 64)?,
         media_urls: string_array(row, "mediaUrlsJson", 8, 8_192)?,
@@ -2317,6 +2578,416 @@ fn search_request_digest(
     })
     .map_err(|_| invalid("normalized search binding is invalid"))?;
     Ok(lower_hex(&Sha256::digest(bytes)))
+}
+
+fn query_recovery_intent_review(
+    connection: &mut Connection,
+    request: NormalizedRecoveryIntentReviewRequestV1,
+) -> Result<NormalizedRecoveryIntentReviewResponseV1, NormalizedSqliteError> {
+    const QUERY: &str = "recovery_intent_review_v1";
+    if request.schema_version != 1
+        || !(1..=16).contains(&request.limit)
+        || !valid_lower_hex_64(&request.recovery_id)
+        || request.transaction_id.is_empty()
+        || request.transaction_id.len() > 255
+        || !valid_operation_instance_id(&request.reader_session_id)
+        || !valid_operation_instance_id(&request.cancellation_id)
+        || request
+            .cursor
+            .as_ref()
+            .is_some_and(|value| value.len() > 512)
+    {
+        return Err(invalid("recovery review request is invalid"));
+    }
+    let tx = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    let (generation_id, revision, local_sequence) =
+        crate::normalized_recovery_reissue::recovery_review_source(&tx)
+            .map_err(NormalizedSqliteError::Transport)?;
+    let (verified, outcome) = crate::normalized_recovery_input::inspect_archived_intent_for_review(
+        &tx,
+        &request.recovery_id,
+        &request.transaction_id,
+    )
+    .map_err(NormalizedSqliteError::Transport)?;
+    let program = SQLITE_QUERY_PROGRAMS
+        .iter()
+        .find(|p| p.query_id == QUERY)
+        .ok_or(invalid("recovery review program is missing"))?;
+    let archive_digest: String = tx.query_row(program.sql, [&request.recovery_id], |r| r.get(0))?;
+    if !valid_lower_hex_64(&archive_digest) {
+        return Err(invalid("recovery archive digest is invalid"));
+    }
+    let binding = format!(
+        "{QUERY}:{}:{archive_digest}:{}{}",
+        request.recovery_id,
+        verified.transaction_digest,
+        if request.include_original {
+            ":original"
+        } else {
+            ""
+        }
+    );
+    let cursor = request.cursor.as_deref().map(decode_cursor).transpose()?;
+    if cursor.as_ref().is_some_and(|cursor| {
+        cursor.global_id != binding
+            || cursor.generation_id != generation_id
+            || cursor.projection_revision != revision
+            || cursor.transition_sequence != local_sequence
+            || cursor.sort_at >= 1000
+    }) {
+        return Err(invalid("CURSOR_STALE"));
+    }
+    let start = cursor.map_or(0, |cursor| cursor.sort_at as usize + 1);
+    if start >= verified.members.len() && start != 0 {
+        return Err(invalid("recovery review cursor is outside its transaction"));
+    }
+    let end = (start + request.limit).min(verified.members.len());
+    let mut rows = Vec::with_capacity(end - start);
+    let mut row_bytes = 0usize;
+    let item_sql = program
+        .variants
+        .iter()
+        .find(|variant| variant.variant_id == "item_context")
+        .ok_or(invalid("recovery item context program is missing"))?
+        .sql;
+    let item_state_sql = program
+        .variants
+        .iter()
+        .find(|variant| variant.variant_id == "item_state")
+        .ok_or(invalid("recovery item state program is missing"))?
+        .sql;
+    let rss_sql = program
+        .variants
+        .iter()
+        .find(|variant| variant.variant_id == "rss_context")
+        .ok_or(invalid("recovery RSS context program is missing"))?
+        .sql;
+    let person_sql = program
+        .variants
+        .iter()
+        .find(|variant| variant.variant_id == "person_context")
+        .ok_or(invalid("recovery Person context program is missing"))?
+        .sql;
+    for (index, member) in verified.members[start..end].iter().enumerate() {
+        use rusqlite::OptionalExtension;
+        let item: Option<(Option<String>, Option<String>)> = if member.entity_type == "FeedItem" {
+            tx.query_row(item_sql, [&member.entity_id], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })
+            .optional()?
+        } else {
+            None
+        };
+        let rss_feed_state: Option<String> = if member.entity_type == "RssFeed" {
+            Some(tx.query_row(rss_sql, [&member.entity_id], |row| row.get(0))?)
+        } else {
+            None
+        };
+        let person_state: Option<String> = if member.entity_type == "Person" {
+            Some(tx.query_row(person_sql, [&member.entity_id], |row| row.get(0))?)
+        } else {
+            None
+        };
+        let item_state: Option<String> = if member.entity_type == "FeedItem" {
+            Some(tx.query_row(item_state_sql, [&member.entity_id], |row| row.get(0))?)
+        } else {
+            None
+        };
+        let item_present = (member.entity_type == "FeedItem").then_some(item.is_some());
+        let (author_name, item_text) = item.unwrap_or_default();
+        let row = decode_generated_query_value::<NormalizedRecoveryEditRowV1>(
+            serde_json::json!({
+                "originalEnvelopeJson": request.include_original.then_some(&member.canonical_envelope_json),
+                "assigned": member.assigned, "assignedAt": member.assigned_at_ms, "createdAt": member.created_at_ms,
+                "authorName": author_name, "itemPresent": item_present, "itemState": item_state, "itemText": item_text, "rssFeedState": rss_feed_state, "personState": person_state,
+                "entityId": member.entity_id, "memberIndex": start + index, "operationType": member.operation_type, "readAt": member.read_at_ms,
+            }),
+            QUERY,
+        )?;
+        let bytes = serde_json::to_vec(&row)
+            .map_err(|_| invalid("invalid recovery editor row"))?
+            .len()
+            + 1;
+        // Reserve more than the maximum bounded receipt, outcome, cursor and
+        // identity metadata. Final response serialization remains checked too.
+        if row_bytes + bytes > 524288 - 16384 {
+            if rows.is_empty() {
+                return Err(invalid("recovery editor member exceeds page bound"));
+            }
+            break;
+        }
+        row_bytes += bytes;
+        rows.push(row);
+    }
+    let end = start + rows.len();
+    let next_cursor = if end < verified.members.len() {
+        Some(encode_cursor(&FeedPageCursorV1 {
+            generation_id: generation_id.clone(),
+            transition_sequence: local_sequence,
+            projection_revision: revision,
+            sort_at: (end - 1) as i64,
+            global_id: binding,
+        })?)
+    } else {
+        None
+    };
+    let replacement = crate::normalized_recovery_reissue::read_recovery_reissue_receipt(
+        &tx,
+        &crate::RecoveryReissueRequestV1 {
+            schema_version: 1,
+            recovery_id: request.recovery_id.clone(),
+            archive_digest: archive_digest.clone(),
+            transaction_id: verified.transaction_id.clone(),
+            transaction_digest: verified.transaction_digest.clone(),
+            reviewed_generation_id: generation_id.clone(),
+            reviewed_revision: revision,
+            reviewed_local_sequence: local_sequence,
+            member_count: verified.members.len(),
+        },
+    )
+    .map_err(NormalizedSqliteError::Transport)?;
+    let response = NormalizedRecoveryIntentReviewResponseV1 {
+        query_id: QUERY.into(),
+        schema_version: 1,
+        recovery_id: request.recovery_id,
+        archive_digest,
+        transaction_id: verified.transaction_id,
+        transaction_digest: verified.transaction_digest,
+        member_count: verified.members.len(),
+        outcome,
+        replacement,
+        rows,
+        next_cursor,
+        source: NormalizedFeedPageSourceV1 {
+            generation_id,
+            projection_revision: revision,
+            transition_sequence: local_sequence,
+        },
+    };
+    if serde_json::to_vec(&response)
+        .map_err(|_| invalid("recovery review response is invalid"))?
+        .len()
+        > 524288
+    {
+        return Err(invalid("recovery review response exceeds its byte bound"));
+    }
+    tx.commit()?;
+    Ok(response)
+}
+
+/// Discover immutable archives by their stable primary key. Every archive insert
+/// atomically changes the handoff identity, invalidating an older continuation.
+fn query_recovery_archive_page(
+    connection: &mut Connection,
+    request: NormalizedRecoveryArchivePageRequestV1,
+) -> Result<NormalizedRecoveryArchivePageResponseV1, NormalizedSqliteError> {
+    const QUERY: &str = "recovery_archive_page_v1";
+    if request.schema_version != 1
+        || !(1..=64).contains(&request.limit)
+        || request.cursor.as_ref().is_some_and(|v| v.len() > 512)
+        || !valid_operation_instance_id(&request.cancellation_id)
+        || !valid_operation_instance_id(&request.reader_session_id)
+    {
+        return Err(invalid("recovery archive page request is invalid"));
+    }
+    let version: u32 = connection.pragma_query_value(None, "user_version", |r| r.get(0))?;
+    if version != crate::sqlite_contract_generated::NATIVE_STORAGE_SCHEMA_VERSION {
+        return Err(invalid(
+            "recovery archives are unavailable in this storage version",
+        ));
+    }
+    let program = SQLITE_QUERY_PROGRAMS
+        .iter()
+        .find(|p| p.query_id == QUERY)
+        .ok_or(invalid("recovery archive query program is missing"))?;
+    let tx = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    let (generation_id, revision) = query_source(&tx)?;
+    let handoff_id: String = tx.query_row(program.count_sql, [], |r| r.get(0))?;
+    if !valid_lower_hex_64(&handoff_id) {
+        return Err(invalid("recovery handoff identity is invalid"));
+    }
+    let prefix = format!("{QUERY}:{handoff_id}:");
+    let cursor = request.cursor.as_deref().map(decode_cursor).transpose()?;
+    let after = if let Some(cursor) = &cursor {
+        let last = cursor
+            .global_id
+            .strip_prefix(&prefix)
+            .ok_or(invalid("CURSOR_STALE"))?;
+        if !valid_lower_hex_64(last)
+            || cursor.generation_id != generation_id
+            || cursor.projection_revision != revision
+            || cursor.transition_sequence != revision
+            || cursor.sort_at != 0
+        {
+            return Err(invalid("CURSOR_STALE"));
+        }
+        last
+    } else {
+        ""
+    };
+    let mut statement = tx.prepare(program.sql)?;
+    let mut rows = statement
+        .query_map(params![after, request.limit + 1], |row| {
+            decode_generated_query_row::<NormalizedRecoveryArchiveRowV1>(row, QUERY)
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    drop(statement);
+    if rows.len() > program.maximum_scan_rows
+        || rows.iter().any(|r| {
+            !valid_lower_hex_64(&r.recovery_id)
+                || !valid_lower_hex_64(&r.predecessor_epoch_id)
+                || !valid_lower_hex_64(&r.successor_epoch_id)
+        })
+        || rows
+            .first()
+            .is_some_and(|r| r.recovery_id.as_str() <= after)
+        || rows
+            .windows(2)
+            .any(|p| p[0].recovery_id >= p[1].recovery_id)
+    {
+        return Err(invalid("recovery archive ordering or identity is invalid"));
+    }
+    let has_more = rows.len() > request.limit;
+    rows.truncate(request.limit);
+    let next_cursor = if has_more {
+        Some(encode_cursor(&FeedPageCursorV1 {
+            generation_id: generation_id.clone(),
+            transition_sequence: revision,
+            projection_revision: revision,
+            sort_at: 0,
+            global_id: format!(
+                "{prefix}{}",
+                rows.last().expect("nonempty page").recovery_id
+            ),
+        })?)
+    } else {
+        None
+    };
+    let response = NormalizedRecoveryArchivePageResponseV1 {
+        query_id: QUERY.into(),
+        schema_version: 1,
+        handoff_id,
+        rows,
+        next_cursor,
+        source: NormalizedFeedPageSourceV1 {
+            generation_id,
+            projection_revision: revision,
+            transition_sequence: revision,
+        },
+    };
+    if serde_json::to_vec(&response)
+        .map_err(|_| invalid("invalid recovery archive response"))?
+        .len()
+        > 131072
+    {
+        return Err(invalid("recovery archive response exceeds its byte bound"));
+    }
+    tx.commit()?;
+    Ok(response)
+}
+
+fn query_recovery_intent_page(
+    connection: &mut Connection,
+    request: NormalizedRecoveryIntentPageRequestV1,
+) -> Result<NormalizedRecoveryIntentPageResponseV1, NormalizedSqliteError> {
+    const QUERY: &str = "recovery_intent_page_v1";
+    if request.schema_version != 1
+        || !(1..=64).contains(&request.limit)
+        || !valid_lower_hex_64(&request.recovery_id)
+        || request
+            .cursor
+            .as_ref()
+            .is_some_and(|value| value.len() > 512)
+        || !valid_operation_instance_id(&request.cancellation_id)
+        || !valid_operation_instance_id(&request.reader_session_id)
+    {
+        return Err(invalid("recovery intent page request is invalid"));
+    }
+    let version: u32 = connection.pragma_query_value(None, "user_version", |r| r.get(0))?;
+    if version != crate::sqlite_contract_generated::NATIVE_STORAGE_SCHEMA_VERSION {
+        return Err(invalid(
+            "recovery archives are unavailable in this storage version",
+        ));
+    }
+    let program = SQLITE_QUERY_PROGRAMS
+        .iter()
+        .find(|p| p.query_id == QUERY)
+        .ok_or(invalid("recovery intent query program is missing"))?;
+    let tx = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    let (generation_id, source_revision) = query_source(&tx)?;
+    let archive_digest: String =
+        tx.query_row(program.count_sql, [&request.recovery_id], |r| r.get(0))?;
+    if !valid_lower_hex_64(&archive_digest) {
+        return Err(invalid("recovery archive digest is invalid"));
+    }
+    let binding = format!("{QUERY}:{}:{archive_digest}", request.recovery_id);
+    let cursor = request.cursor.as_deref().map(decode_cursor).transpose()?;
+    if cursor.as_ref().is_some_and(|cursor| {
+        cursor.global_id != binding
+            || cursor.generation_id != generation_id
+            || cursor.projection_revision != source_revision
+            || cursor.transition_sequence != source_revision
+    }) {
+        return Err(invalid("CURSOR_STALE"));
+    }
+    let after = cursor.as_ref().map_or(-1, |cursor| cursor.sort_at);
+    let mut statement = tx.prepare(program.sql)?;
+    let mut rows = statement
+        .query_map(
+            params![request.recovery_id, after, request.limit + 1],
+            |row| decode_generated_query_row::<NormalizedRecoveryIntentRowV1>(row, QUERY),
+        )?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    drop(statement);
+    if rows.len() > program.maximum_scan_rows
+        || rows
+            .iter()
+            .map(|row| &row.transaction_id)
+            .collect::<std::collections::BTreeSet<_>>()
+            .len()
+            != rows.len()
+        || rows
+            .windows(2)
+            .any(|pair| pair[0].ordinal >= pair[1].ordinal)
+        || rows.first().is_some_and(|row| row.ordinal <= after)
+    {
+        return Err(invalid("recovery intent page ordering or bounds changed"));
+    }
+    let has_more = rows.len() > request.limit;
+    rows.truncate(request.limit);
+    let next_cursor = if has_more {
+        Some(encode_cursor(&FeedPageCursorV1 {
+            generation_id: generation_id.clone(),
+            transition_sequence: source_revision,
+            projection_revision: source_revision,
+            sort_at: rows.last().expect("nonempty bounded page").ordinal,
+            global_id: binding,
+        })?)
+    } else {
+        None
+    };
+    let response = NormalizedRecoveryIntentPageResponseV1 {
+        query_id: QUERY.into(),
+        schema_version: 1,
+        recovery_id: request.recovery_id,
+        archive_digest,
+        rows,
+        next_cursor,
+        source: NormalizedFeedPageSourceV1 {
+            generation_id,
+            projection_revision: source_revision,
+            transition_sequence: source_revision,
+        },
+    };
+    if serde_json::to_vec(&response)
+        .map_err(|_| invalid("recovery intent response is invalid"))?
+        .len()
+        > 131072
+    {
+        return Err(invalid("recovery intent page exceeds its byte bound"));
+    }
+    tx.commit()?;
+    Ok(response)
 }
 
 fn query_source(connection: &Connection) -> Result<(String, i64), NormalizedSqliteError> {
@@ -3471,6 +4142,7 @@ fn query_story_wall_candidates(
 fn query_item_scan(
     connection: &mut Connection,
     request: NormalizedItemScanRequestV1,
+    time_only: Option<&NormalizedPriorityTimePageRequestV1>,
 ) -> Result<NormalizedItemScanResponseV1, NormalizedSqliteError> {
     if request.schema_version != 1
         || request
@@ -3491,8 +4163,31 @@ fn query_item_scan(
         .iter()
         .find(|program| program.query_id == "background_item_page_v1")
         .ok_or(invalid("normalized item scan program is missing"))?;
+    let time_program = if time_only.is_some() {
+        Some(
+            SQLITE_QUERY_PROGRAMS
+                .iter()
+                .find(|p| p.query_id == "priority_time_page_v1")
+                .ok_or(invalid("priority time program is missing"))?,
+        )
+    } else {
+        None
+    };
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
     let (generation_id, source_revision) = query_source(&transaction)?;
+    if let Some(expected) = time_only {
+        if generation_id != expected.generation_id || source_revision != expected.source_revision {
+            return Err(invalid("CURSOR_STALE"));
+        }
+        let total: i64 = transaction.query_row(
+            time_program.expect("time-only program").count_sql,
+            [],
+            |row| row.get(0),
+        )?;
+        if !(0..=25_000).contains(&total) {
+            return Err(invalid("priority time corpus exceeds admission"));
+        }
+    }
     let cursor = request.cursor.as_deref().map(decode_cursor).transpose()?;
     if cursor.as_ref().is_some_and(|cursor| {
         cursor.sort_at != 0
@@ -3508,7 +4203,9 @@ fn query_item_scan(
         .find(|variant| variant.variant_id == "priority")
         .ok_or(invalid("normalized priority scan variant is missing"))?;
     let priority_scan = request.priority_computed_before_ms.is_some();
-    let mut statement = transaction.prepare(if priority_scan {
+    let mut statement = transaction.prepare(if let Some(time_program) = time_program {
+        time_program.sql
+    } else if priority_scan {
         priority_variant.sql
     } else {
         program.sql
@@ -3557,7 +4254,12 @@ fn query_item_scan(
     };
     let response = NormalizedItemScanResponseV1 {
         next_cursor,
-        query_id: "background_item_page_v1".to_owned(),
+        query_id: if time_only.is_some() {
+            "priority_time_page_v1"
+        } else {
+            "background_item_page_v1"
+        }
+        .to_owned(),
         rows: cards,
         schema_version: 1,
         source: NormalizedFeedPageSourceV1 {
@@ -4938,6 +5640,596 @@ fn query_saved_analytics(
     Ok(response)
 }
 
+fn validate_preference_rows(
+    rows: &[NormalizedPreferenceLeafV1],
+) -> Result<(), NormalizedSqliteError> {
+    if rows.len() > PREFERENCES_SNAPSHOT_MAXIMUM_ROWS {
+        return Err(invalid("normalized preferences exceed their row bound"));
+    }
+    for row in rows {
+        let populated = [
+            row.boolean_value.is_some(),
+            row.integer_value.is_some(),
+            row.real_value.is_some(),
+            row.text_value.is_some(),
+        ];
+        let expected = [
+            row.value_type == "boolean",
+            row.value_type == "integer",
+            row.value_type == "real",
+            row.value_type == "text",
+        ];
+        if !["a:", "o:", "v:"]
+            .iter()
+            .any(|prefix| row.path.starts_with(prefix))
+            || !row.path.get(2..).is_some_and(|path| path.starts_with("$."))
+            || (row.path.starts_with("a:")
+                && (row.value_type != "integer"
+                    || !row
+                        .integer_value
+                        .is_some_and(|length| (0..=512).contains(&length))))
+            || (row.path.starts_with("o:") && row.value_type != "null")
+            || row.path.len() > PREFERENCE_PATH_MAXIMUM_BYTES
+            || row
+                .text_value
+                .as_ref()
+                .is_some_and(|value| value.len() > PREFERENCE_TEXT_MAXIMUM_BYTES)
+            || !valid_safe_integer(row.updated_at)
+            || row
+                .integer_value
+                .is_some_and(|value| !(-MAX_SAFE_INTEGER..=MAX_SAFE_INTEGER).contains(&value))
+            || row.real_value.is_some_and(|value| !value.is_finite())
+            || !matches!(
+                row.value_type.as_str(),
+                "boolean" | "integer" | "real" | "text" | "null"
+            )
+            || populated != expected
+        {
+            return Err(invalid("normalized preference row is invalid"));
+        }
+    }
+    if rows.windows(2).any(|pair| pair[0].path >= pair[1].path) {
+        return Err(invalid("normalized preferences are not in binary order"));
+    }
+    Ok(())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+enum PreferenceValuePathPart {
+    Key(String),
+    Index(usize),
+}
+
+// Decode SQLite fullkey syntax without executing caller-provided path expressions.
+fn preference_value_path(
+    path: &str,
+) -> Result<Vec<PreferenceValuePathPart>, NormalizedSqliteError> {
+    let bad = || invalid("preference value path is invalid");
+    if !path.starts_with("$.") {
+        return Err(bad());
+    }
+    let bytes = path.as_bytes();
+    let mut index = 1;
+    let mut parts = Vec::new();
+    while index < bytes.len() {
+        match bytes[index] {
+            b'.' => {
+                index += 1;
+                let start = index;
+                let key = if bytes.get(index) == Some(&b'"') {
+                    index += 1;
+                    while index < bytes.len() && bytes[index] != b'"' {
+                        index += if bytes[index] == b'\\' { 2 } else { 1 };
+                    }
+                    if index >= bytes.len() {
+                        return Err(bad());
+                    }
+                    index += 1;
+                    serde_json::from_str::<String>(&path[start..index]).map_err(|_| bad())?
+                } else {
+                    while index < bytes.len() && !matches!(bytes[index], b'.' | b'[') {
+                        index += 1;
+                    }
+                    if start == index {
+                        return Err(bad());
+                    }
+                    path[start..index].to_owned()
+                };
+                parts.push(PreferenceValuePathPart::Key(key));
+            }
+            b'[' => {
+                index += 1;
+                let start = index;
+                while index < bytes.len() && bytes[index].is_ascii_digit() {
+                    index += 1;
+                }
+                if start == index
+                    || bytes.get(index) != Some(&b']')
+                    || index - start > 1 && bytes[start] == b'0'
+                {
+                    return Err(bad());
+                }
+                let ordinal = path[start..index].parse::<usize>().map_err(|_| bad())?;
+                if ordinal >= 512 {
+                    return Err(bad());
+                }
+                parts.push(PreferenceValuePathPart::Index(ordinal));
+                index += 1;
+            }
+            _ => return Err(bad()),
+        }
+        if parts.len() > 512 {
+            return Err(bad());
+        }
+    }
+    Ok(parts)
+}
+
+fn validate_preference_value_shape(
+    rows: &[NormalizedPreferenceLeafV1],
+) -> Result<(), NormalizedSqliteError> {
+    use std::collections::BTreeMap;
+    let bad = || invalid("preference value nodes are invalid");
+    let mut nodes = BTreeMap::new();
+    for row in rows {
+        let path = preference_value_path(&row.path[2..])?;
+        if path.first() != Some(&PreferenceValuePathPart::Key("_".into()))
+            || nodes.insert(path, row).is_some()
+        {
+            return Err(bad());
+        }
+    }
+    let mut array_counts = BTreeMap::<Vec<PreferenceValuePathPart>, usize>::new();
+    for (path, row) in &nodes {
+        if path.len() > 1 {
+            let parent_path = &path[..path.len() - 1];
+            let parent = nodes.get(parent_path).ok_or_else(bad)?;
+            match (&parent.path[..2], path.last()) {
+                ("a:", Some(PreferenceValuePathPart::Index(index)))
+                    if parent
+                        .integer_value
+                        .is_some_and(|n| n >= 0 && (*index as i64) < n) =>
+                {
+                    *array_counts.entry(parent_path.to_vec()).or_default() += 1;
+                }
+                ("o:", Some(PreferenceValuePathPart::Key(_))) => {}
+                _ => return Err(bad()),
+            }
+        }
+        if row.path.starts_with("a:") && row.integer_value.is_none_or(|n| !(0..=512).contains(&n)) {
+            return Err(bad());
+        }
+    }
+    for (path, row) in nodes {
+        if row.path.starts_with("a:")
+            && array_counts.get(&path).copied().unwrap_or(0)
+                != row.integer_value.unwrap_or(-1) as usize
+        {
+            return Err(invalid("preference array is incomplete"));
+        }
+    }
+    Ok(())
+}
+
+fn query_preference_value(
+    connection: &mut Connection,
+    request: NormalizedPreferenceValueRequestV1,
+) -> Result<NormalizedPreferenceValueResponseV1, NormalizedSqliteError> {
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    let response = read_preference_value(&transaction, request, None)?;
+    transaction.commit()?;
+    Ok(response)
+}
+
+fn read_preference_value(
+    connection: &Connection,
+    request: NormalizedPreferenceValueRequestV1,
+    selected_path: Option<&str>,
+) -> Result<NormalizedPreferenceValueResponseV1, NormalizedSqliteError> {
+    if request.schema_version != 1
+        || request.path.is_empty()
+        || request.path.len() > 32
+        || request.generation_id.len() != 64
+        || !request
+            .generation_id
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        || !valid_safe_integer(request.source_revision)
+        || selected_path.is_none()
+            && serde_json::to_vec(&request.path)
+                .map_err(|_| invalid("preference path is invalid"))?
+                .len()
+                > 8192
+    {
+        return Err(invalid("preference value request is invalid"));
+    }
+    let program = SQLITE_QUERY_PROGRAMS
+        .iter()
+        .find(|p| p.query_id == "preference_value_v1")
+        .ok_or(invalid("preference value program is missing"))?;
+    let variant = |id| {
+        program
+            .variants
+            .iter()
+            .find(|v| v.variant_id == id)
+            .map(|v| v.sql)
+            .ok_or(invalid("preference value variant is missing"))
+    };
+    let (generation_id, source_revision) = query_source(connection)?;
+    if generation_id != request.generation_id || source_revision != request.source_revision {
+        return Err(invalid("CURSOR_STALE"));
+    }
+    let mut selection = serde_json::Value::Null;
+    for key in request.path.iter().rev() {
+        selection = serde_json::json!({ key: selection });
+    }
+    let selection_json = serde_json::to_string(&selection)
+        .map_err(|_| invalid("preference selection is invalid"))?;
+    let paths = if let Some(path) = selected_path {
+        vec![path.to_owned()]
+    } else {
+        connection
+            .prepare(variant("selection_path")?)?
+            .query_map([&selection_json], |r| r.get::<_, String>(0))?
+            .collect::<rusqlite::Result<Vec<_>>>()?
+    };
+    if paths.len() != 1 || selected_path.is_none() && paths[0].len() + 2 > 4096 {
+        return Err(invalid("preference selection path exceeds its bound"));
+    }
+    let path = &paths[0];
+    let read = |sql: &str,
+                bindings: &[&dyn rusqlite::ToSql]|
+     -> Result<Vec<NormalizedPreferenceLeafV1>, NormalizedSqliteError> {
+        let mut statement = connection.prepare(sql)?;
+        let rows = statement
+            .query_map(bindings, |row| {
+                decode_generated_query_row::<NormalizedPreferenceLeafV1>(row, "preference_value_v1")
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    };
+    let mut rows = read(program.sql, &[path])?;
+    if selected_path.is_some() && path.len() + 2 > 4096 && !rows.is_empty() {
+        return Err(invalid("stored ranking weight path exceeds its bound"));
+    }
+    if rows.len() > 1 {
+        return Err(invalid("preference selection has conflicting roots"));
+    }
+    let prefix = rows
+        .first()
+        .map(|r| r.path[..2].to_owned())
+        .unwrap_or_default();
+    let maximum = match prefix.as_str() {
+        "a:" => 513,
+        "o:" => 4,
+        _ => rows.len(),
+    };
+    if prefix == "a:" || prefix == "o:" {
+        for physical in ["a:", "o:", "v:"] {
+            for (lower, upper) in [(".", "/"), ("[", "\\")] {
+                let remaining = maximum - rows.len();
+                if remaining > 0 {
+                    let lower = format!("{physical}{path}{lower}");
+                    let upper = format!("{physical}{path}{upper}");
+                    rows.extend(read(
+                        variant("descendants")?,
+                        &[path, &lower, &upper, &(remaining as i64)],
+                    )?);
+                }
+            }
+        }
+    }
+    finish_preference_value(request, rows, generation_id, source_revision)
+}
+
+/// Shared bounded shape validation for canonical and installation-local readers.
+pub(crate) fn finish_preference_value(
+    request: NormalizedPreferenceValueRequestV1,
+    mut rows: Vec<NormalizedPreferenceLeafV1>,
+    generation_id: String,
+    source_revision: i64,
+) -> Result<NormalizedPreferenceValueResponseV1, NormalizedSqliteError> {
+    let prefix = rows
+        .first()
+        .map(|row| row.path[..2].to_owned())
+        .unwrap_or_default();
+    let root = rows.first().cloned();
+    rows.sort_by(|a, b| a.path.cmp(&b.path));
+    validate_preference_rows(&rows)?;
+    let mut kind = if rows.is_empty() { "absent" } else { "value" };
+    if prefix == "o:" {
+        let text = |path: &str| {
+            rows.iter()
+                .find(|r| r.path == path && r.value_type == "text")
+                .and_then(|r| r.text_value.as_deref())
+        };
+        let candidate = serde_json::json!({"bits":text("v:$._.bits"),"codec":text("v:$._.codec")});
+        if rows.len() == 3 && crate::normalized_preference_policy::is_binary64_wrapper(&candidate) {
+            crate::normalized_checkpoint::decode_binary64_wrapper(&candidate)?;
+        } else {
+            kind = "object_group";
+            rows = root.into_iter().collect();
+        }
+    }
+    validate_preference_value_shape(&rows)?;
+    let response = NormalizedPreferenceValueResponseV1 {
+        query_id: "preference_value_v1".into(),
+        schema_version: 1,
+        path: request.path,
+        kind: kind.into(),
+        rows,
+        source: NormalizedFeedPageSourceV1 {
+            generation_id,
+            projection_revision: source_revision,
+            transition_sequence: source_revision,
+        },
+    };
+    if serde_json::to_vec(&response)
+        .map_err(|_| invalid("preference value response is invalid"))?
+        .len()
+        > PREFERENCES_SNAPSHOT_MAXIMUM_RESPONSE_BYTES
+    {
+        return Err(invalid("preference value response exceeds its byte bound"));
+    }
+    Ok(response)
+}
+
+// A scope owns one read transaction; no point result can cross a source change.
+fn query_ranking_weight_scope(
+    connection: &mut Connection,
+    request: NormalizedRankingWeightScopeRequestV1,
+) -> Result<NormalizedRankingWeightScopeResponseV1, NormalizedSqliteError> {
+    let bad = || invalid("ranking weight scope request is invalid");
+    if request.schema_version != 1
+        || request.paths.is_empty()
+        || request.paths.len() > 64
+        || request.generation_id.len() != 64
+        || !request
+            .generation_id
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        || !valid_safe_integer(request.source_revision)
+    {
+        return Err(bad());
+    }
+    let mut wire = serde_json::to_value(&request).map_err(|_| bad())?;
+    wire.as_object_mut()
+        .ok_or_else(bad)?
+        .insert("queryId".into(), "ranking_weight_scope_v1".into());
+    if serde_json::to_vec(&wire).map_err(|_| bad())?.len() > 128 * 1024 {
+        return Err(bad());
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    let mut selections = Vec::with_capacity(request.paths.len());
+    for path in &request.paths {
+        crate::normalized_query_control::check_current_query().map_err(invalid)?;
+        if path.first().map(String::as_str) != Some("weights")
+            || !(path.len() == 2 && path[1] == "recency"
+                || path.len() == 3
+                    && matches!(path[1].as_str(), "authors" | "platforms" | "topics"))
+            || !seen.insert(path)
+            || path.iter().any(|part| part.encode_utf16().count() > 4096)
+        {
+            return Err(bad());
+        }
+        let mut selection = serde_json::Value::Null;
+        for key in path.iter().rev() {
+            selection = serde_json::json!({ key: selection });
+        }
+        selections.push(selection);
+    }
+    let program = SQLITE_QUERY_PROGRAMS
+        .iter()
+        .find(|p| p.query_id == "ranking_weight_scope_v1")
+        .ok_or_else(bad)?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    let (generation_id, source_revision) = query_source(&transaction)?;
+    if generation_id != request.generation_id || source_revision != request.source_revision {
+        return Err(invalid("CURSOR_STALE"));
+    }
+    let selection_json = serde_json::to_string(&selections).map_err(|_| bad())?;
+    let rows = transaction
+        .prepare(program.sql)?
+        .query_map([selection_json], |row| {
+            decode_generated_query_row::<RankingWeightSelection>(row, "ranking_weight_scope_v1")
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    if rows.len() != request.paths.len() {
+        return Err(bad());
+    }
+    let mut values = Vec::with_capacity(rows.len());
+    for (index, selection) in rows.iter().enumerate() {
+        crate::normalized_query_control::check_current_query().map_err(invalid)?;
+        if selection.ordinal != index {
+            return Err(bad());
+        }
+        let response = read_preference_value(
+            &transaction,
+            NormalizedPreferenceValueRequestV1 {
+                schema_version: 1,
+                path: request.paths[index].clone(),
+                generation_id: generation_id.clone(),
+                source_revision,
+            },
+            Some(&selection.path),
+        )?;
+        let value = if response.kind == "absent" {
+            None
+        } else if response.kind != "value" {
+            return Err(invalid("ranking weight is not numeric"));
+        } else if response.rows.len() == 1 {
+            let row = &response.rows[0];
+            Some(match row.value_type.as_str() {
+                "integer" => row.integer_value.ok_or_else(bad)? as f64,
+                "real" => row.real_value.ok_or_else(bad)?,
+                _ => return Err(invalid("ranking weight is not numeric")),
+            })
+        } else {
+            let text = |path: &str| {
+                response
+                    .rows
+                    .iter()
+                    .find(|r| r.path == path)
+                    .and_then(|r| r.text_value.as_deref())
+            };
+            let wrapper =
+                serde_json::json!({"bits":text("v:$._.bits"),"codec":text("v:$._.codec")});
+            Some(
+                crate::normalized_checkpoint::decode_binary64_wrapper(&wrapper)
+                    .map_err(|_| invalid("ranking weight is not numeric"))?,
+            )
+        };
+        if value.is_some_and(|n| !n.is_finite()) {
+            return Err(invalid("ranking weight is not finite"));
+        }
+        values.push(value);
+    }
+    let response = NormalizedRankingWeightScopeResponseV1 {
+        query_id: "ranking_weight_scope_v1".into(),
+        schema_version: 1,
+        paths: request.paths,
+        values,
+        source: NormalizedFeedPageSourceV1 {
+            generation_id,
+            projection_revision: source_revision,
+            transition_sequence: source_revision,
+        },
+    };
+    if serde_json::to_vec(&response).map_err(|_| bad())?.len() > 128 * 1024 {
+        return Err(invalid("ranking weight scope exceeds its byte bound"));
+    }
+    transaction.commit()?;
+    Ok(response)
+}
+
+// Selected values share one read transaction and one aggregate response budget.
+fn query_preference_scope(
+    connection: &mut Connection,
+    request: NormalizedPreferenceScopeRequestV1,
+) -> Result<NormalizedPreferenceScopeResponseV1, NormalizedSqliteError> {
+    let bad = || invalid("preference scope request is invalid");
+    if request.schema_version != 1 || request.paths.is_empty() || request.paths.len() > 64 {
+        return Err(bad());
+    }
+    let mut wire = serde_json::to_value(&request).map_err(|_| bad())?;
+    wire.as_object_mut()
+        .ok_or_else(bad)?
+        .insert("queryId".into(), "preference_scope_v1".into());
+    if serde_json::to_vec(&wire).map_err(|_| bad())?.len() > 128 * 1024 {
+        return Err(bad());
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    let mut selections = Vec::with_capacity(request.paths.len());
+    for path in &request.paths {
+        crate::normalized_query_control::check_current_query().map_err(invalid)?;
+        if path.is_empty()
+            || path.len() > 32
+            || !seen.insert(path)
+            || serde_json::to_vec(path).map_err(|_| bad())?.len() > 8192
+        {
+            return Err(bad());
+        }
+        let mut selection = serde_json::Value::Null;
+        for key in path.iter().rev() {
+            selection = serde_json::json!({ key: selection });
+        }
+        selections.push(selection);
+    }
+    let program = SQLITE_QUERY_PROGRAMS
+        .iter()
+        .find(|p| p.query_id == "preference_scope_v1")
+        .ok_or_else(bad)?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    let (generation_id, source_revision) = query_source(&transaction)?;
+    if generation_id != request.generation_id || source_revision != request.source_revision {
+        return Err(invalid("CURSOR_STALE"));
+    }
+    let selected = transaction
+        .prepare(program.sql)?
+        .query_map(
+            [serde_json::to_string(&selections).map_err(|_| bad())?],
+            |row| decode_generated_query_row::<RankingWeightSelection>(row, "preference_scope_v1"),
+        )?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    if selected.len() != request.paths.len() {
+        return Err(bad());
+    }
+    let mut results = Vec::with_capacity(selected.len());
+    let mut bytes = 0;
+    for (index, selection) in selected.iter().enumerate() {
+        crate::normalized_query_control::check_current_query().map_err(invalid)?;
+        if selection.ordinal != index || selection.path.len() + 2 > 4096 {
+            return Err(bad());
+        }
+        let result = read_preference_value(
+            &transaction,
+            NormalizedPreferenceValueRequestV1 {
+                schema_version: 1,
+                path: request.paths[index].clone(),
+                generation_id: generation_id.clone(),
+                source_revision,
+            },
+            Some(&selection.path),
+        )?;
+        bytes += serde_json::to_vec(&result).map_err(|_| bad())?.len();
+        if bytes > PREFERENCES_SNAPSHOT_MAXIMUM_RESPONSE_BYTES {
+            return Err(invalid("preference scope response exceeds its byte bound"));
+        }
+        results.push(result);
+    }
+    let response = NormalizedPreferenceScopeResponseV1 {
+        query_id: "preference_scope_v1".into(),
+        schema_version: 1,
+        results,
+        source: NormalizedFeedPageSourceV1 {
+            generation_id,
+            projection_revision: source_revision,
+            transition_sequence: source_revision,
+        },
+    };
+    if serde_json::to_vec(&response).map_err(|_| bad())?.len()
+        > PREFERENCES_SNAPSHOT_MAXIMUM_RESPONSE_BYTES
+    {
+        return Err(invalid("preference scope response exceeds its byte bound"));
+    }
+    transaction.commit()?;
+    Ok(response)
+}
+
+// The topic index makes unrelated item invalidations irrelevant to this lookup.
+fn query_preferences_revision(
+    connection: &mut Connection,
+    request: NormalizedPreferencesSnapshotRequestV1,
+) -> Result<NormalizedPreferencesRevisionResponseV1, NormalizedSqliteError> {
+    if request.schema_version != 1 {
+        return Err(invalid("preference revision request is invalid"));
+    }
+    let program = SQLITE_QUERY_PROGRAMS
+        .iter()
+        .find(|p| p.query_id == "preferences_revision_v1")
+        .ok_or(invalid("preference revision program is missing"))?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    let (generation_id, source_revision) = query_source(&transaction)?;
+    let row: PreferencesRevisionRow = transaction.query_row(program.sql, [], |row| {
+        decode_generated_query_row(row, "preferences_revision_v1")
+    })?;
+    if row.revision > source_revision {
+        return Err(invalid("preference revision source is inconsistent"));
+    }
+    let response = NormalizedPreferencesRevisionResponseV1 {
+        query_id: "preferences_revision_v1".into(),
+        schema_version: 1,
+        revision: row.revision,
+        source: NormalizedFeedPageSourceV1 {
+            generation_id,
+            projection_revision: source_revision,
+            transition_sequence: source_revision,
+        },
+    };
+    transaction.commit()?;
+    Ok(response)
+}
+
 fn query_preferences_snapshot(
     connection: &mut Connection,
     request: NormalizedPreferencesSnapshotRequestV1,
@@ -4965,45 +6257,7 @@ fn query_preferences_snapshot(
     })?;
     let mut rows = mapped.collect::<rusqlite::Result<Vec<_>>>()?;
     drop(statement);
-    if rows.len() > PREFERENCES_SNAPSHOT_MAXIMUM_ROWS || rows.len() >= program.maximum_scan_rows {
-        return Err(invalid("normalized preferences exceed their row bound"));
-    }
-    for row in &rows {
-        let populated = [
-            row.boolean_value.is_some(),
-            row.integer_value.is_some(),
-            row.real_value.is_some(),
-            row.text_value.is_some(),
-        ];
-        let expected = [
-            row.value_type == "boolean",
-            row.value_type == "integer",
-            row.value_type == "real",
-            row.value_type == "text",
-        ];
-        if row.path.is_empty()
-            || row.path.len() > PREFERENCE_PATH_MAXIMUM_BYTES
-            || row
-                .text_value
-                .as_ref()
-                .is_some_and(|value| value.len() > PREFERENCE_TEXT_MAXIMUM_BYTES)
-            || !valid_safe_integer(row.updated_at)
-            || row
-                .integer_value
-                .is_some_and(|value| !(-MAX_SAFE_INTEGER..=MAX_SAFE_INTEGER).contains(&value))
-            || row.real_value.is_some_and(|value| !value.is_finite())
-            || !matches!(
-                row.value_type.as_str(),
-                "boolean" | "integer" | "real" | "text" | "null"
-            )
-            || populated != expected
-        {
-            return Err(invalid("normalized preference row is invalid"));
-        }
-    }
-    if rows.windows(2).any(|pair| pair[0].path >= pair[1].path) {
-        return Err(invalid("normalized preferences are not in binary order"));
-    }
+    validate_preference_rows(&rows)?;
     rows.shrink_to_fit();
     let response = NormalizedPreferencesSnapshotResponseV1 {
         query_id: "preferences_snapshot_v1".to_owned(),
@@ -5277,6 +6531,237 @@ fn body_locator(
         blob_digest,
         storage,
     })
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedAccountRootResponseV1 {
+    pub query_id: String,
+    pub schema_version: u32,
+    pub account_id: String,
+    pub account: Option<serde_json::Value>,
+    pub source: NormalizedFeedPageSourceV1,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedPersonAccountPageRequestV1 {
+    pub schema_version: u32,
+    pub person_id: String,
+    pub cursor: Option<String>,
+    pub limit: usize,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedPersonAccountRowV1 {
+    pub account_id: String,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedPersonAccountPageResponseV1 {
+    pub query_id: String,
+    pub schema_version: u32,
+    pub person_id: String,
+    pub rows: Vec<NormalizedPersonAccountRowV1>,
+    pub next_cursor: Option<String>,
+    pub source: NormalizedFeedPageSourceV1,
+}
+fn query_person_account_page(
+    connection: &mut Connection,
+    request: NormalizedPersonAccountPageRequestV1,
+) -> Result<NormalizedPersonAccountPageResponseV1, NormalizedSqliteError> {
+    const QUERY: &str = "person_account_page_v1";
+    if request.schema_version != 1
+        || request.person_id.is_empty()
+        || request.person_id.len() > 4096
+        || !(1..=64).contains(&request.limit)
+    {
+        return Err(invalid("Person account page request is invalid"));
+    }
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    let (generation_id, revision) = query_source(&transaction)?;
+    let mut after = String::new();
+    if let Some(token) = &request.cursor {
+        if token.len() > 66668 {
+            return Err(invalid("Person account cursor is oversized"));
+        }
+        let bytes = BASE64_STANDARD
+            .decode(token)
+            .map_err(|_| invalid("Person account cursor is invalid"))?;
+        if BASE64_STANDARD.encode(&bytes) != *token {
+            return Err(invalid("Person account cursor is noncanonical"));
+        }
+        let value = crate::library_core_canonical::decode_canonical_value(&bytes, 50000)
+            .map_err(|_| invalid("Person account cursor is invalid"))?;
+        let tuple = value
+            .value()
+            .as_array()
+            .ok_or(invalid("Person account cursor is invalid"))?;
+        if tuple.len() != 6 || tuple[0] != 1 || tuple[1] != QUERY || tuple[2] != request.person_id {
+            return Err(invalid("Person account cursor binding is invalid"));
+        }
+        if tuple[3] != generation_id || tuple[4] != revision {
+            return Err(invalid("CURSOR_STALE"));
+        }
+        after = tuple[5]
+            .as_str()
+            .ok_or(invalid("Person account cursor key is invalid"))?
+            .to_owned();
+        if after.is_empty() || after.len() > 4096 {
+            return Err(invalid("Person account cursor key is invalid"));
+        }
+    }
+    let program = SQLITE_QUERY_PROGRAMS
+        .iter()
+        .find(|p| p.query_id == QUERY)
+        .ok_or(invalid("Person account program missing"))?;
+    let mut rows = {
+        let mut statement = transaction.prepare(program.sql)?;
+        let mapped = statement.query_map(
+            params![request.person_id, after, request.limit + 1],
+            |row| decode_generated_query_row::<NormalizedPersonAccountRowV1>(row, QUERY),
+        )?;
+        mapped.collect::<rusqlite::Result<Vec<_>>>()?
+    };
+    let more = rows.len() > request.limit;
+    rows.truncate(request.limit);
+    let next_cursor = if more {
+        let last = &rows
+            .last()
+            .ok_or(invalid("Person account continuation is empty"))?
+            .account_id;
+        let value = serde_json::json!([1, QUERY, request.person_id, generation_id, revision, last]);
+        Some(
+            BASE64_STANDARD.encode(
+                crate::library_core_canonical::encode_canonical_value(&value, 50000)
+                    .map_err(|_| invalid("Person account cursor exceeds its bound"))?,
+            ),
+        )
+    } else {
+        None
+    };
+    let result = NormalizedPersonAccountPageResponseV1 {
+        query_id: QUERY.to_owned(),
+        schema_version: 1,
+        person_id: request.person_id,
+        rows,
+        next_cursor,
+        source: NormalizedFeedPageSourceV1 {
+            generation_id,
+            projection_revision: revision,
+            transition_sequence: revision,
+        },
+    };
+    transaction.commit()?;
+    Ok(result)
+}
+
+fn query_account_root(
+    connection: &mut Connection,
+    request: NormalizedAccountDetailRequestV1,
+) -> Result<NormalizedAccountRootResponseV1, NormalizedSqliteError> {
+    if request.schema_version != 1
+        || request.account_id.is_empty()
+        || request.account_id.len() > 4096
+    {
+        return Err(invalid("normalized Account root request is invalid"));
+    }
+    let program = SQLITE_QUERY_PROGRAMS
+        .iter()
+        .find(|program| program.query_id == "account_root_v1")
+        .ok_or(invalid("Account root program is missing"))?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    let (generation_id, revision) = query_source(&transaction)?;
+    let result: Option<Option<String>> = rusqlite::OptionalExtension::optional(
+        transaction.query_row(program.sql, [&request.account_id], |row| row.get(0)),
+    )?;
+    let account = match result {
+        None => None,
+        Some(None) => return Err(invalid("Account root exceeds its read bounds")),
+        Some(Some(json)) => {
+            let value: serde_json::Value =
+                serde_json::from_str(&json).map_err(|_| invalid("Account root JSON is invalid"))?;
+            let object = value
+                .as_object()
+                .ok_or(invalid("Account root is not an object"))?;
+            crate::normalized_operation_verifier::validate_account(object, &request.account_id, 0)
+                .map_err(|_| invalid("Account root fields are invalid"))?;
+            crate::library_core_canonical::encode_canonical_value(&value, 65536)
+                .map_err(|_| invalid("Account root exceeds its canonical byte bound"))?;
+            Some(value)
+        }
+    };
+    let response = NormalizedAccountRootResponseV1 {
+        query_id: "account_root_v1".to_owned(),
+        schema_version: 1,
+        account_id: request.account_id,
+        account,
+        source: NormalizedFeedPageSourceV1 {
+            generation_id,
+            projection_revision: revision,
+            transition_sequence: revision,
+        },
+    };
+    transaction.commit()?;
+    Ok(response)
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedPersonRootResponseV1 {
+    pub query_id: String,
+    pub schema_version: u32,
+    pub person_id: String,
+    pub person: Option<serde_json::Value>,
+    pub source: NormalizedFeedPageSourceV1,
+}
+
+fn query_person_root(
+    connection: &mut Connection,
+    request: NormalizedPersonDetailRequestV1,
+) -> Result<NormalizedPersonRootResponseV1, NormalizedSqliteError> {
+    if request.schema_version != 1 || request.person_id.is_empty() || request.person_id.len() > 4096
+    {
+        return Err(invalid("normalized Person root request is invalid"));
+    }
+    let program = SQLITE_QUERY_PROGRAMS
+        .iter()
+        .find(|program| program.query_id == "person_root_v1")
+        .ok_or(invalid("Person root program is missing"))?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    let (generation_id, revision) = query_source(&transaction)?;
+    let result: Option<Option<String>> = rusqlite::OptionalExtension::optional(
+        transaction.query_row(program.sql, [&request.person_id], |row| row.get(0)),
+    )?;
+    let person = match result {
+        None => None,
+        Some(None) => return Err(invalid("Person root exceeds its read bounds")),
+        Some(Some(json)) => {
+            let value: serde_json::Value =
+                serde_json::from_str(&json).map_err(|_| invalid("Person root JSON is invalid"))?;
+            let object = value
+                .as_object()
+                .ok_or(invalid("Person root is not an object"))?;
+            crate::normalized_operation_verifier::validate_person(object, &request.person_id, 0)
+                .map_err(|_| invalid("Person root fields are invalid"))?;
+            crate::library_core_canonical::encode_canonical_value(&value, 65536)
+                .map_err(|_| invalid("Person root exceeds its canonical byte bound"))?;
+            Some(value)
+        }
+    };
+    let response = NormalizedPersonRootResponseV1 {
+        query_id: "person_root_v1".to_owned(),
+        schema_version: 1,
+        person_id: request.person_id,
+        person,
+        source: NormalizedFeedPageSourceV1 {
+            generation_id,
+            projection_revision: revision,
+            transition_sequence: revision,
+        },
+    };
+    transaction.commit()?;
+    Ok(response)
 }
 
 fn query_person_detail(
@@ -6562,6 +8047,21 @@ pub fn query_normalized_v1(
     request: NormalizedQueryRequestV1,
 ) -> Result<NormalizedQueryResponseV1, NormalizedSqliteError> {
     match request {
+        NormalizedQueryRequestV1::RecoveryIntentReview(request) => {
+            Ok(NormalizedQueryResponseV1::RecoveryIntentReview(
+                query_recovery_intent_review(connection, request)?,
+            ))
+        }
+        NormalizedQueryRequestV1::RecoveryArchivePage(request) => {
+            Ok(NormalizedQueryResponseV1::RecoveryArchivePage(
+                query_recovery_archive_page(connection, request)?,
+            ))
+        }
+        NormalizedQueryRequestV1::RecoveryIntentPage(request) => {
+            Ok(NormalizedQueryResponseV1::RecoveryIntentPage(
+                query_recovery_intent_page(connection, request)?,
+            ))
+        }
         NormalizedQueryRequestV1::AccountDetail(request) => {
             Ok(NormalizedQueryResponseV1::AccountDetail(Box::new(
                 query_account_detail(connection, request)?,
@@ -6634,8 +8134,27 @@ pub fn query_normalized_v1(
             NormalizedQueryResponseV1::ItemReaderBody(query_item_reader_body(connection, request)?),
         ),
         NormalizedQueryRequestV1::ItemScan(request) => Ok(NormalizedQueryResponseV1::ItemScan(
-            query_item_scan(connection, request)?,
+            query_item_scan(connection, request, None)?,
         )),
+        NormalizedQueryRequestV1::PriorityTimePage(request) => {
+            if !(0..=MAX_SAFE_INTEGER).contains(&request.source_revision) {
+                return Err(invalid("priority time source is invalid"));
+            }
+            let scan = NormalizedItemScanRequestV1 {
+                analysis_version: None,
+                cancellation_id: request.cancellation_id.clone(),
+                cursor: None,
+                limit: request.limit,
+                priority_computed_before_ms: Some(request.priority_computed_before_ms),
+                reader_session_id: request.reader_session_id.clone(),
+                schema_version: request.schema_version,
+            };
+            Ok(NormalizedQueryResponseV1::ItemScan(query_item_scan(
+                connection,
+                scan,
+                Some(&request),
+            )?))
+        }
         NormalizedQueryRequestV1::ContentFetchPage(request) => {
             Ok(NormalizedQueryResponseV1::ContentFetchPage(
                 query_content_fetch_page(connection, request)?,
@@ -6648,6 +8167,17 @@ pub fn query_normalized_v1(
         }
         NormalizedQueryRequestV1::MapMarkers(request) => Ok(NormalizedQueryResponseV1::MapMarkers(
             query_map_markers(connection, request)?,
+        )),
+        NormalizedQueryRequestV1::PersonAccountPage(request) => {
+            Ok(NormalizedQueryResponseV1::PersonAccountPage(
+                query_person_account_page(connection, request)?,
+            ))
+        }
+        NormalizedQueryRequestV1::AccountRoot(request) => Ok(
+            NormalizedQueryResponseV1::AccountRoot(query_account_root(connection, request)?),
+        ),
+        NormalizedQueryRequestV1::PersonRoot(request) => Ok(NormalizedQueryResponseV1::PersonRoot(
+            query_person_root(connection, request)?,
         )),
         NormalizedQueryRequestV1::PersonDetail(request) => {
             Ok(NormalizedQueryResponseV1::PersonDetail(Box::new(
@@ -6680,6 +8210,26 @@ pub fn query_normalized_v1(
         NormalizedQueryRequestV1::PersonsGraph(request) => Ok(
             NormalizedQueryResponseV1::PersonsGraph(query_persons_graph(connection, request)?),
         ),
+        NormalizedQueryRequestV1::RankingWeightScope(request) => {
+            Ok(NormalizedQueryResponseV1::RankingWeightScope(
+                query_ranking_weight_scope(connection, request)?,
+            ))
+        }
+        NormalizedQueryRequestV1::PreferenceValue(request) => {
+            Ok(NormalizedQueryResponseV1::PreferenceValue(
+                query_preference_value(connection, request)?,
+            ))
+        }
+        NormalizedQueryRequestV1::PreferenceScope(request) => {
+            Ok(NormalizedQueryResponseV1::PreferenceScope(
+                query_preference_scope(connection, request)?,
+            ))
+        }
+        NormalizedQueryRequestV1::PreferencesRevision(request) => {
+            Ok(NormalizedQueryResponseV1::PreferencesRevision(
+                query_preferences_revision(connection, request)?,
+            ))
+        }
         NormalizedQueryRequestV1::PreferencesSnapshot(request) => {
             Ok(NormalizedQueryResponseV1::PreferencesSnapshot(
                 query_preferences_snapshot(connection, request)?,
@@ -6741,6 +8291,16 @@ pub fn query_normalized_json_v1(
     }
 
     let request = match query_id.as_str() {
+        "recovery_intent_review_v1" => decode_request!(
+            NormalizedRecoveryIntentReviewRequestV1,
+            RecoveryIntentReview
+        ),
+        "recovery_archive_page_v1" => {
+            decode_request!(NormalizedRecoveryArchivePageRequestV1, RecoveryArchivePage)
+        }
+        "recovery_intent_page_v1" => {
+            decode_request!(NormalizedRecoveryIntentPageRequestV1, RecoveryIntentPage)
+        }
         "account_detail_v1" => decode_request!(NormalizedAccountDetailRequestV1, AccountDetail),
         "account_graph_page_v1" => {
             decode_request!(NormalizedAccountGraphPageRequestV1, AccountGraphPage)
@@ -6790,6 +8350,9 @@ pub fn query_normalized_json_v1(
             decode_request!(NormalizedItemReaderBodyRequestV1, ItemReaderBody)
         }
         "background_item_page_v1" => decode_request!(NormalizedItemScanRequestV1, ItemScan),
+        "priority_time_page_v1" => {
+            decode_request!(NormalizedPriorityTimePageRequestV1, PriorityTimePage)
+        }
         "content_fetch_claim_v1" => {
             decode_request!(NormalizedContentFetchPageRequestV1, ContentFetchPage)
         }
@@ -6797,6 +8360,14 @@ pub fn query_normalized_json_v1(
             decode_request!(NormalizedProviderMediaPageRequestV1, ProviderMediaPage)
         }
         "map_markers_v1" => decode_request!(NormalizedMapMarkersRequestV1, MapMarkers),
+        "person_account_page_v1" => {
+            if fields.get("cursor").is_none() {
+                return Err(invalid("Person account cursor field is required"));
+            }
+            decode_request!(NormalizedPersonAccountPageRequestV1, PersonAccountPage)
+        }
+        "account_root_v1" => decode_request!(NormalizedAccountDetailRequestV1, AccountRoot),
+        "person_root_v1" => decode_request!(NormalizedPersonDetailRequestV1, PersonRoot),
         "person_detail_v1" => decode_request!(NormalizedPersonDetailRequestV1, PersonDetail),
         "person_graph_page_v1" => {
             decode_request!(NormalizedPersonGraphPageRequestV1, PersonGraphPage)
@@ -6809,6 +8380,18 @@ pub fn query_normalized_json_v1(
         }
         "persons_graph_v1" => {
             decode_request!(NormalizedPersonsGraphRequestV1, PersonsGraph)
+        }
+        "ranking_weight_scope_v1" => {
+            decode_request!(NormalizedRankingWeightScopeRequestV1, RankingWeightScope)
+        }
+        "preference_value_v1" => {
+            decode_request!(NormalizedPreferenceValueRequestV1, PreferenceValue)
+        }
+        "preference_scope_v1" => {
+            decode_request!(NormalizedPreferenceScopeRequestV1, PreferenceScope)
+        }
+        "preferences_revision_v1" => {
+            decode_request!(NormalizedPreferencesSnapshotRequestV1, PreferencesRevision)
         }
         "preferences_snapshot_v1" => {
             decode_request!(NormalizedPreferencesSnapshotRequestV1, PreferencesSnapshot)
@@ -6857,6 +8440,9 @@ pub fn query_normalized_json_v1(
         NormalizedQueryResponseV1::AccountTimeline(response) => encode_response!(response),
         NormalizedQueryResponseV1::ChangeFeed(response) => encode_response!(response),
         NormalizedQueryResponseV1::LocalChangeFeed(response) => encode_response!(response),
+        NormalizedQueryResponseV1::RecoveryArchivePage(response) => encode_response!(response),
+        NormalizedQueryResponseV1::RecoveryIntentPage(response) => encode_response!(response),
+        NormalizedQueryResponseV1::RecoveryIntentReview(response) => encode_response!(response),
         NormalizedQueryResponseV1::OptimisticFields(response) => encode_response!(response),
         NormalizedQueryResponseV1::ContactMatch(response) => encode_response!(response),
         NormalizedQueryResponseV1::FacetSummary(response) => encode_response!(response),
@@ -6873,11 +8459,18 @@ pub fn query_normalized_json_v1(
         NormalizedQueryResponseV1::ContentFetchPage(response) => encode_response!(response),
         NormalizedQueryResponseV1::ProviderMediaPage(response) => encode_response!(response),
         NormalizedQueryResponseV1::MapMarkers(response) => encode_response!(response),
+        NormalizedQueryResponseV1::PersonAccountPage(response) => encode_response!(response),
+        NormalizedQueryResponseV1::AccountRoot(response) => encode_response!(response),
+        NormalizedQueryResponseV1::PersonRoot(response) => encode_response!(response),
         NormalizedQueryResponseV1::PersonDetail(response) => encode_response!(response),
         NormalizedQueryResponseV1::PersonGraphPage(response) => encode_response!(response),
         NormalizedQueryResponseV1::PersonPickerPage(response) => encode_response!(response),
         NormalizedQueryResponseV1::PersonTimeline(response) => encode_response!(response),
         NormalizedQueryResponseV1::PersonsGraph(response) => encode_response!(response),
+        NormalizedQueryResponseV1::RankingWeightScope(response) => encode_response!(response),
+        NormalizedQueryResponseV1::PreferenceValue(response) => encode_response!(response),
+        NormalizedQueryResponseV1::PreferencesRevision(response) => encode_response!(response),
+        NormalizedQueryResponseV1::PreferenceScope(response) => encode_response!(response),
         NormalizedQueryResponseV1::PreferencesSnapshot(response) => encode_response!(response),
         NormalizedQueryResponseV1::RssFeedDetail(response) => encode_response!(response),
         NormalizedQueryResponseV1::RssFeedPage(response) => encode_response!(response),
@@ -8064,6 +9657,18 @@ mod tests {
                 "a".repeat(64)
             ))
             .expect("fixture");
+        connection.execute_batch("UPDATE library_feed_items SET source_url='https://social.test/post/' || global_id,
+            link_url='https://article.test/' || global_id, link_title='Article ' || global_id
+            WHERE global_id IN ('item-1','item-2');").expect("link provenance fixture");
+        for id in ["item-1", "item-2"] {
+            let NormalizedQueryResponseV1::ItemDetail(detail) = query_normalized_v1(&mut connection,
+                NormalizedQueryRequestV1::ItemDetail(NormalizedItemDetailRequestV1 { global_id: id.to_owned(), schema_version: 1 }))
+                .expect("linked item detail") else { panic!("detail response"); };
+            let card = detail.item.expect("item").card;
+            assert_eq!(card.link_preview_url, Some(format!("https://article.test/{id}")));
+            assert_eq!(card.source_url, Some(format!("https://social.test/post/{id}")));
+            assert_eq!(card.link_preview_title, Some(format!("Article {id}")));
+        }
         let request = NormalizedFeedPageRequestV1 {
             cancellation_id: "cancel-1".to_owned(),
             cursor: None,
@@ -8080,6 +9685,8 @@ mod tests {
         };
         assert_eq!(first.total_count, 2);
         assert_eq!(first.rows[0].global_id, "item-2");
+        assert_eq!(first.rows[0].link_preview_url.as_deref(), Some("https://article.test/item-2"));
+        assert_eq!(first.rows[0].source_url.as_deref(), Some("https://social.test/post/item-2"));
         assert_eq!(first.rows[0].tags, ["favorite"]);
         let cursor = first.next_cursor.expect("cursor");
         assert_eq!(
@@ -8097,6 +9704,7 @@ mod tests {
             panic!("feed page response");
         };
         assert_eq!(second.rows[0].global_id, "item-1");
+        assert_eq!(second.rows[0].link_preview_url.as_deref(), Some("https://article.test/item-1"));
         assert!(second.next_cursor.is_none());
         connection
             .execute_batch(
@@ -8275,6 +9883,153 @@ mod tests {
                 .expect("person two derived rows"),
             1
         );
+    }
+
+    // Tier 1: exact-source selection, canonical signed progress, and restart fallback.
+    #[test]
+    fn priority_time_native_source_races_fail_closed_without_assignments() {
+        let (mut connection, _, _) = crate::normalized_mutation::tests::fixture();
+        connection
+            .execute(
+                "INSERT INTO library_materialization_generation VALUES (1, ?1);",
+                ["a".repeat(64)],
+            )
+            .unwrap();
+        let request = serde_json::json!({"queryId":"priority_time_page_v1", "schemaVersion":1,
+            "cancellationId":"cancel-priority-time", "readerSessionId":"reader-priority-time",
+            "limit":64, "priorityComputedBeforeMs":1000, "generationId":"a".repeat(64), "sourceRevision":0});
+        assert!(query_normalized_json_v1(&mut connection, request.clone()).is_ok());
+        connection.execute_batch("UPDATE library_meta SET source_revision=1; UPDATE library_change_state SET revision=1;").unwrap();
+        assert!(matches!(
+            query_normalized_json_v1(&mut connection, request.clone()),
+            Err(NormalizedSqliteError::InvalidRequest("CURSOR_STALE"))
+        ));
+        let mut current = request.clone();
+        current["sourceRevision"] = 1.into();
+        assert!(query_normalized_json_v1(&mut connection, current.clone()).is_ok());
+        connection
+            .execute(
+                "UPDATE library_materialization_generation SET generation_id=?1;",
+                ["b".repeat(64)],
+            )
+            .unwrap();
+        assert!(matches!(
+            query_normalized_json_v1(&mut connection, current.clone()),
+            Err(NormalizedSqliteError::InvalidRequest("CURSOR_STALE"))
+        ));
+        current["generationId"] = "b".repeat(64).into();
+        connection
+            .execute("UPDATE library_facet_summary SET total_count=25001;", [])
+            .unwrap();
+        assert!(matches!(
+            query_normalized_json_v1(&mut connection, current),
+            Err(NormalizedSqliteError::InvalidRequest(
+                "priority time corpus exceeds admission"
+            ))
+        ));
+        assert_eq!(
+            connection
+                .query_row("SELECT count(*) FROM library_operations;", [], |r| r
+                    .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+    }
+
+    #[test]
+    fn priority_time_native_signed_progress_boundary_and_restart_operation_counts() {
+        use crate::normalized_mutation::{
+            accept_normalized_operation_transaction_v1, normalized_primary_mutation_context_v1,
+        };
+        use crate::normalized_operation_test_fixtures::tests::signed_envelopes_from_tip_with_payload;
+        let (mut connection, key, enrollment) = crate::normalized_mutation::tests::fixture();
+        const NOW: i64 = 1_790_900_000_000;
+        const HORIZON: i64 = 604_800_000;
+        connection
+            .execute(
+                "INSERT INTO library_materialization_generation VALUES (1, ?1);",
+                ["a".repeat(64)],
+            )
+            .unwrap();
+        connection
+            .execute("DELETE FROM library_feed_items;", [])
+            .unwrap();
+        for index in 0..265 {
+            let published = if index < 256 {
+                NOW - HORIZON * 4
+            } else if index == 256 {
+                NOW - HORIZON + 1
+            } else {
+                NOW - 86_400_000
+            };
+            connection.execute("INSERT INTO library_feed_items (global_id,platform,content_type,captured_at,published_at,author_id,author_handle,author_display_name,hidden,saved,archived,updated_at) VALUES (?1,'rss','article',?2,?2,'fixture','fixture','Synthetic',0,0,0,?2);", params![format!("synthetic-{index:03}"),published]).unwrap();
+        }
+        let run_pass = |connection: &mut Connection, timestamp: i64, selective: bool| {
+            let mut assigned = 0;
+            loop {
+                let (generation, revision) = query_source(connection).unwrap();
+                let request = if selective {
+                    serde_json::json!({"queryId":"priority_time_page_v1","schemaVersion":1,"cancellationId":"cancel-time-pass","readerSessionId":"reader-time-pass","limit":64,"priorityComputedBeforeMs":timestamp,"generationId":generation,"sourceRevision":revision})
+                } else {
+                    serde_json::json!({"queryId":"background_item_page_v1","schemaVersion":1,"analysisVersion":null,"cursor":null,"cancellationId":"cancel-full-pass","readerSessionId":"reader-full-pass","limit":64,"priorityComputedBeforeMs":timestamp})
+                };
+                let page = query_normalized_json_v1(connection, request.clone()).unwrap();
+                let ids: Vec<String> = page["rows"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|r| r["globalId"].as_str().unwrap().to_owned())
+                    .collect();
+                if !ids.is_empty() {
+                    let context = normalized_primary_mutation_context_v1(connection).unwrap();
+                    let entities: Vec<(&str, i64)> =
+                        ids.iter().map(|id| (id.as_str(), timestamp)).collect();
+                    let envelopes = signed_envelopes_from_tip_with_payload(
+                        &key,
+                        &enrollment,
+                        &format!("tx:priority:{timestamp}:{}", context.next_counter),
+                        context.next_counter,
+                        context.previous_operation_id.as_deref(),
+                        &context.previous_chain_digest,
+                        &entities,
+                        "feed_item_priority_assignment",
+                        Some(
+                            &serde_json::json!({"assigned_at_ms":timestamp,"priority_basis_points":3000}),
+                        ),
+                    );
+                    let receipt = accept_normalized_operation_transaction_v1(
+                        connection, &envelopes, &key, timestamp,
+                    )
+                    .unwrap();
+                    assert_eq!(receipt.committed_revision, revision + 1);
+                    // A native read fenced before this actual signed commit is now stale.
+                    if selective {
+                        assert!(matches!(
+                            query_normalized_json_v1(connection, request),
+                            Err(NormalizedSqliteError::InvalidRequest("CURSOR_STALE"))
+                        ));
+                    }
+                    assigned += ids.len();
+                }
+                if page["nextCursor"].is_null() {
+                    break;
+                }
+                assert!(assigned <= 265, "selector failed to advance");
+            }
+            assigned
+        };
+        assert_eq!(run_pass(&mut connection, NOW, false), 265);
+        assert_eq!(run_pass(&mut connection, NOW + 3_600_000, true), 9);
+        assert_eq!(run_pass(&mut connection, NOW + 7_200_000, true), 8);
+        let (old_timestamp, old_priority) = connection.query_row("SELECT priority_computed_at,priority FROM library_feed_items WHERE global_id='synthetic-000';",[],|r|Ok((r.get::<_,i64>(0)?,r.get::<_,f64>(1)?))).unwrap();
+        assert_eq!((old_timestamp, old_priority), (NOW, 30.0));
+        let boundary = connection.query_row("SELECT priority_computed_at FROM library_feed_items WHERE global_id='synthetic-256';",[],|r|r.get::<_,i64>(0)).unwrap();
+        assert_eq!(boundary, NOW + 3_600_000);
+        assert_eq!(connection.query_row("SELECT count(*) FROM library_operations WHERE mutation_id='feed_item_priority_assignment';",[],|r|r.get::<_,i64>(0)).unwrap(),282);
+        // Restart/invalidation chooses the existing full selector; no ephemeral proof persists.
+        assert_eq!(run_pass(&mut connection, NOW + 7_200_001, false), 265);
+        assert_eq!(connection.query_row("SELECT count(*) FROM library_operations WHERE mutation_id='feed_item_priority_assignment';",[],|r|r.get::<_,i64>(0)).unwrap(),547);
+        println!("Native signed assignments: initial=265, hourly=9, following=8, restart/full=265; journal=547");
     }
 
     #[test]
@@ -9010,6 +10765,193 @@ mod tests {
         )
         .expect("updated summary");
         assert_eq!((summary.total_count, summary.unread_count), (2, 1));
+    }
+
+    #[test]
+    fn person_account_pages_match_cursor_vector_and_refuse_changed_sources() {
+        let mut connection = Connection::open_in_memory().expect("database");
+        install_normalized_schema_v1(&connection).expect("schema");
+        connection.execute_batch(&format!("INSERT INTO library_meta (singleton_id, library_id, schema_version, authority_epoch, source_revision, updated_at) VALUES (1, '{}', 1, 'epoch-1', 7, 1000); INSERT INTO library_materialization_generation SELECT 1, library_id FROM library_meta; UPDATE library_change_state SET revision = 7 WHERE singleton_id = 1;
+          INSERT INTO library_persons (id, name, relationship_status, care_level, created_at, updated_at) VALUES ('person-1', 'Ada', 'friend', 3, 1, 2);", "a".repeat(64))).expect("fixture");
+        for i in 0..130 {
+            connection.execute("INSERT INTO library_accounts (id, person_id, kind, provider, external_id, discovered_from, first_seen_at, last_seen_at, created_at, updated_at) VALUES (?1, 'person-1', 'social', 'instagram', ?1, 'manual_entry', 1, 2, 1, 2)", [format!("account:{i:03}")]).expect("account");
+        }
+        let mut request = serde_json::json!({"queryId":"person_account_page_v1", "schemaVersion":1, "personId":"person-1", "limit":64, "cursor":null});
+        let mut missing_cursor = request.clone();
+        missing_cursor
+            .as_object_mut()
+            .expect("request")
+            .remove("cursor");
+        assert!(query_normalized_json_v1(&mut connection, missing_cursor).is_err());
+        let program = SQLITE_QUERY_PROGRAMS
+            .iter()
+            .find(|p| p.query_id == "person_account_page_v1")
+            .expect("program");
+        let plan = {
+            let mut statement = connection
+                .prepare(&format!("EXPLAIN QUERY PLAN {}", program.sql))
+                .expect("plan");
+            let rows = statement
+                .query_map(params!["person-1", "account:063", 65], |row| {
+                    row.get::<_, String>(3)
+                })
+                .expect("plan rows");
+            rows.collect::<rusqlite::Result<Vec<_>>>()
+                .expect("plan details")
+                .join(" ")
+        };
+        assert!(plan.contains("library_accounts_person"));
+        assert!(!plan.contains("TEMP B-TREE"));
+        let first = query_normalized_json_v1(&mut connection, request.clone()).expect("first");
+        let vector: serde_json::Value = serde_json::from_str(include_str!(
+            "../../shared/src/library-core/person-account-cursor-vector-v1.json"
+        ))
+        .expect("vector");
+        assert_eq!(first["nextCursor"], vector["cursor"]);
+        assert_eq!(first["rows"].as_array().expect("rows").len(), 64);
+        request["cursor"] = first["nextCursor"].clone();
+        let second = query_normalized_json_v1(&mut connection, request.clone()).expect("second");
+        assert_eq!(second["rows"][0]["accountId"], "account:064");
+        request["cursor"] = second["nextCursor"].clone();
+        let third = query_normalized_json_v1(&mut connection, request.clone()).expect("third");
+        assert_eq!(third["rows"].as_array().expect("rows").len(), 2);
+        assert_eq!(third["rows"][0]["accountId"], "account:128");
+        assert!(third["nextCursor"].is_null());
+        request["personId"] = serde_json::json!("other");
+        assert!(query_normalized_json_v1(&mut connection, request.clone()).is_err());
+        request["personId"] = serde_json::json!("person-1");
+        connection.execute_batch("UPDATE library_meta SET source_revision = 8; UPDATE library_change_state SET revision = 8;").expect("change");
+        assert!(query_normalized_json_v1(&mut connection, request).is_err());
+    }
+
+    #[test]
+    fn complete_account_root_transport_preserves_large_fields_and_rejects_overflow() {
+        let mut connection = Connection::open_in_memory().expect("database");
+        install_normalized_schema_v1(&connection).expect("schema");
+        connection.execute_batch(&format!("INSERT INTO library_meta (singleton_id, library_id, schema_version, authority_epoch, source_revision, updated_at) VALUES (1, '{}', 1, 'epoch-1', 12, 1000); INSERT INTO library_materialization_generation SELECT 1, library_id FROM library_meta; UPDATE library_change_state SET revision = 12 WHERE singleton_id = 1;
+          INSERT INTO library_accounts (id, kind, provider, external_id, discovered_from, first_seen_at, last_seen_at, created_at, updated_at, follow_roster_active) VALUES ('account-1', 'social', 'instagram', 'one', 'manual_entry', 1, 2, 1, 2, 1);
+          INSERT INTO library_account_follow_roles VALUES ('account-1', 'following');", "a".repeat(64))).expect("fixture");
+        connection
+            .execute(
+                "UPDATE library_accounts SET address = ?1",
+                ["x".repeat(20000)],
+            )
+            .expect("large field");
+        let request = serde_json::json!({"queryId":"account_root_v1", "schemaVersion":1, "accountId":"account-1"});
+        let root =
+            query_normalized_json_v1(&mut connection, request.clone()).expect("complete root");
+        assert_eq!(
+            root["account"]["address"].as_str().expect("address").len(),
+            20000
+        );
+        assert_eq!(root["account"]["followRosterActive"], true);
+        assert_eq!(
+            root["account"]["followRosterRoles"],
+            serde_json::json!(["following"])
+        );
+        assert!(root["account"].get("personId").is_none());
+        assert_eq!(root["source"]["projectionRevision"], 12);
+        connection
+            .execute(
+                "UPDATE library_accounts SET address = ?1",
+                ["x".repeat(65536)],
+            )
+            .expect("overflow");
+        assert!(query_normalized_json_v1(&mut connection, request).is_err());
+        let absent = query_normalized_json_v1(&mut connection, serde_json::json!({"queryId":"account_root_v1", "schemaVersion":1, "accountId":"missing"})).expect("absent");
+        assert!(absent["account"].is_null());
+    }
+
+    #[test]
+    fn complete_person_root_transport_pins_source_and_rejects_invalid_values() {
+        let mut connection = Connection::open_in_memory().expect("database");
+        install_normalized_schema_v1(&connection).expect("schema");
+        connection.execute_batch(&format!("INSERT INTO library_meta (singleton_id, library_id, schema_version, authority_epoch, source_revision, updated_at) VALUES (1, '{}', 1, 'epoch-1', 12, 1000); INSERT INTO library_materialization_generation SELECT 1, library_id FROM library_meta; UPDATE library_change_state SET revision = 12 WHERE singleton_id = 1; INSERT INTO library_persons (id, name, relationship_status, care_level, created_at, updated_at) VALUES ('person-1', 'Ada', 'friend', 3, 1, 2);", "a".repeat(64))).expect("fixture");
+        for i in 0..4096 {
+            connection
+                .execute(
+                    "INSERT INTO library_person_tags (person_id, tag) VALUES ('person-1', ?1)",
+                    [format!("t{i:04}")],
+                )
+                .expect("tag");
+        }
+        let request = serde_json::json!({"queryId":"person_root_v1", "schemaVersion":1, "personId":"person-1"});
+        let root =
+            query_normalized_json_v1(&mut connection, request.clone()).expect("complete root");
+        assert_eq!(root["person"]["tags"].as_array().expect("tags").len(), 4096);
+        assert_eq!(root["source"]["projectionRevision"], 12);
+        assert_eq!(root["personId"], "person-1");
+        connection
+            .execute(
+                "UPDATE library_persons SET name = ?1 WHERE id = 'person-1'",
+                ["x".repeat(16385)],
+            )
+            .expect("invalid name");
+        assert!(query_normalized_json_v1(&mut connection, request.clone()).is_err());
+        connection
+            .execute(
+                "UPDATE library_persons SET name = 'Ada', notes = ?1 WHERE id = 'person-1'",
+                ["x".repeat(65536)],
+            )
+            .expect("oversized");
+        assert!(query_normalized_json_v1(&mut connection, request).is_err());
+        let absent = query_normalized_json_v1(&mut connection, serde_json::json!({"queryId":"person_root_v1", "schemaVersion":1, "personId":"missing"})).expect("absent");
+        assert!(absent["person"].is_null());
+    }
+
+    #[test]
+    fn complete_person_root_sql_preserves_tags_and_refuses_overflow() {
+        let connection = Connection::open_in_memory().expect("database");
+        install_normalized_schema_v1(&connection).expect("schema");
+        connection.execute_batch("INSERT INTO library_persons (id, name, relationship_status, care_level, created_at, updated_at) VALUES ('person-1', 'Ada', 'friend', 3, 1, 2);").expect("person");
+        let sql = SQLITE_QUERY_PROGRAMS
+            .iter()
+            .find(|p| p.query_id == "person_root_v1")
+            .expect("program")
+            .sql;
+        for i in 0..4096 {
+            connection
+                .execute(
+                    "INSERT INTO library_person_tags (person_id, tag) VALUES ('person-1', ?1)",
+                    [format!("tag-{i:04}")],
+                )
+                .expect("tag");
+        }
+        let read = || {
+            connection
+                .query_row(sql, ["person-1"], |row| row.get::<_, Option<String>>(0))
+                .expect("root")
+        };
+        let root: serde_json::Value =
+            serde_json::from_str(&read().expect("complete")).expect("json");
+        assert_eq!(root["tags"].as_array().expect("tags").len(), 4096);
+        assert_eq!(root["tags"][4095], "tag-4095");
+        assert!(root.get("avatarUrl").is_none());
+        assert!(root.get("reachOutLog").is_none());
+        connection
+            .execute(
+                "INSERT INTO library_person_tags (person_id, tag) VALUES ('person-1', 'overflow')",
+                [],
+            )
+            .expect("overflow");
+        assert_eq!(read(), None);
+        connection
+            .execute("DELETE FROM library_person_tags WHERE tag = 'overflow'", [])
+            .expect("remove sentinel");
+        connection
+            .execute(
+                "UPDATE library_persons SET notes = ?1 WHERE id = 'person-1'",
+                ["x".repeat(65536)],
+            )
+            .expect("oversized root");
+        assert_eq!(read(), None);
+        assert_eq!(
+            rusqlite::OptionalExtension::optional(
+                connection.query_row(sql, ["missing"], |_| Ok(()))
+            )
+            .expect("absence"),
+            None
+        );
     }
 
     #[test]
@@ -10151,5 +12093,239 @@ mod tests {
         )
         .expect_err("offset past end");
         assert!(error.to_string().contains("metadata is invalid"));
+    }
+    #[test]
+    fn native_scoped_preferences_match_shared_value_vector() {
+        let vector: serde_json::Value = serde_json::from_str(include_str!(
+            "../../shared/src/library-core/preference-value-query-vector-v1.json"
+        ))
+        .unwrap();
+        let mut connection = Connection::open_in_memory().unwrap();
+        install_normalized_schema_v1(&connection).unwrap();
+        connection
+            .execute_batch(vector["setupSql"].as_str().unwrap())
+            .unwrap();
+        assert!(query_normalized_json_v1(
+            &mut connection,
+            serde_json::json!({"queryId":"preferences_snapshot_v1","schemaVersion":1})
+        )
+        .is_err());
+        let request = serde_json::json!({"queryId":"preference_value_v1","schemaVersion":1,"generationId":vector["generationId"],"sourceRevision":7,"path":["weights","topics"]});
+        for entry in vector["cases"].as_array().unwrap() {
+            let mut input = request.clone();
+            input["path"] = entry["path"].clone();
+            let response = query_normalized_json_v1(&mut connection, input).unwrap();
+            assert_eq!(response["kind"], entry["kind"]);
+            assert_eq!(
+                response["rows"].as_array().unwrap().len(),
+                entry["rows"].as_u64().unwrap() as usize
+            );
+            assert_eq!(response["rows"], entry["expectedRows"]);
+            assert_eq!(response["path"], entry["path"]);
+            assert_eq!(response["source"]["projectionRevision"], 7);
+        }
+        let scope = serde_json::json!({"queryId":"ranking_weight_scope_v1","schemaVersion":1,
+            "generationId":vector["generationId"],"sourceRevision":7,"paths":vector["weightScope"]["paths"]});
+        let response = query_normalized_json_v1(&mut connection, scope.clone()).unwrap();
+        let expected: Vec<Option<f64>> =
+            serde_json::from_value(vector["weightScope"]["values"].clone()).unwrap();
+        let actual: Vec<Option<f64>> = serde_json::from_value(response["values"].clone()).unwrap();
+        assert_eq!(actual, expected);
+        assert_eq!(response["paths"], scope["paths"]);
+        assert_eq!(response["source"]["projectionRevision"], 7);
+        let mut maximum = scope.clone();
+        maximum["paths"] = serde_json::json!((0..64)
+            .map(|i| vec![
+                "weights".to_owned(),
+                "topics".to_owned(),
+                format!("topic_{i}")
+            ])
+            .collect::<Vec<_>>());
+        let result = query_normalized_json_v1(&mut connection, maximum.clone()).unwrap();
+        let values: Vec<f64> = serde_json::from_value(result["values"].clone()).unwrap();
+        assert_eq!(values, (0..64).map(f64::from).collect::<Vec<_>>());
+        maximum["paths"]
+            .as_array_mut()
+            .unwrap()
+            .push(serde_json::json!(["weights", "recency"]));
+        assert!(query_normalized_json_v1(&mut connection, maximum).is_err());
+        let mut stale_scope = scope.clone();
+        stale_scope["sourceRevision"] = serde_json::json!(8);
+        assert!(matches!(
+            query_normalized_json_v1(&mut connection, stale_scope),
+            Err(NormalizedSqliteError::InvalidRequest("CURSOR_STALE"))
+        ));
+        for fault in [
+            "INSERT INTO library_preferences(path,value_type,boolean_value,updated_at) VALUES ('v:$.weights.recency','boolean',1,1);",
+            "INSERT INTO library_preferences(path,value_type,text_value,updated_at) VALUES ('v:$.weights.recency','text','50',1);",
+            "INSERT INTO library_preferences(path,value_type,updated_at) VALUES ('v:$.weights.recency','null',1);",
+        ] {
+            connection.execute_batch(fault).unwrap();
+            assert!(query_normalized_json_v1(&mut connection, scope.clone()).is_err());
+            connection.execute("DELETE FROM library_preferences WHERE path='v:$.weights.recency';", []).unwrap();
+        }
+        connection.execute("INSERT INTO library_preferences(path,value_type,integer_value,updated_at) VALUES ('v:$.weights.topics.fraction.extra','integer',1,1);", []).unwrap();
+        assert!(query_normalized_json_v1(&mut connection, scope).is_err());
+        connection
+            .execute(
+                "DELETE FROM library_preferences WHERE path='v:$.weights.topics.fraction.extra';",
+                [],
+            )
+            .unwrap();
+        // Match browser retained-row read limits, including the array marker.
+        // These fixtures do not claim fresh operation admission at every size.
+        for boundary in vector["boundaries"].as_array().unwrap() {
+            connection
+                .execute_batch(boundary["setupSql"].as_str().unwrap())
+                .unwrap();
+            let mut input = request.clone();
+            input["path"] = boundary["path"].clone();
+            let result = query_normalized_json_v1(&mut connection, input);
+            if !boundary["accepted"].as_bool().unwrap() {
+                assert!(result.is_err(), "{}", boundary["path"]);
+                continue;
+            }
+            let response = result.unwrap();
+            let rows = response["rows"].as_array().unwrap();
+            assert_eq!(rows.len() as u64, boundary["rows"].as_u64().unwrap());
+            let text_bytes: usize = rows
+                .iter()
+                .filter_map(|row| row["textValue"].as_str())
+                .map(str::len)
+                .sum();
+            assert_eq!(text_bytes as u64, boundary["textBytes"].as_u64().unwrap());
+        }
+        connection.execute("UPDATE library_preferences SET real_value=1e999 WHERE path='v:$.weights.topics.realSetting';", []).unwrap();
+        let mut nonfinite = request.clone();
+        nonfinite["path"] = serde_json::json!(["weights", "topics", "realSetting"]);
+        assert!(matches!(
+            query_normalized_json_v1(&mut connection, nonfinite),
+            Err(NormalizedSqliteError::Sqlite(rusqlite::Error::InvalidQuery))
+        ));
+        let mut stale = request.clone();
+        stale["sourceRevision"] = serde_json::json!(8);
+        assert!(matches!(
+            query_normalized_json_v1(&mut connection, stale),
+            Err(NormalizedSqliteError::InvalidRequest("CURSOR_STALE"))
+        ));
+        for fault in vector["invalidArrayRows"].as_array().unwrap() {
+            let path = fault["path"].as_str().unwrap();
+            connection.execute("INSERT INTO library_preferences(path,value_type,integer_value,updated_at) VALUES (?1,'integer',3,1);",[path]).unwrap();
+            let mut input = request.clone();
+            input["path"] = serde_json::json!(["storyWall", "selectedYears"]);
+            assert!(
+                query_normalized_json_v1(&mut connection, input).is_err(),
+                "{}",
+                fault["reason"]
+            );
+            connection
+                .execute("DELETE FROM library_preferences WHERE path=?1;", [path])
+                .unwrap();
+        }
+        connection
+            .execute(
+                "DELETE FROM library_preferences WHERE path='v:$.storyWall.selectedYears[1]';",
+                [],
+            )
+            .unwrap();
+        let mut incomplete = request;
+        incomplete["path"] = serde_json::json!(["storyWall", "selectedYears"]);
+        assert!(matches!(
+            query_normalized_json_v1(&mut connection, incomplete),
+            Err(NormalizedSqliteError::InvalidRequest(
+                "preference array is incomplete"
+            ))
+        ));
+    }
+    #[test]
+    fn preference_revision_ignores_item_changes_and_tracks_generation_replacement() {
+        let vector: serde_json::Value = serde_json::from_str(include_str!(
+            "../../shared/src/library-core/preference-value-query-vector-v1.json"
+        ))
+        .unwrap();
+        let mut connection = Connection::open_in_memory().unwrap();
+        install_normalized_schema_v1(&connection).unwrap();
+        connection
+            .execute_batch(vector["setupSql"].as_str().unwrap())
+            .unwrap();
+        for step in vector["preferenceRevisionSteps"].as_array().unwrap() {
+            connection
+                .execute_batch(step["sql"].as_str().unwrap())
+                .unwrap();
+            let result = query_normalized_json_v1(
+                &mut connection,
+                serde_json::json!({"queryId":"preferences_revision_v1","schemaVersion":1}),
+            );
+            if step["revision"].is_null() {
+                assert!(matches!(
+                    result,
+                    Err(NormalizedSqliteError::InvalidRequest(
+                        "preference revision source is inconsistent"
+                    ))
+                ));
+            } else {
+                let response = result.unwrap();
+                assert_eq!(response["revision"], step["revision"]);
+                assert_eq!(response["source"]["generationId"], step["generationId"]);
+                assert_eq!(response["source"]["projectionRevision"], 7);
+            }
+        }
+    }
+    #[test]
+    fn preference_scope_preserves_values_and_refuses_aggregate_overflow() {
+        let vector: serde_json::Value = serde_json::from_str(include_str!(
+            "../../shared/src/library-core/preference-value-query-vector-v1.json"
+        ))
+        .unwrap();
+        let mut connection = Connection::open_in_memory().unwrap();
+        install_normalized_schema_v1(&connection).unwrap();
+        connection
+            .execute_batch(vector["setupSql"].as_str().unwrap())
+            .unwrap();
+        let mut request = serde_json::json!({"queryId":"preference_scope_v1","schemaVersion":1,
+            "generationId": vector["generationId"], "sourceRevision":7,
+            "paths":vector["cases"].as_array().unwrap().iter().map(|entry|entry["path"].clone()).collect::<Vec<_>>()});
+        let response = query_normalized_json_v1(&mut connection, request.clone()).unwrap();
+        for (result, entry) in response["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .zip(vector["cases"].as_array().unwrap())
+        {
+            assert_eq!(result["path"], entry["path"]);
+            assert_eq!(result["kind"], entry["kind"]);
+            assert_eq!(result["rows"], entry["expectedRows"]);
+        }
+        request["sourceRevision"] = 8.into();
+        assert!(query_normalized_json_v1(&mut connection, request.clone()).is_err());
+        request["sourceRevision"] = 7.into();
+        request["paths"] = serde_json::json!([["same"], ["same"]]);
+        assert!(query_normalized_json_v1(&mut connection, request.clone()).is_err());
+        request["paths"] = serde_json::json!((0..64)
+            .map(|i| vec![
+                "weights".to_string(),
+                "topics".to_string(),
+                format!("topic_{i}")
+            ])
+            .collect::<Vec<_>>());
+        assert_eq!(
+            query_normalized_json_v1(&mut connection, request.clone()).unwrap()["results"]
+                .as_array()
+                .unwrap()
+                .len(),
+            64
+        );
+        request["paths"]
+            .as_array_mut()
+            .unwrap()
+            .push(serde_json::json!(["missing"]));
+        assert!(query_normalized_json_v1(&mut connection, request.clone()).is_err());
+        connection
+            .execute_batch(vector["scopeOverflowSql"].as_str().unwrap())
+            .unwrap();
+        request["paths"] = serde_json::json!((0..32)
+            .map(|i| vec![format!("scope{i}")])
+            .collect::<Vec<_>>());
+        assert!(query_normalized_json_v1(&mut connection, request).is_err());
     }
 }

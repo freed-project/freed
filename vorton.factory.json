@@ -1,0 +1,29 @@
+{
+  "$schema": "./vorton.factory.schema.json",
+  "schemaVersion": 1,
+  "repository": "freed-project/freed",
+  "baseBranch": "dev",
+  "issues": {
+    "requiredLabels": ["factory:ready"],
+    "excludedLabels": [
+      "factory:running",
+      "factory:blocked",
+      "factory:human-review"
+    ],
+    "priorityLabels": [
+      "priority:critical",
+      "priority:high",
+      "priority:normal",
+      "priority:low"
+    ]
+  },
+  "validation": [
+    {
+      "argv": ["node", "scripts/doctor.mjs", "--strict", "--factory-worker"],
+      "timeoutSeconds": 60
+    },
+    { "argv": ["npm", "run", "validate:feature"], "timeoutSeconds": 3600 }
+  ],
+  "publication": { "mode": "draft-pr", "independentReview": true },
+  "maxRepairAttempts": 2
+}

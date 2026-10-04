@@ -23,6 +23,8 @@ describe("Library Core protocol scalar codecs", () => {
       "A".repeat(64),
       "g".repeat(64),
       `${hex64} `,
+      `${hex64}\n`,
+      `${hex64}\r\n`,
       new Uint8Array(64),
     ]) {
       expect(isLibraryCoreLowercaseHex64(invalid)).toBe(false);
@@ -31,6 +33,8 @@ describe("Library Core protocol scalar codecs", () => {
 
   it("closes the exact lowercase Ed25519 public-key and signature encodings", () => {
     expect(isLibraryCoreEd25519PublicKeyHex("ab".repeat(32))).toBe(true);
+    expect(isLibraryCoreEd25519PublicKeyHex("ab".repeat(32) + "\n")).toBe(false);
+    expect(isLibraryCoreEd25519SignatureHex("cd".repeat(64) + "\n")).toBe(false);
     expect(isLibraryCoreEd25519SignatureHex("cd".repeat(64))).toBe(true);
 
     for (const invalid of [

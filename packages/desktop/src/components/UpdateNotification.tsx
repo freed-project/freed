@@ -4,6 +4,7 @@ import {
   RELEASE_CHANNEL_LABELS,
   type ReleaseChannel,
 } from "@freed/shared";
+import { UpdateBackupStatus } from "@freed/ui/components/UpdateBackupStatus";
 import { UpdateProgressBar } from "@freed/ui/components/UpdateProgressBar";
 import { extractUpdatePreviewLine } from "../lib/update-release-preview";
 
@@ -11,6 +12,7 @@ export type UpdateState =
   | { phase: "idle" }
   | { phase: "checking" }
   | { phase: "available"; update: Update; channel: ReleaseChannel }
+  | { phase: "backing-up"; startedAtMonotonicMs?: number }
   | { phase: "downloading"; percent: number }
   | { phase: "ready" }
   | { phase: "error"; message: string };
@@ -48,7 +50,7 @@ export function UpdateNotification({
             />
           </div>
 
-          {state.phase !== "downloading" && (
+          {state.phase !== "downloading" && state.phase !== "backing-up" && (
             <button
               onClick={onDismiss}
               className="shrink-0 text-text-muted hover:text-text-primary transition-colors"
@@ -120,6 +122,8 @@ function UpdateContent({
       : null;
 
   switch (state.phase) {
+    case "backing-up":
+      return <UpdateBackupStatus className="text-sm text-text-secondary" startedAtMonotonicMs={state.startedAtMonotonicMs} />;
     case "available":
       return (
         <>

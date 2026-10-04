@@ -26,6 +26,7 @@ interface ResolvedLocationsState {
 }
 
 interface ResolvedLocationsCacheState {
+  plan?: object;
   resolvedItems: ResolvedLocationItem[];
   lastResolvedAt: number | null;
   resolvingCount: number;
@@ -125,9 +126,10 @@ export function useResolvedLocationCandidates(
     async function resolveLocations() {
       if (locationPlan.namedRequestCount === 0) {
         setState((current) =>
-          current.resolvedItems.length === 0 && current.resolvingCount === 0
+          current.plan === locationPlan && current.resolvedItems.length === 0 && current.resolvingCount === 0
             ? current
             : {
+                plan: locationPlan,
                 resolvedItems: [],
                 resolvingCount: 0,
                 lastResolvedAt: Date.now(),
@@ -137,6 +139,7 @@ export function useResolvedLocationCandidates(
       }
 
       setState({
+        plan: locationPlan,
         resolvedItems: [],
         resolvingCount: locationPlan.namedRequestCount,
         lastResolvedAt: null,
@@ -162,6 +165,7 @@ export function useResolvedLocationCandidates(
           const completedAt = remainingCount === 0 ? Date.now() : null;
 
           setState((current) => ({
+            plan: locationPlan,
             resolvedItems:
               groupResolvedItems.length === 0
                 ? current.resolvedItems
@@ -181,8 +185,8 @@ export function useResolvedLocationCandidates(
   }, [locationPlan.namedGroups, locationPlan.namedRequestCount]);
 
   const resolvedItems = useMemo(
-    () => [...locationPlan.coordinateItems, ...state.resolvedItems],
-    [locationPlan.coordinateItems, state.resolvedItems],
+    () => [...locationPlan.coordinateItems, ...(state.plan === locationPlan ? state.resolvedItems : [])],
+    [locationPlan, state.plan, state.resolvedItems],
   );
 
   const friendMarkers = useMemo(
@@ -200,6 +204,7 @@ export function useResolvedLocationCandidates(
 
   return {
     ...state,
+    resolvingCount: state.plan === locationPlan ? state.resolvingCount : locationPlan.namedRequestCount,
     resolvedItems,
     friendMarkers,
     allContentMarkers,

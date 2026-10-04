@@ -29,6 +29,18 @@ discriminator, deserializes the remaining fields into the exact generated
 request type, and returns the exact response DTO. Unknown query IDs and extra
 fields fail closed. Raw SQL never crosses the native boundary.
 
+Freed Desktop records its initial Create or Join choice in the bounded private
+`library-installation-setup-v1.json` control file. A Join choice pins one Library
+before checkpoint staging and never creates writer authority. Effective roles
+come from native Primary admission or a verified follower checkpoint and
+enrollment, not from that setup record or renderer storage. Initial setup cannot
+replace a selected or populated independent Library. Legacy renderer consumer
+preferences may only revoke local writer and provider admission; they can never
+grant it. Interrupted first consumer activation resumes from its committed
+checkpoint receipt before publishing the local selector. Provider entry points
+and cloud export commands check native Primary admission independently of UI
+state. Capture schedules are not started for consumers.
+
 Native and browser responses pass through one shared TypeScript dispatcher
 bound to the original typed request before reaching a client. The dispatcher
 selects the registered response parser by `queryId`, checks source fences,
@@ -108,8 +120,13 @@ On macOS and Linux, the service binds an owner-only mode `0600` Unix socket.
 It proves the descriptor-bound state root before and after binding, validates
 socket ownership and identity, removes only an owned private stale socket, and
 never replaces a foreign path. A state root whose path exceeds the Unix socket
-limit uses a stable owner-specific endpoint under `/tmp`, derived from the
-canonical state-root identity and protected by the same ownership checks.
+limit uses a stable owner-specific endpoint derived from the canonical
+state-root identity. macOS uses `/tmp`. Linux uses the systemd-created mode
+`0700` directory `/run/freed-library-<state-root-hash>`, so
+`PrivateTmp=true` does not hide the endpoint from external actors. Linux
+holds verified directory descriptors through listener shutdown and performs
+socket creation and cleanup through the runtime directory descriptor. Missing,
+foreign, writable-by-others, or extended-ACL runtime directories fail closed.
 Shutdown closes every connection and removes only the exact socket inode it
 created. Listener failure fences the Primary and kills the native sidecar.
 The private service status record reports the active endpoint while the
@@ -119,8 +136,8 @@ verifiable service-account ACL.
 
 The installed host derives its service-manager definition from the same
 already-bound configuration it will serve. The compiled CLI emits one
-digest-bound macOS LaunchAgent plist or Linux systemd user unit with exact
-Node, CLI, and config arguments. Both definitions run without a shell, apply
+digest-bound macOS LaunchAgent plist or Linux systemd system unit running as
+the verified non-root user with exact Node, CLI, and config arguments. Both definitions run without a shell, apply
 mode `0077`, and bind lifecycle settlement to the service process group.
 Linux grants writes only to the configured data and state roots. Definition
 generation never installs, loads, enables, or starts a service. Windows emits

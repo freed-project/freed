@@ -24,6 +24,22 @@ test("Saved shows all 50 sample bookmarks after browsing Friends", async ({ app,
   await expect(savedRow.locator("..")).toContainText("50");
   await savedRow.click();
   await expect(page.getByRole("banner")).toContainText("Saved•50 items");
+  // Saved must expose inherited classification filters instead of making
+  // the smaller result count look like missing bookmarks.
+  await app.setDeviceDisplayPreferences({ feedSignalModes: ["events", "personal"] });
+  await expect(page.getByRole("banner")).toContainText("Saved Events and Personal");
+  await app.setDeviceDisplayPreferences({ feedSignalModes: ["inspiring", "news"] });
+  await expect(page.getByRole("banner")).toContainText("Saved Inspiring and News");
+  await app.setDeviceDisplayPreferences({ feedSignalModes: ["news"] });
+  await expect(page.getByRole("banner")).toContainText("Saved News");
+  await app.setDeviceDisplayPreferences({ feedSignalModes: ["inspiring", "news", "personal"] });
+  await expect(page.getByRole("banner")).toContainText("Saved Filtered");
+  await page.setViewportSize({ width: 600, height: 850 });
+  await page.getByRole("button", { name: "Filter view", exact: true }).click();
+  await page.getByRole("menuitemcheckbox", { name: /Everything/ }).click();
+  await expect(page.getByRole("banner")).toContainText("Saved•50 items");
+  await page.getByRole("button", { name: "Filter view", exact: true }).click();
+  await page.setViewportSize({ width: 1280, height: 850 });
   await page.locator("[data-feed-item-id]").first().click();
   const back = page.getByTestId("workspace-toolbar-reader-back");
   const bookmark = page.getByRole("banner").getByRole("button", { name: "Unsave", exact: true });

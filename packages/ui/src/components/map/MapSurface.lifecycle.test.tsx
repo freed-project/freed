@@ -45,6 +45,9 @@ function liveMap(container: HTMLElement) {
   const listeners = new Map<string, Set<(event?: unknown) => void>>();
   return {
     painter: {},
+    getContainer: () => ({ clientWidth: 900, clientHeight: 560 }),
+    getCenter: () => ({ lng: 0 }),
+    project: vi.fn(() => ({ x: 450, y: 280 })), fitBounds: vi.fn(),
     on: vi.fn((event: string, listener: (event?: unknown) => void) => {
       if (!listeners.has(event)) listeners.set(event, new Set());
       listeners.get(event)!.add(listener);
@@ -85,6 +88,82 @@ describe("MapSurface initialization ownership", () => {
     await act(async () => { await vi.dynamicImportSettled(); });
   }
   async function unmount() { await act(async () => root!.unmount()); root = null; }
+
+  it("preserves manual camera through inset and visible content updates", async () => {
+    await mount();
+    await act(async () => { map.emit("movestart", { originalEvent: new Event("mousedown") }); map.emit("moveend"); });
+    await act(async () => root!.render(<MapSurface markers={[{ ...markers[0], label: "updated" }]}
+      viewportInsets={{ top: 10, right: 20, bottom: 30, left: 40 }} />));
+    await act(async () => root!.render(<MapSurface markers={[{ ...markers[0], lat: 49 }]} cameraContentKey="friends" />));
+    expect(map.flyTo).toHaveBeenCalledTimes(1);
+  });
+  it("animates changed offscreen content once, but never a manual empty pan", async () => {
+    await mount();
+    map.project.mockReturnValue({ x: -100, y: -100 });
+    await act(async () => { map.emit("movestart", { originalEvent: new Event("wheel") }); map.emit("moveend"); });
+    expect(map.flyTo).toHaveBeenCalledTimes(1);
+    await act(async () => root!.render(<MapSurface markers={markers} cameraContentKey="friends" />));
+    expect(map.flyTo).toHaveBeenCalledTimes(2);
+    expect(map.flyTo).toHaveBeenLastCalledWith(expect.objectContaining({ duration: 600 }));
+    for (const next of [markers, [], []]) await act(async () => root!.render(<MapSurface markers={[...next]} cameraContentKey="friends" />));
+    expect(map.flyTo).toHaveBeenCalledTimes(2);
+  });
+  it("lets interaction own the camera before progressive initial locations settle", async () => {
+    await act(async () => root!.render(<MapSurface markers={markers} cameraContentSettled={false} />));
+    await act(async () => { await vi.dynamicImportSettled(); });
+    expect(map.flyTo).not.toHaveBeenCalled();
+    map.getCanvasContainer().dispatchEvent(new WheelEvent("wheel", { deltaY: 4 }));
+    map.project.mockReturnValue({ x: -100, y: -100 });
+    await act(async () => root!.render(<MapSurface markers={[{ ...markers[0], lat: 49 }]} cameraContentSettled={false} />));
+    await act(async () => root!.render(<MapSurface markers={[{ ...markers[0], lat: 50 }]} cameraContentSettled />));
+    expect(map.flyTo).not.toHaveBeenCalled();
+  });
+  it("fits once after initial resolution and preserves intentional focus", async () => {
+    await act(async () => root!.render(<MapSurface markers={markers} cameraContentSettled={false} />));
+    await act(async () => { await vi.dynamicImportSettled(); });
+    expect(map.flyTo).not.toHaveBeenCalled();
+    await act(async () => root!.render(<MapSurface markers={markers} cameraContentSettled />));
+    expect(map.flyTo).toHaveBeenCalledTimes(1);
+    await act(async () => root!.render(<MapSurface markers={markers} focusedMarkerKey={markers[0].key} />));
+    expect(map.flyTo).toHaveBeenCalledTimes(2);
+    expect(map.flyTo).toHaveBeenLastCalledWith(expect.objectContaining({ zoom: 7.5 }));
+  });
+  it("checks nearest longitude world copy and preserves partially visible content", async () => {
+    await mount(); map.getCenter = () => ({ lng: 181 });
+    map.project.mockReturnValue({ x: 0, y: 280 });
+    await act(async () => root!.render(<MapSurface markers={[{ ...markers[0], lng: -179 }]} />));
+    expect(map.project).toHaveBeenLastCalledWith([181, markers[0].lat]);
+    expect(map.flyTo).toHaveBeenCalledTimes(1);
+  });
+
+  it("defers offscreen filter updates until a trackpad gesture ends", async () => {
+    await mount(); map.project.mockReturnValue({ x: -100, y: -100 });
+    map.getCanvasContainer().dispatchEvent(new WheelEvent("wheel", { deltaY: 4 }));
+    await act(async () => root!.render(<MapSurface markers={markers} cameraContentKey="friends" />));
+    expect(map.flyTo).toHaveBeenCalledTimes(1);
+    await act(async () => map.emit("moveend"));
+    expect(map.flyTo).toHaveBeenCalledTimes(2);
+    await act(async () => map.emit("moveend"));
+    expect(map.flyTo).toHaveBeenCalledTimes(2);
+  });
+  it("defers later progressive content updates until their batch settles", async () => {
+    await mount(); map.project.mockReturnValue({ x: -100, y: -100 });
+    await act(async () => root!.render(<MapSurface markers={[{ ...markers[0], lat: 49 }]} cameraContentSettled={false} />));
+    await act(async () => root!.render(<MapSurface markers={[{ ...markers[0], lat: 50 }]} cameraContentSettled={false} />));
+    expect(map.flyTo).toHaveBeenCalledTimes(1);
+    await act(async () => root!.render(<MapSurface markers={[{ ...markers[0], lat: 50 }]} cameraContentSettled />));
+    expect(map.flyTo).toHaveBeenCalledTimes(2);
+  });
+  it("ignores a stale movement handler after map remount", async () => {
+    await mount();
+    const staleMove = map.on.mock.calls.find(([event]) => event === "movestart")![1];
+    await act(async () => root!.render(<MapSurface markers={markers} interactive={false} />));
+    await act(async () => root!.render(<MapSurface markers={markers} interactive />));
+    map.project.mockReturnValue({ x: -100, y: -100 });
+    await act(async () => staleMove({ originalEvent: new Event("wheel") }));
+    await act(async () => root!.render(<MapSurface markers={markers} cameraContentKey="friends" />));
+    expect(map.flyTo).toHaveBeenCalledTimes(2);
+  });
 
   it("preserves the map through recoverable errors and removes its handlers on unmount", async () => {
     await mount();

@@ -33,6 +33,8 @@ import {
 } from "./fb-auth";
 import {
   quiesceDesktopProviderAuthForFactoryReset,
+  quiesceDesktopProviderAuthForHandoff,
+  isDesktopProviderAuthAllowed,
   registerDesktopProviderAuthQuiesceHandler,
   resetDesktopProviderAuthLifecycleForTests,
   runDesktopProviderAuthRequest,
@@ -42,6 +44,7 @@ import {
   registerDesktopXLoginResetHandler,
 } from "./x-login-reset-controller";
 import { storeCookies } from "./x-auth";
+import { pauseDesktopOperationsForHandoff } from "./factory-reset-guard";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -63,6 +66,35 @@ function resetOperations(clearProviderDataAndConnections: () => Promise<void>) {
 }
 
 describe("provider auth factory reset drain", () => {
+  it("drains login work during handoff and resumes without reopening a factory reset", async () => {
+    await expect(quiesceDesktopProviderAuthForHandoff()).rejects.toThrow("requires the handoff pause");
+    const issued = deferred<void>();
+    const request = runDesktopProviderAuthRequest(async () => issued.promise);
+    const rejection = expect(request).rejects.toThrow("pausing provider login");
+    await Promise.resolve();
+    await Promise.resolve();
+    const closeLogin = vi.fn();
+    registerDesktopProviderAuthQuiesceHandler(closeLogin);
+    const pause = pauseDesktopOperationsForHandoff();
+    try {
+      const drained = vi.fn();
+      const drain = quiesceDesktopProviderAuthForHandoff().then(drained);
+      await Promise.resolve();
+      expect(drained).not.toHaveBeenCalled();
+      await expect(runDesktopProviderAuthRequest(async () => undefined)).rejects.toThrow("pausing provider login");
+      issued.resolve();
+      await rejection;
+      await drain;
+      expect(closeLogin).toHaveBeenCalledOnce();
+    } finally {
+      pause.resume();
+    }
+    await expect(runDesktopProviderAuthRequest(async () => "resumed")).resolves.toBe("resumed");
+    const secondPause = pauseDesktopOperationsForHandoff();
+    try { await quiesceDesktopProviderAuthForFactoryReset(); }
+    finally { secondPause.resume(); }
+    expect(isDesktopProviderAuthAllowed()).toBe(false);
+  });
   beforeEach(() => {
     resetDesktopProviderAuthLifecycleForTests();
     resetFactoryResetStateForTests();

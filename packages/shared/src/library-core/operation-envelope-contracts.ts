@@ -20,6 +20,8 @@ import {
   PERSON_REACH_OUT_APPEND_PAYLOAD_SCHEMA,
   PERSON_UPSERT_PAYLOAD_SCHEMA,
   FRIEND_REPLACE_PAYLOAD_SCHEMA,
+  validateArchivedFriendReplacePayloadV1,
+  validateHistoricalPreferencesPayloadV1,
   ACCOUNT_PERSON_ASSIGNMENT_PAYLOAD_SCHEMA,
   ACCOUNT_REMOVE_PAYLOAD_SCHEMA,
   ACCOUNT_UPSERT_PAYLOAD_SCHEMA,
@@ -675,6 +677,19 @@ const CAUSAL_TIP_KEYS = [
 
 const EMPTY_BLOB_REFERENCES = Object.freeze([]) as readonly [];
 const CLOSED_TRANSACTION_MEMBERS = new WeakSet<object>();
+const ARCHIVED_FRIEND_MEMBERS = new WeakSet<object>();
+const HISTORICAL_PREFERENCE_MEMBERS = new WeakSet<object>();
+
+/** Historical preference construction never grants fresh-write provenance. */
+export function isLibraryCoreHistoricalPreferencesMemberV1(value: unknown): value is LibraryCoreTransactionMemberConstruction {
+  return typeof value === "object" && value !== null && HISTORICAL_PREFERENCE_MEMBERS.has(value);
+}
+
+/** Archive members never satisfy the normal construction provenance check. */
+export function isLibraryCoreArchivedFriendMemberV1(value: unknown): value is LibraryCoreTransactionMemberConstruction {
+  return typeof value === "object" && value !== null && ARCHIVED_FRIEND_MEMBERS.has(value);
+}
+
 
 export function isLibraryCoreTransactionMemberConstruction(
   value: unknown,
@@ -985,6 +1000,7 @@ function constructEntityTransactionMember(
         readonly validatePayload: typeof ACCOUNT_REMOVE_PAYLOAD_SCHEMA.validate;
         readonly entityType: "Account";
       },
+  historical: "friend" | "preferences" | false = false,
 ): LibraryCoreTransactionMemberConstruction {
   const digestValue = dependencies.digest;
   if (typeof digestValue !== "function") {
@@ -1131,7 +1147,7 @@ function constructEntityTransactionMember(
     body,
     member_digest: memberDigest,
   });
-  CLOSED_TRANSACTION_MEMBERS.add(construction);
+  (historical === "friend" ? ARCHIVED_FRIEND_MEMBERS : historical === "preferences" ? HISTORICAL_PREFERENCE_MEMBERS : CLOSED_TRANSACTION_MEMBERS).add(construction);
   return construction;
 }
 
@@ -1289,6 +1305,15 @@ function constructPreferencesLeafAssignmentTransactionMember(
   }) as LibraryCoreTransactionMemberConstruction<PreferencesLeafAssignmentTransactionMemberBodyV1>;
 }
 
+/** Reconstruct authentic historical preferences without making them eligible for signing. */
+export function constructLibraryCoreHistoricalPreferencesMemberV1(input: PreferencesLeafAssignmentTransactionMemberInputV1, dependencies: LibraryCoreOperationDigestDependencies): LibraryCoreTransactionMemberConstruction<PreferencesLeafAssignmentTransactionMemberBodyV1> {
+  return constructEntityTransactionMember(input, dependencies, {
+    operationType: "preferences_leaf_assignment",
+    validatePayload: validateHistoricalPreferencesPayloadV1,
+    entityType: "UserPreferences",
+  }, "preferences") as LibraryCoreTransactionMemberConstruction<PreferencesLeafAssignmentTransactionMemberBodyV1>;
+}
+
 function constructPersonUpsertTransactionMember(
   input: PersonUpsertTransactionMemberInputV1,
   dependencies: LibraryCoreOperationDigestDependencies,
@@ -1316,6 +1341,16 @@ function constructFriendReplaceTransactionMember(
   if (construction.body.payload.person.id !== construction.body.entity_id) {
     throw new TypeError("Friend Person ID must equal entity_id");
   }
+  return construction;
+}
+
+/** Reconstruct an archived single Friend member without granting new-write provenance. */
+export function constructLibraryCoreArchivedFriendMemberV1(input: FriendReplaceTransactionMemberInputV1, dependencies: LibraryCoreOperationDigestDependencies): LibraryCoreTransactionMemberConstruction<FriendReplaceTransactionMemberBodyV1> {
+  const construction = constructEntityTransactionMember(input, dependencies, {
+    operationType: "friend_replace", validatePayload: validateArchivedFriendReplacePayloadV1, entityType: "Person",
+  }, "friend") as LibraryCoreTransactionMemberConstruction<FriendReplaceTransactionMemberBodyV1>;
+  if (construction.body.payload.person.id !== construction.body.entity_id || construction.body.transaction_member_count !== 1 || construction.body.transaction_member_index !== 0)
+    throw new TypeError("Archived Friend must be one complete member with its original Person");
   return construction;
 }
 

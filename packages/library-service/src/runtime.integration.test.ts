@@ -327,6 +327,8 @@ async function createHarnessFixture(
       stateRoot,
       admission,
       credential,
+      "",
+      "process-lifecycle-only",
     ],
   };
 }
@@ -594,7 +596,9 @@ async function exchangeLocalActor(
     const chunks: Buffer[] = [];
     const socket = net.createConnection(endpoint);
     socket.once("error", reject);
-    socket.on("data", (chunk) => chunks.push(chunk));
+    socket.on("data", (chunk) =>
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)),
+    );
     socket.once("end", () => resolve(Buffer.concat(chunks)));
     socket.once("connect", () =>
       socket.end(`${JSON.stringify(request)}\n`, "utf8"),
@@ -893,7 +897,7 @@ describe("compiled freed-library runtime", () => {
           expect(serviceDefinition).toMatchObject({ code: 0, stderr: "" });
           expect(JSON.parse(serviceDefinition.stdout)).toMatchObject({
             platform: "linux",
-            format: "systemd-user-unit-v1",
+            format: "systemd-system-unit-v1",
             fileName: "freed-library.service",
             contents: expect.stringContaining("ProtectSystem=strict"),
           });

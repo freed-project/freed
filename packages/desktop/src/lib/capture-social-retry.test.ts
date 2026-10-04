@@ -1,3 +1,4 @@
+import { refreshLibraryCoreDesktopRole } from "./library-core-desktop-role";
 import {
   afterEach,
   beforeAll,
@@ -42,6 +43,7 @@ const mocks = vi.hoisted(() => {
     withProviderSyncing: vi.fn(
       async (_provider: string, run: () => Promise<unknown>) => run(),
     ),
+    role: "primary" as "primary" | "follower",
     sqliteActive: false,
     writerAllowed: true,
     writerConfigured: true,
@@ -50,7 +52,10 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock("@tauri-apps/api/core", () => ({
-  invoke: vi.fn(),
+  invoke: vi.fn(async (command: string) => command === "normalized_desktop_installation_status" ? {
+    state: mocks.role === "primary" ? "standalone_primary" : "editable_consumer", role: mocks.role,
+    libraryId: "a".repeat(64), authorityEpochId: "b".repeat(64), actorId: "c".repeat(64),
+  } : undefined),
   isTauri: () => true,
 }));
 
@@ -125,7 +130,9 @@ describe("scheduled social capture retries", () => {
     captureModule = await import("./capture");
   });
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    mocks.role = "primary";
+    await refreshLibraryCoreDesktopRole();
     window.localStorage.clear();
     vi.useFakeTimers();
     vi.spyOn(Math, "random").mockReturnValue(0);
@@ -539,7 +546,8 @@ describe("scheduled social capture retries", () => {
   });
 
   it("refuses every social capture before provider contact in follower mode", async () => {
-    window.localStorage.setItem("freed.libraryCore.desktopRoleV1", "follower");
+    mocks.role = "follower";
+    await refreshLibraryCoreDesktopRole();
 
     const result = await captureModule.refreshSocialProvider(
       "facebook",

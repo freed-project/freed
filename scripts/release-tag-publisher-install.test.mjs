@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash, generateKeyPairSync } from "node:crypto";
 import {
+  chmodSync,
   mkdtempSync,
   readFileSync,
   realpathSync,
@@ -19,6 +20,12 @@ import {
   rotateReleaseTagPublisher,
   verifyReleaseTagPublisher,
 } from "./release-tag-publisher-install.mjs";
+
+// These tests already replace native installation and attestation commands.
+function inspectFixtureHost(filePath) {
+  assert.equal(filePath, "/usr/bin/true");
+  return filePath;
+}
 
 function installationReadiness() {
   return {
@@ -162,6 +169,7 @@ test("activation bounds credential-quiet native attestation", () => {
     appSlug: "freed-release-publisher",
     dependencies: {
       hostPath: "/usr/bin/true",
+      inspectHost: inspectFixtureHost,
       configPath: "/Library/Application Support/Freed/release-tag-publisher.json",
       run(file, args, options) {
         calls.push({ file, args, options });
@@ -192,6 +200,7 @@ test("activation bounds credential-quiet native attestation", () => {
         appSlug: "freed-release-publisher",
         dependencies: {
           hostPath: "/usr/bin/true",
+          inspectHost: inspectFixtureHost,
           configPath:
             "/Library/Application Support/Freed/release-tag-publisher.json",
           run(file, args) {
@@ -211,6 +220,34 @@ test("activation bounds credential-quiet native attestation", () => {
     /does not match the pinned annotated-tag publisher/,
   );
   assert.deepEqual(rejectedStatuses, ["pending"]);
+});
+
+test("activation rejects an unsafe host before native mutation", (t) => {
+  const root = realpathSync(
+    mkdtempSync(path.join(os.tmpdir(), "freed-unsafe-host-")),
+  );
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const hostPath = path.join(root, "publisher-host");
+  writeFileSync(hostPath, "#!/bin/sh\nexit 0\n");
+  // Explicit writable permissions make this refusal independent of uid and umask.
+  chmodSync(hostPath, 0o777);
+  let nativeCalls = 0;
+  assert.throws(
+    () =>
+      activateReleaseTagPublisher({
+        appId: 123456,
+        appSlug: "freed-release-publisher",
+        dependencies: {
+          hostPath,
+          run() {
+            nativeCalls += 1;
+            assert.fail("Native mutation must not run for an unsafe host.");
+          },
+        },
+      }),
+    /not a root-owned immutable executable/,
+  );
+  assert.equal(nativeCalls, 0);
 });
 
 test("finalization verifies a pending binding before installing active", () => {
@@ -306,6 +343,7 @@ test("provisioning binds the fixed local key without invoking Keychain", () => {
         tempRoot: canonicalRoot,
         buildScript: "/usr/bin/true",
         hostPath: "/usr/bin/true",
+        inspectHost: inspectFixtureHost,
         configPath: binding.configPath,
         privateKeyPath: keyPath,
         loadBinding(options) {
