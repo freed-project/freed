@@ -110,6 +110,11 @@ class DarwinCustody:
         if not self.private and not observe_only:
             raise RuntimeError("Darwin supervisor lacks private responsibility; refusing launch")
         self.known = {}
+        self.unresolved = []
+        # Taken before any fixture child launches. These immutable process
+        # lifetimes cannot descend from this newly established private anchor.
+        self.outside = ({entry["uniqueid"] for entry, _ in self.snapshots()}
+                        if not observe_only else set())
 
     def responsible(self, pid):
         return self.system.responsibility_get_pid_responsible_for_pid(pid)
@@ -133,9 +138,7 @@ class DarwinCustody:
         return current is not None and all(expected[key] == current[key] for key in
                                           ("pid", "birth", "uniqueid", "pidversion", "uid"))
 
-    def inventory(self):
-        if not self.private or not self.same(self.anchor, self.inspect(os.getpid())):
-            raise RuntimeError("Darwin responsibility anchor changed")
+    def snapshots(self):
         capacity = 1024
         while capacity <= 65536:
             buffer = (ctypes.c_int * capacity)()
@@ -147,7 +150,7 @@ class DarwinCustody:
             capacity *= 2
         else:
             raise RuntimeError("Darwin process inventory exceeded its bound")
-        members = []
+        records = []
         for pid in buffer[:size // ctypes.sizeof(ctypes.c_int)]:
             if pid <= 1 or pid == os.getpid():
                 continue
@@ -158,12 +161,52 @@ class DarwinCustody:
             after = self.inspect(pid)
             if not self.same(before, after):
                 continue
-            # A task-less zombie can lose its responsibility query. Its captured
-            # generation remains ours until launchd reaps it; never count it gone.
-            known = self.known.get(before["uniqueid"])
-            if responsible == os.getpid() or (known and self.same(known, after)):
-                self.known[before["uniqueid"]] = after
-                members.append(after)
+            records.append((after, responsible))
+        return records
+
+    def inventory(self):
+        if not self.private or not self.same(self.anchor, self.inspect(os.getpid())):
+            raise RuntimeError("Darwin responsibility anchor changed")
+        records = self.snapshots()
+        by_unique = {entry["uniqueid"]: entry for entry, _ in records}
+        owned = {self.anchor["uniqueid"], *self.known}
+        owned.update(entry["uniqueid"] for entry, responsible in records
+                     if responsible == os.getpid())
+
+        def ancestry(entry):
+            # parentUniqueid is fixed at fork, including after reparenting.
+            # Numeric PPIDs and current parent responsibility are not proof.
+            visited = set()
+            while entry["uniqueid"] not in visited:
+                unique = entry["uniqueid"]
+                if unique in owned:
+                    return "owned"
+                if unique in self.outside:
+                    return "outside"
+                visited.add(unique)
+                parent = entry["parentUniqueid"]
+                if parent in owned:
+                    return "owned"
+                if parent in self.outside:
+                    return "outside"
+                entry = by_unique.get(parent)
+                if entry is None:
+                    break
+            return "unresolved"
+
+        members, self.unresolved = [], []
+        for entry, responsible in records:
+            known = self.known.get(entry["uniqueid"])
+            classification = ancestry(entry) if entry["zombie"] else None
+            if (responsible == os.getpid() or (known and self.same(known, entry))
+                    or classification == "owned"):
+                self.known[entry["uniqueid"]] = entry
+                members.append(entry)
+            elif classification == "unresolved":
+                # Do not invent ownership or signal this process. Its missing
+                # ancestry could conceal an unseen fixture zombie, so it blocks
+                # successful cleanup until it disappears.
+                self.unresolved.append(entry)
         return members
 
     def send(self, expected, sig):
@@ -192,7 +235,7 @@ class DarwinCustody:
         while time.monotonic() < deadline:
             reaped.extend(reap(child))
             members = self.inventory()
-            if not members:
+            if not members and not self.unresolved:
                 return {"signaled": list(signaled.values()), "reaped": reaped,
                         "remaining": [], "nonchildren": "confirmed disappeared, not waitpid-reaped"}
             # Freeze each verified generation before the final kill pass. No
@@ -209,4 +252,5 @@ class DarwinCustody:
                     if self.send(entry, signal.SIGKILL):
                         signaled[entry["uniqueid"]] = entry
             time.sleep(0.02)
-        raise RuntimeError("Darwin cleanup deadline exceeded; retaining fixture and owned generation evidence")
+        raise RuntimeError("Darwin cleanup deadline exceeded; retaining fixture; "
+                           f"owned={members}; unresolved zombies={self.unresolved}")

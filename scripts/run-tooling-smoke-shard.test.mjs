@@ -466,6 +466,93 @@ elif platform == 'darwin':
   assert.equal(foreignAfter.zombie, false);
 });
 
+test("Darwin accounts for unseen zombies and refuses cleanup with missing ancestry", {
+  skip: process.platform !== "darwin" && "requires real Darwin process generations",
+}, () => {
+  const result = spawnSync("python3", ["-B", "-c", `
+import importlib.util, json, os, subprocess, sys, time
+sys.path.insert(0, ${JSON.stringify(path.dirname(supervisorPath))})
+spec = importlib.util.spec_from_file_location('supervisor', ${JSON.stringify(supervisorPath)})
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+module.confine()
+custody = module.DARWIN_CUSTODY
+# The parent deliberately does not waitpid. Its child exits before we perform
+# the first custody inventory, so no previously captured identity can save it.
+program = """
+import json, os, sys, time
+sys.path.insert(0, ${JSON.stringify(path.dirname(supervisorPath))})
+from nightly_fixture_darwin import DarwinCustody
+observer = DarwinCustody(observe_only=True)
+pid = os.fork()
+if pid == 0:
+    os._exit(0)
+while True:
+    snapshot = observer.inspect(pid)
+    if snapshot['zombie']:
+        print(json.dumps(snapshot), flush=True)
+        break
+    time.sleep(0.01)
+while True:
+    time.sleep(30)
+"""
+child = subprocess.Popen([sys.executable, '-B', '-c', program], stdout=subprocess.PIPE, text=True)
+original_responsible, original_snapshots = custody.responsible, custody.snapshots
+try:
+    zombie = json.loads(child.stdout.readline())
+    assert zombie['zombie']
+    assert zombie['uniqueid'] not in custody.known
+    native_responsibility = custody.responsible(zombie['pid'])
+    # Remove only unavailable evidence, never synthesize ownership. The kernel
+    # parent unique ID and the live parent's responsibility remain authoritative.
+    custody.responsible = lambda pid: -1 if pid == zombie['pid'] else original_responsible(pid)
+    previous_predicate = (custody.responsible(zombie['pid']) == os.getpid()
+                          or zombie['uniqueid'] in custody.known)
+    assert not previous_predicate, 'fixture must exercise the previous omission'
+    members = custody.inventory()
+    captured = next(entry for entry in members if entry['pid'] == zombie['pid'])
+    parent = next(entry for entry in members if entry['pid'] == child.pid)
+    assert captured['parentUniqueid'] == parent['uniqueid']
+    assert custody.same(captured, zombie)
+    assert not custody.send(captured, 9), 'zombies must not become signal targets'
+
+    # Withhold the intermediate parent and historical captures. This models
+    # first observation after its generation has disappeared. All supplied
+    # identities still come from real kernel snapshots.
+    custody.known.clear()
+    custody.snapshots = lambda: [(entry, responsible) for entry, responsible in original_snapshots()
+                                if entry['pid'] != child.pid]
+    members = custody.inventory()
+    assert all(entry['pid'] != zombie['pid'] for entry in members)
+    assert any(entry['pid'] == zombie['pid'] for entry in custody.unresolved)
+    started = time.monotonic()
+    try:
+        custody.cleanup(child, module.reap)
+        raise AssertionError('ambiguous zombie falsely reported successful cleanup')
+    except RuntimeError as error:
+        assert 'unresolved zombies=' in str(error), str(error)
+        assert str(zombie['uniqueid']) in str(error), str(error)
+    assert 4.9 <= time.monotonic() - started < 7
+    assert child.poll() is None, 'unverified parent was signaled'
+    assert custody.same(zombie, custody.inspect(zombie['pid']))
+    print(json.dumps(dict(contract='unseen zombie with unavailable responsibility',
+                          nativeResponsibility=native_responsibility,
+                          previousPredicateAdmits=previous_predicate, zombie=zombie, verifiedParent=parent,
+                          incompleteAncestryRefused=True, unverifiedParentUntouched=True)))
+finally:
+    custody.responsible, custody.snapshots = original_responsible, original_snapshots
+    receipt = module.cleanup(child)
+assert custody.inspect(child.pid) is None
+assert custody.inspect(zombie['pid']) is None, 'zombie must disappear after verified parent cleanup'
+print(json.dumps(dict(cleanup=receipt, childAndUnseenZombieGone=True)))
+`], { encoding: "utf8", timeout: 20_000 });
+  assert.equal(result.error, undefined, result.stderr);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /"incompleteAncestryRefused": true/);
+  assert.match(result.stdout, /"childAndUnseenZombieGone": true/);
+  console.log(result.stdout);
+});
+
 test("nightly shard deadline remains independent of a blocked test event loop", (t) => {
   const directory = mkdtempSync(path.join(os.tmpdir(), "freed-nightly-loop-"));
   t.after(() => rmSync(directory, { recursive: true, force: true }));

@@ -102,7 +102,11 @@ process generations through pidfds. On macOS, a private kernel responsibility
 anchor identifies descendants even after their intermediate parent exits;
 cleanup signals captured PID-version audit tokens. The Darwin supervisor reaps
 its direct children and requires nonchildren, including zombies, to disappear
-after their parents or launchd reap them. It does not claim Linux subreaper
+after their parents or launchd reap them. Zombies first seen without responsibility
+are accounted for through immutable parent unique IDs. A prelaunch process
+inventory distinguishes existing outside lifetimes; missing ancestry blocks
+successful cleanup until the unresolved zombie disappears. Uncertain processes
+are never signal targets. It does not claim Linux subreaper
 semantics on macOS. Both paths remove their private temporary fixture directory
 only after cleanup succeeds. Unrelated processes and shared process groups are
 never cleanup targets. An orphan fails the shard even if tests otherwise pass.
