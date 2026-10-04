@@ -1,0 +1,93 @@
+{
+  "tag": "v26.10.402-dev",
+  "version": "26.10.402-dev",
+  "channel": "dev",
+  "dayKey": "26.10.4",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-10-04T21:38:46.566Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.10.401-dev",
+    "previousPublishedDayTag": "v26.10.305-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "0360e4d5d361226cae9876e790750f8573c6cff2",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.10.401-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "56200ed2fe66c74df8254f34c617f9e30547b8b4",
+        "toInclusiveProductCommitSha": "0360e4d5d361226cae9876e790750f8573c6cff2"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:87ced2658785f1d28753666537ab09bef76d45848f728aeb12343f22ee70d6d1",
+        "currentDigest": "sha256:87ced2658785f1d28753666537ab09bef76d45848f728aeb12343f22ee70d6d1"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:c43091481412ee7f4a8d9b1c11e0cb1f9e51528525c2015a1d453f8a6f62988c",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.10.400-dev",
+      "v26.10.401-dev",
+      "v26.10.402-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.10.400-dev",
+      "v26.10.401-dev",
+      "v26.10.402-dev"
+    ],
+    "prNumbers": [
+      2098,
+      2099,
+      2100,
+      2101,
+      2102,
+      2103
+    ],
+    "commitSubjects": [
+      "fix: keep Library counts coherent and preserve article targets (#2103)",
+      "fix: align feed scroll checks with current card heights",
+      "fix: constrain mobile settings navigation scrolling (#2102)",
+      "chore: prepare v26.10.401-dev (#2101)",
+      "perf: attribute native checkpoint preparation substages (#2100)",
+      "chore: prepare v26.10.400-dev (#2099)",
+      "perf: avoid checkpoint census in cloud preflight (#2098)"
+    ]
+  },
+  "release": {
+    "deck": "Less work during startup",
+    "features": [],
+    "fixes": [
+      "Keep Library counts coherent and preserve article targets",
+      "Align feed scroll checks with current card heights",
+      "Constrain mobile settings navigation scrolling",
+      "Avoid counting every checkpoint record during routine Library sync checks",
+      "Record bounded timing for Library checkpoint preparation"
+    ],
+    "followUps": [
+      "Prepare v26.10.401-dev",
+      "Attribute native checkpoint preparation substages",
+      "Skip checkpoint census during cloud preflight",
+      "Full checkpoint preparation retains complete validation and can still take time",
+      "Installed startup and manual responsiveness verification remain separate from synthetic benchmarks",
+      "Priority and social diagnostics remain off; provider and schema activation boundaries are unchanged",
+      "Clearer diagnostics for slow Library sync",
+      "Writer admission delays remain a separate investigation",
+      "This build adds attribution; no reduction in stalls or CPU use is claimed"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.10.402-dev\n\nLess work during startup\n\n### Fixes\n\n- Keep Library counts coherent and preserve article targets\n- Align feed scroll checks with current card heights\n- Constrain mobile settings navigation scrolling\n- Avoid counting every checkpoint record during routine Library sync checks\n- Record bounded timing for Library checkpoint preparation\n\n### Follow-ups\n\n- Prepare v26.10.401-dev\n- Attribute native checkpoint preparation substages\n- Skip checkpoint census during cloud preflight\n- Full checkpoint preparation retains complete validation and can still take time\n- Installed startup and manual responsiveness verification remain separate from synthetic benchmarks\n- Priority and social diagnostics remain off; provider and schema activation boundaries are unchanged\n- Clearer diagnostics for slow Library sync\n- Writer admission delays remain a separate investigation\n- This build adds attribution; no reduction in stalls or CPU use is claimed\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
