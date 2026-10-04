@@ -55,6 +55,14 @@ All content is the default. Changes carry between views and ordinary app session
 The demo resets this choice on reload. Theme and the demo welcome display state
 are the only presentation preferences retained between visits.
 
+Map retains manual pan and zoom after its initial framing. Initial framing waits
+for named locations to settle unless the reader has already moved the camera.
+Later content or audience changes reframe only when no eligible marker is visible,
+after any active gesture and location batch finish. Layout changes and an empty
+filter keep the camera; explicit profile focus and Fit All remain available.
+Synthetic camera and stale-geocoder regressions cover this policy. Installed
+MapLibre gesture acceptance remains pending.
+
 Recent activity cards in identity and account sidebars open the selected post
 in the unified feed reader. Their separate provider buttons open the same post
 filtered to its provider and author, with RSS subscription scope retained.

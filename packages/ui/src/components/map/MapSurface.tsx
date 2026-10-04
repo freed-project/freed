@@ -41,6 +41,9 @@ type MapLibreModule = typeof import("maplibre-gl");
 
 interface MapSurfaceProps {
   markers: LocationMarkerSummary[];
+  /** Eligible-content filter identity; layout and camera movement are excluded. */
+  cameraContentKey?: string;
+  cameraContentSettled?: boolean;
   focusedMarkerKey?: string | null;
   interactive?: boolean;
   themeId?: ThemeId;
@@ -1068,8 +1071,55 @@ export function fitMapToMarkers(
   );
 }
 
+/** Advance only on eligible geometry/filter changes, never on camera movement. */
+function shouldFitChangedMapContent(
+  state: { initialized: boolean; initialContentSettled: boolean; pendingContentChange: boolean; contentKey: string | null },
+  contentKey: string,
+  markerCount: number,
+  hasVisibleMarker: boolean,
+  manuallyMoving: boolean,
+  contentSettled = true,
+): boolean {
+  if (state.contentKey !== contentKey) state.pendingContentChange = true;
+  state.contentKey = contentKey;
+  if (markerCount === 0) {
+    state.pendingContentChange = false;
+    return false;
+  }
+  if (!contentSettled) return false;
+  if (!state.initialContentSettled) {
+    state.initialContentSettled = true;
+    state.pendingContentChange = false;
+    if (state.initialized || manuallyMoving) return false;
+    state.initialized = true;
+    return true;
+  }
+  if (manuallyMoving || !state.pendingContentChange) return false;
+  state.pendingContentChange = false;
+  return !hasVisibleMarker;
+}
+
+function hasMarkerInMapViewport(
+  map: MapInstance,
+  markers: LocationMarkerSummary[],
+  insets?: MapViewportInsets,
+): boolean {
+  const container = map.getContainer();
+  const centerLng = map.getCenter().lng;
+  return markers.some(({ lng, lat }) => {
+    // Use the nearest world copy when the camera crosses the antimeridian.
+    const point = map.project([lng + 360 * Math.round((centerLng - lng) / 360), lat]);
+    return point.x >= (insets?.left ?? 0)
+      && point.x <= container.clientWidth - (insets?.right ?? 0)
+      && point.y >= (insets?.top ?? 0)
+      && point.y <= container.clientHeight - (insets?.bottom ?? 0);
+  });
+}
+
 export function MapSurface({
   markers,
+  cameraContentKey = "",
+  cameraContentSettled = true,
   focusedMarkerKey,
   interactive = true,
   themeId,
@@ -1092,9 +1142,13 @@ export function MapSurface({
   const fallbackMovingTimeoutRef = useRef<number | null>(null);
   const nativeMarkerRestoreTimeoutRef = useRef<number | null>(null);
   const mapLifecycleRef = useRef(0);
+  const cameraPolicyRef = useRef({ initialized: false, initialContentSettled: false, pendingContentChange: false, contentKey: null as string | null });
+  const manuallyMovingRef = useRef(false);
+  const lastFocusedMarkerRef = useRef<string | null>(null);
   const mapStyleRequestRef = useRef(0);
   const desiredMapThemeRef = useRef(resolvedThemeId);
   const appliedMapThemeRef = useRef<ThemeId | null>(null);
+  const [cameraInteractionRevision, setCameraInteractionRevision] = useState(0);
   const [mapReady, setMapReady] = useState(false);
   const [mapTilesReady, setMapTilesReady] = useState(false);
   const [mapGeneration, setMapGeneration] = useState(0);
@@ -1318,6 +1372,9 @@ export function MapSurface({
     if (!containerRef.current) return;
     const lifecycleId = mapLifecycleRef.current + 1;
     mapLifecycleRef.current = lifecycleId;
+    cameraPolicyRef.current = { initialized: false, initialContentSettled: false, pendingContentChange: false, contentKey: null };
+    manuallyMovingRef.current = false;
+    lastFocusedMarkerRef.current = null;
     let cancelled = false;
     let ownedMap: MapInstance | null = null;
     let resizeTimeout: ReturnType<typeof setTimeout> | undefined;
@@ -1403,7 +1460,16 @@ export function MapSurface({
         if (!map.painter) throw new Error("MapLibre did not initialize a renderer");
         if (interactive) {
           const canvasContainer = map.getCanvasContainer();
+          const claimCamera = () => {
+            if (cancelled || ownedMap !== map || mapLifecycleRef.current !== lifecycleId) return;
+            cameraPolicyRef.current.initialized = true;
+            map.stop();
+          };
+          canvasContainer.addEventListener("pointerdown", claimCamera, true);
           const panWithTrackpad = (event: globalThis.WheelEvent) => {
+            claimCamera();
+            if (cancelled || ownedMap !== map || mapLifecycleRef.current !== lifecycleId) return;
+            manuallyMovingRef.current = true;
             // Trackpad scrolling is pixel-based; pinch gestures carry Ctrl.
             // Capture before MapLibre treats a two-finger swipe as zoom.
             if (event.ctrlKey || event.metaKey || event.shiftKey || event.deltaMode !== 0) return;
@@ -1412,15 +1478,26 @@ export function MapSurface({
             map.panBy([event.deltaX, event.deltaY], { duration: 0 });
           };
           canvasContainer.addEventListener("wheel", panWithTrackpad, { capture: true, passive: false });
-          removeTrackpadPan = () => canvasContainer.removeEventListener("wheel", panWithTrackpad, true);
+          removeTrackpadPan = () => {
+            canvasContainer.removeEventListener("wheel", panWithTrackpad, true);
+            canvasContainer.removeEventListener("pointerdown", claimCamera, true);
+          };
         }
         appliedMapThemeRef.current = initialThemeId;
-        const setMoving = () => {
+        const setMoving = (event: { originalEvent?: unknown }) => {
+          if (cancelled || ownedMap !== map || mapLifecycleRef.current !== lifecycleId) return;
+          if (event?.originalEvent) {
+            cameraPolicyRef.current.initialized = true;
+            manuallyMovingRef.current = true;
+          }
           setMapTilesReady(false);
           clearNativeMarkerRestoreTimeout();
           setShellMoving(true);
         };
         const clearMoving = () => {
+          if (cancelled || ownedMap !== map || mapLifecycleRef.current !== lifecycleId) return;
+          manuallyMovingRef.current = false;
+          if (cameraPolicyRef.current.pendingContentChange) setCameraInteractionRevision(value => value + 1);
           clearNativeMarkerRestoreTimeout();
           nativeMarkerRestoreTimeoutRef.current = window.setTimeout(() => {
             nativeMarkerRestoreTimeoutRef.current = null;
@@ -1635,8 +1712,25 @@ export function MapSurface({
       || !mapRef.current
       || mapGeneration !== mapLifecycleRef.current
     ) return;
-    fitMapToMarkers(mapRef.current, stableMarkers, focusedMarkerKey, viewportInsets);
-  }, [focusedMarkerKey, mapGeneration, mapReady, stableMarkers, viewportInsets]);
+    const map = mapRef.current;
+    if (!interactive) {
+      fitMapToMarkers(map, stableMarkers, focusedMarkerKey, viewportInsets);
+      return;
+    }
+    const focusChanged = lastFocusedMarkerRef.current !== (focusedMarkerKey ?? null);
+    const focusedMarkerAvailable = !!focusedMarkerKey && stableMarkers.some(marker => marker.key === focusedMarkerKey);
+    if (!focusedMarkerKey || focusedMarkerAvailable) lastFocusedMarkerRef.current = focusedMarkerKey ?? null;
+    const contentKey = JSON.stringify([cameraContentKey,
+      stableMarkers.map(({ key, lat, lng }) => [key, lat, lng]).sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
+    ]);
+    if (shouldFitChangedMapContent(cameraPolicyRef.current, contentKey, stableMarkers.length,
+      hasMarkerInMapViewport(map, stableMarkers, viewportInsets), manuallyMovingRef.current, cameraContentSettled)) {
+      fitMapToMarkers(map, stableMarkers, focusChanged ? focusedMarkerKey : null, viewportInsets);
+    } else if (focusChanged && focusedMarkerAvailable) {
+      // An explicit profile selection is intentional navigation, not hydration.
+      fitMapToMarkers(map, stableMarkers, focusedMarkerKey, viewportInsets);
+    }
+  }, [cameraContentKey, cameraContentSettled, cameraInteractionRevision, focusedMarkerKey, interactive, mapGeneration, mapReady, stableMarkers, viewportInsets]);
 
   const handleFitAll = useCallback(() => {
     closeActivePopup();

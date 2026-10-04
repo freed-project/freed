@@ -156,7 +156,7 @@ export function MapView({ viewportInsets }: MapViewProps) {
   const [rangeSelection, setRangeSelection] = useState<LocationTimeRange | null>(null);
 
   const locationCandidates = useLibraryMapCandidates(searchCorpusVersion);
-  const { resolvedItems } = useResolvedLocationCandidates(locationCandidates, {
+  const { resolvedItems, resolvingCount } = useResolvedLocationCandidates(locationCandidates, {
     resolveNamedLocations: geographicMapMode !== "local-showcase",
   });
   const rawTimeBounds = useMemo(() => getLocationTimelineBounds(resolvedItems), [resolvedItems]);
@@ -394,6 +394,8 @@ export function MapView({ viewportInsets }: MapViewProps) {
 
       <MapSurface
         markers={markers}
+        cameraContentSettled={resolvingCount === 0}
+        cameraContentKey={JSON.stringify([effectiveMode, effectiveTimeRange])}
         focusedMarkerKey={focusedMarker?.key ?? null}
         themeId={themeId}
         viewportInsets={viewportInsets}
