@@ -25,3 +25,5 @@ export {
   type SyncProviderSectionSurface,
   type UpdateDownloadProgress,
 } from "./PlatformContext.js";
+
+export type { LibraryCountResource, LibraryCountResourceState, LibraryCountSelectionIdentity, LibraryCountSnapshot } from "./library-count-resource.js";

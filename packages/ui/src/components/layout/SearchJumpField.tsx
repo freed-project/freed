@@ -357,7 +357,7 @@ export function SearchJumpField({
   const unarchiveSavedItems = useAppStore((s) => s.unarchiveSavedItems);
   const deleteAllArchived = useAppStore((s) => s.deleteAllArchived);
   const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
-  const [deviceDisplay] = useDeviceDisplayPreferences();
+  const [deviceDisplay, setDeviceDisplay] = useDeviceDisplayPreferences();
   const [inputValue, setInputValue] = useState(searchQuery);
   const [isFocused, setIsFocused] = useState(false);
   const [isTriggerOpen, setIsTriggerOpen] = useState(false);
@@ -592,11 +592,13 @@ export function SearchJumpField({
           }
           setActiveView("friends");
         },
-        navigateToSocialProfileMap: async (account, personId) => {
-          const resolvedPersonId = await ensurePersonForAccount(account.id, personId);
+        navigateToSocialProfileMap: (account, personId) => {
           clearQueryForNavigation();
           setSelectedItem(null);
-          setSelectedPerson(resolvedPersonId);
+          setSelectedPerson(personId);
+          setSelectedAccount(personId ? null : account.id);
+          // Viewing an author's location is not a relationship mutation.
+          setDeviceDisplay({ mapMode: "all_content" });
           setActiveView("map");
         },
         promoteSocialProfile: capabilities.changeCare ? async (account, level) => {
@@ -714,6 +716,7 @@ export function SearchJumpField({
       savedArchivedCount,
       selectedItem,
       setActiveView,
+      setDeviceDisplay,
       setFilter,
       setSearchQuery,
       setSelectedAccount,

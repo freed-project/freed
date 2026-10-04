@@ -418,6 +418,7 @@ export function buildIdentityGraphAtlasModel({
     else socialAccountsByPersonId.set(account.personId, [account]);
   }
   const visiblePersons = persons
+    .filter((person) => person.relationshipStatus === "friend" || person.relationshipStatus === "connection")
     .filter((person) => mode === "all_content" || person.relationshipStatus === "friend")
     .sort((left, right) =>
       Number(right.relationshipStatus === "friend" && right.careLevel >= 4) -
@@ -472,9 +473,13 @@ export function buildIdentityGraphAtlasModel({
   }
 
   const personNodeById = new Map(allNodes.filter((node) => node.personId).map((node) => [node.personId!, node]));
-  const visibleSocialAccounts = accountValues
-    .filter((account) => account.kind === "social")
-    .filter((account) => mode === "all_content" || !account.personId || visiblePersonIds.has(account.personId));
+  // Author discovery supplies content identities, not tracked relationships.
+  // Only a separately managed Friend/Connection Person link admits an Account
+  // here. Roster flags, activity, pins and a missing Person cannot grant it.
+  // Unlinked authors remain available in channels and the all-content map.
+  const visibleSocialAccounts = accountValues.filter((account) =>
+    account.kind === "social" && Boolean(account.personId && visiblePersonIds.has(account.personId)),
+  );
 
   for (const account of visibleSocialAccounts) {
     const provider = normalizedProvider(account.provider);

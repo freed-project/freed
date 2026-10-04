@@ -1208,3 +1208,27 @@ terminal evidence under a shared budget is inconclusive. No identifiers,
 content, errors or thread identities are logged. Invocation queueing and native
 execution-thread ownership remain unmeasured. This attribution change does not
 establish an installed responsiveness improvement.
+
+### Runtime-owned navigation counts
+
+Desktop publishes one immutable navigation count resource only after facet, RSS
+and preference responses agree on generation, canonical revision and local
+transition sequence. Native Library, authority epoch and actor identity fence
+publication; supported setup, reset, restore and handoff transitions retire old
+values before native work. Same-context refreshes retain committed counts, while
+a completed zero replaces them. Sidebar consumes that resource without issuing
+duplicate facet or RSS reads. Retries drain sibling reads and stop after three
+attempts. This is source-coherent composition, not a shared SQL transaction or
+new write authority. External generation ABA and installed visual stability
+remain unproven.
+
+### Linked URL projection
+
+Compact feed and item-detail cards preserve the stored linked article URL
+independently from the post source URL. Missing links do not fabricate article
+fetch targets. Existing reader, pinning and item-change fetch flows can therefore
+request the stored publisher instead of the social post; response images and
+existing optional summarization remain governed by their existing settings. This
+exact correction was explicitly approved on 2026-10-04; no cadence, credential or
+AI-setting change is introduced. The original selection complaint remains
+unattributed.
