@@ -63,6 +63,10 @@ filter keep the camera; explicit profile focus and Fit All remain available.
 Synthetic camera and stale-geocoder regressions cover this policy. Installed
 MapLibre gesture acceptance remains pending.
 
+Map header counts use the resolved, time-filtered snapshot from MapView.
+Unrelated Desktop runtime events preserve that snapshot; an empty map explicitly
+sets zero counts. Fit All and profile focus do not change count ownership.
+
 Recent activity cards in identity and account sidebars open the selected post
 in the unified feed reader. Their separate provider buttons open the same post
 filtered to its provider and author, with RSS subscription scope retained.
