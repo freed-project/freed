@@ -266,10 +266,13 @@ await new Promise((resolve) => process.stdout.end(JSON.stringify(receipt) + "\\n
 async function createHarnessFixture(
   input: {
     leaderOnlyTerm?: boolean;
+    startupFailure?: "ready-response-lost" | "launch-failure";
   } = {},
 ): Promise<{
   args: string[];
   supervisorArgs: string[];
+  statusPath: string;
+  startupReceiptPath: string;
 }> {
   const fixtureRoot = await privateTemporaryRoot("freed-library-harness-");
   const dataRoot = path.join(fixtureRoot, "data");
@@ -283,6 +286,33 @@ async function createHarnessFixture(
   const status = path.join(stateRoot, "library-service-status.json");
   const sidecar = path.join(fixtureRoot, "authority-sidecar");
   const config = path.join(fixtureRoot, "service.json");
+  const startupReceiptPath = path.join(stateRoot, "startup-receipt.json");
+  // Ownership/ACL presentation is confined to the existing lifecycle harness.
+  // The compiled CLI read-only test still admits a genuinely root-owned binary.
+  const source =
+    input.startupFailure === "launch-failure"
+      ? `#!${path.join(fixtureRoot, "missing-interpreter")}\n`
+      : input.startupFailure === "ready-response-lost"
+        ? `#!${process.execPath}
+import { writeFileSync } from "node:fs";
+import { Socket } from "node:net";
+const watchdog = new Socket({ fd: 8, readable: true, writable: false });
+watchdog.resume();
+watchdog.on("end", () => process.exit(0));
+process.on("SIGTERM", () => process.exit(0));
+let control = "";
+for await (const chunk of process.stdin) {
+  control += chunk.toString("utf8");
+  if (Buffer.byteLength(control) > 16_384) process.exit(71);
+}
+const envelope = JSON.parse(control.trim());
+writeFileSync(${JSON.stringify(startupReceiptPath)}, JSON.stringify({
+  pid: process.pid, envelope, inputEnded: true,
+}), { mode: 0o600 });
+// EOF is the fault. Keep the watchdog open until supervisor settlement.
+process.stdout.end();
+`
+        : sidecarSource();
   const admissionContents = input.leaderOnlyTerm
     ? '{"leaderOnlyTerm":true}\n'
     : '{"signedAdmission":"opaque"}\n';
@@ -294,7 +324,7 @@ async function createHarnessFixture(
       { mode: 0o600 },
     ),
     writeFile(status, "", { mode: 0o600 }),
-    writeFile(sidecar, sidecarSource(), { mode: 0o700 }),
+    writeFile(sidecar, source, { mode: 0o700 }),
   ]);
   await chmod(sidecar, 0o700);
   const digest = createHash("sha256")
@@ -319,6 +349,8 @@ async function createHarnessFixture(
     { mode: 0o600 },
   );
   return {
+    statusPath: status,
+    startupReceiptPath,
     args: [sidecar, dataRoot, stateRoot, admission, credential, digest],
     supervisorArgs: [
       config,
@@ -328,7 +360,7 @@ async function createHarnessFixture(
       admission,
       credential,
       "",
-      "process-lifecycle-only",
+      input.startupFailure ?? "process-lifecycle-only",
     ],
   };
 }
@@ -855,16 +887,71 @@ describe("compiled freed-library runtime", () => {
       expect(status).toMatchObject({ code: 0, stderr: "" });
       expect(JSON.parse(status.stdout)).toMatchObject({ status: null });
       expect(await readFile(statusPath, "utf8")).toBe("");
+    },
+    15_000,
+  );
 
-      const serve = await runCli(["serve", "--config", configPath]);
-      expect(serve).toMatchObject({ code: 2, stdout: "" });
-      expect(JSON.parse(serve.stderr)).toMatchObject({
-        ok: false,
+  posixIt(
+    "settles a launched sidecar that drains startup input but closes stdout without ready",
+    async () => {
+      const { supervisorArgs, statusPath, startupReceiptPath } =
+        await createHarnessFixture({ startupFailure: "ready-response-lost" });
+      const result = await runSupervisorHarnessOnce(supervisorArgs);
+      expect(result).toMatchObject({ code: 2, stdout: "" });
+      const report = JSON.parse(result.stderr);
+      expect(report).toEqual({
+        type: "supervisor-failed",
         code: "ready_response_lost",
+        launched: true,
+        sidecarPid: expect.any(Number),
+        terminationSignals: ["SIGTERM"],
+        exit: { code: 0, signal: null },
+        groupRunning: false,
+      });
+      expect(report.sidecarPid).toBeGreaterThan(0);
+      const receipt = JSON.parse(await readFile(startupReceiptPath, "utf8"));
+      expect(receipt).toMatchObject({
+        pid: report.sidecarPid,
+        inputEnded: true,
+        envelope: {
+          type: "start",
+          protocolVersion: 2,
+          role: "primary",
+          parentNonce: expect.stringMatching(/^[a-f0-9]{64}$/),
+          configDigest: expect.stringMatching(/^[a-f0-9]{64}$/),
+        },
       });
       expect(JSON.parse(await readFile(statusPath, "utf8"))).toMatchObject({
         phase: "failed",
         reasonCode: "ready_response_lost",
+      });
+      await waitForGone([report.sidecarPid]);
+    },
+    15_000,
+  );
+
+  posixIt(
+    "reports spawn_failed for a pinned executable with a missing interpreter",
+    async () => {
+      const { supervisorArgs, statusPath, startupReceiptPath } =
+        await createHarnessFixture({ startupFailure: "launch-failure" });
+      const result = await runSupervisorHarnessOnce(supervisorArgs);
+      expect(result).toMatchObject({ code: 2, stdout: "" });
+      expect(JSON.parse(result.stderr)).toEqual({
+        type: "supervisor-failed",
+        code: "spawn_failed",
+        launched: false,
+        sidecarPid: null,
+        terminationSignals: [],
+        exit: null,
+        groupRunning: false,
+      });
+      expect(JSON.parse(await readFile(statusPath, "utf8"))).toMatchObject({
+        phase: "failed",
+        reasonCode: "spawn_failed",
+      });
+      await expect(stat(startupReceiptPath)).rejects.toMatchObject({
+        code: "ENOENT",
       });
     },
     15_000,
