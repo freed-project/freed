@@ -1,3 +1,4 @@
+import { desktopLibraryCountResource } from "./lib/library-count-resource";
 import { DesktopLibrarySetup } from "./components/DesktopLibrarySetup";
 import { subscribeDesktopLibraryInstallation, readDesktopLibraryInstallationError, readDesktopLibraryInstallation, refreshLibraryCoreDesktopRole, type DesktopLibraryInstallationStatus } from "./lib/library-core-desktop-role";
 import { useEffect, useMemo, useCallback, useRef, useState, useSyncExternalStore, Profiler, type ProfilerOnRenderCallback } from "react";
@@ -1110,12 +1111,13 @@ function App() {
       source: "desktop-download",
       message: "Preparing Freed Desktop update.",
     });
-    setUpdateState({ phase: "backing-up" });
+    const backupStartedAt = performance.now();
+    setUpdateState({ phase: "backing-up", startedAtMonotonicMs: backupStartedAt });
 
     try {
       const version = await installPendingDesktopUpdate(pending, (progress) => {
         if (progress.phase === "backing-up") {
-          setUpdateState(progress);
+          setUpdateState({ phase: "backing-up", startedAtMonotonicMs: backupStartedAt });
           updateBackgroundActivity(activityId, { message: "Saving Library backup before updating." });
           return;
         }
@@ -1212,83 +1214,88 @@ function App() {
   );
 
   const handleFactoryReset = useCallback(async (deleteFromCloud: boolean) => {
-    await runFactoryResetWithRecovery({
-      reset: async () => {
-        beginFactoryResetBoundary();
-        stopRssPoller();
-        stopProviderSyncScheduler();
-        stopSync();
-        stopAllCloudSyncs();
-        stopSnapshotManager();
-        stopContentFetcher();
-        stopPriorityIndexer();
-        stopSemanticClassifier();
-        await runFactoryResetOperations({
-          phaseTimeoutMs: 255_000,
-          trackedWorkDrainTimeoutMs: 240_000,
-          quiesceLocalWriters: [
-            quiesceDesktopProviderAuthForFactoryReset,
-            quiesceDesktopOAuthForFactoryReset,
-            quiesceDesktopStoreForFactoryReset,
-            stopRssPollerAndDrain,
-            stopProviderSyncSchedulerAndDrain,
-            stopAndDrainContentFetcher,
-            stopAndDrainPriorityIndexer,
-            stopAndDrainSemanticClassifier,
-          ],
-          clearDeviceStores: () => [
-            clearDeviceDisplayPreferences(),
-            clearDeviceAIPreferences(),
-            clearLegacyDeviceGraphLayoutImport(),
-          ],
-          clearLocalSettings: [
-            resetFeedCardDensity,
-            resetInterfaceZoom,
-            resetThemePreference,
-            clearStoredCookies,
-            clearProviderScheduleStateForFactoryReset,
-            clearRssSyncScheduleForFactoryReset,
-          ],
-          clearLocalData: [
-            clearSnapshots,
-            clearClipboardSaveShortcutConfig,
-            async () => {
-              await invoke("clear_factory_reset_runtime_artifacts");
-            },
-          ],
-          clearProviderDataAndConnections: async () => {
-            stopAllCloudSyncs();
-            await clearStoredCloudDataForFactoryReset(deleteFromCloud);
-            const disconnectFailures: unknown[] = [];
-            for (const disconnectProvider of [
-              disconnectFbForFactoryReset,
-              disconnectIgForFactoryReset,
-              disconnectLiForFactoryReset,
-              disconnectSubstackForFactoryReset,
-              disconnectMediumForFactoryReset,
-              disconnectYouTubeForFactoryReset,
-            ]) {
-              try {
-                await disconnectProvider();
-              } catch (error) {
-                disconnectFailures.push(error);
+    const finishCountsTransition = desktopLibraryCountResource.beginTransition();
+    try {
+      await runFactoryResetWithRecovery({
+        reset: async () => {
+          beginFactoryResetBoundary();
+          stopRssPoller();
+          stopProviderSyncScheduler();
+          stopSync();
+          stopAllCloudSyncs();
+          stopSnapshotManager();
+          stopContentFetcher();
+          stopPriorityIndexer();
+          stopSemanticClassifier();
+          await runFactoryResetOperations({
+            phaseTimeoutMs: 255_000,
+            trackedWorkDrainTimeoutMs: 240_000,
+            quiesceLocalWriters: [
+              quiesceDesktopProviderAuthForFactoryReset,
+              quiesceDesktopOAuthForFactoryReset,
+              quiesceDesktopStoreForFactoryReset,
+              stopRssPollerAndDrain,
+              stopProviderSyncSchedulerAndDrain,
+              stopAndDrainContentFetcher,
+              stopAndDrainPriorityIndexer,
+              stopAndDrainSemanticClassifier,
+            ],
+            clearDeviceStores: () => [
+              clearDeviceDisplayPreferences(),
+              clearDeviceAIPreferences(),
+              clearLegacyDeviceGraphLayoutImport(),
+            ],
+            clearLocalSettings: [
+              resetFeedCardDensity,
+              resetInterfaceZoom,
+              resetThemePreference,
+              clearStoredCookies,
+              clearProviderScheduleStateForFactoryReset,
+              clearRssSyncScheduleForFactoryReset,
+            ],
+            clearLocalData: [
+              clearSnapshots,
+              clearClipboardSaveShortcutConfig,
+              async () => {
+                await invoke("clear_factory_reset_runtime_artifacts");
+              },
+            ],
+            clearProviderDataAndConnections: async () => {
+              stopAllCloudSyncs();
+              await clearStoredCloudDataForFactoryReset(deleteFromCloud);
+              const disconnectFailures: unknown[] = [];
+              for (const disconnectProvider of [
+                disconnectFbForFactoryReset,
+                disconnectIgForFactoryReset,
+                disconnectLiForFactoryReset,
+                disconnectSubstackForFactoryReset,
+                disconnectMediumForFactoryReset,
+                disconnectYouTubeForFactoryReset,
+              ]) {
+                try {
+                  await disconnectProvider();
+                } catch (error) {
+                  disconnectFailures.push(error);
+                }
               }
-            }
-            if (disconnectFailures.length > 0) throw disconnectFailures[0];
-          },
-          clearLibrary: async () => {
-            await resetLocalLibrary();
-          },
-        });
-        clearFactoryResetCloudCleanupBarrier();
-      },
-      reload: () => location.reload(),
-      onFailure: (error) => {
-        const cloudCleanupPaused = hasFactoryResetCloudCleanupBarrier();
-        const recovery = getDesktopFactoryResetFailureRecovery(error, cloudCleanupPaused);
-        toast.error(recovery.message);
-      },
-    });
+              if (disconnectFailures.length > 0) throw disconnectFailures[0];
+            },
+            clearLibrary: async () => {
+              await resetLocalLibrary();
+            },
+          });
+          clearFactoryResetCloudCleanupBarrier();
+        },
+        reload: () => location.reload(),
+        onFailure: (error) => {
+          const cloudCleanupPaused = hasFactoryResetCloudCleanupBarrier();
+          const recovery = getDesktopFactoryResetFailureRecovery(error, cloudCleanupPaused);
+          toast.error(recovery.message);
+        },
+      });
+    } finally {
+      finishCountsTransition();
+    }
   }, []);
 
   const retryCloudProvider = useCallback(async (provider: CloudProvider) => {
@@ -1687,6 +1694,7 @@ function App() {
         tauriRuntimeAvailable && isInitialized && isSqliteLibraryActive()
           ? readDesktopFeedSignalCounts
           : undefined,
+      libraryCountResource: tauriRuntimeAvailable && isInitialized ? desktopLibraryCountResource : undefined,
       readLibraryFacetSummary:
         tauriRuntimeAvailable && isInitialized
           ? readLibraryCoreFacetSummary
@@ -1797,7 +1805,7 @@ function App() {
           }
         : undefined,
       updateDownloadProgress: ((): UpdateDownloadProgress | null => {
-        if (updateState.phase === "backing-up") return { phase: "backing-up" };
+        if (updateState.phase === "backing-up") return updateState;
         if (updateState.phase === "downloading") return { phase: "downloading", percent: updateState.percent };
         if (updateState.phase === "error") return { phase: "error", message: updateState.message };
         return null;

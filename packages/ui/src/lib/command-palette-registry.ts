@@ -343,7 +343,7 @@ export function buildCommandPaletteActions({
         });
       }
 
-      if (navigateToSocialProfileMap && (personId || allowPersonCreation)) {
+      if (navigateToSocialProfileMap) {
         actions.push({
           id: `go-profile-map-${account.id}`,
           title: `${profileLabel} on Map`,

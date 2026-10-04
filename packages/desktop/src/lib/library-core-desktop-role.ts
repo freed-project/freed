@@ -1,3 +1,4 @@
+import { desktopLibraryCountResource } from "./library-count-resource";
 import { invoke } from "@tauri-apps/api/core";
 
 export type LibraryCoreDesktopRole = "primary" | "follower";
@@ -71,6 +72,11 @@ function acceptNativeStatus(value: DesktopLibraryInstallationStatus): DesktopLib
     || (["editable_consumer", "standalone_primary", "shared_primary"].includes(value.state) && value.actorId === null)) {
     throw new Error("Native Library installation state is invalid.");
   }
+  desktopLibraryCountResource.setSelection(
+    ["editable_consumer", "standalone_primary", "shared_primary"].includes(value.state)
+      && value.libraryId && value.authorityEpochId && value.actorId
+      ? { libraryId: value.libraryId, authorityEpochId: value.authorityEpochId, actorId: value.actorId } : null,
+  );
   installation = Object.freeze(value);
   installationError = null;
   notifyInstallation();
@@ -90,7 +96,7 @@ export function refreshLibraryCoreDesktopRole(): Promise<DesktopLibraryInstallat
       clearLegacyRole();
       return accepted;
     } catch (error) {
-      if (version === requestVersion) { installation = null; installationError = error instanceof Error ? error.message : "Native Library role is unavailable."; notifyInstallation(); }
+      if (version === requestVersion) { desktopLibraryCountResource.setSelection(null); installation = null; installationError = error instanceof Error ? error.message : "Native Library role is unavailable."; notifyInstallation(); }
       throw error;
     }
   })().finally(() => { if (pendingRoleRead === operation) pendingRoleRead = null; });
@@ -98,17 +104,28 @@ export function refreshLibraryCoreDesktopRole(): Promise<DesktopLibraryInstallat
   return operation;
 }
 
+/** A count publication fence must not reuse a role read started before its data reads. */
+export async function refreshLibraryCoreDesktopRoleAfterPending(): Promise<DesktopLibraryInstallationStatus> {
+  if (pendingRoleRead) await pendingRoleRead;
+  return refreshLibraryCoreDesktopRole();
+}
+
 export async function selectDesktopLibrarySetup(choice: DesktopLibrarySetupChoice): Promise<DesktopLibraryInstallationStatus> {
+  const finish = desktopLibraryCountResource.beginTransition();
   const version = ++requestVersion;
   pendingRoleRead = null;
   installation = null;
   installationError = null;
   notifyInstallation();
-  const status = await invoke<DesktopLibraryInstallationStatus>("select_normalized_desktop_library_setup", { choice });
-  if (version !== requestVersion) throw new Error("Native Library setup was superseded.");
-  const accepted = acceptNativeStatus(status);
-  clearLegacyRole();
-  return accepted;
+  try {
+    const status = await invoke<DesktopLibraryInstallationStatus>("select_normalized_desktop_library_setup", { choice });
+    if (version !== requestVersion) throw new Error("Native Library setup was superseded.");
+    finish();
+    const accepted = acceptNativeStatus(status);
+    clearLegacyRole();
+    return accepted;
+  } finally { finish(); }
+
 }
 
 export function readLibraryCoreDesktopRole(): LibraryCoreDesktopRole | null {
