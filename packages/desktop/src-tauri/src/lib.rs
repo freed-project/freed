@@ -10,6 +10,7 @@ mod library_core_actor_key_store;
 mod library_core_authority_key_store;
 mod library_core_desktop_runtime;
 mod library_core_handoff_remote;
+mod library_core_native_timings;
 #[cfg_attr(not(test), allow(dead_code))]
 mod library_core_platform_key;
 mod library_core_query_control;
@@ -5250,11 +5251,22 @@ fn platform_user_identifier() -> String {
 
 #[tauri::command]
 fn get_desktop_installation_witness() -> Result<String, String> {
-    let machine_id = platform_machine_identifier()?;
-    Ok(hash_desktop_installation_witness(
-        &machine_id,
-        &platform_user_identifier(),
-    ))
+    use library_core_native_timings::{global_limiter, monotonic_us, with_trace, Scope, Stage};
+    with_trace(
+        Scope::InstallationWitness,
+        log::log_enabled!(log::Level::Info),
+        global_limiter(),
+        monotonic_us,
+        |event| log::info!("[library-native-timing] {event:?}"),
+        |timing| {
+            timing.stage(Stage::InstallationWitness);
+            let machine_id = platform_machine_identifier()?;
+            Ok(hash_desktop_installation_witness(
+                &machine_id,
+                &platform_user_identifier(),
+            ))
+        },
+    )
 }
 
 #[tauri::command]

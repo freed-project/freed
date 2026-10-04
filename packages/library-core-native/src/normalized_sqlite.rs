@@ -743,9 +743,27 @@ pub(crate) fn normalized_writer_identity(
     Ok((library_id, authority_epoch, writer_id, source_revision))
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NormalizedCheckpointDescriptionStageV2 {
+    WriterIdentity,
+    ExportCount,
+    ItemCount,
+    FrontierAndValidation,
+}
+
 pub fn describe_normalized_checkpoint_export_v2(
     connection: &Connection,
 ) -> Result<NormalizedCheckpointExportDescriptorV2, NormalizedSqliteError> {
+    describe_normalized_checkpoint_export_with_observer_v2(connection, |_| {})
+}
+
+/// The observer receives fixed stage boundaries only. It does not receive
+/// records, identity values or errors, and does not alter descriptor semantics.
+pub fn describe_normalized_checkpoint_export_with_observer_v2(
+    connection: &Connection,
+    mut observe: impl FnMut(NormalizedCheckpointDescriptionStageV2),
+) -> Result<NormalizedCheckpointExportDescriptorV2, NormalizedSqliteError> {
+    observe(NormalizedCheckpointDescriptionStageV2::WriterIdentity);
     let (library_id, authority_epoch, writer_id, source_revision) =
         normalized_writer_identity(connection)?;
     if !checkpoint_hex_identity(&library_id)
@@ -756,15 +774,18 @@ pub fn describe_normalized_checkpoint_export_v2(
             "normalized checkpoint authority identity is invalid".into(),
         ));
     }
+    observe(NormalizedCheckpointDescriptionStageV2::ExportCount);
     let record_count: i64 = connection.query_row(
         "SELECT count(*) FROM library_checkpoint_export;",
         [],
         |row| row.get(0),
     )?;
+    observe(NormalizedCheckpointDescriptionStageV2::ItemCount);
     let item_count: i64 =
         connection.query_row("SELECT count(*) FROM library_feed_items;", [], |row| {
             row.get(0)
         })?;
+    observe(NormalizedCheckpointDescriptionStageV2::FrontierAndValidation);
     Ok(NormalizedCheckpointExportDescriptorV2 {
         format: NORMALIZED_CHECKPOINT_EXPORT_FORMAT.into(),
         protocol_version: SQLITE_PROTOCOL_VERSION,
@@ -1159,6 +1180,87 @@ mod tests {
         let connection = Connection::open_in_memory().expect("open");
         install_normalized_schema_v1(&connection).expect("schema");
         connection
+    }
+
+    #[test]
+    fn checkpoint_stage_observer_preserves_descriptor_and_each_failure_boundary() {
+        let vector: Value = serde_json::from_str(include_str!(
+            "../../shared/src/library-core/native-recovered-browser-vector-v1.json"
+        ))
+        .unwrap();
+        let baseline: NormalizedCheckpointExportDescriptorV2 =
+            serde_json::from_value(vector["baseline"].clone()).unwrap();
+        let records: Vec<NormalizedCheckpointRecordV2> =
+            serde_json::from_value(vector["baselineRecords"].clone()).unwrap();
+        let mut connection = fixture();
+        begin_normalized_checkpoint_stage_v2(
+            &connection,
+            &BeginNormalizedCheckpointStageV2 {
+                stage_id: "timing-fixture".into(),
+                library_id: baseline.library_id,
+                authority_epoch: baseline.authority_epoch,
+                source_revision: baseline.source_revision,
+                expected_record_count: records.len(),
+                created_at: 2200,
+            },
+        )
+        .unwrap();
+        append_normalized_checkpoint_stage_page_v2(&mut connection, "timing-fixture", &records)
+            .unwrap();
+        finalize_normalized_checkpoint_stage_v2(&mut connection, "timing-fixture").unwrap();
+        let expected = describe_normalized_checkpoint_export_v2(&connection).unwrap();
+        let stages = [
+            NormalizedCheckpointDescriptionStageV2::WriterIdentity,
+            NormalizedCheckpointDescriptionStageV2::ExportCount,
+            NormalizedCheckpointDescriptionStageV2::ItemCount,
+            NormalizedCheckpointDescriptionStageV2::FrontierAndValidation,
+        ];
+        let mut observed = Vec::new();
+        assert_eq!(
+            describe_normalized_checkpoint_export_with_observer_v2(&connection, |stage| {
+                observed.push(stage)
+            })
+            .unwrap(),
+            expected
+        );
+        assert_eq!(observed, stages);
+        // Temporary broken views fault one real SQL boundary at a time without
+        // mutating canonical data or changing the main checkpoint export view.
+        for (index, view) in [
+            "library_meta",
+            "library_checkpoint_export",
+            "library_feed_items",
+            "library_authority_epochs",
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            connection
+                .execute_batch(&format!(
+                    "CREATE TEMP VIEW {view} AS SELECT * FROM missing_timing_fixture;"
+                ))
+                .unwrap();
+            let original = describe_normalized_checkpoint_export_v2(&connection)
+                .unwrap_err()
+                .to_string();
+            observed.clear();
+            assert_eq!(
+                describe_normalized_checkpoint_export_with_observer_v2(&connection, |stage| {
+                    observed.push(stage)
+                })
+                .unwrap_err()
+                .to_string(),
+                original
+            );
+            assert_eq!(observed, stages[..=index]);
+            connection
+                .execute_batch(&format!("DROP VIEW temp.{view};"))
+                .unwrap();
+            assert_eq!(
+                describe_normalized_checkpoint_export_v2(&connection).unwrap(),
+                expected
+            );
+        }
     }
 
     #[test]

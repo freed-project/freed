@@ -1,3 +1,4 @@
+import { recordPassDiagnostics } from "./social-pass-diagnostics";
 /**
  * Facebook capture service (WebView-based)
  *
@@ -499,6 +500,7 @@ async function fetchFbFeedInternal(
       url: string;
       strategy?: string;
       candidateCount?: number;
+      passDiagnostics?: unknown;
       rejected?: {
         suggestedOrSponsored?: number;
         advertising?: number;
@@ -516,6 +518,7 @@ async function fetchFbFeedInternal(
       pageState?: FbSyncDiag["lastPageState"];
       admissionRuleVersion?: string;
     }>("fb-feed-data", (event) => {
+      recordPassDiagnostics("facebook", event.payload.passDiagnostics);
       const {
         posts,
         error,

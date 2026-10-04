@@ -26,6 +26,21 @@ its existing content policy. Exact retries retain the signed replacement and use
 the durable archive link. Notes and tags remain separate recovery transactions.
 Installed multi-device acceptance is still outstanding.
 
+Priority-pass attribution is default-off. An explicitly enabled synthetic run
+records bounded summaries in the existing native log: fixed
+trigger categories, total assignment progress, successful mutation-queue wait samples,
+and elapsed planning/work time. Summaries are capped at eight per fixed minute window;
+long-pass progress is sampled at most once per minute on existing work callbacks.
+Skipped summaries retain an omitted-event count and category mask for the next line.
+No post identifiers or content are logged. Scheduling and mutation behavior are unchanged.
+Ordinary startup performs no diagnostic queue timing or pass logging.
+Installed attribution requires a separate coordinated activation window.
+
+Native installation-witness and cloud-identity calls have sampled fixed-stage
+timings in the existing log, capped at 12 events per rolling minute. They preserve
+query and authority checks and contain no identifiers or content. Missing samples
+remain unknown; installed startup attribution and latency improvement are unverified.
+
 Selected normalized connections now verify the canonical authority selector and
 native receipt on the same configured descriptor-bound handle returned to the
 caller. Each call retains factory-reset, schema, storage and Library checks without

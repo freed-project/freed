@@ -1,3 +1,4 @@
+import { recordPassDiagnostics } from "./social-pass-diagnostics";
 /**
  * Instagram capture service (WebView-based)
  *
@@ -268,11 +269,13 @@ async function fetchIgFeedInternal(
       extractedAt: number;
       url: string;
       candidateCount?: number;
+      passDiagnostics?: unknown;
       rejected?: Partial<IgSyncDiag["totalRejected"]>;
       scrollY?: number;
       strategy?: string;
       pageState?: IgSyncDiag["lastPageState"];
     }>("ig-feed-data", (event) => {
+      recordPassDiagnostics("instagram", event.payload.passDiagnostics);
       const {
         posts,
         error,

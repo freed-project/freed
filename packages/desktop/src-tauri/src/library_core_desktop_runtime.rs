@@ -1249,19 +1249,45 @@ pub(super) fn describe_normalized_library_cloud_identity(
     app: tauri::AppHandle,
     installation_witness: String,
 ) -> Result<DesktopNormalizedLibraryCloudIdentity, String> {
-    let connection = open_normalized_database(&app)?;
-    let checkpoint = freed_library_core::describe_normalized_checkpoint_export_v2(&connection)
-        .map_err(|error| error.to_string())?;
-    let local_actor_id = load_normalized_local_actor_id_v2(
-        &connection,
-        &checkpoint.library_id,
-        &installation_witness,
-        &PlatformActorKeyStore,
-    )?;
-    Ok(DesktopNormalizedLibraryCloudIdentity {
-        checkpoint,
-        local_actor_id,
-    })
+    use super::library_core_native_timings::{
+        global_limiter, monotonic_us, with_trace, Scope, Stage,
+    };
+    use freed_library_core::NormalizedCheckpointDescriptionStageV2 as CheckpointStage;
+    with_trace(
+        Scope::CloudIdentity,
+        log::log_enabled!(log::Level::Info),
+        global_limiter(),
+        monotonic_us,
+        |event| log::info!("[library-native-timing] {event:?}"),
+        |timing| {
+            timing.stage(Stage::SelectedOpen);
+            let connection = open_normalized_database(&app)?;
+            let checkpoint =
+                freed_library_core::describe_normalized_checkpoint_export_with_observer_v2(
+                    &connection,
+                    |stage| {
+                        timing.stage(match stage {
+                            CheckpointStage::WriterIdentity => Stage::WriterIdentity,
+                            CheckpointStage::ExportCount => Stage::ExportCount,
+                            CheckpointStage::ItemCount => Stage::ItemCount,
+                            CheckpointStage::FrontierAndValidation => Stage::FrontierAndValidation,
+                        });
+                    },
+                )
+                .map_err(|error| error.to_string())?;
+            timing.stage(Stage::ActorIdentity);
+            let local_actor_id = load_normalized_local_actor_id_v2(
+                &connection,
+                &checkpoint.library_id,
+                &installation_witness,
+                &PlatformActorKeyStore,
+            )?;
+            Ok(DesktopNormalizedLibraryCloudIdentity {
+                checkpoint,
+                local_actor_id,
+            })
+        },
+    )
 }
 
 #[tauri::command]
