@@ -501,6 +501,7 @@ test("manually saved YouTube URLs sync through the rendered Freed Offline action
           likedAt: null,
           likedSyncedAt: null,
           linkPreviewTitle: "Focused Study",
+          linkPreviewUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
           linkUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
           locationName: null,
           mediaTypes: [],

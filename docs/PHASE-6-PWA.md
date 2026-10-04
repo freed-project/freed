@@ -1500,3 +1500,14 @@ An explicit transfer-acceptance build selects the matching frontend mode for iso
 ### Transfer acceptance preview delivery, October 3, 2026
 
 The explicit PWA transfer-acceptance preview command stages a clean committed source, records its build identity and checks existing preview OAuth configuration before deployment. It reuses the approved Vercel preview callback relay without changing production builds. A configured deployment, successful sign-in and installed browser durability still require actual acceptance evidence.
+
+### Linked URL projection
+
+Compact feed and item-detail cards preserve the stored linked article URL
+independently from the post source URL. Missing links do not fabricate article
+fetch targets. Existing reader, pinning and item-change fetch flows can therefore
+request the stored publisher instead of the social post; response images and
+existing optional summarization remain governed by their existing settings. This
+exact correction was explicitly approved on 2026-10-04; no cadence, credential or
+AI-setting change is introduced. The original selection complaint remains
+unattributed.
