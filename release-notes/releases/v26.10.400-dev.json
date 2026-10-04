@@ -3,8 +3,10 @@
   "version": "26.10.400-dev",
   "channel": "dev",
   "dayKey": "26.10.4",
-  "approved": false,
-  "editorialNotes": [],
+  "approved": true,
+  "editorialNotes": [
+    "Reviewed exact2098 product delta: distinct count-free metadata identity, fresh snapshot authority and actor checks preserved, full counted descriptor/export unchanged. No installed latency or CPU improvement claim before signed acceptance. Generated activation manifest delta is empty and unchanged."
+  ],
   "generatedAt": "2026-10-04T10:54:43.044Z",
   "model": "heuristic",
   "source": {
@@ -53,10 +55,16 @@
     ]
   },
   "release": {
-    "deck": "Skip checkpoint census during cloud preflight",
+    "deck": "Less work during startup",
     "features": [],
-    "fixes": [],
-    "followUps": []
+    "fixes": [
+      "Avoid counting every checkpoint record during routine Library sync checks"
+    ],
+    "followUps": [
+      "Full checkpoint preparation retains complete validation and can still take time",
+      "Installed startup and manual responsiveness verification remain separate from synthetic benchmarks",
+      "Priority and social diagnostics remain off; provider and schema activation boundaries are unchanged"
+    ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.10.400-dev\n\nSkip checkpoint census during cloud preflight\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.10.400-dev\n\nLess work during startup\n\n### Fixes\n\n- Avoid counting every checkpoint record during routine Library sync checks\n\n### Follow-ups\n\n- Full checkpoint preparation retains complete validation and can still take time\n- Installed startup and manual responsiveness verification remain separate from synthetic benchmarks\n- Priority and social diagnostics remain off; provider and schema activation boundaries are unchanged\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
