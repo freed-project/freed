@@ -9,6 +9,9 @@ describe("UpdateNotification", () => {
         onInstall={() => {}} onRelaunch={() => {}} onDismiss={() => {}} />,
     );
     expect(html).toContain("Saving Library backup before updating...");
+    expect(html).toContain('role="timer"');
+    expect(html).toContain('aria-live="off"');
+    expect(html).toContain("00:00");
     expect(html).not.toContain("Downloading");
     expect(html).not.toContain('role="progressbar"');
     expect(html).not.toContain("<button");

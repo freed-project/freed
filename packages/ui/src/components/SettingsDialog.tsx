@@ -59,6 +59,7 @@ import {
 } from "../lib/interface-zoom.js";
 import { ProviderStatusIndicator } from "./ProviderStatusIndicator.js";
 import { toast } from "./Toast.js";
+import { UpdateBackupStatus } from "./UpdateBackupStatus.js";
 import { UpdateProgressBar } from "./UpdateProgressBar.js";
 import {
   buildSettingsSectionMetas,
@@ -1865,7 +1866,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 </div>
               )}
               {updateDownloadProgress?.phase === "backing-up" && (
-                <p className="text-xs text-text-secondary" role="status">Saving Library backup before updating...</p>
+                <UpdateBackupStatus className="text-xs text-text-secondary" startedAtMonotonicMs={updateDownloadProgress.startedAtMonotonicMs} />
               )}
               {updateDownloadProgress?.phase === "downloading" && (
                 <div className="space-y-1.5">

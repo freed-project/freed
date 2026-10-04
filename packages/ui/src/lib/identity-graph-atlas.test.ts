@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { Account, Person, RssFeed } from "@freed/shared";
+import { buildDiscoveredAccountsFromItems } from "@freed/shared";
+import type { Account, Person, RssFeed, FeedItem } from "@freed/shared";
 import {
   buildIdentityGraphAtlasModel,
   sliceIdentityGraphAtlas,
@@ -46,6 +47,35 @@ function account(index: number): Account {
 }
 
 describe("buildIdentityGraphAtlas", () => {
+  it.each(["friends", "all_content"] as const)("keeps content-discovered authors out of tracked accounts in %s mode", (mode) => {
+    const original: FeedItem = { globalId: "x:synthetic-original", platform: "x", contentType: "post", capturedAt: 1, publishedAt: 1,
+      author: { id: "original", handle: "original", displayName: "Original Author" },
+      content: { text: "Shared original content", mediaUrls: [], mediaTypes: [] }, topics: [],
+      userState: { hidden: false, saved: false, archived: false, tags: [] } };
+    const discovered = buildDiscoveredAccountsFromItems([original], {});
+    const variants = [discovered[0]!, { ...discovered[0]!, id: "story-author", discoveredFrom: "story_author" as const },
+      { ...discovered[0]!, id: "roster-unknown", followRosterActive: true, followRosterRoles: ["following" as const] },
+      { ...discovered[0]!, id: "dangling-person", personId: "missing" },
+      { ...discovered[0]!, id: "pinned-author", graphPinned: true, graphX: 1, graphY: 1, activityCount: 1000 }];
+    const accounts = Object.fromEntries(variants.map(entry => [entry.id, entry]));
+    const before = JSON.stringify(accounts);
+    const model = buildIdentityGraphAtlasModel({ persons: [], accounts, feeds: {}, mode, width: 800, height: 600,
+      activitySummaries: { social: {}, rss: {}, buildMs: 0, itemCount: 0 } });
+    expect(model.nodes.filter(node => node.accountId)).toEqual([]);
+    expect(model.edges).toEqual([]);
+    expect(JSON.stringify(accounts)).toBe(before);
+    expect(discovered).toHaveLength(1); // Discovery remains available for content, not a relationship grant.
+  });
+
+  it("preserves separately linked Friends despite an explicit negative follow flag", () => {
+    const friend = person(1);
+    const profile = { ...account(1), personId: friend.id, followRosterActive: false };
+    const model = buildIdentityGraphAtlasModel({ persons: [friend], accounts: { [profile.id]: profile }, feeds: {},
+      mode: "friends", width: 800, height: 600, activitySummaries: { social: {}, rss: {}, buildMs: 0, itemCount: 0 } });
+    expect(model.nodes.some(node => node.personId === friend.id)).toBe(true);
+    expect(model.nodes.some(node => node.accountId === profile.id)).toBe(true);
+  });
+
   it("uses the same care-level radius and rendered size for friends and connections", () => {
     for (const careLevel of [1, 2, 3, 4, 5] as const) {
       const persons = [
@@ -125,15 +155,16 @@ describe("buildIdentityGraphAtlas", () => {
   });
 
   it("normalizes legacy social accounts with missing provider metadata", () => {
+    const identity = person(1);
     const legacyAccount = {
       ...account(1),
       id: "legacy-account",
-      personId: undefined,
+      personId: identity.id,
       provider: undefined as unknown as Account["provider"],
     };
 
     const model = buildIdentityGraphAtlasModel({
-      persons: [],
+      persons: [identity],
       accounts: { [legacyAccount.id]: legacyAccount },
       feeds: {},
       activitySummaries: { social: {}, rss: {}, buildMs: 0, itemCount: 0 },
@@ -143,7 +174,7 @@ describe("buildIdentityGraphAtlas", () => {
     });
 
     expect(model.regions).toEqual([
-      expect.objectContaining({ provider: "other", unlinkedCount: 1 }),
+      expect.objectContaining({ provider: "other", linkedCount: 1, unlinkedCount: 0 }),
     ]);
   });
 
@@ -187,7 +218,7 @@ describe("buildIdentityGraphAtlas", () => {
     const persons = Array.from({ length: 500 }, (_, index) => person(index));
     const accounts = Object.fromEntries(
       Array.from({ length: 2_000 }, (_, index) => {
-        const entry = account(index);
+        const entry = { ...account(index), personId: `person-${index % 500}` };
         return [entry.id, entry];
       }),
     );
@@ -415,39 +446,24 @@ describe("buildIdentityGraphAtlas", () => {
     );
   });
 
-  it("distributes unlinked provider accounts through bounded spiral arms", () => {
-    const linkedPerson = {
-      ...person(1),
-      relationshipStatus: "friend",
-    } satisfies Person;
-    const linkedAccount = {
-      ...account(100),
-      id: "linked-provider-account",
-      personId: linkedPerson.id,
-      provider: "instagram",
-      externalId: "linked-provider-author",
-    } satisfies Account;
-    const providerAccounts = Array.from({ length: 48 }, (_, index) => ({
-      ...account(index),
-      id: `provider-account-${index}`,
-      personId: undefined,
-      provider: "instagram",
-      externalId: `provider-author-${index}`,
-    } satisfies Account));
+  it("distributes subscribed feeds through bounded spiral arms", () => {
+    const providerFeeds = Array.from({ length: 48 }, (_, index) => ({
+      url: `https://example.test/spiral-${index}.xml`, title: `Feed ${index}`, enabled: true, trackUnread: true,
+    } satisfies RssFeed));
     const input = {
-      persons: [linkedPerson],
-      accounts: Object.fromEntries([linkedAccount, ...providerAccounts].map((entry) => [entry.id, entry])),
-      feeds: {},
+      persons: [],
+      accounts: {},
+      feeds: Object.fromEntries(providerFeeds.map(entry => [entry.url, entry])),
       activitySummaries: { social: {}, rss: {}, buildMs: 0, itemCount: 0 },
-      mode: "friends" as const,
+      mode: "all_content" as const,
       width: 1_200,
       height: 800,
     };
     const model = buildIdentityGraphAtlasModel(input);
     const repeated = buildIdentityGraphAtlasModel(input);
-    const region = model.regions.find((entry) => entry.provider === "instagram")!;
-    const providerNode = model.nodes.find((entry) => entry.id === "provider:instagram")!;
-    const accountNodes = model.nodes.filter((entry) => entry.accountId?.startsWith("provider-account-"));
+    const region = model.regions.find((entry) => entry.provider === "rss")!;
+    const providerNode = model.nodes.find((entry) => entry.id === "provider:rss")!;
+    const accountNodes = model.nodes.filter((entry) => entry.feedUrl?.startsWith("https://example.test/spiral-"));
     const normalizedRadii = accountNodes.map((entry) => Math.hypot(
       (entry.x - providerNode.x) / region.radiusX,
       (entry.y - providerNode.y) / region.radiusY,
@@ -460,10 +476,10 @@ describe("buildIdentityGraphAtlas", () => {
       return Math.floor(((angle + Math.PI * 2) % (Math.PI * 2)) / (Math.PI / 4));
     }));
 
-    expect(accountNodes).toHaveLength(providerAccounts.length);
+    expect(accountNodes).toHaveLength(providerFeeds.length);
     expect(region).toEqual(expect.objectContaining({
-      count: 49,
-      linkedCount: 1,
+      count: 48,
+      linkedCount: 0,
       unlinkedCount: 48,
     }));
     const providerAtlas = sliceIdentityGraphAtlas({
@@ -478,11 +494,11 @@ describe("buildIdentityGraphAtlas", () => {
       quality: "settled",
     });
     expect(providerAtlas.labels).toContainEqual(expect.objectContaining({
-      nodeId: "provider:instagram",
-      text: `Instagram 48 ${galaxyIconGlyph("instagram")}`,
+      nodeId: "provider:rss",
+      text: `RSS 48 ${galaxyIconGlyph("rss")}`,
     }));
-    expect(providerAccounts.every((account) => providerAtlas.labels.some((label) =>
-      label.nodeId === `account:${account.id}`
+    expect(providerFeeds.every((feed) => providerAtlas.labels.some((label) =>
+      label.nodeId === `feed:${feed.url}`
     ))).toBe(true);
     expect(Math.min(...normalizedRadii)).toBeGreaterThan(0.1);
     expect(Math.max(...normalizedRadii)).toBeLessThan(0.9);
@@ -492,7 +508,7 @@ describe("buildIdentityGraphAtlas", () => {
     );
   });
 
-  it("reserves detail labels for a visible unlinked provider field", () => {
+  it("reserves detail labels for a visible subscribed feed field", () => {
     const linkedPeople = Array.from({ length: 180 }, (_, index) => ({
       ...person(index + 1),
       id: `dense-person-${index}`,
@@ -506,25 +522,21 @@ describe("buildIdentityGraphAtlas", () => {
       provider: "facebook" as const,
       externalId: `dense-linked-author-${index}`,
     }));
-    const unlinkedAccounts = Array.from({ length: 48 }, (_, index) => ({
-      ...account(index + linkedAccounts.length),
-      id: `dense-unlinked-account-${index}`,
-      personId: undefined,
-      provider: "facebook" as const,
-      externalId: `dense-unlinked-author-${index}`,
-    }));
+    const providerFeeds = Array.from({ length: 48 }, (_, index) => ({
+      url: `https://example.test/dense-${index}.xml`, title: `Feed ${index}`, enabled: true, trackUnread: true,
+    } satisfies RssFeed));
     const model = buildIdentityGraphAtlasModel({
       persons: linkedPeople,
       accounts: Object.fromEntries(
-        [...linkedAccounts, ...unlinkedAccounts].map((entry) => [entry.id, entry]),
+        linkedAccounts.map((entry) => [entry.id, entry]),
       ),
-      feeds: {},
+      feeds: Object.fromEntries(providerFeeds.map(entry => [entry.url, entry])),
       activitySummaries: { social: {}, rss: {}, buildMs: 0, itemCount: 0 },
-      mode: "friends",
+      mode: "all_content",
       width: 1_400,
       height: 900,
     });
-    const region = model.regions.find((entry) => entry.provider === "facebook")!;
+    const region = model.regions.find((entry) => entry.provider === "rss")!;
     const atlas = sliceIdentityGraphAtlas({
       model,
       transform: {
@@ -538,8 +550,8 @@ describe("buildIdentityGraphAtlas", () => {
     });
 
     expect(atlas.labels.filter((label) =>
-      label.nodeId.startsWith("account:dense-unlinked-account-")
-    )).toHaveLength(unlinkedAccounts.length);
+      label.nodeId.startsWith("feed:https://example.test/dense-")
+    )).toHaveLength(providerFeeds.length);
   });
 
   it("spaces dense friend systems far enough apart for their account fields", () => {

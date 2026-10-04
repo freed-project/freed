@@ -1111,12 +1111,13 @@ function App() {
       source: "desktop-download",
       message: "Preparing Freed Desktop update.",
     });
-    setUpdateState({ phase: "backing-up" });
+    const backupStartedAt = performance.now();
+    setUpdateState({ phase: "backing-up", startedAtMonotonicMs: backupStartedAt });
 
     try {
       const version = await installPendingDesktopUpdate(pending, (progress) => {
         if (progress.phase === "backing-up") {
-          setUpdateState(progress);
+          setUpdateState({ phase: "backing-up", startedAtMonotonicMs: backupStartedAt });
           updateBackgroundActivity(activityId, { message: "Saving Library backup before updating." });
           return;
         }
@@ -1804,7 +1805,7 @@ function App() {
           }
         : undefined,
       updateDownloadProgress: ((): UpdateDownloadProgress | null => {
-        if (updateState.phase === "backing-up") return { phase: "backing-up" };
+        if (updateState.phase === "backing-up") return updateState;
         if (updateState.phase === "downloading") return { phase: "downloading", percent: updateState.percent };
         if (updateState.phase === "error") return { phase: "error", message: updateState.message };
         return null;

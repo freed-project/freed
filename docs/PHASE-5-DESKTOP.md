@@ -51,7 +51,9 @@ investigation.
 
 Local snapshots now reuse the transaction-pinned indexed checkpoint export cache
 for both canonical passes. Update status distinguishes Library backup from network
-download, and failed backup still blocks installation. Real-library installed
+download, and failed backup still blocks installation. The backup toast and
+Settings indicator show a monotonic elapsed timer from the same update attempt;
+backup has no percentage because its snapshot API reports no measurable total. Real-library installed
 interaction and fresh rollback verification remain outstanding.
 
 The first renderer heartbeat now carries the existing frontend build and app-session
@@ -1756,3 +1758,12 @@ duplicate facet or RSS reads. Retries drain sibling reads and stop after three
 attempts. This is source-coherent composition, not a shared SQL transaction or
 new write authority. External generation ABA and installed visual stability
 remain unproven.
+
+### Relationship-neutral Map navigation
+
+Tracked social Galaxy accounts require an existing Friend or Connection Person
+link. Content-discovered accounts remain available as content identities but
+do not gain tracked relationship eligibility from discovery, activity, pins or
+roster flags alone. Profile Map navigation selects an existing Person or an
+unlinked Account in all-content mode, without creating a Connection. Historical
+relationship provenance remains unverified; this change does not clean up data.
