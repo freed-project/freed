@@ -35,6 +35,7 @@ let receiptDigest;
 let apiBase;
 let server;
 let tagCreated = false;
+let tagResponseDelayMs = 0;
 let postCreateReadMissesRemaining = 1;
 let revokedTokens = 0;
 const requests = [];
@@ -357,6 +358,7 @@ before(async () => {
         tag,
         type: "commit",
       });
+      if (tagResponseDelayMs) await new Promise(resolve => setTimeout(resolve, tagResponseDelayMs));
       return json(response, 201, { sha: tagObjectSha });
     }
     if (
@@ -602,6 +604,32 @@ test(
     );
   },
 );
+
+test("native policy deadline rejects stale and excessive admission windows before API mutation", { skip: !enabled }, async () => {
+  const count = requests.length;
+  for (const deadline of [Date.now() - 1, Date.now() + 600_000]) {
+    const result = await runHost([...publishArgs(), "--policy-valid-until", String(deadline)], worktree);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /policy deadline is invalid or expired/);
+  }
+  assert.equal(requests.length, count);
+});
+
+test("native policy expiry after annotation prevents the immutable ref and revokes the token", { skip: !enabled }, async () => {
+  const count = requests.filter(item => item.method === "POST" && item.url.endsWith("/git/refs")).length;
+  const revoked = revokedTokens;
+  const annotations = requests.filter(item => item.method === "POST" && item.url.endsWith("/git/tags")).length;
+  tagResponseDelayMs = 3200;
+  try {
+    const result = await runHost([...publishArgs(), "--policy-valid-until", String(Date.now() + 3000)], worktree);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /policy deadline is invalid or expired/);
+    assert.equal(tagCreated, false);
+    assert.equal(requests.filter(item => item.method === "POST" && item.url.endsWith("/git/tags")).length, annotations + 1);
+    assert.equal(requests.filter(item => item.method === "POST" && item.url.endsWith("/git/refs")).length, count);
+    assert.equal(revokedTokens, revoked + 1);
+  } finally { tagResponseDelayMs = 0; }
+});
 
 test(
   "native publisher creates and verifies one annotated tag then revokes its token",

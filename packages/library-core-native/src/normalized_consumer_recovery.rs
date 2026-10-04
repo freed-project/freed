@@ -113,6 +113,7 @@ pub fn archive_consumer_epoch_recovery_v1(
     actor_store: &dyn ActorKeyStore,
     created_at: u64,
 ) -> Result<String, String> {
+    crate::require_library_transfer_capability()?;
     archive_consumer_recovery_with_admission(
         connection,
         actor_store,
@@ -411,6 +412,7 @@ pub fn prepare_consumer_epoch_reenrollment_v1(
     actor_store: &dyn ActorKeyStore,
     created_at: u64,
 ) -> Result<crate::normalized_follower::NormalizedFollowerActorRequestV2, String> {
+    crate::require_library_transfer_capability()?;
     prepare_consumer_reenrollment_with_admission(
         connection,
         recovery_id,
@@ -572,6 +574,7 @@ pub fn commit_consumer_epoch_reenrollment_v1(
     actor_store: &dyn ActorKeyStore,
     committed_at: u64,
 ) -> Result<crate::normalized_follower::NormalizedFollowerActorRequestV2, String> {
+    crate::require_library_transfer_capability()?;
     commit_consumer_reenrollment_with_admission(
         connection,
         recovery_id,
@@ -749,6 +752,7 @@ pub fn prepare_consumer_recovery_v1(
     actor_store: &dyn ActorKeyStore,
     created_at: u64,
 ) -> Result<ConsumerRecoverySummaryV1, String> {
+    crate::require_library_transfer_capability()?;
     let existing = read_consumer_recovery_summary_v1(connection)?;
     if let Some(summary) = existing
         .as_ref()

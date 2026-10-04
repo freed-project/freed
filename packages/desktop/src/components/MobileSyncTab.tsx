@@ -1,3 +1,4 @@
+import { LIBRARY_TRANSFER_ENABLED, LIBRARY_TRANSFER_UNAVAILABLE } from "../lib/library-transfer-capability";
 import { LibraryReplicaAudit } from "@freed/ui/components/settings/LibraryReplicaAudit";
 import { auditNormalizedLibraryReplica } from "../lib/library-core-normalized-query-client";
 /** Google Drive controls for the SQLite Library shared by Desktop and PWA. */
@@ -301,10 +302,11 @@ export function MobileSyncTab() {
                       </p>
                     ) : <p className="mt-2">Preserve your previous edits before enrolling with the new Primary.</p>}
                     {consumerRecovery && <ConsumerRecoveryReview key={consumerRecovery.recoveryId} recoveryId={consumerRecovery.recoveryId} />}
+                    {!LIBRARY_TRANSFER_ENABLED && <p className="mt-2">{LIBRARY_TRANSFER_UNAVAILABLE}</p>}
                     {consumerRecovery?.state === "prepared" && <p className="mt-2">Reconnecting keeps previous edits in the archive. Their pending changes will stop appearing in the Library until they are resolved.</p>}
                     {consumerRecovery?.state !== "following" && (
                       <button type="button" data-testid="consumer-recovery-action" onClick={() => void recoverConsumer()}
-                        disabled={recovering || syncing || !!followerStatusError}
+                        disabled={!LIBRARY_TRANSFER_ENABLED || recovering || syncing || !!followerStatusError}
                         className="btn-secondary mt-3 rounded-lg px-3 py-1.5 text-xs disabled:opacity-50">
                         {recovering ? "Recovering..." : consumerRecovery?.state === "prepared" ? "Reconnect this consumer" : "Prepare recovery"}
                       </button>

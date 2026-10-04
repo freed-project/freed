@@ -1,3 +1,4 @@
+import { LIBRARY_TRANSFER_ENABLED, LIBRARY_TRANSFER_UNAVAILABLE } from "../lib/library-transfer-capability";
 import { ConsumerRecoveryReview } from "./ConsumerRecoveryReview";
 import { useCloudProviders } from "../hooks/useCloudProviders";
 import { useEffect, useRef, useState } from "react";
@@ -17,6 +18,11 @@ const field = "w-full rounded-lg border border-[var(--theme-border-strong)] bg-[
 
 /** Durable phase readback decides which action is available after every restart. */
 export function LibraryHandoffPanel() {
+  if (!LIBRARY_TRANSFER_ENABLED) return <section aria-label="Primary transfer"><h2>Primary transfer</h2><p>{LIBRARY_TRANSFER_UNAVAILABLE}</p><ConsumerRecoveryReview readOnly /></section>;
+  return <EnabledLibraryHandoffPanel />;
+}
+
+function EnabledLibraryHandoffPanel() {
   const credentials = useCloudProviders({ credentialsOnly: true });
   const signingIn = credentials.providers.gdrive.status === "connecting";
   const [cancellationInput, setCancellationInput] = useState("");
@@ -133,7 +139,7 @@ export function LibraryHandoffPanel() {
     </div>}
     {status && status.installationRole !== "consumer" && (role !== "follower" || (source && status.phase === "demoted")) && <div className="border-t border-[var(--theme-border-subtle)] pt-3">
       <h3 className="text-sm font-semibold">Preserved edits</h3>
-      <ConsumerRecoveryReview key={`${status.handoffId}:${status.phase}`} readOnly={!(source && status.phase === "demoted" && role === "follower")} />
+      <ConsumerRecoveryReview key={`${status.handoffId}:${status.phase}:${role}`} primary={role === "primary"} readOnly={!((source && status.phase === "demoted" && role === "follower") || (targetRole && status.phase === "active" && role === "primary"))} />
     </div>}
     {busy && <p role="status" className="text-sm">Transfer step is running. Native work may finish after this view closes; the saved receipt determines the next step.</p>}
     {error && <p role="alert" className="text-sm theme-feedback-text-danger">{error}</p>}

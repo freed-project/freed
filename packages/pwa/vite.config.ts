@@ -67,8 +67,9 @@ function configureDemoAvatarRoute(server: Pick<ViteDevServer, "middlewares">) {
   });
 }
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   define: {
+    __LIBRARY_TRANSFER_ACCEPTANCE__: mode === "library-transfer-acceptance" || mode === "test",
     __APP_VERSION__: JSON.stringify(buildMetadata.appVersion),
     __BUILD_KIND__: JSON.stringify(buildMetadata.buildKind),
     __BUILD_COMMIT_SHA__: JSON.stringify(buildMetadata.commitSha),
@@ -193,4 +194,4 @@ export default defineConfig({
     include: ["src/**/*.test.ts"],
     setupFiles: ["./src/vitest.setup.ts"],
   },
-});
+}));

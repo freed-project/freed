@@ -1,0 +1,38 @@
+name: Cloud Release Policy Evidence Probe
+on:
+  pull_request:
+    branches: [dev]
+    paths:
+      - .github/workflows/cloud-release-policy-probe.yml
+      - scripts/cloud-release-request.mjs
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+jobs:
+  policy-evidence:
+    if: github.repository == 'freed-project/freed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Measure ruleset evidence under the actual read-only Actions token
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node --input-type=module <<'JS'
+          import { appendFileSync } from "node:fs";
+          const api = async route => {
+            const response = await fetch(`https://api.github.com/repos/freed-project/freed/${route}`, { headers: { Authorization: `Bearer ${process.env.GH_TOKEN}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" } });
+            if (!response.ok) throw new Error(`Read-only policy evidence API status ${response.status}`);
+            return response.json();
+          };
+          const summaries = await api("rulesets?per_page=100");
+          const evidence = [];
+          for (const item of summaries) {
+            const rule = await api(`rulesets/${item.id}`);
+            evidence.push({ id: rule.id, target: rule.target, enforcement: rule.enforcement, bypassActorsPresent: Object.hasOwn(rule, "bypass_actors") });
+          }
+          const receipt = { repository: process.env.GITHUB_REPOSITORY, source: process.env.GITHUB_SHA, run: process.env.GITHUB_RUN_ID, principal: "read-only GITHUB_TOKEN", permissions: { contents: "read", actions: "read", "pull-requests": "read" }, rulesets: evidence, completePage: summaries.length < 100, fullPolicyEvidence: evidence.length > 0 && summaries.length < 100 && evidence.every(item => item.bypassActorsPresent), appCredentialUsed: false };
+          console.log(JSON.stringify(receipt));
+          appendFileSync(process.env.GITHUB_STEP_SUMMARY, "Read-only policy evidence (diagnostic only; no activation):\n\n" + JSON.stringify(receipt, null, 2) + "\n");
+          JS

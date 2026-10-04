@@ -74,8 +74,15 @@ frontier. Rust and PWA use the same rule. A writer transfer therefore preserves
 the source frontier while enrolling the successor, and the publisher still
 rejects a transfer across a different frontier.
 
-Desktop cloud coordination reads that normalized descriptor together with one
-installation-local actor ID derived by the native key store. The descriptor's
+Desktop cloud coordination uses a distinct closed metadata preflight identity
+with the same Library, epoch, admitted writer, canonical source revision and
+causal frontier, together with one installation-local actor ID derived by the
+native key store. The host rechecks the freshly selected Library, schema/storage
+identity and generation receipt inside the read transaction containing writer,
+frontier and actor checks. Preflight has no record or item counts and does not
+certify checkpoint exportability or detect corruption in census-only trees.
+Full descriptor/export commands retain their count failures, pinned snapshot
+semantics and publication admission checks. The descriptor's
 `writerId` is the actor currently admitted by SQLite. The local actor ID names
 the current installation and may differ on a restored or follower client.
 Cloud state stores only the normalized Library ID, authority epoch, admitted

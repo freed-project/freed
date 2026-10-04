@@ -1,3 +1,4 @@
+import { getJevClassifierProvider, onJevClassifierProviderChange } from "./jev-provider";
 import { assertJevSourceCurrent } from "./jev-library";
 import { isJevNative, requestNativeJev, jevPreviewHeaders } from "./jev-client";
 import { inferContentSignals, type ContentSignals, type FeedItem } from "@freed/shared";
@@ -120,9 +121,16 @@ export async function postJevPreviewRequest<TResponse>(
       const nativeRequest = request as Parameters<typeof requestNativeJev>[1];
       await assertJevSourceCurrent(nativeRequest.item);
       signal.throwIfAborted();
+      if (getJevClassifierProvider() === "gliclass-base") {
+        if (path.endsWith("/match")) throw new Error("Capability matching currently requires Jev. Switch classifiers explicitly to use it.");
+        const { requestLocalGliclass } = await import("./gliclass-client");
+        return await requestLocalGliclass(nativeRequest.item, signal, Boolean((request as { reclassify?: boolean }).reclassify)) as TResponse;
+      }
       return await requestNativeJev(path, nativeRequest, signal) as TResponse;
     } catch (error) {
-      throw new JevPreviewRequestError(error instanceof Error ? error.message : "Jev request failed.", "preview_unavailable", 503);
+      const message = error instanceof Error ? error.message : "Classifier request failed.";
+      const abstention = getJevClassifierProvider() === "gliclass-base" && /abstain|input limit|token limit/i.test(message);
+      throw new JevPreviewRequestError(message, abstention ? "local_abstention" : "preview_unavailable", abstention ? 422 : 503);
     }
   }
   const response = await fetch(path, {
@@ -153,7 +161,8 @@ export async function runJevPreview(
     ...options,
     validate: buildJevRequest,
     classify: options.classify ?? classifyItem,
-    apply: (item, response) => options.apply(item, response.contentSignals),
+    apply: (item, response) => response.cached && JSON.stringify(item.contentSignals) === JSON.stringify(response.contentSignals)
+      ? Promise.resolve() : options.apply(item, response.contentSignals),
   });
 }
 
@@ -167,10 +176,12 @@ export async function runJevPreviewBatch<TResponse>(
     status: "queued",
   }));
   const classify = options.classify;
+  const providerAtStart = getJevClassifierProvider();
   const controller = new AbortController();
   const cancelFromOwner = () => controller.abort(options.signal.reason);
   if (options.signal.aborted) cancelFromOwner();
   else options.signal.addEventListener("abort", cancelFromOwner, { once: true });
+  const stopProviderListener = onJevClassifierProviderChange(() => controller.abort());
   let nextIndex = 0;
   const update = (index: number, change: Partial<JevPreviewBatchResult<TResponse>>) => {
     results[index] = { ...results[index], ...change };
@@ -193,6 +204,7 @@ export async function runJevPreviewBatch<TResponse>(
       }
       update(index, { status: "running" });
       try {
+        if (getJevClassifierProvider() !== providerAtStart) { controller.abort(); break; }
         const response = await classify(item, controller.signal, options.reclassify ?? false);
         // Keep metered usage even if cancellation or a stale library edit prevents applying it.
         update(index, { response });
@@ -220,7 +232,8 @@ export async function runJevPreviewBatch<TResponse>(
   }
 
   try {
-    await Promise.all(Array.from({ length: Math.min(4, items.length) }, worker));
+    const concurrency = getJevClassifierProvider() === "gliclass-base" ? 1 : 4;
+    await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, worker));
     for (let index = nextIndex; index < results.length; index += 1) {
       results[index] = { ...results[index], status: "cancelled" };
     }
@@ -228,5 +241,6 @@ export async function runJevPreviewBatch<TResponse>(
     return results;
   } finally {
     options.signal.removeEventListener("abort", cancelFromOwner);
+    stopProviderListener();
   }
 }

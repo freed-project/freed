@@ -170,6 +170,22 @@ describe("useResolvedLocationCandidates", () => {
     expect(completeSnapshot.lastResolvedAt).toEqual(expect.any(Number));
   });
 
+  it("removes obsolete resolved pins immediately and ignores late old geocodes", async () => {
+    container = document.createElement("div"); document.body.appendChild(container); root = createRoot(container);
+    let finishOld!: (geo: { latitude: number; longitude: number; name: string }) => void;
+    geocodeMock.mockImplementation((name: string) => name === "Slow" ? new Promise(resolve => { finishOld = resolve; }) : Promise.resolve({ latitude: 1, longitude: 2, name }));
+    const snapshots: ResolvedLocationsSnapshot[] = [];
+    const render = (names: string[]) => root!.render(<ResolvedLocationsHarness candidates={names.map(name => ({ accountId: null, friend: null, item: makeItem(name, name, 100) }))} onSnapshot={value => snapshots.push(value)} />);
+    await act(async () => render(["Paris", "Slow"]));
+    expect(snapshots.at(-1)!.resolvedItems).toHaveLength(1);
+    snapshots.length = 0;
+    await act(async () => render(["London"]));
+    expect(snapshots.every(value => value.resolvedItems.every(pin => pin.item.globalId !== "Paris"))).toBe(true);
+    await act(async () => finishOld({ latitude: 3, longitude: 4, name: "Slow" }));
+    expect(snapshots.at(-1)!.resolvedItems.map(pin => pin.item.globalId)).toEqual(["London"]);
+    expect(snapshots.at(-1)!.resolvingCount).toBe(0);
+  });
+
   it("keeps local showcase mode from sending named locations to a geocoder", async () => {
     container = document.createElement("div");
     document.body.appendChild(container);

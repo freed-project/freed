@@ -270,6 +270,8 @@ import {
   resolveDesktopDownloadFallbackUrl,
 } from "./lib/desktop-updater";
 import { rendererHeartbeatTiming } from "./lib/renderer-heartbeat";
+import { withRuntimeHealthIdentity } from "./lib/runtime-health-events";
+import { RendererResponsivenessMonitor } from "./lib/renderer-responsiveness";
 import { DESKTOP_CHANGELOG_PREVIEW } from "./lib/changelog-preview";
 import { useClipboardSaveShortcut } from "./hooks/useClipboardSaveShortcut";
 import { clearClipboardSaveShortcutConfig } from "./lib/clipboard-save-shortcut";
@@ -856,6 +858,7 @@ function App() {
       import.meta.env.VITE_TEST_TAURI === "1" || isTauri() || hasTauriMock;
     if (!canEmitRendererHeartbeat) return;
 
+    const responsiveness = new RendererResponsivenessMonitor();
     let heartbeatSeq = 0;
     const pageLoadId =
       typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -879,13 +882,14 @@ function App() {
         };
       };
       const visibility = document.visibilityState;
+      const surfacePerf = collectSurfacePerf();
       const timing = rendererHeartbeatTiming(
         visibility,
         now,
         expectedHeartbeatAt,
         RENDERER_HEARTBEAT_INTERVAL_MS,
       );
-      const payload = {
+      const payload = withRuntimeHealthIdentity({
         seq: heartbeatSeq,
         ts: Date.now(),
         reason,
@@ -903,8 +907,10 @@ function App() {
         settingsOpen: Boolean(document.querySelector(".theme-settings-shell")),
         dialogOpen: Boolean(document.querySelector(".theme-dialog-shell")),
         backgroundRuntime: getBackgroundRuntimeStatus(),
-        surfacePerf: collectSurfacePerf(),
-      };
+        surfacePerf,
+        activeSurface: surfacePerf.activeSurface,
+        responsiveness: responsiveness.snapshot(),
+      });
       expectedHeartbeatAt = now + RENDERER_HEARTBEAT_INTERVAL_MS;
       noteRendererHeartbeat(payload);
       if (import.meta.env.VITE_TEST_TAURI === "1") {
@@ -947,6 +953,7 @@ function App() {
       window.removeEventListener("keydown", noteInput);
       window.removeEventListener("pagehide", handlePageHide);
       sendRendererHeartbeat("cleanup");
+      responsiveness.dispose();
     };
   }, [legalAccepted]);
 
@@ -1101,13 +1108,17 @@ function App() {
       jobKind: "update",
       label: "Update",
       source: "desktop-download",
-      message: "Downloading Freed Desktop update.",
-      progress: 0,
+      message: "Preparing Freed Desktop update.",
     });
-    setUpdateState({ phase: "downloading", percent: 0 });
+    setUpdateState({ phase: "backing-up" });
 
     try {
       const version = await installPendingDesktopUpdate(pending, (progress) => {
+        if (progress.phase === "backing-up") {
+          setUpdateState(progress);
+          updateBackgroundActivity(activityId, { message: "Saving Library backup before updating." });
+          return;
+        }
         if (progress.phase === "downloading") {
           setUpdateState({
             phase: "downloading",
@@ -1786,6 +1797,7 @@ function App() {
           }
         : undefined,
       updateDownloadProgress: ((): UpdateDownloadProgress | null => {
+        if (updateState.phase === "backing-up") return { phase: "backing-up" };
         if (updateState.phase === "downloading") return { phase: "downloading", percent: updateState.percent };
         if (updateState.phase === "error") return { phase: "error", message: updateState.message };
         return null;

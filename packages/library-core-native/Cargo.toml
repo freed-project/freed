@@ -6,6 +6,11 @@ edition = "2021"
 license = "UNLICENSED"
 publish = false
 
+[features]
+default = []
+# Explicit isolated workflow acceptance only; ordinary product builds leave this off.
+library-transfer-acceptance = []
+
 [dependencies]
 base64 = "0.22"
 fslock = "0.2.1"

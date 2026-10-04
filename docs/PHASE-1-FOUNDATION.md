@@ -197,6 +197,8 @@ curl -X POST http://localhost:3000/api/subscribe \
 
 ### 4. CI/CD Pipeline
 
+The portable release controller is implemented with explicit channel, immutable source and reviewed receipt inputs. It reuses the dedicated Swift tag broker on an ephemeral GitHub macOS runner, ahead of the existing cloud build/sign/notarize workflow. Candidate code is treated as data while App authority is present. An unprivileged request inbox supports existing connected cloud branch/file APIs; the controller verifies the immutable owner push before admitting it. A short-lived owner policy challenge uses the existing owner connection to read complete private bypass policies; hidden policy details are never committed. Native publication refuses an expired attestation. Cloud activation remains pending an owner-reviewed protected controller branch, exact controller pin, restricted publisher environment and secure provisioning of the existing App key. No production release or new credentials are implied. See [portable release publication](CLOUD-RELEASE-PUBLISHER.md).
+
 GitHub Actions workflows for continuous integration and deployment.
 
 **CI (`ci.yml`):**

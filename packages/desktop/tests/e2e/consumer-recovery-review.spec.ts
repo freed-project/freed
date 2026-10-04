@@ -42,7 +42,7 @@ test("consumer archive review requires explicit duplicate-safe reapplication", a
         outcome: request.transactionId === "tx:accepted" ? { state: "confirmed_accepted", committed_revision: 7 }
           : request.transactionId === "tx:rejected" ? { state: "reported_rejected", reason: "target_missing", result_digest: "3".repeat(64) }
           : { state: "unresolved" },
-        rows: Array.from({ length: end - start }, (_, index) => ({ personState: null, rssFeedState: null, originalEnvelopeJson: null, authorName: "Reader", itemPresent: true, itemText: "A preserved article about libraries", assigned: true, assignedAt: 1000, readAt: null, createdAt: 1000, entityId: "rss:private-item-12345678", memberIndex: start + index, operationType: "feed_item_saved_assignment" })),
+        rows: Array.from({ length: end - start }, (_, index) => ({ personState: null, rssFeedState: null, originalEnvelopeJson: null, authorName: "Reader", itemPresent: true, itemState: "present", itemText: "A preserved article about libraries", assigned: true, assignedAt: 1000, readAt: null, createdAt: 1000, entityId: "rss:private-item-12345678", memberIndex: start + index, operationType: "feed_item_saved_assignment" })),
       };
       }
       return previous(args);
@@ -82,7 +82,7 @@ test("consumer archive review requires explicit duplicate-safe reapplication", a
   });
   await app.page.getByRole("button", { name: "Apply again", exact: true }).click();
   await expect(detail).toContainText("Replacement ...12345678 was stored");
-  await expect(detail).toContainText("Check sync status for Primary acceptance");
+  await expect(detail).toContainText("Its durable link prevents this original edit from creating a duplicate");
   expect((await ipc.invocations()).filter(({ cmd }) => cmd === "reapply_normalized_library_archived_assignments")).toHaveLength(1);
   await app.page.getByTestId("consumer-recovery-review").screenshot({ path: testInfo.outputPath("recovery-review.png") });
   const calls = (await ipc.invocations()).slice(before);
@@ -157,7 +157,7 @@ test(`${mode} recovery retries one signed replacement after response loss`, asyn
           { createdAt: 2, note: "Quotation note", text: "Keep this quotation", textBlobDigest: null },
           { createdAt: 3, note: null, text: null, textBlobDigest: "6".repeat(64) },
         ], tags: ["alpha", "zebra"] }, schema_version: 1, transaction_digest: "2".repeat(64), transaction_id: r.transactionId, transaction_member_count: 2, transaction_member_index: i }) : null,
-        authorName: null, itemPresent: mode === "annotations" ? true : mode === "items" ? false : null, itemText: mode === "annotations" ? "An article with annotations" : null, assigned: null, assignedAt: null, readAt: null, createdAt: 1000, entityId: mode === "preferences" ? "preferences" : `https://example.com/feed-${i}`, memberIndex: i, operationType: mode === "preferences" ? "preferences_leaf_assignment" : mode === "reach-outs" ? "person_reach_out_append" : mode === "account-records" ? "account_upsert" : mode === "account-removal" ? "account_remove" : mode === "person-records" ? "person_upsert" : mode === "people" ? "person_remove_and_accounts" : mode === "accounts" ? "account_person_assignment" : mode === "rss" ? "rss_feed_title_assignment" : mode === "subscriptions" ? "rss_feed_upsert" : mode === "items" ? "feed_item_remove" : "feed_item_annotations_replace",
+        authorName: null, itemPresent: mode === "annotations" ? true : mode === "items" ? false : null, itemState: mode === "annotations" ? "present" : mode === "items" ? "absent" : null, itemText: mode === "annotations" ? "An article with annotations" : null, assigned: null, assignedAt: null, readAt: null, createdAt: 1000, entityId: mode === "preferences" ? "preferences" : `https://example.com/feed-${i}`, memberIndex: i, operationType: mode === "preferences" ? "preferences_leaf_assignment" : mode === "reach-outs" ? "person_reach_out_append" : mode === "account-records" ? "account_upsert" : mode === "account-removal" ? "account_remove" : mode === "person-records" ? "person_upsert" : mode === "people" ? "person_remove_and_accounts" : mode === "accounts" ? "account_person_assignment" : mode === "rss" ? "rss_feed_title_assignment" : mode === "subscriptions" ? "rss_feed_upsert" : mode === "items" ? "feed_item_remove" : "feed_item_annotations_replace",
       })) };
       if (r.queryId === "rss_feed_detail_v1" && mode === "subscriptions" && r.url.endsWith("-1")) return { queryId: r.queryId, schemaVersion: 1, source: { ...source, transitionSequence: 7 }, feed: null };
       if (mode === "account-records" && r.queryId === "account_root_v1") return { queryId: r.queryId, schemaVersion: 1, accountId: r.accountId, source, account: null };
@@ -406,7 +406,7 @@ test(`${demoted ? "demoted former" : "promoted"} Primary archive recovery follow
       if (request.queryId === "recovery_intent_review_v1") return {
         queryId: request.queryId, schemaVersion: 1, recoveryId: request.recoveryId, archiveDigest: "1".repeat(64), source, nextCursor: null,
         transactionId: request.transactionId, transactionDigest: "2".repeat(64), memberCount: 1, replacement: null, outcome: { state: "unresolved" },
-        rows: [{ personState: null, rssFeedState: null, originalEnvelopeJson: null, authorName: "Reader", itemPresent: true, itemText: "Preserved through promotion", assigned: true, assignedAt: 1000, readAt: null, createdAt: 1000, entityId: "rss:private-item-12345678", memberIndex: 0, operationType: "feed_item_saved_assignment" }],
+        rows: [{ personState: null, rssFeedState: null, originalEnvelopeJson: null, authorName: "Reader", itemPresent: true, itemState: "present", itemText: "Preserved through promotion", assigned: true, assignedAt: 1000, readAt: null, createdAt: 1000, entityId: "rss:private-item-12345678", memberIndex: 0, operationType: "feed_item_saved_assignment" }],
       };
       return previous(args);
     };
@@ -429,7 +429,7 @@ test(`${demoted ? "demoted former" : "promoted"} Primary archive recovery follow
   await expect(panel).toContainText("Preserved through promotion");
   await expect(panel).toContainText("The original outcome has not been established.");
   expect((await ipc.invocations()).slice(beforeReview).filter(({ cmd }) => /reapply_normalized_library|enqueue_normalized_library_follower_intent|sign_normalized_library/.test(cmd))).toEqual([]);
-  if (demoted) {
+  {
     await ipc.setHandler("reapply_normalized_library_archived_assignments", ({ request }) => {
       const input = request as { recoveryId: string; transactionId: string; memberCount: number };
       return { schemaVersion: 1, recoveryId: input.recoveryId, originalTransactionId: input.transactionId,
@@ -440,8 +440,8 @@ test(`${demoted ? "demoted former" : "promoted"} Primary archive recovery follow
     await panel.getByRole("button", { name: "Apply again", exact: true }).click();
     await expect(panel).toContainText("Replacement ...-primary was stored");
     expect((await ipc.invocations()).slice(beforeReview).filter(({ cmd }) => cmd === "reapply_normalized_library_archived_assignments")).toHaveLength(1);
-  } else {
-    await expect(panel.getByRole("button", { name: "Apply again", exact: true })).toHaveCount(0);
+    const submission = (await ipc.invocations()).slice(beforeReview).find(({ cmd }) => cmd === "reapply_normalized_library_archived_assignments")!;
+    expect((submission.args as { primary?: boolean }).primary).toBe(demoted ? undefined : true);
   }
   await panel.getByTestId("consumer-recovery-review").screenshot({ path: testInfo.outputPath(demoted ? "demoted-archive-review.png" : "primary-archive-review.png") });
 });
@@ -464,7 +464,7 @@ test("Friend recovery reviews both steps and retries one complete replacement", 
     handlers.query_normalized_library = args => {
       const r = args.request;
       if (r.queryId === "recovery_intent_page_v1") return { queryId: r.queryId, schemaVersion: 1, recoveryId: r.recoveryId, archiveDigest: "1".repeat(64), source: { ...source, transitionSequence: 7 }, nextCursor: null, rows: [{ ordinal: 0, transactionId: "tx:friend01" }] };
-      if (r.queryId === "recovery_intent_review_v1") return { queryId: r.queryId, schemaVersion: 1, recoveryId: r.recoveryId, archiveDigest: "1".repeat(64), source, nextCursor: null, transactionId: r.transactionId, transactionDigest: "2".repeat(64), memberCount: 1, replacement: null, outcome: { state: "unresolved" }, rows: [{ personState: "absent", rssFeedState: null, originalEnvelopeJson: r.includeOriginal ? originalEnvelopeJson : null, authorName: null, itemPresent: null, itemText: null, assigned: null, assignedAt: null, readAt: null, createdAt: 1000, entityId: person.id, memberIndex: 0, operationType: "friend_replace" }] };
+      if (r.queryId === "recovery_intent_review_v1") return { queryId: r.queryId, schemaVersion: 1, recoveryId: r.recoveryId, archiveDigest: "1".repeat(64), source, nextCursor: null, transactionId: r.transactionId, transactionDigest: "2".repeat(64), memberCount: 1, replacement: null, outcome: { state: "unresolved" }, rows: [{ personState: "absent", rssFeedState: null, originalEnvelopeJson: r.includeOriginal ? originalEnvelopeJson : null, authorName: null, itemPresent: null, itemState: null, itemText: null, assigned: null, assignedAt: null, readAt: null, createdAt: 1000, entityId: person.id, memberIndex: 0, operationType: "friend_replace" }] };
       if (r.queryId === "person_root_v1") return { queryId: r.queryId, schemaVersion: 1, personId: r.personId, source, person: null };
       if (r.queryId === "person_account_page_v1") return { queryId: r.queryId, schemaVersion: 1, personId: r.personId, source: { ...source, transitionSequence: 7 }, rows: [], nextCursor: null };
       if (r.queryId === "account_root_v1") return { queryId: r.queryId, schemaVersion: 1, accountId: r.accountId, source, account: null };

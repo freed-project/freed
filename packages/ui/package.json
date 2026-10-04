@@ -36,6 +36,7 @@
     "./components/CloudProviderCard": "./src/components/CloudProviderCard.tsx",
     "./components/ThemePreviewButton": "./src/components/ThemePreviewButton.tsx",
     "./components/SampleDataTestingSection": "./src/components/SampleDataTestingSection.tsx",
+    "./lib/friends-galaxy-long-tasks": "./src/lib/friends-galaxy-long-tasks.ts",
     "./lib/debug-store": "./src/lib/debug-store.ts",
     "./lib/background-activity-store": "./src/lib/background-activity-store.ts",
     "./lib/bug-report": "./src/lib/bug-report.ts",

@@ -427,6 +427,107 @@ describe("ReaderView cache-first hydration", () => {
     await act(async () => root.unmount());
   });
 
+  it("clears cached article title and lead image while the adjacent selection loads", async () => {
+    let resolveSecond!: (value: string | null) => void;
+    const first = makeArticleItem({ globalId: "rss:first" });
+    const second = makeArticleItem({ globalId: "rss:second", content: {
+      text: "Second body", mediaUrls: [], mediaTypes: [],
+      linkPreview: { url: "https://example.com/second", title: "Second title" },
+    } });
+    const platform = { ...basePlatformConfig, getLocalContent: vi.fn((id: string) =>
+      id === first.globalId
+        ? Promise.resolve('<article><h1>First cached title</h1><img src="https://example.com/first.jpg"><p>First cached body</p></article>')
+        : new Promise<string | null>((resolve) => { resolveSecond = resolve; }),
+    ) } as unknown as PlatformConfig;
+    const { container, root } = await renderReaderView(platform, first);
+    expect(container.textContent).toContain("First cached title");
+    await act(async () => root.render(<PlatformProvider value={platform}>
+      <ReaderView item={second} onClose={() => {}} />
+    </PlatformProvider>));
+    expect(container.textContent).not.toContain("First cached title");
+    expect(container.querySelector('img[src="https://example.com/first.jpg"]')).toBeNull();
+    await act(async () => resolveSecond("<article><p>Second cached body</p></article>"));
+    expect(container.textContent).toContain("Second cached body");
+    expect(container.textContent).not.toContain("First cached body");
+    await act(async () => root.unmount());
+  });
+
+  it.each(["adjacent", "return", "remount"])("discards late reply hydration across %s selection", async (scenario) => {
+    Object.defineProperty(window.navigator, "onLine", { configurable: true, value: true });
+    let resolveReplies!: (value: { text: string; mediaUrls: string[]; mediaTypes: ["image"] }) => void;
+    const first = makeArticleItem({ globalId: "x:first", platform: "x" });
+    const second = makeArticleItem({ globalId: "x:second", platform: "x" });
+    const platform = { ...basePlatformConfig,
+      getLocalContent: vi.fn(async () => "<article><p>Current cached body</p></article>"),
+      hydrateReaderItem: vi.fn(() => new Promise((resolve) => { resolveReplies = resolve; })),
+    } as unknown as PlatformConfig;
+    const rendered = await renderReaderView(platform, first);
+    const container = rendered.container;
+    let root = rendered.root;
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="Load replies inline, beta"]')!.click());
+    const select = async (item: FeedItemType) => act(async () => root.render(
+      <PlatformProvider value={platform}><ReaderView item={item} onClose={() => {}} /></PlatformProvider>,
+    ));
+    if (scenario === "remount") {
+      await act(async () => root.unmount());
+      root = createRoot(container);
+    }
+    await select(second);
+    if (scenario === "return") await select(first);
+    await act(async () => resolveReplies({ text: "Obsolete reply hydration body", mediaUrls: ["https://example.com/obsolete.jpg"], mediaTypes: ["image"] }));
+    expect(container.textContent).not.toContain("Obsolete reply hydration body");
+    expect(container.querySelector('img[src="https://example.com/obsolete.jpg"]')).toBeNull();
+    expect(container.textContent).toContain("Current cached body");
+    expect(platform.hydrateReaderItem).toHaveBeenCalledTimes(1);
+    await act(async () => root.unmount());
+  });
+
+  it("does not let a stale reply failure settle the next selection's active load", async () => {
+    Object.defineProperty(window.navigator, "onLine", { configurable: true, value: true });
+    let rejectFirst!: (error: Error) => void;
+    let resolveSecond!: (value: { text: string }) => void;
+    const hydrateReaderItem = vi.fn()
+      .mockImplementationOnce(() => new Promise((_, reject) => { rejectFirst = reject; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveSecond = resolve; }));
+    const platform = { ...basePlatformConfig,
+      getLocalContent: vi.fn(async () => "<article><p>Current cached body</p></article>"),
+      hydrateReaderItem,
+    } as unknown as PlatformConfig;
+    const { container, root } = await renderReaderView(platform, makeArticleItem({ globalId: "x:first", platform: "x" }));
+    const loadReplies = async () => act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="Load replies inline, beta"]')!.click());
+    await loadReplies();
+    await act(async () => root.render(<PlatformProvider value={platform}>
+      <ReaderView item={makeArticleItem({ globalId: "x:second", platform: "x" })} onClose={() => {}} />
+    </PlatformProvider>));
+    await loadReplies();
+    await act(async () => rejectFirst(new Error("Obsolete failure")));
+    expect(container.textContent).toContain("Loading replies");
+    expect(container.textContent).not.toContain("Freed could not load replies");
+    await act(async () => resolveSecond({ text: "Second hydrated body" }));
+    expect(container.textContent).toContain("Second hydrated body");
+    expect(container.textContent).not.toContain("Loading replies");
+    await act(async () => root.unmount());
+  });
+
+  it("keeps the newer cache response when adjacent loads settle out of order", async () => {
+    const pending = new Map<string, (value: string) => void>();
+    const platform = { ...basePlatformConfig, getLocalContent: vi.fn((id: string) =>
+      new Promise<string>((resolve) => { pending.set(id, resolve); }),
+    ) } as unknown as PlatformConfig;
+    const first = makeArticleItem({ globalId: "rss:first" });
+    const second = makeArticleItem({ globalId: "rss:second" });
+    const { container, root } = await renderReaderView(platform, first);
+    await act(async () => root.render(<PlatformProvider value={platform}>
+      <ReaderView item={second} onClose={() => {}} />
+    </PlatformProvider>));
+    await act(async () => pending.get(second.globalId)!("<article><h1>Second loaded title</h1><p>Second loaded body</p></article>"));
+    await act(async () => pending.get(first.globalId)!("<article><h1>Obsolete first title</h1><p>Obsolete first body</p></article>"));
+    expect(container.textContent).toContain("Second loaded title");
+    expect(container.textContent).toContain("Second loaded body");
+    expect(container.textContent).not.toContain("Obsolete first");
+    await act(async () => root.unmount());
+  });
+
   it("does not carry an offline playlist result to a different inline item", async () => {
     let resolveAdd!: (result: {
       playlistId: string;

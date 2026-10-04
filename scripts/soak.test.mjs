@@ -64,6 +64,7 @@ import {
   runtimeIdentityFromHealthLines,
   summarizeRequestSurfaceEvents,
   summarizeProviderScheduleIntegrity,
+  summarizeNativeProviderAdmissions,
   summarizeWorkerIdleTerminations,
 } from "./soak-assert.mjs";
 
@@ -2675,6 +2676,8 @@ test("buildVerdict produces a machine-readable verdict with real numbers", () =>
   assert.equal(byId.startup_repair_upload_budget, "pass");
   assert.equal(byId.social_outbox_retry_budget, "pass");
   assert.equal(verdict.eventSummaries.requestSurface.rssPullAttempts.total, 0);
+  assert.equal(verdict.eventSummaries.nativeProviderAdmissions.status, "inconclusive");
+  assert.equal(verdict.eventSummaries.nativeProviderAdmissions.admittedCount, null);
   assert.equal(byId.renderer_recoveries, "pass");
   assert.equal(byId.stale_heartbeats, "pass");
   assert.equal(byId.worker_init_rate, "pass");
@@ -3006,4 +3009,59 @@ test("readHealthLines slices by tsMs window and keeps malformed lines out", () =
   assert.equal(lines[0].line, 3);
   assert.deepEqual(lines.sourceDiagnostics.malformedLines, [2]);
   assert.equal(lines.sourceDiagnostics.sourceLineCount, 2);
+});
+
+
+test("native provider admission evidence refuses incomplete or mixed windows and counts intervening work", () => {
+  const start = 1_700_000_000_000;
+  const metricsRows = Array.from({ length: 6 }, (_, index) => ({ tsMs: start + index * 60_000, appPid: 1 }));
+  const make = () => metricsRows.map(({ tsMs }) => ({ entry: {
+    event: "native_runtime_memory_sample", tsMs,
+    providerObservationStartMs: tsMs - 4, providerObservationEndMs: tsMs - 2,
+    providerObservationStable: true, providerWindows: [],
+    providerOperations: { schemaVersion: 1, instanceId: "a".repeat(32), admitted: 7, completed: 7, active: 0, healthy: true },
+  } }));
+  const options = { runtimeEvidenceActionable: true };
+  const summarize = (lines, overrides = options) => summarizeNativeProviderAdmissions(lines, metricsRows, overrides);
+  const quiet = summarize(make());
+  assert.equal(quiet.status, "available");
+  assert.equal(quiet.admittedCount, 0);
+  assert.equal(quiet.windowStart, new Date(start - 1).toISOString());
+  assert.equal(quiet.windowEnd, new Date(start + 300_000 - 4).toISOString());
+  const observed = make();
+  for (const { entry } of observed.slice(2)) { entry.providerOperations.admitted += 1; entry.providerOperations.completed += 1; }
+  assert.equal(summarize(observed).admittedCount, 1);
+  assert.notEqual(runtimeHealthEvidenceFingerprint(observed).digest, runtimeHealthEvidenceFingerprint(make()).digest);
+  const mutations = [
+    lines => { delete lines[2].entry.providerOperations; },
+    lines => { lines[2].entry.providerOperations.schemaVersion = 2; },
+    lines => { lines[2].entry.providerOperations.instanceId = "b".repeat(32); },
+    lines => { lines[2].entry.providerOperations.instanceId = ["a".repeat(32)]; },
+    lines => { lines[2].entry.providerOperations.admitted = 6; lines[2].entry.providerOperations.completed = 6; },
+    lines => { lines[2].entry.providerOperations.admitted = 8; lines[2].entry.providerOperations.active = 1; },
+    lines => { lines[2].entry.providerWindows = ["fb-scraper"]; },
+    lines => { lines[2].entry.providerObservationStable = false; },
+    lines => { delete lines[2].entry.providerObservationStartMs; },
+    lines => { lines[2].entry.providerObservationEndMs = lines[2].entry.tsMs + 1; },
+    lines => { lines[2].entry.providerObservationStartMs = lines[2].entry.tsMs; },
+    lines => { lines[2].entry.providerObservationStartMs = lines[1].entry.providerObservationEndMs; },
+    lines => { lines[2].entry.providerOperations.healthy = false; },
+    lines => { lines[2].entry.providerOperations.admitted = Number.MAX_SAFE_INTEGER; },
+    lines => { lines[2].entry.tsMs = lines[1].entry.tsMs; },
+    lines => { [lines[2], lines[3]] = [lines[3], lines[2]]; },
+    lines => { lines[2].entry.tsMs = Number.MAX_SAFE_INTEGER; },
+    lines => { lines.splice(1, 4); },
+    lines => { lines.length = 0; },
+  ];
+  for (const mutate of mutations) {
+    const lines = make(); mutate(lines);
+    assert.equal(summarize(lines).status, "inconclusive");
+    assert.equal(summarize(lines).admittedCount, null);
+  }
+  assert.equal(summarize(make(), {}).status, "inconclusive");
+  const inset = make().slice(1, -1);
+  const interval = summarize(inset);
+  assert.equal(interval.status, "available");
+  assert.equal(interval.windowStart, new Date(start + 60_000 - 1).toISOString());
+  assert.equal(interval.windowEnd, new Date(start + 240_000 - 4).toISOString());
 });

@@ -76,6 +76,7 @@ export * from "./item-detail-contracts.js";
 export * from "./item-annotations-contracts.js";
 export * from "./item-reader-body-contracts.js";
 export * from "./item-scan-contracts.js";
+export * from "./priority-time-page-contracts.js";
 export * from "./provider-media-page-contracts.js";
 export * from "./search-contracts.js";
 export * from "./search-page-contracts.js";

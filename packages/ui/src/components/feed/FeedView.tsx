@@ -1,3 +1,4 @@
+import { resolveFeedCountPresentation, type KnownFeedCount } from "../../lib/feed-count-presentation.js";
 import {
   useState,
   useMemo,
@@ -581,15 +582,30 @@ export function FeedView() {
     boundedFeed.windowStartIndex === 0,
   );
   const visibleItems = presentation.items;
-  useEffect(() => {
-    if (boundedFeedPresentationIsAvailable) {
-      setVisibleFeedTotalCount(boundedFeed.totalCount);
-      return;
+  const lastKnownFeedCountRef = useRef<KnownFeedCount | null>(null);
+  useLayoutEffect(() => {
+    // Selection identity excludes source revision: an exact count survives a
+    // same-selection refresh, but never a filter/sort/navigation change.
+    if (boundedFeedStatusIsCurrent && boundedFeed.status === "ready") {
+      lastKnownFeedCountRef.current = {
+        selectionIdentity: boundedSelectionIdentity,
+        count: boundedFeed.totalCount,
+      };
+    } else if (lastKnownFeedCountRef.current?.selectionIdentity !== boundedSelectionIdentity) {
+      lastKnownFeedCountRef.current = null;
     }
-    setVisibleFeedTotalCount(0);
+    setVisibleFeedTotalCount(resolveFeedCountPresentation({
+      selectionIdentity: boundedSelectionIdentity,
+      current: boundedFeedStatusIsCurrent,
+      status: boundedFeed.status,
+      totalCount: boundedFeed.totalCount,
+      lastKnown: lastKnownFeedCountRef.current,
+    }));
   }, [
     boundedFeed.totalCount,
-    boundedFeedPresentationIsAvailable,
+    boundedFeed.status,
+    boundedFeedStatusIsCurrent,
+    boundedSelectionIdentity,
     setVisibleFeedTotalCount,
   ]);
 

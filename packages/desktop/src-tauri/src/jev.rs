@@ -5,6 +5,7 @@ use std::{
     sync::{LazyLock, Mutex},
     time::Duration,
 };
+use tauri::Manager;
 use tokio::sync::oneshot;
 
 const ENDPOINT: &str = "https://api.typesafe.ai/v1/systemone";
@@ -15,10 +16,39 @@ static REQUESTS: LazyLock<Mutex<HashMap<String, Option<oneshot::Sender<()>>>>> =
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 fn entry() -> Result<keyring::Entry, String> {
     #[cfg(not(feature = "isolated-preview-data-root"))]
-    let service = "wtf.freed.ai";
+    let service = "wtf.freed.ai".to_owned();
     #[cfg(feature = "isolated-preview-data-root")]
-    let service = "wtf.freed.ai.isolated-preview";
-    keyring::Entry::new(service, "jev").map_err(|_| "Could not open the credential vault.".into())
+    let service = isolated_preview_credential_service(option_env!("TAURI_CONFIG"))?;
+    keyring::Entry::new(&service, "jev").map_err(|_| "Could not open the credential vault.".into())
+}
+#[cfg(all(
+    feature = "isolated-preview-data-root",
+    any(target_os = "macos", target_os = "windows", test)
+))]
+fn isolated_preview_credential_service(config: Option<&str>) -> Result<String, String> {
+    let default = "wtf.freed.ai.isolated-preview";
+    let Some(config) = config else {
+        return Ok(default.into());
+    };
+    let config: Value =
+        serde_json::from_str(config).map_err(|_| "Invalid isolated preview configuration.")?;
+    let Some(identifier) = config.get("identifier").and_then(Value::as_str) else {
+        return Ok(default.into());
+    };
+    if identifier == "wtf.freed.desktop.sqlite-native-preview" {
+        return Ok(default.into());
+    }
+    if identifier.len() > 128
+        || !identifier
+            .strip_prefix("wtf.freed.desktop.preview.")
+            .is_some_and(|suffix| !suffix.is_empty())
+        || !identifier
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'.' || byte == b'-')
+    {
+        return Err("Isolated preview refuses a non-preview credential namespace.".into());
+    }
+    Ok(format!("{default}.{identifier}"))
 }
 fn check_window(window: &tauri::WebviewWindow) -> Result<(), String> {
     if window.label() != "main" {
@@ -228,13 +258,19 @@ pub async fn request_jev(
         return Err("Invalid Jev request identity.".into());
     }
     let body = validate_payload(&payload)?;
+    let budget_root = budget_root(&window)?;
+    let reservation_id = request_id.clone();
     let (_slot, receiver) = RequestSlot::acquire(request_id)?;
     tokio::select! {
         _ = receiver => Err("Jev request cancelled.".into()),
         result = tokio::time::timeout(Duration::from_secs(30), async {
+            // Fail closed before credential access as well as provider contact.
+            tauri::async_runtime::spawn_blocking(move || crate::jev_budget::reserve(&budget_root, &reservation_id)).await.map_err(|_| "Jev budget check interrupted.".to_string())??;
             let _credentials = CREDENTIAL_LOCK.read().await;
             let key = read_key_async().await?.ok_or("Add your Jev API key in AI settings.")?;
             validate_key(&key)?;
+            // No refund even for a missing key: this is conservative allowance,
+            // not evidence of provider contact or an actual billed charge.
             send_request(body, key).await
         }) => result.unwrap_or_else(|_| Err("Jev request timed out.".into())),
     }
@@ -378,4 +414,57 @@ mod tests {
         .is_err());
         server.abort();
     }
+    #[test]
+    #[cfg(feature = "isolated-preview-data-root")]
+    fn unique_preview_credentials_never_read_the_existing_preview_namespace() {
+        let default = "wtf.freed.ai.isolated-preview";
+        assert_eq!(isolated_preview_credential_service(None).unwrap(), default);
+        assert_eq!(
+            isolated_preview_credential_service(Some(
+                r#"{"identifier":"wtf.freed.desktop.sqlite-native-preview"}"#
+            ))
+            .unwrap(),
+            default
+        );
+        let isolated = isolated_preview_credential_service(Some(
+            r#"{"identifier":"wtf.freed.desktop.preview.gliclass20261002"}"#,
+        ))
+        .unwrap();
+        assert_ne!(isolated, default);
+        assert_ne!(isolated, "wtf.freed.ai");
+        assert!(
+            isolated_preview_credential_service(Some(r#"{"identifier":"wtf.freed.desktop"}"#))
+                .is_err()
+        );
+    }
+}
+
+fn budget_root(window: &tauri::WebviewWindow) -> Result<std::path::PathBuf, String> {
+    window
+        .app_handle()
+        .path()
+        .app_config_dir()
+        .map(|root| root.join("jev-spend"))
+        .map_err(|_| "Jev budget location unavailable.".into())
+}
+#[tauri::command]
+pub async fn get_jev_budget(
+    window: tauri::WebviewWindow,
+) -> Result<Option<crate::jev_budget::Status>, String> {
+    check_window(&window)?;
+    let root = budget_root(&window)?;
+    tauri::async_runtime::spawn_blocking(move || crate::jev_budget::status(&root))
+        .await
+        .map_err(|_| "Jev budget check interrupted.".to_string())?
+}
+#[tauri::command]
+pub async fn set_jev_budget(
+    window: tauri::WebviewWindow,
+    limits: crate::jev_budget::Limits,
+) -> Result<crate::jev_budget::Status, String> {
+    check_window(&window)?;
+    let root = budget_root(&window)?;
+    tauri::async_runtime::spawn_blocking(move || crate::jev_budget::configure(&root, limits))
+        .await
+        .map_err(|_| "Jev budget update interrupted.".to_string())?
 }

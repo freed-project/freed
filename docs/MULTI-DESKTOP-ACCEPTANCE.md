@@ -4,6 +4,66 @@ This is the installed test plan for cooperative Primary handoff. A passing build
 alone does not establish installed acceptance or readiness to move the owner's
 Library. Headless promotion remains separate.
 
+## Select the acceptance build
+
+Ordinary dev and production builds deliberately disable Primary transfer and
+consumer recovery until installed convergence acceptance is complete. Their
+join and same-epoch edit paths can be tested, but they cannot complete the
+transfer steps below. An unavailable transfer control is expected in those builds.
+
+Dev releases can include the separately named
+`Freed-Transfer-Acceptance_<version>_aarch64.app.tar.gz`. Its release job verifies
+Apple signing, notarization and the acceptance bundle identifier before
+publication. Select this artifact explicitly; `Freed_Preview` and ordinary
+Freed Desktop downloads retain the transfer hold. The acceptance app has no
+updater endpoint and is excluded from the ordinary updater asset selection.
+A successful workflow proves packaging, not installed transfer acceptance.
+
+Deploy the matching PWA from the same clean source with
+`./scripts/vercel-deploy-preview.sh pwa-transfer-acceptance`. This explicit
+preview mode stages committed files only, stamps the exact source identity,
+builds with the transfer-acceptance mode, and checks that the existing Vercel
+preview environment contains its Google web client and matching server
+credentials. It uses the existing approved Vercel preview OAuth relay through
+`app.freed.wtf`; it does not register a new Google callback or deploy production.
+Credential presence does not prove a successful OAuth exchange. Verify sign-in
+on the resulting dedicated preview origin and use a separate browser profile.
+Do not substitute the production PWA for a matching test candidate.
+
+For isolated workflow acceptance, build both clients from the same reviewed,
+clean source. Verify `git status --short` is empty, then set the existing build
+metadata in the shell used for both commands. Local builds do not infer these
+values from Git:
+
+```sh
+export FREED_BUILD_KIND=preview
+export FREED_BUILD_CHANNEL=dev
+export FREED_BUILD_COMMIT_SHA="$(git rev-parse HEAD)"
+export FREED_BUILD_COMMIT_REF="$(git branch --show-current)"
+```
+
+From `packages/desktop`, run
+`npm run tauri:build:transfer-acceptance -- --bundles app` on macOS. The named
+configuration enables the frontend acceptance mode and native transfer feature,
+uses application identifier `wtf.freed.desktop.preview.transfer-acceptance`,
+disables updater endpoints and omits updater artifacts. The native feature also
+requires the isolated preview data root. This local app is not a signed dev
+release or evidence that the ordinary release has enabled transfer.
+
+From `packages/pwa`, run `npm run build:transfer-acceptance`. Serve the resulting
+build through the task's approved preview service on a dedicated test origin and
+browser profile. Do not deploy this build to the production PWA origin. Record
+both source identities and the acceptance commands with the artifact digests.
+A frontend acceptance mode alone cannot enable the native lifecycle.
+
+Use separate macOS user accounts or separate Macs even for the isolated app:
+preview builds share a preview keyring service within one user. Create and join
+a synthetic test Library first. Do not copy an existing installation's private
+keys, database or provider sessions into these test identities. Transferring the
+owner's actual Library remains a later, separately evidenced operation. After
+isolated acceptance, a reviewed release must explicitly address the ordinary
+build's hold before claiming the signed release supports transfer.
+
 ## Record the candidate
 
 Record the dev release tag, source commit, artifact digest and installed version
@@ -117,6 +177,39 @@ reapplied through this recovery action.
 After the first transfer settles, repeat the transfer back to A. Verify older
 archives remain browsable on both consumers and that no old signed envelope was
 rewritten into a new epoch.
+
+## Native background admission evidence
+
+Keep the existing soak collector running for each installed consumer. After
+closing provider windows and settling active work, wait for the first native
+sample before beginning the measured actions. End the actions before the final
+native sample. Preserve native consumer-role and installed-build evidence for
+that same interval. A transfer or process restart starts a new interval.
+
+`soak-assert.mjs` now includes
+`eventSummaries.nativeProviderAdmissions`. It requires healthy source coverage,
+attributable runtime identity, one continuous app-alive segment, and at least
+three covered native samples. Each sample brackets its counter and window
+observation with timestamps. `windowStart` follows the first observation by one
+millisecond; `windowEnd` precedes the last observation. Log append time never
+extends these bounds. Acceptance actions must fit entirely inside them. A
+positive count can include work at the observation edges; zero applies to the
+inner interval.
+
+An available result with `admittedCount: 0` proves no new admission through the
+instrumented native provider-command gate during that interval. Every sample
+must have stable schema-1 counters from the same gate instance, no active
+operations, and no provider windows. Missing or malformed fields, saturation,
+counter regression, changed instance identity, duplicate timestamps, or weak
+coverage produce `inconclusive`, never an inferred zero. These cumulative
+counters can detect completed operations between samples even when an individual
+renderer log event is absent.
+
+The gate covers RSS, background article hydration, and native social operations.
+Explicit reader article loading and Save URL previews use the foreground URL
+path and are outside this count. A count measures admitted commands, not network
+requests. The summary does not establish consumer role, installed build identity
+on its own, or complete multi-device acceptance. Keep those proofs alongside it.
 
 ## Evidence required for acceptance
 

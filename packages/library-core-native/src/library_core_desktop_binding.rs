@@ -203,18 +203,26 @@ impl LibraryCoreDesktopBinding {
 
     /// Opens normalized SQLite only after its authority selector is verified.
     pub fn connect_selected_normalized(&self) -> Result<Connection, LibraryCoreStorageError> {
+        self.connect_selected_normalized_with_identity()
+            .map(|(connection, _)| connection)
+    }
+
+    /// Carries the freshly verified selector identity for revalidation inside a
+    /// caller-owned read snapshot. The identity is never cached across calls.
+    pub fn connect_selected_normalized_with_identity(
+        &self,
+    ) -> Result<(Connection, String), LibraryCoreStorageError> {
         self.require_factory_reset_complete_v1()?;
-        if self.authority_selection()?.is_none() {
-            return Err(LibraryCoreStorageError::from(
-                "normalized SQLite authority is not selected".to_string(),
-            ));
-        }
-        let connection = self
-            .normalized_database
-            .open(normalized_sqlite_open_flags(false))?;
-        configure_normalized_sqlite_connection(&connection)
+        let selection = self.read_authority_selection()?.ok_or_else(|| {
+            LibraryCoreStorageError::from("normalized SQLite authority is not selected".to_string())
+        })?;
+        Self::validate_authority_selection_identity(&selection)?;
+        let connection = self.open_configured_selected_connection()?;
+        // Verify the authority on the same handle that the caller will use.
+        // No selector or verification result is retained between calls.
+        crate::verify_normalized_library_selection_v1(&connection, &selection.library_id)
             .map_err(|error| LibraryCoreStorageError::from(error.to_string()))?;
-        Ok(connection)
+        Ok((connection, selection.library_id))
     }
 
     pub fn publish_content_range_from_reader_v1<R: Read>(
@@ -492,17 +500,25 @@ impl LibraryCoreDesktopBinding {
         &self,
         request: &crate::RecoveryReissueRequestV1,
         actor_store: &dyn crate::ActorKeyStore,
+        authority_store: Option<&dyn crate::AuthorityKeyStore>,
         now: i64,
     ) -> Result<crate::RecoveryReissueReceiptV1, LibraryCoreStorageError> {
         let _reset = self.reset_gate.lock().map_err(|_| {
             LibraryCoreStorageError::from("Desktop Library reset gate is poisoned".to_string())
         })?;
-        crate::reapply_archived_assignments_v1(
-            &mut self.connect_selected_normalized()?,
-            request,
-            actor_store,
-            now,
-        )
+        let mut connection = self.connect_selected_normalized()?;
+        match authority_store {
+            Some(store) => crate::reapply_archived_primary_assignments_v1(
+                &mut connection,
+                request,
+                actor_store,
+                store,
+                now,
+            ),
+            None => {
+                crate::reapply_archived_assignments_v1(&mut connection, request, actor_store, now)
+            }
+        }
         .map_err(LibraryCoreStorageError::from)
     }
 
@@ -510,17 +526,28 @@ impl LibraryCoreDesktopBinding {
         &self,
         request: &crate::RecoveryReissueRequestV1,
         canonical_envelopes: &[Vec<u8>],
+        authority_store: Option<&dyn crate::AuthorityKeyStore>,
         now: i64,
     ) -> Result<crate::RecoveryReissueReceiptV1, LibraryCoreStorageError> {
         let _reset = self.reset_gate.lock().map_err(|_| {
             LibraryCoreStorageError::from("Desktop Library reset gate is poisoned".to_string())
         })?;
-        crate::reapply_archived_editor_transaction_v1(
-            &mut self.connect_selected_normalized()?,
-            request,
-            canonical_envelopes,
-            now,
-        )
+        let mut connection = self.connect_selected_normalized()?;
+        match authority_store {
+            Some(store) => crate::reapply_archived_primary_editor_transaction_v1(
+                &mut connection,
+                request,
+                canonical_envelopes,
+                store,
+                now,
+            ),
+            None => crate::reapply_archived_editor_transaction_v1(
+                &mut connection,
+                request,
+                canonical_envelopes,
+                now,
+            ),
+        }
         .map_err(LibraryCoreStorageError::from)
     }
 
@@ -981,6 +1008,16 @@ impl LibraryCoreDesktopBinding {
     fn authority_selection(
         &self,
     ) -> Result<Option<DesktopAuthoritySelectionV1>, LibraryCoreStorageError> {
+        let selection = self.read_authority_selection()?;
+        if let Some(selection) = &selection {
+            self.verify_authority_selection(selection)?;
+        }
+        Ok(selection)
+    }
+
+    fn read_authority_selection(
+        &self,
+    ) -> Result<Option<DesktopAuthoritySelectionV1>, LibraryCoreStorageError> {
         let Some(bytes) = self.app_root.read_bounded_private_file(
             AUTHORITY_SELECTION_FILE,
             AUTHORITY_SELECTION_MAXIMUM_BYTES,
@@ -1008,12 +1045,19 @@ impl LibraryCoreDesktopBinding {
                     "Desktop authority selection has an invalid field set".to_string(),
                 )
             })?;
-        self.verify_authority_selection(&selection)?;
         Ok(Some(selection))
     }
 
-    fn verify_authority_selection(
-        &self,
+    fn open_configured_selected_connection(&self) -> Result<Connection, LibraryCoreStorageError> {
+        let connection = self
+            .normalized_database
+            .open(normalized_sqlite_open_flags(false))?;
+        configure_normalized_sqlite_connection(&connection)
+            .map_err(|error| LibraryCoreStorageError::from(error.to_string()))?;
+        Ok(connection)
+    }
+
+    fn validate_authority_selection_identity(
         selection: &DesktopAuthoritySelectionV1,
     ) -> Result<(), LibraryCoreStorageError> {
         let valid_digest = |value: &str| {
@@ -1029,11 +1073,15 @@ impl LibraryCoreDesktopBinding {
                 "Desktop authority selection identity is invalid".to_string(),
             ));
         }
-        let connection = self
-            .normalized_database
-            .open(normalized_sqlite_open_flags(false))?;
-        configure_normalized_sqlite_connection(&connection)
-            .map_err(|error| LibraryCoreStorageError::from(error.to_string()))?;
+        Ok(())
+    }
+
+    fn verify_authority_selection(
+        &self,
+        selection: &DesktopAuthoritySelectionV1,
+    ) -> Result<(), LibraryCoreStorageError> {
+        Self::validate_authority_selection_identity(selection)?;
+        let connection = self.open_configured_selected_connection()?;
         crate::verify_normalized_library_selection_v1(&connection, &selection.library_id)
             .map_err(|error| LibraryCoreStorageError::from(error.to_string()))
     }
@@ -1117,6 +1165,19 @@ mod tests {
 
     use super::*;
 
+    fn reset_connection_setup_counts() {
+        crate::library_core_bound_sqlite_vfs::TEST_CONNECTION_OPEN_COUNT.with(|count| count.set(0));
+        crate::normalized_sqlite::TEST_CONNECTION_CONFIGURATION_COUNT.with(|count| count.set(0));
+    }
+
+    fn connection_setup_counts() -> (usize, usize) {
+        (
+            crate::library_core_bound_sqlite_vfs::TEST_CONNECTION_OPEN_COUNT
+                .with(|count| count.get()),
+            crate::normalized_sqlite::TEST_CONNECTION_CONFIGURATION_COUNT.with(|count| count.get()),
+        )
+    }
+
     const TEST_IDENTITY: ProcessLeaseIdentity<'static> =
         ProcessLeaseIdentity::new("desktop-binding-test", "1");
 
@@ -1184,6 +1245,138 @@ mod tests {
                 primary_actor_id: "primary-actor".to_owned(),
             })
             .expect("publish test authority selector");
+    }
+
+    #[test]
+    fn selected_queries_use_one_verified_connection_per_call() {
+        let fixture = tempfile::tempdir().unwrap();
+        let app_root = fixture.path().join("app-data");
+        fs::create_dir(&app_root).unwrap();
+        fs::set_permissions(&app_root, fs::Permissions::from_mode(0o700)).unwrap();
+        let binding = LibraryCoreDesktopBinding::open(&app_root, TEST_IDENTITY).unwrap();
+        install_test_selected_authority(&binding, &"b".repeat(64), &"a".repeat(64));
+        #[cfg(feature = "library-transfer-acceptance")]
+        {
+            let mut connection = binding.connect_selected_normalized().unwrap();
+            let transaction = connection.transaction().unwrap();
+            crate::normalized_sqlite::migrate_native_handoff_schema_v2(&transaction).unwrap();
+            transaction.commit().unwrap();
+        }
+        reset_connection_setup_counts();
+        let started = std::time::Instant::now();
+        for _ in 0..100 {
+            let connection = binding.connect_selected_normalized().unwrap();
+            let id: String = connection
+                .query_row(
+                    "SELECT library_id FROM library_meta WHERE singleton_id = 1",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(id, "b".repeat(64));
+        }
+        let counts = connection_setup_counts();
+        eprintln!(
+            "selected_setup_measurement calls=100 opens={} configurations={} elapsed_us={}",
+            counts.0,
+            counts.1,
+            started.elapsed().as_micros()
+        );
+        assert_eq!(counts, (100, 100));
+    }
+
+    #[test]
+    fn selected_connections_revalidate_changed_and_invalid_identity() {
+        let fixture = tempfile::tempdir().unwrap();
+        let app_root = fixture.path().join("app-data");
+        fs::create_dir(&app_root).unwrap();
+        fs::set_permissions(&app_root, fs::Permissions::from_mode(0o700)).unwrap();
+        let binding = LibraryCoreDesktopBinding::open(&app_root, TEST_IDENTITY).unwrap();
+        install_test_selected_authority(&binding, &"b".repeat(64), &"a".repeat(64));
+        let selector_path = app_root.join(AUTHORITY_SELECTION_FILE);
+        let original = fs::read(&selector_path).unwrap();
+        drop(binding.connect_selected_normalized().unwrap());
+        for bytes in [
+            b"invalid JSON".to_vec(),
+            b"{}".to_vec(),
+            [original.as_slice(), b" "].concat(),
+            {
+                let mut selector: serde_json::Value = serde_json::from_slice(&original).unwrap();
+                selector["format"] = serde_json::Value::String("unsupported".into());
+                encode_canonical_value(&selector, AUTHORITY_SELECTION_MAXIMUM_BYTES).unwrap()
+            },
+            {
+                let mut selector: serde_json::Value = serde_json::from_slice(&original).unwrap();
+                selector["libraryId"] = serde_json::Value::String("c".repeat(64));
+                encode_canonical_value(&selector, AUTHORITY_SELECTION_MAXIMUM_BYTES).unwrap()
+            },
+        ] {
+            fs::write(&selector_path, bytes).unwrap();
+            assert!(binding.connect_selected_normalized().is_err());
+        }
+        fs::write(&selector_path, &original).unwrap();
+        let connection = binding.connect_selected_normalized().unwrap();
+        connection
+            .execute(
+                "UPDATE library_storage_meta SET schema_sha256 = ?1",
+                ["0".repeat(64)],
+            )
+            .unwrap();
+        assert!(binding.connect_selected_normalized().is_err());
+        connection
+            .execute(
+                "UPDATE library_storage_meta SET schema_sha256 = ?1",
+                [crate::sqlite_contract_generated::NORMALIZED_SCHEMA_SHA256],
+            )
+            .unwrap();
+        connection
+            .execute("UPDATE library_meta SET library_id = ?1", ["c".repeat(64)])
+            .unwrap();
+        assert!(binding.connect_selected_normalized().is_err());
+        connection
+            .execute("UPDATE library_meta SET library_id = ?1", ["b".repeat(64)])
+            .unwrap();
+        drop(connection);
+        drop(binding.connect_selected_normalized().unwrap());
+        fs::remove_file(&selector_path).unwrap();
+        assert!(binding.connect_selected_normalized().is_err());
+    }
+
+    #[test]
+    fn concurrent_selected_connections_verify_without_shared_handles() {
+        let fixture = tempfile::tempdir().unwrap();
+        let app_root = fixture.path().join("app-data");
+        fs::create_dir(&app_root).unwrap();
+        fs::set_permissions(&app_root, fs::Permissions::from_mode(0o700)).unwrap();
+        let binding = LibraryCoreDesktopBinding::open(&app_root, TEST_IDENTITY).unwrap();
+        install_test_selected_authority(&binding, &"b".repeat(64), &"a".repeat(64));
+        let barrier = std::sync::Barrier::new(4);
+        std::thread::scope(|scope| {
+            let mut readers = Vec::new();
+            for _ in 0..4 {
+                let binding = &binding;
+                let barrier = &barrier;
+                readers.push(scope.spawn(move || {
+                    reset_connection_setup_counts();
+                    barrier.wait();
+                    for _ in 0..8 {
+                        let connection = binding.connect_selected_normalized().unwrap();
+                        let id: String = connection
+                            .query_row(
+                                "SELECT library_id FROM library_meta WHERE singleton_id = 1",
+                                [],
+                                |row| row.get(0),
+                            )
+                            .unwrap();
+                        assert_eq!(id, "b".repeat(64));
+                    }
+                    assert_eq!(connection_setup_counts(), (8, 8));
+                }));
+            }
+            for reader in readers {
+                reader.join().unwrap();
+            }
+        });
     }
 
     #[test]

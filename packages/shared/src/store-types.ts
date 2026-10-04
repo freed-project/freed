@@ -14,6 +14,12 @@ import type {
 } from "./types.js";
 import type { SampleLibraryData } from "./sample-data.js";
 
+/** Transient feed count presentation; unavailable queries are never empty results. */
+export type VisibleFeedTotalCount = number | {
+  readonly status: "loading" | "failed";
+  readonly lastKnownCount: number | null;
+};
+
 export interface RemoveFeedOptions {
   includeItems?: boolean;
 }
@@ -159,7 +165,7 @@ export interface BaseAppState {
   /** Publish the exact derived marker counts for shared map navigation chrome. */
   setMapLocationCounts: (friendCount: number, allContentCount: number) => void;
   /** Exact SQLite count for the active bounded feed query. */
-  visibleFeedTotalCount: number;
+  visibleFeedTotalCount: VisibleFeedTotalCount;
 
   // UI state
   isLoading: boolean;
@@ -171,7 +177,7 @@ export interface BaseAppState {
   selectedPersonId: string | null;
   selectedAccountId: string | null;
   /** Publish only the exact count for the current bounded feed query. */
-  setVisibleFeedTotalCount: (totalCount: number) => void;
+  setVisibleFeedTotalCount: (totalCount: VisibleFeedTotalCount) => void;
 
   // Initialization
   initialize: () => Promise<void>;

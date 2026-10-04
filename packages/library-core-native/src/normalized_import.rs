@@ -1256,6 +1256,23 @@ fn recover_exact_checkpoint_activation(
     })
 }
 
+pub fn require_checkpoint_transfer_capability(
+    connection: &Connection,
+    stage_id: &str,
+) -> Result<(), String> {
+    if crate::LIBRARY_TRANSFER_ENABLED {
+        return Ok(());
+    }
+    let changes_authority: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM library_meta m JOIN library_checkpoint_stages s ON s.stage_id=?1 WHERE m.singleton_id=1 AND (m.library_id != s.library_id OR m.authority_epoch != s.authority_epoch));",
+        [stage_id], |r| r.get(0),
+    ).map_err(|e| e.to_string())?;
+    if changes_authority {
+        crate::require_library_transfer_capability()?;
+    }
+    Ok(())
+}
+
 fn activate_normalized_checkpoint_stage_v2(
     connection: &mut Connection,
     stage_id: &str,
@@ -1307,6 +1324,8 @@ pub(crate) fn install_checkpoint_with_version_admission(
         Option<&NormalizedFollowerCheckpointReceiptV2>,
     ) -> Result<(), String>,
 ) -> Result<NormalizedCheckpointActivationReceiptV2, NormalizedSqliteError> {
+    require_checkpoint_transfer_capability(transaction, stage_id)
+        .map_err(NormalizedSqliteError::Transport)?;
     transaction.pragma_update(None, "defer_foreign_keys", true)?;
     if let Some(restore) = restore {
         if describe_normalized_checkpoint_export_v2(transaction)?

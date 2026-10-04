@@ -23,6 +23,7 @@ pub fn source_handoff_verification_plan_v1(
     stage_id: &str,
     canonical_control: &[u8],
 ) -> Result<HandoffVerificationPlanV1, String> {
+    crate::require_library_transfer_capability()?;
     if !crate::library_core_hash::is_lower_sha256(handoff_id)
         || stage_id.is_empty()
         || stage_id.len() > 255
@@ -340,6 +341,7 @@ pub fn adopt_source_handoff_after_remote_verification_v1(
     verified_revision: &str,
     adopted_at: u64,
 ) -> Result<crate::NativeHandoffStatusV1, String> {
+    crate::require_library_transfer_capability()?;
     let stage = plan
         .source_stage_id
         .as_deref()

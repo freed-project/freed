@@ -38,7 +38,7 @@ it("requires every history read and confirmation, then retries one prepared acti
  expect(container.querySelector<HTMLTextAreaElement>("textarea")!.disabled).toBe(true);
  await click("Retry same reach-out edit");
  expect(mocks.prepare).toHaveBeenCalledTimes(1); expect(mocks.submit).toHaveBeenCalledTimes(2);
- expect(mocks.submit.mock.calls).toEqual([[review, ["signed events"]], [review, ["signed events"]]]);
+ expect(mocks.submit.mock.calls).toEqual([[review, ["signed events"], false], [review, ["signed events"], false]]);
 });
 it("does not advance past duplicate history and aborts on close", async () => {
  mocks.history.mockResolvedValueOnce({ name: "Current Person", events: [{ reachOutId: "old:0", loggedAt: 1000, channel: null, notes: null }] });

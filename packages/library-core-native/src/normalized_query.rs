@@ -211,6 +211,18 @@ pub struct NormalizedItemScanRequestV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedPriorityTimePageRequestV1 {
+    pub cancellation_id: String,
+    pub reader_session_id: String,
+    pub limit: usize,
+    pub priority_computed_before_ms: i64,
+    pub generation_id: String,
+    pub source_revision: i64,
+    pub schema_version: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedContentFetchPageRequestV1 {
     pub cancellation_id: String,
     pub cursor: Option<String>,
@@ -649,6 +661,7 @@ pub enum NormalizedQueryRequestV1 {
     RssItemSummary(NormalizedFacetSummaryRequestV1),
     ItemReaderBody(NormalizedItemReaderBodyRequestV1),
     ItemScan(NormalizedItemScanRequestV1),
+    PriorityTimePage(NormalizedPriorityTimePageRequestV1),
     ContentFetchPage(NormalizedContentFetchPageRequestV1),
     ProviderMediaPage(NormalizedProviderMediaPageRequestV1),
     MapMarkers(NormalizedMapMarkersRequestV1),
@@ -4127,6 +4140,7 @@ fn query_story_wall_candidates(
 fn query_item_scan(
     connection: &mut Connection,
     request: NormalizedItemScanRequestV1,
+    time_only: Option<&NormalizedPriorityTimePageRequestV1>,
 ) -> Result<NormalizedItemScanResponseV1, NormalizedSqliteError> {
     if request.schema_version != 1
         || request
@@ -4147,8 +4161,31 @@ fn query_item_scan(
         .iter()
         .find(|program| program.query_id == "background_item_page_v1")
         .ok_or(invalid("normalized item scan program is missing"))?;
+    let time_program = if time_only.is_some() {
+        Some(
+            SQLITE_QUERY_PROGRAMS
+                .iter()
+                .find(|p| p.query_id == "priority_time_page_v1")
+                .ok_or(invalid("priority time program is missing"))?,
+        )
+    } else {
+        None
+    };
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
     let (generation_id, source_revision) = query_source(&transaction)?;
+    if let Some(expected) = time_only {
+        if generation_id != expected.generation_id || source_revision != expected.source_revision {
+            return Err(invalid("CURSOR_STALE"));
+        }
+        let total: i64 = transaction.query_row(
+            time_program.expect("time-only program").count_sql,
+            [],
+            |row| row.get(0),
+        )?;
+        if !(0..=25_000).contains(&total) {
+            return Err(invalid("priority time corpus exceeds admission"));
+        }
+    }
     let cursor = request.cursor.as_deref().map(decode_cursor).transpose()?;
     if cursor.as_ref().is_some_and(|cursor| {
         cursor.sort_at != 0
@@ -4164,7 +4201,9 @@ fn query_item_scan(
         .find(|variant| variant.variant_id == "priority")
         .ok_or(invalid("normalized priority scan variant is missing"))?;
     let priority_scan = request.priority_computed_before_ms.is_some();
-    let mut statement = transaction.prepare(if priority_scan {
+    let mut statement = transaction.prepare(if let Some(time_program) = time_program {
+        time_program.sql
+    } else if priority_scan {
         priority_variant.sql
     } else {
         program.sql
@@ -4213,7 +4252,12 @@ fn query_item_scan(
     };
     let response = NormalizedItemScanResponseV1 {
         next_cursor,
-        query_id: "background_item_page_v1".to_owned(),
+        query_id: if time_only.is_some() {
+            "priority_time_page_v1"
+        } else {
+            "background_item_page_v1"
+        }
+        .to_owned(),
         rows: cards,
         schema_version: 1,
         source: NormalizedFeedPageSourceV1 {
@@ -8088,8 +8132,27 @@ pub fn query_normalized_v1(
             NormalizedQueryResponseV1::ItemReaderBody(query_item_reader_body(connection, request)?),
         ),
         NormalizedQueryRequestV1::ItemScan(request) => Ok(NormalizedQueryResponseV1::ItemScan(
-            query_item_scan(connection, request)?,
+            query_item_scan(connection, request, None)?,
         )),
+        NormalizedQueryRequestV1::PriorityTimePage(request) => {
+            if !(0..=MAX_SAFE_INTEGER).contains(&request.source_revision) {
+                return Err(invalid("priority time source is invalid"));
+            }
+            let scan = NormalizedItemScanRequestV1 {
+                analysis_version: None,
+                cancellation_id: request.cancellation_id.clone(),
+                cursor: None,
+                limit: request.limit,
+                priority_computed_before_ms: Some(request.priority_computed_before_ms),
+                reader_session_id: request.reader_session_id.clone(),
+                schema_version: request.schema_version,
+            };
+            Ok(NormalizedQueryResponseV1::ItemScan(query_item_scan(
+                connection,
+                scan,
+                Some(&request),
+            )?))
+        }
         NormalizedQueryRequestV1::ContentFetchPage(request) => {
             Ok(NormalizedQueryResponseV1::ContentFetchPage(
                 query_content_fetch_page(connection, request)?,
@@ -8285,6 +8348,9 @@ pub fn query_normalized_json_v1(
             decode_request!(NormalizedItemReaderBodyRequestV1, ItemReaderBody)
         }
         "background_item_page_v1" => decode_request!(NormalizedItemScanRequestV1, ItemScan),
+        "priority_time_page_v1" => {
+            decode_request!(NormalizedPriorityTimePageRequestV1, PriorityTimePage)
+        }
         "content_fetch_claim_v1" => {
             decode_request!(NormalizedContentFetchPageRequestV1, ContentFetchPage)
         }
@@ -9800,6 +9866,153 @@ mod tests {
                 .expect("person two derived rows"),
             1
         );
+    }
+
+    // Tier 1: exact-source selection, canonical signed progress, and restart fallback.
+    #[test]
+    fn priority_time_native_source_races_fail_closed_without_assignments() {
+        let (mut connection, _, _) = crate::normalized_mutation::tests::fixture();
+        connection
+            .execute(
+                "INSERT INTO library_materialization_generation VALUES (1, ?1);",
+                ["a".repeat(64)],
+            )
+            .unwrap();
+        let request = serde_json::json!({"queryId":"priority_time_page_v1", "schemaVersion":1,
+            "cancellationId":"cancel-priority-time", "readerSessionId":"reader-priority-time",
+            "limit":64, "priorityComputedBeforeMs":1000, "generationId":"a".repeat(64), "sourceRevision":0});
+        assert!(query_normalized_json_v1(&mut connection, request.clone()).is_ok());
+        connection.execute_batch("UPDATE library_meta SET source_revision=1; UPDATE library_change_state SET revision=1;").unwrap();
+        assert!(matches!(
+            query_normalized_json_v1(&mut connection, request.clone()),
+            Err(NormalizedSqliteError::InvalidRequest("CURSOR_STALE"))
+        ));
+        let mut current = request.clone();
+        current["sourceRevision"] = 1.into();
+        assert!(query_normalized_json_v1(&mut connection, current.clone()).is_ok());
+        connection
+            .execute(
+                "UPDATE library_materialization_generation SET generation_id=?1;",
+                ["b".repeat(64)],
+            )
+            .unwrap();
+        assert!(matches!(
+            query_normalized_json_v1(&mut connection, current.clone()),
+            Err(NormalizedSqliteError::InvalidRequest("CURSOR_STALE"))
+        ));
+        current["generationId"] = "b".repeat(64).into();
+        connection
+            .execute("UPDATE library_facet_summary SET total_count=25001;", [])
+            .unwrap();
+        assert!(matches!(
+            query_normalized_json_v1(&mut connection, current),
+            Err(NormalizedSqliteError::InvalidRequest(
+                "priority time corpus exceeds admission"
+            ))
+        ));
+        assert_eq!(
+            connection
+                .query_row("SELECT count(*) FROM library_operations;", [], |r| r
+                    .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+    }
+
+    #[test]
+    fn priority_time_native_signed_progress_boundary_and_restart_operation_counts() {
+        use crate::normalized_mutation::{
+            accept_normalized_operation_transaction_v1, normalized_primary_mutation_context_v1,
+        };
+        use crate::normalized_operation_test_fixtures::tests::signed_envelopes_from_tip_with_payload;
+        let (mut connection, key, enrollment) = crate::normalized_mutation::tests::fixture();
+        const NOW: i64 = 1_790_900_000_000;
+        const HORIZON: i64 = 604_800_000;
+        connection
+            .execute(
+                "INSERT INTO library_materialization_generation VALUES (1, ?1);",
+                ["a".repeat(64)],
+            )
+            .unwrap();
+        connection
+            .execute("DELETE FROM library_feed_items;", [])
+            .unwrap();
+        for index in 0..265 {
+            let published = if index < 256 {
+                NOW - HORIZON * 4
+            } else if index == 256 {
+                NOW - HORIZON + 1
+            } else {
+                NOW - 86_400_000
+            };
+            connection.execute("INSERT INTO library_feed_items (global_id,platform,content_type,captured_at,published_at,author_id,author_handle,author_display_name,hidden,saved,archived,updated_at) VALUES (?1,'rss','article',?2,?2,'fixture','fixture','Synthetic',0,0,0,?2);", params![format!("synthetic-{index:03}"),published]).unwrap();
+        }
+        let run_pass = |connection: &mut Connection, timestamp: i64, selective: bool| {
+            let mut assigned = 0;
+            loop {
+                let (generation, revision) = query_source(connection).unwrap();
+                let request = if selective {
+                    serde_json::json!({"queryId":"priority_time_page_v1","schemaVersion":1,"cancellationId":"cancel-time-pass","readerSessionId":"reader-time-pass","limit":64,"priorityComputedBeforeMs":timestamp,"generationId":generation,"sourceRevision":revision})
+                } else {
+                    serde_json::json!({"queryId":"background_item_page_v1","schemaVersion":1,"analysisVersion":null,"cursor":null,"cancellationId":"cancel-full-pass","readerSessionId":"reader-full-pass","limit":64,"priorityComputedBeforeMs":timestamp})
+                };
+                let page = query_normalized_json_v1(connection, request.clone()).unwrap();
+                let ids: Vec<String> = page["rows"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|r| r["globalId"].as_str().unwrap().to_owned())
+                    .collect();
+                if !ids.is_empty() {
+                    let context = normalized_primary_mutation_context_v1(connection).unwrap();
+                    let entities: Vec<(&str, i64)> =
+                        ids.iter().map(|id| (id.as_str(), timestamp)).collect();
+                    let envelopes = signed_envelopes_from_tip_with_payload(
+                        &key,
+                        &enrollment,
+                        &format!("tx:priority:{timestamp}:{}", context.next_counter),
+                        context.next_counter,
+                        context.previous_operation_id.as_deref(),
+                        &context.previous_chain_digest,
+                        &entities,
+                        "feed_item_priority_assignment",
+                        Some(
+                            &serde_json::json!({"assigned_at_ms":timestamp,"priority_basis_points":3000}),
+                        ),
+                    );
+                    let receipt = accept_normalized_operation_transaction_v1(
+                        connection, &envelopes, &key, timestamp,
+                    )
+                    .unwrap();
+                    assert_eq!(receipt.committed_revision, revision + 1);
+                    // A native read fenced before this actual signed commit is now stale.
+                    if selective {
+                        assert!(matches!(
+                            query_normalized_json_v1(connection, request),
+                            Err(NormalizedSqliteError::InvalidRequest("CURSOR_STALE"))
+                        ));
+                    }
+                    assigned += ids.len();
+                }
+                if page["nextCursor"].is_null() {
+                    break;
+                }
+                assert!(assigned <= 265, "selector failed to advance");
+            }
+            assigned
+        };
+        assert_eq!(run_pass(&mut connection, NOW, false), 265);
+        assert_eq!(run_pass(&mut connection, NOW + 3_600_000, true), 9);
+        assert_eq!(run_pass(&mut connection, NOW + 7_200_000, true), 8);
+        let (old_timestamp, old_priority) = connection.query_row("SELECT priority_computed_at,priority FROM library_feed_items WHERE global_id='synthetic-000';",[],|r|Ok((r.get::<_,i64>(0)?,r.get::<_,f64>(1)?))).unwrap();
+        assert_eq!((old_timestamp, old_priority), (NOW, 30.0));
+        let boundary = connection.query_row("SELECT priority_computed_at FROM library_feed_items WHERE global_id='synthetic-256';",[],|r|r.get::<_,i64>(0)).unwrap();
+        assert_eq!(boundary, NOW + 3_600_000);
+        assert_eq!(connection.query_row("SELECT count(*) FROM library_operations WHERE mutation_id='feed_item_priority_assignment';",[],|r|r.get::<_,i64>(0)).unwrap(),282);
+        // Restart/invalidation chooses the existing full selector; no ephemeral proof persists.
+        assert_eq!(run_pass(&mut connection, NOW + 7_200_001, false), 265);
+        assert_eq!(connection.query_row("SELECT count(*) FROM library_operations WHERE mutation_id='feed_item_priority_assignment';",[],|r|r.get::<_,i64>(0)).unwrap(),547);
+        println!("Native signed assignments: initial=265, hourly=9, following=8, restart/full=265; journal=547");
     }
 
     #[test]

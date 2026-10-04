@@ -64,6 +64,11 @@ pub(crate) struct BoundSqliteDatabase {
     binding: Arc<Binding>,
 }
 
+#[cfg(test)]
+thread_local! {
+    pub(crate) static TEST_CONNECTION_OPEN_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 impl BoundSqliteDatabase {
     pub(crate) fn from_directory(directory: OwnedFd) -> Result<Self, LibraryCoreStorageError> {
         install_shim()?;
@@ -107,6 +112,8 @@ impl BoundSqliteDatabase {
     }
 
     pub(crate) fn open(&self, flags: OpenFlags) -> rusqlite::Result<Connection> {
+        #[cfg(test)]
+        TEST_CONNECTION_OPEN_COUNT.with(|count| count.set(count.get() + 1));
         Connection::open_with_flags_and_vfs(self.logical_path(), flags, "unix-excl")
     }
 

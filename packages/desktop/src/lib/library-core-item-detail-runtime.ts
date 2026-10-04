@@ -27,6 +27,7 @@ import {
   type LibraryCoreContentFetchCandidateV1,
   type LibraryCoreAnalysisCandidateBatchV1,
   type LibraryCorePriorityCandidateBatchV1,
+  type LibraryCoreFeedPageSourceV1,
   type LibraryCoreFacetSummaryV1,
 } from "@freed/shared/library-core";
 import {
@@ -298,11 +299,13 @@ export async function readLibraryCoreAnalysisCandidateBatch(
 export async function readLibraryCorePriorityCandidateBatch(
   priorityComputedBeforeMs: number,
   maximumItems: number,
+  timeOnlySource?: LibraryCoreFeedPageSourceV1,
 ): Promise<LibraryCorePriorityCandidateBatchV1> {
   return readLibraryCoreNormalizedPriorityCandidateBatchV1(
     NORMALIZED_READER_RUNTIME,
     priorityComputedBeforeMs,
     maximumItems,
+    timeOnlySource,
   );
 }
 
