@@ -50,7 +50,9 @@ export function validateResults(json, { packageRoot, full = false, inventory = [
   for (const field of ["numFailedTests", "numFailedTestSuites", "numTodoTests", "numPendingTestSuites"])
     assert.equal(json[field], 0, field);
   assert.ok(Array.isArray(json.testResults) && json.testResults.length > 0, "missing results");
-  const cases = new Map();
+  // Parameterized tests can share a fullName. Preserve every occurrence and
+  // compare sorted lists below as multisets, never deduplicate the receipt.
+  const cases = [];
   const files = [];
   for (const file of json.testResults) {
     const relative = path.relative(packageRoot, file.name);
@@ -60,34 +62,33 @@ export function validateResults(json, { packageRoot, full = false, inventory = [
     files.push(relative);
     for (const item of file.assertionResults) {
       const id = key([relative, item.fullName]);
-      assert.ok(!cases.has(id), `duplicate case: ${id}`);
       assert.deepEqual(item.failureMessages, [], id);
-      cases.set(id, item.status);
+      assert.ok(item.status === "passed" || item.status === "skipped", `unexpected state: ${id}: ${item.status}`);
+      cases.push([id, item.status]);
     }
   }
   assert.equal(new Set(files).size, files.length, "duplicate result file");
-  assert.equal(json.numTotalTests, cases.size, "case count mismatch");
-  const passed = [...cases].filter(([, status]) => status === "passed").map(([id]) => id);
+  assert.equal(json.numTotalTests, cases.length, "case count mismatch");
+  const passed = cases.filter(([, status]) => status === "passed").map(([id]) => id);
   assert.equal(json.numPassedTests, passed.length, "pass count mismatch");
-  assert.equal(json.numPendingTests, cases.size - passed.length, "skip count mismatch");
+  assert.equal(json.numPendingTests, cases.length - passed.length, "skip count mismatch");
   for (const required of [...FOCUSED, ...(full ? DARWIN_REQUIRED : [])])
-    assert.equal(cases.get(key(required)), "passed", `required case missing or not passed: ${key(required)}`);
+    assert.deepEqual(cases.filter(([id]) => id === key(required)).map(([, status]) => status), ["passed"], `required case missing, repeated or not passed: ${key(required)}`);
   if (full) {
-    assert.equal(cases.size, 195, "frozen Darwin suite must contain 195 cases");
+    assert.equal(cases.length, 195, "frozen Darwin suite must contain 195 cases");
     assert.equal(files.length, 24, "frozen package must contain 24 files");
     assert.equal(inventory.length, 187, "Darwin discovery must contain 187 runnable cases");
     assert.deepEqual(sorted(passed), sorted(inventory.map(key)), "runnable case coverage differs from discovery");
-    assert.deepEqual(sorted(cases.keys()), sorted([...inventory, ...OTHER_PLATFORM].map(key)), "full coverage differs");
+    assert.deepEqual(sorted(cases.map(([id]) => id)), sorted([...inventory, ...OTHER_PLATFORM].map(key)), "full coverage differs");
     for (const entry of OTHER_PLATFORM)
-      assert.equal(cases.get(key(entry)), "skipped", `expected documented Linux-only skip: ${key(entry)}`);
+      assert.deepEqual(cases.filter(([id]) => id === key(entry)).map(([, status]) => status), ["skipped"], `expected documented Linux-only skip: ${key(entry)}`);
   } else {
     assert.deepEqual(files, [RUNTIME]);
-    assert.deepEqual(sorted(passed), sorted(FOCUSED.map(key)), "focused pass coverage differs");
+    assert.equal(new Set(cases.map(([id]) => id)).size, cases.length, "unexpected duplicate focused case");
     // Vitest reports filtered declarations as skipped in a focused run.
-    for (const [id, status] of cases)
-      assert.ok(status === "passed" || status === "skipped", `unexpected state: ${id}: ${status}`);
+    assert.deepEqual(sorted(passed), sorted(FOCUSED.map(key)), "focused pass coverage differs");
   }
-  return { passed: passed.length, skipped: cases.size - passed.length, files, cases: Object.fromEntries(cases) };
+  return { passed: passed.length, skipped: cases.length - passed.length, files, cases };
 }
 
 // Each command owns a POSIX process group, killed on timeout. Detached test

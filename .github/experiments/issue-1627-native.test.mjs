@@ -64,7 +64,7 @@ test("rejects unexpected skips even with internally consistent green totals", ()
   assert.throws(() => check(f, true), /coverage differs/);
 });
 
-test("rejects malformed receipts, duplicate cases, failed suites, and incorrect totals", () => {
+test("rejects malformed receipts, unexpected duplicate cases, failed suites, and incorrect totals", () => {
   for (const mutate of [
     (f) => { f.json.success = false; },
     (f) => { f.json.testResults[0].status = "failed"; },
@@ -223,3 +223,88 @@ test("repaired launch supplies genuine pinned npm identity in a package workspac
   const failure = spawnSync(npm, npmNodeArgs(["-e", "process.exit(23)"]), { cwd: workspace, env, encoding: "utf8", timeout: 10_000 });
   assert.equal(failure.status, 23, "npm must preserve test process failure");
 });
+
+
+// This synthetic case runs without downloaded artifacts. Replace three ordinary
+// rows with equal names in both discovery and results, keeping every occurrence.
+test("matches exact parameter multiplicities and rejects same-total substitutions", () => {
+  const f = fixture(true);
+  const file = f.json.testResults.find((item) => item.name.endsWith("synthetic-0.test.ts"));
+  const originalNames = file.assertionResults.slice(0, 3).map((item) => item.fullName);
+  for (const item of file.assertionResults.slice(0, 3)) item.fullName = "parameterized duplicate";
+  for (const entry of f.inventory) if (entry[0] === "src/synthetic-0.test.ts" && originalNames.includes(entry[1])) entry[1] = "parameterized duplicate";
+  const coverage = check(f, true);
+  assert.equal(coverage.cases.filter(([id]) => id.endsWith("\nparameterized duplicate")).length, 3);
+  for (const direction of ["extra", "missing"]) {
+    const mutated = structuredClone(f);
+    const rows = mutated.json.testResults.find((item) => item.name === file.name).assertionResults;
+    if (direction === "extra") rows[3].fullName = rows[0].fullName;
+    else rows[0].fullName = rows[3].fullName;
+    assert.throws(() => check(mutated, true), /coverage differs/);
+  }
+});
+
+// Opt-in real receipt replay: ISSUE_1627_REPLAY_DIR=<retained artifact directory>
+// node --test .github/experiments/issue-1627-native.test.mjs
+// No original receipt is written; all negative probes mutate in-memory clones.
+if (process.env.ISSUE_1627_REPLAY_DIR) {
+  test("retained native receipts preserve multiplicities and reject coverage mutations", () => {
+    const receiptRoot = path.join(process.env.ISSUE_1627_REPLAY_DIR, "proof");
+    const read = (name) => JSON.parse(readFileSync(path.join(receiptRoot, `${name}.json`)));
+    const original = read("report");
+    assert.equal(original.source, SOURCE);
+    assert.equal(original.run.id, "37244898484");
+    assert.equal(original.experiment, "17401d170d83d828a4c9f0813304ba3478e405b4");
+    assert.equal(original.accepted, false, "retain original wrapper failure");
+    const packageRoot = "/Users/runner/work/freed/freed/candidate/packages/library-service";
+    const inventory = read("discovery").map(({ file, name }) => [path.relative(packageRoot, file), name.replaceAll(" > ", " ")]);
+    assert.deepEqual(inventory, original.inventory);
+    assert.deepEqual(original.runs.map(({ name }) => name), PLAN);
+    for (const run of original.runs) {
+      assert.equal(run.status, 0);
+      assert.equal(run.timedOut, false);
+      validateResults(read(run.name), { packageRoot, full: run.name === "full", inventory });
+    }
+    const full = read("full");
+    const validate = (json, expected = inventory) => validateResults(json, { packageRoot, full: true, inventory: expected });
+    const coverage = validate(full);
+    assert.equal(coverage.cases.length, 195);
+    assert.equal(coverage.passed, 187);
+    assert.equal(coverage.skipped, 8);
+    assert.equal(coverage.files.length, 24);
+    const duplicateGroups = [
+      ["src/linux-acl-proof.test.ts", "Linux Library service ACL proof rejects an extended ACL", 3],
+      ["src/linux-acl-proof.test.ts", "Linux Library service ACL proof rejects malformed or mode-inconsistent output", 4],
+      ["src/local-actor-transport.test.ts", "Library service local actor transport rejects a closed invalid frame", 3],
+    ];
+    for (const [file, name, multiplicity] of duplicateGroups) {
+      assert.equal(coverage.cases.filter(([id]) => id === `${file}\n${name}`).length, multiplicity);
+      for (const mutation of ["extra", "missing", "replace-other", "replace-duplicate", "failed", "skipped"]) {
+        const changed = structuredClone(full);
+        const rows = changed.testResults.find((item) => item.name === path.join(packageRoot, file)).assertionResults;
+        const index = rows.findIndex((item) => item.fullName === name);
+        const other = rows.find((item) => item.fullName !== name);
+        if (mutation === "extra") { rows.push(structuredClone(rows[index])); changed.numTotalTests++; changed.numPassedTests++; }
+        if (mutation === "missing") { rows.splice(index, 1); changed.numTotalTests--; changed.numPassedTests--; }
+        // Both preserve totals; replacing a duplicate also preserves distinct names.
+        if (mutation === "replace-other") other.fullName = name;
+        if (mutation === "replace-duplicate") rows[index].fullName = other.fullName;
+        if (mutation === "failed") { rows[index].status = "failed"; changed.numPassedTests--; changed.numFailedTests++; changed.success = false; }
+        if (mutation === "skipped") { rows[index].status = "skipped"; changed.numPassedTests--; changed.numPendingTests++; }
+        assert.throws(() => validate(changed), undefined, `${file}: ${mutation}`);
+      }
+      const alteredInventory = structuredClone(inventory);
+      const index = alteredInventory.findIndex((entry) => entry[0] === file && entry[1] === name);
+      alteredInventory[index][1] = "unexpected inventory duplicate replacement";
+      assert.throws(() => validate(full, alteredInventory), /coverage differs/);
+    }
+    const cliCase = ["src/cli.test.ts", "freed-library CLI runs the installed npm bin symlink and fails closed with bounded stderr"];
+    for (const required of [...FOCUSED, ...DARWIN_REQUIRED, cliCase]) {
+      const changed = structuredClone(full);
+      const rows = changed.testResults.find((item) => item.name === path.join(packageRoot, required[0])).assertionResults;
+      rows.find((item) => item.fullName === required[1]).status = "skipped";
+      changed.numPassedTests--; changed.numPendingTests++;
+      assert.throws(() => validate(changed));
+    }
+  });
+}
