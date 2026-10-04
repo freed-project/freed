@@ -176,6 +176,8 @@ const TOOLING_SMOKE_RUNNER_PATHS = new Set([
   "scripts/run-native-acceptance.test.mjs",
   "scripts/run-tooling-smoke-shard.mjs",
   "scripts/run-tooling-smoke-shard.test.mjs",
+  "scripts/test-helpers/nightly-fixture-preload.mjs",
+  "scripts/test-helpers/nightly-fixture-supervisor.py",
   "scripts/tooling-smoke-plan.test.mjs",
 ]);
 

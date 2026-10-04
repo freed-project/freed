@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   mkdirSync,
+  existsSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
@@ -11,6 +12,7 @@ import {
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { once } from "node:events";
 
 import {
   DARWIN_ONLY_TEST_FILES,
@@ -263,6 +265,159 @@ test("shard execution preserves JUnit unit timings", (t) => {
     "utf8",
   );
   assert.match(junit, /<testcase name="measured"/);
+});
+
+for (const operation of ["git", "gh", "local-timeout"]) {
+  test(`nightly shard bounds imported ${operation} and reaps escaped descendants`, async (t) => {
+    const directory = mkdtempSync(path.join(os.tmpdir(), "freed-nightly-deadline-"));
+    t.after(() => rmSync(directory, { recursive: true, force: true }));
+    const env = { ...process.env };
+    delete env.NODE_TEST_CONTEXT;
+    const unrelated = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+    const unrelatedStart = process.platform === "linux"
+      ? readFileSync(`/proc/${unrelated.pid}/stat`, "utf8").split(")").at(-1).trim().split(/\s+/)[19]
+      : null;
+    t.after(async () => {
+      if (unrelated.exitCode !== null || unrelated.signalCode !== null) return;
+      const exited = once(unrelated, "exit");
+      unrelated.kill("SIGKILL");
+      await exited;
+    });
+    const bin = path.join(directory, "bin");
+    mkdirSync(bin);
+    const evidence = path.join(directory, "identities.json");
+    // Only Git's executable is stalled. The test calls the real imported
+    // collectRepoSnapshot, whose lexical execFileSync previously bypassed bounds.
+    writeFileSync(path.join(bin, operation === "gh" ? "gh" : "git"), `#!${process.execPath}
+  const { spawn } = require('node:child_process');
+  const fs = require('node:fs');
+  const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { detached: true, stdio: 'ignore' });
+  function generation(pid) {
+    const stat = fs.readFileSync('/proc/' + pid + '/stat', 'utf8').split(')').at(-1).trim().split(/\\s+/);
+    return { pid, parentPid: Number(stat[1]), startTicks: stat[19], bootId: fs.readFileSync('/proc/sys/kernel/random/boot_id', 'utf8').trim() };
+  }
+  fs.writeFileSync(${JSON.stringify(evidence)}, JSON.stringify({ child: process.pid, descendant: child.pid, childGeneration: generation(process.pid), descendantGeneration: generation(child.pid), fixture: process.env.TMPDIR }));
+  setInterval(() => {}, 1000);
+  `, { mode: 0o700 });
+    const fixture = path.join(directory, "stall.test.mjs");
+    writeFileSync(fixture, `
+import test from 'node:test';
+import { execFileSync } from 'node:child_process';
+  import { mkdtempSync, writeFileSync } from 'node:fs';
+  import os from 'node:os';
+  import path from 'node:path';
+  import { collectRepoSnapshot, collectPeerWorktrees } from ${JSON.stringify(new URL("./nightly-self-improve.mjs", import.meta.url).href)};
+  import { withNightlyFixture } from ${JSON.stringify(new URL("./test-helpers/nightly-fixture-preload.mjs", import.meta.url).href)};
+  test('deliberately stalled imported ${operation}', () => withNightlyFixture('deliberately stalled imported ${operation}', () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), 'fixture-'));
+    writeFileSync(path.join(root, 'owned-fixture'), 'cleanup required');
+  ${operation === "git" ? "collectRepoSnapshot(root)" : operation === "gh" ? "collectPeerWorktrees(root, [], false)" : "try { execFileSync('git', [], { timeout: 1000, killSignal: 'SIGKILL' }); } catch {}"};
+  }));
+  `);
+    const plan = { suite: "nightly-self-improve", shardIndex: 1, shardCount: 1,
+      shellFiles: [], testFiles: [fixture], testNames: [], testNamePattern: null };
+    const script = `import { runToolingSmokeShard } from ${JSON.stringify(new URL("./run-tooling-smoke-shard.mjs", import.meta.url).href)};
+  runToolingSmokeShard(${JSON.stringify(plan)}, { repoRoot: ${JSON.stringify(directory)}, nightlyDeadlines: { operationMs: 2000, testMs: 4000, shardMs: 7000 } });`;
+    const start = performance.now();
+    const result = spawnSync(process.execPath, ["--input-type=module", "-e", script], {
+      env: { ...env, PATH: `${bin}${path.delimiter}${env.PATH}` }, encoding: "utf8", timeout: 15_000,
+    });
+    const output = result.stdout + result.stderr;
+    assert.equal(result.error, undefined, output);
+    assert.equal(result.status, 1, output);
+    if (process.platform !== "linux") {
+      assert.match(output, /confinement requires Linux.*refusing launch/);
+      assert.equal(existsSync(evidence), false);
+      return;
+    }
+    assert.match(output, operation === "local-timeout"
+      ? /orphaned fixture descendants: .*test=deliberately stalled imported local-timeout operation=execFileSync git/
+      : new RegExp(`operation deadline 2000ms test=deliberately stalled imported ${operation} operation=execFileSync ${operation}`));
+    assert.match(output, /fixtureRemoved=True/);
+    assert.ok(performance.now() - start < 10_000, output);
+    const identities = JSON.parse(readFileSync(evidence, "utf8"));
+    assert.equal(identities.descendantGeneration.parentPid, identities.child);
+    assert.match(identities.childGeneration.startTicks, /^\d+$/);
+    assert.match(identities.descendantGeneration.startTicks, /^\d+$/);
+    for (const pid of [identities.child, identities.descendant]) {
+      assert.equal(existsSync(`/proc/${pid}`), false, `PID ${pid} must be reaped, not merely a zombie`);
+    }
+    assert.equal(existsSync(identities.fixture), false);
+    assert.equal(process.kill(unrelated.pid, 0), true, "unrelated process survives");
+    const unrelatedNow = readFileSync(`/proc/${unrelated.pid}/stat`, "utf8").split(")").at(-1).trim().split(/\s+/);
+    assert.equal(unrelatedNow[19], unrelatedStart, "unrelated generation is unchanged");
+    assert.notEqual(unrelatedNow[0], "Z", "unrelated process is alive, not a zombie");
+    console.log(output.split("\n").filter((line) => line.startsWith("[nightly supervisor]")).join("\n"));
+    console.log(JSON.stringify({ contract: `imported ${operation} stall`, status: result.status,
+      elapsedMs: performance.now() - start, ...identities, childAndDescendantReaped: true,
+      fixtureRemoved: true, unrelatedAlive: true }));
+  });
+}
+
+test("nightly supervisor refuses stale generations and foreign parents", () => {
+  const helper = new URL("./test-helpers/nightly-fixture-supervisor.py", import.meta.url).pathname;
+  const result = spawnSync("python3", ["-c", `
+import importlib.util, os, subprocess, sys
+sys.dont_write_bytecode = True
+spec = importlib.util.spec_from_file_location('supervisor', ${JSON.stringify(helper)})
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+platform = sys.platform
+sys.platform = 'unsupported'
+try:
+    module.confine()
+    raise AssertionError('unsupported confinement accepted')
+except RuntimeError as error:
+    assert 'refusing launch' in str(error)
+finally:
+    sys.platform = platform
+if platform == 'linux':
+    module.confine()
+    child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'])
+    try:
+        expected = module.identity(child.pid)
+        for stale in [(expected[0], expected[1], 'wrong-generation'), (expected[0], os.getppid(), expected[2])]:
+            try:
+                module.kill_owned(stale)
+                raise AssertionError('stale or foreign identity accepted')
+            except RuntimeError:
+                pass
+            assert child.poll() is None, 'refused identity was signaled'
+    finally:
+        module.cleanup(child)
+    assert not os.path.exists('/proc/' + str(child.pid))
+`], { encoding: "utf8", timeout: 10_000 });
+  assert.equal(result.status, 0, result.stderr);
+});
+
+test("nightly shard deadline remains independent of a blocked test event loop", (t) => {
+  const directory = mkdtempSync(path.join(os.tmpdir(), "freed-nightly-loop-"));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const fixture = path.join(directory, "loop.test.mjs");
+  writeFileSync(fixture, `import test from 'node:test';
+import { withNightlyFixture } from ${JSON.stringify(new URL("./test-helpers/nightly-fixture-preload.mjs", import.meta.url).href)};
+test('blocked loop', () => withNightlyFixture('blocked loop', () => { while (true) {} }));`);
+  const plan = { suite: "nightly-self-improve", shardIndex: 1, shardCount: 1,
+    shellFiles: [], testFiles: [fixture], testNames: [], testNamePattern: null };
+  const env = { ...process.env };
+  delete env.NODE_TEST_CONTEXT;
+  for (const deadline of ["test", "shard"]) {
+    const script = `import { runToolingSmokeShard } from ${JSON.stringify(new URL("./run-tooling-smoke-shard.mjs", import.meta.url).href)};
+runToolingSmokeShard(${JSON.stringify(plan)}, { repoRoot: ${JSON.stringify(directory)}, nightlyDeadlines: { operationMs: 5000, testMs: ${deadline === "test" ? 200 : 5000}, shardMs: ${deadline === "shard" ? 1000 : 5000} } });`;
+    const result = spawnSync(process.execPath, ["--input-type=module", "-e", script], {
+      env, encoding: "utf8", timeout: 10_000,
+    });
+    const output = result.stdout + result.stderr;
+    assert.equal(result.error, undefined, output);
+    assert.equal(result.status, 1, output);
+    if (process.platform !== "linux") {
+      assert.match(output, /refusing launch/);
+    } else {
+      assert.match(output, deadline === "test" ? /test deadline 200ms test=blocked loop/ : /independent shard deadline/);
+      assert.match(output, /"remaining": \[\]/);
+      assert.match(output, /fixtureRemoved=True/);
+    }
+  }
 });
 
 test("repository plans are nonempty and cover each named suite", () => {

@@ -88,6 +88,24 @@ its own native lane.
 
 Shards run with a per-test timeout of 5 minutes. `node --test` defaults to no timeout, which let one blocked test pin a shard until the job-level timeout with no useful signal. Any tooling test slower than this in a blocking lane is a defect, not a long test.
 
+The nightly self-improve shard additionally runs under a test-only external
+supervisor. Imported synchronous subprocess calls and `spawn` operations have a 30-second deadline, test
+callbacks have an independent 5-minute deadline, and the shard has a 60-minute
+outer deadline. Deadline detection adds at most one polling interval under
+normal scheduling (20 milliseconds); child cleanup has a separate 5-second
+budget. A blocked JavaScript event loop cannot disable these deadlines.
+Timeout diagnostics identify the active test and operation. The supervisor
+fails the shard even when an imported function would swallow a subprocess error.
+
+On Linux, a private subreaper adopts orphaned descendants, including detached
+children. Cleanup signals only its own current children through pidfds and
+reaps them before removing its private temporary fixture directory. Unrelated
+processes and shared process groups are never cleanup targets. An orphan fails
+the shard even if the tests otherwise passed. Unsupported confinement, including
+macOS without equivalent descendant custody, refuses before launch. Cleanup
+failure retains the fixture and reports failure; it never claims orphan-free
+success. This is test infrastructure, not production lifecycle authority.
+
 ## Performance gates
 
 Tier 1 and Tier 2 may block on deterministic performance contracts such as
