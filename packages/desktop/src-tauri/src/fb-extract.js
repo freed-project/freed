@@ -235,11 +235,38 @@
   }
   // END GENERATED FACEBOOK ADMISSION POLICY
 
+  // Default off. Enabling requires the release owner's exact-source Gate 1 checkpoint.
+  // Tokens are candidate ordinals in this invocation, never upstream identities.
+  var passDiagnosticsEnabled = false;
+  var passRecords = passDiagnosticsEnabled ? [] : null;
+  var passObserved = 0;
+  function observePassCandidate(ordinal, reason, disposition) {
+    if (!passRecords) return;
+    passObserved++;
+    if (passRecords.length < 250) {
+      passRecords.push({ ordinal: ordinal, reason: reason, disposition: disposition });
+    }
+  }
+  function attachPassDiagnostics(data) {
+    if (!passRecords) return;
+    data.passDiagnostics = {
+      schemaVersion: 1,
+      surface: "feed",
+      records: passRecords,
+      observed: passObserved,
+      candidateCount: typeof data.candidateCount === "number" ? data.candidateCount : null,
+      inspectionComplete: !data.error && typeof data.candidateCount === "number" && passObserved === data.candidateCount,
+      truncated: passObserved > passRecords.length,
+      outcome: data.error ? "error" : "completed",
+    };
+  }
+
   var emit =
     window.__TAURI__ &&
     window.__TAURI__.event &&
     typeof window.__TAURI__.event.emit === "function"
       ? function (name, data) {
+          attachPassDiagnostics(data);
           window.__TAURI__.event.emit(name, data);
         }
       : function () {};
@@ -1060,23 +1087,27 @@
 
       if (admission.inspectionStatus === "failed" || admission.inspectionStatus === "unsupported") {
         rejected.detectorErrors++;
+        observePassCandidate(idx, "inspection_failed", "deferred");
         admissionFailure = "Facebook advertising inspection failed. Capture paused for this feed pass.";
         break;
       }
 
       if (admission.decision === "exclude") {
         rejected.advertising++;
+        observePassCandidate(idx, "advertising", "excluded");
         rejected.suggestedOrSponsored++;
         continue;
       }
 
       if (admission.decision === "defer") {
         rejected.deferredAdvertising++;
+        observePassCandidate(idx, "advertising_unresolved", "deferred");
         continue;
       }
 
       if (isRecommendation(el)) {
         rejected.recommendation++;
+        observePassCandidate(idx, "recommendation_or_follow", "excluded");
         rejected.suggestedOrSponsored++;
         continue;
       }
@@ -1086,16 +1117,19 @@
       rejected.observationCount++;
       if (admission.inspectionStatus === "failed" || admission.inspectionStatus === "unsupported") {
         rejected.detectorErrors++;
+        observePassCandidate(idx, "inspection_failed", "deferred");
         admissionFailure = "Facebook advertising reinspection failed. Capture paused for this feed pass.";
         break;
       }
       if (admission.decision === "exclude") {
         rejected.advertising++;
+        observePassCandidate(idx, "advertising", "excluded");
         rejected.suggestedOrSponsored++;
         continue;
       }
       if (admission.decision === "defer") {
         rejected.deferredAdvertising++;
+        observePassCandidate(idx, "advertising_unresolved", "deferred");
         continue;
       }
 
@@ -1106,6 +1140,7 @@
 
       if (!author.name || !author.profileUrl) {
         rejected.missingAuthor++;
+        observePassCandidate(idx, "missing_author", "excluded");
         continue;
       }
 
@@ -1129,6 +1164,7 @@
       // Must have SOME meaningful content
       if (!text && mediaUrls.length === 0 && !hasVideo) {
         rejected.missingContent++;
+        observePassCandidate(idx, "missing_content", "excluded");
         continue;
       }
 
@@ -1140,6 +1176,7 @@
       var commentSpan = el.querySelector('span[aria-label*="comment"]');
       var shareSpan = el.querySelector('span[aria-label*="share"]');
 
+      observePassCandidate(idx, "retained_unknown_origin", "retained");
       posts.push({
         id: id,
         url: postRef.url,

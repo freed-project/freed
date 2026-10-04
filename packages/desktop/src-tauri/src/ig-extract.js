@@ -8,11 +8,38 @@
 (function () {
   "use strict";
 
+  // Default off. Enabling requires the release owner's exact-source Gate 1 checkpoint.
+  // Tokens are candidate ordinals in this invocation, never upstream identities.
+  var passDiagnosticsEnabled = false;
+  var passRecords = passDiagnosticsEnabled ? [] : null;
+  var passObserved = 0;
+  function observePassCandidate(ordinal, reason, disposition) {
+    if (!passRecords) return;
+    passObserved++;
+    if (passRecords.length < 250) {
+      passRecords.push({ ordinal: ordinal, reason: reason, disposition: disposition });
+    }
+  }
+  function attachPassDiagnostics(data) {
+    if (!passRecords) return;
+    data.passDiagnostics = {
+      schemaVersion: 1,
+      surface: "feed",
+      records: passRecords,
+      observed: passObserved,
+      candidateCount: typeof data.candidateCount === "number" ? data.candidateCount : null,
+      inspectionComplete: !data.error && typeof data.candidateCount === "number" && passObserved === data.candidateCount,
+      truncated: passObserved > passRecords.length,
+      outcome: data.error ? "error" : "completed",
+    };
+  }
+
   var emit =
     window.__TAURI__ &&
     window.__TAURI__.event &&
     typeof window.__TAURI__.event.emit === "function"
       ? function (name, data) {
+          attachPassDiagnostics(data);
           window.__TAURI__.event.emit(name, data);
         }
       : function () {};
@@ -327,6 +354,11 @@
 
   // ── Filter suggested / sponsored / non-following content ─────────────────
 
+  var lastExclusionReason = "recommendation_or_sponsored";
+  function excludedHeader(reason) {
+    if (passDiagnosticsEnabled) lastExclusionReason = reason;
+    return true;
+  }
   function isSuggestedOrSponsored(article) {
     // Follow button in the header = post from a non-followed account
     var header = article.querySelector("header");
@@ -334,7 +366,7 @@
       var buttons = header.querySelectorAll("button");
       for (var b = 0; b < buttons.length; b++) {
         var btnText = (buttons[b].textContent || "").trim();
-        if (btnText === "Follow" || btnText === "Follow Back") return true;
+        if (btnText === "Follow" || btnText === "Follow Back") return excludedHeader("follow");
       }
 
       // Inspect only standalone header disclosure/recommendation labels;
@@ -398,7 +430,7 @@
           suppressedLabels.push(label);
           continue;
         }
-        if (excludedHeaderLabel.test(labelText)) return true;
+        if (excludedHeaderLabel.test(labelText)) return excludedHeader(labelText.toLowerCase() === "sponsored" ? "sponsored" : "recommendation");
         // Reconstruct only contiguous inline fragments of the exact disclosure.
         var fragment = labelText.replace(/\s+/g, "").toLowerCase();
         if (/^(?:s|sp|spo|spon|spons|sponso|sponsor|sponsore)$/.test(fragment)) {
@@ -411,7 +443,7 @@
               var tail = next.nextSibling;
               for (var ti = 0; tail && ti < 10 && tail.nodeType === 3 && !textValue(tail, 80); ti++) tail = tail.nextSibling;
               var tailText = tail && (tail.nodeType === 3 || (/^(SPAN|DIV)$/.test(tail.nodeName) && !hasLabelBoundary(tail) && !tail.querySelector("a[href]"))) ? textValue(tail, 80) : "";
-              if (!tailText || excludedHeaderLabel.test(tailText) || /^(?:[·•]+|(?:[·•]\s*)?\d+\s*(?:s|m|h|d|w|min|hr|hours?|days?)?)$/i.test(tailText)) return true;
+              if (!tailText || excludedHeaderLabel.test(tailText) || /^(?:[·•]+|(?:[·•]\s*)?\d+\s*(?:s|m|h|d|w|min|hr|hours?|days?)?)$/i.test(tailText)) return excludedHeader("sponsored");
               break;
             }
             if ("sponsored".indexOf(fragment) !== 0) break;
@@ -420,16 +452,16 @@
       }
       var headerNodes = header.childNodes;
       for (var n = 0; n < headerNodes.length && n < 64; n++) {
-        if (
-          headerNodes[n].nodeType === 3 &&
-          excludedHeaderLabel.test(textValue(headerNodes[n], 80))
-        ) return true;
+        if (headerNodes[n].nodeType === 3) {
+          var directLabel = textValue(headerNodes[n], 80);
+          if (excludedHeaderLabel.test(directLabel)) return excludedHeader(directLabel.toLowerCase() === "sponsored" ? "sponsored" : "recommendation");
+        }
       }
     }
 
     // Sponsored indicator: aria-label="Sponsored" or link to /ads/
-    if (article.querySelector('[aria-label="Sponsored"]')) return true;
-    if (article.querySelector('a[href*="/ads/"]')) return true;
+    if (article.querySelector('[aria-label="Sponsored"]')) return excludedHeader("sponsored_accessible");
+    if (article.querySelector('a[href*="/ads/"]')) return excludedHeader("ads_link");
 
     return false;
   }
@@ -516,6 +548,7 @@
         !hasContentDespiteMissingLayout(article)
       ) {
         rejected.tinyOrInvisible++;
+        observePassCandidate(idx, "tiny_or_invisible", "excluded");
         continue;
       }
       expandLongTextControls(article);
@@ -523,6 +556,7 @@
       // Skip suggested-for-you, sponsored, and non-followed-account posts
       if (isSuggestedOrSponsored(article)) {
         rejected.suggestedOrSponsored++;
+        observePassCandidate(idx, lastExclusionReason, "excluded");
         continue;
       }
 
@@ -541,6 +575,7 @@
       // Must have some meaningful content
       if (!caption && mediaUrls.length === 0 && !hasVideo) {
         rejected.missingContent++;
+        observePassCandidate(idx, "missing_content", "excluded");
         continue;
       }
 
@@ -549,6 +584,7 @@
       // Deduplicate across scroll passes
       if (seen[id]) {
         rejected.duplicate++;
+        observePassCandidate(idx, "duplicate_in_pass", "excluded");
         continue;
       }
       seen[id] = true;
@@ -564,6 +600,7 @@
         postType = "photo";
       }
 
+      observePassCandidate(idx, "retained_unknown_origin", "retained");
       posts.push({
         shortcode: shortcode,
         url: postUrl,

@@ -596,6 +596,8 @@ export async function backfillLibraryContentSignals(
 }
 
 export interface LibraryPriorityBackfillSummary {
+  /** Local diagnostic only: queue wait before initialization; zero when not measured. */
+  readonly queueWaitMs: number;
   readonly source: LibraryCoreFeedPageSourceV1;
   readonly passStartedAt: number;
   readonly remaining: number;
@@ -607,6 +609,7 @@ export async function backfillLibraryPriorities(
   batchSize = 64,
   publishRuntimeUpdate = true,
   timeOnlySource?: LibraryCoreFeedPageSourceV1,
+  measureQueueWait = false,
 ): Promise<LibraryPriorityBackfillSummary> {
   if (
     !Number.isSafeInteger(passStartedAt) ||
@@ -618,7 +621,9 @@ export async function backfillLibraryPriorities(
     throw new TypeError("priority backfill bounds are invalid");
   }
   let summary!: LibraryPriorityBackfillSummary;
+  const queuedAt = measureQueueWait ? performance.now() : 0;
   const operation = mutationQueue.then(async () => {
+    const queueWaitMs = measureQueueWait ? Math.max(0, performance.now() - queuedAt) : 0;
     await ensureInitialized();
     const batch = await readLibraryCorePriorityCandidateBatch(
       passStartedAt,
@@ -638,6 +643,7 @@ export async function backfillLibraryPriorities(
       if (publishRuntimeUpdate) await reloadSqliteLibraryState();
     }
     summary = Object.freeze({
+      queueWaitMs,
       source: batch.source,
       passStartedAt,
       remaining: batch.remaining ? 1 : 0,

@@ -518,3 +518,12 @@ not treated as this ad proof. IDs, media/author extraction, navigation and caden
 are unchanged. Synthetic positive and negative controls protect these scopes;
 installed coverage, other disclosure locations/locales and fallback identity
 collisions remain separate and no live completeness guarantee is claimed.
+
+## Default-off pass diagnostics
+
+Facebook and Instagram have a disabled, memory-only diagnostic slice for existing
+feed admission branches. Synthetic tests cover parity, fixed-field records and
+partial/error outcomes. Records identify candidate observations, not unique posts.
+The collector is capped at 250 records per pass, 500 across both providers per
+renderer lifetime and 100 passes. No uploader, durable writer or deletion is added.
+Live activation requires a separate exact-source, bounded-window checkpoint.

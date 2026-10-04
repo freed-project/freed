@@ -88,12 +88,41 @@ describe("Desktop Library client canonical invalidations", () => {
     mocks.query.mockResolvedValue({ nextCursor: null, queryId: "local_change_feed_v1", rows: [], schemaVersion: 1,
       source: { generationId: "a".repeat(64), projectionRevision: 1, transitionSequence: 0 } });
     const result = await backfillLibraryPriorities(1000, 64, false);
-    expect(result).toEqual({ passStartedAt: 1000, remaining: 0, updated: 1, source: { generationId: "a".repeat(64), projectionRevision: 1, transitionSequence: 1 } });
+    expect(result).toEqual({ queueWaitMs: expect.any(Number), passStartedAt: 1000, remaining: 0, updated: 1, source: { generationId: "a".repeat(64), projectionRevision: 1, transitionSequence: 1 } });
     expect(mocks.commitPriorities).toHaveBeenCalledWith([{ entityId: "rank-1",
       priorityBasisPoints: calculatePriority(item, weights, 1000, { careLevel: 5 }) * 100 }], 1000);
     mocks.priorityCandidates.mockRejectedValueOnce(new Error("CURSOR_STALE"));
     await expect(backfillLibraryPriorities(1001, 64, false)).rejects.toThrow("CURSOR_STALE");
     expect(mocks.commitPriorities).toHaveBeenCalledOnce();
+  });
+
+  it("measures only mutation-queue wait without changing priority ordering", async () => {
+    let clock = 0;
+    const timer = vi.spyOn(performance, "now").mockImplementation(() => clock);
+    let entered!: () => void;
+    const firstEntered = new Promise<void>(resolve => { entered = resolve; });
+    const source = { generationId: "a".repeat(64), projectionRevision: 1, transitionSequence: 1 };
+    mocks.query.mockResolvedValue({ queryId: "optimistic_fields_v1", schemaVersion: 1, source, rows: [] });
+    await initializeDesktopLibraryRuntime();
+    const batch = { items: [], remaining: false, weights: createDefaultPreferences().weights, source };
+    let finish!: (value: typeof batch) => void;
+    mocks.priorityCandidates.mockImplementationOnce(() => {
+      entered();
+      return new Promise(resolve => { finish = resolve; });
+    }).mockResolvedValue(batch);
+    try {
+      const first = backfillLibraryPriorities(1000, 64, false, undefined, true);
+      await firstEntered;
+      clock = 1000;
+      const second = backfillLibraryPriorities(1001, 64, false, undefined, true);
+      expect(mocks.priorityCandidates).toHaveBeenCalledOnce();
+      clock = 1250;
+      finish(batch);
+      expect((await first).queueWaitMs).toBe(0);
+      expect((await second).queueWaitMs).toBe(250);
+      expect(mocks.priorityCandidates.mock.calls.map(call => call[0])).toEqual([1000, 1001]);
+      expect(mocks.commitPriorities).not.toHaveBeenCalled();
+    } finally { timer.mockRestore(); }
   });
 
   it("infers one source-fenced SQLite analysis batch and commits it once", async () => {
