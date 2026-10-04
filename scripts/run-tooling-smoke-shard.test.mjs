@@ -434,8 +434,11 @@ if platform == 'linux':
 elif platform == 'darwin':
     module.confine()
     custody = module.DARWIN_CUSTODY
-    child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'])
+    # Darwin advances pidversion on exec. Capture after the child acknowledges
+    # its final executable, so version + 1 cannot accidentally be the live token.
+    child = subprocess.Popen([sys.executable, '-c', "import time; print('ready', flush=True); time.sleep(30)"], stdout=subprocess.PIPE, text=True)
     try:
+        assert child.stdout.readline() == 'ready' + chr(10)
         members = custody.inventory()
         expected = next(entry for entry in members if entry['pid'] == child.pid)
         assert custody.send(dict(expected, birth='stale'), signal.SIGKILL) is False
