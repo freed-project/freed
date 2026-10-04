@@ -109,3 +109,28 @@ test("worktree-add preserves Git abbreviations, short clusters and shell-indepen
     });
   }
 });
+
+
+test("worktree-add forwards newer Git switches before the destination", async (t) => {
+  const help = spawnSync(git, ["worktree", "add", "-h"], { encoding: "utf8" });
+  for (const option of ["--relative-paths", "--no-relative-paths", "--orphan"]) {
+    await t.test(option, async (t) => {
+      const f = await fixture(t);
+      const args = option === "--orphan"
+        ? [option, "-b", "fix/unborn", "../requested", "--install=none"]
+        : [option, "--detach", "../requested", "HEAD", "--install=none"];
+      const result = f.run(args);
+      const supported = `${help.stdout}${help.stderr}`.includes(option.replace("--no-", "--"));
+      if (supported) {
+        assert.equal(result.status, 0, result.stderr);
+        assert.equal(await readFile(path.join(f.root, "requested/decisions-initialized"), "utf8"), "yes");
+      } else {
+        // Older Git must reject the unchanged option itself, not our path parser.
+        assert.notEqual(result.status, 0);
+        assert.match(result.stderr, /error: unknown option/);
+        assert.doesNotMatch(result.stderr, /ambiguous or unsupported worktree option/);
+        assert.ok(!(await readdir(f.root)).includes("requested"));
+      }
+    });
+  }
+});

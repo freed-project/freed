@@ -143,7 +143,7 @@ for arg in "${PASSTHROUGH_ARGS[@]}"; do
         # against the worktree-add options before deciding whether to skip a value.
         option="${arg%%=*}"
         matches=()
-        for known in force detach checkout lock quiet track guess-remote reason no-force no-detach no-checkout no-lock no-quiet no-track no-guess-remote no-reason; do
+        for known in force detach checkout lock quiet track guess-remote reason relative-paths orphan no-relative-paths no-orphan no-force no-detach no-checkout no-lock no-quiet no-track no-guess-remote no-reason; do
           if [[ "--${known}" == "${option}" ]]; then
             matches=("${known}")
             break
