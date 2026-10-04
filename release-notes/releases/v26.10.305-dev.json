@@ -1,0 +1,139 @@
+{
+  "tag": "v26.10.305-dev",
+  "version": "26.10.305-dev",
+  "channel": "dev",
+  "dayKey": "26.10.3",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-10-04T06:41:14.226Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.10.304-dev",
+    "previousPublishedDayTag": "v26.10.200-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "efe54d9553e976fd1d02cf26c4c94d763fafbdb5",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.10.304-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "5a1f76ef84ceee85ba5827707a536f4e5334f76f",
+        "toInclusiveProductCommitSha": "efe54d9553e976fd1d02cf26c4c94d763fafbdb5"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:87ced2658785f1d28753666537ab09bef76d45848f728aeb12343f22ee70d6d1",
+        "currentDigest": "sha256:87ced2658785f1d28753666537ab09bef76d45848f728aeb12343f22ee70d6d1"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:e40db0f573d8d897bccf3d154006e63347a9ccc1a55642a3f188d767df2d8f76",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.10.300-dev",
+      "v26.10.302-dev",
+      "v26.10.303-dev",
+      "v26.10.304-dev",
+      "v26.10.305-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.10.300-dev",
+      "v26.10.302-dev",
+      "v26.10.303-dev",
+      "v26.10.304-dev",
+      "v26.10.305-dev"
+    ],
+    "prNumbers": [
+      2059,
+      2077,
+      2079,
+      2080,
+      2081,
+      2082,
+      2083,
+      2084,
+      2085,
+      2086,
+      2087,
+      2088,
+      2089,
+      2090,
+      2091,
+      2092,
+      2093,
+      2094,
+      2095,
+      2096
+    ],
+    "commitSubjects": [
+      "chore: prepare bounded default-off pass diagnostics (#2096)",
+      "fix: preserve resolved map header counts (#2095)",
+      "chore: prepare v26.10.304-dev (#2094)",
+      "fix: preserve the map viewport during manual navigation (#2093)",
+      "fix: verify selected SQLite authority on one configured connection (#2092)",
+      "chore: prepare v26.10.303-dev (#2091)",
+      "fix: preserve sponsored label and organic prose boundaries (#2090)",
+      "chore: prepare v26.10.302-dev (#2089)",
+      "fix: bound refresh reads and indexed snapshots with honest feed counts (#2088)",
+      "chore: prepare v26.10.301-dev (#2087)",
+      "feat: measure native provider admissions for consumer acceptance (#2059)",
+      "fix: retain identity in first renderer heartbeat (#2086)",
+      "chore: prepare v26.10.300-dev (#2085)",
+      "fix: isolate parallel Jev budget test ledgers (#2084)",
+      "perf: record bounded app-wide renderer stall probes (#2080)",
+      "fix: isolate signed measurement profiles and credential services (#2081)",
+      "feat: deliver signed and PWA transfer acceptance builds (#2083)",
+      "feat: recover archived edits on the active Primary (#2082)",
+      "feat: add isolated multi-desktop acceptance builds (#2079)",
+      "feat: add governed portable cloud release requests (#2077)"
+    ]
+  },
+  "release": {
+    "deck": "More predictable navigation and less repeated native setup",
+    "features": [
+      "Report bounded native capture admission evidence",
+      "Deliver signed and PWA transfer acceptance builds",
+      "Isolated multi-desktop acceptance builds"
+    ],
+    "fixes": [
+      "Reader, feed, and header polish",
+      "Isolate parallel Jev budget test ledgers",
+      "Show Library backup preparation before downloading an update",
+      "Capture and scraper reliability fixes",
+      "Report unsupported long-task monitoring as unavailable",
+      "Keep signed preview and transfer-acceptance assets out of ordinary updater manifests",
+      "Preserve primary and existing preview credential-service identities",
+      "Keep large changed-post refresh batches from overwhelming local reads",
+      "Optimized repeated work during Library snapshot hashing and archive writing",
+      "Retain known feed counts during refreshes and distinguish unavailable counts from an empty Library",
+      "Retain identity in first renderer heartbeat",
+      "Isolate signed measurement profiles and credential services",
+      "Keep ordinary Facebook captions when recommendation words appear outside the post header",
+      "Reject split Instagram Sponsored headers while retaining longer organic labels",
+      "Preserve manual map navigation while pins load and verify selected Library authority on one configured connection"
+    ],
+    "followUps": [
+      "Reader, sidebar, and settings UX work",
+      "Release workflow and build-system work",
+      "Transfer-acceptance builds remain separate opt-in test artifacts; ordinary Library transfer and schema-v2 operations remain disabled",
+      "Sync, cloud, and pairing infrastructure",
+      "Capture, login, and scraping platform work",
+      "Clearer update status and accurate item totals during refresh",
+      "Facebook and Instagram completeness and sponsored-ad exclusion remain under verification",
+      "More accurate Facebook and Instagram header filtering while preserving organic captions",
+      "Live Facebook and Instagram acceptance remains scoped to observed placements with explicit paid-provenance evidence",
+      "High native CPU remains under investigation; this social update does not include pending performance fixes"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.10.305-dev\n\nMore predictable navigation and less repeated native setup\n\n### Features\n\n- Report bounded native capture admission evidence\n- Deliver signed and PWA transfer acceptance builds\n- Isolated multi-desktop acceptance builds\n\n### Fixes\n\n- Reader, feed, and header polish\n- Isolate parallel Jev budget test ledgers\n- Show Library backup preparation before downloading an update\n- Capture and scraper reliability fixes\n- Report unsupported long-task monitoring as unavailable\n- Keep signed preview and transfer-acceptance assets out of ordinary updater manifests\n- Preserve primary and existing preview credential-service identities\n- Keep large changed-post refresh batches from overwhelming local reads\n- Optimized repeated work during Library snapshot hashing and archive writing\n- Retain known feed counts during refreshes and distinguish unavailable counts from an empty Library\n- Retain identity in first renderer heartbeat\n- Isolate signed measurement profiles and credential services\n- Keep ordinary Facebook captions when recommendation words appear outside the post header\n- Reject split Instagram Sponsored headers while retaining longer organic labels\n- Preserve manual map navigation while pins load and verify selected Library authority on one configured connection\n\n### Follow-ups\n\n- Reader, sidebar, and settings UX work\n- Release workflow and build-system work\n- Transfer-acceptance builds remain separate opt-in test artifacts; ordinary Library transfer and schema-v2 operations remain disabled\n- Sync, cloud, and pairing infrastructure\n- Capture, login, and scraping platform work\n- Clearer update status and accurate item totals during refresh\n- Facebook and Instagram completeness and sponsored-ad exclusion remain under verification\n- More accurate Facebook and Instagram header filtering while preserving organic captions\n- Live Facebook and Instagram acceptance remains scoped to observed placements with explicit paid-provenance evidence\n- High native CPU remains under investigation; this social update does not include pending performance fixes\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

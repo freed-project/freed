@@ -12,5 +12,5 @@
   "editorialNotes": [
     "Reviewed two-fix candidate: map camera ownership and one-connection native authority verification. Existing same-day history retained. Synthetic regressions and combined native build passed; installed map gestures and actual CPU impact remain unverified. The older social-build CPU follow-up describes 303; this candidate adds the connection correction without claiming measured improvement. No optional diagnostics activation or schema transfer activation."
   ],
-  "updatedAt": "2026-10-04T03:01:09.155Z"
+  "updatedAt": "2026-10-04T06:41:14.231Z"
 }
