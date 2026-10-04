@@ -105,6 +105,9 @@ export function isProviderAdmissionEnvelope(
     Number.isSafeInteger(envelope.observationGeneration) &&
     (envelope.observationGeneration ?? 0) > 0 &&
     Array.isArray(envelope.evidenceCodes) &&
+    // Every v1 evidence code excludes or defers a placement. An admit label
+    // cannot override that proof; unknown or malformed evidence also fails closed.
+    envelope.evidenceCodes.length === 0 &&
     Array.isArray(envelope.reasons)
   );
 }

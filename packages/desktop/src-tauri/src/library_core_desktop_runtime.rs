@@ -1,5 +1,8 @@
 //! Freed Desktop native routing for the normalized SQLite Library Core.
 
+#[path = "library_core_checkpoint_session.rs"]
+mod checkpoint_session;
+
 use freed_library_core::{
     accept_normalized_operation_transaction_v1, load_normalized_local_actor_id_v2,
     normalized_primary_mutation_context_v1, NormalizedMutationContextV1,
@@ -154,6 +157,14 @@ pub(super) struct DesktopNormalizedLibraryCloudIdentity {
     local_actor_id: String,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DesktopNormalizedCloudPreflightIdentity {
+    #[serde(flatten)]
+    identity: freed_library_core::NormalizedCloudPreflightIdentityV1,
+    local_actor_id: String,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct SetCloudWriterAdmissionRequest {
@@ -299,10 +310,16 @@ fn app_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 }
 
 fn open_normalized_database(app: &tauri::AppHandle) -> Result<Connection, String> {
+    open_normalized_database_with_identity(app).map(|(connection, _)| connection)
+}
+
+fn open_normalized_database_with_identity(
+    app: &tauri::AppHandle,
+) -> Result<(Connection, String), String> {
     #[cfg(unix)]
     if let Ok(binding) = freed_library_core::desktop_binding() {
         return binding
-            .connect_selected_normalized()
+            .connect_selected_normalized_with_identity()
             .map_err(|error| error.to_string());
     }
     #[cfg(unix)]
@@ -330,7 +347,7 @@ fn open_normalized_database(app: &tauri::AppHandle) -> Result<Connection, String
             &selection.library_id,
         )
         .map_err(|error| error.to_string())?;
-        Ok(connection)
+        Ok((connection, selection.library_id))
     }
 }
 
@@ -1219,20 +1236,60 @@ pub(super) fn begin_normalized_library_checkpoint_export(
     app: tauri::AppHandle,
     handoff_id: Option<String>,
 ) -> Result<freed_library_core::NormalizedCheckpointExportDescriptorV2, String> {
-    let connection = open_normalized_database(&app)?;
-    require_checkpoint_export_admission(&connection, handoff_id.as_deref())?;
-    ensure_checkpoint_export_reaper()?;
-    let export = freed_library_core::NormalizedCheckpointExportSessionV2::begin_current(connection)
-        .map_err(|error| error.to_string())?;
-    let snapshot = export.snapshot().clone();
-    let mut guard = checkpoint_export_session()
-        .lock()
-        .map_err(|_| "normalized checkpoint export session lock failed".to_owned())?;
-    *guard = Some(DesktopCheckpointExportSession {
-        export,
-        last_touched: Instant::now(),
-    });
-    Ok(snapshot)
+    use super::library_core_native_timings::{
+        global_limiter, monotonic_us, with_trace, Scope, Stage,
+    };
+    use freed_library_core::{
+        NormalizedCheckpointDescriptionStageV2 as DescriptorStage,
+        NormalizedCheckpointPreparationStageV2 as PreparationStage,
+    };
+    with_trace(
+        Scope::CheckpointPrepare,
+        log::log_enabled!(log::Level::Info),
+        global_limiter(),
+        monotonic_us,
+        |event| log::info!("[library-native-timing] {event:?}"),
+        |timing| {
+            timing.stage(Stage::SelectedOpen);
+            let connection = open_normalized_database(&app)?;
+            timing.stage(Stage::CheckpointAdmission);
+            require_checkpoint_export_admission(&connection, handoff_id.as_deref())?;
+            timing.stage(Stage::ExportReaper);
+            ensure_checkpoint_export_reaper()?;
+            let export = freed_library_core::NormalizedCheckpointExportSessionV2::begin_current_with_observer(
+                connection,
+                |stage| timing.stage(match stage {
+                    PreparationStage::TransactionBegin => Stage::SnapshotBegin,
+                    PreparationStage::Descriptor(descriptor) => match descriptor {
+                        DescriptorStage::WriterIdentity => Stage::WriterIdentity,
+                        DescriptorStage::ExportCount => Stage::ExportCount,
+                        DescriptorStage::ItemCount => Stage::ItemCount,
+                        DescriptorStage::FrontierAndValidation => Stage::FrontierAndValidation,
+                    },
+                    PreparationStage::TemporaryMaterialization => Stage::TemporaryMaterialization,
+                    PreparationStage::OrderIndex => Stage::OrderIndex,
+                }),
+            ).map_err(|error| error.to_string())?;
+            timing.stage(Stage::DescriptorClone);
+            let snapshot = export.snapshot().clone();
+            checkpoint_session::replace(
+                checkpoint_export_session(),
+                || DesktopCheckpointExportSession {
+                    export,
+                    last_touched: Instant::now(),
+                },
+                |stage| {
+                    timing.stage(match stage {
+                        checkpoint_session::Stage::Acquire => Stage::SessionLock,
+                        checkpoint_session::Stage::Replace => Stage::SessionReplacement,
+                    })
+                },
+            )
+            .map_err(str::to_owned)?;
+            // replace released its guard before with_trace emits the summary.
+            Ok(snapshot)
+        },
+    )
 }
 
 #[tauri::command]
@@ -1249,19 +1306,88 @@ pub(super) fn describe_normalized_library_cloud_identity(
     app: tauri::AppHandle,
     installation_witness: String,
 ) -> Result<DesktopNormalizedLibraryCloudIdentity, String> {
-    let connection = open_normalized_database(&app)?;
-    let checkpoint = freed_library_core::describe_normalized_checkpoint_export_v2(&connection)
-        .map_err(|error| error.to_string())?;
-    let local_actor_id = load_normalized_local_actor_id_v2(
-        &connection,
-        &checkpoint.library_id,
-        &installation_witness,
-        &PlatformActorKeyStore,
-    )?;
-    Ok(DesktopNormalizedLibraryCloudIdentity {
-        checkpoint,
-        local_actor_id,
-    })
+    use super::library_core_native_timings::{
+        global_limiter, monotonic_us, with_trace, Scope, Stage,
+    };
+    use freed_library_core::NormalizedCheckpointDescriptionStageV2 as CheckpointStage;
+    with_trace(
+        Scope::CloudIdentity,
+        log::log_enabled!(log::Level::Info),
+        global_limiter(),
+        monotonic_us,
+        |event| log::info!("[library-native-timing] {event:?}"),
+        |timing| {
+            timing.stage(Stage::SelectedOpen);
+            let connection = open_normalized_database(&app)?;
+            let checkpoint =
+                freed_library_core::describe_normalized_checkpoint_export_with_observer_v2(
+                    &connection,
+                    |stage| {
+                        timing.stage(match stage {
+                            CheckpointStage::WriterIdentity => Stage::WriterIdentity,
+                            CheckpointStage::ExportCount => Stage::ExportCount,
+                            CheckpointStage::ItemCount => Stage::ItemCount,
+                            CheckpointStage::FrontierAndValidation => Stage::FrontierAndValidation,
+                        });
+                    },
+                )
+                .map_err(|error| error.to_string())?;
+            timing.stage(Stage::ActorIdentity);
+            let local_actor_id = load_normalized_local_actor_id_v2(
+                &connection,
+                &checkpoint.library_id,
+                &installation_witness,
+                &PlatformActorKeyStore,
+            )?;
+            Ok(DesktopNormalizedLibraryCloudIdentity {
+                checkpoint,
+                local_actor_id,
+            })
+        },
+    )
+}
+
+#[tauri::command]
+pub(super) fn describe_normalized_library_cloud_preflight_identity(
+    app: tauri::AppHandle,
+    installation_witness: String,
+) -> Result<DesktopNormalizedCloudPreflightIdentity, String> {
+    use super::library_core_native_timings::{
+        global_limiter, monotonic_us, with_trace, Scope, Stage,
+    };
+    with_trace(
+        Scope::CloudPreflightIdentity,
+        log::log_enabled!(log::Level::Info),
+        global_limiter(),
+        monotonic_us,
+        |event| log::info!("[library-native-timing] {event:?}"),
+        |timing| {
+            timing.stage(Stage::SelectedOpen);
+            let (mut connection, selected_library_id) =
+                open_normalized_database_with_identity(&app)?;
+            let transaction = connection
+                .transaction()
+                .map_err(|error| error.to_string())?;
+            timing.stage(Stage::WriterIdentity);
+            let identity = freed_library_core::describe_normalized_cloud_preflight_identity_v1(
+                &transaction,
+                &selected_library_id,
+            )
+            .map_err(|error| error.to_string())?;
+            timing.stage(Stage::ActorIdentity);
+            let local_actor_id = load_normalized_local_actor_id_v2(
+                &transaction,
+                &identity.library_id,
+                &installation_witness,
+                &PlatformActorKeyStore,
+            )?;
+            transaction.commit().map_err(|error| error.to_string())?;
+            Ok(DesktopNormalizedCloudPreflightIdentity {
+                identity,
+                local_actor_id,
+            })
+        },
+    )
 }
 
 #[tauri::command]
@@ -1391,6 +1517,7 @@ pub(super) fn activate_normalized_library_predecessor_checkpoint(
     app: tauri::AppHandle,
     request: ActivatePredecessorCheckpointRequest,
 ) -> Result<freed_library_core::NormalizedCheckpointActivationReceiptV2, String> {
+    freed_library_core::require_library_transfer_capability()?;
     let mut connection = open_checkpoint_import_database(&app)?;
     let library_id: String = connection
         .query_row(
@@ -1521,8 +1648,15 @@ static HANDOFF_RESET_GATE: Mutex<()> = Mutex::new(());
 pub(super) async fn reapply_normalized_library_archived_assignments(
     app: tauri::AppHandle,
     request: freed_library_core::RecoveryReissueRequestV1,
+    primary: Option<bool>,
 ) -> Result<freed_library_core::RecoveryReissueReceiptV1, String> {
+    freed_library_core::require_library_transfer_capability()?;
     run_normalized_query_off_main(move || {
+        // This selects a verifier, never an authority grant. Native admission
+        // is rechecked inside the atomic recovery transaction without fallback.
+        let authority_store = primary
+            .unwrap_or(false)
+            .then_some(&PlatformAuthorityKeyStore as &dyn freed_library_core::AuthorityKeyStore);
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_err(|_| "native recovery clock is invalid")?
@@ -1533,7 +1667,12 @@ pub(super) async fn reapply_normalized_library_archived_assignments(
             let _ = app;
             freed_library_core::desktop_binding()
                 .map_err(|e| e.to_string())?
-                .reapply_archived_assignments_v1(&request, &PlatformActorKeyStore, now)
+                .reapply_archived_assignments_v1(
+                    &request,
+                    &PlatformActorKeyStore,
+                    authority_store,
+                    now,
+                )
                 .map_err(|e| e.to_string())
         }
         #[cfg(not(unix))]
@@ -1541,12 +1680,22 @@ pub(super) async fn reapply_normalized_library_archived_assignments(
             let _gate = HANDOFF_RESET_GATE
                 .lock()
                 .map_err(|_| "Desktop Library handoff/reset gate is poisoned")?;
-            freed_library_core::reapply_archived_assignments_v1(
-                &mut open_normalized_database(&app)?,
-                &request,
-                &PlatformActorKeyStore,
-                now,
-            )
+            let mut connection = open_normalized_database(&app)?;
+            match authority_store {
+                Some(store) => freed_library_core::reapply_archived_primary_assignments_v1(
+                    &mut connection,
+                    &request,
+                    &PlatformActorKeyStore,
+                    store,
+                    now,
+                ),
+                None => freed_library_core::reapply_archived_assignments_v1(
+                    &mut connection,
+                    &request,
+                    &PlatformActorKeyStore,
+                    now,
+                ),
+            }
         }
     })
     .await
@@ -1556,9 +1705,16 @@ pub(super) async fn reapply_normalized_library_archived_assignments(
 pub(super) async fn reapply_normalized_library_archived_editor_transaction(
     app: tauri::AppHandle,
     request: freed_library_core::RecoveryReissueRequestV1,
+    primary: Option<bool>,
     canonical_envelope_json: Vec<String>,
 ) -> Result<freed_library_core::RecoveryReissueReceiptV1, String> {
+    freed_library_core::require_library_transfer_capability()?;
     run_normalized_query_off_main(move || {
+        // This selects a verifier, never an authority grant. Native admission
+        // is rechecked inside the atomic recovery transaction without fallback.
+        let authority_store = primary
+            .unwrap_or(false)
+            .then_some(&PlatformAuthorityKeyStore as &dyn freed_library_core::AuthorityKeyStore);
         let envelopes: Vec<Vec<u8>> = canonical_envelope_json
             .into_iter()
             .map(String::into_bytes)
@@ -1573,7 +1729,7 @@ pub(super) async fn reapply_normalized_library_archived_editor_transaction(
             let _ = app;
             freed_library_core::desktop_binding()
                 .map_err(|e| e.to_string())?
-                .reapply_archived_editor_transaction_v1(&request, &envelopes, now)
+                .reapply_archived_editor_transaction_v1(&request, &envelopes, authority_store, now)
                 .map_err(|e| e.to_string())
         }
         #[cfg(not(unix))]
@@ -1581,12 +1737,22 @@ pub(super) async fn reapply_normalized_library_archived_editor_transaction(
             let _gate = HANDOFF_RESET_GATE
                 .lock()
                 .map_err(|_| "Desktop Library handoff/reset gate is poisoned")?;
-            freed_library_core::reapply_archived_editor_transaction_v1(
-                &mut open_normalized_database(&app)?,
-                &request,
-                &envelopes,
-                now,
-            )
+            let mut connection = open_normalized_database(&app)?;
+            match authority_store {
+                Some(store) => freed_library_core::reapply_archived_primary_editor_transaction_v1(
+                    &mut connection,
+                    &request,
+                    &envelopes,
+                    store,
+                    now,
+                ),
+                None => freed_library_core::reapply_archived_editor_transaction_v1(
+                    &mut connection,
+                    &request,
+                    &envelopes,
+                    now,
+                ),
+            }
         }
     })
     .await
@@ -1606,6 +1772,7 @@ pub(super) async fn read_normalized_library_consumer_recovery(
 pub(super) async fn prepare_normalized_library_consumer_recovery(
     app: tauri::AppHandle,
 ) -> Result<freed_library_core::ConsumerRecoverySummaryV1, String> {
+    freed_library_core::require_library_transfer_capability()?;
     run_normalized_query_off_main(move || {
         let witness = crate::get_desktop_installation_witness()?;
         let now = std::time::SystemTime::now()
@@ -1642,6 +1809,7 @@ pub(super) async fn commit_normalized_library_consumer_recovery(
     app: tauri::AppHandle,
     recovery_id: String,
 ) -> Result<freed_library_core::ConsumerRecoverySummaryV1, String> {
+    freed_library_core::require_library_transfer_capability()?;
     run_normalized_query_off_main(move || {
         let witness = crate::get_desktop_installation_witness()?;
         let now = std::time::SystemTime::now()
@@ -1682,6 +1850,7 @@ pub(super) async fn prepare_normalized_library_handoff_readiness(
     app: tauri::AppHandle,
     created_at_ms: u64,
 ) -> Result<String, String> {
+    freed_library_core::require_library_transfer_capability()?;
     run_normalized_query_off_main(move || {
         #[cfg(unix)]
         {
@@ -1719,6 +1888,7 @@ pub(super) async fn begin_normalized_library_source_handoff(
     selected_target_actor_id: String,
     prepared_at_ms: u64,
 ) -> Result<String, String> {
+    freed_library_core::require_library_transfer_capability()?;
     let provider_gate = {
         use tauri::Manager;
         app.state::<crate::CaptureState>()
@@ -1769,6 +1939,7 @@ pub(super) async fn seal_normalized_library_source_handoff(
     expected: freed_library_core::NormalizedCheckpointExportDescriptorV2,
     sealed_at_ms: u64,
 ) -> Result<freed_library_core::NormalizedCheckpointExportDescriptorV2, String> {
+    freed_library_core::require_library_transfer_capability()?;
     let provider_gate = {
         use tauri::Manager;
         app.state::<crate::CaptureState>()
@@ -1844,6 +2015,7 @@ pub(super) async fn adopt_normalized_library_source_handoff(
     canonical_control: String,
     access_token: String,
 ) -> Result<freed_library_core::NativeHandoffStatusV1, String> {
+    freed_library_core::require_library_transfer_capability()?;
     if canonical_control.len() > 16384 || stage_id.is_empty() || stage_id.len() > 255 {
         return Err("source adoption request exceeds its bounds".into());
     }
@@ -1959,6 +2131,7 @@ pub(super) async fn activate_normalized_library_target_handoff(
     handoff_id: String,
     access_token: String,
 ) -> Result<freed_library_core::NativeHandoffStatusV1, String> {
+    freed_library_core::require_library_transfer_capability()?;
     enum Preparation {
         Active(freed_library_core::NativeHandoffStatusV1),
         Pending(freed_library_core::HandoffVerificationPlanV1),
@@ -2073,6 +2246,7 @@ pub(super) async fn prepare_normalized_library_handoff_activation(
     canonical_control: String,
     prepared_at_ms: u64,
 ) -> Result<String, String> {
+    freed_library_core::require_library_transfer_capability()?;
     run_normalized_query_off_main(move || {
         #[cfg(unix)]
         {
@@ -2111,6 +2285,7 @@ pub(super) async fn stage_normalized_library_target_handoff(
     handoff_id: String,
     staged_at_ms: u64,
 ) -> Result<String, String> {
+    freed_library_core::require_library_transfer_capability()?;
     run_normalized_query_off_main(move || {
         let witness = crate::get_desktop_installation_witness()?;
         #[cfg(unix)]
@@ -2153,6 +2328,7 @@ pub(super) async fn accept_normalized_library_target_handoff_cancellation(
     canonical_cancellation: String,
     applied_at_ms: u64,
 ) -> Result<String, String> {
+    freed_library_core::require_library_transfer_capability()?;
     run_normalized_query_off_main(move || {
         #[cfg(unix)]
         {
@@ -2187,6 +2363,7 @@ pub(super) async fn accept_normalized_library_target_handoff_authorization(
     canonical_authorization: String,
     accepted_at_ms: u64,
 ) -> Result<String, String> {
+    freed_library_core::require_library_transfer_capability()?;
     run_normalized_query_off_main(move || {
         #[cfg(unix)]
         {
@@ -2227,6 +2404,7 @@ pub(super) async fn prepare_normalized_library_handoff_authorization(
     control_revision: String,
     control_file_id: String,
 ) -> Result<String, String> {
+    freed_library_core::require_library_transfer_capability()?;
     run_normalized_query_off_main(move || {
         #[cfg(unix)]
         {
@@ -2266,6 +2444,7 @@ pub(super) async fn authorize_normalized_library_source_handoff(
     canonical_body: String,
     authorized_at_ms: u64,
 ) -> Result<String, String> {
+    freed_library_core::require_library_transfer_capability()?;
     let provider_gate = {
         use tauri::Manager;
         app.state::<crate::CaptureState>()
@@ -2322,6 +2501,7 @@ pub(super) async fn cancel_normalized_library_source_handoff(
     handoff_id: String,
     cancelled_at_ms: u64,
 ) -> Result<(), String> {
+    freed_library_core::require_library_transfer_capability()?;
     let provider_gate = {
         use tauri::Manager;
         app.state::<crate::CaptureState>()

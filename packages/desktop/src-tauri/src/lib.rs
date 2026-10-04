@@ -3,21 +3,28 @@
 //! Native desktop app that bundles capture and the reader UI.
 
 mod avatar_cache;
+mod gliclass;
 mod jev;
+mod jev_budget;
 mod library_core_actor_key_store;
 mod library_core_authority_key_store;
 mod library_core_desktop_runtime;
 mod library_core_handoff_remote;
+mod library_core_native_timings;
 #[cfg_attr(not(test), allow(dead_code))]
 mod library_core_platform_key;
 mod library_core_query_control;
 mod provider_operation_gate;
+mod renderer_responsiveness;
 mod youtube;
 
 use base64::Engine;
 use futures_util::StreamExt;
 use log::{error, info, warn};
 use rand::RngExt;
+use renderer_responsiveness::{
+    RendererActiveSurface, RendererResponsivenessPayload, RendererRuntimeIdentity,
+};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet, VecDeque};
 #[cfg(unix)]
@@ -922,9 +929,7 @@ fn recycle_social_scraper_windows(
     }
 }
 
-/// Call only while holding the exclusive provider operation permit and after
-/// committing the source fence. This preserves authentication stores.
-async fn close_provider_windows_for_handoff(app: &tauri::AppHandle) -> Result<(), String> {
+fn provider_window_labels() -> Vec<&'static str> {
     let mut labels = SOCIAL_SCRAPER_WINDOW_LABELS.to_vec();
     labels.extend([
         "x-login",
@@ -935,6 +940,13 @@ async fn close_provider_windows_for_handoff(app: &tauri::AppHandle) -> Result<()
         "medium-login",
         youtube::YOUTUBE_SESSION_WINDOW_LABEL,
     ]);
+    labels
+}
+
+/// Call only while holding the exclusive provider operation permit and after
+/// committing the source fence. This preserves authentication stores.
+async fn close_provider_windows_for_handoff(app: &tauri::AppHandle) -> Result<(), String> {
+    let labels = provider_window_labels();
     provider_operation_gate::request_window_closure(&labels, |label| {
         if label == youtube::YOUTUBE_SESSION_WINDOW_LABEL {
             return youtube::close_youtube_session_for_handoff(app);
@@ -3499,7 +3511,7 @@ fn get_background_runtime_active_operation(
 }
 
 struct ActiveScraperSession {
-    _provider_operation: tokio::sync::OwnedRwLockReadGuard<()>,
+    _provider_operation: provider_operation_gate::AdmittedProviderOperation,
     _guard: tokio::sync::OwnedMutexGuard<()>,
     background_runtime: Arc<BackgroundRuntimeCoordinator>,
     operation: &'static str,
@@ -3547,6 +3559,10 @@ struct RendererHeartbeatPayload {
     last_input_age_ms: Option<u64>,
     settings_open: Option<bool>,
     dialog_open: Option<bool>,
+    active_surface: Option<RendererActiveSurface>,
+    responsiveness: Option<RendererResponsivenessPayload>,
+    #[serde(flatten)]
+    identity: RendererRuntimeIdentity,
 }
 
 struct RendererHeartbeatStatus {
@@ -4878,6 +4894,9 @@ mod renderer_watchdog_tests {
             last_input_age_ms: Some(600_000),
             settings_open: Some(false),
             dialog_open: Some(false),
+            active_surface: None,
+            responsiveness: None,
+            identity: RendererRuntimeIdentity::default(),
         };
         let (_first_heartbeat, _gap_ms, recovered) =
             status.note_heartbeat(&payload, std::time::Instant::now());
@@ -4929,6 +4948,9 @@ mod renderer_watchdog_tests {
             last_input_age_ms: Some(50),
             settings_open: Some(false),
             dialog_open: Some(false),
+            active_surface: None,
+            responsiveness: None,
+            identity: RendererRuntimeIdentity::default(),
         };
         let (_first_heartbeat, _gap_ms, recovered) =
             status.note_heartbeat(&payload, std::time::Instant::now());
@@ -4964,6 +4986,9 @@ mod renderer_watchdog_tests {
             last_input_age_ms: Some(50),
             settings_open: Some(false),
             dialog_open: Some(false),
+            active_surface: None,
+            responsiveness: None,
+            identity: RendererRuntimeIdentity::default(),
         };
 
         let (_first_heartbeat, _gap_ms, recovered) =
@@ -5050,13 +5075,13 @@ fn truncate_for_log(value: &str, max_chars: usize) -> String {
 
 fn acquire_native_provider_operation(
     app: &tauri::AppHandle,
-) -> Result<tokio::sync::OwnedRwLockReadGuard<()>, String> {
+) -> Result<provider_operation_gate::AdmittedProviderOperation, String> {
     let permit = app
         .state::<CaptureState>()
         .provider_operations
         .try_begin()?;
     library_core_desktop_runtime::require_primary_library_authority(app)?;
-    Ok(permit)
+    Ok(permit.admit())
 }
 
 async fn acquire_background_scraper_session(
@@ -5226,11 +5251,22 @@ fn platform_user_identifier() -> String {
 
 #[tauri::command]
 fn get_desktop_installation_witness() -> Result<String, String> {
-    let machine_id = platform_machine_identifier()?;
-    Ok(hash_desktop_installation_witness(
-        &machine_id,
-        &platform_user_identifier(),
-    ))
+    use library_core_native_timings::{global_limiter, monotonic_us, with_trace, Scope, Stage};
+    with_trace(
+        Scope::InstallationWitness,
+        log::log_enabled!(log::Level::Info),
+        global_limiter(),
+        monotonic_us,
+        |event| log::info!("[library-native-timing] {event:?}"),
+        |timing| {
+            timing.stage(Stage::InstallationWitness);
+            let machine_id = platform_machine_identifier()?;
+            Ok(hash_desktop_installation_witness(
+                &machine_id,
+                &platform_user_identifier(),
+            ))
+        },
+    )
 }
 
 #[tauri::command]
@@ -13606,6 +13642,11 @@ pub fn run() {
                 });
                 if let Some(fields) = health_payload.as_object_mut() {
                     fields.extend(memory_health_fields);
+                    fields.extend(payload.identity.health_fields());
+                    fields.extend(renderer_responsiveness::health_fields(
+                        payload.active_surface.as_ref(),
+                        payload.responsiveness.as_ref(),
+                    ));
                 }
                 append_runtime_health(&app_for_renderer_listener, health_payload);
                 if recovered {
@@ -13751,6 +13792,20 @@ pub fn run() {
                     };
                     if let Some(fields) = health_payload.as_object_mut() {
                         fields.extend(memory_health_fields);
+                        let capture = app_for_memory_monitor.state::<CaptureState>();
+                        let observation_start_ms = unix_millis_now();
+                        let before = capture.provider_operations.snapshot();
+                        let provider_windows: Vec<_> = provider_window_labels()
+                            .into_iter()
+                            .filter(|label| app_for_memory_monitor.get_webview_window(label).is_some())
+                            .collect();
+                        let after = capture.provider_operations.snapshot();
+                        let observation_end_ms = unix_millis_now();
+                        fields.insert("providerObservationStartMs".into(), serde_json::json!(observation_start_ms));
+                        fields.insert("providerObservationEndMs".into(), serde_json::json!(observation_end_ms));
+                        fields.insert("providerObservationStable".into(), serde_json::json!(before == after));
+                        fields.insert("providerOperations".into(), serde_json::json!(after));
+                        fields.insert("providerWindows".into(), serde_json::json!(provider_windows));
                     }
                     append_runtime_health(&app_for_memory_monitor, health_payload);
 
@@ -14406,10 +14461,15 @@ pub fn run() {
             fetch_url,
             fetch_rss_url,
             fetch_background_article_url,
+            gliclass::request_gliclass,
+            gliclass::cancel_gliclass_request,
+            gliclass::unload_gliclass,
             jev::get_jev_api_key,
             jev::set_jev_api_key,
             jev::clear_jev_api_key,
             jev::request_jev,
+            jev::get_jev_budget,
+            jev::set_jev_budget,
             jev::cancel_jev_request,
             google_api_request,
             google_oauth_proxy_request,
@@ -14446,6 +14506,7 @@ pub fn run() {
             library_core_desktop_runtime::begin_normalized_library_checkpoint_export,
             library_core_desktop_runtime::describe_normalized_library_checkpoint,
             library_core_desktop_runtime::describe_normalized_library_cloud_identity,
+            library_core_desktop_runtime::describe_normalized_library_cloud_preflight_identity,
             library_core_desktop_runtime::read_normalized_library_checkpoint_page,
             library_core_desktop_runtime::begin_normalized_library_checkpoint_import,
             library_core_desktop_runtime::append_normalized_library_checkpoint_import_page,

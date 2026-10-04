@@ -205,7 +205,13 @@ beforeEach(() => {
 });
 
 describe("social capture completion", () => {
-  it("keeps Facebook listeners active until the native scraper finishes", async () => {
+  it.each([
+    ["short then expanded", ["First", "First expanded #walk"], "First expanded #walk", true],
+    ["expanded then short", ["First expanded #walk", "First"], "First expanded #walk", true],
+    ["repeated expansion", ["First", "First expanded #walk", "First expanded #walk"], "First expanded #walk", true],
+    ["equal-length later text", ["First", "Other"], "First", true],
+    ["no permalink", ["First", "First expanded #walk"], "First", false],
+  ] as const)("retains richer Facebook observations and listener lifetime: %s", async (_case, texts, expectedText, hasPermalink) => {
     const listeners = new Map<string, (event: { payload: unknown }) => void>();
     mocks.prepareSocialScrapeMemory.mockResolvedValue({
       before: {},
@@ -235,7 +241,7 @@ describe("social capture completion", () => {
       });
       listeners.get("fb-feed-data")?.({
         payload: {
-          posts: [admittedFacebookPost({ id: "post-one", authorName: "One", text: "First" }, 1)],
+          posts: [admittedFacebookPost({ id: "post-one", url: hasPermalink ? "https://www.facebook.com/one/posts/123" : null, authorName: "One", text: texts[0], hashtags: texts[0].includes("#walk") ? ["walk"] : [] }, 1)],
           extractedAt: Date.now(),
           url: "https://www.facebook.com/",
           strategy: "test",
@@ -253,6 +259,13 @@ describe("social capture completion", () => {
           admissionRuleVersion: FACEBOOK_ADMISSION_RULE_VERSION,
         },
       });
+      for (const text of texts.slice(1)) {
+        listeners.get("fb-feed-data")?.({ payload: {
+          posts: [admittedFacebookPost({ id: "post-one", url: hasPermalink ? "https://www.facebook.com/one/posts/123" : null, authorName: "Later observation", text, hashtags: text.includes("#walk") ? ["walk"] : [] }, 3)],
+          extractedAt: Date.now(), url: "https://www.facebook.com/", strategy: "test",
+          candidateCount: 1, admissionRuleVersion: FACEBOOK_ADMISSION_RULE_VERSION,
+        } });
+      }
       return null;
     });
 
@@ -263,6 +276,15 @@ describe("social capture completion", () => {
     expect(result.diag.errorStage).toBeNull();
     expect(result.diag.postsExtracted).toBe(2);
     expect(result.items).toHaveLength(2);
+    expect(mocks.fbPostsToFeedItems).toHaveBeenCalledWith([
+      expect.objectContaining({
+        id: "post-one", url: hasPermalink ? "https://www.facebook.com/one/posts/123" : null,
+        authorName: "One", text: expectedText,
+        hashtags: expectedText.includes("#walk") ? ["walk"] : [],
+        admission: expect.objectContaining({ observationGeneration: 1 }),
+      }),
+      expect.objectContaining({ id: "post-two", text: "Second" }),
+    ]);
     expect(addDebugEvent).toHaveBeenCalledWith(
       "change",
       '[FB] DOM diag: title="Facebook", scrollHeight=12,345, url=https://www.facebook.com/',

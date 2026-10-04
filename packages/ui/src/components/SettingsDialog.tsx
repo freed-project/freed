@@ -1830,7 +1830,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 <div ref={checkButtonRef} className="flex items-center gap-3">
                   <button
                     onClick={handleCheckForUpdates}
-                    disabled={updateState.status === "checking" || updateDownloadProgress?.phase === "downloading"}
+                    disabled={updateState.status === "checking" || updateDownloadProgress?.phase === "downloading" || updateDownloadProgress?.phase === "backing-up"}
                     className="btn-primary rounded-lg px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {updateState.status === "checking" ? (
@@ -1851,7 +1851,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                       {applyUpdate && (
                         <button
                           onClick={applyUpdate}
-                          disabled={updateDownloadProgress?.phase === "downloading"}
+                          disabled={updateDownloadProgress?.phase === "downloading" || updateDownloadProgress?.phase === "backing-up"}
                           className="btn-primary px-2.5 py-1 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           {headerDragRegion ? "Install & Restart" : "Reload"}
@@ -1863,6 +1863,9 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                     <span className="theme-feedback-text-danger text-xs">Check failed</span>
                   )}
                 </div>
+              )}
+              {updateDownloadProgress?.phase === "backing-up" && (
+                <p className="text-xs text-text-secondary" role="status">Saving Library backup before updating...</p>
               )}
               {updateDownloadProgress?.phase === "downloading" && (
                 <div className="space-y-1.5">
@@ -2103,8 +2106,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         <div
           data-testid="settings-nav-panel"
           className={`
-            theme-dialog-divider flex shrink-0 flex-col
-            sm:w-52 sm:border-r
+            theme-dialog-divider flex min-h-0 flex-1 flex-col
+            sm:w-52 sm:flex-none sm:border-r
             ${mobileView === "section" ? "hidden sm:flex" : "flex"}
           `}
         >

@@ -38,11 +38,11 @@ it("requires all subscriptions and confirmation, then retries exact bytes with r
   const confirmation = Array.from(container.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')).at(-1)!;
   await act(async () => confirmation.click());
   await click("Store revised people");
-  expect(mocks.prepare).toHaveBeenCalledExactlyOnceWith(drafts.map(({ person }) => person));
+  expect(mocks.prepare).toHaveBeenCalledExactlyOnceWith(drafts.map(({ person }) => person), false);
   expect(container.querySelector<HTMLInputElement>('[aria-label="Name"]')!.disabled).toBe(true);
   await click("Store revised people");
   expect(mocks.prepare).toHaveBeenCalledTimes(1);
-  expect(mocks.submit.mock.calls).toEqual([[review, frames], [review, frames]]);
+  expect(mocks.submit.mock.calls).toEqual([[review, frames, false], [review, frames, false]]);
 });
 it("aborts pending review on close without signing", async () => {
   mocks.load.mockImplementation(() => new Promise(() => {}));

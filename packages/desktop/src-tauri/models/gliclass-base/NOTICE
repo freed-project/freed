@@ -1,0 +1,3 @@
+GLiClass Base v3.0
+Copyright Knowledgator contributors. Apache License 2.0.
+Graph adapted from the pinned official GLiClass model and source using full-logits ONNX export and direct external references to official safetensors bytes. See provenance.json.

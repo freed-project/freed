@@ -51,7 +51,7 @@ it("requires all settings and confirmation, preserves selected values and retrie
  await click("Retry same preference edit");
  expect(mocks.prepare).toHaveBeenCalledTimes(1); expect(mocks.submit).toHaveBeenCalledTimes(2);
  expect(mocks.query).toHaveBeenCalledTimes(2);
- expect(mocks.submit.mock.calls).toEqual([[review, ["signed preferences"]], [review, ["signed preferences"]]]);
+ expect(mocks.submit.mock.calls).toEqual([[review, ["signed preferences"], false], [review, ["signed preferences"], false]]);
 });
 it("aborts the load on close and never offers signing after a failed verification", async () => {
  mocks.load.mockImplementationOnce(() => new Promise(() => {}));

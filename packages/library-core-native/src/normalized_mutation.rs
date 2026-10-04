@@ -2781,6 +2781,26 @@ pub(crate) fn resolve_normalized_operation_transaction_v1(
     authority_key_pair: &Ed25519KeyPair,
     committed_at: i64,
 ) -> Result<NormalizedMutationResolutionV1, NormalizedSqliteError> {
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let resolution = resolve_normalized_operation_transaction_in_transaction_v1(
+        &transaction,
+        canonical_envelopes,
+        authority_key_pair,
+        committed_at,
+    )?;
+    transaction.commit()?;
+    Ok(resolution)
+}
+
+/// Resolve a complete signed transaction without committing the caller's write.
+/// Recovery can append its durable archive link before the one shared commit.
+/// Verification reads the same snapshot as authority and actor-tip admission.
+pub(crate) fn resolve_normalized_operation_transaction_in_transaction_v1(
+    transaction: &Transaction<'_>,
+    canonical_envelopes: &[Vec<u8>],
+    authority_key_pair: &Ed25519KeyPair,
+    committed_at: i64,
+) -> Result<NormalizedMutationResolutionV1, NormalizedSqliteError> {
     if !(0..=MAX_SAFE_INTEGER).contains(&committed_at) {
         return Err(NormalizedSqliteError::InvalidRequest(
             "normalized mutation commit time is invalid",
@@ -2788,7 +2808,7 @@ pub(crate) fn resolve_normalized_operation_transaction_v1(
     }
     let (verified, _initial_verdict) =
         verify_operation_transaction_for_resolution(canonical_envelopes, |identity| {
-            actor_state_at(connection, identity)
+            actor_state_at(transaction, identity)
         })?;
     validate_transaction(&verified)?;
     let program = SQLITE_MUTATION_PROGRAMS
@@ -2808,11 +2828,10 @@ pub(crate) fn resolve_normalized_operation_transaction_v1(
             "normalized mutation materializer is not registered",
         ));
     }
-    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let (active_epoch, active_epoch_id) =
-        admitted_authority_epoch(&transaction, &verified.library_id)?;
+        admitted_authority_epoch(transaction, &verified.library_id)?;
     let actor = actor_state_at(
-        &transaction,
+        transaction,
         &OperationIdentity {
             library_id: verified.library_id.clone(),
             epoch_id: verified.epoch_id.clone(),
@@ -2825,8 +2844,7 @@ pub(crate) fn resolve_normalized_operation_transaction_v1(
         }
         .into());
     }
-    if let Some(receipt) = stored_receipt(&transaction, &verified)? {
-        transaction.commit()?;
+    if let Some(receipt) = stored_receipt(transaction, &verified)? {
         return Ok(NormalizedMutationResolutionV1::Accepted(receipt));
     }
     if active_epoch != verified.epoch || active_epoch_id != verified.epoch_id {
@@ -2837,13 +2855,12 @@ pub(crate) fn resolve_normalized_operation_transaction_v1(
             .into());
         }
         let receipt = persist_rejected_resolution(
-            &transaction,
+            transaction,
             &verified,
             authority_key_pair,
             committed_at,
             "epoch_stale",
         )?;
-        transaction.commit()?;
         return Ok(NormalizedMutationResolutionV1::FollowerResult(receipt));
     }
     let current_verdict = operation_admission_verdict(&actor, &verified);
@@ -2854,13 +2871,12 @@ pub(crate) fn resolve_normalized_operation_transaction_v1(
     };
     if let Some(reason) = rejection_reason {
         let receipt = persist_rejected_resolution(
-            &transaction,
+            transaction,
             &verified,
             authority_key_pair,
             committed_at,
             reason,
         )?;
-        transaction.commit()?;
         return Ok(NormalizedMutationResolutionV1::FollowerResult(receipt));
     }
     let first = &verified.members[0];
@@ -2873,13 +2889,12 @@ pub(crate) fn resolve_normalized_operation_transaction_v1(
         || actor.previous_chain_digest != first.previous_actor_chain_digest
     {
         let receipt = persist_rejected_resolution(
-            &transaction,
+            transaction,
             &verified,
             authority_key_pair,
             committed_at,
             "precondition_failed",
         )?;
-        transaction.commit()?;
         return Ok(NormalizedMutationResolutionV1::FollowerResult(receipt));
     }
     if verified
@@ -2888,16 +2903,15 @@ pub(crate) fn resolve_normalized_operation_transaction_v1(
         .any(|member| !crate::normalized_preference_policy::supports_fresh_preferences(member))
     {
         let receipt = persist_rejected_resolution(
-            &transaction,
+            transaction,
             &verified,
             authority_key_pair,
             committed_at,
             "precondition_failed",
         )?;
-        transaction.commit()?;
         return Ok(NormalizedMutationResolutionV1::FollowerResult(receipt));
     }
-    require_causal_tips(&transaction, &verified)?;
+    require_causal_tips(transaction, &verified)?;
     for member in &verified.members {
         if !program.requires_existing_target {
             continue;
@@ -2921,18 +2935,17 @@ pub(crate) fn resolve_normalized_operation_transaction_v1(
                 "target_missing"
             };
             let receipt = persist_rejected_resolution(
-                &transaction,
+                transaction,
                 &verified,
                 authority_key_pair,
                 committed_at,
                 reason,
             )?;
-            transaction.commit()?;
             return Ok(NormalizedMutationResolutionV1::FollowerResult(receipt));
         }
     }
     let (previous_revision, committed_revision) = materialize_verified_normalized_transaction_v1(
-        &transaction,
+        transaction,
         &verified,
         &actor,
         program,
@@ -2941,7 +2954,7 @@ pub(crate) fn resolve_normalized_operation_transaction_v1(
     )?;
     let (follower_result_sequence, follower_result_digest, canonical_follower_result) =
         persist_follower_result_outcome(
-            &transaction,
+            transaction,
             &verified,
             authority_key_pair,
             committed_revision,
@@ -2963,9 +2976,8 @@ pub(crate) fn resolve_normalized_operation_transaction_v1(
         follower_result_digest,
         follower_result_sequence,
         canonical_follower_result,
-        invalidations: invalidations_at(&transaction, committed_revision)?,
+        invalidations: invalidations_at(transaction, committed_revision)?,
     };
-    transaction.commit()?;
     Ok(NormalizedMutationResolutionV1::Accepted(receipt))
 }
 
@@ -3655,6 +3667,92 @@ pub(crate) mod tests {
                 )
                 .expect("follower result outbox"),
             1
+        );
+    }
+
+    #[test]
+    fn caller_owned_resolution_rolls_back_when_the_following_link_write_fails() {
+        let (mut connection, key_pair, enrollment) = fixture();
+        let envelopes = signed_envelopes(&key_pair, &enrollment);
+        let before = serde_json::to_value(
+            normalized_primary_mutation_context_v1(&connection).expect("initial context"),
+        )
+        .unwrap();
+        connection
+            .execute_batch("CREATE TEMP TABLE recovery_link_probe(value INTEGER CHECK(value > 0));")
+            .unwrap();
+        let tx = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .unwrap();
+        let resolution = resolve_normalized_operation_transaction_in_transaction_v1(
+            &tx, &envelopes, &key_pair, 2_000,
+        )
+        .expect("resolved inside outer transaction");
+        assert!(matches!(
+            resolution,
+            NormalizedMutationResolutionV1::Accepted(_)
+        ));
+        assert_eq!(
+            tx.query_row("SELECT count(*) FROM library_receipts;", [], |row| row
+                .get::<_, i64>(0))
+                .unwrap(),
+            2
+        );
+        // The caller's final write fails after all canonical effects exist.
+        assert!(tx
+            .execute("INSERT INTO recovery_link_probe VALUES (0);", [])
+            .is_err());
+        tx.rollback().unwrap();
+        for table in [
+            "library_transactions",
+            "library_operations",
+            "library_receipts",
+            "library_replication_outbox",
+            "library_follower_result_outbox",
+            "library_follower_result_cursors",
+        ] {
+            assert_eq!(
+                connection
+                    .query_row(&format!("SELECT count(*) FROM {table};"), [], |row| row
+                        .get::<_, i64>(0))
+                    .unwrap(),
+                0,
+                "{table}"
+            );
+        }
+        assert_eq!(
+            serde_json::to_value(normalized_primary_mutation_context_v1(&connection).unwrap())
+                .unwrap(),
+            before
+        );
+        assert_eq!(
+            connection
+                .query_row("SELECT revision FROM library_change_state;", [], |row| row
+                    .get::<_, i64>(
+                    0
+                ))
+                .unwrap(),
+            0
+        );
+        let committed = accept_normalized_operation_transaction_v1(
+            &mut connection,
+            &envelopes,
+            &key_pair,
+            2_000,
+        )
+        .unwrap();
+        assert_eq!(committed.previous_revision, 0);
+        assert_eq!(committed.committed_revision, 1);
+        let replay = accept_normalized_operation_transaction_v1(
+            &mut connection,
+            &envelopes,
+            &key_pair,
+            3_000,
+        )
+        .unwrap();
+        assert_eq!(
+            serde_json::to_value(replay).unwrap(),
+            serde_json::to_value(committed).unwrap()
         );
     }
 

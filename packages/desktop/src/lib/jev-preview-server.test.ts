@@ -55,6 +55,13 @@ async function start(options: Partial<Parameters<typeof createJevPreviewMiddlewa
 }
 
 describe("Jev preview server boundary", () => {
+  it("blocks default paid preview transport before credential reads", async () => {
+    const credential = vi.fn();
+    const { post, match } = await start({ fetchImpl: globalThis.fetch, getApiKey: credential });
+    expect((await post()).status).toBe(403);
+    expect((await match()).status).toBe(403);
+    expect(credential).not.toHaveBeenCalled();
+  });
   it("keeps the credential server-side and rejects cross-origin or non-sample requests before upstream contact", async () => {
     const { url, post, match, upstream } = await start();
     const status = await (await fetch(`${url}/api/jev-preview/status`)).json();

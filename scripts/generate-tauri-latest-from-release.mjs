@@ -3,32 +3,33 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { parseReleaseVersion } from "./release-version.mjs";
 
-const PLATFORM_PATTERNS = [
+const PLATFORM_ASSETS = [
   {
     platform: "darwin-aarch64",
     aliases: ["darwin-aarch64-app"],
-    pattern: /^Freed_(?:[^/]+_)?aarch64\.app\.tar\.gz$/,
+    suffix: "aarch64.app.tar.gz",
   },
   {
     platform: "darwin-x86_64",
     aliases: ["darwin-x86_64-app"],
-    pattern: /^Freed_(?:[^/]+_)?x64\.app\.tar\.gz$/,
+    suffix: "x64.app.tar.gz",
   },
   {
     platform: "windows-x86_64-msi",
     aliases: [],
-    pattern: /^Freed_[^/]+_x64_en-US\.msi$/,
+    suffix: "x64_en-US.msi",
   },
   {
     platform: "windows-x86_64-nsis",
     aliases: [],
-    pattern: /^Freed_[^/]+_x64-setup\.exe$/,
+    suffix: "x64-setup.exe",
   },
   {
     platform: "linux-x86_64",
     aliases: ["linux-x86_64-appimage"],
-    pattern: /^Freed_[^/]+_amd64\.AppImage$/,
+    suffix: "amd64.AppImage",
   },
 ];
 
@@ -98,9 +99,7 @@ function readJson(filePath) {
 }
 
 function appVersionFromTag(tagName) {
-  return String(tagName ?? "")
-    .replace(/^v/, "")
-    .replace(/-dev$/, "");
+  return parseReleaseVersion(tagName, { requireTagPrefix: true }).appVersion;
 }
 
 function findSignatureForAsset(assetName, signatureDir) {
@@ -165,11 +164,15 @@ export function generateLatestManifest({
     throw new Error("signatureDir is required.");
   }
 
+  const version = appVersionFromTag(release.tag_name);
   const assets = release.assets ?? [];
   const platforms = {};
 
-  for (const rule of PLATFORM_PATTERNS) {
-    const asset = assets.find((candidate) => rule.pattern.test(candidate.name));
+  for (const rule of PLATFORM_ASSETS) {
+    // Parallel preview uploads and stable download aliases are not updater
+    // candidates. Bind every platform to this exact ordinary release version.
+    const expectedName = `Freed_${version}_${rule.suffix}`;
+    const asset = assets.find((candidate) => candidate.name === expectedName);
     if (!asset) continue;
 
     platforms[rule.platform] = {
@@ -195,7 +198,7 @@ export function generateLatestManifest({
   }
 
   return {
-    version: appVersionFromTag(release.tag_name),
+    version,
     notes: notes ?? release.body ?? "",
     pub_date: release.published_at ?? release.created_at ?? pubDate,
     platforms: Object.fromEntries(

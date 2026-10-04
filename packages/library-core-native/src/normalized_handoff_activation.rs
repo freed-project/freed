@@ -20,6 +20,7 @@ pub fn activate_target_handoff_after_remote_verification_v1(
     current_store: &dyn AuthorityKeyStore,
     activated_at_ms: u64,
 ) -> Result<crate::NativeHandoffStatusV1, String> {
+    crate::require_library_transfer_capability()?;
     if plan.source_stage_id.is_some()
         || !connection.is_autocommit()
         || activated_at_ms > 9_007_199_254_740_991

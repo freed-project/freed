@@ -35,6 +35,11 @@ mod normalized_checkpoint;
 mod normalized_desktop_setup;
 mod normalized_enrollment_verifier;
 mod normalized_follower;
+pub use normalized_import::require_checkpoint_transfer_capability;
+mod transfer_capability;
+pub use transfer_capability::{
+    require_library_transfer_capability, LIBRARY_TRANSFER_ENABLED, LIBRARY_TRANSFER_UNAVAILABLE,
+};
 mod normalized_handoff;
 mod normalized_handoff_activation;
 mod normalized_handoff_cancellation;
@@ -199,13 +204,14 @@ pub use normalized_query::{
     NormalizedPersonDetailRequestV1, NormalizedPersonDetailResponseV1, NormalizedPersonDetailV1,
     NormalizedPersonGraphPageRequestV1, NormalizedPersonGraphPageResponseV1,
     NormalizedPersonGraphRowV1, NormalizedPersonReachOutV1, NormalizedPersonTimelineRequestV1,
-    NormalizedPersonTimelineResponseV1, NormalizedQueryRequestV1, NormalizedQueryResponseV1,
-    NormalizedRssFeedPageRequestV1, NormalizedRssFeedPageResponseV1, NormalizedRssFeedPageRowV1,
-    NormalizedSavedAnalyticsCountV2, NormalizedSavedAnalyticsRequestV2,
-    NormalizedSavedAnalyticsResponseV2, NormalizedSavedAnalyticsWindowV2,
-    NormalizedSavedFeedCardV2, NormalizedSavedFeedEdgeOrderV2, NormalizedSavedFeedPageRequestV2,
-    NormalizedSavedFeedPageResponseV2, NormalizedStoryWallCandidateV1,
-    NormalizedStoryWallCandidatesRequestV1, NormalizedStoryWallCandidatesResponseV1,
+    NormalizedPersonTimelineResponseV1, NormalizedPriorityTimePageRequestV1,
+    NormalizedQueryRequestV1, NormalizedQueryResponseV1, NormalizedRssFeedPageRequestV1,
+    NormalizedRssFeedPageResponseV1, NormalizedRssFeedPageRowV1, NormalizedSavedAnalyticsCountV2,
+    NormalizedSavedAnalyticsRequestV2, NormalizedSavedAnalyticsResponseV2,
+    NormalizedSavedAnalyticsWindowV2, NormalizedSavedFeedCardV2, NormalizedSavedFeedEdgeOrderV2,
+    NormalizedSavedFeedPageRequestV2, NormalizedSavedFeedPageResponseV2,
+    NormalizedStoryWallCandidateV1, NormalizedStoryWallCandidatesRequestV1,
+    NormalizedStoryWallCandidatesResponseV1,
 };
 pub use normalized_replication::{
     describe_normalized_operation_export_v2, export_normalized_operation_page_v2,
@@ -215,18 +221,23 @@ pub use normalized_replication::{
 };
 pub use normalized_snapshot::{
     clear_normalized_local_snapshots_v1, create_normalized_local_snapshot_v1,
-    list_normalized_local_snapshots_v1, restore_normalized_local_snapshot_v1,
-    NormalizedLocalSnapshotReasonV1, NormalizedLocalSnapshotSummaryV1,
+    inspect_normalized_local_snapshot_source_v1, list_normalized_local_snapshots_v1,
+    restore_normalized_local_snapshot_v1, verify_normalized_local_snapshot_in_empty_database_v1,
+    verify_normalized_local_snapshot_v1, NormalizedLocalSnapshotReasonV1,
+    NormalizedLocalSnapshotSummaryV1,
 };
 pub use normalized_sqlite::{
     append_normalized_checkpoint_stage_page_v2, begin_normalized_checkpoint_stage_v2,
-    describe_normalized_checkpoint_export_v2, export_normalized_checkpoint_page_v2,
+    describe_normalized_checkpoint_export_v2,
+    describe_normalized_checkpoint_export_with_observer_v2,
+    describe_normalized_cloud_preflight_identity_v1, export_normalized_checkpoint_page_v2,
     export_pinned_normalized_checkpoint_page_v2, install_normalized_schema_v1,
     open_normalized_sqlite_database_v1, verify_normalized_library_selection_v1,
     BeginNormalizedCheckpointStageV2, NormalizedCheckpointCursorV2,
-    NormalizedCheckpointExportDescriptorV2, NormalizedCheckpointExportPageV2,
-    NormalizedCheckpointExportRequestV2, NormalizedCheckpointExportSessionV2,
-    NormalizedCheckpointStageStatusV2, NormalizedSqliteError,
+    NormalizedCheckpointDescriptionStageV2, NormalizedCheckpointExportDescriptorV2,
+    NormalizedCheckpointExportPageV2, NormalizedCheckpointExportRequestV2,
+    NormalizedCheckpointExportSessionV2, NormalizedCheckpointPreparationStageV2,
+    NormalizedCheckpointStageStatusV2, NormalizedCloudPreflightIdentityV1, NormalizedSqliteError,
     PinnedNormalizedCheckpointExportRequestV2,
 };
 pub use normalized_writer_certificate::{
@@ -264,6 +275,7 @@ pub use normalized_consumer_recovery::{
 pub use normalized_recovery_input::ArchivedIntentOutcomeV1;
 pub use normalized_recovery_reissue::{
     reapply_archived_assignments_v1, reapply_archived_editor_transaction_v1,
+    reapply_archived_primary_assignments_v1, reapply_archived_primary_editor_transaction_v1,
     RecoveryReissueReceiptV1, RecoveryReissueRequestV1,
 };
 

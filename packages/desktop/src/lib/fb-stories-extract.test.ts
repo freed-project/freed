@@ -143,6 +143,15 @@ describe("fb-stories-extract.js", () => {
     `;
     const dialog = document.querySelector('[role="dialog"]') as HTMLElement;
     setReadonlyNumber(dialog, "offsetHeight", 800);
+    const image = document.querySelector("img") as HTMLImageElement;
+    let mediaReads = 0;
+    Object.defineProperty(image, "src", {
+      configurable: true,
+      get() {
+        mediaReads += 1;
+        throw new Error("Excluded advertising must not read a media URL");
+      },
+    });
     const payloads = installTauriCapture<Array<{
       posts: unknown[];
       rejected: { advertising: number };
@@ -153,5 +162,6 @@ describe("fb-stories-extract.js", () => {
     expect(payloads).toHaveLength(1);
     expect(payloads[0].posts).toEqual([]);
     expect(payloads[0].rejected.advertising).toBe(1);
+    expect(mediaReads).toBe(0);
   });
 });

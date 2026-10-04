@@ -39,10 +39,10 @@ it.each(["items", "people", "accounts"] as const)("requires every %s target and 
   expect(container.querySelectorAll("li")).toHaveLength(1);
   expect(container.textContent).toContain("Currently absent. This target remains in the deletion.");
   await click(store);
-  expect(mocks.prepare).toHaveBeenCalledExactlyOnceWith(drafts.map((draft) => draft.entityId), true);
+  expect(mocks.prepare).toHaveBeenCalledExactlyOnceWith(drafts.map((draft) => draft.entityId), true, false);
   expect(confirmation.disabled).toBe(true);
   await click(store);
   expect(mocks.prepare).toHaveBeenCalledTimes(1);
-  expect(mocks.submit.mock.calls).toEqual([[review, frames], [review, frames]]);
+  expect(mocks.submit.mock.calls).toEqual([[review, frames, false], [review, frames, false]]);
   expect(replacement).toHaveBeenCalledWith(receipt);
 });

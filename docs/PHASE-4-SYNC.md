@@ -2,6 +2,12 @@
 
 > **Status:** 🚧 In Progress
 
+Native provider admission now has bounded lifetime counters in the existing
+runtime-health sampler. The soak verdict reports their delta only across a
+stable, covered interval with no active provider commands or provider windows.
+Missing or inconsistent evidence is inconclusive. Installed consumer-role and
+multi-device acceptance remain separate requirements.
+
 Saved URL recovery now distinguishes absent targets from deleted items. The
 owner reviews every URL, edits its title or description, and explicitly confirms
 one complete replacement. Original targets, URLs and remaining archived content
@@ -1164,3 +1170,41 @@ The native two-transfer lifecycle covers consent tampering, failed cleanup,
 retry, database reopening, explicit successor enrollment and preparation to
 receive authority again. Adoption alone grants no edit or capture rights.
 Installed multi-device acceptance and actual host transition remain pending.
+
+
+### Primary archive reapplication, October 3, 2026
+
+An active promoted Desktop Primary can explicitly recover archived edits through canonical operation resolution. Canonical state and the unique installation-local replacement link share one SQLite commit. Consumers continue to use the durable intent path. Both routes preserve original envelopes and return an existing replacement before allocating another counter, including after restart or later authority fencing. The logical checkpoint and replication protocol are unchanged; installed multi-installation convergence remains required.
+
+### Count-free Desktop cloud preflight
+
+Desktop cloud coordination reads a distinct closed metadata identity containing
+Library, epoch, admitted writer, canonical source revision, causal frontier and
+installation-local actor identity. Native code rechecks the freshly selected
+Library, schema/storage identity and generation receipt inside the same read
+transaction as the writer, frontier and actor checks. This identity does not
+certify checkpoint exportability or traverse receipt and feed-item census trees.
+Full checkpoint preparation still reads the counted descriptor and enforces its
+pinned snapshot and publication admission rules. Missing or corrupt census
+objects remain full descriptor/export errors. Wire protocol, schema, authority
+and provider cadence are unchanged. Installed startup acceptance is pending.
+
+### Bounded checkpoint preparation attribution
+
+Desktop checkpoint preparation records fixed native durations for selected open,
+authority admission, reaper initialization, transaction begin, descriptor identity
+and census, frontier validation, temporary materialization, order-index creation,
+descriptor clone, session-lock acquisition and replacement of the previous export.
+The observer preserves the full counted descriptor, pinned transaction, export
+order and authority checks. Existing callers retain no-op observer wrappers.
+
+The new scope emits at most a start marker and terminal summary, sharing the
+existing twelve-event rolling minute cap and one sampled in-flight trace per
+scope. A fixed entered-stage mask distinguishes skipped stages from measured
+zero durations. Checkpoint duration slots use hexadecimal microseconds to keep
+worst-case records below 512 bytes; legacy scope log layouts and stage ordinals
+remain unchanged. Logging occurs outside session and diagnostic locks. Missing
+terminal evidence under a shared budget is inconclusive. No identifiers,
+content, errors or thread identities are logged. Invocation queueing and native
+execution-thread ownership remain unmeasured. This attribution change does not
+establish an installed responsiveness improvement.

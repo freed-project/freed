@@ -72,9 +72,9 @@ test("integrated AI settings offer a recommended local pack ladder", async ({ ap
 });
 
 // Tier 1: client-owned credentials, explicit cloud actions and independent Jev settings.
-test("Jev settings manage a user key without changing the summary provider", async ({ app, page }) => {
+test("Jev browser settings manage a tab-local key without paid requests or summary-provider changes", async ({ app, page }) => {
   let requests = 0;
-  await page.route("**/api/jev-preview/classify", async route => {
+  await page.route("**/api/jev-preview/**", async route => {
     requests += 1;
     expect(route.request().headers().authorization).toBe("Bearer jev-settings-test-key");
     await route.fulfill({ json: { model: "jev-1.13.0", contentSignals: { method: "ai" } } });
@@ -89,8 +89,8 @@ test("Jev settings manage a user key without changing the summary provider", asy
   await expect(section.getByPlaceholder("Key saved. Paste a replacement")).toBeVisible();
   expect(requests).toBe(0);
   await section.getByRole("button", { name: "Test connection", exact: true }).click();
-  await expect(section.getByText("Connected to Jev. Ready to evaluate posts.")).toBeVisible();
-  expect(requests).toBe(1);
+  await expect(section.getByRole("status").filter({ hasText: "Paid Jev requests require Freed Desktop spending controls." })).toBeVisible();
+  expect(requests).toBe(0);
   await expect(page.getByTestId("ai-provider-selector").getByRole("button", { name: /Off/ })).toHaveAttribute("aria-pressed", "true");
   expect(await page.evaluate(() => JSON.stringify({ ...localStorage, ...sessionStorage }))).not.toContain("jev-settings-test-key");
   await section.getByLabel("jev API key").fill("replacement-test-key");
@@ -104,5 +104,17 @@ test("Jev settings manage a user key without changing the summary provider", asy
   await expect(section.getByPlaceholder("Paste API key")).toBeVisible();
   await expect(section.getByText("Key not configured", { exact: true })).toBeVisible();
   await expect(section.getByRole("button", { name: "Find matches with Jev", exact: true })).toBeDisabled();
-  expect(requests).toBe(1);
+  expect(requests).toBe(0);
+  await section.getByLabel("jev API key").fill("reload-only-test-key");
+  await section.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(section.getByPlaceholder("Key saved. Paste a replacement")).toBeVisible();
+  await page.reload();
+  await app.waitForReady();
+  await page.locator("button").filter({ hasText: /settings/i }).first().click();
+  await page.getByRole("button", { name: "AI", exact: true }).click();
+  await expect(section.getByPlaceholder("Paste API key")).toBeVisible();
+  await section.getByRole("button", { name: "Jev classification", exact: true }).click();
+  await expect(section.getByText("Key not configured", { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => JSON.stringify({ ...localStorage, ...sessionStorage }))).not.toContain("reload-only-test-key");
+  expect(requests).toBe(0);
 });

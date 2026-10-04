@@ -52,4 +52,24 @@ describe("provider placement admission", () => {
     expect(isProviderAdmissionEnvelope({ ...admitted, surface: "story" }, { provider: "facebook", surface: "feed" })).toBe(false);
     expect(isProviderAdmissionEnvelope({ ...admitted, decision: "exclude" }, { provider: "facebook", surface: "feed" })).toBe(false);
   });
+
+  it.each([
+    "explicit_sponsored_testid",
+    "accessible_sponsored_label",
+    "referenced_sponsored_label",
+    "split_sponsored_disclosure",
+    "verified_ad_disclosure_link",
+    "structured_ad_metadata",
+    "partial_sponsored_disclosure",
+    "inspection_limit_exceeded",
+    "collector_failure",
+    "unknown_future_evidence",
+    null,
+    42,
+  ])("rejects an admit label contradicted by evidence: %s", (code) => {
+    const admitted = decideProviderPlacementAdmission(observation);
+    expect(isProviderAdmissionEnvelope({ ...admitted, evidenceCodes: [code] }, {
+      provider: "facebook", surface: "feed",
+    })).toBe(false);
+  });
 });

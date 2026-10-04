@@ -128,6 +128,9 @@ export function createJevPreviewMiddleware({
     if (path !== `${PREFIX}status` && path !== `${PREFIX}classify` && !isMatch) {
       return failure(response, 404, "not_found", "Unknown preview endpoint.");
     }
+    if (path !== `${PREFIX}status` && fetchImpl === globalThis.fetch) {
+      return failure(response, 403, "budget_required", "Paid Jev requests require Freed Desktop spending controls.");
+    }
     try {
       const contract = await loadContract();
       const apiKey = await getApiKey(request);

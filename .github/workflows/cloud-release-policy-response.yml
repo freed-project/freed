@@ -1,0 +1,14 @@
+name: Owner Live Release Policy Response
+on:
+  push:
+    branches: ["release-policy-responses/**"]
+permissions:
+  contents: read
+jobs:
+  receipt:
+    if: github.repository_id == '1143010014' && github.actor_id == '2789037' && github.triggering_actor == 'AubreyF' && github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Record owner response event identity without executing response code
+        run: echo "Immutable owner policy-response push recorded. The controller independently authenticates its run metadata and response JSON."

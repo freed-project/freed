@@ -209,3 +209,30 @@ fit that target.
 
 After measurements and platform cache changes are pending. Do not substitute
 summed test durations or a projected saving for end-to-end release evidence.
+
+
+### macOS headless WebKit custody fixture
+
+The mandatory macOS OPFS suite retains real nonextractable Ed25519 CryptoKeys,
+IndexedDB persistence, native WebKit wrapping/unwrapping, and restart signing.
+The actor-vault case additionally requires signing-only key usage and refusal
+of PKCS8 and JWK private export before and after restart. A wrong synthetic
+profile wrapping key must fail without replacing the actor; restoring the
+original fixture key must recover the same identity.
+
+Playwright 1.62.0's macOS embedder lacks the Cocoa master-key delegate required
+for CryptoKey serialization. The test-only `webkit-test-custody` helper supplies
+only those missing callbacks in the verified headless `org.webkit.Playwright`
+binary. It never replaces an existing callback or intercepts cryptography,
+CryptoKey serialization/export, IndexedDB, or product code. Each owned synthetic temporary profile has permissions 0700 and a distinct
+random fixture wrapping key with permissions 0600;
+missing/corrupt reopen keys are refused. Each launch needs a fresh load receipt.
+The adapter source and browser binary hashes are logged, and another Playwright
+version requires renewed source review. The launcher and library are confined
+to test subprocesses and never linked into or launched with Freed.
+
+This fixture proves native wrapping/persistence and JavaScript nonextractability.
+Its profile-local test wrapping key is not Keychain custody or protection from
+same-user filesystem reads, and it does not prove physical Safari/iOS acceptance.
+No real vault, profile, credential or Library enters the fixture. A failed or
+missing adapter is a failed gate; the macOS job is not skipped or substituted.

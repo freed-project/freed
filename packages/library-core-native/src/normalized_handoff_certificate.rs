@@ -345,6 +345,7 @@ pub fn prepare_source_handoff_authorization_v1(
     control_revision: &str,
     control_file_id: &str,
 ) -> Result<String, String> {
+    crate::require_library_transfer_capability()?;
     let decoded = decode_canonical_value(canonical_control, MAX_BYTES)
         .map_err(|_| "handoff source control is not bounded canonical data")?;
     let control: HandoffSourceControlV1 = serde_json::from_value(decoded.into_value())
@@ -430,6 +431,7 @@ pub fn authorize_source_handoff_v1(
     authority_store: &dyn crate::normalized_authority_credentials::AuthorityKeyStore,
     authorized_at_ms: u64,
 ) -> Result<String, String> {
+    crate::require_library_transfer_capability()?;
     if !connection.is_autocommit() || authorized_at_ms > MAX_SAFE_INTEGER {
         return Err("handoff authorization input or transaction is invalid".into());
     }
@@ -726,6 +728,7 @@ pub fn begin_source_handoff_v1(
     authority_store: &dyn crate::normalized_authority_credentials::AuthorityKeyStore,
     prepared_at_ms: u64,
 ) -> Result<String, String> {
+    crate::require_library_transfer_capability()?;
     if prepared_at_ms > MAX_SAFE_INTEGER
         || !connection.is_autocommit()
         || !is_lower_sha256(selected_target_actor_id)
@@ -888,6 +891,7 @@ pub fn accept_target_handoff_authorization_v1(
     pending_authority_store: &dyn crate::normalized_authority_credentials::AuthorityKeyStore,
     accepted_at_ms: u64,
 ) -> Result<String, String> {
+    crate::require_library_transfer_capability()?;
     if !connection.is_autocommit() || accepted_at_ms > MAX_SAFE_INTEGER {
         return Err("target consent input or transaction is invalid".into());
     }
@@ -1061,6 +1065,7 @@ pub fn stage_target_handoff_v1(
     pending_authority_store: &dyn crate::normalized_authority_credentials::AuthorityKeyStore,
     staged_at_ms: u64,
 ) -> Result<crate::normalized_writer_certificate::WriterEpochReassignment, String> {
+    crate::require_library_transfer_capability()?;
     use crate::normalized_writer_reassignment::{
         current_authority, install_prepared_writer_epoch_v2, WriterEpochAdmission,
         WriterEpochInstallation,
@@ -1347,6 +1352,7 @@ pub fn prepare_target_handoff_activation_v1(
     canonical_control: &[u8],
     prepared_at_ms: u64,
 ) -> Result<String, String> {
+    crate::require_library_transfer_capability()?;
     if !connection.is_autocommit()
         || prepared_at_ms > MAX_SAFE_INTEGER
         || !is_lower_sha256(handoff_id)
@@ -1748,6 +1754,7 @@ pub fn prepare_target_handoff_readiness_v1(
     pending_authority_store: &dyn crate::normalized_authority_credentials::AuthorityKeyStore,
     created_at_ms: u64,
 ) -> Result<String, String> {
+    crate::require_library_transfer_capability()?;
     if created_at_ms > MAX_SAFE_INTEGER || !connection.is_autocommit() {
         return Err("handoff readiness time or transaction is invalid".into());
     }
@@ -2017,6 +2024,549 @@ pub fn prepare_target_handoff_readiness_v1(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    struct FaultKeyStore(std::path::PathBuf);
+    #[cfg(unix)]
+    impl crate::normalized_authority_credentials::AuthorityKeyStore for FaultKeyStore {
+        fn load(&self, _: &str) -> Result<Option<Vec<u8>>, String> {
+            match std::fs::read(&self.0) {
+                Ok(bytes) => Ok(Some(bytes)),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+                Err(e) => Err(e.to_string()),
+            }
+        }
+        fn store(&self, _: &str, bytes: &[u8]) -> Result<(), String> {
+            use std::io::Write;
+            assert!(
+                !self.0.exists(),
+                "retry must not replace a promoted authority key"
+            );
+            let mut file = std::fs::File::create(&self.0).map_err(|e| e.to_string())?;
+            file.write_all(bytes).map_err(|e| e.to_string())?;
+            file.sync_all().map_err(|e| e.to_string())?;
+            if std::env::var("FREED_HANDOFF_FAULT_POINT").as_deref() == Ok("key_promotion") {
+                unsafe {
+                    libc::raise(libc::SIGKILL);
+                }
+            }
+            Ok(())
+        }
+    }
+    #[cfg(unix)]
+    impl crate::library_core_actor_enrollment::ActorKeyStore for FaultKeyStore {
+        fn load(&self, id: &str) -> Result<Option<Vec<u8>>, String> {
+            crate::normalized_authority_credentials::AuthorityKeyStore::load(self, id)
+        }
+        fn store(&self, _: &str, _: &[u8]) -> Result<(), String> {
+            panic!("actor key replacement")
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn handoff_fault_child() {
+        let Ok(root) = std::env::var("FREED_HANDOFF_FAULT_ROOT") else {
+            return;
+        };
+        let root = std::path::Path::new(&root);
+        let point = std::env::var("FREED_HANDOFF_FAULT_POINT").unwrap();
+        let mut db =
+            crate::open_normalized_sqlite_database_v1(&root.join("probe.sqlite"), false).unwrap();
+        if point == "before_commit" {
+            db.commit_hook(Some(|| {
+                unsafe {
+                    libc::raise(libc::SIGKILL);
+                }
+                unreachable!()
+            }));
+        }
+        if point == "archive_retirement" {
+            db.update_hook(Some(|action, _: &str, table: &str, _: i64| {
+                if action == rusqlite::hooks::Action::SQLITE_DELETE
+                    && table == "library_intent_transactions"
+                {
+                    unsafe {
+                        libc::raise(libc::SIGKILL);
+                    }
+                }
+            }));
+        }
+        let operation = std::env::var("FREED_HANDOFF_FAULT_OPERATION").unwrap();
+        let result = if operation.starts_with("consumer_") {
+            let keys = FaultKeyStore(root.join("actor"));
+            if operation == "consumer_archive" {
+                crate::archive_consumer_epoch_recovery_v1(&mut db, &keys, 120)
+                    .unwrap()
+                    .into_bytes()
+            } else {
+                let id: String = db.query_row("SELECT recovery_id FROM library_local_recovery_archives ORDER BY created_at DESC LIMIT 1", [], |r| r.get(0)).unwrap();
+                let request = if operation == "consumer_prepare" {
+                    crate::prepare_consumer_epoch_reenrollment_v1(
+                        &mut db,
+                        &id,
+                        &"f".repeat(64),
+                        &keys,
+                        123,
+                    )
+                    .unwrap()
+                } else {
+                    crate::commit_consumer_epoch_reenrollment_v1(
+                        &mut db,
+                        &id,
+                        &"f".repeat(64),
+                        &keys,
+                        125,
+                    )
+                    .unwrap()
+                };
+                canonical_handoff_bytes(&request).unwrap()
+            }
+        } else if operation == "signature" {
+            let key = Ed25519KeyPair::from_seed_unchecked(&[33; 32]).unwrap();
+            canonical_handoff_bytes(
+                &sign_persisted_handoff_authorization_v1(&mut db, &key).unwrap(),
+            )
+            .unwrap()
+        } else if operation == "source_authorization" {
+            authorize_source_handoff_v1(
+                &mut db,
+                &std::fs::read(root.join("pending")).unwrap(),
+                &FaultKeyStore(root.join("actor")),
+                11,
+            )
+            .unwrap()
+            .into_bytes()
+        } else {
+            let id: String = db
+                .query_row("SELECT handoff_id FROM library_local_handoff", [], |r| {
+                    r.get(0)
+                })
+                .unwrap();
+            let phase: String = db
+                .query_row("SELECT phase FROM library_local_handoff", [], |r| r.get(0))
+                .unwrap();
+            if phase == "active" {
+                crate::recover_active_target_handoff_v1(
+                    &mut db,
+                    &id,
+                    &FaultKeyStore(root.join("actor")),
+                    &FaultKeyStore(root.join("current")),
+                )
+                .unwrap();
+            } else {
+                let plan = crate::HandoffVerificationPlanV1::from_target(&mut db, &id).unwrap();
+                crate::activate_target_handoff_after_remote_verification_v1(
+                    &mut db,
+                    &plan,
+                    "\"winning-head\"",
+                    &FaultKeyStore(root.join("actor")),
+                    &FaultKeyStore(root.join("pending")),
+                    &FaultKeyStore(root.join("current")),
+                    107,
+                )
+                .unwrap();
+            }
+            db.query_row(
+                "SELECT canonical_activation FROM library_local_handoff",
+                [],
+                |r| r.get::<_, Vec<u8>>(0),
+            )
+            .unwrap()
+        };
+        std::fs::write(root.join("result"), result).unwrap();
+        if point != "retry" {
+            unsafe {
+                libc::raise(libc::SIGKILL);
+            }
+            unreachable!()
+        }
+    }
+
+    #[cfg(unix)]
+    fn handoff_fault_snapshot(db: &rusqlite::Connection) -> Vec<Vec<Vec<u8>>> {
+        let tables = [
+            "library_local_handoff",
+            "library_writer_admission",
+            "library_local_cloud_writer_admission",
+            "library_local_recovery_archives",
+            "library_local_recovery_rows",
+            "library_intent_transactions",
+            "library_intent_members",
+            "library_follower_actor_request",
+            "library_intent_actors",
+            "library_storage_meta",
+            "library_intent_results",
+            "library_intent_result_cursors",
+            "library_intent_transport_heads",
+            "library_intent_transport_segments",
+            "library_result_transport_heads",
+            "library_result_transport_segments",
+            "library_optimistic_fields",
+            "library_local_change_state",
+            "library_local_invalidations",
+        ];
+
+        tables
+            .iter()
+            .map(|table| {
+                let exists: bool = db
+                    .query_row(
+                        "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type='table' AND name=?1)",
+                        [table],
+                        |r| r.get(0),
+                    )
+                    .unwrap();
+                if !exists {
+                    return vec![];
+                }
+                let mut rows: Vec<Vec<u8>> = db
+                    .prepare(&format!("SELECT * FROM {table}"))
+                    .unwrap()
+                    .query_map([], |row| {
+                        Ok(crate::normalized_consumer_recovery::encode_recovery_row(
+                            row,
+                            row.as_ref().column_count(),
+                        )
+                        .unwrap())
+                    })
+                    .unwrap()
+                    .collect::<rusqlite::Result<_>>()
+                    .unwrap();
+                rows.sort();
+                rows
+            })
+            .collect()
+    }
+
+    #[cfg(unix)]
+    fn probe_handoff_disk_full(
+        db: &rusqlite::Connection,
+        operation: &str,
+        actor: Option<&[u8]>,
+        pending: Option<&[u8]>,
+    ) {
+        let root = tempfile::tempdir().unwrap();
+        let mut disk = rusqlite::Connection::open(root.path().join("full.sqlite")).unwrap();
+        rusqlite::backup::Backup::new(db, &mut disk)
+            .unwrap()
+            .run_to_completion(128, std::time::Duration::ZERO, None)
+            .unwrap();
+        disk.execute_batch(
+            "PRAGMA page_size=512; VACUUM; PRAGMA foreign_keys=ON; PRAGMA synchronous=FULL;",
+        )
+        .unwrap();
+        let pages: u64 = disk
+            .pragma_query_value(None, "page_count", |r| r.get(0))
+            .unwrap();
+        disk.pragma_update(None, "max_page_count", pages).unwrap();
+        if let Some(bytes) = actor {
+            std::fs::write(root.path().join("actor"), bytes).unwrap();
+        }
+        if let Some(bytes) = pending {
+            std::fs::write(root.path().join("pending"), bytes).unwrap();
+        }
+        let original = handoff_fault_snapshot(&disk);
+        let invoke = |db: &mut rusqlite::Connection| -> Result<Vec<u8>, String> {
+            let keys = FaultKeyStore(root.path().join("actor"));
+            match operation {
+                "source_authorization" => {
+                    authorize_source_handoff_v1(db, pending.unwrap(), &keys, 11)
+                        .map(String::into_bytes)
+                }
+                "signature" => sign_persisted_handoff_authorization_v1(
+                    db,
+                    &Ed25519KeyPair::from_seed_unchecked(&[33; 32]).unwrap(),
+                )
+                .and_then(|r| canonical_handoff_bytes(&r)),
+                "consumer_archive" => crate::archive_consumer_epoch_recovery_v1(db, &keys, 120)
+                    .map(String::into_bytes),
+                "consumer_prepare" => {
+                    let id: String = db.query_row("SELECT recovery_id FROM library_local_recovery_archives ORDER BY created_at DESC LIMIT 1", [], |r| r.get(0)).unwrap();
+                    crate::prepare_consumer_epoch_reenrollment_v1(
+                        db,
+                        &id,
+                        &"f".repeat(64),
+                        &keys,
+                        123,
+                    )
+                    .and_then(|r| canonical_handoff_bytes(&r))
+                }
+                "activation" => {
+                    let id: String = db
+                        .query_row("SELECT handoff_id FROM library_local_handoff", [], |r| {
+                            r.get(0)
+                        })
+                        .unwrap();
+                    let phase: String = db
+                        .query_row("SELECT phase FROM library_local_handoff", [], |r| r.get(0))
+                        .unwrap();
+                    if phase == "active" {
+                        crate::recover_active_target_handoff_v1(
+                            db,
+                            &id,
+                            &keys,
+                            &FaultKeyStore(root.path().join("current")),
+                        )?;
+                    } else {
+                        let plan = crate::HandoffVerificationPlanV1::from_target(db, &id)?;
+                        crate::activate_target_handoff_after_remote_verification_v1(
+                            db,
+                            &plan,
+                            "\"winning-head\"",
+                            &keys,
+                            &FaultKeyStore(root.path().join("pending")),
+                            &FaultKeyStore(root.path().join("current")),
+                            107,
+                        )?;
+                    }
+                    db.query_row(
+                        "SELECT canonical_activation FROM library_local_handoff",
+                        [],
+                        |r| r.get(0),
+                    )
+                    .map_err(|e| e.to_string())
+                }
+                _ => panic!("unsupported disk-full operation"),
+            }
+        };
+        let error = invoke(&mut disk).unwrap_err();
+        assert!(
+            error.contains("database or disk is full"),
+            "{operation}: {error}"
+        );
+        let mut failed = handoff_fault_snapshot(&disk);
+        if operation == "source_authorization" && failed != original {
+            // The cutoff intentionally commits before the separate signature receipt.
+            // Full during signing must preserve that durable fence for exact retry.
+            let fenced: bool = disk.query_row("SELECT phase='authorized' AND canonical_authorization_body=?1 AND canonical_authorization IS NULL FROM library_local_handoff", [pending.unwrap()], |r| r.get(0)).unwrap();
+            assert!(fenced);
+            assert_eq!(
+                disk.query_row("SELECT count(*) FROM library_writer_admission", [], |r| r
+                    .get::<_, u64>(
+                    0
+                ))
+                .unwrap(),
+                0
+            );
+            failed[0] = original[0].clone();
+        }
+        assert!(
+            failed == original,
+            "disk full changed unrelated state: {operation}"
+        );
+        assert_eq!(
+            disk.query_row("PRAGMA integrity_check", [], |r| r.get::<_, String>(0))
+                .unwrap(),
+            "ok"
+        );
+        disk.pragma_update(None, "max_page_count", pages + 1000)
+            .unwrap();
+        let receipt = invoke(&mut disk).unwrap();
+        let committed = handoff_fault_snapshot(&disk);
+        assert_eq!(invoke(&mut disk).unwrap(), receipt);
+        assert_eq!(handoff_fault_snapshot(&disk), committed);
+    }
+
+    // Reuses the production lifecycle fixture, copying only its synthetic DB.
+    #[cfg(unix)]
+    fn probe_handoff_crashes(
+        db: &rusqlite::Connection,
+        operation: &str,
+        actor: Option<&[u8]>,
+        pending: Option<&[u8]>,
+    ) {
+        use std::os::unix::process::ExitStatusExt;
+        if operation != "consumer_commit" {
+            probe_handoff_disk_full(db, operation, actor, pending);
+        }
+        let snapshot = handoff_fault_snapshot;
+        let original = snapshot(db);
+        let points: &[&str] = if operation == "consumer_commit" {
+            &["archive_retirement", "before_commit", "after_commit"]
+        } else if operation != "activation" {
+            &["before_commit", "after_commit"]
+        } else {
+            &[
+                "key_promotion",
+                "archive_retirement",
+                "before_commit",
+                "after_commit",
+            ]
+        };
+        for point in points {
+            let root = tempfile::tempdir().unwrap();
+            let path = root.path().join("probe.sqlite");
+            let mut disk = rusqlite::Connection::open(&path).unwrap();
+            rusqlite::backup::Backup::new(db, &mut disk)
+                .unwrap()
+                .run_to_completion(128, std::time::Duration::ZERO, None)
+                .unwrap();
+            drop(disk);
+            if let Some(bytes) = actor {
+                std::fs::write(root.path().join("actor"), bytes).unwrap();
+            }
+            if let Some(bytes) = pending {
+                std::fs::write(root.path().join("pending"), bytes).unwrap();
+            }
+            let run = |point: &str| {
+                let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+                    .args([
+                        "--exact",
+                        "normalized_handoff_certificate::tests::handoff_fault_child",
+                        "--nocapture",
+                    ])
+                    .env("FREED_HANDOFF_FAULT_ROOT", root.path())
+                    .env("FREED_HANDOFF_FAULT_POINT", point)
+                    .env("FREED_HANDOFF_FAULT_OPERATION", operation)
+                    .spawn()
+                    .unwrap();
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+                loop {
+                    if let Some(status) = child.try_wait().unwrap() {
+                        break status;
+                    }
+                    if std::time::Instant::now() >= deadline {
+                        child.kill().unwrap();
+                        child.wait().unwrap();
+                        panic!("fault child exceeded 20 seconds: {operation}:{point}");
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+            };
+            assert_eq!(
+                run(point).signal(),
+                Some(libc::SIGKILL),
+                "{operation}:{point}"
+            );
+            let disk = crate::open_normalized_sqlite_database_v1(&path, false).unwrap();
+            assert_eq!(
+                disk.query_row("PRAGMA integrity_check", [], |r| r.get::<_, String>(0))
+                    .unwrap(),
+                "ok"
+            );
+            if *point != "after_commit" {
+                assert_eq!(snapshot(&disk), original, "{operation}:{point}");
+            }
+            if operation == "activation" {
+                assert_eq!(
+                    disk.query_row("SELECT count(*) FROM library_writer_admission", [], |r| r
+                        .get::<_, u64>(
+                        0
+                    ))
+                    .unwrap(),
+                    u64::from(*point == "after_commit")
+                );
+                if *point == "key_promotion" {
+                    assert_eq!(
+                        std::fs::read(root.path().join("current")).unwrap(),
+                        pending.unwrap()
+                    );
+                }
+            }
+            let committed = snapshot(&disk);
+            let result = std::fs::read(root.path().join("result")).ok();
+            drop(disk);
+            assert!(run("retry").success());
+            let disk = crate::open_normalized_sqlite_database_v1(&path, false).unwrap();
+            if *point == "after_commit" {
+                assert_eq!(snapshot(&disk), committed);
+                assert_eq!(
+                    std::fs::read(root.path().join("result")).unwrap(),
+                    result.unwrap()
+                );
+            }
+            if operation == "activation" {
+                assert_eq!(
+                    disk.query_row("SELECT count(*) FROM library_writer_admission", [], |r| r
+                        .get::<_, u64>(
+                        0
+                    ))
+                    .unwrap(),
+                    1
+                );
+                assert_eq!(
+                    disk.query_row(
+                        "SELECT count(*) FROM library_local_cloud_writer_admission",
+                        [],
+                        |r| r.get::<_, u64>(0)
+                    )
+                    .unwrap(),
+                    1
+                );
+                assert_eq!(
+                    disk.query_row(
+                        "SELECT count(*) FROM library_intent_transactions",
+                        [],
+                        |r| r.get::<_, u64>(0)
+                    )
+                    .unwrap(),
+                    0
+                );
+                assert_eq!(
+                    disk.query_row(
+                        "SELECT count(*) FROM library_local_recovery_archives",
+                        [],
+                        |r| r.get::<_, u64>(0)
+                    )
+                    .unwrap(),
+                    original[3].len() as u64 + 1
+                );
+            }
+            if operation.starts_with("consumer_") {
+                assert_eq!(
+                    disk.query_row("SELECT count(*) FROM library_writer_admission", [], |r| r
+                        .get::<_, u64>(
+                        0
+                    ))
+                    .unwrap(),
+                    0
+                );
+                assert!(
+                    crate::normalized_mutation::normalized_primary_mutation_context_v1(&disk)
+                        .is_err()
+                );
+                assert!(crate::require_normalized_provider_handoff_admission_v2(&disk).is_err());
+                let live_count = disk
+                    .query_row(
+                        "SELECT count(*) FROM library_intent_transactions",
+                        [],
+                        |r| r.get::<_, u64>(0),
+                    )
+                    .unwrap();
+                assert_eq!(
+                    live_count,
+                    if operation == "consumer_commit" { 0 } else { 1 }
+                );
+                assert_eq!(
+                    disk.query_row(
+                        "SELECT count(*) FROM library_local_recovery_archives",
+                        [],
+                        |r| r.get::<_, u64>(0)
+                    )
+                    .unwrap(),
+                    1
+                );
+                if operation != "consumer_archive" {
+                    let rows = snapshot(&disk);
+                    assert_eq!(
+                        rows[4], original[4],
+                        "reenrollment changed archived bytes/hashes"
+                    );
+                }
+                crate::read_consumer_recovery_summary_v1(&disk)
+                    .unwrap()
+                    .unwrap();
+            }
+            let final_snapshot = snapshot(&disk);
+            drop(disk);
+            assert!(run("retry").success());
+            assert_eq!(
+                snapshot(&crate::open_normalized_sqlite_database_v1(&path, false).unwrap()),
+                final_snapshot
+            );
+        }
+    }
 
     #[test]
     fn handoff_requires_enrolled_target_and_pinned_predecessor_signatures() {
@@ -2330,6 +2880,8 @@ mod tests {
             .unwrap_err()
             .contains("commit before signing"));
         database.execute_batch("ROLLBACK;").unwrap();
+        #[cfg(unix)]
+        probe_handoff_crashes(&database, "signature", None, None);
         assert!(sign_persisted_handoff_authorization_v1(&mut database, &target).is_err());
         database
             .execute_batch(
@@ -3463,6 +4015,13 @@ mod tests {
             11,
         )
         .is_err());
+        #[cfg(unix)]
+        probe_handoff_crashes(
+            &source,
+            "source_authorization",
+            source_store.bytes.borrow().as_deref(),
+            Some(&authorization_bytes),
+        );
         source
             .execute_batch(
                 "CREATE TEMP TRIGGER reject_authorization_cutoff
@@ -3990,11 +4549,14 @@ mod tests {
         .unwrap();
         let prior =
             crate::normalized_sqlite::describe_normalized_checkpoint_export_v2(&consumer).unwrap();
+        // ATTACH inherits SQLITE_OPEN_NOFOLLOW. Resolve the macOS temporary-root
+        // symlink just as the platform path opener does for the main database.
+        let original_consumer_path = std::fs::canonicalize(&path).unwrap();
         // Carry the enrolled consumer's original local bytes into this replica.
         consumer
             .execute(
                 "ATTACH DATABASE ?1 AS original_consumer;",
-                [path.to_str().unwrap()],
+                [original_consumer_path.to_str().unwrap()],
             )
             .unwrap();
         for table in [
@@ -4317,6 +4879,13 @@ mod tests {
                 .execute_batch("DROP TRIGGER refuse_recovery_migration;")
                 .unwrap();
         }
+        #[cfg(unix)]
+        probe_handoff_crashes(
+            &consumer,
+            "consumer_archive",
+            actor_store.bytes.borrow().as_deref(),
+            None,
+        );
         let archive_id =
             crate::archive_consumer_epoch_recovery_v1(&mut consumer, &actor_store, 120).unwrap();
         if let Some((id, proof)) = &consumer_cancellation {
@@ -4560,6 +5129,13 @@ mod tests {
         consumer
             .execute_batch("DROP TRIGGER corrupt_reenrollment_readback;")
             .unwrap();
+        #[cfg(unix)]
+        probe_handoff_crashes(
+            &consumer,
+            "consumer_prepare",
+            actor_store.bytes.borrow().as_deref(),
+            None,
+        );
         let next_request = crate::prepare_consumer_epoch_reenrollment_v1(
             &mut consumer,
             &archive_id,
@@ -4682,6 +5258,13 @@ mod tests {
             &installation_witness,
             &actor_store,
             &next_certificate,
+        );
+        #[cfg(unix)]
+        probe_handoff_crashes(
+            &consumer,
+            "consumer_commit",
+            actor_store.bytes.borrow().as_deref(),
+            None,
         );
         let before_commit = crate::describe_normalized_checkpoint_export_v2(&consumer).unwrap();
         consumer.execute_batch("CREATE TEMP TRIGGER refuse_recovery_commit AFTER UPDATE OF phase ON library_local_handoff WHEN NEW.phase = 'following' BEGIN SELECT RAISE(ABORT, 'injected recovery commit failure'); END;").unwrap();
@@ -6143,6 +6726,13 @@ mod tests {
                 .unwrap())
             })
             .unwrap();
+        #[cfg(unix)]
+        probe_handoff_crashes(
+            &database,
+            "activation",
+            actor_store.bytes.borrow().as_deref(),
+            pending.bytes.borrow().as_deref(),
+        );
         database.execute_batch("CREATE TRIGGER refuse_admission BEFORE INSERT ON library_local_cloud_writer_admission
             BEGIN SELECT RAISE(ABORT, 'injected activation admission failure'); END;").unwrap();
         assert!(activate(
@@ -6217,6 +6807,164 @@ mod tests {
             .unwrap();
         drop(database);
         let mut database = open_normalized_sqlite_database_v1(&path, false).unwrap();
+        // Keep the larger fault matrix's deliberately malformed historical row
+        // intact. A separate target copy carries genuine signed historical bytes
+        // through production activation and then the explicit Primary recovery API.
+        if !recovered_incarnation && !cancelled_consumer {
+            let recovery_path = directory.path().join("promoted-primary-recovery.sqlite");
+            let mut recovery = open_normalized_sqlite_database_v1(&recovery_path, true).unwrap();
+            rusqlite::backup::Backup::new(&database, &mut recovery)
+                .unwrap()
+                .run_to_completion(128, std::time::Duration::ZERO, None)
+                .unwrap();
+            let frames =
+                crate::normalized_operation_test_fixtures::tests::signed_envelopes_from_tip(
+                    &actor_key,
+                    &initial_enrollment,
+                    "pending",
+                    1,
+                    None,
+                    &initial_enrollment.actor_chain_genesis,
+                    &[("rss:item:1", 1)],
+                    "feed_item_read_assignment",
+                );
+            let (original, _) =
+                crate::normalized_operation_verifier::verify_operation_transaction_for_resolution(
+                    &frames,
+                    |_| {
+                        Ok(crate::normalized_operation::ActorState {
+                            library_id: initial_enrollment.library_id.clone(),
+                            epoch: initial_enrollment.epoch,
+                            epoch_id: initial_enrollment.epoch_id.clone(),
+                            actor_id: initial_enrollment.actor_id.clone(),
+                            actor_public_key: initial_enrollment.actor_public_key.clone(),
+                            enrollment_operation_id: initial_enrollment
+                                .enrollment_operation_id
+                                .clone(),
+                            enrollment_certificate_digest: initial_enrollment
+                                .enrollment_certificate_digest
+                                .clone(),
+                            canonical_enrollment_certificate_json: initial_enrollment
+                                .canonical_enrollment_certificate_json
+                                .clone(),
+                            actor_chain_genesis: initial_enrollment.actor_chain_genesis.clone(),
+                            next_sequence: 1,
+                            previous_operation_id: None,
+                            previous_chain_digest: initial_enrollment.actor_chain_genesis.clone(),
+                            retired: false,
+                            capability: initial_enrollment.capability.clone(),
+                        })
+                    },
+                )
+                .unwrap();
+            let member = &original.members[0];
+            // A retained local rejection flag is not signed rejection evidence.
+            // Recovery must classify this historical outcome as unresolved.
+            recovery.execute("UPDATE library_intent_transactions SET transaction_digest=?1,previous_chain_digest=?2,ending_operation_id=?3,ending_chain_digest=?4,canonical_member_bytes=?5,canonical_transaction=?6 WHERE transaction_id='pending';",
+                params![original.transaction_digest,initial_enrollment.actor_chain_genesis,member.operation_id,member.actor_chain_digest,original.canonical_envelope_bytes,crate::library_core_canonical::encode_canonical_value(&json!({"actor_id":original.actor_id,"member_count":1,"transaction_digest":original.transaction_digest,"transaction_id":original.transaction_id}),131072).unwrap()]).unwrap();
+            recovery.execute("INSERT INTO library_intent_members VALUES ('pending',?1,0,?2,1,'feed_item_read_assignment','FeedItem','rss:item:1',?3,?4);",
+                params![actor,member.operation_id,frames[0],member.member_digest]).unwrap();
+            let recovery_current = Store::default();
+            activate(
+                &mut recovery,
+                &plan,
+                "\"winning-head\"",
+                &actor_store,
+                &pending,
+                &recovery_current,
+                107,
+            )
+            .unwrap();
+            // Content only. Enrollment, predecessor authorization, checkpoint
+            // verification, activation, archive creation and recovery stay real.
+            recovery.execute("INSERT INTO library_feed_items (global_id,platform,content_type,captured_at,published_at,author_id,author_handle,author_display_name,hidden,saved,archived,updated_at)
+                VALUES ('rss:item:1','rss','article',1,1,'author','author','Author',0,0,0,1);",[]).unwrap();
+            let (archived, outcome) =
+                crate::normalized_recovery_input::inspect_archived_intent_for_review(
+                    &recovery, id, "pending",
+                )
+                .unwrap();
+            assert!(matches!(
+                outcome,
+                crate::ArchivedIntentOutcomeV1::Unresolved
+            ));
+            assert_eq!(
+                archived.members[0].canonical_envelope_json.as_bytes(),
+                frames[0]
+            );
+            let context = crate::normalized_primary_mutation_context_v1(&recovery).unwrap();
+            assert_eq!(
+                context.actor_id, actor,
+                "promotion retains this installation's actor identity"
+            );
+            assert_ne!(context.epoch_id, initial_enrollment.epoch_id);
+            let source =
+                crate::normalized_recovery_reissue::recovery_review_source(&recovery).unwrap();
+            let request = crate::RecoveryReissueRequestV1 {
+                schema_version:1,recovery_id:id.into(),
+                archive_digest:recovery.query_row("SELECT archive_digest FROM library_local_recovery_archives WHERE recovery_id=?1;",[id],|r|r.get(0)).unwrap(),
+                transaction_id:original.transaction_id.clone(),transaction_digest:original.transaction_digest.clone(),
+                reviewed_generation_id:source.0,reviewed_revision:source.1,reviewed_local_sequence:source.2,member_count:1,
+            };
+            let archive_bytes = |db: &rusqlite::Connection| {
+                db.prepare("SELECT canonical_row FROM library_local_recovery_rows WHERE recovery_id=?1 ORDER BY table_key,row_ordinal;").unwrap()
+                    .query_map([id],|r|r.get::<_,Vec<u8>>(0)).unwrap().collect::<rusqlite::Result<Vec<_>>>().unwrap()
+            };
+            let before = archive_bytes(&recovery);
+            recovery.execute_batch("CREATE TEMP TRIGGER reject_primary_recovery_link BEFORE INSERT ON library_local_recovery_reissues BEGIN SELECT RAISE(ABORT,'recovery link fault'); END;").unwrap();
+            assert!(crate::reapply_archived_primary_assignments_v1(
+                &mut recovery,
+                &request,
+                &actor_store,
+                &recovery_current,
+                108
+            )
+            .unwrap_err()
+            .contains("recovery link fault"));
+            assert_eq!(
+                crate::normalized_primary_mutation_context_v1(&recovery).unwrap(),
+                context
+            );
+            assert_eq!(archive_bytes(&recovery), before);
+            recovery
+                .execute_batch("DROP TRIGGER reject_primary_recovery_link;")
+                .unwrap();
+            let receipt = crate::reapply_archived_primary_assignments_v1(
+                &mut recovery,
+                &request,
+                &actor_store,
+                &recovery_current,
+                108,
+            )
+            .unwrap();
+            assert_eq!(receipt.replacement_actor_id, actor);
+            assert_eq!(
+                recovery
+                    .query_row(
+                        "SELECT read_at FROM library_feed_items WHERE global_id='rss:item:1';",
+                        [],
+                        |r| r.get::<_, i64>(0)
+                    )
+                    .unwrap(),
+                108
+            );
+            assert_eq!(archive_bytes(&recovery), before);
+            drop(recovery);
+            let mut recovery = open_normalized_sqlite_database_v1(&recovery_path, false).unwrap();
+            let unavailable = Store::default();
+            assert_eq!(
+                crate::reapply_archived_primary_assignments_v1(
+                    &mut recovery,
+                    &request,
+                    &unavailable,
+                    &unavailable,
+                    109
+                )
+                .unwrap(),
+                receipt
+            );
+            assert_eq!(archive_bytes(&recovery), before);
+        }
         let active = activate(
             &mut database,
             &plan,

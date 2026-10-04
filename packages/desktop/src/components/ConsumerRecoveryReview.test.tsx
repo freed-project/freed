@@ -69,7 +69,8 @@ describe("consumer archive review", () => {
     expect(container.textContent).not.toContain("Acceptance confirmed");
     expect(container.textContent).toContain("Library changed during review");
   });
-  it("requires full review and explicit action, and retries the same archive request after response loss", async () => {
+  it.each([false, true])("primary=%s requires full review and explicit action, and retries the same archive request after response loss", async (primary) => {
+    await act(async () => { root.render(<ConsumerRecoveryReview recoveryId={recoveryId} primary={primary} />); });
     const source = { generationId: "b".repeat(64), projectionRevision: 4, transitionSequence: 6 };
     const first = { ...detail, recoveryId, archiveDigest: "c".repeat(64), transactionDigest: "d".repeat(64), source,
       rows: [detail.rows[0]], nextCursor: "review-next" };
@@ -95,7 +96,7 @@ describe("consumer archive review", () => {
       schemaVersion: 1, recoveryId, archiveDigest: first.archiveDigest, transactionId: detail.transactionId,
       transactionDigest: first.transactionDigest, reviewedGenerationId: source.generationId,
       reviewedRevision: 4, reviewedLocalSequence: 6, memberCount: 2,
-    } }]);
+    }, ...(primary ? { primary: true } : {}) }]);
     expect(container.textContent).toContain("Replacement ...12345678 was stored");
     expect(container.textContent).not.toContain("Apply again");
     await click("Close review");

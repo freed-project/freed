@@ -48,7 +48,9 @@ async function exchange(endpoint: string, frame: Uint8Array): Promise<unknown> {
     const chunks: Buffer[] = [];
     const socket = net.createConnection(endpoint);
     socket.once("error", reject);
-    socket.on("data", (chunk) => chunks.push(chunk));
+    socket.on("data", (chunk) =>
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)),
+    );
     socket.once("end", () => resolve(Buffer.concat(chunks)));
     socket.once("connect", () => socket.write(frame));
   });

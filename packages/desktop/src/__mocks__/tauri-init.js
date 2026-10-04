@@ -141,6 +141,13 @@ export function tauriInitScript() {
       }
       return btoa(binary).replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/g, '');
     }
+    function normalizedLibraryCloudPreflightIdentity() {
+      return {
+        format: 'freed_normalized_cloud_preflight_identity_v1', protocolVersion: 2,
+        libraryId: '2'.repeat(64), authorityEpoch: '3'.repeat(64), writerId: '6'.repeat(64),
+        sourceRevision: sqliteState().sourceRevision, causalFrontierDigest: 'a'.repeat(64), localActorId: '6'.repeat(64),
+      };
+    }
     function normalizedLibraryCloudIdentity() {
       var state = sqliteState();
       var items = Object.values(state.items).filter(function(item) { return !item.__deleted; });
@@ -1974,6 +1981,8 @@ export function tauriInitScript() {
   get_jev_api_key: () => null,
   set_jev_api_key: () => { throw new Error("Use the browser preview credential controls."); },
   clear_jev_api_key: () => undefined,
+  get_jev_budget: () => null,
+  set_jev_budget: () => { throw new Error("Jev budget requires an explicit test handler."); },
   request_jev: () => { throw new Error("Native Jev requests require an explicit test handler."); },
   cancel_jev_request: () => undefined,
       normalized_desktop_installation_status: () => window.__TAURI_MOCK_LIBRARY_INSTALLATION__ ?? ({
@@ -1997,6 +2006,7 @@ export function tauriInitScript() {
         return true;
       }),
       describe_normalized_library_cloud_identity: normalizedLibraryCloudIdentity,
+      describe_normalized_library_cloud_preflight_identity: normalizedLibraryCloudPreflightIdentity,
       query_normalized_library: (args) => {
         args.started?.onmessage?.("00000000000000000000000000000001");
         return sqliteNormalizedQuery(args);
@@ -2224,6 +2234,9 @@ export function tauriInitScript() {
       sha256_file: () => '',
       download_local_ai_model_file: (args) => args && args.request ? args.request.expectedSizeBytes || 0 : 0,
       cancel_local_ai_model_download: () => null,
+      request_gliclass: () => { throw new Error("Native GLiClass inference is unavailable in the browser preview."); },
+      cancel_gliclass_request: () => null,
+      unload_gliclass: () => null,
       get_desktop_installation_witness: () => 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       get_desktop_session_state: () => window.__TAURI_MOCK_DESKTOP_SESSION_STATE__ || ({
         available: true,
