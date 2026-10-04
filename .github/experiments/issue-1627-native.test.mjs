@@ -1,10 +1,11 @@
 // Temporary experiment contracts; Linux results are not native proof.
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { BRANCH, SOURCE, DARWIN_REQUIRED, FOCUSED, OTHER_PLATFORM, PLAN, assertSeparate, runCommand, runProof, validateResults } from "./issue-1627-native.mjs";
+import { BRANCH, SOURCE, DARWIN_REQUIRED, FOCUSED, OTHER_PLATFORM, PLAN, assertSeparate, npmNodeArgs, runCommand, runProof, validateResults } from "./issue-1627-native.mjs";
 
 const root = "/synthetic/packages/library-service";
 function fixture(full = false) {
@@ -178,4 +179,47 @@ test("Linux CLI refuses native acceptance and retains a failed receipt", { skip:
   assert.equal(report.accepted, false);
   assert.match(report.error, /native proof requires Darwin/);
   assert.equal(report.runs.length, 0);
+});
+
+
+test("repaired launch supplies genuine pinned npm identity in a package workspace", (t) => {
+  const cwd = temporary(t);
+  writeFileSync(path.join(cwd, "package.json"), JSON.stringify({ private: true, workspaces: ["packages/*"] }));
+  const workspace = path.join(cwd, "packages/library-service");
+  mkdirSync(workspace, { recursive: true });
+  writeFileSync(path.join(workspace, "package.json"), JSON.stringify({ name: "@fixture/library-service", private: true }));
+  const probe = path.join(cwd, "npm identity probe.mjs");
+  writeFileSync(probe, `
+    import assert from "node:assert/strict";
+    import { spawnSync } from "node:child_process";
+    const npmCli = process.env.npm_execpath;
+    assert.ok(npmCli, "npm must supply npm_execpath");
+    const version = spawnSync(process.execPath, [npmCli, "--version"], { encoding: "utf8" });
+    assert.equal(version.status, 0);
+    console.log(JSON.stringify({ npmCli, npmVersion: version.stdout.trim(),
+      node: process.execPath, nodeVersion: process.version,
+      npmNode: process.env.npm_node_execpath, cwd: process.cwd(), args: process.argv.slice(2) }));
+  `);
+  const npm = path.join(path.dirname(process.execPath), "npm");
+  // Remove inherited npm metadata so a parent npm invocation cannot mask this
+  // regression. Only real npm may restore it in the child.
+  const env = { ...process.env };
+  for (const name of Object.keys(env)) if (/^npm_/i.test(name)) delete env[name];
+  const args = ["--retry=0", "--bail=1", "^(?:exact first case|exact second case)$"];
+  const direct = spawnSync(process.execPath, [probe, ...args], { cwd: workspace, env, encoding: "utf8", timeout: 10_000 });
+  assert.notEqual(direct.status, 0, "direct Node launch must reproduce missing npm metadata");
+  assert.match(direct.stderr, /npm must supply npm_execpath/);
+  const launched = spawnSync(npm, npmNodeArgs([probe, ...args]), { cwd: workspace, env, encoding: "utf8", timeout: 10_000 });
+  assert.equal(launched.status, 0, launched.stderr);
+  const receipt = JSON.parse(launched.stdout);
+  assert.equal(realpathSync(receipt.npmCli), realpathSync(npm));
+  assert.equal(receipt.npmVersion, "11.11.0");
+  assert.equal(receipt.nodeVersion, "v24.14.1");
+  assert.equal(realpathSync(receipt.node), realpathSync(process.execPath));
+  assert.equal(realpathSync(receipt.npmNode), realpathSync(process.execPath));
+  assert.equal(realpathSync(receipt.cwd), realpathSync(workspace));
+  assert.deepEqual(receipt.args, args);
+  assert.deepEqual(npmNodeArgs([]), ["exec", "--offline", "--yes=false", "--", "node"]);
+  const failure = spawnSync(npm, npmNodeArgs(["-e", "process.exit(23)"]), { cwd: workspace, env, encoding: "utf8", timeout: 10_000 });
+  assert.equal(failure.status, 23, "npm must preserve test process failure");
 });

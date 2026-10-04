@@ -115,6 +115,13 @@ export async function runCommand(command, args, { cwd, log, timeoutMs }) {
   }
 }
 
+// Let pinned npm provide its normal script environment, including npm_execpath.
+// Use the installed Node command and explicit local script path; never fetch a
+// package or synthesize npm environment variables in the experiment driver.
+export function npmNodeArgs(args) {
+  return ["exec", "--offline", "--yes=false", "--", "node", ...args];
+}
+
 export async function runProof({ packageRoot, outputDir, inventory, execute, assertFrozen = () => {}, report }) {
   for (const name of PLAN) {
     const run = { name, accepted: false };
@@ -211,12 +218,12 @@ async function main(args) {
     await setup("package-build", "npm", ["run", "build"], packageRoot, 120_000);
     const vitest = path.join(candidate, "node_modules/vitest/vitest.mjs");
     const inventoryPath = path.join(outputDir, "discovery.json");
-    await setup("discovery", process.execPath, [vitest, "list", `--json=${inventoryPath}`], packageRoot, 60_000);
+    await setup("discovery", report.executables.npm, npmNodeArgs([vitest, "list", `--json=${inventoryPath}`]), packageRoot, 60_000);
     const inventory = JSON.parse(readFileSync(inventoryPath, "utf8")).map(({ file, name }) => [path.relative(packageRoot, file), name.replaceAll(" > ", " ")]);
     assert.equal(inventory.length, 187);
     for (const required of [...FOCUSED, ...DARWIN_REQUIRED]) assert.ok(inventory.some((entry) => key(entry) === key(required)), `discovery omitted ${key(required)}`);
     report.inventory = inventory;
-    await runProof({ packageRoot, outputDir, inventory, report, assertFrozen, execute: (argv, name) => runCommand(process.execPath, [vitest, ...argv], { cwd: packageRoot, log: path.join(outputDir, `${name}.log`), timeoutMs: name === "full" ? 240_000 : 30_000 }) });
+    await runProof({ packageRoot, outputDir, inventory, report, assertFrozen, execute: (argv, name) => runCommand(report.executables.npm, npmNodeArgs([vitest, ...argv]), { cwd: packageRoot, log: path.join(outputDir, `${name}.log`), timeoutMs: name === "full" ? 240_000 : 30_000 }) });
     report.accepted = true;
   } catch (error) {
     report.error = error.message;
