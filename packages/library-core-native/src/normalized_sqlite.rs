@@ -33,9 +33,16 @@ pub(crate) fn normalized_sqlite_open_flags(create: bool) -> OpenFlags {
     flags
 }
 
+#[cfg(test)]
+thread_local! {
+    pub(crate) static TEST_CONNECTION_CONFIGURATION_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 pub(crate) fn configure_normalized_sqlite_connection(
     connection: &Connection,
 ) -> Result<(), NormalizedSqliteError> {
+    #[cfg(test)]
+    TEST_CONNECTION_CONFIGURATION_COUNT.with(|count| count.set(count.get() + 1));
     connection.execute_batch(
         "PRAGMA foreign_keys = ON;
          PRAGMA trusted_schema = OFF;
