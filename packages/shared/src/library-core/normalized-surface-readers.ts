@@ -581,29 +581,43 @@ export async function readLibraryCoreNormalizedAccountDetailV1(
     : libraryCoreAccountDetailToAccountV1(response.account);
 }
 
+/** Preserve the native source receipt for runtime-owned aggregate publication. */
+export function readLibraryCoreNormalizedFacetSummaryResponseV1(
+  runtime: Pick<LibraryCoreNormalizedReaderRuntime, "query">,
+) {
+  return runtime.query({ queryId: LIBRARY_CORE_FACET_SUMMARY_QUERY_ID,
+    schemaVersion: LIBRARY_CORE_FACET_SUMMARY_SCHEMA_VERSION });
+}
+
 export async function readLibraryCoreNormalizedFacetSummaryV1(
   runtime: LibraryCoreNormalizedReaderRuntime,
 ): Promise<LibraryCoreFacetSummaryV1> {
+  return (await readLibraryCoreNormalizedFacetSummaryResponseV1(runtime)).summary;
+}
+
+/** Retain the preference source; a scalar facet revision cannot fence this read. */
+export async function readLibraryCoreNormalizedPreferencesSnapshotV1(
+  runtime: Pick<LibraryCoreNormalizedReaderRuntime, "query">,
+) {
   const response = await runtime.query({
-    queryId: LIBRARY_CORE_FACET_SUMMARY_QUERY_ID,
-    schemaVersion: LIBRARY_CORE_FACET_SUMMARY_SCHEMA_VERSION,
+    queryId: LIBRARY_CORE_PREFERENCES_SNAPSHOT_QUERY_ID,
+    schemaVersion: LIBRARY_CORE_PREFERENCES_SNAPSHOT_SCHEMA_VERSION,
   });
-  return response.summary;
+  return {
+    source: response.source,
+    preferences: mergeDefaultPreferences(
+      decodeLibraryCoreFractionalNumbersV1(libraryCorePreferenceNodesToValueV1(
+        response.rows,
+      )) as Partial<UserPreferences>,
+    ),
+  };
 }
 
 /** Read and reconstruct the bounded synchronized preference tree from SQLite. */
 export async function readLibraryCoreNormalizedPreferencesV1(
   runtime: LibraryCoreNormalizedReaderRuntime,
 ): Promise<UserPreferences> {
-  const response = await runtime.query({
-    queryId: LIBRARY_CORE_PREFERENCES_SNAPSHOT_QUERY_ID,
-    schemaVersion: LIBRARY_CORE_PREFERENCES_SNAPSHOT_SCHEMA_VERSION,
-  });
-  return mergeDefaultPreferences(
-    decodeLibraryCoreFractionalNumbersV1(libraryCorePreferenceNodesToValueV1(
-      response.rows,
-    )) as Partial<UserPreferences>,
-  );
+  return (await readLibraryCoreNormalizedPreferencesSnapshotV1(runtime)).preferences;
 }
 
 export async function readLibraryCoreNormalizedSavedAnalyticsV1(

@@ -1214,3 +1214,16 @@ establish an installed responsiveness improvement.
 Generated compact-card queries now return the existing linked URL separately
 from the canonical post URL. Native and PWA projections preserve that bounded,
 nullable value without changing the physical SQLite schema or mutation path.
+
+### Runtime-owned navigation counts
+
+Desktop publishes one immutable navigation count resource only after facet, RSS
+and preference responses agree on generation, canonical revision and local
+transition sequence. Native Library, authority epoch and actor identity fence
+publication; supported setup, reset, restore and handoff transitions retire old
+values before native work. Same-context refreshes retain committed counts, while
+a completed zero replaces them. Sidebar consumes that resource without issuing
+duplicate facet or RSS reads. Retries drain sibling reads and stop after three
+attempts. This is source-coherent composition, not a shared SQL transaction or
+new write authority. External generation ABA and installed visual stability
+remain unproven.

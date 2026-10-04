@@ -98,6 +98,9 @@ describe("SQLite editable follower mutations", () => {
     mocks.scopeActionKind = null;
     mocks.invoke.mockReset();
     mocks.invoke.mockImplementation(async (command: string, args?: unknown) => {
+      if (command === "normalized_desktop_installation_status") {
+        return { state: "editable_consumer", role: "follower", libraryId: "ab".repeat(32), authorityEpochId: "cd".repeat(32), actorId: "12".repeat(32) };
+      }
       if (command === "normalized_library_primary_mutation_context") {
         throw new Error("normalized SQLite authority is not selected");
       }
@@ -152,6 +155,9 @@ describe("SQLite editable follower mutations", () => {
           projectionRevision: 2,
           transitionSequence: 2,
         };
+        if (request.queryId === "rss_item_summary_v1") {
+          return { queryId: request.queryId, schemaVersion: request.schemaVersion, source, totalCount: 1, unreadCount: 0 };
+        }
         if (request.queryId === "library_facet_summary_v1") {
           return {
             queryId: request.queryId,
@@ -505,6 +511,9 @@ describe("SQLite Primary mutations", () => {
     mocks.enqueuedEnvelopes = [];
     mocks.invoke.mockReset();
     mocks.invoke.mockImplementation(async (command: string, args?: unknown) => {
+      if (command === "normalized_desktop_installation_status") {
+        return { state: "standalone_primary", role: "primary", libraryId: "ab".repeat(32), authorityEpochId: "cd".repeat(32), actorId: "12".repeat(32) };
+      }
       if (command === "normalized_library_primary_mutation_context") {
         return {
           libraryId: "ab".repeat(32),
@@ -641,6 +650,9 @@ describe("SQLite Primary mutations", () => {
           projectionRevision: 2,
           transitionSequence: 2,
         };
+        if (request.queryId === "rss_item_summary_v1") {
+          return { queryId: request.queryId, schemaVersion: request.schemaVersion, source, totalCount: 1, unreadCount: 0 };
+        }
         if (request.queryId === "library_facet_summary_v1") {
           return {
             queryId: request.queryId,

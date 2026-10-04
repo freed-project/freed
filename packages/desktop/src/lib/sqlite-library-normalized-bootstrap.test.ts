@@ -135,7 +135,8 @@ describe("Freed Desktop normalized bootstrap projection", () => {
     expect(mocks.invoke).toHaveBeenCalledTimes(2);
   });
 
-  it("loads only bounded facets and preferences without reading a shell", async () => {
+  it("loads coherent bounded counts and preferences after verified native selection without reading a shell", async () => {
+    mocks.invoke.mockResolvedValue({ state: "standalone_primary", role: "primary", libraryId: "a".repeat(64), authorityEpochId: "b".repeat(64), actorId: "c".repeat(64) });
     mocks.queryNormalizedLibrary.mockImplementation(async (request) => {
       if (request.queryId === "library_facet_summary_v1") {
         return {
@@ -180,6 +181,9 @@ describe("Freed Desktop normalized bootstrap projection", () => {
           },
         };
       }
+      if (request.queryId === "rss_item_summary_v1") {
+        return { queryId: request.queryId, schemaVersion: 1, source: { generationId: "1".repeat(64), projectionRevision: 7, transitionSequence: 11 }, totalCount: 19, unreadCount: 0 };
+      }
       if (request.queryId === "preferences_snapshot_v1") {
         return {
           queryId: request.queryId,
@@ -204,12 +208,13 @@ describe("Freed Desktop normalized bootstrap projection", () => {
       }),
     );
     expect(state).not.toHaveProperty("items");
-    expect(mocks.invoke).not.toHaveBeenCalled();
+    expect(mocks.invoke).toHaveBeenCalledTimes(2);
+    expect(mocks.invoke.mock.calls.every(([command]) => command === "normalized_desktop_installation_status")).toBe(true);
     expect(
       mocks.queryNormalizedLibrary.mock.calls.map(
         ([request]) => request.queryId,
       ),
-    ).toEqual(["library_facet_summary_v1", "preferences_snapshot_v1"]);
+    ).toEqual(["library_facet_summary_v1", "rss_item_summary_v1", "preferences_snapshot_v1"]);
   });
 
   it("reads exact items through normalized detail instead of historical rows", async () => {

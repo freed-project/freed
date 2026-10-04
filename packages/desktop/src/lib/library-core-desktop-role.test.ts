@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const native = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: native.invoke }));
 import {
-  subscribeDesktopLibraryInstallation, readDesktopLibraryInstallationError, readDesktopLibraryInstallation, readLibraryCoreDesktopRole, refreshLibraryCoreDesktopRole, selectDesktopLibrarySetup,
+  subscribeDesktopLibraryInstallation, readDesktopLibraryInstallationError, readDesktopLibraryInstallation, readLibraryCoreDesktopRole, refreshLibraryCoreDesktopRole, refreshLibraryCoreDesktopRoleAfterPending, selectDesktopLibrarySetup,
   requirePrimaryLibraryCoreDesktopRole, requireFollowerLibraryCoreDesktopRole,
 } from "./library-core-desktop-role";
 const primary = { state: "standalone_primary", role: "primary", libraryId: "a".repeat(64), authorityEpochId: "b".repeat(64), actorId: "c".repeat(64) };
@@ -74,4 +74,16 @@ describe("native Desktop installation role", () => {
     expect(requirePrimaryLibraryCoreDesktopRole).not.toThrow();
   });
 
+});
+
+it("post-query status drains a preexisting read and starts a fresh native read", async () => {
+  await refreshLibraryCoreDesktopRole().catch(() => {});
+  native.invoke.mockReset();
+  let resolve!: (value: unknown) => void;
+  native.invoke.mockImplementationOnce(() => new Promise(done => { resolve = done; })).mockResolvedValueOnce({ ...primary, actorId: "d".repeat(64) });
+  const earlier = refreshLibraryCoreDesktopRole();
+  const afterQuery = refreshLibraryCoreDesktopRoleAfterPending();
+  expect(native.invoke).toHaveBeenCalledTimes(1);
+  resolve(primary); await earlier;
+  expect((await afterQuery).actorId).toBe("d".repeat(64)); expect(native.invoke).toHaveBeenCalledTimes(2);
 });

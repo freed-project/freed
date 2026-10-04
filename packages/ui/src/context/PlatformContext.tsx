@@ -1,3 +1,5 @@
+import type { LibraryCountResource } from "./library-count-resource.js";
+export type { LibraryCountResource, LibraryCountResourceState, LibraryCountSnapshot, LibraryCountSelectionIdentity } from "./library-count-resource.js";
 /**
  * PlatformContext — dependency injection for platform-specific behavior
  *
@@ -737,6 +739,9 @@ export interface PlatformConfig {
   readFeedSignalCounts?: ReadFeedSignalCounts;
 
   /** Exact corpus-wide counts and tags computed inside the local row store. */
+  /** Runtime-owned native-source-fenced navigation snapshot; UI does not requery it. */
+  libraryCountResource?: LibraryCountResource;
+
   readLibraryFacetSummary?: () => Promise<LibraryFacetSummary>;
 
   /** One exact source-fenced item row from platform-local Library storage. */
