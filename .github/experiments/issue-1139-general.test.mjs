@@ -1,0 +1,95 @@
+// Experiment-local contract checks; not added to required validation lanes.
+import assert from "node:assert/strict";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import test from "node:test";
+import yaml from "js-yaml";
+import { makePlans, measure, MODES, SOURCE } from "./issue-1139-general.mjs";
+import { buildToolingSmokeShardPlan } from "../../scripts/run-tooling-smoke-shard.mjs";
+import { parseJUnitTestCases, unitDurationsForSuite } from "../../scripts/measure-tooling-smoke.mjs";
+
+const runnerPath = path.resolve("scripts/run-tooling-smoke-shard.mjs");
+function fixture(t, failing = false) {
+  const root = mkdtempSync(path.join(os.tmpdir(), "issue-1139-experiment-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const repoRoot = path.join(root, "candidate");
+  mkdirSync(path.join(repoRoot, "scripts/lib"), { recursive: true });
+  const files = ["a", "b", "c"].map((name, index) => {
+    const file = `scripts/${name}.test.mjs`;
+    writeFileSync(path.join(repoRoot, file), `import test from 'node:test'; test('${name}', () => {${failing ? "throw new Error('fixture failure');" : ""}});\n//${"padding".repeat(index * 20)}\n`);
+    return file;
+  });
+  const catalog = { suites: { general: { units: Object.fromEntries(files.map((file, index) => [file, { seconds: 3 - index }])) } } };
+  const plans = makePlans(buildToolingSmokeShardPlan, repoRoot, catalog, files);
+  return { root, repoRoot, plans, runnerPath, parseJUnitTestCases, unitDurationsForSuite, metadata: { source: "synthetic fixture" } };
+}
+
+test("manual workflow freezes source and caps work at two jobs and eight shard runs", () => {
+  const workflow = yaml.load(readFileSync(".github/workflows/issue-1139-general-experiment.yml", "utf8"));
+  assert.deepEqual(Object.keys(workflow.on), ["workflow_dispatch"]);
+  assert.deepEqual(workflow.permissions, { contents: "read" });
+  assert.deepEqual(Object.keys(workflow.jobs), ["measure"]);
+  const job = workflow.jobs.measure;
+  assert.equal(job["runs-on"], "ubuntu-24.04");
+  assert.equal(job["timeout-minutes"], 50);
+  assert.deepEqual(job.strategy.matrix, { shard: [1, 2] });
+  assert.equal(job.strategy["max-parallel"], 2);
+  assert.equal(job.strategy["fail-fast"], false);
+  assert.deepEqual(MODES, ["bytes", "durations", "durations", "bytes"]);
+  for (const step of job.steps.filter((step) => step.uses)) assert.match(step.uses, /@[a-f0-9]{40}$/u);
+  const checkout = job.steps.find((step) => step.with?.path === "candidate");
+  assert.equal(checkout.with.ref, SOURCE);
+  assert.equal(checkout.with["persist-credentials"], false);
+  assert.equal(job.steps.filter((step) => step.run?.includes("issue-1139-general.mjs")).length, 1);
+  assert.ok(!JSON.stringify(workflow).includes("secrets."));
+});
+
+test("plans reject duplicate or missing files before execution", () => {
+  const duplicate = () => ({ testFiles: ["a"] });
+  assert.throws(() => makePlans(duplicate, "/unused", {}, ["a", "b"]), /overlapping/);
+  const missing = ({ shardIndex }) => ({ testFiles: [shardIndex === 1 ? "a" : "c"] });
+  assert.throws(() => makePlans(missing, "/unused", {}, ["a", "b", "c"]), /incomplete/);
+});
+
+test("real synthetic shards retain eight passing ABBA observations and complete coverage", (t) => {
+  const options = fixture(t);
+  const reports = [1, 2].map((shardIndex) => measure({ ...options, shardIndex, outputDir: path.join(options.root, `receipts-${shardIndex}`) }));
+  assert.equal(reports.flatMap((report) => report.runs).length, 8);
+  for (let round = 0; round < 4; round += 1) {
+    assert.equal(reports.reduce((count, report) => count + report.runs[round].observedFiles, 0), 3);
+    for (const report of reports) {
+      const run = report.runs[round];
+      assert.equal(run.valid, true);
+      assert.equal(run.mode, MODES[round]);
+      assert.ok(run.seconds > 0);
+    }
+  }
+});
+
+test("failed shard preserves invalid receipt and stops before later rounds", (t) => {
+  const options = fixture(t, true);
+  const outputDir = path.join(options.root, "failed-receipts");
+  assert.throws(() => measure({ ...options, shardIndex: 1, outputDir }), /failed or timed out/);
+  const report = JSON.parse(readFileSync(path.join(outputDir, "report.json")));
+  assert.equal(report.runs.length, 1);
+  assert.equal(report.runs[0].valid, false);
+  assert.notEqual(report.runs[0].status, 0);
+});
+
+test("a changed frozen input invalidates the observation and stops subsequent rounds", (t) => {
+  const options = fixture(t);
+  const outputDir = path.join(options.root, "changed-input-receipts");
+  let checks = 0;
+  assert.throws(() => measure({
+    ...options, shardIndex: 1, outputDir,
+    assertFrozen() {
+      checks += 1;
+      assert.equal(checks, 1, "catalog changed");
+    },
+  }), /catalog changed/);
+  const report = JSON.parse(readFileSync(path.join(outputDir, "report.json")));
+  assert.equal(report.runs.length, 1);
+  assert.equal(report.runs[0].status, 0);
+  assert.equal(report.runs[0].valid, false);
+});

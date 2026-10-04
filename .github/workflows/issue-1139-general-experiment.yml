@@ -1,0 +1,83 @@
+name: Issue 1139 general balance experiment
+
+# Temporary, manual-only proof. Remove after issue 1139 is resolved.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue-1139-general-experiment
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  measure:
+    name: General shard ${{ matrix.shard }} of 2
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        shard: [1, 2]
+    steps:
+      - name: Checkout reviewed experiment
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          ref: ${{ github.sha }}
+          path: experiment
+          persist-credentials: false
+
+      - name: Checkout frozen candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          ref: 1d7045a16e01e5551dc452b62734bec0130473fb
+          path: candidate
+          persist-credentials: false
+
+      - name: Setup pinned Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.14.1
+
+      - name: Prepare dependencies and warm Go compilation
+        working-directory: candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 0022
+          npm install --global npm@11.11.0 --ignore-scripts --no-audit --no-fund
+          test "$(npm --version)" = 11.11.0
+          test -x /usr/bin/file
+          toolchain="$RUNNER_TEMP/issue-1139-go"
+          mkdir -p "$toolchain"
+          curl --fail --location --retry 2 https://go.dev/dl/go1.27.1.linux-amd64.tar.gz -o "$toolchain/go.tar.gz"
+          echo "63d339f0da5ab53635a56f2490a7984dfe12dfcff22ad749f63edaf590168445  $toolchain/go.tar.gz" | sha256sum --check
+          tar -xzf "$toolchain/go.tar.gz" -C "$toolchain"
+          echo "$toolchain/go/bin" >> "$GITHUB_PATH"
+          export PATH="$toolchain/go/bin:$PATH"
+          printf 'export PATH=%q:%q:$PATH\n' "$(dirname "$(command -v node)")" "$toolchain/go/bin" > "$toolchain/env.sh"
+          echo "BASH_ENV=$toolchain/env.sh" >> "$GITHUB_ENV"
+          npm ci
+          # Compile only, outside timing; no actor or provisioner is executed.
+          GO111MODULE=off CGO_ENABLED=0 go build -trimpath -o "$toolchain/warm-host" scripts/automation-actor-host-linux.go
+
+      - name: Measure four ABBA rounds
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 0022
+          node experiment/.github/experiments/issue-1139-general.mjs candidate receipts ${{ matrix.shard }}
+
+      - name: Retain receipts even on failure
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: issue-1139-general-shard-${{ matrix.shard }}
+          path: receipts
+          retention-days: 14
+          if-no-files-found: error
