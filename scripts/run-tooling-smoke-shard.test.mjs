@@ -470,7 +470,7 @@ test("Darwin accounts for unseen zombies and refuses cleanup with missing ancest
   skip: process.platform !== "darwin" && "requires real Darwin process generations",
 }, () => {
   const result = spawnSync("python3", ["-B", "-c", `
-import importlib.util, json, os, subprocess, sys, time
+import ctypes, errno, importlib.util, json, os, subprocess, sys, time
 sys.path.insert(0, ${JSON.stringify(path.dirname(supervisorPath))})
 spec = importlib.util.spec_from_file_location('supervisor', ${JSON.stringify(supervisorPath)})
 module = importlib.util.module_from_spec(spec)
@@ -480,19 +480,29 @@ custody = module.DARWIN_CUSTODY
 # The parent deliberately does not waitpid. Its child exits before we perform
 # the first custody inventory, so no previously captured identity can save it.
 program = """
-import json, os, sys, time
+import ctypes, errno, json, os, sys, time
 sys.path.insert(0, ${JSON.stringify(path.dirname(supervisorPath))})
-from nightly_fixture_darwin import DarwinCustody
+from nightly_fixture_darwin import BsdWithUniqueInfo, DarwinCustody
 observer = DarwinCustody(observe_only=True)
 pid = os.fork()
 if pid == 0:
     os._exit(0)
-while True:
+deadline = time.monotonic() + 3
+while time.monotonic() < deadline:
     snapshot = observer.inspect(pid)
+    assert snapshot is not None, 'unreaped child must remain inspectable'
     if snapshot['zombie']:
-        print(json.dumps(snapshot), flush=True)
-        break
+        raw = BsdWithUniqueInfo()
+        ctypes.set_errno(0)
+        size = observer.lib.proc_pidinfo(pid, 18, 0, ctypes.byref(raw), ctypes.sizeof(raw))
+        if size == 0 and ctypes.get_errno() == errno.ESRCH:
+            print(json.dumps(snapshot), flush=True)
+            break
+        assert size == ctypes.sizeof(raw), 'unexpected live-only query failure'
+    # Wait for the transition into zombproc, never accept absence as success.
     time.sleep(0.01)
+else:
+    raise AssertionError('child did not reach held zombie state within 3 seconds')
 while True:
     time.sleep(30)
 """
@@ -502,6 +512,25 @@ try:
     zombie = json.loads(child.stdout.readline())
     assert zombie['zombie']
     assert zombie['uniqueid'] not in custody.known
+    from nightly_fixture_darwin import BsdWithUniqueInfo
+    raw = BsdWithUniqueInfo()
+    ctypes.set_errno(0)
+    assert custody.lib.proc_pidinfo(zombie['pid'], 18, 0, ctypes.byref(raw), ctypes.sizeof(raw)) == 0
+    assert ctypes.get_errno() == errno.ESRCH, 'arg=0 must reproduce the false absence'
+    assert custody.same(zombie, custody.inspect(zombie['pid'])), 'arg=1 must include the zombie'
+    # Ask the real kernel an invalid query. A query failure must raise, never
+    # turn into an absence receipt, even for a process we know still exists.
+    query = custody.lib.proc_pidinfo
+    try:
+        custody.lib.proc_pidinfo = lambda pid, flavor, arg, buffer, size: query(pid, 0x7fffffff, arg, buffer, size)
+        try:
+            custody.inspect(zombie['pid'])
+            raise AssertionError('uninspectable process was reported absent')
+        except RuntimeError as error:
+            assert 'errno=' + str(errno.EINVAL) in str(error), str(error)
+    finally:
+        custody.lib.proc_pidinfo = query
+    assert custody.same(zombie, custody.inspect(zombie['pid']))
     native_responsibility = custody.responsible(zombie['pid'])
     # Remove only unavailable evidence, never synthesize ownership. The kernel
     # parent unique ID and the live parent's responsibility remain authoritative.
@@ -537,7 +566,8 @@ try:
     assert custody.same(zombie, custody.inspect(zombie['pid']))
     print(json.dumps(dict(contract='unseen zombie with unavailable responsibility',
                           nativeResponsibility=native_responsibility,
-                          previousPredicateAdmits=previous_predicate, zombie=zombie, verifiedParent=parent,
+                          previousPredicateAdmits=previous_predicate, liveOnlyQueryFalselyAbsent=True,
+                          zombieQueryPresent=True, invalidQueryRefused=True, zombie=zombie, verifiedParent=parent,
                           incompleteAncestryRefused=True, unverifiedParentUntouched=True)))
 finally:
     custody.responsible, custody.snapshots = original_responsible, original_snapshots

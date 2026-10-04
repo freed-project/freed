@@ -122,7 +122,9 @@ class DarwinCustody:
     def inspect(self, pid):
         snapshot = BsdWithUniqueInfo()
         ctypes.set_errno(0)
-        size = self.lib.proc_pidinfo(pid, 18, 0, ctypes.byref(snapshot), ctypes.sizeof(snapshot))
+        # XNU only searches zombproc for this flavor when arg is nonzero.
+        # With arg=0, ESRCH means absent OR a still-present zombie.
+        size = self.lib.proc_pidinfo(pid, 18, 1, ctypes.byref(snapshot), ctypes.sizeof(snapshot))
         if size != ctypes.sizeof(snapshot):
             if ctypes.get_errno() == errno.ESRCH:
                 return None
