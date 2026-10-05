@@ -154,6 +154,8 @@ describe("SQLite-streamed Library search", () => {
       filteredItems: [],
       isSearching: false,
       resultCount: 0,
+      resultsCurrent: false,
+      status: "idle",
     });
   });
 

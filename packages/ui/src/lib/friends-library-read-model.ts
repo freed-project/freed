@@ -101,3 +101,13 @@ export function buildFriendsActivityReadModel(
     socialActivityBySourceKey,
   };
 }
+
+/** Scope ownership includes bindings, not just a Person or Account ID. */
+export function friendTimelineBindingKey(
+  friend: { id: string; sources: readonly LibraryFriendsSource[] } | null,
+  account: Account | null,
+): string {
+  return JSON.stringify(friend
+    ? ["friend", friend.id, friend.sources.map(source => [source.platform, source.authorId]).sort((a, b) => compareUtf8Binary(a.join("\u0000"), b.join("\u0000")))]
+    : account ? ["account", account.id, account.personId ?? null, account.provider, account.externalId] : null);
+}

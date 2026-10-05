@@ -389,7 +389,7 @@ export function Header({
   const toolbarGapHalfPx = scaleInterfaceChromePx(PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2, interfaceZoom);
   const toolbarSlotPaddingRightPx = scaleInterfaceChromePx(TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX, interfaceZoom);
 
-  const { filteredItems, isSearching, resultCount, searchUnavailable } = useSearchResults(
+  const { filteredItems, isSearching, resultCount, searchUnavailable, resultsCurrent } = useSearchResults(
     searchQuery,
     activeFilter,
     searchCorpusVersion,
@@ -406,6 +406,7 @@ export function Header({
     activeFilter,
     activeView,
     commandScopeItems: filteredItems,
+    commandScopeCurrent: activeSearchQuery.length === 0 || resultsCurrent === true,
     enabled:
       isLibraryInitialized &&
       activeView === "feed" &&

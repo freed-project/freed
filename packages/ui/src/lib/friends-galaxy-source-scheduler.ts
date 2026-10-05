@@ -87,3 +87,11 @@ export class FriendsGalaxySourceScheduler<T> {
     this.timer = null;
   }
 }
+
+/** Background invalidation is data work, not a presentation-control change. */
+export function friendsGalaxySourceControls(input: {
+  mode: string; backgroundStarCount: number; proceduralBackgroundStarCount: number;
+  sourceRetry: number; sourceVersion: number;
+}): { key: string; backgroundSeed: string } {
+  return { key: JSON.stringify([input.mode, input.backgroundStarCount, input.proceduralBackgroundStarCount, input.sourceRetry]), backgroundSeed: `freed-friends-${input.mode}` };
+}

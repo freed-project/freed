@@ -23,6 +23,7 @@ interface CachedSavedAnalytics {
 }
 
 interface VersionedSavedAnalytics {
+  reader: SavedAnalyticsReader;
   sourceVersion: number;
   requestKey: string;
   analytics: LibrarySavedAnalytics;
@@ -31,6 +32,7 @@ interface VersionedSavedAnalytics {
 export interface LibrarySavedAnalyticsState {
   readonly analytics: LibrarySavedAnalytics | null;
   readonly loading: boolean;
+  readonly status: "loading" | "refreshing" | "ready" | "failed" | "unavailable";
   readonly request: LibrarySavedAnalyticsRequest;
 }
 
@@ -91,10 +93,10 @@ export function useLibrarySavedAnalytics(
         requestKey,
       ).result;
       return result
-        ? { sourceVersion, requestKey, analytics: result }
+        ? { reader: readLibrarySavedAnalytics, sourceVersion, requestKey, analytics: result }
         : null;
     });
-  const [failedKey, setFailedKey] = useState<string | null>(null);
+  const [failedKey, setFailedKey] = useState<{ reader: SavedAnalyticsReader; sourceVersion: number; requestKey: string } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -112,20 +114,23 @@ export function useLibrarySavedAnalytics(
       request,
       requestKey,
     );
-    setVersionedAnalytics(
+    setFailedKey(null);
+    setVersionedAnalytics(previous =>
       prepared.result
         ? {
+            reader: readLibrarySavedAnalytics,
             sourceVersion,
             requestKey,
             analytics: prepared.result,
           }
-        : null,
+        : previous?.reader === readLibrarySavedAnalytics && previous.requestKey === requestKey && previous.sourceVersion <= sourceVersion ? previous : null,
     );
     prepared.promise
       .then((analytics) => {
         if (!cancelled) {
           setFailedKey(null);
           setVersionedAnalytics({
+            reader: readLibrarySavedAnalytics,
             sourceVersion,
             requestKey,
             analytics,
@@ -133,7 +138,7 @@ export function useLibrarySavedAnalytics(
         }
       })
       .catch(() => {
-        if (!cancelled) setFailedKey(requestKey);
+        if (!cancelled) { setVersionedAnalytics(null); setFailedKey({ reader: readLibrarySavedAnalytics, sourceVersion, requestKey }); }
       });
 
     return () => {
@@ -141,13 +146,9 @@ export function useLibrarySavedAnalytics(
     };
   }, [readLibrarySavedAnalytics, request, requestKey, sourceVersion]);
 
-  if (!readLibrarySavedAnalytics || failedKey === requestKey) {
-    return { analytics: null, loading: false, request };
-  }
-  const current =
-    versionedAnalytics?.sourceVersion === sourceVersion &&
-    versionedAnalytics.requestKey === requestKey
-      ? versionedAnalytics.analytics
-      : null;
-  return { analytics: current, loading: current === null, request };
+  const failed = failedKey !== null && failedKey.reader === readLibrarySavedAnalytics && failedKey.sourceVersion === sourceVersion && failedKey.requestKey === requestKey;
+  const retained = versionedAnalytics !== null && versionedAnalytics.reader === readLibrarySavedAnalytics && versionedAnalytics.requestKey === requestKey && versionedAnalytics.sourceVersion <= sourceVersion
+    ? versionedAnalytics : null;
+  const status = !readLibrarySavedAnalytics ? "unavailable" : failed ? "failed" : retained?.sourceVersion === sourceVersion ? "ready" : retained ? "refreshing" : "loading";
+  return { analytics: failed ? null : retained?.analytics ?? null, loading: status === "loading", status, request };
 }

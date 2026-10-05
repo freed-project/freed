@@ -35,6 +35,11 @@ type DisposableMapInstance = Pick<MapInstance, "getCanvas" | "remove" | "stop">;
 type MapMarkerMovingPriority = "primary" | "deferred";
 interface MapMarkerRecord {
   marker: MarkerInstance;
+  element: HTMLElement;
+  data: LocationMarkerSummary;
+  interactive: boolean;
+  palette: ReturnType<typeof createFriendAvatarPalette>;
+  resolver: ((sourceUrl: string) => string) | undefined;
 }
 
 type MapLibreModule = typeof import("maplibre-gl");
@@ -919,6 +924,7 @@ function areLocationMarkersRenderEquivalent(
   const nextItem = next.item;
   return (
     current.key === next.key &&
+    current.accountId === next.accountId &&
     current.authorKey === next.authorKey &&
     current.lat === next.lat &&
     current.lng === next.lng &&
@@ -1566,6 +1572,8 @@ export function MapSurface({
     };
   }, [applyMapThemeStyle, clearNativeMarkerRestoreTimeout, closeActivePopup, geographicMapMode, interactionMode, interactive, setShellMoving]);
 
+  useEffect(() => { closeActivePopup(); setSelectedFallbackMarkerKey(null); }, [cameraContentKey, closeActivePopup]);
+
   useEffect(() => {
     applyMapThemeStyle(resolvedThemeId);
   }, [applyMapThemeStyle, resolvedThemeId]);
@@ -1578,10 +1586,11 @@ export function MapSurface({
       || mapGeneration !== mapLifecycleRef.current
     ) return;
 
-    closeActivePopup();
+    if (!interactive) closeActivePopup();
     clearNativeMarkerRestoreTimeout();
-    for (const { marker } of markersRef.current) marker.remove();
-    markersRef.current = [];
+    const previousMarkers = new Map(markersRef.current.map(record => [record.data.key, record]));
+    const nextMarkers: MapMarkerRecord[] = [];
+    markersRef.current = nextMarkers;
     setShellMoving(false);
 
     const map = mapRef.current;
@@ -1599,6 +1608,46 @@ export function MapSurface({
         useDenseMarkers,
         focusedMarkerKey,
       );
+      let existing = previousMarkers.get(markerData.key);
+      previousMarkers.delete(markerData.key);
+      // A pin key can outlive its latest post. Never associate an open card
+      // with a replacement item or a different account/person owner.
+      if (existing && (existing.interactive !== interactive || existing.data.item.globalId !== markerData.item.globalId
+        || existing.data.authorKey !== markerData.authorKey || existing.data.accountId !== markerData.accountId
+        || existing.data.friend?.id !== markerData.friend?.id)) {
+        if (activePopupMarkerElementRef.current === existing.element) closeActivePopup();
+        existing.marker.remove(); existing = undefined;
+      }
+      if (existing) {
+        const changed = !areLocationMarkersRenderEquivalent(existing.data, markerData)
+          || existing.palette !== avatarPalette || existing.resolver !== resolveAvatarUrl;
+        existing.data = markerData; existing.palette = avatarPalette; existing.resolver = resolveAvatarUrl;
+        existing.marker.setLngLat([markerData.lng, markerData.lat]);
+        existing.element.dataset.mapMovingPriority = priority;
+        if (changed) {
+          const fresh = createMarkerElement(markerData, avatarPalette, { showAvatar: true, resolveAvatarUrl, simplified: false });
+          existing.element.className = fresh.className;
+          existing.element.style.cssText = fresh.style.cssText;
+          for (const attribute of Array.from(fresh.attributes)) existing.element.setAttribute(attribute.name, attribute.value);
+          existing.element.replaceChildren(...Array.from(fresh.childNodes));
+          const popup = activePopupMarkerElementRef.current === existing.element ? activePopupRef.current : null;
+          if (popup) {
+            const record = existing;
+            const handlers = actionHandlersRef.current;
+            const content = buildPopupContent(markerData,
+              handlers.onOpenFriend ? () => actionHandlersRef.current.onOpenFriend?.(record.data) : undefined,
+              handlers.onPromoteAccount ? () => actionHandlersRef.current.onPromoteAccount?.(record.data) : undefined,
+              handlers.onLinkAccount ? () => actionHandlersRef.current.onLinkAccount?.(record.data) : undefined,
+              handlers.onOpenPost ? () => actionHandlersRef.current.onOpenPost?.(record.data) : undefined,
+              existing.element.querySelector("img"));
+            content.classList.add("maplibregl-popup-content", "theme-tooltip-panel");
+            popup.querySelector(".maplibregl-popup-content")?.replaceWith(content);
+            popup.setAttribute("aria-label", popupTitle(markerData));
+            setProviderChip({ target: content.querySelector<HTMLElement>("[data-map-provider-chip]")!, provider: markerData.item.platform });
+          }
+        }
+        nextMarkers.push(existing); continue;
+      }
       const element = createMarkerElement(markerData, avatarPalette, {
         // Marker admission is already bounded. Density must not erase identity
         // images or change their theme styling when switching audience filters.
@@ -1612,8 +1661,10 @@ export function MapSurface({
         markerData.lat,
       ]);
 
+      const record: MapMarkerRecord = { marker, element, data: markerData, interactive, palette: avatarPalette, resolver: resolveAvatarUrl };
       if (interactive) {
         element.addEventListener("click", (event) => {
+          const markerData = record.data;
           event.preventDefault();
           event.stopPropagation();
           if (activePopupKeyRef.current === markerData.key) {
@@ -1629,16 +1680,16 @@ export function MapSurface({
           const popupContent = buildPopupContent(
             markerData,
             currentHandlers.onOpenFriend
-              ? (marker) => actionHandlersRef.current.onOpenFriend?.(marker)
+              ? () => actionHandlersRef.current.onOpenFriend?.(record.data)
               : undefined,
             currentHandlers.onPromoteAccount
-              ? (marker) => actionHandlersRef.current.onPromoteAccount?.(marker)
+              ? () => actionHandlersRef.current.onPromoteAccount?.(record.data)
               : undefined,
             currentHandlers.onLinkAccount
-              ? (marker) => actionHandlersRef.current.onLinkAccount?.(marker)
+              ? () => actionHandlersRef.current.onLinkAccount?.(record.data)
               : undefined,
             currentHandlers.onOpenPost
-              ? (marker) => actionHandlersRef.current.onOpenPost?.(marker)
+              ? () => actionHandlersRef.current.onOpenPost?.(record.data)
               : undefined,
             element.querySelector("img"),
           );
@@ -1676,7 +1727,7 @@ export function MapSurface({
 
       try {
         marker.addTo(map);
-        markersRef.current.push({ marker });
+        nextMarkers.push(record);
       } catch (error) {
         marker.remove();
         if (mapRef.current === map && mapLifecycleRef.current === lifecycleId) {
@@ -1687,10 +1738,11 @@ export function MapSurface({
       }
     }
 
-    return () => {
-      map.off("click", handleMapClick);
-      closeActivePopup();
-    };
+    for (const record of previousMarkers.values()) {
+      if (activePopupMarkerElementRef.current === record.element) closeActivePopup();
+      record.marker.remove();
+    }
+    return () => { map.off("click", handleMapClick); };
   }, [
     avatarPalette,
     clearNativeMarkerRestoreTimeout,

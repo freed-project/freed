@@ -518,10 +518,10 @@ export interface PlatformConfig {
   geographicMapMode?: "online" | "local-showcase";
 
   /**
-   * Controls whether feed cards eagerly render remote media previews.
-   * Desktop can force reader-only mode to reduce WebKit renderer pressure.
+   * Controls feed media previews. Lazy thumbnails allow images without video
+   * metadata loads; every mode keeps the renderer memory-pressure safeguards.
    */
-  feedMediaPreviews?: "inline" | "reader-only";
+  feedMediaPreviews?: "inline" | "lazy-thumbnails" | "reader-only";
   /** Feature previews can display the original media for sample records. */
   sampleMediaPreviews?: "inline";
 
