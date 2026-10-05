@@ -133,13 +133,13 @@ function shouldShedFeedImages(memory: RuntimeMemorySnapshot | null): boolean {
   return webkitBytes >= webkitShedBytes;
 }
 
-function useFeedImageBudget(feedMediaPreviews: "inline" | "reader-only"): {
+function useFeedImageBudget(feedMediaPreviews: "inline" | "lazy-thumbnails" | "reader-only"): {
   showInlineMedia: boolean;
   showAvatarImages: boolean;
 } {
   const shedImages = useDebugStore((state) => shouldShedFeedImages(state.runtimeMemory));
   return {
-    showInlineMedia: feedMediaPreviews === "inline" && !shedImages,
+    showInlineMedia: feedMediaPreviews !== "reader-only" && !shedImages,
     showAvatarImages: !shedImages,
   };
 }
@@ -300,7 +300,9 @@ export const FeedItem = memo(function FeedItem({
       tagLimitWithoutMedia: 6,
     },
   }[density];
-  const showMedia = !summary && showInlineMedia && firstMediaUrl && !mediaFailed;
+  const thumbnailAllowed = feedMediaPreviewMode !== "lazy-thumbnails" ||
+    item.content.mediaTypes[0] === "image";
+  const showMedia = !summary && showInlineMedia && thumbnailAllowed && firstMediaUrl && !mediaFailed;
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
   const swipeLocked = useRef<"horizontal" | "vertical" | null>(null);

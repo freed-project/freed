@@ -145,7 +145,10 @@ export function useLibraryFacetSummaryState(
         if (!cancelled) setVersionedSummary({ sourceVersion, reader: readLibraryFacetSummary, summary: result });
       })
       .catch(() => {
-        if (!cancelled) setFailure({ sourceVersion, reader: readLibraryFacetSummary });
+        if (!cancelled) {
+          setVersionedSummary(null);
+          setFailure({ sourceVersion, reader: readLibraryFacetSummary });
+        }
       });
 
     return () => {

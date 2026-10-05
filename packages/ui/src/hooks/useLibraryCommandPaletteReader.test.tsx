@@ -4,7 +4,7 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import type { BaseAppState } from "@freed/shared";
+import type { BaseAppState, FeedItem } from "@freed/shared";
 import {
   PlatformProvider,
   type PlatformConfig,
@@ -32,6 +32,45 @@ describe("useLibraryCommandPaletteReader", () => {
     (
       globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
     ).IS_REACT_ACT_ENVIRONMENT = false;
+  });
+
+  it.each([5, 6])("retains search counts but rejects current and captured bulk commands while readiness is false at version %s", async (pendingVersion) => {
+    const items: FeedItem[] = [false, true].map((read, index) => ({
+      globalId: `search-${index}`, platform: "rss", contentType: "article", publishedAt: 1, capturedAt: 1,
+      author: { id: "synthetic", handle: "synthetic", displayName: "Synthetic" },
+      content: { text: "needle", mediaUrls: [], mediaTypes: [] }, topics: [],
+      userState: { saved: false, archived: false, hidden: false, tags: [], ...(read ? { readAt: 1 } : {}) },
+    }));
+    const state = { activeView: "feed", activeFilter: {}, searchQuery: "needle", libraryItemVersion: 5, searchCorpusVersion: 5 };
+    const execute = vi.fn(async () => {});
+    const config = { store: { getState: () => state }, executeLibraryScopeAction: execute } as unknown as PlatformConfig;
+    let current = true;
+    let visibleItems = items;
+    let latest!: ReturnType<typeof useLibraryCommandPaletteReader>;
+    function Harness() {
+      latest = useLibraryCommandPaletteReader({ activeFilter: {}, activeView: "feed", commandScopeItems: visibleItems,
+        commandScopeCurrent: current, enabled: true, identityMode: "all_content", inputValue: state.searchQuery,
+        searchQuery: state.searchQuery, selectedItemId: null, sourceVersion: state.libraryItemVersion });
+      return null;
+    }
+    const render = async () => { await act(async () => root.render(<PlatformProvider value={config}><Harness /></PlatformProvider>)); };
+    await render();
+    expect(latest.scopeActionsReady).toBe(true);
+    expect([latest.unreadScopeCount, latest.archivableScopeCount]).toEqual([1, 1]);
+    const capturedRead = latest.markScopeRead, capturedArchive = latest.archiveScopeRead;
+    await capturedRead(); expect(execute).toHaveBeenCalledOnce(); execute.mockClear();
+    current = false; state.libraryItemVersion = pendingVersion; await render();
+    expect(latest.scopeActionsReady).toBe(false);
+    expect([latest.unreadScopeCount, latest.archivableScopeCount]).toEqual([1, 1]);
+    await capturedRead(); await capturedArchive(); await latest.markScopeRead(); await latest.archiveScopeRead();
+    expect(execute).not.toHaveBeenCalled();
+    current = true; await render(); await latest.markScopeRead(); expect(execute).toHaveBeenCalledOnce(); execute.mockClear();
+    const obsolete = latest.markScopeRead;
+    state.searchQuery = "replacement"; visibleItems = []; await render(); await obsolete();
+    expect(execute).not.toHaveBeenCalled();
+    expect([latest.unreadScopeCount, latest.archivableScopeCount]).toEqual([0, 0]);
+    await latest.markScopeRead(); await latest.archiveScopeRead(); expect(execute).not.toHaveBeenCalled();
+    current = false; await render(); expect(latest.scopeActionsReady).toBe(false);
   });
 
   it("opens the ordinary command palette from compact aggregates without scanning the corpus", async () => {

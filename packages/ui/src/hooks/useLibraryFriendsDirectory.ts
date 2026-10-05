@@ -5,6 +5,7 @@ import {
   type LibraryCoreFriendsDirectoryFilterV1,
   type LibraryCoreFriendsDirectoryPageRequestV1,
   type LibraryCoreFriendsDirectoryRowV1,
+  type LibraryCoreFriendsDirectoryPageResponseV1,
   type LibraryCoreFriendsDirectorySortV1,
 } from "@freed/shared/library-core";
 
@@ -14,6 +15,9 @@ const SEARCH_DEBOUNCE_MS = 150;
 
 interface DirectoryState {
   readonly attemptKey: string;
+  readonly reader: ReturnType<typeof usePlatform>["queryLibraryCore"];
+  readonly contextKey: string;
+  readonly version: number;
   readonly baseRequest: LibraryCoreFriendsDirectoryPageRequestV1;
   readonly loadingPage: boolean;
   readonly nextCursor: string | null;
@@ -73,7 +77,13 @@ export function useLibraryFriendsDirectory({
     () => JSON.stringify([sourceVersion, sortedFilters, search, sort, limit]),
     [limit, search, sort, sortedFilters, sourceVersion],
   );
+  const contextKey = JSON.stringify([sortedFilters, search, sort, limit]);
   const [state, setState] = useState<DirectoryState | null>(null);
+
+  const retained = state !== null && state.reader === queryLibraryCore && state.contextKey === contextKey && state.version <= sourceVersion ? state : null;
+  const latest = useRef({ attemptKey, reader: queryLibraryCore });
+  latest.current = { attemptKey, reader: queryLibraryCore };
+  const snapshot = useRef(retained); snapshot.current = retained;
 
   useEffect(() => {
     let cancelled = false;
@@ -94,38 +104,27 @@ export function useLibraryFriendsDirectory({
         search,
         sort,
       };
-      setState({
-        attemptKey,
-        baseRequest: request,
-        loadingPage: false,
-        nextCursor: null,
-        pageCursor: null,
-        previousPageStarts: [],
-        rows: [],
-        source: null,
-        status: "loading",
-        totalCount: 0,
-      });
-      void queryLibraryCore(request)
-        .then((response) => {
+      const prior = snapshot.current;
+      const targetPage = prior?.previousPageStarts.length ?? 0;
+      const provenance = { attemptKey, reader: queryLibraryCore, contextKey, version: sourceVersion };
+      if (!prior) setState({ ...provenance, baseRequest: request, loadingPage: false, nextCursor: null, pageCursor: null, previousPageStarts: [], rows: [], source: null, status: "loading", totalCount: 0 });
+      void (async () => {
+        let cursor: string | null = null;
+        const starts: (string | null)[] = [];
+        for (let index = 0; ; index++) {
+          const response: LibraryCoreFriendsDirectoryPageResponseV1 = await queryLibraryCore({ ...request, cursor });
           if (cancelled) return;
-          setState({
-            attemptKey,
-            baseRequest: request,
-            loadingPage: false,
-            nextCursor: response.nextCursor,
-            pageCursor: null,
-            previousPageStarts: [],
-            rows: response.rows,
-            source: response.source,
-            status: "ready",
-            totalCount: response.totalCount,
-          });
-        })
+          if (index >= targetPage || response.nextCursor === null) {
+            setState({ ...provenance, baseRequest: request, loadingPage: false, nextCursor: response.nextCursor, pageCursor: cursor, previousPageStarts: starts, rows: response.rows, source: response.source, status: "ready", totalCount: response.totalCount });
+            return;
+          }
+          starts.push(cursor); cursor = response.nextCursor;
+        }
+      })()
         .catch(() => {
           if (cancelled) return;
           setState({
-            attemptKey,
+            ...provenance,
             baseRequest: request,
             loadingPage: false,
             nextCursor: null,
@@ -142,13 +141,16 @@ export function useLibraryFriendsDirectory({
       cancelled = true;
       window.clearTimeout(timeout);
     };
-  }, [attemptKey, limit, queryLibraryCore, search, sort, sortedFilters]);
+  }, [attemptKey, limit, queryLibraryCore, search, sort, sortedFilters, contextKey, sourceVersion]);
 
   const readPage = useCallback(
     (cursor: string | null, previousPageStarts: readonly (string | null)[]) => {
       if (
         !queryLibraryCore ||
         !state ||
+        latest.current.reader !== queryLibraryCore ||
+        latest.current.attemptKey !== attemptKey ||
+        state.reader !== queryLibraryCore ||
         state.attemptKey !== attemptKey ||
         state.status !== "ready" ||
         state.loadingPage ||
@@ -164,6 +166,8 @@ export function useLibraryFriendsDirectory({
           setState((current) => {
             if (
               !current ||
+              latest.current.reader !== queryLibraryCore ||
+              latest.current.attemptKey !== attemptKey ||
               current.attemptKey !== attemptKey ||
               current.pageCursor !== pageCursor ||
               current.source !== source
@@ -193,19 +197,20 @@ export function useLibraryFriendsDirectory({
     [attemptKey, queryLibraryCore, state],
   );
 
-  const current = state?.attemptKey === attemptKey ? state : null;
+  const current = retained;
+  const ready = current?.attemptKey === attemptKey && current.status === "ready" && !current.loadingPage;
   const previousPageStarts = current?.previousPageStarts ?? [];
 
   return {
-    hasNext: current?.nextCursor !== null && current?.nextCursor !== undefined,
-    hasPrevious: previousPageStarts.length > 0,
+    hasNext: ready && current?.nextCursor !== null && current?.nextCursor !== undefined,
+    hasPrevious: ready && previousPageStarts.length > 0,
     loading: !current || current.status === "loading",
-    loadingPage: current?.loadingPage ?? false,
+    loadingPage: Boolean(current && (current.attemptKey !== attemptKey || current.loadingPage)),
     pageNumber: previousPageStarts.length + 1,
     rows: current?.rows ?? [],
     totalCount: current?.totalCount ?? 0,
     nextPage: () => {
-      if (current?.nextCursor) {
+      if (ready && current?.nextCursor) {
         readPage(current.nextCursor, [
           ...current.previousPageStarts,
           current.pageCursor,
@@ -213,7 +218,7 @@ export function useLibraryFriendsDirectory({
       }
     },
     previousPage: () => {
-      if (previousPageStarts.length > 0) {
+      if (ready && previousPageStarts.length > 0) {
         readPage(
           previousPageStarts.at(-1) ?? null,
           previousPageStarts.slice(0, -1),
