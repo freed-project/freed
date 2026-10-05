@@ -1309,12 +1309,10 @@ export function FriendsView({
       >
         {friendsDirectory.loading ? (
           <div
-            className="theme-panel-muted rounded-xl px-4 py-6 text-center"
+            className="py-6"
             data-testid="friends-activity-loading"
           >
-            <p className="text-sm font-medium text-[color:var(--theme-text-primary)]">
-              Loading friend activity...
-            </p>
+            <LoadingState />
           </div>
         ) : !friendsRows.graphLoading &&
           friendCandidateSuggestions.length > 0 ? (
@@ -1358,9 +1356,9 @@ export function FriendsView({
           </div>
         ) : null}
 
-        <h3 className={`mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)] ${friendCandidateSuggestions.length > 0 ? "theme-dialog-divider border-t pt-4" : ""}`}>
+        {!friendsDirectory.loading && <h3 className={`mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)] ${friendCandidateSuggestions.length > 0 ? "theme-dialog-divider border-t pt-4" : ""}`}>
           {searchQuery.trim() ? "Matching friends" : "All friends"}
-        </h3>
+        </h3>}
         {!friendsDirectory.loading && friendsDirectory.rows.length === 0 ? (
           <div className="theme-panel-muted rounded-xl px-4 py-6 text-center">
             <p className="text-sm font-medium text-[color:var(--theme-text-primary)]">

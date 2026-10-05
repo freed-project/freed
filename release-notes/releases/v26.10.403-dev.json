@@ -1,0 +1,123 @@
+{
+  "tag": "v26.10.403-dev",
+  "version": "26.10.403-dev",
+  "channel": "dev",
+  "dayKey": "26.10.4",
+  "approved": true,
+  "editorialNotes": [
+    "Reviewed current source2260591e; runtime packages match approved native fixture and prior full validation. User reported native QA worked and requested full dev build (Sentinel_b936a6142ab88191a36f0bdf299a6070). CI/tooling-only changes carry no new product improvement claim. Signed installed verification remains outstanding."
+  ],
+  "generatedAt": "2026-10-05T16:19:26.411Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.10.402-dev",
+    "previousPublishedDayTag": "v26.10.305-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "2260591e820f599661d3e06f88e6da02f5a3cbd2",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.10.402-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "8f52b037f33380f499a4d74575b63d068b5cf1f8",
+        "toInclusiveProductCommitSha": "2260591e820f599661d3e06f88e6da02f5a3cbd2"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:87ced2658785f1d28753666537ab09bef76d45848f728aeb12343f22ee70d6d1",
+        "currentDigest": "sha256:87ced2658785f1d28753666537ab09bef76d45848f728aeb12343f22ee70d6d1"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:5264a6a2577d9331dbe726699b8d101c3202921baff68fd0227f6ce7dbf9a6aa",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.10.400-dev",
+      "v26.10.401-dev",
+      "v26.10.402-dev",
+      "v26.10.403-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.10.400-dev",
+      "v26.10.401-dev",
+      "v26.10.402-dev",
+      "v26.10.403-dev"
+    ],
+    "prNumbers": [
+      2098,
+      2099,
+      2100,
+      2101,
+      2102,
+      2103,
+      2117,
+      2129,
+      2131,
+      2132,
+      2133
+    ],
+    "commitSubjects": [
+      "fix: enforce selected OPFS results and repair CI fixtures",
+      "fix: align browser thumbnail proof with lazy image policy (#2133)",
+      "fix: supervise nightly fixture operations and descendants",
+      "fix: preserve refreshed UI state and restore lazy thumbnails (#2132)",
+      "fix: retain toolbar actions during count refresh (#2131)",
+      "fix: preserve seen confirmations through bounded reads (#2129)",
+      "fix: complete Library fixtures and publisher repairs",
+      "perf: trim outcome-file admission fixture setup",
+      "fix: integrate reviewed security and tooling repairs",
+      "chore: prepare v26.10.402-dev (#2117)",
+      "test: align graph workflows with tracked relationship eligibility (#2113)",
+      "fix: keep Library counts coherent and preserve article targets (#2103)",
+      "fix: align feed scroll checks with current card heights",
+      "fix: constrain mobile settings navigation scrolling (#2102)",
+      "chore: prepare v26.10.401-dev (#2101)",
+      "perf: attribute native checkpoint preparation substages (#2100)",
+      "chore: prepare v26.10.400-dev (#2099)",
+      "perf: avoid checkpoint census in cloud preflight (#2098)"
+    ]
+  },
+  "release": {
+    "deck": "Stable views during Library refresh",
+    "features": [],
+    "fixes": [
+      "Keep toolbar counts, search results, Friends details and Map popups visible while same-scope Library reads refresh",
+      "Block pending or obsolete search and identity actions until their current selection and results are ready",
+      "Retain one bounded suggestion window during refresh and preserve exact signed recovery retries after an ambiguous result",
+      "Feed cards load image thumbnails lazily through existing media URLs and memory-pressure safeguards",
+      "Preserve seen confirmations through bounded Desktop and PWA reads",
+      "Keep navigation counts tied to one coherent Library state and retain verified counts while refreshing.",
+      "Show elapsed backup time in the update notification and Settings.",
+      "Keep discovered accounts out of the tracked relationship graph and open their Map location without creating a connection.",
+      "Keep mobile Settings navigation within the available screen height.",
+      "Avoid counting every checkpoint record during routine Library sync checks.",
+      "Record bounded timing for Library checkpoint preparation",
+      "Opening, saving and processing linked articles now uses their stored article link"
+    ],
+    "followUps": [
+      "Installed view stability and responsiveness still require verification on the signed build",
+      "Existing provider sync schedules, authentication and AI preferences are unchanged",
+      "Dormant Library authority and seen-host activation remain disabled",
+      "The separate Saved Back repair and durable writer-admission proof remain follow-ups",
+      "Full checkpoint preparation retains complete validation and can still take time",
+      "Installed startup and manual responsiveness verification remain separate from synthetic benchmarks",
+      "Priority and social diagnostics remain off; provider and schema activation boundaries are unchanged",
+      "This build adds attribution; no reduction in stalls or CPU use is claimed",
+      "The elapsed timer reports time spent; it does not shorten a full Library backup.",
+      "Installed responsiveness and count stability still require verification on the signed build.",
+      "Existing AI preferences and provider schedules are unchanged.",
+      "Writer admission delays remain a separate investigation"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.10.403-dev\n\nStable views during Library refresh\n\n### Fixes\n\n- Keep toolbar counts, search results, Friends details and Map popups visible while same-scope Library reads refresh\n- Block pending or obsolete search and identity actions until their current selection and results are ready\n- Retain one bounded suggestion window during refresh and preserve exact signed recovery retries after an ambiguous result\n- Feed cards load image thumbnails lazily through existing media URLs and memory-pressure safeguards\n- Preserve seen confirmations through bounded Desktop and PWA reads\n- Keep navigation counts tied to one coherent Library state and retain verified counts while refreshing\n- Show elapsed backup time in the update notification and Settings\n- Keep discovered accounts out of the tracked relationship graph and open their Map location without creating a connection\n- Keep mobile Settings navigation within the available screen height\n- Avoid counting every checkpoint record during routine Library sync checks\n- Record bounded timing for Library checkpoint preparation\n- Opening, saving and processing linked articles now uses their stored article link\n\n### Follow-ups\n\n- Installed view stability and responsiveness still require verification on the signed build\n- Existing provider sync schedules, authentication and AI preferences are unchanged\n- Dormant Library authority and seen-host activation remain disabled\n- The separate Saved Back repair and durable writer-admission proof remain follow-ups\n- Full checkpoint preparation retains complete validation and can still take time\n- Installed startup and manual responsiveness verification remain separate from synthetic benchmarks\n- Priority and social diagnostics remain off; provider and schema activation boundaries are unchanged\n- This build adds attribution; no reduction in stalls or CPU use is claimed\n- The elapsed timer reports time spent; it does not shorten a full Library backup\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
