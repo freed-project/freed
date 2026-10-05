@@ -119,6 +119,10 @@ function run(command, args, options = {}) {
   return result;
 }
 
+function isMetadataPatch(call) {
+  return call.args[0] === "api" && call.args.includes("PATCH");
+}
+
 function assertSuccess(result) {
   assert.equal(
     result.status,
@@ -273,6 +277,41 @@ fs.appendFileSync(logFile, JSON.stringify({
 
 if (args[0] === "api") {
   const endpoint = args[1];
+  if (endpoint.startsWith("repos/freed-project/freed/pulls/")) {
+    const patch = args.includes("PATCH");
+    state.metadataReads = (state.metadataReads || 0) + (patch ? 0 : 1);
+    if ((patch && state.failMetadataPatch) || (!patch && state.failMetadataRead === state.metadataReads)) {
+      fs.writeFileSync(stateFile, JSON.stringify(state));
+      process.stderr.write("simulated metadata API failure");
+      process.exit(1);
+    }
+    if (patch) {
+      for (let i = 0; i < args.length; i++) {
+        if (args[i] !== "--raw-field") continue;
+        const field = args[++i];
+        const separator = field.indexOf("=");
+        state[field.slice(0, separator)] = field.slice(separator + 1);
+      }
+    }
+    const head = execFileSync("/usr/bin/git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+    const branch = execFileSync("/usr/bin/git", ["branch", "--show-current"], { encoding: "utf8" }).trim();
+    const pr = state.prList?.[0] || {};
+    const repo = { full_name: "freed-project/freed" };
+    const override = (!patch && state.metadataOverrides?.[state.metadataReads - 1]) || {};
+    const response = {
+      number: pr.number, state: "open", draft: pr.isDraft,
+      title: state.title, body: state.body,
+      ...override,
+      head: { ref: branch, sha: head, repo, ...override.head },
+      base: { ref: "dev", repo, ...override.base },
+    };
+    if (!patch && state.invalidateFileOnMetadataRead === state.metadataReads) {
+      fs.writeFileSync(state.metadataAuthorityFile, "{}");
+    }
+    fs.writeFileSync(stateFile, JSON.stringify(state));
+    process.stdout.write(state.malformedMetadataRead === state.metadataReads && !patch ? (state.malformedMetadataOutput ?? "{") : JSON.stringify(response));
+    process.exit(0);
+  }
   const commentListMatch = endpoint.match(/^repos\\/freed-project\\/freed\\/issues\\/(\\d+)\\/comments$/);
   if (commentListMatch) {
     if (args.includes("--method") && args[args.indexOf("--method") + 1] === "POST") {
@@ -321,6 +360,9 @@ if (args[0] !== "pr") {
 
 if (args[1] === "list") {
   state.prListCallCount = (state.prListCallCount || 0) + 1;
+  if (state.providerListReplacement && state.prListCallCount === 2) {
+    state.prList = state.providerListReplacement;
+  }
   if (state.makeReadyOnPrListCall === state.prListCallCount) {
     state.prList = (state.prList || []).map((item) => ({
       ...item,
@@ -376,14 +418,26 @@ if (args[1] === "view") {
       item.number === requestedNumber ||
       item.url === requestedReference,
   ) || state.prList?.[0] || {};
+  let providerRead = {};
+  if (state.providerHeadReads && state.prListCallCount >= 2 && (args.includes("number,url,headRefOid,headRefName,headRepository,headRepositoryOwner,baseRefName,state,isDraft") || (!state.providerHeadReadCount && args.includes("headRefOid,baseRefName")))) {
+    state.providerHeadReadCount = (state.providerHeadReadCount || 0) + 1;
+    providerRead = state.providerHeadReads[Math.min(state.providerHeadReadCount - 1, state.providerHeadReads.length - 1)];
+    fs.writeFileSync(stateFile, JSON.stringify(state));
+    if (providerRead.error) process.exit(1);
+    if (providerRead.invalidateFile) fs.writeFileSync(providerRead.invalidateFile, "{}");
+  }
   process.stdout.write(JSON.stringify({
     number: pr.number,
+    url: pr.url,
+    headRepository: { name: "freed" },
+    headRepositoryOwner: { login: "freed-project" },
     headRefOid: state.viewHead || (state.prViewCallCount <= (state.staleHeadReads || 0) ? "a".repeat(40) : headRefOid),
     headRefName,
     baseRefName: state.viewBase || "dev",
     state: "OPEN",
     isDraft: pr.isDraft ?? true,
     ...state.viewOverrides,
+    ...providerRead,
   }));
   process.exit(0);
 }
@@ -408,7 +462,8 @@ if (args[1] === "ready") {
 }
 
 if (args[1] === "edit") {
-  process.exit(0);
+  process.stderr.write("GraphQL: repository.pullRequest.projectCards is deprecated");
+  process.exit(1);
 }
 
 process.exit(1);
@@ -757,7 +812,7 @@ async function readGhLog(logFile) {
       .map((line) => JSON.parse(line))
       // The doctor preflight probes `gh --version`; these assertions only
       // care about the publish flow's PR interactions.
-      .filter((call) => call.args[0] === "pr")
+      .filter((call) => call.args[0] === "pr" || call.args[1]?.startsWith("repos/freed-project/freed/pulls/"))
   );
 }
 
@@ -843,46 +898,133 @@ test("ready publication stops private-log leaks before committing or publishing"
   assert.equal((await readGhLog(fixture.ghLogFile)).some((call) => ["create", "edit", "merge"].includes(call.args[1])), false);
 });
 
-test("provider subdiff query rejects dirty sources without staging, committing, or publishing", async (t) => {
+// Query receipts protect source state, including raw index bytes (not merely
+// porcelain status), and the publisher lease. Tier 1; invalidated by publisher,
+// snapshot, classifier, Git/toolchain, or fixture changes.
+async function queryState(fixture) {
+  async function bytes(directory) {
+    const result = {};
+    async function walk(relative = "") {
+      for (const entry of await fs.readdir(path.join(directory, relative), { withFileTypes: true })) {
+        const name = path.join(relative, entry.name);
+        if (entry.isDirectory()) await walk(name);
+        else if (entry.isSymbolicLink()) result[name] = await fs.readlink(path.join(directory, name));
+        else result[name] = createHash("sha256").update(await fs.readFile(path.join(directory, name))).digest("hex");
+      }
+    }
+    await walk();
+    return result;
+  }
+  return {
+    head: run("git", ["rev-parse", "HEAD"], { cwd: fixture.worktree }).stdout,
+    refs: run("git", ["show-ref"], { cwd: fixture.worktree }).stdout,
+    status: run("git", ["--no-optional-locks", "status", "--porcelain=v1"], { cwd: fixture.worktree }).stdout,
+    worktreeAndGit: await bytes(fixture.worktree),
+    lease: await bytes(fixture.automationStateRoot),
+    github: await fs.readFile(fixture.ghLogFile, "utf8"),
+  };
+}
+
+test("provider subdiff query accepts dirty candidates without source or lease writes", async (t) => {
+  const fixture = await createPublishFixture(t, { seedProviderFile: true, preacquirePublisherLease: true });
+  const cwd = fixture.worktree;
+  const provider = "packages/desktop/src-tauri/src/fb-extract.js";
+  const git = (...args) => { const result = run("git", args, { cwd }); assertSuccess(result); return result.stdout.trim(); };
+  await fs.writeFile(path.join(cwd, ".git/FETCH_HEAD"), "unchanged fetch receipt\n");
+  const realGit = run("which", ["git"]).stdout.trim();
+  const spy = path.join(path.dirname(cwd), "bin/git");
+  const callsFile = path.join(path.dirname(cwd), "query-git-calls.jsonl");
+  await fs.writeFile(spy, `#!${process.execPath}
+const fs = require("node:fs");
+const { spawnSync } = require("node:child_process");
+const args = process.argv.slice(2);
+fs.appendFileSync(${JSON.stringify(callsFile)}, JSON.stringify(args) + "\\n");
+if (["fetch", "commit", "push", "update-ref"].some(command => args.includes(command)) ||
+    (args.includes("add") && (!process.env.GIT_INDEX_FILE || process.env.GIT_INDEX_FILE.startsWith(${JSON.stringify(cwd)})))) process.exit(91);
+const result = spawnSync(${JSON.stringify(realGit)}, args, { stdio: "inherit" });
+process.exit(result.status ?? 92);
+`, { mode: 0o700 });
+  const query = async (environment, extra = [], success = true) => {
+    const before = await queryState(fixture);
+    const result = run("bash", [publishScript, "--print-provider-subdiff", ...extra], { cwd, env: environment });
+    if (success) assertSuccess(result);
+    else assert.notEqual(result.status, 0);
+    assert.deepEqual(await queryState(fixture), before);
+    return result;
+  };
+  // Protected/detached branches and incomplete publisher environments are
+  // irrelevant to a local query. No publication tooling may be required.
+  git("checkout", "dev");
+  await fs.writeFile(path.join(cwd, "README.md"), "neutral dirty candidate\n");
+  assert.equal((await query({ ...directPublishEnv(fixture), FREED_PUBLISH_SCOPE_JSON: "malformed" })).stdout, "");
+  git("checkout", "--detach");
+  await fs.writeFile(path.join(cwd, provider), "// original provider extractor\n// s\n");
+  git("add", provider);
+  await fs.appendFile(path.join(cwd, provider), "// u\n");
+  const mixed = await query(fixture.env);
+  assert.match(mixed.stdout.trim(), /^[a-f0-9]{40}$/);
+  git("add", "-u"); git("commit", "-m", "fix: intentional identical bytes");
+  const committed = await query(directPublishEnv(fixture));
+  assert.equal(mixed.stdout, committed.stdout);
+  const patch = run("git", ["diff", "--binary", "--no-ext-diff", "--no-textconv", "origin/dev...HEAD", "--", provider], { cwd }).stdout;
+  assert.equal(committed.stdout.trim(), run("git", ["hash-object", "--stdin"], { cwd, input: patch }).stdout.trim());
+
+  // Rename out of the provider surface binds both endpoints, with a binary
+  // addition, staged addition, deletion, and unstaged edits in the same tree.
+  git("mv", provider, "renamed-extractor.js");
+  await fs.writeFile(path.join(cwd, "packages/desktop/src-tauri/src/ig-extract.js"), Buffer.from([0, 1, 2, 255]));
+  await fs.writeFile(path.join(cwd, "staged.md"), "staged addition\n");
+  git("add", "staged.md");
+  await fs.unlink(path.join(cwd, "README.md"));
+  assert.match((await query(fixture.env, [], false)).stderr, /Untracked files/);
+  const dirty = await query(fixture.env, ["--include-untracked"]);
+  git("add", "-A"); git("commit", "-m", "fix: intentional renamed binary candidate");
+  assert.equal(dirty.stdout, (await query(fixture.env)).stdout);
+  const boundPatch = run("git", ["diff", "--binary", "--no-ext-diff", "--no-textconv", "origin/dev...HEAD", "--",
+    provider, "renamed-extractor.js", "packages/desktop/src-tauri/src/ig-extract.js"], { cwd }).stdout;
+  assert.match(boundPatch, /GIT binary patch/);
+  assert.match(boundPatch, /rename to renamed-extractor.js/);
+  assert.equal(dirty.stdout.trim(), run("git", ["hash-object", "--stdin"], { cwd, input: boundPatch }).stdout.trim());
+  assert.match((await query(fixture.env, ["--base", "www"], false)).stderr, /fetch the intended base explicitly/);
+  // Conflicted and sparse/hidden entries must fail without resolving/staging.
+  git("update-index", "--assume-unchanged", "staged.md");
+  assert.match((await query(fixture.env, [], false)).stderr, /assume-unchanged/);
+  git("update-index", "--no-assume-unchanged", "staged.md");
+  await fs.writeFile(path.join(cwd, ".gitattributes"), "*.md filter=forbidden\n");
+  assert.match((await query(fixture.env, ["--include-untracked"], false)).stderr, /External clean filters/);
+  await fs.unlink(path.join(cwd, ".gitattributes"));
+  const blob = git("rev-parse", "HEAD:staged.md");
+  assertSuccess(run("git", ["update-index", "--index-info"], {
+    cwd, input: `0 ${"0".repeat(40)}\tstaged.md\n100644 ${blob} 1\tstaged.md\n100644 ${blob} 2\tstaged.md\n`,
+  }));
+  assert.match((await query(fixture.env, [], false)).stderr, /Unmerged entries/);
+  assert.equal((await fs.readFile(callsFile, "utf8")).includes('"fetch"'), false);
+
+});
+
+test("provider subdiff query refuses a source edit during snapshotting", async (t) => {
   const fixture = await createPublishFixture(t);
-  const before = run("git", ["rev-parse", "HEAD"], {
-    cwd: fixture.worktree,
-  }).stdout;
-  await fs.writeFile(
-    path.join(fixture.worktree, "README.md"),
-    "unstaged change\n",
-  );
-  await fs.writeFile(path.join(fixture.worktree, "untracked.md"), "new file\n");
-  const status = run("git", ["status", "--porcelain"], {
-    cwd: fixture.worktree,
-  }).stdout;
-  const result = run(
-    "bash",
-    [publishScript, "--print-provider-subdiff", "--include-untracked"],
-    {
-      cwd: fixture.worktree,
-      env: directPublishEnv(fixture),
-    },
-  );
+  const cwd = fixture.worktree;
+  const realGit = run("which", ["git"]).stdout.trim();
+  const spy = path.join(path.dirname(cwd), "bin/git");
+  await fs.writeFile(spy, `#!${process.execPath}
+const fs = require("node:fs");
+const { spawnSync } = require("node:child_process");
+const args = process.argv.slice(2);
+const result = spawnSync(${JSON.stringify(realGit)}, args, { stdio: "inherit" });
+if (args.includes("write-tree")) fs.appendFileSync(${JSON.stringify(path.join(cwd, "README.md"))}, "concurrent edit\\n");
+process.exit(result.status ?? 92);
+`, { mode: 0o700 });
+  const before = await queryState(fixture);
+  const result = run("bash", [publishScript, "--print-provider-subdiff"], { cwd, env: directPublishEnv(fixture) });
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /never stages or commits/);
-  assert.equal(
-    run("git", ["rev-parse", "HEAD"], { cwd: fixture.worktree }).stdout,
-    before,
-  );
-  assert.equal(
-    run("git", ["status", "--porcelain"], { cwd: fixture.worktree }).stdout,
-    status,
-  );
-  assert.equal(
-    run("git", ["diff", "--cached"], { cwd: fixture.worktree }).stdout,
-    "",
-  );
-  const calls = await readGhLog(fixture.ghLogFile);
-  assert.equal(
-    calls.some((call) => ["create", "edit", "merge"].includes(call.args[1])),
-    false,
-  );
+  assert.match(result.stderr, /Source changed during the read-only snapshot/);
+  const after = await queryState(fixture);
+  // Only the edit deliberately injected by the fixture is allowed to differ.
+  assert.notEqual(after.worktreeAndGit["README.md"], before.worktreeAndGit["README.md"]);
+  after.worktreeAndGit["README.md"] = before.worktreeAndGit["README.md"];
+  after.status = before.status;
+  assert.deepEqual(after, before);
 });
 
 test("worktree-publish keeps the ordinary authenticated GitHub path available", async (t) => {
@@ -1247,8 +1389,8 @@ test("worktree-publish converts an existing ready PR back to draft and updates i
     "freed-project/freed",
     "--undo",
   ]);
-  const editCall = ghCalls.find((call) => call.args[1] === "edit");
-  assert.equal(editCall.args[0], "pr");
+  const editCall = ghCalls.find(isMetadataPatch);
+  assert.equal(editCall.args[0], "api");
   assert.match(editCall.args.join("\n"), /\(AI Generated\)\./);
 });
 
@@ -1306,7 +1448,7 @@ test("worktree-publish updates an existing draft PR without toggling it", async 
     false,
   );
   assert.equal(
-    ghCalls.some((call) => call.args[1] === "edit"),
+    ghCalls.some(isMetadataPatch),
     true,
   );
   assert.equal(ghCalls.at(-1).args[1], "view");
@@ -1357,11 +1499,11 @@ test("worktree-publish reconciles only stale heads after a successful push", asy
         { cwd: fixture.worktree, env: directPublishEnv(fixture), timeout: 30_000 },
       );
       const calls = await readGhLog(fixture.ghLogFile);
-      const writes = calls.filter((call) => ["edit", "ready", "create"].includes(call.args[1]));
+      const writes = calls.filter((call) => (isMetadataPatch(call) || ["ready", "create"].includes(call.args[1])));
       if (scenario.succeeds) {
         assertSuccess(result);
         assert.equal(writes.length, 1);
-        assert.equal(writes[0].args[1], "edit");
+        assert.ok(isMetadataPatch(writes[0]));
       } else {
         assert.notEqual(result.status, 0);
         assert.match(result.stderr, /pull request (head did not converge|target does not match|unavailable)/);
@@ -1411,7 +1553,7 @@ test("worktree-publish refuses an existing PR retargeted after lookup", async (t
   assert.match(result.stderr, /pull request target does not match/);
   const ghCalls = await readGhLog(fixture.ghLogFile);
   assert.equal(
-    ghCalls.some((call) => ["edit", "ready"].includes(call.args[1])),
+    ghCalls.some((call) => (isMetadataPatch(call) || call.args[1] === "ready")),
     false,
   );
 });
@@ -2790,7 +2932,7 @@ test("worktree-publish retires owner-confirmed provider approval packets", async
   );
   const ghCalls = await readGhLog(fixture.ghLogFile);
   assert.equal(
-    ghCalls.some((call) => call.args[1] === "edit"),
+    ghCalls.some(isMetadataPatch),
     false,
   );
 });
@@ -3181,6 +3323,163 @@ test("worktree-publish keeps a control-task provider PR draft until its audit co
       );
       const state = JSON.parse(await fs.readFile(fixture.ghStateFile, "utf8"));
       assert.equal((state.comments || []).length, failureCase.expectedComments);
+    });
+  }
+});
+
+// Tier 1: the provider check runs before normal existing-PR reconciliation.
+// Virtual sleep proves the retry budget without real blocking waits.
+test("worktree-publish reconciles only stale provider post-push heads", async (t) => {
+  const stale = { headRefOid: "a".repeat(40) };
+  const cases = [
+    { name: "draft convergence", reads: [stale, {}], success: true, count: 2 },
+    {
+      name: "ready convergence",
+      reads: [stale, {}],
+      ready: true,
+      success: true,
+      count: 2,
+    },
+    {
+      name: "last bounded read",
+      reads: [stale, stale, stale, stale, {}],
+      success: true,
+      count: 5,
+    },
+    { name: "exhaustion", reads: [stale], count: 5 },
+    { name: "first read API failure", reads: [{ error: true }], count: 1 },
+    ...[
+      { baseRefName: "main" },
+      { headRefName: "fix/other" },
+      { headRepositoryOwner: { login: "foreign" } },
+      { headRepository: { name: "other" } },
+      { url: "https://github.com/foreign/freed/pull/321" },
+      { number: 999 },
+      { state: "CLOSED" },
+      { headRefOid: "malformed" },
+      { isDraft: false },
+      { error: true },
+    ].map((change, index) => ({
+      name: `changed identity or state ${index}`,
+      reads: [stale, change],
+      count: 2,
+    })),
+    { name: "PR disappeared", reads: [stale], replacement: [], count: 0 },
+    {
+      name: "PR replaced",
+      reads: [stale],
+      replacement: [{ number: 999, isDraft: true }],
+      count: 0,
+    },
+    { name: "authority revoked", reads: [stale], revoke: true, count: 1 },
+    {
+      name: "audit write failure",
+      reads: [stale, {}],
+      failCommentPost: true,
+      count: 2,
+    },
+  ];
+  for (const scenario of cases) {
+    await t.test(scenario.name, async (t) => {
+      const fixture = await createPublishFixture(t);
+      const review = await writeProviderReviewArtifact(fixture, {
+        taskId: "provider-head-convergence",
+      });
+      const file = "packages/desktop/src-tauri/src/fb-extract.js";
+      await fs.mkdir(path.dirname(path.join(fixture.worktree, file)), {
+        recursive: true,
+      });
+      await fs.writeFile(
+        path.join(fixture.worktree, file),
+        "// offline provider fixture\n",
+      );
+      assertSuccess(run("git", ["add", file], { cwd: fixture.worktree }));
+      assertSuccess(
+        run("git", ["commit", "-m", "fix: provider fixture"], {
+          cwd: fixture.worktree,
+        }),
+      );
+      const sleepLog = path.join(fixture.worktree, "../sleep.log");
+      await fs.writeFile(
+        path.join(path.dirname(fixture.ghStateFile), "bin/sleep"),
+        `#!${process.execPath}\nrequire("node:fs").appendFileSync(${JSON.stringify(sleepLog)}, process.argv.slice(2).join(" ") + "\\n");\n`,
+        { mode: 0o755 },
+      );
+      const reads = scenario.revoke
+        ? [{ ...stale, invalidateFile: review.path }]
+        : scenario.reads;
+      await fs.writeFile(
+        fixture.ghStateFile,
+        JSON.stringify({
+          prList: [
+            {
+              number: 321,
+              url: "https://github.com/freed-project/freed/pull/321",
+              isDraft: true,
+            },
+          ],
+          providerHeadReads: reads,
+          providerListReplacement: scenario.replacement,
+          failCommentPost: scenario.failCommentPost,
+        }),
+      );
+      const result = run(
+        "bash",
+        [
+          publishScript,
+          "--title",
+          "fix: reconcile provider head",
+          "--provider-risk-review-artifact",
+          review.path,
+          ...(scenario.ready ? ["--ready"] : []),
+        ],
+        { cwd: fixture.worktree, env: directPublishEnv(fixture) },
+      );
+      if (scenario.success) assertSuccess(result);
+      else assert.notEqual(result.status, 0, result.stdout);
+      const state = JSON.parse(await fs.readFile(fixture.ghStateFile, "utf8"));
+      assert.equal(state.providerHeadReadCount || 0, scenario.count);
+      const waits = await fs.readFile(sleepLog, "utf8").catch(() => "");
+      assert.deepEqual(
+        waits.trim().split("\n").filter(Boolean),
+        Array(scenario.revoke ? 1 : Math.max(0, scenario.count - 1)).fill("1"),
+      );
+      const calls = (await fs.readFile(fixture.ghLogFile, "utf8"))
+        .trim()
+        .split("\n")
+        .map(JSON.parse);
+      const writes = calls.filter(
+        ({ args }) => args[0] === "api" && args.includes("POST"),
+      );
+      assert.equal(
+        writes.length,
+        scenario.success || scenario.failCommentPost ? 1 : 0,
+      );
+      if (!scenario.replacement)
+        assert.equal(
+          state.prList[0].isDraft,
+          !(scenario.success && scenario.ready),
+        );
+      assert.equal((state.comments || []).length, scenario.success ? 1 : 0);
+      assert.equal(calls.filter(({ args }) => args[1] === "create").length, 0);
+      assert.ok(
+        calls
+          .filter(({ args }) => args[1] === "view")
+          .every(
+            ({ args }) =>
+              args[args.indexOf("--repo") + 1] === "freed-project/freed",
+          ),
+      );
+      const pushed = run(
+        "git",
+        ["rev-parse", "refs/heads/fix/worktree-publish-test"],
+        { cwd: fixture.origin },
+      );
+      assertSuccess(pushed);
+      assert.equal(
+        pushed.stdout,
+        run("git", ["rev-parse", "HEAD"], { cwd: fixture.worktree }).stdout,
+      );
     });
   }
 });
@@ -3767,7 +4066,7 @@ test("worktree-publish --ready promotes an existing draft PR after updating it",
     readyCalls.map((call) => call.args),
     [["pr", "ready", "321", "--repo", "freed-project/freed"]],
   );
-  const editIndex = ghCalls.findIndex((call) => call.args[1] === "edit");
+  const editIndex = ghCalls.findIndex(isMetadataPatch);
   const readyIndex = ghCalls.findIndex((call) => call.args[1] === "ready");
   assert.ok(editIndex < readyIndex, "edit must run before the promotion");
   const state = JSON.parse(await fs.readFile(fixture.ghStateFile, "utf8"));
@@ -3869,4 +4168,243 @@ test("worktree-publish --ready creates a new PR without --draft", async (t) => {
   assert.ok(createCall);
   assert.equal(createCall.args.includes("--draft"), false);
   assert.equal(ghCalls.at(-1).args[1], "view");
+});
+
+// Tier 1: literal payloads and fail-closed metadata writes after a real local push.
+// Reuses the offline publisher fixture; no GitHub or provider traffic.
+test("worktree-publish REST metadata preserves bytes and fails without retry or repush", async (t) => {
+  const identityChanges = [
+    { number: 999 },
+    { head: { ref: "other" } },
+    { head: { ref: "fix/worktree-publish-test", sha: "a".repeat(40), repo: { full_name: "freed-project/freed" } } },
+    { head: { repo: { full_name: "foreign/freed" } } },
+    { base: { ref: "main", repo: { full_name: "freed-project/freed" } } },
+    { base: { ref: "dev", repo: { full_name: "foreign/freed" } } },
+    { state: "closed" },
+    { draft: false },
+  ];
+  const scenarios = [
+    { name: "draft literal bytes", success: true },
+    { name: "ready literal bytes", success: true, ready: true },
+    { name: "ready remains ready", success: true, ready: true, initialDraft: false },
+    { name: "prefix added without losing newlines", success: true, unprefixed: true },
+    { name: "PATCH failure after push", state: { failMetadataPatch: true }, patches: 1, reads: 1 },
+    { name: "preflight API failure", state: { failMetadataRead: 1 }, patches: 0, reads: 1 },
+    { name: "readback API failure", state: { failMetadataRead: 2 }, patches: 1, reads: 2 },
+    { name: "malformed readback", state: { malformedMetadataRead: 2 }, patches: 1, reads: 2 },
+    ...["--help", "--version", "--eval=process.exit(0)"].flatMap((output) =>
+      [1, 2].map((read) => ({
+        name: `option-shaped API output ${output} on read ${read}`,
+        state: { malformedMetadataRead: read, malformedMetadataOutput: output },
+        malformedOption: true, patches: read - 1, reads: read,
+      })),
+    ),
+    { name: "title readback mismatch", state: { metadataOverrides: [{}, { title: "wrong" }] }, patches: 1, reads: 2 },
+    { name: "body readback mismatch", state: { metadataOverrides: [{}, { body: "wrong" }] }, patches: 1, reads: 2 },
+    ...[1, 2].flatMap((read) => identityChanges.map((change, index) => ({
+      name: `identity change ${index} on read ${read}`,
+      state: { metadataOverrides: read === 1 ? [change] : [{}, change] },
+      patches: read - 1, reads: read,
+    }))),
+    ...[1, 2].map((read) => ({
+      name: `provider ready rollback on metadata read ${read}`,
+      provider: true, rollback: true,
+      state: { metadataOverrides: read === 1 ? [{ draft: false }] : [{}, { draft: false }] },
+      patches: read - 1, reads: read,
+    })),
+    ...[1, 2].map((read) => ({
+      name: `authority revoked on metadata read ${read}`,
+      revoke: read, patches: read - 1, reads: read,
+    })),
+  ];
+  for (const scenario of scenarios) {
+    await t.test(scenario.name, async (t) => {
+      const fixture = await createPublishFixture(t);
+      const fixtureRoot = path.dirname(fixture.worktree);
+      const bodyFile = path.join(fixtureRoot, "body.txt");
+      const gitTrace = path.join(fixtureRoot, "git.trace");
+      const title = 'fix: literal "quotes" \\ $HOME $(false) `false`\nsecond line';
+      const body = `${scenario.unprefixed ? "" : "(AI Generated).\n\n"}@literal {owner} true null 123\n"quotes" \\ $HOME $(false) \u2603\r\n\n`;
+      const expectedBody = scenario.unprefixed ? `(AI Generated).\n\n${body}` : body;
+      await fs.writeFile(bodyFile, body);
+      let providerArgs = [];
+      let review;
+      if (scenario.revoke || scenario.provider) {
+        review = await writeProviderReviewArtifact(fixture);
+        const file = path.join(fixture.worktree, "packages/desktop/src-tauri/src/fb-extract.js");
+        await fs.mkdir(path.dirname(file), { recursive: true });
+        await fs.writeFile(file, "// offline metadata authority fixture\n");
+        assertSuccess(run("git", ["add", file], { cwd: fixture.worktree }));
+        providerArgs = ["--provider-risk-review-artifact", review.path];
+      }
+      await fs.writeFile(fixture.ghStateFile, JSON.stringify({
+        prList: [{ number: 251, url: "https://github.com/freed-project/freed/pull/251", isDraft: scenario.initialDraft ?? true }],
+        ...scenario.state,
+        invalidateFileOnMetadataRead: scenario.revoke,
+        metadataAuthorityFile: review?.path,
+      }));
+      await fs.writeFile(path.join(fixture.worktree, "README.md"), "metadata candidate\n");
+      const result = run("bash", [
+        publishScript, "--title", title, "--body-file", bodyFile,
+        ...providerArgs, ...(scenario.ready ? ["--ready"] : []),
+      ], { cwd: fixture.worktree, env: { ...directPublishEnv(fixture), GIT_TRACE: gitTrace } });
+      const calls = await readGhLog(fixture.ghLogFile);
+      const patches = calls.filter(isMetadataPatch);
+      const state = JSON.parse(await fs.readFile(fixture.ghStateFile, "utf8"));
+      if (scenario.success) {
+        assertSuccess(result);
+        assert.equal(state.title, title);
+        assert.equal(state.body, expectedBody);
+        assert.equal(state.prList[0].isDraft, !scenario.ready);
+      } else {
+        assert.notEqual(result.status, 0, result.stdout);
+        assert.doesNotMatch(result.stdout, /Updated (draft )?PR/);
+        const readyCalls = calls.filter(({ args }) => args[1] === "ready");
+        assert.equal(readyCalls.length, scenario.rollback ? 1 : 0);
+        if (scenario.rollback) assert.ok(readyCalls[0].args.includes("--undo"));
+        assert.equal((state.comments || []).length, 0);
+      }
+      if (scenario.malformedOption) {
+        // Prove JSON validation ran, rather than Node accepting a CLI option.
+        assert.match(result.stderr, /SyntaxError/);
+        const methods = calls
+          .filter(({ args }) => args[1] === "repos/freed-project/freed/pulls/251")
+          .map((call) => isMetadataPatch(call) ? "PATCH" : "GET");
+        assert.deepEqual(methods, scenario.reads === 1 ? ["GET"] : ["GET", "PATCH", "GET"]);
+        assert.equal(state.title, scenario.reads === 1 ? undefined : title);
+        assert.equal(state.body, scenario.reads === 1 ? undefined : expectedBody);
+      }
+      assert.equal(patches.length, scenario.success ? 1 : scenario.patches);
+      assert.equal(state.metadataReads, scenario.success ? 2 : scenario.reads);
+      assert.equal(calls.some(({ args }) => args[1] === "edit"), false);
+      assert.equal((await fs.readFile(gitTrace, "utf8")).split("\n").filter((line) => /built-in: git push /.test(line)).length, 1);
+      const head = run("git", ["rev-parse", "HEAD"], { cwd: fixture.worktree }).stdout.trim();
+      assert.match(run("git", ["ls-remote", "origin", "refs/heads/fix/worktree-publish-test"], { cwd: fixture.worktree }).stdout, new RegExp(`^${head}\\s`));
+    });
+  }
+});
+
+// Tier 1: exercise the real query with deterministic filesystem interleavings.
+// Test-only ESM interception schedules the writer; all reads and stats are real.
+test("provider query binds regular leaf reads and preserves symlink blobs", async (t) => {
+  const scenarios = [
+    { name: "stable regular file", success: true, reads: 2, closes: 2 },
+    { name: "legitimate symlink text", success: true, symlink: true, reads: 0, closes: 0 },
+    { name: "symlink before open", hook: "stat", change: "symlink", reads: 0, closes: 0 },
+    { name: "FIFO before open", hook: "stat", change: "fifo", reads: 0, closes: 1 },
+    { name: "regular replacement before open", hook: "stat", change: "replace", reads: 0, closes: 1 },
+    { name: "replacement after open", hook: "open", change: "replace", reads: 0, closes: 1 },
+    { name: "mutation during descriptor read", hook: "read", change: "append", reads: 1, closes: 1 },
+    { name: "path replacement after read", hook: "read", change: "replace", reads: 1, closes: 1 },
+    { name: "disappearance before open", hook: "stat", change: "delete", reads: 0, closes: 0 },
+    { name: "disappearance in final fingerprint", hook: "read", change: "delete", onRead: 2, reads: 2, closes: 2 },
+  ];
+  for (const scenario of scenarios) {
+    await t.test(scenario.name, async (t) => {
+      const fixture = await createPublishFixture(t);
+      const fixtureRoot = path.dirname(fixture.worktree);
+      const target = path.join(fixture.worktree, "README.md");
+      const outside = path.join(fixtureRoot, "outside.txt");
+      const eventsPath = path.join(fixtureRoot, "read-events.jsonl");
+      const preload = path.join(fixtureRoot, "interleave.mjs");
+      const temporary = path.join(fixtureRoot, "snapshot");
+      await fs.mkdir(path.join(temporary, "objects"), { recursive: true });
+      await fs.writeFile(outside, "synthetic outside bytes must not be read\n");
+      await fs.writeFile(eventsPath, "");
+      if (scenario.symlink) {
+        await fs.unlink(target);
+        await fs.symlink(outside, target);
+      }
+      await fs.writeFile(preload, `
+import fs from "node:fs";
+import path from "node:path";
+import { execFileSync } from "node:child_process";
+import { syncBuiltinESMExports } from "node:module";
+const target = ${JSON.stringify(target)};
+const outside = ${JSON.stringify(outside)};
+const scenario = ${JSON.stringify(scenario)};
+const real = { lstat: fs.lstatSync, open: fs.openSync, read: fs.readFileSync, close: fs.closeSync };
+const descriptors = new Set();
+let injected = false;
+let reads = 0;
+const record = (event) => fs.appendFileSync(${JSON.stringify(eventsPath)}, JSON.stringify(event) + "\\n");
+const isTarget = (file) => typeof file === "string" && path.resolve(file) === target;
+function change(hook) {
+  if (injected || scenario.hook !== hook || (hook === "read" && reads !== (scenario.onRead || 1))) return;
+  injected = true;
+  record({ kind: "injected", hook });
+  if (scenario.change === "append") { fs.appendFileSync(target, "changed\\n"); return; }
+  fs.renameSync(target, ${JSON.stringify(path.join(fixtureRoot, "saved-original"))});
+  if (scenario.change === "symlink") fs.symlinkSync(outside, target);
+  if (scenario.change === "fifo") execFileSync("mkfifo", [target]);
+  if (scenario.change === "replace") fs.writeFileSync(target, "replacement\\n");
+}
+fs.lstatSync = (file, ...args) => {
+  const result = real.lstat(file, ...args);
+  if (isTarget(file)) change("stat");
+  return result;
+};
+fs.openSync = (file, flags, ...args) => {
+  const fd = real.open(file, flags, ...args);
+  if (isTarget(file)) {
+    descriptors.add(fd);
+    record({ kind: "opened", flags });
+    change("open");
+  }
+  return fd;
+};
+fs.readFileSync = (file, ...args) => {
+  const watched = descriptors.has(file) || isTarget(file);
+  if (watched) { reads++; record({ kind: "read", descriptor: typeof file === "number" }); }
+  const result = real.read(file, ...args);
+  if (watched) change("read");
+  return result;
+};
+fs.closeSync = (fd) => {
+  const result = real.close(fd);
+  if (descriptors.delete(fd)) record({ kind: "closed" });
+  return result;
+};
+syncBuiltinESMExports();
+`);
+      const before = await queryState(fixture);
+      const environment = {
+        ...directPublishEnv(fixture),
+        GIT_OPTIONAL_LOCKS: "0",
+        GIT_NO_LAZY_FETCH: "1",
+        GIT_OBJECT_DIRECTORY: path.join(temporary, "objects"),
+        GIT_ALTERNATE_OBJECT_DIRECTORIES: path.join(fixture.worktree, ".git/objects"),
+      };
+      const result = run(process.execPath, [
+        "--import", preload, path.join(scriptsDir, "lib/provider-query-snapshot.mjs"),
+        "dev", "false", temporary,
+      ], { cwd: fixture.worktree, env: environment, timeout: 10_000 });
+      const events = (await fs.readFile(eventsPath, "utf8")).split("\n").filter(Boolean).map(JSON.parse);
+      assert.equal(events.filter(({ kind }) => kind === "read").length, scenario.reads);
+      assert.ok(events.filter(({ kind }) => kind === "read").every(({ descriptor }) => descriptor));
+      assert.equal(events.filter(({ kind }) => kind === "closed").length, scenario.closes);
+      assert.equal(events.filter(({ kind }) => kind === "opened").length, scenario.closes);
+      if (scenario.success) {
+        assertSuccess(result);
+        assert.deepEqual(await queryState(fixture), before);
+        if (scenario.symlink) {
+          const tree = result.stdout.trim().split(" ")[1];
+          assert.match(run("git", ["ls-tree", tree, "--", "README.md"], { cwd: fixture.worktree, env: environment }).stdout, /^120000 blob /);
+          const blob = run("git", ["show", `${tree}:README.md`], { cwd: fixture.worktree, env: environment });
+          assertSuccess(blob);
+          assert.equal(blob.stdout, outside);
+        }
+      } else {
+        assert.equal(events.filter(({ kind }) => kind === "injected").length, 1);
+        assert.notEqual(result.status, 0);
+        assert.equal(result.stdout, "");
+        assert.match(result.stderr, /Source changed|ELOOP|ENOENT/);
+        // Undo only the fixture writer's mutation before comparing source state.
+        await fs.rm(target, { force: true });
+        if (scenario.change === "append") await fs.writeFile(target, "seed\n");
+        else await fs.rename(path.join(fixtureRoot, "saved-original"), target);
+        assert.deepEqual(await queryState(fixture), before);
+      }
+    });
+  }
 });

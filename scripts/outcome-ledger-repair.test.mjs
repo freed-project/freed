@@ -7865,7 +7865,7 @@ test("FIFO admission is bounded in a child process", (t) => {
 
 test("nightly summary rejects canonical outcome and event FIFOs without hanging", async (t) => {
   await t.test("outcomes FIFO", () => {
-    const { stateRoot, paths } = temporaryStateRoot(t);
+    const { stateRoot, paths } = temporaryControlStateRoot(t);
     rmSync(paths.outcomes);
     const created = spawnSync("mkfifo", [paths.outcomes], { encoding: "utf8" });
     assert.equal(created.status, 0, created.stderr);
@@ -7906,7 +7906,7 @@ test("nightly summary rejects canonical outcome and event FIFOs without hanging"
 
 test("nightly summary rejects canonical outcome and event symlinks without following them", async (t) => {
   await t.test("outcomes symlink", () => {
-    const { stateRoot, paths } = temporaryStateRoot(t);
+    const { stateRoot, paths } = temporaryControlStateRoot(t);
     const target = path.join(stateRoot, "valid-outcomes-target.jsonl");
     writeFileSync(target, `${JSON.stringify({ syntactically: "valid" })}\n`, {
       mode: 0o600,
