@@ -494,7 +494,7 @@ task authorization levels.
 - [ ] **Enforce control-code review and detect policy drift.** Check live branch,
   tag and review rules rather than inferring enforcement from CODEOWNERS or
   environment names. Cover all privileged workflow dependencies. Refuse release
-  admission when required protections disappear or a agent can bypass them.
+  admission when required protections disappear or an agent can bypass them.
 - [ ] **Withhold publisher and signing credentials from agent code.** Evaluate
   protected environments and separate signing execution only as needed for the
   stronger threat model. Prove arbitrary branches and candidate build scripts
