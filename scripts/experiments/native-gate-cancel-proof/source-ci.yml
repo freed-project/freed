@@ -1,0 +1,660 @@
+name: Validation
+
+on:
+  push:
+    branches: [dev]
+  pull_request:
+    branches: [dev, main]
+
+# Superseded dev pushes cancel too. Only the latest dev tree carries the
+# integration proof that release admission inherits, so validating an
+# intermediate commit that a newer push already replaced is wasted runner time.
+concurrency:
+  group: validation-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  # Cheap by design: the planner imports only Node builtins, so this job needs
+  # no dependency install and settles in well under a minute.
+  tooling-smoke-plan:
+    name: Tooling smoke plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      applicable: ${{ steps.plan.outputs.applicable }}
+      job-count: ${{ steps.plan.outputs.job-count }}
+      native: ${{ steps.plan.outputs.native }}
+      preview-native: ${{ steps.plan.outputs.preview-native }}
+      reason: ${{ steps.plan.outputs.reason }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ".nvmrc"
+
+      # Dev keeps the full application integration job below. Tooling smoke is
+      # scoped to the merged delta because exhaustive tooling coverage belongs
+      # to the nightly lane. A missing push base fails closed to the full lane.
+      - name: Resolve tooling smoke plan
+        id: plan
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            if [ -n "$BEFORE_SHA" ] \
+              && ! [[ "$BEFORE_SHA" =~ ^0+$ ]] \
+              && git cat-file -e "${BEFORE_SHA}^{commit}"; then
+              node scripts/plan-tooling-smoke.mjs \
+                --base-ref "$BEFORE_SHA" \
+                --github-output
+            else
+              node scripts/plan-tooling-smoke.mjs --all --github-output
+            fi
+          else
+            git fetch --no-tags origin "${{ github.base_ref }}"
+            node scripts/plan-tooling-smoke.mjs \
+              --base-ref "origin/${{ github.base_ref }}" \
+              --github-output
+          fi
+
+      - name: Summarize the plan
+        run: |
+          {
+            echo "### Tooling smoke plan"
+            echo ""
+            echo "- jobs: ${{ steps.plan.outputs.job-count }} (cap 16, was a fixed 32)"
+            echo "- reason: ${{ steps.plan.outputs.reason }}"
+            echo "- native acceptance lane: ${{ steps.plan.outputs.native }}"
+            echo "- preview process acceptance: ${{ steps.plan.outputs.preview-native }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  tooling-smoke-shards:
+    name: Tooling smoke shard (${{ matrix.name }})
+    needs: tooling-smoke-plan
+    if: needs.tooling-smoke-plan.outputs.applicable == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    # 90 minutes, matching the pre-planner lane, NOT a shorter budget.
+    #
+    # Fewer shards means each one does more work. The old lane ran 32 shards at
+    # 90 minutes; a cap of 12 still concentrates the work, so halving the
+    # timeout was exactly backwards. A first attempt at 45 minutes killed
+    # kernel-guard-cutover mid-run at 45:54 with every test passing, which reads
+    # as a test failure and is not one.
+    #
+    # The cap was 8, then 12. At 8 the
+    # allocator could not fit the measured suites under this timeout at all, so
+    # every PR touching package-lock.json was structurally red. See
+    # DEFAULT_MAX_JOBS in scripts/lib/tooling-smoke-plan.mjs.
+    #
+    # This is a ceiling for the full lane, not a target. Ordinary PRs select
+    # zero or one suite and finish in minutes. Only a change that invalidates
+    # the planner itself pays the whole cost. Suite runtimes are tracked
+    # separately as debt.
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.tooling-smoke-plan.outputs.matrix) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tooling smoke shard
+        run: |
+          started=$(date +%s)
+          node scripts/run-tooling-smoke-shard.mjs \
+            --suite=${{ matrix.suite }} \
+            --shard-index=${{ matrix.shard }} \
+            --shard-count=${{ matrix.shardCount }}
+          echo "shard ${{ matrix.name }} took $(( $(date +%s) - started ))s" \
+            >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload tooling smoke unit timings
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: tooling-smoke-timings-${{ matrix.suite }}-${{ matrix.shard }}-of-${{ matrix.shardCount }}
+          path: tooling-smoke-results/*.xml
+          retention-days: 14
+          if-no-files-found: warn
+
+  # The gate is the branch-visible contract. It fails when the planner fails,
+  # when a scheduled shard fails, and when shards are missing while the planner
+  # said they were required. A not-applicable plan is the only path to a green
+  # gate without shard execution.
+  #
+  # A skipped required check can admit a merge. Always settle this bounded,
+  # status-only gate, including cancellation, without checkout or installation.
+  tooling-smoke:
+    name: Tooling smoke
+    if: ${{ always() }}
+    needs: [tooling-smoke-plan, tooling-smoke-shards, native-acceptance, preview-process-acceptance, feature, pwa-opfs-acceptance]
+    timeout-minutes: 2
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require the planned tooling smoke result
+        if: ${{ always() }}
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          REF: ${{ github.ref }}
+          FEATURE_RESULT: ${{ needs.feature.result }}
+          OPFS_REQUIRED: ${{ needs.feature.outputs.needs-webkit }}
+          OPFS_RESULT: ${{ needs.pwa-opfs-acceptance.result }}
+          PLAN_RESULT: ${{ needs.tooling-smoke-plan.result }}
+          SHARD_RESULT: ${{ needs.tooling-smoke-shards.result }}
+          NATIVE_RESULT: ${{ needs.native-acceptance.result }}
+          APPLICABLE: ${{ needs.tooling-smoke-plan.outputs.applicable }}
+          NATIVE_REQUIRED: ${{ needs.tooling-smoke-plan.outputs.native }}
+          PREVIEW_REQUIRED: ${{ needs.tooling-smoke-plan.outputs.preview-native }}
+          PREVIEW_RESULT: ${{ needs.preview-process-acceptance.result }}
+          JOB_COUNT: ${{ needs.tooling-smoke-plan.outputs.job-count }}
+        run: |
+          # Feature planning only runs for dev PRs. Never interpret a missing
+          # selection as permission to omit the mandatory native proof.
+          case "$EVENT_NAME/$BASE_REF/$REF" in
+            pull_request/dev/*)
+              if [ "$FEATURE_RESULT" != "success" ]; then
+                echo "Feature validation did not succeed: $FEATURE_RESULT"
+                exit 1
+              fi
+              case "$OPFS_REQUIRED/$OPFS_RESULT" in
+                true/success|false/skipped) ;;
+                *) echo "Invalid OPFS plan/result: $OPFS_REQUIRED/$OPFS_RESULT"; exit 1 ;;
+              esac
+              ;;
+            push//refs/heads/dev)
+              if [ "$FEATURE_RESULT" != "skipped" ] || [ "$OPFS_RESULT" != "success" ]; then
+                echo "Dev push requires OPFS success and skipped PR feature validation."
+                exit 1
+              fi
+              ;;
+            pull_request/main/*)
+              if [ "$FEATURE_RESULT" != "skipped" ] || [ "$OPFS_RESULT" != "skipped" ]; then
+                echo "Main PR deliberately skips feature and OPFS validation."
+                exit 1
+              fi
+              ;;
+            *) echo "Unexpected validation event: $EVENT_NAME/$BASE_REF/$REF"; exit 1 ;;
+          esac
+
+          if [ "$PLAN_RESULT" != "success" ]; then
+            echo "Tooling smoke planner did not succeed: $PLAN_RESULT"
+            exit 1
+          fi
+
+          if [ "$APPLICABLE" = "true" ]; then
+            if [ "$SHARD_RESULT" != "success" ]; then
+              echo "Planner scheduled $JOB_COUNT shard(s); result was $SHARD_RESULT"
+              exit 1
+            fi
+            echo "All $JOB_COUNT planned tooling smoke shard(s) passed."
+          else
+            if [ "$SHARD_RESULT" != "skipped" ]; then
+              echo "Plan was not applicable but shards reported $SHARD_RESULT"
+              exit 1
+            fi
+            echo "No changed path reaches the tooling smoke lane."
+          fi
+
+          # Cleanup can terminate processes and remove a worktree. Its native
+          # proof is mandatory whenever selected, including skipped/cancelled jobs.
+          if [ "$PREVIEW_REQUIRED" = "true" ]; then
+            if [ "$PREVIEW_RESULT" != "success" ]; then
+              echo "Preview process acceptance did not pass: $PREVIEW_RESULT"
+              exit 1
+            fi
+          elif [ "$PREVIEW_REQUIRED" != "false" ] || [ "$PREVIEW_RESULT" != "skipped" ]; then
+            echo "Invalid preview acceptance plan/result: $PREVIEW_REQUIRED/$PREVIEW_RESULT"
+            exit 1
+          fi
+
+          # Observe-only for now, deliberately.
+          #
+          # These three files gate every test behind a module-level darwin
+          # check, so on Ubuntu they have always skipped and asserted nothing.
+          # This lane is the first time they execute at all, and the first run
+          # hung for the full job timeout. Blocking on a known-hanging test
+          # would stop every provider-visible change while proving nothing, and
+          # non-blocking is still strictly more coverage than the zero we had.
+          #
+          # This becomes blocking once the hang is diagnosed. Tracked as debt.
+          if [ "$NATIVE_REQUIRED" = "true" ]; then
+            if [ "$NATIVE_RESULT" = "success" ]; then
+              echo "Native acceptance passed on macOS."
+            else
+              echo "::warning::Native acceptance reported $NATIVE_RESULT (observe-only, not gating yet)"
+            fi
+          elif [ "$NATIVE_RESULT" != "skipped" ]; then
+            echo "Native acceptance was not required but reported $NATIVE_RESULT"
+            exit 1
+          fi
+
+      # Status functions are supported in step conditions, not step env values.
+      # Run after the result check even when it fails or cancellation arrives.
+      - name: Reject workflow cancellation
+        if: ${{ cancelled() }}
+        timeout-minutes: 1
+        run: |
+          echo "Workflow cancellation prevents an acceptance verdict."
+          exit 1
+
+  # These assertions no-op on Linux. Running them on a real macOS runner is the
+  # only way the launchd, Keychain, and signed-broker paths are actually proven.
+  native-acceptance:
+    name: Native actor acceptance (macOS)
+    needs: tooling-smoke-plan
+    if: needs.tooling-smoke-plan.outputs.native == 'true'
+    runs-on: macos-latest
+    # The runner executes the three fully Darwin-gated files plus the seven
+    # Darwin-gated cases from worktree-publish.test.mjs. The other publication
+    # cases already run in the Linux tooling lane and do not need a second pass
+    # on the scarce macOS runner.
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run native acceptance tests
+        run: node scripts/run-native-acceptance.mjs
+
+  # These builtin-only fixtures exercise the real libproc generation boundary.
+  # Keep them separate from actor provisioning and Windows product compilation.
+  preview-process-acceptance:
+    name: Preview process acceptance (macOS)
+    needs: tooling-smoke-plan
+    if: needs.tooling-smoke-plan.outputs.preview-native == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ".nvmrc"
+
+      - name: Verify platform and preview process contracts
+        run: |
+          node -e 'if (process.platform !== "darwin") process.exit(1)'
+          node --test --test-timeout=30000 scripts/worktree-preview.test.mjs scripts/task-decisions.test.mjs
+
+  main-pr-guard:
+    name: Main PR guard
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ".nvmrc"
+
+      - name: Refresh branch refs
+        run: git fetch origin dev main
+
+      - name: Validate main PR scope
+        env:
+          PROMOTION_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PROMOTION_HEAD_BRANCH: ${{ github.head_ref }}
+        run: |
+          snapshot_ref="$(git show -s --format='%(trailers:key=Freed-Dev-Snapshot,valueonly)' "${PROMOTION_HEAD_SHA}")"
+          node scripts/validate-main-pr.mjs \
+            --base-ref="origin/${{ github.base_ref }}" \
+            --head-ref="${PROMOTION_HEAD_SHA}" \
+            --head-branch="${PROMOTION_HEAD_BRANCH}" \
+            --snapshot-ref="${snapshot_ref}"
+
+  feature:
+    name: Feature validation
+    if: github.event_name == 'pull_request' && github.base_ref == 'dev'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      needs-webkit: ${{ steps.feature-plan.outputs.needs_webkit }}
+    permissions:
+      contents: read
+      pull-requests: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Resolve feature validation plan
+        id: feature-plan
+        run: |
+          PLAN_LABELS="$(npm run --silent validate:feature -- --plan-labels)"
+          echo "Feature validation plan:"
+          printf '%s\n' "$PLAN_LABELS"
+          if printf '%s\n' "$PLAN_LABELS" | grep -q '^desktop .*e2e'; then
+            echo "needs_playwright=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "needs_playwright=false" >> "$GITHUB_OUTPUT"
+          fi
+          if printf '%s\n' "$PLAN_LABELS" | grep -q '^pwa WebKit OPFS durability$'; then
+            echo "needs_webkit=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "needs_webkit=false" >> "$GITHUB_OUTPUT"
+          fi
+          if printf '%s\n' "$PLAN_LABELS" | grep -q '^native rust '; then
+            echo "needs_native=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "needs_native=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install Rust toolchain
+        if: steps.feature-plan.outputs.needs_native == 'true'
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+        with:
+          components: clippy
+
+      - name: Cache Rust build artifacts
+        if: steps.feature-plan.outputs.needs_native == 'true'
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          workspaces: packages/desktop/src-tauri -> target
+
+      - name: Install native Linux dependencies
+        if: steps.feature-plan.outputs.needs_native == 'true'
+        run: |
+          bash scripts/ci-sanitize-apt-sources.sh
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            clang \
+            cmake \
+            file \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev
+
+      - name: Install Playwright browsers
+        if: steps.feature-plan.outputs.needs_playwright == 'true'
+        run: |
+          browsers=()
+          if [ "${{ steps.feature-plan.outputs.needs_playwright }}" = "true" ]; then
+            browsers+=(chromium)
+          fi
+          npx playwright install --with-deps "${browsers[@]}"
+        working-directory: packages/desktop
+
+      - name: Run feature validation
+        run: npm run validate:feature
+        env:
+          CI: "true"
+          FREED_SKIP_PWA_OPFS_DURABILITY: "true"
+          GH_TOKEN: ${{ github.token }}
+
+      # Write the comparison to a file instead of piping through `tee`: the
+      # pipe swallowed perf-compare's exit(1), so the gate could never fail.
+      - name: Run perf regression check
+        if: always()
+        run: |
+          if [ -f packages/desktop/playwright-report/perf-results.json ]; then
+            npx tsx scripts/perf-compare.ts \
+              packages/desktop/playwright-report/perf-results.json \
+              packages/desktop/tests/e2e/perf-baselines.json \
+              packages/desktop/tests/e2e/perf-budgets.json \
+              > perf-comparison.md
+          else
+            echo "No perf results found - skipping comparison"
+          fi
+
+      - name: Print perf comparison
+        if: always() && hashFiles('perf-comparison.md') != ''
+        run: |
+          cat perf-comparison.md
+          cat perf-comparison.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload perf results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: perf-results-${{ github.sha }}
+          path: packages/desktop/playwright-report/perf-results.json
+          retention-days: 90
+          if-no-files-found: ignore
+
+      - name: Upload test artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-report
+          path: packages/desktop/playwright-report/
+          retention-days: 7
+
+      - name: Upload test results on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-results
+          path: packages/desktop/test-results/
+          retention-days: 7
+
+  pwa-opfs-acceptance:
+    name: PWA OPFS durability (macOS WebKit)
+    needs: feature
+    if: >-
+      ${{ always() &&
+          ((github.event_name == 'pull_request' &&
+            needs.feature.outputs.needs-webkit == 'true') ||
+           github.event_name == 'push') }}
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install WebKit
+        run: npx playwright install webkit
+
+      - name: Prove persistent OPFS SQLite durability
+        run: npm run test:e2e:opfs
+        working-directory: packages/pwa
+
+      - name: Upload OPFS diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pwa-opfs-test-results
+          path: packages/pwa/test-results/
+          retention-days: 7
+
+  windows-native:
+    name: Windows native compile
+    needs: tooling-smoke-plan
+    if: needs.tooling-smoke-plan.outputs.native == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+        with:
+          components: clippy
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          workspaces: packages/desktop/src-tauri -> target
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build shared packages and Desktop frontend
+        shell: bash
+        run: |
+          (cd packages/shared && npm run build)
+          (cd packages/sync && npm run build)
+          (cd packages/capture-rss && npm run build)
+          (cd packages/desktop && npm run build)
+
+      - name: Check the Windows Desktop native target
+        working-directory: packages/desktop/src-tauri
+        run: cargo check --target x86_64-pc-windows-msvc --all-features
+
+  dev:
+    name: Dev integration
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+        with:
+          components: clippy
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          workspaces: packages/desktop/src-tauri -> target
+
+      - name: Install native Linux dependencies
+        run: |
+          bash scripts/ci-sanitize-apt-sources.sh
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            clang \
+            cmake \
+            file \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev
+
+      - name: Install Playwright browsers
+        run: |
+          npx playwright install --with-deps chromium
+        working-directory: packages/desktop
+
+      - name: Run dev validation
+        run: npm run validate:dev
+        env:
+          CI: "true"
+          FREED_SKIP_PWA_OPFS_DURABILITY: "true"
+
+      - name: Upload test artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-report
+          path: packages/desktop/playwright-report/
+          retention-days: 7
+
+      - name: Upload test results on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-results
+          path: packages/desktop/test-results/
+          retention-days: 7
+
+      # A red dev build stays an incident issue. If it exposes durable debt,
+      # the stability controller links a separate issue carrying `debt`.
+      - name: Open or update the automation-triage issue on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="CI failure: dev validation on dev"
+          body="(AI Generated).
+
+          Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          Commit: ${GITHUB_SHA}
+          Job: dev (validate:dev)
+
+          Auto-filed for scripts/triage.mjs (label: automation-triage). This is an incident, not the debt backlog. Latest failures comment here; close it when the fix merges."
+          existing=$(gh issue list --label automation-triage --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create --title "$title" --label automation-triage --body "$body"
+          fi

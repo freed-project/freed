@@ -1,338 +1,236 @@
-name: Nightly exhaustive
-
-# The blocking lanes are deliberately narrow. This is where the expensive work
-# lives: every suite sharded into bounded repeated runs, plus the native
-# acceptance tests on a real macOS runner.
-#
-# Nothing here gates a pull request. When it finds something it files debt the
-# same way the dev lane files incidents, so a slow suite or a flaky test becomes
-# a tracked issue instead of a surprise in someone's PR.
-
-on:
-  schedule:
-    # 07:00 UTC, comfortably after the usual working day in the owner's timezone.
-    - cron: "0 7 * * *"
-  workflow_dispatch:
-    inputs:
-      repeat:
-        description: "Runs per suite for flake discovery, from 1 through 3"
-        required: false
-        default: "2"
-
-concurrency:
-  group: tooling-nightly
-  cancel-in-progress: false
-
+# NEVER MERGE. Branch-only status experiment for #2121.
+# Synthetic dependencies and event context; not production/native execution.
+name: "Never merge: native gate cancellation proof"
+"on":
+  workflow_dispatch: {}
 permissions:
   contents: read
-
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
+concurrency:
+  group: native-gate-cancel-proof-${{ github.ref }}-${{ github.run_id }}
+  cancel-in-progress: false
 jobs:
-  pwa-library-corpus-hardening:
-    name: PWA Library corpus hardening (${{ matrix.browser }})
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 90
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - browser: chromium
-            runner: ubuntu-latest
-            target: "100000"
-          - browser: webkit
-            runner: macos-latest
-            target: "25000"
-    permissions:
-      contents: read
-      issues: write
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: ".nvmrc"
-          cache: "npm"
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Install browser system dependencies
-        if: runner.os == 'Linux'
-        run: npx playwright install-deps "${{ matrix.browser }}"
-        working-directory: packages/pwa
-
-      - name: Install browser
-        run: npx playwright install "${{ matrix.browser }}"
-        working-directory: packages/pwa
-
-      - name: Exercise the OPFS Library corpus
-        run: npm run test:e2e:corpus
-        working-directory: packages/pwa
-        env:
-          FREED_PWA_CORPUS_BROWSER: ${{ matrix.browser }}
-          FREED_PWA_CORPUS_TARGET: ${{ matrix.target }}
-
-      - name: Upload PWA corpus measurements
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: pwa-library-corpus-hardening-${{ matrix.browser }}
-          path: packages/pwa/test-results/pwa-library-corpus-hardening.json
-          retention-days: 30
-          if-no-files-found: warn
-
-      - name: Upload PWA corpus progress and failure evidence
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: pwa-library-corpus-progress-${{ matrix.browser }}
-          path: |
-            packages/pwa/test-results/pwa-library-corpus-hardening-progress.json
-            packages/pwa/test-results/pwa-library-corpus-playwright
-          retention-days: 30
-          if-no-files-found: warn
-
-      - name: Record a corpus hardening failure
-        if: failure()
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          body="(AI Generated).
-
-          Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
-          Commit: ${GITHUB_SHA}
-          Browser: ${{ matrix.browser }}
-          Target: ${{ matrix.target }}
-
-          The nonblocking PWA OPFS corpus hardening lane failed before it could
-          prove its configured corpus checkpoints. The uploaded progress receipt
-          identifies the last completed batch and operation stage. The Playwright
-          failure artifact contains the retained trace and screenshot."
-          gh issue comment 1446 --body "$body"
-
-  exhaustive-tooling-plan:
-    name: Exhaustive tooling plan
+  tooling-smoke-plan:
+    name: Synthetic tooling-smoke-plan
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/chore/native-gate-cancel-proof'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 1
+    steps:
+      - name: Supply synthetic accepted result
+        id: fixture
+        run: |
+          echo 'SYNTHETIC ONLY: tooling-smoke-plan; no product or native proof'
+          echo 'applicable=true' >> "$GITHUB_OUTPUT"
+          echo 'native=true' >> "$GITHUB_OUTPUT"
+          echo 'preview-native=true' >> "$GITHUB_OUTPUT"
+          echo 'job-count=1' >> "$GITHUB_OUTPUT"
     outputs:
-      matrix: ${{ steps.plan.outputs.matrix }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: ".nvmrc"
-
-      - name: Plan bounded measurement shards
-        id: plan
-        # Two attempts run inside each job. Forty shards leave the slowest
-        # projected job below 50 minutes even with the observed 1.5x imbalance,
-        # while preserving the exact total test work.
-        run: node scripts/plan-tooling-smoke.mjs --all --max-jobs 40 --github-output
-
-  exhaustive-tooling-shards:
-    name: Exhaustive tooling shard (${{ matrix.name }})
-    needs: exhaustive-tooling-plan
+      applicable: ${{ steps.fixture.outputs.applicable }}
+      native: ${{ steps.fixture.outputs.native }}
+      preview-native: ${{ steps.fixture.outputs.preview-native }}
+      job-count: ${{ steps.fixture.outputs.job-count }}
+  tooling-smoke-shards:
+    name: Synthetic tooling-smoke-shards
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/chore/native-gate-cancel-proof'
     runs-on: ubuntu-latest
-    timeout-minutes: 90
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.exhaustive-tooling-plan.outputs.matrix) }}
+    timeout-minutes: 1
     steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: ".nvmrc"
-          cache: "npm"
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Measure the shard and look for flake
+      - name: Supply synthetic accepted result
+        id: fixture
         run: |
-          node scripts/measure-tooling-smoke.mjs \
-            --suite=${{ matrix.suite }} \
-            --shard-index=${{ matrix.shard }} \
-            --shard-count=${{ matrix.shardCount }} \
-            --repeat="${{ github.event.inputs.repeat || '2' }}" \
-            --output-dir=tooling-smoke-measurements
-
-      - name: Upload shard measurements
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: tooling-smoke-measurement-${{ matrix.suite }}-${{ matrix.shard }}-of-${{ matrix.shardCount }}
-          path: tooling-smoke-measurements
-          retention-days: 30
-          if-no-files-found: error
-
-  exhaustive-tooling:
-    name: Exhaustive tooling suites
-    needs: [exhaustive-tooling-plan, exhaustive-tooling-shards]
+          echo 'SYNTHETIC ONLY: tooling-smoke-shards; no product or native proof'
+  native-acceptance:
+    name: Synthetic native-acceptance
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/chore/native-gate-cancel-proof'
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Supply synthetic accepted result
+        id: fixture
+        run: |
+          echo 'SYNTHETIC ONLY: native-acceptance; no product or native proof'
+  preview-process-acceptance:
+    name: Synthetic preview-process-acceptance
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/chore/native-gate-cancel-proof'
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Supply synthetic accepted result
+        id: fixture
+        run: |
+          echo 'SYNTHETIC ONLY: preview-process-acceptance; no product or native proof'
+  feature:
+    name: Synthetic feature
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/chore/native-gate-cancel-proof'
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Supply synthetic accepted result
+        id: fixture
+        run: |
+          echo 'SYNTHETIC ONLY: feature; no product or native proof'
+          echo "needs-webkit=true" >> "$GITHUB_OUTPUT"
+    outputs:
+      needs-webkit: ${{ steps.fixture.outputs.needs-webkit }}
+  pwa-opfs-acceptance:
+    name: Synthetic pwa-opfs-acceptance
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/chore/native-gate-cancel-proof'
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Supply synthetic accepted result
+        id: fixture
+        run: |
+          echo 'SYNTHETIC ONLY: pwa-opfs-acceptance; no product or native proof'
+  tooling-smoke:
+    name: Never-merge cancellation probe aggregate
     if: ${{ always() }}
+    needs:
+      - tooling-smoke-plan
+      - tooling-smoke-shards
+      - native-acceptance
+      - preview-process-acceptance
+      - feature
+      - pwa-opfs-acceptance
+    timeout-minutes: 2
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    permissions:
-      contents: read
-      issues: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - name: Checkout probe commit only
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          node-version-file: ".nvmrc"
-          cache: "npm"
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Download shard measurements
-        if: needs.exhaustive-tooling-plan.result == 'success'
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          pattern: tooling-smoke-measurement-*
-          path: tooling-smoke-measurements
-          merge-multiple: true
-
-      - name: Aggregate complete shard coverage
-        id: aggregate
-        continue-on-error: true
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify included reviewed source
+        id: source
         run: |
-          node scripts/measure-tooling-smoke.mjs \
-            --aggregate=tooling-smoke-measurements \
-            > tooling-smoke-measured.json
-
-      - name: Report timings and drift
-        id: drift
-        if: steps.aggregate.outcome == 'success'
-        continue-on-error: true
-        run: node scripts/report-tooling-smoke-drift.mjs tooling-smoke-measured.json
-
-      - name: Upload measurements
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: tooling-smoke-measurements
-          path: |
-            tooling-smoke-measured.json
-            tooling-smoke-measurements
-          retention-days: 30
-          if-no-files-found: warn
-
-      # Flake and drift are debt, not incidents. One issue, deduplicated, so the
-      # backlog stays the single source per the repo debt contract.
-      - name: File or update the tooling debt issue
-        if: >-
-          needs.exhaustive-tooling-plan.result != 'success' ||
-          needs.exhaustive-tooling-shards.result != 'success' ||
-          steps.aggregate.outcome != 'success' ||
-          steps.drift.outcome != 'success'
+          test "$GITHUB_EVENT_NAME" = workflow_dispatch
+          test "$GITHUB_REF" = refs/heads/chore/native-gate-cancel-proof
+          printf '%s\n' '53a75ca66a5bc5e8c1c37444abbc995dd00cd96f1cc85b8a0146dc075821a6cb  scripts/experiments/native-gate-cancel-proof/source-ci.yml' | sha256sum --check
+          echo 'PROBE_SOURCE_COMMIT=6364f7c7cc60413ffabb2388fcbf6375a8eefd9e'
+          echo "PROBE_COMMIT=$GITHUB_SHA RUN=$GITHUB_RUN_ID ATTEMPT=$GITHUB_RUN_ATTEMPT"
+          sha256sum .github/workflows/tooling-nightly.yml
+      - name: Require the planned tooling smoke result
+        if: ${{ always() }}
         env:
-          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: pull_request
+          BASE_REF: dev
+          REF: refs/pull/2121/merge
+          FEATURE_RESULT: ${{ needs.feature.result }}
+          OPFS_REQUIRED: ${{ needs.feature.outputs.needs-webkit }}
+          OPFS_RESULT: ${{ needs.pwa-opfs-acceptance.result }}
+          PLAN_RESULT: ${{ needs.tooling-smoke-plan.result }}
+          SHARD_RESULT: ${{ needs.tooling-smoke-shards.result }}
+          NATIVE_RESULT: ${{ needs.native-acceptance.result }}
+          APPLICABLE: ${{ needs.tooling-smoke-plan.outputs.applicable }}
+          NATIVE_REQUIRED: ${{ needs.tooling-smoke-plan.outputs.native }}
+          PREVIEW_REQUIRED: ${{ needs.tooling-smoke-plan.outputs.preview-native }}
+          PREVIEW_RESULT: ${{ needs.preview-process-acceptance.result }}
+          JOB_COUNT: ${{ needs.tooling-smoke-plan.outputs.job-count }}
         run: |
-          title="Nightly exhaustive tooling lane needs attention"
-          body="(AI Generated).
+          # Feature planning only runs for dev PRs. Never interpret a missing
+          # selection as permission to omit the mandatory native proof.
+          case "$EVENT_NAME/$BASE_REF/$REF" in
+            pull_request/dev/*)
+              if [ "$FEATURE_RESULT" != "success" ]; then
+                echo "Feature validation did not succeed: $FEATURE_RESULT"
+                exit 1
+              fi
+              case "$OPFS_REQUIRED/$OPFS_RESULT" in
+                true/success|false/skipped) ;;
+                *) echo "Invalid OPFS plan/result: $OPFS_REQUIRED/$OPFS_RESULT"; exit 1 ;;
+              esac
+              ;;
+            push//refs/heads/dev)
+              if [ "$FEATURE_RESULT" != "skipped" ] || [ "$OPFS_RESULT" != "success" ]; then
+                echo "Dev push requires OPFS success and skipped PR feature validation."
+                exit 1
+              fi
+              ;;
+            pull_request/main/*)
+              if [ "$FEATURE_RESULT" != "skipped" ] || [ "$OPFS_RESULT" != "skipped" ]; then
+                echo "Main PR deliberately skips feature and OPFS validation."
+                exit 1
+              fi
+              ;;
+            *) echo "Unexpected validation event: $EVENT_NAME/$BASE_REF/$REF"; exit 1 ;;
+          esac
 
-          Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
-          Commit: ${GITHUB_SHA}
-
-          The nightly exhaustive lane failed, went flaky, or drifted far enough
-          from scripts/tooling-smoke-durations.json that shard balance is stale.
-          Refresh durations with: node scripts/measure-tooling-smoke.mjs --write"
-          existing=$(gh issue list --label debt --state open \
-            --search "in:title \"$title\"" --json number --jq '.[0].number // empty')
-          if [ -n "$existing" ]; then
-            gh issue comment "$existing" --body "$body"
-          else
-            gh issue create --title "$title" --label debt --body "$body"
-          fi
-
-      - name: Require complete measurements
-        env:
-          PLAN_RESULT: ${{ needs.exhaustive-tooling-plan.result }}
-          SHARD_RESULT: ${{ needs.exhaustive-tooling-shards.result }}
-          AGGREGATE_RESULT: ${{ steps.aggregate.outcome }}
-          DRIFT_RESULT: ${{ steps.drift.outcome }}
-        run: |
-          if [ "$PLAN_RESULT" != "success" ] \
-            || [ "$SHARD_RESULT" != "success" ] \
-            || [ "$AGGREGATE_RESULT" != "success" ] \
-            || [ "$DRIFT_RESULT" != "success" ]; then
-            echo "Nightly tooling measurement did not produce one complete stable result."
-            echo "  plan: $PLAN_RESULT"
-            echo "  shards: $SHARD_RESULT"
-            echo "  aggregate: $AGGREGATE_RESULT"
-            echo "  drift: $DRIFT_RESULT"
+          if [ "$PLAN_RESULT" != "success" ]; then
+            echo "Tooling smoke planner did not succeed: $PLAN_RESULT"
             exit 1
           fi
 
-  native-acceptance:
-    name: Native actor acceptance (macOS)
-    runs-on: macos-latest
-    timeout-minutes: 60
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+          if [ "$APPLICABLE" = "true" ]; then
+            if [ "$SHARD_RESULT" != "success" ]; then
+              echo "Planner scheduled $JOB_COUNT shard(s); result was $SHARD_RESULT"
+              exit 1
+            fi
+            echo "All $JOB_COUNT planned tooling smoke shard(s) passed."
+          else
+            if [ "$SHARD_RESULT" != "skipped" ]; then
+              echo "Plan was not applicable but shards reported $SHARD_RESULT"
+              exit 1
+            fi
+            echo "No changed path reaches the tooling smoke lane."
+          fi
 
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: ".nvmrc"
-          cache: "npm"
+          # Cleanup can terminate processes and remove a worktree. Its native
+          # proof is mandatory whenever selected, including skipped/cancelled jobs.
+          if [ "$PREVIEW_REQUIRED" = "true" ]; then
+            if [ "$PREVIEW_RESULT" != "success" ]; then
+              echo "Preview process acceptance did not pass: $PREVIEW_RESULT"
+              exit 1
+            fi
+          elif [ "$PREVIEW_REQUIRED" != "false" ] || [ "$PREVIEW_RESULT" != "skipped" ]; then
+            echo "Invalid preview acceptance plan/result: $PREVIEW_REQUIRED/$PREVIEW_RESULT"
+            exit 1
+          fi
 
-      - name: Install dependencies
-        run: npm ci
+          # Observe-only for now, deliberately.
+          #
+          # These three files gate every test behind a module-level darwin
+          # check, so on Ubuntu they have always skipped and asserted nothing.
+          # This lane is the first time they execute at all, and the first run
+          # hung for the full job timeout. Blocking on a known-hanging test
+          # would stop every provider-visible change while proving nothing, and
+          # non-blocking is still strictly more coverage than the zero we had.
+          #
+          # This becomes blocking once the hang is diagnosed. Tracked as debt.
+          if [ "$NATIVE_REQUIRED" = "true" ]; then
+            if [ "$NATIVE_RESULT" = "success" ]; then
+              echo "Native acceptance passed on macOS."
+            else
+              echo "::warning::Native acceptance reported $NATIVE_RESULT (observe-only, not gating yet)"
+            fi
+          elif [ "$NATIVE_RESULT" != "skipped" ]; then
+            echo "Native acceptance was not required but reported $NATIVE_RESULT"
+            exit 1
+          fi
 
-      - name: Run native acceptance tests
-        run: node scripts/run-native-acceptance.mjs
-
-  desktop-e2e:
-    name: Desktop e2e (full)
-    runs-on: ubuntu-latest
-    timeout-minutes: 90
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: ".nvmrc"
-          cache: "npm"
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Install Playwright browsers
+          # Experiment-only rendezvous after the unchanged reviewed status body.
+          echo "PROBE_RENDEZVOUS_OPEN status_body=success wait_seconds=60"
+          printf "PROBE_RENDEZVOUS_OPEN run=%s attempt=%s sha=%s utc=%s wait_seconds=60\n" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$GITHUB_SHA" "$(date -u +%FT%TZ)" >> "$GITHUB_STEP_SUMMARY"
+          sleep 60
+          echo "PROBE_RENDEZVOUS_CLOSED"
+        id: status
+      - name: Reject workflow cancellation
+        if: ${{ cancelled() }}
+        timeout-minutes: 1
         run: |
-          bash ../../scripts/ci-sanitize-apt-sources.sh
-          npx playwright install --with-deps chromium
-        working-directory: packages/desktop
-
-      - name: Run the full desktop e2e suite
-        run: npm run test:e2e
-        working-directory: packages/desktop
+          echo "Workflow cancellation prevents an acceptance verdict."
+          exit 1
+        id: guard
+      - name: Classify probe evidence
+        if: ${{ always() }}
         env:
-          FREED_FRIENDS_PERF_TELEMETRY: "1"
-
-      - name: Upload reports and telemetry
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: nightly-desktop-e2e-artifacts
-          path: |
-            packages/desktop/playwright-report/
-            packages/desktop/test-results/
-          retention-days: 14
-          if-no-files-found: ignore
+          SOURCE_OUTCOME: ${{ steps.source.outcome }}
+          STATUS_OUTCOME: ${{ steps.status.outcome }}
+          GUARD_OUTCOME: ${{ steps.guard.outcome }}
+        run: |
+          printf "PROBE_OUTCOMES status=%s guard=%s\n" "$STATUS_OUTCOME" "$GUARD_OUTCOME"
+          if [ "$SOURCE_OUTCOME" = success ] && [ "$STATUS_OUTCOME" = success ] && [ "$GUARD_OUTCOME" = failure ]; then
+            echo "PROBE_GUARD_EXECUTED_AND_FAILED: correlate normal cancellation receipt and guard log"
+          else
+            echo "PROBE_NOT_PROVEN: missed cancellation, skipped guard, interruption or timeout"
+            exit 1
+          fi
