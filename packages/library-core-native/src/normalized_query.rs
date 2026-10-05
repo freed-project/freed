@@ -948,6 +948,7 @@ pub struct NormalizedItemScanRowV1 {
     #[serde(flatten)]
     pub card: NormalizedFeedCardV1,
     pub hidden: bool,
+    pub seen_synced_at: Option<i64>,
     pub ranking_care_level: Option<i64>,
     pub ranking_engagement_reposts: Option<i64>,
     pub ranking_engagement_views: Option<i64>,
@@ -1185,6 +1186,7 @@ pub struct NormalizedItemBodyLocatorV1 {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedItemDetailV1 {
+    pub seen_synced_at: Option<i64>,
     pub card: NormalizedFeedCardV1,
     pub content_body: NormalizedItemBodyLocatorV1,
     pub media_blob_digests: Vec<Option<String>>,
@@ -2432,6 +2434,14 @@ fn feed_card(row: &Row<'_>) -> rusqlite::Result<NormalizedFeedCardV1> {
     })
 }
 
+fn seen_confirmation(row: &Row<'_>) -> rusqlite::Result<Option<i64>> {
+    let value: Option<i64> = row.get("seenSyncedAt")?;
+    if value.is_some_and(|stamp| stamp != -1 && !valid_safe_integer(stamp)) {
+        return Err(rusqlite::Error::InvalidQuery);
+    }
+    Ok(value)
+}
+
 fn background_item_row(row: &Row<'_>) -> rusqlite::Result<NormalizedItemScanRowV1> {
     let hidden = optional_boolean(row, "hidden")?.ok_or(rusqlite::Error::InvalidQuery)?;
     let rss_feed_url: Option<String> = row.get("rssFeedUrl")?;
@@ -2480,6 +2490,7 @@ fn background_item_row(row: &Row<'_>) -> rusqlite::Result<NormalizedItemScanRowV
     Ok(NormalizedItemScanRowV1 {
         card: feed_card(row)?,
         hidden,
+        seen_synced_at: seen_confirmation(row)?,
         ranking_care_level,
         ranking_engagement_reposts,
         ranking_engagement_views,
@@ -7905,6 +7916,7 @@ fn query_item_detail(
             return Err(rusqlite::Error::InvalidQuery);
         }
         Ok(NormalizedItemDetailV1 {
+            seen_synced_at: seen_confirmation(row)?,
             card,
             content_body: body_locator(row, "contentBodyStorage", "contentBodyBlobDigest")?,
             media_blob_digests,
@@ -10716,6 +10728,61 @@ mod tests {
         assert_eq!(response.rows[0].integer_value, Some(3));
         assert_eq!(response.rows[2].real_value, Some(0.5));
         assert_eq!(response.rows[3].text_value.as_deref(), Some("neon"));
+    }
+
+    // Tier 1: provider confirmation survives every background and changed-item read.
+    #[test]
+    fn seen_confirmation_survives_all_normalized_query_paths() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        install_normalized_schema_v1(&connection).unwrap();
+        connection.execute_batch(&format!("INSERT INTO library_meta VALUES (1, '{}', 1, 'epoch-1', 0, 1);
+            INSERT INTO library_materialization_generation VALUES (1, '{}');
+            INSERT INTO library_feed_items (global_id, platform, content_type, captured_at, published_at, read_at, updated_at, author_id, author_handle, author_display_name, hidden, saved, archived)
+            VALUES ('x:synthetic', 'x', 'post', 1, 1, 70, 1, 'author', 'author', 'Author', 0, 0, 0);", "a".repeat(64), "b".repeat(64))).unwrap();
+        for stamp in [None, Some(-1), Some(0), Some(1000)] {
+            connection
+                .execute("UPDATE library_feed_items SET seen_synced_at=?1", [stamp])
+                .unwrap();
+            for priority in [serde_json::Value::Null, serde_json::json!(1001)] {
+                let result = query_normalized_json_v1(&mut connection, serde_json::json!({
+                    "queryId":"background_item_page_v1", "schemaVersion":1, "analysisVersion":null,
+                    "cancellationId":"cancel-seen", "readerSessionId":"reader-seen", "cursor":null,
+                    "limit":64, "priorityComputedBeforeMs":priority
+                })).unwrap();
+                let value = serde_json::to_value(result).unwrap();
+                assert_eq!(value["rows"][0]["seenSyncedAt"], serde_json::json!(stamp));
+            }
+            let result = query_normalized_json_v1(&mut connection, serde_json::json!({
+                "queryId":"priority_time_page_v1", "schemaVersion":1, "cancellationId":"cancel-time",
+                "readerSessionId":"reader-time", "limit":64, "priorityComputedBeforeMs":1001,
+                "generationId":"b".repeat(64), "sourceRevision":0
+            })).unwrap();
+            assert_eq!(
+                serde_json::to_value(result).unwrap()["rows"][0]["seenSyncedAt"],
+                serde_json::json!(stamp)
+            );
+            let result = query_normalized_json_v1(
+                &mut connection,
+                serde_json::json!({
+                    "queryId":"item_detail_v1", "schemaVersion":1, "globalId":"x:synthetic"
+                }),
+            )
+            .unwrap();
+            assert_eq!(
+                serde_json::to_value(result).unwrap()["item"]["seenSyncedAt"],
+                serde_json::json!(stamp)
+            );
+        }
+        connection
+            .execute("UPDATE library_feed_items SET seen_synced_at=-2", [])
+            .unwrap();
+        assert!(query_normalized_json_v1(
+            &mut connection,
+            serde_json::json!({
+                "queryId":"item_detail_v1", "schemaVersion":1, "globalId":"x:synthetic"
+            })
+        )
+        .is_err());
     }
 
     #[test]

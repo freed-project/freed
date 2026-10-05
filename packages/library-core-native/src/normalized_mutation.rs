@@ -4889,6 +4889,141 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn seen_audit_exact_retry_after_delete_never_resurrects_and_fresh_late_ack_is_rejected() {
+        let (mut connection, key_pair, enrollment) = fixture();
+        let seen = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:seen-audit:before-delete",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[("rss:item:1", 2000)],
+            "feed_item_seen_sync_receipt",
+        );
+        let accepted =
+            accept_normalized_operation_transaction_v1(&mut connection, &seen, &key_pair, 2000)
+                .unwrap();
+        let remove = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:seen-audit:delete",
+            2,
+            Some(&accepted.committed_operation_id),
+            &accepted.committed_chain_digest,
+            &[("rss:item:1", 2100)],
+            "feed_item_remove",
+        );
+        let removed =
+            accept_normalized_operation_transaction_v1(&mut connection, &remove, &key_pair, 2100)
+                .unwrap();
+        let replay =
+            accept_normalized_operation_transaction_v1(&mut connection, &seen, &key_pair, 2200)
+                .unwrap();
+        assert_eq!(replay.committed_revision, accepted.committed_revision);
+        let late = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:seen-audit:late",
+            3,
+            Some(&removed.committed_operation_id),
+            &removed.committed_chain_digest,
+            &[("rss:item:1", 2200)],
+            "feed_item_seen_sync_receipt",
+        );
+        let rejection = match resolve_normalized_operation_transaction_v1(
+            &mut connection,
+            &late,
+            &key_pair,
+            2200,
+        )
+        .unwrap()
+        {
+            NormalizedMutationResolutionV1::FollowerResult(r) => r,
+            NormalizedMutationResolutionV1::Accepted(_) => {
+                panic!("late provider acknowledgement cannot resurrect deleted target")
+            }
+        };
+        let result: Value = serde_json::from_slice(&rejection.canonical_follower_result).unwrap();
+        assert_eq!(result["rejection_reason"], "target_tombstoned");
+        let state:(i64,i64,i64)=connection.query_row("SELECT (SELECT count(*) FROM library_feed_items WHERE global_id='rss:item:1'),(SELECT count(*) FROM library_operations),(SELECT revision FROM library_change_state WHERE singleton_id=1)",[],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).unwrap();
+        assert_eq!(state, (0, 2, 2));
+    }
+
+    #[test]
+    fn seen_audit_fresh_identical_or_older_confirmations_grow_signed_history_exact_retry_does_not()
+    {
+        let (mut connection, key_pair, enrollment) = fixture();
+        let before:(i64,i64,i64,i64,i64)=connection.query_row("SELECT (SELECT count(*) FROM library_operations),(SELECT count(*) FROM library_receipts),(SELECT count(*) FROM library_transactions),(SELECT count(*) FROM library_replication_outbox),(SELECT revision FROM library_change_state WHERE singleton_id=1)",[],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?))).unwrap();
+        let intent_before:(Option<i64>,Option<i64>,Option<i64>)=connection.query_row("SELECT read_at,liked,liked_at FROM library_feed_items WHERE global_id='rss:item:1'",[],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).unwrap();
+        let mut tip: Option<NormalizedMutationReceiptV1> = None;
+        for (index, synced_at) in [2000_i64, 2000, 1000, 2000, 3000].into_iter().enumerate() {
+            let envelopes = signed_envelopes_from_tip(
+                &key_pair,
+                &enrollment,
+                &format!("tx:seen-audit:{index}"),
+                index as i64 + 1,
+                tip.as_ref().map(|r| r.committed_operation_id.as_str()),
+                tip.as_ref()
+                    .map(|r| r.committed_chain_digest.as_str())
+                    .unwrap_or(&enrollment.actor_chain_genesis),
+                &[("rss:item:1", synced_at)],
+                "feed_item_seen_sync_receipt",
+            );
+            let receipt = accept_normalized_operation_transaction_v1(
+                &mut connection,
+                &envelopes,
+                &key_pair,
+                10000 + index as i64,
+            )
+            .expect("accept fresh seen acknowledgement");
+            if index == 0 {
+                let replay = accept_normalized_operation_transaction_v1(
+                    &mut connection,
+                    &envelopes,
+                    &key_pair,
+                    10001,
+                )
+                .expect("exact lost-response retry");
+                assert_eq!(
+                    replay.committed_operation_id,
+                    receipt.committed_operation_id
+                );
+                assert_eq!(replay.committed_revision, receipt.committed_revision);
+                assert_eq!(
+                    connection
+                        .query_row("SELECT count(*) FROM library_operations", [], |r| r
+                            .get::<_, i64>(0))
+                        .unwrap(),
+                    before.0 + 1
+                );
+            }
+            let projected: i64 = connection
+                .query_row(
+                    "SELECT seen_synced_at FROM library_feed_items WHERE global_id='rss:item:1'",
+                    [],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(projected, if index == 4 { 3000 } else { 2000 });
+            tip = Some(receipt);
+        }
+        let after:(i64,i64,i64,i64,i64)=connection.query_row("SELECT (SELECT count(*) FROM library_operations),(SELECT count(*) FROM library_receipts),(SELECT count(*) FROM library_transactions),(SELECT count(*) FROM library_replication_outbox),(SELECT revision FROM library_change_state WHERE singleton_id=1)",[],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?))).unwrap();
+        assert_eq!(
+            after,
+            (
+                before.0 + 5,
+                before.1 + 5,
+                before.2 + 5,
+                before.3 + 5,
+                before.4 + 5
+            )
+        );
+        let intent_after:(Option<i64>,Option<i64>,Option<i64>)=connection.query_row("SELECT read_at,liked,liked_at FROM library_feed_items WHERE global_id='rss:item:1'",[],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).unwrap();
+        assert_eq!(intent_before, intent_after);
+    }
+
+    #[test]
     fn signed_provider_sync_receipts_materialize_only_the_named_timestamp() {
         let (mut connection, key_pair, enrollment) = fixture();
         let like = signed_envelopes_from_tip(

@@ -106,6 +106,7 @@ describe("Freed Desktop normalized surface readers", () => {
         return {
           item: {
             card: feedCard,
+            seenSyncedAt: 1234,
             contentBody: { blobDigest: null, storage: "inline" },
             mediaBlobDigests: [],
             preservedBody: { blobDigest: null, storage: "none" },
@@ -167,6 +168,7 @@ describe("Freed Desktop normalized surface readers", () => {
         globalId: "x:item-1",
         userState: expect.objectContaining({
           tags: ["favorite"],
+          seenSyncedAt: 1234,
           highlights: [
             { createdAt: 20, note: "Keep this", text: "A quotation" },
           ],
@@ -227,6 +229,7 @@ describe("Freed Desktop normalized surface readers", () => {
         return {
           item: {
             card: feedCard,
+            seenSyncedAt: null,
             contentBody: { blobDigest: null, storage: "inline" },
             mediaBlobDigests: [],
             preservedBody: { blobDigest: null, storage: "none" },
@@ -256,6 +259,7 @@ describe("Freed Desktop normalized surface readers", () => {
             "https://example.com/image.jpg",
           ],
         },
+        seenSyncedAt: null,
         contentBody: { blobDigest: bodyDigest, storage: "blob" },
         mediaBlobDigests: [mediaDigest, bodyDigest],
         preservedBody: { blobDigest: bodyDigest, storage: "blob" },

@@ -61,6 +61,7 @@ function normalizedRow(globalId = ITEM_ID) {
     eventStartsAt: null,
     globalId,
     hidden: false,
+    seenSyncedAt: null,
     liked: false,
     likedAt: null,
     likedSyncedAt: null,
@@ -88,6 +89,7 @@ function normalizedRow(globalId = ITEM_ID) {
 function normalizedCard(globalId = ITEM_ID) {
   const {
     hidden: _hidden,
+    seenSyncedAt: _seenSyncedAt,
     rankingCareLevel: _rankingCareLevel,
     rankingEngagementReposts: _rankingEngagementReposts,
     rankingEngagementViews: _rankingEngagementViews,
@@ -226,6 +228,7 @@ describe("SQLite editable follower mutations", () => {
           return {
             item: {
               card: normalizedCard(),
+              seenSyncedAt: null,
               contentBody: { blobDigest: null, storage: "inline" },
               mediaBlobDigests: [],
               preservedBody: { blobDigest: null, storage: "none" },
@@ -837,7 +840,7 @@ describe("SQLite Primary mutations", () => {
         const source = { generationId: "bc".repeat(32), projectionRevision: revision, transitionSequence: revision };
         if (scenario === "existing" && request.queryId === "item_detail_v1" && request.globalId === "saved:batch:0") return {
           queryId: request.queryId, schemaVersion: 1, source,
-          item: { card: normalizedCard(request.globalId), contentBody: { blobDigest: null, storage: "inline" },
+          item: { card: normalizedCard(request.globalId), seenSyncedAt: null, contentBody: { blobDigest: null, storage: "inline" },
             mediaBlobDigests: [], preservedBody: { blobDigest: null, storage: "none" } },
         };
         if (request.queryId === "optimistic_fields_v1") return { queryId: request.queryId, schemaVersion: 1, source, rows: [] };
@@ -1084,6 +1087,78 @@ describe("SQLite Primary mutations", () => {
       "normalized_library_follower_mutation_context",
       expect.anything(),
     );
+  });
+
+  // Tier 1: actual signed producer plus actual query client/mappers and scheduler.
+  it("stops fresh seen receipt members after acknowledgement across scans and changed items", async () => {
+    vi.useFakeTimers(); vi.setSystemTime(20_000); window.localStorage.clear();
+    let teardown: (() => void) | undefined;
+    try {
+      vi.doMock("./side-effect-scheduler", () => ({ scheduleSideEffect: async (task: {run: () => unknown}) => task.run() }));
+      vi.doMock("./background-runtime-coordinator", () => ({ runBackgroundJob: async (task: {run: () => unknown}) => task.run(), isBackgroundRuntimeDeferredError: () => false, formatBackgroundRuntimeDeferredReason: () => "synthetic" }));
+      const { resetSocialOutboxStateForTests } = await import("./social-outbox-state");
+      resetSocialOutboxStateForTests();
+      const { startOutboxProcessor } = await import("./outbox");
+      const { queryNormalizedLibrary } = await import("./library-core-normalized-query-client");
+      const { scanLibraryCoreNormalizedBackgroundItemsV1 } = await import("@freed/shared/library-core");
+      let seenSyncedAt: number | null = null;
+      const baseline = mocks.invoke.getMockImplementation()!;
+      const source = { generationId: "bc".repeat(32), projectionRevision: 2, transitionSequence: 2 };
+      const row = () => ({ ...normalizedRow("x:producer"), platform: "x", readAt: 70,
+        sourceUrl: "https://example.invalid/synthetic", seenSyncedAt });
+      mocks.invoke.mockImplementation(async (command: string, args?: any) => {
+        if (command === "sqlite_library_cloud_writer_admission_status") return { configured: false, allowed: true, localWriterId: null, activeWriterId: null, storageEpoch: null, controlRevision: null, verifiedAtMs: null };
+        if (command === "commit_normalized_library_transaction") {
+          const result = await baseline(command, args);
+          const envelope = JSON.parse(args.request.canonicalEnvelopeJson[0]);
+          seenSyncedAt = envelope.payload.synced_at_ms; return result;
+        }
+        if (command === "query_normalized_library") {
+          const request = args.request;
+          if (request.queryId === "optimistic_fields_v1") return { queryId: request.queryId, schemaVersion: 1, source, rows: [] };
+          if (request.queryId === "background_item_page_v1") return {
+            queryId: request.queryId, schemaVersion: 1, source, rows: [row()], nextCursor: null };
+          if (request.queryId === "item_detail_v1") {
+            const { hidden, rankingCareLevel, rankingEngagementReposts, rankingEngagementViews,
+              rssSource, sampleDataFingerprint, topics, seenSyncedAt: _seen, ...card } = row();
+            return { queryId: request.queryId, schemaVersion: 1, source, item: { card, seenSyncedAt,
+              contentBody: { storage: "inline", blobDigest: null }, preservedBody: { storage: "none", blobDigest: null }, mediaBlobDigests: [] } };
+          }
+          if (request.queryId === "item_annotations_v1") return { queryId: request.queryId,
+            schemaVersion: 1, globalId: request.globalId, source, tags: [], highlights: [] };
+        }
+        return baseline(command, args);
+      });
+      let subscriber: ((event: import("./library-types").LibraryMutationEvent) => void) | undefined;
+      const markSeen = vi.fn(async () => true);
+      let confirmationError: unknown;
+      let changedItemSeen: number | undefined;
+      const start = () => startOutboxProcessor(
+        visit => scanLibraryCoreNormalizedBackgroundItemsV1({ query: queryNormalizedLibrary, randomId: () => "synthetic" },
+          async items => { await visit(items); return "continue" as const; }),
+        cb => { subscriber = cb; return () => {}; },
+        new Map([["x", { markSeen, like: vi.fn(async () => true), unlike: vi.fn(async () => true), commentUrl: () => null }]]),
+        vi.fn(async () => {}), async (globalId, syncedAt) => {
+          let event;
+          try { ({ event } = await dispatchSqliteMutation({ type: "CONFIRM_SEEN_SYNCED", reqId: 20, globalId, syncedAt })); } catch (error) { confirmationError = error; throw error; }
+          if (!event.changedItems) throw new Error("confirmation omitted changed items");
+          changedItemSeen = event.changedItems[0].userState.seenSyncedAt;
+          expect(changedItemSeen).toBe(syncedAt); subscriber!(event);
+        });
+      let stop = start(); teardown = stop; await vi.advanceTimersByTimeAsync(500);
+      expect(confirmationError).toBeUndefined();
+      expect(changedItemSeen).toBe(20_000);
+      expect(markSeen).toHaveBeenCalledTimes(1);
+      for (let i = 0; i < 20; i++) {
+        subscriber!({ source: "state_update", mutation: "ADD_FEED_ITEMS", changedItemIds: null, requiresFullScan: true });
+        await vi.runAllTimersAsync();
+      }
+      stop(); stop = start(); teardown = stop; await vi.runAllTimersAsync(); stop();
+      expect(markSeen).toHaveBeenCalledTimes(1);
+      const committed = mocks.invoke.mock.calls.filter(([command]) => command === "commit_normalized_library_transaction");
+      expect(committed).toHaveLength(1);
+      expect(JSON.parse((committed[0][1] as any).request.canonicalEnvelopeJson[0]).operation_type).toBe("feed_item_seen_sync_receipt");
+    } finally { teardown?.(); vi.useRealTimers(); vi.doUnmock("./side-effect-scheduler"); vi.doUnmock("./background-runtime-coordinator"); }
   });
 
   it.each([

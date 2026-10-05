@@ -312,6 +312,7 @@ function normalizedItemDetail(
         sourceUrl: null,
         tags: [],
       },
+      seenSyncedAt: null,
       contentBody: { blobDigest: null, storage: "inline" },
       mediaBlobDigests: [],
       preservedBody: { blobDigest: null, storage: "none" },
@@ -1183,6 +1184,7 @@ describe("PWA Library Core bounded scanner", () => {
           sourceUrl: null,
           tags: [],
         },
+        seenSyncedAt: null,
         contentBody: { blobDigest: null, storage: "inline" },
         mediaBlobDigests: [],
         preservedBody: { blobDigest: null, storage: "none" },
@@ -1206,6 +1208,7 @@ describe("PWA Library Core bounded scanner", () => {
       ...normalizedItemDetail("item-pinned"),
       item: {
         ...normalizedItemDetail("item-pinned").item,
+        seenSyncedAt: null,
         contentBody: { blobDigest: bodyDigest, storage: "blob" },
         mediaBlobDigests: [mediaDigest, bodyDigest],
         preservedBody: { blobDigest: bodyDigest, storage: "blob" },

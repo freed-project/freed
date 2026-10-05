@@ -318,6 +318,9 @@ export async function readLibraryCoreNormalizedItemContentV1(
   });
   if (response.item === null) return null;
   const detailItem = libraryCoreFeedCardToItemV1(response.item.card);
+  if (response.item.seenSyncedAt !== null) {
+    detailItem.userState.seenSyncedAt = response.item.seenSyncedAt;
+  }
   let annotationSnapshot: LibraryCoreHydratedAnnotations | null = null;
   if (includeAnnotations) {
     const annotations = await runtime.query({
