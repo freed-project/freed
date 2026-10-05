@@ -502,8 +502,13 @@ function runChecked(command, args, repoRoot) {
 // until the job-level timeout kills the whole run with no useful signal. Any
 // tooling test slower than this in a blocking lane is a defect, not a long test.
 export const SHARD_TEST_TIMEOUT_MS = 300_000;
+const NIGHTLY_SUPERVISOR = "scripts/test-helpers/nightly-fixture-supervisor.py";
+const NIGHTLY_PRELOAD = "scripts/test-helpers/nightly-fixture-preload.mjs";
 
-export function runToolingSmokeShard(plan, { repoRoot = REPO_ROOT } = {}) {
+export function runToolingSmokeShard(
+  plan,
+  { repoRoot = REPO_ROOT, nightlyDeadlines = {} } = {},
+) {
   if (plan.shellFiles.length > 0) {
     runChecked("bash", ["-n", ...plan.shellFiles], repoRoot);
   }
@@ -524,7 +529,22 @@ export function runToolingSmokeShard(plan, { repoRoot = REPO_ROOT } = {}) {
     args.push(`--test-name-pattern=${plan.testNamePattern}`);
   }
   args.push(...plan.testFiles);
-  runChecked(process.execPath, args, repoRoot);
+  if (plan.suite === "nightly-self-improve") {
+    // The Python parent remains runnable during imported synchronous operations.
+    // The outer bound also covers a blocked event loop or stalled module setup.
+    runChecked("python3", [
+      "-B",
+      path.join(REPO_ROOT, NIGHTLY_SUPERVISOR),
+      String(nightlyDeadlines.operationMs ?? 30_000),
+      String(nightlyDeadlines.testMs ?? SHARD_TEST_TIMEOUT_MS),
+      String(nightlyDeadlines.shardMs ?? 60 * 60_000),
+      process.execPath,
+      `--import=${path.join(REPO_ROOT, NIGHTLY_PRELOAD)}`,
+      ...args,
+    ], repoRoot);
+  } else {
+    runChecked(process.execPath, args, repoRoot);
+  }
 }
 
 function isMain() {
