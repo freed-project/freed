@@ -304,6 +304,7 @@ function itemScanRowsToFeedItems(
         userState: Object.freeze({
           ...item.userState,
           hidden: row.hidden,
+          ...(row.seenSyncedAt === null ? {} : { seenSyncedAt: row.seenSyncedAt }),
         }),
       });
     }),
