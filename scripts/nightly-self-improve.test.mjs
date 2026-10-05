@@ -7282,12 +7282,14 @@ test("fixture authority reads refuse substituted files, symlinks, and FIFOs", ()
   const dir = mkdtempSync(path.join(os.tmpdir(), "freed-authority-read-"));
   const file = path.join(dir, "authority");
   const held = path.join(dir, "original");
-  writeFileSync(file, "original", { mode: 0o600 });
+  const replacement = path.join(dir, "replacement");
+  writeFileSync(file, "original", { mode: 0o600, flag: "wx" });
+  writeFileSync(replacement, "replacement", { mode: 0o600, flag: "wx" });
   const captured = lstatSync(file);
   assert.equal(readFixtureAuthorityFile(file, captured).toString(), "original");
   // Retain the original inode so replacement cannot accidentally reuse it.
   renameSync(file, held);
-  writeFileSync(file, "replacement", { mode: 0o600 });
+  renameSync(replacement, file);
   assert.throws(() => readFixtureAuthorityFile(file, captured), /Fixture authority changed/);
   rmSync(file);
   symlinkSync(held, file);
