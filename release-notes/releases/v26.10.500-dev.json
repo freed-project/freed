@@ -5,16 +5,16 @@
   "dayKey": "26.10.5",
   "approved": true,
   "editorialNotes": [
-    "Reviewed exact product7319c80b from PR2135. Normal feature and exact-head CI passed; local app bundle compiled and contains the root disclosure change. Existing scoped provider decisions cover this bounded behavior. No Library activation, numeric/nested/group changes, forced provider contact or paid AI test. Final signed artifact and installed verification remain outstanding."
+    "Reviewed refreshed product3dfa576c: the three approved product fixes remain byte-identical to7319c80b, with historical ad-capture documentation included by protected dev merge. Regenerated source/Library inspection through the repository preparation tool; no activation declared. Preserve the reviewed three fixes and follow-up limits. Exact refreshed feature/CI, final signed packaging and installed verification remain required. No paid note generation or real provider test."
   ],
-  "generatedAt": "2026-10-05T19:16:11.816Z",
+  "generatedAt": "2026-10-05T21:56:10.647Z",
   "model": "heuristic",
   "source": {
     "channel": "dev",
     "previousPublishedTag": "v26.10.403-dev",
     "previousPublishedDayTag": "v26.10.403-dev",
     "compareRef": "HEAD",
-    "productCommitSha": "7319c80b9111315ebac2718b46ef39d224eee73c",
+    "productCommitSha": "3dfa576c5bd1a34a54dd5765b60e6ceee3643982",
     "promotedDevCommitSha": null,
     "libraryCoreActivation": {
       "schemaVersion": 1,
@@ -23,7 +23,7 @@
         "previousPublishedTag": "v26.10.403-dev",
         "startMode": "previous_product_commit",
         "fromExclusiveCommitSha": "2260591e820f599661d3e06f88e6da02f5a3cbd2",
-        "toInclusiveProductCommitSha": "7319c80b9111315ebac2718b46ef39d224eee73c"
+        "toInclusiveProductCommitSha": "3dfa576c5bd1a34a54dd5765b60e6ceee3643982"
       },
       "manifest": {
         "path": "docs/library-core-activation-manifest.json",
@@ -32,7 +32,7 @@
         "currentDigest": "sha256:87ced2658785f1d28753666537ab09bef76d45848f728aeb12343f22ee70d6d1"
       },
       "transitions": [],
-      "inspectionDigest": "sha256:22dd158c4a751e09382f27991a3f1ef268e56815c55d278161ed928552f2d454",
+      "inspectionDigest": "sha256:1cdd3ca9fee823d5be3cc79fd2e67330300ba13026736063b615216b949feb28",
       "decision": {
         "state": "no_activation_declared",
         "ownerApprovalReference": null,
@@ -51,6 +51,10 @@
       2135
     ],
     "commitSubjects": [
+      "Merge branch 'dev' into chore/release-next-social-20261005",
+      "docs: preserve ad capture exclusion research and handoff",
+      "chore: review v26.10.500-dev release notes",
+      "release: v26.10.500-dev",
       "fix: retain outbox ownership and refine loading and disclosures (#2135)"
     ]
   },
