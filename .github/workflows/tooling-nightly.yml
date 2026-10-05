@@ -28,7 +28,7 @@ jobs:
           mkdir receipts
           sw_vers > receipts/host.log
           uname -a >> receipts/host.log
-          printf 'experiment=%s\nsource=%s\nrun=%s\nattempt=%s\n' "$GITHUB_SHA" '6364f7c7cc60413ffabb2388fcbf6375a8eefd9e' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" >> receipts/host.log
+          printf 'experiment=%s\nsource=%s\nrun=%s\nattempt=%s\n' "$GITHUB_SHA" '9c49b1a5db772f62a2d3bd40b5f67c59d4bd0219' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" >> receipts/host.log
 
       - name: Checkout reviewed experiment
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
@@ -40,7 +40,7 @@ jobs:
       - name: Checkout frozen candidate
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
-          ref: 6364f7c7cc60413ffabb2388fcbf6375a8eefd9e
+          ref: 9c49b1a5db772f62a2d3bd40b5f67c59d4bd0219
           path: candidate
           persist-credentials: false
 

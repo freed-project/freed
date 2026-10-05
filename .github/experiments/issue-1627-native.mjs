@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const SOURCE = "6364f7c7cc60413ffabb2388fcbf6375a8eefd9e";
+export const SOURCE = "9c49b1a5db772f62a2d3bd40b5f67c59d4bd0219";
 export const BRANCH = "refs/heads/chore/library-integration-native-proof";
 const RUNTIME = "src/runtime.integration.test.ts";
 const runtimeCase = (title) => [RUNTIME, `compiled freed-library runtime ${title}`];
