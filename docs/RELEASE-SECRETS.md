@@ -233,7 +233,7 @@ node scripts/release-tag-publisher-install.mjs verify
 node scripts/validate-release-tag-authority.mjs --repo=freed-project/freed
 ```
 
-`./scripts/release-publish.sh <version>` remains the only release entry point.
+`./scripts/release-publish.sh <version>` is the installed-broker release entry point.
 It rejects a dirty or wrong branch, a commit that differs from the protected
 remote tip, an unapproved or mismatched release receipt, an existing tag, a
 missing live policy, a changed publisher digest, or a mismatched App
@@ -242,8 +242,7 @@ scoped to `freed-project/freed`, rechecks the remote branch and committed
 receipt, creates one annotated tag, verifies the result, and revokes the token.
 It exposes no arbitrary ref, update, or deletion operation.
 
-The installed-broker route above remains operational until the owner-approved
-protected cloud controller is activated and verified. The pending portable route
+The installed-broker route above remains a recovery option. The verified DEV cloud route
 is described in [portable release publication](CLOUD-RELEASE-PUBLISHER.md); it
 reuses the same bounded App broker and never substitutes caller tag credentials.
 
@@ -463,4 +462,69 @@ wait on release metadata fetches.
 
 ## Portable cloud publisher
 
-See [portable release publication](CLOUD-RELEASE-PUBLISHER.md) for the reviewed controller, environment restrictions, explicit dev/production requests and remaining credential activation requirements. Existing signing credentials stay in GitHub. Until cloud activation is proven, the installed dedicated publisher remains the operational tag path.
+See [portable release publication](CLOUD-RELEASE-PUBLISHER.md#verified-dev-activation) for successful DEV controller and release runs, configuration requirements and explicit dev/production requests. Existing signing credentials stay in GitHub. Installed acceptance, production publication and retirement of the local publisher remain separate evidence requirements.
+
+## Deferred release-hardening to-dos
+
+These are deferred Freed release-engineering follow-ups. The
+[cloud publisher](CLOUD-RELEASE-PUBLISHER.md) already implements exact request
+binding, pinned validation, restricted publisher custody and policy challenges.
+The unchecked items below retain the broader acceptance criteria; they do not
+claim that those existing controls are absent or that complete compromised-agent
+isolation has been proved. They are not prerequisites for the current trusted-agent
+release workflow. The owner continues to authorize the agent through existing
+task authorization levels.
+
+- [ ] **Enforce authorization outside the agent.** Bind a release grant to the
+  repository, channel, exact source commit, tag, receipt digest and permitted
+  operations. Reject expired, changed, cross-channel or reused grants. Prove a
+  compromised agent cannot approve its own request or widen an existing grant.
+  Preserve unattended execution within an already authorized scope rather than
+  adding a confirmation for every operation.
+- [ ] **Separate agent and enforcement credentials.** Inventory the current
+  owner-authenticated execution paths and design a restricted agent identity
+  that cannot administer protections, replace trusted validation or impersonate
+  the owner. Test denied settings changes, approval attempts and direct tag
+  publication before claiming isolation. Existing admin access is not isolation.
+- [ ] **Validate the exact release independently.** Load validation policy and
+  code from a pinned trusted control revision, never the candidate branch.
+  Independently verify required checks, source lane, promotion, version,
+  release-receipt digest and artifact provenance. Test tampered workflow code,
+  stale checks, changed receipts and a different commit substituted after review.
+- [ ] **Enforce control-code review and detect policy drift.** Check live branch,
+  tag and review rules rather than inferring enforcement from CODEOWNERS or
+  environment names. Cover all privileged workflow dependencies. Refuse release
+  admission when required protections disappear or a agent can bypass them.
+- [ ] **Withhold publisher and signing credentials from agent code.** Evaluate
+  protected environments and separate signing execution only as needed for the
+  stronger threat model. Prove arbitrary branches and candidate build scripts
+  cannot extract keys. Preserve the existing App identity and updater-key
+  compatibility; separate dev/prod environment names do not isolate a shared key.
+- [ ] **Make publication retries attributable and safe.** Retain the exact grant,
+  control revision, request digest, tag object, source, artifact digests and run
+  result outside agent-writable state. Test concurrent requests, replay, lost
+  responses and runner failure after creation. Reconcile the same result without
+  replacing immutable tags. Document GitHub's branch-check/tag-create race rather
+  than claiming an atomic transaction it does not provide.
+- [ ] **Protect published artifacts as well as tags.** Evaluate GitHub immutable
+  releases with complete draft assembly and recovery tests before enabling it.
+  Verify downloaded artifact digests and signatures against the admitted release.
+  Test denied asset replacement and wrong-channel updater delivery; keep mutable
+  latest/prerelease metadata distinct from immutable artifact identity.
+- [ ] **Require independent native acceptance evidence.** Bind installation and
+  required soak results to the exact artifact/source/channel and native runtime.
+  Reject missing, stale, mixed-build or unhealthy evidence. Linux mocks cannot
+  satisfy physical macOS acceptance. Test runtimes must not hold real Library
+  data, provider sessions or release credentials.
+- [ ] **Prove recovery before enforcing the new boundary.** Rehearse staged key
+  migration, revocation, lost-key recovery and interrupted publication without
+  bypassing tag controls or breaking installed updater trust. Retain a reviewed
+  recovery path until the replacement is verified.
+
+Admission criterion for this future work: a synthetic compromised agent must
+fail to publish an unauthorized release, alter the approved release identity,
+obtain signing material or falsify acceptance evidence. Ordinary authorized
+release execution must still complete without redundant owner prompts. Until
+that proof exists, describe the system as trusted-agent automation rather than
+compromised-agent containment. No schedule or live control change is authorized
+by these to-dos.
