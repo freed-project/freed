@@ -2,13 +2,15 @@
   "channel": "dev",
   "dayKey": "26.10.5",
   "date": "2026-10-05",
-  "preferredDeck": null,
+  "preferredDeck": "Clearer Friends loading and safer outbox ownership",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
     "Demote internal cleanup unless it clearly changes the shipped product."
   ],
   "pinnedHighlights": [],
-  "editorialNotes": [],
+  "editorialNotes": [
+    "Reviewed bounded Friends loading, outbox ownership and standalone Sponsored disclosure fixes; do not claim cancellation, screen-lock repair, global ad exclusion or ranking activation."
+  ],
   "updatedAt": "2026-10-05T19:16:11.816Z"
 }

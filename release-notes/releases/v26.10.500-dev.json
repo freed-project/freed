@@ -3,8 +3,10 @@
   "version": "26.10.500-dev",
   "channel": "dev",
   "dayKey": "26.10.5",
-  "approved": false,
-  "editorialNotes": [],
+  "approved": true,
+  "editorialNotes": [
+    "Reviewed exact product7319c80b from PR2135. Normal feature and exact-head CI passed; local app bundle compiled and contains the root disclosure change. Existing scoped provider decisions cover this bounded behavior. No Library activation, numeric/nested/group changes, forced provider contact or paid AI test. Final signed artifact and installed verification remain outstanding."
+  ],
   "generatedAt": "2026-10-05T19:16:11.816Z",
   "model": "heuristic",
   "source": {
@@ -53,10 +55,18 @@
     ]
   },
   "release": {
-    "deck": "Retain outbox ownership and refine loading and disclosures",
+    "deck": "Clearer Friends loading and safer outbox ownership",
     "features": [],
-    "fixes": [],
-    "followUps": []
+    "fixes": [
+      "Show the shared loading indicator while Friends activity loads.",
+      "Retain outbox ownership until timed-out work settles, preventing a replacement drain from overlapping it.",
+      "Recognize standalone Sponsored disclosures on Facebook posts."
+    ],
+    "followUps": [
+      "Hung outbox work can remain pending; cancellation and screen-lock admission are separate follow-ups.",
+      "Broader Facebook paid-placement and nested organic classification remain outside this change.",
+      "Signed installed UI acceptance and passive deadline-path observation remain separate verification steps."
+    ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.10.500-dev\n\nRetain outbox ownership and refine loading and disclosures\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.10.500-dev\n\nClearer Friends loading and safer outbox ownership\n\n### Fixes\n\n- Show the shared loading indicator while Friends activity loads\n- Retain outbox ownership until timed-out work settles, preventing a replacement drain from overlapping it\n- Recognize standalone Sponsored disclosures on Facebook posts\n\n### Follow-ups\n\n- Hung outbox work can remain pending; cancellation and screen-lock admission are separate follow-ups\n- Broader Facebook paid-placement and nested organic classification remain outside this change\n- Signed installed UI acceptance and passive deadline-path observation remain separate verification steps\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
