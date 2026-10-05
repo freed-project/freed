@@ -3,8 +3,10 @@
   "version": "26.10.403-dev",
   "channel": "dev",
   "dayKey": "26.10.4",
-  "approved": false,
-  "editorialNotes": [],
+  "approved": true,
+  "editorialNotes": [
+    "Reviewed current source2260591e; runtime packages match approved native fixture and prior full validation. User reported native QA worked and requested full dev build (Sentinel_b936a6142ab88191a36f0bdf299a6070). CI/tooling-only changes carry no new product improvement claim. Signed installed verification remains outstanding."
+  ],
   "generatedAt": "2026-10-05T16:19:26.411Z",
   "model": "heuristic",
   "source": {
@@ -86,35 +88,36 @@
     ]
   },
   "release": {
-    "deck": "Clearer Library counts and backup status",
+    "deck": "Stable views during Library refresh",
     "features": [],
     "fixes": [
-      "Reader, feed, and header polish",
-      "Align browser thumbnail proof with lazy image policy",
-      "Avoid counting every checkpoint record during routine Library sync checks",
-      "Show elapsed backup time in the update notification and Settings",
+      "Keep toolbar counts, search results, Friends details and Map popups visible while same-scope Library reads refresh",
+      "Block pending or obsolete search and identity actions until their current selection and results are ready",
+      "Retain one bounded suggestion window during refresh and preserve exact signed recovery retries after an ambiguous result",
+      "Feed cards load image thumbnails lazily through existing media URLs and memory-pressure safeguards",
+      "Preserve seen confirmations through bounded Desktop and PWA reads",
+      "Keep navigation counts tied to one coherent Library state and retain verified counts while refreshing.",
+      "Show elapsed backup time in the update notification and Settings.",
+      "Keep discovered accounts out of the tracked relationship graph and open their Map location without creating a connection.",
+      "Keep mobile Settings navigation within the available screen height.",
+      "Avoid counting every checkpoint record during routine Library sync checks.",
       "Record bounded timing for Library checkpoint preparation",
-      "Keep navigation counts tied to one coherent Library state and retain verified counts while refreshing",
-      "Keep discovered accounts out of the tracked relationship graph and open their Map location without creating a connection",
-      "The stored article link consistently when opening, saving, and processing linked articles. now uses the correct path",
-      "Keep mobile Settings navigation within the available screen height"
+      "Opening, saving and processing linked articles now uses their stored article link"
     ],
     "followUps": [
-      "Trim outcome-file admission fixture setup",
-      "Prepare v26.10.402-dev",
-      "Attribute native checkpoint preparation substages",
-      "Skip checkpoint census during cloud preflight",
-      "Less work during startup",
+      "Installed view stability and responsiveness still require verification on the signed build",
+      "Existing provider sync schedules, authentication and AI preferences are unchanged",
+      "Dormant Library authority and seen-host activation remain disabled",
+      "The separate Saved Back repair and durable writer-admission proof remain follow-ups",
       "Full checkpoint preparation retains complete validation and can still take time",
       "Installed startup and manual responsiveness verification remain separate from synthetic benchmarks",
       "Priority and social diagnostics remain off; provider and schema activation boundaries are unchanged",
-      "Clearer diagnostics for slow Library sync",
-      "Writer admission delays remain a separate investigation",
       "This build adds attribution; no reduction in stalls or CPU use is claimed",
-      "The elapsed timer reports time spent; it does not shorten a full Library backup",
-      "Installed responsiveness and count stability still require verification on the signed build",
-      "Existing AI preferences and provider schedules are unchanged"
+      "The elapsed timer reports time spent; it does not shorten a full Library backup.",
+      "Installed responsiveness and count stability still require verification on the signed build.",
+      "Existing AI preferences and provider schedules are unchanged.",
+      "Writer admission delays remain a separate investigation"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.10.403-dev\n\nClearer Library counts and backup status\n\n### Fixes\n\n- Reader, feed, and header polish\n- Align browser thumbnail proof with lazy image policy\n- Avoid counting every checkpoint record during routine Library sync checks\n- Show elapsed backup time in the update notification and Settings\n- Record bounded timing for Library checkpoint preparation\n- Keep navigation counts tied to one coherent Library state and retain verified counts while refreshing\n- Keep discovered accounts out of the tracked relationship graph and open their Map location without creating a connection\n- The stored article link consistently when opening, saving, and processing linked articles. now uses the correct path\n- Keep mobile Settings navigation within the available screen height\n\n### Follow-ups\n\n- Trim outcome-file admission fixture setup\n- Prepare v26.10.402-dev\n- Attribute native checkpoint preparation substages\n- Skip checkpoint census during cloud preflight\n- Less work during startup\n- Full checkpoint preparation retains complete validation and can still take time\n- Installed startup and manual responsiveness verification remain separate from synthetic benchmarks\n- Priority and social diagnostics remain off; provider and schema activation boundaries are unchanged\n- Clearer diagnostics for slow Library sync\n- Writer admission delays remain a separate investigation\n- This build adds attribution; no reduction in stalls or CPU use is claimed\n- The elapsed timer reports time spent; it does not shorten a full Library backup\n- Installed responsiveness and count stability still require verification on the signed build\n- Existing AI preferences and provider schedules are unchanged\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.10.403-dev\n\nStable views during Library refresh\n\n### Fixes\n\n- Keep toolbar counts, search results, Friends details and Map popups visible while same-scope Library reads refresh\n- Block pending or obsolete search and identity actions until their current selection and results are ready\n- Retain one bounded suggestion window during refresh and preserve exact signed recovery retries after an ambiguous result\n- Feed cards load image thumbnails lazily through existing media URLs and memory-pressure safeguards\n- Preserve seen confirmations through bounded Desktop and PWA reads\n- Keep navigation counts tied to one coherent Library state and retain verified counts while refreshing\n- Show elapsed backup time in the update notification and Settings\n- Keep discovered accounts out of the tracked relationship graph and open their Map location without creating a connection\n- Keep mobile Settings navigation within the available screen height\n- Avoid counting every checkpoint record during routine Library sync checks\n- Record bounded timing for Library checkpoint preparation\n- Opening, saving and processing linked articles now uses their stored article link\n\n### Follow-ups\n\n- Installed view stability and responsiveness still require verification on the signed build\n- Existing provider sync schedules, authentication and AI preferences are unchanged\n- Dormant Library authority and seen-host activation remain disabled\n- The separate Saved Back repair and durable writer-admission proof remain follow-ups\n- Full checkpoint preparation retains complete validation and can still take time\n- Installed startup and manual responsiveness verification remain separate from synthetic benchmarks\n- Priority and social diagnostics remain off; provider and schema activation boundaries are unchanged\n- This build adds attribution; no reduction in stalls or CPU use is claimed\n- The elapsed timer reports time spent; it does not shorten a full Library backup\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
