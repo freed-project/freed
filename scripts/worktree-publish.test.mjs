@@ -858,46 +858,133 @@ test("ready publication stops private-log leaks before committing or publishing"
   assert.equal((await readGhLog(fixture.ghLogFile)).some((call) => ["create", "edit", "merge"].includes(call.args[1])), false);
 });
 
-test("provider subdiff query rejects dirty sources without staging, committing, or publishing", async (t) => {
+// Query receipts protect source state, including raw index bytes (not merely
+// porcelain status), and the publisher lease. Tier 1; invalidated by publisher,
+// snapshot, classifier, Git/toolchain, or fixture changes.
+async function queryState(fixture) {
+  async function bytes(directory) {
+    const result = {};
+    async function walk(relative = "") {
+      for (const entry of await fs.readdir(path.join(directory, relative), { withFileTypes: true })) {
+        const name = path.join(relative, entry.name);
+        if (entry.isDirectory()) await walk(name);
+        else if (entry.isSymbolicLink()) result[name] = await fs.readlink(path.join(directory, name));
+        else result[name] = createHash("sha256").update(await fs.readFile(path.join(directory, name))).digest("hex");
+      }
+    }
+    await walk();
+    return result;
+  }
+  return {
+    head: run("git", ["rev-parse", "HEAD"], { cwd: fixture.worktree }).stdout,
+    refs: run("git", ["show-ref"], { cwd: fixture.worktree }).stdout,
+    status: run("git", ["--no-optional-locks", "status", "--porcelain=v1"], { cwd: fixture.worktree }).stdout,
+    worktreeAndGit: await bytes(fixture.worktree),
+    lease: await bytes(fixture.automationStateRoot),
+    github: await fs.readFile(fixture.ghLogFile, "utf8"),
+  };
+}
+
+test("provider subdiff query accepts dirty candidates without source or lease writes", async (t) => {
+  const fixture = await createPublishFixture(t, { seedProviderFile: true, preacquirePublisherLease: true });
+  const cwd = fixture.worktree;
+  const provider = "packages/desktop/src-tauri/src/fb-extract.js";
+  const git = (...args) => { const result = run("git", args, { cwd }); assertSuccess(result); return result.stdout.trim(); };
+  await fs.writeFile(path.join(cwd, ".git/FETCH_HEAD"), "unchanged fetch receipt\n");
+  const realGit = run("which", ["git"]).stdout.trim();
+  const spy = path.join(path.dirname(cwd), "bin/git");
+  const callsFile = path.join(path.dirname(cwd), "query-git-calls.jsonl");
+  await fs.writeFile(spy, `#!${process.execPath}
+const fs = require("node:fs");
+const { spawnSync } = require("node:child_process");
+const args = process.argv.slice(2);
+fs.appendFileSync(${JSON.stringify(callsFile)}, JSON.stringify(args) + "\\n");
+if (["fetch", "commit", "push", "update-ref"].some(command => args.includes(command)) ||
+    (args.includes("add") && (!process.env.GIT_INDEX_FILE || process.env.GIT_INDEX_FILE.startsWith(${JSON.stringify(cwd)})))) process.exit(91);
+const result = spawnSync(${JSON.stringify(realGit)}, args, { stdio: "inherit" });
+process.exit(result.status ?? 92);
+`, { mode: 0o700 });
+  const query = async (environment, extra = [], success = true) => {
+    const before = await queryState(fixture);
+    const result = run("bash", [publishScript, "--print-provider-subdiff", ...extra], { cwd, env: environment });
+    if (success) assertSuccess(result);
+    else assert.notEqual(result.status, 0);
+    assert.deepEqual(await queryState(fixture), before);
+    return result;
+  };
+  // Protected/detached branches and incomplete publisher environments are
+  // irrelevant to a local query. No publication tooling may be required.
+  git("checkout", "dev");
+  await fs.writeFile(path.join(cwd, "README.md"), "neutral dirty candidate\n");
+  assert.equal((await query({ ...directPublishEnv(fixture), FREED_PUBLISH_SCOPE_JSON: "malformed" })).stdout, "");
+  git("checkout", "--detach");
+  await fs.writeFile(path.join(cwd, provider), "// original provider extractor\n// s\n");
+  git("add", provider);
+  await fs.appendFile(path.join(cwd, provider), "// u\n");
+  const mixed = await query(fixture.env);
+  assert.match(mixed.stdout.trim(), /^[a-f0-9]{40}$/);
+  git("add", "-u"); git("commit", "-m", "fix: intentional identical bytes");
+  const committed = await query(directPublishEnv(fixture));
+  assert.equal(mixed.stdout, committed.stdout);
+  const patch = run("git", ["diff", "--binary", "--no-ext-diff", "--no-textconv", "origin/dev...HEAD", "--", provider], { cwd }).stdout;
+  assert.equal(committed.stdout.trim(), run("git", ["hash-object", "--stdin"], { cwd, input: patch }).stdout.trim());
+
+  // Rename out of the provider surface binds both endpoints, with a binary
+  // addition, staged addition, deletion, and unstaged edits in the same tree.
+  git("mv", provider, "renamed-extractor.js");
+  await fs.writeFile(path.join(cwd, "packages/desktop/src-tauri/src/ig-extract.js"), Buffer.from([0, 1, 2, 255]));
+  await fs.writeFile(path.join(cwd, "staged.md"), "staged addition\n");
+  git("add", "staged.md");
+  await fs.unlink(path.join(cwd, "README.md"));
+  assert.match((await query(fixture.env, [], false)).stderr, /Untracked files/);
+  const dirty = await query(fixture.env, ["--include-untracked"]);
+  git("add", "-A"); git("commit", "-m", "fix: intentional renamed binary candidate");
+  assert.equal(dirty.stdout, (await query(fixture.env)).stdout);
+  const boundPatch = run("git", ["diff", "--binary", "--no-ext-diff", "--no-textconv", "origin/dev...HEAD", "--",
+    provider, "renamed-extractor.js", "packages/desktop/src-tauri/src/ig-extract.js"], { cwd }).stdout;
+  assert.match(boundPatch, /GIT binary patch/);
+  assert.match(boundPatch, /rename to renamed-extractor.js/);
+  assert.equal(dirty.stdout.trim(), run("git", ["hash-object", "--stdin"], { cwd, input: boundPatch }).stdout.trim());
+  assert.match((await query(fixture.env, ["--base", "www"], false)).stderr, /fetch the intended base explicitly/);
+  // Conflicted and sparse/hidden entries must fail without resolving/staging.
+  git("update-index", "--assume-unchanged", "staged.md");
+  assert.match((await query(fixture.env, [], false)).stderr, /assume-unchanged/);
+  git("update-index", "--no-assume-unchanged", "staged.md");
+  await fs.writeFile(path.join(cwd, ".gitattributes"), "*.md filter=forbidden\n");
+  assert.match((await query(fixture.env, ["--include-untracked"], false)).stderr, /External clean filters/);
+  await fs.unlink(path.join(cwd, ".gitattributes"));
+  const blob = git("rev-parse", "HEAD:staged.md");
+  assertSuccess(run("git", ["update-index", "--index-info"], {
+    cwd, input: `0 ${"0".repeat(40)}\tstaged.md\n100644 ${blob} 1\tstaged.md\n100644 ${blob} 2\tstaged.md\n`,
+  }));
+  assert.match((await query(fixture.env, [], false)).stderr, /Unmerged entries/);
+  assert.equal((await fs.readFile(callsFile, "utf8")).includes('"fetch"'), false);
+
+});
+
+test("provider subdiff query refuses a source edit during snapshotting", async (t) => {
   const fixture = await createPublishFixture(t);
-  const before = run("git", ["rev-parse", "HEAD"], {
-    cwd: fixture.worktree,
-  }).stdout;
-  await fs.writeFile(
-    path.join(fixture.worktree, "README.md"),
-    "unstaged change\n",
-  );
-  await fs.writeFile(path.join(fixture.worktree, "untracked.md"), "new file\n");
-  const status = run("git", ["status", "--porcelain"], {
-    cwd: fixture.worktree,
-  }).stdout;
-  const result = run(
-    "bash",
-    [publishScript, "--print-provider-subdiff", "--include-untracked"],
-    {
-      cwd: fixture.worktree,
-      env: directPublishEnv(fixture),
-    },
-  );
+  const cwd = fixture.worktree;
+  const realGit = run("which", ["git"]).stdout.trim();
+  const spy = path.join(path.dirname(cwd), "bin/git");
+  await fs.writeFile(spy, `#!${process.execPath}
+const fs = require("node:fs");
+const { spawnSync } = require("node:child_process");
+const args = process.argv.slice(2);
+const result = spawnSync(${JSON.stringify(realGit)}, args, { stdio: "inherit" });
+if (args.includes("write-tree")) fs.appendFileSync(${JSON.stringify(path.join(cwd, "README.md"))}, "concurrent edit\\n");
+process.exit(result.status ?? 92);
+`, { mode: 0o700 });
+  const before = await queryState(fixture);
+  const result = run("bash", [publishScript, "--print-provider-subdiff"], { cwd, env: directPublishEnv(fixture) });
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /never stages or commits/);
-  assert.equal(
-    run("git", ["rev-parse", "HEAD"], { cwd: fixture.worktree }).stdout,
-    before,
-  );
-  assert.equal(
-    run("git", ["status", "--porcelain"], { cwd: fixture.worktree }).stdout,
-    status,
-  );
-  assert.equal(
-    run("git", ["diff", "--cached"], { cwd: fixture.worktree }).stdout,
-    "",
-  );
-  const calls = await readGhLog(fixture.ghLogFile);
-  assert.equal(
-    calls.some((call) => ["create", "edit", "merge"].includes(call.args[1])),
-    false,
-  );
+  assert.match(result.stderr, /Source changed during the read-only snapshot/);
+  const after = await queryState(fixture);
+  // Only the edit deliberately injected by the fixture is allowed to differ.
+  assert.notEqual(after.worktreeAndGit["README.md"], before.worktreeAndGit["README.md"]);
+  after.worktreeAndGit["README.md"] = before.worktreeAndGit["README.md"];
+  after.status = before.status;
+  assert.deepEqual(after, before);
 });
 
 test("worktree-publish keeps the ordinary authenticated GitHub path available", async (t) => {
