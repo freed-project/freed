@@ -4,8 +4,8 @@
 // slower automatically gets more shards without anyone editing a workflow.
 //
 // The exhaustive lane runs this and uploads the result. A reviewed refresh can
-// write it back with --write. Source size is only a fallback until every unit
-// in a suite has been measured.
+// write it back with --write. Source size estimates unmeasured units on the
+// recorded timing scale; estimates are never written to the timing catalog.
 
 import { spawnSync } from "node:child_process";
 import {

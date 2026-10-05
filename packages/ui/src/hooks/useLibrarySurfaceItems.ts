@@ -20,7 +20,8 @@ interface CachedRows<Row, Reader> {
   result: Row[] | null;
 }
 
-interface VersionedRows<Row> {
+interface VersionedRows<Row, Reader> {
+  reader: Reader;
   sourceVersion: number;
   rows: Row[];
 }
@@ -72,7 +73,7 @@ function useVersionedRows<Row, Reader, Key>(
   load: (reader: Reader, key: Key) => Promise<readonly Row[]>,
   emptyRows: readonly Row[],
 ): readonly Row[] {
-  const [versionedRows, setVersionedRows] = useState<VersionedRows<Row> | null>(
+  const [versionedRows, setVersionedRows] = useState<VersionedRows<Row, Reader> | null>(
     () => {
       if (!reader) return null;
       const result = prepareRows(
@@ -82,10 +83,10 @@ function useVersionedRows<Row, Reader, Key>(
         sourceVersion,
         load,
       ).result;
-      return result ? { sourceVersion, rows: result } : null;
+      return result ? { reader, sourceVersion, rows: result } : null;
     },
   );
-  const [failedVersion, setFailedVersion] = useState<number | null>(null);
+  const [failedVersion, setFailedVersion] = useState<{ reader: Reader; sourceVersion: number } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -100,14 +101,14 @@ function useVersionedRows<Row, Reader, Key>(
     setFailedVersion(null);
     const prepared = prepareRows(cache, key, reader, sourceVersion, load);
     if (prepared.result) {
-      setVersionedRows({ sourceVersion, rows: prepared.result });
+      setVersionedRows({ reader, sourceVersion, rows: prepared.result });
     }
     prepared.promise
       .then((rows) => {
-        if (!cancelled) setVersionedRows({ sourceVersion, rows });
+        if (!cancelled) setVersionedRows({ reader, sourceVersion, rows });
       })
       .catch(() => {
-        if (!cancelled) setFailedVersion(sourceVersion);
+        if (!cancelled) { setVersionedRows(null); setFailedVersion({ reader, sourceVersion }); }
       });
 
     return () => {
@@ -115,10 +116,11 @@ function useVersionedRows<Row, Reader, Key>(
     };
   }, [cache, key, load, reader, sourceVersion]);
 
-  if (!reader || failedVersion === sourceVersion) {
+  if (!reader || (failedVersion?.reader === reader && failedVersion.sourceVersion === sourceVersion)) {
     return emptyRows;
   }
-  return versionedRows?.rows ?? emptyRows;
+  return versionedRows?.reader === reader && versionedRows.sourceVersion <= sourceVersion
+    ? versionedRows.rows : emptyRows;
 }
 
 function loadStoryWallCandidates(

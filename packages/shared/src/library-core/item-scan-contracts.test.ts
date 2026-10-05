@@ -40,6 +40,7 @@ function card(globalId: string) {
     eventStartsAt: null,
     globalId,
     hidden: globalId === "hidden",
+    seenSyncedAt: null,
     liked: false,
     likedAt: null,
     likedSyncedAt: null,
@@ -65,6 +66,19 @@ function card(globalId: string) {
 }
 
 describe("Library Core background item scan", () => {
+  it("closes nullable seen confirmation without losing zero or the terminal marker", () => {
+    const response = (seenSyncedAt: unknown) => ({ nextCursor: null, queryId: request.queryId, schemaVersion: 1,
+      source: { generationId, projectionRevision: 7, transitionSequence: 7 }, rows: [{ ...card("item-1"), seenSyncedAt }] });
+    for (const stamp of [null, -1, 0, 1000]) {
+      const parsed = parseLibraryCoreItemScanResponseV1(response(stamp), request);
+      expect(parsed.ok).toBe(true);
+      if (parsed.ok) expect(parsed.value.rows[0].seenSyncedAt).toBe(stamp);
+    }
+    for (const stamp of [undefined, -2, -0, 0.5, Number.MAX_SAFE_INTEGER + 1, "1000"]) {
+      expect(parseLibraryCoreItemScanResponseV1(response(stamp), request).ok).toBe(false);
+    }
+  });
+
   it("round-trips a source-bound identity cursor with no time ordering field", () => {
     const cursor = {
       generationId,

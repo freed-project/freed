@@ -1578,6 +1578,7 @@ export function tauriInitScript() {
         return {
           item: item && !item.__deleted ? {
             card: sqliteFeedCard(item),
+            seenSyncedAt: sqliteItemState(item).seenSyncedAt == null ? null : sqliteItemState(item).seenSyncedAt,
             contentBody: {
               blobDigest: null,
               storage: item.content && item.content.text ? 'inline' : 'none',
@@ -1605,6 +1606,7 @@ export function tauriInitScript() {
             var rss = item.rssSource || null;
             return Object.assign({}, sqliteFeedCard(item), {
               hidden: !!sqliteItemState(item).hidden,
+              seenSyncedAt: sqliteItemState(item).seenSyncedAt == null ? null : sqliteItemState(item).seenSyncedAt,
               rankingCareLevel: item.rankingCareLevel == null ? null : item.rankingCareLevel,
               rankingEngagementReposts: !item.engagement || item.engagement.reposts == null
                 ? null

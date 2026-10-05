@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   normalizeLibraryCoreFeedBrowseFilterV1,
   type FeedItem,
@@ -23,6 +23,9 @@ export interface SearchResults {
   resultCount: number;
   /** The governed SQLite search path refused or failed this query. */
   searchUnavailable?: boolean;
+  /** Presentation may be retained; pending results do not admit bulk actions. */
+  status?: "idle" | "loading" | "refreshing" | "ready" | "failed";
+  resultsCurrent?: boolean;
 }
 
 interface RankedSearchItem {
@@ -32,6 +35,10 @@ interface RankedSearchItem {
 
 interface PersistentSearchResult {
   readonly requestKey: string;
+  readonly contextKey: string;
+  readonly searcher: SearchLibraryItems;
+  readonly searchCorpusVersion: number;
+  readonly resultSourceVersion: number;
   readonly result: SearchResults;
 }
 
@@ -41,6 +48,8 @@ Object.freeze(EMPTY_SEARCH_ITEMS);
 const EMPTY_BROWSE_RESULT: SearchResults = Object.freeze({
   filteredItems: EMPTY_SEARCH_ITEMS,
   isSearching: false,
+  status: "idle",
+  resultsCurrent: false,
   resultCount: 0,
 });
 
@@ -128,10 +137,13 @@ export function useSearchResults(
   const { searchLibraryItems } = usePlatform();
   const trimmedQuery = searchQuery.trim();
   const searchQueryValid = isLibraryCoreSearchQueryV1(trimmedQuery);
-  const normalizedFilter = useMemo(
-    () => normalizeLibraryCoreFeedBrowseFilterV1(activeFilter),
-    [activeFilter],
-  );
+  const candidate = normalizeLibraryCoreFeedBrowseFilterV1(activeFilter);
+  const signature = JSON.stringify(candidate);
+  const stableFilter = useRef({ signature, input: activeFilter, normalized: candidate });
+  if (stableFilter.current.signature !== signature) stableFilter.current = { signature, input: activeFilter, normalized: candidate };
+  const normalizedFilter = stableFilter.current.normalized;
+  const stableActiveFilter = stableFilter.current.input;
+  const contextKey = JSON.stringify([trimmedQuery, normalizedFilter, identityMode]);
   const requestKey = useMemo(
     () =>
       JSON.stringify([
@@ -151,9 +163,7 @@ export function useSearchResults(
   );
   const [persistentResult, setPersistentResult] =
     useState<PersistentSearchResult | null>(null);
-  const [persistentFailedKey, setPersistentFailedKey] = useState<string | null>(
-    null,
-  );
+  const [persistentFailedKey, setPersistentFailedKey] = useState<{ requestKey: string; searcher: SearchLibraryItems } | null>(null);
 
   useEffect(() => {
     if (!trimmedQuery || !searchQueryValid || !searchLibraryItems) {
@@ -164,26 +174,28 @@ export function useSearchResults(
 
     let cancelled = false;
     const controller = new AbortController();
-    setPersistentResult(null);
+    setPersistentResult(previous => previous?.searcher === searchLibraryItems && previous.contextKey === contextKey
+      && previous.searchCorpusVersion <= searchCorpusVersion && previous.resultSourceVersion <= resultSourceVersion ? previous : null);
     setPersistentFailedKey(null);
 
     readSearchResults({
       searcher: searchLibraryItems,
       searchCorpusVersion,
       trimmedQuery,
-      activeFilter,
+      activeFilter: stableActiveFilter,
       identityMode,
       signal: controller.signal,
     })
       .then((result) => {
         if (!cancelled) {
-          setPersistentResult({ requestKey, result });
+          setPersistentResult({ requestKey, contextKey, searcher: searchLibraryItems, searchCorpusVersion, resultSourceVersion, result });
           setPersistentFailedKey(null);
         }
       })
       .catch(() => {
         if (!cancelled && !controller.signal.aborted) {
-          setPersistentFailedKey(requestKey);
+          setPersistentResult(null);
+          setPersistentFailedKey({ requestKey, searcher: searchLibraryItems });
         }
       });
 
@@ -192,7 +204,9 @@ export function useSearchResults(
       controller.abort();
     };
   }, [
-    activeFilter,
+    stableActiveFilter,
+    contextKey,
+    resultSourceVersion,
     identityMode,
     normalizedFilter,
     requestKey,
@@ -210,23 +224,25 @@ export function useSearchResults(
       isSearching: true,
       resultCount: 0,
       searchUnavailable: true,
+      status: "failed",
+      resultsCurrent: false,
     };
   }
 
-  if (persistentFailedKey === requestKey) {
+  if (persistentFailedKey?.requestKey === requestKey && persistentFailedKey.searcher === searchLibraryItems) {
     return {
       filteredItems: EMPTY_SEARCH_ITEMS,
       isSearching: true,
       resultCount: 0,
       searchUnavailable: true,
+      status: "failed",
+      resultsCurrent: false,
     };
   }
 
-  return persistentResult?.requestKey === requestKey
-    ? persistentResult.result
-    : {
-        filteredItems: EMPTY_SEARCH_ITEMS,
-        isSearching: true,
-        resultCount: 0,
-      };
+  const retained = persistentResult?.contextKey === contextKey && persistentResult.searcher === searchLibraryItems
+    && persistentResult.searchCorpusVersion <= searchCorpusVersion && persistentResult.resultSourceVersion <= resultSourceVersion ? persistentResult : null;
+  const current = retained?.requestKey === requestKey;
+  return retained ? { ...retained.result, status: current ? "ready" : "refreshing", resultsCurrent: current }
+    : { filteredItems: EMPTY_SEARCH_ITEMS, isSearching: true, resultCount: 0, status: "loading", resultsCurrent: false };
 }

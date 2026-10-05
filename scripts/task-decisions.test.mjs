@@ -88,6 +88,18 @@ test("scoped cleanup retains dirty or advanced heads and preserves decisions bef
   git(worktree, "add", "uncommitted"); git(worktree, "commit", "-m", "chore: advanced");
   assert.match(run().stdout, /differs from the merged/); assert.ok(fs.existsSync(worktree));
   env.MERGED_HEAD = git(worktree, "rev-parse", "HEAD");
+  // An unverifiable preview record must block removal even after the merged
+  // head and private log have passed their checks. No real process is targeted.
+  const processDir = path.join(repo, ".git/freed-runtime/processes");
+  fs.mkdirSync(processDir, { recursive: true });
+  const processRecord = path.join(processDir, "2147483647.env");
+  fs.writeFileSync(processRecord, `PID=2147483647\nPROCESS_KIND=web\nWORKTREE_PATH='${worktree}'\n`);
+  const blocked = run();
+  assert.notEqual(blocked.status, 0);
+  assert.match(blocked.stderr, /no process identity/);
+  assert.ok(fs.existsSync(worktree));
+  assert.ok(fs.existsSync(processRecord));
+  fs.unlinkSync(processRecord);
   const result = run();
   assert.equal(result.status, 0, result.stdout + result.stderr);
   assert.equal(fs.existsSync(worktree), false);

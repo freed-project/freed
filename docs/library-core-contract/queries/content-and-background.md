@@ -18,8 +18,11 @@ the exact Library generation and source revision. SQLite satisfies the order
 from the FeedItem primary key. The query has no offset, no total count, and no
 reader-body bytes. A job that needs content follows an explicit locator through
 the ranged reader or selective content plane. Its closed row also carries the
-exact hidden bit, optional RSS source identity, and optional sample-data
-provenance needed by maintenance actions. Desktop and PWA call one shared
+exact hidden bit, nullable `seenSyncedAt` provider confirmation, optional RSS
+source identity, and optional sample-data provenance needed by maintenance
+actions. The ordinary, stale-priority and time-priority variants preserve this
+confirmation through their closed row DTOs. Null means unconfirmed; zero and
+the historical `-1` terminal marker remain distinct from null. Desktop and PWA call one shared
 adapter for this traversal. PWA reads OPFS SQLite directly and never reconstructs
 these pages from IndexedDB materializations.
 

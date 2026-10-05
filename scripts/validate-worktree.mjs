@@ -156,16 +156,20 @@ const RELEASE_PUBLISHER_TEST_FILES = [
 
 const PULL_REQUEST_PUBLISHER_TOOLING_PATHS = new Set([
   "scripts/worktree-publish.sh",
+  "scripts/lib/provider-query-snapshot.mjs",
   "scripts/worktree-publish.test.mjs",
   "scripts/task-decisions.mjs",
   "scripts/task-decisions.test.mjs",
   "scripts/worktree-add.sh",
+  "scripts/worktree-add.test.mjs",
   "scripts/worktree-cleanup.sh",
 ]);
 
-const PULL_REQUEST_PUBLISHER_TEST_FILES = ["scripts/worktree-publish.test.mjs", "scripts/task-decisions.test.mjs"];
+const PULL_REQUEST_PUBLISHER_TEST_FILES = ["scripts/worktree-publish.test.mjs", "scripts/task-decisions.test.mjs", "scripts/worktree-add.test.mjs"];
 
 const TOOLING_SMOKE_RUNNER_PATHS = new Set([
+  ".github/workflows/nightly-fixture-acceptance.yml",
+  "scripts/nightly-fixture-acceptance.mjs",
   ".github/workflows/ci.yml",
   ".github/workflows/tooling-nightly.yml",
   "scripts/lib/tooling-smoke-plan.mjs",
@@ -176,6 +180,9 @@ const TOOLING_SMOKE_RUNNER_PATHS = new Set([
   "scripts/run-native-acceptance.test.mjs",
   "scripts/run-tooling-smoke-shard.mjs",
   "scripts/run-tooling-smoke-shard.test.mjs",
+  "scripts/test-helpers/nightly-fixture-preload.mjs",
+  "scripts/test-helpers/nightly-fixture-supervisor.py",
+  "scripts/test-helpers/nightly_fixture_darwin.py",
   "scripts/tooling-smoke-plan.test.mjs",
 ]);
 
@@ -1437,6 +1444,18 @@ export function buildValidationPlan(mode, changedFiles) {
         ...PULL_REQUEST_PUBLISHER_TEST_FILES,
       ]),
     );
+  }
+
+  if (changedFiles.some((file) => [
+    "scripts/worktree-preview.sh",
+    "scripts/worktree-processes.sh",
+    "scripts/lib/worktree-runtime.sh",
+    "scripts/lib/preview-processes.py",
+    "scripts/worktree-preview.test.mjs",
+  ].includes(file))) {
+    addCommand(plan, nodeCommand("worktree preview process tests", [
+      "--test", "scripts/worktree-preview.test.mjs", "scripts/task-decisions.test.mjs",
+    ]));
   }
 
   if (toolingSmokeRunnerChanged) {

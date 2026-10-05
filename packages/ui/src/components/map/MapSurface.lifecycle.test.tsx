@@ -5,12 +5,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LocationMarkerSummary } from "@freed/shared";
 
 const lifecycle = vi.hoisted(() => ({ construct: vi.fn(), style: vi.fn() }));
+vi.mock("maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url", () => ({ default: "synthetic-worker" }));
 vi.mock("maplibre-gl", () => ({
   Map: class { constructor(options: unknown) { return lifecycle.construct(options); } },
   Marker: class {
+    element: HTMLElement;
+    constructor({ element }: { element: HTMLElement }) { this.element = element; }
     setLngLat() { return this; }
-    addTo() { return this; }
-    remove = vi.fn();
+    addTo(map: any) { map.getCanvasContainer().append(this.element); return this; }
+    remove = vi.fn(() => this.element.remove());
   },
   GPUInitializationError: class GPUInitializationError extends Error {},
   setWorkerUrl: vi.fn(), setWorkerCount: vi.fn(),
@@ -88,6 +91,41 @@ describe("MapSurface initialization ownership", () => {
     await act(async () => { await vi.dynamicImportSettled(); });
   }
   async function unmount() { await act(async () => root!.unmount()); root = null; }
+
+  it("retains the selected popup and pin when an adjacent marker changes", async () => {
+    const adjacent = { ...markers[0], key: "location:rome", authorKey: "author:b", lat: 41.9, lng: 12.5, label: "Rome", item: { ...markers[0].item, globalId: "rss:2" } };
+    await mount();
+    await act(async () => root!.render(<MapSurface markers={[markers[0], adjacent]} />));
+    const pin = container.querySelector('.freed-map-marker') as HTMLElement;
+    await act(async () => pin.click());
+    const popup = document.querySelector('[data-testid="map-floating-panel"]'); expect(popup).not.toBeNull();
+    await act(async () => root!.render(<MapSurface markers={[{ ...markers[0] }, { ...adjacent, label: "Updated Rome" }]} />));
+    expect(document.querySelector('[data-testid="map-floating-panel"]')).toBe(popup);
+    expect(container.querySelector('.freed-map-marker')).toBe(pin);
+  });
+
+  it("updates a selected pin in place through repeated refreshes and closes it for replacement/removal/context change", async () => {
+    await mount();
+    const pin = container.querySelector('.freed-map-marker') as HTMLElement;
+    await act(async () => pin.click()); const popup = document.querySelector('[data-testid="map-floating-panel"]');
+    for (let version = 0; version < 12; version++) {
+      await act(async () => root!.render(<MapSurface markers={[{ ...markers[0], item: { ...markers[0].item, content: { ...markers[0].item.content, text: `Synthetic revision ${version}` } } }]} />));
+      expect(document.querySelector('[data-testid="map-floating-panel"]')).toBe(popup); expect(pin.isConnected).toBe(true);
+      expect(popup?.textContent).toContain(`Synthetic revision ${version}`);
+    }
+    expect(map.remove).not.toHaveBeenCalled(); expect(map.flyTo).toHaveBeenCalledTimes(1);
+    await act(async () => root!.render(<MapSurface markers={[{ ...markers[0], item: { ...markers[0].item, globalId: "replacement" } }]} />));
+    expect(document.querySelector('[data-testid="map-floating-panel"]')).toBeNull();
+    await act(async () => (container.querySelector('.freed-map-marker') as HTMLElement).click());
+    await act(async () => root!.render(<MapSurface markers={[]} />)); expect(document.querySelector('[data-testid="map-floating-panel"]')).toBeNull();
+    await act(async () => root!.render(<MapSurface markers={markers} />));
+    await act(async () => (container.querySelector('.freed-map-marker') as HTMLElement).click());
+    await act(async () => root!.render(<MapSurface markers={markers} cameraContentKey="new-filter" />));
+    expect(document.querySelector('[data-testid="map-floating-panel"]')).toBeNull();
+    await act(async () => (container.querySelector('.freed-map-marker') as HTMLElement).click());
+    await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+    expect(document.querySelector('[data-testid="map-floating-panel"]')).toBeNull();
+  });
 
   it("preserves manual camera through inset and visible content updates", async () => {
     await mount();
