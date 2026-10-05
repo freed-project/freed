@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   mkdirSync,
+  existsSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
@@ -11,6 +12,7 @@ import {
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { once } from "node:events";
 import yaml from "js-yaml";
 
 import {
@@ -371,6 +373,420 @@ test("shard execution preserves JUnit unit timings", (t) => {
     "utf8",
   );
   assert.match(junit, /<testcase name="measured"/);
+});
+
+const supervisorPath = new URL("./test-helpers/nightly-fixture-supervisor.py", import.meta.url).pathname;
+function processGeneration(pid) {
+  const result = spawnSync("python3", ["-B", supervisorPath, "--inspect", String(pid)], {
+    encoding: "utf8", timeout: 5000,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  return JSON.parse(result.stdout);
+}
+
+test("nightly shard keeps real Git maintenance attached and preserves inherited configuration", (t) => {
+  const directory = mkdtempSync(path.join(os.tmpdir(), "freed-nightly-git-maintenance-"));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const fixture = path.join(directory, "git-maintenance.test.mjs");
+  const trace = path.join(directory, "git-trace.jsonl");
+  writeFileSync(fixture, `
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+test('real Git commit and local push with automatic maintenance', () => {
+  const repo = mkdtempSync(path.join(os.tmpdir(), 'git-maintenance-'));
+  const git = (...args) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+  git('init', '--quiet');
+  writeFileSync(path.join(repo, 'fixture.txt'), 'fixture');
+  git('add', 'fixture.txt');
+  git('commit', '--quiet', '-m', 'fixture');
+  assert.equal(git('show', '-s', '--format=%an <%ae>').trim(), 'Inherited Fixture <fixture@example.com>');
+  const origin = path.join(repo, 'origin.git');
+  const peer = path.join(repo, 'peer');
+  git('init', '--bare', '--quiet', origin);
+  git('--git-dir', origin, 'config', 'receive.autoGC', 'true');
+  git('--git-dir', origin, 'config', 'maintenance.auto', 'true');
+  git('push', origin, 'HEAD:refs/heads/dev');
+  git('clone', '--branch', 'dev', origin, peer);
+  assert.equal(git('-C', peer, 'show', '-s', '--format=%an <%ae>').trim(), 'Inherited Fixture <fixture@example.com>');
+});
+`);
+  const plan = { suite: "nightly-self-improve", shardIndex: 1, shardCount: 1,
+    shellFiles: [], testFiles: [fixture], testNames: [], testNamePattern: null };
+  const env = { ...process.env,
+    GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "user.name", GIT_CONFIG_VALUE_0: "Inherited Fixture",
+    GIT_CONFIG_PARAMETERS: "'user.email=fixture@example.com' 'maintenance.auto=true' 'maintenance.autoDetach=true' 'gc.autoDetach=true'",
+    GIT_TEST_MAINT_AUTO_DETACH: "true",
+    GIT_TRACE2_EVENT: trace,
+  };
+  delete env.NODE_TEST_CONTEXT;
+  const result = spawnSync(process.execPath, ["--input-type=module", "-e", `
+import { runToolingSmokeShard } from ${JSON.stringify(new URL("./run-tooling-smoke-shard.mjs", import.meta.url).href)};
+runToolingSmokeShard(${JSON.stringify(plan)}, { repoRoot: ${JSON.stringify(directory)} });
+`], { env, encoding: "utf8", timeout: 15_000 });
+  const output = result.stdout + result.stderr;
+  assert.equal(result.error, undefined, output);
+  assert.equal(result.status, 0, output);
+  assert.match(output, /"remaining": \[\].*fixtureRemoved=True/);
+  const events = readFileSync(trace, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+  const versions = new Map(events.filter((entry) => entry.event === "version").map((entry) => [entry.sid, entry.exe]));
+  const expectedVersion = versions.values().next().value;
+  assert.ok(expectedVersion, "Git must report its version in the trace");
+  for (const entry of events.filter((entry) => entry.event === "start")) {
+    assert.equal(versions.get(entry.sid), expectedVersion, `mixed Git versions: ${entry.argv.join(" ")}`);
+  }
+  // Checking the caller alone misses an older git-receive-pack/upload-pack
+  // found through PATH when a scratch Git build lacks those entrypoints.
+  for (const name of ["receive-pack", "upload-pack"]) {
+    const commands = events.filter((entry) => entry.event === "cmd_name" && entry.name === name);
+    assert.ok(commands.length > 0, `local transport must execute ${name}`);
+    assert.ok(commands.every((entry) => versions.get(entry.sid) === expectedVersion));
+  }
+  const receiver = events.find((entry) => entry.event === "cmd_name" && entry.name === "receive-pack");
+  const remoteMaintenance = events.filter((entry) => entry.event === "child_start" && entry.sid === receiver.sid
+    && (entry.argv?.includes("maintenance") || entry.argv?.includes("gc")));
+  assert.ok(remoteMaintenance.length > 0, "receive-pack must execute automatic maintenance (gc on older Git)");
+  assert.ok(remoteMaintenance.every((entry) => entry.argv.includes("--auto") && !entry.argv.includes("--detach")));
+  const maintenance = events.filter((entry) => entry.event === "child_start" && entry.argv?.includes("maintenance"));
+  assert.ok(maintenance.length > 0, "automatic maintenance must execute, not be disabled");
+  assert.ok(maintenance.every((entry) => entry.argv.includes("--auto") && !entry.argv.includes("--detach")));
+  assert.equal(events.some((entry) => entry.event === "region_enter" && entry.category === "maintenance" && entry.label === "detach"), false);
+});
+
+for (const operation of ["git", "gh", "local-timeout", "double-fork"]) {
+  test(`nightly shard bounds imported ${operation} and reaps escaped descendants`, async (t) => {
+    const directory = mkdtempSync(path.join(os.tmpdir(), "freed-nightly-deadline-"));
+    t.after(() => rmSync(directory, { recursive: true, force: true }));
+    const env = { ...process.env };
+    delete env.NODE_TEST_CONTEXT;
+    const unrelated = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+    const unrelatedStart = processGeneration(unrelated.pid);
+    t.after(async () => {
+      if (unrelated.exitCode !== null || unrelated.signalCode !== null) return;
+      const exited = once(unrelated, "exit");
+      unrelated.kill("SIGKILL");
+      await exited;
+    });
+    const bin = path.join(directory, "bin");
+    mkdirSync(bin);
+    const evidence = path.join(directory, "identities.json");
+    // Only Git's executable is stalled. The test calls the real imported
+    // collectRepoSnapshot, whose lexical execFileSync previously bypassed bounds.
+    writeFileSync(path.join(bin, operation === "gh" ? "gh" : "git"), `#!${process.execPath}
+  const { spawn } = require('node:child_process');
+  const fs = require('node:fs');
+  const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { detached: true, stdio: 'ignore' });
+  function generation(pid) {
+    return JSON.parse(require('node:child_process').execFileSync('python3', ['-B', ${JSON.stringify(supervisorPath)}, '--inspect', String(pid)], { encoding: 'utf8' }));
+  }
+  fs.writeFileSync(${JSON.stringify(evidence)}, JSON.stringify({ child: process.pid, descendant: child.pid, childGeneration: generation(process.pid), descendantGeneration: generation(child.pid), fixture: process.env.TMPDIR }));
+  setInterval(() => {}, 1000);
+  `, { mode: 0o700 });
+    if (operation === "double-fork") {
+      writeFileSync(path.join(bin, "git"), `#!/usr/bin/env python3
+import importlib.util, json, os, sys, time
+sys.dont_write_bytecode = True
+sys.path.insert(0, ${JSON.stringify(path.dirname(supervisorPath))})
+spec = importlib.util.spec_from_file_location('supervisor', ${JSON.stringify(supervisorPath)})
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+root = module.process_snapshot(os.getpid())
+intermediate = os.fork()
+if intermediate == 0:
+    os.setsid()
+    parent = module.process_snapshot(os.getpid())
+    reader, writer = os.pipe()
+    descendant = os.fork()
+    if descendant:
+        os.close(writer)
+        os.read(reader, 1)
+        os._exit(0)
+    os.close(reader)
+    evidence = dict(child=root['pid'], childGeneration=root, descendant=os.getpid(),
+                    descendantGeneration=module.process_snapshot(os.getpid()),
+                    intermediate=parent['pid'], intermediateGeneration=parent,
+                    fixture=os.environ['TMPDIR'])
+    with open(${JSON.stringify(evidence)}, 'w') as stream:
+        json.dump(evidence, stream)
+    os.write(writer, b'1')
+    os.close(writer)
+    while True:
+        time.sleep(60)
+os.waitpid(intermediate, 0)
+while True:
+    time.sleep(60)
+`, { mode: 0o700 });
+    }
+    const fixture = path.join(directory, "stall.test.mjs");
+    writeFileSync(fixture, `
+import test from 'node:test';
+import { execFileSync } from 'node:child_process';
+  import { mkdtempSync, writeFileSync } from 'node:fs';
+  import os from 'node:os';
+  import path from 'node:path';
+  import { collectRepoSnapshot, collectPeerWorktrees } from ${JSON.stringify(new URL("./nightly-self-improve.mjs", import.meta.url).href)};
+  import { withNightlyFixture } from ${JSON.stringify(new URL("./test-helpers/nightly-fixture-preload.mjs", import.meta.url).href)};
+  test('deliberately stalled imported ${operation}', () => withNightlyFixture('deliberately stalled imported ${operation}', () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), 'fixture-'));
+    writeFileSync(path.join(root, 'owned-fixture'), 'cleanup required');
+  ${["git", "double-fork"].includes(operation) ? "collectRepoSnapshot(root)" : operation === "gh" ? "collectPeerWorktrees(root, [], false)" : "try { execFileSync('git', [], { timeout: 1000, killSignal: 'SIGKILL' }); } catch {}"};
+  }));
+  `);
+    const plan = { suite: "nightly-self-improve", shardIndex: 1, shardCount: 1,
+      shellFiles: [], testFiles: [fixture], testNames: [], testNamePattern: null };
+    const script = `import { runToolingSmokeShard } from ${JSON.stringify(new URL("./run-tooling-smoke-shard.mjs", import.meta.url).href)};
+  runToolingSmokeShard(${JSON.stringify(plan)}, { repoRoot: ${JSON.stringify(directory)}, nightlyDeadlines: { operationMs: 2000, testMs: 4000, shardMs: 7000 } });`;
+    const start = performance.now();
+    const result = spawnSync(process.execPath, ["--input-type=module", "-e", script], {
+      env: { ...env, PATH: `${bin}${path.delimiter}${env.PATH}` }, encoding: "utf8", timeout: 15_000,
+    });
+    const output = result.stdout + result.stderr;
+    assert.equal(result.error, undefined, output);
+    assert.equal(result.status, 1, output);
+    assert.match(output, ["local-timeout", "double-fork"].includes(operation)
+      ? new RegExp(`orphaned fixture descendants: .*test=deliberately stalled imported ${operation} operation=execFileSync git`)
+      : new RegExp(`operation deadline 2000ms test=deliberately stalled imported ${operation} operation=execFileSync ${operation}`));
+    assert.match(output, /fixtureRemoved=True/);
+    assert.ok(performance.now() - start < 10_000, output);
+    const identities = JSON.parse(readFileSync(evidence, "utf8"));
+    assert.equal(identities.descendantGeneration.parentPid, identities.intermediate ?? identities.child);
+    assert.ok(identities.childGeneration.birth);
+    assert.ok(identities.descendantGeneration.birth);
+    for (const pid of [identities.child, identities.descendant, identities.intermediate].filter(Boolean)) {
+      assert.equal(processGeneration(pid), null, `PID ${pid} must disappear, not merely become a zombie`);
+    }
+    assert.equal(existsSync(identities.fixture), false);
+    assert.equal(process.kill(unrelated.pid, 0), true, "unrelated process survives");
+    const unrelatedNow = processGeneration(unrelated.pid);
+    assert.equal(unrelatedNow.birth, unrelatedStart.birth, "unrelated generation is unchanged");
+    assert.equal(unrelatedNow.zombie, false, "unrelated process is alive, not a zombie");
+    console.log(output.split("\n").filter((line) => line.startsWith("[nightly supervisor]")).join("\n"));
+    console.log(JSON.stringify({ contract: `imported ${operation} stall`, status: result.status,
+      elapsedMs: performance.now() - start, ...identities, childAndDescendantGone: true,
+      fixtureRemoved: true, unrelatedAlive: true }));
+  });
+}
+
+test("nightly supervisor refuses stale generations and foreign parents", async (t) => {
+  const foreign = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+  const foreignBefore = processGeneration(foreign.pid);
+  t.after(async () => {
+    if (foreign.exitCode !== null || foreign.signalCode !== null) return;
+    const exited = once(foreign, "exit");
+    foreign.kill("SIGKILL");
+    await exited;
+  });
+  const helper = new URL("./test-helpers/nightly-fixture-supervisor.py", import.meta.url).pathname;
+  const result = spawnSync("python3", ["-c", `
+import ctypes, errno, importlib.util, os, signal, subprocess, sys
+sys.dont_write_bytecode = True
+sys.path.insert(0, os.path.dirname(${JSON.stringify(helper)}))
+spec = importlib.util.spec_from_file_location('supervisor', ${JSON.stringify(helper)})
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+platform = sys.platform
+sys.platform = 'unsupported'
+try:
+    module.confine()
+    raise AssertionError('unsupported confinement accepted')
+except RuntimeError as error:
+    assert 'refusing launch' in str(error)
+finally:
+    sys.platform = platform
+if platform == 'linux':
+    module.confine()
+    child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'])
+    try:
+        expected = module.identity(child.pid)
+        for stale in [(expected[0], expected[1], 'wrong-generation'), (expected[0], os.getppid(), expected[2])]:
+            try:
+                module.kill_owned(stale)
+                raise AssertionError('stale or foreign identity accepted')
+            except RuntimeError:
+                pass
+            assert child.poll() is None, 'refused identity was signaled'
+    finally:
+        module.cleanup(child)
+    assert not os.path.exists('/proc/' + str(child.pid))
+elif platform == 'darwin':
+    module.confine()
+    custody = module.DARWIN_CUSTODY
+    # Darwin advances pidversion on exec. Capture after the child acknowledges
+    # its final executable, so version + 1 cannot accidentally be the live token.
+    child = subprocess.Popen([sys.executable, '-c', "import time; print('ready', flush=True); time.sleep(30)"], stdout=subprocess.PIPE, text=True)
+    try:
+        assert child.stdout.readline() == 'ready' + chr(10)
+        members = custody.inventory()
+        expected = next(entry for entry in members if entry['pid'] == child.pid)
+        assert custody.send(dict(expected, birth='stale'), signal.SIGKILL) is False
+        assert custody.send(dict(expected, pidversion=expected['pidversion'] + 1), signal.SIGKILL) is False
+        # Exercise the kernel's token check too, not just the userspace check.
+        from nightly_fixture_darwin import AuditToken
+        stale = AuditToken()
+        stale.val[5] = child.pid
+        stale.val[7] = (expected['pidversion'] + 1) & 0xffffffff
+        assert custody.lib.proc_signal_with_audittoken(ctypes.byref(stale), signal.SIGKILL) == errno.ESRCH
+        outsider = custody.inspect(${foreign.pid})
+        try:
+            custody.send(outsider, signal.SIGKILL)
+            raise AssertionError('foreign responsibility accepted')
+        except RuntimeError:
+            pass
+        assert child.poll() is None
+    finally:
+        module.cleanup(child)
+    assert custody.inspect(child.pid) is None
+`], { encoding: "utf8", timeout: 10_000 });
+  assert.equal(result.status, 0, result.stderr);
+  const foreignAfter = processGeneration(foreign.pid);
+  assert.equal(foreignAfter.birth, foreignBefore.birth);
+  assert.equal(foreignAfter.zombie, false);
+});
+
+test("Darwin accounts for unseen zombies and refuses cleanup with missing ancestry", {
+  skip: process.platform !== "darwin" && "requires real Darwin process generations",
+}, () => {
+  const result = spawnSync("python3", ["-B", "-c", `
+import ctypes, errno, importlib.util, json, os, subprocess, sys, time
+sys.path.insert(0, ${JSON.stringify(path.dirname(supervisorPath))})
+spec = importlib.util.spec_from_file_location('supervisor', ${JSON.stringify(supervisorPath)})
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+module.confine()
+custody = module.DARWIN_CUSTODY
+# The parent deliberately does not waitpid. Its child exits before we perform
+# the first custody inventory, so no previously captured identity can save it.
+program = """
+import ctypes, errno, json, os, sys, time
+sys.path.insert(0, ${JSON.stringify(path.dirname(supervisorPath))})
+from nightly_fixture_darwin import BsdWithUniqueInfo, DarwinCustody
+observer = DarwinCustody(observe_only=True)
+pid = os.fork()
+if pid == 0:
+    os._exit(0)
+deadline = time.monotonic() + 3
+while time.monotonic() < deadline:
+    snapshot = observer.inspect(pid)
+    assert snapshot is not None, 'unreaped child must remain inspectable'
+    if snapshot['zombie']:
+        raw = BsdWithUniqueInfo()
+        ctypes.set_errno(0)
+        size = observer.lib.proc_pidinfo(pid, 18, 0, ctypes.byref(raw), ctypes.sizeof(raw))
+        if size == 0 and ctypes.get_errno() == errno.ESRCH:
+            print(json.dumps(snapshot), flush=True)
+            break
+        assert size == ctypes.sizeof(raw), 'unexpected live-only query failure'
+    # Wait for the transition into zombproc, never accept absence as success.
+    time.sleep(0.01)
+else:
+    raise AssertionError('child did not reach held zombie state within 3 seconds')
+while True:
+    time.sleep(30)
+"""
+child = subprocess.Popen([sys.executable, '-B', '-c', program], stdout=subprocess.PIPE, text=True)
+original_responsible, original_snapshots = custody.responsible, custody.snapshots
+try:
+    zombie = json.loads(child.stdout.readline())
+    assert zombie['zombie']
+    assert zombie['uniqueid'] not in custody.known
+    from nightly_fixture_darwin import BsdWithUniqueInfo
+    raw = BsdWithUniqueInfo()
+    ctypes.set_errno(0)
+    assert custody.lib.proc_pidinfo(zombie['pid'], 18, 0, ctypes.byref(raw), ctypes.sizeof(raw)) == 0
+    assert ctypes.get_errno() == errno.ESRCH, 'arg=0 must reproduce the false absence'
+    assert custody.same(zombie, custody.inspect(zombie['pid'])), 'arg=1 must include the zombie'
+    # Ask the real kernel an invalid query. A query failure must raise, never
+    # turn into an absence receipt, even for a process we know still exists.
+    query = custody.lib.proc_pidinfo
+    try:
+        custody.lib.proc_pidinfo = lambda pid, flavor, arg, buffer, size: query(pid, 0x7fffffff, arg, buffer, size)
+        try:
+            custody.inspect(zombie['pid'])
+            raise AssertionError('uninspectable process was reported absent')
+        except RuntimeError as error:
+            assert 'errno=' + str(errno.EINVAL) in str(error), str(error)
+    finally:
+        custody.lib.proc_pidinfo = query
+    assert custody.same(zombie, custody.inspect(zombie['pid']))
+    native_responsibility = custody.responsible(zombie['pid'])
+    # Remove only unavailable evidence, never synthesize ownership. The kernel
+    # parent unique ID and the live parent's responsibility remain authoritative.
+    custody.responsible = lambda pid: -1 if pid == zombie['pid'] else original_responsible(pid)
+    previous_predicate = (custody.responsible(zombie['pid']) == os.getpid()
+                          or zombie['uniqueid'] in custody.known)
+    assert not previous_predicate, 'fixture must exercise the previous omission'
+    members = custody.inventory()
+    captured = next(entry for entry in members if entry['pid'] == zombie['pid'])
+    parent = next(entry for entry in members if entry['pid'] == child.pid)
+    assert captured['parentUniqueid'] == parent['uniqueid']
+    assert custody.same(captured, zombie)
+    assert not custody.send(captured, 9), 'zombies must not become signal targets'
+
+    # Withhold the intermediate parent and historical captures. This models
+    # first observation after its generation has disappeared. All supplied
+    # identities still come from real kernel snapshots.
+    custody.known.clear()
+    custody.snapshots = lambda: [(entry, responsible) for entry, responsible in original_snapshots()
+                                if entry['pid'] != child.pid]
+    members = custody.inventory()
+    assert all(entry['pid'] != zombie['pid'] for entry in members)
+    assert any(entry['pid'] == zombie['pid'] for entry in custody.unresolved)
+    started = time.monotonic()
+    try:
+        custody.cleanup(child, module.reap)
+        raise AssertionError('ambiguous zombie falsely reported successful cleanup')
+    except RuntimeError as error:
+        assert 'unresolved zombies=' in str(error), str(error)
+        assert str(zombie['uniqueid']) in str(error), str(error)
+    assert 4.9 <= time.monotonic() - started < 7
+    assert child.poll() is None, 'unverified parent was signaled'
+    assert custody.same(zombie, custody.inspect(zombie['pid']))
+    print(json.dumps(dict(contract='unseen zombie with unavailable responsibility',
+                          nativeResponsibility=native_responsibility,
+                          previousPredicateAdmits=previous_predicate, liveOnlyQueryFalselyAbsent=True,
+                          zombieQueryPresent=True, invalidQueryRefused=True, zombie=zombie, verifiedParent=parent,
+                          incompleteAncestryRefused=True, unverifiedParentUntouched=True)))
+finally:
+    custody.responsible, custody.snapshots = original_responsible, original_snapshots
+    receipt = module.cleanup(child)
+assert custody.inspect(child.pid) is None
+assert custody.inspect(zombie['pid']) is None, 'zombie must disappear after verified parent cleanup'
+print(json.dumps(dict(cleanup=receipt, childAndUnseenZombieGone=True)))
+`], { encoding: "utf8", timeout: 20_000 });
+  assert.equal(result.error, undefined, result.stderr);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /"incompleteAncestryRefused": true/);
+  assert.match(result.stdout, /"childAndUnseenZombieGone": true/);
+  console.log(result.stdout);
+});
+
+test("nightly shard deadline remains independent of a blocked test event loop", (t) => {
+  const directory = mkdtempSync(path.join(os.tmpdir(), "freed-nightly-loop-"));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const fixture = path.join(directory, "loop.test.mjs");
+  writeFileSync(fixture, `import test from 'node:test';
+import { withNightlyFixture } from ${JSON.stringify(new URL("./test-helpers/nightly-fixture-preload.mjs", import.meta.url).href)};
+test('blocked loop', () => withNightlyFixture('blocked loop', () => { while (true) {} }));`);
+  const plan = { suite: "nightly-self-improve", shardIndex: 1, shardCount: 1,
+    shellFiles: [], testFiles: [fixture], testNames: [], testNamePattern: null };
+  const env = { ...process.env };
+  delete env.NODE_TEST_CONTEXT;
+  for (const deadline of ["test", "shard"]) {
+    const script = `import { runToolingSmokeShard } from ${JSON.stringify(new URL("./run-tooling-smoke-shard.mjs", import.meta.url).href)};
+runToolingSmokeShard(${JSON.stringify(plan)}, { repoRoot: ${JSON.stringify(directory)}, nightlyDeadlines: { operationMs: 5000, testMs: ${deadline === "test" ? 200 : 5000}, shardMs: ${deadline === "shard" ? 1000 : 5000} } });`;
+    const result = spawnSync(process.execPath, ["--input-type=module", "-e", script], {
+      env, encoding: "utf8", timeout: 10_000,
+    });
+    const output = result.stdout + result.stderr;
+    assert.equal(result.error, undefined, output);
+    assert.equal(result.status, 1, output);
+    assert.match(output, deadline === "test" ? /test deadline 200ms test=blocked loop/ : /independent shard deadline/);
+    assert.match(output, /"remaining": \[\]/);
+    assert.match(output, /fixtureRemoved=True/);
+  }
 });
 
 test("repository plans are nonempty and cover each named suite", () => {
