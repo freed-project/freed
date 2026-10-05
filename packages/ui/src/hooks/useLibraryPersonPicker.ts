@@ -12,6 +12,7 @@ const EMPTY_ROWS: readonly LibraryCorePersonPickerRowV1[] = Object.freeze([]);
 
 interface PersonPickerResult {
   readonly attemptKey: string;
+  readonly reader: LibraryCoreNormalizedQueryExecutor;
   readonly rows: readonly LibraryCorePersonPickerRowV1[];
 }
 
@@ -61,17 +62,17 @@ export function useLibraryPersonPicker({
     })
       .then((response) => {
         if (cancelled) return;
-        setResult({ attemptKey, rows: response.rows });
+        setResult({ attemptKey, reader: query, rows: response.rows });
       })
       .catch(() => {
-        if (!cancelled) setResult({ attemptKey, rows: EMPTY_ROWS });
+        if (!cancelled) setResult({ attemptKey, reader: query, rows: EMPTY_ROWS });
       });
     return () => {
       cancelled = true;
     };
   }, [attemptKey, enabled, normalizedSearch, query]);
 
-  const current = enabled && result?.attemptKey === attemptKey ? result : null;
+  const current = enabled && result?.reader === query && result?.attemptKey === attemptKey ? result : null;
   return {
     loading:
       enabled && query !== null && query !== undefined && current === null,

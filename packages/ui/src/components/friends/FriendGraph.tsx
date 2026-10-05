@@ -43,7 +43,7 @@ import type {
   FriendsGalaxyTransform,
   FriendsGalaxyViewportGeometry,
 } from "../../lib/friends-galaxy-viewport.js";
-import { FriendsGalaxySourceScheduler } from "../../lib/friends-galaxy-source-scheduler.js";
+import { FriendsGalaxySourceScheduler, friendsGalaxySourceControls } from "../../lib/friends-galaxy-source-scheduler.js";
 import {
   EMPTY_IDENTITY_GRAPH_ACTIVITY_SUMMARIES,
   type IdentityGraphActivitySummaries,
@@ -1022,13 +1022,8 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
       const sourceRevision = sourceRevisionRef.current;
       const baseline = latestActivityRef.current ?? activitySummaries;
       const geometry = controller.geometry;
-      const controlSignature = [
-        mode,
-        backgroundStarCount,
-        proceduralBackgroundStarCount,
-        sourceVersion,
-        sourceRetry,
-      ].join(":");
+      const controls = friendsGalaxySourceControls({ mode, backgroundStarCount, proceduralBackgroundStarCount, sourceVersion, sourceRetry });
+      const controlSignature = controls.key;
       const controlsChanged =
         sourceControlSignatureRef.current !== null &&
         sourceControlSignatureRef.current !== controlSignature;
@@ -1038,7 +1033,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
       scheduler.request(
         {
           fallbackBaseline: baseline,
-          backgroundSeed: `freed-friends-${mode}-${sourceRevision.toLocaleString()}`,
+          backgroundSeed: controls.backgroundSeed,
           backgroundStarCount,
           mode,
           proceduralBackgroundStarCount,

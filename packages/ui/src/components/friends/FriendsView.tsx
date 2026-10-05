@@ -40,7 +40,7 @@ import {
   useLibraryFriendDetail,
   useLibraryPersonDetail,
 } from "../../hooks/useLibraryIdentityDetail.js";
-import { useLibraryFacetSummary } from "../../hooks/useLibraryFacetSummary.js";
+import { useLibraryFacetSummaryState } from "../../hooks/useLibraryFacetSummary.js";
 import { useLibraryFriendsDirectory } from "../../hooks/useLibraryFriendsDirectory.js";
 import { useLibraryAccountLinkCandidates } from "../../hooks/useLibraryAccountLinkCandidates.js";
 import { useLibraryFriendCandidateReview } from "../../hooks/useLibraryFriendCandidateReview.js";
@@ -71,6 +71,7 @@ import {
   buildFriendSourceActivityEvidence,
   buildFriendsActivityReadModel,
   createLibraryFriendsGraphRequest,
+  friendTimelineBindingKey,
   friendSourceAccountProvenance,
   type FriendSourceActivityEvidence,
 } from "../../lib/friends-library-read-model.js";
@@ -549,7 +550,7 @@ export function FriendsView({
     sort: sortBy,
     sourceVersion: friendsReadVersion,
   });
-  const libraryFacets = useLibraryFacetSummary(friendsReadVersion);
+  const { summary: libraryFacets } = useLibraryFacetSummaryState(friendsReadVersion);
 
   const {
     assignLibraryAccountToPerson,
@@ -591,6 +592,8 @@ export function FriendsView({
     friendsReadVersion,
   );
 
+  // Binding changes invalidate the scope; routine detail object replacements do not.
+  const timelineBindingKey = friendTimelineBindingKey(selectedFriend, selectedAccount);
   const timelineSources = useMemo<LibraryFriendsSource[]>(() => {
     const sources = selectedFriend
       ? selectedFriend.sources.map((source) => ({
@@ -615,7 +618,7 @@ export function FriendsView({
         compareUtf8Binary(left.platform, right.platform) ||
         compareUtf8Binary(left.authorId, right.authorId),
     );
-  }, [selectedAccount?.id, selectedAccount?.personId, selectedFriend?.id]);
+  }, [timelineBindingKey]);
   const friendsGraphRequest = useMemo(
     () => createLibraryFriendsGraphRequest(timelineSources),
     [timelineSources],
@@ -782,13 +785,8 @@ export function FriendsView({
       editorSourceActivity?: ReadonlyMap<string, FriendSourceActivityEvidence>,
     ) => {
       const now = Date.now();
-      const existingFriend = personId
-        ? selectedFriend?.id === personId
-          ? selectedFriend
-          : readLibraryFriendDetail
-            ? await readLibraryFriendDetail(personId)
-            : null
-        : null;
+      const existingFriend = personId && readLibraryFriendDetail
+        ? await readLibraryFriendDetail(personId) : null;
       if (personId && !existingFriend) {
         throw new Error("The selected Friend SQLite detail is unavailable.");
       }
@@ -945,42 +943,43 @@ export function FriendsView({
       if (!upsertLibraryPerson) {
         throw new Error("The Person SQLite mutation is unavailable.");
       }
+      const current = readLibraryPersonDetail ? await readLibraryPersonDetail(person.id) : null;
+      if (!current || current.id !== person.id) throw new Error("The current Person SQLite detail is unavailable.");
       await upsertLibraryPerson({
-        ...person,
+        ...current,
         ...relationshipPatchForLevel(level),
         updatedAt: Date.now(),
       });
       setLibraryMutationNonce((value) => value + 1);
       setSelectedPerson(person.id);
     },
-    [setSelectedPerson, upsertLibraryPerson, readOnly, onReadOnlyPersonCareChange],
+    [setSelectedPerson, readLibraryPersonDetail, upsertLibraryPerson, readOnly, onReadOnlyPersonCareChange],
   );
 
   const handlePromoteSelectedAccount = useCallback(
     async (level: 3 | 5 = 3) => {
-      if (!selectedAccount) return;
-      const linkedPerson = selectedAccount.personId
-        ? (selectedAccountLinkedPersonDetail.value ??
-          (readLibraryPersonDetail
-            ? await readLibraryPersonDetail(selectedAccount.personId)
-            : null))
-        : null;
+      if (!selectedAccount || !readLibraryAccountDetail) return;
+      const account = await readLibraryAccountDetail(selectedAccount.id);
+      if (!account || account.id !== selectedAccount.id) return;
+      const linkedPerson = account.personId && readLibraryPersonDetail
+        ? await readLibraryPersonDetail(account.personId) : null;
       if (linkedPerson) {
         await handleSetPersonRelationshipLevel(linkedPerson, level);
         return;
       }
-      if (selectedAccount.personId) {
+      if (account.personId) {
         toast.error("Freed could not load that person's SQLite record.");
         return;
       }
       setEditorState({
         kind: "new",
-        draft: friendDraftFromAccount(selectedAccount, level),
+        draft: friendDraftFromAccount(account, level),
       });
     },
     [
       handleSetPersonRelationshipLevel,
       readLibraryPersonDetail,
+      readLibraryAccountDetail,
       selectedAccount,
       selectedAccountLinkedPersonDetail.value,
     ],

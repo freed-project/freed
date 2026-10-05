@@ -43,6 +43,7 @@ export function useLibraryAccountLinkCandidates({
   const readerSessionId = useRef(operationId("account-link-reader"));
   const [result, setResult] = useState<{
     readonly attemptKey: string;
+  readonly reader: typeof queryLibraryCore;
     readonly rows: readonly AccountLinkSuggestion[];
   } | null>(null);
   const attemptKey = JSON.stringify([entityKind, entityId, sourceVersion]);
@@ -68,16 +69,17 @@ export function useLibraryAccountLinkCandidates({
         if (cancelled) return;
         setResult({
           attemptKey,
+          reader: queryLibraryCore,
           rows: Object.freeze(response.rows.map(toSuggestion)),
         });
       })
       .catch(() => {
-        if (!cancelled) setResult({ attemptKey, rows: Object.freeze([]) });
+        if (!cancelled) setResult({ attemptKey, reader: queryLibraryCore, rows: Object.freeze([]) });
       });
     return () => {
       cancelled = true;
     };
   }, [attemptKey, entityId, entityKind, queryLibraryCore]);
 
-  return result?.attemptKey === attemptKey ? result.rows : [];
+  return result?.reader === queryLibraryCore && result?.attemptKey === attemptKey ? result.rows : [];
 }

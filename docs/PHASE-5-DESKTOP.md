@@ -13,6 +13,13 @@ decoding and the existing renderer memory-pressure shedding. Video metadata
 loads remain reader-only for ordinary cards. Stories and explicit local sample
 previews keep their existing media behavior. Installed acceptance is pending.
 
+Same-scope Library refreshes retain committed search results, Friends activity,
+Map pins and popups, and bounded overview pages while replacement reads are
+pending. Query, reader and revision changes remain action-admission fences;
+pending search results and stale page callbacks cannot execute bulk actions or
+reuse an obsolete cursor. Failures and settled empty results clear stale data.
+Installed native continuity and graphics acceptance remain pending.
+
 The Jev evaluation MVP includes an optional GLiClass Base v3.0 classifier.
 Selection downloads pinned official Apache-2.0 weights and tokenizer with
 progress, cancel/resume, integrity checks and removal controls. A bundled ONNX

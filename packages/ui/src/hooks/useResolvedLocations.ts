@@ -14,7 +14,7 @@ import {
   type MapTimeMode,
   type ResolvedLocationItem,
 } from "@freed/shared";
-import { geocode } from "../lib/geocoding.js";
+import { geocode, peekGeocode } from "../lib/geocoding.js";
 
 interface ResolvedLocationsState {
   friendMarkers: LocationMarkerSummary[];
@@ -105,6 +105,11 @@ export function useResolvedLocationCandidates(
       }
 
       if (!signal || "coordinates" in signal || !resolveNamedLocations) continue;
+      const cached = peekGeocode(signal.name);
+      if (cached !== undefined) {
+        if (cached) coordinateItems.push({ accountId, item, friend, lat: cached.latitude, lng: cached.longitude, label: cached.name ?? signal.name });
+        continue;
+      }
       namedRequests.push({
         accountId,
         item,
