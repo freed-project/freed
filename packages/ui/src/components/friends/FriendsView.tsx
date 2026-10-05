@@ -42,6 +42,8 @@ import {
 } from "../../hooks/useLibraryIdentityDetail.js";
 import { useLibraryFacetSummaryState } from "../../hooks/useLibraryFacetSummary.js";
 import { useLibraryFriendsDirectory } from "../../hooks/useLibraryFriendsDirectory.js";
+import { executeCurrentAccountLink } from "../../lib/friends-account-link-action.js";
+import { useActionOwnershipFence } from "../../hooks/useActionOwnershipFence.js";
 import { useLibraryAccountLinkCandidates } from "../../hooks/useLibraryAccountLinkCandidates.js";
 import { useLibraryFriendCandidateReview } from "../../hooks/useLibraryFriendCandidateReview.js";
 import type { FriendGraphHandle } from "./FriendGraph.js";
@@ -554,6 +556,7 @@ export function FriendsView({
 
   const {
     assignLibraryAccountToPerson,
+    store: libraryStore,
     googleContacts,
     mutateDeviceGraphLayout,
     queryLibraryCore,
@@ -667,6 +670,9 @@ export function FriendsView({
       friendSuggestionPreferences?.dismissedSuggestionIds ?? [],
     sourceVersion: friendsReadVersion,
   });
+  const mutationActionCurrent = useActionOwnershipFence([friendsReadVersion, selectedPersonId, selectedAccountId, queryLibraryCore, assignLibraryAccountToPerson, readLibraryAccountDetail, readLibraryPersonDetail, upsertLibraryPerson, replaceLibraryFriend, updatePreferences], !readOnly);
+  const personSuggestionCurrent = useActionOwnershipFence([friendsReadVersion, selectedPersonId, queryLibraryCore, selectedPersonSuggestions, assignLibraryAccountToPerson], !readOnly);
+  const candidateActionCurrent = useActionOwnershipFence([friendsReadVersion, queryLibraryCore, friendCandidateSuggestions, friendSuggestionPreferences, updatePreferences]);
   const friendCandidateByPerson = useMemo(() => {
     const next = new Map<string, FriendCandidateSuggestion>();
     for (const suggestion of friendCandidateSuggestions) {
@@ -876,14 +882,18 @@ export function FriendsView({
 
   const handleLinkAccountToPerson = useCallback(
     async (accountId: string, personId: string) => {
+      if (!mutationActionCurrent()) return;
       if (!assignLibraryAccountToPerson) {
         throw new Error("The Account assignment SQLite mutation is unavailable.");
       }
-      await assignLibraryAccountToPerson(accountId, personId);
-      setLibraryMutationNonce((value) => value + 1);
-      setSelectedPerson(personId);
+      if (!readLibraryAccountDetail || !readLibraryPersonDetail) throw new Error("Current identity SQLite readers are unavailable.");
+      await executeCurrentAccountLink({ accountId, personId, isCurrent: mutationActionCurrent,
+        readAccount: readLibraryAccountDetail, readPerson: readLibraryPersonDetail,
+        assign: assignLibraryAccountToPerson,
+        onApplied: () => { setLibraryMutationNonce(value => value + 1); setSelectedPerson(personId); },
+      });
     },
-    [assignLibraryAccountToPerson, setSelectedPerson],
+    [assignLibraryAccountToPerson, setSelectedPerson, mutationActionCurrent, readLibraryAccountDetail, readLibraryPersonDetail],
   );
 
   const handlePinPersonPosition = useCallback(
@@ -943,26 +953,30 @@ export function FriendsView({
       if (!upsertLibraryPerson) {
         throw new Error("The Person SQLite mutation is unavailable.");
       }
+      if (!mutationActionCurrent()) return;
       const current = readLibraryPersonDetail ? await readLibraryPersonDetail(person.id) : null;
+      if (!mutationActionCurrent()) return;
       if (!current || current.id !== person.id) throw new Error("The current Person SQLite detail is unavailable.");
       await upsertLibraryPerson({
         ...current,
         ...relationshipPatchForLevel(level),
         updatedAt: Date.now(),
       });
+      if (!mutationActionCurrent()) return;
       setLibraryMutationNonce((value) => value + 1);
       setSelectedPerson(person.id);
     },
-    [setSelectedPerson, readLibraryPersonDetail, upsertLibraryPerson, readOnly, onReadOnlyPersonCareChange],
+    [setSelectedPerson, readLibraryPersonDetail, upsertLibraryPerson, readOnly, onReadOnlyPersonCareChange, mutationActionCurrent],
   );
 
   const handlePromoteSelectedAccount = useCallback(
     async (level: 3 | 5 = 3) => {
-      if (!selectedAccount || !readLibraryAccountDetail) return;
+      if (!mutationActionCurrent() || !selectedAccount || !readLibraryAccountDetail) return;
       const account = await readLibraryAccountDetail(selectedAccount.id);
-      if (!account || account.id !== selectedAccount.id) return;
+      if (!mutationActionCurrent() || !account || account.id !== selectedAccount.id) return;
       const linkedPerson = account.personId && readLibraryPersonDetail
         ? await readLibraryPersonDetail(account.personId) : null;
+      if (!mutationActionCurrent()) return;
       if (linkedPerson) {
         await handleSetPersonRelationshipLevel(linkedPerson, level);
         return;
@@ -982,15 +996,16 @@ export function FriendsView({
       readLibraryAccountDetail,
       selectedAccount,
       selectedAccountLinkedPersonDetail.value,
+      mutationActionCurrent,
     ],
   );
 
   const handlePromoteSelectedPerson = useCallback(
     async (level: 3 | 5 = 3) => {
-      if (!selectedPerson) return;
+      if (!mutationActionCurrent() || !selectedPerson) return;
       await handleSetPersonRelationshipLevel(selectedPerson, level);
     },
-    [handleSetPersonRelationshipLevel, selectedPerson],
+    [handleSetPersonRelationshipLevel, selectedPerson, mutationActionCurrent],
   );
 
   const handleDropGraphNodeToRelationshipTier = useCallback(
@@ -1045,7 +1060,8 @@ export function FriendsView({
 
   const handleDismissFriendSuggestion = useCallback(
     (suggestionId: string) => {
-      const current = friendSuggestionPreferences?.dismissedSuggestionIds ?? [];
+      if (!candidateActionCurrent() || !friendCandidateSuggestions.some(row => row.id === suggestionId)) return;
+      const current = libraryStore.getState().preferences.friendSuggestions?.dismissedSuggestionIds ?? [];
       if (current.includes(suggestionId)) return;
       void updatePreferences({
         friendSuggestions: {
@@ -1055,11 +1071,12 @@ export function FriendsView({
         toast.error("Freed could not dismiss that suggestion.");
       });
     },
-    [friendSuggestionPreferences, updatePreferences],
+    [friendSuggestionPreferences, updatePreferences, candidateActionCurrent, friendCandidateSuggestions, libraryStore],
   );
 
   const handleSelectFriendCandidate = useCallback(
     async (suggestion: FriendCandidateSuggestion) => {
+      if (!candidateActionCurrent() || !friendCandidateSuggestions.includes(suggestion)) return;
       if (suggestion.personId) {
         setSelectedPerson(suggestion.personId);
         focusGraphNode(`person:${suggestion.personId}`);
@@ -1068,6 +1085,7 @@ export function FriendsView({
       const accountId = suggestion.accountIds[0];
       if (accountId) {
         const account = await readLibraryAccountDetail?.(accountId);
+        if (!candidateActionCurrent()) return;
         if (!account) { toast.error("Freed could not open this profile."); return; }
         setSelectedAccount(null);
         if (account.personId) {
@@ -1082,7 +1100,7 @@ export function FriendsView({
         }
       }
     },
-    [focusGraphNode, readLibraryAccountDetail, setSelectedAccount, setSelectedPerson, setSelectedItem, setFeedSearchQuery, setFilter, setActiveView],
+    [focusGraphNode, readLibraryAccountDetail, setSelectedAccount, setSelectedPerson, setSelectedItem, setFeedSearchQuery, setFilter, setActiveView, candidateActionCurrent, friendCandidateSuggestions],
   );
 
   const handleOpenSyncModal = useCallback(async () => {
@@ -1498,12 +1516,7 @@ export function FriendsView({
                 <button
                   key={`${suggestion.personId}:${suggestion.accountId}`}
                   type="button"
-                  onClick={() =>
-                    void handleLinkAccountToPerson(
-                      suggestion.accountId,
-                      selectedPerson.id,
-                    )
-                  }
+                  onClick={() => { if (personSuggestionCurrent()) void handleLinkAccountToPerson(suggestion.accountId, selectedPerson.id); }}
                   className="theme-card-soft flex w-full items-center justify-between gap-3 rounded-2xl px-3 py-3 text-left transition-colors hover:border-[color:var(--theme-border-strong)] hover:bg-[color:var(--theme-bg-card-hover)]"
                 >
                   <div className="min-w-0">

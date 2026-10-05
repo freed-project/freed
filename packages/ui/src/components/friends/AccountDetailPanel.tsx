@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import type {
   Account,
@@ -101,6 +101,15 @@ export function AccountDetailPanel({
   const filteredPersons = personPicker.rows.filter(
     (person) => person.relationshipStatus === "friend",
   );
+
+  const admission = useRef({ accountId: account.id, sourceVersion, queryLibraryCore, rows: personPicker.rows, suggestions, readOnly, onLinkToPerson });
+  admission.current = { accountId: account.id, sourceVersion, queryLibraryCore, rows: personPicker.rows, suggestions, readOnly, onLinkToPerson };
+  const canLink = (row: unknown, kind: "picker" | "suggestion") => {
+    const latest = admission.current;
+    return !latest.readOnly && latest.accountId === account.id && latest.sourceVersion === sourceVersion &&
+      latest.queryLibraryCore === queryLibraryCore && latest.onLinkToPerson === onLinkToPerson &&
+      (kind === "picker" ? latest.rows.includes(row as typeof personPicker.rows[number]) : latest.suggestions.includes(row as typeof suggestions[number]));
+  };
 
   return (
     <div className="flex h-full flex-col bg-[color:var(--theme-bg-deep)]">
@@ -286,7 +295,7 @@ export function AccountDetailPanel({
                     <button
                       key={`${suggestion.accountId}:${suggestion.personId}`}
                       type="button"
-                      onClick={() => onLinkToPerson(suggestion.personId)}
+                      onClick={() => { if (canLink(suggestion, "suggestion")) onLinkToPerson(suggestion.personId); }}
                       className="theme-card-soft w-full rounded-2xl px-3 py-3 text-left transition-colors hover:border-[color:var(--theme-border-strong)] hover:bg-[color:var(--theme-bg-card-hover)]"
                     >
                       <div className="flex items-center justify-between gap-3">
@@ -348,7 +357,7 @@ export function AccountDetailPanel({
                   <button
                     key={person.id}
                     type="button"
-                    onClick={() => onLinkToPerson(person.id)}
+                    onClick={() => { if (canLink(person, "picker")) onLinkToPerson(person.id); }}
                     className="theme-card-soft flex w-full items-center justify-between gap-3 rounded-2xl px-3 py-3 text-left transition-colors hover:border-[color:var(--theme-border-strong)] hover:bg-[color:var(--theme-bg-card-hover)]"
                   >
                     <div className="min-w-0">

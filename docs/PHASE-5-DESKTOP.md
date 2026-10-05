@@ -1790,3 +1790,5 @@ existing optional summarization remain governed by their existing settings. This
 exact correction was explicitly approved on 2026-10-04; no cadence, credential or
 AI-setting change is introduced. The original selection complaint remains
 unattributed.
+
+Captured Friends, graph-picker and recovery actions now require their current selection, reader and revision owners. Ownership changes remain fenced through A to B to A transitions and temporary disabling; native identity reads are checked again before account assignment, and obsolete completions cannot move the new selection. Mutation-facing suggestion rows still clear during refresh. Native authority admission and installed UI acceptance remain separate checks.

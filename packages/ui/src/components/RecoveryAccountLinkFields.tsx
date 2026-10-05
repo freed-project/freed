@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { LibraryCoreNormalizedQueryExecutor } from "@freed/shared/library-core";
+import { useActionOwnershipFence } from "../hooks/useActionOwnershipFence.js";
 import { useLibraryPersonPicker } from "../hooks/useLibraryPersonPicker.js";
 
 export interface RecoveryAccountLinkDraft {
@@ -23,9 +24,13 @@ export function RecoveryAccountLinkFields({ drafts, query, sourceVersion, saving
   const [confirmed, setConfirmed] = useState(false);
   const [selected, setSelected] = useState(() => drafts.map(draft => draft.archived));
   const picker = useLibraryPersonPicker({ enabled: !locked && !saving, query, search, sourceVersion });
+  const chooseCurrent = useActionOwnershipFence([drafts, page, query, sourceVersion, picker.rows], !saving && !locked);
+  const submitCurrent = useActionOwnershipFence([drafts, selected, query, sourceVersion, confirmed, seen, onSubmit], !saving && !locked);
+  useEffect(() => { setConfirmed(false); }, [drafts, query, sourceVersion]);
+  useEffect(() => { setSelected(drafts.map(draft => draft.archived)); setPage(0); setSeen(1); }, [drafts]);
   const draft = drafts[page], value = selected[page];
   if (!draft || !value) return null;
-  const choose = (next: typeof value) => { setSelected(selected.map((entry, index) => index === page ? next : entry)); setConfirmed(false); };
+  const choose = (next: typeof value) => { if (!chooseCurrent()) return; setSelected(selected.map((entry, index) => index === page ? next : entry)); setConfirmed(false); };
   const button = "btn-secondary rounded-lg px-3 py-1.5 disabled:opacity-50";
   return <div className="space-y-3" data-testid="recovery-account-link-fields">
     <p>This creates fresh account links. They may replace changes made before Primary acceptance. An unknown original outcome does not mean the edit failed.</p>
@@ -39,11 +44,11 @@ export function RecoveryAccountLinkFields({ drafts, query, sourceVersion, saving
     </div>
     <label className="block">Search people<input className="mt-1 w-full rounded-lg border border-[var(--theme-border-subtle)] bg-transparent px-3 py-2" value={search} disabled={saving || locked} onChange={event => setSearch(event.target.value)} /></label>
     {picker.loading ? <p role="status">Searching people...</p> : <ul className="space-y-1">{picker.rows.map(person => <li key={person.id}><button type="button" className={button} disabled={saving || locked} onClick={() => choose({ id: person.id, label: person.name.slice(0, 240), present: true })}>Select {person.name} (...{person.id.slice(-8)})</button></li>)}</ul>}
-    <label className="flex items-start gap-2"><input type="checkbox" checked={confirmed} disabled={saving || locked} onChange={event => setConfirmed(event.target.checked)} /><span>Apply all reviewed account links, including changes before Primary acceptance.</span></label>
+    <label className="flex items-start gap-2"><input type="checkbox" checked={confirmed} disabled={saving || locked} onChange={event => { if (chooseCurrent()) setConfirmed(event.target.checked); }} /><span>Apply all reviewed account links, including changes before Primary acceptance.</span></label>
     <div className="flex flex-wrap gap-2">
-      {page > 0 && <button type="button" className={button} disabled={saving} onClick={() => { setPage(page - 1); setSearch(""); }}>Previous account</button>}
-      {page + 1 < drafts.length && <button type="button" className={button} disabled={saving} onClick={() => { setPage(page + 1); setSeen(Math.max(seen, page + 2)); setSearch(""); }}>Next account</button>}
-      <button type="button" className="btn-primary rounded-lg px-3 py-1.5 disabled:opacity-50" disabled={saving || !confirmed || seen < drafts.length || selected.some(entry => !entry.present)} onClick={() => onSubmit(drafts.map((entry, index) => ({ accountId: entry.accountId, personId: selected[index]!.id })))}>{saving ? "Storing replacement..." : "Store account links"}</button>
+      {page > 0 && <button type="button" className={button} disabled={saving || locked} onClick={() => { if (!chooseCurrent()) return; setPage(page - 1); setSearch(""); }}>Previous account</button>}
+      {page + 1 < drafts.length && <button type="button" className={button} disabled={saving || locked} onClick={() => { if (!chooseCurrent()) return; setPage(page + 1); setSeen(Math.max(seen, page + 2)); setSearch(""); }}>Next account</button>}
+      <button type="button" className="btn-primary rounded-lg px-3 py-1.5 disabled:opacity-50" disabled={saving || locked || !confirmed || seen < drafts.length || selected.some(entry => !entry.present)} onClick={() => { if (submitCurrent() && confirmed && seen >= drafts.length && selected.length === drafts.length && selected.every(entry => entry.present)) onSubmit(drafts.map((entry, index) => ({ accountId: entry.accountId, personId: selected[index]!.id }))); }}>{saving ? "Storing replacement..." : "Store account links"}</button>
     </div>
   </div>;
 }

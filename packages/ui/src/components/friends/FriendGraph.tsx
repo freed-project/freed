@@ -13,6 +13,7 @@ import {
 import type { MapMode, SampleAvatarFocalPoint } from "@freed/shared";
 import type { ThemeId } from "@freed/shared/themes";
 import { type LibraryCoreNormalizedQueryExecutor } from "@freed/shared/library-core";
+import { useActionOwnershipFence } from "../../hooks/useActionOwnershipFence.js";
 import { useLibraryPersonPicker } from "../../hooks/useLibraryPersonPicker.js";
 import {
   friendsGalaxyGraphDescription,
@@ -424,6 +425,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
       search: linkPickerQuery,
       sourceVersion,
     });
+    const pickerActionCurrent = useActionOwnershipFence([linkPickerAccountId, linkPickerQuery, sourceVersion, sqliteGraphQuery, onLinkAccountToPerson, personPickerOptions], linkPickerAccountId !== null);
     const [reducedMotion, setReducedMotion] = useState(false);
     const [announcement, setAnnouncement] = useState("");
     const copyDiagnosticsRequestId = useCommandSurfaceStore(
@@ -1239,12 +1241,12 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
 
     const handleLinkAccountToPickerPerson = useCallback(
       async (personId: string) => {
-        if (!linkPickerAccountId || !onLinkAccountToPerson) return;
+        if (!pickerActionCurrent() || !linkPickerAccountId || !onLinkAccountToPerson || !personPickerOptions.some(person => person.id === personId)) return;
         nextSourceImmediateRef.current = true;
         await onLinkAccountToPerson(linkPickerAccountId, personId);
-        closeContextMenu();
+        if (pickerActionCurrent()) closeContextMenu();
       },
-      [closeContextMenu, linkPickerAccountId, onLinkAccountToPerson],
+      [closeContextMenu, linkPickerAccountId, onLinkAccountToPerson, pickerActionCurrent, personPickerOptions],
     );
 
     const contextMenuStyle = contextMenu
