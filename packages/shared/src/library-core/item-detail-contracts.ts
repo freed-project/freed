@@ -32,6 +32,7 @@ export const LIBRARY_CORE_ITEM_DETAIL_RESPONSE_SCHEMA = Object.freeze({
     "contentBody",
     "mediaBlobDigests",
     "preservedBody",
+    "seenSyncedAt",
   ]),
   bodyLocatorKeys: Object.freeze(["blobDigest", "storage"]),
   nullableItem: true,
@@ -81,6 +82,7 @@ export interface LibraryCoreItemBodyLocatorV1 {
 
 export interface LibraryCoreItemDetailV1 {
   readonly card: LibraryCoreFeedCardV1;
+  readonly seenSyncedAt: number | null;
   readonly contentBody: LibraryCoreItemBodyLocatorV1;
   readonly mediaBlobDigests: readonly (string | null)[];
   readonly preservedBody: LibraryCoreItemBodyLocatorV1;
@@ -209,6 +211,8 @@ export function parseLibraryCoreItemDetailResponseV1(
     if (
       !itemRecord ||
       !card.ok ||
+      (itemRecord.seenSyncedAt !== null &&
+        (!Number.isSafeInteger(itemRecord.seenSyncedAt) || (itemRecord.seenSyncedAt as number) < -1 || Object.is(itemRecord.seenSyncedAt, -0))) ||
       !contentBody ||
       !Array.isArray(mediaBlobDigests) ||
       mediaBlobDigests.length >
@@ -224,6 +228,7 @@ export function parseLibraryCoreItemDetailResponseV1(
     }
     item = Object.freeze({
       card: card.value,
+      seenSyncedAt: itemRecord.seenSyncedAt as number | null,
       contentBody,
       mediaBlobDigests: Object.freeze([...mediaBlobDigests]),
       preservedBody,

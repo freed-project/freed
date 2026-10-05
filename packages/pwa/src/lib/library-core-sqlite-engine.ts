@@ -10647,6 +10647,7 @@ export class PwaLibraryCoreSqliteEngine {
           ? null
           : {
               card: feedCardFromSqliteRow(row),
+              seenSyncedAt: nullableInteger(row.seenSyncedAt, "seen confirmation", true),
               contentBody: {
                 blobDigest: nullableText(
                   row.contentBodyBlobDigest,
@@ -10872,6 +10873,7 @@ export class PwaLibraryCoreSqliteEngine {
       return {
         ...feedCardFromSqliteRow(row),
         hidden: hiddenState === 1,
+        seenSyncedAt: nullableInteger(row.seenSyncedAt, "seen confirmation", true),
         rankingCareLevel:
           row.rankingCareLevel === null
             ? null
