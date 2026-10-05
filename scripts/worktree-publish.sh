@@ -789,6 +789,57 @@ reconcile_existing_pr_head() {
   exit 1
 }
 
+# Explicit REST fields avoid old gh pr edit querying removed projectCards.
+# This is a single metadata write, with no write retry or branch repush.
+verify_existing_pr_metadata() {
+  local expected_draft="$1"
+  local check_content="$2"
+  local pr_json validation_status=0
+  pr_json="$("${GH_BIN}" api "repos/${PUBLISH_REPO}/pulls/${EXISTING_PR_NUMBER}")"
+  # Terminate Node option parsing before passing untrusted API response text.
+  "${NODE_BIN}" -e '
+const [raw, repo, number, branch, head, base, draft, checkContent, title, body] = process.argv.slice(1);
+const pr = JSON.parse(raw);
+if (pr.number !== Number(number) || pr.head?.repo?.full_name !== repo ||
+    pr.base?.repo?.full_name !== repo || pr.head?.ref !== branch ||
+    pr.head?.sha !== head || pr.base?.ref !== base || pr.state !== "open") {
+  console.error("Error: existing pull request target does not match the inspected publish head and base or its state changed.");
+  process.exit(1);
+}
+if (pr.draft !== (draft === "true")) {
+  console.error("Error: existing pull request draft state changed during metadata update.");
+  process.exit(pr.draft === false && draft === "true" ? 2 : 1);
+}
+if (checkContent === "true" && (pr.title !== title || pr.body !== body)) {
+  console.error("Error: existing pull request metadata readback does not match the requested title and body.");
+  process.exit(1);
+}
+' -- "${pr_json}" "${PUBLISH_REPO}" "${EXISTING_PR_NUMBER}" "${BRANCH_NAME}" \
+    "${PUBLISH_HEAD}" "${BASE_BRANCH}" "${expected_draft}" "${check_content}" "${TITLE}" "${BODY_CONTENT}" || validation_status=$?
+  if [[ "${validation_status}" -ne 0 ]]; then
+    if [[ "${validation_status}" -eq 2 && -n "${FINAL_PROVIDER_VISIBLE_FILES}" ]]; then
+      if ! restore_pr_draft_after_failed_ready "${EXISTING_PR_NUMBER}"; then
+        echo "Error: provider-visible pull request could not be returned to draft after metadata inspection." >&2
+        exit 1
+      fi
+      echo "Error: provider-visible pull request was returned to draft after metadata inspection." >&2
+    fi
+    exit 1
+  fi
+}
+
+update_existing_pr_metadata() {
+  local expected_draft="$1"
+  assert_publish_write_ready
+  verify_existing_pr_metadata "${expected_draft}" false
+  assert_publish_write_ready
+  "${GH_BIN}" api "repos/${PUBLISH_REPO}/pulls/${EXISTING_PR_NUMBER}" \
+    --method PATCH --raw-field "title=${TITLE}" --raw-field "body=${BODY_CONTENT}" >/dev/null
+  assert_publish_write_ready
+  verify_existing_pr_metadata "${expected_draft}" true
+  assert_publish_write_ready
+}
+
 verify_pr_draft_state() {
   local pr_reference="$1"
   local expected_is_draft="$2"
@@ -1290,9 +1341,11 @@ verify_provider_pr_draft_after_push
 
 BODY_CONTENT=""
 if [[ -n "${BODY_FILE}" ]]; then
-  BODY_CONTENT="$(cat "${BODY_FILE}")"
+  # A sentinel keeps command substitution from stripping literal trailing newlines.
+  BODY_CONTENT="$(cat "${BODY_FILE}" && printf '.')"
+  BODY_CONTENT="${BODY_CONTENT%.}"
   if [[ "${BODY_CONTENT}" != "(AI Generated)."* ]]; then
-    BODY_CONTENT="$(printf '%s\n\n%s' '(AI Generated).' "${BODY_CONTENT}")"
+    BODY_CONTENT="(AI Generated)."$'\n\n'"${BODY_CONTENT}"
   fi
 else
   BODY_ARGS=()
@@ -1350,7 +1403,7 @@ if [[ -n "${EXISTING_PR_NUMBER}" ]]; then
   if ${READY_FOR_REVIEW}; then
     assert_publish_write_ready
     verify_pr_target "${EXISTING_PR_NUMBER}"
-    "${GH_BIN}" pr edit "${EXISTING_PR_NUMBER}" --repo "${PUBLISH_REPO}" --title "${TITLE}" --body "${BODY_CONTENT}" >/dev/null
+    update_existing_pr_metadata "${EXISTING_PR_IS_DRAFT}"
     ensure_provider_review_comment "${EXISTING_PR_NUMBER}"
     verify_provider_ready_authority "${EXISTING_PR_NUMBER}"
     if [[ "${EXISTING_PR_IS_DRAFT}" == "true" ]]; then
@@ -1372,7 +1425,7 @@ if [[ -n "${EXISTING_PR_NUMBER}" ]]; then
   fi
   assert_publish_write_ready
   verify_pr_target "${EXISTING_PR_NUMBER}"
-  "${GH_BIN}" pr edit "${EXISTING_PR_NUMBER}" --repo "${PUBLISH_REPO}" --title "${TITLE}" --body "${BODY_CONTENT}" >/dev/null
+  update_existing_pr_metadata true
   ensure_provider_review_comment "${EXISTING_PR_NUMBER}"
   verify_pr_target "${EXISTING_PR_NUMBER}"
   if [[ -n "${FINAL_PROVIDER_VISIBLE_FILES}" ]] && ! verify_pr_is_draft "${EXISTING_PR_NUMBER}"; then

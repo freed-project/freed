@@ -2,7 +2,10 @@
 // No source index, object, ref, lease, or publication operation is written.
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { lstatSync, readFileSync, readlinkSync, writeFileSync } from "node:fs";
+import {
+  closeSync, constants, fstatSync, lstatSync, openSync,
+  readFileSync, readlinkSync, writeFileSync,
+} from "node:fs";
 import path from "node:path";
 
 const [base, includeUntracked, temporary] = process.argv.slice(2);
@@ -56,19 +59,56 @@ const attributes = git(["check-attr", "-z", "--stdin", "filter"], { input: `${fi
 for (let i = 2; i < attributes.length; i += 3) {
   if (!["unspecified", "unset"].includes(attributes[i])) fail("External clean filters are not allowed in a read-only query.");
 }
+const metadata = (stat) =>
+  `${stat.dev}:${stat.ino}:${stat.mode}:${stat.size}:${stat.mtimeNs}:${stat.ctimeNs}`;
+const changed = (file) => fail(`Source changed during the read-only snapshot: ${file}`);
+const requireSameFile = (before, after, file) => {
+  if (metadata(before) !== metadata(after)) changed(file);
+};
+const readRegularFile = (file, expected) => {
+  // Bind this leaf read to the checked regular inode. NONBLOCK prevents a
+  // concurrent FIFO substitution from hanging before fstat can reject it.
+  // NOFOLLOW covers only the leaf, not ancestors. This classification query
+  // is not a filesystem sandbox or an atomic snapshot against hostile writers.
+  if (!Number.isInteger(constants.O_NOFOLLOW) || !Number.isInteger(constants.O_NONBLOCK)) {
+    fail("This platform cannot safely open candidate files without following leaf symlinks.");
+  }
+  let fd;
+  try {
+    fd = openSync(file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    const opened = fstatSync(fd, { bigint: true });
+    if (!opened.isFile()) changed(file);
+    requireSameFile(expected, opened, file);
+    const content = readFileSync(fd);
+    requireSameFile(opened, fstatSync(fd, { bigint: true }), file);
+    requireSameFile(opened, lstatSync(file, { bigint: true }), file);
+    return content;
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+};
 const fingerprint = () => {
   const hash = createHash("sha256");
   for (const file of files) {
     hash.update(`${file}\0`);
+    let stat;
     try {
-      const stat = lstatSync(file, { bigint: true });
-      hash.update(`${stat.mode}:${stat.size}:${stat.mtimeNs}:${stat.ctimeNs}\0`);
-      if (stat.isSymbolicLink()) hash.update(readlinkSync(file));
-      else if (stat.isFile()) hash.update(readFileSync(file));
-      else fail(`Unsupported candidate file type: ${file}`);
+      stat = lstatSync(file, { bigint: true });
     } catch (error) {
       if (error.code !== "ENOENT") throw error;
       hash.update("missing");
+      continue;
+    }
+    hash.update(`${metadata(stat)}\0`);
+    // Only an initially absent path is a deletion. Disappearance after the
+    // initial inspection is a concurrent change, including in the last pass.
+    if (stat.isSymbolicLink()) {
+      hash.update(readlinkSync(file, { encoding: "buffer" }));
+      requireSameFile(stat, lstatSync(file, { bigint: true }), file);
+    } else if (stat.isFile()) {
+      hash.update(readRegularFile(file, stat));
+    } else {
+      fail(`Unsupported candidate file type: ${file}`);
     }
   }
   return hash.digest("hex");
@@ -79,6 +119,8 @@ writeFileSync(privateIndex, index, { mode: 0o600 });
 const privateEnv = { ...process.env, GIT_INDEX_FILE: privateIndex };
 // Git applies ordinary line-ending/attribute normalization, but external clean
 // filters are rejected above. Writes go only to the private index/object store.
+// Git reads the worktree independently; the second fingerprint detects tested
+// intervening changes, but cannot make those separate reads an atomic snapshot.
 git(["add", includeUntracked === "true" ? "-A" : "-u"], { env: privateEnv });
 const tree = git(["write-tree"], { env: privateEnv }).trim();
 if (before !== fingerprint() || !index.equals(readFileSync(indexPath)) ||

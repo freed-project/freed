@@ -1,5 +1,4 @@
 import "./test-helpers/lease-archive-python-runtime.mjs";
-import { withNightlyFixture } from "./test-helpers/nightly-fixture-preload.mjs";
 
 import assert from "node:assert/strict";
 import {
@@ -166,7 +165,7 @@ function test(name, optionsOrFn, maybeFn) {
     process.stderr.write(`[nightly fixture] start test=${name}\n`);
     return fixtureContext.run(state, async () => {
       try {
-        return await withNightlyFixture(name, () => callback(context));
+        return await callback(context);
       } finally {
         process.stderr.write(`[nightly fixture] finish test=${name}\n`);
       }

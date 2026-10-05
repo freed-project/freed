@@ -95,46 +95,6 @@ its own native lane.
 
 Shards run with a per-test timeout of 5 minutes. `node --test` defaults to no timeout, which let one blocked test pin a shard until the job-level timeout with no useful signal. Any tooling test slower than this in a blocking lane is a defect, not a long test.
 
-The nightly self-improve shard additionally runs under a test-only external
-supervisor. Imported synchronous subprocess calls and `spawn` operations have a 30-second deadline, test
-callbacks have an independent 5-minute deadline, and the shard has a 60-minute
-outer deadline. Deadline detection adds at most one polling interval under
-normal scheduling (20 milliseconds); child cleanup has a separate 5-second
-budget. A blocked JavaScript event loop cannot disable these deadlines.
-Timeout diagnostics identify the active test and operation. The supervisor
-fails the shard even when an imported function would swallow a subprocess error.
-The supervisor keeps Git automatic maintenance in the foreground within its
-child environment, preserving inherited Git configuration and maintenance work.
-Local transport strips Git configuration parameters before `receive-pack`, so
-the child environment also sets Git's test-only `GIT_TEST_MAINT_AUTO_DETACH=false`
-default. Explicit remote configuration still takes precedence and any resulting
-orphan still fails the shard. The regression covers commit, local push and clone,
-including maintenance traces and matching Git versions for transport helpers.
-It does not change repository or global configuration, or exempt Git descendants
-from orphan detection.
-
-On Linux, a private subreaper adopts orphaned descendants and signals captured
-process generations through pidfds. On macOS, a private kernel responsibility
-anchor identifies descendants even after their intermediate parent exits;
-cleanup signals captured PID-version audit tokens. The Darwin supervisor reaps
-its direct children and requires nonchildren, including zombies, to disappear
-after their parents or launchd reap them. Zombies first seen without responsibility
-are accounted for through immutable parent unique IDs. A prelaunch process
-inventory distinguishes existing outside lifetimes; missing ancestry blocks
-successful cleanup until the unresolved zombie disappears. Uncertain processes
-are never signal targets. It does not claim Linux subreaper
-semantics on macOS. Both paths remove their private temporary fixture directory
-only after cleanup succeeds. Unrelated processes and shared process groups are
-never cleanup targets. An orphan fails the shard even if tests otherwise pass.
-Unavailable confinement fails before launch; cleanup failure retains the fixture
-and reports failure. This is test infrastructure, not production lifecycle authority.
-
-The `Nightly fixture supervision` workflow exercises failing actual shards,
-healthy nightly fixtures and the measurement command on Linux and macOS.
-Run `node scripts/nightly-fixture-acceptance.mjs` for the healthy execution checks.
-Direct `node --test scripts/nightly-self-improve.test.mjs` does not install the
-external supervisor; use the shard runner when validating these guarantees.
-
 ## Performance gates
 
 Tier 1 and Tier 2 may block on deterministic performance contracts such as
