@@ -1,8 +1,21 @@
+import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import { chromium, expect, test, type BrowserContext, type Page } from "@playwright/test";
 import {
   LibraryCoreSha256,
+  LIBRARY_CORE_PRIMARY_WRITER_OPERATION_TYPES_V2,
+  constructLibraryCoreActorEnrollmentBodyV1,
+  constructLibraryCoreActorCapabilityRequestV2,
+  constructLibraryCoreActorCapabilityCertificateV2,
+  encodeLibraryCoreCanonicalValue, encodeLibraryCoreDigestInput, encodeLibraryCoreSignatureInput,
+  FEED_ITEM_ANNOTATIONS_REPLACE_TRANSACTION_MEMBER_SCHEMA,
+  assembleLibraryCoreTransactionV1, finalizeLibraryCoreTransactionV1,
+  hydrateLibraryCoreAnnotations, retainRenderedAnnotationSnapshot, replaceHydratedSavedNote,
+  parseLibraryCoreFollowerResultEnvelopeV1, libraryCoreFollowerResultBodyV1,
+  type LibraryCoreCanonicalValue, type LibraryCoreDigestDomain,
+  type LibraryCoreNormalizedQueryExecutor,
+
   createLibraryCoreContentRangeStorageKeyV1,
   digestLibraryCoreMediaBlobBytesV1,
 } from "@freed/shared/library-core";
@@ -53,35 +66,43 @@ async function read(page: Page, limitBytes = 65_536) {
   }, { source, limitBytes });
 }
 
+// Explicit persistent contexts do not inherit Playwright's use.launchOptions.
+const offlineBrowser = { headless: true, channel: "chromium", serviceWorkers: "block" as const,
+  args: ["--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1", "--disable-background-networking", "--disable-sync"],
+};
+async function seedWorker(context: BrowserContext, extraSql = "") {
+  await context.route("**/src/lib/library-core-sqlite-worker.ts*", async route => {
+    const response = await route.fetch();
+    const body = await response.text();
+    const marker = "await nextContentVault.reconcile();";
+    expect(body).toContain(marker);
+    const sql = `INSERT INTO library_meta(singleton_id,library_id,schema_version,authority_epoch,source_revision,updated_at) VALUES(1,'${generation}',1,'epoch',0,0);
+      INSERT INTO library_materialization_generation VALUES(1,'${generation}');
+      INSERT INTO library_feed_items(global_id,platform,content_type,captured_at,published_at,author_id,author_handle,author_display_name,hidden,saved,archived,updated_at) VALUES('item','saved','article',0,0,'a','a','a',0,1,0,0);
+      INSERT INTO library_blobs(content_digest,byte_length,storage_layout,chunk_bytes,chunk_count,range_count,range_granularity,range_index_root_digest,rendition_id,cloud_availability_commitment,media_type) VALUES('${digest}',${bytes.length},'authenticated_ranges',0,0,1,${bytes.length},'${rootDigest}','text','${digest}','text/plain');
+      INSERT INTO library_content_ranges VALUES('${digest}',0,0,${bytes.length},'${digest}');
+      INSERT INTO library_device_content_ranges VALUES('${digest}',0,${bytes.length},'${digest}','opfs','${key}',1);
+      INSERT INTO library_feed_item_highlights VALUES('item',7,NULL,'${digest}','keep',1);`;
+    const seed = `
+      database.exec(${JSON.stringify(sql + extraSql)});
+      const fixtureRoot = await navigator.storage.getDirectory();
+      const fixtureDirectory = await fixtureRoot.getDirectoryHandle(${JSON.stringify(vaultDirectory)}, {create:true});
+      const fixtureFile = await fixtureDirectory.getFileHandle(${JSON.stringify(key)}, {create:true});
+      const fixtureHandle = await fixtureFile.createSyncAccessHandle();
+      fixtureHandle.write(new Uint8Array(${JSON.stringify([...bytes])})); fixtureHandle.flush(); fixtureHandle.close();
+    `;
+    await route.fulfill({ response, body: body.replace(marker, marker + seed) });
+  });
+}
+
 test("shipping worker authenticates OPFS quotes after browser restart and refuses corrupt suffixes", async () => {
   const profile = await mkdtemp(resolve("../../.cache/annotation-browser-"));
   let context: BrowserContext | undefined;
   try {
-    context = await chromium.launchPersistentContext(profile, { headless: true, serviceWorkers: "block" });
+    context = await chromium.launchPersistentContext(profile, offlineBrowser);
     // Inject only fixture creation into the worker after its normal vault reconciliation.
     // The second browser opens the untouched shipping worker and the same OPFS files.
-    await context.route("**/src/lib/library-core-sqlite-worker.ts*", async route => {
-      const response = await route.fetch();
-      const body = await response.text();
-      const marker = "await nextContentVault.reconcile();";
-      expect(body).toContain(marker);
-      const sql = `INSERT INTO library_meta(singleton_id,library_id,schema_version,authority_epoch,source_revision,updated_at) VALUES(1,'${generation}',1,'epoch',0,0);
-        INSERT INTO library_materialization_generation VALUES(1,'${generation}');
-        INSERT INTO library_feed_items(global_id,platform,content_type,captured_at,published_at,author_id,author_handle,author_display_name,hidden,saved,archived,updated_at) VALUES('item','saved','article',0,0,'a','a','a',0,1,0,0);
-        INSERT INTO library_blobs(content_digest,byte_length,storage_layout,chunk_bytes,chunk_count,range_count,range_granularity,range_index_root_digest,rendition_id,cloud_availability_commitment,media_type) VALUES('${digest}',${bytes.length},'authenticated_ranges',0,0,1,${bytes.length},'${rootDigest}','text','${digest}','text/plain');
-        INSERT INTO library_content_ranges VALUES('${digest}',0,0,${bytes.length},'${digest}');
-        INSERT INTO library_device_content_ranges VALUES('${digest}',0,${bytes.length},'${digest}','opfs','${key}',1);
-        INSERT INTO library_feed_item_highlights VALUES('item',7,NULL,'${digest}','keep',1);`;
-      const seed = `
-        database.exec(${JSON.stringify(sql)});
-        const fixtureRoot = await navigator.storage.getDirectory();
-        const fixtureDirectory = await fixtureRoot.getDirectoryHandle(${JSON.stringify(vaultDirectory)}, {create:true});
-        const fixtureFile = await fixtureDirectory.getFileHandle(${JSON.stringify(key)}, {create:true});
-        const fixtureHandle = await fixtureFile.createSyncAccessHandle();
-        fixtureHandle.write(new Uint8Array(${JSON.stringify([...bytes])})); fixtureHandle.flush(); fixtureHandle.close();
-      `;
-      await route.fulfill({ response, body: body.replace(marker, marker + seed) });
-    });
+    await seedWorker(context);
     // Add the local-only route before the more specific fixture injection.
     // Playwright evaluates routes newest first; fall back keeps the injection active.
     const page = await openClient(context);
@@ -89,7 +110,7 @@ test("shipping worker authenticates OPFS quotes after browser restart and refuse
     expect(initial.result.state).toBe("ready");
     expect(Buffer.from(initial.result.text!.bytesBase64, "base64")).toEqual(Buffer.from(bytes));
     await context.close();
-    context = await chromium.launchPersistentContext(profile, { headless: true, serviceWorkers: "block" });
+    context = await chromium.launchPersistentContext(profile, offlineBrowser);
     const restarted = await openClient(context);
     expect(await read(restarted)).toEqual(initial);
     await restarted.evaluate(async ({ key, vaultDirectory, bytes }) => {
@@ -169,3 +190,135 @@ for (const resident of [true, false]) {
     expect(external).toEqual([]);
   });
 }
+
+
+test("signed note survives shipping worker OPFS restart with canonical quotes and exact retry", async () => {
+  const profile = await mkdtemp(resolve("../../.cache/annotation-signed-browser-"));
+  const actor = generateKeyPairSync("ed25519");
+  const authority = generateKeyPairSync("ed25519");
+  const actorPublic = actor.publicKey.export({ format: "der", type: "spki" }).subarray(-32).toString("hex");
+  const authorityPublic = authority.publicKey.export({ format: "der", type: "spki" }).subarray(-32).toString("hex");
+  const hash = (domain: string, value: unknown) => createHash("sha256").update(encodeLibraryCoreDigestInput(domain as LibraryCoreDigestDomain, value as LibraryCoreCanonicalValue)).digest("hex");
+  const canonical = (value: unknown) => encodeLibraryCoreCanonicalValue(value as LibraryCoreCanonicalValue);
+  const authorityId = hash("authority-key", { authority_public_key: authorityPublic, signature_algorithm: "ed25519" });
+  const epochId = "22".repeat(32);
+  const enrollment = constructLibraryCoreActorEnrollmentBodyV1({
+    actor_incarnation_nonce: "66".repeat(32), actor_public_key: actorPublic,
+    authority_key_id: authorityId, created_at_ms: 1000, epoch: 1, epoch_id: epochId,
+    installation_incarnation: "77".repeat(32), library_id: generation,
+    observed_frontier: [], operation_id: "actor-enrolled:annotation",
+  }, { digest: hash });
+  const capability = { actor_class: "editor" as const, allowed_operation_types: LIBRARY_CORE_PRIMARY_WRITER_OPERATION_TYPES_V2,
+    allowed_query_ids: [], scope: { mode: "library_wide" as const } };
+  const signActorProof = async (message: Uint8Array) => sign(null, message, actor.privateKey).toString("hex");
+  const enrollmentRequest = await constructLibraryCoreActorCapabilityRequestV2(enrollment, capability, { digest: hash, signActorProof });
+  const certificate = await constructLibraryCoreActorCapabilityCertificateV2(enrollment, capability, {
+    digest: hash, signActorProof,
+    signAuthorityCertificate: async message => sign(null, message, authority.privateKey).toString("hex"),
+  });
+  const exactTag = "\ufefftag\0e\u0301🦉";
+  const note = "\ufeffExact note\r\ne\u0301\0🦉";
+  let context: BrowserContext | undefined;
+  try {
+    context = await chromium.launchPersistentContext(profile, offlineBrowser);
+    await seedWorker(context, `
+      UPDATE library_meta SET authority_epoch='${epochId}';
+      INSERT INTO library_authority_epochs VALUES('${epochId}','${generation}',1,'${authorityId}','${authorityPublic}','${"33".repeat(32)}','{}',1,'${"44".repeat(32)}','${"55".repeat(32)}',1);
+      INSERT INTO library_active_authority VALUES('active','${generation}','${epochId}','${"fe".repeat(32)}',1,1);
+      INSERT INTO library_actors(actor_id,authority_epoch_id,actor_kind,public_key,enrollment_operation_id,enrollment_certificate_digest,canonical_enrollment_certificate,chain_genesis_digest,accepted_counter,accepted_operation_id,accepted_chain_digest,created_at,updated_at)
+      VALUES('${"fe".repeat(32)}','${epochId}','desktop','${authorityPublic}','fixture-primary','${"fc".repeat(32)}','{}','${"fc".repeat(32)}',0,NULL,'${"fc".repeat(32)}',1,1);
+      INSERT INTO library_feed_item_tags VALUES('item','alpha'),('item',CAST(X'${Buffer.from(exactTag).toString("hex")}' AS TEXT));
+      INSERT INTO library_feed_item_highlights VALUES('item',8,CAST(X'${Buffer.from(quote).toString("hex")}' AS TEXT),NULL,'second',2);
+      INSERT INTO library_feed_item_highlights VALUES('item',9,'⁣',NULL,'old note',3);
+    `);
+    let page = await openClient(context);
+    await page.evaluate(async ({ request, certificate }) => {
+      const client = (window as any).fixtureClient as import("../src/lib/library-core-sqlite-client").PwaLibraryCoreSqliteClient;
+      await client.storeFollowerActorRequest({ canonicalRequestBytes: new Uint8Array(request), createdAt: 1000 });
+      await client.installFollowerActorEnrollment({ canonicalCertificateBytes: new Uint8Array(certificate), enrolledAt: 1100 });
+    }, { request: [...canonical(enrollmentRequest.request)], certificate: [...canonical(certificate.certificate)] });
+    const query = (async (request: unknown) => page.evaluate(request => (window as any).fixtureClient.query(request), request)) as LibraryCoreNormalizedQueryExecutor;
+    const originalRequest = { queryId: "item_annotations_v1", schemaVersion: 1, globalId: "item" } as const;
+    const snapshot = retainRenderedAnnotationSnapshot(await hydrateLibraryCoreAnnotations(query, await query(originalRequest)), "item");
+    expect(snapshot.highlights![0]!.text).toBe(quote);
+    expect(snapshot.highlights![1]!.text).toBe(quote);
+    expect(snapshot.originals.tags).toEqual(["alpha", exactTag]);
+    const payload = replaceHydratedSavedNote(snapshot, note, 3000);
+    const prepare = async (transactionId: string, original: typeof snapshot) => {
+      const tip = await page.evaluate(() => (window as any).fixtureClient.followerMutationContext());
+      const member = FEED_ITEM_ANNOTATIONS_REPLACE_TRANSACTION_MEMBER_SCHEMA.construct({
+        actor_id: tip.actor_id, actor_sequence: tip.next_actor_sequence, causal_frontier: tip.observed_frontier,
+        created_at_ms: 3000, entity_id: "item", epoch: tip.epoch, epoch_id: tip.epoch_id,
+        hlc_counter: 0, hlc_wall_ms: 3000, library_id: tip.library_id, operation_id: transactionId + ":0",
+        payload: replaceHydratedSavedNote(original, note, 3000), previous_actor_operation_id: tip.previous_actor_operation_id,
+        transaction_id: transactionId, transaction_member_count: 1, transaction_member_index: 0,
+      }, { digest: hash });
+      return finalizeLibraryCoreTransactionV1(assembleLibraryCoreTransactionV1([member], tip.previous_actor_chain_digest, { digest: hash }),
+        { digest: hash, signOperation: signActorProof });
+    };
+    const signed = await prepare("tx:annotation:restart", snapshot);
+    const packet = { envelopeBytes: signed.members.map(member => [...canonical(member.envelope)]), expectedSource: snapshot.originals.source };
+    const commit = (value: typeof packet) => page.evaluate(value => (window as any).fixtureClient.commitFollowerIntent({
+      ...value, envelopeBytes: value.envelopeBytes.map(bytes => new Uint8Array(bytes)),
+    }), value);
+    const receipt = await commit(packet);
+    const reopenWithSourceAdvance = async () => {
+      await context!.close();
+      context = await chromium.launchPersistentContext(profile, offlineBrowser);
+      await context.route("**/src/lib/library-core-sqlite-worker.ts*", async route => {
+        const response = await route.fetch();
+        const body = await response.text();
+        const marker = "await nextContentVault.reconcile();";
+        expect(body).toContain(marker);
+        // Synthetic remote advancement, before the shipping worker accepts commands.
+        const advance = `database.exec("BEGIN IMMEDIATE; UPDATE library_meta SET source_revision=source_revision+1; UPDATE library_change_state SET revision=revision+1; COMMIT;");`;
+        await route.fulfill({ response, body: body.replace(marker, marker + advance) });
+      });
+      page = await openClient(context);
+    };
+    await reopenWithSourceAdvance();
+    expect(await commit(packet)).toEqual(receipt);
+    // Settle with a real synthetic authority signature through the shipping worker.
+    // No activation, cloud transport or pending-view edit policy is exercised.
+    const unsigned = parseLibraryCoreFollowerResultEnvelopeV1({
+      actor_id: enrollment.body.actor_id, authoritative_source_revision: 2, authority_key_id: authorityId,
+      canonical_operation_ids: signed.members.map(member => member.envelope.operation_id), epoch: 1, epoch_id: epochId,
+      format: "freed_follower_result_v1", intent_epoch: 1, intent_epoch_id: epochId, library_id: generation,
+      original_result_digest: null, previous_result_digest: null,
+      receipt_ids: signed.members.map(member => member.envelope_digest), rejection_reason: null, replacement_fields: [],
+      resolved_at_ms: 3100, result_body_digest: "0".repeat(64), result_sequence: 1, schema_version: 1,
+      signature: "0".repeat(128), signature_algorithm: "ed25519", status: "accepted",
+      transaction_digest: signed.transaction_digest, transaction_id: "tx:annotation:restart",
+    });
+    const resultDigest = hash("follower-result-body", libraryCoreFollowerResultBodyV1(unsigned));
+    const result = canonical({ ...unsigned, result_body_digest: resultDigest,
+      signature: sign(null, encodeLibraryCoreSignatureInput("follower-result-envelope", { result_body_digest: resultDigest }), authority.privateKey).toString("hex"),
+    });
+    const settle = () => page.evaluate(bytes => (window as any).fixtureClient.applyFollowerResult({ canonicalResultBytes: new Uint8Array(bytes) }), [...result]);
+    const settledReceipt = await settle();
+    await context.close();
+    context = await chromium.launchPersistentContext(profile, offlineBrowser);
+    page = await openClient(context);
+    const persisted = await query(originalRequest);
+    expect(persisted.highlights).toEqual(payload.highlights);
+    expect(persisted.tags).toEqual(snapshot.originals.tags);
+    expect(persisted.highlights[0]!.textBlobDigest).toBe(digest);
+    expect((await hydrateLibraryCoreAnnotations(query, persisted)).highlights![0]!.text).toBe(quote);
+    const nextSnapshot = retainRenderedAnnotationSnapshot(await hydrateLibraryCoreAnnotations(query, persisted), "item");
+    const stale = await prepare("tx:annotation:stale", nextSnapshot);
+    const stalePacket = { envelopeBytes: stale.members.map(member => [...canonical(member.envelope)]), expectedSource: nextSnapshot.originals.source };
+    await reopenWithSourceAdvance();
+    const before = await page.evaluate(() => (window as any).fixtureClient.followerMutationContext());
+    await expect(commit(stalePacket)).rejects.toThrow(/LOCAL_ADMISSION_SOURCE_STALE/);
+    expect(await page.evaluate(() => (window as any).fixtureClient.followerMutationContext())).toEqual(before);
+    expect((await query(originalRequest)).highlights).toEqual(payload.highlights);
+    expect((await query(originalRequest)).tags).toEqual(snapshot.originals.tags);
+    // Result replay preserves signed receipt identity; this API reports current source revision.
+    expect(await settle()).toEqual({ ...settledReceipt, sourceRevision: (await query(originalRequest)).source.projectionRevision });
+    // Existing follower API rejects resubmission once the intent is resolved.
+    await expect(commit(packet)).rejects.toThrow(/resolved follower intent cannot be recommitted/);
+  } finally {
+    await context?.close();
+    await rm(profile, { recursive: true, force: true });
+  }
+});

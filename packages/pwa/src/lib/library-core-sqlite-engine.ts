@@ -10733,13 +10733,24 @@ export class PwaLibraryCoreSqliteEngine {
       rowMode: "object",
       returnValue: "resultRows",
     });
+    // Blob projection avoids SQLite's NUL-sensitive substr and the driver's
+    // implicit BOM removal. Decode only bounded bytes, without text repair.
+    const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
+    const decode = (value: SqlValue | undefined, maximum: number) => {
+      const bytes = blobBytes(value, "annotation text");
+      if (bytes.byteLength > maximum) throw new Error("annotation text exceeds its byte bound");
+      return decoder.decode(bytes);
+    };
     const parsed = parseLibraryCoreItemAnnotationsResponseV1({
       globalId: input.globalId,
-      highlights,
+      highlights: highlights.map(row => ({ ...row,
+        note: row.note === null ? null : decode(row.note, 8192),
+        text: row.text === null ? null : decode(row.text, 65536),
+      })),
       queryId: input.queryId,
       schemaVersion: 1,
       source: { generationId, projectionRevision: sourceRevision, transitionSequence: sourceRevision },
-      tags: tags.map(row => row.tag),
+      tags: tags.map(row => decode(row.tag, 512)),
     }, request.value);
     if (!parsed.ok) throw new Error(parsed.error);
     return parsed.value;

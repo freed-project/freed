@@ -310,6 +310,9 @@ mod tests {
         install_normalized_schema_v1(connection).unwrap();
         connection.execute_batch(&format!("INSERT INTO library_meta(singleton_id,library_id,schema_version,authority_epoch,source_revision,updated_at) VALUES(1,'{}',1,'epoch',0,0); INSERT INTO library_materialization_generation SELECT 1,library_id FROM library_meta;
             INSERT INTO library_feed_items(global_id,platform,content_type,captured_at,published_at,author_id,author_handle,author_display_name,hidden,saved,archived,updated_at) VALUES('item','saved','article',0,0,'a','a','a',0,1,0,0);", "a".repeat(64))).unwrap();
+        seed_quote(connection, bytes, ranged, "item")
+    }
+    fn seed_quote(connection: &Connection, bytes: &[u8], ranged: bool, item: &str) -> String {
         let digest = hash(bytes);
         if ranged {
             let mut root = Sha256::new();
@@ -338,8 +341,8 @@ mod tests {
         }
         connection
             .execute(
-                "INSERT INTO library_feed_item_highlights VALUES('item',7,NULL,?1,'keep',1);",
-                [&digest],
+                "INSERT INTO library_feed_item_highlights VALUES(?1,7,NULL,?2,'keep',1);",
+                params![item, digest],
             )
             .unwrap();
         digest
@@ -347,6 +350,251 @@ mod tests {
     fn request() -> serde_json::Value {
         serde_json::json!({"queryId":"item_annotation_text_range_v1","schemaVersion":1,"globalId":"item","annotationIndex":0,"expectedSource":{"generationId":"a".repeat(64),"projectionRevision":0,"transitionSequence":0},"offsetBytes":0,"limitBytes":65536})
     }
+    #[cfg(unix)]
+    #[test]
+    fn signed_note_edit_survives_sqlite_vault_restart_and_retains_exact_retry() {
+        use crate::normalized_mutation::accept_normalized_operation_transaction_with_source_v1;
+        use crate::normalized_operation_test_fixtures::tests::signed_envelopes_from_tip_with_payload;
+        use std::{
+            fs,
+            os::{fd::OwnedFd, unix::fs::PermissionsExt},
+            sync::Arc,
+            time::{Duration, Instant},
+        };
+        let dir = tempfile::TempDir::new().unwrap();
+        let db_path = dir.path().join("signed.sqlite");
+        let vault_path = dir.path().join("vault");
+        fs::create_dir(&vault_path).unwrap();
+        fs::set_permissions(&vault_path, fs::Permissions::from_mode(0o700)).unwrap();
+        let bytes = "\u{feff}Exact\r\ne\u{301}\0🦉".as_bytes();
+        let (fixture, key, enrollment) = crate::normalized_mutation::tests::fixture();
+        fixture
+            .execute(
+                "INSERT INTO library_materialization_generation VALUES(1,?1)",
+                ["a".repeat(64)],
+            )
+            .unwrap();
+        let digest = seed_quote(&fixture, bytes, true, "rss:item:1");
+        fixture
+            .execute_batch("INSERT INTO library_feed_item_tags VALUES('rss:item:1','alpha');")
+            .unwrap();
+        fixture
+            .execute(
+                "INSERT INTO library_feed_item_tags VALUES('rss:item:1',?1)",
+                ["omega\0é🦉"],
+            )
+            .unwrap();
+        fixture.execute("INSERT INTO library_feed_item_highlights VALUES('rss:item:1',8,'Second quote',NULL,'second',2)", []).unwrap();
+        fixture.execute("INSERT INTO library_feed_item_highlights VALUES('rss:item:1',9,?1,NULL,'old note',3)", ["\u{2063}"]).unwrap();
+        fixture
+            .backup(rusqlite::DatabaseName::Main, &db_path, None)
+            .unwrap();
+        drop(fixture);
+        let file = vault_path.join("quote.bin");
+        fs::write(&file, bytes).unwrap();
+        fs::set_permissions(&file, fs::Permissions::from_mode(0o600)).unwrap();
+        let read = |request: serde_json::Value| {
+            let vault = crate::library_core_content_vault::LibraryCoreContentVault::from_directory(
+                OwnedFd::from(fs::File::open(&vault_path).unwrap()),
+            )
+            .unwrap();
+            crate::normalized_query_control::query_with_content_control(
+                Connection::open(&db_path).unwrap(),
+                request,
+                Arc::new(crate::NormalizedQueryControl::new(
+                    Instant::now() + Duration::from_secs(30),
+                )),
+                &|key, length| vault.read_annotation_object(key, length),
+            )
+            .unwrap()
+        };
+        let original_request = serde_json::json!({"queryId":"item_annotations_v1","schemaVersion":1,"globalId":"rss:item:1"});
+        let original = read(original_request.clone());
+        let source: crate::normalized_query::NormalizedFeedPageSourceV1 =
+            serde_json::from_value(original["source"].clone()).unwrap();
+        let mut range_request = request();
+        range_request["globalId"] = "rss:item:1".into();
+        range_request["expectedSource"] = original["source"].clone();
+        assert_eq!(
+            STANDARD
+                .decode(
+                    read(range_request.clone())["text"]["bytesBase64"]
+                        .as_str()
+                        .unwrap()
+                )
+                .unwrap(),
+            bytes
+        );
+        let note = "Exact note\r\ne\u{301}\0🦉";
+        let mut highlights = original["highlights"].as_array().unwrap().clone();
+        highlights[2] = serde_json::json!({"createdAt":3000,"text":"\u{2063}","textBlobDigest":null,"note":note});
+        let payload = serde_json::json!({"assigned_at_ms":3000,"highlights":highlights,"tags":original["tags"]});
+        let frames = signed_envelopes_from_tip_with_payload(
+            &key,
+            &enrollment,
+            "tx:annotation:restart",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[("rss:item:1", 3000)],
+            "feed_item_annotations_replace",
+            Some(&payload),
+        );
+        let mut db = Connection::open(&db_path).unwrap();
+        let receipt = accept_normalized_operation_transaction_with_source_v1(
+            &mut db,
+            &frames,
+            &key,
+            3000,
+            Some(&source),
+        )
+        .unwrap();
+        drop(db);
+        let persisted = read(original_request.clone());
+        let inspect = Connection::open(&db_path).unwrap();
+        eprintln!("stored note hex: {}", inspect.query_row("SELECT hex(note) FROM library_feed_item_highlights WHERE global_id='rss:item:1' AND ordinal=2", [], |r| r.get::<_, String>(0)).unwrap());
+        eprintln!("signed note hex: {}", crate::lower_hex(note.as_bytes()));
+        drop(inspect);
+        assert_eq!(persisted["highlights"], payload["highlights"]);
+        assert_eq!(persisted["tags"], original["tags"]);
+        assert_eq!(persisted["highlights"][0]["textBlobDigest"], digest);
+        range_request["expectedSource"] = persisted["source"].clone();
+        assert_eq!(
+            STANDARD
+                .decode(read(range_request)["text"]["bytesBase64"].as_str().unwrap())
+                .unwrap(),
+            bytes
+        );
+        let mut db = Connection::open(&db_path).unwrap();
+        let before = db.total_changes();
+        assert_eq!(
+            accept_normalized_operation_transaction_with_source_v1(
+                &mut db,
+                &frames,
+                &key,
+                3100,
+                Some(&source)
+            )
+            .unwrap(),
+            receipt
+        );
+        assert_eq!(db.total_changes(), before);
+        let stale_source: crate::normalized_query::NormalizedFeedPageSourceV1 =
+            serde_json::from_value(persisted["source"].clone()).unwrap();
+        let next = signed_envelopes_from_tip_with_payload(
+            &key,
+            &enrollment,
+            "tx:annotation:stale",
+            2,
+            Some(&receipt.committed_operation_id),
+            &receipt.committed_chain_digest,
+            &[("rss:item:1", 4000)],
+            "feed_item_annotations_replace",
+            Some(&payload),
+        );
+        // A separate SQLite connection advances canonical source after rendering/signing.
+        let remote = Connection::open(&db_path).unwrap();
+        remote.execute_batch("BEGIN IMMEDIATE; UPDATE library_meta SET source_revision=source_revision+1; UPDATE library_change_state SET revision=revision+1; COMMIT;").unwrap();
+        drop(remote);
+        let before = db.total_changes();
+        assert!(accept_normalized_operation_transaction_with_source_v1(
+            &mut db,
+            &next,
+            &key,
+            4000,
+            Some(&stale_source)
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("LOCAL_ADMISSION_SOURCE_STALE"));
+        assert_eq!(db.total_changes(), before);
+        assert_eq!(
+            accept_normalized_operation_transaction_with_source_v1(
+                &mut db,
+                &frames,
+                &key,
+                4100,
+                Some(&source)
+            )
+            .unwrap(),
+            receipt
+        );
+        assert_eq!(db.total_changes(), before);
+        drop(db);
+        let unchanged = read(original_request);
+        assert_eq!(unchanged["highlights"], persisted["highlights"]);
+        assert_eq!(unchanged["tags"], persisted["tags"]);
+    }
+
+    #[test]
+    fn registered_annotation_fields_preserve_exact_bytes_and_refuse_invalid_values() {
+        for (table, column, limit, output) in [
+            ("library_feed_item_highlights", "note", 8192, "note"),
+            ("library_feed_item_tags", "tag", 512, "tag"),
+            ("library_feed_item_highlights", "text_value", 65536, "text"),
+        ] {
+            let mut db = Connection::open_in_memory().unwrap();
+            seed(&db, b"quote", false);
+            db.execute(
+                "INSERT INTO library_feed_item_tags VALUES('item','tag')",
+                [],
+            )
+            .unwrap();
+            if column == "text_value" {
+                db.execute("UPDATE library_feed_item_highlights SET text_blob_digest=NULL,text_value='quote'", []).unwrap();
+            }
+            let exact = "\u{feff}Exact\r\ne\u{301}\0🦉";
+            let boundary = format!("{exact}{}", "a".repeat(limit - exact.len()));
+            let request = serde_json::json!({"queryId":"item_annotations_v1","schemaVersion":1,"globalId":"item"});
+            for value in [exact, boundary.as_str()] {
+                db.execute(
+                    &format!("UPDATE {table} SET {column}=CAST(?1 AS TEXT)"),
+                    [value.as_bytes()],
+                )
+                .unwrap();
+                let result = crate::query_normalized_json_v1(&mut db, request.clone()).unwrap();
+                let actual = if output == "tag" {
+                    &result["tags"][0]
+                } else {
+                    &result["highlights"][0][output]
+                };
+                assert_eq!(actual, value);
+            }
+            // Model corrupt storage without weakening the production schema.
+            for invalid in [
+                format!("{boundary}a").into_bytes(),
+                format!("{boundary}é").into_bytes(),
+                vec![0x61, 0, 0xff],
+            ] {
+                db.execute_batch("PRAGMA ignore_check_constraints=ON;")
+                    .unwrap();
+                db.execute(
+                    &format!("UPDATE {table} SET {column}=CAST(?1 AS TEXT)"),
+                    [invalid],
+                )
+                .unwrap();
+                db.execute_batch("PRAGMA ignore_check_constraints=OFF;")
+                    .unwrap();
+                assert!(crate::query_normalized_json_v1(&mut db, request.clone()).is_err());
+            }
+            db.execute(&format!("UPDATE {table} SET {column}=''"), [])
+                .unwrap();
+            let result = crate::query_normalized_json_v1(&mut db, request.clone());
+            if column == "note" {
+                assert_eq!(result.unwrap()["highlights"][0]["note"], "");
+                db.execute("UPDATE library_feed_item_highlights SET note=NULL", [])
+                    .unwrap();
+                assert!(
+                    crate::query_normalized_json_v1(&mut db, request).unwrap()["highlights"][0]
+                        ["note"]
+                        .is_null()
+                );
+            } else {
+                assert!(result.is_err());
+            }
+        }
+    }
+
     #[test]
     fn registered_inline_annotation_authenticates_entire_quote_and_source() {
         let mut db = Connection::open_in_memory().unwrap();

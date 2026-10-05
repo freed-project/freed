@@ -7782,13 +7782,39 @@ fn query_item_annotations(
         .ok_or(invalid("normalized item annotations program is missing"))?;
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
     let (generation_id, source_revision) = query_source(&transaction)?;
+    // SQLite text substr stops at NUL. Read bounded blobs and decode exact UTF-8.
+    fn utf8(bytes: Vec<u8>, maximum: usize) -> rusqlite::Result<String> {
+        if bytes.len() > maximum {
+            return Err(rusqlite::Error::FromSqlConversionFailure(
+                0,
+                rusqlite::types::Type::Blob,
+                Box::new(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "annotation text exceeds its byte bound",
+                )),
+            ));
+        }
+        String::from_utf8(bytes).map_err(|error| {
+            rusqlite::Error::FromSqlConversionFailure(
+                0,
+                rusqlite::types::Type::Blob,
+                Box::new(error),
+            )
+        })
+    }
     let highlights = transaction
         .prepare(program.sql)?
         .query_map(params![request.global_id], |row| {
             Ok(NormalizedItemAnnotationV1 {
                 created_at: row.get("createdAt")?,
-                note: row.get("note")?,
-                text: row.get("text")?,
+                note: row
+                    .get::<_, Option<Vec<u8>>>("note")?
+                    .map(|bytes| utf8(bytes, 8192))
+                    .transpose()?,
+                text: row
+                    .get::<_, Option<Vec<u8>>>("text")?
+                    .map(|bytes| utf8(bytes, 65536))
+                    .transpose()?,
                 text_blob_digest: row.get("textBlobDigest")?,
             })
         })?
@@ -7802,11 +7828,13 @@ fn query_item_annotations(
         ))?;
     let tags = transaction
         .prepare(tags_program.sql)?
-        .query_map(params![request.global_id], |row| row.get::<_, String>(0))?
+        .query_map(params![request.global_id], |row| {
+            utf8(row.get::<_, Vec<u8>>(0)?, 512)
+        })?
         .collect::<Result<Vec<_>, _>>()?;
     if highlights.len() > 64
         || tags.len() > 64
-        || tags.iter().any(|tag| tag.is_empty() || tag.len() > 1_024)
+        || tags.iter().any(|tag| tag.is_empty() || tag.len() > 512)
         || highlights.iter().any(|highlight| {
             !valid_safe_integer(highlight.created_at)
                 || highlight

@@ -74,6 +74,12 @@ the compact `item_detail_v1` contract and returns at most 64 tags and 64
 highlights, with a 1 MiB response ceiling. Both reads must have the same source
 generation and revision before the selected item receives its annotations.
 The query preserves blob references instead of substituting empty text.
+Note, tag and inline quote projections return bounded blobs internally. Readers
+check their byte lengths before strict UTF-8 decoding, preserving NUL and a
+leading U+FEFF. Notes retain distinct null and empty values; tags remain nonempty.
+The limits are 8,192 note bytes, 512 tag bytes and 65,536 inline quote bytes.
+Each SQL projection retains at most its limit plus one byte, so oversized values
+are refused instead of silently truncated. Public response fields remain strings.
 `item_annotation_text_range_v1` takes an exact item, annotation index, expected
 source tuple and byte range. The backend resolves the canonical digest and
 verifies the complete quote length, range map, range digests, full digest and

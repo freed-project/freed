@@ -12,6 +12,11 @@ annotation snapshots through both existing note-editor entrances and local note
 admission. Missing, corrupt, oversized, unavailable and stale reads prevent
 incomplete edits. Unchanged-URL note edits use local metadata without requesting
 a preview; new-save and changed-URL previews retain their 350 ms delay.
+Bounded annotation reads preserve NUL and leading U+FEFF in notes, tags and inline
+quotes, distinguish null from empty notes, and refuse invalid UTF-8 or excess
+bytes. Synthetic signed native SQLite/vault and PWA worker/OPFS restart tests
+preserve edited notes and untouched canonical annotations. These fixtures do
+not establish installed Desktop IPC or pending-view editing acceptance.
 
 Primary new-item annotation initialization uses independent source-fenced batches
 bounded by 256 members and 4 MiB of envelopes. It refuses nonempty canonical

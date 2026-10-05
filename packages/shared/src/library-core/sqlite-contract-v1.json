@@ -1579,10 +1579,10 @@
     "item_annotations_v1": {
       "maximumScanRows": 64,
       "countSql": "SELECT count(*) FROM library_feed_item_highlights WHERE global_id = ?1;",
-      "sql": "SELECT created_at AS createdAt, substr(note, 1, 8193) AS note, text_value AS text, text_blob_digest AS textBlobDigest FROM library_feed_item_highlights WHERE global_id = ?1 ORDER BY ordinal LIMIT 65;",
+      "sql": "SELECT created_at AS createdAt, CASE WHEN length(CAST(note AS BLOB)) <= 8192 THEN CAST(note AS BLOB) ELSE substr(CAST(note AS BLOB), 1, 8193) END AS note, CASE WHEN length(CAST(text_value AS BLOB)) <= 65536 THEN CAST(text_value AS BLOB) ELSE substr(CAST(text_value AS BLOB), 1, 65537) END AS text, text_blob_digest AS textBlobDigest FROM library_feed_item_highlights WHERE global_id = ?1 ORDER BY ordinal LIMIT 65;",
       "variants": {
         "tags": {
-          "sql": "SELECT substr(tag, 1, 1025) AS tag FROM library_feed_item_tags WHERE global_id = ?1 ORDER BY tag COLLATE BINARY LIMIT 65;"
+          "sql": "SELECT CASE WHEN length(CAST(tag AS BLOB)) <= 512 THEN CAST(tag AS BLOB) ELSE substr(CAST(tag AS BLOB), 1, 513) END AS tag FROM library_feed_item_tags WHERE global_id = ?1 ORDER BY tag COLLATE BINARY LIMIT 65;"
         }
       }
     },
