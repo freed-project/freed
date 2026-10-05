@@ -76,6 +76,7 @@ function preparedManifest(
   dependencies: readonly LibraryCorePublishedImmutableObjectReceiptV1[],
   epochId = "epoch-1",
   writerId = "desktop-1",
+  frontier = "fe".repeat(32),
 ): {
   manifest: {
     descriptor: LibraryCoreImmutableObjectDescriptorV1;
@@ -117,7 +118,7 @@ function preparedManifest(
         writerId,
         activeTransport: "google_drive_app_data_v1",
         generation,
-        causalFrontierDigest: "fe".repeat(32),
+        causalFrontierDigest: frontier,
         manifest: {
           descriptor: manifest.descriptor,
           transportObjectId: manifest.transportObjectId,
@@ -251,6 +252,8 @@ async function reassign(
   options: {
     targetStorageEpoch?: string;
     targetWriterId?: string;
+    targetFrontier?: string;
+    handoffFrontiers?: { kind: "cooperative_handoff_v1"; predecessor: string; successor: string };
     onPrepareManifest?: () => void;
   } = {},
 ) {
@@ -264,6 +267,7 @@ async function reassign(
     },
     targetStorageEpoch,
     targetWriterId,
+    handoffFrontiers: options.handoffFrontiers,
     epochCertificate: epochCertificateObject(targetStorageEpoch),
     dependencies: [operationObject(1, "epoch-transition", targetStorageEpoch)],
     prepareManifest(dependencies) {
@@ -273,6 +277,7 @@ async function reassign(
         dependencies,
         targetStorageEpoch,
         targetWriterId,
+        options.targetFrontier,
       );
     },
   });
@@ -780,4 +785,32 @@ describe("Library Core immutable publication", () => {
       ),
     ).toBe(false);
   });
+  it("publishes a cooperative successor frontier and recovers its exact lost response", async () => {
+    const adapter = new FakeImmutableAdapter();
+    const first = await publish(adapter, { expectedControl: { revision: null, pointer: null }, generation: 0 });
+    if (first.status !== "committed") throw new Error("setup failed");
+    adapter.loseCompareAndSwapResponse = true;
+    const successor = "ab".repeat(32);
+    const result = await reassign(adapter, first, { targetFrontier: successor,
+      handoffFrontiers: { kind: "cooperative_handoff_v1", predecessor: first.controlPointer.causalFrontierDigest, successor } });
+    expect(result).toMatchObject({ status: "recovered_after_response_loss",
+      controlPointer: { causalFrontierDigest: successor, storageEpoch: "epoch-2", writerId: "desktop-2" } });
+  });
+  it("rejects changed cooperative predecessor and undeclared or mismatched successor frontiers", async () => {
+    const adapter = new FakeImmutableAdapter();
+    const first = await publish(adapter, { expectedControl: { revision: null, pointer: null }, generation: 0 });
+    if (first.status !== "committed") throw new Error("setup failed");
+    const eventCount = adapter.events.length;
+    const successor = "ab".repeat(32);
+    await expect(reassign(adapter, first, { targetFrontier: successor,
+      handoffFrontiers: { kind: "cooperative_handoff_v1", predecessor: "00".repeat(32), successor } }))
+      .rejects.toThrow("frontiers do not match");
+    expect(adapter.events.length).toBe(eventCount);
+    await expect(reassign(adapter, first, { targetFrontier: successor })).rejects.toThrow("exact causal frontier");
+    await expect(reassign(adapter, first, { targetFrontier: "cd".repeat(32),
+      handoffFrontiers: { kind: "cooperative_handoff_v1", predecessor: first.controlPointer.causalFrontierDigest, successor } }))
+      .rejects.toThrow("exact causal frontier");
+    expect(adapter.events.filter(event => event === "compare-and-swap-control")).toHaveLength(1);
+  });
+
 });

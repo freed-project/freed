@@ -198,6 +198,10 @@ const ALL_PROVIDER_SCOPES = Object.freeze([
 ]);
 
 export const PROVIDER_VISIBLE_EXACT_SCOPES = new Map([
+  // Explicit recovery can make saved URLs eligible for the Primary content policy.
+  ["packages/desktop/src/components/ConsumerRecoverySavedUrlEditor.tsx", ALL_PROVIDER_SCOPES],
+  ["packages/pwa/src/components/PwaRecoverySavedUrlEditor.tsx", ALL_PROVIDER_SCOPES],
+  ["packages/ui/src/components/RecoverySavedUrlFields.tsx", ALL_PROVIDER_SCOPES],
   ["packages/desktop/src-tauri/src/fb-login-auth.js", ["facebook"]],
   ["packages/desktop/src-tauri/capabilities/fb-login.json", ["facebook"]],
   ["packages/desktop/src/components/ProviderAdvancedSettings.tsx", ["facebook", "instagram", "linkedin", "medium", "substack"]],

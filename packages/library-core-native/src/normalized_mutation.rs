@@ -271,6 +271,10 @@ fn admitted_authority_epoch(
     transaction: &Transaction<'_>,
     library_id: &str,
 ) -> Result<(i64, String), NormalizedSqliteError> {
+    crate::normalized_handoff::require_handoff_admission(
+        transaction,
+        crate::normalized_handoff::HandoffAdmission::CanonicalWrite,
+    )?;
     transaction
         .query_row(
             "SELECT epoch.epoch_number, epoch.epoch_id
@@ -422,11 +426,22 @@ pub fn normalized_primary_follower_actor_transport_state_v1(
     let state = connection
         .query_row(
             "SELECT actor.actor_id, meta.library_id, active.epoch_id,
-                    MAX(actor.accepted_counter + 1, COALESCE((
+                    COALESCE((
+                      SELECT MIN(member.actor_counter)
+                      FROM library_primary_intent_stage_members AS member
+                      JOIN library_primary_intent_stage_transactions AS staged
+                        ON staged.transaction_id = member.transaction_id
+                      WHERE member.actor_id = actor.actor_id
+                        AND staged.received_count = staged.member_count
+                        AND NOT EXISTS (
+                          SELECT 1 FROM library_follower_result_outbox AS result
+                          WHERE result.transaction_id = staged.transaction_id
+                        )
+                    ), MAX(actor.accepted_counter + 1, COALESCE((
                       SELECT MAX(member.actor_counter) + 1
                       FROM library_primary_intent_stage_members AS member
                       WHERE member.actor_id = actor.actor_id
-                    ), actor.accepted_counter + 1))
+                    ), actor.accepted_counter + 1)))
              FROM library_meta AS meta
              JOIN library_active_authority AS active
                ON active.library_id = meta.library_id
@@ -1448,7 +1463,11 @@ pub fn ingest_normalized_follower_intent_page_v1(
                 ));
             }
             exact_retries += 1;
-            touched_transactions.insert(record.transaction_id.clone());
+            touched_transactions.insert((
+                record.actor_id.clone(),
+                first_counter,
+                record.transaction_id.clone(),
+            ));
             continue;
         }
         transaction.execute(
@@ -1495,13 +1514,19 @@ pub fn ingest_normalized_follower_intent_page_v1(
             ));
         }
         staged_records += 1;
-        touched_transactions.insert(record.transaction_id.clone());
+        touched_transactions.insert((
+            record.actor_id.clone(),
+            first_counter,
+            record.transaction_id.clone(),
+        ));
     }
     transaction.commit()?;
 
     let mut resolved_transactions = 0_usize;
     let mut pending_transactions = 0_usize;
-    for transaction_id in touched_transactions {
+    // IDs carry no causal ordering. Resolve consecutive transactions from the
+    // same actor by their counters, even when their IDs sort in reverse.
+    for (_, _, transaction_id) in touched_transactions {
         let complete = connection
             .query_row(
                 "SELECT received_count = member_count
@@ -1635,7 +1660,7 @@ fn invalidations_at(
     Ok(invalidations)
 }
 
-fn require_causal_tips(
+pub(crate) fn require_causal_tips(
     transaction: &Transaction<'_>,
     verified: &VerifiedOperationTransaction,
 ) -> Result<(), NormalizedSqliteError> {
@@ -2469,6 +2494,10 @@ fn persist_rejected_resolution(
 pub fn normalized_primary_mutation_context_v1(
     connection: &Connection,
 ) -> Result<NormalizedMutationContextV1, NormalizedSqliteError> {
+    crate::normalized_handoff::require_handoff_admission(
+        connection,
+        crate::normalized_handoff::HandoffAdmission::CanonicalWrite,
+    )?;
     type ContextRow = (
         String,
         i64,
@@ -2551,147 +2580,21 @@ pub fn normalized_primary_mutation_context_v1(
     })
 }
 
-pub(crate) fn resolve_normalized_operation_transaction_v1(
-    connection: &mut Connection,
-    canonical_envelopes: &[Vec<u8>],
-    authority_key_pair: &Ed25519KeyPair,
+/// Persist one sealed transaction using the canonical materializers. Callers
+/// retain authority and signature admission; consumers never enqueue publication.
+pub(crate) fn materialize_verified_normalized_transaction_v1(
+    transaction: &Transaction<'_>,
+    verified: &VerifiedOperationTransaction,
+    actor: &ActorState,
+    program: SqliteMutationProgram,
     committed_at: i64,
-) -> Result<NormalizedMutationResolutionV1, NormalizedSqliteError> {
-    if !(0..=MAX_SAFE_INTEGER).contains(&committed_at) {
-        return Err(NormalizedSqliteError::InvalidRequest(
-            "normalized mutation commit time is invalid",
-        ));
-    }
-    let (verified, _initial_verdict) =
-        verify_operation_transaction_for_resolution(canonical_envelopes, |identity| {
-            actor_state_at(connection, identity)
-        })?;
-    validate_transaction(&verified)?;
-    let program = SQLITE_MUTATION_PROGRAMS
-        .iter()
-        .find(|program| program.mutation_id == verified.members[0].operation_type)
-        .copied()
-        .ok_or(NormalizedSqliteError::InvalidRequest(
-            "normalized mutation materializer is not registered",
-        ))?;
-    if verified.members.len() > program.maximum_members
-        || verified.members.iter().any(|member| {
-            member.operation_type != program.mutation_id
-                || member.entity_type != program.entity_type
-        })
-    {
-        return Err(NormalizedSqliteError::InvalidRequest(
-            "normalized mutation materializer is not registered",
-        ));
-    }
-    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    let (active_epoch, active_epoch_id) =
-        admitted_authority_epoch(&transaction, &verified.library_id)?;
-    let actor = actor_state_at(
-        &transaction,
-        &OperationIdentity {
-            library_id: verified.library_id.clone(),
-            epoch_id: verified.epoch_id.clone(),
-            actor_id: verified.actor_id.clone(),
-        },
-    )?;
-    if actor.capability != verified.actor_capability {
-        return Err(LibraryCoreError::InvalidVerifiedInput {
-            field: "actor_capability_changed",
-        }
-        .into());
-    }
-    if let Some(receipt) = stored_receipt(&transaction, &verified)? {
-        transaction.commit()?;
-        return Ok(NormalizedMutationResolutionV1::Accepted(receipt));
-    }
-    if active_epoch != verified.epoch || active_epoch_id != verified.epoch_id {
-        if active_epoch <= verified.epoch || active_epoch_id == verified.epoch_id {
-            return Err(LibraryCoreError::StaleAuthority {
-                library_id: verified.library_id,
-            }
-            .into());
-        }
-        let receipt = persist_rejected_resolution(
-            &transaction,
-            &verified,
-            authority_key_pair,
-            committed_at,
-            "epoch_stale",
-        )?;
-        transaction.commit()?;
-        return Ok(NormalizedMutationResolutionV1::FollowerResult(receipt));
-    }
-    let current_verdict = operation_admission_verdict(&actor, &verified);
-    let rejection_reason = match current_verdict {
-        OperationAdmissionVerdict::Admissible => None,
-        OperationAdmissionVerdict::ActorRetired => Some("actor_retired"),
-        OperationAdmissionVerdict::CapabilityDenied { .. } => Some("capability_denied"),
-    };
-    if let Some(reason) = rejection_reason {
-        let receipt = persist_rejected_resolution(
-            &transaction,
-            &verified,
-            authority_key_pair,
-            committed_at,
-            reason,
-        )?;
-        transaction.commit()?;
-        return Ok(NormalizedMutationResolutionV1::FollowerResult(receipt));
-    }
+    publish_operations: bool,
+) -> Result<(i64, i64), NormalizedSqliteError> {
     let first = &verified.members[0];
     let last = verified
         .members
         .last()
-        .expect("verified members are nonempty");
-    if actor.next_sequence != first.actor_sequence
-        || actor.previous_operation_id != first.previous_actor_operation_id
-        || actor.previous_chain_digest != first.previous_actor_chain_digest
-    {
-        let receipt = persist_rejected_resolution(
-            &transaction,
-            &verified,
-            authority_key_pair,
-            committed_at,
-            "precondition_failed",
-        )?;
-        transaction.commit()?;
-        return Ok(NormalizedMutationResolutionV1::FollowerResult(receipt));
-    }
-    require_causal_tips(&transaction, &verified)?;
-    for member in &verified.members {
-        if !program.requires_existing_target {
-            continue;
-        }
-        let exists: bool =
-            transaction.query_row(program.target_exists_sql, [&member.entity_id], |row| {
-                row.get(0)
-            })?;
-        if !exists {
-            let tombstoned: bool = transaction.query_row(
-                "SELECT EXISTS(
-                   SELECT 1 FROM library_tombstones
-                   WHERE entity_type = ?1 AND entity_id = ?2
-                 );",
-                params![program.invalidation_topic, member.entity_id],
-                |row| row.get(0),
-            )?;
-            let reason = if tombstoned {
-                "target_tombstoned"
-            } else {
-                "target_missing"
-            };
-            let receipt = persist_rejected_resolution(
-                &transaction,
-                &verified,
-                authority_key_pair,
-                committed_at,
-                reason,
-            )?;
-            transaction.commit()?;
-            return Ok(NormalizedMutationResolutionV1::FollowerResult(receipt));
-        }
-    }
+        .expect("verified transaction is nonempty");
     let previous_revision: i64 = transaction.query_row(
         "SELECT revision FROM library_change_state WHERE singleton_id = 1;",
         [],
@@ -2774,18 +2677,20 @@ pub(crate) fn resolve_normalized_operation_transaction_v1(
                 ],
             )?;
         }
-        materialize_member(&transaction, &verified, member_index, committed_at, program)?;
-        transaction.execute(
-            "INSERT INTO library_replication_outbox
-             (operation_id, actor_id, actor_counter, enqueued_at)
-             VALUES (?1, ?2, ?3, ?4);",
-            params![
-                member.operation_id,
-                verified.actor_id,
-                member.actor_sequence,
-                committed_at,
-            ],
-        )?;
+        materialize_member(transaction, verified, member_index, committed_at, program)?;
+        if publish_operations {
+            transaction.execute(
+                "INSERT INTO library_replication_outbox
+                 (operation_id, actor_id, actor_counter, enqueued_at)
+                 VALUES (?1, ?2, ?3, ?4);",
+                params![
+                    member.operation_id,
+                    verified.actor_id,
+                    member.actor_sequence,
+                    committed_at,
+                ],
+            )?;
+        }
         let result_text = format!(
             "{{\"committedRevision\":{committed_revision},\"operationId\":{}}}",
             serde_json::to_string(&member.operation_id).expect("operation ID serializes")
@@ -2867,9 +2772,189 @@ pub(crate) fn resolve_normalized_operation_transaction_v1(
             "normalized mutation revision changed concurrently",
         ));
     }
+    Ok((previous_revision, committed_revision))
+}
+
+pub(crate) fn resolve_normalized_operation_transaction_v1(
+    connection: &mut Connection,
+    canonical_envelopes: &[Vec<u8>],
+    authority_key_pair: &Ed25519KeyPair,
+    committed_at: i64,
+) -> Result<NormalizedMutationResolutionV1, NormalizedSqliteError> {
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let resolution = resolve_normalized_operation_transaction_in_transaction_v1(
+        &transaction,
+        canonical_envelopes,
+        authority_key_pair,
+        committed_at,
+    )?;
+    transaction.commit()?;
+    Ok(resolution)
+}
+
+/// Resolve a complete signed transaction without committing the caller's write.
+/// Recovery can append its durable archive link before the one shared commit.
+/// Verification reads the same snapshot as authority and actor-tip admission.
+pub(crate) fn resolve_normalized_operation_transaction_in_transaction_v1(
+    transaction: &Transaction<'_>,
+    canonical_envelopes: &[Vec<u8>],
+    authority_key_pair: &Ed25519KeyPair,
+    committed_at: i64,
+) -> Result<NormalizedMutationResolutionV1, NormalizedSqliteError> {
+    if !(0..=MAX_SAFE_INTEGER).contains(&committed_at) {
+        return Err(NormalizedSqliteError::InvalidRequest(
+            "normalized mutation commit time is invalid",
+        ));
+    }
+    let (verified, _initial_verdict) =
+        verify_operation_transaction_for_resolution(canonical_envelopes, |identity| {
+            actor_state_at(transaction, identity)
+        })?;
+    validate_transaction(&verified)?;
+    let program = SQLITE_MUTATION_PROGRAMS
+        .iter()
+        .find(|program| program.mutation_id == verified.members[0].operation_type)
+        .copied()
+        .ok_or(NormalizedSqliteError::InvalidRequest(
+            "normalized mutation materializer is not registered",
+        ))?;
+    if verified.members.len() > program.maximum_members
+        || verified.members.iter().any(|member| {
+            member.operation_type != program.mutation_id
+                || member.entity_type != program.entity_type
+        })
+    {
+        return Err(NormalizedSqliteError::InvalidRequest(
+            "normalized mutation materializer is not registered",
+        ));
+    }
+    let (active_epoch, active_epoch_id) =
+        admitted_authority_epoch(transaction, &verified.library_id)?;
+    let actor = actor_state_at(
+        transaction,
+        &OperationIdentity {
+            library_id: verified.library_id.clone(),
+            epoch_id: verified.epoch_id.clone(),
+            actor_id: verified.actor_id.clone(),
+        },
+    )?;
+    if actor.capability != verified.actor_capability {
+        return Err(LibraryCoreError::InvalidVerifiedInput {
+            field: "actor_capability_changed",
+        }
+        .into());
+    }
+    if let Some(receipt) = stored_receipt(transaction, &verified)? {
+        return Ok(NormalizedMutationResolutionV1::Accepted(receipt));
+    }
+    if active_epoch != verified.epoch || active_epoch_id != verified.epoch_id {
+        if active_epoch <= verified.epoch || active_epoch_id == verified.epoch_id {
+            return Err(LibraryCoreError::StaleAuthority {
+                library_id: verified.library_id,
+            }
+            .into());
+        }
+        let receipt = persist_rejected_resolution(
+            transaction,
+            &verified,
+            authority_key_pair,
+            committed_at,
+            "epoch_stale",
+        )?;
+        return Ok(NormalizedMutationResolutionV1::FollowerResult(receipt));
+    }
+    let current_verdict = operation_admission_verdict(&actor, &verified);
+    let rejection_reason = match current_verdict {
+        OperationAdmissionVerdict::Admissible => None,
+        OperationAdmissionVerdict::ActorRetired => Some("actor_retired"),
+        OperationAdmissionVerdict::CapabilityDenied { .. } => Some("capability_denied"),
+    };
+    if let Some(reason) = rejection_reason {
+        let receipt = persist_rejected_resolution(
+            transaction,
+            &verified,
+            authority_key_pair,
+            committed_at,
+            reason,
+        )?;
+        return Ok(NormalizedMutationResolutionV1::FollowerResult(receipt));
+    }
+    let first = &verified.members[0];
+    let last = verified
+        .members
+        .last()
+        .expect("verified members are nonempty");
+    if actor.next_sequence != first.actor_sequence
+        || actor.previous_operation_id != first.previous_actor_operation_id
+        || actor.previous_chain_digest != first.previous_actor_chain_digest
+    {
+        let receipt = persist_rejected_resolution(
+            transaction,
+            &verified,
+            authority_key_pair,
+            committed_at,
+            "precondition_failed",
+        )?;
+        return Ok(NormalizedMutationResolutionV1::FollowerResult(receipt));
+    }
+    if verified
+        .members
+        .iter()
+        .any(|member| !crate::normalized_preference_policy::supports_fresh_preferences(member))
+    {
+        let receipt = persist_rejected_resolution(
+            transaction,
+            &verified,
+            authority_key_pair,
+            committed_at,
+            "precondition_failed",
+        )?;
+        return Ok(NormalizedMutationResolutionV1::FollowerResult(receipt));
+    }
+    require_causal_tips(transaction, &verified)?;
+    for member in &verified.members {
+        if !program.requires_existing_target {
+            continue;
+        }
+        let exists: bool =
+            transaction.query_row(program.target_exists_sql, [&member.entity_id], |row| {
+                row.get(0)
+            })?;
+        if !exists {
+            let tombstoned: bool = transaction.query_row(
+                "SELECT EXISTS(
+                   SELECT 1 FROM library_tombstones
+                   WHERE entity_type = ?1 AND entity_id = ?2
+                 );",
+                params![program.invalidation_topic, member.entity_id],
+                |row| row.get(0),
+            )?;
+            let reason = if tombstoned {
+                "target_tombstoned"
+            } else {
+                "target_missing"
+            };
+            let receipt = persist_rejected_resolution(
+                transaction,
+                &verified,
+                authority_key_pair,
+                committed_at,
+                reason,
+            )?;
+            return Ok(NormalizedMutationResolutionV1::FollowerResult(receipt));
+        }
+    }
+    let (previous_revision, committed_revision) = materialize_verified_normalized_transaction_v1(
+        transaction,
+        &verified,
+        &actor,
+        program,
+        committed_at,
+        true,
+    )?;
     let (follower_result_sequence, follower_result_digest, canonical_follower_result) =
         persist_follower_result_outcome(
-            &transaction,
+            transaction,
             &verified,
             authority_key_pair,
             committed_revision,
@@ -2891,9 +2976,8 @@ pub(crate) fn resolve_normalized_operation_transaction_v1(
         follower_result_digest,
         follower_result_sequence,
         canonical_follower_result,
-        invalidations: invalidations_at(&transaction, committed_revision)?,
+        invalidations: invalidations_at(transaction, committed_revision)?,
     };
-    transaction.commit()?;
     Ok(NormalizedMutationResolutionV1::Accepted(receipt))
 }
 
@@ -3328,6 +3412,18 @@ pub(crate) mod tests {
         assert!(error
             .to_string()
             .contains("injected staged authority fault"));
+        // Reopen the durable fixture before asking where transport should
+        // resume. The old connection cannot supply a hidden recovery cursor.
+        let directory = tempfile::tempdir().expect("recovery fixture directory");
+        let database_path = directory.path().join("recovery.sqlite");
+        connection
+            .backup(rusqlite::DatabaseName::Main, &database_path, None)
+            .expect("persist failed staging fixture");
+        drop(connection);
+        let mut connection = Connection::open(&database_path).expect("reopen recovery fixture");
+        connection
+            .execute_batch("PRAGMA foreign_keys = ON;")
+            .expect("restore connection constraints");
         assert_eq!(
             connection
                 .query_row(
@@ -3348,6 +3444,16 @@ pub(crate) mod tests {
                 .expect("rolled back authority transaction"),
             0
         );
+        assert_eq!(
+            normalized_primary_follower_actor_transport_state_v1(
+                &connection,
+                &enrollment.actor_id,
+            )
+            .expect("complete unresolved transaction remains retryable")
+            .next_actor_counter,
+            records[0].actor_counter,
+            "cloud resume must revisit staged work that has no canonical result",
+        );
         connection
             .execute_batch("DROP TRIGGER fail_staged_authority_operation;")
             .expect("remove fault trigger");
@@ -3360,6 +3466,15 @@ pub(crate) mod tests {
         .expect("resume complete transaction");
         assert_eq!(resumed.exact_retries, 2);
         assert_eq!(resumed.resolved_transactions, 1);
+        let resolved: (String, i64, i64) = connection
+            .query_row(
+                "SELECT status, result_sequence, authoritative_source_revision
+                 FROM library_follower_result_outbox;",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("durable accepted result after restart");
+        assert_eq!(resolved, ("accepted".to_owned(), 1, 1));
         assert_eq!(
             connection
                 .query_row(
@@ -3552,6 +3667,92 @@ pub(crate) mod tests {
                 )
                 .expect("follower result outbox"),
             1
+        );
+    }
+
+    #[test]
+    fn caller_owned_resolution_rolls_back_when_the_following_link_write_fails() {
+        let (mut connection, key_pair, enrollment) = fixture();
+        let envelopes = signed_envelopes(&key_pair, &enrollment);
+        let before = serde_json::to_value(
+            normalized_primary_mutation_context_v1(&connection).expect("initial context"),
+        )
+        .unwrap();
+        connection
+            .execute_batch("CREATE TEMP TABLE recovery_link_probe(value INTEGER CHECK(value > 0));")
+            .unwrap();
+        let tx = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .unwrap();
+        let resolution = resolve_normalized_operation_transaction_in_transaction_v1(
+            &tx, &envelopes, &key_pair, 2_000,
+        )
+        .expect("resolved inside outer transaction");
+        assert!(matches!(
+            resolution,
+            NormalizedMutationResolutionV1::Accepted(_)
+        ));
+        assert_eq!(
+            tx.query_row("SELECT count(*) FROM library_receipts;", [], |row| row
+                .get::<_, i64>(0))
+                .unwrap(),
+            2
+        );
+        // The caller's final write fails after all canonical effects exist.
+        assert!(tx
+            .execute("INSERT INTO recovery_link_probe VALUES (0);", [])
+            .is_err());
+        tx.rollback().unwrap();
+        for table in [
+            "library_transactions",
+            "library_operations",
+            "library_receipts",
+            "library_replication_outbox",
+            "library_follower_result_outbox",
+            "library_follower_result_cursors",
+        ] {
+            assert_eq!(
+                connection
+                    .query_row(&format!("SELECT count(*) FROM {table};"), [], |row| row
+                        .get::<_, i64>(0))
+                    .unwrap(),
+                0,
+                "{table}"
+            );
+        }
+        assert_eq!(
+            serde_json::to_value(normalized_primary_mutation_context_v1(&connection).unwrap())
+                .unwrap(),
+            before
+        );
+        assert_eq!(
+            connection
+                .query_row("SELECT revision FROM library_change_state;", [], |row| row
+                    .get::<_, i64>(
+                    0
+                ))
+                .unwrap(),
+            0
+        );
+        let committed = accept_normalized_operation_transaction_v1(
+            &mut connection,
+            &envelopes,
+            &key_pair,
+            2_000,
+        )
+        .unwrap();
+        assert_eq!(committed.previous_revision, 0);
+        assert_eq!(committed.committed_revision, 1);
+        let replay = accept_normalized_operation_transaction_v1(
+            &mut connection,
+            &envelopes,
+            &key_pair,
+            3_000,
+        )
+        .unwrap();
+        assert_eq!(
+            serde_json::to_value(replay).unwrap(),
+            serde_json::to_value(committed).unwrap()
         );
     }
 
@@ -4626,6 +4827,141 @@ pub(crate) mod tests {
                 .expect("journaled transactions"),
             4
         );
+    }
+
+    #[test]
+    fn seen_audit_exact_retry_after_delete_never_resurrects_and_fresh_late_ack_is_rejected() {
+        let (mut connection, key_pair, enrollment) = fixture();
+        let seen = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:seen-audit:before-delete",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[("rss:item:1", 2000)],
+            "feed_item_seen_sync_receipt",
+        );
+        let accepted =
+            accept_normalized_operation_transaction_v1(&mut connection, &seen, &key_pair, 2000)
+                .unwrap();
+        let remove = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:seen-audit:delete",
+            2,
+            Some(&accepted.committed_operation_id),
+            &accepted.committed_chain_digest,
+            &[("rss:item:1", 2100)],
+            "feed_item_remove",
+        );
+        let removed =
+            accept_normalized_operation_transaction_v1(&mut connection, &remove, &key_pair, 2100)
+                .unwrap();
+        let replay =
+            accept_normalized_operation_transaction_v1(&mut connection, &seen, &key_pair, 2200)
+                .unwrap();
+        assert_eq!(replay.committed_revision, accepted.committed_revision);
+        let late = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:seen-audit:late",
+            3,
+            Some(&removed.committed_operation_id),
+            &removed.committed_chain_digest,
+            &[("rss:item:1", 2200)],
+            "feed_item_seen_sync_receipt",
+        );
+        let rejection = match resolve_normalized_operation_transaction_v1(
+            &mut connection,
+            &late,
+            &key_pair,
+            2200,
+        )
+        .unwrap()
+        {
+            NormalizedMutationResolutionV1::FollowerResult(r) => r,
+            NormalizedMutationResolutionV1::Accepted(_) => {
+                panic!("late provider acknowledgement cannot resurrect deleted target")
+            }
+        };
+        let result: Value = serde_json::from_slice(&rejection.canonical_follower_result).unwrap();
+        assert_eq!(result["rejection_reason"], "target_tombstoned");
+        let state:(i64,i64,i64)=connection.query_row("SELECT (SELECT count(*) FROM library_feed_items WHERE global_id='rss:item:1'),(SELECT count(*) FROM library_operations),(SELECT revision FROM library_change_state WHERE singleton_id=1)",[],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).unwrap();
+        assert_eq!(state, (0, 2, 2));
+    }
+
+    #[test]
+    fn seen_audit_fresh_identical_or_older_confirmations_grow_signed_history_exact_retry_does_not()
+    {
+        let (mut connection, key_pair, enrollment) = fixture();
+        let before:(i64,i64,i64,i64,i64)=connection.query_row("SELECT (SELECT count(*) FROM library_operations),(SELECT count(*) FROM library_receipts),(SELECT count(*) FROM library_transactions),(SELECT count(*) FROM library_replication_outbox),(SELECT revision FROM library_change_state WHERE singleton_id=1)",[],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?))).unwrap();
+        let intent_before:(Option<i64>,Option<i64>,Option<i64>)=connection.query_row("SELECT read_at,liked,liked_at FROM library_feed_items WHERE global_id='rss:item:1'",[],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).unwrap();
+        let mut tip: Option<NormalizedMutationReceiptV1> = None;
+        for (index, synced_at) in [2000_i64, 2000, 1000, 2000, 3000].into_iter().enumerate() {
+            let envelopes = signed_envelopes_from_tip(
+                &key_pair,
+                &enrollment,
+                &format!("tx:seen-audit:{index}"),
+                index as i64 + 1,
+                tip.as_ref().map(|r| r.committed_operation_id.as_str()),
+                tip.as_ref()
+                    .map(|r| r.committed_chain_digest.as_str())
+                    .unwrap_or(&enrollment.actor_chain_genesis),
+                &[("rss:item:1", synced_at)],
+                "feed_item_seen_sync_receipt",
+            );
+            let receipt = accept_normalized_operation_transaction_v1(
+                &mut connection,
+                &envelopes,
+                &key_pair,
+                10000 + index as i64,
+            )
+            .expect("accept fresh seen acknowledgement");
+            if index == 0 {
+                let replay = accept_normalized_operation_transaction_v1(
+                    &mut connection,
+                    &envelopes,
+                    &key_pair,
+                    10001,
+                )
+                .expect("exact lost-response retry");
+                assert_eq!(
+                    replay.committed_operation_id,
+                    receipt.committed_operation_id
+                );
+                assert_eq!(replay.committed_revision, receipt.committed_revision);
+                assert_eq!(
+                    connection
+                        .query_row("SELECT count(*) FROM library_operations", [], |r| r
+                            .get::<_, i64>(0))
+                        .unwrap(),
+                    before.0 + 1
+                );
+            }
+            let projected: i64 = connection
+                .query_row(
+                    "SELECT seen_synced_at FROM library_feed_items WHERE global_id='rss:item:1'",
+                    [],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(projected, if index == 4 { 3000 } else { 2000 });
+            tip = Some(receipt);
+        }
+        let after:(i64,i64,i64,i64,i64)=connection.query_row("SELECT (SELECT count(*) FROM library_operations),(SELECT count(*) FROM library_receipts),(SELECT count(*) FROM library_transactions),(SELECT count(*) FROM library_replication_outbox),(SELECT revision FROM library_change_state WHERE singleton_id=1)",[],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?))).unwrap();
+        assert_eq!(
+            after,
+            (
+                before.0 + 5,
+                before.1 + 5,
+                before.2 + 5,
+                before.3 + 5,
+                before.4 + 5
+            )
+        );
+        let intent_after:(Option<i64>,Option<i64>,Option<i64>)=connection.query_row("SELECT read_at,liked,liked_at FROM library_feed_items WHERE global_id='rss:item:1'",[],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).unwrap();
+        assert_eq!(intent_before, intent_after);
     }
 
     #[test]
@@ -6168,6 +6504,51 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn authenticated_historical_preferences_remain_inspectable_but_new_unsupported_writes_are_rejected(
+    ) {
+        let (mut db, key, enrollment) = fixture();
+        let payload = json!({"updates":{"display":{"markReadOnScroll":false}}});
+        let frames = signed_envelopes_from_tip_with_payload(
+            &key,
+            &enrollment,
+            "historical:unsupported-preference",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[("preferences", 1000)],
+            "preferences_leaf_assignment",
+            Some(&payload),
+        );
+        let (verified, _) = verify_operation_transaction_for_resolution(&frames, |identity| {
+            actor_state_at(&db, identity)
+        })
+        .unwrap();
+        assert_eq!(verified.members.len(), 1);
+        let result =
+            resolve_normalized_operation_transaction_v1(&mut db, &frames, &key, 2000).unwrap();
+        let NormalizedMutationResolutionV1::FollowerResult(result) = result else {
+            panic!("unsupported write was admitted");
+        };
+        let signed: Value = serde_json::from_slice(&result.canonical_follower_result).unwrap();
+        assert_eq!(signed["rejection_reason"], "precondition_failed");
+        assert_eq!(
+            db.query_row("SELECT count(*) FROM library_preferences", [], |r| r
+                .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            db.query_row(
+                "SELECT accepted_counter FROM library_actors WHERE actor_id=?1",
+                [&enrollment.actor_id],
+                |r| r.get::<_, i64>(0)
+            )
+            .unwrap(),
+            0
+        );
+    }
+
+    #[test]
     fn signed_preference_patch_preserves_empty_containers_and_deep_merge_semantics() {
         let (mut connection, key_pair, enrollment) = fixture();
         let initial_payload = serde_json::json!({
@@ -6179,7 +6560,7 @@ pub(crate) mod tests {
                     "allowedPaths": { "x": [] },
                     "blockedPlatforms": ["x", "facebook"]
                 },
-                "weights": { "topics": {} }
+                "weights": { "topics": {}, "authors": { "alpha": { "bits": "3fc0000000000000", "codec": "ieee754_binary64_hex_v1" } } }
             }
         });
         let initial = signed_envelopes_from_tip_with_payload(
@@ -6218,6 +6599,8 @@ pub(crate) mod tests {
                 .expect("empty object marker"),
             "null"
         );
+
+        assert_eq!(connection.query_row("SELECT text_value FROM library_preferences WHERE path = 'v:$.weights.authors.alpha.bits'", [], |r| r.get::<_, String>(0)).unwrap(), "3fc0000000000000");
 
         let replacement_payload = serde_json::json!({
             "updates": {

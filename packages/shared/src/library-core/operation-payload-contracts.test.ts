@@ -1,3 +1,5 @@
+import preferencePolicyVector from "./preference-write-policy-vector-v1.json";
+import orderVector from "./friend-account-order-vector-v1.json";
 import { describe, expect, it } from "vitest";
 import { sanitizePersonRootWrite } from "../sync-write-policy.js";
 
@@ -13,6 +15,7 @@ import {
   PREFERENCES_LEAF_ASSIGNMENT_PAYLOAD_SCHEMA,
   PERSON_UPSERT_PAYLOAD_SCHEMA,
   FRIEND_REPLACE_PAYLOAD_SCHEMA,
+  compareLibraryCoreUtf8V1,
   PERSON_REACH_OUT_APPEND_PAYLOAD_SCHEMA,
   ACCOUNT_PERSON_ASSIGNMENT_PAYLOAD_SCHEMA,
   ACCOUNT_UPSERT_PAYLOAD_SCHEMA,
@@ -617,6 +620,12 @@ describe("Library Core operation payload contracts", () => {
     expect(
       FRIEND_REPLACE_PAYLOAD_SCHEMA.validate({ accounts: [account], person }),
     ).toMatchObject({ ok: true });
+    const orderedAccounts = orderVector.binaryOrder.map(id => ({ ...account, id }));
+    expect([...orderVector.binaryOrder].reverse().sort(compareLibraryCoreUtf8V1)).toEqual(orderVector.binaryOrder);
+    expect(FRIEND_REPLACE_PAYLOAD_SCHEMA.validate({ accounts: orderedAccounts, person }).ok).toBe(true);
+    for (const ids of [orderVector.invalidLocaleOrder, orderVector.invalidUtf16Order]) {
+      expect(FRIEND_REPLACE_PAYLOAD_SCHEMA.validate({ accounts: ids.map(id => ({ ...account, id })), person }).ok).toBe(false);
+    }
     for (const invalid of [
       { accounts: [account, account], person },
       {
@@ -644,4 +653,11 @@ describe("Library Core operation payload contracts", () => {
       });
     }
   });
+});
+
+
+it("matches native fresh preference write-policy vectors without dropping unsupported values", () => {
+  for (const vector of preferencePolicyVector) {
+    expect(PREFERENCES_LEAF_ASSIGNMENT_PAYLOAD_SCHEMA.validate({ updates: vector.updates }).ok, vector.name).toBe(vector.supported);
+  }
 });

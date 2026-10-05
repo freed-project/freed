@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer, request, type Server } from "node:http";
@@ -14,6 +14,7 @@ import {
   generateDemoLibraryData,
 } from "@freed/shared";
 import { pwaOpfsE2eBaseUrl } from "./opfs-e2e-settings";
+import { prepareWebKitTestCustody, WEBKIT_TEST_MASTER_KEY } from "../../../scripts/lib/webkit-test-custody.mjs";
 const previewPopulation = generateDemoLibraryData({ batchId: "preview-test", generatedAt: 1_788_800_000_000, presentationSeed: 42 });
 const previewCounts = { feeds: previewPopulation.feeds.length, accounts: previewPopulation.accounts.length, items: previewPopulation.items.length, persons: previewPopulation.persons.length };
 
@@ -169,6 +170,7 @@ async function launchPersistentLibraryContext(
   originAttempt = 0,
 ): Promise<BrowserContext> {
   const iphone = devices["iPhone 14"];
+  const custody = prepareWebKitTestCustody(profileRoot, webkit.executablePath(), openedProfiles.has(profileRoot));
   const context = await webkit.launchPersistentContext(profileRoot, {
     userAgent: iphone.userAgent,
     viewport: iphone.viewport,
@@ -178,7 +180,9 @@ async function launchPersistentLibraryContext(
     hasTouch: iphone.hasTouch,
     baseURL,
     headless: true,
+    ...custody.launchOptions,
   });
+  try { custody.verifyLoaded(); } catch (error) { await context.close(); throw error; }
   if (!openedProfiles.has(profileRoot)) {
     try {
       const page = context.pages()[0] ?? (await context.newPage());
@@ -496,6 +500,69 @@ async function verifyDurableOpfsLibrary(profileRoot: string): Promise<void> {
     await context?.close();
   }
 }
+
+test("iPhone WebKit keeps a fresh device in setup until a Library is selected", async () => {
+  test.setTimeout(180_000);
+  const profileRoot = await mkdtemp(join(tmpdir(), "freed-pwa-first-library-"));
+  let context: BrowserContext | null = null;
+  try {
+    context = await launchPersistentLibraryContext(profileRoot);
+    await context.route("**/src/App.tsx*", async route => {
+      const response = await route.fetch();
+      const body = (await response.text()).replace(
+        /const IS_FEATURE_PREVIEW = [^;]+;/,
+        "const IS_FEATURE_PREVIEW = false;",
+      );
+      await route.fulfill({ response, body });
+    });
+    const page = context.pages()[0] ?? await context.newPage();
+    await page.goto("/");
+    await expect(page.getByTestId("legal-gate-accept")).toBeVisible();
+    await acceptLegalGate(page);
+    await waitForLibrary(page);
+    await expect(page.getByTestId("pwa-library-setup")).toBeVisible();
+    await expect(page.getByText("Unable to load this feed")).toHaveCount(0);
+    for (const activeView of ["map", "friends", "feed"]) {
+      await page.evaluate(view => {
+        const store = (window as unknown as {
+          __FREED_STORE__: { getState(): { setActiveView(view: string): void } };
+        }).__FREED_STORE__;
+        store.getState().setActiveView(view);
+      }, activeView);
+      await expect(page.getByTestId("pwa-library-setup")).toBeVisible();
+      await expect(page.getByTestId("map-view-loading")).toHaveCount(0);
+      await expect(page.getByTestId("friends-view-loading")).toHaveCount(0);
+    }
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent(
+      "freed:open-settings", { detail: { scrollTo: "saved" } },
+    )));
+    await expect(page.getByRole("button", { name: "Close settings", exact: true })).toBeVisible();
+    await expect(page.getByTestId("pwa-library-setup")).toHaveCount(2);
+    await expect(page.getByText("Loading saved overview...")).toHaveCount(0);
+    await page.getByRole("button", { name: "Close settings", exact: true }).click();
+    const receipt = await page.evaluate(async () => {
+      const runtime = await import("/src/lib/library-core-sqlite-runtime.ts");
+      return (await runtime.readPwaNormalizedCheckpointReceipt()).receipt;
+    });
+    expect(receipt).toBeNull();
+    await openDangerZone(page);
+    await page.getByRole("button", { name: /Populate sample data Adds/ }).click();
+    // Selection can remount Settings after the first durable sample batch.
+    // A disabled sample button then proves presence, not completed population.
+    await expect(page.getByRole("status").filter({ hasText: /^Sample data added: 100%/ }))
+      .toBeVisible({ timeout: 90_000 });
+    await page.getByRole("button", { name: "Close settings", exact: true }).click();
+    await expect(page.getByTestId("pwa-library-setup")).toHaveCount(0);
+    await expect(page.locator("[data-feed-item-id]").first()).toBeVisible();
+    await page.reload();
+    await waitForLibrary(page);
+    await expect(page.getByTestId("pwa-library-setup")).toHaveCount(0);
+    await expect(page.locator("[data-feed-item-id]").first()).toBeVisible();
+  } finally {
+    await context?.close();
+    await rm(profileRoot, { recursive: true, force: true });
+  }
+});
 
 test("iPhone WebKit persists, clears, and rebuilds the local sample Library", async () => {
   test.setTimeout(240_000);
@@ -862,7 +929,39 @@ test("iPhone WebKit reopens and signs with the same actor key", async () => {
           fromHex(signature),
           Uint8Array.from(signingMessage),
         );
-        return { identity, verified };
+        // Exercise native CryptoKey serialization, not a mock or exported key.
+        // Only booleans leave the browser; synthetic private bytes never do.
+        const database = await new Promise<IDBDatabase>((resolve, reject) => {
+          const request = indexedDB.open(keyVault.PWA_LIBRARY_CORE_KEY_DATABASE_NAME);
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        });
+        let custody;
+        try {
+          const stored = await new Promise<{ actorPrivateKey: CryptoKey }>((resolve, reject) => {
+            const request = database.transaction("actor_keys", "readonly")
+              .objectStore("actor_keys").get(expectedLibraryId);
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+          });
+          const key = stored.actorPrivateKey;
+          const refusesExport = async (format: "pkcs8" | "jwk") => {
+            try {
+              if (format === "jwk") await crypto.subtle.exportKey("jwk", key);
+              else await crypto.subtle.exportKey("pkcs8", key);
+              return false;
+            }
+            catch (error) { return error instanceof DOMException && error.name === "InvalidAccessError"; }
+          };
+          custody = {
+            nonextractable: key instanceof CryptoKey && key.extractable === false,
+            signingOnly: key.type === "private" && key.algorithm.name === "Ed25519"
+              && key.usages.length === 1 && key.usages[0] === "sign",
+            pkcs8ExportRefused: await refusesExport("pkcs8"),
+            jwkExportRefused: await refusesExport("jwk"),
+          };
+        } finally { database.close(); }
+        return { identity, verified, custody };
       },
       {
         expectedLibraryId: libraryId,
@@ -875,6 +974,8 @@ test("iPhone WebKit reopens and signs with the same actor key", async () => {
     context = opened.context;
     const first = await readIdentityAndSign(opened.page);
     expect(first.verified).toBe(true);
+    expect(first.custody).toEqual({ nonextractable: true, signingOnly: true,
+      pkcs8ExportRefused: true, jwkExportRefused: true });
     await context.close();
     context = null;
 
@@ -883,6 +984,37 @@ test("iPhone WebKit reopens and signs with the same actor key", async () => {
     const reopened = await readIdentityAndSign(opened.page);
     expect(reopened.identity).toEqual(first.identity);
     expect(reopened.verified).toBe(true);
+    expect(reopened.custody).toEqual(first.custody);
+    if (process.platform === "darwin") {
+      await context.close(); context = null;
+      const masterPath = join(profileRoot, WEBKIT_TEST_MASTER_KEY);
+      const originalMaster = await readFile(masterPath);
+      const wrongMaster = Buffer.from(originalMaster);
+      wrongMaster[0] ^= 1;
+      try {
+        await writeFile(masterPath, wrongMaster, { mode: 0o600 });
+        opened = await openKeyVaultPage(); context = opened.context;
+        await expect(readIdentityAndSign(opened.page)).rejects.toThrow(/clone|CryptoKey|deserialize|Cannot inject key into script value/i);
+        const actors = await opened.page.evaluate(async () => {
+          const vault = await import("/src/lib/library-core-browser-key-vault.ts");
+          const database = await new Promise<IDBDatabase>((resolve, reject) => {
+            const request = indexedDB.open(vault.PWA_LIBRARY_CORE_KEY_DATABASE_NAME);
+            request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
+          });
+          try { return await new Promise<number>((resolve, reject) => {
+            const request = database.transaction("actor_keys", "readonly").objectStore("actor_keys").count();
+            request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
+          }); } finally { database.close(); }
+        });
+        expect(actors).toBe(1); // Failed unwrap must not fabricate a replacement actor.
+      } finally {
+        await context?.close(); context = null;
+        await writeFile(masterPath, originalMaster, { mode: 0o600 });
+      }
+      opened = await openKeyVaultPage(); context = opened.context;
+      const restored = await readIdentityAndSign(opened.page);
+      expect(restored).toEqual(first);
+    }
   } finally {
     await context?.close();
     await rm(profileRoot, { force: true, recursive: true });

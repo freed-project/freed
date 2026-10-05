@@ -7,6 +7,8 @@ import {
   migrateLegacyDeviceGraphLayoutToSqlite,
 } from "./device-graph-layout";
 
+const source = { generationId: "a".repeat(64), projectionRevision: 1, transitionSequence: 1 };
+
 function detailResponse(kind: "person" | "account", present: boolean) {
   return kind === "person"
     ? {
@@ -33,6 +35,7 @@ function detailResponse(kind: "person" | "account", present: boolean) {
           : null,
         queryId: "person_detail_v1",
         schemaVersion: 1,
+        source,
       }
     : {
         account: present
@@ -65,7 +68,16 @@ function detailResponse(kind: "person" | "account", present: boolean) {
           : null,
         queryId: "account_detail_v1",
         schemaVersion: 1,
+        source,
       };
+}
+
+function queryResponse(queryId: string, present: boolean) {
+  if (queryId === "person_root_v1") return {
+    queryId, schemaVersion: 1, source,
+    person: present ? { id: "person-1", name: "Person", careLevel: 3, relationshipStatus: "friend", createdAt: 1, updatedAt: 1 } : null,
+  };
+  return detailResponse(queryId === "person_detail_v1" ? "person" : "account", present);
 }
 
 describe("retired device graph layout import", () => {
@@ -102,10 +114,7 @@ describe("retired device graph layout import", () => {
       schemaVersion: 1 as const,
     }));
     const query = vi.fn(async (request: { queryId: string }) =>
-      detailResponse(
-        request.queryId === "person_detail_v1" ? "person" : "account",
-        true,
-      ),
+      queryResponse(request.queryId, true),
     );
 
     await expect(
@@ -136,7 +145,7 @@ describe("retired device graph layout import", () => {
     await expect(
       migrateLegacyDeviceGraphLayoutToSqlite({
         mutate: vi.fn(),
-        query: vi.fn(async () => detailResponse("person", false)) as never,
+        query: vi.fn(async (request: { queryId: string }) => queryResponse(request.queryId, false)) as never,
       }),
     ).resolves.toBe(0);
     expect(window.localStorage.getItem(DEVICE_GRAPH_LAYOUT_STORAGE_KEY)).toBeNull();
@@ -147,7 +156,7 @@ describe("retired device graph layout import", () => {
         mutate: vi.fn(async () => {
           throw new Error("SQLite unavailable");
         }),
-        query: vi.fn(async () => detailResponse("person", true)) as never,
+        query: vi.fn(async (request: { queryId: string }) => queryResponse(request.queryId, true)) as never,
       }),
     ).rejects.toThrow("SQLite unavailable");
     expect(window.localStorage.getItem(DEVICE_GRAPH_LAYOUT_STORAGE_KEY)).not.toBeNull();

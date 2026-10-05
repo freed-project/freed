@@ -125,7 +125,7 @@ submit a named assignment mutation with an explicit precondition.
 
 Friend editing uses the closed `friend_replace` mutation instead of exposing a
 renderer transaction builder. Its payload contains one desired Person and the
-complete desired linked Account set, sorted by Account ID. The set contains at
+complete desired linked Account set, sorted by Account ID in UTF-8 binary order (the SQLite BINARY/native order, independent of locale). The set contains at
 most 64 unique Accounts, every Account names the payload Person, and at most
 one Account may use the contact provider. The complete canonical payload is
 capped at 98,304 bytes. Freed Desktop and the PWA may read only the exact

@@ -97,8 +97,8 @@ fn installation_incarnation(authority: &EnrollmentAuthority) -> Result<String, S
 /// Derived rather than random on purpose. One installation holds one actor key
 /// at a time, so a random value would add no distinguishing power, and
 /// deriving keeps the enrollment body a pure function of the stored keys. A
-/// future rotation that needs two incarnations under one key would store an
-/// explicit nonce instead.
+/// recovery that needs another incarnation under the same key uses its durable
+/// archive identity as an explicit nonce and persists the signed request.
 fn actor_incarnation_nonce(
     installation_incarnation: &str,
     actor_public_key: &str,
@@ -190,6 +190,68 @@ pub fn prepare_normalized_follower_actor_enrollment_request_v2(
     actor_store: &dyn ActorKeyStore,
     created_at_ms: i64,
 ) -> Result<PreparedActorEnrollmentRequest, String> {
+    prepare_follower_request(
+        authority,
+        installation_witness,
+        actor_store,
+        created_at_ms,
+        None,
+    )
+}
+
+/// A recovery incarnation retains the existing key and binds a new actor ID to
+/// the durable archive identity. It never creates or replaces a signing key.
+pub(crate) fn prepare_recovery_actor_request(
+    authority: &NormalizedAuthorityStateV2,
+    installation_witness: &str,
+    actor_store: &dyn ActorKeyStore,
+    created_at_ms: i64,
+    recovery_id: &str,
+) -> Result<PreparedActorEnrollmentRequest, String> {
+    if !is_lower_sha256(recovery_id) {
+        return Err("consumer recovery identity is invalid".into());
+    }
+    prepare_follower_request(
+        authority,
+        installation_witness,
+        actor_store,
+        created_at_ms,
+        Some(recovery_id),
+    )
+}
+
+pub(crate) fn recovery_actor_id(
+    library_id: &str,
+    installation_witness: &str,
+    actor_store: &dyn ActorKeyStore,
+    recovery_id: &str,
+) -> Result<String, String> {
+    if !is_lower_sha256(library_id) || !is_lower_sha256(recovery_id) {
+        return Err("consumer recovery identity is invalid".into());
+    }
+    let key = load_actor_key_pair(actor_store, library_id)?;
+    let installation = installation_incarnation(&EnrollmentAuthority {
+        library_id: library_id.into(),
+        epoch: 0,
+        epoch_id: String::new(),
+        authority_key_id: String::new(),
+        installation_witness: installation_witness.into(),
+    })?;
+    actor_id(
+        library_id,
+        &installation,
+        &lower_hex(key.public_key().as_ref()),
+        recovery_id,
+    )
+}
+
+fn prepare_follower_request(
+    authority: &NormalizedAuthorityStateV2,
+    installation_witness: &str,
+    actor_store: &dyn ActorKeyStore,
+    created_at_ms: i64,
+    recovery_id: Option<&str>,
+) -> Result<PreparedActorEnrollmentRequest, String> {
     let enrollment_authority = EnrollmentAuthority {
         library_id: authority.library_id.clone(),
         epoch: authority.epoch,
@@ -197,9 +259,21 @@ pub fn prepare_normalized_follower_actor_enrollment_request_v2(
         authority_key_id: authority.authority_key_id.clone(),
         installation_witness: installation_witness.to_owned(),
     };
-    let actor_key_pair =
-        load_or_create_actor_key_pair(actor_store, &enrollment_authority.library_id)?;
-    let identity = actor_identity(&enrollment_authority, &actor_key_pair)?;
+    let actor_key_pair = if recovery_id.is_some() {
+        load_actor_key_pair(actor_store, &enrollment_authority.library_id)?
+    } else {
+        load_or_create_actor_key_pair(actor_store, &enrollment_authority.library_id)?
+    };
+    let mut identity = actor_identity(&enrollment_authority, &actor_key_pair)?;
+    if let Some(nonce) = recovery_id {
+        identity.actor_incarnation_nonce = nonce.to_owned();
+        identity.actor_id = actor_id(
+            &enrollment_authority.library_id,
+            &identity.installation_incarnation,
+            &identity.actor_public_key,
+            nonce,
+        )?;
+    }
     if created_at_ms < 0 {
         return Err("Library Core enrollment time is invalid".to_owned());
     }
@@ -324,6 +398,164 @@ pub(crate) fn prepare_normalized_primary_actor_enrollment_v2(
         .map_err(|error| format!("Library Core normalized actor certificate failed: {error}"))
 }
 
+/// Preserve an enrolled incarnation during cooperative promotion. The supplied
+/// certificate only contributes its nonce; the native installation witness and
+/// locally held key must independently derive the actor selected by consent.
+pub(crate) fn prepare_selected_primary_actor_enrollment_v2(
+    authority: &NormalizedAuthorityStateV2,
+    installation_witness: &str,
+    actor_store: &dyn ActorKeyStore,
+    authority_store: &dyn AuthorityKeyStore,
+    created_at_ms: i64,
+    selected_actor: &str,
+    selected_certificate: &[u8],
+) -> Result<VerifiedActorEnrollment, String> {
+    let key = load_actor_key_pair(actor_store, &authority.library_id)?;
+    let identity = actor_identity(
+        &EnrollmentAuthority {
+            library_id: authority.library_id.clone(),
+            epoch: authority.epoch,
+            epoch_id: authority.epoch_id.clone(),
+            authority_key_id: authority.authority_key_id.clone(),
+            installation_witness: installation_witness.into(),
+        },
+        &key,
+    )?;
+    let nonce = selected_actor_nonce(
+        &identity,
+        &authority.library_id,
+        selected_actor,
+        selected_certificate,
+    )?;
+    let request = prepare_follower_request(
+        authority,
+        installation_witness,
+        actor_store,
+        created_at_ms,
+        nonce.as_deref(),
+    )?;
+    if request.actor_id != selected_actor || request.actor_public_key != identity.actor_public_key {
+        return Err("selected actor signing identity changed".into());
+    }
+    let canonical = countersign_actor_enrollment_request_bytes(
+        request.canonical_enrollment_request_json.as_bytes(),
+        authority_store,
+    )?;
+    verify_actor_enrollment_certificate(&canonical, authority)
+        .map_err(|error| format!("Library Core selected actor certificate failed: {error}"))
+}
+
+fn selected_actor_nonce(
+    identity: &ActorIdentity,
+    library_id: &str,
+    selected_actor: &str,
+    selected_certificate: &[u8],
+) -> Result<Option<String>, String> {
+    if identity.actor_id == selected_actor {
+        Ok(None)
+    } else {
+        let value = crate::library_core_canonical::decode_canonical_value(
+            selected_certificate,
+            MAX_CERTIFICATE_BYTES,
+        )
+        .map_err(|_| "selected actor certificate is not canonical")?
+        .into_value();
+        let nonce = value
+            .pointer("/certificate_body/actor_enrollment_body/actor_incarnation_nonce")
+            .and_then(Value::as_str)
+            .filter(|nonce| is_lower_sha256(nonce))
+            .ok_or("selected actor incarnation is missing")?
+            .to_owned();
+        if actor_id(
+            library_id,
+            &identity.installation_incarnation,
+            &identity.actor_public_key,
+            &nonce,
+        )? != selected_actor
+        {
+            return Err("selected actor does not belong to this installation and key".into());
+        }
+        Ok(Some(nonce))
+    }
+}
+
+/// Resolve the locally enrolled incarnation, including an explicit recovery.
+/// A replicated actor row alone cannot select a consumer's local identity.
+/// This function supplies identity only and never grants writer admission.
+pub fn load_normalized_local_actor_id_v2(
+    connection: &rusqlite::Connection,
+    library_id: &str,
+    installation_witness: &str,
+    actor_store: &dyn ActorKeyStore,
+) -> Result<String, String> {
+    use rusqlite::OptionalExtension;
+    if !is_lower_sha256(library_id) || !is_lower_sha256(installation_witness) {
+        return Err("normalized local actor identity is invalid".into());
+    }
+    let request: Option<(String, String, String)> = connection
+        .query_row(
+            "SELECT actor_id, actor_public_key, canonical_enrollment_request
+         FROM library_follower_actor_request WHERE singleton_id = 1 AND library_id = ?1;",
+            [library_id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+    let key = if request.is_some() {
+        load_actor_key_pair(actor_store, library_id)?
+    } else {
+        load_or_create_actor_key_pair(actor_store, library_id)?
+    };
+    let identity = actor_identity(
+        &EnrollmentAuthority {
+            library_id: library_id.into(),
+            epoch: 0,
+            epoch_id: String::new(),
+            authority_key_id: String::new(),
+            installation_witness: installation_witness.into(),
+        },
+        &key,
+    )?;
+    let selected =
+        if request.is_some() {
+            request
+        } else {
+            let mut statement = connection.prepare(
+            "SELECT actor.actor_id, actor.public_key, actor.canonical_enrollment_certificate
+             FROM library_meta AS meta JOIN library_actors AS actor
+              ON actor.authority_epoch_id = meta.authority_epoch AND actor.actor_kind = 'desktop'
+             WHERE meta.singleton_id = 1 AND meta.library_id = ?1 AND actor.retired_at IS NULL
+              AND actor.public_key = ?2 LIMIT 2;"
+        ).map_err(|e| e.to_string())?;
+            let mut candidates = statement
+                .query_map(
+                    rusqlite::params![library_id, identity.actor_public_key],
+                    |r| {
+                        Ok((
+                            r.get::<_, String>(0)?,
+                            r.get::<_, String>(1)?,
+                            r.get::<_, String>(2)?,
+                        ))
+                    },
+                )
+                .map_err(|e| e.to_string())?
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .map_err(|e| e.to_string())?;
+            if candidates.len() > 1 {
+                return Err("normalized local writer identity is ambiguous".into());
+            }
+            candidates.pop()
+        };
+    if let Some((id, public, certificate)) = selected {
+        if public != identity.actor_public_key {
+            return Err("normalized local actor key differs from its enrollment".into());
+        }
+        selected_actor_nonce(&identity, library_id, &id, certificate.as_bytes())?;
+        return Ok(id);
+    }
+    Ok(identity.actor_id)
+}
+
 /// Host-supplied storage for the actor signing key. The reusable core has no
 /// default credential backend, so a missing store remains an explicit error.
 pub trait ActorKeyStore {
@@ -385,7 +617,7 @@ pub fn load_or_create_normalized_actor_id_v2(
     .map(|identity| identity.actor_id)
 }
 
-fn load_actor_key_pair(
+pub(crate) fn load_actor_key_pair(
     store: &dyn ActorKeyStore,
     library_id: &str,
 ) -> Result<Ed25519KeyPair, String> {

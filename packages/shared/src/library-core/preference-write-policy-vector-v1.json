@@ -1,0 +1,321 @@
+[
+  {
+    "name": "display leaf",
+    "updates": {
+      "display": {
+        "archivePruneDays": 30
+      }
+    },
+    "supported": true
+  },
+  {
+    "name": "unknown display leaf",
+    "updates": {
+      "display": {
+        "markReadOnScroll": false
+      }
+    },
+    "supported": false
+  },
+  {
+    "name": "reading leaf",
+    "updates": {
+      "display": {
+        "reading": {
+          "markReadOnScroll": false
+        }
+      }
+    },
+    "supported": true
+  },
+  {
+    "name": "local reading leaf",
+    "updates": {
+      "display": {
+        "reading": {
+          "dualColumnMode": true
+        }
+      }
+    },
+    "supported": false
+  },
+  {
+    "name": "null group",
+    "updates": {
+      "display": null
+    },
+    "supported": false
+  },
+  {
+    "name": "empty group",
+    "updates": {
+      "display": {}
+    },
+    "supported": true
+  },
+  {
+    "name": "mixed unsupported",
+    "updates": {
+      "ai": {
+        "autoSummarize": true,
+        "unknown": 1
+      }
+    },
+    "supported": false
+  },
+  {
+    "name": "weight numbers",
+    "updates": {
+      "weights": {
+        "topics": {
+          "a.b": 3
+        },
+        "authors": {},
+        "platforms": {
+          "x": 2
+        },
+        "recency": 1
+      }
+    },
+    "supported": true
+  },
+  {
+    "name": "weight bad number",
+    "updates": {
+      "weights": {
+        "topics": {
+          "a": false
+        }
+      }
+    },
+    "supported": false
+  },
+  {
+    "name": "string array",
+    "updates": {
+      "ulysses": {
+        "blockedPlatforms": [
+          "x"
+        ],
+        "allowedPaths": {
+          "x": [
+            "/home"
+          ]
+        }
+      }
+    },
+    "supported": true
+  },
+  {
+    "name": "mixed array",
+    "updates": {
+      "ulysses": {
+        "blockedPlatforms": [
+          "x",
+          2
+        ]
+      }
+    },
+    "supported": false
+  },
+  {
+    "name": "true record",
+    "updates": {
+      "fbCapture": {
+        "excludedGroupIds": {
+          "group": true
+        }
+      }
+    },
+    "supported": true
+  },
+  {
+    "name": "false record",
+    "updates": {
+      "fbCapture": {
+        "excludedGroupIds": {
+          "group": false
+        }
+      }
+    },
+    "supported": false
+  },
+  {
+    "name": "friend array",
+    "updates": {
+      "friendSuggestions": {
+        "dismissedSuggestionIds": [
+          "one"
+        ]
+      }
+    },
+    "supported": true
+  },
+  {
+    "name": "account record",
+    "updates": {
+      "xCapture": {
+        "whitelist": {
+          "one": {
+            "id": "one",
+            "handle": "one"
+          }
+        },
+        "blacklist": {},
+        "includeReplies": false
+      }
+    },
+    "supported": true
+  },
+  {
+    "name": "unknown account key",
+    "updates": {
+      "xCapture": {
+        "whitelist": {
+          "one": {
+            "id": "one",
+            "unknown": 1
+          }
+        }
+      }
+    },
+    "supported": false
+  },
+  {
+    "name": "wall nested",
+    "updates": {
+      "storyWall": {
+        "selectedYears": [
+          2025,
+          2026
+        ],
+        "includedAccountIds": [],
+        "includedPlatforms": [
+          "x"
+        ],
+        "featuredItemIds": [
+          "one"
+        ],
+        "hiddenItemIds": [],
+        "style": {
+          "palette": "warm"
+        },
+        "publishTarget": {
+          "branch": "main"
+        }
+      }
+    },
+    "supported": true
+  },
+  {
+    "name": "wall number array bad",
+    "updates": {
+      "storyWall": {
+        "selectedYears": [
+          "2026"
+        ]
+      }
+    },
+    "supported": false
+  },
+  {
+    "name": "wall local state",
+    "updates": {
+      "storyWall": {
+        "publishTarget": {
+          "status": "ready"
+        }
+      }
+    },
+    "supported": false
+  },
+  {
+    "name": "unknown root",
+    "updates": {
+      "unknown": {}
+    },
+    "supported": false
+  },
+  {
+    "name": "fractional weight map",
+    "updates": {
+      "weights": {
+        "topics": {
+          "alpha": {
+            "bits": "3fc0000000000000",
+            "codec": "ieee754_binary64_hex_v1"
+          }
+        }
+      }
+    },
+    "supported": true
+  },
+  {
+    "name": "historical integer number wrapper",
+    "updates": {
+      "weights": {
+        "platforms": {
+          "x": {
+            "bits": "3ff0000000000000",
+            "codec": "ieee754_binary64_hex_v1"
+          }
+        }
+      }
+    },
+    "supported": true
+  },
+  {
+    "name": "negative zero wrapper",
+    "updates": {
+      "weights": {
+        "authors": {
+          "one": {
+            "bits": "8000000000000000",
+            "codec": "ieee754_binary64_hex_v1"
+          }
+        }
+      }
+    },
+    "supported": true
+  },
+  {
+    "name": "nonfinite number map",
+    "updates": {
+      "weights": {
+        "topics": {
+          "alpha": {
+            "bits": "7ff0000000000000",
+            "codec": "ieee754_binary64_hex_v1"
+          }
+        }
+      }
+    },
+    "supported": false
+  },
+  {
+    "name": "nonfinite synchronized field",
+    "updates": {
+      "display": {
+        "animationIntensity": {
+          "bits": "7ff8000000000000",
+          "codec": "ieee754_binary64_hex_v1"
+        }
+      }
+    },
+    "supported": false
+  },
+  {
+    "name": "uppercase number bits",
+    "updates": {
+      "weights": {
+        "topics": {
+          "alpha": {
+            "bits": "3FC0000000000000",
+            "codec": "ieee754_binary64_hex_v1"
+          }
+        }
+      }
+    },
+    "supported": false
+  }
+]

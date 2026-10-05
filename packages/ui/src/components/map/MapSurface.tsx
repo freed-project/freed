@@ -35,12 +35,20 @@ type DisposableMapInstance = Pick<MapInstance, "getCanvas" | "remove" | "stop">;
 type MapMarkerMovingPriority = "primary" | "deferred";
 interface MapMarkerRecord {
   marker: MarkerInstance;
+  element: HTMLElement;
+  data: LocationMarkerSummary;
+  interactive: boolean;
+  palette: ReturnType<typeof createFriendAvatarPalette>;
+  resolver: ((sourceUrl: string) => string) | undefined;
 }
 
 type MapLibreModule = typeof import("maplibre-gl");
 
 interface MapSurfaceProps {
   markers: LocationMarkerSummary[];
+  /** Eligible-content filter identity; layout and camera movement are excluded. */
+  cameraContentKey?: string;
+  cameraContentSettled?: boolean;
   focusedMarkerKey?: string | null;
   interactive?: boolean;
   themeId?: ThemeId;
@@ -916,6 +924,7 @@ function areLocationMarkersRenderEquivalent(
   const nextItem = next.item;
   return (
     current.key === next.key &&
+    current.accountId === next.accountId &&
     current.authorKey === next.authorKey &&
     current.lat === next.lat &&
     current.lng === next.lng &&
@@ -1068,8 +1077,55 @@ export function fitMapToMarkers(
   );
 }
 
+/** Advance only on eligible geometry/filter changes, never on camera movement. */
+function shouldFitChangedMapContent(
+  state: { initialized: boolean; initialContentSettled: boolean; pendingContentChange: boolean; contentKey: string | null },
+  contentKey: string,
+  markerCount: number,
+  hasVisibleMarker: boolean,
+  manuallyMoving: boolean,
+  contentSettled = true,
+): boolean {
+  if (state.contentKey !== contentKey) state.pendingContentChange = true;
+  state.contentKey = contentKey;
+  if (markerCount === 0) {
+    state.pendingContentChange = false;
+    return false;
+  }
+  if (!contentSettled) return false;
+  if (!state.initialContentSettled) {
+    state.initialContentSettled = true;
+    state.pendingContentChange = false;
+    if (state.initialized || manuallyMoving) return false;
+    state.initialized = true;
+    return true;
+  }
+  if (manuallyMoving || !state.pendingContentChange) return false;
+  state.pendingContentChange = false;
+  return !hasVisibleMarker;
+}
+
+function hasMarkerInMapViewport(
+  map: MapInstance,
+  markers: LocationMarkerSummary[],
+  insets?: MapViewportInsets,
+): boolean {
+  const container = map.getContainer();
+  const centerLng = map.getCenter().lng;
+  return markers.some(({ lng, lat }) => {
+    // Use the nearest world copy when the camera crosses the antimeridian.
+    const point = map.project([lng + 360 * Math.round((centerLng - lng) / 360), lat]);
+    return point.x >= (insets?.left ?? 0)
+      && point.x <= container.clientWidth - (insets?.right ?? 0)
+      && point.y >= (insets?.top ?? 0)
+      && point.y <= container.clientHeight - (insets?.bottom ?? 0);
+  });
+}
+
 export function MapSurface({
   markers,
+  cameraContentKey = "",
+  cameraContentSettled = true,
   focusedMarkerKey,
   interactive = true,
   themeId,
@@ -1092,9 +1148,13 @@ export function MapSurface({
   const fallbackMovingTimeoutRef = useRef<number | null>(null);
   const nativeMarkerRestoreTimeoutRef = useRef<number | null>(null);
   const mapLifecycleRef = useRef(0);
+  const cameraPolicyRef = useRef({ initialized: false, initialContentSettled: false, pendingContentChange: false, contentKey: null as string | null });
+  const manuallyMovingRef = useRef(false);
+  const lastFocusedMarkerRef = useRef<string | null>(null);
   const mapStyleRequestRef = useRef(0);
   const desiredMapThemeRef = useRef(resolvedThemeId);
   const appliedMapThemeRef = useRef<ThemeId | null>(null);
+  const [cameraInteractionRevision, setCameraInteractionRevision] = useState(0);
   const [mapReady, setMapReady] = useState(false);
   const [mapTilesReady, setMapTilesReady] = useState(false);
   const [mapGeneration, setMapGeneration] = useState(0);
@@ -1318,8 +1378,49 @@ export function MapSurface({
     if (!containerRef.current) return;
     const lifecycleId = mapLifecycleRef.current + 1;
     mapLifecycleRef.current = lifecycleId;
+    cameraPolicyRef.current = { initialized: false, initialContentSettled: false, pendingContentChange: false, contentKey: null };
+    manuallyMovingRef.current = false;
+    lastFocusedMarkerRef.current = null;
     let cancelled = false;
+    let ownedMap: MapInstance | null = null;
+    let resizeTimeout: ReturnType<typeof setTimeout> | undefined;
     let removeTrackpadPan: (() => void) | undefined;
+    let removeMapListeners: (() => void) | undefined;
+    const releaseMap = () => {
+      clearTimeout(resizeTimeout);
+      resizeTimeout = undefined;
+      removeMapListeners?.();
+      removeMapListeners = undefined;
+      removeTrackpadPan?.();
+      removeTrackpadPan = undefined;
+      closeActivePopup();
+      clearNativeMarkerRestoreTimeout();
+      for (const { marker } of markersRef.current) marker.remove();
+      markersRef.current = [];
+      const map = ownedMap;
+      ownedMap = null;
+      if (mapRef.current === map) mapRef.current = null;
+      if (map) {
+        try {
+          disposeMapInstance(map);
+        } catch (error) {
+          // MapLibre can return a partially initialized instance without a
+          // painter. Its remove() can then throw; still release our DOM owner.
+          console.error("[MapSurface] Failed to dispose MapLibre", error);
+        }
+      }
+      // A constructor can append DOM before throwing without returning a map.
+      containerRef.current?.replaceChildren();
+      setShellMoving(false);
+    };
+    const failInitialization = (error: unknown) => {
+      if (cancelled) return;
+      console.error("[MapSurface] Map renderer unavailable", error);
+      releaseMap();
+      setMapReady(false);
+      setMapTilesReady(false);
+      setLoadFailed(true);
+    };
     setShellMoving(false);
     setMapReady(false);
     setMapTilesReady(false);
@@ -1329,12 +1430,7 @@ export function MapSurface({
       setLoadFailed(true);
       return () => {
         cancelled = true;
-        closeActivePopup();
-        clearNativeMarkerRestoreTimeout();
-        for (const { marker } of markersRef.current) marker.remove();
-        markersRef.current = [];
-        if (mapRef.current) disposeMapInstance(mapRef.current);
-        mapRef.current = null;
+        releaseMap();
       };
     }
 
@@ -1363,10 +1459,23 @@ export function MapSurface({
           interactive,
           attributionControl: false,
         });
+        ownedMap = map;
         mapRef.current = map;
+        // MapLibre 6 can report GPU creation failure during its constructor,
+        // before listeners can attach, and return without a renderer.
+        if (!map.painter) throw new Error("MapLibre did not initialize a renderer");
         if (interactive) {
           const canvasContainer = map.getCanvasContainer();
+          const claimCamera = () => {
+            if (cancelled || ownedMap !== map || mapLifecycleRef.current !== lifecycleId) return;
+            cameraPolicyRef.current.initialized = true;
+            map.stop();
+          };
+          canvasContainer.addEventListener("pointerdown", claimCamera, true);
           const panWithTrackpad = (event: globalThis.WheelEvent) => {
+            claimCamera();
+            if (cancelled || ownedMap !== map || mapLifecycleRef.current !== lifecycleId) return;
+            manuallyMovingRef.current = true;
             // Trackpad scrolling is pixel-based; pinch gestures carry Ctrl.
             // Capture before MapLibre treats a two-finger swipe as zoom.
             if (event.ctrlKey || event.metaKey || event.shiftKey || event.deltaMode !== 0) return;
@@ -1375,15 +1484,26 @@ export function MapSurface({
             map.panBy([event.deltaX, event.deltaY], { duration: 0 });
           };
           canvasContainer.addEventListener("wheel", panWithTrackpad, { capture: true, passive: false });
-          removeTrackpadPan = () => canvasContainer.removeEventListener("wheel", panWithTrackpad, true);
+          removeTrackpadPan = () => {
+            canvasContainer.removeEventListener("wheel", panWithTrackpad, true);
+            canvasContainer.removeEventListener("pointerdown", claimCamera, true);
+          };
         }
         appliedMapThemeRef.current = initialThemeId;
-        const setMoving = () => {
+        const setMoving = (event: { originalEvent?: unknown }) => {
+          if (cancelled || ownedMap !== map || mapLifecycleRef.current !== lifecycleId) return;
+          if (event?.originalEvent) {
+            cameraPolicyRef.current.initialized = true;
+            manuallyMovingRef.current = true;
+          }
           setMapTilesReady(false);
           clearNativeMarkerRestoreTimeout();
           setShellMoving(true);
         };
         const clearMoving = () => {
+          if (cancelled || ownedMap !== map || mapLifecycleRef.current !== lifecycleId) return;
+          manuallyMovingRef.current = false;
+          if (cameraPolicyRef.current.pendingContentChange) setCameraInteractionRevision(value => value + 1);
           clearNativeMarkerRestoreTimeout();
           nativeMarkerRestoreTimeoutRef.current = window.setTimeout(() => {
             nativeMarkerRestoreTimeoutRef.current = null;
@@ -1396,52 +1516,63 @@ export function MapSurface({
         map.on("zoomend", clearMoving);
         // Construction readiness permits marker placement, but does not prove
         // the basemap has rendered. Capture callers need the settled tile state.
-        map.on("error", () => {
-          if (cancelled || interactionMode !== "read-only") return;
-          // Keep the sample locations usable when WebGL, styles, or tiles fail.
-          setLoadFailed(true);
-          setMapReady(false);
-          disposeMapInstance(map);
-          if (mapRef.current === map) mapRef.current = null;
-        });
-        map.on("dataloading", () => {
-          if (!cancelled) setMapTilesReady(false);
-        });
-        map.on("idle", () => {
-          if (!cancelled) setMapTilesReady(map.loaded());
-        });
+        const onError = (event: { error: Error }) => {
+          if (cancelled || ownedMap !== map) return;
+          // Tile, glyph and sprite errors do not imply an unusable map. Only
+          // explicit GPU initialization failure defeats context restoration.
+          if (interactionMode === "read-only" && event.error instanceof maplibre.GPUInitializationError) {
+            failInitialization(event.error);
+          }
+        };
+        const onDataLoading = () => {
+          if (!cancelled && ownedMap === map) setMapTilesReady(false);
+        };
+        const onIdle = () => {
+          if (!cancelled && ownedMap === map) setMapTilesReady(map.loaded());
+        };
+        removeMapListeners = () => {
+          map.off("movestart", setMoving);
+          map.off("zoomstart", setMoving);
+          map.off("moveend", clearMoving);
+          map.off("zoomend", clearMoving);
+          map.off("error", onError);
+          map.off("dataloading", onDataLoading);
+          map.off("idle", onIdle);
+        };
+        map.on("error", onError);
+        map.on("dataloading", onDataLoading);
+        map.on("idle", onIdle);
         setMapGeneration(lifecycleId);
         setMapReady(true);
-        setTimeout(() => map.resize(), 0);
+        resizeTimeout = setTimeout(() => {
+          resizeTimeout = undefined;
+          if (cancelled || ownedMap !== map) return;
+          try {
+            map.resize();
+          } catch (error) {
+            failInitialization(error);
+          }
+        }, 0);
         if (desiredMapThemeRef.current !== initialThemeId) {
           applyMapThemeStyle(desiredMapThemeRef.current);
         }
       } catch (error) {
-        console.error("[MapSurface] Failed to initialize MapLibre", error);
-        if (mapRef.current) disposeMapInstance(mapRef.current);
-        mapRef.current = null;
-        setLoadFailed(true);
+        failInitialization(error);
       }
     }).catch((error) => {
-      console.error("[MapSurface] Failed to load the themed map", error);
-      setLoadFailed(true);
+      failInitialization(error);
     });
 
     return () => {
       cancelled = true;
       mapLifecycleRef.current += 1;
-      removeTrackpadPan?.();
       mapStyleRequestRef.current += 1;
       appliedMapThemeRef.current = null;
-      closeActivePopup();
-      clearNativeMarkerRestoreTimeout();
-      for (const { marker } of markersRef.current) marker.remove();
-      markersRef.current = [];
-      if (mapRef.current) disposeMapInstance(mapRef.current);
-      mapRef.current = null;
-      setShellMoving(false);
+      releaseMap();
     };
-  }, [applyMapThemeStyle, clearNativeMarkerRestoreTimeout, closeActivePopup, interactionMode, interactive, setShellMoving]);
+  }, [applyMapThemeStyle, clearNativeMarkerRestoreTimeout, closeActivePopup, geographicMapMode, interactionMode, interactive, setShellMoving]);
+
+  useEffect(() => { closeActivePopup(); setSelectedFallbackMarkerKey(null); }, [cameraContentKey, closeActivePopup]);
 
   useEffect(() => {
     applyMapThemeStyle(resolvedThemeId);
@@ -1455,10 +1586,11 @@ export function MapSurface({
       || mapGeneration !== mapLifecycleRef.current
     ) return;
 
-    closeActivePopup();
+    if (!interactive) closeActivePopup();
     clearNativeMarkerRestoreTimeout();
-    for (const { marker } of markersRef.current) marker.remove();
-    markersRef.current = [];
+    const previousMarkers = new Map(markersRef.current.map(record => [record.data.key, record]));
+    const nextMarkers: MapMarkerRecord[] = [];
+    markersRef.current = nextMarkers;
     setShellMoving(false);
 
     const map = mapRef.current;
@@ -1476,6 +1608,46 @@ export function MapSurface({
         useDenseMarkers,
         focusedMarkerKey,
       );
+      let existing = previousMarkers.get(markerData.key);
+      previousMarkers.delete(markerData.key);
+      // A pin key can outlive its latest post. Never associate an open card
+      // with a replacement item or a different account/person owner.
+      if (existing && (existing.interactive !== interactive || existing.data.item.globalId !== markerData.item.globalId
+        || existing.data.authorKey !== markerData.authorKey || existing.data.accountId !== markerData.accountId
+        || existing.data.friend?.id !== markerData.friend?.id)) {
+        if (activePopupMarkerElementRef.current === existing.element) closeActivePopup();
+        existing.marker.remove(); existing = undefined;
+      }
+      if (existing) {
+        const changed = !areLocationMarkersRenderEquivalent(existing.data, markerData)
+          || existing.palette !== avatarPalette || existing.resolver !== resolveAvatarUrl;
+        existing.data = markerData; existing.palette = avatarPalette; existing.resolver = resolveAvatarUrl;
+        existing.marker.setLngLat([markerData.lng, markerData.lat]);
+        existing.element.dataset.mapMovingPriority = priority;
+        if (changed) {
+          const fresh = createMarkerElement(markerData, avatarPalette, { showAvatar: true, resolveAvatarUrl, simplified: false });
+          existing.element.className = fresh.className;
+          existing.element.style.cssText = fresh.style.cssText;
+          for (const attribute of Array.from(fresh.attributes)) existing.element.setAttribute(attribute.name, attribute.value);
+          existing.element.replaceChildren(...Array.from(fresh.childNodes));
+          const popup = activePopupMarkerElementRef.current === existing.element ? activePopupRef.current : null;
+          if (popup) {
+            const record = existing;
+            const handlers = actionHandlersRef.current;
+            const content = buildPopupContent(markerData,
+              handlers.onOpenFriend ? () => actionHandlersRef.current.onOpenFriend?.(record.data) : undefined,
+              handlers.onPromoteAccount ? () => actionHandlersRef.current.onPromoteAccount?.(record.data) : undefined,
+              handlers.onLinkAccount ? () => actionHandlersRef.current.onLinkAccount?.(record.data) : undefined,
+              handlers.onOpenPost ? () => actionHandlersRef.current.onOpenPost?.(record.data) : undefined,
+              existing.element.querySelector("img"));
+            content.classList.add("maplibregl-popup-content", "theme-tooltip-panel");
+            popup.querySelector(".maplibregl-popup-content")?.replaceWith(content);
+            popup.setAttribute("aria-label", popupTitle(markerData));
+            setProviderChip({ target: content.querySelector<HTMLElement>("[data-map-provider-chip]")!, provider: markerData.item.platform });
+          }
+        }
+        nextMarkers.push(existing); continue;
+      }
       const element = createMarkerElement(markerData, avatarPalette, {
         // Marker admission is already bounded. Density must not erase identity
         // images or change their theme styling when switching audience filters.
@@ -1489,8 +1661,10 @@ export function MapSurface({
         markerData.lat,
       ]);
 
+      const record: MapMarkerRecord = { marker, element, data: markerData, interactive, palette: avatarPalette, resolver: resolveAvatarUrl };
       if (interactive) {
         element.addEventListener("click", (event) => {
+          const markerData = record.data;
           event.preventDefault();
           event.stopPropagation();
           if (activePopupKeyRef.current === markerData.key) {
@@ -1506,16 +1680,16 @@ export function MapSurface({
           const popupContent = buildPopupContent(
             markerData,
             currentHandlers.onOpenFriend
-              ? (marker) => actionHandlersRef.current.onOpenFriend?.(marker)
+              ? () => actionHandlersRef.current.onOpenFriend?.(record.data)
               : undefined,
             currentHandlers.onPromoteAccount
-              ? (marker) => actionHandlersRef.current.onPromoteAccount?.(marker)
+              ? () => actionHandlersRef.current.onPromoteAccount?.(record.data)
               : undefined,
             currentHandlers.onLinkAccount
-              ? (marker) => actionHandlersRef.current.onLinkAccount?.(marker)
+              ? () => actionHandlersRef.current.onLinkAccount?.(record.data)
               : undefined,
             currentHandlers.onOpenPost
-              ? (marker) => actionHandlersRef.current.onOpenPost?.(marker)
+              ? () => actionHandlersRef.current.onOpenPost?.(record.data)
               : undefined,
             element.querySelector("img"),
           );
@@ -1553,7 +1727,7 @@ export function MapSurface({
 
       try {
         marker.addTo(map);
-        markersRef.current.push({ marker });
+        nextMarkers.push(record);
       } catch (error) {
         marker.remove();
         if (mapRef.current === map && mapLifecycleRef.current === lifecycleId) {
@@ -1564,10 +1738,11 @@ export function MapSurface({
       }
     }
 
-    return () => {
-      map.off("click", handleMapClick);
-      closeActivePopup();
-    };
+    for (const record of previousMarkers.values()) {
+      if (activePopupMarkerElementRef.current === record.element) closeActivePopup();
+      record.marker.remove();
+    }
+    return () => { map.off("click", handleMapClick); };
   }, [
     avatarPalette,
     clearNativeMarkerRestoreTimeout,
@@ -1589,8 +1764,25 @@ export function MapSurface({
       || !mapRef.current
       || mapGeneration !== mapLifecycleRef.current
     ) return;
-    fitMapToMarkers(mapRef.current, stableMarkers, focusedMarkerKey, viewportInsets);
-  }, [focusedMarkerKey, mapGeneration, mapReady, stableMarkers, viewportInsets]);
+    const map = mapRef.current;
+    if (!interactive) {
+      fitMapToMarkers(map, stableMarkers, focusedMarkerKey, viewportInsets);
+      return;
+    }
+    const focusChanged = lastFocusedMarkerRef.current !== (focusedMarkerKey ?? null);
+    const focusedMarkerAvailable = !!focusedMarkerKey && stableMarkers.some(marker => marker.key === focusedMarkerKey);
+    if (!focusedMarkerKey || focusedMarkerAvailable) lastFocusedMarkerRef.current = focusedMarkerKey ?? null;
+    const contentKey = JSON.stringify([cameraContentKey,
+      stableMarkers.map(({ key, lat, lng }) => [key, lat, lng]).sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
+    ]);
+    if (shouldFitChangedMapContent(cameraPolicyRef.current, contentKey, stableMarkers.length,
+      hasMarkerInMapViewport(map, stableMarkers, viewportInsets), manuallyMovingRef.current, cameraContentSettled)) {
+      fitMapToMarkers(map, stableMarkers, focusChanged ? focusedMarkerKey : null, viewportInsets);
+    } else if (focusChanged && focusedMarkerAvailable) {
+      // An explicit profile selection is intentional navigation, not hydration.
+      fitMapToMarkers(map, stableMarkers, focusedMarkerKey, viewportInsets);
+    }
+  }, [cameraContentKey, cameraContentSettled, cameraInteractionRevision, focusedMarkerKey, interactive, mapGeneration, mapReady, stableMarkers, viewportInsets]);
 
   const handleFitAll = useCallback(() => {
     closeActivePopup();

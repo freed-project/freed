@@ -31,7 +31,10 @@
     "legacy-source-admission-claim",
     "native-sqlite-library-identity",
     "installation-incarnation",
-    "actor-incarnation-nonce"
+    "actor-incarnation-nonce",
+    "handoff-readiness-body",
+    "handoff-authorization-body",
+    "handoff-cancellation-body"
   ],
   "signature": [
     "operation-envelope",
@@ -43,6 +46,10 @@
     "epoch-transition-certificate",
     "authority-key-possession",
     "follower-result-envelope",
-    "legacy-source-admission-claim-key"
+    "legacy-source-admission-claim-key",
+    "handoff-readiness-actor",
+    "handoff-readiness-authority",
+    "handoff-predecessor-authorization",
+    "handoff-predecessor-cancellation"
   ]
 }

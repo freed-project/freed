@@ -402,6 +402,33 @@ export function ReaderView({
       ? { status: "idle" }
       : offlinePlaylistState;
 
+  // React retries this render before committing children. Clearing in an
+  // effect alone lets the previous article's title/media render for a new ID.
+  const [contentItemId, setContentItemId] = useState(item.globalId);
+  if (contentItemId !== item.globalId) {
+    setContentItemId(item.globalId);
+    setHtml(null);
+    setPreservedText(item.preservedContent?.text ?? null);
+    setContentSource(null);
+    setIsLoading(true);
+    setIsCaching(false);
+    setHydrationStatus(null);
+    setHydrationMessage(null);
+    setReaderMediaUrls(null);
+    setReaderMediaTypes(null);
+    setThreadReplies([]);
+    setIsThreadLoading(false);
+    setHasRequestedThreadReplies(false);
+    setThreadReplyMessage(null);
+  }
+
+  // A -> B -> A is a new selection even though the final ID matches. Replies
+  // must settle only in the selection that requested them, including unmounts.
+  const replyGenerationRef = useRef(0);
+  useEffect(() => () => {
+    replyGenerationRef.current += 1;
+  }, [item.globalId]);
+
   const capabilities = usePlatformCapabilities();
   const articleUrl = item.content.linkPreview?.url;
   const originalPostUrl = item.sourceUrl || articleUrl;
@@ -680,6 +707,7 @@ export function ReaderView({
   const handleLoadThreadReplies = useCallback(async () => {
     if (!supportsThreadHydration || interactionMode === "read-only" || !hydrateReaderItem || !navigator.onLine || isThreadLoading) return;
 
+    const generation = replyGenerationRef.current;
     setHasRequestedThreadReplies(true);
     setThreadReplyMessage(null);
     setIsThreadLoading(true);
@@ -691,6 +719,7 @@ export function ReaderView({
         pin: item.userState.saved || shouldPinOpenedReaderItem(cacheMode),
         includeReplies: true,
       });
+      if (generation !== replyGenerationRef.current) return;
 
       if (hydrated.html) {
         setHtml(hydrated.html);
@@ -716,9 +745,11 @@ export function ReaderView({
           : `No replies were available from ${replyPlatformLabel}.`,
       );
     } catch {
-      setThreadReplyMessage(`Freed could not load replies from ${replyPlatformLabel}.`);
+      if (generation === replyGenerationRef.current) {
+        setThreadReplyMessage(`Freed could not load replies from ${replyPlatformLabel}.`);
+      }
     } finally {
-      setIsThreadLoading(false);
+      if (generation === replyGenerationRef.current) setIsThreadLoading(false);
     }
   }, [supportsThreadHydration, interactionMode, hydrateReaderItem, isThreadLoading, item, replyPlatformLabel]);
 

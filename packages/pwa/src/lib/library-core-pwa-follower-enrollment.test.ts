@@ -109,7 +109,7 @@ describe("PWA Library Core follower enrollment", () => {
     );
   });
 
-  it("replays the exact SQLite request without creating another key", async () => {
+  it.each([false, true])("replays the SQLite request and honors checkpoint recovery: %s", async (recovered) => {
     const receipt = {
       actorId: "55".repeat(32),
       actorPublicKey: "66".repeat(32),
@@ -136,10 +136,11 @@ describe("PWA Library Core follower enrollment", () => {
         schemaVersion: 2 as const,
       })),
       signActorProof: vi.fn(),
-      storeRequest: vi.fn(),
+      storeRequest: vi.fn().mockResolvedValue(recovered ? { ...receipt, state: "enrolled" } : receipt),
     });
 
-    expect(candidate?.receipt).toBe(receipt);
+    if (recovered) expect(candidate).toBeNull();
+    else expect(candidate?.receipt).toBe(receipt);
     expect(getOrCreateIdentity).not.toHaveBeenCalled();
   });
 });

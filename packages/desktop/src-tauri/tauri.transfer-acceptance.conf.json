@@ -1,0 +1,15 @@
+{
+  "productName": "Freed Transfer Acceptance",
+  "identifier": "wtf.freed.desktop.preview.transfer-acceptance",
+  "build": {
+    "beforeBuildCommand": "npm run build:transfer-acceptance"
+  },
+  "bundle": {
+    "createUpdaterArtifacts": false
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": []
+    }
+  }
+}

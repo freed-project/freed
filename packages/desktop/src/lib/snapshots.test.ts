@@ -3,16 +3,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   restore: vi.fn(),
   snapshots: vi.fn(),
+  subscribe: vi.fn(() => () => {}),
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => true }));
-vi.mock("@freed/ui/lib/factory-reset", () => ({
-  isFactoryResetInProgress: () => false,
-  waitForFactoryResetDrain: vi.fn(),
-}));
 vi.mock("./library-client", () => ({
   reloadSqliteLibraryState: vi.fn(),
-  subscribeDesktopLibraryRuntime: vi.fn(() => () => {}),
+  subscribeDesktopLibraryRuntime: mocks.subscribe,
 }));
 vi.mock("./sqlite-library", () => ({
   clearNormalizedLocalSnapshots: vi.fn(),
@@ -29,9 +26,39 @@ vi.mock("./logger.js", () => ({
   log: { error: vi.fn(), info: vi.fn() },
 }));
 
-import { listSnapshots, restoreSnapshot } from "./snapshots";
+import { listSnapshots, restoreSnapshot, startSnapshotManager, stopSnapshotManager } from "./snapshots";
+import { pauseDesktopOperationsForHandoff } from "./factory-reset-guard";
 
 describe("SQLite snapshot summaries", () => {
+  it("retains an accepted restore until handoff drain and refuses new restores", async () => {
+    let complete!: () => void;
+    mocks.restore.mockImplementationOnce(() => new Promise<void>((resolve) => { complete = resolve; }));
+    const restore = restoreSnapshot("snapshot-1");
+    await vi.waitFor(() => expect(mocks.restore).toHaveBeenCalledOnce());
+    const pause = pauseDesktopOperationsForHandoff();
+    try {
+      const drained = vi.fn();
+      const drain = pause.drain(1_000).then(drained);
+      await expect(restoreSnapshot("snapshot-1")).rejects.toThrow("pausing");
+      expect(drained).not.toHaveBeenCalled();
+      complete();
+      await restore;
+      await drain;
+      expect(drained).toHaveBeenCalledOnce();
+    } finally { pause.resume(); }
+  });
+
+  it("does not resurrect a stopped manager after its snapshot listing finishes", async () => {
+    let complete!: (value: unknown[]) => void;
+    mocks.snapshots.mockImplementationOnce(() => new Promise((resolve) => { complete = resolve; }));
+    const start = startSnapshotManager();
+    const pause = pauseDesktopOperationsForHandoff();
+    stopSnapshotManager();
+    pause.resume();
+    complete([]);
+    await start;
+    expect(mocks.subscribe).not.toHaveBeenCalled();
+  });
   beforeEach(() => {
     vi.restoreAllMocks();
     mocks.snapshots.mockReset().mockResolvedValue([

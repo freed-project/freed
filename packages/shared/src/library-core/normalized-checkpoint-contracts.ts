@@ -58,6 +58,30 @@ export interface LibraryCoreNormalizedCheckpointExportDescriptorV2 {
   readonly itemCount: number;
 }
 
+/** Fresh canonical state at one snapshot, independent of installed receipts. */
+export interface LibraryCoreNormalizedReplicaAuditV1 {
+  readonly format: "freed_normalized_replica_audit_v1";
+  readonly snapshot: LibraryCoreNormalizedCheckpointExportDescriptorV2;
+  readonly checkpointDigest: LibraryCoreLowercaseHex64;
+}
+
+export function parseLibraryCoreNormalizedReplicaAuditV1(
+  value: unknown,
+): LibraryCoreNormalizedReplicaAuditV1 {
+  const record = ownClosedRecord(
+    value, ["format", "snapshot", "checkpointDigest"], "replica audit receipt",
+  );
+  if (record.format !== "freed_normalized_replica_audit_v1" ||
+      !isLibraryCoreLowercaseHex64(record.checkpointDigest)) {
+    throw new TypeError("replica audit receipt is invalid");
+  }
+  return Object.freeze({
+    format: record.format,
+    snapshot: parseLibraryCoreNormalizedCheckpointExportDescriptorV2(record.snapshot),
+    checkpointDigest: record.checkpointDigest,
+  });
+}
+
 export interface LibraryCoreNormalizedCheckpointCursorV2 {
   readonly registryKey: string;
   readonly primaryKeyJson: string;
@@ -186,7 +210,12 @@ function ownClosedRecord(
   ) {
     throw new TypeError(`${label} must be a plain closed record`);
   }
-  const keys = Object.keys(value).sort();
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  const keys = Object.getOwnPropertyNames(value).sort();
+  if (keys.some((key) => !descriptors[key]?.enumerable ||
+      !("value" in descriptors[key]!))) {
+    throw new TypeError(`${label} must contain enumerable data fields only`);
+  }
   const expected = [...expectedKeys].sort();
   if (
     keys.length !== expected.length ||

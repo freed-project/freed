@@ -74,11 +74,15 @@ describe("PWA Library Core sync lifecycle", () => {
   });
 
   it("reports pending enrollment until the Primary admits this device", async () => {
-    mocks.syncLibraryCore.mockResolvedValueOnce({ followerEnrollmentState: "pending" });
+    mocks.syncLibraryCore.mockResolvedValueOnce({
+      followerEnrollmentState: "pending",
+      enrollmentDiscovery: { actorSuffix: "12345678", requestDigestSuffix: "abcdef12", certificateCount: 2, actorMatchCount: 1, exactMatchCount: 0 },
+    });
     await startCloudSync("gdrive", "stored-token");
     expect(mocks.updateCloudProvider).toHaveBeenLastCalledWith("gdrive", expect.objectContaining({
       status: "connected",
       statusMessage: "Library downloaded. Device enrollment pending.",
+      pendingReason: "Device ...12345678, request ...abcdef12. Certificates found: 2; for this device: 1; matching this request: 0.",
     }));
     expect(mocks.recordCloudProviderEvent).toHaveBeenLastCalledWith("gdrive", expect.objectContaining({ kind: "waiting" }));
     await syncCloudProviderNow("gdrive");
@@ -222,6 +226,8 @@ describe("PWA Library Core sync lifecycle", () => {
     );
     expect(mocks.syncLibraryCore).toHaveBeenNthCalledWith(2, {
       accessToken: "refreshed-access-token",
+      googleFetch: expect.any(Function),
+      onSyncStage: expect.any(Function),
       signal: expect.any(AbortSignal),
     });
     expect(localStorage.getItem("freed_cloud_token_gdrive")).toBe(
@@ -237,6 +243,57 @@ describe("PWA Library Core sync lifecycle", () => {
         refreshToken: "stored-refresh-token",
       }),
     );
+  });
+
+  it("refreshes credentials within one long transfer without restarting its import", async () => {
+    const startedAt = Date.now();
+    storeCloudToken("gdrive", {
+      accessToken: "initial-token",
+      refreshToken: "refresh-token",
+      expiresAt: startedAt + 3600_000,
+    });
+    const driveResponse = new Response("checkpoint");
+    const network = vi.fn().mockImplementation(async (url) =>
+      url === "/api/oauth/google" ? successfulRefreshResponse() : driveResponse);
+    vi.stubGlobal("fetch", network);
+    mocks.syncLibraryCore.mockImplementationOnce(async ({ googleFetch, signal }) => {
+      const url = "https://www.googleapis.com/drive/v3/files/checkpoint?alt=media";
+      const options = { headers: { Authorization: "Bearer initial-token", "If-Match": "exact-etag" }, signal };
+      await expect(googleFetch(url, options)).resolves.toBe(driveResponse);
+      vi.setSystemTime(startedAt + 3600_000);
+      await expect(googleFetch(url, options)).resolves.toBe(driveResponse);
+      expect(network.mock.calls[0][1].headers.get("Authorization")).toBe("Bearer initial-token");
+      expect(network.mock.calls[2][1].headers.get("Authorization")).toBe("Bearer refreshed-access-token");
+      expect(network.mock.calls[2][1].headers.get("If-Match")).toBe("exact-etag");
+      expect(network.mock.calls[2][1].signal).toBe(signal);
+      return { followerEnrollmentState: "enrolled" };
+    });
+    await startCloudSync("gdrive", "initial-token");
+    expect(mocks.syncLibraryCore).toHaveBeenCalledTimes(1);
+    expect(network).toHaveBeenCalledTimes(3);
+  });
+
+  it("sends no Drive request when disconnected during a transfer token refresh", async () => {
+    const startedAt = Date.now();
+    storeCloudToken("gdrive", {
+      accessToken: "initial-token", refreshToken: "refresh-token",
+      expiresAt: startedAt + 3600_000,
+    });
+    const response = deferred<ReturnType<typeof successfulRefreshResponse>>();
+    const network = vi.fn().mockReturnValue(response.promise);
+    vi.stubGlobal("fetch", network);
+    mocks.syncLibraryCore.mockImplementationOnce(async ({ googleFetch }) => {
+      vi.setSystemTime(startedAt + 3600_000);
+      const pending = googleFetch("https://www.googleapis.com/drive/v3/files/checkpoint");
+      clearCloudSync("gdrive");
+      response.resolve(successfulRefreshResponse());
+      await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+      return {};
+    });
+    await startCloudSync("gdrive", "initial-token");
+    expect(network).toHaveBeenCalledTimes(1);
+    expect(network.mock.calls[0][0]).toBe("/api/oauth/google");
+    expect(localStorage.getItem("freed_cloud_token_gdrive")).toBeNull();
   });
 
   it("does not restore credentials when a refresh settles after Disconnect", async () => {

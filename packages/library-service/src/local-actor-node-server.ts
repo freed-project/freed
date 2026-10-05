@@ -3,7 +3,12 @@ import { createHash } from "node:crypto";
 import net, { type Server, type Socket } from "node:net";
 import path from "node:path";
 
-import type { LibraryServiceBoundPath } from "./contracts.js";
+import type {
+  LibraryServiceBoundPath,
+  LibraryServiceFileSystemPort,
+  LibraryServiceAclProofPort,
+} from "./contracts.js";
+import { bindLocalActorRuntimeDirectory } from "./local-actor-runtime-directory.js";
 import {
   LIBRARY_CORE_LOCAL_ACTOR_MAXIMUM_ACTIVE_CONNECTIONS,
   LIBRARY_CORE_LOCAL_ACTOR_MAXIMUM_REQUEST_FRAME_BYTES,
@@ -148,7 +153,10 @@ async function listen(server: Server, endpoint: string): Promise<void> {
   });
 }
 
-export function createNodeLibraryServiceLocalActorIngressPortV1(): LibraryServiceLocalActorIngressPortV1 {
+export function createNodeLibraryServiceLocalActorIngressPortV1(dependencies?: {
+  fileSystem: LibraryServiceFileSystemPort;
+  aclProof: LibraryServiceAclProofPort;
+}): LibraryServiceLocalActorIngressPortV1 {
   return Object.freeze({
     async start(input: {
       readonly stateRoot: LibraryServiceBoundPath;
@@ -162,8 +170,28 @@ export function createNodeLibraryServiceLocalActorIngressPortV1(): LibraryServic
       await stateRoot.assertStable();
       await stateRoot.assertPathStable();
       await stateRoot.assertCanonicalPath();
-      const endpoint = socketEndpoint(stateRoot.path, expectedUserId);
-      await removeOwnedSocket(endpoint, expectedUserId);
+      const needsRuntimeDirectory =
+        process.platform === "linux" &&
+        Buffer.byteLength(path.join(stateRoot.path, SOCKET_FILE), "utf8") >
+          UNIX_SOCKET_PATH_MAXIMUM_BYTES;
+      if (needsRuntimeDirectory && dependencies === undefined)
+        throw new Error("local_actor_runtime_directory_unavailable");
+      const runtime = needsRuntimeDirectory
+        ? await bindLocalActorRuntimeDirectory({
+            stateRootPath: stateRoot.path,
+            userId: expectedUserId,
+            ...dependencies!,
+          })
+        : undefined;
+      const endpoint =
+        runtime?.endpoint ?? socketEndpoint(stateRoot.path, expectedUserId);
+      const boundEndpoint = runtime?.descriptorEndpoint ?? endpoint;
+      try {
+        await removeOwnedSocket(boundEndpoint, expectedUserId);
+      } catch (error) {
+        await runtime?.close();
+        throw error;
+      }
 
       let activeConnections = 0;
       const sockets = new Set<Socket>();
@@ -190,9 +218,9 @@ export function createNodeLibraryServiceLocalActorIngressPortV1(): LibraryServic
         | { readonly device: bigint; readonly inode: bigint }
         | undefined;
       try {
-        await listen(server, endpoint);
-        await chmod(endpoint, 0o600);
-        const metadata = await lstat(endpoint, { bigint: true });
+        await listen(server, boundEndpoint);
+        await chmod(boundEndpoint, 0o600);
+        const metadata = await lstat(boundEndpoint, { bigint: true });
         if (
           !metadata.isSocket() ||
           Number(metadata.uid) !== expectedUserId ||
@@ -201,10 +229,11 @@ export function createNodeLibraryServiceLocalActorIngressPortV1(): LibraryServic
         ) {
           throw new Error("local_actor_socket_not_private");
         }
+        createdIdentity = { device: metadata.dev, inode: metadata.ino };
+        await runtime?.assertStable();
         await stateRoot.assertStable();
         await stateRoot.assertPathStable();
         await stateRoot.assertCanonicalPath();
-        createdIdentity = { device: metadata.dev, inode: metadata.ino };
         const identity = createdIdentity;
         let stopping = false;
         let stopPromise: Promise<void> | null = null;
@@ -227,11 +256,15 @@ export function createNodeLibraryServiceLocalActorIngressPortV1(): LibraryServic
               await new Promise<void>((resolve) =>
                 server.close(() => resolve()),
               );
-              await removeOwnedSocket(
-                endpoint,
-                expectedUserId,
-                identity,
-              );
+              try {
+                await removeOwnedSocket(
+                  boundEndpoint,
+                  expectedUserId,
+                  identity,
+                );
+              } finally {
+                await runtime?.close();
+              }
             })();
             return stopPromise;
           },
@@ -243,11 +276,12 @@ export function createNodeLibraryServiceLocalActorIngressPortV1(): LibraryServic
         ).catch(() => undefined);
         if (createdIdentity !== undefined) {
           await removeOwnedSocket(
-            endpoint,
+            boundEndpoint,
             expectedUserId,
             createdIdentity,
           ).catch(() => undefined);
         }
+        await runtime?.close().catch(() => undefined);
         throw error;
       }
     },

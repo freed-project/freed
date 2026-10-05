@@ -69,7 +69,7 @@ async function scanBoundedLibraryCoreProviderSettingsPages(
   visitPage: (items: readonly FeedItem[]) => void | Promise<void>,
   options: LibraryCoreProviderSettingsScanOptions,
 ): Promise<void> {
-  const queryPage = options.queryPage ?? queryNormalizedLibrary;
+  const queryPage: QueryLibraryCoreProviderMediaPage = options.queryPage ?? queryNormalizedLibrary;
   const readerSessionId = createDesktopLibraryCoreOperationId(
     "provider-media-reader",
   );

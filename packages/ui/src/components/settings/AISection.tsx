@@ -459,78 +459,104 @@ function OllamaStatus({
   );
 }
 
-function ApiKeyInput({
+export function ApiKeyInput({
   provider,
   getApiKey,
   setApiKey,
   clearApiKey,
+  onChanged,
 }: {
-  provider: CloudAIProvider;
+  provider: string;
   getApiKey: (p: string) => Promise<string | null>;
   setApiKey: (p: string, key: string) => Promise<void>;
   clearApiKey: (p: string) => Promise<void>;
+  onChanged?: (configured: boolean) => void;
 }) {
   const [keyDraft, setKeyDraft] = useState("");
   const [hasSaved, setHasSaved] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const keyRevision = useRef(0);
 
   useEffect(() => {
-    getApiKey(provider).then((key) => setHasSaved(!!key));
+    let active = true;
+    const revision = keyRevision.current;
+    getApiKey(provider).then((key) => { if (active && revision === keyRevision.current) setHasSaved(!!key); })
+      .catch(() => { if (active && revision === keyRevision.current) setError("Could not read the saved key."); });
+    return () => { active = false; };
   }, [provider, getApiKey]);
 
   const handleSave = async () => {
     if (!keyDraft.trim()) return;
+    keyRevision.current += 1;
     setSaving(true);
+    setError(null);
     try {
       await setApiKey(provider, keyDraft.trim());
       setKeyDraft("");
       setHasSaved(true);
+      onChanged?.(true);
+    } catch {
+      setError("Could not save the key. Try again.");
     } finally {
       setSaving(false);
     }
   };
 
   const handleClear = async () => {
-    await clearApiKey(provider);
-    setHasSaved(false);
-    setKeyDraft("");
+    keyRevision.current += 1;
+    setSaving(true);
+    setError(null);
+    try {
+      await clearApiKey(provider);
+      setHasSaved(false);
+      setKeyDraft("");
+      onChanged?.(false);
+    } catch {
+      setError("Could not remove the key. Try again.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="space-y-2">
+    <div className="flex flex-wrap items-center gap-2">
       <input
         type="password"
-        value={hasSaved && !keyDraft ? "****************" : keyDraft}
+        aria-label={`${provider} API key`}
+        disabled={saving}
+        value={keyDraft}
         onChange={(event) => {
-          setHasSaved(false);
           setKeyDraft(event.target.value);
         }}
-        onFocus={() => {
-          if (hasSaved) setHasSaved(false);
-        }}
-        placeholder="Paste API key"
-        className="flex-1 rounded-lg border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-input)] px-3 py-1.5 font-mono text-sm text-[var(--theme-text-secondary)] placeholder-[var(--theme-text-soft)] transition-colors focus:border-[var(--theme-border-strong)] focus:outline-none"
+        placeholder={hasSaved ? "Key saved. Paste a replacement" : "Paste API key"}
+        className="min-w-0 flex-1 rounded-lg border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-input)] px-3 py-1.5 font-mono text-sm text-[var(--theme-text-secondary)] placeholder-[var(--theme-text-soft)] transition-colors focus:border-[var(--theme-border-strong)] focus:outline-none"
         spellCheck={false}
         autoComplete="off"
       />
-      {!hasSaved ? (
+      {(!hasSaved || keyDraft) && (
         <button
           type="button"
           onClick={handleSave}
           disabled={!keyDraft.trim() || saving}
           className="theme-accent-button rounded-lg px-3 py-1.5 text-xs transition-colors disabled:opacity-40"
         >
-          {saving ? "Saving" : "Save"}
+          {saving ? "Saving" : hasSaved ? "Replace" : "Save"}
         </button>
-      ) : (
+      )}
+      {hasSaved && (
         <button
           type="button"
           onClick={handleClear}
+          disabled={saving}
           className="rounded-lg px-3 py-1.5 text-xs text-[color:var(--theme-text-muted)] transition-colors hover:bg-[rgb(var(--theme-feedback-danger-rgb)/0.1)] hover:text-[rgb(var(--theme-feedback-danger-rgb))]"
         >
           Clear
         </button>
       )}
+    </div>
+    {error && <p role="alert" className="text-xs text-[rgb(var(--theme-feedback-danger-rgb))]">{error}</p>}
     </div>
   );
 }
@@ -566,6 +592,7 @@ export function AISection() {
     localAIModels,
     checkOllamaReachable,
     openUrl,
+    AISettingsContent,
   } = usePlatform();
   const preferences = useAppStore((state) => state.preferences);
   const updatePreferences = useAppStore((state) => state.updatePreferences);
@@ -798,9 +825,10 @@ export function AISection() {
 
   return (
     <div className="space-y-5">
+      {AISettingsContent && <AISettingsContent />}
       <div className="mb-5 flex items-center justify-between gap-3">
         <h3 className="text-sm font-semibold uppercase tracking-wide text-text-muted">
-          AI
+          {AISettingsContent ? "Summaries and local AI" : "AI"}
         </h3>
         <span
           className="shrink-0 rounded-full bg-[var(--theme-bg-muted)] px-2.5 py-1 text-[0.6875rem] font-medium text-[var(--theme-text-secondary)]"
@@ -919,7 +947,7 @@ export function AISection() {
                 clearApiKey={secureStorage.clearApiKey}
               />
               <p className="mt-1 text-[0.6875rem] text-[var(--theme-text-soft)]">
-                Stored encrypted on this device. Never synced.
+                Stored on this device. Never synced.
               </p>
             </div>
           ) : (

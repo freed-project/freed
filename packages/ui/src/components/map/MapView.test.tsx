@@ -8,10 +8,12 @@ import type { BaseAppState, FeedItem, Friend, ResolvedLocationItem } from "@free
 
 const setMapLocationCounts = vi.hoisted(() => vi.fn());
 const resolvedItems = vi.hoisted(() => [] as ResolvedLocationItem[]);
+const surface = vi.hoisted(() => ({ props: null as any, mapMode: "friends" }));
 
 const appState = {
   searchCorpusVersion: 1,
   selectedPersonId: null,
+  selectedAccountId: null,
   setSelectedPerson: vi.fn(),
   setSelectedAccount: vi.fn(),
   setSelectedItem: vi.fn(),
@@ -35,7 +37,7 @@ vi.mock("../../hooks/useResolvedLocations.js", () => ({
 }));
 
 vi.mock("../../lib/device-display-preferences.js", () => ({
-  useDeviceDisplayPreferences: () => [{ mapMode: "friends" }, vi.fn()],
+  useDeviceDisplayPreferences: () => [{ mapMode: surface.mapMode }, vi.fn()],
 }));
 
 vi.mock("../../lib/theme.js", () => ({
@@ -43,7 +45,7 @@ vi.mock("../../lib/theme.js", () => ({
 }));
 
 vi.mock("./MapSurface.js", () => ({
-  MapSurface: () => null,
+  MapSurface: (props: any) => { surface.props = props; return null; },
 }));
 
 import { MapView } from "./MapView";
@@ -80,7 +82,7 @@ describe("MapView location counts", () => {
   let root: Root | null = null;
 
   beforeAll(() => {
-    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
   });
 
   afterEach(async () => {
@@ -90,6 +92,22 @@ describe("MapView location counts", () => {
     root = null;
     resolvedItems.splice(0);
     setMapLocationCounts.mockReset();
+    surface.mapMode = "friends";
+    appState.selectedAccountId = null;
+    appState.selectedPersonId = null;
+  });
+
+  it("focuses an untracked author Account in the all-content map without a Friend identity", async () => {
+    surface.mapMode = "all_content";
+    appState.selectedAccountId = "social:instagram:original";
+    resolvedItems.push({ accountId: appState.selectedAccountId, friend: null,
+      item: item("instagram:original", "original", Date.now()), lat: 1, lng: 2, label: "Synthetic place" });
+    container = document.createElement("div"); document.body.append(container); root = createRoot(container);
+    await act(async () => root!.render(<MapView />));
+    expect(surface.props.markers).toHaveLength(1);
+    expect(surface.props.markers[0].friend).toBeNull();
+    expect(surface.props.focusedMarkerKey).toBe(surface.props.markers[0].key);
+    expect(setMapLocationCounts).toHaveBeenLastCalledWith(0, 1);
   });
 
   it("publishes the rendered Friend and all-content marker counts", async () => {

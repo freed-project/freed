@@ -129,6 +129,8 @@ function persistCloudToken(
   const bundle: CloudTokenBundle = {
     ...input,
     refreshToken: input.refreshToken ?? previous?.refreshToken,
+    expiresAt: input.expiresAt ??
+      (input.accessToken === previous?.accessToken ? previous.expiresAt : undefined),
   };
   localStorage.setItem(CLOUD_TOKEN_KEY(provider), bundle.accessToken);
   localStorage.setItem(CLOUD_TOKEN_META_KEY(provider), JSON.stringify(bundle));
@@ -201,9 +203,28 @@ function isGoogleAuthenticationFailure(error: unknown): boolean {
 async function syncGoogleDriveWithFreshCredentials(
   accessToken: string,
   signal: AbortSignal,
+  onSyncStage: (message: string) => void,
 ): Promise<Awaited<ReturnType<typeof syncPwaLibraryCoreFromGoogleDrive>>> {
+  const generation = cloudGeneration;
+  const googleFetch: typeof fetch = async (resource, options) => {
+    const assertCurrent = () => {
+      if (signal.aborted || generation !== cloudGeneration) {
+        throw new DOMException("Cloud sync stopped", "AbortError");
+      }
+    };
+    assertCurrent();
+    const token = await getValidCloudToken("gdrive");
+    assertCurrent();
+    if (!token) {
+      throw new Error("Google Drive authorization expired. Reconnect Google Drive to continue sync.");
+    }
+    const headers = new Headers(options?.headers ??
+      (resource instanceof Request ? resource.headers : undefined));
+    headers.set("Authorization", `Bearer ${token}`);
+    return fetch(resource, { ...options, headers });
+  };
   try {
-    return await syncPwaLibraryCoreFromGoogleDrive({ accessToken, signal,
+    return await syncPwaLibraryCoreFromGoogleDrive({ accessToken, signal, onSyncStage, googleFetch,
       libraryId: localStorage.getItem(CLOUD_LIBRARY_KEY) ?? undefined });
   } catch (error) {
     if (!isGoogleAuthenticationFailure(error)) throw error;
@@ -223,6 +244,8 @@ async function syncGoogleDriveWithFreshCredentials(
     }
     return await syncPwaLibraryCoreFromGoogleDrive({
       accessToken: refreshedAccessToken,
+      googleFetch,
+      onSyncStage,
       libraryId: localStorage.getItem(CLOUD_LIBRARY_KEY) ?? undefined,
       signal,
     });
@@ -262,7 +285,10 @@ async function performGoogleDriveSync(
   });
   let syncResult: Awaited<ReturnType<typeof syncGoogleDriveWithFreshCredentials>>;
   try {
-    syncResult = await syncGoogleDriveWithFreshCredentials(accessToken, signal);
+    syncResult = await syncGoogleDriveWithFreshCredentials(accessToken, signal, (message) => {
+      if (generation !== cloudGeneration || signal.aborted) return;
+      updateCloudProvider("gdrive", { statusMessage: message });
+    });
   } catch (error) {
     if (generation !== cloudGeneration || signal.aborted) throw error;
     if (error instanceof GoogleDriveLibrarySelectionRequiredError) {
@@ -292,6 +318,10 @@ async function performGoogleDriveSync(
   if (generation !== cloudGeneration || signal.aborted) return;
   const now = Date.now();
   const enrollmentPending = syncResult.followerEnrollmentState !== "enrolled";
+  const discovery = syncResult.enrollmentDiscovery;
+  const enrollmentDetail = discovery
+    ? `Device ...${discovery.actorSuffix}, request ...${discovery.requestDigestSuffix}. Certificates found: ${discovery.certificateCount.toLocaleString()}; for this device: ${discovery.actorMatchCount.toLocaleString()}; matching this request: ${discovery.exactMatchCount.toLocaleString()}.`
+    : null;
   setCloudLibraryChoices(emptyLibraryChoices);
   updateCloudProvider("gdrive", {
     status: "connected",
@@ -304,7 +334,7 @@ async function performGoogleDriveSync(
       ? "Library downloaded. Device enrollment pending."
       : "SQLite Library synchronized.",
     pendingReason: enrollmentPending
-      ? "Open the Primary Freed Desktop and resolve any Drive sync error so this device can sync edits."
+      ? enrollmentDetail ?? "Open the Primary Freed Desktop and resolve any Drive sync error so this device can sync edits."
       : "Waiting for the next checkpoint, intent, or result change.",
     error: undefined,
   });

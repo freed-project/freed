@@ -1491,6 +1491,10 @@ fn install_normalized_candidate_authority_v1(
     }
 
     let target = target.transaction()?;
+    crate::normalized_handoff::require_handoff_admission(
+        &target,
+        crate::normalized_handoff::HandoffAdmission::LegacyReassignment,
+    )?;
     let (product_digest, product_records, product_bytes) =
         normalized_product_digest(&target, false)?;
     if product_digest != candidate.normalized_product_digest
@@ -1679,6 +1683,10 @@ fn install_normalized_primary_actor_v2(
         return Err(invalid("normalized Primary actor request is invalid"));
     }
     let transaction = target.transaction()?;
+    crate::normalized_handoff::require_handoff_admission(
+        &transaction,
+        crate::normalized_handoff::HandoffAdmission::LegacyReassignment,
+    )?;
     let (library_id, epoch, epoch_id, authority_key_id, authority_public_key): (
         String,
         i64,
@@ -1946,6 +1954,10 @@ fn bind_normalized_transition_identity_v1(
         return Err(invalid("normalized transition identity is invalid"));
     }
     let transaction = target.transaction()?;
+    crate::normalized_handoff::require_handoff_admission(
+        &transaction,
+        crate::normalized_handoff::HandoffAdmission::LegacyReassignment,
+    )?;
     let stored: (Option<String>, Option<i64>, String) = transaction.query_row(
         "SELECT installation_witness, accepted_at, state
          FROM library_storage_transition_plan WHERE singleton_id = 1;",
@@ -1992,6 +2004,10 @@ fn advance_normalized_transition_plan_v1(
         i64::try_from(accepted_at).map_err(|_| invalid("normalized transition time is invalid"))?;
     let (_, candidate_digest) = canonical_migration_candidate_v1(candidate)?;
     let transaction = target.transaction()?;
+    crate::normalized_handoff::require_handoff_admission(
+        &transaction,
+        crate::normalized_handoff::HandoffAdmission::LegacyReassignment,
+    )?;
     let stored_state: String = transaction.query_row(
         "SELECT state FROM library_storage_transition_plan
          WHERE singleton_id = 1
@@ -2042,6 +2058,10 @@ pub fn prepare_fresh_normalized_desktop_library_v1(
         return Err(invalid("normalized fresh Library identity is invalid"));
     }
     let inspection = target.transaction()?;
+    crate::normalized_handoff::require_handoff_admission(
+        &inspection,
+        crate::normalized_handoff::HandoffAdmission::LegacyReassignment,
+    )?;
     let (product_digest, product_records, product_bytes) =
         normalized_product_digest(&inspection, false)?;
     let transition_rows: i64 = inspection.query_row(
@@ -2098,6 +2118,10 @@ pub fn prepare_fresh_normalized_desktop_library_v1(
         let body = &certificate.certificate_body;
         let frontier_digest = transition_digest("causal-frontier", &serde_json::json!([]))?;
         let transaction = target.transaction()?;
+        crate::normalized_handoff::require_handoff_admission(
+            &transaction,
+            crate::normalized_handoff::HandoffAdmission::LegacyReassignment,
+        )?;
         let (checked_digest, checked_records, checked_bytes) =
             normalized_product_digest(&transaction, true)?;
         if checked_digest != product_digest

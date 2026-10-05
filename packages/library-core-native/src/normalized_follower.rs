@@ -142,6 +142,7 @@ pub struct NormalizedFollowerRuntimeStatusV2 {
     pub pending_intent_count: u64,
     pub published_intent_count: u64,
     pub imported_result_count: u64,
+    pub awaiting_canonical_changes: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -335,7 +336,7 @@ pub struct NormalizedFollowerResultTransportImportReceiptV2 {
     pub stored_segment_digest: String,
 }
 
-fn actor_request(
+pub(crate) fn actor_request(
     connection: &Connection,
     library_id: &str,
     authority_epoch_id: &str,
@@ -392,12 +393,38 @@ pub fn prepare_normalized_follower_actor_request_v2(
     if let Some(existing) = actor_request(connection, &authority.library_id, &authority.epoch_id)? {
         return Ok(existing);
     }
-    let prepared = prepare_normalized_follower_actor_enrollment_request_v2(
-        &authority,
-        installation_witness,
-        actor_store,
-        created_at,
+    let prior_request: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM library_follower_actor_request WHERE singleton_id = 1);",
+        [],
+        |row| row.get(0),
+    )?;
+    if prior_request {
+        return Err(invalid(
+            "follower authority recovery must preserve the previous enrollment before re-enrolling",
+        ));
+    }
+    let source_incarnation = crate::normalized_source_handoff::source_consumer_incarnation_v1(
+        connection,
+        &authority.library_id,
+        &authority.epoch_id,
     )
+    .map_err(NormalizedSqliteError::Transport)?;
+    let prepared = if let Some(incarnation) = source_incarnation.as_deref() {
+        crate::library_core_actor_enrollment::prepare_recovery_actor_request(
+            &authority,
+            installation_witness,
+            actor_store,
+            created_at,
+            incarnation,
+        )
+    } else {
+        prepare_normalized_follower_actor_enrollment_request_v2(
+            &authority,
+            installation_witness,
+            actor_store,
+            created_at,
+        )
+    }
     .map_err(|_| invalid("normalized follower actor request is invalid"))?;
     let request = NormalizedFollowerActorRequestV2 {
         library_id: authority.library_id.clone(),
@@ -414,6 +441,18 @@ pub fn prepare_normalized_follower_actor_request_v2(
     if current != authority {
         return Err(invalid(
             "normalized authority changed during follower actor preparation",
+        ));
+    }
+    if crate::normalized_source_handoff::source_consumer_incarnation_v1(
+        &transaction,
+        &authority.library_id,
+        &authority.epoch_id,
+    )
+    .map_err(NormalizedSqliteError::Transport)?
+        != source_incarnation
+    {
+        return Err(invalid(
+            "source consumer incarnation changed during preparation",
         ));
     }
     transaction.execute(
@@ -676,12 +715,26 @@ pub fn install_normalized_follower_actor_enrollment_v2(
     canonical_enrollment_certificate: &[u8],
 ) -> Result<NormalizedFollowerActorEnrollmentV2, NormalizedSqliteError> {
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let response = install_follower_actor_enrollment_in_transaction(
+        &transaction,
+        canonical_enrollment_certificate,
+    )?;
+    transaction.commit()?;
+    Ok(response)
+}
+
+// Local derived state must join the enrollment commit, never follow it in a
+// second transaction. Certificate verification and exact retry remain shared.
+pub(crate) fn install_follower_actor_enrollment_in_transaction(
+    transaction: &rusqlite::Transaction<'_>,
+    canonical_enrollment_certificate: &[u8],
+) -> Result<NormalizedFollowerActorEnrollmentV2, NormalizedSqliteError> {
     let authority =
-        enrollment_authority_at_known_frontier(&transaction, canonical_enrollment_certificate)?;
+        enrollment_authority_at_known_frontier(transaction, canonical_enrollment_certificate)?;
     let enrollment =
         verify_actor_enrollment_certificate(canonical_enrollment_certificate, &authority)
             .map_err(|_| invalid("normalized follower enrollment certificate is invalid"))?;
-    let request = actor_request(&transaction, &authority.library_id, &authority.epoch_id)?
+    let request = actor_request(transaction, &authority.library_id, &authority.epoch_id)?
         .ok_or(invalid("normalized follower actor request is missing"))?;
     if request.actor_id != enrollment.actor_id
         || request.actor_public_key != enrollment.actor_public_key
@@ -691,7 +744,7 @@ pub fn install_normalized_follower_actor_enrollment_v2(
             "normalized follower enrollment does not match its request",
         ));
     }
-    install_verified_actor(&transaction, &enrollment)?;
+    install_verified_actor(transaction, &enrollment)?;
     transaction.execute(
         "INSERT OR IGNORE INTO library_intent_actors
          (actor_id, next_counter, previous_operation_id, previous_chain_digest)
@@ -730,7 +783,6 @@ pub fn install_normalized_follower_actor_enrollment_v2(
             return Err(invalid("normalized follower enrollment replay changed"));
         }
     }
-    transaction.commit()?;
     enrollment_response(&enrollment)
 }
 
@@ -1014,15 +1066,51 @@ pub fn enqueue_normalized_follower_intent_v1(
     canonical_envelopes: &[Vec<u8>],
     enqueued_at: i64,
 ) -> Result<NormalizedFollowerIntentCommitReceiptV1, NormalizedSqliteError> {
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let receipt = enqueue_normalized_follower_intent_in_transaction_v1(
+        &transaction,
+        canonical_envelopes,
+        enqueued_at,
+    )?;
+    transaction.commit()?;
+    Ok(receipt)
+}
+
+/// Enqueue inside the caller's write transaction so recovery can commit its
+/// durable replacement link with the intent, overlay and actor tip. The helper
+/// never commits; any later failure must roll back the caller's whole transaction.
+/// Authority, enrollment, capabilities and signed members are read and verified
+/// under this same transaction, with the actor tip compared again at update.
+pub(crate) fn enqueue_normalized_follower_intent_in_transaction_v1(
+    transaction: &Transaction<'_>,
+    canonical_envelopes: &[Vec<u8>],
+    enqueued_at: i64,
+) -> Result<NormalizedFollowerIntentCommitReceiptV1, NormalizedSqliteError> {
+    enqueue_follower_intent_with_admission(
+        transaction,
+        canonical_envelopes,
+        enqueued_at,
+        crate::normalized_handoff::require_handoff_follower_edit_admission_v1,
+    )
+}
+
+/// Reuses the same verifier, exact-retry and durable enqueue implementation.
+/// Only crate-owned storage adapters supply the version-specific admission check.
+pub(crate) fn enqueue_follower_intent_with_admission(
+    transaction: &Transaction<'_>,
+    canonical_envelopes: &[Vec<u8>],
+    enqueued_at: i64,
+    admit: impl FnOnce(&Connection) -> Result<(), NormalizedSqliteError>,
+) -> Result<NormalizedFollowerIntentCommitReceiptV1, NormalizedSqliteError> {
     if canonical_envelopes.is_empty()
         || canonical_envelopes.len() > FOLLOWER_INTENT_MAXIMUM_MEMBERS
         || !(0..=MAX_SAFE_INTEGER).contains(&enqueued_at)
     {
         return Err(invalid("normalized follower intent request is invalid"));
     }
-    let expected = normalized_follower_mutation_context_v1(connection)?;
+    let expected = normalized_follower_mutation_context_v1(transaction)?;
     let verified = verify_operation_transaction(canonical_envelopes, |identity| {
-        let mut actor = actor_state_at(connection, identity)?;
+        let mut actor = actor_state_at(transaction, identity)?;
         actor.next_sequence = expected.next_counter;
         actor.previous_operation_id = expected.previous_operation_id.clone();
         actor.previous_chain_digest = expected.previous_chain_digest.clone();
@@ -1059,7 +1147,6 @@ pub fn enqueue_normalized_follower_intent_v1(
         optimistic_field_count,
         state,
     };
-    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let existing: Option<(String, String, i64, i64, i64)> = transaction
         .query_row(
             "SELECT transaction_digest, actor_id, first_counter, last_counter,
@@ -1119,9 +1206,34 @@ pub fn enqueue_normalized_follower_intent_v1(
         if usize::try_from(stored_optimistic_field_count).ok() != Some(optimistic_field_count) {
             return Err(invalid("normalized follower optimistic replay changed"));
         }
-        transaction.commit()?;
         return Ok(receipt("pending"));
     }
+    if verified
+        .members
+        .iter()
+        .any(|member| !crate::normalized_preference_policy::supports_fresh_preferences(member))
+    {
+        return Err(invalid(
+            "normalized follower preference patch contains unsupported fields",
+        ));
+    }
+    // Match Primary materialization and PWA admission before allocating any
+    // local intent state. Exact stored retries above remain readback operations.
+    let program = SQLITE_MUTATION_PROGRAMS
+        .iter()
+        .find(|program| program.mutation_id == first.operation_type)
+        .ok_or(invalid("normalized follower mutation program is absent"))?;
+    if verified.members.len() > program.maximum_members
+        || verified.members.iter().any(|member| {
+            member.operation_type != program.mutation_id
+                || member.entity_type != program.entity_type
+        })
+    {
+        return Err(invalid(
+            "normalized follower intent exceeds its registered mutation program",
+        ));
+    }
+    admit(transaction)?;
     let canonical_transaction = encode_canonical_value(
         &json!({
             "actor_id": verified.actor_id,
@@ -1234,7 +1346,6 @@ pub fn enqueue_normalized_follower_intent_v1(
             "normalized follower actor tip changed concurrently",
         ));
     }
-    transaction.commit()?;
     Ok(receipt("pending"))
 }
 
@@ -1677,7 +1788,150 @@ pub fn record_normalized_follower_intent_transport_publication_v2(
     })
 }
 
-fn import_normalized_follower_result_page_in_transaction_v1(
+/// Verify the original authority-signed result bytes independently of a local
+/// intent. Replication and local intent settlement share this proof boundary.
+pub(crate) fn verify_normalized_follower_result_record_v1(
+    connection: &Connection,
+    record: &NormalizedFollowerResultRecordV1,
+    expected_library_id: &str,
+) -> Result<Value, NormalizedSqliteError> {
+    if record.canonical_result_json.is_empty() || record.canonical_result_json.len() > 131_072 {
+        return Err(invalid("normalized follower result exceeds its byte bound"));
+    }
+    let value: Value = serde_json::from_str(&record.canonical_result_json)
+        .map_err(|_| invalid("normalized follower result JSON is invalid"))?;
+    let object = value
+        .as_object()
+        .ok_or(invalid("normalized follower result must be an object"))?;
+    const RESULT_FIELDS: &[&str] = &[
+        "actor_id",
+        "authoritative_source_revision",
+        "authority_key_id",
+        "canonical_operation_ids",
+        "epoch",
+        "epoch_id",
+        "format",
+        "intent_epoch",
+        "intent_epoch_id",
+        "library_id",
+        "original_result_digest",
+        "previous_result_digest",
+        "receipt_ids",
+        "rejection_reason",
+        "replacement_fields",
+        "resolved_at_ms",
+        "result_body_digest",
+        "result_sequence",
+        "schema_version",
+        "signature",
+        "signature_algorithm",
+        "status",
+        "transaction_digest",
+        "transaction_id",
+    ];
+    if object.len() != RESULT_FIELDS.len()
+        || !RESULT_FIELDS
+            .iter()
+            .all(|field| object.contains_key(*field))
+        || encode_canonical_value(&value, 131_072)
+            .map_err(|_| invalid("normalized follower result is not canonical"))?
+            != record.canonical_result_json.as_bytes()
+    {
+        return Err(invalid("normalized follower result field set is invalid"));
+    }
+    let text = |field: &'static str| {
+        object
+            .get(field)
+            .and_then(Value::as_str)
+            .ok_or(invalid("normalized follower result text field is invalid"))
+    };
+    let integer = |field: &'static str| {
+        object.get(field).and_then(Value::as_i64).ok_or(invalid(
+            "normalized follower result integer field is invalid",
+        ))
+    };
+    if text("format")? != "freed_follower_result_v1"
+        || integer("schema_version")? != 1
+        || text("signature_algorithm")? != "ed25519"
+        || text("actor_id")? != record.actor_id
+        || text("transaction_id")? != record.transaction_id
+        || text("transaction_digest")? != record.transaction_digest
+        || text("epoch_id")? != record.authority_epoch_id
+        || text("intent_epoch_id")? != record.intent_epoch_id
+        || integer("result_sequence")? != record.result_sequence
+        || integer("authoritative_source_revision")? != record.authoritative_source_revision
+        || text("status")? != record.status
+        || text("library_id")? != expected_library_id
+        || object.get("previous_result_digest")
+            != Some(
+                &record
+                    .previous_result_digest
+                    .as_ref()
+                    .map_or(Value::Null, |digest| Value::String(digest.clone())),
+            )
+    {
+        return Err(invalid("normalized follower result typed identity changed"));
+    }
+    let rejection_reason = object
+        .get("rejection_reason")
+        .and_then(|value| value.as_str().map(str::to_owned));
+    let original_result_digest = object
+        .get("original_result_digest")
+        .and_then(|value| value.as_str().map(str::to_owned));
+    if rejection_reason != record.rejection_reason
+        || original_result_digest != record.original_result_digest
+    {
+        return Err(invalid("normalized follower result outcome changed"));
+    }
+    let (authority_key_id, authority_public_key, epoch_number, library_id): (
+        String,
+        String,
+        i64,
+        String,
+    ) = connection.query_row(
+        "SELECT authority_key_id, authority_public_key, epoch_number, library_id
+         FROM library_authority_epochs WHERE epoch_id = ?1;",
+        [&record.authority_epoch_id],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+    )?;
+    if text("authority_key_id")? != authority_key_id
+        || integer("epoch")? != epoch_number
+        || library_id != expected_library_id
+    {
+        return Err(invalid("normalized follower result authority key changed"));
+    }
+    let mut body = object.clone();
+    let signature = body
+        .remove("signature")
+        .and_then(|value| value.as_str().map(str::to_owned))
+        .ok_or(invalid("normalized follower result signature is invalid"))?;
+    body.remove("signature_algorithm");
+    let claimed_digest = body
+        .remove("result_body_digest")
+        .and_then(|value| value.as_str().map(str::to_owned))
+        .ok_or(invalid("normalized follower result digest is invalid"))?;
+    let digest_input =
+        encode_operation_digest_input("follower-result-body", &Value::Object(body), 131_072)
+            .map_err(|_| invalid("normalized follower result digest input is invalid"))?;
+    let computed_digest = lower_hex(&Sha256::digest(digest_input));
+    if claimed_digest != computed_digest || record.result_digest != computed_digest {
+        return Err(invalid("normalized follower result digest changed"));
+    }
+    let signature_input = encode_signature_input(
+        "follower-result-envelope",
+        &json!({ "result_body_digest": computed_digest }),
+        131_072,
+    )
+    .map_err(|_| invalid("normalized follower result signature input is invalid"))?;
+    if !verify_library_core_ed25519(&authority_public_key, &signature, &signature_input)
+        .map_err(|_| invalid("normalized follower result signature encoding is invalid"))?
+    {
+        return Err(invalid("normalized follower result signature is invalid"));
+    }
+    Ok(value)
+}
+
+pub(crate) fn import_normalized_follower_result_page_in_transaction_v1(
     transaction: &Transaction<'_>,
     records: &[NormalizedFollowerResultRecordV1],
     received_at: i64,
@@ -1738,136 +1992,11 @@ fn import_normalized_follower_result_page_in_transaction_v1(
                 "normalized follower result chain is not contiguous",
             ));
         }
-        let value: Value = serde_json::from_str(&record.canonical_result_json)
-            .map_err(|_| invalid("normalized follower result JSON is invalid"))?;
-        let object = value
-            .as_object()
-            .ok_or(invalid("normalized follower result must be an object"))?;
-        const RESULT_FIELDS: &[&str] = &[
-            "actor_id",
-            "authoritative_source_revision",
-            "authority_key_id",
-            "canonical_operation_ids",
-            "epoch",
-            "epoch_id",
-            "format",
-            "intent_epoch",
-            "intent_epoch_id",
-            "library_id",
-            "original_result_digest",
-            "previous_result_digest",
-            "receipt_ids",
-            "rejection_reason",
-            "replacement_fields",
-            "resolved_at_ms",
-            "result_body_digest",
-            "result_sequence",
-            "schema_version",
-            "signature",
-            "signature_algorithm",
-            "status",
-            "transaction_digest",
-            "transaction_id",
-        ];
-        if object.len() != RESULT_FIELDS.len()
-            || !RESULT_FIELDS
-                .iter()
-                .all(|field| object.contains_key(*field))
-            || encode_canonical_value(&value, 131_072)
-                .map_err(|_| invalid("normalized follower result is not canonical"))?
-                != record.canonical_result_json.as_bytes()
-        {
-            return Err(invalid("normalized follower result field set is invalid"));
-        }
-        let text = |field: &'static str| {
-            object
-                .get(field)
-                .and_then(Value::as_str)
-                .ok_or(invalid("normalized follower result text field is invalid"))
-        };
-        let integer = |field: &'static str| {
-            object.get(field).and_then(Value::as_i64).ok_or(invalid(
-                "normalized follower result integer field is invalid",
-            ))
-        };
-        if text("format")? != "freed_follower_result_v1"
-            || integer("schema_version")? != 1
-            || text("signature_algorithm")? != "ed25519"
-            || text("actor_id")? != record.actor_id
-            || text("transaction_id")? != record.transaction_id
-            || text("transaction_digest")? != record.transaction_digest
-            || text("epoch_id")? != record.authority_epoch_id
-            || text("intent_epoch_id")? != record.intent_epoch_id
-            || integer("result_sequence")? != record.result_sequence
-            || integer("authoritative_source_revision")? != record.authoritative_source_revision
-            || text("status")? != record.status
-            || text("library_id")? != current_authority.library_id
-            || object.get("previous_result_digest")
-                != Some(
-                    &record
-                        .previous_result_digest
-                        .as_ref()
-                        .map_or(Value::Null, |digest| Value::String(digest.clone())),
-                )
-        {
-            return Err(invalid("normalized follower result typed identity changed"));
-        }
-        let rejection_reason = object
-            .get("rejection_reason")
-            .and_then(|value| value.as_str().map(str::to_owned));
-        let original_result_digest = object
-            .get("original_result_digest")
-            .and_then(|value| value.as_str().map(str::to_owned));
-        if rejection_reason != record.rejection_reason
-            || original_result_digest != record.original_result_digest
-        {
-            return Err(invalid("normalized follower result outcome changed"));
-        }
-        let (authority_key_id, authority_public_key, epoch_number, library_id): (
-            String,
-            String,
-            i64,
-            String,
-        ) = transaction.query_row(
-            "SELECT authority_key_id, authority_public_key, epoch_number, library_id
-             FROM library_authority_epochs WHERE epoch_id = ?1;",
-            [&record.authority_epoch_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        verify_normalized_follower_result_record_v1(
+            transaction,
+            record,
+            &current_authority.library_id,
         )?;
-        if text("authority_key_id")? != authority_key_id
-            || integer("epoch")? != epoch_number
-            || library_id != current_authority.library_id
-        {
-            return Err(invalid("normalized follower result authority key changed"));
-        }
-        let mut body = object.clone();
-        let signature = body
-            .remove("signature")
-            .and_then(|value| value.as_str().map(str::to_owned))
-            .ok_or(invalid("normalized follower result signature is invalid"))?;
-        body.remove("signature_algorithm");
-        let claimed_digest = body
-            .remove("result_body_digest")
-            .and_then(|value| value.as_str().map(str::to_owned))
-            .ok_or(invalid("normalized follower result digest is invalid"))?;
-        let digest_input =
-            encode_operation_digest_input("follower-result-body", &Value::Object(body), 131_072)
-                .map_err(|_| invalid("normalized follower result digest input is invalid"))?;
-        let computed_digest = lower_hex(&Sha256::digest(digest_input));
-        if claimed_digest != computed_digest || record.result_digest != computed_digest {
-            return Err(invalid("normalized follower result digest changed"));
-        }
-        let signature_input = encode_signature_input(
-            "follower-result-envelope",
-            &json!({ "result_body_digest": computed_digest }),
-            131_072,
-        )
-        .map_err(|_| invalid("normalized follower result signature input is invalid"))?;
-        if !verify_library_core_ed25519(&authority_public_key, &signature, &signature_input)
-            .map_err(|_| invalid("normalized follower result signature encoding is invalid"))?
-        {
-            return Err(invalid("normalized follower result signature is invalid"));
-        }
         let intent: (String, String, String) = transaction.query_row(
             "SELECT transaction_digest, actor_id, intent_epoch_id
              FROM library_intent_transactions WHERE transaction_id = ?1;",
@@ -1916,8 +2045,17 @@ fn import_normalized_follower_result_page_in_transaction_v1(
             params![record.transaction_id, resolved_state, received_at],
         )?;
         transaction.execute(
-            "DELETE FROM library_optimistic_fields WHERE transaction_id = ?1;",
-            [&record.transaction_id],
+            "DELETE FROM library_optimistic_fields WHERE transaction_id = ?1
+             AND (?2 = 'rejected' OR EXISTS (
+               SELECT 1 FROM library_meta WHERE singleton_id = 1
+                 AND authority_epoch = ?3 AND source_revision >= ?4
+             ));",
+            params![
+                record.transaction_id,
+                record.status,
+                record.authority_epoch_id,
+                record.authoritative_source_revision
+            ],
         )?;
         next_sequence += 1;
         previous_digest = Some(record.result_digest.clone());
@@ -1959,7 +2097,7 @@ pub fn import_normalized_follower_result_page_v1(
     Ok(receipt)
 }
 
-fn normalized_result_segment_digest_v2(
+pub(crate) fn normalized_result_segment_digest_v2(
     publication: &NormalizedFollowerResultTransportImportV2,
 ) -> Result<String, NormalizedSqliteError> {
     let first = publication
@@ -2013,6 +2151,14 @@ fn normalized_result_segment_digest_v2(
 pub fn import_normalized_follower_result_transport_segment_v2(
     connection: &mut Connection,
     publication: &NormalizedFollowerResultTransportImportV2,
+) -> Result<NormalizedFollowerResultTransportImportReceiptV2, NormalizedSqliteError> {
+    import_result_transport_with_reconciliation(connection, publication, |_| Ok(()))
+}
+
+pub(crate) fn import_result_transport_with_reconciliation(
+    connection: &mut Connection,
+    publication: &NormalizedFollowerResultTransportImportV2,
+    reconcile: impl FnOnce(&Transaction<'_>) -> Result<(), NormalizedSqliteError>,
 ) -> Result<NormalizedFollowerResultTransportImportReceiptV2, NormalizedSqliteError> {
     let bounded_text = |value: &str, maximum: usize| !value.is_empty() && value.len() <= maximum;
     let first_result_sequence = publication
@@ -2144,6 +2290,7 @@ pub fn import_normalized_follower_result_transport_segment_v2(
                 "normalized follower result transport replay changed",
             ));
         }
+        reconcile(&transaction)?;
         transaction.commit()?;
         return Ok(NormalizedFollowerResultTransportImportReceiptV2 {
             accepted_transaction_count: usize::try_from(existing.8)
@@ -2219,6 +2366,7 @@ pub fn import_normalized_follower_result_transport_segment_v2(
             "normalized follower result transport head changed concurrently",
         ));
     }
+    reconcile(&transaction)?;
     transaction.commit()?;
     Ok(NormalizedFollowerResultTransportImportReceiptV2 {
         accepted_transaction_count: receipt.accepted_transaction_count,
@@ -2257,6 +2405,7 @@ pub fn normalized_follower_runtime_status_v2(
             pending_intent_count: 0,
             published_intent_count: 0,
             imported_result_count: 0,
+            awaiting_canonical_changes: false,
         });
     };
     let generation = u64::try_from(generation)
@@ -2274,7 +2423,20 @@ pub fn normalized_follower_runtime_status_v2(
         )
         .optional()?;
     let (state, actor_id) = match actor {
-        None => ("awaiting_enrollment", None),
+        None => {
+            let retained: Option<String> = connection
+                .query_row(
+                    "SELECT actor_id FROM library_follower_actor_request WHERE singleton_id = 1;",
+                    [],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            if retained.is_some() {
+                ("authority_recovery_required", retained)
+            } else {
+                ("awaiting_enrollment", None)
+            }
+        }
         Some((actor_id, false)) => ("enrollment_pending", Some(actor_id)),
         Some((actor_id, true)) => {
             let active: bool = connection.query_row(
@@ -2301,6 +2463,16 @@ pub fn normalized_follower_runtime_status_v2(
         [],
         |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
     )?;
+    // A signed acceptance is not proof that its canonical rows have arrived.
+    let awaiting_canonical_changes: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM library_optimistic_fields AS optimistic
+         JOIN library_intent_results AS result USING (transaction_id)
+         WHERE result.status IN ('accepted', 'already_applied')
+           AND result.authoritative_source_revision >
+             (SELECT source_revision FROM library_meta WHERE singleton_id = 1));",
+        [],
+        |row| row.get(0),
+    )?;
     Ok(NormalizedFollowerRuntimeStatusV2 {
         state,
         library_id: Some(library_id),
@@ -2312,6 +2484,7 @@ pub fn normalized_follower_runtime_status_v2(
             .map_err(|_| invalid("normalized follower pending count is invalid"))?,
         published_intent_count: u64::try_from(published)
             .map_err(|_| invalid("normalized follower published count is invalid"))?,
+        awaiting_canonical_changes,
         imported_result_count: u64::try_from(imported)
             .map_err(|_| invalid("normalized follower result count is invalid"))?,
     })
@@ -2352,6 +2525,436 @@ mod tests {
             self.0.replace(Some(bytes.to_vec()));
             Ok(())
         }
+    }
+
+    // Exercise checkpoint replacement against real signed enrollment and intent
+    // bytes from the enrollment/transport fixture, without changing its Primary.
+    fn assert_checkpoint_preserves_follower_history(source: &Connection) {
+        for local_schema in [false, true] {
+            assert_checkpoint_preserves_follower_history_at_version(source, local_schema);
+        }
+    }
+
+    fn assert_checkpoint_preserves_follower_history_at_version(
+        source: &Connection,
+        local_schema: bool,
+    ) {
+        use crate::{
+            append_normalized_checkpoint_stage_page_v2, begin_normalized_checkpoint_stage_v2,
+            export_normalized_checkpoint_page_v2,
+            replace_with_normalized_follower_checkpoint_stage_v2, BeginNormalizedCheckpointStageV2,
+            NormalizedCheckpointExportRequestV2, NormalizedFollowerCheckpointReceiptV2,
+        };
+        let directory = tempfile::tempdir().expect("replica directory");
+        let database_path = directory.path().join("replica.sqlite");
+        let mut replica =
+            crate::open_normalized_sqlite_database_v1(&database_path, true).expect("replica");
+        rusqlite::backup::Backup::new(source, &mut replica)
+            .expect("copy fixture")
+            .run_to_completion(128, std::time::Duration::ZERO, None)
+            .expect("copy complete");
+        if local_schema {
+            let tx = replica
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .unwrap();
+            crate::normalized_sqlite::migrate_native_handoff_schema_v2(&tx).unwrap();
+            tx.commit().unwrap();
+            assert_eq!(
+                replica
+                    .query_row("SELECT count(*) FROM library_local_handoff;", [], |r| r
+                        .get::<_, i64>(0))
+                    .unwrap(),
+                0
+            );
+        }
+
+        replica
+            .execute_batch(
+                "UPDATE library_replication_outbox SET acknowledged_at = 3000;
+             UPDATE library_follower_result_outbox SET acknowledged_at = 3000;",
+            )
+            .expect("fixture has no unpublished Primary work");
+        // Simulate a device with stale Primary and provider admission. Activating
+        // a consumer checkpoint must revoke both, including after a restart.
+        replica
+            .execute(
+                "INSERT OR REPLACE INTO library_local_cloud_writer_admission
+             (singleton_id, local_writer_id, active_writer_id, authority_epoch_id,
+              control_revision, verified_at) VALUES (1, ?1, ?1, ?2, 'old-control', 1);",
+                params!["1".repeat(64), "2".repeat(64)],
+            )
+            .unwrap();
+        let admission_counts = |connection: &Connection| {
+            connection
+                .query_row(
+                    "SELECT (SELECT count(*) FROM library_writer_admission),
+                        (SELECT count(*) FROM library_local_cloud_writer_admission);",
+                    [],
+                    |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+                )
+                .unwrap()
+        };
+        let admissions_before = admission_counts(&replica);
+        assert_eq!(admissions_before, (1, 1));
+        let context = normalized_follower_transport_context_v2(&replica).expect("before context");
+        let tables = [
+            "library_follower_actor_request",
+            "library_intent_actors",
+            "library_intent_transactions",
+            "library_intent_members",
+            "library_intent_transport_heads",
+            "library_intent_transport_segments",
+            "library_intent_results",
+            "library_intent_result_cursors",
+            "library_result_transport_heads",
+            "library_result_transport_segments",
+            "library_optimistic_fields",
+            "library_local_change_state",
+            "library_local_invalidations",
+        ];
+        let snapshot = |connection: &Connection| {
+            tables
+                .iter()
+                .map(|table| {
+                    let mut statement = connection
+                        .prepare(&format!("SELECT * FROM {table};"))
+                        .unwrap();
+                    let columns = statement.column_count();
+                    statement
+                        .query_map([], |row| {
+                            (0..columns)
+                                .map(|i| row.get::<_, rusqlite::types::Value>(i))
+                                .collect::<Result<Vec<_>, _>>()
+                        })
+                        .unwrap()
+                        .collect::<Result<Vec<_>, _>>()
+                        .unwrap()
+                })
+                .collect::<Vec<_>>()
+        };
+        let before = snapshot(&replica);
+        let descriptor = describe_normalized_checkpoint_export_v2(source).expect("descriptor");
+        let page = export_normalized_checkpoint_page_v2(
+            source,
+            &NormalizedCheckpointExportRequestV2::default(),
+        )
+        .expect("canonical checkpoint");
+        assert!(page.done);
+        begin_normalized_checkpoint_stage_v2(
+            &replica,
+            &BeginNormalizedCheckpointStageV2 {
+                stage_id: "follower-refresh".into(),
+                library_id: descriptor.library_id.clone(),
+                authority_epoch: descriptor.authority_epoch.clone(),
+                source_revision: descriptor.source_revision,
+                expected_record_count: page.records.len(),
+                created_at: 3_000,
+            },
+        )
+        .expect("stage");
+        append_normalized_checkpoint_stage_page_v2(&mut replica, "follower-refresh", &page.records)
+            .expect("stage records");
+        let receipt = NormalizedFollowerCheckpointReceiptV2 {
+            checkpoint_generation: 1,
+            writer_actor_id: descriptor.writer_id,
+            manifest_object_key: "next-manifest".into(),
+            manifest_transport_object_id: "next-object".into(),
+            manifest_content_digest: "9".repeat(64),
+            control_revision: "next-control".into(),
+            installed_at: 3_001,
+        };
+        let mut wrong_writer = receipt.clone();
+        wrong_writer.writer_actor_id = "different-writer".into();
+        assert!(replace_with_normalized_follower_checkpoint_stage_v2(
+            &mut replica,
+            "follower-refresh",
+            &wrong_writer,
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("regress local history"));
+        assert_eq!(snapshot(&replica), before);
+        replica
+            .execute(
+                "UPDATE library_checkpoint_stages SET authority_epoch = 'different-epoch'
+             WHERE stage_id = 'follower-refresh';",
+                [],
+            )
+            .unwrap();
+        assert!(replace_with_normalized_follower_checkpoint_stage_v2(
+            &mut replica,
+            "follower-refresh",
+            &receipt,
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("successor authority record is missing"));
+        assert_eq!(snapshot(&replica), before);
+        replica
+            .execute(
+                "UPDATE library_checkpoint_stages SET authority_epoch = ?1
+             WHERE stage_id = 'follower-refresh';",
+                [&descriptor.authority_epoch],
+            )
+            .unwrap();
+        // A failure at the last durable write must restore both the old Library
+        // and every local row, including the scratch-table DDL.
+        replica
+            .execute_batch(
+                "CREATE TRIGGER fail_refresh BEFORE INSERT ON library_follower_checkpoint_receipt
+             BEGIN SELECT RAISE(ABORT, 'injected checkpoint activation fault'); END;",
+            )
+            .unwrap();
+        assert!(replace_with_normalized_follower_checkpoint_stage_v2(
+            &mut replica,
+            "follower-refresh",
+            &receipt,
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("injected checkpoint activation fault"));
+        assert_eq!(snapshot(&replica), before);
+        assert_eq!(admission_counts(&replica), admissions_before);
+        replica.execute_batch("DROP TRIGGER fail_refresh;").unwrap();
+        replace_with_normalized_follower_checkpoint_stage_v2(
+            &mut replica,
+            "follower-refresh",
+            &receipt,
+        )
+        .expect("refresh with unresolved signed edits");
+        assert_eq!(admission_counts(&replica), (0, 0));
+        assert!(crate::normalized_primary_mutation_context_v1(&replica).is_err());
+        crate::verify_normalized_library_selection_v1(&replica, &descriptor.library_id)
+            .expect("selected consumer recognizes its checkpoint generation");
+        assert!(
+            crate::verify_normalized_library_selection_v1(&replica, "another-library").is_err()
+        );
+        for tamper in [
+            "DELETE FROM library_follower_checkpoint_receipt;",
+            "UPDATE library_follower_checkpoint_receipt SET checkpoint_digest = printf('%064d', 0);",
+            "UPDATE library_follower_checkpoint_receipt SET source_revision = source_revision + 1;",
+            "UPDATE library_follower_checkpoint_receipt SET library_id = 'another-library';",
+            "UPDATE library_actors SET retired_at = 4000 WHERE actor_kind = 'desktop';",
+        ] {
+            replica.execute_batch("SAVEPOINT receipt_tamper;").unwrap();
+            replica.execute_batch(tamper).unwrap();
+            assert!(crate::verify_normalized_library_selection_v1(&replica, &descriptor.library_id).is_err(),
+                "reject changed receipt: {tamper}");
+            replica.execute_batch("ROLLBACK TO receipt_tamper; RELEASE receipt_tamper;").unwrap();
+        }
+
+        assert_eq!(snapshot(&replica), before);
+        assert_eq!(
+            normalized_follower_transport_context_v2(&replica).unwrap(),
+            context
+        );
+        assert_eq!(
+            replica
+                .query_row(
+                    "SELECT count(*) FROM sqlite_schema WHERE name LIKE 'checkpoint_retained_%';",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .unwrap(),
+            0
+        );
+        drop(replica);
+        let reopened = crate::open_normalized_sqlite_database_v1(&database_path, false)
+            .expect("reopen refreshed replica");
+        assert_eq!(admission_counts(&reopened), (0, 0));
+        assert!(crate::normalized_primary_mutation_context_v1(&reopened).is_err());
+        crate::verify_normalized_library_selection_v1(&reopened, &descriptor.library_id)
+            .expect("reopened consumer remains selected");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let fixture = tempfile::tempdir().unwrap();
+            std::fs::set_permissions(fixture.path(), std::fs::Permissions::from_mode(0o700))
+                .unwrap();
+            let bound_directory = fixture.path().join("app-data");
+            let binding = crate::LibraryCoreDesktopBinding::open(
+                &bound_directory,
+                crate::ProcessLeaseIdentity::new("consumer-join-test", "1"),
+            )
+            .unwrap();
+            binding
+                .select_library_setup_v1(&crate::DesktopLibrarySetupChoiceV1::Follower {
+                    library_id: descriptor.library_id.clone(),
+                })
+                .unwrap();
+            let mut target = binding.connect_normalized().unwrap();
+            rusqlite::backup::Backup::new(&reopened, &mut target)
+                .unwrap()
+                .run_to_completion(128, std::time::Duration::ZERO, None)
+                .unwrap();
+            drop(target);
+            assert!(!binding.normalized_authority_is_selected_v1().unwrap());
+            // Simulate termination after the checkpoint transaction committed,
+            // before its first local selector was published.
+            drop(binding);
+            let binding = crate::LibraryCoreDesktopBinding::open(
+                &bound_directory,
+                crate::ProcessLeaseIdentity::new("consumer-join-test", "1"),
+            )
+            .unwrap();
+            binding
+                .publish_follower_authority_selection_v1(&descriptor.library_id)
+                .unwrap();
+            binding
+                .publish_follower_authority_selection_v1(&descriptor.library_id)
+                .unwrap();
+            let selected = binding.connect_selected_normalized().unwrap();
+            assert_eq!(snapshot(&selected), before);
+            assert!(crate::normalized_primary_mutation_context_v1(&selected).is_err());
+        }
+
+        assert_eq!(snapshot(&reopened), before);
+        assert_eq!(
+            normalized_follower_transport_context_v2(&reopened).unwrap(),
+            context
+        );
+    }
+
+    fn assert_accepted_result_waits_for_canonical_checkpoint(
+        source: &Connection,
+        staged: &crate::NormalizedFollowerIntentStagePageV1,
+        authority_key: &Ed25519KeyPair,
+    ) {
+        let mut primary = Connection::open_in_memory().unwrap();
+        rusqlite::backup::Backup::new(source, &mut primary)
+            .unwrap()
+            .run_to_completion(128, std::time::Duration::ZERO, None)
+            .unwrap();
+        primary
+            .execute_batch(
+                "INSERT INTO library_feed_items
+             (global_id, platform, content_type, captured_at, published_at,
+              author_id, author_handle, author_display_name, hidden, saved, archived, updated_at)
+             VALUES
+               ('rss:item:1', 'rss', 'article', 800, 700, 'author-1', 'ada', 'Ada', 0, 0, 0, 800),
+               ('rss:item:2', 'rss', 'article', 801, 701, 'author-1', 'ada', 'Ada', 0, 0, 0, 801);
+             UPDATE library_replication_outbox SET acknowledged_at = 2301;",
+            )
+            .unwrap();
+        let mut follower = Connection::open_in_memory().unwrap();
+        rusqlite::backup::Backup::new(&primary, &mut follower)
+            .unwrap()
+            .run_to_completion(128, std::time::Duration::ZERO, None)
+            .unwrap();
+        crate::ingest_normalized_follower_intent_page_v1(&mut primary, staged, authority_key, 2400)
+            .expect("Primary admits signed edits");
+        let actor_id = staged.records[0].actor_id.clone();
+        let results = crate::export_normalized_follower_result_page_v1(
+            &primary,
+            &crate::NormalizedFollowerResultPageRequestV1 {
+                actor_id,
+                after: None,
+                maximum_records: 128,
+                maximum_response_bytes: 1_048_576,
+            },
+        )
+        .unwrap();
+        assert_eq!(results.records[0].status, "accepted");
+        let before_revision = describe_normalized_checkpoint_export_v2(&follower)
+            .unwrap()
+            .source_revision;
+        import_normalized_follower_result_page_v1(&mut follower, &results.records, 2500).unwrap();
+        let overlay_count = |db: &Connection| {
+            db.query_row(
+                "SELECT count(*) FROM library_optimistic_fields;",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .unwrap()
+        };
+        assert_eq!(
+            overlay_count(&follower),
+            2,
+            "result is ahead of canonical rows"
+        );
+        assert_eq!(
+            describe_normalized_checkpoint_export_v2(&follower)
+                .unwrap()
+                .source_revision,
+            before_revision
+        );
+        import_normalized_follower_result_page_v1(&mut follower, &results.records, 2600).unwrap();
+        assert_eq!(
+            overlay_count(&follower),
+            2,
+            "exact result replay cannot hide the edit"
+        );
+        assert!(
+            normalized_follower_runtime_status_v2(&follower)
+                .unwrap()
+                .awaiting_canonical_changes
+        );
+        assert_checkpoint_preserves_follower_history(&follower);
+
+        let descriptor = describe_normalized_checkpoint_export_v2(&primary).unwrap();
+        assert!(descriptor.source_revision > before_revision);
+        let page = crate::export_normalized_checkpoint_page_v2(
+            &primary,
+            &crate::NormalizedCheckpointExportRequestV2::default(),
+        )
+        .unwrap();
+        assert!(page.done);
+        crate::begin_normalized_checkpoint_stage_v2(
+            &follower,
+            &crate::BeginNormalizedCheckpointStageV2 {
+                stage_id: "accepted-catchup".into(),
+                library_id: descriptor.library_id,
+                authority_epoch: descriptor.authority_epoch,
+                source_revision: descriptor.source_revision,
+                expected_record_count: page.records.len(),
+                created_at: 2700,
+            },
+        )
+        .unwrap();
+        crate::append_normalized_checkpoint_stage_page_v2(
+            &mut follower,
+            "accepted-catchup",
+            &page.records,
+        )
+        .unwrap();
+        crate::replace_with_normalized_follower_checkpoint_stage_v2(
+            &mut follower,
+            "accepted-catchup",
+            &crate::NormalizedFollowerCheckpointReceiptV2 {
+                checkpoint_generation: 1,
+                writer_actor_id: descriptor.writer_id,
+                manifest_object_key: "accepted-manifest".into(),
+                manifest_transport_object_id: "accepted-object".into(),
+                manifest_content_digest: "9".repeat(64),
+                control_revision: "accepted-control".into(),
+                installed_at: 2701,
+            },
+        )
+        .expect("checkpoint covers the signed accepted result");
+        assert_eq!(overlay_count(&follower), 0);
+        assert!(
+            !normalized_follower_runtime_status_v2(&follower)
+                .unwrap()
+                .awaiting_canonical_changes
+        );
+        assert_eq!(
+            follower
+                .query_row(
+                    "SELECT read_at FROM library_feed_items WHERE global_id = 'rss:item:1';",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .unwrap(),
+            900
+        );
+        assert_eq!(
+            normalized_follower_runtime_status_v2(&follower)
+                .unwrap()
+                .imported_result_count,
+            1
+        );
+        import_normalized_follower_result_page_v1(&mut follower, &results.records, 2800)
+            .expect("settled result remains replayable after catch-up");
     }
 
     #[test]
@@ -2438,9 +3041,89 @@ mod tests {
             &authority,
         )
         .expect("verified follower enrollment");
+        crate::normalized_preference_projection::check_dormant_migration_contract(&connection);
         let envelopes = signed_envelopes(&actor_key_pair, &verified);
+        // A recovery caller must be able to attach its durable link after enqueue
+        // without exposing any intent, overlay, counter or invalidation on failure.
+        let before = normalized_follower_mutation_context_v1(&connection).unwrap();
+        {
+            let transaction = connection
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .unwrap();
+            enqueue_normalized_follower_intent_in_transaction_v1(&transaction, &envelopes, 2_200)
+                .expect("stage intent in the recovery caller's transaction");
+            assert!(transaction
+                .execute("INSERT INTO missing_recovery_link VALUES (1);", [])
+                .is_err());
+            transaction.rollback().unwrap();
+        }
+        let after = normalized_follower_mutation_context_v1(&connection).unwrap();
+        assert_eq!(after.next_counter, before.next_counter);
+        assert_eq!(after.previous_operation_id, before.previous_operation_id);
+        assert_eq!(after.previous_chain_digest, before.previous_chain_digest);
+        for table in [
+            "library_intent_transactions",
+            "library_intent_members",
+            "library_optimistic_fields",
+            "library_local_invalidations",
+        ] {
+            assert_eq!(
+                connection
+                    .query_row(&format!("SELECT count(*) FROM {table};"), [], |row| {
+                        row.get::<_, i64>(0)
+                    })
+                    .unwrap(),
+                0,
+                "caller rollback retained rows in {table}"
+            );
+        }
+        // Admission reads the caller's transaction, including an actor retirement
+        // made there. No pre-transaction enrollment snapshot can authorize a write.
+        {
+            let transaction = connection
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .unwrap();
+            transaction
+                .execute(
+                    "UPDATE library_actors SET retired_at = 2199 WHERE actor_id = ?1;",
+                    [&accepted.actor_id],
+                )
+                .unwrap();
+            assert!(enqueue_normalized_follower_intent_in_transaction_v1(
+                &transaction,
+                &envelopes,
+                2_200,
+            )
+            .is_err());
+            transaction.rollback().unwrap();
+        }
         let intent = enqueue_normalized_follower_intent_v1(&mut connection, &envelopes, 2_200)
             .expect("enqueue follower intent");
+        assert_eq!(
+            enqueue_normalized_follower_intent_v1(&mut connection, &envelopes, 2_201)
+                .expect("response-loss retry reads back the same intent"),
+            intent,
+        );
+        assert_eq!(
+            normalized_follower_mutation_context_v1(&connection)
+                .unwrap()
+                .next_counter,
+            3,
+            "retry must not allocate another counter",
+        );
+        crate::normalized_preference_projection::check_dormant_migration_contract(&connection);
+        crate::normalized_preference_projection::check_pending_preference_backfill(
+            &connection,
+            &actor_key_pair,
+            &verified,
+        );
+        crate::normalized_preference_projection::check_backfill_outcomes(
+            &connection,
+            &actor_key_pair,
+            &verified,
+            &crate::load_established_authority_key_pair(&authority_store, &accepted.library_id)
+                .unwrap(),
+        );
         assert_eq!(intent.first_counter, 1);
         assert_eq!(intent.last_counter, 2);
         assert_eq!(intent.optimistic_field_count, 2);
@@ -2574,6 +3257,7 @@ mod tests {
         .expect("export follower intent page");
         assert_eq!(page.records.len(), 2);
         assert!(page.done);
+        assert_checkpoint_preserves_follower_history(&connection);
         let first_publication = record_normalized_follower_intent_transport_publication_v2(
             &mut connection,
             &NormalizedFollowerIntentTransportPublicationV2 {
@@ -2627,6 +3311,7 @@ mod tests {
         .expect("publish final follower intent page");
         assert_eq!(second_publication.newly_published_transaction_count, 1);
         assert_eq!(second_publication.next_actor_counter, 3);
+        assert_checkpoint_preserves_follower_history(&connection);
         assert_eq!(
             record_normalized_follower_intent_transport_publication_v2(
                 &mut connection,
@@ -2669,6 +3354,11 @@ mod tests {
         let authority_key_pair =
             crate::load_established_authority_key_pair(&authority_store, &accepted.library_id)
                 .expect("load authority key");
+        assert_accepted_result_waits_for_canonical_checkpoint(
+            &connection,
+            &staged,
+            &authority_key_pair,
+        );
         let staged_receipt = crate::ingest_normalized_follower_intent_page_v1(
             &mut connection,
             &staged,
@@ -2768,6 +3458,7 @@ mod tests {
                 .imported_result_count,
             1
         );
+        assert_checkpoint_preserves_follower_history(&connection);
         // A valid request and its certificate remain replayable after newer
         // Primary writes. This fixture advances the accepted actor tip only.
         connection.execute(

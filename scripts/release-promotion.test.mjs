@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
+import childProcess from "node:child_process";
+import { syncBuiltinESMExports } from "node:module";
 import {
   chmodSync,
   mkdtempSync,
@@ -15,6 +17,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   PROMOTION_CONTROL_FILES,
+  listMainBackflowDiffFiles,
   listPromotionBranchDiffFiles,
   listPromotionDiffFiles,
 } from "./release-promotion-shared.mjs";
@@ -749,6 +752,108 @@ test("validate-main-backflow rejects a main backport absent from dev history", (
   assert.match(result.stderr, /packages\/pwa\/src\/app\.ts/);
 });
 
+test("historical immutable backport requires exact latest identity and reachable tree entry", async (t) => {
+  const reviewedCommit = "8f179b4ef898e1e3025b3a7ae5a4407561459474";
+  const reviewedSubject = "fix: backport immutable snapshot controls (#1746)";
+  const filePath = ".github/workflows/ci.yml";
+  for (const scenario of [
+    "unchanged checkpoint then dev replacement",
+    "unknown backport",
+    "copied subject",
+    "later main rollback",
+    "novel content",
+    "unreachable dev history",
+    "executable mode drift",
+    "symlink mode drift",
+    "gitlink type drift",
+  ]) {
+    await t.test(scenario, (t) => {
+      const cwd = makeTempRepo();
+      t.after(() => rmSync(cwd, { recursive: true, force: true }));
+      git(cwd, ["checkout", "dev"]);
+      writeRepoFile(cwd, filePath, "name: historical controls\n");
+      commitAll(cwd, "fix: original dev controls");
+      const historicalDev = git(cwd, ["rev-parse", "HEAD"]);
+      const blob = git(cwd, ["rev-parse", `HEAD:${filePath}`]);
+
+      git(cwd, ["checkout", "main"]);
+      git(cwd, ["checkout", historicalDev, "--", filePath]);
+      commitAll(cwd, scenario === "unknown backport"
+        ? "fix: unreviewed backport"
+        : reviewedSubject);
+      const backport = git(cwd, ["rev-parse", "HEAD"]);
+      if (scenario === "later main rollback") {
+        writeRepoFile(cwd, filePath, "name: later main controls\n");
+        commitAll(cwd, "fix: later main controls");
+        git(cwd, ["checkout", backport, "--", filePath]);
+        commitAll(cwd, reviewedSubject);
+      }
+      updateOriginRef(cwd, "main");
+
+      // Rebuild dev from its fork for negative history controls, retaining the
+      // original entry only on an unreachable branch. The compared blob stays
+      // identical in mode/type cases, so blob-only matching would accept them.
+      if (["novel content", "unreachable dev history", "executable mode drift",
+        "symlink mode drift", "gitlink type drift"].includes(scenario)) {
+        git(cwd, ["branch", "historical-only", historicalDev]);
+        git(cwd, ["branch", "-f", "dev", `${historicalDev}^`]);
+      }
+      git(cwd, ["checkout", "dev"]);
+      const historyMode = {
+        "executable mode drift": "100755",
+        "symlink mode drift": "120000",
+        "gitlink type drift": "160000",
+      }[scenario];
+      if (historyMode) {
+        git(cwd, ["update-index", "--add", "--cacheinfo", `${historyMode},${blob},${filePath}`]);
+        git(cwd, ["commit", "-m", "fix: different historical entry"]);
+      } else if (scenario === "novel content") {
+        writeRepoFile(cwd, filePath, "name: different dev controls\n");
+        commitAll(cwd, "fix: unrelated dev controls");
+      }
+      // The real checkpoint does not change this path, so path history omits it.
+      writeRepoFile(cwd, "docs/checkpoint.md", "Release checkpoint\n");
+      // Stage only the checkpoint, preserving synthetic index mode/type entries.
+      git(cwd, ["add", "docs/checkpoint.md"]);
+      git(cwd, ["commit", "-m", "chore: reverse integrate main into dev"]);
+      const checkpoint = git(cwd, ["rev-parse", "HEAD"]);
+      assert.ok(!git(cwd, ["log", "--format=%H", "dev", "--", filePath])
+        .split("\n").includes(checkpoint));
+      writeRepoFile(cwd, filePath, "name: native preview replacement\n");
+      commitAll(cwd, "fix: replace dev native preview controls");
+      updateOriginRef(cwd, "dev");
+      assert.match(git(cwd, ["diff", "--numstat", "main", "dev", "--", filePath]), /^1\s+1\s/);
+
+      // A fixture cannot mint a chosen SHA. Translate only this fixture's
+      // backport identity at the Git boundary; keep all trees/history real.
+      // Production has no injectable allowlist, test flag or exported mutator.
+      const realExec = childProcess.execFileSync;
+      const translate = !["unknown backport", "copied subject"].includes(scenario);
+      const mock = t.mock.method(childProcess, "execFileSync", (command, args, options) => {
+        if (command !== "git" || options?.cwd !== cwd || !translate) {
+          return realExec(command, args, options);
+        }
+        if (args[0] === "merge-base" && args[2] === reviewedCommit) {
+          return realExec(command, [args[0], args[1], backport, ...args.slice(3)], options);
+        }
+        const result = realExec(command, args, options);
+        return args[0] === "log" && args[1] === "-1" &&
+          result.startsWith(`${backport}\0`)
+          ? result.replace(backport, reviewedCommit)
+          : result;
+      });
+      syncBuiltinESMExports();
+      try {
+        const files = listMainBackflowDiffFiles({ devRef: "dev", mainRef: "main", cwd });
+        assert.equal(files.includes(filePath), scenario !== "unchanged checkpoint then dev replacement");
+      } finally {
+        mock.mock.restore();
+        syncBuiltinESMExports();
+      }
+    });
+  }
+});
+
 test("validate-main-backflow rejects an unapproved backport to an older dev blob", (t) => {
   const cwd = makeTempRepo();
   t.after(() => rmSync(cwd, { recursive: true, force: true }));
@@ -1156,6 +1261,20 @@ test("validate-main-backflow ignores release-only main metadata", (t) => {
   const cwd = makeTempRepo();
   t.after(() => rmSync(cwd, { recursive: true, force: true }));
 
+  // Squash promotion shares product bytes without advancing the merge base.
+  git(cwd, ["checkout", "dev"]);
+  writeCargoLock(cwd, "26.4.2002", { dependencyVersion: "1.5.0" });
+  commitAll(cwd, "feat: shared dependency update");
+  git(cwd, ["checkout", "main"]);
+  writeCargoLock(cwd, "26.4.2002", { dependencyVersion: "1.5.0" });
+  commitAll(cwd, "chore: promote dev into main for production release");
+
+  // Dev then advances dependencies while main only bumps its release version.
+  git(cwd, ["checkout", "dev"]);
+  writeCargoLock(cwd, "26.4.2200", { dependencyVersion: "2.0.0" });
+  commitAll(cwd, "feat: update dev dependency");
+  updateOriginRef(cwd, "dev");
+
   git(cwd, ["checkout", "main"]);
   writeRepoFile(
     cwd,
@@ -1167,7 +1286,7 @@ test("validate-main-backflow ignores release-only main metadata", (t) => {
     "packages/pwa/package.json",
     '{\n  "name": "@freed/pwa",\n  "version": "26.4.2100"\n}\n',
   );
-  writeCargoLock(cwd, "26.4.2100");
+  writeCargoLock(cwd, "26.4.2100", { dependencyVersion: "1.5.0" });
   commitAll(cwd, "release metadata");
   updateOriginRef(cwd, "main");
 
