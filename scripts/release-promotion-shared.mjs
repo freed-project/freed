@@ -67,7 +67,12 @@ export const PROMOTION_COMMIT_SUBJECT_PATTERN =
   /^chore: promote dev (?:into|to) main(?: for production release)?(?: \(#\d+\))?$/;
 const HISTORICAL_MAIN_BACKPORT_SUBJECTS = new Set([
   "fix: backport simplified provider approval (#980)",
-  "fix: backport immutable snapshot controls (#1746)",
+]);
+// Immutable snapshot controls were already on dev before the unchanged
+// reverse-integration checkpoint. Pin the backport identity, not its subject:
+// a later main rollback must still require reverse integration.
+const HISTORICAL_MAIN_BACKPORT_COMMITS = new Set([
+  "8f179b4ef898e1e3025b3a7ae5a4407561459474",
 ]);
 const HISTORICAL_MAIN_PROMOTION_SUBJECTS = new Set([
   "chore: refresh dev promotion for production release (#1538)",
@@ -280,6 +285,20 @@ function blobExistsInHistory(ref, filePath, blobId, { cwd } = {}) {
   );
 }
 
+function treeEntryExistsInHistory(ref, filePath, sourceRef, { cwd } = {}) {
+  const readEntry = (commit) => tryRunGit(
+    ["ls-tree", "--format=%(objectmode) %(objecttype) %(objectname)", commit,
+      "--", `:(literal)${filePath}`],
+    { cwd },
+  );
+  const entry = readEntry(sourceRef);
+  if (!entry) return false;
+  const commits = splitLines(
+    tryRunGit(["log", "--format=%H", ref, "--", filePath], { cwd }) ?? "",
+  );
+  return commits.some((commit) => readEntry(commit) === entry);
+}
+
 function commitIsAncestor(ancestorRef, descendantRef, { cwd } = {}) {
   if (!ancestorRef) return false;
   return (
@@ -399,6 +418,15 @@ export function listMainBackflowDiffFiles({ devRef, mainRef, cwd }) {
       if (
         mainChange &&
         commitIsAncestor(mainChange.commit, devRef, { cwd })
+      ) {
+        return false;
+      }
+
+      if (
+        mainBlobId &&
+        mainChange &&
+        HISTORICAL_MAIN_BACKPORT_COMMITS.has(mainChange.commit) &&
+        treeEntryExistsInHistory(devRef, filePath, productMainRef, { cwd })
       ) {
         return false;
       }
