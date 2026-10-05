@@ -108,6 +108,33 @@ describe("PWA Library Core SQLite engine", () => {
     return value;
   }
 
+  // Tier 1: parity with Native for background and changed-item confirmation metadata.
+  it("preserves seen confirmation through all normalized query paths", () => {
+    const engine = new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion);
+    engine.initialize();
+    database.exec(`INSERT INTO library_meta VALUES (1, '${"a".repeat(64)}', 1, 'epoch-1', 0, 1);
+      INSERT INTO library_materialization_generation VALUES (1, '${"b".repeat(64)}');
+      INSERT INTO library_feed_items (global_id, platform, content_type, captured_at, published_at, read_at, updated_at, author_id, author_handle, author_display_name, hidden, saved, archived)
+      VALUES ('x:synthetic', 'x', 'post', 1, 1, 70, 1, 'author', 'author', 'Author', 0, 0, 0);`);
+    for (const stamp of [null, -1, 0, 1000]) {
+      database.exec({ sql: "UPDATE library_feed_items SET seen_synced_at=?1", bind: [stamp] });
+      for (const priorityComputedBeforeMs of [null, 1001]) {
+        const page = engine.query({ queryId: "background_item_page_v1", schemaVersion: 1,
+          analysisVersion: null, cancellationId: operationId("cancel-seen"), readerSessionId: operationId("reader-seen"),
+          cursor: null, limit: 64, priorityComputedBeforeMs });
+        expect(page.rows[0].seenSyncedAt).toBe(stamp);
+      }
+      const page = engine.query({ queryId: "priority_time_page_v1", schemaVersion: 1,
+        cancellationId: operationId("cancel-time"), readerSessionId: operationId("reader-time"), limit: 64,
+        priorityComputedBeforeMs: 1001, generationId: "b".repeat(64) as never, sourceRevision: 0 });
+      expect(page.rows[0].seenSyncedAt).toBe(stamp);
+      const detail = engine.query({ queryId: "item_detail_v1", schemaVersion: 1, globalId: "x:synthetic" });
+      expect(detail.item?.seenSyncedAt).toBe(stamp);
+    }
+    database.exec("UPDATE library_feed_items SET seen_synced_at=-2");
+    expect(() => engine.query({ queryId: "item_detail_v1", schemaVersion: 1, globalId: "x:synthetic" })).toThrow();
+  });
+
   // Tier 1: finite shell settings cannot load growing collections or silently default failed reads.
   it("reads finite shell preferences without owning unrelated collections", async () => {
     const engine = new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion);

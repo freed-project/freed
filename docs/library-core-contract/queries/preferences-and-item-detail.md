@@ -62,7 +62,10 @@ bounded preference snapshot; removing that ownership remains unfinished.
 projection and returns only typed locators that say whether each reader body is
 absent, inline in SQLite, or stored as a content-addressed blob. It also returns
 at most eight nullable media blob digests in exact ordinal alignment with the
-bounded media URL and type arrays. A null digest means that media row has no
+bounded media URL and type arrays. Its separate nullable `seenSyncedAt`
+metadata field preserves canonical provider confirmation through changed-item
+delivery without widening the general feed card. Null remains unconfirmed;
+zero and the historical `-1` terminal marker survive mapping. A null digest means that media row has no
 authenticated blob descriptor. The body bytes are fetched through
 `item_reader_body_v1`. Item detail and background scans do not return full
 bodies, media bytes, arbitrary remainder objects, or an enlarged metadata
