@@ -1,5 +1,5 @@
-import { retainRenderedAnnotationSnapshot } from "@freed/shared/library-core";
-import { assembleHydratedAnnotationReplacement, hydrateLibraryCoreAnnotations, replaceHydratedSavedNote, sameAnnotationSource } from "@freed/shared/library-core";
+import { canonicalizeFeedItemHighlightsV1, canonicalizeFeedItemTagsV1, retainRenderedAnnotationSnapshot } from "@freed/shared/library-core";
+import { assembleHydratedAnnotationReplacement, replaceHydratedSavedNote, sameAnnotationSource } from "@freed/shared/library-core";
 import {
   sanitizeFeedItemCaptureWrite,
   sanitizeRssFeedWrite,
@@ -567,25 +567,60 @@ export async function enqueuePwaLibraryCoreSavedItemNote(globalId: string, note:
   await commitPwaLibraryCoreFeedItemAnnotationSets([{ entityId: globalId, highlights: payload.highlights, tags: payload.tags }], now, originals.source);
 }
 
+/** Select only initially missing identities before capture. Existing annotations stay untouched. */
+export async function preparePwaNewItemAnnotations(items: readonly FeedItem[]) {
+  const result = [];
+  for (const item of new Map(items.map(item => [item.globalId, item])).values()) {
+    if (!item.userState.tags.length && !item.userState.highlights?.length) continue;
+    const original = await queryPwaNormalizedLibrary({ queryId: "item_detail_v1", schemaVersion: 1, globalId: item.globalId });
+    if (original.item !== null) continue;
+    result.push({ entityId: item.globalId,
+      highlights: canonicalizeFeedItemHighlightsV1(item.userState.highlights ?? []),
+      tags: canonicalizeFeedItemTagsV1(item.userState.tags) });
+  }
+  return result;
+}
+
+/** Initialize the fixed missing set after capture; never reinterpret an existing edit as initialization. */
+export async function initializePwaNewItemAnnotations(
+  assignments: Awaited<ReturnType<typeof preparePwaNewItemAnnotations>>,
+  onCommitted?: (count: number) => void,
+) {
+  for (let start = 0; start < assignments.length; start += PWA_LIBRARY_CORE_SQLITE_ANNOTATION_BATCH_LIMIT) {
+    const batch = assignments.slice(start, start + PWA_LIBRARY_CORE_SQLITE_ANNOTATION_BATCH_LIMIT);
+    let expectedSource: import("@freed/shared/library-core").LibraryCoreFeedPageSourceV1 | undefined;
+    for (const assignment of batch) {
+      const original = await queryPwaNormalizedLibrary({ queryId: "item_annotations_v1", schemaVersion: 1, globalId: assignment.entityId });
+      if (original.tags.length || original.highlights.length) throw new Error("Imported item annotations already exist; initialization refused");
+      if (expectedSource && !sameAnnotationSource(expectedSource, original.source)) throw new Error("Annotation source changed; initialization refused");
+      expectedSource ??= original.source;
+    }
+    await commitPwaLibraryCoreFeedItemAnnotationSets(batch, Date.now(), expectedSource);
+    onCommitted?.(batch.length);
+  }
+}
+
 /** Commit bounded signed normalized FeedItem annotation replacements. */
 export async function enqueuePwaLibraryCoreFeedItemAnnotationSets(
   assignments: readonly Readonly<{
     entityId: string;
     highlights: readonly Highlight[];
     tags: readonly string[];
+    annotationSnapshot: import("@freed/shared/library-core").LibraryCoreHydratedAnnotations;
   }>[],
   onCommitted?: (count: number) => void,
 ): Promise<void> {
-  const rows = [...new Map(assignments.map(row => [row.entityId, row])).values()];
+  const rows = [...new Map(assignments.map(row => [row.entityId, { ...row, annotationSnapshot: retainRenderedAnnotationSnapshot(row.annotationSnapshot, row.entityId) }])).values()];
   let expectedSource: import("@freed/shared/library-core").LibraryCoreFeedPageSourceV1 | undefined;
   for (let start = 0; start < rows.length; start += PWA_LIBRARY_CORE_SQLITE_ANNOTATION_BATCH_LIMIT) {
     const now = Date.now();
     const batch = [];
     for (const assignment of rows.slice(start, start + PWA_LIBRARY_CORE_SQLITE_ANNOTATION_BATCH_LIMIT)) {
       const originals = await queryPwaNormalizedLibrary({ queryId: "item_annotations_v1", schemaVersion: 1, globalId: assignment.entityId });
-      if (expectedSource && !sameAnnotationSource(expectedSource, originals.source)) throw new Error("Annotation source changed; reopen the item");
-      expectedSource ??= originals.source;
-      const snapshot = await hydrateLibraryCoreAnnotations(queryPwaNormalizedLibrary, originals);
+      const snapshot = assignment.annotationSnapshot;
+      if (!sameAnnotationSource(snapshot.originals.source, originals.source) ||
+          (expectedSource && !sameAnnotationSource(expectedSource, snapshot.originals.source))) throw new Error("Annotation source changed; reopen the item");
+      expectedSource ??= snapshot.originals.source;
       const payload = assembleHydratedAnnotationReplacement(snapshot, assignment.highlights, assignment.tags, now);
       batch.push({ entityId: assignment.entityId, highlights: payload.highlights, tags: payload.tags });
     }

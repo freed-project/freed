@@ -21,9 +21,16 @@ not establish installed Desktop IPC or pending-view editing acceptance.
 Primary new-item annotation initialization uses independent source-fenced batches
 bounded by 256 members and 4 MiB of envelopes. It refuses nonempty canonical
 originals and source races. Atomicity applies to each transaction, not the whole
-import; retry lookup can skip items whose initialization did not finish. Pending
-local annotations, broader replacement provenance, Windows range-vault support
-and installed acceptance remain open. No new quote editor is included.
+import; retry lookup can skip items whose initialization did not finish.
+Generic existing-item annotation replacement requires the caller's original
+snapshot and refuses missing or stale provenance before capture or annotation
+writes. Untouched fields retain their canonical values. Annotation admission and
+capture remain separate transactions: a later capture failure does not undo an
+accepted annotation. New-item initialization excludes initially existing IDs and
+refuses conflicting canonical annotations. Generic store APIs have no production
+annotation-edit UI caller; callers without a snapshot fail closed. Pending local
+annotations, Windows range-vault support and installed acceptance remain open.
+No new quote editor is included.
 
 Native provider admission now has bounded lifetime counters in the existing
 runtime-health sampler. The soak verdict reports their delta only across a

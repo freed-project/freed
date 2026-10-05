@@ -7,7 +7,8 @@ import { withSavedItemNote, type FeedItem } from "@freed/shared";
 import {
   enqueuePwaLibraryCoreSavedItemNote,
   enqueuePwaLibraryCoreFeedItemCapture,
-  enqueuePwaLibraryCoreFeedItemAnnotationSets,
+  preparePwaNewItemAnnotations,
+  initializePwaNewItemAnnotations,
   enqueuePwaLibraryCoreFeedItemRemove,
 } from "./library-core-runtime";
 
@@ -119,17 +120,11 @@ export async function saveUrlInPwa(
       tags: options.tags,
     },
   );
+  item.userState.highlights = withSavedItemNote([], options.notes ?? "");
   const canonicalItem = JSON.parse(JSON.stringify(item)) as typeof item;
+  const annotations = await preparePwaNewItemAnnotations([canonicalItem]);
   await enqueuePwaLibraryCoreFeedItemCapture(canonicalItem);
-  if ((options.tags?.length ?? 0) > 0 || (options.notes?.length ?? 0) > 0) {
-    await enqueuePwaLibraryCoreFeedItemAnnotationSets([
-      {
-        entityId: item.globalId,
-        highlights: withSavedItemNote([], options.notes ?? ""),
-        tags: options.tags ?? [],
-      },
-    ]);
-  }
+  await initializePwaNewItemAnnotations(annotations);
   return { globalId: item.globalId };
 }
 

@@ -323,7 +323,7 @@ interface AppState {
 
   // Item actions persisted through typed SQLite mutations.
   addItems: (items: FeedItem[]) => Promise<void>;
-  updateItem: (id: string, update: Partial<FeedItem>) => Promise<void>;
+  updateItem: (id: string, update: Partial<FeedItem>, annotationSnapshot?: import("@freed/shared/library-core").LibraryCoreHydratedAnnotations) => Promise<void>;
   markAsRead: (id: string) => Promise<void>;
   markItemsAsRead: (ids: string[]) => Promise<void>;
   markAllAsRead: (platform?: string) => Promise<void>;
@@ -919,10 +919,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     );
   },
 
-  updateItem: async (id, update) => {
+  updateItem: async (id, update, annotationSnapshot) => {
     await runStoreMutation(
       "desktop:updateItem",
-      () => updateLibraryFeedItem(id, update),
+      () => updateLibraryFeedItem(id, update, annotationSnapshot),
     );
   },
 

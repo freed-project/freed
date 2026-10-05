@@ -20,7 +20,8 @@ vi.mock("@freed/capture-save/normalize", () => ({
 vi.mock("./library-core-runtime", () => ({
   enqueuePwaLibraryCoreSavedItemNote: mockSavedNote,
   enqueuePwaLibraryCoreFeedItemCapture: mockEnqueueCapture,
-  enqueuePwaLibraryCoreFeedItemAnnotationSets: mockEnqueueAnnotations,
+  preparePwaNewItemAnnotations: vi.fn(async (items: import("@freed/shared").FeedItem[]) => items.filter(item => item.userState.tags.length || item.userState.highlights?.length).map(item => ({ entityId: item.globalId, highlights: item.userState.highlights, tags: item.userState.tags }))),
+  initializePwaNewItemAnnotations: mockEnqueueAnnotations,
   enqueuePwaLibraryCoreFeedItemRemove: mockEnqueueRemove,
 }));
 

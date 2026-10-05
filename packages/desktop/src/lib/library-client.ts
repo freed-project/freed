@@ -1,3 +1,4 @@
+import { retainRenderedAnnotationSnapshot } from "@freed/shared/library-core";
 import type { LibraryCoreFeedPageSourceV1 } from "@freed/shared/library-core";
 /**
  * Freed Desktop Library client.
@@ -8,6 +9,7 @@ import type { LibraryCoreFeedPageSourceV1 } from "@freed/shared/library-core";
 
 import { hashSavedUrl } from "@freed/capture-save/normalize";
 import {
+  withSavedItemNote,
   CONTENT_SIGNAL_KEYS,
   CONTENT_SIGNAL_VERSION,
   calculatePriority,
@@ -415,7 +417,8 @@ export const updateLibrarySavedItemNote = (globalId: string, note: string, annot
 export const updateLibraryFeedItem = (
   globalId: string,
   updates: Partial<FeedItem>,
-) => request({ type: "UPDATE_FEED_ITEM", globalId, updates }).then(() => {});
+  annotationSnapshot?: import("@freed/shared/library-core").LibraryCoreHydratedAnnotations,
+) => request({ type: "UPDATE_FEED_ITEM", globalId, updates, annotationSnapshot: updates.userState?.tags !== undefined || updates.userState?.highlights !== undefined ? retainRenderedAnnotationSnapshot(annotationSnapshot, globalId) : undefined }).then(() => {});
 export const markLibraryItemAsRead = (globalId: string) =>
   request({ type: "MARK_AS_READ", globalId }).then(() => {});
 export const markLibraryItemsAsRead = (globalIds: string[]) =>
@@ -661,6 +664,7 @@ export async function backfillLibraryPriorities(
 export async function addLibraryStubItem(
   url: string,
   tags: string[] = [],
+  initial?: Readonly<{ notes?: string; preview?: { title: string; description?: string } }>,
 ): Promise<FeedItem> {
   const globalId = `saved:${hashSavedUrl(url)}`;
   const now = Date.now();
@@ -676,10 +680,10 @@ export async function addLibraryStubItem(
     publishedAt: now,
     author: { id: hostname, handle: hostname, displayName: hostname },
     content: {
-      text: url,
+      text: initial?.preview?.description ?? url,
       mediaUrls: [],
       mediaTypes: [],
-      linkPreview: { url, title: url },
+      linkPreview: { url, title: initial?.preview?.title ?? url, ...(initial?.preview?.description ? { description: initial.preview.description } : {}) },
     },
     userState: {
       hidden: false,
@@ -687,6 +691,7 @@ export async function addLibraryStubItem(
       savedAt: now,
       archived: false,
       tags,
+      highlights: withSavedItemNote([], initial?.notes ?? ""),
     },
     topics: [],
   };

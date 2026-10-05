@@ -236,7 +236,7 @@ describe("Freed Desktop normalized surface readers", () => {
       });
       await expect(readLibraryCoreItemDetail("x:item-1")).rejects.toThrow(
         failure === "stale source"
-          ? "source is stale"
+          ? "Annotation text is stale"
           : "Annotation text is unavailable",
       );
       expect(mocks.queryNormalizedLibrary.mock.calls).toHaveLength(failure === "stale source" ? 2 : 3);

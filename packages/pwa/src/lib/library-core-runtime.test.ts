@@ -98,6 +98,7 @@ vi.mock("./library-core-pwa-follower-enrollment", () => ({
 }));
 
 vi.mock("./factory-reset-coordinator", () => ({
+  assertPwaRuntimeCurrent: vi.fn(),
   registerPwaFactoryResetQuiesceHandler: vi.fn(),
 }));
 
@@ -462,10 +463,86 @@ describe("PWA Library Core bounded scanner", () => {
       text: { blobDigest: digest, contentLength: 5, startOffset: 0, endOffset: 5, bytesBase64: "UXVvdGU=" },
     });
     const { enqueuePwaLibraryCoreFeedItemAnnotationSets } = await import("./library-core-runtime");
-    await enqueuePwaLibraryCoreFeedItemAnnotationSets([{ entityId: "item", highlights: [{ createdAt: 1, text: "Quote", note: "changed" }], tags: ["new-tag"] }]);
+    const annotationSnapshot = { state: "ready" as const, originals: { ...original, queryId: "item_annotations_v1" as const, schemaVersion: 1 as const, source: { ...QUERY_SOURCE, generationId: QUERY_SOURCE.generationId as import("@freed/shared/library-core").LibraryCoreLowercaseHex64 } }, highlights: [{ createdAt: 1, text: "Quote", note: "old" }] };
+    await enqueuePwaLibraryCoreFeedItemAnnotationSets([{ entityId: "item", highlights: [{ createdAt: 1, text: "Quote", note: "changed" }], tags: ["new-tag"], annotationSnapshot }]);
     expect(mocks.commitAnnotations).toHaveBeenCalledWith([{ entityId: "item", highlights: [{ ...canonical, note: "changed" }], tags: ["new-tag"] }], expect.any(Number), QUERY_SOURCE);
     mocks.commitAnnotations.mockClear();
-    await expect(enqueuePwaLibraryCoreFeedItemAnnotationSets([{ entityId: "item", highlights: [], tags: [] }])).rejects.toThrow("omits an authenticated quote");
+    await expect(enqueuePwaLibraryCoreFeedItemAnnotationSets([{ entityId: "item", highlights: [], tags: [], annotationSnapshot }])).rejects.toThrow("omits an authenticated quote");
+    mocks.commitAnnotations.mockClear();
+    await expect(enqueuePwaLibraryCoreFeedItemAnnotationSets([{ entityId: "item", highlights: [], tags: [] } as never])).rejects.toThrow("not ready");
+    mocks.queryNormalizedLibrary.mockResolvedValue({ ...original, source: { ...QUERY_SOURCE, projectionRevision: QUERY_SOURCE.projectionRevision + 1 }, tags: ["remote"] });
+    await expect(enqueuePwaLibraryCoreFeedItemAnnotationSets([{ entityId: "item", highlights: annotationSnapshot.highlights, tags: ["stale"], annotationSnapshot }])).rejects.toThrow("source changed");
+    expect(mocks.commitAnnotations).not.toHaveBeenCalled();
+  });
+
+  it.each(["missing", "stale", "sign-race", "capture-fails", "success"] as const)("guards PWA store writes with original provenance: %s", async scenario => {
+    const runtime = await import("./library-core-runtime");
+    const { useAppStore } = await import("./store");
+    const canonical = { createdAt: 1, text: null, textBlobDigest: "de".repeat(32), note: "keep" };
+    const original = { queryId: "item_annotations_v1" as const, schemaVersion: 1 as const, globalId: "item",
+      source: { ...QUERY_SOURCE, generationId: QUERY_SOURCE.generationId as import("@freed/shared/library-core").LibraryCoreLowercaseHex64 }, tags: ["original"], highlights: [canonical] };
+    const snapshot = { state: "ready" as const, originals: original, highlights: [{ createdAt: 1, text: "Quote", note: "keep" }] };
+    // This store uses the one-argument overload, which returns a FeedItem.
+    const detail = vi.spyOn(runtime as { readPwaLibraryCoreItemDetail(id: string): Promise<import("@freed/shared").FeedItem | null> }, "readPwaLibraryCoreItemDetail").mockResolvedValue({
+      globalId: "item", platform: "rss", contentType: "article", capturedAt: 1, publishedAt: 1,
+      author: { id: "author", handle: "author", displayName: "Author" },
+      content: { text: "Text", mediaUrls: [], mediaTypes: [] }, topics: [],
+      userState: { hidden: false, saved: true, archived: false, tags: ["remote"], highlights: [] },
+    });
+    const capture = vi.spyOn(runtime, "enqueuePwaLibraryCoreFeedItemCapture");
+    const drain = vi.spyOn(runtime, "drainPwaLibraryCoreLocalChanges").mockResolvedValue(null);
+    const writes: string[] = [];
+    mocks.queryNormalizedLibrary.mockResolvedValue({ ...original, source: { ...original.source, projectionRevision: scenario === "stale" ? 8 : 7 } });
+    mocks.commitAnnotations.mockReset().mockImplementation(async (rows, _now, source) => {
+      expect(source).toEqual(original.source);
+      expect(rows).toEqual([{ entityId: "item", tags: ["edited"], highlights: [canonical] }]);
+      if (scenario === "sign-race") throw new Error("LOCAL_ADMISSION_SOURCE_STALE");
+      writes.push("annotations");
+    });
+    capture.mockImplementation(async () => {
+      if (scenario === "capture-fails") throw new Error("capture failed");
+      writes.push("capture");
+    });
+    try {
+      const action = useAppStore.getState().updateItem("item", { userState: { tags: ["edited"] } as never }, scenario === "missing" ? undefined : snapshot);
+      if (scenario === "success") await action;
+      else await expect(action).rejects.toThrow(scenario === "missing" ? "not ready" : scenario === "stale" ? "source changed" : scenario === "sign-race" ? "LOCAL_ADMISSION_SOURCE_STALE" : "capture failed");
+      expect(writes).toEqual(scenario === "success" ? ["annotations", "capture"] : scenario === "capture-fails" ? ["annotations"] : []);
+      if (["missing", "stale", "sign-race"].includes(scenario)) expect(capture).not.toHaveBeenCalled();
+    } finally {
+      detail.mockRestore(); capture.mockRestore(); drain.mockRestore();
+    }
+  });
+
+  it("keeps initialization distinct from existing replacements and fences each new batch", async () => {
+    const { preparePwaNewItemAnnotations, initializePwaNewItemAnnotations } = await import("./library-core-runtime");
+    const items = Array.from({ length: 34 }, (_, index) => ({
+      globalId: `item-${index}`, platform: "rss" as const, contentType: "article" as const,
+      capturedAt: 1, publishedAt: 1,
+      author: { id: "author", handle: "author", displayName: "Author" },
+      content: { text: "Text", mediaUrls: [], mediaTypes: [] },
+      userState: { hidden: false, saved: false, archived: false, tags: ["new"] },
+      topics: [],
+    }));
+    let revision = QUERY_SOURCE.projectionRevision;
+    mocks.queryNormalizedLibrary.mockImplementation(async request => request.queryId === "item_detail_v1"
+      ? { item: request.globalId === "item-0" ? {} : null }
+      : { tags: [], highlights: [], source: { ...QUERY_SOURCE, projectionRevision: revision } });
+    mocks.commitAnnotations.mockReset().mockImplementation(async (_rows, _now, expectedSource) => {
+      expect(expectedSource.projectionRevision).toBe(revision);
+      revision += 1;
+    });
+    const originals = await preparePwaNewItemAnnotations([...items, items[1]!]);
+    expect(originals).toHaveLength(33);
+    expect(originals.some(row => row.entityId === "item-0")).toBe(false);
+    await initializePwaNewItemAnnotations(originals);
+    expect(mocks.commitAnnotations.mock.calls.map(call => call[0].length)).toEqual([32, 1]);
+    mocks.commitAnnotations.mockClear();
+    mocks.queryNormalizedLibrary.mockResolvedValue({ tags: ["concurrent"], highlights: [], source: QUERY_SOURCE });
+    await expect(initializePwaNewItemAnnotations(originals)).rejects.toThrow("initialization refused");
+    expect(mocks.commitAnnotations).not.toHaveBeenCalled();
+    mocks.queryNormalizedLibrary.mockImplementation(async () => ({ tags: [], highlights: [], source: { ...QUERY_SOURCE, projectionRevision: revision++ } }));
+    await expect(initializePwaNewItemAnnotations(originals)).rejects.toThrow("source changed");
     expect(mocks.commitAnnotations).not.toHaveBeenCalled();
   });
 

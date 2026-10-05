@@ -1,3 +1,4 @@
+import { retainRenderedAnnotationSnapshot } from "@freed/shared/library-core";
 /**
  * Global app state management with Zustand
  *
@@ -43,6 +44,8 @@ import {
   enqueuePwaLibraryCoreFeedItemCaptures,
   enqueuePwaLibraryCoreFeedItemAnalysisSets,
   enqueuePwaLibraryCoreFeedItemAnnotationSets,
+  preparePwaNewItemAnnotations,
+  initializePwaNewItemAnnotations,
   enqueuePwaLibraryCoreFeedItemRemove,
   enqueuePwaLibraryCoreRssFeedRemove,
   enqueuePwaLibraryCoreRssFeedTitleAssignment,
@@ -380,19 +383,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       set,
       "pwa:addItems",
       async () => {
+        const annotations = await preparePwaNewItemAnnotations(items);
         await enqueuePwaLibraryCoreFeedItemCaptures(items);
-        const annotated = items.filter(
-          (item) =>
-            item.userState.tags.length > 0 ||
-            (item.userState.highlights?.length ?? 0) > 0,
-        );
-        await enqueuePwaLibraryCoreFeedItemAnnotationSets(
-          annotated.map((item) => ({
-            entityId: item.globalId,
-            highlights: item.userState.highlights ?? [],
-            tags: item.userState.tags,
-          })),
-        );
+        await initializePwaNewItemAnnotations(annotations);
         const analyzed = items.filter(
           (item) =>
             item.contentSignals !== undefined || item.eventCandidate !== undefined,
@@ -409,7 +402,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     );
   },
 
-  updateItem: async (id, update) => {
+  updateItem: async (id, update, annotationSnapshot) => {
+    const changesAnnotations = update.userState?.tags !== undefined || update.userState?.highlights !== undefined;
+    const snapshot = changesAnnotations ? retainRenderedAnnotationSnapshot(annotationSnapshot, id) : null;
     await runSqliteMutation(
       get,
       set,
@@ -421,6 +416,12 @@ export const useAppStore = create<AppState>((set, get) => ({
         if (update.userState) {
           next.userState = applyDefinedUpdate(item.userState, update.userState);
         }
+        if (snapshot) {
+          await enqueuePwaLibraryCoreFeedItemAnnotationSets([{ entityId: id,
+            highlights: update.userState?.highlights ?? snapshot.highlights!,
+            tags: update.userState?.tags ?? snapshot.originals.tags, annotationSnapshot: snapshot }]);
+        }
+        // Later capture/analysis failure does not roll back an admitted annotation transaction.
         await enqueuePwaLibraryCoreFeedItemCapture(next);
         if (
           update.contentSignals !== undefined ||
@@ -431,18 +432,6 @@ export const useAppStore = create<AppState>((set, get) => ({
               contentSignals: next.contentSignals,
               entityId: id,
               eventCandidate: next.eventCandidate,
-            },
-          ]);
-        }
-        if (
-          update.userState?.tags !== undefined ||
-          update.userState?.highlights !== undefined
-        ) {
-          await enqueuePwaLibraryCoreFeedItemAnnotationSets([
-            {
-              entityId: id,
-              highlights: next.userState.highlights ?? [],
-              tags: next.userState.tags,
             },
           ]);
         }
@@ -676,6 +665,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     reportProgress("preparing");
     await ensurePwaLibraryCoreLocalSampleState();
+    const newAnnotations = await preparePwaNewItemAnnotations(data.items);
     await enqueuePwaLibraryCoreRssFeedUpserts(data.feeds, (count) => {
       advance("feeds", count);
     });
@@ -687,7 +677,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     await settlePwaLibraryCoreLocalSampleState();
     advance("items", 1);
     if (annotations.length > 0) {
-      await enqueuePwaLibraryCoreFeedItemAnnotationSets(annotations, (count) => {
+      await initializePwaNewItemAnnotations(newAnnotations, (count) => {
         advance("annotations", count);
       });
       await settlePwaLibraryCoreLocalSampleState();

@@ -13,7 +13,7 @@ const request = parsed.value;
 const quote = "\ufeffA\r\ne\u0301\0🦉";
 const bytes = new TextEncoder().encode(quote);
 const digest = digestLibraryCoreMediaBlobBytesV1(bytes);
-const response = { queryId: request.queryId, schemaVersion: 1, globalId: "item", annotationIndex: 0, source, state: "ready", text: { blobDigest: digest, contentLength: bytes.length, startOffset: 0, endOffset: bytes.length, bytesBase64: encodeLibraryCoreCanonicalBase64(bytes) } };
+const response = { queryId: request.queryId, schemaVersion: 1, globalId: "item", annotationIndex: 0, source: request.expectedSource, state: "ready", text: { blobDigest: digest, contentLength: bytes.length, startOffset: 0, endOffset: bytes.length, bytesBase64: encodeLibraryCoreCanonicalBase64(bytes) } } as const;
 function originals(count = 1) {
   const req = { queryId: "item_annotations_v1", schemaVersion: 1, globalId: "item" } as const;
   const parsed = parseLibraryCoreItemAnnotationsResponseV1({ ...req, source, tags: ["keep"], highlights: Array.from({ length: count }, () => ({ createdAt: 1, text: null, textBlobDigest: digest, note: "original" })) }, req);

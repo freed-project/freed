@@ -257,6 +257,46 @@ describe("SQLite editable follower mutations", () => {
     });
   });
 
+  it.each(["missing", "stale", "sign-race", "capture-fails", "success"] as const)("guards generic annotation provenance before writes: %s", async scenario => {
+    const snapshot = renderedAnnotationSnapshot();
+    const digest = "de".repeat(32);
+    const original = { ...snapshot, highlights: [{ createdAt: 1, text: "Quote", note: "keep" }], originals: {
+      ...snapshot.originals, tags: ["original"], highlights: [{ createdAt: 1, text: null, textBlobDigest: digest, note: "keep" }],
+    } };
+    const base = mocks.invoke.getMockImplementation()!;
+    const writes: string[] = [];
+    mocks.invoke.mockImplementation(async (command, args) => {
+      if (command === "query_normalized_library" && args.request.queryId === "item_annotation_text_range_v1") return {
+        queryId: args.request.queryId, schemaVersion: 1, globalId: ITEM_ID, annotationIndex: 0, source: args.request.expectedSource, state: "ready",
+        text: { blobDigest: digest, contentLength: 5, startOffset: 0, endOffset: 5, bytesBase64: "UXVvdGU=" },
+      };
+      if (command === "query_normalized_library" && ["item_detail_v1", "optimistic_fields_v1"].includes(args.request.queryId) && scenario === "stale") {
+        const result = await base(command, args);
+        return { ...result, source: { ...result.source, projectionRevision: 3 } };
+      }
+      if (command === "query_normalized_library" && args.request.queryId === "item_annotations_v1") return {
+        ...original.originals, source: { ...original.originals.source, projectionRevision: scenario === "stale" ? 3 : 2 },
+      };
+      if (command === "enqueue_normalized_library_follower_intent") {
+        const frames = args.request.canonicalEnvelopeJson.map((value: string) => JSON.parse(value));
+        if (scenario === "sign-race") throw new Error("LOCAL_ADMISSION_SOURCE_STALE");
+        if (scenario === "capture-fails" && frames[0].operation_type === "feed_item_capture_upsert") throw new Error("capture failed");
+        writes.push(frames[0].operation_type);
+        if (frames[0].operation_type === "feed_item_annotations_replace") {
+          expect(args.request.expectedSource).toEqual(original.originals.source);
+          expect(frames[0].payload.highlights).toEqual(original.originals.highlights);
+          expect(frames[0].payload.tags).toEqual(["edited"]);
+        }
+      }
+      return base(command, args);
+    });
+    const action = dispatchSqliteMutation({ type: "UPDATE_FEED_ITEM", globalId: ITEM_ID, reqId: 40,
+      updates: { userState: { tags: ["edited"] } as never }, annotationSnapshot: scenario === "missing" ? undefined : original });
+    if (scenario === "success") await action;
+    else await expect(action).rejects.toThrow(scenario === "missing" ? "not ready" : scenario === "stale" ? "source changed" : scenario === "sign-race" ? "LOCAL_ADMISSION_SOURCE_STALE" : "capture failed");
+    expect(writes).toEqual(scenario === "success" ? ["feed_item_annotations_replace", "feed_item_capture_upsert"] : scenario === "capture-fails" ? ["feed_item_annotations_replace"] : []);
+  });
+
   it("carries the annotation snapshot through signing and rejects stale admission without resigning", async () => {
     const original = mocks.invoke.getMockImplementation()!;
     mocks.invoke.mockImplementation(async (command: string, args?: unknown) => {

@@ -847,6 +847,23 @@ fn clear_errno() {
     unsafe { *libc::__error() = 0 };
 }
 
+/// Coalesced local recency only. Call after the authenticated read snapshot closes.
+pub(crate) fn mark_content_accessed(
+    connection: &Connection,
+    digest: &str,
+    accessed_at: i64,
+) -> Result<(), LibraryCoreStorageError> {
+    connection.execute(
+        "UPDATE library_device_content_availability
+         SET last_accessed_at = ?2
+         WHERE content_digest = ?1 COLLATE BINARY
+           AND last_accessed_at < ?2
+           AND (last_accessed_at = 0 OR ?2 - last_accessed_at >= 60000);",
+        rusqlite::params![digest, accessed_at],
+    ).map_err(store_error)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
@@ -1018,22 +1035,4 @@ mod tests {
             1
         );
     }
-}
-
-
-/// Coalesced local recency only. Call after the authenticated read snapshot closes.
-pub(crate) fn mark_content_accessed(
-    connection: &Connection,
-    digest: &str,
-    accessed_at: i64,
-) -> Result<(), LibraryCoreStorageError> {
-    connection.execute(
-        "UPDATE library_device_content_availability
-         SET last_accessed_at = ?2
-         WHERE content_digest = ?1 COLLATE BINARY
-           AND last_accessed_at < ?2
-           AND (last_accessed_at = 0 OR ?2 - last_accessed_at >= 60000);",
-        rusqlite::params![digest, accessed_at],
-    ).map_err(store_error)?;
-    Ok(())
 }

@@ -63,6 +63,7 @@ export type LibraryMutationRequest =
       type: "UPDATE_FEED_ITEM";
       globalId: string;
       updates: Partial<FeedItem>;
+      annotationSnapshot?: import("@freed/shared/library-core").LibraryCoreHydratedAnnotations;
     }
   | {
       reqId: number;

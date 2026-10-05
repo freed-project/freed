@@ -11,13 +11,11 @@ import { retainRenderedAnnotationSnapshot, type LibraryCoreHydratedAnnotations }
 import { invoke } from "@tauri-apps/api/core";
 import { extractMetadataBrowser } from "@freed/capture-save/browser";
 import {
-  withSavedItemNote,
   type FeedItem,
 } from "@freed/shared";
 import {
   addLibraryStubItem,
   removeLibraryFeedItem,
-  updateLibraryFeedItem,
   updateLibrarySavedItemNote,
 } from "./library-client";
 import { enqueue } from "./content-fetcher.js";
@@ -97,31 +95,8 @@ async function saveUrlInDesktopInternal(
 ): Promise<SaveUrlResult> {
   const stableUrl = stableHttpUrl(url);
   const preview = options.preview?.url === stableUrl ? options.preview : undefined;
-  const item = await addLibraryStubItem(stableUrl, options.tags);
-  const content = preview
-    ? {
-        ...item.content,
-        text: preview.description ?? item.content.text,
-        linkPreview: {
-          url: stableUrl,
-          title: preview.title,
-          ...(preview.description ? { description: preview.description } : {}),
-        },
-      }
-    : item.content;
-  const userState = options.notes
-    ? {
-        ...item.userState,
-        highlights: withSavedItemNote([], options.notes),
-      }
-    : item.userState;
-  const savedItem = { ...item, content, userState };
-  if (preview || options.notes) {
-    await updateLibraryFeedItem(item.globalId, {
-      ...(preview ? { content } : {}),
-      ...(options.notes ? { userState } : {}),
-    });
-  }
+  // Initial notes belong to new-item initialization, not an existing-item replacement.
+  const savedItem = await addLibraryStubItem(stableUrl, options.tags, { notes: options.notes, preview });
   enqueue([savedItem], {
     priority: true,
     force: true,
