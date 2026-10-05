@@ -470,6 +470,108 @@ import { execFileSync } from 'node:child_process';
   });
 }
 
+test("Darwin send settles only verified exit races and cleanup still waits for disappearance", () => {
+  const helper = new URL("./test-helpers/nightly_fixture_darwin.py", import.meta.url).pathname;
+  const result = spawnSync("python3", ["-B", "-c", `
+import contextlib, ctypes, errno, importlib.util, io, os, signal, types
+spec = importlib.util.spec_from_file_location('custody', ${JSON.stringify(helper)})
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+# Deterministic observation boundary, not a claim of native kernel custody.
+# Real send(), inventory() and cleanup() run; no OS inspection or signal occurs.
+expected = dict(pid=123, parentPid=os.getpid(), uniqueid=456, parentUniqueid=654,
+                pidversion=789, uid=501, birth='fixture', state=2, zombie=False)
+zombie = dict(expected, state=5, zombie=True)
+def fixture(after, responsible=-1, query_errno=0):
+    custody = module.DarwinCustody.__new__(module.DarwinCustody)
+    custody.anchor = dict(expected, pid=os.getpid(), uniqueid=654, birth='anchor')
+    custody.private = True
+    custody.known = {456: dict(expected)}
+    custody.outside = set()
+    custody.unresolved = []
+    state = dict(current=dict(expected), signals=0, queries=0, inventories=0)
+    def inspect(pid):
+        if pid == os.getpid():
+            return custody.anchor
+        assert pid == 123
+        value = state['current']
+        if isinstance(value, Exception):
+            raise value
+        return value
+    def responsibility(pid):
+        assert pid == 123
+        state['queries'] += 1
+        state['current'] = after  # Exit strictly after send's live snapshot.
+        ctypes.set_errno(query_errno)
+        if isinstance(responsible, Exception):
+            raise responsible
+        return responsible
+    def snapshots():
+        state['inventories'] += 1
+        value = state['current']
+        return [] if value is None else [(value, os.getpid() if value['state'] == 2 else -1)]
+    class NoSignal:
+        def proc_signal_with_audittoken(self, *args):
+            state['signals'] += 1
+            raise AssertionError('exit race or refused identity was signaled')
+    custody.inspect, custody.responsible, custody.snapshots = inspect, responsibility, snapshots
+    custody.lib = NoSignal()
+    return custody, state
+for after in [None, zombie]:
+    for query_errno in [0, errno.ESRCH]:
+        custody, state = fixture(after, query_errno=query_errno)
+        assert custody.send(expected, signal.SIGSTOP) is False
+        assert state['queries'] == 1 and state['signals'] == 0
+        assert custody.same(expected, custody.known[456]), 'capture must remain tracked'
+for after, responsible, query_errno in [
+    (dict(expected), -1, 0), (dict(expected), 42, 0),
+    (dict(zombie, pidversion=790), -1, 0),
+    (dict(zombie, uniqueid=457), -1, 0),
+    (dict(zombie, birth='reused'), -1, 0),
+    (dict(zombie, uid=502), -1, 0),
+    (None, -1, errno.EIO), (zombie, -1, errno.EPERM),
+    (None, -2, 0), (zombie, -1, errno.EINVAL),
+    (None, 42, 0), (zombie, 42, 0),
+    (None, OSError(errno.EIO, 'responsibility query failed'), errno.EIO),
+    (OSError(errno.EIO, 'inspection failed'), -1, 0),
+    (RuntimeError('cannot inspect generation'), -1, 0),
+]:
+    custody, state = fixture(after, responsible, query_errno)
+    with contextlib.redirect_stderr(io.StringIO()):
+        try:
+            custody.send(expected, signal.SIGSTOP)
+            raise AssertionError('unproven exit accepted')
+        except (RuntimeError, OSError):
+            pass
+    assert state['signals'] == 0
+# Drive the actual cleanup loop with a deterministic clock. A held zombie
+# remains inventoried until absence, or fails at the unchanged five-second bound.
+for after, held in [(None, False), (zombie, False), (zombie, True)]:
+    custody, state = fixture(after)
+    clock = [0.0]
+    def sleep(seconds):
+        clock[0] += seconds
+        if not held and state['inventories'] >= 3:
+            state['current'] = None
+    module.time = types.SimpleNamespace(monotonic=lambda: clock[0], sleep=sleep)
+    child = types.SimpleNamespace(pid=123)
+    try:
+        receipt = custody.cleanup(child, lambda child: [])
+        assert not held, 'held zombie falsely settled'
+        assert receipt['remaining'] == [] and receipt['signaled'] == []
+        assert state['current'] is None
+        assert state['inventories'] >= (2 if after is None else 4)
+    except RuntimeError as error:
+        assert held and 'cleanup deadline exceeded' in str(error)
+        assert '456' in str(error) and clock[0] >= 5
+    assert state['signals'] == 0 and 456 in custody.known
+print('exit boundary, refusal matrix and actual cleanup-loop settlement/deadline passed')
+`], { encoding: "utf8", timeout: 5_000 });
+  assert.equal(result.error, undefined);
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /actual cleanup-loop settlement\/deadline passed/);
+});
+
 test("Darwin signal refusal receipts preserve observations and the original failure", () => {
   const helper = new URL("./test-helpers/nightly_fixture_darwin.py", import.meta.url).pathname;
   const result = spawnSync("python3", ["-B", "-c", `
@@ -495,7 +597,7 @@ for after in [dict(expected, state=5, zombie=True), None,
     custody.inspect = inspect
     def responsible(pid):
         ctypes.set_errno(errno.ESRCH)
-        return -1
+        return 42
     custody.responsible = responsible
     class NoSignal:
         def proc_signal_with_audittoken(self, *args):
@@ -513,7 +615,7 @@ for after in [dict(expected, state=5, zombie=True), None,
     assert receipt['target'] == 123 and receipt['signal'] == signal.SIGSTOP
     assert receipt['expected'] == receipt['before'] == expected
     assert receipt['anchor'] == anchor
-    assert receipt['responsibility'] == -1 and receipt['responsibilityErrno'] == errno.ESRCH
+    assert receipt['responsibility'] == 42 and receipt['responsibilityErrno'] == errno.ESRCH
     if isinstance(after, Exception):
         assert receipt['after'] is None and receipt['afterError']['errno'] == errno.EIO
     else:
@@ -616,13 +718,68 @@ test("Darwin accounts for unseen zombies and refuses cleanup with missing ancest
   skip: process.platform !== "darwin" && "requires real Darwin process generations",
 }, () => {
   const result = spawnSync("python3", ["-B", "-c", `
-import ctypes, errno, importlib.util, json, os, subprocess, sys, time
+import ctypes, errno, importlib.util, json, os, signal, subprocess, sys, time
 sys.path.insert(0, ${JSON.stringify(path.dirname(supervisorPath))})
 spec = importlib.util.spec_from_file_location('supervisor', ${JSON.stringify(supervisorPath)})
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 module.confine()
 custody = module.DARWIN_CUSTODY
+# Force actual kernel exit strictly between send's live snapshot and its
+# responsibility lookup. No synthetic ownership or snapshots enter this case.
+for settlement in ['zombie', 'absent']:
+    exiting = subprocess.Popen([sys.executable, '-B', '-c',
+        "import sys; print('ready', flush=True); sys.stdin.readline()"],
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+    original_responsible = custody.responsible
+    original_signal = custody.lib.proc_signal_with_audittoken
+    queries, signals = [], []
+    try:
+        assert exiting.stdout.readline() == 'ready' + chr(10)
+        captured = next(entry for entry in custody.inventory() if entry['pid'] == exiting.pid)
+        assert not captured['zombie']
+        def exit_before_query(pid):
+            assert pid == exiting.pid
+            exiting.stdin.close()
+            deadline = time.monotonic() + 3
+            while time.monotonic() < deadline:
+                observed = custody.inspect(pid)
+                assert custody.same(captured, observed), 'held child generation disappeared'
+                if observed['zombie']:
+                    break
+                time.sleep(0.01)
+            else:
+                raise AssertionError('child did not become a zombie')
+            if settlement == 'absent':
+                assert exiting.wait(timeout=1) == 0
+                assert custody.inspect(pid) is None
+            ctypes.set_errno(0)
+            responsible = original_responsible(pid)
+            query_errno = ctypes.get_errno()
+            queries.append(dict(responsible=responsible, errno=query_errno,
+                                after=custody.inspect(pid)))
+            ctypes.set_errno(query_errno)
+            return responsible
+        def forbid_signal(*args):
+            signals.append(True)
+            raise AssertionError('exited generation was signaled')
+        custody.responsible = exit_before_query
+        custody.lib.proc_signal_with_audittoken = forbid_signal
+        assert custody.send(captured, signal.SIGSTOP) is False
+        assert len(queries) == 1 and queries[0]['responsible'] == -1
+        assert not signals and custody.same(captured, custody.known[captured['uniqueid']])
+        if settlement == 'zombie':
+            assert custody.inspect(exiting.pid)['zombie'], 'must await reap, not declare absence'
+        custody.responsible = original_responsible
+        receipt = module.cleanup(exiting)
+        assert receipt['remaining'] == [] and receipt['signaled'] == []
+        assert custody.inspect(exiting.pid) is None and not signals
+        print(json.dumps(dict(contract='forced live-to-' + settlement + ' send race',
+                              captured=captured, queries=queries, cleanup=receipt, noSignal=True)))
+    finally:
+        custody.responsible = original_responsible
+        custody.lib.proc_signal_with_audittoken = original_signal
+        module.cleanup(exiting)
 # The parent deliberately does not waitpid. Its child exits before we perform
 # the first custody inventory, so no previously captured identity can save it.
 program = """

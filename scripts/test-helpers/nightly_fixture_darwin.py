@@ -215,6 +215,7 @@ class DarwinCustody:
     def send(self, expected, sig):
         phase = "inspect-before"
         current = responsible = responsibility_errno = None
+        after, after_observed = None, False
         try:
             current = self.inspect(expected["pid"])
             if not self.same(expected, current):
@@ -232,6 +233,16 @@ class DarwinCustody:
             finally:
                 responsibility_errno = ctypes.get_errno()
             if responsible != os.getpid():
+                # A captured live process can exit between these two queries.
+                # Only an unavailable responsibility with a verified exit may
+                # settle without signaling. Query errors and foreign live
+                # custody remain refusals; a zombie stays tracked by cleanup.
+                if responsible == -1 and responsibility_errno in (0, errno.ESRCH):
+                    phase = "inspect-exit-settlement"
+                    after = self.inspect(expected["pid"])
+                    after_observed = True
+                    if after is None or (self.same(expected, after) and after["state"] == 5):
+                        return False
                 raise RuntimeError("Darwin process left the owned responsibility domain")
             token = AuditToken()
             token.val[5] = expected["pid"]
@@ -244,9 +255,10 @@ class DarwinCustody:
         except (OSError, RuntimeError) as error:
             # Evidence only: a second snapshot must never turn refusal into
             # permission to signal, or replace the original failure.
-            after = after_error = None
+            after_error = None
             try:
-                after = self.inspect(expected["pid"])
+                if not after_observed:
+                    after = self.inspect(expected["pid"])
             except (OSError, RuntimeError) as inspection_error:
                 after_error = {"type": type(inspection_error).__name__,
                                "message": str(inspection_error),
