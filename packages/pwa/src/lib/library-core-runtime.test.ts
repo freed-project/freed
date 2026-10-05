@@ -437,6 +437,21 @@ describe("PWA Library Core bounded scanner", () => {
     mocks.commitAccountRemoves.mockReset();
   });
 
+  it("carries original rendered annotations and refuses source advancement without requerying replacements", async () => {
+    const snapshot = { state: "ready" as const, highlights: [], originals: {
+      queryId: "item_annotations_v1" as const, schemaVersion: 1 as const, globalId: "item",
+      source: { ...QUERY_SOURCE, generationId: QUERY_SOURCE.generationId as import("@freed/shared/library-core").LibraryCoreLowercaseHex64 }, tags: ["original-tag"], highlights: [],
+    } };
+    mocks.queryNormalizedLibrary.mockResolvedValue(snapshot.originals);
+    const { enqueuePwaLibraryCoreSavedItemNote } = await import("./library-core-runtime");
+    await enqueuePwaLibraryCoreSavedItemNote("item", "note", snapshot);
+    expect(mocks.commitAnnotations).toHaveBeenCalledWith([expect.objectContaining({ entityId: "item", tags: ["original-tag"] })], expect.any(Number), QUERY_SOURCE);
+    mocks.commitAnnotations.mockClear();
+    mocks.queryNormalizedLibrary.mockResolvedValue({ ...snapshot.originals, source: { ...QUERY_SOURCE, projectionRevision: QUERY_SOURCE.projectionRevision + 1 } });
+    await expect(enqueuePwaLibraryCoreSavedItemNote("item", "next", snapshot)).rejects.toThrow("source changed");
+    expect(mocks.commitAnnotations).not.toHaveBeenCalled();
+  });
+
   it("preserves canonical quote digests and source in generic annotation replacements", async () => {
     mocks.commitAnnotations.mockReset().mockResolvedValue(undefined);
     const digest = "b".repeat(64);

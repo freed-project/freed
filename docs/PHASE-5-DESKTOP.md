@@ -7,9 +7,18 @@ canonical digest references separately from display text. Synthetic native
 SQLite/vault and Chromium PWA worker/OPFS restart proofs cover exact bytes and
 nondestructive read failures. Optional source admission now checks inside the
 existing local write transaction after exact retry recognition. Unchanged quote
-digests survive note/tag assembly. Original rendered edit snapshots, pending
-local annotations, explicit UI states and Windows range-vault support remain
-open acceptance requirements. No new quote editor is included.
+digests survive note/tag assembly. Selected-item results now carry separate original
+annotation snapshots through both existing note-editor entrances and local note
+admission. Missing, corrupt, oversized, unavailable and stale reads prevent
+incomplete edits. Unchanged-URL note edits use local metadata without requesting
+a preview; new-save and changed-URL previews retain their 350 ms delay.
+
+Primary new-item annotation initialization uses independent source-fenced batches
+bounded by 256 members and 4 MiB of envelopes. It refuses nonempty canonical
+originals and source races. Atomicity applies to each transaction, not the whole
+import; retry lookup can skip items whose initialization did not finish. Pending
+local annotations, broader replacement provenance, Windows range-vault support
+and installed acceptance remain open. No new quote editor is included.
 
 Native provider admission now has bounded lifetime counters in the existing
 runtime-health sampler. The soak verdict reports their delta only across a

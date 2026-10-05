@@ -329,7 +329,7 @@ export async function readLibraryCoreNormalizedItemContentV1(
       normalizedSourceToken(annotations.source) !==
       normalizedSourceToken(response.source)
     ) {
-      throw new Error("SQLite item annotations source is stale");
+      throw new LibraryCoreAnnotationHydrationError(Object.freeze({ originals: annotations, state: "stale", highlights: null }));
     }
     detailItem.userState.tags = [...annotations.tags];
     annotationSnapshot = await hydrateLibraryCoreAnnotations(runtime.query, annotations);

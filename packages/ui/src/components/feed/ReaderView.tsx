@@ -1,3 +1,4 @@
+import type { LibraryCoreHydratedAnnotations } from "@freed/shared/library-core";
 import { usePlatformCapabilities } from "../../context/PlatformContext.js";
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { lockBodyScroll } from "../../lib/body-scroll-lock.js";
@@ -31,6 +32,8 @@ import { useCommandSurfaceStore } from "../../lib/command-surface-store.js";
 
 interface ReaderViewProps {
   item: FeedItemType;
+  annotations?: LibraryCoreHydratedAnnotations | null;
+  annotationStatus?: string;
   onClose: () => void;
   /** When true, renders inline as a flex child instead of a fixed overlay */
   dualColumn?: boolean;
@@ -343,6 +346,8 @@ const REPLY_PLATFORM_LABELS: Partial<Record<FeedItemType["platform"], string>> =
 
 export function ReaderView({
   item,
+  annotations,
+  annotationStatus,
   onClose,
   dualColumn = false,
   inline = false,
@@ -1024,11 +1029,13 @@ export function ReaderView({
             {readerPresentation.title}
           </h1>
 
+          {annotationStatus && <p role="status">{annotationStatus}</p>}
           {item.platform === "saved" && updateSavedContent && (
             <div className="flex flex-wrap items-center gap-3">
                 <button
                   type="button"
-                  onClick={() => openSavedContentEditor(item)}
+                  disabled={!annotations || annotations.state !== "ready"}
+                  onClick={() => openSavedContentEditor(item, annotations)}
                   className="btn-secondary rounded-lg px-3 py-2 text-sm font-semibold"
                 >
                   Edit save

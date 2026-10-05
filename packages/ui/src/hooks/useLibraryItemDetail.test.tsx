@@ -1,3 +1,5 @@
+import { LibraryCoreAnnotationHydrationError } from "@freed/shared/library-core";
+import { useCommandSurfaceStore } from "../lib/command-surface-store.js";
 /**
  * @vitest-environment jsdom
  */
@@ -55,7 +57,7 @@ describe("useLibraryItemDetail", () => {
   let root: Root | null = null;
 
   beforeAll(() => {
-    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   });
 
   afterEach(() => {
@@ -175,6 +177,47 @@ describe("useLibraryItemDetail", () => {
       item: { globalId: "item-2" },
       status: "ready",
     });
+  });
+
+  it("retains separate rendered originals and refuses incomplete editor entrances", async () => {
+    const selected = item("item-1");
+    const snapshot = { state: "ready" as const, highlights: [], originals: {
+      queryId: "item_annotations_v1" as const, schemaVersion: 1 as const, globalId: selected.globalId,
+      source: { generationId: "a".repeat(64) as import("@freed/shared/library-core").LibraryCoreLowercaseHex64, projectionRevision: 7, transitionSequence: 7 }, tags: [], highlights: [],
+    } };
+    let latest: LibraryItemDetailResult | null = null;
+    function Harness() { latest = useLibraryItemDetail("item-1", 7); return null; }
+    render(<Harness />, platformConfig(async () => ({ item: selected, annotations: snapshot })));
+    await act(async () => { await Promise.resolve(); });
+    expect(latest).toMatchObject({ item: selected, annotations: snapshot, status: "ready" });
+    const commands = useCommandSurfaceStore.getState();
+    commands.closeSavedContentDialog();
+    commands.openSavedContentEditor(selected);
+    expect(useCommandSurfaceStore.getState().savedContentOpen).toBe(false);
+    commands.openSavedContentEditor(selected, snapshot);
+    const retained = useCommandSurfaceStore.getState().savedContentAnnotations!;
+    expect(retained).toEqual(snapshot);
+    expect(retained).not.toBe(snapshot);
+    expect(Object.isFrozen(retained)).toBe(true);
+    snapshot.originals.source.projectionRevision = 8;
+    expect(retained.originals.source.projectionRevision).toBe(7);
+    commands.closeSavedContentDialog();
+    commands.openSavedContentEditor({ ...selected, userState: { ...selected.userState, tags: ["stale"] } }, retained);
+    expect(useCommandSurfaceStore.getState().savedContentOpen).toBe(false);
+  });
+
+  it.each(["missing", "corrupt", "oversized", "unavailable", "stale"] as const)("exposes %s without offering partial annotations", async (state) => {
+    const snapshot = { state, highlights: null, originals: {
+      queryId: "item_annotations_v1" as const, schemaVersion: 1 as const, globalId: "item-1",
+      source: { generationId: "a".repeat(64) as import("@freed/shared/library-core").LibraryCoreLowercaseHex64, projectionRevision: 7, transitionSequence: 7 }, tags: [],
+      highlights: [{ createdAt: 1, text: null, textBlobDigest: "b".repeat(64) as import("@freed/shared/library-core").LibraryCoreLowercaseHex64, note: null }],
+    } };
+    let latest: LibraryItemDetailResult | null = null;
+    function Harness() { latest = useLibraryItemDetail("item-1", 7); return null; }
+    render(<Harness />, platformConfig(async () => { throw new LibraryCoreAnnotationHydrationError(snapshot); }));
+    await act(async () => { await Promise.resolve(); });
+    expect(latest).toEqual({ item: null, status: "failed", annotations: snapshot, annotationFailure: state });
+    expect(snapshot.originals.highlights[0]!.textBlobDigest).toBe("b".repeat(64));
   });
 
   it("reports a failed point read without inventing an empty Library result", async () => {

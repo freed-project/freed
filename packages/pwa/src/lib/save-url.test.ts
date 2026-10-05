@@ -86,13 +86,17 @@ it("edits an existing note through canonical preservation without capture or fet
   try {
     const { updateSavedContentInPwa } = await import("./save-url");
     const item = { globalId: "saved:abc123", sourceUrl: "https://example.com/article" } as import("@freed/shared").FeedItem;
-    await updateSavedContentInPwa(item, { url: item.sourceUrl!, notes: "Revised" });
-    expect(mockSavedNote).toHaveBeenCalledWith(item.globalId, "Revised");
+    const annotationSnapshot = { state: "ready" as const, highlights: [], originals: {
+      queryId: "item_annotations_v1" as const, schemaVersion: 1 as const, globalId: item.globalId,
+      source: { generationId: "a".repeat(64) as import("@freed/shared/library-core").LibraryCoreLowercaseHex64, projectionRevision: 2, transitionSequence: 2 }, tags: [], highlights: [],
+    } };
+    await updateSavedContentInPwa(item, { url: item.sourceUrl!, notes: "Revised", annotationSnapshot });
+    expect(mockSavedNote).toHaveBeenCalledWith(item.globalId, "Revised", annotationSnapshot);
     expect(mockEnqueueAnnotations).not.toHaveBeenCalled();
     expect(mockEnqueueCapture).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
     mockSavedNote.mockRejectedValueOnce(new Error("Annotation text is unavailable"));
-    await expect(updateSavedContentInPwa(item, { url: item.sourceUrl!, notes: "" })).rejects.toThrow("unavailable");
+    await expect(updateSavedContentInPwa(item, { url: item.sourceUrl!, notes: "", annotationSnapshot })).rejects.toThrow("unavailable");
     expect(mockEnqueueRemove).not.toHaveBeenCalled();
   } finally { vi.unstubAllGlobals(); }
 });

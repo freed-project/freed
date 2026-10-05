@@ -96,3 +96,21 @@ export function assembleHydratedAnnotationReplacement(
   if (!payload.ok) throw new TypeError(payload.reason);
   return payload.value;
 }
+
+/** Copy the rendered evidence before any asynchronous context acquisition or signing. */
+export function retainRenderedAnnotationSnapshot(
+  input: LibraryCoreHydratedAnnotations | null | undefined,
+  globalId: string,
+): LibraryCoreHydratedAnnotations {
+  if (!input || input.state !== "ready" || !input.highlights || input.originals.globalId !== globalId) {
+    throw new Error("Annotations are not ready for editing; reopen the item");
+  }
+  const parsed = parseLibraryCoreItemAnnotationsResponseV1(input.originals, { queryId: "item_annotations_v1", schemaVersion: 1, globalId });
+  if (!parsed.ok) throw new TypeError(parsed.error);
+  if (input.highlights.length !== parsed.value.highlights.length) throw new Error("Annotation snapshot is incomplete");
+  const highlights = Object.freeze(input.highlights.map(row => Object.freeze({ ...row })));
+  const snapshot = Object.freeze({ originals: parsed.value, state: "ready" as const, highlights });
+  // Reuse the canonical write contract and its bounded complete-set checks.
+  assembleHydratedAnnotationReplacement(snapshot, highlights, parsed.value.tags, 0);
+  return snapshot;
+}

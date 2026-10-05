@@ -1,3 +1,4 @@
+import { retainRenderedAnnotationSnapshot, type LibraryCoreHydratedAnnotations } from "@freed/shared/library-core";
 /**
  * Desktop URL save flow
  *
@@ -131,6 +132,7 @@ async function saveUrlInDesktopInternal(
 }
 
 type SavedContentUpdate = {
+  annotationSnapshot?: LibraryCoreHydratedAnnotations;
   notes: string;
   preview?: SaveUrlOptions["preview"];
   url: string;
@@ -140,7 +142,10 @@ export function updateSavedContentInDesktop(
   item: FeedItem,
   input: SavedContentUpdate,
 ): Promise<SaveUrlResult> {
-  return runFactoryResetSensitiveDesktopOperation(() => updateSavedContentInDesktopInternal(item, input));
+  const currentUrl = item.sourceUrl ?? item.content.linkPreview?.url ?? "";
+  const originalInput = { ...input, ...(stableHttpUrl(input.url) === currentUrl
+    ? { annotationSnapshot: retainRenderedAnnotationSnapshot(input.annotationSnapshot, item.globalId) } : {}) };
+  return runFactoryResetSensitiveDesktopOperation(() => updateSavedContentInDesktopInternal(item, originalInput));
 }
 
 async function updateSavedContentInDesktopInternal(
@@ -150,7 +155,7 @@ async function updateSavedContentInDesktopInternal(
   const stableUrl = stableHttpUrl(input.url);
   const currentUrl = item.sourceUrl ?? item.content.linkPreview?.url ?? "";
   if (stableUrl === currentUrl) {
-    await updateLibrarySavedItemNote(item.globalId, input.notes);
+    await updateLibrarySavedItemNote(item.globalId, input.notes, retainRenderedAnnotationSnapshot(input.annotationSnapshot, item.globalId));
     return { globalId: item.globalId };
   }
 

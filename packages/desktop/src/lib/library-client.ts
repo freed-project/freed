@@ -410,8 +410,8 @@ export const addLibraryFeedItems = (items: FeedItem[]) =>
 export const removeLibraryFeedItem = (globalId: string) =>
   request({ type: "REMOVE_FEED_ITEM", globalId }).then(() => {});
 /** Update an existing note through the ordinary serialized mutation queue. */
-export const updateLibrarySavedItemNote = (globalId: string, note: string) =>
-  request({ type: "UPDATE_SAVED_ITEM_NOTE", globalId, note }).then(() => {});
+export const updateLibrarySavedItemNote = (globalId: string, note: string, annotationSnapshot: import("@freed/shared/library-core").LibraryCoreHydratedAnnotations) =>
+  request({ type: "UPDATE_SAVED_ITEM_NOTE", globalId, note, annotationSnapshot }).then(() => {});
 export const updateLibraryFeedItem = (
   globalId: string,
   updates: Partial<FeedItem>,

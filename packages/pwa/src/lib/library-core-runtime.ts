@@ -1,3 +1,4 @@
+import { retainRenderedAnnotationSnapshot } from "@freed/shared/library-core";
 import { assembleHydratedAnnotationReplacement, hydrateLibraryCoreAnnotations, replaceHydratedSavedNote, sameAnnotationSource } from "@freed/shared/library-core";
 import {
   sanitizeFeedItemCaptureWrite,
@@ -556,9 +557,9 @@ export async function enqueuePwaLibraryCoreFeedItemCaptures(
 }
 
 /** Note-only editing preserves the complete canonical quote set. */
-export async function enqueuePwaLibraryCoreSavedItemNote(globalId: string, note: string): Promise<void> {
-  const originals = await queryPwaNormalizedLibrary({ queryId: "item_annotations_v1", schemaVersion: 1, globalId });
-  const snapshot = await hydrateLibraryCoreAnnotations(queryPwaNormalizedLibrary, originals);
+export async function enqueuePwaLibraryCoreSavedItemNote(globalId: string, note: string, originalSnapshot: import("@freed/shared/library-core").LibraryCoreHydratedAnnotations): Promise<void> {
+  const snapshot = retainRenderedAnnotationSnapshot(originalSnapshot, globalId);
+  const originals = snapshot.originals;
   const now = Date.now();
   const payload = replaceHydratedSavedNote(snapshot, note, now);
   const current = await queryPwaNormalizedLibrary({ queryId: "item_annotations_v1", schemaVersion: 1, globalId });
@@ -1103,13 +1104,11 @@ export async function executePwaLibraryCoreScopeAction(
 }
 
 /** Read one compact item detail through normalized SQLite. */
-export async function readPwaLibraryCoreItemDetail(
-  globalId: string,
-): Promise<FeedItem | null> {
-  return readLibraryCoreNormalizedItemDetailV1(
-    NORMALIZED_READER_RUNTIME,
-    globalId,
-  );
+export function readPwaLibraryCoreItemDetail(globalId: string): Promise<FeedItem | null>;
+export function readPwaLibraryCoreItemDetail(globalId: string, withAnnotations: true): ReturnType<typeof readLibraryCoreNormalizedItemContentV1>;
+export async function readPwaLibraryCoreItemDetail(globalId: string, withAnnotations = false) {
+  if (withAnnotations) return readLibraryCoreNormalizedItemContentV1(NORMALIZED_READER_RUNTIME, globalId, true);
+  return readLibraryCoreNormalizedItemDetailV1(NORMALIZED_READER_RUNTIME, globalId);
 }
 
 /** Persist the device-local offline policy for every blob referenced by one item. */

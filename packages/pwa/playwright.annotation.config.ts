@@ -8,7 +8,7 @@ export default defineConfig({
   retries: 0,
   timeout: 60_000,
   reporter: "line",
-  use: { baseURL: "http://127.0.0.1:1435", headless: true },
+  use: { baseURL: "http://127.0.0.1:1435", headless: true, channel: "chromium", serviceWorkers: "block", launchOptions: { args: ["--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1", "--disable-background-networking", "--disable-sync"] } },
   webServer: {
     command: "npm run dev -- --host 127.0.0.1 --port 1435 --strictPort",
     url: "http://127.0.0.1:1435",

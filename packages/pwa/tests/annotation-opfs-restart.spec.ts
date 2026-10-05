@@ -119,3 +119,53 @@ test("shipping worker authenticates OPFS quotes after browser restart and refuse
     await rm(profile, { recursive: true, force: true });
   }
 });
+
+for (const resident of [true, false]) {
+  test(`annotation UI preserves original provenance through ${resident ? "resident" : "cold"} selection`, async ({ page }) => {
+    const external: string[] = [];
+    page.on("pageerror", error => console.error("Annotation fixture page error:", error.message));
+    page.on("crash", () => console.error("Annotation fixture renderer crashed"));
+    await page.route("**/*", async route => {
+      const url = new URL(route.request().url());
+      if (url.origin !== "http://127.0.0.1:1435") { external.push(url.href); return route.abort(); }
+      if (url.pathname === "/annotation-ui") return route.fulfill({ contentType: "text/html", body: "<!doctype html><title>Annotation UI fixture</title>" });
+      return route.fallback();
+    });
+    await page.goto("/annotation-ui");
+    await page.evaluate(async resident => {
+      const refreshPath = "/@react-refresh";
+      const refresh = (await import(refreshPath)).default;
+      refresh.injectIntoGlobalHook(window);
+      (window as any).$RefreshReg$ = () => {};
+      (window as any).$RefreshSig$ = () => (type: unknown) => type;
+      (window as any).__vite_plugin_react_preamble_installed__ = true;
+      const path = "/tests/fixtures/annotation-ui.tsx";
+      (window as any).annotationUi = (await import(path)).mount(resident);
+    }, resident);
+    if (resident) await expect(page.getByRole("button", { name: "Edit save", exact: true })).toBeDisabled();
+    else await expect(page.getByText("Loading item...", { exact: true })).toBeVisible();
+    await page.evaluate(() => (window as any).annotationUi.ready());
+    await expect(page.getByRole("button", { name: "Edit save", exact: true })).toBeEnabled();
+    await page.getByRole("button", { name: "Edit save", exact: true }).click();
+    await expect(page.getByLabel("Notes", { exact: true })).toHaveValue("Original note");
+    await page.getByLabel("Notes", { exact: true }).fill("Edited note");
+    await page.getByRole("button", { name: "Update save", exact: true }).click();
+    await expect(page.getByText("LOCAL_ADMISSION_SOURCE_STALE: reopen the item", { exact: true })).toBeVisible();
+    expect(await page.evaluate(() => (window as any).annotationUi.submissions[0].annotationSnapshot.originals.source.projectionRevision)).toBe(2);
+    await page.evaluate(() => (window as any).annotationUi.close());
+    await expect(page.getByLabel("Notes", { exact: true })).toHaveCount(0);
+    await page.evaluate(() => (window as any).annotationUi.event(false));
+    await expect(page.getByLabel("Notes", { exact: true })).toHaveCount(0);
+    await page.evaluate(() => (window as any).annotationUi.event(true));
+    await expect(page.getByLabel("Notes", { exact: true })).toHaveValue("Original note");
+    await page.evaluate(() => (window as any).annotationUi.close());
+    await page.evaluate(() => (window as any).annotationUi.openWithoutSnapshot());
+    await page.getByRole("button", { name: "Update save", exact: true }).click();
+    await expect(page.getByText("Annotations are not ready for editing; reopen the item", { exact: true })).toBeVisible();
+    expect(await page.evaluate(() => (window as any).annotationUi.submissions.length)).toBe(1);
+    await page.evaluate(() => { (window as any).annotationUi.close(); (window as any).annotationUi.fail("corrupt"); });
+    await expect(page.getByText("Saved annotation text is corrupt. Saved annotations have not changed.", { exact: true }).first()).toBeVisible();
+    if (resident) await expect(page.getByRole("button", { name: "Edit save", exact: true })).toBeDisabled();
+    expect(external).toEqual([]);
+  });
+}

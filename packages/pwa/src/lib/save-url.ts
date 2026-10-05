@@ -1,3 +1,4 @@
+import { retainRenderedAnnotationSnapshot, type LibraryCoreHydratedAnnotations } from "@freed/shared/library-core";
 import {
   buildSavedFeedItem,
 } from "@freed/capture-save/normalize";
@@ -135,6 +136,7 @@ export async function saveUrlInPwa(
 export async function updateSavedContentInPwa(
   item: FeedItem,
   input: {
+    annotationSnapshot?: LibraryCoreHydratedAnnotations;
     notes: string;
     preview?: SaveUrlOptions["preview"];
     url: string;
@@ -143,7 +145,7 @@ export async function updateSavedContentInPwa(
   const stableUrl = stableHttpUrl(input.url);
   const currentUrl = item.sourceUrl ?? item.content.linkPreview?.url ?? "";
   if (stableUrl === currentUrl) {
-    await enqueuePwaLibraryCoreSavedItemNote(item.globalId, input.notes);
+    await enqueuePwaLibraryCoreSavedItemNote(item.globalId, input.notes, retainRenderedAnnotationSnapshot(input.annotationSnapshot, item.globalId));
     return { globalId: item.globalId };
   }
 

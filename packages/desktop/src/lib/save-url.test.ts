@@ -140,13 +140,17 @@ describe("same-URL saved note editing", () => {
   it("uses canonical preservation without capture or URL fetching", async () => {
     vi.clearAllMocks();
     const { updateSavedContentInDesktop } = await import("./save-url.js");
-    await updateSavedContentInDesktop(stubItem, { url: SAMPLE_URL, notes: "Revised" });
-    expect(mockUpdateLibrarySavedItemNote).toHaveBeenCalledWith(stubItem.globalId, "Revised");
+    const annotationSnapshot = { state: "ready" as const, highlights: [], originals: {
+      queryId: "item_annotations_v1" as const, schemaVersion: 1 as const, globalId: stubItem.globalId,
+      source: { generationId: "a".repeat(64) as import("@freed/shared/library-core").LibraryCoreLowercaseHex64, projectionRevision: 2, transitionSequence: 2 }, tags: [], highlights: [],
+    } };
+    await updateSavedContentInDesktop(stubItem, { url: SAMPLE_URL, notes: "Revised", annotationSnapshot });
+    expect(mockUpdateLibrarySavedItemNote).toHaveBeenCalledWith(stubItem.globalId, "Revised", annotationSnapshot);
     expect(mockUpdateLibraryFeedItem).not.toHaveBeenCalled();
     expect(mockAddLibraryStubItem).not.toHaveBeenCalled();
     expect(mockEnqueue).not.toHaveBeenCalled();
     mockUpdateLibrarySavedItemNote.mockRejectedValueOnce(new Error("Annotation text is corrupt"));
-    await expect(updateSavedContentInDesktop(stubItem, { url: SAMPLE_URL, notes: "" })).rejects.toThrow("corrupt");
+    await expect(updateSavedContentInDesktop(stubItem, { url: SAMPLE_URL, notes: "", annotationSnapshot })).rejects.toThrow("corrupt");
     expect(mockRemoveLibraryFeedItem).not.toHaveBeenCalled();
   });
 });

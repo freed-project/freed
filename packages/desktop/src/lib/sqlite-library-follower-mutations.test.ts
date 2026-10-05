@@ -37,6 +37,13 @@ import {
 
 const ITEM_ID = "rss:follower-item";
 
+function renderedAnnotationSnapshot() {
+  return { state: "ready" as const, highlights: [], originals: {
+    queryId: "item_annotations_v1" as const, schemaVersion: 1 as const, globalId: ITEM_ID,
+    source: { generationId: "bc".repeat(32) as import("@freed/shared/library-core").LibraryCoreLowercaseHex64, projectionRevision: 2, transitionSequence: 2 }, tags: [], highlights: [],
+  } };
+}
+
 function normalizedRow(globalId = ITEM_ID) {
   return {
     archived: false,
@@ -260,7 +267,7 @@ describe("SQLite editable follower mutations", () => {
       }
       return original(command, args);
     });
-    await expect(dispatchSqliteMutation({ type: "UPDATE_SAVED_ITEM_NOTE", globalId: ITEM_ID, note: "changed", reqId: 20 })).rejects.toThrow("LOCAL_ADMISSION_SOURCE_STALE");
+    await expect(dispatchSqliteMutation({ type: "UPDATE_SAVED_ITEM_NOTE", globalId: ITEM_ID, note: "changed", annotationSnapshot: renderedAnnotationSnapshot(), reqId: 20 })).rejects.toThrow("LOCAL_ADMISSION_SOURCE_STALE");
     expect(mocks.invoke.mock.calls.filter(([command]) => command === "sign_normalized_library_follower_operation")).toHaveLength(1);
     expect(mocks.invoke.mock.calls.filter(([command]) => command === "enqueue_normalized_library_follower_intent")).toHaveLength(1);
   });
@@ -778,6 +785,86 @@ describe("SQLite Primary mutations", () => {
     });
   });
 
+  it.each(["members", "bytes", "existing", "conflict", "read-race", "source-race"] as const)("initializes new import annotations with bounded original batches: %s", async (scenario) => {
+    const original = mocks.invoke.getMockImplementation()!;
+    let revision = 2;
+    const committed: { kind: string; ids: string[]; bytes: number }[] = [];
+    let annotationSignatures = 0;
+    let annotationReads = 0;
+    mocks.invoke.mockImplementation(async (command: string, args?: unknown) => {
+      if (command === "query_normalized_library") {
+        const request = (args as { request: { queryId: string; globalId: string } }).request;
+        const source = { generationId: "bc".repeat(32), projectionRevision: revision, transitionSequence: revision };
+        if (scenario === "existing" && request.queryId === "item_detail_v1" && request.globalId === "saved:batch:0") return {
+          queryId: request.queryId, schemaVersion: 1, source,
+          item: { card: normalizedCard(request.globalId), contentBody: { blobDigest: null, storage: "inline" },
+            mediaBlobDigests: [], preservedBody: { blobDigest: null, storage: "none" } },
+        };
+        if (request.queryId === "optimistic_fields_v1") return { queryId: request.queryId, schemaVersion: 1, source, rows: [] };
+        if (request.queryId === "item_annotations_v1") {
+          annotationReads++;
+          if (scenario === "read-race" && annotationReads === 2) revision++;
+          return { queryId: request.queryId, schemaVersion: 1, globalId: request.globalId,
+            source: { generationId: "bc".repeat(32), projectionRevision: revision, transitionSequence: revision },
+            tags: scenario === "conflict" && annotationReads === 2 ? ["concurrent-owner"] : [], highlights: [] };
+        }
+      }
+      if (command === "sign_normalized_library_operations" && annotationReads > 0) {
+        annotationSignatures++;
+        if (scenario === "source-race") revision++;
+      }
+      if (command === "commit_normalized_library_transaction") {
+        const request = (args as { request: { canonicalEnvelopeJson: string[]; expectedSource?: { projectionRevision: number } } }).request;
+        if (request.expectedSource && request.expectedSource.projectionRevision !== revision) throw new Error("LOCAL_ADMISSION_SOURCE_STALE");
+        const rows = request.canonicalEnvelopeJson.map(value => JSON.parse(value));
+        committed.push({ kind: rows[0].operation_type, ids: rows.map(row => row.entity_id),
+          bytes: request.canonicalEnvelopeJson.reduce((sum, value) => sum + new TextEncoder().encode(value).length, 0) });
+        revision++;
+      }
+      return original(command, args);
+    });
+    const count = scenario === "bytes" ? 80 : scenario === "members" ? 257 : 2;
+    const items = Array.from({ length: count }, (_, index) => ({
+      author: { displayName: "Ada", handle: "ada", id: "ada" }, capturedAt: 100,
+      content: { mediaTypes: [], mediaUrls: [], text: "Annotation batch fixture" }, contentType: "post" as const,
+      globalId: `saved:batch:${index}`, platform: "saved" as const, publishedAt: 100, topics: [],
+      userState: { archived: false, hidden: false, saved: false, tags: ["fixture"],
+        highlights: scenario === "bytes" ? [{ createdAt: 100, text: "q".repeat(60_000) }] : [] },
+    }));
+    const operation = dispatchSqliteMutation({ type: "ADD_FEED_ITEMS", items: [...items, items[0]!], reqId: 201 });
+    if (scenario === "conflict" || scenario === "read-race") await expect(operation).rejects.toThrow("initialization refused");
+    else if (scenario === "source-race") await expect(operation).rejects.toThrow("LOCAL_ADMISSION_SOURCE_STALE");
+    else await operation;
+    const batches = committed.filter(row => row.kind === "feed_item_annotations_replace");
+    if (scenario === "members" || scenario === "bytes") {
+      expect(batches.flatMap(row => row.ids)).toEqual(items.map(item => item.globalId));
+      expect(batches.length).toBeGreaterThan(1);
+      expect(batches.every(row => row.ids.length <= 256 && row.bytes <= 4_194_304)).toBe(true);
+      if (scenario === "members") expect(batches.map(row => row.ids.length)).toEqual([256, 1]);
+    } else if (scenario === "existing") {
+      expect(batches.flatMap(row => row.ids)).toEqual(["saved:batch:1"]);
+      expect(committed.flatMap(row => row.ids)).not.toContain("saved:batch:0");
+    } else {
+      expect(batches).toHaveLength(0);
+      expect(annotationSignatures).toBe(scenario === "source-race" ? 1 : 0);
+    }
+  });
+
+  it("refuses an older rendered snapshot before signing instead of refreshing it", async () => {
+    const original = mocks.invoke.getMockImplementation()!;
+    mocks.invoke.mockImplementation(async (command: string, args?: unknown) => {
+      if (command === "query_normalized_library") {
+        const request = (args as { request: { queryId: string } }).request;
+        if (request.queryId === "item_annotations_v1") return { ...renderedAnnotationSnapshot().originals,
+          source: { ...renderedAnnotationSnapshot().originals.source, projectionRevision: 3, transitionSequence: 3 } };
+      }
+      return original(command, args);
+    });
+    await expect(dispatchSqliteMutation({ type: "UPDATE_SAVED_ITEM_NOTE", globalId: ITEM_ID, note: "changed", annotationSnapshot: renderedAnnotationSnapshot(), reqId: 20 })).rejects.toThrow("source changed");
+    expect(mocks.invoke.mock.calls.filter(([command]) => command === "sign_normalized_library_operations")).toHaveLength(0);
+    expect(mocks.invoke.mock.calls.filter(([command]) => command === "commit_normalized_library_transaction")).toHaveLength(0);
+  });
+
   it("passes the original annotation source to Primary commit without stale resigning", async () => {
     const original = mocks.invoke.getMockImplementation()!;
     mocks.invoke.mockImplementation(async (command: string, args?: unknown) => {
@@ -792,7 +879,7 @@ describe("SQLite Primary mutations", () => {
       }
       return original(command, args);
     });
-    await expect(dispatchSqliteMutation({ type: "UPDATE_SAVED_ITEM_NOTE", globalId: ITEM_ID, note: "changed", reqId: 20 })).rejects.toThrow("LOCAL_ADMISSION_SOURCE_STALE");
+    await expect(dispatchSqliteMutation({ type: "UPDATE_SAVED_ITEM_NOTE", globalId: ITEM_ID, note: "changed", annotationSnapshot: renderedAnnotationSnapshot(), reqId: 20 })).rejects.toThrow("LOCAL_ADMISSION_SOURCE_STALE");
     expect(mocks.invoke.mock.calls.filter(([command]) => command === "sign_normalized_library_operations")).toHaveLength(1);
     expect(mocks.invoke.mock.calls.filter(([command]) => command === "commit_normalized_library_transaction")).toHaveLength(1);
   });

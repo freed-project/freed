@@ -1,3 +1,4 @@
+import { retainRenderedAnnotationSnapshot, type LibraryCoreHydratedAnnotations } from "@freed/shared/library-core";
 /**
  * Saved Content dialog
  *
@@ -20,6 +21,7 @@ interface SavedContentDialogProps {
   initialUrl?: string;
   initialError?: string;
   editItem?: FeedItem | null;
+  annotationSnapshot?: LibraryCoreHydratedAnnotations | null;
   onClose: () => void;
 }
 
@@ -28,6 +30,7 @@ export function SavedContentDialog({
   initialUrl = "",
   initialError = "",
   editItem = null,
+  annotationSnapshot = null,
   onClose,
 }: SavedContentDialogProps) {
   const { saveUrl } = usePlatform();
@@ -36,7 +39,7 @@ export function SavedContentDialog({
 
   return (
     <BottomSheet open={open} onClose={handleClose} title={editItem ? "Edit Save" : "Save Content"} maxWidth="sm:max-w-lg" headerDivider={false}>
-      {saveUrl && <SaveUrlTab initialUrl={initialUrl} initialError={initialError} editItem={editItem} open={open} onClose={handleClose} />}
+      {saveUrl && <SaveUrlTab initialUrl={initialUrl} initialError={initialError} editItem={editItem} annotationSnapshot={annotationSnapshot} open={open} onClose={handleClose} />}
     </BottomSheet>
   );
 }
@@ -47,12 +50,14 @@ function SaveUrlTab({
   initialUrl,
   initialError,
   editItem,
+  annotationSnapshot,
   open,
   onClose,
 }: {
   initialUrl: string;
   initialError: string;
   editItem: FeedItem | null;
+  annotationSnapshot: LibraryCoreHydratedAnnotations | null;
   open: boolean;
   onClose: () => void;
 }) {
@@ -74,7 +79,7 @@ function SaveUrlTab({
 
   useEffect(() => {
     if (open) {
-      const existingNote = getSavedItemNote(editItem?.userState.highlights);
+      const existingNote = getSavedItemNote(annotationSnapshot?.highlights ? [...annotationSnapshot.highlights] : editItem?.userState.highlights);
       setUrl(initialUrl);
       setNotes(existingNote);
       setError(initialError);
@@ -83,9 +88,11 @@ function SaveUrlTab({
       setIsSubmitting(false);
       notesEditedRef.current = existingNote.length > 0;
     }
-  }, [editItem, initialError, initialUrl, open]);
+  }, [editItem, annotationSnapshot, initialError, initialUrl, open]);
 
   useEffect(() => {
+    setPreview(null);
+    setIsPreviewing(false);
     if (!open || !previewSaveUrl) return;
     let stableUrl: string;
     try {
@@ -96,12 +103,17 @@ function SaveUrlTab({
       return;
     }
 
+    // Match the platform update predicate exactly, including its URL fallback.
+    const currentUrl = editItem?.sourceUrl ?? editItem?.content.linkPreview?.url ?? "";
+    if (editItem && stableUrl === currentUrl) return;
+
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
       setIsPreviewing(true);
       setPreview(null);
       void previewSaveUrl(stableUrl, controller.signal)
         .then((preview) => {
+          if (controller.signal.aborted) return;
           setPreview(preview);
           if (!notesEditedRef.current && preview.suggestedNote) {
             setNotes(preview.suggestedNote);
@@ -116,10 +128,15 @@ function SaveUrlTab({
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [open, previewSaveUrl, url]);
+  }, [open, previewSaveUrl, url, editItem]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    let originalAnnotations: LibraryCoreHydratedAnnotations | undefined;
+    if (editItem) {
+      try { originalAnnotations = retainRenderedAnnotationSnapshot(annotationSnapshot, editItem.globalId); }
+      catch (error) { setError(error instanceof Error ? error.message : "Annotations are unavailable for editing"); return; }
+    }
     const trimmed = url.trim();
     if (!trimmed || !saveUrl) return;
 
@@ -153,6 +170,7 @@ function SaveUrlTab({
     try {
       const saved = editItem && updateSavedContent
         ? await updateSavedContent(editItem, {
+            annotationSnapshot: originalAnnotations,
             url: stableUrl,
             notes,
             ...(preview?.url === stableUrl ? { preview } : {}),
