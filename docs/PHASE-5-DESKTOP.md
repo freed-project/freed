@@ -1792,3 +1792,5 @@ AI-setting change is introduced. The original selection complaint remains
 unattributed.
 
 Captured Friends, graph-picker and recovery actions now require their current selection, reader and revision owners. Ownership changes remain fenced through A to B to A transitions and temporary disabling; native identity reads are checked again before account assignment, and obsolete completions cannot move the new selection. Mutation-facing suggestion rows retain one bounded proved window during same-context revision refresh; current and captured choice actions remain disabled until fresh results settle. Reader, request, rewind, real zero and error clear or replace that window. Native authority admission and installed UI acceptance remain separate checks.
+
+Friends activity uses the shared loading indicator while its directory loads. Outbox wrappers retain their existing coordinator and drain ownership after the 120-second deadline until underlying work settles, then report the original timeout. Hung work can retain ownership indefinitely; cancellation and screen-lock admission remain separate.
