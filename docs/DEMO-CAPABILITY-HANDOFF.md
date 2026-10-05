@@ -1,5 +1,7 @@
 # Demo capability audit and delivery handoff
 
+Historical record, reconciled October 5, 2026 under the owner’s Level 7 PR closeout authority. The implementation and evidence below describe September candidates, not current production verification. PR #1973 merged September 9 as `1ead77de23c71249849b587009bb5207dc913569`; PR #1972 merged September 21 as `76eff8b2a50ffa8045b7a9ae4bdf10db54a49a88`. Preserve this record without repeating those repairs. Any deployment continuation must inspect current source and follow the current shipping workflow.
+
 As of September 9, 2026, the demo fixes are implemented and merged into `dev` through [PR #1966](https://github.com/freed-project/freed/pull/1966). They have not been deployed to the public demo by this task. The source machine has stopped implementation. This document supports continuation on another machine; do not repeat or cherry-pick the merged implementation.
 
 ## Source identity and scope
@@ -7,7 +9,7 @@ As of September 9, 2026, the demo fixes are implemented and merged into `dev` th
 - Squash merge: `62a149752c046303aef243009efce086917a2936`, merged September 9 at 20:48:10 UTC.
 - Final tested PR head: `a93e1c94e2239c49a79eb8e5ed5023df694f0338`.
 - Merge footprint: 36 text files, 422 insertions and 76 deletions. No binary assets, new dependencies, schema migrations, downloaded photographs, or bundled map data.
-- This handoff PR changes documentation only and must remain draft until the owner chooses its disposition. It does not authorize deployment or restart work on the source machine.
+- This PR preserves documentation only. The October 5 closeout authorizes its publication and merge; it does not claim that the historical deployment checklist has been completed.
 
 ## Findings and architecture
 
@@ -98,7 +100,7 @@ Phase 6, 8, 10 and 12 documents and `docs/roadmap-status.json` were updated in t
 
 ## Preview-filter continuation
 
-The #1968 invocation-directory repair is published separately in [PR #1972](https://github.com/freed-project/freed/pull/1972), candidate `17b66db2cc861c93507ac936e7c9e91dc696c5fc`. It is open, not merged. This receiving machine verified access to `aubreyfs-projects/freed-pwa` and completed browser acceptance on its [actual hosted preview](https://freed-2sa630nom-aubreyfs-projects.vercel.app/?freed-demo=1). Vercel reported a completed deployment and its served application contained the candidate SHA. That evidence resolves the earlier hosting-access limitation on this machine; it does not deploy either candidate to production.
+The #1968 invocation-directory repair is published separately in [PR #1972](https://github.com/freed-project/freed/pull/1972), candidate `17b66db2cc861c93507ac936e7c9e91dc696c5fc`. It subsequently merged September 21, as recorded above. This receiving machine verified access to `aubreyfs-projects/freed-pwa` and completed browser acceptance on its [actual hosted preview](https://freed-2sa630nom-aubreyfs-projects.vercel.app/?freed-demo=1). Vercel reported a completed deployment and its served application contained the candidate SHA. That evidence resolves the earlier hosting-access limitation on this machine; it does not deploy either candidate to production.
 
 ## Original remaining-work record
 
@@ -115,7 +117,9 @@ A manual preview attempt built the staged bundle but failed with `The specified 
 
 The remaining code repair is bounded. Review, that repair and targeted verification are plausibly within one to two hours of machine time if hosting access works. CI queues, missing hosting access and production authorization prevent a guaranteed wall-clock commitment. There is no large maps or photographs implementation outstanding.
 
-## Receiving-machine checklist
+## Historical receiving-machine checklist
+
+This was the September handoff. Its draft status, authorization level and pending-merge statements are historical; the October 5 reconciliation above supersedes them. Verify current delivery state before using the scenarios below.
 
 1. Fetch and read the current `origin/dev:AGENTS.md`. Verify the merge above is present in the current lane. Read the build skill and scoped instructions before changing files. Use the pinned Node toolchain and an isolated worktree from fresh `origin/dev`.
 2. Review PR #1966 and this inventory. Preserve the existing real photographs and simplified-map design. Do not rebuild merged features or expand the demo into a full writable library.
