@@ -388,7 +388,7 @@ function executeAppendCheckpointPage(
 async function executeQuery(
   request: WorkerRequest<"query">,
 ): Promise<LibraryCoreSqliteWorkerResponse> {
-  return result(request.requestId, await requireEngine().queryWithVerification(request.query));
+  return result(request.requestId, await requireEngine().queryWithVerification(request.query, (key, length) => requireContentVault().readAnnotationRange(key, length)));
 }
 
 function executeBeginScopeAction(

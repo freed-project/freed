@@ -1092,6 +1092,10 @@ pub(super) async fn query_normalized_library(
         started,
         move |control| {
             control.check()?;
+            #[cfg(unix)]
+            if request.get("queryId").and_then(|value| value.as_str()) == Some("item_annotation_text_range_v1") {
+                return freed_library_core::desktop_binding().map_err(|error| error.to_string())?.query_with_content_control_v1(request, control);
+            }
             let connection = open_normalized_database(&app)?;
             freed_library_core::query_normalized_json_with_control_v1(connection, request, control)
         },

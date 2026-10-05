@@ -17,6 +17,14 @@
 > The PWA uses SQLite WebAssembly over OPFS and retains no IndexedDB Library
 > rows.
 
+
+Annotation text now has a bounded authenticated local read contract that retains
+canonical digest references separately from display text. Synthetic native
+SQLite/vault and Chromium PWA worker/OPFS restart proofs cover exact bytes and
+nondestructive read failures. Atomic edit admission, pending local annotations,
+all replacement callers, explicit UI states and Windows range-vault support
+remain open acceptance requirements. No new quote editor is included.
+
 ---
 
 ## Overview

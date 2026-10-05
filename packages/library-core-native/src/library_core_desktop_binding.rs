@@ -250,6 +250,30 @@ impl LibraryCoreDesktopBinding {
             .map_err(|error| LibraryCoreStorageError::from(error.to_string()))
     }
 
+    /// Registered query with private local-vault access and final selected-source fencing.
+    pub fn query_with_content_control_v1(&self, request: serde_json::Value, control: std::sync::Arc<crate::NormalizedQueryControl>) -> Result<serde_json::Value, String> {
+        let connection = self.connect_selected_normalized().map_err(|error| error.to_string())?;
+        let result = crate::normalized_query_control::query_with_content_control(connection, request, std::sync::Arc::clone(&control), &|key, length| self.content_vault.read_annotation_object(key, length))?;
+        if result.get("queryId").and_then(|v| v.as_str()) == Some("item_annotation_text_range_v1") {
+            let source: crate::normalized_query::NormalizedFeedPageSourceV1 = serde_json::from_value(result["source"].clone()).map_err(|error| error.to_string())?;
+            let connection = self.connect_selected_normalized().map_err(|error| error.to_string())?;
+            crate::annotation_text::check_source(&connection, &source).map_err(|error| error.to_string())?;
+            control.check().map_err(str::to_owned)?;
+            if result["state"] == "ready" {
+                if let Some(digest) = result["text"]["blobDigest"].as_str() {
+                    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(|error| error.to_string())?.as_millis();
+                    let now = i64::try_from(now).map_err(|error| error.to_string())?;
+                    // Same device-local coalescing as the existing cached range path.
+                    // This is a separate connection after the query-only snapshot ended.
+                    crate::library_core_content_vault::mark_content_accessed(&connection, digest, now).map_err(|error| error.to_string())?;
+                }
+            }
+            crate::annotation_text::check_source(&connection, &source).map_err(|error| error.to_string())?;
+            control.check().map_err(str::to_owned)?;
+        }
+        Ok(result)
+    }
+
     pub fn read_content_range_v1(
         &self,
         request: &ContentRangeReadRequestV1,

@@ -181,6 +181,52 @@ impl LibraryCoreContentVault {
         transaction.commit().map_err(store_error)
     }
 
+    /// Local bytes only. The caller verifies canonical range and whole-content digests.
+    pub(crate) fn read_annotation_object(&self, key: &str, length: usize) -> Result<Vec<u8>, String> {
+        if !(1..=65_536).contains(&length) { return Err("annotation range exceeds its bound".into()); }
+        self.read_bounded_object(key, length as i64, 0, length as i64).map_err(|error| error.to_string())
+    }
+
+    fn read_bounded_object(&self, storage_key: &str, expected_length: i64, offset: i64, maximum_bytes: i64) -> Result<Vec<u8>, LibraryCoreStorageError> {
+        let name = c_name(storage_key)?;
+        let descriptor = unsafe {
+            libc::openat(
+                self.directory.as_raw_fd(),
+                name.as_ptr(),
+                libc::O_RDONLY | libc::O_CLOEXEC | libc::O_NOFOLLOW,
+            )
+        };
+        if descriptor < 0 {
+            return Err(io::Error::last_os_error().into());
+        }
+        let mut file = unsafe { File::from_raw_fd(descriptor) };
+        let metadata = file.metadata()?;
+        if !metadata.is_file()
+            || metadata.mode() & 0o777 != 0o600
+            || metadata.uid() != self.owner
+            || metadata.nlink() != 1
+            || i64::try_from(metadata.len()).ok() != Some(expected_length)
+        {
+            return Err(LibraryCoreStorageError::from(
+                "verified content range object is invalid".to_string(),
+            ));
+        }
+        let byte_count = usize::try_from(
+            (expected_length - offset).min(maximum_bytes),
+        )
+        .map_err(|_| {
+            LibraryCoreStorageError::from("content range read length is invalid".to_string())
+        })?;
+        let mut bytes = vec![0u8; byte_count];
+        file.seek(SeekFrom::Start(
+            u64::try_from(offset).map_err(|_| {
+                LibraryCoreStorageError::from("content range read offset is invalid".to_string())
+            })?,
+        ))?;
+        file.read_exact(&mut bytes)?;
+        Ok(bytes)
+    }
+
     pub(crate) fn read_range_v1(
         &self,
         connection: &Connection,
@@ -225,52 +271,8 @@ impl LibraryCoreContentVault {
                 "content range read offset is outside the range".to_string(),
             ));
         }
-        let name = c_name(&proof.1)?;
-        let descriptor = unsafe {
-            libc::openat(
-                self.directory.as_raw_fd(),
-                name.as_ptr(),
-                libc::O_RDONLY | libc::O_CLOEXEC | libc::O_NOFOLLOW,
-            )
-        };
-        if descriptor < 0 {
-            return Err(io::Error::last_os_error().into());
-        }
-        let mut file = unsafe { File::from_raw_fd(descriptor) };
-        let metadata = file.metadata()?;
-        if !metadata.is_file()
-            || metadata.mode() & 0o777 != 0o600
-            || metadata.uid() != self.owner
-            || metadata.nlink() != 1
-            || i64::try_from(metadata.len()).ok() != Some(proof.0)
-        {
-            return Err(LibraryCoreStorageError::from(
-                "verified content range object is invalid".to_string(),
-            ));
-        }
-        let byte_count = usize::try_from(
-            (proof.0 - request.range_offset).min(request.maximum_bytes),
-        )
-        .map_err(|_| {
-            LibraryCoreStorageError::from("content range read length is invalid".to_string())
-        })?;
-        let mut bytes = vec![0u8; byte_count];
-        file.seek(SeekFrom::Start(
-            u64::try_from(request.range_offset).map_err(|_| {
-                LibraryCoreStorageError::from("content range read offset is invalid".to_string())
-            })?,
-        ))?;
-        file.read_exact(&mut bytes)?;
-        connection
-            .execute(
-                "UPDATE library_device_content_availability
-                 SET last_accessed_at = ?2
-                 WHERE content_digest = ?1 COLLATE BINARY
-                   AND last_accessed_at < ?2
-                   AND (last_accessed_at = 0 OR ?2 - last_accessed_at >= 60000);",
-                rusqlite::params![request.content_digest, request.accessed_at],
-            )
-            .map_err(store_error)?;
+        let bytes = self.read_bounded_object(&proof.1, proof.0, request.range_offset, request.maximum_bytes)?;
+        mark_content_accessed(connection, &request.content_digest, request.accessed_at)?;
         let next_range_offset =
             request.range_offset + i64::try_from(bytes.len()).expect("bounded read");
         Ok(ContentRangeReadResponseV1 {
@@ -990,4 +992,22 @@ mod tests {
             1
         );
     }
+}
+
+
+/// Coalesced local recency only. Call after the authenticated read snapshot closes.
+pub(crate) fn mark_content_accessed(
+    connection: &Connection,
+    digest: &str,
+    accessed_at: i64,
+) -> Result<(), LibraryCoreStorageError> {
+    connection.execute(
+        "UPDATE library_device_content_availability
+         SET last_accessed_at = ?2
+         WHERE content_digest = ?1 COLLATE BINARY
+           AND last_accessed_at < ?2
+           AND (last_accessed_at = 0 OR ?2 - last_accessed_at >= 60000);",
+        rusqlite::params![digest, accessed_at],
+    ).map_err(store_error)?;
+    Ok(())
 }

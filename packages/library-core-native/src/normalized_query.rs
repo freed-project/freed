@@ -638,6 +638,7 @@ pub struct NormalizedRecoveryIntentReviewResponseV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NormalizedQueryRequestV1 {
+    AnnotationText(crate::annotation_text::AnnotationTextRequest),
     RecoveryIntentReview(NormalizedRecoveryIntentReviewRequestV1),
     RecoveryArchivePage(NormalizedRecoveryArchivePageRequestV1),
     RecoveryIntentPage(NormalizedRecoveryIntentPageRequestV1),
@@ -1621,6 +1622,7 @@ pub struct NormalizedFriendCandidateReviewResponseV1 {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum NormalizedQueryResponseV1 {
+    AnnotationText(crate::annotation_text::AnnotationTextResponse),
     RecoveryIntentReview(NormalizedRecoveryIntentReviewResponseV1),
     RecoveryArchivePage(NormalizedRecoveryArchivePageResponseV1),
     RecoveryIntentPage(NormalizedRecoveryIntentPageResponseV1),
@@ -2990,7 +2992,7 @@ fn query_recovery_intent_page(
     Ok(response)
 }
 
-fn query_source(connection: &Connection) -> Result<(String, i64), NormalizedSqliteError> {
+pub(crate) fn query_source(connection: &Connection) -> Result<(String, i64), NormalizedSqliteError> {
     let source: (String, i64, i64) = connection.query_row(
         "SELECT generation.generation_id, meta.source_revision, changes.revision
          FROM library_materialization_generation AS generation
@@ -8047,6 +8049,7 @@ pub fn query_normalized_v1(
     request: NormalizedQueryRequestV1,
 ) -> Result<NormalizedQueryResponseV1, NormalizedSqliteError> {
     match request {
+        NormalizedQueryRequestV1::AnnotationText(request) => Ok(NormalizedQueryResponseV1::AnnotationText(crate::annotation_text::query(connection, request, None)?)),
         NormalizedQueryRequestV1::RecoveryIntentReview(request) => {
             Ok(NormalizedQueryResponseV1::RecoveryIntentReview(
                 query_recovery_intent_review(connection, request)?,
@@ -8269,6 +8272,10 @@ pub fn query_normalized_json_v1(
     connection: &mut Connection,
     request: serde_json::Value,
 ) -> Result<serde_json::Value, NormalizedSqliteError> {
+    query_normalized_json_with_content(connection, request, None)
+}
+
+pub(crate) fn query_normalized_json_with_content(connection: &mut Connection, request: serde_json::Value, read: Option<&crate::annotation_text::RangeReader<'_>>) -> Result<serde_json::Value, NormalizedSqliteError> {
     let serde_json::Value::Object(mut fields) = request else {
         return Err(NormalizedSqliteError::InvalidRequest(
             "normalized query request must be an object",
@@ -8291,6 +8298,7 @@ pub fn query_normalized_json_v1(
     }
 
     let request = match query_id.as_str() {
+        "item_annotation_text_range_v1" => decode_request!(crate::annotation_text::AnnotationTextRequest, AnnotationText),
         "recovery_intent_review_v1" => decode_request!(
             NormalizedRecoveryIntentReviewRequestV1,
             RecoveryIntentReview
@@ -8420,7 +8428,10 @@ pub fn query_normalized_json_v1(
             ));
         }
     };
-    let response = query_normalized_v1(connection, request)?;
+    let response = match request {
+        NormalizedQueryRequestV1::AnnotationText(request) => NormalizedQueryResponseV1::AnnotationText(crate::annotation_text::query(connection, request, read)?),
+        request => query_normalized_v1(connection, request)?,
+    };
 
     macro_rules! encode_response {
         ($response:expr) => {
@@ -8433,6 +8444,7 @@ pub fn query_normalized_json_v1(
     }
 
     match response {
+        NormalizedQueryResponseV1::AnnotationText(response) => encode_response!(response),
         NormalizedQueryResponseV1::AccountDetail(response) => encode_response!(response),
         NormalizedQueryResponseV1::AccountGraphPage(response) => encode_response!(response),
         NormalizedQueryResponseV1::AccountLinkCandidates(response) => encode_response!(response),

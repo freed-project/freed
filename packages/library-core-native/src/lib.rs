@@ -5,6 +5,7 @@
 //! explicit database path, key stores, and signed timestamps. It has no Tauri,
 //! Google Drive, provider, or historical migration-source dependency.
 
+mod annotation_text;
 mod device_contact_sync;
 mod device_graph_layout;
 mod historical_migration_source;

@@ -73,9 +73,26 @@ hydration policy. React receives no vault path or content byte buffer.
 the compact `item_detail_v1` contract and returns at most 64 tags and 64
 highlights, with a 1 MiB response ceiling. Both reads must have the same source
 generation and revision before the selected item receives its annotations.
-The query preserves blob references instead of substituting empty text. The
-current selected-item adapter rejects a blob-backed highlight until its text
-can be hydrated; it never passes incomplete annotations to a replacement write.
+The query preserves blob references instead of substituting empty text.
+`item_annotation_text_range_v1` takes an exact item, annotation index, expected
+source tuple and byte range. The backend resolves the canonical digest and
+verifies the complete quote length, range map, range digests, full digest and
+UTF-8 before returning any requested bytes. It checks generation, projection
+revision and transition sequence again after its read snapshot. The request
+accepts no renderer storage path. Body selectors remain `content` and `preserved`.
+
+Each quote is bounded to 65,536 UTF-8 bytes and 64 physical ranges. Shared
+hydration caps aggregate quote bytes at 524,288 and display JSON at 1 MiB.
+Canonical annotations remain separate from the hydrated view. Missing,
+unavailable, excluded, corrupt, oversized and invalid-text results expose no
+partial quote set. Replacement assembly still enforces 64 highlights, 8,192
+note bytes and the existing 98,304-byte canonical payload cap.
+
+Native queries retain `query_only`; successful local recency bookkeeping runs
+separately with final source checks. PWA reads use the serialized worker and
+local OPFS vault. Windows authenticated-range vault support and atomic edit
+admission remain acceptance gaps. Read authentication alone does not prove
+safe replacement of pending or concurrently changed annotations.
 Content pinning does not request annotations. Native and browser SQLite use
 the same generated point-query programs and reject oversized results.
 

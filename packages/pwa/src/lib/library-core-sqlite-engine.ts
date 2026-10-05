@@ -1,3 +1,9 @@
+import {
+  ANNOTATION_TEXT_MAXIMUM_BYTES, ANNOTATION_TEXT_MAXIMUM_RANGES,
+  parseLibraryCoreItemAnnotationTextRequestV1, parseLibraryCoreItemAnnotationTextResponseV1, sameAnnotationSource,
+  type LibraryCoreItemAnnotationTextRequestV1, type LibraryCoreItemAnnotationTextResponseV1,
+  type LibraryCoreAnnotationTextState,
+} from "@freed/shared/library-core";
 import { LIBRARY_TRANSFER_ENABLED, requireLibraryTransferCapability } from "./library-transfer-capability";
 import { parseLibraryCorePriorityTimePageRequestV1, parseLibraryCorePriorityTimePageResponseV1, priorityTimeItemScanRequest, LIBRARY_CORE_PRIORITY_TIME_MAXIMUM_CORPUS, type LibraryCorePriorityTimePageRequestV1, type LibraryCorePriorityTimePageResponseV1 } from "@freed/shared/library-core";
 import { createLibraryCoreNormalizedCheckpointDigestAccumulatorV2, parseLibraryCoreNormalizedReplicaAuditV1, type LibraryCoreNormalizedReplicaAuditV1 } from "@freed/shared/library-core";
@@ -8520,6 +8526,8 @@ export class PwaLibraryCoreSqliteEngine {
     input: T,
   ): LibraryCoreSqliteQueryResponseFor<T> {
     switch (input.queryId) {
+      case "item_annotation_text_range_v1":
+        throw new Error("Annotation text requires the verified query route");
       case "recovery_intent_review_v1":
         throw new Error("Recovery review requires asynchronous verification");
       case "recovery_intent_page_v1":
@@ -8681,7 +8689,112 @@ export class PwaLibraryCoreSqliteEngine {
     }
   }
 
-  async queryWithVerification<T extends LibraryCoreSqliteQueryRequest>(input: T): Promise<LibraryCoreSqliteQueryResponseFor<T>> {
+  /** Worker serialization owns the snapshot across local OPFS reads. Never fetches. */
+  async #queryAnnotationText(input: LibraryCoreItemAnnotationTextRequestV1,
+    readRange?: (storageKey: string, byteLength: number) => Promise<Uint8Array>,
+  ): Promise<LibraryCoreItemAnnotationTextResponseV1> {
+    const parsed = parseLibraryCoreItemAnnotationTextRequestV1(input);
+    if (!parsed.ok) throw new TypeError(parsed.error);
+    const request = parsed.value;
+    const deadline = performance.now() + 30_000;
+    const check = () => {
+      if (performance.now() >= deadline) throw new Error("QUERY_DEADLINE");
+      const current = this.#querySource();
+      if (!sameAnnotationSource(request.expectedSource, { generationId: current.generationId, projectionRevision: current.sourceRevision, transitionSequence: current.sourceRevision })) throw new Error("CURSOR_STALE");
+    };
+    const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.item_annotation_text_range_v1;
+    const response = (state: LibraryCoreAnnotationTextState, bytes?: Uint8Array, blobDigest: string | null = null): LibraryCoreItemAnnotationTextResponseV1 => {
+      check();
+      if (bytes && request.offsetBytes > bytes.length) throw new TypeError("annotation text offset is outside the quote");
+      const end = bytes ? Math.min(bytes.length, request.offsetBytes + request.limitBytes) : 0;
+      const result = parseLibraryCoreItemAnnotationTextResponseV1({ queryId: request.queryId, schemaVersion: 1, globalId: request.globalId, annotationIndex: request.annotationIndex, source: request.expectedSource, state,
+        text: bytes ? { blobDigest, contentLength: bytes.length, startOffset: request.offsetBytes, endOffset: end, bytesBase64: encodeLibraryCoreCanonicalBase64(bytes.subarray(request.offsetBytes, end)) } : null }, request);
+      if (!result.ok) throw new Error(result.error);
+      return result.value;
+    };
+    // Explicit async transaction, matching the existing recovery verifier. The
+    // synchronous transaction helper must never receive an async callback.
+    this.#database.exec("BEGIN DEFERRED;");
+    let result: LibraryCoreItemAnnotationTextResponseV1;
+    let accessedDigest: string | null = null;
+    try {
+      check();
+      const count = Number(this.#database.selectValue(program.countSql, [request.globalId]));
+      const rows = this.#database.exec({ sql: program.sql, bind: [request.globalId, request.annotationIndex], rowMode: "object", returnValue: "resultRows" });
+      const row = rows[0] ? coerceLibraryCoreGeneratedSqliteQueryRow("item_annotation_text_range_v1", rows[0]) : null;
+      if (rows.length && !row) throw new Error("annotation metadata is invalid");
+      const verify = async (): Promise<LibraryCoreItemAnnotationTextResponseV1> => {
+        if (count > 64) return response("oversized");
+        if (!row) return response("missing");
+        if (row.policy === "excluded") return response("excluded");
+        if (row.byteLength === null) return response("unavailable");
+        const length = Number(row.byteLength);
+        if (!Number.isSafeInteger(length) || length < 1) return response("invalid_text");
+        if (length > ANNOTATION_TEXT_MAXIMUM_BYTES) return response("oversized");
+        let bytes: Uint8Array;
+        const digest = nullableText(row.blobDigest, "annotation digest");
+        if (row.text !== null) {
+          bytes = textEncoder.encode(text(row.text, "annotation text"));
+          if (digest !== null || bytes.length !== length) return response("corrupt");
+        } else {
+          if (!isLibraryCoreLowercaseHex64(digest)) return response("corrupt");
+          bytes = new Uint8Array(length);
+          const hash = createLibraryCoreMediaBlobDigestStateV1();
+          let offset = 0;
+          if (row.storageLayout === "inline_chunks") {
+            const chunks = this.#database.exec({ sql: program.variants.chunks.sql, bind: [digest], rowMode: "object", returnValue: "resultRows" });
+            if (Number(row.chunkCount) !== 1 || Number(row.rangeCount) !== 0 || chunks.length !== 1) return response("corrupt");
+            const chunk = chunks[0]!;
+            if (chunk.memberIndex !== 0 || !(chunk.bytes instanceof Uint8Array) || chunk.bytes.length !== length || digestLibraryCoreMediaBlobBytesV1(chunk.bytes) !== chunk.digest) return response("corrupt");
+            bytes.set(chunk.bytes); hash.update(chunk.bytes); offset = length;
+          } else if (row.storageLayout === "authenticated_ranges") {
+            const count = Number(row.rangeCount);
+            if (count > ANNOTATION_TEXT_MAXIMUM_RANGES) return response("oversized");
+            if (count < 1 || Number(row.chunkCount) !== 0) return response("corrupt");
+            const ranges = this.#database.exec({ sql: program.variants.ranges.sql, bind: [digest], rowMode: "object", returnValue: "resultRows" });
+            if (ranges.length !== count) return response("corrupt");
+            const root = new LibraryCoreSha256();
+            root.update(contentRangeMapDigestPrefix); root.update(textEncoder.encode(digest)); root.update(lengthBytes(length)); root.update(lengthBytes(count));
+            for (let i = 0; i < ranges.length; i += 1) {
+              const range = ranges[i]!;
+              const size = Number(range.byteLength);
+              if (range.memberIndex !== i || range.byteOffset !== offset || !Number.isSafeInteger(size) || size < 1 || size > length - offset || !isLibraryCoreLowercaseHex64(range.digest)) return response("corrupt");
+              root.update(lengthBytes(i)); root.update(lengthBytes(offset)); root.update(lengthBytes(size)); root.update(textEncoder.encode(range.digest));
+              offset += size;
+            }
+            if (offset !== length || root.digestLowerHex() !== row.rangeRoot) return response("corrupt");
+            if (!readRange) return response("unavailable");
+            offset = 0;
+            for (const range of ranges) {
+              check();
+              if (range.storageKind !== "opfs" || typeof range.storageKey !== "string") return response("unavailable");
+              let part: Uint8Array;
+              try { part = await readRange(range.storageKey, Number(range.byteLength)); } catch { return response("unavailable"); }
+              check();
+              if (part.length !== Number(range.byteLength) || digestLibraryCoreMediaBlobBytesV1(part) !== range.digest) return response("corrupt");
+              bytes.set(part, offset); hash.update(part); offset += part.length;
+            }
+            accessedDigest = digest;
+          } else return response("corrupt");
+          if (offset !== length || hash.digestLowerHex() !== digest) return response("corrupt");
+        }
+        try { new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes); } catch { return response("invalid_text"); }
+        return response("ready", bytes, digest);
+      };
+      result = await verify();
+      this.#database.exec("COMMIT;");
+    } catch (error) {
+      this.#database.exec("ROLLBACK;");
+      throw error;
+    }
+    check();
+    if (result.state === "ready" && accessedDigest) this.markContentAccessed(accessedDigest, Date.now());
+    check();
+    return result;
+  }
+
+  async queryWithVerification<T extends LibraryCoreSqliteQueryRequest>(input: T, readAnnotationRange?: (storageKey: string, byteLength: number) => Promise<Uint8Array>): Promise<LibraryCoreSqliteQueryResponseFor<T>> {
+    if (input.queryId === "item_annotation_text_range_v1") return await this.#queryAnnotationText(input, readAnnotationRange) as LibraryCoreSqliteQueryResponseFor<T>;
     if (input.queryId !== "recovery_intent_review_v1") return this.query(input);
     if (!this.#capi) throw new Error("PWA recovery SQLite transaction API is unavailable");
     return await queryPwaRecoveryIntentReview(this.#database, this.#capi, this.#subtle, input) as LibraryCoreSqliteQueryResponseFor<T>;

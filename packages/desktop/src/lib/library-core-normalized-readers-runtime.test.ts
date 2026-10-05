@@ -208,6 +208,7 @@ describe("Freed Desktop normalized surface readers", () => {
       mocks.queryNormalizedLibrary.mockImplementation(async (request) => {
         if (request.queryId === "item_annotations_v1")
           return {
+            queryId: "item_annotations_v1", schemaVersion: 1, globalId: request.globalId,
             source:
               failure === "stale source"
                 ? { ...QUERY_SOURCE, projectionRevision: 8 }
@@ -222,6 +223,7 @@ describe("Freed Desktop normalized surface readers", () => {
               },
             ],
           };
+        if (request.queryId === "item_annotation_text_range_v1") throw new Error("vault unavailable");
         return {
           item: {
             card: feedCard,
@@ -235,9 +237,9 @@ describe("Freed Desktop normalized surface readers", () => {
       await expect(readLibraryCoreItemDetail("x:item-1")).rejects.toThrow(
         failure === "stale source"
           ? "source is stale"
-          : "requires blob hydration",
+          : "Annotation text is unavailable",
       );
-      expect(mocks.queryNormalizedLibrary.mock.calls).toHaveLength(2);
+      expect(mocks.queryNormalizedLibrary.mock.calls).toHaveLength(failure === "stale source" ? 2 : 3);
     },
   );
 

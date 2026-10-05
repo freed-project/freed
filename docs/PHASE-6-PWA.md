@@ -2,6 +2,14 @@
 
 > **Status:** 🚧 In Progress (the official SQLite WebAssembly engine, exact schema identity, single-worker OPFS runtime, normalized checkpoint import, product mutation entrypoints, bounded product queries, follower transport, recovery UI, selective content, and IndexedDB Library deletion are implemented; physical iPhone acceptance remains open)
 
+Annotation text now has a bounded authenticated local read contract that retains
+canonical digest references separately from display text. Synthetic native
+SQLite/vault and Chromium PWA worker/OPFS restart proofs cover exact bytes and
+nondestructive read failures. Atomic edit admission, pending local annotations,
+all replacement callers, explicit UI states and Windows range-vault support
+remain open acceptance requirements. No new quote editor is included.
+
+
 Saved URL recovery now distinguishes absent targets from deleted items. The
 owner reviews every URL, edits its title or description, and explicitly confirms
 one complete replacement. Original targets, URLs and remaining archived content

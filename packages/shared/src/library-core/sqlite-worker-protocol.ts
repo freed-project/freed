@@ -1,3 +1,4 @@
+import { parseLibraryCoreItemAnnotationTextRequestV1, parseLibraryCoreItemAnnotationTextResponseV1, type LibraryCoreItemAnnotationTextRequestV1, type LibraryCoreItemAnnotationTextResponseV1 } from "./item-annotation-text-contracts.js";
 import type { LibraryCoreNormalizedReplicaAuditV1 } from "./normalized-checkpoint-contracts.js";
 import type { verifyLibraryCoreHandoffPredecessorCheckpointV1 } from "./handoff-certificate.js";
 import { parseLibraryCorePreferenceScopeRequestV1, parseLibraryCorePreferenceScopeResponseV1, type LibraryCorePreferenceScopeRequestV1, type LibraryCorePreferenceScopeResponseV1 } from "./preference-scope-contracts.js";
@@ -342,6 +343,7 @@ import {
 export const LIBRARY_CORE_SQLITE_WORKER_MAXIMUM_PENDING_REQUESTS = 128 as const;
 
 export type LibraryCoreSqliteQueryRequest =
+  | LibraryCoreItemAnnotationTextRequestV1
   | LibraryCoreRecoveryIntentReviewRequestV1
   | LibraryCoreRecoveryArchivePageRequestV1
   | LibraryCoreRecoveryIntentPageRequestV1
@@ -391,7 +393,7 @@ export type LibraryCoreSqliteQueryRequest =
 
 export type LibraryCoreSqliteQueryResponseFor<
   T extends LibraryCoreSqliteQueryRequest,
-> = T extends LibraryCorePreferenceScopeRequestV1 ? LibraryCorePreferenceScopeResponseV1 : T extends LibraryCorePreferencesRevisionRequestV1 ? LibraryCorePreferencesRevisionResponseV1 : T extends LibraryCoreRankingWeightScopeRequestV1 ? LibraryCoreRankingWeightScopeResponseV1 : T extends LibraryCorePreferenceValueRequestV1 ? LibraryCorePreferenceValueResponseV1 : T extends LibraryCoreRssItemSummaryRequestV1
+> = T extends LibraryCoreItemAnnotationTextRequestV1 ? LibraryCoreItemAnnotationTextResponseV1 : T extends LibraryCorePreferenceScopeRequestV1 ? LibraryCorePreferenceScopeResponseV1 : T extends LibraryCorePreferencesRevisionRequestV1 ? LibraryCorePreferencesRevisionResponseV1 : T extends LibraryCoreRankingWeightScopeRequestV1 ? LibraryCoreRankingWeightScopeResponseV1 : T extends LibraryCorePreferenceValueRequestV1 ? LibraryCorePreferenceValueResponseV1 : T extends LibraryCoreRssItemSummaryRequestV1
   ? LibraryCoreRssItemSummaryResponseV1
   : T extends LibraryCoreItemAnnotationsRequestV1
   ? LibraryCoreItemAnnotationsResponseV1
@@ -485,7 +487,7 @@ export function parseLibraryCoreSqliteQueryResponse<
   T extends LibraryCoreSqliteQueryRequest,
 >(value: unknown, request: T): LibraryCoreSqliteQueryResponseFor<T> {
   const parsed =
-    request.queryId === "priority_time_page_v1" ? parseLibraryCorePriorityTimePageResponseV1(value, request) : request.queryId === "preference_scope_v1" ? parseLibraryCorePreferenceScopeResponseV1(value, request) : request.queryId === "preferences_revision_v1" ? parseLibraryCorePreferencesRevisionResponseV1(value) : request.queryId === "ranking_weight_scope_v1" ? parseLibraryCoreRankingWeightScopeResponseV1(value, request) : request.queryId === "preference_value_v1" ? parseLibraryCorePreferenceValueResponseV1(value, request) : request.queryId === "rss_item_summary_v1"
+    request.queryId === "item_annotation_text_range_v1" ? parseLibraryCoreItemAnnotationTextResponseV1(value, request) : request.queryId === "priority_time_page_v1" ? parseLibraryCorePriorityTimePageResponseV1(value, request) : request.queryId === "preference_scope_v1" ? parseLibraryCorePreferenceScopeResponseV1(value, request) : request.queryId === "preferences_revision_v1" ? parseLibraryCorePreferencesRevisionResponseV1(value) : request.queryId === "ranking_weight_scope_v1" ? parseLibraryCoreRankingWeightScopeResponseV1(value, request) : request.queryId === "preference_value_v1" ? parseLibraryCorePreferenceValueResponseV1(value, request) : request.queryId === "rss_item_summary_v1"
       ? parseLibraryCoreRssItemSummaryResponseV1(value)
       : request.queryId === "item_annotations_v1"
       ? parseLibraryCoreItemAnnotationsResponseV1(value, request)
@@ -1328,7 +1330,7 @@ export function parseLibraryCoreSqliteWorkerRequest(
     parseLibraryCoreActivateNormalizedCheckpointStageV2(value.activation);
   } else if (value.kind === "query") {
     const query = isClosedRecord(value.query)
-      ? value.query.queryId === "priority_time_page_v1" ? parseLibraryCorePriorityTimePageRequestV1(value.query) : value.query.queryId === "preference_scope_v1" ? parseLibraryCorePreferenceScopeRequestV1(value.query) : value.query.queryId === "preferences_revision_v1" ? parseLibraryCorePreferencesRevisionRequestV1(value.query) : value.query.queryId === "ranking_weight_scope_v1" ? parseLibraryCoreRankingWeightScopeRequestV1(value.query) : value.query.queryId === "preference_value_v1" ? parseLibraryCorePreferenceValueRequestV1(value.query) : value.query.queryId === "rss_item_summary_v1"
+      ? value.query.queryId === "item_annotation_text_range_v1" ? parseLibraryCoreItemAnnotationTextRequestV1(value.query) : value.query.queryId === "priority_time_page_v1" ? parseLibraryCorePriorityTimePageRequestV1(value.query) : value.query.queryId === "preference_scope_v1" ? parseLibraryCorePreferenceScopeRequestV1(value.query) : value.query.queryId === "preferences_revision_v1" ? parseLibraryCorePreferencesRevisionRequestV1(value.query) : value.query.queryId === "ranking_weight_scope_v1" ? parseLibraryCoreRankingWeightScopeRequestV1(value.query) : value.query.queryId === "preference_value_v1" ? parseLibraryCorePreferenceValueRequestV1(value.query) : value.query.queryId === "rss_item_summary_v1"
         ? parseLibraryCoreRssItemSummaryRequestV1(value.query)
         : value.query.queryId === "item_annotations_v1"
         ? parseLibraryCoreItemAnnotationsRequestV1(value.query)

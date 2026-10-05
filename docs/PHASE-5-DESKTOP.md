@@ -2,6 +2,14 @@
 
 > **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, Windows signing plan scaffolded, legal consent gate shipped, tri-state sidebar chrome shipped, public-safe bug reporting shipped, runtime memory telemetry shipped, native startup recovery shipped, bundled recovery updater flow shipped, permanent local social media vault shipped, desktop hot-path side-effect scheduling shipped, bounded SQLite user mutations and queries shipped, visible-scope bulk actions shipped, background runtime coordination shipped, renderer recovery safe mode shipped, deep local WebKit diagnostics shipped, adaptive high-memory scrape budgets shipped, explicit local-only primary Library authority shipped, normalized sample-data accounting, Story Wall candidates, Saved analytics, full-library native search, bounded scheduled RSS refresh, Google Drive checkpoint publication, follower intents, global background activity monitoring, and native terminal sync soaks shipped)
 
+Annotation text now has a bounded authenticated local read contract that retains
+canonical digest references separately from display text. Synthetic native
+SQLite/vault and Chromium PWA worker/OPFS restart proofs cover exact bytes and
+nondestructive read failures. Atomic edit admission, pending local annotations,
+all replacement callers, explicit UI states and Windows range-vault support
+remain open acceptance requirements. No new quote editor is included.
+
+
 Native provider admission now has bounded lifetime counters in the existing
 runtime-health sampler. The soak verdict reports their delta only across a
 stable, covered interval with no active provider commands or provider windows.
