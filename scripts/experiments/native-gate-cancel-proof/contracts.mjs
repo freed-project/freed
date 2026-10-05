@@ -14,6 +14,7 @@ const source = yaml.load(sourceBytes.toString()).jobs["tooling-smoke"];
 const probe = yaml.load(readFileSync(".github/workflows/tooling-nightly.yml", "utf8"));
 const gate = probe.jobs["tooling-smoke"];
 const status = gate.steps.find((s) => s.id === "status");
+const rendezvous = gate.steps.find((s) => s.id === "rendezvous");
 const guard = gate.steps.find((s) => s.id === "guard");
 const receipt = gate.steps.at(-1);
 const accepted = {
@@ -36,14 +37,20 @@ test("probe pins exact source and preserves real aggregate conditions and bodies
   assert.equal(gate["timeout-minutes"], source["timeout-minutes"]);
   assert.equal(gate["runs-on"], source["runs-on"]);
   assert.equal(status.if, source.steps[0].if);
-  assert.ok(status.run.startsWith(source.steps[0].run));
+  assert.equal(status.run, source.steps[0].run);
   assert.deepEqual(status.env, { ...source.steps[0].env,
     EVENT_NAME: accepted.EVENT_NAME, BASE_REF: accepted.BASE_REF, REF: accepted.REF });
   assert.deepEqual(guard, { ...source.steps[1], id: "guard" });
   assert.equal(receipt.if, "${{ always() }}");
   assert.ok(gate.steps.find((s) => s.id === "source").run.includes(digest));
-  assert.match(status.run.slice(source.steps[0].run.length), /\nsleep 60\n/);
-  assert.equal(gate.steps.indexOf(guard), gate.steps.indexOf(status) + 1);
+  assert.equal(rendezvous.if, "${{ always() }}");
+  assert.match(rendezvous.run, /\nsleep 60\n/);
+  assert.equal(gate.steps.indexOf(rendezvous), gate.steps.indexOf(status) + 1);
+  assert.equal(gate.steps.indexOf(guard), gate.steps.indexOf(rendezvous) + 1);
+  assert.deepEqual(rendezvous.env, {
+    SOURCE_OUTCOME: "${{ steps.source.outcome }}", STATUS_OUTCOME: "${{ steps.status.outcome }}",
+  });
+  assert.equal(receipt.env.RENDEZVOUS_OUTCOME, "${{ steps.rendezvous.outcome }}");
 });
 
 test("probe is manual, bounded, read-only and contains only synthetic dependency work", () => {
@@ -77,7 +84,7 @@ test("probe is manual, bounded, read-only and contains only synthetic dependency
   }
 });
 
-test("real accepted body reaches bounded rendezvous; rejected dependencies never do", (t) => {
+test("exact status body completes before separate bounded rendezvous; failed prerequisites refuse wait", (t) => {
   const dir = mkdtempSync(path.join(tmpdir(), "native-gate-cancel-contract-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   // No local minute-long sleep: record the actual wait argument and return.
@@ -86,8 +93,18 @@ test("real accepted body reaches bounded rendezvous; rejected dependencies never
     GITHUB_STEP_SUMMARY: path.join(dir, "summary"), GITHUB_SHA: "synthetic", GITHUB_RUN_ID: "1", GITHUB_RUN_ATTEMPT: "1" };
   const run = bash(status.run, env);
   assert.equal(run.status, 0, run.stdout + run.stderr);
+  assert.doesNotMatch(run.stdout, /PROBE_RENDEZVOUS/);
+  const wait = bash(rendezvous.run, { ...env, SOURCE_OUTCOME: "success", STATUS_OUTCOME: "success" });
+  assert.equal(wait.status, 0, wait.stdout + wait.stderr);
   assert.equal(readFileSync(env.WAIT_RECEIPT, "utf8"), "60");
-  assert.match(run.stdout, /PROBE_RENDEZVOUS_OPEN status_body=success/);
+  assert.match(wait.stdout, /PROBE_RENDEZVOUS_OPEN status_body=success/);
+  for (const outcome of ["failure", "cancelled", "skipped", ""]) {
+    for (const key of ["SOURCE_OUTCOME", "STATUS_OUTCOME"]) {
+      const refused = bash(rendezvous.run, { ...env, SOURCE_OUTCOME: "success", STATUS_OUTCOME: "success", [key]: outcome });
+      assert.equal(refused.status, 1);
+      assert.doesNotMatch(refused.stdout, /PROBE_RENDEZVOUS_OPEN/);
+    }
+  }
   assert.match(readFileSync(env.GITHUB_STEP_SUMMARY, "utf8"), /PROBE_RENDEZVOUS_OPEN/);
   for (const changed of [{ OPFS_RESULT: "failure" }, { PREVIEW_RESULT: "skipped" }, { FEATURE_RESULT: "cancelled" }]) {
     const rejected = bash(status.run, { ...env, ...changed });
@@ -102,11 +119,14 @@ test("real accepted body reaches bounded rendezvous; rejected dependencies never
 test("evidence refuses missed cancellation, skipped guard, interruption and timeout", () => {
   for (const statusOutcome of ["success", "failure", "cancelled", "skipped", "timed_out", ""]) {
     for (const guardOutcome of ["success", "failure", "cancelled", "skipped", "timed_out", ""]) {
-      const result = bash(receipt.run, { SOURCE_OUTCOME: "success", STATUS_OUTCOME: statusOutcome, GUARD_OUTCOME: guardOutcome });
+      const result = bash(receipt.run, { SOURCE_OUTCOME: "success", STATUS_OUTCOME: statusOutcome, RENDEZVOUS_OUTCOME: "success", GUARD_OUTCOME: guardOutcome });
       const proven = statusOutcome === "success" && guardOutcome === "failure";
       assert.equal(result.status, proven ? 0 : 1);
       assert.match(result.stdout, proven ? /PROBE_GUARD_EXECUTED_AND_FAILED/ : /PROBE_NOT_PROVEN/);
     }
   }
-  assert.equal(bash(receipt.run, { SOURCE_OUTCOME: "failure", STATUS_OUTCOME: "success", GUARD_OUTCOME: "failure" }).status, 1);
+  for (const outcome of ["failure", "cancelled", "skipped", "timed_out", ""]) {
+    assert.equal(bash(receipt.run, { SOURCE_OUTCOME: "success", STATUS_OUTCOME: "success", RENDEZVOUS_OUTCOME: outcome, GUARD_OUTCOME: "failure" }).status, 1);
+  }
+  assert.equal(bash(receipt.run, { SOURCE_OUTCOME: "failure", STATUS_OUTCOME: "success", RENDEZVOUS_OUTCOME: "success", GUARD_OUTCOME: "failure" }).status, 1);
 });

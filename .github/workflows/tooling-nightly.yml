@@ -206,13 +206,21 @@ jobs:
             echo "Native acceptance was not required but reported $NATIVE_RESULT"
             exit 1
           fi
-
-          # Experiment-only rendezvous after the unchanged reviewed status body.
+        id: status
+      - name: Bounded cancellation rendezvous
+        id: rendezvous
+        if: ${{ always() }}
+        env:
+          SOURCE_OUTCOME: ${{ steps.source.outcome }}
+          STATUS_OUTCOME: ${{ steps.status.outcome }}
+        run: |
+          test "$SOURCE_OUTCOME" = success
+          test "$STATUS_OUTCOME" = success
+          # Experiment-only step after the unchanged reviewed status step.
           echo "PROBE_RENDEZVOUS_OPEN status_body=success wait_seconds=60"
           printf "PROBE_RENDEZVOUS_OPEN run=%s attempt=%s sha=%s utc=%s wait_seconds=60\n" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$GITHUB_SHA" "$(date -u +%FT%TZ)" >> "$GITHUB_STEP_SUMMARY"
           sleep 60
           echo "PROBE_RENDEZVOUS_CLOSED"
-        id: status
       - name: Reject workflow cancellation
         if: ${{ cancelled() }}
         timeout-minutes: 1
@@ -226,9 +234,10 @@ jobs:
           SOURCE_OUTCOME: ${{ steps.source.outcome }}
           STATUS_OUTCOME: ${{ steps.status.outcome }}
           GUARD_OUTCOME: ${{ steps.guard.outcome }}
+          RENDEZVOUS_OUTCOME: ${{ steps.rendezvous.outcome }}
         run: |
-          printf "PROBE_OUTCOMES status=%s guard=%s\n" "$STATUS_OUTCOME" "$GUARD_OUTCOME"
-          if [ "$SOURCE_OUTCOME" = success ] && [ "$STATUS_OUTCOME" = success ] && [ "$GUARD_OUTCOME" = failure ]; then
+          printf "PROBE_OUTCOMES status=%s rendezvous=%s guard=%s\n" "$STATUS_OUTCOME" "$RENDEZVOUS_OUTCOME" "$GUARD_OUTCOME"
+          if [ "$SOURCE_OUTCOME" = success ] && [ "$STATUS_OUTCOME" = success ] && [ "$RENDEZVOUS_OUTCOME" = success ] && [ "$GUARD_OUTCOME" = failure ]; then
             echo "PROBE_GUARD_EXECUTED_AND_FAILED: correlate normal cancellation receipt and guard log"
           else
             echo "PROBE_NOT_PROVEN: missed cancellation, skipped guard, interruption or timeout"
