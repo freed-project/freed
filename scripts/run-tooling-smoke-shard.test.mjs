@@ -436,6 +436,14 @@ import { execFileSync } from 'node:child_process';
       env: { ...env, PATH: `${bin}${path.delimiter}${env.PATH}` }, encoding: "utf8", timeout: 15_000,
     });
     const output = result.stdout + result.stderr;
+    // Evidence must survive a failed cleanup assertion without masking it.
+    try {
+      console.log(JSON.stringify({ contract: `imported ${operation} stall identities`,
+        identities: JSON.parse(readFileSync(evidence, "utf8")) }));
+    } catch (error) {
+      console.log(JSON.stringify({ contract: `imported ${operation} stall identities`,
+        evidenceError: error.message }));
+    }
     assert.equal(result.error, undefined, output);
     assert.equal(result.status, 1, output);
     assert.match(output, ["local-timeout", "double-fork"].includes(operation)
@@ -461,6 +469,62 @@ import { execFileSync } from 'node:child_process';
       fixtureRemoved: true, unrelatedAlive: true }));
   });
 }
+
+test("Darwin signal refusal receipts preserve observations and the original failure", () => {
+  const helper = new URL("./test-helpers/nightly_fixture_darwin.py", import.meta.url).pathname;
+  const result = spawnSync("python3", ["-B", "-c", `
+import contextlib, ctypes, errno, importlib.util, io, json, signal
+spec = importlib.util.spec_from_file_location('custody', ${JSON.stringify(helper)})
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+# Pure diagnostic contract: no native library, process lookup or signal.
+expected = dict(pid=123, uniqueid=456, pidversion=789, uid=501, birth='fixture', state=2, zombie=False)
+anchor = dict(pid=321, uniqueid=654, birth='anchor')
+for after in [dict(expected, state=5, zombie=True), None,
+              dict(expected, birth='replacement'), dict(expected), OSError(errno.EIO, 'inspection failed')]:
+    custody = module.DarwinCustody.__new__(module.DarwinCustody)
+    custody.anchor = anchor
+    custody.known = {expected['uniqueid']: expected}
+    observations = iter([expected, after])
+    def inspect(pid):
+        assert pid == expected['pid']
+        value = next(observations)
+        if isinstance(value, Exception):
+            raise value
+        return value
+    custody.inspect = inspect
+    def responsible(pid):
+        ctypes.set_errno(errno.ESRCH)
+        return -1
+    custody.responsible = responsible
+    class NoSignal:
+        def proc_signal_with_audittoken(self, *args):
+            raise AssertionError('refused process was signaled')
+    custody.lib = NoSignal()
+    output = io.StringIO()
+    with contextlib.redirect_stderr(output):
+        try:
+            custody.send(expected, signal.SIGSTOP)
+            raise AssertionError('responsibility mismatch accepted')
+        except RuntimeError as error:
+            assert str(error) == 'Darwin process left the owned responsibility domain'
+    receipt = json.loads(output.getvalue().split('Darwin signal refusal=', 1)[1])
+    assert receipt['phase'] == 'responsibility'
+    assert receipt['target'] == 123 and receipt['signal'] == signal.SIGSTOP
+    assert receipt['expected'] == receipt['before'] == expected
+    assert receipt['anchor'] == anchor
+    assert receipt['responsibility'] == -1 and receipt['responsibilityErrno'] == errno.ESRCH
+    if isinstance(after, Exception):
+        assert receipt['after'] is None and receipt['afterError']['errno'] == errno.EIO
+    else:
+        assert receipt['after'] == after and receipt['afterError'] is None
+    assert receipt['error']['message'] == 'Darwin process left the owned responsibility domain'
+print('five refusal observation cases preserved; no native calls or signals')
+`], { encoding: "utf8", timeout: 5_000 });
+  assert.equal(result.error, undefined);
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /five refusal observation cases preserved/);
+});
 
 test("nightly supervisor refuses stale generations and foreign parents", async (t) => {
   const foreign = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
