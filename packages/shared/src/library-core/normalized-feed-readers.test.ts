@@ -71,6 +71,7 @@ const feedCard = (globalId: string) => ({
 const backgroundCard = (globalId: string) => ({
   ...feedCard(globalId),
   hidden: false,
+  seenSyncedAt: null,
   rssSource: null,
   sampleDataFingerprint: null,
 });

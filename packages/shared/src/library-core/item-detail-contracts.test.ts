@@ -42,6 +42,21 @@ const card = {
 };
 
 describe("item detail contracts", () => {
+  it("closes nullable seen confirmation independently of the product card", () => {
+    const response = (seenSyncedAt: unknown) => ({ queryId: request.queryId, schemaVersion: 1,
+      source: { generationId: "b".repeat(64), projectionRevision: 7, transitionSequence: 7 },
+      item: { card, seenSyncedAt, contentBody: { blobDigest: null, storage: "inline" },
+        preservedBody: { blobDigest: null, storage: "none" }, mediaBlobDigests: [] } });
+    for (const stamp of [null, -1, 0, 1000]) {
+      const parsed = parseLibraryCoreItemDetailResponseV1(response(stamp), request);
+      expect(parsed.ok).toBe(true);
+      if (parsed.ok) expect(parsed.value.item?.seenSyncedAt).toBe(stamp);
+    }
+    for (const stamp of [undefined, -2, -0, 0.5, Number.MAX_SAFE_INTEGER + 1, "1000"]) {
+      expect(parseLibraryCoreItemDetailResponseV1(response(stamp), request).ok).toBe(false);
+    }
+  });
+
   it("accepts closed metadata with separate body locators", () => {
     expect(parseLibraryCoreItemDetailRequestV1(request).ok).toBe(true);
     expect(
@@ -49,6 +64,7 @@ describe("item detail contracts", () => {
         {
           item: {
             card,
+            seenSyncedAt: null,
             contentBody: { blobDigest: null, storage: "inline" },
             mediaBlobDigests: [],
             preservedBody: { blobDigest: "a".repeat(64), storage: "blob" },
@@ -70,6 +86,7 @@ describe("item detail contracts", () => {
     const response = {
       item: {
         card,
+        seenSyncedAt: null,
         contentBody: { blobDigest: null, storage: "inline" },
         mediaBlobDigests: [],
         preservedBody: { blobDigest: null, storage: "none" },
