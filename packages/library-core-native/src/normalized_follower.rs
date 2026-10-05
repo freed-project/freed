@@ -2976,8 +2976,18 @@ mod tests {
             .expect("settled result remains replayable after catch-up");
     }
 
-    #[test]
-    fn normalized_follower_enrollment_is_v2_replayable_and_initializes_intents() {
+    struct EnrolledFollowerFixture {
+        connection: Connection,
+        authority_store: MemoryKeyStore,
+        checkpoint: crate::NormalizedCheckpointExportDescriptorV2,
+        request: NormalizedFollowerActorRequestV2,
+        accepted: NormalizedFollowerActorEnrollmentV2,
+        actor_key_pair: Ed25519KeyPair,
+        verified: VerifiedActorEnrollment,
+    }
+
+    // Real enrollment without the unrelated recovery/backfill feature gates.
+    fn enrolled_follower_fixture() -> EnrolledFollowerFixture {
         let authority_store = MemoryKeyStore::default();
         let primary_actor_store = MemoryKeyStore::default();
         let follower_actor_store = MemoryKeyStore::default();
@@ -3060,6 +3070,43 @@ mod tests {
             &authority,
         )
         .expect("verified follower enrollment");
+        EnrolledFollowerFixture {
+            connection, authority_store, checkpoint, request, accepted, actor_key_pair, verified,
+        }
+    }
+
+    #[test]
+    fn local_admission_follower_source_fence_preserves_exact_retry() {
+        let EnrolledFollowerFixture { mut connection, actor_key_pair, verified, .. } =
+            enrolled_follower_fixture();
+        let envelopes = signed_envelopes(&actor_key_pair, &verified);
+        let (generation_id, source_revision) = crate::normalized_query::query_source(&connection).unwrap();
+        let expected_source = crate::normalized_query::NormalizedFeedPageSourceV1 {
+            generation_id, projection_revision: source_revision, transition_sequence: source_revision,
+        };
+        let mut stale_source = expected_source.clone();
+        stale_source.transition_sequence += 1;
+        let before_stale = connection.total_changes();
+        assert!(enqueue_normalized_follower_intent_with_source_v1(&mut connection, &envelopes, 2200, Some(&stale_source)).unwrap_err().to_string().contains("LOCAL_ADMISSION_SOURCE_STALE"));
+        assert_eq!(connection.total_changes(), before_stale);
+        let intent = enqueue_normalized_follower_intent_with_source_v1(&mut connection, &envelopes, 2_200, Some(&expected_source))
+            .expect("enqueue follower intent");
+        connection.execute_batch("UPDATE library_meta SET source_revision=source_revision+1; UPDATE library_change_state SET revision=revision+1;").unwrap();
+        let before_retry = connection.total_changes();
+        assert_eq!(enqueue_normalized_follower_intent_with_source_v1(&mut connection, &envelopes, 2201, Some(&expected_source)).unwrap(), intent);
+        assert_eq!(connection.total_changes(), before_retry);
+        let changed = crate::normalized_operation_test_fixtures::tests::signed_envelopes_from_tip(
+            &actor_key_pair, &verified, "tx:read:native-verified", 1, None,
+            &verified.actor_chain_genesis, &[("rss:item:1", 990), ("rss:item:2", 991)], "feed_item_read_assignment");
+        assert!(enqueue_normalized_follower_intent_with_source_v1(&mut connection, &changed, 2202, Some(&expected_source)).is_err());
+        assert_eq!(connection.total_changes(), before_retry);
+    }
+
+    #[test]
+    fn normalized_follower_enrollment_is_v2_replayable_and_initializes_intents() {
+        let EnrolledFollowerFixture {
+            mut connection, authority_store, checkpoint, request, accepted, actor_key_pair, verified,
+        } = enrolled_follower_fixture();
         crate::normalized_preference_projection::check_dormant_migration_contract(&connection);
         let envelopes = signed_envelopes(&actor_key_pair, &verified);
         // A recovery caller must be able to attach its durable link after enqueue
@@ -3116,27 +3163,8 @@ mod tests {
             .is_err());
             transaction.rollback().unwrap();
         }
-        let (generation_id, source_revision) = crate::normalized_query::query_source(&connection).unwrap();
-        let expected_source = crate::normalized_query::NormalizedFeedPageSourceV1 {
-            generation_id, projection_revision: source_revision, transition_sequence: source_revision,
-        };
-        let mut stale_source = expected_source.clone();
-        stale_source.transition_sequence += 1;
-        let before_stale = connection.total_changes();
-        assert!(enqueue_normalized_follower_intent_with_source_v1(&mut connection, &envelopes, 2200, Some(&stale_source)).unwrap_err().to_string().contains("LOCAL_ADMISSION_SOURCE_STALE"));
-        assert_eq!(connection.total_changes(), before_stale);
-        let intent = enqueue_normalized_follower_intent_with_source_v1(&mut connection, &envelopes, 2_200, Some(&expected_source))
+        let intent = enqueue_normalized_follower_intent_v1(&mut connection, &envelopes, 2_200)
             .expect("enqueue follower intent");
-        connection.execute_batch("UPDATE library_meta SET source_revision=source_revision+1; UPDATE library_change_state SET revision=revision+1;").unwrap();
-        let before_retry = connection.total_changes();
-        assert_eq!(enqueue_normalized_follower_intent_with_source_v1(&mut connection, &envelopes, 2201, Some(&expected_source)).unwrap(), intent);
-        assert_eq!(connection.total_changes(), before_retry);
-        let changed = crate::normalized_operation_test_fixtures::tests::signed_envelopes_from_tip(
-            &actor_key_pair, &verified, "tx:read:native-verified", 1, None,
-            &verified.actor_chain_genesis, &[("rss:item:1", 990), ("rss:item:2", 991)], "feed_item_read_assignment");
-        assert!(enqueue_normalized_follower_intent_with_source_v1(&mut connection, &changed, 2202, Some(&expected_source)).is_err());
-        assert_eq!(connection.total_changes(), before_retry);
-        connection.execute_batch("UPDATE library_meta SET source_revision=source_revision-1; UPDATE library_change_state SET revision=revision-1;").unwrap();
 
         assert_eq!(
             enqueue_normalized_follower_intent_v1(&mut connection, &envelopes, 2_201)
