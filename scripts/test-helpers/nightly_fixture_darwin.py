@@ -7,6 +7,7 @@ The responsibility spawn attribute follows LLVM's PosixSpawnResponsible.h.
 
 import ctypes
 import errno
+import json
 import os
 import signal
 import sys
@@ -212,23 +213,56 @@ class DarwinCustody:
         return members
 
     def send(self, expected, sig):
-        current = self.inspect(expected["pid"])
-        if not self.same(expected, current):
-            return False
-        known = self.known.get(expected["uniqueid"])
-        if not known or not self.same(known, current):
-            raise RuntimeError("refusing an uncaptured Darwin process")
-        if current["state"] == 5:  # SZOMB
-            return False
-        if self.responsible(expected["pid"]) != os.getpid():
-            raise RuntimeError("Darwin process left the owned responsibility domain")
-        token = AuditToken()
-        token.val[5] = expected["pid"]
-        token.val[7] = expected["pidversion"] & 0xffffffff
-        result = self.lib.proc_signal_with_audittoken(ctypes.byref(token), sig)
-        if result not in (0, errno.ESRCH):
-            raise OSError(result, "Darwin generation-bound signal failed")
-        return result == 0
+        phase = "inspect-before"
+        current = responsible = responsibility_errno = None
+        try:
+            current = self.inspect(expected["pid"])
+            if not self.same(expected, current):
+                return False
+            phase = "captured-generation"
+            known = self.known.get(expected["uniqueid"])
+            if not known or not self.same(known, current):
+                raise RuntimeError("refusing an uncaptured Darwin process")
+            if current["state"] == 5:  # SZOMB
+                return False
+            phase = "responsibility"
+            ctypes.set_errno(0)
+            try:
+                responsible = self.responsible(expected["pid"])
+            finally:
+                responsibility_errno = ctypes.get_errno()
+            if responsible != os.getpid():
+                raise RuntimeError("Darwin process left the owned responsibility domain")
+            token = AuditToken()
+            token.val[5] = expected["pid"]
+            token.val[7] = expected["pidversion"] & 0xffffffff
+            phase = "audit-token-signal"
+            result = self.lib.proc_signal_with_audittoken(ctypes.byref(token), sig)
+            if result not in (0, errno.ESRCH):
+                raise OSError(result, "Darwin generation-bound signal failed")
+            return result == 0
+        except (OSError, RuntimeError) as error:
+            # Evidence only: a second snapshot must never turn refusal into
+            # permission to signal, or replace the original failure.
+            after = after_error = None
+            try:
+                after = self.inspect(expected["pid"])
+            except (OSError, RuntimeError) as inspection_error:
+                after_error = {"type": type(inspection_error).__name__,
+                               "message": str(inspection_error),
+                               "errno": getattr(inspection_error, "errno", None)}
+            receipt = {"phase": phase, "target": expected["pid"], "signal": int(sig),
+                       "expected": expected, "before": current, "after": after,
+                       "afterError": after_error, "responsibility": responsible,
+                       "responsibilityErrno": responsibility_errno, "anchor": self.anchor,
+                       "error": {"type": type(error).__name__, "message": str(error),
+                                 "errno": getattr(error, "errno", None)}}
+            try:
+                print("[nightly supervisor] Darwin signal refusal=" + json.dumps(receipt),
+                      file=sys.stderr, flush=True)
+            except (OSError, ValueError):
+                pass  # A closed diagnostic stream must not mask custody refusal.
+            raise
 
     def cleanup(self, child, reap):
         deadline = time.monotonic() + 5
