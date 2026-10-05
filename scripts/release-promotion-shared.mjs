@@ -67,6 +67,7 @@ export const PROMOTION_COMMIT_SUBJECT_PATTERN =
   /^chore: promote dev (?:into|to) main(?: for production release)?(?: \(#\d+\))?$/;
 const HISTORICAL_MAIN_BACKPORT_SUBJECTS = new Set([
   "fix: backport simplified provider approval (#980)",
+  "fix: backport immutable snapshot controls (#1746)",
 ]);
 const HISTORICAL_MAIN_PROMOTION_SUBJECTS = new Set([
   "chore: refresh dev promotion for production release (#1538)",
