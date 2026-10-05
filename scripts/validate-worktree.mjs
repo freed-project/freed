@@ -156,6 +156,7 @@ const RELEASE_PUBLISHER_TEST_FILES = [
 
 const PULL_REQUEST_PUBLISHER_TOOLING_PATHS = new Set([
   "scripts/worktree-publish.sh",
+  "scripts/lib/provider-query-snapshot.mjs",
   "scripts/worktree-publish.test.mjs",
   "scripts/task-decisions.mjs",
   "scripts/task-decisions.test.mjs",
