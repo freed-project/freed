@@ -14,9 +14,9 @@ import {
 import { LIBRARY_CORE_SCOPE_ACTION_SCHEMA_VERSION } from "@freed/shared/library-core";
 
 import { usePlatform } from "../context/PlatformContext.js";
-import type { LibraryFacetSummary } from "../context/PlatformContext.js";
+import type { LibraryFacetSummary, PlatformConfig } from "../context/PlatformContext.js";
 import { getFeedActionCounts } from "../lib/feed-action-scope.js";
-import { useLibraryFacetSummary } from "./useLibraryFacetSummary.js";
+import { useLibraryFacetSummaryState } from "./useLibraryFacetSummary.js";
 import { useLibraryItemDetail } from "./useLibraryItemDetail.js";
 
 interface ScopeCounts {
@@ -26,6 +26,8 @@ interface ScopeCounts {
 
 interface PaletteScanState extends ScopeCounts {
   readonly sourceVersion: number;
+  readonly contextKey?: string;
+  readonly reader?: PlatformConfig["openBoundedFeedReader"];
   readonly status: "idle" | "loading" | "ready" | "failed";
 }
 
@@ -42,6 +44,7 @@ export interface UseLibraryCommandPaletteReaderOptions {
 }
 
 export interface LibraryCommandPaletteReaderResult {
+  readonly scopeActionsReady: boolean;
   readonly archivableScopeCount: number;
   readonly archivedUnsavedCount: number;
   readonly archiveScopeRead: () => Promise<void>;
@@ -160,10 +163,11 @@ export function useLibraryCommandPaletteReader({
   const stableFilter = useStableFilter(activeFilter);
   const normalizedFilter = stableFilter.normalized;
   const normalizedFilterSignature = stableFilter.signature;
-  const libraryFacets = useLibraryFacetSummary(
+  const facetState = useLibraryFacetSummaryState(
     sourceVersion,
     enabled && Boolean(readLibraryFacetSummary),
   );
+  const libraryFacets = facetState.summary;
   const compactCounts = useMemo(
     () => compactScopeCounts(activeFilter, identityMode, libraryFacets),
     [activeFilter, identityMode, libraryFacets],
@@ -183,8 +187,15 @@ export function useLibraryCommandPaletteReader({
     identityMode,
     normalizedFilterSignature,
   ]);
-  const latestQueryFenceKey = useRef(queryFenceKey);
-  latestQueryFenceKey.current = queryFenceKey;
+  const contextKey = JSON.stringify([activeView, identityMode, normalizedFilterSignature, inputValue, searchQuery]);
+  // Counts belong to a committed scope presentation. A new scope cannot adopt
+  // a previous scope's refreshing aggregate, even when it uses the same reader.
+  const compactContext = useRef({ key: contextKey, reader: readLibraryFacetSummary, committed: false });
+  if (compactContext.current.key !== contextKey || compactContext.current.reader !== readLibraryFacetSummary) {
+    compactContext.current = { key: contextKey, reader: readLibraryFacetSummary, committed: false };
+  }
+  if (facetState.status === "ready") compactContext.current.committed = true;
+  else if (facetState.status === "error" || facetState.status === "unavailable") compactContext.current.committed = false;
   const readComplexScope = Boolean(
     activeView === "feed" && !inputHasQuery && compactCounts === null,
   );
@@ -214,7 +225,11 @@ export function useLibraryCommandPaletteReader({
     };
     let unreadCount = 0;
     let archivableCount = 0;
-    setPaletteScan(emptyPaletteScan("loading", sourceVersion));
+    setPaletteScan(previous => ({
+      ...(previous.contextKey === contextKey && previous.reader === openScopeReader && previous.sourceVersion <= sourceVersion && previous.status !== "failed"
+        ? previous : EMPTY_COUNTS),
+      contextKey, reader: openScopeReader, sourceVersion, status: "loading",
+    }));
     void (async () => {
       reader = await openScopeReader(stableFilter.input, Date.now());
       while (!cancelled) {
@@ -227,6 +242,7 @@ export function useLibraryCommandPaletteReader({
       if (!cancelled) {
         setPaletteScan({
           archivableCount,
+          contextKey, reader: openScopeReader,
           sourceVersion,
           status: "ready",
           unreadCount,
@@ -246,6 +262,7 @@ export function useLibraryCommandPaletteReader({
       void closeReader();
     };
   }, [
+    contextKey,
     normalizedFilter,
     normalizedFilterSignature,
     openScopeReader,
@@ -254,7 +271,8 @@ export function useLibraryCommandPaletteReader({
     sourceVersion,
   ]);
 
-  const paletteScanIsCurrent = paletteScan.sourceVersion === sourceVersion;
+  const scanMatchesContext = paletteScan.contextKey === contextKey && paletteScan.reader === openScopeReader && paletteScan.sourceVersion <= sourceVersion;
+  const paletteScanIsCurrent = scanMatchesContext && paletteScan.sourceVersion === sourceVersion;
   const paletteScanReady =
     paletteScanIsCurrent && paletteScan.status === "ready";
 
@@ -263,17 +281,22 @@ export function useLibraryCommandPaletteReader({
     [commandScopeItems],
   );
   let scopeCounts = EMPTY_COUNTS;
-  if (activeView === "feed") {
+  if (enabled && activeView === "feed") {
     if (!queryIsCommitted) {
       scopeCounts = EMPTY_COUNTS;
     } else if (inputHasQuery) {
       scopeCounts = committedSearchHasQuery ? searchCounts : EMPTY_COUNTS;
     } else if (compactCounts) {
-      scopeCounts = compactCounts;
-    } else if (paletteScanReady) {
+      scopeCounts = compactContext.current.committed ? compactCounts : EMPTY_COUNTS;
+    } else if (scanMatchesContext && paletteScan.status !== "failed" && paletteScan.status !== "idle") {
       scopeCounts = paletteScan;
     }
   }
+
+  const scopeActionsReady = enabled && activeView === "feed" && queryIsCommitted && (inputHasQuery
+    ? committedSearchHasQuery : compactCounts !== null ? facetState.status === "ready" : paletteScanReady);
+  const latestActionAdmission = useRef({ queryFenceKey, scopeActionsReady, scopeCounts, openScopeReader, readLibraryFacetSummary, executeLibraryScopeAction });
+  latestActionAdmission.current = { queryFenceKey, scopeActionsReady, scopeCounts, openScopeReader, readLibraryFacetSummary, executeLibraryScopeAction };
 
   const selectedItem =
     selectedItemId &&
@@ -284,14 +307,20 @@ export function useLibraryCommandPaletteReader({
   const runScopeAction = useCallback(
     async (kind: "archive" | "read") => {
       if (
-        latestQueryFenceKey.current !== queryFenceKey ||
-        !queryIsCommitted
+        !queryIsCommitted ||
+        !latestActionAdmission.current.scopeActionsReady ||
+        latestActionAdmission.current.queryFenceKey !== queryFenceKey ||
+        latestActionAdmission.current.openScopeReader !== openScopeReader ||
+        latestActionAdmission.current.readLibraryFacetSummary !== readLibraryFacetSummary ||
+        latestActionAdmission.current.executeLibraryScopeAction !== executeLibraryScopeAction ||
+        (kind === "read" ? latestActionAdmission.current.scopeCounts.unreadCount : latestActionAdmission.current.scopeCounts.archivableCount) <= 0
       ) {
         return;
       }
       const matchesCurrentScope = (state: BaseAppState) =>
         (state.libraryItemVersion ?? state.searchCorpusVersion) === sourceVersion &&
         state.activeView === activeView &&
+        (state.searchQuery ?? "").trim() === searchQuery.trim() &&
         JSON.stringify(normalizeLibraryCoreFeedBrowseFilterV1(state.activeFilter)) ===
           normalizedFilterSignature;
       const currentState = store.getState();
@@ -315,11 +344,14 @@ export function useLibraryCommandPaletteReader({
       queryIsCommitted,
       searchQuery,
       sourceVersion,
+      openScopeReader,
+      readLibraryFacetSummary,
       store,
     ],
   );
 
   return {
+    scopeActionsReady,
     archivableScopeCount: scopeCounts.archivableCount,
     archivedUnsavedCount: Math.max(
       0,
