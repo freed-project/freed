@@ -808,6 +808,34 @@ verify_pr_target() {
   verify_pr_target_head "$1" "${PUBLISH_HEAD}"
 }
 
+reconcile_existing_pr_head() {
+  local attempt pr_json pr_head pr_base pr_branch pr_state pr_number pr_draft
+  # GitHub can briefly expose the old PR head after accepting the branch push.
+  # Retry only this post-push read, never a changed target or a failed write.
+  for attempt in 1 2 3 4 5; do
+    assert_publish_write_ready
+    pr_json="$("${GH_BIN}" pr view "${EXISTING_PR_NUMBER}" --repo "${PUBLISH_REPO}" --json number,headRefOid,headRefName,baseRefName,state,isDraft)"
+    pr_head="$(json_nested_field "${pr_json}" headRefOid)"
+    pr_base="$(json_nested_field "${pr_json}" baseRefName)"
+    pr_branch="$(json_nested_field "${pr_json}" headRefName)"
+    pr_state="$(json_nested_field "${pr_json}" state)"
+    pr_number="$(json_nested_field "${pr_json}" number)"
+    pr_draft="$(json_nested_field "${pr_json}" isDraft)"
+    if [[ "${pr_base}" != "${BASE_BRANCH}" || "${pr_branch}" != "${BRANCH_NAME}" || "${pr_state}" != "OPEN" || "${pr_number}" != "${EXISTING_PR_NUMBER}" || "${pr_draft}" != "${EXISTING_PR_IS_DRAFT}" || ! "${pr_head}" =~ ^[0-9a-f]{40}$ ]]; then
+      echo "Error: existing pull request target does not match the inspected publish head and base or its state changed." >&2
+      exit 1
+    fi
+    if [[ "${pr_head}" == "${PUBLISH_HEAD}" ]]; then
+      return
+    fi
+    if [[ "${attempt}" -lt 5 ]]; then
+      sleep 1
+    fi
+  done
+  echo "Error: existing pull request head did not converge to the inspected publish head after 5 reads." >&2
+  exit 1
+}
+
 verify_pr_draft_state() {
   local pr_reference="$1"
   local expected_is_draft="$2"
@@ -1265,9 +1293,12 @@ if [[ -n "${EXISTING_PR_NUMBER}" ]]; then
     echo "Error: provider-visible pull request was ready before its audit record and was returned to draft." >&2
     exit 1
   fi
-  if [[ "${EXISTING_PR_HEAD}" != "${PUBLISH_HEAD}" || "${EXISTING_PR_BASE}" != "${BASE_BRANCH}" ]]; then
+  if [[ "${EXISTING_PR_BASE}" != "${BASE_BRANCH}" ]]; then
     echo "Error: existing pull request target does not match the inspected publish head and base." >&2
     exit 1
+  fi
+  if [[ "${EXISTING_PR_HEAD}" != "${PUBLISH_HEAD}" ]]; then
+    reconcile_existing_pr_head
   fi
   if ${READY_FOR_REVIEW}; then
     assert_publish_write_ready

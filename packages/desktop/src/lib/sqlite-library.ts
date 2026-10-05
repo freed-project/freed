@@ -1,3 +1,5 @@
+import { desktopLibraryCountResource } from "./library-count-resource";
+import { refreshLibraryCoreDesktopRole, refreshLibraryCoreDesktopRoleAfterPending } from "./library-core-desktop-role";
 import { snapshotLibraryCoreRecoverySavedUrlEditsV1, reviseLibraryCoreRecoverySavedUrlV1, decodeLibraryCoreFractionalNumbersV1, type RecoverySavedUrlEdit } from "@freed/shared/library-core";
 import { loadRecoverySavedUrlDrafts } from "./library-core-recovery-saved-url-editor";
 import { createLibraryCoreSqliteActivatePredecessorWorkerRequest, createLibraryCoreSqlitePredecessorReadWorkerRequest,
@@ -66,13 +68,10 @@ import {
   LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_RECORDS,
   LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES,
   LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS,
-  LIBRARY_CORE_FACET_SUMMARY_QUERY_ID,
-  LIBRARY_CORE_FACET_SUMMARY_SCHEMA_VERSION,
   LIBRARY_CORE_ACCOUNT_DETAIL_QUERY_ID,
   LIBRARY_CORE_ACCOUNT_DETAIL_SCHEMA_VERSION,
   LIBRARY_CORE_RSS_FEED_DETAIL_QUERY_ID,
   LIBRARY_CORE_RSS_FEED_DETAIL_SCHEMA_VERSION,
-  libraryCoreRuntimeStateFromFacetSummaryV1,
   PERSON_REMOVE_AND_ACCOUNTS_TRANSACTION_MEMBER_SCHEMA,
   PERSON_REACH_OUT_APPEND_TRANSACTION_MEMBER_SCHEMA,
   PERSON_UPSERT_TRANSACTION_MEMBER_SCHEMA,
@@ -88,7 +87,6 @@ import {
   parseLibraryCoreNormalizedIntentTransportPublicationV2,
   parseLibraryCoreNormalizedResultTransportImportV2,
   PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
-  readLibraryCoreNormalizedPreferencesV1,
   collectLibraryCoreSampleRemovalPlanV1,
   scanLibraryCoreAccountRowsV1,
   scanLibraryCoreNormalizedBackgroundItemsV1,
@@ -2372,12 +2370,14 @@ export async function readNormalizedLibraryConsumerRecovery(): Promise<Normalize
 }
 
 export async function prepareNormalizedLibraryConsumerRecovery(): Promise<NormalizedLibraryConsumerRecoverySummary> {
-  return parseConsumerRecoverySummary(await invoke<unknown>("prepare_normalized_library_consumer_recovery"));
+  return desktopLibraryCountResource.transition(async () =>
+    parseConsumerRecoverySummary(await invoke<unknown>("prepare_normalized_library_consumer_recovery")));
 }
 
 export async function commitNormalizedLibraryConsumerRecovery(recoveryId: string): Promise<NormalizedLibraryConsumerRecoverySummary> {
   if (!HEX_64.test(recoveryId)) throw new TypeError("Invalid consumer recovery identity");
-  return parseConsumerRecoverySummary(await invoke<unknown>("commit_normalized_library_consumer_recovery", { recoveryId }));
+  return desktopLibraryCountResource.transition(async () =>
+    parseConsumerRecoverySummary(await invoke<unknown>("commit_normalized_library_consumer_recovery", { recoveryId })));
 }
 
 export interface NormalizedLibraryHandoffStatus {
@@ -2444,12 +2444,12 @@ export function adoptNormalizedLibrarySourceHandoff(input: {
   handoffId: string; stageId: string; canonicalControl: string; accessToken: string;
 }): Promise<NormalizedLibraryHandoffStatus> {
   if (!HEX_64.test(input.handoffId) || !input.stageId || input.stageId.length > 255) throw new TypeError("Invalid source adoption identity");
-  return invoke("adopt_normalized_library_source_handoff", input);
+  return desktopLibraryCountResource.transition(() => invoke("adopt_normalized_library_source_handoff", input));
 }
 
 export function activateNormalizedLibraryTargetHandoff(handoffId: string, accessToken: string): Promise<NormalizedLibraryHandoffStatus> {
   if (!HEX_64.test(handoffId)) throw new TypeError("Invalid handoff identity");
-  return invoke("activate_normalized_library_target_handoff", { handoffId, accessToken });
+  return desktopLibraryCountResource.transition(() => invoke("activate_normalized_library_target_handoff", { handoffId, accessToken }));
 }
 
 export function stageNormalizedLibraryTargetHandoff(handoffId: string): Promise<string> {
@@ -2578,10 +2578,10 @@ export async function activateNormalizedLibraryPredecessorCheckpoint(
 ): Promise<LibraryCoreNormalizedCheckpointActivationReceiptV2> {
   const request = createLibraryCoreSqliteActivatePredecessorWorkerRequest("native-predecessor-import", activation, successorStageId);
   if (request.kind !== "activate_verified_predecessor_checkpoint") throw new Error("invalid predecessor import request");
-  return parseLibraryCoreNormalizedCheckpointActivationReceiptV2(await invoke<unknown>(
+  return desktopLibraryCountResource.transition(async () => parseLibraryCoreNormalizedCheckpointActivationReceiptV2(await invoke<unknown>(
     "activate_normalized_library_predecessor_checkpoint", { request: { stageId: request.activation.stageId,
       successorStageId: request.successorStageId, followerReceipt: request.activation.followerReceipt } },
-  ));
+  )));
 }
 
 export async function activateNormalizedLibraryCheckpointImport(
@@ -2598,29 +2598,28 @@ export async function activateNormalizedLibraryCheckpointImport(
     }>;
   }>,
 ): Promise<LibraryCoreNormalizedCheckpointActivationReceiptV2> {
-  return parseLibraryCoreNormalizedCheckpointActivationReceiptV2(
+  return desktopLibraryCountResource.transition(async () => parseLibraryCoreNormalizedCheckpointActivationReceiptV2(
     await invoke<unknown>("activate_normalized_library_checkpoint_import", {
       request: input,
     }),
-  );
+  ));
 }
 
 const HEX_64 = /^[a-f0-9]{64}$/;
 
 export async function loadSqliteLibraryState(): Promise<LibraryCoreRuntimeStateV1> {
-  const [facets, preferences] = await Promise.all([
-    queryNormalizedLibrary({
-      queryId: LIBRARY_CORE_FACET_SUMMARY_QUERY_ID,
-      schemaVersion: LIBRARY_CORE_FACET_SUMMARY_SCHEMA_VERSION,
-    }),
-    readLibraryCoreNormalizedPreferencesV1(NORMALIZED_MUTATION_READER_RUNTIME),
-  ]);
+  const readSelection = async (afterReads = false) => {
+    const status = await (afterReads ? refreshLibraryCoreDesktopRoleAfterPending() : refreshLibraryCoreDesktopRole());
+    if (!status.libraryId || !status.authorityEpochId || !status.actorId
+      || !["editable_consumer", "standalone_primary", "shared_primary"].includes(status.state)) {
+      throw new Error("Native Library count identity is unavailable");
+    }
+    return { libraryId: status.libraryId, authorityEpochId: status.authorityEpochId, actorId: status.actorId };
+  };
+  await readSelection();
+  const state = await desktopLibraryCountResource.refresh(queryNormalizedLibrary, () => readSelection(true));
   sqliteActive = true;
-  return libraryCoreRuntimeStateFromFacetSummaryV1(
-    preferences,
-    facets.summary,
-    facets.source.projectionRevision,
-  );
+  return state;
 }
 
 export async function readSqliteItems(
@@ -3593,14 +3592,14 @@ export async function restoreNormalizedLocalSnapshot(
   snapshotId: string,
   request: NormalizedLocalSnapshotRestoreRequest,
 ): Promise<NormalizedLocalSnapshotSummary> {
-  const restored = await invoke<NormalizedLocalSnapshotSummary>(
+  const restored = await desktopLibraryCountResource.transition(() => invoke<NormalizedLocalSnapshotSummary>(
     "restore_normalized_local_snapshot",
     {
       snapshotId,
       operationId: request.operationId,
       restoredAtMs: request.restoredAtMs,
     },
-  );
+  ));
   sqliteActive = true;
   return restored;
 }
@@ -3610,7 +3609,7 @@ export async function clearNormalizedLocalSnapshots(): Promise<void> {
 }
 
 export async function resetNormalizedLibrary(): Promise<void> {
-  await invoke("reset_normalized_library");
+  await desktopLibraryCountResource.transition(() => invoke("reset_normalized_library"));
   sqliteActive = false;
 }
 

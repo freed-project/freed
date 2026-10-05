@@ -160,10 +160,11 @@ const PULL_REQUEST_PUBLISHER_TOOLING_PATHS = new Set([
   "scripts/task-decisions.mjs",
   "scripts/task-decisions.test.mjs",
   "scripts/worktree-add.sh",
+  "scripts/worktree-add.test.mjs",
   "scripts/worktree-cleanup.sh",
 ]);
 
-const PULL_REQUEST_PUBLISHER_TEST_FILES = ["scripts/worktree-publish.test.mjs", "scripts/task-decisions.test.mjs"];
+const PULL_REQUEST_PUBLISHER_TEST_FILES = ["scripts/worktree-publish.test.mjs", "scripts/task-decisions.test.mjs", "scripts/worktree-add.test.mjs"];
 
 const TOOLING_SMOKE_RUNNER_PATHS = new Set([
   ".github/workflows/nightly-fixture-acceptance.yml",
@@ -1442,6 +1443,18 @@ export function buildValidationPlan(mode, changedFiles) {
         ...PULL_REQUEST_PUBLISHER_TEST_FILES,
       ]),
     );
+  }
+
+  if (changedFiles.some((file) => [
+    "scripts/worktree-preview.sh",
+    "scripts/worktree-processes.sh",
+    "scripts/lib/worktree-runtime.sh",
+    "scripts/lib/preview-processes.py",
+    "scripts/worktree-preview.test.mjs",
+  ].includes(file))) {
+    addCommand(plan, nodeCommand("worktree preview process tests", [
+      "--test", "scripts/worktree-preview.test.mjs", "scripts/task-decisions.test.mjs",
+    ]));
   }
 
   if (toolingSmokeRunnerChanged) {
