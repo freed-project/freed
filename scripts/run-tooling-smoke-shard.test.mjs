@@ -519,11 +519,21 @@ for after in [dict(expected, state=5, zombie=True), None,
     else:
         assert receipt['after'] == after and receipt['afterError'] is None
     assert receipt['error']['message'] == 'Darwin process left the owned responsibility domain'
-print('five refusal observation cases preserved; no native calls or signals')
+# A real closed Python stream raises ValueError, rather than an OS write error.
+observations = iter([expected, dict(expected)])
+closed = io.StringIO()
+closed.close()
+with contextlib.redirect_stderr(closed):
+    try:
+        custody.send(expected, signal.SIGSTOP)
+        raise AssertionError('closed diagnostic stream accepted custody mismatch')
+    except RuntimeError as error:
+        assert str(error) == 'Darwin process left the owned responsibility domain'
+print('five refusal observation cases and closed-stream refusal preserved; no native calls or signals')
 `], { encoding: "utf8", timeout: 5_000 });
   assert.equal(result.error, undefined);
   assert.equal(result.status, 0, result.stdout + result.stderr);
-  assert.match(result.stdout, /five refusal observation cases preserved/);
+  assert.match(result.stdout, /five refusal observation cases and closed-stream refusal preserved/);
 });
 
 test("nightly supervisor refuses stale generations and foreign parents", async (t) => {

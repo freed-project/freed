@@ -260,7 +260,7 @@ class DarwinCustody:
             try:
                 print("[nightly supervisor] Darwin signal refusal=" + json.dumps(receipt),
                       file=sys.stderr, flush=True)
-            except OSError:
+            except (OSError, ValueError):
                 pass  # A closed diagnostic stream must not mask custody refusal.
             raise
 
