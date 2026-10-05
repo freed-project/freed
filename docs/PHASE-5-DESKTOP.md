@@ -8,6 +8,11 @@ stable, covered interval with no active provider commands or provider windows.
 Missing or inconsistent evidence is inconclusive. Installed consumer-role and
 multi-device acceptance remain separate requirements.
 
+Freed Desktop ordinary feed cards support lazy image thumbnails with async
+decoding and the existing renderer memory-pressure shedding. Video metadata
+loads remain reader-only for ordinary cards. Stories and explicit local sample
+previews keep their existing media behavior. Installed acceptance is pending.
+
 The Jev evaluation MVP includes an optional GLiClass Base v3.0 classifier.
 Selection downloads pinned official Apache-2.0 weights and tokenizer with
 progress, cancel/resume, integrity checks and removal controls. A bundled ONNX
