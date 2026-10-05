@@ -1,7 +1,7 @@
 ## Establish authority and identity
 
 1. Confirm `dev` or `production` release mode. Production is the default for `./scripts/release.sh`. Dev release prep requires `--channel=dev`.
-2. Record the release task ID and granted authority. If the release repays tracked debt, also record each canonical GitHub issue. Preparing notes, pushing a tag, publishing, and deploying are distinct external actions.
+2. Record the release task ID and granted authority. Carry explicit standing dev authority across candidate SHAs without another approval request; retain its original transcript provenance and regenerate exact-candidate evidence through the preparation reference. If the release repays tracked debt, also record each canonical GitHub issue. Preparing notes, pushing a tag, publishing, and deploying are distinct external actions.
 3. Fetch `origin/dev` and `origin/main`, require a clean tree, and select one exact 40-character source dev commit SHA. That immutable SHA is the production snapshot. Later `dev` commits do not invalidate or expand it.
 4. For production, run `node scripts/validate-release-promotion.mjs --from-ref=<source-dev-sha> --to-ref=origin/main`. If it fails because main is behind the selected product snapshot, run `./scripts/promote-dev-to-main.sh <worktree-path> <branch-name> --snapshot-sha <source-dev-sha>`, merge that reviewed PR, and fetch the new `origin/main` before release prep. Never replace the selected SHA with a later live `origin/dev` tip unless the owner explicitly selects a new snapshot.
 5. If the release contains provider-visible work, confirm its artifact names the
@@ -25,6 +25,9 @@
    Gate G, or legacy-engine retirement.
    Dormant code and measurement need no activation handoff. An active
    transition requires an exact owner-reviewed Library Core activation decision
-   and handoff bound to the current source product SHA.
+   and handoff bound to the current source product SHA. Standing dev publication
+   authority can carry a previously reviewed disabled transition manifest across
+   source repairs; it cannot enable those transitions or authorize a changed
+   activation scope.
    Release authority does not grant install or activation authority, and
    install authority does not grant the transition itself.

@@ -18,19 +18,19 @@ import {
   isFactoryResetInProgress,
 } from "@freed/ui/lib/factory-reset";
 import {
+  type LibraryCoreCloudPublishResult,
   isSqliteLibraryGoogleDriveSyncEnabled,
-  makeThisSqliteLibraryDesktopWriter,
   publishCurrentSqliteLibraryToGoogleDrive,
   startSqliteLibraryGoogleDriveFollowerSync,
   startSqliteLibraryGoogleDriveSync,
   stopSqliteLibraryCloudSync,
   syncSqliteLibraryFollowerGoogleDriveOnce,
 } from "./library-core-cloud-sync";
+import { describeLibraryFollowerProgress } from "./library-core-follower-status";
 import { reloadSqliteLibraryState } from "./library-client";
 import { base64ToBytes } from "./google-drive";
 import {
   refreshLibraryCoreDesktopRole,
-  requirePrimaryLibraryCoreDesktopRole,
 } from "./library-core-desktop-role";
 import { safeUnlisten } from "./safe-unlisten";
 
@@ -497,8 +497,11 @@ export async function quiesceDesktopOAuthForFactoryReset(): Promise<void> {
   await Promise.allSettled([...activeDesktopOAuthOperations]);
 }
 
-function markConnected(published: boolean, follower = false): void {
+function markConnected(result: LibraryCoreCloudPublishResult): void {
   const now = Date.now();
+  const published = result.status === "published";
+  const follower = result.status === "follower_synced";
+  const progress = follower ? describeLibraryFollowerProgress(result.follower) : null;
   updateCloudProvider("gdrive", {
     status: "connected",
     stage: "idle",
@@ -506,20 +509,18 @@ function markConnected(published: boolean, follower = false): void {
     lastSyncAt: now,
     lastUploadAt: published ? now : undefined,
     lastDownloadAt: follower ? now : undefined,
-    statusMessage: "SQLite Library sync is connected.",
-    pendingReason: follower
-      ? "Follower edits publish as signed intents once a minute."
-      : "Local revisions publish as immutable checkpoint pages.",
+    statusMessage: progress?.statusMessage ?? "SQLite Library sync is connected.",
+    pendingReason: progress?.pendingReason ?? "Local revisions publish as operations, with checkpoints for recovery.",
     error: undefined,
   });
   recordCloudProviderEvent("gdrive", {
     kind: "success",
     stage: "idle",
     message: follower
-      ? "Refreshed the Primary Library checkpoint, intents, and results."
+      ? `Checked the Primary Library. Verified local revision ${result.revision.toLocaleString()}.`
       : published
         ? "Published the current SQLite Library revision."
-        : "The SQLite Library checkpoint is current.",
+        : "The published SQLite Library revision is current.",
   });
 }
 
@@ -585,7 +586,7 @@ export async function startCloudSync(
                 stage: "idle",
                 error: message,
                 statusMessage: "Follower Library sync needs attention.",
-                pendingReason: "Use Sync now to retry the exact bounded pass.",
+                pendingReason: "Retrying automatically in one minute. Sync now can retry sooner.",
               });
               recordCloudProviderEvent(provider, {
                 kind: "error",
@@ -593,9 +594,10 @@ export async function startCloudSync(
                 message,
               });
             },
-            onSynced: async () => {
+            onSynced: async (result) => {
               await reloadSqliteLibraryState();
-              markConnected(false, true);
+              if (controller.signal.aborted || generation !== currentGeneration(provider)) return;
+              markConnected(result);
             },
             resolveAccessToken,
           })
@@ -618,7 +620,9 @@ export async function startCloudSync(
       error: message,
       statusMessage: "SQLite Library sync needs attention.",
       pendingReason:
-        "Try Sync now again. Reconnect Google Drive if the problem continues.",
+        role === "follower"
+          ? "Retrying automatically in one minute. Reconnect Google Drive if the problem continues."
+          : "Try Sync now again. Reconnect Google Drive if the problem continues.",
     });
     recordCloudProviderEvent(provider, {
       kind: "error",
@@ -641,7 +645,7 @@ export async function startCloudSync(
     });
     return;
   }
-  markConnected(result.status === "published", role === "follower");
+  markConnected(result);
 }
 
 export function stopCloudSync(provider: CloudProvider): void {
@@ -698,31 +702,7 @@ export async function syncCloudProviderNow(
     );
   }
   if (follower) await reloadSqliteLibraryState();
-  markConnected(result.status === "published", follower);
-}
-
-export async function transferSqliteLibraryWriterToThisDesktop(): Promise<void> {
-  requirePrimaryLibraryCoreDesktopRole();
-  const accessToken = await getValidCloudToken("gdrive");
-  if (!accessToken)
-    throw new Error("Reconnect Google Drive to transfer ownership.");
-  const result = await makeThisSqliteLibraryDesktopWriter({
-    accessToken,
-    googleFetch: activeGoogleDriveFetch(),
-    signal: cloudAborts.get("gdrive")?.signal,
-  });
-  if (result.status === "bootstrap_required") {
-    throw new Error(
-      "Download the current cloud Library before taking ownership.",
-    );
-  }
-  if (result.status === "ownership_required") {
-    throw new Error(
-      "Library ownership changed. Review the current owner and try again.",
-    );
-  }
-  await reloadSqliteLibraryState();
-  await startCloudSync("gdrive", accessToken);
+  markConnected(result);
 }
 
 export async function resolveCloudSyncConflict(
@@ -730,7 +710,7 @@ export async function resolveCloudSyncConflict(
   winner: CloudConflictWinner,
 ): Promise<void> {
   if (winner === "local") {
-    await transferSqliteLibraryWriterToThisDesktop();
+    throw new Error("Moving Primary requires the current Primary’s signed handoff. Open Primary transfer in Settings.");
   } else {
     await restartCloudSync(provider);
   }

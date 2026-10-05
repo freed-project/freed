@@ -28,8 +28,8 @@ vi.mock("@freed/ui/lib/debug-store", () => ({
   updateCloudProvider: mocks.updateCloudProvider,
 }));
 
-function Harness() {
-  const { providers, connect, cancelConnect } = useCloudProviders();
+function Harness({ credentialsOnly = false }: { credentialsOnly?: boolean }) {
+  const { providers, connect, cancelConnect } = useCloudProviders({ credentialsOnly });
 
   return (
     <div>
@@ -50,6 +50,8 @@ describe("useCloudProviders", () => {
     document.body.appendChild(container);
     root = createRoot(container);
     vi.clearAllMocks();
+    mocks.captureCloudLifecycle.mockReturnValue({ isCurrent: () => true });
+    mocks.getCloudToken.mockReturnValue(null);
   });
 
   afterEach(async () => {
@@ -59,6 +61,35 @@ describe("useCloudProviders", () => {
     container.remove();
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
     vi.restoreAllMocks();
+  });
+
+  it("stores credentials without starting sync for a fenced transfer", async () => {
+    mocks.captureCloudLifecycle.mockReturnValue({ isCurrent: () => true });
+    mocks.initiateDesktopOAuth.mockResolvedValue({ accessToken: "new-token" });
+    await act(async () => root.render(<Harness credentialsOnly />));
+    await act(async () => container.querySelector("button")!.click());
+    expect(mocks.storeCloudToken).toHaveBeenCalledWith("gdrive", { accessToken: "new-token" });
+    expect(mocks.startCloudSync).not.toHaveBeenCalled();
+    expect(container.querySelector("[data-testid='gdrive-status']")?.textContent).toBe("connected");
+    expect(mocks.clearCloudProvider).not.toHaveBeenCalled();
+  });
+
+  it.each(["cancel", "unmount", "superseded"] as const)("discards late credentials and preserves existing credentials after %s", async (mode) => {
+    let finish!: (token: { accessToken: string }) => void;
+    let current = true;
+    mocks.captureCloudLifecycle.mockReturnValue({ isCurrent: () => current });
+    mocks.initiateDesktopOAuth.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    await act(async () => root.render(<Harness credentialsOnly />));
+    await act(async () => container.querySelector("button")!.click());
+    await act(async () => {
+      if (mode === "cancel") container.querySelectorAll("button")[1].click();
+      else if (mode === "unmount") root.render(<div />);
+      else current = false;
+    });
+    await act(async () => finish({ accessToken: "late-token" }));
+    expect(mocks.storeCloudToken).not.toHaveBeenCalled();
+    expect(mocks.startCloudSync).not.toHaveBeenCalled();
+    expect(mocks.clearCloudProvider).not.toHaveBeenCalled();
   });
 
   it("confirms and cancels a pending Google Drive connection", async () => {

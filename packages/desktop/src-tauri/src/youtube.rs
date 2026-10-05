@@ -6,7 +6,7 @@ use tokio::sync::{oneshot, Notify};
 use tokio::time::{sleep_until, timeout, timeout_at, Duration, Instant};
 use url::Url;
 
-const YOUTUBE_SESSION_WINDOW_LABEL: &str = "youtube-session";
+pub(super) const YOUTUBE_SESSION_WINDOW_LABEL: &str = "youtube-session";
 const YOUTUBE_SUBSCRIPTIONS_URL: &str = "https://www.youtube.com/feed/subscriptions";
 const YOUTUBE_CHANNELS_URL: &str = "https://www.youtube.com/feed/channels";
 const YOUTUBE_CAPTURE_SCRIPT: &str = include_str!("youtube-extract.js");
@@ -858,6 +858,16 @@ fn hide_youtube_session_window(
     Ok(())
 }
 
+pub(super) fn close_youtube_session_for_handoff(app: &tauri::AppHandle) -> Result<(), String> {
+    destroy_youtube_session_window(
+        app,
+        false,
+        YouTubeDataRetention::Preserve,
+        super::WindowDestroyedReason::User,
+        "cooperative authority transfer",
+    )
+}
+
 fn destroy_youtube_session_window(
     app: &tauri::AppHandle,
     restore_main_focus: bool,
@@ -1154,7 +1164,7 @@ async fn wait_for_auth_result(
 pub async fn yt_show_login(app: tauri::AppHandle) -> Result<(), String> {
     crate::library_core_desktop_runtime::require_primary_library_authority(&app)?;
     let _operation = YOUTUBE_SESSION_OPERATION.lock().await;
-    crate::library_core_desktop_runtime::require_primary_library_authority(&app)?;
+    let _provider_operation = crate::acquire_native_provider_operation(&app)?;
     ensure_youtube_session_window(&app, YOUTUBE_SUBSCRIPTIONS_URL, true)?;
     Ok(())
 }
@@ -1188,7 +1198,7 @@ pub async fn yt_hide_login(
 pub async fn yt_check_auth(app: tauri::AppHandle) -> Result<bool, String> {
     crate::library_core_desktop_runtime::require_primary_library_authority(&app)?;
     let _operation = YOUTUBE_SESSION_OPERATION.lock().await;
-    crate::library_core_desktop_runtime::require_primary_library_authority(&app)?;
+    let _provider_operation = crate::acquire_native_provider_operation(&app)?;
     let result = async {
         let window = ensure_youtube_session_window(&app, YOUTUBE_SUBSCRIPTIONS_URL, false)?;
         tokio::time::sleep(Duration::from_secs(3)).await;
@@ -1217,7 +1227,7 @@ pub async fn yt_capture(
             return Err("YouTube capture was cancelled.".to_string());
         },
     };
-    crate::library_core_desktop_runtime::require_primary_library_authority(&app)?;
+    let _provider_operation = crate::acquire_native_provider_operation(&app)?;
     let overall_deadline = Instant::now() + YOUTUBE_CAPTURE_OVERALL_TIMEOUT;
     let capture_result = timeout_at(overall_deadline, async {
         let include_roster = capture_includes_roster(include_roster);
@@ -1298,7 +1308,7 @@ pub async fn yt_add_to_offline_playlist(
 ) -> Result<(), String> {
     crate::library_core_desktop_runtime::require_primary_library_authority(&app)?;
     let _operation = YOUTUBE_SESSION_OPERATION.lock().await;
-    crate::library_core_desktop_runtime::require_primary_library_authority(&app)?;
+    let _provider_operation = crate::acquire_native_provider_operation(&app)?;
     let result = async {
         let (watch_url, video_id) = canonical_watch_url(&video_url)?;
         let window = ensure_youtube_session_window(&app, &watch_url, false)?;

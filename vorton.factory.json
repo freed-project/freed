@@ -19,7 +19,7 @@
   },
   "validation": [
     {
-      "argv": ["node", "scripts/doctor.mjs", "--strict"],
+      "argv": ["node", "scripts/doctor.mjs", "--strict", "--factory-worker"],
       "timeoutSeconds": 60
     },
     { "argv": ["npm", "run", "validate:feature"], "timeoutSeconds": 3600 }

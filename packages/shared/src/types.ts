@@ -324,7 +324,8 @@ export interface FriendSuggestionPreferences {
 export type LocalAIModelId =
   | "integrated-light"
   | "integrated-balanced"
-  | "integrated-pro";
+  | "integrated-pro"
+  | "gliclass-base";
 
 export type LocalAIPackTier = "light" | "balanced" | "pro";
 

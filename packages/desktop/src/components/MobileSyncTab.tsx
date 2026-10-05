@@ -1,5 +1,9 @@
+import { LIBRARY_TRANSFER_ENABLED, LIBRARY_TRANSFER_UNAVAILABLE } from "../lib/library-transfer-capability";
+import { LibraryReplicaAudit } from "@freed/ui/components/settings/LibraryReplicaAudit";
+import { auditNormalizedLibraryReplica } from "../lib/library-core-normalized-query-client";
 /** Google Drive controls for the SQLite Library shared by Desktop and PWA. */
 
+import { describeLibraryFollowerProgress } from "../lib/library-core-follower-status";
 import { useCallback, useEffect, useState } from "react";
 import type { CloudProvider } from "@freed/ui/components/CloudProviderCard";
 import {
@@ -9,11 +13,12 @@ import {
 import { copyExactJsonToClipboard } from "@freed/ui/lib/clipboard";
 import {
   syncCloudProviderNow,
-  transferSqliteLibraryWriterToThisDesktop,
 } from "../lib/sync";
 import { useCloudProviders } from "../hooks/useCloudProviders";
 import { CloudProviderCard } from "./CloudProviderCard";
 import { DesktopSnapshotsSection } from "./DesktopSnapshotsSection";
+import { LibraryHandoffPanel } from "./LibraryHandoffPanel";
+import { ConsumerRecoveryReview } from "./ConsumerRecoveryReview";
 import {
   readLibraryCoreDesktopRole,
   refreshLibraryCoreDesktopRole,
@@ -21,12 +26,16 @@ import {
 } from "../lib/library-core-desktop-role";
 import {
   readNormalizedLibraryFollowerRuntimeStatus,
+  readNormalizedLibraryConsumerRecovery,
+  type NormalizedLibraryConsumerRecoverySummary,
   type NormalizedLibraryFollowerRuntimeStatus,
 } from "../lib/sqlite-library";
 import {
   readSqliteLibraryGoogleDrivePublicationReceipt,
   type LibraryCorePublishedCheckpointReceiptV1,
 } from "../lib/library-core-cloud-sync";
+
+import { prepareDesktopLibraryConsumerRecovery, commitDesktopLibraryConsumerRecovery } from "../lib/library-core-handoff";
 
 function formatBytes(bytes?: number): string {
   if (typeof bytes !== "number") return "-";
@@ -92,20 +101,6 @@ function isWriterOwnershipWarning(message?: string | null): boolean {
   );
 }
 
-function describeFollowerState(
-  state: NormalizedLibraryFollowerRuntimeStatus["state"],
-): string {
-  switch (state) {
-    case "awaiting_checkpoint":
-      return "Waiting for the primary Library checkpoint.";
-    case "awaiting_enrollment":
-      return "Checkpoint installed. Waiting to create this follower's actor.";
-    case "enrollment_pending":
-      return "Waiting for the primary source to accept this follower.";
-    case "active":
-      return "Follower SQLite is active.";
-  }
-}
 
 export function MobileSyncTab() {
   const librarySnapshot = useDebugStore((state) => state.librarySnapshot);
@@ -115,7 +110,8 @@ export function MobileSyncTab() {
     null,
   );
   const [syncing, setSyncing] = useState(false);
-  const [transferringWriter, setTransferringWriter] = useState(false);
+  const [recovering, setRecovering] = useState(false);
+  const [consumerRecovery, setConsumerRecovery] = useState<NormalizedLibraryConsumerRecoverySummary | null>(null);
   const [manualError, setManualError] = useState<string | null>(null);
   const [desktopRole, setDesktopRole] = useState<LibraryCoreDesktopRole | null>(() =>
     readLibraryCoreDesktopRole(),
@@ -161,15 +157,19 @@ export function MobileSyncTab() {
   useEffect(() => {
     if (desktopRole !== "follower") {
       setFollowerStatus(null);
+      setConsumerRecovery(null);
       setFollowerStatusError(null);
       return;
     }
     let disposed = false;
     const refresh = async () => {
       try {
-        const status = await readNormalizedLibraryFollowerRuntimeStatus();
+        const [status, recovery] = await Promise.all([
+          readNormalizedLibraryFollowerRuntimeStatus(), readNormalizedLibraryConsumerRecovery(),
+        ]);
         if (!disposed) {
           setFollowerStatus(status);
+          setConsumerRecovery(recovery);
           setFollowerStatusError(null);
         }
       } catch (error) {
@@ -189,6 +189,22 @@ export function MobileSyncTab() {
       window.clearInterval(timer);
     };
   }, [desktopRole]);
+
+  const recoverConsumer = async () => {
+    setRecovering(true);
+    setManualError(null);
+    try {
+      const recovery = consumerRecovery?.state === "prepared"
+        ? await commitDesktopLibraryConsumerRecovery(consumerRecovery.recoveryId)
+        : await prepareDesktopLibraryConsumerRecovery();
+      setConsumerRecovery(recovery);
+      setFollowerStatus(await readNormalizedLibraryFollowerRuntimeStatus());
+    } catch (error) {
+      setManualError(error instanceof Error ? error.message : "Consumer recovery could not finish.");
+    } finally {
+      setRecovering(false);
+    }
+  };
 
   const refreshPublicationReceipt = useCallback(async () => {
     try {
@@ -246,31 +262,11 @@ export function MobileSyncTab() {
     }
   }, [connected, refreshPublicationReceipt, syncing]);
 
-  const transferWriter = useCallback(async () => {
-    if (transferringWriter) return;
-    if (
-      !window.confirm(
-        "Make this Freed Desktop the writer? The previous installation becomes read-only when it next checks Google Drive.",
-      )
-    )
-      return;
-    setTransferringWriter(true);
-    setManualError(null);
-    try {
-      await transferSqliteLibraryWriterToThisDesktop();
-    } catch (error) {
-      setManualError(
-        error instanceof Error
-          ? error.message
-          : "Library ownership transfer failed.",
-      );
-    } finally {
-      setTransferringWriter(false);
-    }
-  }, [transferringWriter]);
 
   return (
     <>
+      <LibraryHandoffPanel />
+      <LibraryReplicaAudit key={followerStatus?.authorityEpochId ?? publicationReceipt?.controlPointer.storageEpoch ?? "unselected"} audit={auditNormalizedLibraryReplica} client="desktop" />
       <section id="mobile-sync-section">
         <div className="mb-4 space-y-3">
           <div
@@ -296,6 +292,27 @@ export function MobileSyncTab() {
                   Edits stay queued locally until the Primary accepts them.
                   Capture runs on the Primary.
                 </p>
+                {(consumerRecovery || followerStatus?.state === "authority_recovery_required") && (
+                  <div data-testid="consumer-recovery" className="mt-3 rounded-lg border border-[var(--theme-border-subtle)] p-3 text-xs text-[var(--theme-text-secondary)]">
+                    <p className="font-semibold">{consumerRecovery?.state === "following" ? "Edits from the previous Primary" : "Reconnect after the Primary changed"}</p>
+                    {consumerRecovery ? (
+                      <p className="mt-2">
+                        Archived edits: {consumerRecovery.archivedPendingEdits.toLocaleString()} previously queued; {consumerRecovery.archivedPublishedEdits.toLocaleString()} previously uploaded.
+                        Uploaded edits may already have been accepted by the previous Primary. These edits have not been resent.
+                      </p>
+                    ) : <p className="mt-2">Preserve your previous edits before enrolling with the new Primary.</p>}
+                    {consumerRecovery && <ConsumerRecoveryReview key={consumerRecovery.recoveryId} recoveryId={consumerRecovery.recoveryId} />}
+                    {!LIBRARY_TRANSFER_ENABLED && <p className="mt-2">{LIBRARY_TRANSFER_UNAVAILABLE}</p>}
+                    {consumerRecovery?.state === "prepared" && <p className="mt-2">Reconnecting keeps previous edits in the archive. Their pending changes will stop appearing in the Library until they are resolved.</p>}
+                    {consumerRecovery?.state !== "following" && (
+                      <button type="button" data-testid="consumer-recovery-action" onClick={() => void recoverConsumer()}
+                        disabled={!LIBRARY_TRANSFER_ENABLED || recovering || syncing || !!followerStatusError}
+                        className="btn-secondary mt-3 rounded-lg px-3 py-1.5 text-xs disabled:opacity-50">
+                        {recovering ? "Recovering..." : consumerRecovery?.state === "prepared" ? "Reconnect this consumer" : "Prepare recovery"}
+                      </button>
+                    )}
+                  </div>
+                )}
                 {followerStatusError && (
                   <p className="theme-feedback-text-danger mt-3 break-words text-xs">
                     {followerStatusError}
@@ -307,7 +324,8 @@ export function MobileSyncTab() {
                     className="mt-3"
                   >
                     <p className="mb-2 text-xs text-[var(--theme-text-secondary)]">
-                      {describeFollowerState(followerStatus.state)}
+                      {describeLibraryFollowerProgress(followerStatus).statusMessage}
+                      {" "}{describeLibraryFollowerProgress(followerStatus).pendingReason}
                     </p>
                     <div className="grid grid-cols-2 gap-2">
                       <DiagnosticCell
@@ -382,7 +400,7 @@ export function MobileSyncTab() {
                 type="button"
                 data-testid="cloud-sync-now-button"
                 onClick={() => void syncNow()}
-                disabled={!connected || syncing}
+                disabled={!connected || syncing || recovering}
                 className="btn-secondary rounded-lg px-3 py-1.5 text-xs disabled:opacity-50"
               >
                 {syncing ? "Syncing..." : "Sync now"}
@@ -401,31 +419,7 @@ export function MobileSyncTab() {
               </p>
             )}
 
-            {(transferringWriter ||
-              isWriterOwnershipWarning(diagnosticError)) && (
-              <div
-                data-testid="sqlite-writer-transfer"
-                className="mb-3 rounded-lg border border-[rgb(var(--theme-feedback-warning-rgb)/0.35)] bg-[rgb(var(--theme-feedback-warning-rgb)/0.08)] px-3 py-3"
-              >
-                <p className="text-xs font-medium text-[var(--theme-text-primary)]">
-                  This Freed Desktop is read-only.
-                </p>
-                <p className="mt-1 text-xs text-[var(--theme-text-secondary)]">
-                  Transfer ownership here to publish from this installation.
-                </p>
-                <button
-                  type="button"
-                  data-testid="sqlite-writer-transfer-button"
-                  onClick={() => void transferWriter()}
-                  disabled={transferringWriter}
-                  className="btn-primary mt-3 rounded-lg px-3 py-1.5 text-xs disabled:opacity-50"
-                >
-                  {transferringWriter
-                    ? "Transferring..."
-                    : "Make This Freed Desktop the Writer"}
-                </button>
-              </div>
-            )}
+            {isWriterOwnershipWarning(diagnosticError) && <p className="mb-3 text-sm theme-feedback-text-warning">Another Primary owns this Library. Use its signed transfer consent to move capture here.</p>}
 
             <div
               data-testid="cloud-sync-status-message"

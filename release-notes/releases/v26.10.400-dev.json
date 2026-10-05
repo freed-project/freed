@@ -1,0 +1,70 @@
+{
+  "tag": "v26.10.400-dev",
+  "version": "26.10.400-dev",
+  "channel": "dev",
+  "dayKey": "26.10.4",
+  "approved": true,
+  "editorialNotes": [
+    "Reviewed exact2098 product delta: distinct count-free metadata identity, fresh snapshot authority and actor checks preserved, full counted descriptor/export unchanged. No installed latency or CPU improvement claim before signed acceptance. Generated activation manifest delta is empty and unchanged."
+  ],
+  "generatedAt": "2026-10-04T10:54:43.044Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.10.305-dev",
+    "previousPublishedDayTag": "v26.10.305-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "bc003d865fb003ffdb170f837dd9c59b007e5b65",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.10.305-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "efe54d9553e976fd1d02cf26c4c94d763fafbdb5",
+        "toInclusiveProductCommitSha": "bc003d865fb003ffdb170f837dd9c59b007e5b65"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:87ced2658785f1d28753666537ab09bef76d45848f728aeb12343f22ee70d6d1",
+        "currentDigest": "sha256:87ced2658785f1d28753666537ab09bef76d45848f728aeb12343f22ee70d6d1"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:429475aa24275a6fb581e622e680bbe8aaa5a45cfd53c39ebfbc59278f195739",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.10.400-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.10.400-dev"
+    ],
+    "prNumbers": [
+      2098
+    ],
+    "commitSubjects": [
+      "perf: avoid checkpoint census in cloud preflight (#2098)"
+    ]
+  },
+  "release": {
+    "deck": "Less work during startup",
+    "features": [],
+    "fixes": [
+      "Avoid counting every checkpoint record during routine Library sync checks"
+    ],
+    "followUps": [
+      "Full checkpoint preparation retains complete validation and can still take time",
+      "Installed startup and manual responsiveness verification remain separate from synthetic benchmarks",
+      "Priority and social diagnostics remain off; provider and schema activation boundaries are unchanged"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.10.400-dev\n\nLess work during startup\n\n### Fixes\n\n- Avoid counting every checkpoint record during routine Library sync checks\n\n### Follow-ups\n\n- Full checkpoint preparation retains complete validation and can still take time\n- Installed startup and manual responsiveness verification remain separate from synthetic benchmarks\n- Priority and social diagnostics remain off; provider and schema activation boundaries are unchanged\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

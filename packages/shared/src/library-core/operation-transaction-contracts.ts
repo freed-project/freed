@@ -21,6 +21,7 @@ import type {
   PreferencesLeafAssignmentTransactionMemberBodyV1,
   PersonReachOutAppendTransactionMemberBodyV1,
   PersonUpsertTransactionMemberBodyV1,
+  FriendReplaceTransactionMemberBodyV1,
   PersonRemoveTransactionMemberBodyV1,
   AccountUpsertTransactionMemberBodyV1,
   AccountPersonAssignmentTransactionMemberBodyV1,
@@ -28,7 +29,7 @@ import type {
   LibraryCoreOperationDigestDependencies,
   LibraryCoreTransactionMemberConstruction,
 } from "./operation-envelope-contracts.js";
-import { isLibraryCoreTransactionMemberConstruction } from "./operation-envelope-contracts.js";
+import { isLibraryCoreTransactionMemberConstruction, isLibraryCoreArchivedFriendMemberV1, isLibraryCoreHistoricalPreferencesMemberV1 } from "./operation-envelope-contracts.js";
 
 const ASSEMBLED_LIBRARY_CORE_TRANSACTIONS = new WeakSet<object>();
 
@@ -107,6 +108,12 @@ export interface PreferencesLeafAssignmentSigningBodyV1 extends PreferencesLeafA
   readonly transaction_digest: LibraryCoreLowercaseHex64;
 }
 
+export interface FriendReplaceSigningBodyV1 extends FriendReplaceTransactionMemberBodyV1 {
+  readonly previous_actor_chain_digest: LibraryCoreLowercaseHex64;
+  readonly actor_chain_digest: LibraryCoreLowercaseHex64;
+  readonly transaction_digest: LibraryCoreLowercaseHex64;
+}
+
 export interface PersonUpsertSigningBodyV1 extends PersonUpsertTransactionMemberBodyV1 {
   readonly previous_actor_chain_digest: LibraryCoreLowercaseHex64;
   readonly actor_chain_digest: LibraryCoreLowercaseHex64;
@@ -155,6 +162,7 @@ export type LibraryCoreOperationSigningBodyV1 =
   | RssFeedRemoveSigningBodyV1
   | RssFeedTitleAssignmentSigningBodyV1
   | PreferencesLeafAssignmentSigningBodyV1
+  | FriendReplaceSigningBodyV1
   | PersonUpsertSigningBodyV1
   | PersonReachOutAppendSigningBodyV1
   | PersonRemoveSigningBodyV1
@@ -254,11 +262,27 @@ function digest(
  * This is construction only. It does not sign, verify inbound bytes, persist,
  * materialize, enqueue replication, or grant runtime authority.
  */
-export function assembleLibraryCoreTransactionV1(
+export function assembleLibraryCoreTransactionV1(members: readonly LibraryCoreTransactionMemberConstruction[], initialPreviousActorChainDigest: unknown, dependencies: LibraryCoreOperationDigestDependencies): LibraryCoreAssembledTransactionV1 {
+  return assembleTransaction(members, initialPreviousActorChainDigest, dependencies, false);
+}
+/** Derive historical digests with the same algorithm, but never permit finalization. */
+export function assembleLibraryCoreArchivedFriendV1(members: readonly LibraryCoreTransactionMemberConstruction[], initialPreviousActorChainDigest: unknown, dependencies: LibraryCoreOperationDigestDependencies): LibraryCoreAssembledTransactionV1 {
+  if (members.length !== 1) throw new TypeError("Archived Friend must contain one member");
+  return assembleTransaction(members, initialPreviousActorChainDigest, dependencies, "friend");
+}
+/** Recompute historical preferences using the canonical algorithm, without signing provenance. */
+export function assembleLibraryCoreHistoricalPreferencesV1(members: readonly LibraryCoreTransactionMemberConstruction[], initialPreviousActorChainDigest: unknown, dependencies: LibraryCoreOperationDigestDependencies): LibraryCoreAssembledTransactionV1 {
+  return assembleTransaction(members, initialPreviousActorChainDigest, dependencies, "preferences");
+}
+function assembleTransaction(
   members: readonly LibraryCoreTransactionMemberConstruction[],
   initialPreviousActorChainDigest: unknown,
   dependencies: LibraryCoreOperationDigestDependencies,
+  historical: "friend" | "preferences" | false,
 ): LibraryCoreAssembledTransactionV1 {
+  const trustedMember = historical === "friend" ? isLibraryCoreArchivedFriendMemberV1
+    : historical === "preferences" ? (value: unknown) => isLibraryCoreHistoricalPreferencesMemberV1(value) || isLibraryCoreTransactionMemberConstruction(value)
+    : isLibraryCoreTransactionMemberConstruction;
   const digestValue = dependencies.digest;
   if (typeof digestValue !== "function") {
     throw new TypeError("transaction digest dependency must be callable");
@@ -273,7 +297,7 @@ export function assembleLibraryCoreTransactionV1(
     initialPreviousActorChainDigest,
     "initial previous actor chain digest",
   );
-  if (!isLibraryCoreTransactionMemberConstruction(memberSnapshot[0])) {
+  if (!trustedMember(memberSnapshot[0])) {
     throw new TypeError(
       "transaction members must come from a closed member construction schema",
     );
@@ -285,7 +309,7 @@ export function assembleLibraryCoreTransactionV1(
 
   for (let index = 0; index < memberSnapshot.length; index += 1) {
     const construction = memberSnapshot[index];
-    if (!isLibraryCoreTransactionMemberConstruction(construction)) {
+    if (!trustedMember(construction)) {
       throw new TypeError(
         "transaction members must come from a closed member construction schema",
       );
@@ -386,6 +410,6 @@ export function assembleLibraryCoreTransactionV1(
     members: Object.freeze(signingMembers),
     canonical_member_bytes: canonicalMemberBytes,
   });
-  ASSEMBLED_LIBRARY_CORE_TRANSACTIONS.add(assembled);
+  if (!historical) ASSEMBLED_LIBRARY_CORE_TRANSACTIONS.add(assembled);
   return assembled;
 }

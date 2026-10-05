@@ -1,0 +1,32 @@
+name: Cloud Release Request Inbox
+on:
+  push:
+    branches: ["release-requests/**"]
+permissions:
+  contents: read
+  actions: write
+jobs:
+  request:
+    if: github.repository == 'freed-project/freed' && github.actor == 'AubreyF' && github.actor_id == '2789037' && github.triggering_actor == 'AubreyF' && github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Forward owner request to protected controller without App credentials
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node --input-type=module <<'JS'
+          const repo="freed-project/freed";
+          const api=async(route,options={})=>{
+            const response=await fetch(`https://api.github.com/repos/${repo}/${route}`,{...options,headers:{Authorization:`Bearer ${process.env.GH_TOKEN}`,Accept:"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28",...options.headers}});
+            if(!response.ok) throw new Error(`Cloud request API failed: ${response.status}`);
+            return response.status===204 ? null : response.json();
+          };
+          const blob=await api(`contents/release-requests/request.json?ref=${process.env.GITHUB_SHA}`);
+          if(blob.encoding!=="base64" || blob.size>8192) throw new Error("Invalid bounded request blob");
+          const request=JSON.parse(Buffer.from(blob.content,"base64").toString("utf8"));
+          if(!["dev","production"].includes(request.channel) || !/^v[0-9]+\.[0-9]+\.[0-9]+(?:-dev)?$/.test(request.tag??"") || !/^[0-9a-f]{40}$/.test(request.source_sha??"") || !/^[0-9a-f]{64}$/.test(request.receipt_sha256??""))throw new Error("Invalid release request");
+          const inputs={channel:request.channel,tag:request.tag,source_sha:request.source_sha,receipt_sha256:request.receipt_sha256,request_run_id:process.env.GITHUB_RUN_ID};
+          await api("actions/workflows/cloud-release-request.yml/dispatches",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ref:"release-controller",inputs})});
+          console.log(`Submitted request from immutable owner push ${process.env.GITHUB_SHA}`);
+          JS

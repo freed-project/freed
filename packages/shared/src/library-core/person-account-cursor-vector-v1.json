@@ -1,0 +1,10 @@
+{
+  "personId": "person-1",
+  "accountId": "account:063",
+  "source": {
+    "generationId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "projectionRevision": 7,
+    "transitionSequence": 7
+  },
+  "cursor": "WzEsInBlcnNvbl9hY2NvdW50X3BhZ2VfdjEiLCJwZXJzb24tMSIsImFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWEiLDcsImFjY291bnQ6MDYzIl0="
+}

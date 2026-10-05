@@ -39,6 +39,8 @@ const quotedSource = `'${sourceRuntime.replaceAll("'", `'\"'\"'`)}'`;
 writeFileSync(runtime, `#!/bin/sh\nexec ${quotedSource} "$@"\n`, {
   mode: 0o755,
 });
+// The production verifier requires 0755 or 0555, including under a private umask.
+chmodSync(runtime, 0o755);
 
 process.env.FREED_TEST_LEASE_ARCHIVE_PYTHON_RUNTIME = runtime;
 process.env.FREED_TEST_LEASE_ARCHIVE_PYTHON_ROOT = root;

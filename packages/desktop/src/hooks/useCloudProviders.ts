@@ -26,15 +26,17 @@ import { updateCloudProvider } from "@freed/ui/lib/debug-store";
 
 export type { ProviderState, CloudProviderStatus };
 
-function initialStatus(): CloudProviderStatus {
+function initialStatus(credentialsOnly: boolean): CloudProviderStatus {
+  if (credentialsOnly) return { gdrive: { status: "idle" }, dropbox: { status: "idle" } };
   return {
     gdrive: { status: getCloudToken("gdrive") ? "connecting" : "idle" },
     dropbox: { status: getCloudToken("dropbox") ? "connecting" : "idle" },
   };
 }
 
-export function useCloudProviders() {
-  const [providers, setProviders] = useState<CloudProviderStatus>(initialStatus);
+export function useCloudProviders(options: { readonly credentialsOnly?: boolean } = {}) {
+  const credentialsOnly = options.credentialsOnly === true;
+  const [providers, setProviders] = useState<CloudProviderStatus>(() => initialStatus(credentialsOnly));
   const connectAbortControllers = useRef<Partial<Record<CloudProvider, AbortController>>>({});
 
   const setProvider = useCallback(
@@ -64,12 +66,13 @@ export function useCloudProviders() {
           return;
         }
         storeCloudToken(provider, token);
-        await startCloudSync(provider, token.accessToken);
+        // A fenced handoff needs credentials without starting ordinary sync.
+        if (!credentialsOnly) await startCloudSync(provider, token.accessToken);
         if (
           abortController.signal.aborted ||
           connectAbortControllers.current[provider] !== abortController
         ) {
-          clearCloudProvider(provider);
+          if (!credentialsOnly) clearCloudProvider(provider);
           return;
         }
         if (connectAbortControllers.current[provider] === abortController) {
@@ -94,7 +97,7 @@ export function useCloudProviders() {
         }
       }
     },
-    [setProvider],
+    [setProvider, credentialsOnly],
   );
 
   const cancelConnect = useCallback(
@@ -105,10 +108,10 @@ export function useCloudProviders() {
       log.info(`[cloud/${provider}] cancel requested`);
       controller.abort();
       delete connectAbortControllers.current[provider];
-      clearCloudProvider(provider);
+      if (!credentialsOnly) clearCloudProvider(provider);
       setProvider(provider, { status: "idle" });
     },
-    [setProvider],
+    [setProvider, credentialsOnly],
   );
 
   const disconnect = useCallback(
@@ -125,11 +128,11 @@ export function useCloudProviders() {
     return () => {
       for (const [provider, controller] of Object.entries(connectAbortControllers.current)) {
         controller?.abort();
-        clearCloudProvider(provider as CloudProvider);
+        if (!credentialsOnly) clearCloudProvider(provider as CloudProvider);
       }
       connectAbortControllers.current = {};
     };
-  }, []);
+  }, [credentialsOnly]);
 
   const anyConnected =
     providers.gdrive.status === "connected" ||

@@ -1,0 +1,17 @@
+{
+  "channel": "dev",
+  "dayKey": "26.10.3",
+  "date": "2026-10-03",
+  "preferredDeck": "Stable map totals and better visibility into startup work",
+  "editorialGuidance": [
+    "Keep the tone concise, professional, and specific.",
+    "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
+    "Demote internal cleanup unless it clearly changes the shipped product."
+  ],
+  "pinnedHighlights": [],
+  "editorialNotes": [
+    "Reviewed two-fix candidate: map camera ownership and one-connection native authority verification. Existing same-day history retained. Synthetic regressions and combined native build passed; installed map gestures and actual CPU impact remain unverified. The older social-build CPU follow-up describes 303; this candidate adds the connection correction without claiming measured improvement. No optional diagnostics activation or schema transfer activation.",
+    "Reviewed exact new product delta: map-count ownership fix plus bounded default-off priority/social diagnostics and passive native stage timing. Preserve cumulative same-day history. Earlier social-build CPU follow-up refers to303; native timing adds attribution, not an optimization claim. No extra capture or new provider behavior, no Facebook mixed-discovery activation, and generated Library activation delta is empty. Native/UI acceptance is pending signed installation."
+  ],
+  "updatedAt": "2026-10-04T06:46:00.249Z"
+}

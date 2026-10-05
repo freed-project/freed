@@ -443,7 +443,7 @@ async function captureLiFeedInternal(
 
   try {
     addDebugEvent("change", "[LI] sync started");
-    const result = await fetchLiFeed(onProviderContact);
+    const result = await fetchLiFeedInternal(resetEpoch, onProviderContact);
     assertFactoryResetEpoch(resetEpoch);
 
     if (result.diag.errorStage) {

@@ -1,7 +1,16 @@
+import { createLibraryCoreSqliteReplicaAuditWorkerRequest, createLibraryCoreSqliteCancelReplicaAuditWorkerRequest, parseLibraryCoreNormalizedReplicaAuditV1, type LibraryCoreNormalizedReplicaAuditV1 } from "@freed/shared/library-core";
+import {
+  parseLibraryCoreReapplyConsumerIntentV1, parseLibraryCoreRecoveryReissueReceiptV1, type LibraryCoreReapplyConsumerIntentV1, type LibraryCoreRecoveryReissueReceiptV1,
+  createLibraryCoreConsumerRecoveryWorkerRequest, parseLibraryCoreConsumerRecoveryStatusV1,
+  type LibraryCoreConsumerRecoveryStatusV1, type LibraryCorePrepareConsumerRecoveryV1, type LibraryCoreCommitConsumerRecoveryV1,
+} from "@freed/shared/library-core";
 import { isFreedDemoMode } from "./demo-mode";
 import {
   LIBRARY_CORE_SQLITE_WORKER_MAXIMUM_PENDING_REQUESTS,
   createLibraryCoreSqliteActivateCheckpointWorkerRequest,
+  createLibraryCoreSqliteActivatePredecessorWorkerRequest,
+  createLibraryCoreSqlitePredecessorReadWorkerRequest,
+  parseLibraryCorePredecessorCheckpointReadsV1,
   createLibraryCoreSqliteAppendCheckpointPageWorkerRequest,
   createLibraryCoreSqliteBeginCheckpointWorkerRequest,
   createLibraryCoreSqliteQueryWorkerRequest,
@@ -720,6 +729,29 @@ export class PwaLibraryCoreSqliteClient {
     );
   }
 
+  reapplyConsumerIntent(input: LibraryCoreReapplyConsumerIntentV1): Promise<LibraryCoreRecoveryReissueReceiptV1> {
+    const recovery = parseLibraryCoreReapplyConsumerIntentV1(input);
+    return this.#send(requestId => createLibraryCoreConsumerRecoveryWorkerRequest(requestId, { kind: "reapply_consumer_intent", recovery }), value => {
+      const parsed = parseLibraryCoreRecoveryReissueReceiptV1(value, recovery.review);
+      if (!parsed.ok) throw new Error(parsed.error); return parsed.value;
+    });
+  }
+
+  consumerRecoveryStatus(): Promise<LibraryCoreConsumerRecoveryStatusV1> {
+    return this.#send(requestId => createLibraryCoreConsumerRecoveryWorkerRequest(requestId, { kind: "read_consumer_recovery" }),
+      parseLibraryCoreConsumerRecoveryStatusV1);
+  }
+
+  prepareConsumerRecovery(recovery: LibraryCorePrepareConsumerRecoveryV1): Promise<LibraryCoreConsumerRecoveryStatusV1> {
+    return this.#send(requestId => createLibraryCoreConsumerRecoveryWorkerRequest(requestId, { kind: "prepare_consumer_recovery", recovery }),
+      parseLibraryCoreConsumerRecoveryStatusV1);
+  }
+
+  commitConsumerRecovery(recovery: LibraryCoreCommitConsumerRecoveryV1): Promise<LibraryCoreConsumerRecoveryStatusV1> {
+    return this.#send(requestId => createLibraryCoreConsumerRecoveryWorkerRequest(requestId, { kind: "commit_consumer_recovery", recovery }),
+      parseLibraryCoreConsumerRecoveryStatusV1);
+  }
+
   followerActorEnrollmentContext(): Promise<LibraryCoreFollowerActorEnrollmentContextV2> {
     return this.#send(
       (requestId) =>
@@ -792,12 +824,60 @@ export class PwaLibraryCoreSqliteClient {
     );
   }
 
+  preparePredecessorCheckpointRead(stageId: string) {
+    return this.#send((requestId) => createLibraryCoreSqlitePredecessorReadWorkerRequest(requestId, stageId),
+      parseLibraryCorePredecessorCheckpointReadsV1);
+  }
+
+  activateVerifiedPredecessorCheckpoint(
+    activation: LibraryCoreActivateNormalizedCheckpointStageV2,
+    successorStageId: string,
+  ): Promise<LibraryCoreNormalizedCheckpointActivationReceiptV2> {
+    return this.#send(
+      (requestId) => createLibraryCoreSqliteActivatePredecessorWorkerRequest(requestId, activation, successorStageId),
+      parseLibraryCoreNormalizedCheckpointActivationReceiptV2,
+    );
+  }
+
   readNormalizedCheckpointReceipt(): Promise<LibraryCoreNormalizedCheckpointSelectionV2> {
     return this.#send(
       (requestId) =>
         createLibraryCoreSqliteReadCheckpointReceiptWorkerRequest(requestId),
       parseLibraryCoreSqliteCheckpointSelectionResponse,
     );
+  }
+
+  async auditNormalizedReplica(signal?: AbortSignal): Promise<LibraryCoreNormalizedReplicaAuditV1> {
+    signal?.throwIfAborted();
+    let ticket = "";
+    const pending = this.#send((requestId) => {
+      ticket = requestId;
+      return createLibraryCoreSqliteReplicaAuditWorkerRequest(requestId);
+    }, parseLibraryCoreNormalizedReplicaAuditV1);
+    const cancel = () => this.#cancelReplicaAudit(ticket,
+      signal?.reason instanceof Error ? signal.reason : new DOMException("Audit cancelled", "AbortError"));
+    signal?.addEventListener("abort", cancel, { once: true });
+    try {
+      const receipt = await pending;
+      signal?.throwIfAborted();
+      return receipt;
+    } finally {
+      signal?.removeEventListener("abort", cancel);
+    }
+  }
+
+  #cancelReplicaAudit(requestId: string, error: Error): void {
+    const pending = this.#pending.get(requestId);
+    if (!pending || pending.kind !== "audit_normalized_replica") return;
+    this.#pending.delete(requestId);
+    clearTimeout(pending.timeout);
+    pending.reject(error);
+    // This response has no pending promise. Cancellation acknowledges nothing
+    // about durable writes and must never retire their shared worker.
+    try {
+      this.#worker.postMessage(createLibraryCoreSqliteCancelReplicaAuditWorkerRequest(
+        crypto.randomUUID(), requestId));
+    } catch { /* The worker audit retains its own monotonic deadline. */ }
   }
 
   describeNormalizedCheckpointExport(): Promise<LibraryCoreNormalizedCheckpointExportDescriptorV2> {
@@ -868,6 +948,10 @@ export class PwaLibraryCoreSqliteClient {
     const request = createRequest(requestId);
     return new Promise<T>((resolve, reject) => {
       const onTimeout = () => {
+        if (request.kind === "audit_normalized_replica") {
+          this.#cancelReplicaAudit(requestId, new Error("AUDIT_DEADLINE"));
+          return;
+        }
         this.#retireUnavailable(
           new PwaLibraryCoreSqliteWorkerUnavailableError(
             `PWA Library SQLite request timed out (${request.kind})`,
@@ -967,7 +1051,7 @@ export class PwaLibraryCoreSqliteClient {
     const completed = response.completedRecords;
     const total = response.totalRecords;
     if (
-      pending.kind !== "activate_normalized_checkpoint_stage" ||
+      (pending.kind !== "activate_normalized_checkpoint_stage" && pending.kind !== "activate_verified_predecessor_checkpoint") ||
       !exactResponseKeys(response, ["kind", "requestId", "completedRecords", "totalRecords"]) ||
       typeof completed !== "number" || !Number.isSafeInteger(completed) ||
       completed < 0 || completed <= pending.completedRecords ||

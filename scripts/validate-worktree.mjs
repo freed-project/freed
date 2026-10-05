@@ -51,6 +51,8 @@ const LIBRARY_CORE_RELEASE_ACTIVATION_PATHS = new Set([
   "scripts/lib/library-core-release-activation.mjs",
   "scripts/lib/library-core-release-activation.test.mjs",
   "scripts/prepare-release-notes.mjs",
+  "scripts/prepare-signed-measurement.mjs",
+  "scripts/prepare-signed-measurement.test.mjs",
   "scripts/release-receipt.mjs",
   "scripts/release-receipt.test.mjs",
   "scripts/validate-library-core-activation-manifest.mjs",
@@ -154,16 +156,20 @@ const RELEASE_PUBLISHER_TEST_FILES = [
 
 const PULL_REQUEST_PUBLISHER_TOOLING_PATHS = new Set([
   "scripts/worktree-publish.sh",
+  "scripts/lib/provider-query-snapshot.mjs",
   "scripts/worktree-publish.test.mjs",
   "scripts/task-decisions.mjs",
   "scripts/task-decisions.test.mjs",
   "scripts/worktree-add.sh",
+  "scripts/worktree-add.test.mjs",
   "scripts/worktree-cleanup.sh",
 ]);
 
-const PULL_REQUEST_PUBLISHER_TEST_FILES = ["scripts/worktree-publish.test.mjs", "scripts/task-decisions.test.mjs"];
+const PULL_REQUEST_PUBLISHER_TEST_FILES = ["scripts/worktree-publish.test.mjs", "scripts/task-decisions.test.mjs", "scripts/worktree-add.test.mjs"];
 
 const TOOLING_SMOKE_RUNNER_PATHS = new Set([
+  ".github/workflows/nightly-fixture-acceptance.yml",
+  "scripts/nightly-fixture-acceptance.mjs",
   ".github/workflows/ci.yml",
   ".github/workflows/tooling-nightly.yml",
   "scripts/lib/tooling-smoke-plan.mjs",
@@ -174,6 +180,9 @@ const TOOLING_SMOKE_RUNNER_PATHS = new Set([
   "scripts/run-native-acceptance.test.mjs",
   "scripts/run-tooling-smoke-shard.mjs",
   "scripts/run-tooling-smoke-shard.test.mjs",
+  "scripts/test-helpers/nightly-fixture-preload.mjs",
+  "scripts/test-helpers/nightly-fixture-supervisor.py",
+  "scripts/test-helpers/nightly_fixture_darwin.py",
   "scripts/tooling-smoke-plan.test.mjs",
 ]);
 
@@ -368,6 +377,8 @@ export function isPwaOpfsDurabilityPath(filePath) {
     filePath === "packages/pwa/src/main.tsx" ||
     filePath === "packages/pwa/tests/opfs-e2e-settings.ts" ||
     filePath === "packages/pwa/tests/sqlite-opfs-durability.spec.ts" ||
+    filePath.startsWith("scripts/lib/webkit-test-custody") ||
+    filePath === "scripts/webkit-test-custody.test.mjs" ||
     filePath.startsWith("packages/pwa/src/lib/library-core-sqlite") ||
     filePath.startsWith("packages/shared/src/library-core/")
   );
@@ -725,6 +736,11 @@ function libraryCoreNativeRustChecks() {
     cargoCommand(
       "Library Core native rust tests",
       ["test", "--all-features"],
+      "packages/library-core-native",
+    ),
+    cargoCommand(
+      "Library Core default-off transfer tests",
+      ["test", "--no-default-features", "--test", "transfer_hold"],
       "packages/library-core-native",
     ),
   ];
@@ -1402,6 +1418,14 @@ export function buildValidationPlan(mode, changedFiles) {
     );
   }
 
+  if (changedFiles.some(file => [".github/workflows/cloud-release-request.yml", ".github/workflows/cloud-release-inbox.yml", ".github/workflows/cloud-release-policy-probe.yml", ".github/workflows/cloud-release-policy-response.yml", "scripts/cloud-release-policy.mjs", "scripts/cloud-release-policy.test.mjs", "scripts/cloud-release-request.mjs", "scripts/cloud-release-request.test.mjs"].includes(file))) {
+    addCommand(plan, nodeCommand("cloud release request tests", ["--test", "scripts/cloud-release-request.test.mjs", "scripts/cloud-release-policy.test.mjs"]));
+  }
+
+  if (changedFiles.some(file => [".github/workflows/release.yml", "scripts/prepare-signed-measurement.mjs", "scripts/prepare-signed-measurement.test.mjs"].includes(file))) {
+    addCommand(plan, nodeCommand("signed measurement identity tests", ["--test", "scripts/prepare-signed-measurement.test.mjs"]));
+  }
+
   if (releasePublisherToolingChanged) {
     addCommand(
       plan,
@@ -1422,6 +1446,18 @@ export function buildValidationPlan(mode, changedFiles) {
     );
   }
 
+  if (changedFiles.some((file) => [
+    "scripts/worktree-preview.sh",
+    "scripts/worktree-processes.sh",
+    "scripts/lib/worktree-runtime.sh",
+    "scripts/lib/preview-processes.py",
+    "scripts/worktree-preview.test.mjs",
+  ].includes(file))) {
+    addCommand(plan, nodeCommand("worktree preview process tests", [
+      "--test", "scripts/worktree-preview.test.mjs", "scripts/task-decisions.test.mjs",
+    ]));
+  }
+
   if (toolingSmokeRunnerChanged) {
     addCommand(
       plan,
@@ -1433,6 +1469,16 @@ export function buildValidationPlan(mode, changedFiles) {
         path.join("scripts", "run-tooling-smoke-shard.test.mjs"),
       ]),
     );
+  }
+
+  if (changedFiles.some((file) => [
+    "scripts/vercel-deploy-preview.sh",
+    "scripts/lib/vercel-project-link.mjs",
+    "scripts/lib/vercel-project-link.test.mjs",
+  ].includes(file))) {
+    addCommand(plan, nodeCommand("Vercel preview deployment tests", [
+      "--test", path.join("scripts", "lib", "vercel-project-link.test.mjs"),
+    ]));
   }
 
   if (retiredAutomergeRuntimeGuardChanged) {
@@ -1461,6 +1507,10 @@ export function buildValidationPlan(mode, changedFiles) {
 
   if (stabilityStatusChanged) {
     addCommand(plan, stabilityStatusTestsCommand());
+  }
+
+  if (changedFiles.some(filePath => filePath.startsWith("scripts/lib/webkit-test-custody") || filePath === "scripts/webkit-test-custody.test.mjs")) {
+    addCommand(plan, nodeCommand("WebKit test custody fixture contracts", ["--test", "scripts/webkit-test-custody.test.mjs"]));
   }
 
   if (roadmapStatusChanged) {

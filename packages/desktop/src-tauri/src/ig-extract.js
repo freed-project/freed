@@ -8,11 +8,38 @@
 (function () {
   "use strict";
 
+  // Default off. Enabling requires the release owner's exact-source Gate 1 checkpoint.
+  // Tokens are candidate ordinals in this invocation, never upstream identities.
+  var passDiagnosticsEnabled = false;
+  var passRecords = passDiagnosticsEnabled ? [] : null;
+  var passObserved = 0;
+  function observePassCandidate(ordinal, reason, disposition) {
+    if (!passRecords) return;
+    passObserved++;
+    if (passRecords.length < 250) {
+      passRecords.push({ ordinal: ordinal, reason: reason, disposition: disposition });
+    }
+  }
+  function attachPassDiagnostics(data) {
+    if (!passRecords) return;
+    data.passDiagnostics = {
+      schemaVersion: 1,
+      surface: "feed",
+      records: passRecords,
+      observed: passObserved,
+      candidateCount: typeof data.candidateCount === "number" ? data.candidateCount : null,
+      inspectionComplete: !data.error && typeof data.candidateCount === "number" && passObserved === data.candidateCount,
+      truncated: passObserved > passRecords.length,
+      outcome: data.error ? "error" : "completed",
+    };
+  }
+
   var emit =
     window.__TAURI__ &&
     window.__TAURI__.event &&
     typeof window.__TAURI__.event.emit === "function"
       ? function (name, data) {
+          attachPassDiagnostics(data);
           window.__TAURI__.event.emit(name, data);
         }
       : function () {};
@@ -327,26 +354,114 @@
 
   // ── Filter suggested / sponsored / non-following content ─────────────────
 
+  var lastExclusionReason = "recommendation_or_sponsored";
+  function excludedHeader(reason) {
+    if (passDiagnosticsEnabled) lastExclusionReason = reason;
+    return true;
+  }
   function isSuggestedOrSponsored(article) {
-    // "Suggested for you" / "Suggested Posts" label anywhere in article
-    var fullText = textValue(article, 2000);
-    if (/suggested|reels you might like/i.test(fullText)) {
-      return true;
-    }
-
     // Follow button in the header = post from a non-followed account
     var header = article.querySelector("header");
     if (header) {
       var buttons = header.querySelectorAll("button");
       for (var b = 0; b < buttons.length; b++) {
         var btnText = (buttons[b].textContent || "").trim();
-        if (btnText === "Follow" || btnText === "Follow Back") return true;
+        if (btnText === "Follow" || btnText === "Follow Back") return excludedHeader("follow");
+      }
+
+      // Inspect only standalone header disclosure/recommendation labels;
+      // caption wording and text inside author links are not placement proof.
+      var excludedHeaderLabel = /^(sponsored|suggested for you|suggested posts|reels you might like)$/i;
+      // Reuse each candidate label's subtree; never concatenate through a
+      // nested author, time or interactive control. Overflow is a boundary.
+      function hasLabelBoundary(node) {
+        var pending = [node];
+        var visited = 0;
+        while (pending.length && visited < 64) {
+          var current = pending.pop();
+          visited++;
+          if (current.nodeType !== 1) continue;
+          if (current.nodeName === "BUTTON" || current.nodeName === "TIME" ||
+              (current.nodeName === "A" && current.hasAttribute("href")) ||
+              current.getAttribute("role") === "button") return true;
+          var children = current.childNodes;
+          if (visited + pending.length + children.length > 64) return true;
+          for (var ci = children.length - 1; ci >= 0; ci--) pending.push(children[ci]);
+        }
+        return pending.length > 0;
+      }
+      var suppressedLabels = [];
+      var labels = header.querySelectorAll("span, div");
+      for (var l = 0; l < labels.length && l < 64; l++) {
+        var label = labels[l];
+        var inSuppressedLabel = false;
+        for (var sl = 0; sl < suppressedLabels.length; sl++) {
+          if (suppressedLabels[sl].contains(label)) { inSuppressedLabel = true; break; }
+        }
+        if (inSuppressedLabel || hasLabelBoundary(label) || label.closest("a[href]") || label.querySelector("a[href]")) continue;
+        var ancestor = label.parentElement;
+        var inControl = false;
+        for (var ac = 0; ancestor && ancestor !== header && ac < 64; ac++, ancestor = ancestor.parentElement) {
+          if (ancestor.nodeName === "BUTTON" || ancestor.nodeName === "TIME" || ancestor.getAttribute("role") === "button") { inControl = true; break; }
+        }
+        if (inControl || ancestor !== header) continue;
+        // A child word in a longer inline label is not a standalone disclosure.
+        var parent = label.parentElement;
+        var longerLabel = false;
+        if (parent && /^(SPAN|DIV)$/.test(parent.tagName) && !parent.querySelector("a[href]")) {
+          var parentText = textValue(parent, 160);
+          if (!excludedHeaderLabel.test(parentText)) {
+            var siblings = parent.childNodes;
+            for (var si = 0; si < siblings.length && si < 64; si++) {
+              var sibling = siblings[si];
+              if (sibling === label || (sibling.nodeType !== 3 && !/^(SPAN|DIV)$/.test(sibling.nodeName))) continue;
+              if (hasLabelBoundary(sibling)) continue;
+              var siblingText = textValue(sibling, 80);
+              // Separate timestamp labels do not turn Sponsored into prose.
+              if (siblingText && !/^(?:[·•]+|(?:[·•]\s*)?\d+\s*(?:s|m|h|d|w|min|hr|hours?|days?)?)$/i.test(siblingText) && !excludedHeaderLabel.test(siblingText)) {
+                longerLabel = true;
+                break;
+              }
+            }
+          }
+        }
+        var labelText = textValue(label, 80);
+        if (longerLabel && excludedHeaderLabel.test(labelText)) {
+          suppressedLabels.push(label);
+          continue;
+        }
+        if (excludedHeaderLabel.test(labelText)) return excludedHeader(labelText.toLowerCase() === "sponsored" ? "sponsored" : "recommendation");
+        // Reconstruct only contiguous inline fragments of the exact disclosure.
+        var fragment = labelText.replace(/\s+/g, "").toLowerCase();
+        if (/^(?:s|sp|spo|spon|spons|sponso|sponsor|sponsore)$/.test(fragment)) {
+          var next = label.nextSibling;
+          for (var part = 0; next && part < 10; part++, next = next.nextSibling) {
+            if (next.nodeType === 3 && !textValue(next, 80)) continue;
+            if (next.nodeType !== 1 || next.nodeName !== "SPAN" || hasLabelBoundary(next) || next.querySelector("a[href]") || next.closest("a[href]")) break;
+            fragment += textValue(next, 80).replace(/\s+/g, "").toLowerCase();
+            if (fragment === "sponsored") {
+              var tail = next.nextSibling;
+              for (var ti = 0; tail && ti < 10 && tail.nodeType === 3 && !textValue(tail, 80); ti++) tail = tail.nextSibling;
+              var tailText = tail && (tail.nodeType === 3 || (/^(SPAN|DIV)$/.test(tail.nodeName) && !hasLabelBoundary(tail) && !tail.querySelector("a[href]"))) ? textValue(tail, 80) : "";
+              if (!tailText || excludedHeaderLabel.test(tailText) || /^(?:[·•]+|(?:[·•]\s*)?\d+\s*(?:s|m|h|d|w|min|hr|hours?|days?)?)$/i.test(tailText)) return excludedHeader("sponsored");
+              break;
+            }
+            if ("sponsored".indexOf(fragment) !== 0) break;
+          }
+        }
+      }
+      var headerNodes = header.childNodes;
+      for (var n = 0; n < headerNodes.length && n < 64; n++) {
+        if (headerNodes[n].nodeType === 3) {
+          var directLabel = textValue(headerNodes[n], 80);
+          if (excludedHeaderLabel.test(directLabel)) return excludedHeader(directLabel.toLowerCase() === "sponsored" ? "sponsored" : "recommendation");
+        }
       }
     }
 
     // Sponsored indicator: aria-label="Sponsored" or link to /ads/
-    if (article.querySelector('[aria-label="Sponsored"]')) return true;
-    if (article.querySelector('a[href*="/ads/"]')) return true;
+    if (article.querySelector('[aria-label="Sponsored"]')) return excludedHeader("sponsored_accessible");
+    if (article.querySelector('a[href*="/ads/"]')) return excludedHeader("ads_link");
 
     return false;
   }
@@ -433,6 +548,7 @@
         !hasContentDespiteMissingLayout(article)
       ) {
         rejected.tinyOrInvisible++;
+        observePassCandidate(idx, "tiny_or_invisible", "excluded");
         continue;
       }
       expandLongTextControls(article);
@@ -440,6 +556,7 @@
       // Skip suggested-for-you, sponsored, and non-followed-account posts
       if (isSuggestedOrSponsored(article)) {
         rejected.suggestedOrSponsored++;
+        observePassCandidate(idx, lastExclusionReason, "excluded");
         continue;
       }
 
@@ -458,6 +575,7 @@
       // Must have some meaningful content
       if (!caption && mediaUrls.length === 0 && !hasVideo) {
         rejected.missingContent++;
+        observePassCandidate(idx, "missing_content", "excluded");
         continue;
       }
 
@@ -466,6 +584,7 @@
       // Deduplicate across scroll passes
       if (seen[id]) {
         rejected.duplicate++;
+        observePassCandidate(idx, "duplicate_in_pass", "excluded");
         continue;
       }
       seen[id] = true;
@@ -481,6 +600,7 @@
         postType = "photo";
       }
 
+      observePassCandidate(idx, "retained_unknown_origin", "retained");
       posts.push({
         shortcode: shortcode,
         url: postUrl,

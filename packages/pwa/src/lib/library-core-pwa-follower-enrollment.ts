@@ -13,10 +13,13 @@ import {
   type LibraryCoreImmutableObjectDescriptorV1,
   type LibraryCoreInstallFollowerActorEnrollmentV2,
   type LibraryCoreLowercaseHex64,
+  type LibraryCoreFollowerActorEnrollmentContextV2,
+  type LibraryCoreStoreFollowerActorRequestV2,
 } from "@freed/shared/library-core";
 import {
   getOrCreatePwaLibraryCoreActorIdentity,
   signPwaLibraryCoreActorProof,
+  type PwaLibraryCoreActorIdentity,
 } from "./library-core-browser-key-vault";
 import {
   installPwaFollowerActorEnrollment,
@@ -59,6 +62,51 @@ export interface PwaLibraryCoreFollowerEnrollmentCandidateV2 {
   readonly storageEpochId: LibraryCoreLowercaseHex64;
 }
 
+/** Shared request construction for first enrollment and explicit retained-key recovery. */
+export async function constructPwaFollowerEnrollmentRequest(
+  identity: PwaLibraryCoreActorIdentity,
+  authority: LibraryCoreFollowerActorEnrollmentContextV2["authority"],
+  createdAt: number,
+  signActorProof: typeof signPwaLibraryCoreActorProof,
+): Promise<LibraryCoreStoreFollowerActorRequestV2> {
+  const enrollment = constructLibraryCoreActorEnrollmentBodyV1(
+    {
+      actor_incarnation_nonce: identity.actorIncarnationNonce,
+      actor_public_key: identity.actorPublicKey,
+      authority_key_id: authority.authority_key_id,
+      created_at_ms: createdAt,
+      epoch: authority.epoch,
+      epoch_id: authority.epoch_id,
+      installation_incarnation: identity.installationIncarnation,
+      library_id: authority.library_id,
+      observed_frontier: authority.observed_frontier,
+      operation_id: `actor-enrolled:${identity.actorId}`,
+    },
+    { digest },
+  );
+  if (enrollment.body.actor_id !== identity.actorId) {
+    throw new Error("PWA follower actor identity changed during enrollment");
+  }
+  const request = await constructLibraryCoreActorCapabilityRequestV2(
+    enrollment,
+    {
+      actor_class: "editor",
+      allowed_operation_types: LIBRARY_CORE_PRIMARY_WRITER_OPERATION_TYPES_V2,
+      allowed_query_ids: [],
+      scope: { mode: "library_wide" },
+    },
+    {
+      digest,
+      signActorProof: (message) => signActorProof(identity, message),
+    },
+  );
+  const source = encodeLibraryCoreCanonicalValue(
+    request.request as unknown as LibraryCoreCanonicalValue,
+    { maximumBytes: 65_536 },
+  );
+  return { canonicalRequestBytes: source, createdAt };
+}
+
 export async function preparePwaLibraryCoreFollowerEnrollment(
   runtime: PwaFollowerEnrollmentRuntime = DEFAULT_RUNTIME,
 ): Promise<PwaLibraryCoreFollowerEnrollmentCandidateV2 | null> {
@@ -91,41 +139,8 @@ export async function preparePwaLibraryCoreFollowerEnrollment(
   const identity = await runtime.getOrCreateIdentity(
     context.authority.library_id,
   );
-  const createdAt = runtime.now();
-  const enrollment = constructLibraryCoreActorEnrollmentBodyV1(
-    {
-      actor_incarnation_nonce: identity.actorIncarnationNonce,
-      actor_public_key: identity.actorPublicKey,
-      authority_key_id: context.authority.authority_key_id,
-      created_at_ms: createdAt,
-      epoch: context.authority.epoch,
-      epoch_id: context.authority.epoch_id,
-      installation_incarnation: identity.installationIncarnation,
-      library_id: context.authority.library_id,
-      observed_frontier: context.authority.observed_frontier,
-      operation_id: `actor-enrolled:${identity.actorId}`,
-    },
-    { digest },
-  );
-  if (enrollment.body.actor_id !== identity.actorId) {
-    throw new Error("PWA follower actor identity changed during enrollment");
-  }
-  const request = await constructLibraryCoreActorCapabilityRequestV2(
-    enrollment,
-    {
-      actor_class: "editor",
-      allowed_operation_types: LIBRARY_CORE_PRIMARY_WRITER_OPERATION_TYPES_V2,
-      allowed_query_ids: [],
-      scope: { mode: "library_wide" },
-    },
-    {
-      digest,
-      signActorProof: (message) => runtime.signActorProof(identity, message),
-    },
-  );
-  const source = encodeLibraryCoreCanonicalValue(
-    request.request as unknown as LibraryCoreCanonicalValue,
-    { maximumBytes: 65_536 },
+  const { canonicalRequestBytes: source, createdAt } = await constructPwaFollowerEnrollmentRequest(
+    identity, context.authority, runtime.now(), runtime.signActorProof,
   );
   const receipt = await runtime.storeRequest({
     canonicalRequestBytes: source,

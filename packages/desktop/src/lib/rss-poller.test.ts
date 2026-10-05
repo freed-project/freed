@@ -117,4 +117,26 @@ describe("RSS-only poller", () => {
     await draining;
     expect(drained).toHaveBeenCalledOnce();
   });
+
+  it.each([true, false])("only restarts a drained poller when resumable is %s", async (resumable) => {
+    const poller = await loadPoller();
+    const { pauseDesktopOperationsForHandoff } = await import("./factory-reset-guard");
+    await expect(poller.stopRssPollerAndDrain({ resumable: true })).rejects.toThrow("requires the handoff pause");
+    poller.startRssPoller(undefined, { startupDelayMs: 0 });
+    await vi.advanceTimersByTimeAsync(0);
+    const pause = pauseDesktopOperationsForHandoff();
+    try {
+      await poller.stopRssPollerAndDrain({ resumable });
+      refreshScheduledRssFeeds.mockClear();
+      poller.startRssPoller(undefined, { startupDelayMs: 0 });
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(refreshScheduledRssFeeds).not.toHaveBeenCalled();
+    } finally {
+      pause.resume();
+    }
+    poller.startRssPoller(undefined, { startupDelayMs: 0 });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(refreshScheduledRssFeeds).toHaveBeenCalledTimes(resumable ? 1 : 0);
+    poller.stopRssPoller();
+  });
 });

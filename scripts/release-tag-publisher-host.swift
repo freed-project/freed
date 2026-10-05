@@ -110,9 +110,10 @@ private func parseCommand(_ arguments: [String]) throws -> ParsedCommand {
     "--repo", "--worktree", "--tag", "--channel", "--commit", "--branch",
     "--release-file", "--release-file-sha256",
   ]
-  let expected = (name == "publish" ? publishFlags : identityFlags).union(testingFlags)
+  let optionalFlags: Set<String> = name == "publish" ? ["--policy-valid-until"] : []
+  let expected = (name == "publish" ? publishFlags : identityFlags).union(testingFlags).union(optionalFlags)
   let received = Set(values.keys)
-  guard received.subtracting(testingFlags) == expected.subtracting(testingFlags),
+  guard received.subtracting(testingFlags).subtracting(optionalFlags) == expected.subtracting(testingFlags).subtracting(optionalFlags),
     received.isSubset(of: expected)
   else {
     try fail("Publisher command \(name) received an incomplete or unsupported option set.")
@@ -753,6 +754,14 @@ private func remoteReceipt(
   return data
 }
 
+private func validatePolicyDeadline(_ value: String?) throws {
+  guard let value = value else { return }
+  let now = Int64(Date().timeIntervalSince1970 * 1000)
+  guard let deadline = Int64(value), String(deadline) == value,
+    deadline > now, deadline - now <= 180_000
+  else { try fail("The owner-attested live policy deadline is invalid or expired.") }
+}
+
 private func publish(
   binding: PublisherBinding,
   parsed: ParsedCommand,
@@ -761,6 +770,7 @@ private func publish(
   home: String
 ) throws {
   let values = parsed.values
+  try validatePolicyDeadline(values["--policy-valid-until"])
   guard let worktreeValue = values["--worktree"],
     let tag = values["--tag"],
     let channel = values["--channel"],
@@ -842,6 +852,7 @@ private func publish(
     guard absent.status == 404 else {
       try fail("The requested immutable release tag already exists.")
     }
+    try validatePolicyDeadline(values["--policy-valid-until"])
     let tagResponse = try client.request(
       method: "POST",
       path: "/repos/\(binding.repo)/git/tags",
@@ -861,6 +872,7 @@ private func publish(
     guard try remoteBranchSHA(
       binding: binding, branch: branch, token: context.token, client: client) == commit
     else { try fail("The protected remote branch changed before tag creation.") }
+    try validatePolicyDeadline(values["--policy-valid-until"])
     _ = try client.request(
       method: "POST",
       path: "/repos/\(binding.repo)/git/refs",

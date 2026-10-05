@@ -1,3 +1,4 @@
+import { desktopLibraryCountResource } from "./library-count-resource";
 import { invoke } from "@tauri-apps/api/core";
 
 export type LibraryCoreDesktopRole = "primary" | "follower";
@@ -15,6 +16,15 @@ export type DesktopLibrarySetupChoice =
 // Presentation cache only. Native SQLite and installation setup own authority.
 // Missing or failed native state never defaults to Primary.
 let installation: DesktopLibraryInstallationStatus | null = null;
+let installationError: string | null = null;
+const listeners = new Set<() => void>();
+export function subscribeDesktopLibraryInstallation(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
+}
+export function readDesktopLibraryInstallationError(): string | null { return installationError; }
+export function readDesktopLibraryInstallation(): DesktopLibraryInstallationStatus | null { return installation; }
+function notifyInstallation(): void { for (const listener of listeners) listener(); }
 let requestVersion = 0;
 let pendingRoleRead: Promise<DesktopLibraryInstallationStatus> | null = null;
 const LEGACY_ROLE_KEY = "freed.libraryCore.desktopRoleV1";
@@ -62,7 +72,14 @@ function acceptNativeStatus(value: DesktopLibraryInstallationStatus): DesktopLib
     || (["editable_consumer", "standalone_primary", "shared_primary"].includes(value.state) && value.actorId === null)) {
     throw new Error("Native Library installation state is invalid.");
   }
+  desktopLibraryCountResource.setSelection(
+    ["editable_consumer", "standalone_primary", "shared_primary"].includes(value.state)
+      && value.libraryId && value.authorityEpochId && value.actorId
+      ? { libraryId: value.libraryId, authorityEpochId: value.authorityEpochId, actorId: value.actorId } : null,
+  );
   installation = Object.freeze(value);
+  installationError = null;
+  notifyInstallation();
   return installation;
 }
 
@@ -79,7 +96,7 @@ export function refreshLibraryCoreDesktopRole(): Promise<DesktopLibraryInstallat
       clearLegacyRole();
       return accepted;
     } catch (error) {
-      if (version === requestVersion) installation = null;
+      if (version === requestVersion) { desktopLibraryCountResource.setSelection(null); installation = null; installationError = error instanceof Error ? error.message : "Native Library role is unavailable."; notifyInstallation(); }
       throw error;
     }
   })().finally(() => { if (pendingRoleRead === operation) pendingRoleRead = null; });
@@ -87,15 +104,28 @@ export function refreshLibraryCoreDesktopRole(): Promise<DesktopLibraryInstallat
   return operation;
 }
 
+/** A count publication fence must not reuse a role read started before its data reads. */
+export async function refreshLibraryCoreDesktopRoleAfterPending(): Promise<DesktopLibraryInstallationStatus> {
+  if (pendingRoleRead) await pendingRoleRead;
+  return refreshLibraryCoreDesktopRole();
+}
+
 export async function selectDesktopLibrarySetup(choice: DesktopLibrarySetupChoice): Promise<DesktopLibraryInstallationStatus> {
+  const finish = desktopLibraryCountResource.beginTransition();
   const version = ++requestVersion;
   pendingRoleRead = null;
   installation = null;
-  const status = await invoke<DesktopLibraryInstallationStatus>("select_normalized_desktop_library_setup", { choice });
-  if (version !== requestVersion) throw new Error("Native Library setup was superseded.");
-  const accepted = acceptNativeStatus(status);
-  clearLegacyRole();
-  return accepted;
+  installationError = null;
+  notifyInstallation();
+  try {
+    const status = await invoke<DesktopLibraryInstallationStatus>("select_normalized_desktop_library_setup", { choice });
+    if (version !== requestVersion) throw new Error("Native Library setup was superseded.");
+    finish();
+    const accepted = acceptNativeStatus(status);
+    clearLegacyRole();
+    return accepted;
+  } finally { finish(); }
+
 }
 
 export function readLibraryCoreDesktopRole(): LibraryCoreDesktopRole | null {

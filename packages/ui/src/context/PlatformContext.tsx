@@ -1,3 +1,5 @@
+import type { LibraryCountResource } from "./library-count-resource.js";
+export type { LibraryCountResource, LibraryCountResourceState, LibraryCountSnapshot, LibraryCountSelectionIdentity } from "./library-count-resource.js";
 /**
  * PlatformContext — dependency injection for platform-specific behavior
  *
@@ -84,6 +86,7 @@ interface AppStoreHook {
  * are represented by `null` (no active download).
  */
 export type UpdateDownloadProgress =
+  | { phase: "backing-up"; startedAtMonotonicMs?: number }
   | { phase: "downloading"; percent: number }
   | { phase: "error"; message: string };
 
@@ -515,10 +518,10 @@ export interface PlatformConfig {
   geographicMapMode?: "online" | "local-showcase";
 
   /**
-   * Controls whether feed cards eagerly render remote media previews.
-   * Desktop can force reader-only mode to reduce WebKit renderer pressure.
+   * Controls feed media previews. Lazy thumbnails allow images without video
+   * metadata loads; every mode keeps the renderer memory-pressure safeguards.
    */
-  feedMediaPreviews?: "inline" | "reader-only";
+  feedMediaPreviews?: "inline" | "lazy-thumbnails" | "reader-only";
   /** Feature previews can display the original media for sample records. */
   sampleMediaPreviews?: "inline";
 
@@ -736,6 +739,9 @@ export interface PlatformConfig {
   readFeedSignalCounts?: ReadFeedSignalCounts;
 
   /** Exact corpus-wide counts and tags computed inside the local row store. */
+  /** Runtime-owned native-source-fenced navigation snapshot; UI does not requery it. */
+  libraryCountResource?: LibraryCountResource;
+
   readLibraryFacetSummary?: () => Promise<LibraryFacetSummary>;
 
   /** One exact source-fenced item row from platform-local Library storage. */
@@ -910,7 +916,7 @@ export interface PlatformConfig {
   getLocalContent?: (globalId: string) => Promise<string | null>;
 
   /**
-   * Encrypted device-local API key store (desktop only).
+   * Device-local API key store (desktop only).
    * Used by the AI settings UI to read/write/clear API keys.
    */
   secureStorage?: {
@@ -921,6 +927,9 @@ export interface PlatformConfig {
 
   /** Device-local optional model downloads for offline AI. */
   localAIModels?: LocalAIModelControls;
+
+  /** Independent, device-local specialist AI controls supplied by the host. */
+  AISettingsContent?: ComponentType;
 
   /** Check the configured Ollama endpoint through the host telemetry boundary. */
   checkOllamaReachable?: (ollamaUrl: string) => Promise<boolean>;

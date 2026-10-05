@@ -93,6 +93,10 @@ test("OPFS durability changes run the persistent WebKit data integrity proof", (
     "packages/pwa/src/main.tsx",
     "packages/pwa/tests/opfs-e2e-settings.ts",
     "packages/pwa/tests/sqlite-opfs-durability.spec.ts",
+    "scripts/lib/webkit-test-custody.mjs",
+    "scripts/lib/webkit-test-custody-adapter.m",
+    "scripts/lib/webkit-test-custody.d.mts",
+    "scripts/webkit-test-custody.test.mjs",
     "packages/shared/src/library-core/normalized-schema-v1.sql",
   ];
   try {
@@ -386,6 +390,9 @@ test("feature plan runs strict reusable Library Core checks", () => {
 
   assert.ok(clippy);
   assert.ok(tests);
+  const held = plan.find((item) => item.label === "Library Core default-off transfer tests");
+  assert.ok(held);
+  assert.deepEqual(held.args, ["test", "--no-default-features", "--test", "transfer_hold"]);
   assert.match(clippy.cwd, /\/packages\/library-core-native$/);
   assert.ok(plan.some((item) => item.label === "desktop production build"));
   assert.ok(plan.some((item) => item.label === "native rust clippy"));
@@ -448,6 +455,12 @@ test("feature plan for validation runner changes runs only runner tests", () => 
   );
 
   assert.deepEqual(labels, ["validation runner tests"]);
+});
+
+test("PWA preview changes run the deployment contract", () => {
+  for (const file of ["scripts/vercel-deploy-preview.sh", "scripts/lib/vercel-project-link.mjs", "scripts/lib/vercel-project-link.test.mjs"]) {
+    assert.ok(describePlan(buildValidationPlan("feature", [file])).includes("Vercel preview deployment tests"));
+  }
 });
 
 test("retired Automerge runtime guard changes run the focused contract", () => {
@@ -531,6 +544,11 @@ test("mixed feature plans retain repository configuration coverage", () => {
 
 test("feature plan routes tooling smoke workflow and helper changes through focused tests", () => {
   const paths = [
+    ".github/workflows/nightly-fixture-acceptance.yml",
+    "scripts/nightly-fixture-acceptance.mjs",
+    "scripts/test-helpers/nightly-fixture-preload.mjs",
+    "scripts/test-helpers/nightly-fixture-supervisor.py",
+    "scripts/test-helpers/nightly_fixture_darwin.py",
     ".github/workflows/ci.yml",
     ".github/workflows/tooling-nightly.yml",
     "scripts/measure-tooling-smoke.mjs",
@@ -921,6 +939,7 @@ test("feature plan isolates pull request publication from tag publisher host sui
     "scripts/task-decisions.mjs",
     "scripts/task-decisions.test.mjs",
     "scripts/worktree-add.sh",
+    "scripts/worktree-add.test.mjs",
     "scripts/worktree-cleanup.sh",
   ]) {
     assert.equal(isPullRequestPublisherToolingPath(filePath), true, filePath);
@@ -933,6 +952,7 @@ test("feature plan isolates pull request publication from tag publisher host sui
       "--test",
       "scripts/worktree-publish.test.mjs",
       "scripts/task-decisions.test.mjs",
+      "scripts/worktree-add.test.mjs",
     ]);
     assert.equal(
       plan.some((item) => item.label === "release publisher tests"),
@@ -1233,4 +1253,46 @@ test("release identity execution separates modern releases, historical correctio
     ],
     cwd: REPO_ROOT,
   });
+});
+
+
+test("custody adapter changes retain the macOS proof and focused fixture contracts", () => {
+  const previous = process.env.FREED_SKIP_PWA_OPFS_DURABILITY;
+  delete process.env.FREED_SKIP_PWA_OPFS_DURABILITY;
+  try {
+    const path = "scripts/lib/webkit-test-custody-adapter.m";
+    const plan = describePlan(buildValidationPlan("feature", [path]));
+    assert.ok(plan.includes("pwa WebKit OPFS durability"));
+    assert.ok(plan.includes("WebKit test custody fixture contracts"));
+    assert.ok(FOCUSED_FEATURE_VALIDATION_PATHS.has(path));
+  } finally {
+    if (previous === undefined) delete process.env.FREED_SKIP_PWA_OPFS_DURABILITY;
+    else process.env.FREED_SKIP_PWA_OPFS_DURABILITY = previous;
+  }
+});
+
+// Changed-path tier: cloud authority contract cannot fall out of CI routing.
+test("cloud release workflow and entrypoint run their focused authority tests", () => {
+  for (const changed of [".github/workflows/cloud-release-request.yml", ".github/workflows/cloud-release-inbox.yml", "scripts/cloud-release-request.mjs", "scripts/cloud-release-request.test.mjs", ".github/workflows/cloud-release-policy-probe.yml", ".github/workflows/cloud-release-policy-response.yml", "scripts/cloud-release-policy.mjs", "scripts/cloud-release-policy.test.mjs"]) {
+    const plan=buildValidationPlan("feature", [changed]);
+    assert.ok(plan.some(item => item.label === "cloud release request tests"));
+    assert.ok(FOCUSED_FEATURE_VALIDATION_PATHS.has(changed));
+  }
+});
+
+
+test("preview process changes run scoped cleanup proof without product suites", () => {
+  for (const file of [
+    "scripts/worktree-preview.sh",
+    "scripts/worktree-processes.sh",
+    "scripts/lib/worktree-runtime.sh",
+    "scripts/lib/preview-processes.py",
+    "scripts/worktree-preview.test.mjs",
+  ]) {
+    const plan = buildValidationPlan("feature", [file]);
+    assert.deepEqual(describePlan(plan), ["root typecheck", "worktree preview process tests"]);
+    assert.deepEqual(plan[1].args, [
+      "--test", "scripts/worktree-preview.test.mjs", "scripts/task-decisions.test.mjs",
+    ]);
+  }
 });

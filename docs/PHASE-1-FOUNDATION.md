@@ -197,6 +197,8 @@ curl -X POST http://localhost:3000/api/subscribe \
 
 ### 4. CI/CD Pipeline
 
+The portable release controller is implemented with explicit channel, immutable source and reviewed receipt inputs. It reuses the dedicated Swift tag broker on an ephemeral GitHub macOS runner, ahead of the existing cloud build/sign/notarize workflow. Candidate code is treated as data while App authority is present. An unprivileged request inbox supports existing connected cloud branch/file APIs; the controller verifies the immutable owner push before admitting it. A short-lived owner policy challenge uses the existing owner connection to read complete private bypass policies; hidden policy details are never committed. Native publication refuses an expired attestation. Cloud activation remains pending an owner-reviewed protected controller branch, exact controller pin, restricted publisher environment and secure provisioning of the existing App key. No production release or new credentials are implied. See [portable release publication](CLOUD-RELEASE-PUBLISHER.md).
+
 GitHub Actions workflows for continuous integration and deployment.
 
 **CI (`ci.yml`):**
@@ -250,6 +252,9 @@ Feature worktrees now also default to layered validation. `npm run validate:feat
 `vorton.factory.json` and versioned JSON Schema for approved issue selection,
 bounded validation commands, and reviewed draft-only publication. Configuration
 does not activate execution or replace Freed authorization checks.
+Isolated Factory validation uses the doctor worker scope to verify pinned build
+tools without exposing controller credentials or authority records. Controller
+and publisher checks remain outside the worker boundary.
 
 Production release closeout now also requires a dedicated `main` back into `dev` reverse-integration PR so shipped production fixes and release-tooling changes do not drift out of the product branch.
 

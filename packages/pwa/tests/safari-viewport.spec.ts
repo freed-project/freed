@@ -539,6 +539,8 @@ test.describe("Friends graph touch gestures in WebKit", () => {
 
 test.describe("BottomSheet / drawer viewport", () => {
   test("Settings drawer panel is visible and its top edge is within viewport", async ({ page }) => {
+    // A short phone viewport forces the navigation list to overflow.
+    await page.setViewportSize({ width: 390, height: 540 });
     await page.goto("/", { waitUntil: "load" });
     await page.waitForTimeout(500);
     await acceptLegalGateIfPresent(page);
@@ -566,6 +568,18 @@ test.describe("BottomSheet / drawer viewport", () => {
     expect(box!.y).toBeGreaterThanOrEqual(0);
     // Panel top must be below the header (not covering it entirely).
     expect(box!.y).toBeLessThan(viewportHeight * 0.5);
+
+    // The menu must own overflow instead of growing behind the clipped shell.
+    const nav = page.getByTestId("settings-nav-panel").locator("nav");
+    const navMetrics = await nav.evaluate((element) => ({
+      bottom: element.getBoundingClientRect().bottom,
+      height: element.clientHeight,
+      scrollHeight: element.scrollHeight,
+    }));
+    expect(navMetrics.bottom).toBeLessThanOrEqual(viewportHeight);
+    expect(navMetrics.scrollHeight).toBeGreaterThan(navMetrics.height);
+    await nav.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+    await expect.poll(() => nav.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
 
     await page.getByRole("button", { name: "Appearance", exact: true }).click();
     const scrollport = page.locator(".theme-settings-scrollport");

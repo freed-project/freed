@@ -19,6 +19,7 @@ import {
   updateLibraryFeedItem,
 } from "./library-client";
 import { enqueue } from "./content-fetcher.js";
+import { runFactoryResetSensitiveDesktopOperation } from "./factory-reset-guard";
 
 export interface SaveUrlOptions {
   notes?: string;
@@ -81,7 +82,14 @@ export async function previewSaveUrlInDesktop(
  * The user-visible save path only writes a stub. Detail fetching runs through
  * the background content fetcher so the modal can close immediately.
  */
-export async function saveUrlInDesktop(
+export function saveUrlInDesktop(
+  url: string,
+  options: SaveUrlOptions = {},
+): Promise<SaveUrlResult> {
+  return runFactoryResetSensitiveDesktopOperation(() => saveUrlInDesktopInternal(url, options));
+}
+
+async function saveUrlInDesktopInternal(
   url: string,
   options: SaveUrlOptions = {},
 ): Promise<SaveUrlResult> {
@@ -121,13 +129,22 @@ export async function saveUrlInDesktop(
   return { globalId: savedItem.globalId };
 }
 
-export async function updateSavedContentInDesktop(
+type SavedContentUpdate = {
+  notes: string;
+  preview?: SaveUrlOptions["preview"];
+  url: string;
+};
+
+export function updateSavedContentInDesktop(
   item: FeedItem,
-  input: {
-    notes: string;
-    preview?: SaveUrlOptions["preview"];
-    url: string;
-  },
+  input: SavedContentUpdate,
+): Promise<SaveUrlResult> {
+  return runFactoryResetSensitiveDesktopOperation(() => updateSavedContentInDesktopInternal(item, input));
+}
+
+async function updateSavedContentInDesktopInternal(
+  item: FeedItem,
+  input: SavedContentUpdate,
 ): Promise<SaveUrlResult> {
   const stableUrl = stableHttpUrl(input.url);
   const currentUrl = item.sourceUrl ?? item.content.linkPreview?.url ?? "";
@@ -141,7 +158,7 @@ export async function updateSavedContentInDesktop(
     return { globalId: item.globalId };
   }
 
-  const saved = await saveUrlInDesktop(stableUrl, {
+  const saved = await saveUrlInDesktopInternal(stableUrl, {
     notes: input.notes,
     preview: input.preview,
     tags: item.userState.tags,

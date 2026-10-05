@@ -1,0 +1,2758 @@
+{
+  "baseline": {
+    "descriptor": {
+      "authorityEpoch": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "causalFrontierDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "format": "freed_normalized_checkpoint_export_v2",
+      "itemCount": 0,
+      "libraryId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "protocolVersion": 2,
+      "recordCount": 9,
+      "sourceRevision": 0,
+      "writerId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    },
+    "records": [
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "authorityEpoch": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "checkpointId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb:0",
+          "createdAtMs": 1,
+          "libraryId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "schemaVersion": 1,
+          "sourceRevision": 0
+        },
+        "primaryKey": "checkpoint",
+        "protocolVersion": 2,
+        "registryKey": "00_checkpoint_header"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "acceptedAt": 1,
+          "acceptedManifestGeneration": 1,
+          "authorityKeyId": "91145d3f7c2d387e990aa6fe5b875f8c55d0f698d591028149d9d2b5d8d6d571",
+          "authorityPublicKey": "8b1e519ffb0175da6d700b9a01ce22a76ce06e3eb31004692e201e555b2275b1",
+          "canonicalTransitionCertificate": "{}",
+          "checkpointFrontierDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "epochNumber": 1,
+          "libraryId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "materializedStateDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "transitionCertificateDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        },
+        "primaryKey": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "protocolVersion": 2,
+        "registryKey": "01_authority_epoch"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "acceptedManifestGeneration": 1,
+          "activatedAt": 1,
+          "activeKey": "active",
+          "epochId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "libraryId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "writerId": "primary:desktop"
+        },
+        "primaryKey": "active",
+        "protocolVersion": 2,
+        "registryKey": "03_active_authority"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "acceptedChainDigest": "5d4d8975f046f0f9e5c07d138ec107b9763b82762ff2c5dadeeffb76bab2edff",
+          "acceptedCounter": 0,
+          "acceptedOperationId": null,
+          "actorKind": "pwa",
+          "authorityEpochId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "canonicalEnrollmentCertificate": "{\"authority_signature\":\"9f9e103b3235b5a1b3513a2d5deac23f7150a4e996aa5ce6e81879b2910ae5816738a0bc9851af30cd738f71c93ac46f27e3f0f3390c87785bdf71227856db0c\",\"certificate_body\":{\"actor_capability_body\":{\"actor_class\":\"editor\",\"actor_id\":\"150f416d4f330e4273bef28fea3fa9238395f4e54b6f478712a7756593a67b0d\",\"actor_public_key\":\"aebf9a7c7285e998f1121c57a9ed94f4cebdf7626ce625d5d3bd80ef1c64291f\",\"allowed_operation_types\":[\"account_person_assignment\",\"account_remove\",\"account_upsert\",\"feed_item_analysis_replace\",\"feed_item_annotations_replace\",\"feed_item_archive_assignment\",\"feed_item_capture_upsert\",\"feed_item_like_assignment\",\"feed_item_like_sync_receipt\",\"feed_item_priority_assignment\",\"feed_item_read_assignment\",\"feed_item_remove\",\"feed_item_saved_assignment\",\"feed_item_seen_sync_receipt\",\"friend_replace\",\"person_reach_out_append\",\"person_remove_and_accounts\",\"person_remove_detach_accounts\",\"person_upsert\",\"preferences_leaf_assignment\",\"rss_feed_remove_keep_items\",\"rss_feed_remove_with_items\",\"rss_feed_title_assignment\",\"rss_feed_upsert\"],\"allowed_query_ids\":[],\"authority_key_id\":\"91145d3f7c2d387e990aa6fe5b875f8c55d0f698d591028149d9d2b5d8d6d571\",\"epoch\":1,\"epoch_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"format\":\"freed_library_core_actor_capability_v2\",\"issuance_identity\":\"0e58b326231851e4090037f03cb6ca534f663015156160fe44330251d11d36ba\",\"issued_at_ms\":1,\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"retirement_identity\":\"ce7572c9070008c1bb1ba7226709a80ae58186964b772b0c96df0f950b70dd3a\",\"scope\":{\"mode\":\"library_wide\"},\"signature_algorithm\":\"ed25519\"},\"actor_capability_body_digest\":\"bf1aebc7af8a170f67ce505efaa2dc3d713d62bebc5e8ee0dab55716638ddb1d\",\"actor_enrollment_body\":{\"actor_id\":\"150f416d4f330e4273bef28fea3fa9238395f4e54b6f478712a7756593a67b0d\",\"actor_incarnation_nonce\":\"c2f63f4d97f144c64bfdaa6f2bb636767a7cb7e6ef0c2b72636a0e11de046bc2\",\"actor_public_key\":\"aebf9a7c7285e998f1121c57a9ed94f4cebdf7626ce625d5d3bd80ef1c64291f\",\"actor_public_key_fingerprint\":\"ce23b300e8e99f5014bbcac95c45e51c16dafb32dab8219c55ee6c53768b1a67\",\"authority_key_id\":\"91145d3f7c2d387e990aa6fe5b875f8c55d0f698d591028149d9d2b5d8d6d571\",\"created_at_ms\":1,\"epoch\":1,\"epoch_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"installation_incarnation\":\"7648f43b926e129b2418761d323f8779e6898077cb7c03307e00749b5e343eab\",\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"observed_frontier\":[],\"operation_id\":\"actor-enrolled:150f416d4f330e4273bef28fea3fa9238395f4e54b6f478712a7756593a67b0d\",\"operation_type\":\"actor_enrolled\",\"schema_version\":1,\"signature_algorithm\":\"ed25519\"},\"actor_proof\":\"cf9ef48a1ecfc1b1ccb7be92dd904d975059495f8068e0be2aa8787fc058d0fb6402318fc58f1f65ac98843e10b874f98265cc8ea4855735ec4763515b78ad03\",\"enrollment_body_digest\":\"4660cccf632b2e7fa4b6b5461670f8d79397ec911e6538eed7df44a32c6d266e\"},\"certificate_digest\":\"a05747a5c9e66c860253cd61bd6fc5347cf68097242eda941834e13da4e9ff36\"}",
+          "chainGenesisDigest": "5d4d8975f046f0f9e5c07d138ec107b9763b82762ff2c5dadeeffb76bab2edff",
+          "createdAt": 1,
+          "enrollmentCertificateDigest": "a05747a5c9e66c860253cd61bd6fc5347cf68097242eda941834e13da4e9ff36",
+          "enrollmentOperationId": "actor-enrolled:150f416d4f330e4273bef28fea3fa9238395f4e54b6f478712a7756593a67b0d",
+          "publicKey": "aebf9a7c7285e998f1121c57a9ed94f4cebdf7626ce625d5d3bd80ef1c64291f",
+          "retiredAt": null,
+          "updatedAt": 1
+        },
+        "primaryKey": "150f416d4f330e4273bef28fea3fa9238395f4e54b6f478712a7756593a67b0d",
+        "protocolVersion": 2,
+        "registryKey": "90_actor_state"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "acceptedChainDigest": "c27dbda170cb4b5b8ecc9b31341c2e8f7869ccae2a85653db1b4fe31dd1e3b09",
+          "acceptedCounter": 0,
+          "acceptedOperationId": null,
+          "actorKind": "pwa",
+          "authorityEpochId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "canonicalEnrollmentCertificate": "{\"authority_signature\":\"7ed6d078f578964375e16c026e71530bdd1f871c86a882beabce96398bf280d640beea3d46e4736c36a12edac1f4962be391f7bce76dd6afea6af7729fbc3e0f\",\"certificate_body\":{\"actor_capability_body\":{\"actor_class\":\"editor\",\"actor_id\":\"42e09961a621bace85cbe1b6f4af9d1cf133ff684f95a81aec481274d8eca395\",\"actor_public_key\":\"aebf9a7c7285e998f1121c57a9ed94f4cebdf7626ce625d5d3bd80ef1c64291f\",\"allowed_operation_types\":[\"account_person_assignment\",\"account_remove\",\"account_upsert\",\"feed_item_analysis_replace\",\"feed_item_annotations_replace\",\"feed_item_archive_assignment\",\"feed_item_capture_upsert\",\"feed_item_like_assignment\",\"feed_item_like_sync_receipt\",\"feed_item_priority_assignment\",\"feed_item_read_assignment\",\"feed_item_remove\",\"feed_item_saved_assignment\",\"feed_item_seen_sync_receipt\",\"friend_replace\",\"person_reach_out_append\",\"person_remove_and_accounts\",\"person_remove_detach_accounts\",\"person_upsert\",\"preferences_leaf_assignment\",\"rss_feed_remove_keep_items\",\"rss_feed_remove_with_items\",\"rss_feed_title_assignment\",\"rss_feed_upsert\"],\"allowed_query_ids\":[],\"authority_key_id\":\"91145d3f7c2d387e990aa6fe5b875f8c55d0f698d591028149d9d2b5d8d6d571\",\"epoch\":1,\"epoch_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"format\":\"freed_library_core_actor_capability_v2\",\"issuance_identity\":\"2b880699a07a560d51b4bd5dcaaa277129e08fab64180d63053b152e22ad7327\",\"issued_at_ms\":1,\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"retirement_identity\":\"2024103262b943d35e01b6edab414c7a8ad4672040cf01e52141bca17619032b\",\"scope\":{\"mode\":\"library_wide\"},\"signature_algorithm\":\"ed25519\"},\"actor_capability_body_digest\":\"ad967e71aab677c8010fcdc8fc193cc3d307b396feccfcfe40ad68777e486e16\",\"actor_enrollment_body\":{\"actor_id\":\"42e09961a621bace85cbe1b6f4af9d1cf133ff684f95a81aec481274d8eca395\",\"actor_incarnation_nonce\":\"6666666666666666666666666666666666666666666666666666666666666666\",\"actor_public_key\":\"aebf9a7c7285e998f1121c57a9ed94f4cebdf7626ce625d5d3bd80ef1c64291f\",\"actor_public_key_fingerprint\":\"ce23b300e8e99f5014bbcac95c45e51c16dafb32dab8219c55ee6c53768b1a67\",\"authority_key_id\":\"91145d3f7c2d387e990aa6fe5b875f8c55d0f698d591028149d9d2b5d8d6d571\",\"created_at_ms\":1,\"epoch\":1,\"epoch_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"installation_incarnation\":\"7648f43b926e129b2418761d323f8779e6898077cb7c03307e00749b5e343eab\",\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"observed_frontier\":[],\"operation_id\":\"actor-enrolled:42e09961a621bace85cbe1b6f4af9d1cf133ff684f95a81aec481274d8eca395\",\"operation_type\":\"actor_enrolled\",\"schema_version\":1,\"signature_algorithm\":\"ed25519\"},\"actor_proof\":\"1405514fd3b731257567c046f0d62b87d60fd510f3eda4cfaf4728c377fd486a3b4bc9f1c49e8a3d624473f9a32e3e47dd456aaf9ba7a17927b703279172ee08\",\"enrollment_body_digest\":\"0943be3cd32098e52ad16b4adb42d91aa37026fec2df1429745f8d32ffd25c9b\"},\"certificate_digest\":\"8c7bd091ef79ee0ad837348a4f10c651962b0c0b23bc9cf227f96cdbb02765ce\"}",
+          "chainGenesisDigest": "c27dbda170cb4b5b8ecc9b31341c2e8f7869ccae2a85653db1b4fe31dd1e3b09",
+          "createdAt": 1,
+          "enrollmentCertificateDigest": "8c7bd091ef79ee0ad837348a4f10c651962b0c0b23bc9cf227f96cdbb02765ce",
+          "enrollmentOperationId": "actor-enrolled:42e09961a621bace85cbe1b6f4af9d1cf133ff684f95a81aec481274d8eca395",
+          "publicKey": "aebf9a7c7285e998f1121c57a9ed94f4cebdf7626ce625d5d3bd80ef1c64291f",
+          "retiredAt": null,
+          "updatedAt": 1
+        },
+        "primaryKey": "42e09961a621bace85cbe1b6f4af9d1cf133ff684f95a81aec481274d8eca395",
+        "protocolVersion": 2,
+        "registryKey": "90_actor_state"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "acceptedChainDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "acceptedCounter": 0,
+          "acceptedOperationId": null,
+          "actorKind": "desktop",
+          "authorityEpochId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "canonicalEnrollmentCertificate": "{}",
+          "chainGenesisDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "createdAt": 1,
+          "enrollmentCertificateDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "enrollmentOperationId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "publicKey": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "retiredAt": null,
+          "updatedAt": 1
+        },
+        "primaryKey": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "protocolVersion": 2,
+        "registryKey": "90_actor_state"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "actorClass": "editor",
+          "actorId": "150f416d4f330e4273bef28fea3fa9238395f4e54b6f478712a7756593a67b0d",
+          "canonicalCertificate": "{}",
+          "certificateDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "certificateVersion": 2,
+          "issuanceIdentity": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "issuedAt": 1,
+          "retiredAt": null,
+          "retirementCertificateDigest": null,
+          "retirementIdentity": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "scopeId": null,
+          "scopeKind": null,
+          "scopeMode": "library_wide"
+        },
+        "primaryKey": "150f416d4f330e4273bef28fea3fa9238395f4e54b6f478712a7756593a67b0d",
+        "protocolVersion": 2,
+        "registryKey": "91_actor_capability"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "actorClass": "editor",
+          "actorId": "42e09961a621bace85cbe1b6f4af9d1cf133ff684f95a81aec481274d8eca395",
+          "canonicalCertificate": "{}",
+          "certificateDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "certificateVersion": 2,
+          "issuanceIdentity": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "issuedAt": 1,
+          "retiredAt": null,
+          "retirementCertificateDigest": null,
+          "retirementIdentity": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "scopeId": null,
+          "scopeKind": null,
+          "scopeMode": "library_wide"
+        },
+        "primaryKey": "42e09961a621bace85cbe1b6f4af9d1cf133ff684f95a81aec481274d8eca395",
+        "protocolVersion": 2,
+        "registryKey": "91_actor_capability"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "actorClass": "editor",
+          "actorId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "canonicalCertificate": "{}",
+          "certificateDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "certificateVersion": 2,
+          "issuanceIdentity": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "issuedAt": 1,
+          "retiredAt": null,
+          "retirementCertificateDigest": null,
+          "retirementIdentity": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "scopeId": null,
+          "scopeKind": null,
+          "scopeMode": "library_wide"
+        },
+        "primaryKey": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "protocolVersion": 2,
+        "registryKey": "91_actor_capability"
+      }
+    ]
+  },
+  "predecessors": [
+    {
+      "descriptor": {
+        "authorityEpoch": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "causalFrontierDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "format": "freed_normalized_checkpoint_export_v2",
+        "itemCount": 0,
+        "libraryId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "protocolVersion": 2,
+        "recordCount": 9,
+        "sourceRevision": 0,
+        "writerId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "records": [
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "authorityEpoch": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "checkpointId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb:0",
+            "createdAtMs": 1,
+            "libraryId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "schemaVersion": 1,
+            "sourceRevision": 0
+          },
+          "primaryKey": "checkpoint",
+          "protocolVersion": 2,
+          "registryKey": "00_checkpoint_header"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "acceptedAt": 1,
+            "acceptedManifestGeneration": 1,
+            "authorityKeyId": "91145d3f7c2d387e990aa6fe5b875f8c55d0f698d591028149d9d2b5d8d6d571",
+            "authorityPublicKey": "8b1e519ffb0175da6d700b9a01ce22a76ce06e3eb31004692e201e555b2275b1",
+            "canonicalTransitionCertificate": "{}",
+            "checkpointFrontierDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "epochNumber": 1,
+            "libraryId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "materializedStateDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "transitionCertificateDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+          },
+          "primaryKey": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "protocolVersion": 2,
+          "registryKey": "01_authority_epoch"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "acceptedManifestGeneration": 1,
+            "activatedAt": 1,
+            "activeKey": "active",
+            "epochId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "libraryId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "writerId": "primary:desktop"
+          },
+          "primaryKey": "active",
+          "protocolVersion": 2,
+          "registryKey": "03_active_authority"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "acceptedChainDigest": "5d4d8975f046f0f9e5c07d138ec107b9763b82762ff2c5dadeeffb76bab2edff",
+            "acceptedCounter": 0,
+            "acceptedOperationId": null,
+            "actorKind": "pwa",
+            "authorityEpochId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "canonicalEnrollmentCertificate": "{\"authority_signature\":\"9f9e103b3235b5a1b3513a2d5deac23f7150a4e996aa5ce6e81879b2910ae5816738a0bc9851af30cd738f71c93ac46f27e3f0f3390c87785bdf71227856db0c\",\"certificate_body\":{\"actor_capability_body\":{\"actor_class\":\"editor\",\"actor_id\":\"150f416d4f330e4273bef28fea3fa9238395f4e54b6f478712a7756593a67b0d\",\"actor_public_key\":\"aebf9a7c7285e998f1121c57a9ed94f4cebdf7626ce625d5d3bd80ef1c64291f\",\"allowed_operation_types\":[\"account_person_assignment\",\"account_remove\",\"account_upsert\",\"feed_item_analysis_replace\",\"feed_item_annotations_replace\",\"feed_item_archive_assignment\",\"feed_item_capture_upsert\",\"feed_item_like_assignment\",\"feed_item_like_sync_receipt\",\"feed_item_priority_assignment\",\"feed_item_read_assignment\",\"feed_item_remove\",\"feed_item_saved_assignment\",\"feed_item_seen_sync_receipt\",\"friend_replace\",\"person_reach_out_append\",\"person_remove_and_accounts\",\"person_remove_detach_accounts\",\"person_upsert\",\"preferences_leaf_assignment\",\"rss_feed_remove_keep_items\",\"rss_feed_remove_with_items\",\"rss_feed_title_assignment\",\"rss_feed_upsert\"],\"allowed_query_ids\":[],\"authority_key_id\":\"91145d3f7c2d387e990aa6fe5b875f8c55d0f698d591028149d9d2b5d8d6d571\",\"epoch\":1,\"epoch_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"format\":\"freed_library_core_actor_capability_v2\",\"issuance_identity\":\"0e58b326231851e4090037f03cb6ca534f663015156160fe44330251d11d36ba\",\"issued_at_ms\":1,\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"retirement_identity\":\"ce7572c9070008c1bb1ba7226709a80ae58186964b772b0c96df0f950b70dd3a\",\"scope\":{\"mode\":\"library_wide\"},\"signature_algorithm\":\"ed25519\"},\"actor_capability_body_digest\":\"bf1aebc7af8a170f67ce505efaa2dc3d713d62bebc5e8ee0dab55716638ddb1d\",\"actor_enrollment_body\":{\"actor_id\":\"150f416d4f330e4273bef28fea3fa9238395f4e54b6f478712a7756593a67b0d\",\"actor_incarnation_nonce\":\"c2f63f4d97f144c64bfdaa6f2bb636767a7cb7e6ef0c2b72636a0e11de046bc2\",\"actor_public_key\":\"aebf9a7c7285e998f1121c57a9ed94f4cebdf7626ce625d5d3bd80ef1c64291f\",\"actor_public_key_fingerprint\":\"ce23b300e8e99f5014bbcac95c45e51c16dafb32dab8219c55ee6c53768b1a67\",\"authority_key_id\":\"91145d3f7c2d387e990aa6fe5b875f8c55d0f698d591028149d9d2b5d8d6d571\",\"created_at_ms\":1,\"epoch\":1,\"epoch_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"installation_incarnation\":\"7648f43b926e129b2418761d323f8779e6898077cb7c03307e00749b5e343eab\",\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"observed_frontier\":[],\"operation_id\":\"actor-enrolled:150f416d4f330e4273bef28fea3fa9238395f4e54b6f478712a7756593a67b0d\",\"operation_type\":\"actor_enrolled\",\"schema_version\":1,\"signature_algorithm\":\"ed25519\"},\"actor_proof\":\"cf9ef48a1ecfc1b1ccb7be92dd904d975059495f8068e0be2aa8787fc058d0fb6402318fc58f1f65ac98843e10b874f98265cc8ea4855735ec4763515b78ad03\",\"enrollment_body_digest\":\"4660cccf632b2e7fa4b6b5461670f8d79397ec911e6538eed7df44a32c6d266e\"},\"certificate_digest\":\"a05747a5c9e66c860253cd61bd6fc5347cf68097242eda941834e13da4e9ff36\"}",
+            "chainGenesisDigest": "5d4d8975f046f0f9e5c07d138ec107b9763b82762ff2c5dadeeffb76bab2edff",
+            "createdAt": 1,
+            "enrollmentCertificateDigest": "a05747a5c9e66c860253cd61bd6fc5347cf68097242eda941834e13da4e9ff36",
+            "enrollmentOperationId": "actor-enrolled:150f416d4f330e4273bef28fea3fa9238395f4e54b6f478712a7756593a67b0d",
+            "publicKey": "aebf9a7c7285e998f1121c57a9ed94f4cebdf7626ce625d5d3bd80ef1c64291f",
+            "retiredAt": null,
+            "updatedAt": 1
+          },
+          "primaryKey": "150f416d4f330e4273bef28fea3fa9238395f4e54b6f478712a7756593a67b0d",
+          "protocolVersion": 2,
+          "registryKey": "90_actor_state"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "acceptedChainDigest": "c27dbda170cb4b5b8ecc9b31341c2e8f7869ccae2a85653db1b4fe31dd1e3b09",
+            "acceptedCounter": 0,
+            "acceptedOperationId": null,
+            "actorKind": "pwa",
+            "authorityEpochId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "canonicalEnrollmentCertificate": "{\"authority_signature\":\"7ed6d078f578964375e16c026e71530bdd1f871c86a882beabce96398bf280d640beea3d46e4736c36a12edac1f4962be391f7bce76dd6afea6af7729fbc3e0f\",\"certificate_body\":{\"actor_capability_body\":{\"actor_class\":\"editor\",\"actor_id\":\"42e09961a621bace85cbe1b6f4af9d1cf133ff684f95a81aec481274d8eca395\",\"actor_public_key\":\"aebf9a7c7285e998f1121c57a9ed94f4cebdf7626ce625d5d3bd80ef1c64291f\",\"allowed_operation_types\":[\"account_person_assignment\",\"account_remove\",\"account_upsert\",\"feed_item_analysis_replace\",\"feed_item_annotations_replace\",\"feed_item_archive_assignment\",\"feed_item_capture_upsert\",\"feed_item_like_assignment\",\"feed_item_like_sync_receipt\",\"feed_item_priority_assignment\",\"feed_item_read_assignment\",\"feed_item_remove\",\"feed_item_saved_assignment\",\"feed_item_seen_sync_receipt\",\"friend_replace\",\"person_reach_out_append\",\"person_remove_and_accounts\",\"person_remove_detach_accounts\",\"person_upsert\",\"preferences_leaf_assignment\",\"rss_feed_remove_keep_items\",\"rss_feed_remove_with_items\",\"rss_feed_title_assignment\",\"rss_feed_upsert\"],\"allowed_query_ids\":[],\"authority_key_id\":\"91145d3f7c2d387e990aa6fe5b875f8c55d0f698d591028149d9d2b5d8d6d571\",\"epoch\":1,\"epoch_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"format\":\"freed_library_core_actor_capability_v2\",\"issuance_identity\":\"2b880699a07a560d51b4bd5dcaaa277129e08fab64180d63053b152e22ad7327\",\"issued_at_ms\":1,\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"retirement_identity\":\"2024103262b943d35e01b6edab414c7a8ad4672040cf01e52141bca17619032b\",\"scope\":{\"mode\":\"library_wide\"},\"signature_algorithm\":\"ed25519\"},\"actor_capability_body_digest\":\"ad967e71aab677c8010fcdc8fc193cc3d307b396feccfcfe40ad68777e486e16\",\"actor_enrollment_body\":{\"actor_id\":\"42e09961a621bace85cbe1b6f4af9d1cf133ff684f95a81aec481274d8eca395\",\"actor_incarnation_nonce\":\"6666666666666666666666666666666666666666666666666666666666666666\",\"actor_public_key\":\"aebf9a7c7285e998f1121c57a9ed94f4cebdf7626ce625d5d3bd80ef1c64291f\",\"actor_public_key_fingerprint\":\"ce23b300e8e99f5014bbcac95c45e51c16dafb32dab8219c55ee6c53768b1a67\",\"authority_key_id\":\"91145d3f7c2d387e990aa6fe5b875f8c55d0f698d591028149d9d2b5d8d6d571\",\"created_at_ms\":1,\"epoch\":1,\"epoch_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"installation_incarnation\":\"7648f43b926e129b2418761d323f8779e6898077cb7c03307e00749b5e343eab\",\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"observed_frontier\":[],\"operation_id\":\"actor-enrolled:42e09961a621bace85cbe1b6f4af9d1cf133ff684f95a81aec481274d8eca395\",\"operation_type\":\"actor_enrolled\",\"schema_version\":1,\"signature_algorithm\":\"ed25519\"},\"actor_proof\":\"1405514fd3b731257567c046f0d62b87d60fd510f3eda4cfaf4728c377fd486a3b4bc9f1c49e8a3d624473f9a32e3e47dd456aaf9ba7a17927b703279172ee08\",\"enrollment_body_digest\":\"0943be3cd32098e52ad16b4adb42d91aa37026fec2df1429745f8d32ffd25c9b\"},\"certificate_digest\":\"8c7bd091ef79ee0ad837348a4f10c651962b0c0b23bc9cf227f96cdbb02765ce\"}",
+            "chainGenesisDigest": "c27dbda170cb4b5b8ecc9b31341c2e8f7869ccae2a85653db1b4fe31dd1e3b09",
+            "createdAt": 1,
+            "enrollmentCertificateDigest": "8c7bd091ef79ee0ad837348a4f10c651962b0c0b23bc9cf227f96cdbb02765ce",
+            "enrollmentOperationId": "actor-enrolled:42e09961a621bace85cbe1b6f4af9d1cf133ff684f95a81aec481274d8eca395",
+            "publicKey": "aebf9a7c7285e998f1121c57a9ed94f4cebdf7626ce625d5d3bd80ef1c64291f",
+            "retiredAt": null,
+            "updatedAt": 1
+          },
+          "primaryKey": "42e09961a621bace85cbe1b6f4af9d1cf133ff684f95a81aec481274d8eca395",
+          "protocolVersion": 2,
+          "registryKey": "90_actor_state"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "acceptedChainDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "acceptedCounter": 0,
+            "acceptedOperationId": null,
+            "actorKind": "desktop",
+            "authorityEpochId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "canonicalEnrollmentCertificate": "{}",
+            "chainGenesisDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "createdAt": 1,
+            "enrollmentCertificateDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "enrollmentOperationId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "publicKey": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "retiredAt": null,
+            "updatedAt": 1
+          },
+          "primaryKey": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "protocolVersion": 2,
+          "registryKey": "90_actor_state"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "actorClass": "editor",
+            "actorId": "150f416d4f330e4273bef28fea3fa9238395f4e54b6f478712a7756593a67b0d",
+            "canonicalCertificate": "{}",
+            "certificateDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "certificateVersion": 2,
+            "issuanceIdentity": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "issuedAt": 1,
+            "retiredAt": null,
+            "retirementCertificateDigest": null,
+            "retirementIdentity": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "scopeId": null,
+            "scopeKind": null,
+            "scopeMode": "library_wide"
+          },
+          "primaryKey": "150f416d4f330e4273bef28fea3fa9238395f4e54b6f478712a7756593a67b0d",
+          "protocolVersion": 2,
+          "registryKey": "91_actor_capability"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "actorClass": "editor",
+            "actorId": "42e09961a621bace85cbe1b6f4af9d1cf133ff684f95a81aec481274d8eca395",
+            "canonicalCertificate": "{}",
+            "certificateDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "certificateVersion": 2,
+            "issuanceIdentity": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "issuedAt": 1,
+            "retiredAt": null,
+            "retirementCertificateDigest": null,
+            "retirementIdentity": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "scopeId": null,
+            "scopeKind": null,
+            "scopeMode": "library_wide"
+          },
+          "primaryKey": "42e09961a621bace85cbe1b6f4af9d1cf133ff684f95a81aec481274d8eca395",
+          "protocolVersion": 2,
+          "registryKey": "91_actor_capability"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "actorClass": "editor",
+            "actorId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "canonicalCertificate": "{}",
+            "certificateDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "certificateVersion": 2,
+            "issuanceIdentity": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "issuedAt": 1,
+            "retiredAt": null,
+            "retirementCertificateDigest": null,
+            "retirementIdentity": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "scopeId": null,
+            "scopeKind": null,
+            "scopeMode": "library_wide"
+          },
+          "primaryKey": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "protocolVersion": 2,
+          "registryKey": "91_actor_capability"
+        }
+      ]
+    },
+    {
+      "descriptor": {
+        "authorityEpoch": "c7777867b1ce4098feea374a97e15d79d126953a0678f166201dddc8b543e1f8",
+        "causalFrontierDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "format": "freed_normalized_checkpoint_export_v2",
+        "itemCount": 0,
+        "libraryId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "protocolVersion": 2,
+        "recordCount": 86,
+        "sourceRevision": 2,
+        "writerId": "150f416d4f330e4273bef28fea3fa9238395f4e54b6f478712a7756593a67b0d"
+      },
+      "records": [
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "authorityEpoch": "c7777867b1ce4098feea374a97e15d79d126953a0678f166201dddc8b543e1f8",
+            "checkpointId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:c7777867b1ce4098feea374a97e15d79d126953a0678f166201dddc8b543e1f8:2",
+            "createdAtMs": 2200,
+            "libraryId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "schemaVersion": 1,
+            "sourceRevision": 2
+          },
+          "primaryKey": "checkpoint",
+          "protocolVersion": 2,
+          "registryKey": "00_checkpoint_header"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "acceptedAt": 1,
+            "acceptedManifestGeneration": 1,
+            "authorityKeyId": "91145d3f7c2d387e990aa6fe5b875f8c55d0f698d591028149d9d2b5d8d6d571",
+            "authorityPublicKey": "8b1e519ffb0175da6d700b9a01ce22a76ce06e3eb31004692e201e555b2275b1",
+            "canonicalTransitionCertificate": "{}",
+            "checkpointFrontierDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "epochNumber": 1,
+            "libraryId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "materializedStateDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "transitionCertificateDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+          },
+          "primaryKey": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "protocolVersion": 2,
+          "registryKey": "01_authority_epoch"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "acceptedAt": 101,
+            "acceptedManifestGeneration": 0,
+            "authorityKeyId": "472a41744c299dc1901c09c5155a9e7887e260c94fbbac6822482b2b4e8e3738",
+            "authorityPublicKey": "f96023cd9818e1a458234c7a523c27ed404f58eae31c7e91f44a5c900c984b50",
+            "canonicalTransitionCertificate": "{\"authority_key_possession_signature\":\"2d84ce79c9b258d19a245274e8157a7b5ba0a01fd1cf787188ad5d0dc0ba52c2195d0901fa2268ba892366eee827462e6608a740ab955336d0689c6708e77300\",\"certificate_body\":{\"format\":\"freed_library_core_writer_epoch_handoff_v1\",\"handoff_authorization\":{\"authorization_digest\":\"045bc3bc0bb6cdabaa0a664328ff9fe13cfd2492ef50a5adec13f6ac44ed8b76\",\"body\":{\"final_checkpoint_digest\":\"68f2786d9e4775138045191432757e682a3aea028bf58d0772e2cd62155beb7d\",\"final_source_revision\":0,\"format\":\"freed_library_handoff_authorization_v1\",\"predecessor_authority_public_key\":\"8b1e519ffb0175da6d700b9a01ce22a76ce06e3eb31004692e201e555b2275b1\",\"readiness\":{\"actor_signature\":\"932e426ceee1f3505cfb7ad6e6f8ba8399c7504cb503dabe07caceb22b83eed2f143e266c3e8fe94d72e60433f9f65bcc614dc2348a076dfb0af79df971ca704\",\"authority_possession_signature\":\"35898ed4e2597599ffa1e1efd924368579c3cead20a9956b6b03f434b5e8f44f8e2e48975f7ff478e711dc78f3ce1590d94e3809e1635ae69fc88ef49aab350e\",\"body\":{\"checkpoint_schema_version\":1,\"created_at_ms\":4,\"format\":\"freed_library_handoff_readiness_v1\",\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"native_storage_version\":2,\"predecessor_certificate_digest\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"predecessor_epoch_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"replication_protocol_version\":2,\"target_actor_id\":\"150f416d4f330e4273bef28fea3fa9238395f4e54b6f478712a7756593a67b0d\",\"target_actor_public_key\":\"aebf9a7c7285e998f1121c57a9ed94f4cebdf7626ce625d5d3bd80ef1c64291f\",\"target_authority_public_key\":\"f96023cd9818e1a458234c7a523c27ed404f58eae31c7e91f44a5c900c984b50\"},\"handoff_id\":\"2ce410c92a4cbfc14b3b486e05c3384da920c102a0816cd45507ec56df4324a6\"},\"source_control\":{\"activeTransport\":\"google_drive_app_data_v1\",\"causalFrontierDigest\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"generation\":2,\"libraryId\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"manifest\":{\"descriptor\":{\"byteLength\":100,\"contentDigest\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"objectKey\":\"freed-v2-manifest~aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa~ebbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb~g2~eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee.json\"},\"transportObjectId\":\"final-checkpoint\"},\"protocolVersion\":1,\"schemaVersion\":1,\"storageEpoch\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"writerId\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\"},\"source_control_file_id\":\"control-file\",\"source_control_revision\":\"\\\"final-head\\\"\",\"successor_epoch\":2},\"predecessor_signature\":\"990c6fe5b7cc4ee366b62b472c15ecc48f40b59953f97a13c61bb5cd14c056bc4a6cba19726691a875098e24364d72778d44fe043300518fe775331ce924190a\"},\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"signature_algorithm\":\"ed25519\",\"source_control\":{\"activeTransport\":\"google_drive_app_data_v1\",\"causalFrontierDigest\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"generation\":2,\"libraryId\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"manifest\":{\"descriptor\":{\"byteLength\":100,\"contentDigest\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"objectKey\":\"freed-v2-manifest~aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa~ebbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb~g2~eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee.json\"},\"transportObjectId\":\"final-checkpoint\"},\"protocolVersion\":1,\"schemaVersion\":1,\"storageEpoch\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"writerId\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\"},\"target_authority_key_id\":\"472a41744c299dc1901c09c5155a9e7887e260c94fbbac6822482b2b4e8e3738\",\"target_authority_public_key\":\"f96023cd9818e1a458234c7a523c27ed404f58eae31c7e91f44a5c900c984b50\",\"target_epoch\":2,\"target_writer_id\":\"150f416d4f330e4273bef28fea3fa9238395f4e54b6f478712a7756593a67b0d\"},\"epoch_id\":\"c7777867b1ce4098feea374a97e15d79d126953a0678f166201dddc8b543e1f8\",\"epoch_signature\":\"f09d680e8ffab8738e4074ab2ef332f0817b453e730ca12dbabeabcad3db23961c354acba2db0431e6c7d16c0ada05facc0a6a8671708e09b1010f28442e3e07\"}",
+            "checkpointFrontierDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "epochNumber": 2,
+            "libraryId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "materializedStateDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "transitionCertificateDigest": "ba077f5db28b9112fe1e93bcc64628f1bdc069f947788a45116346f5b1a09ecf"
+          },
+          "primaryKey": "c7777867b1ce4098feea374a97e15d79d126953a0678f166201dddc8b543e1f8",
+          "protocolVersion": 2,
+          "registryKey": "01_authority_epoch"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "acceptedManifestGeneration": 0,
+            "activatedAt": 101,
+            "activeKey": "active",
+            "epochId": "c7777867b1ce4098feea374a97e15d79d126953a0678f166201dddc8b543e1f8",
+            "libraryId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "writerId": "primary:desktop"
+          },
+          "primaryKey": "active",
+          "protocolVersion": 2,
+          "registryKey": "03_active_authority"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "acceptedChainDigest": "060afd5c66cda9116887b69e96c35f38fb0ffe6da1d309d07278a370e67dc43d",
+            "acceptedCounter": 0,
+            "acceptedOperationId": null,
+            "actorKind": "desktop",
+            "authorityEpochId": "c7777867b1ce4098feea374a97e15d79d126953a0678f166201dddc8b543e1f8",
+            "canonicalEnrollmentCertificate": "{\"authority_signature\":\"89ba550332d71208bb32cebd329c3dad1f268ea9d10425a05c188710553ee4b6c95c005c4cc398688cb5f8ec5dcfa0036fc43c92ce4b28b9293621defeeeae0d\",\"certificate_body\":{\"actor_capability_body\":{\"actor_class\":\"editor\",\"actor_id\":\"150f416d4f330e4273bef28fea3fa9238395f4e54b6f478712a7756593a67b0d\",\"actor_public_key\":\"aebf9a7c7285e998f1121c57a9ed94f4cebdf7626ce625d5d3bd80ef1c64291f\",\"allowed_operation_types\":[\"account_person_assignment\",\"account_remove\",\"account_upsert\",\"feed_item_analysis_replace\",\"feed_item_annotations_replace\",\"feed_item_archive_assignment\",\"feed_item_capture_upsert\",\"feed_item_like_assignment\",\"feed_item_like_sync_receipt\",\"feed_item_priority_assignment\",\"feed_item_read_assignment\",\"feed_item_remove\",\"feed_item_saved_assignment\",\"feed_item_seen_sync_receipt\",\"friend_replace\",\"person_reach_out_append\",\"person_remove_and_accounts\",\"person_remove_detach_accounts\",\"person_upsert\",\"preferences_leaf_assignment\",\"rss_feed_remove_keep_items\",\"rss_feed_remove_with_items\",\"rss_feed_title_assignment\",\"rss_feed_upsert\"],\"allowed_query_ids\":[],\"authority_key_id\":\"472a41744c299dc1901c09c5155a9e7887e260c94fbbac6822482b2b4e8e3738\",\"epoch\":2,\"epoch_id\":\"c7777867b1ce4098feea374a97e15d79d126953a0678f166201dddc8b543e1f8\",\"format\":\"freed_library_core_actor_capability_v2\",\"issuance_identity\":\"713176fdb1fc055107e07c8b1df6f8c5272e8ffd3d7724403ae0e796447f69ff\",\"issued_at_ms\":101,\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"retirement_identity\":\"c26bf1d497c81e22aee6e97116b9ec7929492614ed851d5cf8efffc1f596d53c\",\"scope\":{\"mode\":\"library_wide\"},\"signature_algorithm\":\"ed25519\"},\"actor_capability_body_digest\":\"d52b17f0baeaa8e938c5624bc31953f141e7ff681508dc88cfc5eb43d33ddfe1\",\"actor_enrollment_body\":{\"actor_id\":\"150f416d4f330e4273bef28fea3fa9238395f4e54b6f478712a7756593a67b0d\",\"actor_incarnation_nonce\":\"c2f63f4d97f144c64bfdaa6f2bb636767a7cb7e6ef0c2b72636a0e11de046bc2\",\"actor_public_key\":\"aebf9a7c7285e998f1121c57a9ed94f4cebdf7626ce625d5d3bd80ef1c64291f\",\"actor_public_key_fingerprint\":\"ce23b300e8e99f5014bbcac95c45e51c16dafb32dab8219c55ee6c53768b1a67\",\"authority_key_id\":\"472a41744c299dc1901c09c5155a9e7887e260c94fbbac6822482b2b4e8e3738\",\"created_at_ms\":101,\"epoch\":2,\"epoch_id\":\"c7777867b1ce4098feea374a97e15d79d126953a0678f166201dddc8b543e1f8\",\"installation_incarnation\":\"7648f43b926e129b2418761d323f8779e6898077cb7c03307e00749b5e343eab\",\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"observed_frontier\":[],\"operation_id\":\"actor-enrolled:150f416d4f330e4273bef28fea3fa9238395f4e54b6f478712a7756593a67b0d\",\"operation_type\":\"actor_enrolled\",\"schema_version\":1,\"signature_algorithm\":\"ed25519\"},\"actor_proof\":\"6db2737610be82ae19c1c21837ab64fb07a325065af4e22a0e1176c01dac5a81085c8cd5496951a3d6b5799d5e17f5e3fd15cd5effb3380529dd0cb7f5ac7a0b\",\"enrollment_body_digest\":\"bda9f7d034231c5578a593f0ab002a7b7fbb6bad50bf968007eadf4049b4e5a8\"},\"certificate_digest\":\"44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c\"}",
+            "chainGenesisDigest": "060afd5c66cda9116887b69e96c35f38fb0ffe6da1d309d07278a370e67dc43d",
+            "createdAt": 101,
+            "enrollmentCertificateDigest": "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+            "enrollmentOperationId": "actor-enrolled:150f416d4f330e4273bef28fea3fa9238395f4e54b6f478712a7756593a67b0d",
+            "publicKey": "aebf9a7c7285e998f1121c57a9ed94f4cebdf7626ce625d5d3bd80ef1c64291f",
+            "retiredAt": null,
+            "updatedAt": 101
+          },
+          "primaryKey": "150f416d4f330e4273bef28fea3fa9238395f4e54b6f478712a7756593a67b0d",
+          "protocolVersion": 2,
+          "registryKey": "90_actor_state"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "acceptedChainDigest": "c27dbda170cb4b5b8ecc9b31341c2e8f7869ccae2a85653db1b4fe31dd1e3b09",
+            "acceptedCounter": 0,
+            "acceptedOperationId": null,
+            "actorKind": "pwa",
+            "authorityEpochId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "canonicalEnrollmentCertificate": "{\"authority_signature\":\"7ed6d078f578964375e16c026e71530bdd1f871c86a882beabce96398bf280d640beea3d46e4736c36a12edac1f4962be391f7bce76dd6afea6af7729fbc3e0f\",\"certificate_body\":{\"actor_capability_body\":{\"actor_class\":\"editor\",\"actor_id\":\"42e09961a621bace85cbe1b6f4af9d1cf133ff684f95a81aec481274d8eca395\",\"actor_public_key\":\"aebf9a7c7285e998f1121c57a9ed94f4cebdf7626ce625d5d3bd80ef1c64291f\",\"allowed_operation_types\":[\"account_person_assignment\",\"account_remove\",\"account_upsert\",\"feed_item_analysis_replace\",\"feed_item_annotations_replace\",\"feed_item_archive_assignment\",\"feed_item_capture_upsert\",\"feed_item_like_assignment\",\"feed_item_like_sync_receipt\",\"feed_item_priority_assignment\",\"feed_item_read_assignment\",\"feed_item_remove\",\"feed_item_saved_assignment\",\"feed_item_seen_sync_receipt\",\"friend_replace\",\"person_reach_out_append\",\"person_remove_and_accounts\",\"person_remove_detach_accounts\",\"person_upsert\",\"preferences_leaf_assignment\",\"rss_feed_remove_keep_items\",\"rss_feed_remove_with_items\",\"rss_feed_title_assignment\",\"rss_feed_upsert\"],\"allowed_query_ids\":[],\"authority_key_id\":\"91145d3f7c2d387e990aa6fe5b875f8c55d0f698d591028149d9d2b5d8d6d571\",\"epoch\":1,\"epoch_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"format\":\"freed_library_core_actor_capability_v2\",\"issuance_identity\":\"2b880699a07a560d51b4bd5dcaaa277129e08fab64180d63053b152e22ad7327\",\"issued_at_ms\":1,\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"retirement_identity\":\"2024103262b943d35e01b6edab414c7a8ad4672040cf01e52141bca17619032b\",\"scope\":{\"mode\":\"library_wide\"},\"signature_algorithm\":\"ed25519\"},\"actor_capability_body_digest\":\"ad967e71aab677c8010fcdc8fc193cc3d307b396feccfcfe40ad68777e486e16\",\"actor_enrollment_body\":{\"actor_id\":\"42e09961a621bace85cbe1b6f4af9d1cf133ff684f95a81aec481274d8eca395\",\"actor_incarnation_nonce\":\"6666666666666666666666666666666666666666666666666666666666666666\",\"actor_public_key\":\"aebf9a7c7285e998f1121c57a9ed94f4cebdf7626ce625d5d3bd80ef1c64291f\",\"actor_public_key_fingerprint\":\"ce23b300e8e99f5014bbcac95c45e51c16dafb32dab8219c55ee6c53768b1a67\",\"authority_key_id\":\"91145d3f7c2d387e990aa6fe5b875f8c55d0f698d591028149d9d2b5d8d6d571\",\"created_at_ms\":1,\"epoch\":1,\"epoch_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"installation_incarnation\":\"7648f43b926e129b2418761d323f8779e6898077cb7c03307e00749b5e343eab\",\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"observed_frontier\":[],\"operation_id\":\"actor-enrolled:42e09961a621bace85cbe1b6f4af9d1cf133ff684f95a81aec481274d8eca395\",\"operation_type\":\"actor_enrolled\",\"schema_version\":1,\"signature_algorithm\":\"ed25519\"},\"actor_proof\":\"1405514fd3b731257567c046f0d62b87d60fd510f3eda4cfaf4728c377fd486a3b4bc9f1c49e8a3d624473f9a32e3e47dd456aaf9ba7a17927b703279172ee08\",\"enrollment_body_digest\":\"0943be3cd32098e52ad16b4adb42d91aa37026fec2df1429745f8d32ffd25c9b\"},\"certificate_digest\":\"8c7bd091ef79ee0ad837348a4f10c651962b0c0b23bc9cf227f96cdbb02765ce\"}",
+            "chainGenesisDigest": "c27dbda170cb4b5b8ecc9b31341c2e8f7869ccae2a85653db1b4fe31dd1e3b09",
+            "createdAt": 1,
+            "enrollmentCertificateDigest": "8c7bd091ef79ee0ad837348a4f10c651962b0c0b23bc9cf227f96cdbb02765ce",
+            "enrollmentOperationId": "actor-enrolled:42e09961a621bace85cbe1b6f4af9d1cf133ff684f95a81aec481274d8eca395",
+            "publicKey": "aebf9a7c7285e998f1121c57a9ed94f4cebdf7626ce625d5d3bd80ef1c64291f",
+            "retiredAt": null,
+            "updatedAt": 1
+          },
+          "primaryKey": "42e09961a621bace85cbe1b6f4af9d1cf133ff684f95a81aec481274d8eca395",
+          "protocolVersion": 2,
+          "registryKey": "90_actor_state"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "acceptedChainDigest": "c5f489f6f8934f8b7cdef044831c5d6662ef2b908e4715ad5bb4956c60f6449a",
+            "acceptedCounter": 0,
+            "acceptedOperationId": null,
+            "actorKind": "pwa",
+            "authorityEpochId": "c7777867b1ce4098feea374a97e15d79d126953a0678f166201dddc8b543e1f8",
+            "canonicalEnrollmentCertificate": "{\"authority_signature\":\"ed94da3d7a261bf6fb3db5791c9754579984b6aa8d01fcebfb54df349d8d00cdfb6177d910fd1f962c7e50b0150305f01a38cbd840ad63489f5accaa66ca0d01\",\"certificate_body\":{\"actor_capability_body\":{\"actor_class\":\"editor\",\"actor_id\":\"9ca162dd62a1f7026322abbf0c30b9a5b3408866aed8d27cbb95bac387a78b4a\",\"actor_public_key\":\"e47cdbf15d344118ca8b651600f11cd02f107cd9347e451b676ff3617e74465a\",\"allowed_operation_types\":[\"account_person_assignment\",\"account_remove\",\"account_upsert\",\"feed_item_analysis_replace\",\"feed_item_annotations_replace\",\"feed_item_archive_assignment\",\"feed_item_capture_upsert\",\"feed_item_like_assignment\",\"feed_item_like_sync_receipt\",\"feed_item_priority_assignment\",\"feed_item_read_assignment\",\"feed_item_remove\",\"feed_item_saved_assignment\",\"feed_item_seen_sync_receipt\",\"friend_replace\",\"person_reach_out_append\",\"person_remove_and_accounts\",\"person_remove_detach_accounts\",\"person_upsert\",\"preferences_leaf_assignment\",\"rss_feed_remove_keep_items\",\"rss_feed_remove_with_items\",\"rss_feed_title_assignment\",\"rss_feed_upsert\"],\"allowed_query_ids\":[],\"authority_key_id\":\"472a41744c299dc1901c09c5155a9e7887e260c94fbbac6822482b2b4e8e3738\",\"epoch\":2,\"epoch_id\":\"c7777867b1ce4098feea374a97e15d79d126953a0678f166201dddc8b543e1f8\",\"format\":\"freed_library_core_actor_capability_v2\",\"issuance_identity\":\"d4bce56cf48607fed1edf01592a6edad94e675da251aa1dfc279e8b73f233bec\",\"issued_at_ms\":108,\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"retirement_identity\":\"15dc070f31f4407c9d5608c93b8431f1c193d57eafb9b0d931b7c221cfa8149b\",\"scope\":{\"mode\":\"library_wide\"},\"signature_algorithm\":\"ed25519\"},\"actor_capability_body_digest\":\"2db55a9fae8e5325f4638ee8569ff03ff4640df8ebb6a33da48dd68c0bedbf93\",\"actor_enrollment_body\":{\"actor_id\":\"9ca162dd62a1f7026322abbf0c30b9a5b3408866aed8d27cbb95bac387a78b4a\",\"actor_incarnation_nonce\":\"2ce410c92a4cbfc14b3b486e05c3384da920c102a0816cd45507ec56df4324a6\",\"actor_public_key\":\"e47cdbf15d344118ca8b651600f11cd02f107cd9347e451b676ff3617e74465a\",\"actor_public_key_fingerprint\":\"e66ec497a4f430d988ef1f8bd515d4854c0e621f4ddf99491b62a31112e8538e\",\"authority_key_id\":\"472a41744c299dc1901c09c5155a9e7887e260c94fbbac6822482b2b4e8e3738\",\"created_at_ms\":108,\"epoch\":2,\"epoch_id\":\"c7777867b1ce4098feea374a97e15d79d126953a0678f166201dddc8b543e1f8\",\"installation_incarnation\":\"7648f43b926e129b2418761d323f8779e6898077cb7c03307e00749b5e343eab\",\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"observed_frontier\":[],\"operation_id\":\"actor-enrolled:9ca162dd62a1f7026322abbf0c30b9a5b3408866aed8d27cbb95bac387a78b4a\",\"operation_type\":\"actor_enrolled\",\"schema_version\":1,\"signature_algorithm\":\"ed25519\"},\"actor_proof\":\"83d652a80102b928bd6dd9cead2f785d5ed40c6139ab2e19402ddf5f368b6d809df4e14c2fcbc63288837c137a0461d00bcb60930d3de7812efefe34f988290d\",\"enrollment_body_digest\":\"9922779bf9420680d86b7f8285afac801ec7c09128a220ddbe39d1a04f65b016\"},\"certificate_digest\":\"eeb5fb2cd37a2c207f092e449e9f6c94417baa8142f546918c10ad76fce407a3\"}",
+            "chainGenesisDigest": "c5f489f6f8934f8b7cdef044831c5d6662ef2b908e4715ad5bb4956c60f6449a",
+            "createdAt": 108,
+            "enrollmentCertificateDigest": "eeb5fb2cd37a2c207f092e449e9f6c94417baa8142f546918c10ad76fce407a3",
+            "enrollmentOperationId": "actor-enrolled:9ca162dd62a1f7026322abbf0c30b9a5b3408866aed8d27cbb95bac387a78b4a",
+            "publicKey": "e47cdbf15d344118ca8b651600f11cd02f107cd9347e451b676ff3617e74465a",
+            "retiredAt": null,
+            "updatedAt": 108
+          },
+          "primaryKey": "9ca162dd62a1f7026322abbf0c30b9a5b3408866aed8d27cbb95bac387a78b4a",
+          "protocolVersion": 2,
+          "registryKey": "90_actor_state"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "acceptedChainDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "acceptedCounter": 0,
+            "acceptedOperationId": null,
+            "actorKind": "desktop",
+            "authorityEpochId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "canonicalEnrollmentCertificate": "{}",
+            "chainGenesisDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "createdAt": 1,
+            "enrollmentCertificateDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "enrollmentOperationId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "publicKey": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "retiredAt": null,
+            "updatedAt": 1
+          },
+          "primaryKey": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "protocolVersion": 2,
+          "registryKey": "90_actor_state"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "acceptedChainDigest": "020f0c892ea3e15682174fa922e056600882dbfcccbdf8fb953ba54f91167459",
+            "acceptedCounter": 0,
+            "acceptedOperationId": null,
+            "actorKind": "pwa",
+            "authorityEpochId": "c7777867b1ce4098feea374a97e15d79d126953a0678f166201dddc8b543e1f8",
+            "canonicalEnrollmentCertificate": "{\"authority_signature\":\"7f5728fc9d90196a003f47a27105fc21399a236ee9d350978437b6330f6d7ee1d51ac9033aa943ff5d22bb8002013172bc403ce28d238bcfdb93ee226ad9e60f\",\"certificate_body\":{\"actor_capability_body\":{\"actor_class\":\"editor\",\"actor_id\":\"fb04d85aaa3782ab4d2fc7689fe7b3c87ab78e0b970daadfec492158873d997b\",\"actor_public_key\":\"aebf9a7c7285e998f1121c57a9ed94f4cebdf7626ce625d5d3bd80ef1c64291f\",\"allowed_operation_types\":[\"account_person_assignment\",\"account_remove\",\"account_upsert\",\"feed_item_analysis_replace\",\"feed_item_annotations_replace\",\"feed_item_archive_assignment\",\"feed_item_capture_upsert\",\"feed_item_like_assignment\",\"feed_item_like_sync_receipt\",\"feed_item_priority_assignment\",\"feed_item_read_assignment\",\"feed_item_remove\",\"feed_item_saved_assignment\",\"feed_item_seen_sync_receipt\",\"friend_replace\",\"person_reach_out_append\",\"person_remove_and_accounts\",\"person_remove_detach_accounts\",\"person_upsert\",\"preferences_leaf_assignment\",\"rss_feed_remove_keep_items\",\"rss_feed_remove_with_items\",\"rss_feed_title_assignment\",\"rss_feed_upsert\"],\"allowed_query_ids\":[],\"authority_key_id\":\"472a41744c299dc1901c09c5155a9e7887e260c94fbbac6822482b2b4e8e3738\",\"epoch\":2,\"epoch_id\":\"c7777867b1ce4098feea374a97e15d79d126953a0678f166201dddc8b543e1f8\",\"format\":\"freed_library_core_actor_capability_v2\",\"issuance_identity\":\"7fc616b59941490876b7404e0d3a82f8fcf23830266450fda6244fd3d6d392cc\",\"issued_at_ms\":123,\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"retirement_identity\":\"a4f555b5556fe7dc8ca91e28c8a551b6b978d7e659e4822d8d8c704e938f8639\",\"scope\":{\"mode\":\"library_wide\"},\"signature_algorithm\":\"ed25519\"},\"actor_capability_body_digest\":\"7ede631645dd93a3d0f2468ad132cb54a24511a6dc4861e0d4a7399ab4b3ea0c\",\"actor_enrollment_body\":{\"actor_id\":\"fb04d85aaa3782ab4d2fc7689fe7b3c87ab78e0b970daadfec492158873d997b\",\"actor_incarnation_nonce\":\"388a1ebceb788aacaef357a353d64b230ae29ad0c2f488d76ca7f1f06030c3cd\",\"actor_public_key\":\"aebf9a7c7285e998f1121c57a9ed94f4cebdf7626ce625d5d3bd80ef1c64291f\",\"actor_public_key_fingerprint\":\"ce23b300e8e99f5014bbcac95c45e51c16dafb32dab8219c55ee6c53768b1a67\",\"authority_key_id\":\"472a41744c299dc1901c09c5155a9e7887e260c94fbbac6822482b2b4e8e3738\",\"created_at_ms\":123,\"epoch\":2,\"epoch_id\":\"c7777867b1ce4098feea374a97e15d79d126953a0678f166201dddc8b543e1f8\",\"installation_incarnation\":\"7648f43b926e129b2418761d323f8779e6898077cb7c03307e00749b5e343eab\",\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"observed_frontier\":[],\"operation_id\":\"actor-enrolled:fb04d85aaa3782ab4d2fc7689fe7b3c87ab78e0b970daadfec492158873d997b\",\"operation_type\":\"actor_enrolled\",\"schema_version\":1,\"signature_algorithm\":\"ed25519\"},\"actor_proof\":\"ebb0f435fb92da7684b5b69d5fdc9f7c3dbf42d580e41c8a0ff17ab503d31489ab2050ebad4b62ac0fd98de034d7af067d97b41b56c69d3f9682ad70a23bc50c\",\"enrollment_body_digest\":\"37c2e9d971e5472ac85c449d5aa132ddec601ff6d176cf9064e958f8a283070a\"},\"certificate_digest\":\"7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48\"}",
+            "chainGenesisDigest": "020f0c892ea3e15682174fa922e056600882dbfcccbdf8fb953ba54f91167459",
+            "createdAt": 123,
+            "enrollmentCertificateDigest": "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+            "enrollmentOperationId": "actor-enrolled:fb04d85aaa3782ab4d2fc7689fe7b3c87ab78e0b970daadfec492158873d997b",
+            "publicKey": "aebf9a7c7285e998f1121c57a9ed94f4cebdf7626ce625d5d3bd80ef1c64291f",
+            "retiredAt": null,
+            "updatedAt": 123
+          },
+          "primaryKey": "fb04d85aaa3782ab4d2fc7689fe7b3c87ab78e0b970daadfec492158873d997b",
+          "protocolVersion": 2,
+          "registryKey": "90_actor_state"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "actorClass": "editor",
+            "actorId": "42e09961a621bace85cbe1b6f4af9d1cf133ff684f95a81aec481274d8eca395",
+            "canonicalCertificate": "{}",
+            "certificateDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "certificateVersion": 2,
+            "issuanceIdentity": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "issuedAt": 1,
+            "retiredAt": null,
+            "retirementCertificateDigest": null,
+            "retirementIdentity": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "scopeId": null,
+            "scopeKind": null,
+            "scopeMode": "library_wide"
+          },
+          "primaryKey": "42e09961a621bace85cbe1b6f4af9d1cf133ff684f95a81aec481274d8eca395",
+          "protocolVersion": 2,
+          "registryKey": "91_actor_capability"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "actorClass": "editor",
+            "actorId": "150f416d4f330e4273bef28fea3fa9238395f4e54b6f478712a7756593a67b0d",
+            "canonicalCertificate": "{\"authority_signature\":\"89ba550332d71208bb32cebd329c3dad1f268ea9d10425a05c188710553ee4b6c95c005c4cc398688cb5f8ec5dcfa0036fc43c92ce4b28b9293621defeeeae0d\",\"certificate_body\":{\"actor_capability_body\":{\"actor_class\":\"editor\",\"actor_id\":\"150f416d4f330e4273bef28fea3fa9238395f4e54b6f478712a7756593a67b0d\",\"actor_public_key\":\"aebf9a7c7285e998f1121c57a9ed94f4cebdf7626ce625d5d3bd80ef1c64291f\",\"allowed_operation_types\":[\"account_person_assignment\",\"account_remove\",\"account_upsert\",\"feed_item_analysis_replace\",\"feed_item_annotations_replace\",\"feed_item_archive_assignment\",\"feed_item_capture_upsert\",\"feed_item_like_assignment\",\"feed_item_like_sync_receipt\",\"feed_item_priority_assignment\",\"feed_item_read_assignment\",\"feed_item_remove\",\"feed_item_saved_assignment\",\"feed_item_seen_sync_receipt\",\"friend_replace\",\"person_reach_out_append\",\"person_remove_and_accounts\",\"person_remove_detach_accounts\",\"person_upsert\",\"preferences_leaf_assignment\",\"rss_feed_remove_keep_items\",\"rss_feed_remove_with_items\",\"rss_feed_title_assignment\",\"rss_feed_upsert\"],\"allowed_query_ids\":[],\"authority_key_id\":\"472a41744c299dc1901c09c5155a9e7887e260c94fbbac6822482b2b4e8e3738\",\"epoch\":2,\"epoch_id\":\"c7777867b1ce4098feea374a97e15d79d126953a0678f166201dddc8b543e1f8\",\"format\":\"freed_library_core_actor_capability_v2\",\"issuance_identity\":\"713176fdb1fc055107e07c8b1df6f8c5272e8ffd3d7724403ae0e796447f69ff\",\"issued_at_ms\":101,\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"retirement_identity\":\"c26bf1d497c81e22aee6e97116b9ec7929492614ed851d5cf8efffc1f596d53c\",\"scope\":{\"mode\":\"library_wide\"},\"signature_algorithm\":\"ed25519\"},\"actor_capability_body_digest\":\"d52b17f0baeaa8e938c5624bc31953f141e7ff681508dc88cfc5eb43d33ddfe1\",\"actor_enrollment_body\":{\"actor_id\":\"150f416d4f330e4273bef28fea3fa9238395f4e54b6f478712a7756593a67b0d\",\"actor_incarnation_nonce\":\"c2f63f4d97f144c64bfdaa6f2bb636767a7cb7e6ef0c2b72636a0e11de046bc2\",\"actor_public_key\":\"aebf9a7c7285e998f1121c57a9ed94f4cebdf7626ce625d5d3bd80ef1c64291f\",\"actor_public_key_fingerprint\":\"ce23b300e8e99f5014bbcac95c45e51c16dafb32dab8219c55ee6c53768b1a67\",\"authority_key_id\":\"472a41744c299dc1901c09c5155a9e7887e260c94fbbac6822482b2b4e8e3738\",\"created_at_ms\":101,\"epoch\":2,\"epoch_id\":\"c7777867b1ce4098feea374a97e15d79d126953a0678f166201dddc8b543e1f8\",\"installation_incarnation\":\"7648f43b926e129b2418761d323f8779e6898077cb7c03307e00749b5e343eab\",\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"observed_frontier\":[],\"operation_id\":\"actor-enrolled:150f416d4f330e4273bef28fea3fa9238395f4e54b6f478712a7756593a67b0d\",\"operation_type\":\"actor_enrolled\",\"schema_version\":1,\"signature_algorithm\":\"ed25519\"},\"actor_proof\":\"6db2737610be82ae19c1c21837ab64fb07a325065af4e22a0e1176c01dac5a81085c8cd5496951a3d6b5799d5e17f5e3fd15cd5effb3380529dd0cb7f5ac7a0b\",\"enrollment_body_digest\":\"bda9f7d034231c5578a593f0ab002a7b7fbb6bad50bf968007eadf4049b4e5a8\"},\"certificate_digest\":\"44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c\"}",
+            "certificateDigest": "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+            "certificateVersion": 2,
+            "issuanceIdentity": "713176fdb1fc055107e07c8b1df6f8c5272e8ffd3d7724403ae0e796447f69ff",
+            "issuedAt": 101,
+            "retiredAt": null,
+            "retirementCertificateDigest": null,
+            "retirementIdentity": "c26bf1d497c81e22aee6e97116b9ec7929492614ed851d5cf8efffc1f596d53c",
+            "scopeId": null,
+            "scopeKind": null,
+            "scopeMode": "library_wide"
+          },
+          "primaryKey": "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+          "protocolVersion": 2,
+          "registryKey": "91_actor_capability"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "actorClass": "editor",
+            "actorId": "fb04d85aaa3782ab4d2fc7689fe7b3c87ab78e0b970daadfec492158873d997b",
+            "canonicalCertificate": "{\"authority_signature\":\"7f5728fc9d90196a003f47a27105fc21399a236ee9d350978437b6330f6d7ee1d51ac9033aa943ff5d22bb8002013172bc403ce28d238bcfdb93ee226ad9e60f\",\"certificate_body\":{\"actor_capability_body\":{\"actor_class\":\"editor\",\"actor_id\":\"fb04d85aaa3782ab4d2fc7689fe7b3c87ab78e0b970daadfec492158873d997b\",\"actor_public_key\":\"aebf9a7c7285e998f1121c57a9ed94f4cebdf7626ce625d5d3bd80ef1c64291f\",\"allowed_operation_types\":[\"account_person_assignment\",\"account_remove\",\"account_upsert\",\"feed_item_analysis_replace\",\"feed_item_annotations_replace\",\"feed_item_archive_assignment\",\"feed_item_capture_upsert\",\"feed_item_like_assignment\",\"feed_item_like_sync_receipt\",\"feed_item_priority_assignment\",\"feed_item_read_assignment\",\"feed_item_remove\",\"feed_item_saved_assignment\",\"feed_item_seen_sync_receipt\",\"friend_replace\",\"person_reach_out_append\",\"person_remove_and_accounts\",\"person_remove_detach_accounts\",\"person_upsert\",\"preferences_leaf_assignment\",\"rss_feed_remove_keep_items\",\"rss_feed_remove_with_items\",\"rss_feed_title_assignment\",\"rss_feed_upsert\"],\"allowed_query_ids\":[],\"authority_key_id\":\"472a41744c299dc1901c09c5155a9e7887e260c94fbbac6822482b2b4e8e3738\",\"epoch\":2,\"epoch_id\":\"c7777867b1ce4098feea374a97e15d79d126953a0678f166201dddc8b543e1f8\",\"format\":\"freed_library_core_actor_capability_v2\",\"issuance_identity\":\"7fc616b59941490876b7404e0d3a82f8fcf23830266450fda6244fd3d6d392cc\",\"issued_at_ms\":123,\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"retirement_identity\":\"a4f555b5556fe7dc8ca91e28c8a551b6b978d7e659e4822d8d8c704e938f8639\",\"scope\":{\"mode\":\"library_wide\"},\"signature_algorithm\":\"ed25519\"},\"actor_capability_body_digest\":\"7ede631645dd93a3d0f2468ad132cb54a24511a6dc4861e0d4a7399ab4b3ea0c\",\"actor_enrollment_body\":{\"actor_id\":\"fb04d85aaa3782ab4d2fc7689fe7b3c87ab78e0b970daadfec492158873d997b\",\"actor_incarnation_nonce\":\"388a1ebceb788aacaef357a353d64b230ae29ad0c2f488d76ca7f1f06030c3cd\",\"actor_public_key\":\"aebf9a7c7285e998f1121c57a9ed94f4cebdf7626ce625d5d3bd80ef1c64291f\",\"actor_public_key_fingerprint\":\"ce23b300e8e99f5014bbcac95c45e51c16dafb32dab8219c55ee6c53768b1a67\",\"authority_key_id\":\"472a41744c299dc1901c09c5155a9e7887e260c94fbbac6822482b2b4e8e3738\",\"created_at_ms\":123,\"epoch\":2,\"epoch_id\":\"c7777867b1ce4098feea374a97e15d79d126953a0678f166201dddc8b543e1f8\",\"installation_incarnation\":\"7648f43b926e129b2418761d323f8779e6898077cb7c03307e00749b5e343eab\",\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"observed_frontier\":[],\"operation_id\":\"actor-enrolled:fb04d85aaa3782ab4d2fc7689fe7b3c87ab78e0b970daadfec492158873d997b\",\"operation_type\":\"actor_enrolled\",\"schema_version\":1,\"signature_algorithm\":\"ed25519\"},\"actor_proof\":\"ebb0f435fb92da7684b5b69d5fdc9f7c3dbf42d580e41c8a0ff17ab503d31489ab2050ebad4b62ac0fd98de034d7af067d97b41b56c69d3f9682ad70a23bc50c\",\"enrollment_body_digest\":\"37c2e9d971e5472ac85c449d5aa132ddec601ff6d176cf9064e958f8a283070a\"},\"certificate_digest\":\"7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48\"}",
+            "certificateDigest": "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+            "certificateVersion": 2,
+            "issuanceIdentity": "7fc616b59941490876b7404e0d3a82f8fcf23830266450fda6244fd3d6d392cc",
+            "issuedAt": 123,
+            "retiredAt": null,
+            "retirementCertificateDigest": null,
+            "retirementIdentity": "a4f555b5556fe7dc8ca91e28c8a551b6b978d7e659e4822d8d8c704e938f8639",
+            "scopeId": null,
+            "scopeKind": null,
+            "scopeMode": "library_wide"
+          },
+          "primaryKey": "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+          "protocolVersion": 2,
+          "registryKey": "91_actor_capability"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "actorClass": "editor",
+            "actorId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "canonicalCertificate": "{}",
+            "certificateDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "certificateVersion": 2,
+            "issuanceIdentity": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "issuedAt": 1,
+            "retiredAt": null,
+            "retirementCertificateDigest": null,
+            "retirementIdentity": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "scopeId": null,
+            "scopeKind": null,
+            "scopeMode": "library_wide"
+          },
+          "primaryKey": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "protocolVersion": 2,
+          "registryKey": "91_actor_capability"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "actorClass": "editor",
+            "actorId": "9ca162dd62a1f7026322abbf0c30b9a5b3408866aed8d27cbb95bac387a78b4a",
+            "canonicalCertificate": "{\"authority_signature\":\"ed94da3d7a261bf6fb3db5791c9754579984b6aa8d01fcebfb54df349d8d00cdfb6177d910fd1f962c7e50b0150305f01a38cbd840ad63489f5accaa66ca0d01\",\"certificate_body\":{\"actor_capability_body\":{\"actor_class\":\"editor\",\"actor_id\":\"9ca162dd62a1f7026322abbf0c30b9a5b3408866aed8d27cbb95bac387a78b4a\",\"actor_public_key\":\"e47cdbf15d344118ca8b651600f11cd02f107cd9347e451b676ff3617e74465a\",\"allowed_operation_types\":[\"account_person_assignment\",\"account_remove\",\"account_upsert\",\"feed_item_analysis_replace\",\"feed_item_annotations_replace\",\"feed_item_archive_assignment\",\"feed_item_capture_upsert\",\"feed_item_like_assignment\",\"feed_item_like_sync_receipt\",\"feed_item_priority_assignment\",\"feed_item_read_assignment\",\"feed_item_remove\",\"feed_item_saved_assignment\",\"feed_item_seen_sync_receipt\",\"friend_replace\",\"person_reach_out_append\",\"person_remove_and_accounts\",\"person_remove_detach_accounts\",\"person_upsert\",\"preferences_leaf_assignment\",\"rss_feed_remove_keep_items\",\"rss_feed_remove_with_items\",\"rss_feed_title_assignment\",\"rss_feed_upsert\"],\"allowed_query_ids\":[],\"authority_key_id\":\"472a41744c299dc1901c09c5155a9e7887e260c94fbbac6822482b2b4e8e3738\",\"epoch\":2,\"epoch_id\":\"c7777867b1ce4098feea374a97e15d79d126953a0678f166201dddc8b543e1f8\",\"format\":\"freed_library_core_actor_capability_v2\",\"issuance_identity\":\"d4bce56cf48607fed1edf01592a6edad94e675da251aa1dfc279e8b73f233bec\",\"issued_at_ms\":108,\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"retirement_identity\":\"15dc070f31f4407c9d5608c93b8431f1c193d57eafb9b0d931b7c221cfa8149b\",\"scope\":{\"mode\":\"library_wide\"},\"signature_algorithm\":\"ed25519\"},\"actor_capability_body_digest\":\"2db55a9fae8e5325f4638ee8569ff03ff4640df8ebb6a33da48dd68c0bedbf93\",\"actor_enrollment_body\":{\"actor_id\":\"9ca162dd62a1f7026322abbf0c30b9a5b3408866aed8d27cbb95bac387a78b4a\",\"actor_incarnation_nonce\":\"2ce410c92a4cbfc14b3b486e05c3384da920c102a0816cd45507ec56df4324a6\",\"actor_public_key\":\"e47cdbf15d344118ca8b651600f11cd02f107cd9347e451b676ff3617e74465a\",\"actor_public_key_fingerprint\":\"e66ec497a4f430d988ef1f8bd515d4854c0e621f4ddf99491b62a31112e8538e\",\"authority_key_id\":\"472a41744c299dc1901c09c5155a9e7887e260c94fbbac6822482b2b4e8e3738\",\"created_at_ms\":108,\"epoch\":2,\"epoch_id\":\"c7777867b1ce4098feea374a97e15d79d126953a0678f166201dddc8b543e1f8\",\"installation_incarnation\":\"7648f43b926e129b2418761d323f8779e6898077cb7c03307e00749b5e343eab\",\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"observed_frontier\":[],\"operation_id\":\"actor-enrolled:9ca162dd62a1f7026322abbf0c30b9a5b3408866aed8d27cbb95bac387a78b4a\",\"operation_type\":\"actor_enrolled\",\"schema_version\":1,\"signature_algorithm\":\"ed25519\"},\"actor_proof\":\"83d652a80102b928bd6dd9cead2f785d5ed40c6139ab2e19402ddf5f368b6d809df4e14c2fcbc63288837c137a0461d00bcb60930d3de7812efefe34f988290d\",\"enrollment_body_digest\":\"9922779bf9420680d86b7f8285afac801ec7c09128a220ddbe39d1a04f65b016\"},\"certificate_digest\":\"eeb5fb2cd37a2c207f092e449e9f6c94417baa8142f546918c10ad76fce407a3\"}",
+            "certificateDigest": "eeb5fb2cd37a2c207f092e449e9f6c94417baa8142f546918c10ad76fce407a3",
+            "certificateVersion": 2,
+            "issuanceIdentity": "d4bce56cf48607fed1edf01592a6edad94e675da251aa1dfc279e8b73f233bec",
+            "issuedAt": 108,
+            "retiredAt": null,
+            "retirementCertificateDigest": null,
+            "retirementIdentity": "15dc070f31f4407c9d5608c93b8431f1c193d57eafb9b0d931b7c221cfa8149b",
+            "scopeId": null,
+            "scopeKind": null,
+            "scopeMode": "library_wide"
+          },
+          "primaryKey": "eeb5fb2cd37a2c207f092e449e9f6c94417baa8142f546918c10ad76fce407a3",
+          "protocolVersion": 2,
+          "registryKey": "91_actor_capability"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "account_person_assignment"
+          },
+          "primaryKey": [
+            "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+            "account_person_assignment"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "account_remove"
+          },
+          "primaryKey": [
+            "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+            "account_remove"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "account_upsert"
+          },
+          "primaryKey": [
+            "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+            "account_upsert"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "feed_item_analysis_replace"
+          },
+          "primaryKey": [
+            "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+            "feed_item_analysis_replace"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "feed_item_annotations_replace"
+          },
+          "primaryKey": [
+            "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+            "feed_item_annotations_replace"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "feed_item_archive_assignment"
+          },
+          "primaryKey": [
+            "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+            "feed_item_archive_assignment"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "feed_item_capture_upsert"
+          },
+          "primaryKey": [
+            "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+            "feed_item_capture_upsert"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "feed_item_like_assignment"
+          },
+          "primaryKey": [
+            "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+            "feed_item_like_assignment"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "feed_item_like_sync_receipt"
+          },
+          "primaryKey": [
+            "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+            "feed_item_like_sync_receipt"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "feed_item_priority_assignment"
+          },
+          "primaryKey": [
+            "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+            "feed_item_priority_assignment"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "feed_item_read_assignment"
+          },
+          "primaryKey": [
+            "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+            "feed_item_read_assignment"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "feed_item_remove"
+          },
+          "primaryKey": [
+            "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+            "feed_item_remove"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "feed_item_saved_assignment"
+          },
+          "primaryKey": [
+            "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+            "feed_item_saved_assignment"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "feed_item_seen_sync_receipt"
+          },
+          "primaryKey": [
+            "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+            "feed_item_seen_sync_receipt"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "friend_replace"
+          },
+          "primaryKey": [
+            "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+            "friend_replace"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "person_reach_out_append"
+          },
+          "primaryKey": [
+            "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+            "person_reach_out_append"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "person_remove_and_accounts"
+          },
+          "primaryKey": [
+            "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+            "person_remove_and_accounts"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "person_remove_detach_accounts"
+          },
+          "primaryKey": [
+            "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+            "person_remove_detach_accounts"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "person_upsert"
+          },
+          "primaryKey": [
+            "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+            "person_upsert"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "preferences_leaf_assignment"
+          },
+          "primaryKey": [
+            "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+            "preferences_leaf_assignment"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "rss_feed_remove_keep_items"
+          },
+          "primaryKey": [
+            "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+            "rss_feed_remove_keep_items"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "rss_feed_remove_with_items"
+          },
+          "primaryKey": [
+            "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+            "rss_feed_remove_with_items"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "rss_feed_title_assignment"
+          },
+          "primaryKey": [
+            "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+            "rss_feed_title_assignment"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "rss_feed_upsert"
+          },
+          "primaryKey": [
+            "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+            "rss_feed_upsert"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "account_person_assignment"
+          },
+          "primaryKey": [
+            "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+            "account_person_assignment"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "account_remove"
+          },
+          "primaryKey": [
+            "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+            "account_remove"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "account_upsert"
+          },
+          "primaryKey": [
+            "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+            "account_upsert"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "feed_item_analysis_replace"
+          },
+          "primaryKey": [
+            "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+            "feed_item_analysis_replace"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "feed_item_annotations_replace"
+          },
+          "primaryKey": [
+            "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+            "feed_item_annotations_replace"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "feed_item_archive_assignment"
+          },
+          "primaryKey": [
+            "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+            "feed_item_archive_assignment"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "feed_item_capture_upsert"
+          },
+          "primaryKey": [
+            "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+            "feed_item_capture_upsert"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "feed_item_like_assignment"
+          },
+          "primaryKey": [
+            "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+            "feed_item_like_assignment"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "feed_item_like_sync_receipt"
+          },
+          "primaryKey": [
+            "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+            "feed_item_like_sync_receipt"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "feed_item_priority_assignment"
+          },
+          "primaryKey": [
+            "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+            "feed_item_priority_assignment"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "feed_item_read_assignment"
+          },
+          "primaryKey": [
+            "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+            "feed_item_read_assignment"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "feed_item_remove"
+          },
+          "primaryKey": [
+            "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+            "feed_item_remove"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "feed_item_saved_assignment"
+          },
+          "primaryKey": [
+            "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+            "feed_item_saved_assignment"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "feed_item_seen_sync_receipt"
+          },
+          "primaryKey": [
+            "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+            "feed_item_seen_sync_receipt"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "friend_replace"
+          },
+          "primaryKey": [
+            "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+            "friend_replace"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "person_reach_out_append"
+          },
+          "primaryKey": [
+            "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+            "person_reach_out_append"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "person_remove_and_accounts"
+          },
+          "primaryKey": [
+            "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+            "person_remove_and_accounts"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "person_remove_detach_accounts"
+          },
+          "primaryKey": [
+            "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+            "person_remove_detach_accounts"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "person_upsert"
+          },
+          "primaryKey": [
+            "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+            "person_upsert"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "preferences_leaf_assignment"
+          },
+          "primaryKey": [
+            "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+            "preferences_leaf_assignment"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "rss_feed_remove_keep_items"
+          },
+          "primaryKey": [
+            "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+            "rss_feed_remove_keep_items"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "rss_feed_remove_with_items"
+          },
+          "primaryKey": [
+            "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+            "rss_feed_remove_with_items"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "rss_feed_title_assignment"
+          },
+          "primaryKey": [
+            "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+            "rss_feed_title_assignment"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "rss_feed_upsert"
+          },
+          "primaryKey": [
+            "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+            "rss_feed_upsert"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "account_person_assignment"
+          },
+          "primaryKey": [
+            "eeb5fb2cd37a2c207f092e449e9f6c94417baa8142f546918c10ad76fce407a3",
+            "account_person_assignment"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "account_remove"
+          },
+          "primaryKey": [
+            "eeb5fb2cd37a2c207f092e449e9f6c94417baa8142f546918c10ad76fce407a3",
+            "account_remove"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "account_upsert"
+          },
+          "primaryKey": [
+            "eeb5fb2cd37a2c207f092e449e9f6c94417baa8142f546918c10ad76fce407a3",
+            "account_upsert"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "feed_item_analysis_replace"
+          },
+          "primaryKey": [
+            "eeb5fb2cd37a2c207f092e449e9f6c94417baa8142f546918c10ad76fce407a3",
+            "feed_item_analysis_replace"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "feed_item_annotations_replace"
+          },
+          "primaryKey": [
+            "eeb5fb2cd37a2c207f092e449e9f6c94417baa8142f546918c10ad76fce407a3",
+            "feed_item_annotations_replace"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "feed_item_archive_assignment"
+          },
+          "primaryKey": [
+            "eeb5fb2cd37a2c207f092e449e9f6c94417baa8142f546918c10ad76fce407a3",
+            "feed_item_archive_assignment"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "feed_item_capture_upsert"
+          },
+          "primaryKey": [
+            "eeb5fb2cd37a2c207f092e449e9f6c94417baa8142f546918c10ad76fce407a3",
+            "feed_item_capture_upsert"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "feed_item_like_assignment"
+          },
+          "primaryKey": [
+            "eeb5fb2cd37a2c207f092e449e9f6c94417baa8142f546918c10ad76fce407a3",
+            "feed_item_like_assignment"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "feed_item_like_sync_receipt"
+          },
+          "primaryKey": [
+            "eeb5fb2cd37a2c207f092e449e9f6c94417baa8142f546918c10ad76fce407a3",
+            "feed_item_like_sync_receipt"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "feed_item_priority_assignment"
+          },
+          "primaryKey": [
+            "eeb5fb2cd37a2c207f092e449e9f6c94417baa8142f546918c10ad76fce407a3",
+            "feed_item_priority_assignment"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "feed_item_read_assignment"
+          },
+          "primaryKey": [
+            "eeb5fb2cd37a2c207f092e449e9f6c94417baa8142f546918c10ad76fce407a3",
+            "feed_item_read_assignment"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "feed_item_remove"
+          },
+          "primaryKey": [
+            "eeb5fb2cd37a2c207f092e449e9f6c94417baa8142f546918c10ad76fce407a3",
+            "feed_item_remove"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "feed_item_saved_assignment"
+          },
+          "primaryKey": [
+            "eeb5fb2cd37a2c207f092e449e9f6c94417baa8142f546918c10ad76fce407a3",
+            "feed_item_saved_assignment"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "feed_item_seen_sync_receipt"
+          },
+          "primaryKey": [
+            "eeb5fb2cd37a2c207f092e449e9f6c94417baa8142f546918c10ad76fce407a3",
+            "feed_item_seen_sync_receipt"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "friend_replace"
+          },
+          "primaryKey": [
+            "eeb5fb2cd37a2c207f092e449e9f6c94417baa8142f546918c10ad76fce407a3",
+            "friend_replace"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "person_reach_out_append"
+          },
+          "primaryKey": [
+            "eeb5fb2cd37a2c207f092e449e9f6c94417baa8142f546918c10ad76fce407a3",
+            "person_reach_out_append"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "person_remove_and_accounts"
+          },
+          "primaryKey": [
+            "eeb5fb2cd37a2c207f092e449e9f6c94417baa8142f546918c10ad76fce407a3",
+            "person_remove_and_accounts"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "person_remove_detach_accounts"
+          },
+          "primaryKey": [
+            "eeb5fb2cd37a2c207f092e449e9f6c94417baa8142f546918c10ad76fce407a3",
+            "person_remove_detach_accounts"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "person_upsert"
+          },
+          "primaryKey": [
+            "eeb5fb2cd37a2c207f092e449e9f6c94417baa8142f546918c10ad76fce407a3",
+            "person_upsert"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "preferences_leaf_assignment"
+          },
+          "primaryKey": [
+            "eeb5fb2cd37a2c207f092e449e9f6c94417baa8142f546918c10ad76fce407a3",
+            "preferences_leaf_assignment"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "rss_feed_remove_keep_items"
+          },
+          "primaryKey": [
+            "eeb5fb2cd37a2c207f092e449e9f6c94417baa8142f546918c10ad76fce407a3",
+            "rss_feed_remove_keep_items"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "rss_feed_remove_with_items"
+          },
+          "primaryKey": [
+            "eeb5fb2cd37a2c207f092e449e9f6c94417baa8142f546918c10ad76fce407a3",
+            "rss_feed_remove_with_items"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "rss_feed_title_assignment"
+          },
+          "primaryKey": [
+            "eeb5fb2cd37a2c207f092e449e9f6c94417baa8142f546918c10ad76fce407a3",
+            "rss_feed_title_assignment"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        },
+        {
+          "format": "freed_normalized_checkpoint_v2",
+          "payload": {
+            "mutationId": "rss_feed_upsert"
+          },
+          "primaryKey": [
+            "eeb5fb2cd37a2c207f092e449e9f6c94417baa8142f546918c10ad76fce407a3",
+            "rss_feed_upsert"
+          ],
+          "protocolVersion": 2,
+          "registryKey": "92_actor_capability_mutation"
+        }
+      ]
+    }
+  ],
+  "readReferences": [
+    {
+      "authorizationDigest": "045bc3bc0bb6cdabaa0a664328ff9fe13cfd2492ef50a5adec13f6ac44ed8b76",
+      "checkpointDigest": "68f2786d9e4775138045191432757e682a3aea028bf58d0772e2cd62155beb7d",
+      "controlFileId": "control-file",
+      "controlRevision": "\"final-head\"",
+      "pointer": {
+        "activeTransport": "google_drive_app_data_v1",
+        "causalFrontierDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "generation": 2,
+        "libraryId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "manifest": {
+          "descriptor": {
+            "byteLength": 100,
+            "contentDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "objectKey": "freed-v2-manifest~aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa~ebbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb~g2~eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee.json"
+          },
+          "transportObjectId": "final-checkpoint"
+        },
+        "protocolVersion": 1,
+        "schemaVersion": 1,
+        "storageEpoch": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "writerId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "purpose": "predecessor_checkpoint_read",
+      "sourceRevision": 0,
+      "successorEpochId": "c7777867b1ce4098feea374a97e15d79d126953a0678f166201dddc8b543e1f8"
+    },
+    {
+      "authorizationDigest": "30e44e647d46a8f1c8db800751bfc3e4c5ec4818155b6b751ae9b4abee53a78e",
+      "checkpointDigest": "3f2345629b9ff622a60a73e749a1dcd6653159c89f70e012f139fa9bc189872a",
+      "controlFileId": "control-file",
+      "controlRevision": "\"return-final\"",
+      "pointer": {
+        "activeTransport": "google_drive_app_data_v1",
+        "causalFrontierDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "generation": 8,
+        "libraryId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "manifest": {
+          "descriptor": {
+            "byteLength": 21381,
+            "contentDigest": "9e7d4c915283268cfb95a2da2a3a0944ed75403bfd2644b101c50a53dbc41fd2",
+            "objectKey": "freed-v2-manifest~aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa~ec7777867b1ce4098feea374a97e15d79d126953a0678f166201dddc8b543e1f8~g8~9e7d4c915283268cfb95a2da2a3a0944ed75403bfd2644b101c50a53dbc41fd2.json"
+          },
+          "transportObjectId": "final-checkpoint"
+        },
+        "protocolVersion": 1,
+        "schemaVersion": 1,
+        "storageEpoch": "c7777867b1ce4098feea374a97e15d79d126953a0678f166201dddc8b543e1f8",
+        "writerId": "150f416d4f330e4273bef28fea3fa9238395f4e54b6f478712a7756593a67b0d"
+      },
+      "purpose": "predecessor_checkpoint_read",
+      "sourceRevision": 2,
+      "successorEpochId": "e36dd36afe96e699ba278daa66b28e343c1c0ee2e5ccc8880078596d2af2b060"
+    }
+  ],
+  "successor": {
+    "descriptor": {
+      "authorityEpoch": "e36dd36afe96e699ba278daa66b28e343c1c0ee2e5ccc8880078596d2af2b060",
+      "causalFrontierDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "format": "freed_normalized_checkpoint_export_v2",
+      "itemCount": 0,
+      "libraryId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "protocolVersion": 2,
+      "recordCount": 87,
+      "sourceRevision": 2,
+      "writerId": "9ca162dd62a1f7026322abbf0c30b9a5b3408866aed8d27cbb95bac387a78b4a"
+    },
+    "records": [
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "authorityEpoch": "e36dd36afe96e699ba278daa66b28e343c1c0ee2e5ccc8880078596d2af2b060",
+          "checkpointId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:e36dd36afe96e699ba278daa66b28e343c1c0ee2e5ccc8880078596d2af2b060:2",
+          "createdAtMs": 126,
+          "libraryId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "schemaVersion": 1,
+          "sourceRevision": 2
+        },
+        "primaryKey": "checkpoint",
+        "protocolVersion": 2,
+        "registryKey": "00_checkpoint_header"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "acceptedAt": 1,
+          "acceptedManifestGeneration": 1,
+          "authorityKeyId": "91145d3f7c2d387e990aa6fe5b875f8c55d0f698d591028149d9d2b5d8d6d571",
+          "authorityPublicKey": "8b1e519ffb0175da6d700b9a01ce22a76ce06e3eb31004692e201e555b2275b1",
+          "canonicalTransitionCertificate": "{}",
+          "checkpointFrontierDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "epochNumber": 1,
+          "libraryId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "materializedStateDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "transitionCertificateDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        },
+        "primaryKey": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "protocolVersion": 2,
+        "registryKey": "01_authority_epoch"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "acceptedAt": 101,
+          "acceptedManifestGeneration": 0,
+          "authorityKeyId": "472a41744c299dc1901c09c5155a9e7887e260c94fbbac6822482b2b4e8e3738",
+          "authorityPublicKey": "f96023cd9818e1a458234c7a523c27ed404f58eae31c7e91f44a5c900c984b50",
+          "canonicalTransitionCertificate": "{\"authority_key_possession_signature\":\"2d84ce79c9b258d19a245274e8157a7b5ba0a01fd1cf787188ad5d0dc0ba52c2195d0901fa2268ba892366eee827462e6608a740ab955336d0689c6708e77300\",\"certificate_body\":{\"format\":\"freed_library_core_writer_epoch_handoff_v1\",\"handoff_authorization\":{\"authorization_digest\":\"045bc3bc0bb6cdabaa0a664328ff9fe13cfd2492ef50a5adec13f6ac44ed8b76\",\"body\":{\"final_checkpoint_digest\":\"68f2786d9e4775138045191432757e682a3aea028bf58d0772e2cd62155beb7d\",\"final_source_revision\":0,\"format\":\"freed_library_handoff_authorization_v1\",\"predecessor_authority_public_key\":\"8b1e519ffb0175da6d700b9a01ce22a76ce06e3eb31004692e201e555b2275b1\",\"readiness\":{\"actor_signature\":\"932e426ceee1f3505cfb7ad6e6f8ba8399c7504cb503dabe07caceb22b83eed2f143e266c3e8fe94d72e60433f9f65bcc614dc2348a076dfb0af79df971ca704\",\"authority_possession_signature\":\"35898ed4e2597599ffa1e1efd924368579c3cead20a9956b6b03f434b5e8f44f8e2e48975f7ff478e711dc78f3ce1590d94e3809e1635ae69fc88ef49aab350e\",\"body\":{\"checkpoint_schema_version\":1,\"created_at_ms\":4,\"format\":\"freed_library_handoff_readiness_v1\",\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"native_storage_version\":2,\"predecessor_certificate_digest\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"predecessor_epoch_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"replication_protocol_version\":2,\"target_actor_id\":\"150f416d4f330e4273bef28fea3fa9238395f4e54b6f478712a7756593a67b0d\",\"target_actor_public_key\":\"aebf9a7c7285e998f1121c57a9ed94f4cebdf7626ce625d5d3bd80ef1c64291f\",\"target_authority_public_key\":\"f96023cd9818e1a458234c7a523c27ed404f58eae31c7e91f44a5c900c984b50\"},\"handoff_id\":\"2ce410c92a4cbfc14b3b486e05c3384da920c102a0816cd45507ec56df4324a6\"},\"source_control\":{\"activeTransport\":\"google_drive_app_data_v1\",\"causalFrontierDigest\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"generation\":2,\"libraryId\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"manifest\":{\"descriptor\":{\"byteLength\":100,\"contentDigest\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"objectKey\":\"freed-v2-manifest~aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa~ebbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb~g2~eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee.json\"},\"transportObjectId\":\"final-checkpoint\"},\"protocolVersion\":1,\"schemaVersion\":1,\"storageEpoch\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"writerId\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\"},\"source_control_file_id\":\"control-file\",\"source_control_revision\":\"\\\"final-head\\\"\",\"successor_epoch\":2},\"predecessor_signature\":\"990c6fe5b7cc4ee366b62b472c15ecc48f40b59953f97a13c61bb5cd14c056bc4a6cba19726691a875098e24364d72778d44fe043300518fe775331ce924190a\"},\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"signature_algorithm\":\"ed25519\",\"source_control\":{\"activeTransport\":\"google_drive_app_data_v1\",\"causalFrontierDigest\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"generation\":2,\"libraryId\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"manifest\":{\"descriptor\":{\"byteLength\":100,\"contentDigest\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"objectKey\":\"freed-v2-manifest~aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa~ebbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb~g2~eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee.json\"},\"transportObjectId\":\"final-checkpoint\"},\"protocolVersion\":1,\"schemaVersion\":1,\"storageEpoch\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"writerId\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\"},\"target_authority_key_id\":\"472a41744c299dc1901c09c5155a9e7887e260c94fbbac6822482b2b4e8e3738\",\"target_authority_public_key\":\"f96023cd9818e1a458234c7a523c27ed404f58eae31c7e91f44a5c900c984b50\",\"target_epoch\":2,\"target_writer_id\":\"150f416d4f330e4273bef28fea3fa9238395f4e54b6f478712a7756593a67b0d\"},\"epoch_id\":\"c7777867b1ce4098feea374a97e15d79d126953a0678f166201dddc8b543e1f8\",\"epoch_signature\":\"f09d680e8ffab8738e4074ab2ef332f0817b453e730ca12dbabeabcad3db23961c354acba2db0431e6c7d16c0ada05facc0a6a8671708e09b1010f28442e3e07\"}",
+          "checkpointFrontierDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "epochNumber": 2,
+          "libraryId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "materializedStateDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "transitionCertificateDigest": "ba077f5db28b9112fe1e93bcc64628f1bdc069f947788a45116346f5b1a09ecf"
+        },
+        "primaryKey": "c7777867b1ce4098feea374a97e15d79d126953a0678f166201dddc8b543e1f8",
+        "protocolVersion": 2,
+        "registryKey": "01_authority_epoch"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "acceptedAt": 126,
+          "acceptedManifestGeneration": 0,
+          "authorityKeyId": "46281d30ac3ed61cc5ccf47f43738a720e77abbb72d93417efd5bcfaf7acd374",
+          "authorityPublicKey": "0d8e6495522fd9477b810bf011fd6637b28d4c495cf51c01b07b14bad4970a3e",
+          "canonicalTransitionCertificate": "{\"authority_key_possession_signature\":\"a8a94e1b4a39c4ddede31eda8103ec55c2a78f3dfc6551b2a89db3a5d1ea225c42e03bd8db4ec49f7e425e38227118b72dcfdbaccbe45fdc498c3b93ac54fd07\",\"certificate_body\":{\"format\":\"freed_library_core_writer_epoch_handoff_v1\",\"handoff_authorization\":{\"authorization_digest\":\"30e44e647d46a8f1c8db800751bfc3e4c5ec4818155b6b751ae9b4abee53a78e\",\"body\":{\"final_checkpoint_digest\":\"3f2345629b9ff622a60a73e749a1dcd6653159c89f70e012f139fa9bc189872a\",\"final_source_revision\":2,\"format\":\"freed_library_handoff_authorization_v1\",\"predecessor_authority_public_key\":\"f96023cd9818e1a458234c7a523c27ed404f58eae31c7e91f44a5c900c984b50\",\"readiness\":{\"actor_signature\":\"51cc8956c4437343d1380e258129054841a3a41f65478c4c26437cf6940dc46f6d47ad95b2d244192da087a4bc70aeb812211f5841743393e25ab1ea28b1c602\",\"authority_possession_signature\":\"e4752a4b526ea628534d169e2fbe169fb3d9ae9450f38861b4a6e37d245560a287c906ff017bfe9261e5a5c50884a11866b0f923161584f98bf1d7978e2fc501\",\"body\":{\"checkpoint_schema_version\":1,\"created_at_ms\":120,\"format\":\"freed_library_handoff_readiness_v1\",\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"native_storage_version\":2,\"predecessor_certificate_digest\":\"ba077f5db28b9112fe1e93bcc64628f1bdc069f947788a45116346f5b1a09ecf\",\"predecessor_epoch_id\":\"c7777867b1ce4098feea374a97e15d79d126953a0678f166201dddc8b543e1f8\",\"replication_protocol_version\":2,\"target_actor_id\":\"9ca162dd62a1f7026322abbf0c30b9a5b3408866aed8d27cbb95bac387a78b4a\",\"target_actor_public_key\":\"e47cdbf15d344118ca8b651600f11cd02f107cd9347e451b676ff3617e74465a\",\"target_authority_public_key\":\"0d8e6495522fd9477b810bf011fd6637b28d4c495cf51c01b07b14bad4970a3e\"},\"handoff_id\":\"72773e84e9b55f4347868846d7838821054d6c2f1ccf7712260f7e6d1434ce9d\"},\"source_control\":{\"activeTransport\":\"google_drive_app_data_v1\",\"causalFrontierDigest\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"generation\":8,\"libraryId\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"manifest\":{\"descriptor\":{\"byteLength\":21381,\"contentDigest\":\"9e7d4c915283268cfb95a2da2a3a0944ed75403bfd2644b101c50a53dbc41fd2\",\"objectKey\":\"freed-v2-manifest~aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa~ec7777867b1ce4098feea374a97e15d79d126953a0678f166201dddc8b543e1f8~g8~9e7d4c915283268cfb95a2da2a3a0944ed75403bfd2644b101c50a53dbc41fd2.json\"},\"transportObjectId\":\"final-checkpoint\"},\"protocolVersion\":1,\"schemaVersion\":1,\"storageEpoch\":\"c7777867b1ce4098feea374a97e15d79d126953a0678f166201dddc8b543e1f8\",\"writerId\":\"150f416d4f330e4273bef28fea3fa9238395f4e54b6f478712a7756593a67b0d\"},\"source_control_file_id\":\"control-file\",\"source_control_revision\":\"\\\"return-final\\\"\",\"successor_epoch\":3},\"predecessor_signature\":\"d4fdd129fcfac86b6875876104206b894c6397f811a7662ce7c320281c593b56a89a80433fe26962679ef24a365b35b927146f1030542e24b295183b4d66e90c\"},\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"signature_algorithm\":\"ed25519\",\"source_control\":{\"activeTransport\":\"google_drive_app_data_v1\",\"causalFrontierDigest\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"generation\":8,\"libraryId\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"manifest\":{\"descriptor\":{\"byteLength\":21381,\"contentDigest\":\"9e7d4c915283268cfb95a2da2a3a0944ed75403bfd2644b101c50a53dbc41fd2\",\"objectKey\":\"freed-v2-manifest~aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa~ec7777867b1ce4098feea374a97e15d79d126953a0678f166201dddc8b543e1f8~g8~9e7d4c915283268cfb95a2da2a3a0944ed75403bfd2644b101c50a53dbc41fd2.json\"},\"transportObjectId\":\"final-checkpoint\"},\"protocolVersion\":1,\"schemaVersion\":1,\"storageEpoch\":\"c7777867b1ce4098feea374a97e15d79d126953a0678f166201dddc8b543e1f8\",\"writerId\":\"150f416d4f330e4273bef28fea3fa9238395f4e54b6f478712a7756593a67b0d\"},\"target_authority_key_id\":\"46281d30ac3ed61cc5ccf47f43738a720e77abbb72d93417efd5bcfaf7acd374\",\"target_authority_public_key\":\"0d8e6495522fd9477b810bf011fd6637b28d4c495cf51c01b07b14bad4970a3e\",\"target_epoch\":3,\"target_writer_id\":\"9ca162dd62a1f7026322abbf0c30b9a5b3408866aed8d27cbb95bac387a78b4a\"},\"epoch_id\":\"e36dd36afe96e699ba278daa66b28e343c1c0ee2e5ccc8880078596d2af2b060\",\"epoch_signature\":\"85b7815aa8ee5e8bf2f1d5aa90d47b4beb243a9d843e5bc0381d8209239fcca036baa25636baf60d7c3461e66319e16448a99e38717cc5be891bab2a300f5d0f\"}",
+          "checkpointFrontierDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "epochNumber": 3,
+          "libraryId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "materializedStateDigest": "3f2345629b9ff622a60a73e749a1dcd6653159c89f70e012f139fa9bc189872a",
+          "transitionCertificateDigest": "27de3e20ae60e2661c15e6c2fc20821071e79211e418838496551d67c43aa40a"
+        },
+        "primaryKey": "e36dd36afe96e699ba278daa66b28e343c1c0ee2e5ccc8880078596d2af2b060",
+        "protocolVersion": 2,
+        "registryKey": "01_authority_epoch"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "acceptedManifestGeneration": 0,
+          "activatedAt": 126,
+          "activeKey": "active",
+          "epochId": "e36dd36afe96e699ba278daa66b28e343c1c0ee2e5ccc8880078596d2af2b060",
+          "libraryId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "writerId": "primary:desktop"
+        },
+        "primaryKey": "active",
+        "protocolVersion": 2,
+        "registryKey": "03_active_authority"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "acceptedChainDigest": "060afd5c66cda9116887b69e96c35f38fb0ffe6da1d309d07278a370e67dc43d",
+          "acceptedCounter": 0,
+          "acceptedOperationId": null,
+          "actorKind": "desktop",
+          "authorityEpochId": "c7777867b1ce4098feea374a97e15d79d126953a0678f166201dddc8b543e1f8",
+          "canonicalEnrollmentCertificate": "{\"authority_signature\":\"89ba550332d71208bb32cebd329c3dad1f268ea9d10425a05c188710553ee4b6c95c005c4cc398688cb5f8ec5dcfa0036fc43c92ce4b28b9293621defeeeae0d\",\"certificate_body\":{\"actor_capability_body\":{\"actor_class\":\"editor\",\"actor_id\":\"150f416d4f330e4273bef28fea3fa9238395f4e54b6f478712a7756593a67b0d\",\"actor_public_key\":\"aebf9a7c7285e998f1121c57a9ed94f4cebdf7626ce625d5d3bd80ef1c64291f\",\"allowed_operation_types\":[\"account_person_assignment\",\"account_remove\",\"account_upsert\",\"feed_item_analysis_replace\",\"feed_item_annotations_replace\",\"feed_item_archive_assignment\",\"feed_item_capture_upsert\",\"feed_item_like_assignment\",\"feed_item_like_sync_receipt\",\"feed_item_priority_assignment\",\"feed_item_read_assignment\",\"feed_item_remove\",\"feed_item_saved_assignment\",\"feed_item_seen_sync_receipt\",\"friend_replace\",\"person_reach_out_append\",\"person_remove_and_accounts\",\"person_remove_detach_accounts\",\"person_upsert\",\"preferences_leaf_assignment\",\"rss_feed_remove_keep_items\",\"rss_feed_remove_with_items\",\"rss_feed_title_assignment\",\"rss_feed_upsert\"],\"allowed_query_ids\":[],\"authority_key_id\":\"472a41744c299dc1901c09c5155a9e7887e260c94fbbac6822482b2b4e8e3738\",\"epoch\":2,\"epoch_id\":\"c7777867b1ce4098feea374a97e15d79d126953a0678f166201dddc8b543e1f8\",\"format\":\"freed_library_core_actor_capability_v2\",\"issuance_identity\":\"713176fdb1fc055107e07c8b1df6f8c5272e8ffd3d7724403ae0e796447f69ff\",\"issued_at_ms\":101,\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"retirement_identity\":\"c26bf1d497c81e22aee6e97116b9ec7929492614ed851d5cf8efffc1f596d53c\",\"scope\":{\"mode\":\"library_wide\"},\"signature_algorithm\":\"ed25519\"},\"actor_capability_body_digest\":\"d52b17f0baeaa8e938c5624bc31953f141e7ff681508dc88cfc5eb43d33ddfe1\",\"actor_enrollment_body\":{\"actor_id\":\"150f416d4f330e4273bef28fea3fa9238395f4e54b6f478712a7756593a67b0d\",\"actor_incarnation_nonce\":\"c2f63f4d97f144c64bfdaa6f2bb636767a7cb7e6ef0c2b72636a0e11de046bc2\",\"actor_public_key\":\"aebf9a7c7285e998f1121c57a9ed94f4cebdf7626ce625d5d3bd80ef1c64291f\",\"actor_public_key_fingerprint\":\"ce23b300e8e99f5014bbcac95c45e51c16dafb32dab8219c55ee6c53768b1a67\",\"authority_key_id\":\"472a41744c299dc1901c09c5155a9e7887e260c94fbbac6822482b2b4e8e3738\",\"created_at_ms\":101,\"epoch\":2,\"epoch_id\":\"c7777867b1ce4098feea374a97e15d79d126953a0678f166201dddc8b543e1f8\",\"installation_incarnation\":\"7648f43b926e129b2418761d323f8779e6898077cb7c03307e00749b5e343eab\",\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"observed_frontier\":[],\"operation_id\":\"actor-enrolled:150f416d4f330e4273bef28fea3fa9238395f4e54b6f478712a7756593a67b0d\",\"operation_type\":\"actor_enrolled\",\"schema_version\":1,\"signature_algorithm\":\"ed25519\"},\"actor_proof\":\"6db2737610be82ae19c1c21837ab64fb07a325065af4e22a0e1176c01dac5a81085c8cd5496951a3d6b5799d5e17f5e3fd15cd5effb3380529dd0cb7f5ac7a0b\",\"enrollment_body_digest\":\"bda9f7d034231c5578a593f0ab002a7b7fbb6bad50bf968007eadf4049b4e5a8\"},\"certificate_digest\":\"44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c\"}",
+          "chainGenesisDigest": "060afd5c66cda9116887b69e96c35f38fb0ffe6da1d309d07278a370e67dc43d",
+          "createdAt": 101,
+          "enrollmentCertificateDigest": "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+          "enrollmentOperationId": "actor-enrolled:150f416d4f330e4273bef28fea3fa9238395f4e54b6f478712a7756593a67b0d",
+          "publicKey": "aebf9a7c7285e998f1121c57a9ed94f4cebdf7626ce625d5d3bd80ef1c64291f",
+          "retiredAt": null,
+          "updatedAt": 101
+        },
+        "primaryKey": "150f416d4f330e4273bef28fea3fa9238395f4e54b6f478712a7756593a67b0d",
+        "protocolVersion": 2,
+        "registryKey": "90_actor_state"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "acceptedChainDigest": "c27dbda170cb4b5b8ecc9b31341c2e8f7869ccae2a85653db1b4fe31dd1e3b09",
+          "acceptedCounter": 0,
+          "acceptedOperationId": null,
+          "actorKind": "pwa",
+          "authorityEpochId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "canonicalEnrollmentCertificate": "{\"authority_signature\":\"7ed6d078f578964375e16c026e71530bdd1f871c86a882beabce96398bf280d640beea3d46e4736c36a12edac1f4962be391f7bce76dd6afea6af7729fbc3e0f\",\"certificate_body\":{\"actor_capability_body\":{\"actor_class\":\"editor\",\"actor_id\":\"42e09961a621bace85cbe1b6f4af9d1cf133ff684f95a81aec481274d8eca395\",\"actor_public_key\":\"aebf9a7c7285e998f1121c57a9ed94f4cebdf7626ce625d5d3bd80ef1c64291f\",\"allowed_operation_types\":[\"account_person_assignment\",\"account_remove\",\"account_upsert\",\"feed_item_analysis_replace\",\"feed_item_annotations_replace\",\"feed_item_archive_assignment\",\"feed_item_capture_upsert\",\"feed_item_like_assignment\",\"feed_item_like_sync_receipt\",\"feed_item_priority_assignment\",\"feed_item_read_assignment\",\"feed_item_remove\",\"feed_item_saved_assignment\",\"feed_item_seen_sync_receipt\",\"friend_replace\",\"person_reach_out_append\",\"person_remove_and_accounts\",\"person_remove_detach_accounts\",\"person_upsert\",\"preferences_leaf_assignment\",\"rss_feed_remove_keep_items\",\"rss_feed_remove_with_items\",\"rss_feed_title_assignment\",\"rss_feed_upsert\"],\"allowed_query_ids\":[],\"authority_key_id\":\"91145d3f7c2d387e990aa6fe5b875f8c55d0f698d591028149d9d2b5d8d6d571\",\"epoch\":1,\"epoch_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"format\":\"freed_library_core_actor_capability_v2\",\"issuance_identity\":\"2b880699a07a560d51b4bd5dcaaa277129e08fab64180d63053b152e22ad7327\",\"issued_at_ms\":1,\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"retirement_identity\":\"2024103262b943d35e01b6edab414c7a8ad4672040cf01e52141bca17619032b\",\"scope\":{\"mode\":\"library_wide\"},\"signature_algorithm\":\"ed25519\"},\"actor_capability_body_digest\":\"ad967e71aab677c8010fcdc8fc193cc3d307b396feccfcfe40ad68777e486e16\",\"actor_enrollment_body\":{\"actor_id\":\"42e09961a621bace85cbe1b6f4af9d1cf133ff684f95a81aec481274d8eca395\",\"actor_incarnation_nonce\":\"6666666666666666666666666666666666666666666666666666666666666666\",\"actor_public_key\":\"aebf9a7c7285e998f1121c57a9ed94f4cebdf7626ce625d5d3bd80ef1c64291f\",\"actor_public_key_fingerprint\":\"ce23b300e8e99f5014bbcac95c45e51c16dafb32dab8219c55ee6c53768b1a67\",\"authority_key_id\":\"91145d3f7c2d387e990aa6fe5b875f8c55d0f698d591028149d9d2b5d8d6d571\",\"created_at_ms\":1,\"epoch\":1,\"epoch_id\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"installation_incarnation\":\"7648f43b926e129b2418761d323f8779e6898077cb7c03307e00749b5e343eab\",\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"observed_frontier\":[],\"operation_id\":\"actor-enrolled:42e09961a621bace85cbe1b6f4af9d1cf133ff684f95a81aec481274d8eca395\",\"operation_type\":\"actor_enrolled\",\"schema_version\":1,\"signature_algorithm\":\"ed25519\"},\"actor_proof\":\"1405514fd3b731257567c046f0d62b87d60fd510f3eda4cfaf4728c377fd486a3b4bc9f1c49e8a3d624473f9a32e3e47dd456aaf9ba7a17927b703279172ee08\",\"enrollment_body_digest\":\"0943be3cd32098e52ad16b4adb42d91aa37026fec2df1429745f8d32ffd25c9b\"},\"certificate_digest\":\"8c7bd091ef79ee0ad837348a4f10c651962b0c0b23bc9cf227f96cdbb02765ce\"}",
+          "chainGenesisDigest": "c27dbda170cb4b5b8ecc9b31341c2e8f7869ccae2a85653db1b4fe31dd1e3b09",
+          "createdAt": 1,
+          "enrollmentCertificateDigest": "8c7bd091ef79ee0ad837348a4f10c651962b0c0b23bc9cf227f96cdbb02765ce",
+          "enrollmentOperationId": "actor-enrolled:42e09961a621bace85cbe1b6f4af9d1cf133ff684f95a81aec481274d8eca395",
+          "publicKey": "aebf9a7c7285e998f1121c57a9ed94f4cebdf7626ce625d5d3bd80ef1c64291f",
+          "retiredAt": null,
+          "updatedAt": 1
+        },
+        "primaryKey": "42e09961a621bace85cbe1b6f4af9d1cf133ff684f95a81aec481274d8eca395",
+        "protocolVersion": 2,
+        "registryKey": "90_actor_state"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "acceptedChainDigest": "c64220655f293bd01b96f8747bc4d51cac09c84617b8e53087e1355c6416d741",
+          "acceptedCounter": 0,
+          "acceptedOperationId": null,
+          "actorKind": "desktop",
+          "authorityEpochId": "e36dd36afe96e699ba278daa66b28e343c1c0ee2e5ccc8880078596d2af2b060",
+          "canonicalEnrollmentCertificate": "{\"authority_signature\":\"231951d1803307f961e4fe86a8ae8da6733eb882174cf44927891a95db666d2947dfdf1773cbc0854c4ed7de386e48f04ae215e15541514e373980a136ce7304\",\"certificate_body\":{\"actor_capability_body\":{\"actor_class\":\"editor\",\"actor_id\":\"9ca162dd62a1f7026322abbf0c30b9a5b3408866aed8d27cbb95bac387a78b4a\",\"actor_public_key\":\"e47cdbf15d344118ca8b651600f11cd02f107cd9347e451b676ff3617e74465a\",\"allowed_operation_types\":[\"account_person_assignment\",\"account_remove\",\"account_upsert\",\"feed_item_analysis_replace\",\"feed_item_annotations_replace\",\"feed_item_archive_assignment\",\"feed_item_capture_upsert\",\"feed_item_like_assignment\",\"feed_item_like_sync_receipt\",\"feed_item_priority_assignment\",\"feed_item_read_assignment\",\"feed_item_remove\",\"feed_item_saved_assignment\",\"feed_item_seen_sync_receipt\",\"friend_replace\",\"person_reach_out_append\",\"person_remove_and_accounts\",\"person_remove_detach_accounts\",\"person_upsert\",\"preferences_leaf_assignment\",\"rss_feed_remove_keep_items\",\"rss_feed_remove_with_items\",\"rss_feed_title_assignment\",\"rss_feed_upsert\"],\"allowed_query_ids\":[],\"authority_key_id\":\"46281d30ac3ed61cc5ccf47f43738a720e77abbb72d93417efd5bcfaf7acd374\",\"epoch\":3,\"epoch_id\":\"e36dd36afe96e699ba278daa66b28e343c1c0ee2e5ccc8880078596d2af2b060\",\"format\":\"freed_library_core_actor_capability_v2\",\"issuance_identity\":\"5871cb75fd9fd6aeba0ad1974f08195cbe15310e450fe57a09da0d666534a705\",\"issued_at_ms\":126,\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"retirement_identity\":\"5e8302486968607c5208622de6678a859e5eca9538f3a3608a61aee6eefc0ef6\",\"scope\":{\"mode\":\"library_wide\"},\"signature_algorithm\":\"ed25519\"},\"actor_capability_body_digest\":\"edd89ac281a92cfaf2ce6ff8822e012acefe15ee291bd92c6da1979bdcb93f9c\",\"actor_enrollment_body\":{\"actor_id\":\"9ca162dd62a1f7026322abbf0c30b9a5b3408866aed8d27cbb95bac387a78b4a\",\"actor_incarnation_nonce\":\"2ce410c92a4cbfc14b3b486e05c3384da920c102a0816cd45507ec56df4324a6\",\"actor_public_key\":\"e47cdbf15d344118ca8b651600f11cd02f107cd9347e451b676ff3617e74465a\",\"actor_public_key_fingerprint\":\"e66ec497a4f430d988ef1f8bd515d4854c0e621f4ddf99491b62a31112e8538e\",\"authority_key_id\":\"46281d30ac3ed61cc5ccf47f43738a720e77abbb72d93417efd5bcfaf7acd374\",\"created_at_ms\":126,\"epoch\":3,\"epoch_id\":\"e36dd36afe96e699ba278daa66b28e343c1c0ee2e5ccc8880078596d2af2b060\",\"installation_incarnation\":\"7648f43b926e129b2418761d323f8779e6898077cb7c03307e00749b5e343eab\",\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"observed_frontier\":[],\"operation_id\":\"actor-enrolled:9ca162dd62a1f7026322abbf0c30b9a5b3408866aed8d27cbb95bac387a78b4a\",\"operation_type\":\"actor_enrolled\",\"schema_version\":1,\"signature_algorithm\":\"ed25519\"},\"actor_proof\":\"ef7cf76f56b043ef42d9cfe9ef8dba995897737d2a83ae037bbe376f85cbf53634c19b4105d3d55608eb4055286406322e4a549f53a4f34f544cebff96f7b702\",\"enrollment_body_digest\":\"c688ff709b83ba9a3286f0a28b4260a23d0b068aed77c76aa3f85711b320da4a\"},\"certificate_digest\":\"e5902681b017c46e773d99ad678f78e3cec695a2f028ed201517a4bb6717eecd\"}",
+          "chainGenesisDigest": "c64220655f293bd01b96f8747bc4d51cac09c84617b8e53087e1355c6416d741",
+          "createdAt": 126,
+          "enrollmentCertificateDigest": "e5902681b017c46e773d99ad678f78e3cec695a2f028ed201517a4bb6717eecd",
+          "enrollmentOperationId": "actor-enrolled:9ca162dd62a1f7026322abbf0c30b9a5b3408866aed8d27cbb95bac387a78b4a",
+          "publicKey": "e47cdbf15d344118ca8b651600f11cd02f107cd9347e451b676ff3617e74465a",
+          "retiredAt": null,
+          "updatedAt": 126
+        },
+        "primaryKey": "9ca162dd62a1f7026322abbf0c30b9a5b3408866aed8d27cbb95bac387a78b4a",
+        "protocolVersion": 2,
+        "registryKey": "90_actor_state"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "acceptedChainDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "acceptedCounter": 0,
+          "acceptedOperationId": null,
+          "actorKind": "desktop",
+          "authorityEpochId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "canonicalEnrollmentCertificate": "{}",
+          "chainGenesisDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "createdAt": 1,
+          "enrollmentCertificateDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "enrollmentOperationId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "publicKey": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "retiredAt": null,
+          "updatedAt": 1
+        },
+        "primaryKey": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "protocolVersion": 2,
+        "registryKey": "90_actor_state"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "acceptedChainDigest": "020f0c892ea3e15682174fa922e056600882dbfcccbdf8fb953ba54f91167459",
+          "acceptedCounter": 0,
+          "acceptedOperationId": null,
+          "actorKind": "pwa",
+          "authorityEpochId": "c7777867b1ce4098feea374a97e15d79d126953a0678f166201dddc8b543e1f8",
+          "canonicalEnrollmentCertificate": "{\"authority_signature\":\"7f5728fc9d90196a003f47a27105fc21399a236ee9d350978437b6330f6d7ee1d51ac9033aa943ff5d22bb8002013172bc403ce28d238bcfdb93ee226ad9e60f\",\"certificate_body\":{\"actor_capability_body\":{\"actor_class\":\"editor\",\"actor_id\":\"fb04d85aaa3782ab4d2fc7689fe7b3c87ab78e0b970daadfec492158873d997b\",\"actor_public_key\":\"aebf9a7c7285e998f1121c57a9ed94f4cebdf7626ce625d5d3bd80ef1c64291f\",\"allowed_operation_types\":[\"account_person_assignment\",\"account_remove\",\"account_upsert\",\"feed_item_analysis_replace\",\"feed_item_annotations_replace\",\"feed_item_archive_assignment\",\"feed_item_capture_upsert\",\"feed_item_like_assignment\",\"feed_item_like_sync_receipt\",\"feed_item_priority_assignment\",\"feed_item_read_assignment\",\"feed_item_remove\",\"feed_item_saved_assignment\",\"feed_item_seen_sync_receipt\",\"friend_replace\",\"person_reach_out_append\",\"person_remove_and_accounts\",\"person_remove_detach_accounts\",\"person_upsert\",\"preferences_leaf_assignment\",\"rss_feed_remove_keep_items\",\"rss_feed_remove_with_items\",\"rss_feed_title_assignment\",\"rss_feed_upsert\"],\"allowed_query_ids\":[],\"authority_key_id\":\"472a41744c299dc1901c09c5155a9e7887e260c94fbbac6822482b2b4e8e3738\",\"epoch\":2,\"epoch_id\":\"c7777867b1ce4098feea374a97e15d79d126953a0678f166201dddc8b543e1f8\",\"format\":\"freed_library_core_actor_capability_v2\",\"issuance_identity\":\"7fc616b59941490876b7404e0d3a82f8fcf23830266450fda6244fd3d6d392cc\",\"issued_at_ms\":123,\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"retirement_identity\":\"a4f555b5556fe7dc8ca91e28c8a551b6b978d7e659e4822d8d8c704e938f8639\",\"scope\":{\"mode\":\"library_wide\"},\"signature_algorithm\":\"ed25519\"},\"actor_capability_body_digest\":\"7ede631645dd93a3d0f2468ad132cb54a24511a6dc4861e0d4a7399ab4b3ea0c\",\"actor_enrollment_body\":{\"actor_id\":\"fb04d85aaa3782ab4d2fc7689fe7b3c87ab78e0b970daadfec492158873d997b\",\"actor_incarnation_nonce\":\"388a1ebceb788aacaef357a353d64b230ae29ad0c2f488d76ca7f1f06030c3cd\",\"actor_public_key\":\"aebf9a7c7285e998f1121c57a9ed94f4cebdf7626ce625d5d3bd80ef1c64291f\",\"actor_public_key_fingerprint\":\"ce23b300e8e99f5014bbcac95c45e51c16dafb32dab8219c55ee6c53768b1a67\",\"authority_key_id\":\"472a41744c299dc1901c09c5155a9e7887e260c94fbbac6822482b2b4e8e3738\",\"created_at_ms\":123,\"epoch\":2,\"epoch_id\":\"c7777867b1ce4098feea374a97e15d79d126953a0678f166201dddc8b543e1f8\",\"installation_incarnation\":\"7648f43b926e129b2418761d323f8779e6898077cb7c03307e00749b5e343eab\",\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"observed_frontier\":[],\"operation_id\":\"actor-enrolled:fb04d85aaa3782ab4d2fc7689fe7b3c87ab78e0b970daadfec492158873d997b\",\"operation_type\":\"actor_enrolled\",\"schema_version\":1,\"signature_algorithm\":\"ed25519\"},\"actor_proof\":\"ebb0f435fb92da7684b5b69d5fdc9f7c3dbf42d580e41c8a0ff17ab503d31489ab2050ebad4b62ac0fd98de034d7af067d97b41b56c69d3f9682ad70a23bc50c\",\"enrollment_body_digest\":\"37c2e9d971e5472ac85c449d5aa132ddec601ff6d176cf9064e958f8a283070a\"},\"certificate_digest\":\"7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48\"}",
+          "chainGenesisDigest": "020f0c892ea3e15682174fa922e056600882dbfcccbdf8fb953ba54f91167459",
+          "createdAt": 123,
+          "enrollmentCertificateDigest": "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+          "enrollmentOperationId": "actor-enrolled:fb04d85aaa3782ab4d2fc7689fe7b3c87ab78e0b970daadfec492158873d997b",
+          "publicKey": "aebf9a7c7285e998f1121c57a9ed94f4cebdf7626ce625d5d3bd80ef1c64291f",
+          "retiredAt": null,
+          "updatedAt": 123
+        },
+        "primaryKey": "fb04d85aaa3782ab4d2fc7689fe7b3c87ab78e0b970daadfec492158873d997b",
+        "protocolVersion": 2,
+        "registryKey": "90_actor_state"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "actorClass": "editor",
+          "actorId": "42e09961a621bace85cbe1b6f4af9d1cf133ff684f95a81aec481274d8eca395",
+          "canonicalCertificate": "{}",
+          "certificateDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "certificateVersion": 2,
+          "issuanceIdentity": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "issuedAt": 1,
+          "retiredAt": null,
+          "retirementCertificateDigest": null,
+          "retirementIdentity": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "scopeId": null,
+          "scopeKind": null,
+          "scopeMode": "library_wide"
+        },
+        "primaryKey": "42e09961a621bace85cbe1b6f4af9d1cf133ff684f95a81aec481274d8eca395",
+        "protocolVersion": 2,
+        "registryKey": "91_actor_capability"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "actorClass": "editor",
+          "actorId": "150f416d4f330e4273bef28fea3fa9238395f4e54b6f478712a7756593a67b0d",
+          "canonicalCertificate": "{\"authority_signature\":\"89ba550332d71208bb32cebd329c3dad1f268ea9d10425a05c188710553ee4b6c95c005c4cc398688cb5f8ec5dcfa0036fc43c92ce4b28b9293621defeeeae0d\",\"certificate_body\":{\"actor_capability_body\":{\"actor_class\":\"editor\",\"actor_id\":\"150f416d4f330e4273bef28fea3fa9238395f4e54b6f478712a7756593a67b0d\",\"actor_public_key\":\"aebf9a7c7285e998f1121c57a9ed94f4cebdf7626ce625d5d3bd80ef1c64291f\",\"allowed_operation_types\":[\"account_person_assignment\",\"account_remove\",\"account_upsert\",\"feed_item_analysis_replace\",\"feed_item_annotations_replace\",\"feed_item_archive_assignment\",\"feed_item_capture_upsert\",\"feed_item_like_assignment\",\"feed_item_like_sync_receipt\",\"feed_item_priority_assignment\",\"feed_item_read_assignment\",\"feed_item_remove\",\"feed_item_saved_assignment\",\"feed_item_seen_sync_receipt\",\"friend_replace\",\"person_reach_out_append\",\"person_remove_and_accounts\",\"person_remove_detach_accounts\",\"person_upsert\",\"preferences_leaf_assignment\",\"rss_feed_remove_keep_items\",\"rss_feed_remove_with_items\",\"rss_feed_title_assignment\",\"rss_feed_upsert\"],\"allowed_query_ids\":[],\"authority_key_id\":\"472a41744c299dc1901c09c5155a9e7887e260c94fbbac6822482b2b4e8e3738\",\"epoch\":2,\"epoch_id\":\"c7777867b1ce4098feea374a97e15d79d126953a0678f166201dddc8b543e1f8\",\"format\":\"freed_library_core_actor_capability_v2\",\"issuance_identity\":\"713176fdb1fc055107e07c8b1df6f8c5272e8ffd3d7724403ae0e796447f69ff\",\"issued_at_ms\":101,\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"retirement_identity\":\"c26bf1d497c81e22aee6e97116b9ec7929492614ed851d5cf8efffc1f596d53c\",\"scope\":{\"mode\":\"library_wide\"},\"signature_algorithm\":\"ed25519\"},\"actor_capability_body_digest\":\"d52b17f0baeaa8e938c5624bc31953f141e7ff681508dc88cfc5eb43d33ddfe1\",\"actor_enrollment_body\":{\"actor_id\":\"150f416d4f330e4273bef28fea3fa9238395f4e54b6f478712a7756593a67b0d\",\"actor_incarnation_nonce\":\"c2f63f4d97f144c64bfdaa6f2bb636767a7cb7e6ef0c2b72636a0e11de046bc2\",\"actor_public_key\":\"aebf9a7c7285e998f1121c57a9ed94f4cebdf7626ce625d5d3bd80ef1c64291f\",\"actor_public_key_fingerprint\":\"ce23b300e8e99f5014bbcac95c45e51c16dafb32dab8219c55ee6c53768b1a67\",\"authority_key_id\":\"472a41744c299dc1901c09c5155a9e7887e260c94fbbac6822482b2b4e8e3738\",\"created_at_ms\":101,\"epoch\":2,\"epoch_id\":\"c7777867b1ce4098feea374a97e15d79d126953a0678f166201dddc8b543e1f8\",\"installation_incarnation\":\"7648f43b926e129b2418761d323f8779e6898077cb7c03307e00749b5e343eab\",\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"observed_frontier\":[],\"operation_id\":\"actor-enrolled:150f416d4f330e4273bef28fea3fa9238395f4e54b6f478712a7756593a67b0d\",\"operation_type\":\"actor_enrolled\",\"schema_version\":1,\"signature_algorithm\":\"ed25519\"},\"actor_proof\":\"6db2737610be82ae19c1c21837ab64fb07a325065af4e22a0e1176c01dac5a81085c8cd5496951a3d6b5799d5e17f5e3fd15cd5effb3380529dd0cb7f5ac7a0b\",\"enrollment_body_digest\":\"bda9f7d034231c5578a593f0ab002a7b7fbb6bad50bf968007eadf4049b4e5a8\"},\"certificate_digest\":\"44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c\"}",
+          "certificateDigest": "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+          "certificateVersion": 2,
+          "issuanceIdentity": "713176fdb1fc055107e07c8b1df6f8c5272e8ffd3d7724403ae0e796447f69ff",
+          "issuedAt": 101,
+          "retiredAt": null,
+          "retirementCertificateDigest": null,
+          "retirementIdentity": "c26bf1d497c81e22aee6e97116b9ec7929492614ed851d5cf8efffc1f596d53c",
+          "scopeId": null,
+          "scopeKind": null,
+          "scopeMode": "library_wide"
+        },
+        "primaryKey": "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+        "protocolVersion": 2,
+        "registryKey": "91_actor_capability"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "actorClass": "editor",
+          "actorId": "fb04d85aaa3782ab4d2fc7689fe7b3c87ab78e0b970daadfec492158873d997b",
+          "canonicalCertificate": "{\"authority_signature\":\"7f5728fc9d90196a003f47a27105fc21399a236ee9d350978437b6330f6d7ee1d51ac9033aa943ff5d22bb8002013172bc403ce28d238bcfdb93ee226ad9e60f\",\"certificate_body\":{\"actor_capability_body\":{\"actor_class\":\"editor\",\"actor_id\":\"fb04d85aaa3782ab4d2fc7689fe7b3c87ab78e0b970daadfec492158873d997b\",\"actor_public_key\":\"aebf9a7c7285e998f1121c57a9ed94f4cebdf7626ce625d5d3bd80ef1c64291f\",\"allowed_operation_types\":[\"account_person_assignment\",\"account_remove\",\"account_upsert\",\"feed_item_analysis_replace\",\"feed_item_annotations_replace\",\"feed_item_archive_assignment\",\"feed_item_capture_upsert\",\"feed_item_like_assignment\",\"feed_item_like_sync_receipt\",\"feed_item_priority_assignment\",\"feed_item_read_assignment\",\"feed_item_remove\",\"feed_item_saved_assignment\",\"feed_item_seen_sync_receipt\",\"friend_replace\",\"person_reach_out_append\",\"person_remove_and_accounts\",\"person_remove_detach_accounts\",\"person_upsert\",\"preferences_leaf_assignment\",\"rss_feed_remove_keep_items\",\"rss_feed_remove_with_items\",\"rss_feed_title_assignment\",\"rss_feed_upsert\"],\"allowed_query_ids\":[],\"authority_key_id\":\"472a41744c299dc1901c09c5155a9e7887e260c94fbbac6822482b2b4e8e3738\",\"epoch\":2,\"epoch_id\":\"c7777867b1ce4098feea374a97e15d79d126953a0678f166201dddc8b543e1f8\",\"format\":\"freed_library_core_actor_capability_v2\",\"issuance_identity\":\"7fc616b59941490876b7404e0d3a82f8fcf23830266450fda6244fd3d6d392cc\",\"issued_at_ms\":123,\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"retirement_identity\":\"a4f555b5556fe7dc8ca91e28c8a551b6b978d7e659e4822d8d8c704e938f8639\",\"scope\":{\"mode\":\"library_wide\"},\"signature_algorithm\":\"ed25519\"},\"actor_capability_body_digest\":\"7ede631645dd93a3d0f2468ad132cb54a24511a6dc4861e0d4a7399ab4b3ea0c\",\"actor_enrollment_body\":{\"actor_id\":\"fb04d85aaa3782ab4d2fc7689fe7b3c87ab78e0b970daadfec492158873d997b\",\"actor_incarnation_nonce\":\"388a1ebceb788aacaef357a353d64b230ae29ad0c2f488d76ca7f1f06030c3cd\",\"actor_public_key\":\"aebf9a7c7285e998f1121c57a9ed94f4cebdf7626ce625d5d3bd80ef1c64291f\",\"actor_public_key_fingerprint\":\"ce23b300e8e99f5014bbcac95c45e51c16dafb32dab8219c55ee6c53768b1a67\",\"authority_key_id\":\"472a41744c299dc1901c09c5155a9e7887e260c94fbbac6822482b2b4e8e3738\",\"created_at_ms\":123,\"epoch\":2,\"epoch_id\":\"c7777867b1ce4098feea374a97e15d79d126953a0678f166201dddc8b543e1f8\",\"installation_incarnation\":\"7648f43b926e129b2418761d323f8779e6898077cb7c03307e00749b5e343eab\",\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"observed_frontier\":[],\"operation_id\":\"actor-enrolled:fb04d85aaa3782ab4d2fc7689fe7b3c87ab78e0b970daadfec492158873d997b\",\"operation_type\":\"actor_enrolled\",\"schema_version\":1,\"signature_algorithm\":\"ed25519\"},\"actor_proof\":\"ebb0f435fb92da7684b5b69d5fdc9f7c3dbf42d580e41c8a0ff17ab503d31489ab2050ebad4b62ac0fd98de034d7af067d97b41b56c69d3f9682ad70a23bc50c\",\"enrollment_body_digest\":\"37c2e9d971e5472ac85c449d5aa132ddec601ff6d176cf9064e958f8a283070a\"},\"certificate_digest\":\"7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48\"}",
+          "certificateDigest": "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+          "certificateVersion": 2,
+          "issuanceIdentity": "7fc616b59941490876b7404e0d3a82f8fcf23830266450fda6244fd3d6d392cc",
+          "issuedAt": 123,
+          "retiredAt": null,
+          "retirementCertificateDigest": null,
+          "retirementIdentity": "a4f555b5556fe7dc8ca91e28c8a551b6b978d7e659e4822d8d8c704e938f8639",
+          "scopeId": null,
+          "scopeKind": null,
+          "scopeMode": "library_wide"
+        },
+        "primaryKey": "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+        "protocolVersion": 2,
+        "registryKey": "91_actor_capability"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "actorClass": "editor",
+          "actorId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "canonicalCertificate": "{}",
+          "certificateDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "certificateVersion": 2,
+          "issuanceIdentity": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "issuedAt": 1,
+          "retiredAt": null,
+          "retirementCertificateDigest": null,
+          "retirementIdentity": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "scopeId": null,
+          "scopeKind": null,
+          "scopeMode": "library_wide"
+        },
+        "primaryKey": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "protocolVersion": 2,
+        "registryKey": "91_actor_capability"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "actorClass": "editor",
+          "actorId": "9ca162dd62a1f7026322abbf0c30b9a5b3408866aed8d27cbb95bac387a78b4a",
+          "canonicalCertificate": "{\"authority_signature\":\"231951d1803307f961e4fe86a8ae8da6733eb882174cf44927891a95db666d2947dfdf1773cbc0854c4ed7de386e48f04ae215e15541514e373980a136ce7304\",\"certificate_body\":{\"actor_capability_body\":{\"actor_class\":\"editor\",\"actor_id\":\"9ca162dd62a1f7026322abbf0c30b9a5b3408866aed8d27cbb95bac387a78b4a\",\"actor_public_key\":\"e47cdbf15d344118ca8b651600f11cd02f107cd9347e451b676ff3617e74465a\",\"allowed_operation_types\":[\"account_person_assignment\",\"account_remove\",\"account_upsert\",\"feed_item_analysis_replace\",\"feed_item_annotations_replace\",\"feed_item_archive_assignment\",\"feed_item_capture_upsert\",\"feed_item_like_assignment\",\"feed_item_like_sync_receipt\",\"feed_item_priority_assignment\",\"feed_item_read_assignment\",\"feed_item_remove\",\"feed_item_saved_assignment\",\"feed_item_seen_sync_receipt\",\"friend_replace\",\"person_reach_out_append\",\"person_remove_and_accounts\",\"person_remove_detach_accounts\",\"person_upsert\",\"preferences_leaf_assignment\",\"rss_feed_remove_keep_items\",\"rss_feed_remove_with_items\",\"rss_feed_title_assignment\",\"rss_feed_upsert\"],\"allowed_query_ids\":[],\"authority_key_id\":\"46281d30ac3ed61cc5ccf47f43738a720e77abbb72d93417efd5bcfaf7acd374\",\"epoch\":3,\"epoch_id\":\"e36dd36afe96e699ba278daa66b28e343c1c0ee2e5ccc8880078596d2af2b060\",\"format\":\"freed_library_core_actor_capability_v2\",\"issuance_identity\":\"5871cb75fd9fd6aeba0ad1974f08195cbe15310e450fe57a09da0d666534a705\",\"issued_at_ms\":126,\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"retirement_identity\":\"5e8302486968607c5208622de6678a859e5eca9538f3a3608a61aee6eefc0ef6\",\"scope\":{\"mode\":\"library_wide\"},\"signature_algorithm\":\"ed25519\"},\"actor_capability_body_digest\":\"edd89ac281a92cfaf2ce6ff8822e012acefe15ee291bd92c6da1979bdcb93f9c\",\"actor_enrollment_body\":{\"actor_id\":\"9ca162dd62a1f7026322abbf0c30b9a5b3408866aed8d27cbb95bac387a78b4a\",\"actor_incarnation_nonce\":\"2ce410c92a4cbfc14b3b486e05c3384da920c102a0816cd45507ec56df4324a6\",\"actor_public_key\":\"e47cdbf15d344118ca8b651600f11cd02f107cd9347e451b676ff3617e74465a\",\"actor_public_key_fingerprint\":\"e66ec497a4f430d988ef1f8bd515d4854c0e621f4ddf99491b62a31112e8538e\",\"authority_key_id\":\"46281d30ac3ed61cc5ccf47f43738a720e77abbb72d93417efd5bcfaf7acd374\",\"created_at_ms\":126,\"epoch\":3,\"epoch_id\":\"e36dd36afe96e699ba278daa66b28e343c1c0ee2e5ccc8880078596d2af2b060\",\"installation_incarnation\":\"7648f43b926e129b2418761d323f8779e6898077cb7c03307e00749b5e343eab\",\"library_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"observed_frontier\":[],\"operation_id\":\"actor-enrolled:9ca162dd62a1f7026322abbf0c30b9a5b3408866aed8d27cbb95bac387a78b4a\",\"operation_type\":\"actor_enrolled\",\"schema_version\":1,\"signature_algorithm\":\"ed25519\"},\"actor_proof\":\"ef7cf76f56b043ef42d9cfe9ef8dba995897737d2a83ae037bbe376f85cbf53634c19b4105d3d55608eb4055286406322e4a549f53a4f34f544cebff96f7b702\",\"enrollment_body_digest\":\"c688ff709b83ba9a3286f0a28b4260a23d0b068aed77c76aa3f85711b320da4a\"},\"certificate_digest\":\"e5902681b017c46e773d99ad678f78e3cec695a2f028ed201517a4bb6717eecd\"}",
+          "certificateDigest": "e5902681b017c46e773d99ad678f78e3cec695a2f028ed201517a4bb6717eecd",
+          "certificateVersion": 2,
+          "issuanceIdentity": "5871cb75fd9fd6aeba0ad1974f08195cbe15310e450fe57a09da0d666534a705",
+          "issuedAt": 126,
+          "retiredAt": null,
+          "retirementCertificateDigest": null,
+          "retirementIdentity": "5e8302486968607c5208622de6678a859e5eca9538f3a3608a61aee6eefc0ef6",
+          "scopeId": null,
+          "scopeKind": null,
+          "scopeMode": "library_wide"
+        },
+        "primaryKey": "e5902681b017c46e773d99ad678f78e3cec695a2f028ed201517a4bb6717eecd",
+        "protocolVersion": 2,
+        "registryKey": "91_actor_capability"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "account_person_assignment"
+        },
+        "primaryKey": [
+          "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+          "account_person_assignment"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "account_remove"
+        },
+        "primaryKey": [
+          "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+          "account_remove"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "account_upsert"
+        },
+        "primaryKey": [
+          "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+          "account_upsert"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "feed_item_analysis_replace"
+        },
+        "primaryKey": [
+          "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+          "feed_item_analysis_replace"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "feed_item_annotations_replace"
+        },
+        "primaryKey": [
+          "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+          "feed_item_annotations_replace"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "feed_item_archive_assignment"
+        },
+        "primaryKey": [
+          "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+          "feed_item_archive_assignment"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "feed_item_capture_upsert"
+        },
+        "primaryKey": [
+          "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+          "feed_item_capture_upsert"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "feed_item_like_assignment"
+        },
+        "primaryKey": [
+          "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+          "feed_item_like_assignment"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "feed_item_like_sync_receipt"
+        },
+        "primaryKey": [
+          "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+          "feed_item_like_sync_receipt"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "feed_item_priority_assignment"
+        },
+        "primaryKey": [
+          "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+          "feed_item_priority_assignment"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "feed_item_read_assignment"
+        },
+        "primaryKey": [
+          "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+          "feed_item_read_assignment"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "feed_item_remove"
+        },
+        "primaryKey": [
+          "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+          "feed_item_remove"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "feed_item_saved_assignment"
+        },
+        "primaryKey": [
+          "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+          "feed_item_saved_assignment"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "feed_item_seen_sync_receipt"
+        },
+        "primaryKey": [
+          "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+          "feed_item_seen_sync_receipt"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "friend_replace"
+        },
+        "primaryKey": [
+          "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+          "friend_replace"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "person_reach_out_append"
+        },
+        "primaryKey": [
+          "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+          "person_reach_out_append"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "person_remove_and_accounts"
+        },
+        "primaryKey": [
+          "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+          "person_remove_and_accounts"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "person_remove_detach_accounts"
+        },
+        "primaryKey": [
+          "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+          "person_remove_detach_accounts"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "person_upsert"
+        },
+        "primaryKey": [
+          "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+          "person_upsert"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "preferences_leaf_assignment"
+        },
+        "primaryKey": [
+          "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+          "preferences_leaf_assignment"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "rss_feed_remove_keep_items"
+        },
+        "primaryKey": [
+          "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+          "rss_feed_remove_keep_items"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "rss_feed_remove_with_items"
+        },
+        "primaryKey": [
+          "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+          "rss_feed_remove_with_items"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "rss_feed_title_assignment"
+        },
+        "primaryKey": [
+          "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+          "rss_feed_title_assignment"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "rss_feed_upsert"
+        },
+        "primaryKey": [
+          "44b1995f4d8421a7c5dbd01f628b803fc4fc258e2b71fa59d362002cc0ce4c7c",
+          "rss_feed_upsert"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "account_person_assignment"
+        },
+        "primaryKey": [
+          "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+          "account_person_assignment"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "account_remove"
+        },
+        "primaryKey": [
+          "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+          "account_remove"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "account_upsert"
+        },
+        "primaryKey": [
+          "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+          "account_upsert"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "feed_item_analysis_replace"
+        },
+        "primaryKey": [
+          "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+          "feed_item_analysis_replace"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "feed_item_annotations_replace"
+        },
+        "primaryKey": [
+          "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+          "feed_item_annotations_replace"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "feed_item_archive_assignment"
+        },
+        "primaryKey": [
+          "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+          "feed_item_archive_assignment"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "feed_item_capture_upsert"
+        },
+        "primaryKey": [
+          "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+          "feed_item_capture_upsert"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "feed_item_like_assignment"
+        },
+        "primaryKey": [
+          "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+          "feed_item_like_assignment"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "feed_item_like_sync_receipt"
+        },
+        "primaryKey": [
+          "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+          "feed_item_like_sync_receipt"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "feed_item_priority_assignment"
+        },
+        "primaryKey": [
+          "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+          "feed_item_priority_assignment"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "feed_item_read_assignment"
+        },
+        "primaryKey": [
+          "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+          "feed_item_read_assignment"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "feed_item_remove"
+        },
+        "primaryKey": [
+          "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+          "feed_item_remove"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "feed_item_saved_assignment"
+        },
+        "primaryKey": [
+          "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+          "feed_item_saved_assignment"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "feed_item_seen_sync_receipt"
+        },
+        "primaryKey": [
+          "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+          "feed_item_seen_sync_receipt"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "friend_replace"
+        },
+        "primaryKey": [
+          "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+          "friend_replace"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "person_reach_out_append"
+        },
+        "primaryKey": [
+          "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+          "person_reach_out_append"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "person_remove_and_accounts"
+        },
+        "primaryKey": [
+          "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+          "person_remove_and_accounts"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "person_remove_detach_accounts"
+        },
+        "primaryKey": [
+          "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+          "person_remove_detach_accounts"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "person_upsert"
+        },
+        "primaryKey": [
+          "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+          "person_upsert"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "preferences_leaf_assignment"
+        },
+        "primaryKey": [
+          "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+          "preferences_leaf_assignment"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "rss_feed_remove_keep_items"
+        },
+        "primaryKey": [
+          "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+          "rss_feed_remove_keep_items"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "rss_feed_remove_with_items"
+        },
+        "primaryKey": [
+          "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+          "rss_feed_remove_with_items"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "rss_feed_title_assignment"
+        },
+        "primaryKey": [
+          "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+          "rss_feed_title_assignment"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "rss_feed_upsert"
+        },
+        "primaryKey": [
+          "7eca4fdc686ebb480a618c3fd0231d495b4329dbe8ba721efb30ef3a4191bf48",
+          "rss_feed_upsert"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "account_person_assignment"
+        },
+        "primaryKey": [
+          "e5902681b017c46e773d99ad678f78e3cec695a2f028ed201517a4bb6717eecd",
+          "account_person_assignment"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "account_remove"
+        },
+        "primaryKey": [
+          "e5902681b017c46e773d99ad678f78e3cec695a2f028ed201517a4bb6717eecd",
+          "account_remove"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "account_upsert"
+        },
+        "primaryKey": [
+          "e5902681b017c46e773d99ad678f78e3cec695a2f028ed201517a4bb6717eecd",
+          "account_upsert"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "feed_item_analysis_replace"
+        },
+        "primaryKey": [
+          "e5902681b017c46e773d99ad678f78e3cec695a2f028ed201517a4bb6717eecd",
+          "feed_item_analysis_replace"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "feed_item_annotations_replace"
+        },
+        "primaryKey": [
+          "e5902681b017c46e773d99ad678f78e3cec695a2f028ed201517a4bb6717eecd",
+          "feed_item_annotations_replace"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "feed_item_archive_assignment"
+        },
+        "primaryKey": [
+          "e5902681b017c46e773d99ad678f78e3cec695a2f028ed201517a4bb6717eecd",
+          "feed_item_archive_assignment"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "feed_item_capture_upsert"
+        },
+        "primaryKey": [
+          "e5902681b017c46e773d99ad678f78e3cec695a2f028ed201517a4bb6717eecd",
+          "feed_item_capture_upsert"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "feed_item_like_assignment"
+        },
+        "primaryKey": [
+          "e5902681b017c46e773d99ad678f78e3cec695a2f028ed201517a4bb6717eecd",
+          "feed_item_like_assignment"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "feed_item_like_sync_receipt"
+        },
+        "primaryKey": [
+          "e5902681b017c46e773d99ad678f78e3cec695a2f028ed201517a4bb6717eecd",
+          "feed_item_like_sync_receipt"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "feed_item_priority_assignment"
+        },
+        "primaryKey": [
+          "e5902681b017c46e773d99ad678f78e3cec695a2f028ed201517a4bb6717eecd",
+          "feed_item_priority_assignment"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "feed_item_read_assignment"
+        },
+        "primaryKey": [
+          "e5902681b017c46e773d99ad678f78e3cec695a2f028ed201517a4bb6717eecd",
+          "feed_item_read_assignment"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "feed_item_remove"
+        },
+        "primaryKey": [
+          "e5902681b017c46e773d99ad678f78e3cec695a2f028ed201517a4bb6717eecd",
+          "feed_item_remove"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "feed_item_saved_assignment"
+        },
+        "primaryKey": [
+          "e5902681b017c46e773d99ad678f78e3cec695a2f028ed201517a4bb6717eecd",
+          "feed_item_saved_assignment"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "feed_item_seen_sync_receipt"
+        },
+        "primaryKey": [
+          "e5902681b017c46e773d99ad678f78e3cec695a2f028ed201517a4bb6717eecd",
+          "feed_item_seen_sync_receipt"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "friend_replace"
+        },
+        "primaryKey": [
+          "e5902681b017c46e773d99ad678f78e3cec695a2f028ed201517a4bb6717eecd",
+          "friend_replace"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "person_reach_out_append"
+        },
+        "primaryKey": [
+          "e5902681b017c46e773d99ad678f78e3cec695a2f028ed201517a4bb6717eecd",
+          "person_reach_out_append"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "person_remove_and_accounts"
+        },
+        "primaryKey": [
+          "e5902681b017c46e773d99ad678f78e3cec695a2f028ed201517a4bb6717eecd",
+          "person_remove_and_accounts"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "person_remove_detach_accounts"
+        },
+        "primaryKey": [
+          "e5902681b017c46e773d99ad678f78e3cec695a2f028ed201517a4bb6717eecd",
+          "person_remove_detach_accounts"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "person_upsert"
+        },
+        "primaryKey": [
+          "e5902681b017c46e773d99ad678f78e3cec695a2f028ed201517a4bb6717eecd",
+          "person_upsert"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "preferences_leaf_assignment"
+        },
+        "primaryKey": [
+          "e5902681b017c46e773d99ad678f78e3cec695a2f028ed201517a4bb6717eecd",
+          "preferences_leaf_assignment"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "rss_feed_remove_keep_items"
+        },
+        "primaryKey": [
+          "e5902681b017c46e773d99ad678f78e3cec695a2f028ed201517a4bb6717eecd",
+          "rss_feed_remove_keep_items"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "rss_feed_remove_with_items"
+        },
+        "primaryKey": [
+          "e5902681b017c46e773d99ad678f78e3cec695a2f028ed201517a4bb6717eecd",
+          "rss_feed_remove_with_items"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "rss_feed_title_assignment"
+        },
+        "primaryKey": [
+          "e5902681b017c46e773d99ad678f78e3cec695a2f028ed201517a4bb6717eecd",
+          "rss_feed_title_assignment"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      },
+      {
+        "format": "freed_normalized_checkpoint_v2",
+        "payload": {
+          "mutationId": "rss_feed_upsert"
+        },
+        "primaryKey": [
+          "e5902681b017c46e773d99ad678f78e3cec695a2f028ed201517a4bb6717eecd",
+          "rss_feed_upsert"
+        ],
+        "protocolVersion": 2,
+        "registryKey": "92_actor_capability_mutation"
+      }
+    ]
+  }
+}

@@ -67,8 +67,22 @@ The cloud publisher stores the typed records directly under dataset schema
 `library_core_normalized_checkpoint_v2`. It does not wrap them in logical rows,
 whole FeedItem values, or a Library shell.
 
-Desktop cloud coordination reads that normalized descriptor together with one
-installation-local actor ID derived by the native key store. The descriptor's
+The causal frontier digest carries accepted work, not actor enrollment. Actors
+with accepted counter zero do not contribute a tip. Until an epoch accepts its
+first operation, its exported frontier is exactly its carried checkpoint
+frontier. Rust and PWA use the same rule. A writer transfer therefore preserves
+the source frontier while enrolling the successor, and the publisher still
+rejects a transfer across a different frontier.
+
+Desktop cloud coordination uses a distinct closed metadata preflight identity
+with the same Library, epoch, admitted writer, canonical source revision and
+causal frontier, together with one installation-local actor ID derived by the
+native key store. The host rechecks the freshly selected Library, schema/storage
+identity and generation receipt inside the read transaction containing writer,
+frontier and actor checks. Preflight has no record or item counts and does not
+certify checkpoint exportability or detect corruption in census-only trees.
+Full descriptor/export commands retain their count failures, pinned snapshot
+semantics and publication admission checks. The descriptor's
 `writerId` is the actor currently admitted by SQLite. The local actor ID names
 the current installation and may differ on a restored or follower client.
 Cloud state stores only the normalized Library ID, authority epoch, admitted
@@ -111,6 +125,13 @@ header identity, and record count, crosses a durability barrier, reads the
 staged database back, and selects it by one atomic local pointer change.
 Partial staging is never queryable.
 
+Native checkpoint installation may run inside a caller-owned transaction when a
+local lifecycle transition must commit with it. Its receipt is provisional until
+that transaction commits. The existing public activation calls still own and
+commit their transactions. A later lifecycle failure must roll back installed
+rows, writer-admission changes, consumer receipts and stage consumption together.
+This composition does not bypass checkpoint verification or a handoff fence.
+
 Desktop and PWA use one storage-neutral checkpoint staging state machine. Each
 runtime supplies only its typed SQLite begin, append, selection, and activation
 calls. Desktop follower bootstrap and writer transfer consume normalized v2
@@ -142,3 +163,110 @@ A verified accepted result ahead of the native replica's canonical revision
 retains its optimistic fields. A later checkpoint removes those fields only
 when the stored result belongs to that authority epoch and its revision is
 covered. Result and transport receipts remain available for exact replay.
+
+A source handoff can use the shared bounded checkpoint reader to download into
+staging without activation. This result is explicitly `staged`, with its download
+digest and byte/count summary nested separately from installation receipts. Native
+stage counters must match the completed download. Its replay timestamp comes from
+the immutable checkpoint header so retrying a manifest preserves exact begin
+metadata. No stage result grants query selection, writer admission or authority.
+
+An authorized old Primary may adopt its direct signed successor as a consumer.
+Native preparation binds a complete staged checkpoint to the exact durable source
+consent, predecessor checkpoint digest and successor certificate. Handoff staging
+preserves the source revision; adoption rejects regression rather than requiring
+an extra revision. The successor may have published later checkpoint generations.
+Native verification must match the cloud control, manifest and every checkpoint
+page before committing. The proposed control alone grants no role.
+
+One FULL SQLite transaction rechecks the stage and consent, installs the follower
+checkpoint, validates its materialized frontier, and records source demotion.
+Any failure rolls back the selection, receipt, lifecycle and stage consumption.
+The source remains closed to canonical writes and provider work. An exact retry
+uses the durable demotion receipt, including after reopen; a changed stage or
+control cannot impersonate that retry. Prior consumer history that cannot be
+retained safely blocks adoption and must not be deleted to make it succeed.
+
+Desktop source coordination downloads from the control locator in its durable
+consent, then invokes independent native remote verification before adoption.
+A committed demotion retry reconstructs the original stage and control from the
+stored demotion receipt. It does not download a newer head or require an unexpired
+token. Cancellation before native admission leaves the source fenced and retains
+staged rows. Native work already admitted may finish and must be recovered through
+its durable receipt.
+
+The native handoff cancellation ledger is installation-local. Its rows survive
+logical checkpoint replacement and are excluded from checkpoint export and digest
+calculation. Importing another installation's checkpoint cannot erase local
+cancellation history or make a retired readiness eligible again.
+
+A canceled handoff target can install later checkpoints from the same authority
+epoch using its ordinary follower receipt. The import rechecks its retained
+cancellation proof and preserves the local ledger. Canonical actor retirement
+still applies; a canceled target does not regain a retired actor's edit rights.
+A canceled target can also accept a signed direct successor after verifying its
+old cancellation before replacement. The post-install check binds the successor
+certificate, canonical writer actor and follower receipt, and rejects readiness
+identities already canceled locally. Old enrollment and intents remain preserved
+but fenced until explicit archival and reenrollment complete. The cancellation
+ledger survives replacement of the current lifecycle with consumer recovery.
+
+Verified target activation archives its complete settled consumer history before
+retiring the live consumer slots. Archive creation, slot retirement and local
+writer admission share one native transaction. A late failure restores the live
+rows and leaves the target fenced. Exact activation retry reuses the committed
+result without creating another archive. Query invalidation sequences remain
+monotonic. Original signed edits and their old enrollment certificate remain preserved.
+When promotion moves the actor record to a new epoch, archive review verifies the
+retained authority-signed enrollment certificate against the historical authority
+before checking the original envelopes. The historical snapshot is read-only and
+cannot grant current edit rights. This does not reapply edits as Primary. Full repeated promotion/demotion acceptance remains pending.
+
+Browser checkpoint refresh may continue within an accepted successor epoch while
+the old enrollment awaits explicit recovery. This is distinct from accepting a new
+successor: checkpoint generation and source revision cannot regress, and the writer
+must stay the same. The staged authority must match the locally accepted successor
+certificate, digest, epoch and key. Verify that certificate against the retained
+predecessor and current writer key, bind the exact local request and authority
+rows, then recheck the proof inside activation's write transaction.
+
+Keep the old request and signed intent epoch separate from the selected checkpoint
+epoch. Preserve every local intent, transport, optimistic and invalidation row; a
+refresh does not archive, resend or grant edit admission. Both the selected authority
+and the old enrollment's historical authority must survive with unchanged Library,
+epoch number, certificate digest, canonical bytes and key. Late failure rolls back
+the checkpoint and local rows together. Existing archive bytes remain unchanged.
+
+Native refresh also pins the Library ID, epoch number and transition certificate
+digest for both retained authorities, in addition to their keys and canonical
+certificate bytes. Historical metadata changes reject activation before local
+consumer rows are restored; the surrounding transaction rolls back the replacement.
+Headless promotion is a separate maintenance operation after import. Its private
+retry record binds the complete source control pointer, expected remote revision,
+control locator, installation witness, and fixed request time before native
+preparation. Restart reuses the same signed successor certificate. The host
+compares complete prepared and remote canonical checkpoint streams, including
+authority records, then rereads exact control after verification. Matching writer
+and epoch labels alone never resolve an ambiguous transfer. Publication receipts
+use an explicitly writable, descriptor-bound private file; other service inputs
+remain read-only. Ordinary startup cannot substitute for incomplete promotion.
+
+A consumer that missed the successor target's enrollment must first obtain the
+final predecessor checkpoint. Read authentication may verify the canonical
+handoff certificate against the locally trusted predecessor using the target
+key from predecessor-signed readiness. This authenticates the immutable source
+control pointer, final revision and checkpoint digest for a bounded download;
+it does not prove local target enrollment, select a checkpoint or grant writer
+admission. After catch-up, ordinary successor verification must still require
+the enrolled target and recheck the selected predecessor and staged certificate.
+Never use an unverified pointer to start this catch-up. Desktop and PWA perform
+one direct-predecessor download per attempt through the shared coordinator. They
+do not recursively search older epochs. The import transaction must independently
+reconstruct the proof and verify the signed digest before committing; a returned
+read reference is not an activation token.
+
+The native `library_active_authority.writer_id` may contain a local writer label
+such as `primary:desktop`. Resolve the cloud writer identity from the unique
+non-retired Desktop actor in the selected epoch and require the follower receipt
+to name that actor. A local label is not an actor ID or a substitute for the
+receipt and signature checks.

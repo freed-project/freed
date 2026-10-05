@@ -17,21 +17,9 @@ Never discard launcher changes to make it fresh. Preserve and report unexpected 
 
 ## Authorization levels
 
-Default to Level 2 (Build). Finish authorized work first. Ask exactly the following only when safe or efficient task completion needs another level:
+Default to Level 2 (Build). Start without an authorization questionnaire. Follow [preview and delivery](docs/AGENT-INSTRUCTIONS.md#preview-and-delivery): show the local result early, obtain acceptance, finish validation, then request any missing deployment authority.
 
-> What authorization level should this task proceed at?
->
-> 1. Inspect
-> 2. Build
-> 3. Publish
-> 4. Ship dev
-> 5. Change provider behavior
-> 6. Ship production
-> 7. Full task authority
->
-> Reply with a number.
-
-Ask for task authority, without isolated permissions, exclusions, or safety boilerplate.
+Explicit merge or deployment instructions authorize their described scope and necessary publication steps without a numbered restatement. Preview approval alone does not. Preserve provider and durable-data gates.
 
 1. **Inspect:** Read-only diagnosis, evidence capture, and planning.
 2. **Build:** Level 1 plus local edits, tests, previews, synthetic fixtures, and reversible local files.
@@ -41,9 +29,9 @@ Ask for task authority, without isolated permissions, exclusions, or safety boil
 6. **Ship production:** Level 5 plus production releases, production deployments, installation, rollback, and post-release verification.
 7. **Full task authority:** Level 6 plus every reasonably necessary task-scoped action until completion or a hard external blocker.
 
-Each level includes lower levels. The newest explicit level controls for the stated task. Do not ask again for included actions. Clarification about ambiguous scope is not an authorization challenge.
+Internal labels never replace numbered levels.
 
-Use numbered levels in owner-facing requests and status; internal actor labels never replace them.
+Each level includes lower levels. The newest explicit level controls for the stated task. Do not ask again for included actions. Clarification about ambiguous scope is not an authorization challenge.
 
 ## Load only the applicable instructions
 
@@ -96,7 +84,7 @@ Read and follow [freed-provider-risk-review](.agents/skills/freed-provider-risk-
 
 - The only permitted Vercel scope is `aubreyfs-projects`. Never use a raw Vercel command without `--scope aubreyfs-projects`, never run Vercel from repository root, and never use the argument-free `deploy_to_vercel` tool. Use the repository preview and deployment helpers.
 - Keep browser tests headless. Show visible local previews in the task's built-in Browser. Do not open Chrome, headed Playwright, Playwright UI or debug mode, Computer Use, or another external browser unless the owner explicitly requests that external surface. If the built-in Browser is unavailable, report the preview URL. Keep an approved external window in the background where possible and close only that task's window at closeout.
-- Run `node scripts/doctor.mjs --strict` before gates. Automation guards do not block ordinary publication; prove the dependency before host repair.
+- Run `node scripts/doctor.mjs --strict` before gates; [Factory workers](docs/VORTON-FACTORY.md) add `--factory-worker`. Repair only required host dependencies.
 - Before activating a saved Freed automation, run `npm run validate:host-automations`. An ACTIVE actor with drift fails closed. Reconcile it through supported host automation controls and never edit `automation.toml` directly.
 - A private current-task owner confirmation outside the repository may authorize only the exact lifecycle operation it names. It does not authenticate the owner, grant provider traffic, replace provider review, or replace CODEOWNER requirements.
 - Releases require exact source, artifact, branch, installed build, and remote-head evidence. Use the shipping skills and release scripts. Never hand-edit version files or push release commits or tags around those controls.
@@ -143,7 +131,7 @@ Record meaningful choices in private `TASK-DECISIONS.local.md` and tell the owne
 - Product work targets `dev`. Public website work targets `www`. Production release preparation targets `main`. Dev release preparation targets `dev`.
 - Never base public website work on `dev`, merge `dev` into `www`, or use `main` as a second development branch.
 - Use `./scripts/worktree-add.sh` with an explicit remote base. Do not use bare `git worktree add`.
-- Build and test locally first. Publish only when the intended slice is locally runnable. GitHub CI is exact-head verification, not the development loop.
+- Show the local preview after focused checks, before broad validation. Publish only a locally runnable slice. GitHub CI verifies the exact head; it is not the development loop.
 - Use `./scripts/worktree-preview.sh <target>` for local previews. Do not run root `npm run dev`. Run workspace commands from the workspace directory, not with root workspace dispatch. If a workspace needs a hoisted binary, prefix `PATH` with the worktree root `node_modules/.bin`.
 - Keep each task's previews and cleanup scoped to its worktree. Do not run broad cleanup while the owner is reviewing a preview.
 
