@@ -1,0 +1,483 @@
+{
+  "source": "bfd3393a65a0532cb55dbd4a9a81d1aaf10939e7",
+  "reference": {
+    "run": "37244225277",
+    "job": "111560064852",
+    "artifact": "tooling-smoke-timings-general-1-of-1",
+    "xmlSha256": "f75776846aa6470a972883b472e0e9228394f0d25c25214d685357243d5e6bf6",
+    "observedConsole": {
+      "tests": 1085,
+      "passed": 1076,
+      "failed": 0,
+      "skipped": 9
+    },
+    "contract": "Exact 72-file inventory plus per-file JUnit leaf identity/status multiset hashes. Console totals include nested suite accounting and are observations, not the case contract.",
+    "leafCases": 1057,
+    "leafPassed": 1048,
+    "leafSkipped": 9
+  },
+  "files": {
+    "scripts/automation-actor-linux.test.mjs": {
+      "cases": 5,
+      "passed": 5,
+      "skipped": [],
+      "identitySha256": "67ec08839b41230600ad0415f01bd900e5665f71683bd28023e78e616b256a34"
+    },
+    "scripts/automation-actors.test.mjs": {
+      "cases": 53,
+      "passed": 53,
+      "skipped": [],
+      "identitySha256": "11203ebd0592398a3167a5ac5ea83ba3ccdeadd4d6747549c909b3f22f8ca4f8"
+    },
+    "scripts/automation-control-docs.test.mjs": {
+      "cases": 6,
+      "passed": 6,
+      "skipped": [],
+      "identitySha256": "51cacdab1089ea70a1732e85ed89025c9c7b626a278c19c63b132e064ee8ff42"
+    },
+    "scripts/automation-hosts.test.mjs": {
+      "cases": 3,
+      "passed": 3,
+      "skipped": [],
+      "identitySha256": "12497b239818c680bac4312885184c34b0a1e750fe571355329dd158e618075e"
+    },
+    "scripts/build-metadata.test.mjs": {
+      "cases": 6,
+      "passed": 6,
+      "skipped": [],
+      "identitySha256": "3b2f07866d30e44b6f4d6b6af2866a9ead229764600b9cf1efac76a29c24a7bd"
+    },
+    "scripts/build-outcome-verdict.test.mjs": {
+      "cases": 12,
+      "passed": 12,
+      "skipped": [],
+      "identitySha256": "a7a57c71905d49a910fdff568fd5718282096660bbd6853305f1dc407b9b8945"
+    },
+    "scripts/canary-context.test.mjs": {
+      "cases": 11,
+      "passed": 11,
+      "skipped": [],
+      "identitySha256": "cb25a1014f247387e32ef555905b0be230e43d4bd2e72123155c5ed8a9627040"
+    },
+    "scripts/cloud-release-policy.test.mjs": {
+      "cases": 7,
+      "passed": 7,
+      "skipped": [],
+      "identitySha256": "b2b8991b0eea22612656848228d6fae09cc5fc77bc0efe1dd37ae80b3caa05c0"
+    },
+    "scripts/cloud-release-request.test.mjs": {
+      "cases": 6,
+      "passed": 6,
+      "skipped": [],
+      "identitySha256": "f83f3e60026eb9336efd7139eb5aefb2c8ee65eddabca6a74fc6513bdf377e77"
+    },
+    "scripts/create-release-github-app.test.mjs": {
+      "cases": 10,
+      "passed": 10,
+      "skipped": [],
+      "identitySha256": "a683a2f8867ef416fafb5023710d5077313a91f7f94c7673d892334cfd4d3993"
+    },
+    "scripts/deploy-website.test.mjs": {
+      "cases": 4,
+      "passed": 4,
+      "skipped": [],
+      "identitySha256": "545e4fd4e6ae57dd0d8fda81609415df919a6df83649b01fd1fd0cf808d11f8a"
+    },
+    "scripts/dev-sync-trigger.test.mjs": {
+      "cases": 11,
+      "passed": 11,
+      "skipped": [],
+      "identitySha256": "e048b99e3c115b60783c9d9778569b49bbff04b69f4805ccbbbb1b5779364192"
+    },
+    "scripts/doctor.test.mjs": {
+      "cases": 73,
+      "passed": 73,
+      "skipped": [],
+      "identitySha256": "cafdf9888c95994a725d516f7894e9b916ea7c3618a15f651e08ec1e7853f6bb"
+    },
+    "scripts/generate-library-core-contract.test.mjs": {
+      "cases": 1,
+      "passed": 1,
+      "skipped": [],
+      "identitySha256": "9e8ba4de054131e9a56c265e59ffada4d7bec46c29f910cdabd81cc848b8f144"
+    },
+    "scripts/generate-provider-admission-policy.test.mjs": {
+      "cases": 1,
+      "passed": 1,
+      "skipped": [],
+      "identitySha256": "a2be3e37de2b947f13a26f1eef77f8cea9cf2d0a834e1fcd241a4f05ec49ef00"
+    },
+    "scripts/generate-sample-corpus.test.mjs": {
+      "cases": 3,
+      "passed": 3,
+      "skipped": [],
+      "identitySha256": "41e1ccc68e70f4b17ef5b09466221aef7666a2f009e56f952f8a06f0d6cc82f0"
+    },
+    "scripts/generate-tauri-latest-from-release.test.mjs": {
+      "cases": 5,
+      "passed": 5,
+      "skipped": [],
+      "identitySha256": "7e2453d2d19dddb917820ef16d8bcc39a16775ecc4259fd8efba7f401bed6d45"
+    },
+    "scripts/lease-archive-move.test.mjs": {
+      "cases": 74,
+      "passed": 74,
+      "skipped": [],
+      "identitySha256": "a242eb7f4807e41ac0c18e3ab91e5f8e080d3e68a8e70af5f6b02c6ffef9f173"
+    },
+    "scripts/lib/git-path-at-ref.test.mjs": {
+      "cases": 3,
+      "passed": 3,
+      "skipped": [],
+      "identitySha256": "76d2898c1dcca3a947e24758ba368c55112b7807014f9f5e34c9c8eb814acbac"
+    },
+    "scripts/lib/github-release-publications.test.mjs": {
+      "cases": 7,
+      "passed": 7,
+      "skipped": [],
+      "identitySha256": "26eeace43a634130d420e981f4dafd34548eb4ebe9099182805aed360c6c62c6"
+    },
+    "scripts/lib/github-tooling.test.mjs": {
+      "cases": 4,
+      "passed": 4,
+      "skipped": [],
+      "identitySha256": "49c22f234856e5ca3d9c1932d115eb2fa1fd613e4033aed7b6a3d77d4e9d4a55"
+    },
+    "scripts/lib/library-core-release-activation.test.mjs": {
+      "cases": 25,
+      "passed": 25,
+      "skipped": [],
+      "identitySha256": "1cead87dc3c78e038b628b7372f50c12824181b4b7dae9f81d36da1f6c7a7c84"
+    },
+    "scripts/lib/provider-visible-paths.test.mjs": {
+      "cases": 30,
+      "passed": 30,
+      "skipped": [],
+      "identitySha256": "f413136894328c2cb74fcaf477e0a2a59f8f958d44dd77929893e6727e2358f5"
+    },
+    "scripts/lib/release-tag-publisher.test.mjs": {
+      "cases": 6,
+      "passed": 6,
+      "skipped": [],
+      "identitySha256": "c0939d76558ba8154dd8b8c97e481125d0b6e8b1ed4283c72170342c20aeacd6"
+    },
+    "scripts/lib/vercel-project-link.test.mjs": {
+      "cases": 4,
+      "passed": 4,
+      "skipped": [],
+      "identitySha256": "8c34346f4b2c4c617092cd25987730dac4eb96a45f7e496a1be9da40b9717fd7"
+    },
+    "scripts/library-core-release-activation.test.mjs": {
+      "cases": 6,
+      "passed": 6,
+      "skipped": [],
+      "identitySha256": "ac212b606d2d2668315320229e90e9c05277c76859e1e45b29f53ec009667bcb"
+    },
+    "scripts/measure-tooling-smoke.test.mjs": {
+      "cases": 11,
+      "passed": 11,
+      "skipped": [],
+      "identitySha256": "d97d2f3212b445ba412c9d9f232ee264613a310230082b2f10a7fd838d3e8a63"
+    },
+    "scripts/node-tooling.test.mjs": {
+      "cases": 2,
+      "passed": 1,
+      "skipped": [
+        [
+          "node tooling resolves the pinned toolchain when sourced by zsh"
+        ]
+      ],
+      "identitySha256": "948355bbfe70698c9eb5cbfb75746e4cd8e525266999c0ae9f2ed280fdecacd4"
+    },
+    "scripts/outcome-ledger-repair-contract.test.mjs": {
+      "cases": 6,
+      "passed": 6,
+      "skipped": [],
+      "identitySha256": "b064a85b7275de18fca7f2113345a0159c1fab189bde08083151d6afa25c5ddb"
+    },
+    "scripts/prepare-signed-measurement.test.mjs": {
+      "cases": 3,
+      "passed": 3,
+      "skipped": [],
+      "identitySha256": "647d88a1dab8a3c420b38af69a3ae42bd289b7a7855132a1c28d2fb811dcd9ff"
+    },
+    "scripts/promote-dev-to-main.test.mjs": {
+      "cases": 4,
+      "passed": 4,
+      "skipped": [],
+      "identitySha256": "f7d6856c19d430cd90cddbd5922f861d8ca7c10214773942271c07a83142d90a"
+    },
+    "scripts/pwa-vercel-ignore-build.test.mjs": {
+      "cases": 2,
+      "passed": 2,
+      "skipped": [],
+      "identitySha256": "e6f8d1ac57fd37bc509909b4b9a18c9050206e448a8fbd343f263521d370c0b3"
+    },
+    "scripts/record-outcome.test.mjs": {
+      "cases": 12,
+      "passed": 12,
+      "skipped": [],
+      "identitySha256": "58d8e38cf84a22636be0cfa32fc7038ea8f0abba21246da834b8a3e3f9e51a60"
+    },
+    "scripts/release-governance.test.mjs": {
+      "cases": 20,
+      "passed": 20,
+      "skipped": [],
+      "identitySha256": "48d0cc3ecefbf794954fe8fdc2b4c38853b4b464b678f89da4adeca1b24dc9f0"
+    },
+    "scripts/release-notes-shared.test.mjs": {
+      "cases": 22,
+      "passed": 22,
+      "skipped": [],
+      "identitySha256": "8ddcd1a7048b2bd76caab96f3070d3634907db4c4c420be3ec28bd86f380a491"
+    },
+    "scripts/release-promotion.test.mjs": {
+      "cases": 46,
+      "passed": 46,
+      "skipped": [],
+      "identitySha256": "4c428fe836cd3e8be2c5a0a8e8c226481dad4fd7c9b15af6d696ce489fd75cfc"
+    },
+    "scripts/release-receipt.test.mjs": {
+      "cases": 13,
+      "passed": 13,
+      "skipped": [],
+      "identitySha256": "441251d7cfcfcd4fce180a1408a5edeca2e2cb0ce2928f2b6003233f06f89450"
+    },
+    "scripts/release-showcase-assets.test.mjs": {
+      "cases": 9,
+      "passed": 9,
+      "skipped": [],
+      "identitySha256": "050366bec8afa4f86ca36e4a5cdc54224608055d1fd621004a8b4889176744d6"
+    },
+    "scripts/release-tag-publisher-install.test.mjs": {
+      "cases": 6,
+      "passed": 6,
+      "skipped": [],
+      "identitySha256": "9e2183b42db33508e0857642b142076e1b385df2bb3db39c1c186c5b9010cc59"
+    },
+    "scripts/release-version.test.mjs": {
+      "cases": 4,
+      "passed": 4,
+      "skipped": [],
+      "identitySha256": "29b3b8053173f155da4a6dd47c69c74d28c4cda393fc0b412986ea816ce45480"
+    },
+    "scripts/release-workflow-matrix.test.mjs": {
+      "cases": 3,
+      "passed": 3,
+      "skipped": [],
+      "identitySha256": "4d074c0df9a6b279447ede9334fa712e6d5a59fd7cc4114d71670cea64b6da38"
+    },
+    "scripts/repository-config.test.mjs": {
+      "cases": 2,
+      "passed": 2,
+      "skipped": [],
+      "identitySha256": "c1af9d6c4fbdab3cff94d746bd2ad05207d7b6b664c3ee4f67efd8ee75f9bfda"
+    },
+    "scripts/run-native-acceptance.test.mjs": {
+      "cases": 2,
+      "passed": 2,
+      "skipped": [],
+      "identitySha256": "ec2647d46f38245782caa963ce138c2f930c74a6aa0b49457043a922a4cad6ce"
+    },
+    "scripts/run-tooling-smoke-shard.test.mjs": {
+      "cases": 12,
+      "passed": 12,
+      "skipped": [],
+      "identitySha256": "b4be5b9b98ce229194329679b962a7e8978f1609486eb7515656630a64961147"
+    },
+    "scripts/run-workspace-fanout.test.mjs": {
+      "cases": 2,
+      "passed": 2,
+      "skipped": [],
+      "identitySha256": "5419604f517cc3f218872bdb4b1966a1b5cae068bc1d773e2456c011003945c3"
+    },
+    "scripts/soak.test.mjs": {
+      "cases": 65,
+      "passed": 65,
+      "skipped": [],
+      "identitySha256": "cef5098b362fcea0344112c9d199c065de1ff3cd3d8999c39cc4cacd0f57f4e3"
+    },
+    "scripts/social-scrape-loop.test.mjs": {
+      "cases": 15,
+      "passed": 15,
+      "skipped": [],
+      "identitySha256": "57d4eda6a5221121e100836dd9f0164f2d59b2425f9c09628a7a068fd1952315"
+    },
+    "scripts/stability-artifact.test.mjs": {
+      "cases": 11,
+      "passed": 11,
+      "skipped": [],
+      "identitySha256": "942154b49832067779c6e0c703f8bebb2b23aa7cd1814a96c4f085c1647cf4fa"
+    },
+    "scripts/stability-metrics.test.mjs": {
+      "cases": 26,
+      "passed": 26,
+      "skipped": [],
+      "identitySha256": "6a804da802bc4f968862655386ab4e46850075028951c854b049c41bfcba7a3c"
+    },
+    "scripts/stability-ops.test.mjs": {
+      "cases": 34,
+      "passed": 34,
+      "skipped": [],
+      "identitySha256": "f59f5ca8b108c063c52a1b80825e1ff7119ee64ef4e696573ccf6ce2754d8ed6"
+    },
+    "scripts/stability-status.test.mjs": {
+      "cases": 11,
+      "passed": 11,
+      "skipped": [],
+      "identitySha256": "c945f212c1f621dab06d8d0e88f3b86a62135d37b36895471c9695f6c4c31999"
+    },
+    "scripts/sync-github-rulesets.test.mjs": {
+      "cases": 12,
+      "passed": 12,
+      "skipped": [],
+      "identitySha256": "bf347ff04079b2473533d236e86e1f7e2f4b867e32dee0576c0a63dc024fa260"
+    },
+    "scripts/task-decisions.test.mjs": {
+      "cases": 5,
+      "passed": 5,
+      "skipped": [],
+      "identitySha256": "04a4d6969e181522344b8052eeccf589a128ee858e015bc237faaf61304d8a15"
+    },
+    "scripts/tooling-smoke-plan.test.mjs": {
+      "cases": 19,
+      "passed": 19,
+      "skipped": [],
+      "identitySha256": "a12c245248de68c65cdc1207ced17dde56796d7c3ed5147289b645dcda4cda4f"
+    },
+    "scripts/triage.test.mjs": {
+      "cases": 19,
+      "passed": 19,
+      "skipped": [],
+      "identitySha256": "bd751ab24e5504a96dee52be52028bf60d1a873d0bf4b1243d0eba24e810d3eb"
+    },
+    "scripts/validate-agent-instructions.test.mjs": {
+      "cases": 13,
+      "passed": 13,
+      "skipped": [],
+      "identitySha256": "9c782ef0ebba93b049120e98d35cb12afba501c6f858a6057c211db8333baf84"
+    },
+    "scripts/validate-automation-specs.test.mjs": {
+      "cases": 9,
+      "passed": 9,
+      "skipped": [],
+      "identitySha256": "0f46d7c5e9bf874968b92999152632611473de26b6c4163e7f8fcaadd13fd76c"
+    },
+    "scripts/validate-dev-integration-receipt.test.mjs": {
+      "cases": 8,
+      "passed": 8,
+      "skipped": [],
+      "identitySha256": "5c46d49f47c8de8f435a5788b5ecf4e86af6522334ba4379e2d12bb41b88f018"
+    },
+    "scripts/validate-host-automations.test.mjs": {
+      "cases": 45,
+      "passed": 45,
+      "skipped": [],
+      "identitySha256": "99307175fcd9053543406a80dac9731be48ff88253f787bce6fdeee9c3b08e18"
+    },
+    "scripts/validate-instruction-routing.test.mjs": {
+      "cases": 4,
+      "passed": 4,
+      "skipped": [],
+      "identitySha256": "66515cd643e8581580e35a725f1782d2a877aec46382f8c766a7d6f88fed0121"
+    },
+    "scripts/validate-release-identity.test.mjs": {
+      "cases": 26,
+      "passed": 26,
+      "skipped": [],
+      "identitySha256": "0d80e1ae695e44a31848bec17fb58dae1901c583b9dee15404472eb808e30a02"
+    },
+    "scripts/validate-release-integration.test.mjs": {
+      "cases": 1,
+      "passed": 1,
+      "skipped": [],
+      "identitySha256": "fd752f0eacefc120685b4f2794ab45bf08afe413d362d564319db15c3fd9a787"
+    },
+    "scripts/validate-release-tag-authority.test.mjs": {
+      "cases": 3,
+      "passed": 3,
+      "skipped": [],
+      "identitySha256": "4afa4980eec70375cba6a48c109a9984221f33a9660db1ae2c00571f6183ed0a"
+    },
+    "scripts/validate-retired-automerge-runtime.test.mjs": {
+      "cases": 10,
+      "passed": 10,
+      "skipped": [],
+      "identitySha256": "ba37d1baa7403d3ae90b0ca82734688b8c132878f79dad672e72dc1b97870724"
+    },
+    "scripts/validate-roadmap-status.test.mjs": {
+      "cases": 3,
+      "passed": 3,
+      "skipped": [],
+      "identitySha256": "92fd76fab39d9985a0efce6c17ae639cc36eae31653a80085f2874e020c13d48"
+    },
+    "scripts/validate-skills.test.mjs": {
+      "cases": 6,
+      "passed": 6,
+      "skipped": [],
+      "identitySha256": "3fb6a17f748066a8e854a16cdcff8fdb9d9b84b05428b3fe5666c3348543f3bb"
+    },
+    "scripts/validate-worktree.test.mjs": {
+      "cases": 63,
+      "passed": 63,
+      "skipped": [],
+      "identitySha256": "6a1b3f79d69bca4e4fdf0fdd00902bcb26ee22ac1ed545c3fb211da156611cc4"
+    },
+    "scripts/vitest-config.test.mjs": {
+      "cases": 1,
+      "passed": 1,
+      "skipped": [],
+      "identitySha256": "ef189c3cc2eeec5df9beefc66a3c43e869fb52e798d83cd9f7531d476b2707c5"
+    },
+    "scripts/webkit-test-custody.test.mjs": {
+      "cases": 3,
+      "passed": 3,
+      "skipped": [],
+      "identitySha256": "fb11d34ec10186c070357c2585e5402d88f11a0e7c7bc0269a30ca9afd1bedf4"
+    },
+    "scripts/worktree-add.test.mjs": {
+      "cases": 13,
+      "passed": 13,
+      "skipped": [],
+      "identitySha256": "8c60279180075f575ef7275b2f49fc3b64fdca453b7c3de365cee0ea1b6da0a6"
+    },
+    "scripts/worktree-preview.test.mjs": {
+      "cases": 11,
+      "passed": 10,
+      "skipped": [
+        [
+          "macOS kernel rejects an obsolete PID version without signaling the live preview"
+        ]
+      ],
+      "identitySha256": "a00fbc7a4a177e5826ac0baf8fecc5fdd6e8ed0c60fbbb8c0e64901c5bc8a26d"
+    },
+    "scripts/worktree-publish.test.mjs": {
+      "cases": 64,
+      "passed": 57,
+      "skipped": [
+        [
+          "trusted publisher launcher accepts a prebound release-only main prep"
+        ],
+        [
+          "trusted publisher launcher consumes a signed capability without a persistent credential"
+        ],
+        [
+          "trusted publisher launcher fails closed against a legacy unbound capability"
+        ],
+        [
+          "trusted publisher launcher rejects a main head changed after capability issuance"
+        ],
+        [
+          "trusted publisher launcher rejects a tampered broker capability"
+        ],
+        [
+          "trusted publisher launcher rejects an ungoverned main branch"
+        ],
+        [
+          "trusted publisher launcher rejects an unpinned GitHub CLI"
+        ]
+      ],
+      "identitySha256": "570b60955041269c59f8d02faae7788e1f7883db4c7ba03c1506d354c117fbb4"
+    }
+  }
+}

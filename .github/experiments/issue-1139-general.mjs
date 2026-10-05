@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-export const SOURCE = "1d7045a16e01e5551dc452b62734bec0130473fb";
+export const SOURCE = "bfd3393a65a0532cb55dbd4a9a81d1aaf10939e7";
 // One complete paired comparison per runner, two independent runner-level repeats.
 // ABBA / BAAB counterbalances mode order for each shard index. Do not pool
 // individual shard times across CPUs or call these four repeats per runner.
@@ -27,6 +27,45 @@ export const SCHEDULES = {
 };
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const save = (file, value) => writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
+
+// ElementTree preserves nested suite identity and repeated case occurrences.
+// Only identities/statuses enter this contract, never observed durations.
+export function caseInventory(xml) {
+  const parsed = spawnSync("python3", ["-c", `
+import json,sys,xml.etree.ElementTree as E
+rows=[]
+def walk(element, parents):
+  if element.tag in ('failure','error'): raise ValueError('JUnit failure/error')
+  if element.tag=='testsuite': parents=parents+[element.attrib['name']]
+  if element.tag=='testcase':
+    file=element.attrib['file']
+    if '/scripts/' in file: file='scripts/'+file.split('/scripts/',1)[1]
+    if not file.startswith('scripts/'): raise ValueError('foreign test path')
+    rows.append([file,parents+[element.attrib['name']], 'skipped' if element.find('skipped') is not None else 'passed'])
+  for child in element: walk(child,parents)
+walk(E.fromstring(sys.stdin.read()),[])
+print(json.dumps(rows))
+`], { input: xml, encoding: "utf8", timeout: 10_000, maxBuffer: 16 * 1024 * 1024 });
+  assert.equal(parsed.status, 0, parsed.stderr || parsed.error?.message);
+  const grouped = new Map();
+  for (const [file, names, status] of JSON.parse(parsed.stdout)) {
+    if (!grouped.has(file)) grouped.set(file, []);
+    grouped.get(file).push([names, status]);
+  }
+  return Object.fromEntries([...grouped].sort(([a], [b]) => a.localeCompare(b)).map(([file, rows]) => {
+    rows.sort((a, b) => JSON.stringify(a) < JSON.stringify(b) ? -1 : JSON.stringify(a) > JSON.stringify(b) ? 1 : 0);
+    return [file, { cases: rows.length, passed: rows.filter(([, status]) => status === "passed").length,
+      skipped: rows.filter(([, status]) => status === "skipped").map(([names]) => names),
+      identitySha256: hash(JSON.stringify(rows)) }];
+  }));
+}
+
+export function verifyCases(xml, files, expected) {
+  const actual = caseInventory(xml);
+  assert.deepEqual(Object.keys(actual).sort(), [...files].sort(), "case file coverage differs");
+  for (const file of files) assert.deepEqual(actual[file], expected[file], `case identity/status coverage differs: ${file}`);
+  return actual;
+}
 
 function command(command, args, cwd) {
   const result = spawnSync(command, args, { cwd, encoding: "utf8" });
@@ -49,8 +88,8 @@ export function makePlans(build, repoRoot, catalog, files) {
 }
 
 // The caller supplies the frozen runner and parser. Tests use a tiny real fixture;
-// the production CLI below permits only SOURCE and exactly 71 general files.
-export function measure({ repoRoot, outputDir, replicate, plans, runnerPath, parseJUnitTestCases, unitDurationsForSuite, metadata, assertFrozen = () => {} }) {
+// the production CLI below permits only SOURCE and its exact 72-file inventory.
+export function measure({ repoRoot, outputDir, replicate, plans, runnerPath, parseJUnitTestCases, unitDurationsForSuite, expectedCases, metadata, assertFrozen = () => {} }) {
   assert.ok([1, 2].includes(replicate));
   mkdirSync(outputDir, { recursive: true });
   const schedule = SCHEDULES[replicate];
@@ -84,6 +123,7 @@ export function measure({ repoRoot, outputDir, replicate, plans, runnerPath, par
       const observed = unitDurationsForSuite("general", parseJUnitTestCases(xml, repoRoot), { repoRoot });
       assert.deepEqual(Object.keys(observed).sort(), [...plan.testFiles].sort(), "JUnit file coverage differs from plan");
       run.observedFiles = Object.keys(observed).length;
+      run.caseCoverage = verifyCases(xml, plan.testFiles, expectedCases);
       assertFrozen();
       run.valid = true;
     } catch (error) {
@@ -127,6 +167,7 @@ async function main(args) {
   const catalogBytes = readFileSync(catalogPath);
   const catalogSha256 = hash(catalogBytes);
   const assertFrozen = () => {
+    assert.equal(command("git", ["rev-parse", "HEAD"], repoRoot), SOURCE, "candidate HEAD changed");
     assert.equal(command("git", ["status", "--porcelain", "--untracked-files=no"], repoRoot), "", "candidate tracked files changed");
     assert.equal(hash(readFileSync(catalogPath)), catalogSha256, "catalog changed");
   };
@@ -136,14 +177,17 @@ async function main(args) {
   const { generalTestFiles } = await import(pathToFileURL(path.join(repoRoot, "scripts/lib/tooling-smoke-suites.mjs")));
   const { parseJUnitTestCases, unitDurationsForSuite } = await import(pathToFileURL(path.join(repoRoot, "scripts/measure-tooling-smoke.mjs")));
   const files = generalTestFiles(repoRoot);
-  assert.equal(files.length, 71);
+  const coverage = JSON.parse(readFileSync(new URL("./issue-1139-general-coverage.json", import.meta.url)));
+  assert.equal(coverage.source, SOURCE);
+  assert.equal(files.length, 72);
+  assert.deepEqual([...files].sort(), Object.keys(coverage.files).sort(), "frozen file inventory differs");
   const plans = makePlans(buildToolingSmokeShardPlan, repoRoot, JSON.parse(catalogBytes), files);
-  measure({ repoRoot, outputDir, replicate: Number(index), plans, runnerPath, parseJUnitTestCases, unitDurationsForSuite, assertFrozen, metadata: {
+  measure({ repoRoot, outputDir, replicate: Number(index), plans, runnerPath, parseJUnitTestCases, unitDurationsForSuite, expectedCases: coverage.files, assertFrozen, metadata: {
     source: SOURCE, experiment: process.env.GITHUB_SHA ?? null, catalogSha256,
     node: process.version, npm: "11.11.0", go: "1.27.1", platform: process.platform, arch: process.arch,
     availableParallelism: os.availableParallelism(), cpuModel: os.cpus()[0]?.model, totalMemory: os.totalmem(),
     kernel: os.release(), image: process.env.ImageOS ?? null, imageVersion: process.env.ImageVersion ?? null,
-    files, comparisonUnit: "One full byte/duration comparison on this runner; two runners provide two repeats. Do not pool shard times across runners.",
+    files, coverageReference: coverage.reference, comparisonUnit: "One full byte/duration comparison on this runner; two runners provide two repeats. Do not pool shard times across runners.",
     timing: "Monotonic subprocess wall seconds, excluding install and artifact upload. No planner estimates.",
   } });
 }

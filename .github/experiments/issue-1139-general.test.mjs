@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import yaml from "js-yaml";
-import { makePlans, measure, SCHEDULES, SOURCE } from "./issue-1139-general.mjs";
+import { caseInventory, verifyCases, makePlans, measure, SCHEDULES, SOURCE } from "./issue-1139-general.mjs";
 import { buildToolingSmokeShardPlan } from "../../scripts/run-tooling-smoke-shard.mjs";
 import { parseJUnitTestCases, unitDurationsForSuite } from "../../scripts/measure-tooling-smoke.mjs";
 
@@ -22,7 +22,8 @@ function fixture(t, failing = false) {
   });
   const catalog = { suites: { general: { units: Object.fromEntries(files.map((file, index) => [file, { seconds: 3 - index }])) } } };
   const plans = makePlans(buildToolingSmokeShardPlan, repoRoot, catalog, files);
-  return { root, repoRoot, plans, runnerPath, parseJUnitTestCases, unitDurationsForSuite, metadata: { source: "synthetic fixture" } };
+  const expectedCases = caseInventory(`<testsuites>${files.map((file, i) => `<testcase file="${file}" name="${["a", "b", "c"][i]}"/>`).join("")}</testsuites>`);
+  return { root, repoRoot, plans, expectedCases, runnerPath, parseJUnitTestCases, unitDurationsForSuite, metadata: { source: "synthetic fixture" } };
 }
 
 test("manual workflow freezes source and caps work at two paired comparisons and eight shard runs", () => {
@@ -104,4 +105,40 @@ test("a changed frozen input invalidates the observation and stops subsequent ro
   assert.equal(report.runs.length, 1);
   assert.equal(report.runs[0].status, 0);
   assert.equal(report.runs[0].valid, false);
+});
+
+test("case contract preserves multiplicities and rejects same-count replacements and skip drift", () => {
+  const xml = '<testsuites><testsuite name="group"><testcase file="scripts/a.test.mjs" name="same"/><testcase file="scripts/a.test.mjs" name="same"/><testcase file="scripts/a.test.mjs" name="native"><skipped/></testcase></testsuite></testsuites>';
+  const expected = caseInventory(xml);
+  assert.equal(expected['scripts/a.test.mjs'].cases, 3);
+  assert.deepEqual(verifyCases(xml, ['scripts/a.test.mjs'], expected), expected);
+  for (const changed of [
+    xml.replace('name="same"', 'name="other"'),
+    xml.replace('<skipped/>', ''),
+    xml.replace('name="group"', 'name="other group"'),
+    xml.replace('<testcase file="scripts/a.test.mjs" name="same"/>', ''),
+    xml.replace('<skipped/>', '<failure/>'),
+    xml.replace('</testsuites>', ''),
+  ]) assert.throws(() => verifyCases(changed, ['scripts/a.test.mjs'], expected));
+});
+
+test("passing subprocess with wrong case identity is invalid and stops immediately", (t) => {
+  const options = fixture(t);
+  for (const entry of Object.values(options.expectedCases)) entry.identitySha256 = '0'.repeat(64);
+  const outputDir = path.join(options.root, 'wrong-cases');
+  assert.throws(() => measure({ ...options, replicate: 1, outputDir }), /case identity\/status coverage differs/);
+  const report = JSON.parse(readFileSync(path.join(outputDir, 'report.json')));
+  assert.equal(report.runs.length, 1);
+  assert.equal(report.runs[0].status, 0);
+  assert.equal(report.runs[0].valid, false);
+});
+
+if (process.env.ISSUE_1139_GENERAL_XML) test("current retained JUnit matches the frozen case contract", () => {
+  const coverage = JSON.parse(readFileSync('.github/experiments/issue-1139-general-coverage.json'));
+  assert.equal(coverage.source, SOURCE);
+  const xml = readFileSync(process.env.ISSUE_1139_GENERAL_XML, 'utf8');
+  verifyCases(xml, Object.keys(coverage.files), coverage.files);
+  assert.equal(Object.keys(coverage.files).length, 72);
+  assert.equal(Object.values(coverage.files).reduce((n, file) => n + file.cases, 0), 1057);
+  assert.equal(Object.values(coverage.files).reduce((n, file) => n + file.skipped.length, 0), 9);
 });
