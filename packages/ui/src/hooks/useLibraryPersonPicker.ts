@@ -12,6 +12,10 @@ const EMPTY_ROWS: readonly LibraryCorePersonPickerRowV1[] = Object.freeze([]);
 
 interface PersonPickerResult {
   readonly attemptKey: string;
+  readonly requestKey: string;
+  readonly sourceVersion: number;
+  readonly failed: boolean;
+  readonly reader: LibraryCoreNormalizedQueryExecutor;
   readonly rows: readonly LibraryCorePersonPickerRowV1[];
 }
 
@@ -28,6 +32,8 @@ export function useLibraryPersonPicker({
   readonly sourceVersion: number;
 }): {
   readonly loading: boolean;
+  readonly resultsCurrent: boolean;
+  readonly status: "loading" | "refreshing" | "ready" | "failed" | "idle";
   readonly rows: readonly LibraryCorePersonPickerRowV1[];
 } {
   const readerSessionId = useRef(
@@ -37,6 +43,7 @@ export function useLibraryPersonPicker({
     ),
   );
   const normalizedSearch = search.trim();
+  const requestKey = normalizedSearch;
   const attemptKey = JSON.stringify([normalizedSearch, sourceVersion]);
   const [result, setResult] = useState<PersonPickerResult | null>(null);
 
@@ -61,20 +68,24 @@ export function useLibraryPersonPicker({
     })
       .then((response) => {
         if (cancelled) return;
-        setResult({ attemptKey, rows: response.rows });
+        setResult({ attemptKey, requestKey, sourceVersion, failed: false, reader: query, rows: response.rows });
       })
       .catch(() => {
-        if (!cancelled) setResult({ attemptKey, rows: EMPTY_ROWS });
+        if (!cancelled) setResult({ attemptKey, requestKey, sourceVersion, failed: true, reader: query, rows: EMPTY_ROWS });
       });
     return () => {
       cancelled = true;
     };
   }, [attemptKey, enabled, normalizedSearch, query]);
 
-  const current = enabled && result?.attemptKey === attemptKey ? result : null;
+  const retained = enabled && result !== null && result.reader === query && result.requestKey === requestKey && result.sourceVersion <= sourceVersion ? result : null;
+  const resultsCurrent = retained?.attemptKey === attemptKey && retained.failed === false;
+  const failed = retained?.attemptKey === attemptKey && retained.failed;
+  const active = enabled && Boolean(query);
   return {
-    loading:
-      enabled && query !== null && query !== undefined && current === null,
-    rows: current?.rows ?? EMPTY_ROWS,
+    loading: active && retained === null,
+    rows: retained?.rows ?? EMPTY_ROWS,
+    resultsCurrent,
+    status: !active ? "idle" : failed ? "failed" : resultsCurrent ? "ready" : retained?.rows.length ? "refreshing" : "loading",
   };
 }

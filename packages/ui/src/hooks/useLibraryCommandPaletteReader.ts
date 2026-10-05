@@ -35,6 +35,7 @@ export interface UseLibraryCommandPaletteReaderOptions {
   readonly activeFilter: FilterOptions;
   readonly activeView: BaseAppState["activeView"];
   readonly commandScopeItems: FeedItem[];
+  readonly commandScopeCurrent?: boolean;
   readonly enabled: boolean;
   readonly identityMode: "friends" | "all_content";
   readonly inputValue: string;
@@ -145,6 +146,7 @@ export function useLibraryCommandPaletteReader({
   activeFilter,
   activeView,
   commandScopeItems,
+  commandScopeCurrent = true,
   enabled,
   identityMode,
   inputValue,
@@ -294,7 +296,7 @@ export function useLibraryCommandPaletteReader({
   }
 
   const scopeActionsReady = enabled && activeView === "feed" && queryIsCommitted && (inputHasQuery
-    ? committedSearchHasQuery : compactCounts !== null ? facetState.status === "ready" : paletteScanReady);
+    ? committedSearchHasQuery && commandScopeCurrent : compactCounts !== null ? facetState.status === "ready" : paletteScanReady);
   const latestActionAdmission = useRef({ queryFenceKey, scopeActionsReady, scopeCounts, openScopeReader, readLibraryFacetSummary, executeLibraryScopeAction });
   latestActionAdmission.current = { queryFenceKey, scopeActionsReady, scopeCounts, openScopeReader, readLibraryFacetSummary, executeLibraryScopeAction };
 

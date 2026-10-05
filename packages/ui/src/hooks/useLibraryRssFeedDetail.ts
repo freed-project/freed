@@ -7,6 +7,7 @@ interface LibraryRssFeedDetailState {
   readonly error: string | null;
   readonly feed: RssFeed | null;
   readonly loading: boolean;
+  readonly refreshing?: boolean;
 }
 
 /** Read one exact RSS Feed from SQLite without retaining the subscription map. */
@@ -15,7 +16,7 @@ export function useLibraryRssFeedDetail(
   sourceVersion: number,
 ): LibraryRssFeedDetailState {
   const { queryLibraryCore } = usePlatform();
-  const [state, setState] = useState<LibraryRssFeedDetailState>({
+  const [state, setState] = useState<LibraryRssFeedDetailState & { reader?: typeof queryLibraryCore; url?: string; sourceVersion?: number }>({
     error: null,
     feed: null,
     loading: url !== null,
@@ -40,7 +41,7 @@ export function useLibraryRssFeedDetail(
       };
     }
 
-    setState((current) => ({ ...current, error: null, loading: true }));
+    setState(current => ({ reader: queryLibraryCore, url, sourceVersion, feed: current.reader === queryLibraryCore && current.url === url && (current.sourceVersion ?? Infinity) <= sourceVersion ? current.feed : null, error: null, loading: true }));
     void queryLibraryCore({
       queryId: "rss_feed_detail_v1",
       schemaVersion: 1,
@@ -49,6 +50,7 @@ export function useLibraryRssFeedDetail(
       .then((response) => {
         if (cancelled) return;
         setState({
+          reader: queryLibraryCore, url, sourceVersion,
           error: null,
           feed:
             response.feed === null
@@ -60,6 +62,7 @@ export function useLibraryRssFeedDetail(
       .catch((reason: unknown) => {
         if (cancelled) return;
         setState({
+          reader: queryLibraryCore, url, sourceVersion,
           error: reason instanceof Error ? reason.message : String(reason),
           feed: null,
           loading: false,
@@ -71,5 +74,9 @@ export function useLibraryRssFeedDetail(
     };
   }, [queryLibraryCore, sourceVersion, url]);
 
-  return state;
+  if (url === null) return { feed: null, error: null, loading: false };
+  if (!queryLibraryCore) return { feed: null, error: "SQLite RSS Feed detail query is unavailable", loading: false };
+  const matches = state.reader === queryLibraryCore && state.url === url && (state.sourceVersion ?? Infinity) <= sourceVersion;
+  const current = matches && state.sourceVersion === sourceVersion && !state.loading;
+  return { feed: matches ? state.feed : null, error: current ? state.error : null, loading: !current && (!matches || !state.feed), refreshing: !current && matches && !!state.feed };
 }

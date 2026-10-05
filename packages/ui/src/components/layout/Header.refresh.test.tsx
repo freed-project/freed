@@ -6,14 +6,14 @@ import { createRoot, type Root } from 'react-dom/client';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { createDefaultPreferences, type FeedItem } from '@freed/shared';
 import type { LibraryFacetSummary } from '../../context/PlatformContext.js';
-const fixture = vi.hoisted(() => ({ store: {} as any, platform: {} as any }));
+const fixture = vi.hoisted(() => ({ store: {} as any, platform: {} as any, search: {} as any }));
 vi.mock('../../context/PlatformContext.js', () => ({
  useAppStore: (select: any) => select(fixture.store), usePlatform: () => fixture.platform,
  usePlatformCapabilities: () => ({ libraryEdits: true, createPerson: true, changeCare: true }), MACOS_TRAFFIC_LIGHT_INSET: 80,
 }));
 vi.mock('../../hooks/useIsMobile.js', () => ({ useIsMobile: () => false }));
 vi.mock('../../hooks/useIsMobileDevice.js', () => ({ useIsMobileDevice: () => false }));
-vi.mock('../../hooks/useSearchResults.js', () => ({ useSearchResults: () => ({ filteredItems: [], isSearching: false, resultCount: 0, searchUnavailable: false }) }));
+vi.mock('../../hooks/useSearchResults.js', () => ({ useSearchResults: () => fixture.search }));
 vi.mock('../../hooks/useFeedSignalCounts.js', () => ({ useFeedSignalCounts: () => ({ all: 3, inspiring: 0, events: 0, personal: 0, conversation: 0, news: 0 }) }));
 vi.mock('../../lib/device-display-preferences.js', () => ({ useDeviceDisplayPreferences: () => [{ friendsMode: 'all_content', mapMode: 'all_content', sidebarMode: 'expanded', feedSignalModes: [], dualColumnMode: false, savedContentSortMode: 'date_saved' }, vi.fn()] }));
 vi.mock('../../lib/theme.js', () => ({ useThemePreference: () => ['dark', vi.fn()], applyThemeToDocument: vi.fn(), useThemePreviewController: () => ({ commitTheme: vi.fn(), previewTheme: vi.fn(), revertPreview: vi.fn() }) }));
@@ -53,6 +53,7 @@ describe('Header same-context background refresh', () => {
    updatePreferences: vi.fn(), setSelectedItem: vi.fn(), setFilter: vi.fn() };
   fixture.platform = { readLibraryFacetSummary: vi.fn(async () => summary()), openBoundedFeedReader: vi.fn(async () => reader()),
    store: { getState: () => fixture.store }, readLibraryItemDetail: vi.fn(async (id: string) => item(id)), executeLibraryScopeAction: vi.fn(async () => {}) };
+  fixture.search = { filteredItems: [], isSearching: false, resultCount: 0, searchUnavailable: false, resultsCurrent: true };
   host = document.createElement('div'); document.body.append(host); root = createRoot(host);
  });
  afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); });
@@ -60,6 +61,28 @@ describe('Header same-context background refresh', () => {
   desktopSidebarMode="expanded" onDesktopSidebarToggle={() => {}} friendsSidebarOpen={false} onFriendsSidebarToggle={() => {}}
   friendsMobileSurface="graph" onFriendsMobileSurfaceChange={() => {}} />)); };
  const actions = () => host.querySelector('[data-testid="toolbar-overflow-button"]');
+ it('keeps search actions mounted but inert until retained results become current', async () => {
+  fixture.store.searchQuery = 'needle';
+  fixture.search = { filteredItems: [item('unread'), item('read', true)], isSearching: true, resultCount: 2, resultsCurrent: true };
+  await render(); const button = actions(); expect(button).not.toBeNull();
+  await act(async () => (button as HTMLButtonElement).click());
+  const menu = host.querySelector('[role="menu"]');
+  fixture.search.resultsCurrent = false; await render();
+  expect(actions()).toBe(button); expect(host.querySelector('[role="menu"]')).toBe(menu);
+  const mark = host.querySelector('[role="menuitem"]') as HTMLButtonElement;
+  expect(mark.disabled).toBe(true); expect(mark.textContent).toContain('1 unread');
+  await act(async () => { mark.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); mark.click(); });
+  expect(fixture.platform.executeLibraryScopeAction).not.toHaveBeenCalled();
+  fixture.search.resultsCurrent = true; await render(); expect(mark.disabled).toBe(false);
+  await act(async () => mark.click()); expect(fixture.platform.executeLibraryScopeAction).toHaveBeenCalledOnce();
+ });
+ it('does not apply search readiness to ordinary browse action admission', async () => {
+  let latest!: ReturnType<typeof useLibraryCommandPaletteReader>;
+  function Probe() { latest = useLibraryCommandPaletteReader({ activeFilter: {}, activeView: 'feed', commandScopeItems: [],
+   commandScopeCurrent: false, enabled: true, identityMode: 'all_content', inputValue: '', searchQuery: '', selectedItemId: null, sourceVersion: 1 }); return null; }
+  await act(async () => root.render(<Probe />));
+  expect(latest.scopeActionsReady).toBe(true); expect(latest.unreadScopeCount).toBeGreaterThan(0);
+ });
  it('keeps the top More actions button mounted while same-scope facet counts refresh', async () => {
   await render(); const button = actions(); expect(button).not.toBeNull();
   const pending = deferred<LibraryFacetSummary>(); fixture.platform.readLibraryFacetSummary.mockReturnValueOnce(pending.promise);

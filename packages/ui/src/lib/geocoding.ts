@@ -54,6 +54,11 @@ function throttledFetch(url: string): Promise<Response> {
   });
 }
 
+/** Already committed geographic cache fact; never starts a request. */
+export function peekGeocode(query: string): GeoLocation | null | undefined {
+  return memoryCache.get(query);
+}
+
 export async function geocode(query: string): Promise<GeoLocation | null> {
   if (memoryCache.has(query)) {
     return memoryCache.get(query) ?? null;
