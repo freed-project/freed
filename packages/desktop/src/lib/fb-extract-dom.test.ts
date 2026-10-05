@@ -10,7 +10,11 @@ const script = readFileSync(
 
 function runExtractor(
   html: string,
-  options: { authenticated?: boolean; scrollHeight?: number } = {},
+  options: {
+    authenticated?: boolean;
+    scrollHeight?: number;
+    beforeExtract?: (dom: JSDOM) => void;
+  } = {},
 ) {
   const dom = new JSDOM(html, {
     url: "https://www.facebook.com/",
@@ -36,11 +40,41 @@ function runExtractor(
     },
   });
 
+  options.beforeExtract?.(dom);
+
   dom.window.eval(script);
   return payloads.find((payload) => payload.name === "fb-feed-data")?.data;
 }
 
 describe("Facebook DOM extractor", () => {
+  it.each([
+    ["recommended caption", "", "Synthetic Example", "My friend recommended a walking route.", 1],
+    ["settings discussion", "", "Synthetic Example", "I discussed suggested for you settings.", 1],
+    ["commercial organic", "", "Synthetic Example", "Our shop sells handmade mugs.", 1],
+    ["missing header", null, "Synthetic Example", "A recommended walking route.", 1],
+    ["suggested header", "<span>Suggested for you</span>", "Synthetic Example", "A personal event.", 0],
+    ["people header", "<div>People you may know</div>", "Synthetic Example", "A personal event.", 0],
+    ["recommended header", "Recommended for you", "Synthetic Example", "A personal event.", 0],
+    ["author label", "", "Recommended for you", "A personal event.", 1],
+    ["longer header phrase", "<span>A route recommended for you by friends</span>", "Synthetic Example", "A personal event.", 1],
+    ["Follow control", '<button>Follow</button>', "Synthetic Example", "A personal event.", 0],
+    ["Follow Back control", '<div role="button">Follow Back</div>', "Synthetic Example", "A personal event.", 0],
+  ])("scopes recommendation evidence: %s", (_name, label, author, text, retained) => {
+    const authorHtml = `<h3><a href="https://www.facebook.com/synthetic.example"><span>${author}</span></a></h3>`;
+    const headerHtml = label === null ? authorHtml : `<header>${authorHtml}${label}</header>`;
+    const payload = runExtractor(`<div role="main"><div role="article">${headerHtml}
+      <a href="https://www.facebook.com/synthetic.example/posts/123456789">1 h</a>
+      <div dir="auto">${text}</div></div></div>`);
+    expect(payload?.candidateCount).toBe(1);
+    expect(payload?.posts).toHaveLength(retained);
+    expect(payload?.rejected).toMatchObject({ recommendation: 1 - retained, advertising: 0 });
+    if (retained) {
+      expect(payload?.posts).toEqual([expect.objectContaining({
+        id: "123456789", url: "https://www.facebook.com/synthetic.example/posts/123456789", text,
+      })]);
+    }
+  });
+
   it("reports an auth error when Facebook renders the logged-out shell", () => {
     const payload = runExtractor(
       `
@@ -207,5 +241,96 @@ describe("Facebook DOM extractor", () => {
         text: "A permalink can be the only reliable post boundary on the current Facebook feed.",
       }),
     ]);
+  });
+
+  it("excludes an accessible Sponsored placement before clicking See more", () => {
+    let clicks = 0;
+    const payload = runExtractor(
+      `
+        <div role="main">
+          <div role="article">
+            <h3><a href="https://www.facebook.com/keeps.example">Keeps</a></h3>
+            <span aria-label="Sponsored"><span>S</span><span>ponsored</span></span>
+            <button aria-label="See more">See more</button>
+            <a href="https://www.facebook.com/keeps.example/posts/555">1 h</a>
+            <div dir="auto">Commercial placement content that must never enter capture.</div>
+          </div>
+        </div>
+      `,
+      {
+        beforeExtract(dom) {
+          dom.window.document.querySelector("button")?.addEventListener("click", () => {
+            clicks += 1;
+          });
+        },
+      },
+    );
+
+    expect(payload?.posts).toEqual([]);
+    expect(payload?.rejected).toMatchObject({
+      advertising: 1,
+      recommendation: 0,
+      inspectedPlacements: 1,
+    });
+    expect(clicks).toBe(0);
+  });
+
+  it("reconstructs split disclosure text in the placement header", () => {
+    const payload = runExtractor(`
+      <div role="main">
+        <div role="article">
+          <header><h3><a href="https://www.facebook.com/brand.example">Brand</a></h3><span>S</span><span>pon</span><span>sored</span></header>
+          <a href="https://www.facebook.com/brand.example/posts/777">1 h</a>
+          <div dir="auto">A paid placement with a split disclosure.</div>
+        </div>
+      </div>
+    `);
+
+    expect(payload?.posts).toEqual([]);
+    expect(payload?.rejected).toMatchObject({ advertising: 1 });
+  });
+
+  it("does not classify post body prose or hidden decoys as advertising", () => {
+    const payload = runExtractor(`
+      <div role="main">
+        <div role="article">
+          <h3><a href="https://www.facebook.com/writer.example">Writer Example</a></h3>
+          <span aria-label="Sponsored" aria-hidden="true">Sponsored</span>
+          <a href="https://www.facebook.com/writer.example/posts/888">1 h</a>
+          <div dir="auto">A discussion of sponsored research belongs in the organic post body.</div>
+        </div>
+      </div>
+    `);
+
+    expect(payload?.posts).toHaveLength(1);
+    expect(payload?.posts).toEqual([
+      expect.objectContaining({
+        id: "888",
+        admission: expect.objectContaining({
+          decision: "admit",
+          inspectionStatus: "complete",
+          surface: "feed",
+        }),
+      }),
+    ]);
+  });
+
+  it("defers an unresolved partial disclosure instead of admitting it", () => {
+    const payload = runExtractor(`
+      <div role="main">
+        <div role="article">
+          <h3><a href="https://www.facebook.com/unclear.example">Unclear</a></h3>
+          <span aria-label="Spons">Spons</span>
+          <a href="https://www.facebook.com/unclear.example/posts/999">1 h</a>
+          <div dir="auto">This placement remains unresolved.</div>
+        </div>
+      </div>
+    `);
+
+    expect(payload?.posts).toEqual([]);
+    expect(payload?.rejected).toMatchObject({
+      advertising: 0,
+      deferredAdvertising: 1,
+    });
   });
 });

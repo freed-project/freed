@@ -496,9 +496,9 @@ export function XSettingsSection({
               <li>Log in to <span className="text-white font-medium">x.com</span> in Chrome</li>
               <li>Open DevTools with <kbd className="px-1 py-0.5 bg-white/10 rounded text-[10px]">⌥⌘I</kbd></li>
               <li>Click the <span className="text-white">Application</span> tab</li>
-              <li>Expand <span className="text-white">Cookies</span> and select <span className="font-mono text-[10px] text-[#c4b5fd]">https://x.com</span></li>
-              <li>Copy the value for <span className="font-mono text-[#c4b5fd]">ct0</span></li>
-              <li>Copy the value for <span className="font-mono text-[#c4b5fd]">auth_token</span></li>
+              <li>Expand <span className="text-white">Cookies</span> and select <span className="font-mono text-[10px] text-[var(--theme-accent-secondary)]">https://x.com</span></li>
+              <li>Copy the value for <span className="font-mono text-[var(--theme-accent-secondary)]">ct0</span></li>
+              <li>Copy the value for <span className="font-mono text-[var(--theme-accent-secondary)]">auth_token</span></li>
             </ol>
           </div>
 
@@ -507,7 +507,7 @@ export function XSettingsSection({
             placeholder="ct0 value"
             value={ct0}
             onChange={(e) => setCt0(e.target.value)}
-            className="w-full text-sm px-3 py-2 bg-white/5 border border-[rgba(255,255,255,0.1)] rounded-xl text-white placeholder-[#52525b] focus:outline-none focus:border-[#8b5cf6]/50"
+            className="w-full text-sm px-3 py-2 theme-input rounded-xl focus:outline-none"
           />
           <input
             type="text"
@@ -515,7 +515,7 @@ export function XSettingsSection({
             value={authToken}
             onChange={(e) => setAuthToken(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") handleManualConnect(); }}
-            className="w-full text-sm px-3 py-2 bg-white/5 border border-[rgba(255,255,255,0.1)] rounded-xl text-white placeholder-[#52525b] focus:outline-none focus:border-[#8b5cf6]/50"
+            className="w-full text-sm px-3 py-2 theme-input rounded-xl focus:outline-none"
           />
 
           {formError && <p className="text-xs text-red-400">{formError}</p>}
@@ -525,7 +525,7 @@ export function XSettingsSection({
               data-testid="x-manual-connect"
               onClick={handleManualConnect}
               disabled={!ct0 || !authToken}
-              className="flex-1 text-sm px-3 py-2 rounded-xl bg-[#8b5cf6]/15 text-[#8b5cf6] hover:bg-[#8b5cf6]/25 disabled:opacity-40 transition-colors"
+              className="flex-1 text-sm px-3 py-2 rounded-xl theme-accent-button disabled:opacity-40 transition-colors"
             >
               Connect
             </button>
@@ -555,7 +555,7 @@ export function XSettingsSection({
         </p>
         <button
           onClick={handleSignIn}
-          className="w-full text-sm px-4 py-2.5 rounded-xl bg-[#8b5cf6]/15 text-[#8b5cf6] hover:bg-[#8b5cf6]/25 transition-colors"
+          className="w-full text-sm px-4 py-2.5 rounded-xl theme-accent-button transition-colors"
         >
           {needsReconnect ? "Reconnect X" : "Sign in to X"}
         </button>

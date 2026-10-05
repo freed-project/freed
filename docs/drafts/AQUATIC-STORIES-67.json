@@ -1,0 +1,308 @@
+{
+  "batch": "AQUATIC-STORIES-67",
+  "status": "admitted_by_root",
+  "worktree": "/Users/aubreyfalconer/dev/freed-editorial-isolated",
+  "profiles": [],
+  "proposals": [
+    {
+      "id": "aquatic-stories-67-01",
+      "characterId": "mabel-lowwater",
+      "platform": "instagram",
+      "format": "story",
+      "theme": "family",
+      "title": "I called first",
+      "body": "I came out shouting. Nobody else had come out, which seemed like something Mother should know.\n\nThen the egg under my chin shouted back.\n\nLifted my head off it. Waited for them to finish before I tried again.",
+      "media": {
+        "index": 4,
+        "sourceId": "3f0127b8-1dd8-b71c-0748-9696fc86fd14",
+        "sourcePage": "https://www.nps.gov/media/photo/gallery-item.htm?gid=3EF37CB5-1DD8-B71C-07DB0F90A50A7588&id=3f0127b8-1dd8-b71c-0748-9696fc86fd14",
+        "sourceTitle": "Alligator hatchling and eggs",
+        "imageUrl": "https://www.nps.gov/npgallery/GetAsset/3f0127b8-1dd8-b71c-0748-9696fc86fd14",
+        "localPath": "/tmp/freed-aquatic-stories-67/source-04.jpg",
+        "width": 1600,
+        "height": 1200,
+        "originalDimensions": [
+          1600,
+          1200
+        ],
+        "byteLength": 1368858,
+        "sha1": "53be7c84c4770b3263a0566c3275c263398f5634",
+        "sha256": "3fcf300df12b92f1eb625d951a85c1b7790ec59b60990680ba93992b3e2da99a",
+        "license": "Public domain",
+        "rightsEvidence": {
+          "Constraint": "Public domain",
+          "GrantingRights": "Unknown"
+        },
+        "attribution": "NPS",
+        "description": "Newly hatched American alligator surrounded in its nest by unhatched eggs.",
+        "individuallyOpened": true,
+        "decision": "admitted",
+        "reason": "Sharp, legible newly hatched animal surrounded by eggs. Open mouth and lifted head support a fictional hatchling-call incident. Sound and sequence are not documented by the still.",
+        "sourceTaxon": "Alligator mississippiensis",
+        "deliveryKind": "Source-published original",
+        "originalOpened": true,
+        "originalHash": "53be7c84c4770b3263a0566c3275c263398f5634",
+        "rightsMetadataUrl": "https://www.nps.gov/npgallery/api/search/execute/albumid/3EF37CB5-1DD8-B71C-07DB0F90A50A7588?pagesize=100&primarytype=image",
+        "licenseUrl": "https://www.nps.gov/media/photo/gallery-item.htm?gid=3EF37CB5-1DD8-B71C-07DB0F90A50A7588&id=3f0127b8-1dd8-b71c-0748-9696fc86fd14",
+        "sourcePlace": "Everglades National Park source gallery; exact photo coordinates not provided",
+        "rightsVerifiedAt": "2026-09-05",
+        "hashMeaning": "Exact downloaded original JPEG bytes; measured dimensions agree with API original dimensions."
+      },
+      "alt": "A newly hatched American alligator with yellow bands holds its mouth open among white eggs and brown nest vegetation.",
+      "authorDecision": "propose_for_independent_review",
+      "independentLeadDecision": "pass_exact",
+      "continuity": "Earliest childhood recollection, before admitted juvenile Story I was going to hide. Present profile remains an adult female. Source hatchling sex is unknown; female casting is fictional and does not contradict visible sex-specific anatomy. This establishes neither Mabel\u2019s own nest nor her offspring. The unseen sibling is unnamed.",
+      "fictionBoundary": "The still documents hatchling, open mouth, head position and eggs. Calling, a reply from inside an egg, prior chin contact, the misunderstanding and turn-taking are authored fiction. NPS documents calls when eggs are ready to hatch, but neither this individual vocalizing nor an acoustic exchange was recorded here.",
+      "narrativeAssessment": "Mabel mistakes the unhatched clutch for absence, starts an alarm, receives an answer from a body she had treated as scenery, and gives it room to finish. Movement is from announcing the problem to attending to a sibling. This does not cast her as another animal\u2019s protector.",
+      "editorialRisk": "Audio carries the reversal in a silent still. Lead should hold if this is judged too much offscreen reconstruction. No claimed hatching sequence or incoming mother is pictured.",
+      "contentType": "story",
+      "subject": "Alligator mississippiensis"
+    }
+  ],
+  "sourceReviews": [
+    {
+      "index": 1,
+      "observationId": 291016197,
+      "sourcePage": "https://www.inaturalist.org/observations/291016197",
+      "photoId": 523540527,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/523540527/large.jpg",
+      "localPath": "/tmp/freed-aquatic-stories-67/source-01.jpg",
+      "width": 1024,
+      "height": 768,
+      "originalDimensions": [
+        2048,
+        1536
+      ],
+      "byteLength": 308248,
+      "sha1": "dc24021bf8563c178c081542bb805a345f94b712",
+      "sha256": "6cdd5ae5a413827c1ea9c0e0a4aa9ece08300b254178ebe5d910f10223f86b99",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "attribution": "(c) David Garza, some rights reserved (CC BY), uploaded by David Garza",
+      "description": "Alligator nest.",
+      "individuallyOpened": true,
+      "decision": "hold",
+      "reason": "Nest vegetation alone, without an alligator or visible eggs. No complete incident earned.",
+      "sourceTaxon": "Alligator mississippiensis",
+      "deliveryKind": "Source-published large_url from observation JSON",
+      "originalOpened": false,
+      "originalHash": null,
+      "sourceMetadataUrl": "https://www.inaturalist.org/observations/291016197.json",
+      "hashMeaning": "Exact published large delivery, not original upload. Original dimensions are metadata only."
+    },
+    {
+      "index": 2,
+      "observationId": 39728979,
+      "sourcePage": "https://www.inaturalist.org/observations/39728979",
+      "photoId": 63058562,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/63058562/large.jpg",
+      "localPath": "/tmp/freed-aquatic-stories-67/source-02.jpg",
+      "width": 1024,
+      "height": 811,
+      "originalDimensions": [
+        2048,
+        1622
+      ],
+      "byteLength": 804912,
+      "sha1": "b9dd38fc07d2c42adb34a656247b753ad761af2c",
+      "sha256": "22181d2e6b16dfd1aa1c395df209da5c198102fc4679811588d89f391a0a082e",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "attribution": "(c) Seig, some rights reserved (CC BY), uploaded by Seig",
+      "description": "American alligator Alligator mississippiensis at its hole (nest on a small mound to keep the eggs dry) during a Slough Slog in Everglades National Park, FL",
+      "individuallyOpened": true,
+      "decision": "hold",
+      "reason": "Animal too small and partly obscured in a cluttered swamp frame. No legible new action.",
+      "sourceTaxon": "Alligator mississippiensis",
+      "deliveryKind": "Source-published large_url from observation JSON",
+      "originalOpened": false,
+      "originalHash": null,
+      "sourceMetadataUrl": "https://www.inaturalist.org/observations/39728979.json",
+      "hashMeaning": "Exact published large delivery, not original upload. Original dimensions are metadata only."
+    },
+    {
+      "index": 3,
+      "observationId": 97806404,
+      "sourcePage": "https://www.inaturalist.org/observations/97806404",
+      "photoId": 162722603,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/162722603/large.jpg",
+      "localPath": "/tmp/freed-aquatic-stories-67/source-03.jpg",
+      "width": 1024,
+      "height": 677,
+      "originalDimensions": [
+        2048,
+        1353
+      ],
+      "byteLength": 440904,
+      "sha1": "55956ebf83d690ddf0f3962259b9d50a69ded8f5",
+      "sha256": "cd9eed566d7fd98dedc9351cd27bce7928005f21220754f9759bdf74ef41d602",
+      "license": "CC0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "attribution": "no rights reserved, uploaded by Irene",
+      "description": "We counted 30+ young alligators. Mother was 5\u2019 away. Alligator eggs are laid in a nest of vegetation, sticks, leaves, and mud in a sheltered spot in or near the water. Young are born with yellow bands around their bodies and are protected by their mother for up to one year.",
+      "individuallyOpened": true,
+      "decision": "hold",
+      "reason": "Many young among grass, but soft detail and no mother in frame. Stronger hatchling source04 supersedes it.",
+      "sourceTaxon": "Alligator mississippiensis",
+      "deliveryKind": "Source-published large_url from observation JSON",
+      "originalOpened": false,
+      "originalHash": null,
+      "sourceMetadataUrl": "https://www.inaturalist.org/observations/97806404.json",
+      "hashMeaning": "Exact published large delivery, not original upload. Original dimensions are metadata only."
+    },
+    {
+      "index": 4,
+      "sourceId": "3f0127b8-1dd8-b71c-0748-9696fc86fd14",
+      "sourcePage": "https://www.nps.gov/media/photo/gallery-item.htm?gid=3EF37CB5-1DD8-B71C-07DB0F90A50A7588&id=3f0127b8-1dd8-b71c-0748-9696fc86fd14",
+      "sourceTitle": "Alligator hatchling and eggs",
+      "imageUrl": "https://www.nps.gov/npgallery/GetAsset/3f0127b8-1dd8-b71c-0748-9696fc86fd14",
+      "localPath": "/tmp/freed-aquatic-stories-67/source-04.jpg",
+      "width": 1600,
+      "height": 1200,
+      "originalDimensions": [
+        1600,
+        1200
+      ],
+      "byteLength": 1368858,
+      "sha1": "53be7c84c4770b3263a0566c3275c263398f5634",
+      "sha256": "3fcf300df12b92f1eb625d951a85c1b7790ec59b60990680ba93992b3e2da99a",
+      "license": "Public domain",
+      "rightsEvidence": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Unknown"
+      },
+      "attribution": "NPS",
+      "description": "Newly hatched American alligator surrounded in its nest by unhatched eggs.",
+      "individuallyOpened": true,
+      "decision": "propose_for_independent_review",
+      "reason": "Sharp, legible newly hatched animal surrounded by eggs. Open mouth and lifted head support a fictional hatchling-call incident. Sound and sequence are not documented by the still.",
+      "sourceTaxon": "Alligator mississippiensis",
+      "deliveryKind": "Source-published original",
+      "originalOpened": true,
+      "originalHash": "53be7c84c4770b3263a0566c3275c263398f5634",
+      "rightsMetadataUrl": "https://www.nps.gov/npgallery/api/search/execute/albumid/3EF37CB5-1DD8-B71C-07DB0F90A50A7588?pagesize=100&primarytype=image",
+      "licenseUrl": "https://www.nps.gov/media/photo/gallery-item.htm?gid=3EF37CB5-1DD8-B71C-07DB0F90A50A7588&id=3f0127b8-1dd8-b71c-0748-9696fc86fd14",
+      "sourcePlace": "Everglades National Park source gallery; exact photo coordinates not provided",
+      "rightsVerifiedAt": "2026-09-05",
+      "hashMeaning": "Exact downloaded original JPEG bytes; measured dimensions agree with API original dimensions."
+    },
+    {
+      "index": 5,
+      "sourceId": "3efe511e-1dd8-b71c-0713-dc7259bbddb2",
+      "sourcePage": "https://www.nps.gov/media/photo/gallery-item.htm?gid=3EF37CB5-1DD8-B71C-07DB0F90A50A7588&id=3efe511e-1dd8-b71c-0713-dc7259bbddb2",
+      "sourceTitle": "Alligator on nest",
+      "imageUrl": "https://www.nps.gov/npgallery/GetAsset/3efe511e-1dd8-b71c-0713-dc7259bbddb2",
+      "localPath": "/tmp/freed-aquatic-stories-67/source-05.jpg",
+      "width": 1600,
+      "height": 1200,
+      "originalDimensions": [
+        1600,
+        1200
+      ],
+      "byteLength": 1094846,
+      "sha1": "78d9c54de2ae43f8d85ba54962cb45e6797915b2",
+      "sha256": "b443709efbc9e9729106c6bfa58b6bbc8c4c1e1a327a0cfaede62945be175be6",
+      "license": "Public domain",
+      "rightsEvidence": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Unknown"
+      },
+      "attribution": "NPS / Lori Oberhofer",
+      "description": "Close-up view of American alligator on top of nest.",
+      "individuallyOpened": true,
+      "decision": "hold",
+      "reason": "Clear adult on a nest, but a second protective passage would repeat Mabel\u2019s admitted juvenile event; no distinct consequence earned.",
+      "sourceTaxon": "Alligator mississippiensis",
+      "deliveryKind": "Source-published original",
+      "originalOpened": true,
+      "originalHash": "78d9c54de2ae43f8d85ba54962cb45e6797915b2",
+      "rightsMetadataUrl": "https://www.nps.gov/npgallery/api/search/execute/albumid/3EF37CB5-1DD8-B71C-07DB0F90A50A7588?pagesize=100&primarytype=image",
+      "licenseUrl": "https://www.nps.gov/media/photo/gallery-item.htm?gid=3EF37CB5-1DD8-B71C-07DB0F90A50A7588&id=3efe511e-1dd8-b71c-0713-dc7259bbddb2",
+      "sourcePlace": "Everglades National Park source gallery; exact photo coordinates not provided",
+      "rightsVerifiedAt": "2026-09-05",
+      "hashMeaning": "Exact downloaded original JPEG bytes; measured dimensions agree with API original dimensions."
+    },
+    {
+      "index": 6,
+      "sourceId": "3eff52b6-1dd8-b71c-07bb-67818ef6d3da",
+      "sourcePage": "https://www.nps.gov/media/photo/gallery-item.htm?gid=3EF37CB5-1DD8-B71C-07DB0F90A50A7588&id=3eff52b6-1dd8-b71c-07bb-67818ef6d3da",
+      "sourceTitle": "Alligator protecting its nest",
+      "imageUrl": "https://www.nps.gov/npgallery/GetAsset/3eff52b6-1dd8-b71c-07bb-67818ef6d3da",
+      "localPath": "/tmp/freed-aquatic-stories-67/source-06.jpg",
+      "width": 1600,
+      "height": 1200,
+      "originalDimensions": [
+        1600,
+        1200
+      ],
+      "byteLength": 1913830,
+      "sha1": "d60ec23a11241e1cef787353336621f5f75c8493",
+      "sha256": "b32866ffcd524e9490fb610cb61ba213e289946ef09e44b9c8d01cd8b8c03cf3",
+      "license": "Public domain",
+      "rightsEvidence": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Unknown"
+      },
+      "attribution": "NPS / Lori Oberhofer",
+      "description": "Alligator protecting its nest.",
+      "individuallyOpened": true,
+      "decision": "hold",
+      "reason": "Source explicitly identifies nest protection and the open jaws are visible. Held for repeated protector mechanism, not disputed nest identification.",
+      "sourceTaxon": "Alligator mississippiensis",
+      "deliveryKind": "Source-published original",
+      "originalOpened": true,
+      "originalHash": "d60ec23a11241e1cef787353336621f5f75c8493",
+      "rightsMetadataUrl": "https://www.nps.gov/npgallery/api/search/execute/albumid/3EF37CB5-1DD8-B71C-07DB0F90A50A7588?pagesize=100&primarytype=image",
+      "licenseUrl": "https://www.nps.gov/media/photo/gallery-item.htm?gid=3EF37CB5-1DD8-B71C-07DB0F90A50A7588&id=3eff52b6-1dd8-b71c-07bb-67818ef6d3da",
+      "sourcePlace": "Everglades National Park source gallery; exact photo coordinates not provided",
+      "rightsVerifiedAt": "2026-09-05",
+      "hashMeaning": "Exact downloaded original JPEG bytes; measured dimensions agree with API original dimensions."
+    }
+  ],
+  "canonProposal": {
+    "characterId": "mabel-lowwater",
+    "placement": "New earliest hatchling memory, before I was going to hide; adult avatar and existing wording unchanged.",
+    "newFacts": "A fictional call-and-response with an unnamed sibling still inside an egg. No new mate, offspring, nest ownership, exact age or sex evidence.",
+    "verifiedInsertion": {
+      "targetFile": "packages/shared/src/sample-character-arcs-aquatic-fifty-seven.ts",
+      "characterId": "mabel-lowwater",
+      "insertBeforeMediaSha1": "af1e4035f4389c16ed06a7a83b70c668c4589f1e",
+      "insertBeforeTitle": "I was going to hide",
+      "basis": "Current runtime arc contains exactly one episode. Newborn among unhatched eggs necessarily precedes the larger mobile juvenile carrying an even smaller companion. Retain existing episode unchanged and adult avatar unchanged.",
+      "verifiedReadOnly": true
+    }
+  },
+  "biologySources": [
+    {
+      "url": "https://www.nps.gov/ever/learn/nature/alligator.htm",
+      "supports": "American alligator taxonomy, Everglades habitat, juvenile yellow bands and hatchling calls before the female opens the nest.",
+      "checkedAt": "2026-09-05"
+    }
+  ],
+  "discoverySummary": {
+    "exactImagesOpened": 6,
+    "newIdentities": 0,
+    "runtimeChanges": false,
+    "metadataOnlyHolds": [
+      "Nudi mating observation outside Anilao; repeats mating mechanism.",
+      "Iris egg observations mostly detached clusters rather than narrator action.",
+      "Rhea nesting and remora observations outside established Caribbean home.",
+      "Nestor brood identity lacks exact species and sex continuity."
+    ],
+    "networkBoundary": "Independent healthy iNaturalist and NPS discovery. No blocked Commons endpoint retries."
+  },
+  "independentLeadReview": {
+    "sourceIndexesOpened": [
+      4
+    ],
+    "imageDecision": "pass",
+    "proseDecision": "pass_exact",
+    "scope": "Lead independently opened source04 and approved the literal passage; author supplies complete metadata and earlier-than57 placement. Runtime admission remains root-owned."
+  },
+  "runtimeIntegration": {
+    "writer": "root",
+    "worktree": "/Users/aubreyfalconer/dev/freed-editorial-isolated",
+    "position": "before existing juvenile episode",
+    "existingBodyPreserved": true
+  }
+}

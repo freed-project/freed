@@ -1,0 +1,68 @@
+{
+  "status": "one_root_authored_candidate_pending_independent_review",
+  "admitted": 0,
+  "holds": [
+    {
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File:So%C4%8Da_river_-_bridge.jpg",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/79/So%C4%8Da_river_-_bridge.jpg/960px-So%C4%8Da_river_-_bridge.jpg?utm_campaign=index&utm_content=thumbnail&utm_source=commons.wikimedia.org",
+      "creator": "Tiia Monto",
+      "license": "CC BY-SA 3.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0/",
+      "localPath": "/tmp/freed-sela103/bridge.jpg",
+      "sha1": "62b2e979418bafd79f9931c8d39dc4519d5fd53b",
+      "sha256": "00ad2a6b937f55eb7dc58ea9cb565af459c5f98c16e9d668fdaa1cbae0c19561",
+      "bytes": 586986,
+      "width": 960,
+      "height": 1423,
+      "individuallyOpened": true,
+      "review": "Sharp full-frame suspension footbridge over Soča. Bridge dominates; river remains at lower sides. No body authored that earns this particular composition. Hold without admission.",
+      "changes": "None; exact source-published thumbnail.",
+      "sourceUploadInspected": false
+    }
+  ],
+  "proposals": [
+    {
+      "characterId": "sela-current",
+      "episode": {
+        "subject": "river",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "social",
+        "title": "Before they came in",
+        "body": "I listened while he explained the rocks to them. The first sounded awkward. The second sounded worse. I had been going around both all morning without a thought. Now I wanted everyone to be quiet so I could hear what he was going to say about the bend.",
+        "mediaSha1": "26bbb7f76d510d407c180bcb893883f251620e33"
+      },
+      "visibleScene": "A helmeted person holds a paddle on a sloped bank, with other paddlers nearer the turquoise Soča and a green-shirted adult by the water. River, bank and preparation equipment are sharp.",
+      "fictionBoundary": "The briefing, particular rocks, river listening and anticipated account of a bend are fiction. Still documents people and paddle equipment beside the river, not speech, exact roles, ages or sequence. No safety guidance or claimed expertise.",
+      "continuity": "Distributed Soča narrator remains at representative46.33,13.64. Listens to others describing familiar parts of her own body, distinct from cold bathers, erosion remorse, gorge noise and separated canoe cargo. No new recurring person, injury or dated event. Append after accepted scenes.",
+      "authorReview": "A short change in attention: ordinary familiar obstacles become interesting when described to visitors. She wants quiet so she can overhear the next detail. End stops at curiosity without a moral. Pending independent judgment of whether scene is specific enough."
+    }
+  ],
+  "media": [
+    {
+      "id": "sela103-bank-briefing",
+      "subject": "river",
+      "category": "landscape",
+      "identityNameBase": "Sela Current",
+      "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/8/87/The_long_wait_%288959320603%29.jpg/960px-The_long_wait_%288959320603%29.jpg?utm_campaign=index&utm_content=thumbnail&utm_source=commons.wikimedia.org",
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File:The_long_wait_(8959320603).jpg",
+      "originalSourceUrl": "https://www.flickr.com/photos/darren_j_glanville/8959320603/",
+      "creator": "Darren Glanville",
+      "license": "CC BY-SA 2.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/2.0/",
+      "localPath": "/tmp/freed-sela103/wait.jpg",
+      "sha1": "26bbb7f76d510d407c180bcb893883f251620e33",
+      "sha256": "8908c3d6b575c2e21f71d76a6b4e5f34b4dd227ba4155c8d4d69dc8cc516e2d8",
+      "bytes": 358259,
+      "width": 960,
+      "height": 1445,
+      "alt": "A helmeted paddler waits on the sloping bank above other visitors and the turquoise Soča.",
+      "individuallyOpened": true,
+      "sourceUploadInspected": false,
+      "changes": "None; exact source-published960px thumbnail.",
+      "rightsEvidence": "Commons photo page gives creator, BY-SA2.0 and2013 Flickr rights review. Original Flickr page freshly opened, same creator/title/date and Some rights reserved link.",
+      "locationEvidence": "Commons categoryWater sports on Soča and geographic coordinate46.340528,13.654083 place scene on same river.",
+      "networkEvidence": "Web image request timed out; direct same-published-URL curl succeeded. No fabricated replacement URL."
+    }
+  ]
+}

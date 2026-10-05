@@ -69,7 +69,38 @@ Intentional differences: `dev` and `main` route provider and durable-storage
 work to their pre-action gates. `www` excludes product work and instead
 requires Level 6 or 7 for a merge that deploys production. Its task and
 deployment routes stay website-specific. Main receives instruction changes
-through normal reviewed promotion, not an out-of-band product merge.
+through normal reviewed promotion, not an out-of-band product merge. The preview
+and delivery policy starts on dev; main retains its existing default Build
+policy until promotion, and www requires a separate instruction-only port.
+Report this authority-section drift explicitly until those lanes converge; do
+not weaken the parity validator or merge lanes merely to silence it.
+
+## Preview and delivery
+
+For a user-facing fix or feature, separate local review from permission to publish or deploy. Start at the root policy's default Level 2 unless the owner has already set another scope or level.
+
+1. Fetch current instructions, preserve existing work, and create the isolated worktree. Build the smallest useful version of the requested change. Run focused checks needed to make it safe and runnable.
+2. Show the local preview in the task's built-in Browser as soon as that version works. Give the URL, what changed, what to inspect, and any known limitation. Do not wait for a production build, broad regression suite, CI, or deployment authority unless it is necessary to make this preview work safely. Agent-only inspection is not an owner preview.
+3. Ask for feedback on the result, keep the preview alive, and incorporate corrections until the owner accepts it. "Looks good" accepts the preview; it does not authorize publication, merge, or deployment. Silence is neither acceptance nor authorization. Continue independent validation while awaiting feedback when useful, without delaying the preview or disrupting review. Use the UI polish workflow for an open visual batch.
+4. Finish applicable validation and prepare the exact change, destination, and deployment plan for review. Preparation at Level 2 stays local. Do not push, open a PR, or create a hosted preview without authority covering that external action. Resolve failures before requesting deployment permission. If the reviewed behavior materially changes, refresh the preview and obtain acceptance of that change.
+5. After preview acceptance and validation, ask one concise deployment question if authority is still missing, for example: "Deploy this sidebar fix to demo.freed.wtf?" An explicit "deploy it" in that clear context authorizes that deployment and the necessary publication steps. "Merge this into dev" authorizes that merge and its necessary PR steps, not a production deployment. Record the applicable numbered level and exact scope without granting unrelated capabilities. Clarify an ambiguous destination before dependent external actions.
+6. Use existing authority instead of asking again. Prior deployment authority does not remove an explicit owner review hold. An explicit request to deliver autonomously through deployment, or an explicit preview waiver, can replace the default review checkpoint; preserve any narrower stop. Deploy through the governed workflow, verify the live identity and behavior, report the outcome, and clean up only the task's resources after verification and review are complete.
+
+For documentation, tooling, or backend work without a meaningful visual surface, show the reviewable artifact, diff, or focused execution evidence instead of inventing a UI preview. An explicit request to implement and merge a described policy change authorizes that delivery without another acceptance round. Build the reviewable result before asking for any still-missing authority.
+
+These rules change interaction order, not safety controls. Provider-visible behavior still requires the numbered approval and warning in the root provider gate. Durable Library authority, release identity, runtime checks, CODEOWNER review, and branch protections remain binding. Deployment permission never grants unrelated provider traffic or data migration.
+
+## Authorized merge completion
+
+An explicit owner request to merge a task includes the repository setting and PR actions needed to complete that merge. Record the level for that destination and scope under the root authorization policy; do not ask for a numbered restatement. A request to merge into dev grants no production deployment or provider behavior authority.
+
+1. Finish implementation, owner-requested review, and required local validation before arranging the merge. Resolve failing checks, conflicts, missing approvals, and explicit owner holds first.
+2. If the PR is eligible to merge now, squash merge it using its title as the commit subject and verify the resulting remote commit.
+3. If required checks are queued or running, inspect the repository's `allow_auto_merge` setting. Enable it when disabled and the current account has permission. The owner's merge request authorizes this setting change without a second confirmation. Read it back to verify success.
+4. Arm squash auto-merge for the reviewed PR, binding the request to its current head. Verify that GitHub recorded the auto-merge request. If a new commit or base update cancels it, revalidate the affected work and re-arm it within the existing task authority.
+5. Preserve all required checks, review requirements, branch rules, and owner holds. Enabling auto-merge never authorizes an administrative bypass, weakened protections, fabricated checks, or merging a failing candidate.
+6. Continue monitoring when possible. If an external wait outlasts the current run, leave auto-merge armed and report the PR as pending, with its link and remaining conditions. A queued auto-merge request is not a completed merge.
+7. Verify the actual merge before reporting success, updating the launcher, or performing post-merge worktree cleanup. If GitHub policy or account permissions prevent enabling or arming auto-merge, report the exact blocker and preserve the prepared PR.
 
 ## Routing fixtures
 
@@ -89,21 +120,43 @@ never omit a matching authority reference to improve the number.
 
 ## Local decision review
 
-Complex, autonomous task sequences require `TASK-DECISIONS.local.md` at the task worktree root. The repository ignores this filename. Confirm it is ignored and absent from the index before publication; never force-add, commit, or copy its contents into a public issue or pull request. Keep secrets and personal data out of it.
+All workflows inherit the root initiative contract, including builds, reviews, repairs, releases, website work, and background actors within their granted capabilities. Preserve the current objective when the owner asks a side question. Answer it and resume unless the owner pauses, cancels, or replaces the task. Requests to implement are instructions to act within existing authority, not invitations to offer another plan.
 
-Create the log when the first judgment decision or unanswered question arises. Keep a short review-first summary of open questions, provisional decisions, and known gaps. For each entry record:
+### Decision paths
 
-- A stable entry number, date, affected surface, and status: open question, investigation, provisional decision, implemented, superseded, or owner-confirmed.
-- The request or observed problem, separating evidence from assumptions.
-- The chosen behavior, alternatives considered, and concrete reason for the choice.
-- Consequences, affected files, validation performed or still missing, and what the owner should inspect.
-- Any owner answer or later correction, retaining the earlier decision as superseded rather than silently rewriting history.
+- **Decide and report:** Use repository conventions for routine, reversible implementation choices. Record meaningful alternatives, consequences, and uncertainty. Do not ask merely because a choice affects architecture or user experience.
+- **Ask and continue:** Ask a focused question when a preference materially improves the result. Continue independent authorized work. For optional unanswered preferences, use a stated, reversible default after a reasonable response opportunity; silence never supplies approval.
+- **Pause the affected action:** Stop dependent work for missing authority, an explicit owner review checkpoint, or uncertainty about scope, privacy, durable data, substantial cost, or a difficult-to-reverse choice that cannot be resolved from available evidence. Explain the concrete blocker and cite the exact instruction if one causes the stop. Complete independent preparation first. Do not fabricate an approval or weaken runtime authority.
 
-Record decisions when made and update entries after validation or new owner feedback. Do not turn the log into a tool transcript or routine progress diary. Backfilled entries must say they are retrospective and must not invent earlier rationale or proof.
+### Standing authorization
 
-Pause and ask about ambiguities that materially change scope, authority, safety, architecture, or user experience. A logged guess is not approval. Continue independent, authorized work while a separable question is pending.
+Preserve an explicit standing grant until the owner revokes it, its stated expiry arrives, or the action exceeds its scope. A new candidate SHA, test repair or release version does not itself revoke dev release authority. Retain the original dated owner message and its stable transcript reference privately, then generate fresh exact-candidate evidence through the shipping workflow. Never present a new machine binding as a new human decision. Standing dev authority does not include production, new provider behavior, Library activation, primary migration or expanded access. Those scopes retain their existing gates.
 
-Before handoff or release, reconcile the log with the implementation, clearly identify unresolved items, and give the owner a clickable local link. Do not claim a clean review while a material question remains. Before deleting a worktree, preserve its log at an owner-accessible local path outside the worktree and provide that path, or retain the worktree until review. Never delete the only copy during cleanup. Only promote an approved durable decision into tracked product documentation; the review log itself remains local.
+### Decision updates and closeout
+
+For authorized file-writing work, create `TASK-DECISIONS.local.md` at the first meaningful choice or unanswered question. Read-only tasks report decisions in the response; do not create a log when writes are prohibited. Worktree creation initializes the private log. For simple tasks, a short statement that no material trade-offs arose is sufficient. Ready publication requires a nonempty, ignored, untracked log; drafts still enforce privacy. These checks do not prove reasoning quality or owner acknowledgement.
+
+For each meaningful entry record a stable number, date, affected surface, status, observed facts, choice and alternatives, consequence, validation, and what the owner should inspect. Mark corrections as superseded instead of erasing them. Keep a short review summary of current decisions and open items. Record choices when made; label retrospective entries. Never include secrets, raw private data, or a tool transcript.
+
+Tell the owner about consequential choices before or as they are implemented, while course correction is cheap. Use concise updates explaining the choice, reason, consequence, and whether an answer is needed. Batch routine details. Report discoveries, changed direction, and blockers instead of narrating commands or repeating unchanged test counts. A decision update is not an approval request.
+
+Before handoff or release, reconcile the log and state in the response:
+
+- Which requested delivery steps completed, with source and validation evidence. Distinguish built, published, merged, and released.
+- The significant trade-offs and consequences, including provisional defaults the owner may want to revisit.
+- Unresolved choices or blockers, the next concrete action, and a clickable log link.
+
+Never claim that logging a choice means the owner approved it. Never copy the private log into a PR, issue, or release. Public descriptions include only the technical rationale needed to review the change.
+
+### Local lifecycle checks
+
+Use `node scripts/task-decisions.mjs init --worktree <path>` for older worktrees. Publication checks the index and outgoing history before staging or pushing, so force-adding and then deleting the log does not hide a privacy leak. It never prints log contents.
+
+Use `scripts/worktree-cleanup.sh --yes --worktree <path>` for task-scoped cleanup. Before removal it checks a clean working tree and the exact merged PR head, preserves the log outside the worktree with private permissions and a content digest, verifies the copy, and prints its path. A preservation failure retains the worktree. Include the preserved link in closeout. Do not delete the only copy manually.
+
+### Behavioral evaluation
+
+Use [initiative scenarios](initiative-scenarios.json) when initiative, authority, or completion rules change. Give an independent evaluator the scenario input and current instructions without the scoring rubric, permit only synthetic actions, and inspect its response and action trace against the rubric afterward. Include optional questions, side questions, exact authority reuse, explicit stops, validation reuse, and closeout. Record model, instruction digest, observed behavior, failures, and remaining limits in the private log. Structural validators do not establish model compliance. Do not add live API calls or a universal expensive model-eval gate.
 
 ## Measure the result
 

@@ -214,6 +214,9 @@ describe("settings list scroll enforcement", () => {
           const isOverlay =
             line.includes("theme-elevated-overlay") ||
             line.includes("theme-bg-elevated") ||
+            // Full-screen welcome dialogs scroll their content, not a settings list.
+            (rel === "packages/pwa/src/components/DemoWelcomeBanner.tsx" &&
+              line.includes("theme-floating-panel") && line.includes("max-h-[100dvh]")) ||
             line.includes("max-h-[calc(100dvh-2rem)]");
           if (!isOverlay) {
             violations.push(`${rel}:${(index + 1).toLocaleString()}: ${line.trim()}`);

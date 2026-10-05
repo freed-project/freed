@@ -1,0 +1,223 @@
+{
+  "batch": "BOTANICAL-EDITORIAL-122",
+  "status": "proposal_only",
+  "scope": "Only122 documents and task-local evidence; runtime unchanged.",
+  "reviewedExactImages": 6,
+  "proposals": [
+    {
+      "candidateId": "122-01",
+      "characterId": "moss-button",
+      "identityNameBase": "Moss Button",
+      "observationId": 37881442,
+      "episode": {
+        "subject": "reticulated glass frog",
+        "platform": "rss",
+        "contentType": "post",
+        "theme": "family",
+        "title": "The leaf I could not leave",
+        "body": "The eggs lay in their clear mound on the leaf. I had gone to the edge to call when a small insect moved toward them. I returned at once.\n\nI put myself across the clutch. The insect changed direction. I watched it disappear along the stem, then checked the surface of the eggs with the underside of my body. They were still wet.\n\nLater I tried the edge again. Nothing approached, but I came back anyway. The leaf had grown very large. Every distance from the eggs felt longer than it had before, even the distance of my own body. I settled over them and called from there, less impressively and much closer to the point.",
+        "mediaSha1": "d9e24bbec626e74e29836831e55905d50e1a57c2"
+      },
+      "operation": "Recover existing null episode index 4 with its literal title and body unchanged. Do not append a duplicate.",
+      "imageReview": "PASS for independent review. Individually opened exact 1024x576 frame: a reticulated green glassfrog is directly beside and partly over a clear clutch whose round eggs and developing contents are legible. Fine leaf venation and frog skin remain sharp. A separate translucent patch is visible to the left; its history is not assigned. No attacking insect is visible. The central scene is clutch attendance, rather than a generic leaf portrait.",
+      "fictionBoundary": "Eggs, frog contact and leaf are visible. The insect approach and retreat, two excursions, wetness check, calling and felt distances are the existing fictional sequence. Do not report them as photographed. The image is consistent with male care but no independent sex annotation is treated as proof of this exact individual. Paternity and Moss identity belong to the fiction. Eggs remain on the leaf underside; the phrase on the leaf does not mean its upper surface.",
+      "canon": "Full ten-entry current Moss arc read. Existing male Hyalinobatrachium valerioi and Caribbean lowland Costa Rica home 10.431/-84.007 retained. Source is Puntarenas, Costa Rica: species illustration, not evidence that the fictional home moved. Existing index4 precedes the later index7 hatching passage. Recover in place without changing chronology, home, name, avatar or prior prose.",
+      "proseAssessment": "PASS for independent review. The initial insect prompts a protective response; on the second excursion nothing approaches, yet he returns. This change from reaction to attachment earns the inward change in perceived distance. Regular RSS length preserves a complete event and consequence. No new long article or duplicate Story is manufactured.",
+      "biologySources": [
+        "https://pmc.ncbi.nlm.nih.gov/articles/PMC11536337/"
+      ],
+      "biologyEvidence": "Primary field study independently opened, Study species and Population monitoring: H. valerioi males attend underside leaf clutches, hydrate and defend eggs, and continue calling at the site. Definitions distinguish nearby guarding from ventral contact while brooding. This supports the existing bodily care and calling, not the invented particular insect.",
+      "admission": "pending_independent_root_review",
+      "media": {
+        "observationId": 37881442,
+        "photoId": 60123702,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/60123702/large.jpg",
+        "localFile": "/tmp/botanical122/37881442.jpg",
+        "bytes": 266363,
+        "sha1": "d9e24bbec626e74e29836831e55905d50e1a57c2",
+        "sha256": "80fc174b2be1e72d84f89873738c65349f40f3dbc1a99c2a7609df0baba2b623",
+        "dimensions": [
+          1024,
+          576
+        ],
+        "seconds": 0.724,
+        "status": 200,
+        "attribution": "(c) Dan MacNeal, some rights reserved (CC BY), uploaded by Dan MacNeal",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "sourceUrl": "https://www.inaturalist.org/observations/37881442",
+        "sourceLocal": "/tmp/botanical122/obs-37881442.json",
+        "category": "wildlife",
+        "aggregated": false,
+        "primaryTaxon": "Hyalinobatrachium valerioi",
+        "primaryTaxonId": 21323,
+        "qualityGrade": "research",
+        "currentAgreeingIdentifications": 2,
+        "originalUploadDimensions": [
+          2048,
+          1151
+        ],
+        "delivery": "Exact source-published large_url; bytes opened and decoded. Original upload dimensions are metadata only, not a claim to have opened an unavailable full upload.",
+        "sourcePhotoUrl": "https://www.inaturalist.org/photos/60123702"
+      }
+    },
+    {
+      "candidateId": "122-02",
+      "characterId": "ellis-hook",
+      "identityNameBase": "Ellis Hook",
+      "observationId": 148534028,
+      "episode": {
+        "subject": "satanic leaf-tailed gecko",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "weather",
+        "title": "Holding still together",
+        "body": "I have been trying to look dead for most of the afternoon. A leaf slipped beneath my chin, and I caught it. Now the wind has stopped. I am still holding it, waiting for everything else to move first.",
+        "mediaSha1": "353d0536fba174d05cadab50498cc6755aa8e936"
+      },
+      "operation": "New visual Story for existing identity; preserve all ten unbound regular drafts.",
+      "imageReview": "PASS for independent review. Exact 1024x768 image individually opened. Gecko head, eye, toes, flattened body and leaf-shaped tail blend remarkably with curled dry leaves. The chin lies at the edge of a broad dark leaf with a foot contacting leaf material nearby. Focus cleanly resolves eye, scales and leaf veins. Camouflage and intimate leaf contact provide the central visible situation. No wind, falling leaf or timed catch is documented by this still.",
+      "fictionBoundary": "Species-shaped camouflage and leaf contact are observed. Slipping, catching, time of afternoon, interrupted wind and the wish to release unnoticed are fiction. No claim that deliberate leaf retention is a documented species behavior. No predator, human, second gecko or unpictured visitor is required. This is a short imagined event around visible contact, not a claim of measured motion.",
+      "canon": "Full ten-entry Ellis arc read, including bark-exit, colder fork and deliberate recognition endings. Existing Uroplatus phantasticus, Ranomafana Madagascar -21.256/47.455, name and avatar retained. Source Ifanadiana is compatible regional forest context but not a claim of this exact fictional perch. No sex, age, tail loss or color change is asserted. Reversible isolated afternoon after current arc; no developmental reset. Distinct from Bark included: he is retaining concealment while still in place, not dragging shelter away during an exit.",
+      "proseAssessment": "PASS for independent review, with explicit fiction boundary. His successful stillness leaves him obliged to hold something genuinely dead; waiting for the forest to move gives him a concrete way out. The body ends inside that awkward pause rather than explaining a moral. Some overlap with camouflage as a character trait is intentional, but no old insect crossing, bird search, wet eye, warm fork or neighbor recognition is repeated.",
+      "biologySources": [
+        "https://nationalzoo.si.edu/animals/phantastic-leaf-tailed-gecko"
+      ],
+      "biologyEvidence": "Smithsonian National Zoo exact species page independently opened; identifies Uroplatus phantasticus, Madagascar origin and camouflage. The primary observation independently identifies the exact photographed animal. The fictional leaf catch is not elevated into a biological mechanism or documented habit.",
+      "admission": "pending_independent_root_review",
+      "media": {
+        "observationId": 148534028,
+        "photoId": 255803253,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/255803253/large.jpg",
+        "localFile": "/tmp/botanical122/148534028.jpg",
+        "bytes": 288142,
+        "sha1": "353d0536fba174d05cadab50498cc6755aa8e936",
+        "sha256": "bbcbc88f82a3b7311bb1306b4d3b1246645eaa19c79566670c3f663f1d09eaf4",
+        "dimensions": [
+          1024,
+          768
+        ],
+        "seconds": 0.701,
+        "status": 200,
+        "attribution": "(c) Piotr Lukasik, some rights reserved (CC BY), uploaded by Piotr Lukasik",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "sourceUrl": "https://www.inaturalist.org/observations/148534028",
+        "sourceLocal": "/tmp/botanical122/obs-148534028.json",
+        "category": "wildlife",
+        "aggregated": false,
+        "primaryTaxon": "Uroplatus phantasticus",
+        "primaryTaxonId": 33520,
+        "qualityGrade": "research",
+        "currentAgreeingIdentifications": 4,
+        "originalUploadDimensions": [
+          1920,
+          1440
+        ],
+        "delivery": "Exact source-published large_url; bytes opened and decoded. Original upload dimensions are metadata only, not a claim to have opened an unavailable full upload.",
+        "sourcePhotoUrl": "https://www.inaturalist.org/photos/255803253"
+      }
+    }
+  ],
+  "holds": [
+    {
+      "observationId": 225231302,
+      "reason": "Sharp frog on leaf beside a human forearm, but only static scale/proximity. No literal candidate earned a distinct event in this bounded pass.",
+      "media": {
+        "observationId": 225231302,
+        "photoId": 399304036,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/399304036/large.jpg",
+        "localFile": "/tmp/botanical122/225231302.jpg",
+        "bytes": 361864,
+        "sha1": "9b3623ff09c0685d67b867089db855036605aff5",
+        "sha256": "53626d9bed77bb8bc49d4c5646a070edd9629228c3441ded961618e876a9c12f",
+        "dimensions": [
+          1024,
+          768
+        ],
+        "seconds": 0.733,
+        "status": 200,
+        "attribution": "(c) Nick Tobler (Cowturtle), some rights reserved (CC BY), uploaded by Nick Tobler (Cowturtle)",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "sourceUrl": "https://www.inaturalist.org/observations/225231302",
+        "sourceLocal": "/tmp/botanical122/obs-225231302.json"
+      }
+    },
+    {
+      "observationId": 225231574,
+      "reason": "Sharp frog portrait on wet leaf; no distinct source event beyond existing leaf/rain scenes.",
+      "media": {
+        "observationId": 225231574,
+        "photoId": 399304592,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/399304592/large.jpg",
+        "localFile": "/tmp/botanical122/225231574.jpg",
+        "bytes": 302576,
+        "sha1": "ebfa30e914f3e78522d5e28e839d9f45aaa9cc65",
+        "sha256": "9234deb701d8c335908c4ea31babe4aa8d8d87f124c7c845487ae581d20069f2",
+        "dimensions": [
+          1024,
+          768
+        ],
+        "seconds": 0.83,
+        "status": 200,
+        "attribution": "(c) Nick Tobler (Cowturtle), some rights reserved (CC BY), uploaded by Nick Tobler (Cowturtle)",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "sourceUrl": "https://www.inaturalist.org/observations/225231574",
+        "sourceLocal": "/tmp/botanical122/obs-225231574.json"
+      }
+    },
+    {
+      "observationId": 9474620,
+      "reason": "Strong gecko face on cut branch, but isolated portrait lacks the leaf interaction offered by selected148534028.",
+      "media": {
+        "observationId": 9474620,
+        "photoId": 12893423,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/12893423/large.jpg",
+        "localFile": "/tmp/botanical122/9474620.jpg",
+        "bytes": 268852,
+        "sha1": "2eb48fa28393c3d3f63cc099fdd52573e2e55b56",
+        "sha256": "8c2ce1d1b99cbeb4e580d965c29e64f311537e244f3dbf4754d483c216366fb4",
+        "dimensions": [
+          1024,
+          683
+        ],
+        "seconds": 0.649,
+        "status": 200,
+        "attribution": "(c) Julien Renoult, some rights reserved (CC BY), uploaded by Julien Renoult",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "sourceUrl": "https://www.inaturalist.org/observations/9474620",
+        "sourceLocal": "/tmp/botanical122/obs-9474620.json"
+      }
+    },
+    {
+      "observationId": 153931,
+      "title": "One eye out",
+      "body": "A dead leaf covered one eye. I left it there until something moved on that side. By the time I had pushed it away, I had forgotten what I was watching with the other eye.",
+      "reason": "HOLD prose. Literal attempt evaluated after opening: image has leaf edge obscuring part of face, but invented distraction ends in a generic forgetfulness quip without a meaningful consequence. Source discussion of multiple mating pairs does not establish a pair or female sex in this single-frog frame. Do not admit or attach amplexus scene.",
+      "media": {
+        "observationId": 153931,
+        "photoId": 211232,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/211232/large.JPG",
+        "localFile": "/tmp/botanical122/153931.jpg",
+        "bytes": 170045,
+        "sha1": "16b0041c8df749b65b95295c2969dd9b8ccd1435",
+        "sha256": "362b2c3cd904484c84c2aeb21cec19c400c5195421bcd1a7cc8f467d6a3c585d",
+        "dimensions": [
+          1024,
+          683
+        ],
+        "seconds": 0.583,
+        "status": 200,
+        "attribution": "no rights reserved, uploaded by Mark Spangler",
+        "license": "CC0",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "sourceUrl": "https://www.inaturalist.org/observations/153931",
+        "sourceLocal": "/tmp/botanical122/obs-153931.json"
+      }
+    }
+  ],
+  "inventoryNote": "Static current arc/map reconciliation suggested Moss and Ellis lack an illustrated episode. This is a scope-selection observation, not a runtime count or admission. Every proposed pairing still requires root review."
+}

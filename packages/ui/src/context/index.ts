@@ -1,6 +1,8 @@
 export {
   PlatformProvider,
   usePlatform,
+  getPlatformCapabilities,
+  usePlatformCapabilities,
   useAppStore,
   MACOS_TRAFFIC_LIGHT_INSET,
   type ContactSyncActions,
@@ -23,3 +25,5 @@ export {
   type SyncProviderSectionSurface,
   type UpdateDownloadProgress,
 } from "./PlatformContext.js";
+
+export type { LibraryCountResource, LibraryCountResourceState, LibraryCountSelectionIdentity, LibraryCountSnapshot } from "./library-count-resource.js";

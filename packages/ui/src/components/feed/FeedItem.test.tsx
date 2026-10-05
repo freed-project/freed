@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { act, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { FeedItem as FeedItemType } from "@freed/shared";
+import { projectLibraryCoreFeedCardV1, libraryCoreFeedCardToItemV1 } from "@freed/shared/library-core";
 import { PlatformProvider, type PlatformConfig } from "../../context/PlatformContext.js";
 import { useDebugStore, type RuntimeMemorySnapshot } from "../../lib/debug-store.js";
 import { FeedItem } from "./FeedItem";
@@ -107,6 +108,16 @@ function setMemoryPressure(
 }
 
 beforeEach(() => {
+  // JSDOM does not implement the card's browser measurement APIs.
+  vi.stubGlobal("ResizeObserver", class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  });
+  Object.defineProperty(document, "fonts", {
+    configurable: true,
+    value: { ready: Promise.resolve(), addEventListener: vi.fn(), removeEventListener: vi.fn() },
+  });
   useDebugStore.setState({ runtimeMemory: null });
   setMobileNavigator(false);
   setTouchOnlyPointer(false);
@@ -188,6 +199,28 @@ describe("FeedItem read styling", () => {
 });
 
 describe("FeedItem card text previews", () => {
+  it.each([
+    { contentType: "post" as const, compact: false, layout: "split" },
+    { contentType: "story" as const, compact: false, layout: "photo" },
+    { contentType: "post" as const, compact: true, layout: "photo" },
+    { contentType: "story" as const, compact: true, layout: "photo" },
+  ])("shares the card structure for $contentType with compact=$compact", ({ contentType, compact, layout }) => {
+    const html = renderFeedItemToStaticMarkup(makeItem({
+      contentType,
+      location: { name: "Shared location", source: "geo_tag" },
+      content: { linkPreview: { title: "Shared title", url: "https://example.com" } },
+    }), { compact });
+    const container = document.createElement("div");
+    container.innerHTML = html;
+    const card = container.querySelector("article")!;
+    expect(container.querySelectorAll("article")).toHaveLength(1);
+    expect(card.dataset.feedCardLayout).toBe(layout);
+    expect(card.querySelectorAll("h3")).toHaveLength(1);
+    expect(card.textContent).toContain("Shared location");
+    expect(card.style.contain).toBe("layout paint style");
+    expect(compact ? card.classList.contains("aspect-square") : card.style.height !== "").toBe(true);
+  });
+
   it("renders a bounded text preview for long regular posts", () => {
     const longText = `${"Opening sentence ".repeat(120)}needle-tail`;
     const html = renderFeedItemToStaticMarkup(
@@ -227,6 +260,97 @@ describe("FeedItem card text previews", () => {
 });
 
 describe("FeedItem story media", () => {
+  it("does not request untyped ordinary media as a lazy image thumbnail", () => {
+    const html = renderToStaticMarkup(
+      <PlatformProvider value={{ ...platformConfig, feedMediaPreviews: "lazy-thumbnails" }}>
+        <FeedItem item={makeItem({ contentType: "post", content: { mediaTypes: [] } })} compact />
+      </PlatformProvider>,
+    );
+    expect(html).not.toContain('src="https://example.com/story.jpg"');
+  });
+
+  it.each(["facebook", "x", "instagram"] as const)("renders mapped %s images as lazy thumbnails without video metadata", (platform) => {
+    const item = libraryCoreFeedCardToItemV1(projectLibraryCoreFeedCardV1(makeItem({
+      globalId: `${platform}:thumbnail-fixture`, platform, contentType: "post",
+    })));
+    const render = (mediaType: "image" | "video" | "link") => renderToStaticMarkup(
+      <PlatformProvider value={{ ...platformConfig, feedMediaPreviews: "lazy-thumbnails" }}>
+        <FeedItem item={{ ...item, content: { ...item.content, mediaTypes: [mediaType] } }} compact />
+      </PlatformProvider>,
+    );
+    expect(render("image")).toContain('loading="lazy"');
+    expect(render("image")).toContain('decoding="async"');
+    expect(render("image")).toContain('src="https://example.com/story.jpg"');
+    expect(render("video")).not.toContain('src="https://example.com/story.jpg"');
+    expect(render("video")).not.toContain("<video");
+    expect(render("link")).not.toContain('src="https://example.com/story.jpg"');
+  });
+
+  it("sheds lazy thumbnails under pressure and retains reader selection after image failure", async () => {
+    (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    const onClick = vi.fn();
+    const item = makeItem({ contentType: "post" });
+    const render = () => root.render(
+      <PlatformProvider value={{ ...platformConfig, feedMediaPreviews: "lazy-thumbnails" }}>
+        <FeedItem item={item} compact onClick={onClick} />
+      </PlatformProvider>,
+    );
+    try {
+      setMemoryPressure("high");
+      await act(async () => { render(); });
+      expect(container.querySelector("img[src='https://example.com/story.jpg']")).toBeNull();
+      await act(async () => { setMemoryPressure("normal"); });
+      const image = container.querySelector("img[src='https://example.com/story.jpg']");
+      expect(image).toBeInstanceOf(HTMLImageElement);
+      await act(async () => { image?.dispatchEvent(new Event("error", { bubbles: true })); });
+      expect(container.querySelector("img[src='https://example.com/story.jpg']")).toBeNull();
+      await act(async () => { container.querySelector('[role="button"]')?.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+      expect(onClick).toHaveBeenCalledOnce();
+    } finally {
+      await act(async () => { root.unmount(); });
+      container.remove();
+      (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
+    }
+  });
+
+  it("limits sample thumbnail overrides to samples and explicit preview mode", () => {
+    const sample = makeItem({
+      contentType: "post",
+      sampleDataFingerprint: {
+        marker: "freed.sample-data.v1", batchId: "preview", generatedAt: NOW, generatorVersion: 12,
+      },
+    });
+    const render = (item: FeedItemType, local: boolean) => renderToStaticMarkup(
+      <PlatformProvider value={{ ...readerOnlyPlatformConfig, sampleMediaPreviews: local ? "inline" : undefined }}>
+        <FeedItem item={item} fixedHeight={220} />
+      </PlatformProvider>,
+    );
+    expect(render(sample, true)).toContain("https://example.com/story.jpg");
+    expect(render(sample, true)).not.toContain('src="data:image/svg+xml,');
+    expect(render({
+      ...sample,
+      globalId: "instagram:sample:preview:author:media",
+      author: { ...sample.author, id: "sample:preview:author" },
+      sampleDataFingerprint: undefined,
+    }, true)).toContain("https://example.com/story.jpg");
+    const curated = {
+      ...sample,
+      globalId: "sample-preview:sample-character:boris-plated:1",
+      author: { ...sample.author, id: "sample-preview:sample-character-boris-plated" },
+      sampleDataFingerprint: undefined,
+    };
+    expect(render(curated, true)).toContain("https://example.com/story.jpg");
+    expect(render(curated, false)).not.toContain("https://example.com/story.jpg");
+    expect(render({ ...curated, author: { ...curated.author, id: "real-author" } }, true))
+      .not.toContain("https://example.com/story.jpg");
+    expect(render(sample, false)).not.toContain("https://example.com/story.jpg");
+    expect(render(makeItem({ contentType: "post" }), true)).not.toContain("data:image/svg+xml,");
+    expect(render(makeItem({ contentType: "post" }), true)).not.toContain("https://example.com/story.jpg");
+  });
+
   it("shares the feed card view transition name in primary story tiles", () => {
     const html = renderFeedItemToStaticMarkup(makeItem({ globalId: "ig:story/transition proof" }));
 
@@ -342,7 +466,7 @@ describe("FeedItem story media", () => {
     }
   });
 
-  it("renders regular card actions in a shared centered icon box", async () => {
+  it("omits card action buttons even when action callbacks are supplied", async () => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     const container = document.createElement("div");
     document.body.appendChild(container);
@@ -373,18 +497,12 @@ describe("FeedItem story media", () => {
         );
       });
 
-      const actionLabels = ["Like", "Comment on Instagram", "Bookmark", "Archive", "Open"];
+      const actionLabels = ["Like", "Bookmark", "Archive"];
+      expect(container.querySelector('button[aria-label="Comment on Instagram"]')).toBeNull();
+      expect(container.querySelector('button[aria-label="Open"]')).toBeNull();
       for (const label of actionLabels) {
         const button = container.querySelector(`button[aria-label="${label}"]`) as HTMLButtonElement | null;
-        expect(button).toBeInstanceOf(HTMLButtonElement);
-        expect(button?.className).toContain("h-7");
-        expect(button?.className).toContain("items-center");
-        expect(button?.className).toContain("justify-center");
-
-        const icon = button?.querySelector("svg");
-        expect(icon?.getAttribute("class")).toContain("h-4");
-        expect(icon?.getAttribute("class")).toContain("w-4");
-        expect(icon?.getAttribute("class")).toContain("shrink-0");
+        expect(button).toBeNull();
       }
     } finally {
       await act(async () => {

@@ -68,6 +68,12 @@ test("feature plan for shared changes covers both desktop and pwa surfaces", () 
     "desktop social provider unit tests",
     "desktop social provider e2e",
     "shared unit tests",
+    "packages/capture-medium tests",
+    "packages/capture-rss tests",
+    "packages/capture-substack tests",
+    "packages/capture-youtube tests",
+    "ui unit tests",
+    "sync unit tests",
     "pwa production build",
     "pwa typecheck",
     "pwa unit tests",
@@ -87,6 +93,10 @@ test("OPFS durability changes run the persistent WebKit data integrity proof", (
     "packages/pwa/src/main.tsx",
     "packages/pwa/tests/opfs-e2e-settings.ts",
     "packages/pwa/tests/sqlite-opfs-durability.spec.ts",
+    "scripts/lib/webkit-test-custody.mjs",
+    "scripts/lib/webkit-test-custody-adapter.m",
+    "scripts/lib/webkit-test-custody.d.mts",
+    "scripts/webkit-test-custody.test.mjs",
     "packages/shared/src/library-core/normalized-schema-v1.sql",
   ];
   try {
@@ -174,6 +184,7 @@ test("feature plan for feed UI changes leaves raw timing checks to nightly", () 
 
   assert.deepEqual(labels, [
     "root typecheck",
+    "ui unit tests",
     "pwa production build",
     "pwa typecheck",
     "pwa unit tests",
@@ -191,6 +202,7 @@ test("feature plan for Friends UI changes leaves raw timing checks to nightly", 
 
   assert.deepEqual(labels, [
     "root typecheck",
+    "ui unit tests",
     "pwa production build",
     "pwa typecheck",
     "pwa unit tests",
@@ -208,6 +220,7 @@ test("feature plan for sidebar UI changes leaves raw timing checks to nightly", 
 
   assert.deepEqual(labels, [
     "root typecheck",
+    "ui unit tests",
     "pwa production build",
     "pwa typecheck",
     "pwa unit tests",
@@ -377,6 +390,9 @@ test("feature plan runs strict reusable Library Core checks", () => {
 
   assert.ok(clippy);
   assert.ok(tests);
+  const held = plan.find((item) => item.label === "Library Core default-off transfer tests");
+  assert.ok(held);
+  assert.deepEqual(held.args, ["test", "--no-default-features", "--test", "transfer_hold"]);
   assert.match(clippy.cwd, /\/packages\/library-core-native$/);
   assert.ok(plan.some((item) => item.label === "desktop production build"));
   assert.ok(plan.some((item) => item.label === "native rust clippy"));
@@ -407,6 +423,11 @@ test("workspace checks run inside each workspace without root dispatch flags", (
     );
   }
 
+  for (const name of ["medium", "rss", "substack", "youtube"]) {
+    assert.ok(plan.some((item) => item.label === `packages/capture-${name} tests`));
+  }
+  assert.ok(plan.some((item) => item.label === "ui unit tests"));
+  assert.ok(plan.some((item) => item.label === "sync unit tests"));
   const websiteTests = plan.find((item) => item.label === "website tests");
   const desktopTests = plan.find((item) => item.label === "desktop unit tests");
   assert.match(websiteTests.cwd, /\/website$/);
@@ -434,6 +455,12 @@ test("feature plan for validation runner changes runs only runner tests", () => 
   );
 
   assert.deepEqual(labels, ["validation runner tests"]);
+});
+
+test("PWA preview changes run the deployment contract", () => {
+  for (const file of ["scripts/vercel-deploy-preview.sh", "scripts/lib/vercel-project-link.mjs", "scripts/lib/vercel-project-link.test.mjs"]) {
+    assert.ok(describePlan(buildValidationPlan("feature", [file])).includes("Vercel preview deployment tests"));
+  }
 });
 
 test("retired Automerge runtime guard changes run the focused contract", () => {
@@ -468,6 +495,7 @@ test("feature plan for release admission changes runs only its contract tests", 
   assert.deepEqual(describePlan(plan), ["release admission tests"]);
   assert.deepEqual(plan[0].args, [
     "--test",
+    "scripts/validate-release-integration.test.mjs",
     "scripts/validate-dev-integration-receipt.test.mjs",
     "scripts/release-governance.test.mjs",
     "scripts/release-workflow-matrix.test.mjs",
@@ -516,7 +544,13 @@ test("mixed feature plans retain repository configuration coverage", () => {
 
 test("feature plan routes tooling smoke workflow and helper changes through focused tests", () => {
   const paths = [
+    ".github/workflows/nightly-fixture-acceptance.yml",
+    "scripts/nightly-fixture-acceptance.mjs",
+    "scripts/test-helpers/nightly-fixture-preload.mjs",
+    "scripts/test-helpers/nightly-fixture-supervisor.py",
+    "scripts/test-helpers/nightly_fixture_darwin.py",
     ".github/workflows/ci.yml",
+    ".github/workflows/tooling-nightly.yml",
     "scripts/measure-tooling-smoke.mjs",
     "scripts/measure-tooling-smoke.test.mjs",
     "scripts/run-native-acceptance.mjs",
@@ -625,7 +659,7 @@ test("dev plan runs deterministic desktop lanes and leaves raw timing to nightly
 
   assert.ok(labels.includes("agent instruction validation"));
   assert.ok(labels.includes("skill validation"));
-  assert.ok(labels.includes("desktop e2e smoke"));
+  assert.ok(!labels.includes("desktop e2e smoke"));
   assert.ok(labels.includes("desktop e2e regression"));
   assert.ok(!labels.includes("desktop e2e perf"));
   assert.ok(labels.includes("desktop e2e visual"));
@@ -639,63 +673,15 @@ test("dev plan runs deterministic desktop lanes and leaves raw timing to nightly
   assert.ok(!labels.includes("desktop e2e full"));
 });
 
-test("production plan includes dev desktop gates without duplicating shipped builds", () => {
+test("production admission inherits integration instead of rerunning unchanged suites", () => {
   const labels = describePlan(buildValidationPlan("production", []));
-
-  assert.ok(labels.includes("agent instruction validation"));
-  assert.ok(labels.includes("skill validation"));
-  assert.ok(labels.includes("desktop e2e smoke"));
-  assert.ok(labels.includes("desktop e2e regression"));
-  assert.ok(!labels.includes("desktop e2e perf"));
-  assert.ok(labels.includes("desktop e2e visual"));
-  assert.ok(!labels.includes("desktop e2e full"));
-
-  // The PWA is not otherwise built by the release workflow, so it stays.
+  assert.equal(labels[0], "exact dev integration receipt");
   assert.ok(labels.includes("pwa production build"));
-  assert.ok(labels.includes("library service tests"));
   assert.ok(labels.includes("retired Automerge release artifact guard"));
-
-  assert.ok(
-    !labels.includes("root build"),
-    "the production promotion must not build the separate website lane",
-  );
-  assert.ok(
-    !labels.includes("root typecheck"),
-    "the production promotion must not typecheck the separate website lane",
-  );
-  assert.ok(
-    !labels.includes("root lint"),
-    "the production promotion must not lint the separate website lane",
-  );
-  assert.ok(
-    !labels.includes("website tests"),
-    "the production promotion must not test the separate website lane",
-  );
-
-  // The release matrix still owns the real signed Desktop build. Native clippy
-  // needs only the frontend context because generate_context! validates the
-  // configured dist path at compile time.
-  assert.ok(
-    !labels.includes("desktop production build"),
-    "the desktop build must not be duplicated ahead of the release matrix",
-  );
-  const frontendContextIndex = labels.indexOf("desktop frontend context build");
-  const nativeClippyIndex = labels.indexOf("native rust clippy");
-  const pwaBuildIndex = labels.indexOf("pwa production build");
-  const artifactGuardIndex = labels.indexOf(
-    "retired Automerge release artifact guard",
-  );
-  assert.ok(frontendContextIndex >= 0);
-  assert.ok(nativeClippyIndex > frontendContextIndex);
-  assert.ok(artifactGuardIndex > pwaBuildIndex);
-
-  // The website ships from `www` through publish-website against the reviewed
-  // marketing branch. Building it in the Desktop release lane couples two
-  // branch lanes that AGENTS.md keeps apart.
-  assert.ok(
-    !labels.includes("website production build"),
-    "the Desktop release lane must not build the website",
-  );
+  for (const label of describePlan(buildValidationPlan("dev", []))) {
+    if (label === "retired Automerge release artifact guard") continue;
+    assert.ok(!labels.includes(label), `release must inherit ${label}`);
+  }
 });
 
 test("release mode remains a compatibility alias for production", () => {
@@ -950,6 +936,11 @@ test("feature plan isolates pull request publication from tag publisher host sui
   for (const filePath of [
     "scripts/worktree-publish.sh",
     "scripts/worktree-publish.test.mjs",
+    "scripts/task-decisions.mjs",
+    "scripts/task-decisions.test.mjs",
+    "scripts/worktree-add.sh",
+    "scripts/worktree-add.test.mjs",
+    "scripts/worktree-cleanup.sh",
   ]) {
     assert.equal(isPullRequestPublisherToolingPath(filePath), true, filePath);
     assert.equal(isReleasePublisherToolingPath(filePath), false, filePath);
@@ -960,6 +951,8 @@ test("feature plan isolates pull request publication from tag publisher host sui
     assert.deepEqual(pullRequestSuite?.args, [
       "--test",
       "scripts/worktree-publish.test.mjs",
+      "scripts/task-decisions.test.mjs",
+      "scripts/worktree-add.test.mjs",
     ]);
     assert.equal(
       plan.some((item) => item.label === "release publisher tests"),
@@ -1260,4 +1253,46 @@ test("release identity execution separates modern releases, historical correctio
     ],
     cwd: REPO_ROOT,
   });
+});
+
+
+test("custody adapter changes retain the macOS proof and focused fixture contracts", () => {
+  const previous = process.env.FREED_SKIP_PWA_OPFS_DURABILITY;
+  delete process.env.FREED_SKIP_PWA_OPFS_DURABILITY;
+  try {
+    const path = "scripts/lib/webkit-test-custody-adapter.m";
+    const plan = describePlan(buildValidationPlan("feature", [path]));
+    assert.ok(plan.includes("pwa WebKit OPFS durability"));
+    assert.ok(plan.includes("WebKit test custody fixture contracts"));
+    assert.ok(FOCUSED_FEATURE_VALIDATION_PATHS.has(path));
+  } finally {
+    if (previous === undefined) delete process.env.FREED_SKIP_PWA_OPFS_DURABILITY;
+    else process.env.FREED_SKIP_PWA_OPFS_DURABILITY = previous;
+  }
+});
+
+// Changed-path tier: cloud authority contract cannot fall out of CI routing.
+test("cloud release workflow and entrypoint run their focused authority tests", () => {
+  for (const changed of [".github/workflows/cloud-release-request.yml", ".github/workflows/cloud-release-inbox.yml", "scripts/cloud-release-request.mjs", "scripts/cloud-release-request.test.mjs", ".github/workflows/cloud-release-policy-probe.yml", ".github/workflows/cloud-release-policy-response.yml", "scripts/cloud-release-policy.mjs", "scripts/cloud-release-policy.test.mjs"]) {
+    const plan=buildValidationPlan("feature", [changed]);
+    assert.ok(plan.some(item => item.label === "cloud release request tests"));
+    assert.ok(FOCUSED_FEATURE_VALIDATION_PATHS.has(changed));
+  }
+});
+
+
+test("preview process changes run scoped cleanup proof without product suites", () => {
+  for (const file of [
+    "scripts/worktree-preview.sh",
+    "scripts/worktree-processes.sh",
+    "scripts/lib/worktree-runtime.sh",
+    "scripts/lib/preview-processes.py",
+    "scripts/worktree-preview.test.mjs",
+  ]) {
+    const plan = buildValidationPlan("feature", [file]);
+    assert.deepEqual(describePlan(plan), ["root typecheck", "worktree preview process tests"]);
+    assert.deepEqual(plan[1].args, [
+      "--test", "scripts/worktree-preview.test.mjs", "scripts/task-decisions.test.mjs",
+    ]);
+  }
 });

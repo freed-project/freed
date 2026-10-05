@@ -3,6 +3,10 @@ import { createDefaultPreferences } from "@freed/shared";
 import { createLibraryCoreImmutableObjectKey } from "@freed/shared/library-core";
 
 const mocks = vi.hoisted(() => ({
+  discoverOperationHead: vi.fn(),
+  createOperationAdapter: vi.fn(),
+  syncOperations: vi.fn(),
+  importOperationPage: vi.fn(),
   commitReadAssignments: vi.fn(),
   commitUserStateAssignments: vi.fn(),
   commitFeedItemCaptures: vi.fn(),
@@ -29,6 +33,7 @@ const mocks = vi.hoisted(() => ({
   createFollowerTransport: vi.fn(),
   discoverControl: vi.fn(),
   importCheckpoint: vi.fn(),
+  catchup: vi.fn(),
   syncFollower: vi.fn(),
   queryNormalizedLibrary: vi.fn(),
   mutateContentPolicy: vi.fn(),
@@ -67,10 +72,14 @@ vi.mock("./library-core-pwa-follower-mutations", () => ({
 vi.mock("@freed/sync/cloud/library-core", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@freed/sync/cloud/library-core")>()),
   createGoogleDriveLibraryCoreAdapterV1: mocks.createCloudAdapter,
+  discoverGoogleDriveLibraryCoreOperationHeadV2: mocks.discoverOperationHead,
+  createGoogleDriveLibraryCoreOperationAdapterV2: mocks.createOperationAdapter,
+  syncLibraryCoreNormalizedOperationsOnceV2: mocks.syncOperations,
   createGoogleDriveLibraryCoreNormalizedFollowerTransportV2:
     mocks.createFollowerTransport,
   discoverPublishedGoogleDriveLibraryCoreControlV1: mocks.discoverControl,
   importLibraryCoreNormalizedCheckpointV2: mocks.importCheckpoint,
+  catchUpLibraryCorePredecessorCheckpointV1: mocks.catchup,
 }));
 
 vi.mock("./library-core-pwa-follower-sync", () => ({
@@ -90,6 +99,7 @@ vi.mock("./factory-reset-coordinator", () => ({
 }));
 
 vi.mock("./library-core-sqlite-runtime", () => ({
+  importPwaNormalizedOperationPage: mocks.importOperationPage,
   activatePwaNormalizedCheckpointStage: vi.fn(),
   appendPwaNormalizedCheckpointStagePage: vi.fn(),
   beginPwaNormalizedCheckpointStage: vi.fn(),
@@ -100,11 +110,14 @@ vi.mock("./library-core-sqlite-runtime", () => ({
   mutatePwaContentPolicy: mocks.mutateContentPolicy,
   readPwaFollowerTransportContext: mocks.readFollowerTransportContext,
   readPwaNormalizedCheckpointReceipt: mocks.readNormalizedCheckpointReceipt,
+  preparePwaNormalizedPredecessorCheckpointRead: vi.fn(),
+  activatePwaNormalizedPredecessorCheckpoint: vi.fn(),
   describePwaNormalizedCheckpointExport:
     mocks.describeNormalizedCheckpointExport,
   readPwaNormalizedCheckpointExportPage:
     mocks.readNormalizedCheckpointExportPage,
   resetPwaNormalizedLibrary: mocks.resetNormalizedLibrary,
+  closePwaNormalizedLibrary: vi.fn(async () => {}),
 }));
 
 import {
@@ -128,6 +141,7 @@ import {
   clearPwaLibraryCoreSampleData,
   drainPwaLibraryCoreLocalChanges,
   initializePwaLibraryCoreState,
+  hasSelectedPwaLibraryCore,
   openPwaLibraryCoreFriendsFeedReader,
   pinPwaLibraryCoreItemContent,
   readPwaLibraryCoreItemDetail,
@@ -169,12 +183,22 @@ function emptyOptimisticFieldsResponse(
 function mockNormalizedQuery(
   handler: (request: {
     readonly queryId: string;
+    readonly globalId?: string;
   }) => unknown | Promise<unknown>,
 ): void {
   mocks.queryNormalizedLibrary.mockImplementation(async (request) =>
     request.queryId === "optimistic_fields_v1"
       ? emptyOptimisticFieldsResponse()
-      : handler(request),
+      : request.queryId === "item_annotations_v1"
+        ? {
+            queryId: request.queryId,
+            schemaVersion: 1,
+            globalId: request.globalId,
+            source: QUERY_SOURCE,
+            tags: [],
+            highlights: [],
+          }
+        : handler(request),
   );
 }
 
@@ -272,6 +296,7 @@ function normalizedItemDetail(
         likedAt: null,
         likedSyncedAt: null,
         linkPreviewTitle: null,
+        linkPreviewUrl: null,
         locationName: null,
         mediaTypes: [],
         mediaUrls: [],
@@ -330,6 +355,10 @@ function backgroundRow(
 
 describe("PWA Library Core bounded scanner", () => {
   beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("Unexpected network request in offline sync test"); }));
+    mocks.discoverOperationHead.mockReset().mockResolvedValue(null);
+    mocks.createOperationAdapter.mockReset().mockReturnValue({});
+    mocks.syncOperations.mockReset();
     localStorage.clear();
     mocks.readNormalizedCheckpointReceipt.mockReset();
     mocks.readFollowerTransportContext.mockReset();
@@ -369,6 +398,8 @@ describe("PWA Library Core bounded scanner", () => {
     mocks.createFollowerTransport.mockReturnValue({});
     mocks.discoverControl.mockReset();
     mocks.importCheckpoint.mockReset();
+    mocks.catchup.mockReset();
+    mocks.catchup.mockResolvedValue(undefined);
     mocks.syncFollower.mockReset();
     mocks.syncFollower.mockResolvedValue({});
     mocks.queryNormalizedLibrary.mockReset();
@@ -432,16 +463,10 @@ describe("PWA Library Core bounded scanner", () => {
         nextIntentActorCounter: 4,
         nextResultSequence: 3,
       }),
-      localExport: LOCAL_EXPORT,
     });
 
-    mocks.describeNormalizedCheckpointExport.mockRejectedValueOnce(
-      new Error("normalized checkpoint export has unresolved local intents"),
-    );
-    await expect(readPwaLibraryCoreCloudReceiptV2()).resolves.toMatchObject({
-      checkpoint: SELECTED_RECEIPT,
-      localExport: null,
-    });
+    expect(mocks.describeNormalizedCheckpointExport).not.toHaveBeenCalled();
+    expect(mocks.readNormalizedCheckpointExportPage).not.toHaveBeenCalled();
 
     mocks.readFollowerTransportContext.mockResolvedValueOnce({
       actorId: "89".repeat(32),
@@ -458,7 +483,14 @@ describe("PWA Library Core bounded scanner", () => {
     );
   });
 
-  it("imports the normalized checkpoint through the OPFS SQLite writer", async () => {
+  it.each([null, "operation-head"])("imports the checkpoint and consumes operation head %s", async (operationHeadFileId) => {
+    mocks.discoverOperationHead.mockResolvedValue(operationHeadFileId);
+    mocks.syncOperations.mockImplementation(async (input) => {
+      expect(await input.runtime.readRevision()).toBe(7);
+      expect(input.runtime.importPage).toBe(mocks.importOperationPage);
+      expect(input.anchor.checkpointRevision).toBe(SELECTED_RECEIPT.sourceRevision);
+      return { revision: 7, importedSegments: 0 };
+    });
     const libraryId = "55".repeat(32);
     const storageEpoch = "33".repeat(32);
     const writerId = "66".repeat(32);
@@ -494,11 +526,25 @@ describe("PWA Library Core bounded scanner", () => {
       controlFileId: "control-runtime-recovery",
       libraryId,
     });
-    const writer = Object.freeze({ beginImport: vi.fn() });
+    const writer = Object.freeze({
+      prepareImport: vi.fn().mockResolvedValue("import"),
+      beginImport: vi.fn(), appendPage: vi.fn(),
+      finalizeImport: vi.fn().mockResolvedValue({ checkpointDigest: "verified" }),
+      abortImport: vi.fn(),
+    });
+    const readImmutable = vi.fn().mockResolvedValue(Uint8Array.of(1));
+    mocks.createCloudAdapter.mockReturnValue({ readImmutable });
     mocks.createNormalizedCheckpointWriter.mockReturnValue(writer);
-    mocks.importCheckpoint.mockResolvedValue({ status: "already_complete" });
+    mocks.importCheckpoint.mockImplementation(async (input) => {
+      await input.adapter.readImmutable(pointer.manifest);
+      expect(await input.writer.prepareImport({}, pointer.manifest)).toBe("import");
+      await input.writer.beginImport({});
+      await input.writer.appendPage(0, []);
+      expect(await input.writer.finalizeImport({})).toEqual({ checkpointDigest: "verified" });
+      return { status: "imported" };
+    });
     mocks.readNormalizedCheckpointReceipt.mockResolvedValue({
-      receipt: { ...SELECTED_RECEIPT, libraryId, writerActorId: writerId },
+      receipt: { ...SELECTED_RECEIPT, libraryId, writerActorId: writerId, authorityEpoch: storageEpoch, manifestContentDigest: manifestDigest },
     });
     mockNormalizedQuery(async (request) => {
       if (request.queryId === "feed_browse_page_v3") {
@@ -537,14 +583,39 @@ describe("PWA Library Core bounded scanner", () => {
       };
     });
 
+    const onSyncStage = vi.fn();
+    const googleFetch = vi.fn();
     await expect(
-      syncPwaLibraryCoreFromGoogleDrive({ accessToken: "test-token" }),
+      syncPwaLibraryCoreFromGoogleDrive({ accessToken: "test-token", onSyncStage, googleFetch }),
     ).resolves.toEqual(
       expect.not.objectContaining({ items: expect.anything() }),
     );
-    expect(mocks.importCheckpoint).toHaveBeenCalledWith(
-      expect.objectContaining({ writer }),
-    );
+    const beforeActivate = mocks.createNormalizedCheckpointWriter.mock.calls.at(-1)![0].beforeActivate;
+    await beforeActivate({ stageId: "signed-successor-stage" });
+    expect(mocks.catchup).toHaveBeenCalledWith(expect.objectContaining({ successorStageId: "signed-successor-stage",
+      adapter: { readImmutable }, runtime: expect.objectContaining({ prepare: expect.any(Function), activate: expect.any(Function) }) }));
+    mocks.catchup.mockRejectedValueOnce(new Error("predecessor unavailable"));
+    await expect(beforeActivate({ stageId: "signed-successor-stage" })).rejects.toThrow("predecessor unavailable");
+    expect(onSyncStage.mock.calls.map(([message]) => message)).toEqual([
+      "Reading the local Library checkpoint.",
+      "Finding the published Library in Google Drive.",
+      "Importing the verified Library checkpoint.",
+      `Downloading checkpoint object 1 (${pointer.manifest.descriptor.byteLength.toLocaleString()} bytes).`,
+      "Verifying the downloaded checkpoint object.",
+      "Comparing the downloaded checkpoint with this device.",
+      "Opening local checkpoint staging.",
+      "Storing checkpoint page 1 (0 records).",
+      "Verifying and activating the staged checkpoint.",
+      "Checking device enrollment and syncing edits.",
+      ...(operationHeadFileId ? ["Applying verified Library changes."] : []),
+      "Refreshing the local Library view.",
+    ]);
+    expect(mocks.syncOperations).toHaveBeenCalledTimes(operationHeadFileId ? 1 : 0);
+    expect(readImmutable).toHaveBeenCalledWith(pointer.manifest);
+    expect(writer.prepareImport).toHaveBeenCalledWith({}, pointer.manifest);
+    expect(writer.beginImport).toHaveBeenCalledWith({});
+    expect(writer.appendPage).toHaveBeenCalledWith(0, []);
+    expect(writer.finalizeImport).toHaveBeenCalledWith({});
     expect(mocks.createNormalizedCheckpointWriter).toHaveBeenCalledWith(
       expect.objectContaining({
         checkpointGeneration: 9,
@@ -553,12 +624,31 @@ describe("PWA Library Core bounded scanner", () => {
       }),
     );
     expect(mocks.createFollowerTransport).toHaveBeenCalledWith({
+      onEnrollmentDiscovery: expect.any(Function),
       accessToken: "test-token",
+      googleFetch,
       controlFileId: "control-runtime-recovery",
       libraryId,
       signal: undefined,
     });
     expect(mocks.syncFollower).toHaveBeenCalledWith({}, { signal: undefined });
+    expect(mocks.discoverControl).toHaveBeenCalledWith(expect.objectContaining({ libraryId }));
+    expect(mocks.discoverControl).toHaveBeenCalledWith(expect.objectContaining({ googleFetch }));
+    expect(mocks.createCloudAdapter).toHaveBeenCalledWith(expect.objectContaining({ googleFetch }));
+  });
+
+  it("refuses to replace a retained Library through a different connection choice", async () => {
+    mocks.readNormalizedCheckpointReceipt.mockResolvedValue({ receipt: SELECTED_RECEIPT });
+    await expect(syncPwaLibraryCoreFromGoogleDrive({ accessToken: "test-token", libraryId: "another-library" }))
+      .rejects.toThrow("Reset this device before connecting a different Library");
+    expect(mocks.discoverControl).not.toHaveBeenCalled();
+    expect(mocks.importCheckpoint).not.toHaveBeenCalled();
+  });
+
+  it("keeps a fresh device in setup without querying a missing materialization", async () => {
+    await initializePwaLibraryCoreState();
+    expect(hasSelectedPwaLibraryCore()).toBe(false);
+    expect(mocks.queryNormalizedLibrary).not.toHaveBeenCalled();
   });
 
   it("binds search identity to the selected checkpoint instead of stale shell state", async () => {
@@ -585,6 +675,7 @@ describe("PWA Library Core bounded scanner", () => {
     const state = await initializePwaLibraryCoreState();
 
     expect(state.searchCorpusVersion).toBe(SELECTED_RECEIPT.sourceRevision);
+    expect(hasSelectedPwaLibraryCore()).toBe(true);
   });
 
   it("hydrates synchronized preferences from SQLite instead of the shell", async () => {
@@ -850,8 +941,10 @@ describe("PWA Library Core bounded scanner", () => {
           return { nextCursor: null, rows: [rssRow] };
         case "person_graph_page_v1":
           return { nextCursor: null, rows: [personGraphRow] };
+        case "person_root_v1": return { person: { id: "person-sample", name: "Sample Person", careLevel: 3, relationshipStatus: "friend", createdAt: 1, updatedAt: 1, tags: [], sampleDataFingerprint: sample }, source: { generationId: "a".repeat(64), projectionRevision: 7, transitionSequence: 7 } };
         case "person_detail_v1":
           return {
+            source: { generationId: "a".repeat(64), projectionRevision: 7, transitionSequence: 7 },
             person: {
               avatarUrl: null,
               bio: null,
@@ -964,6 +1057,7 @@ describe("PWA Library Core bounded scanner", () => {
           likedAt: null,
           likedSyncedAt: null,
           linkPreviewTitle: null,
+          linkPreviewUrl: null,
           locationName: null,
           mediaTypes: [],
           mediaUrls: [],

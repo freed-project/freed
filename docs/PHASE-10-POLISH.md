@@ -138,7 +138,7 @@ An expired trusted-launcher acquisition stranded after its lease state commits c
 
 A stranded task-manifest predecessor witness now has one owner-governed repair path instead of a manual file-edit escape hatch. The read-only planner proves the exact canonical and witness generations, healthy task and event history, one unique retired transaction lineage, and no active owner. The task-bound apply command appends one reserved authorization event before exact-generation retirement, never rewrites `current-tasks.json`, and recovers without duplicate events or retirements after response loss. Changed, pending, ambiguous, or foreign generations fail closed. This runtime-neutral control-plane repair adds no provider contact and does not change Phase 10's `upcoming` roadmap status.
 
-A stranded event-history predecessor witness now has its own owner-governed repair path. The read-only planner admits one unique exact byte predecessor, one canonical one-event semantic successor, healthy lease, task, manifest, and outcome histories, an unchanged task-manifest generation, and the exact kernel-guard receipt generation. Apply writes a durable task-bound owner authorization before exact-generation retirement, then appends one reserved audit event. The same plan resumes after process loss at the authorization, retirement, or audit boundary without requiring an expired confirmation or duplicating evidence. Changed, settled, ambiguous, or foreign generations fail closed. This runtime-neutral repair adds no provider contact and does not change Phase 10's `upcoming` roadmap status.
+A stranded event-history predecessor witness now has its own owner-governed repair path. The read-only planner admits one unique exact byte predecessor, one canonical one-event semantic successor, healthy lease, task, manifest, and outcome histories, the exact kernel-guard receipt generation, and either no task-manifest witness or one exact stranded task-manifest predecessor. The plan binds that paired witness without retiring it. Apply writes a durable task-bound owner authorization before exact event-witness retirement, then appends one reserved audit event. The ordinary task-manifest repair becomes available afterward and retains its separate owner lease. The same event plan resumes after process loss at the authorization, retirement, or audit boundary without requiring an expired confirmation or duplicating evidence. Changed, settled, ambiguous, or foreign generations fail closed. This runtime-neutral repair adds no provider contact and does not change Phase 10's `upcoming` roadmap status.
 
 Lease transaction cleanup now uses one pinned cross-platform helper and held file and directory descriptors for exclusive archive moves. Darwin uses `renameatx_np(RENAME_EXCL)` and Linux uses `renameat2(RENAME_NOREPLACE)`. Destination readback and the final exact archive-set rescan stay relative to the held directories, and destination durability is established before source removal durability. The general actor runtime copies and digests the helper. Strict preflight reports current and projected archive count, bytes, oldest age, local filesystem identity, and free-space headroom before new staging. The projection reserves three maximum-size transaction artifacts plus the largest stale receipt-pruning set that one canonical lease operation could retire. Count, byte, age, and headroom limits stop new transactions instead of compacting audit history without a separate owner-authorized lifecycle. This local control-plane hardening adds no provider contact and does not change Phase 10's `upcoming` roadmap status.
 
@@ -270,6 +270,28 @@ struct LiquidGlassButton: View {
 ---
 
 ## AI-Powered Features
+
+### Jev evaluation
+
+Freed Desktop has a dedicated Jev section under AI settings with user-managed
+credentials, replacement, removal, and an explicit connection test. Native keys
+use the system credential vault. Jev operates independently of the summary
+provider, and no key comes from repository or host configuration.
+
+Explicit evaluation reads up to 100 local social posts through bounded SQLite
+queries and sends text to Jev for 26 independent scores. People I can help and
+Make something together compare explicit requests with declared skills. Exact
+local relationships supply context without sending identity records. Native
+requests are bounded, cancellable, and never trigger social-provider capture.
+
+This dev slice keeps native results in the evaluation view. Durable classification,
+feed-filter replacement, background jobs, and live quality measurements remain
+unfinished. Six additional signals stay experimental. The synthetic browser
+preview retains sample-feed comparison and authored example matches. Preset counts
+canonicalize their signal arrays before crossing the query boundary.
+
+See the [Jev evaluation runbook](JEV-CLASSIFICATION-PREVIEW.md) for credential
+handling, request bounds, and validation limits. Phase 10 remains `upcoming`.
 
 ### Topic Extraction
 
@@ -422,10 +444,10 @@ Reward security researchers for responsible disclosure.
 | 10.4  | Export to CSV                     | Low        |
 | 10.5  | Keyboard shortcuts                | Medium     | ✓ Complete (PWA content-view keys, command palette, navigation history keys, and Freed Desktop Save Content shortcut) |
 | 10.6  | Screen reader support             | Medium     |
-| 10.7  | Reduced motion support            | Low        | ✓ Complete (Appearance animation intensity controls plus global app motion gating)                              |
+| 10.7  | Reduced motion support            | Low        | ✓ Complete (Appearance animation intensity controls plus global app motion gating)                                    |
 | 10.8  | Color contrast audit              | Low        |
 | 10.9  | Native Liquid Glass buttons       | High       |
-| 10.24 | Command bar: full action launcher | High       | ✓ Complete (Global `Cmd/Ctrl+K` palette with navigation, creation, current-item, sync, and danger actions)      |
+| 10.24 | Command bar: full action launcher | High       | ✓ Complete (Global `Cmd/Ctrl+K` palette with navigation, creation, current-item, sync, and danger actions)            |
 
 ### AI Features
 
@@ -457,10 +479,10 @@ Reward security researchers for responsible disclosure.
 | 10.20 | Bug bounty program                       | Medium     |
 | 10.21 | Release automation                       | Medium     | ✓ Complete (reviewed release prep, immutable dev snapshot promotion that permits ongoing development, release-card-free production PWA snapshot deployment, in-band current-task owner approval, protected branch promotion, dedicated release App provisioning, root-owned native tag publication, split tag rulesets, and fail-closed release identity checks) |
 | 10.22 | Documentation site                       | Medium     |
-| 10.28 | Primary automation host and task custody | Medium     | ✓ Complete (reviewed opaque host assignment, root-owned enrollment, nightly primary-host gate, one custodian heartbeat contract, and conservative external no-op archival)                                                              |
-| 10.29 | Task-scoped factory execution claims     | Medium     | ✓ Complete (single-manifest claims, exact retry receipts, conflict fencing, heartbeat custody, checkpoint-backed epoch transfer, exact release, and runtime-neutral draft-only pilot authority)                                         |
-| 10.30 | Stranded authority witness repair        | Medium     | ✓ Complete (read-only immutable planning, task-bound owner intent, reserved audit event, exact-generation retirement, response-loss recovery, and fail-closed drift checks)                                                             |
-| 10.31 | Stranded event-history witness repair    | Medium     | ✓ Complete (read-only exact-prefix and kernel-guard planning, durable owner authorization before retirement, reserved audit event, idempotent crash recovery, and fail-closed cross-history checks)                                      |
+| 10.28 | Primary automation host and task custody | Medium     | ✓ Complete (reviewed opaque host assignment, root-owned enrollment, nightly primary-host gate, one custodian heartbeat contract, and conservative external no-op archival)                                                                                                                                                                                       |
+| 10.29 | Task-scoped factory execution claims     | Medium     | ✓ Complete (single-manifest claims, exact retry receipts, conflict fencing, heartbeat custody, checkpoint-backed epoch transfer, exact release, and runtime-neutral draft-only pilot authority)                                                                                                                                                                  |
+| 10.30 | Stranded authority witness repair        | Medium     | ✓ Complete (read-only immutable planning, task-bound owner intent, reserved audit event, exact-generation retirement, response-loss recovery, and fail-closed drift checks)                                                                                                                                                                                      |
+| 10.31 | Stranded event-history witness repair    | Medium     | ✓ Complete (read-only exact-prefix and kernel-guard planning, paired task-witness admission, durable owner authorization before retirement, reserved audit event, idempotent crash recovery, and fail-closed cross-history checks)                                                                                                                               |
 
 ### Resilience
 
@@ -505,7 +527,7 @@ Reward security researchers for responsible disclosure.
 - [x] One reviewed primary host owns the single nightly executor, while one custodian heartbeat validates saved actors, enforces models from current callable capability data, and archives only confirmed no-op automation tasks.
 - [x] One trusted nightly coordinator can hold multiple task-scoped factory claims without giving workers permanent leases. Each claim remains inside the atomic task authority manifest, preserves exact custody across retries and crashes, and permits only runtime-neutral, provider-forbidden, draft-only pilot work.
 - [x] A stranded task-manifest predecessor witness can be planned without mutation and retired only through one exact task-bound owner intent, reserved audit event, and response-loss-safe native authority retirement.
-- [x] A stranded event-history predecessor witness can be planned without mutation, authorized durably before retirement, and recovered through one exact audit append after response loss without requiring a second queue or live lease.
+- [x] A stranded event-history predecessor witness can be planned without mutation, including when one exact task-manifest predecessor is stranded at the same time, authorized durably before retirement, and recovered through one exact audit append after response loss without requiring a second queue or live lease.
 - [ ] Documentation site live
 
 ### Resilience
@@ -522,3 +544,66 @@ Reward security researchers for responsible disclosure.
 ## Deliverable
 
 Polished, accessible app with AI-powered features and thriving community infrastructure.
+
+## Bounded story presentation
+
+Nearby stories share consecutive grid rows after the canonical feed sort. A group can bridge up to five ordinary posts, with a five-position movement limit for ordinary items and non-opening stories. When a mixed feed has a story among its first ten items, the earliest story moves to the first row so it is visible above the fold. That opening story is the single exception to the movement limit. Existing uninterrupted story runs remain intact; newly assembled groups contain at most six stories. Retained groups stay closed across reader page changes. Keyboard and reader navigation use the displayed sequence at every width. Desktop and mobile reuse the same row builder; the compact reader rail repacks the shared sequence at its own width.
+
+Read-on-scroll refreshes replace the complete resident window atomically, avoiding a temporary first-page list that clamps the scroll position. Deep windows resume from an ordering bookmark through fresh source-fenced queries. Ranking, durable state, filter validation, and stale-cursor rejection remain in the Library layer. Committed geometry establishes a fresh read-on-scroll baseline before the first user scroll and preserve the visible card anchor, including the compact rail's first-row padding.
+
+Failed archive writes restore the bounded feed from authoritative rows; reader archive controls close only after persistence succeeds.
+
+Sample population now shares the public demo's curated generator and randomized posting times across every build. Settings and completion messages use the same population counts and distinguish people from friend relationships. Local previews repopulate on reload and render remote media through browser-compatible URLs.
+
+OpenAI model default reviewed September 7, 2026: new OpenAI selections use
+`gpt-6-astra`. Existing saved models remain unchanged. Astra summaries use low
+reasoning with a bounded completion budget; Ollama retains its local request
+parameters. Live output quality and account access require API validation.
+
+## Demo error prevention
+
+The demo keeps appearance, filters, reader navigation, relationship controls, graph pins, and Story Wall previews. Story Wall publishing credentials and archive imports require Freed Desktop. Unavailable maintenance and diagnostic controls are hidden, including overflow menus and command-triggered dialogs. Failed reader photographs retain readable content with a placeholder. Map loading errors switch to the simplified view without new retries. Newsletter failures preserve the form and show recoverable public copy rather than raw backend errors.
+
+### Foreground frame diagnostics
+
+The Performance tab pauses its frame sampler while the document is hidden and
+resumes one loop when it becomes visible. Hidden time does not count as a
+foreground dropped frame; real foreground stalls remain visible. Synthetic
+hook tests verify visibility transitions and cleanup. This does not establish
+a hardware frame rate or a fix for the reported freeze. The existing app-wide
+heartbeat remains separate, and unsupported LongTask observation still needs
+an explicit diagnostic state.
+
+### Jev spending admission
+
+Jev requests require saved device-local spending limits. Defaults are $1 per
+UTC day and $10 per UTC calendar month; an optional lifetime limit never resets.
+All enabled limits apply before transport. A durable SQLite transaction reserves
+$0.002752512 per request: Jev 1.13's conservative 65,536-token interpretation of the published 64k ceiling at
+$0.042 per million, with free output. This conservative allowance is not a bill.
+Reservation precedes credential access. Even missing-key failures retain the
+allowance without implying provider contact or billing. No refund is inferred
+for success, cancellation, timeout, or uncertain outcomes;
+retries reserve again and duplicate request IDs are rejected. Default limits
+permit at most 363 requests daily and 3,633 monthly, even when actual short
+requests cost less. At a limit, settings offers local GLiClass when available, or a limit change.
+
+The ledger is under the compiled app's config directory, outside Library
+snapshots. Ordinary app replacement and Library restore do not reset it; a
+missing established ledger, corruption, or a backwards clock blocks requests.
+Removing an entire device profile removes its history; other clients/devices
+and vendor price changes are outside this local estimate-based allowance. The
+ledger is bounded to 100,000 reservations and then fails closed. Browser preview
+paid transport is disabled because it lacks the native ledger. Pricing evidence:
+https://docs.typesafe.ai/models (verified 2026-10-02).
+
+
+### Selected-post reader identity
+
+The reader clears the previous selection's cached title, body and lead media
+before committing a different post identity. Reply hydration settles only in
+the selection generation that requested it, including returning to the same
+post and unmounting. Synthetic regressions cover adjacent posts, A-to-B-to-A,
+late success/failure and out-of-order local cache responses. These tests confirm
+the source defects; they do not attribute the exact installed incident or prove
+all native cache associations. Requests and provider cadence are unchanged.

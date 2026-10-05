@@ -1755,6 +1755,9 @@ test("toolbar activity status stays mounted across idle, syncing, and completed 
   await expect(activityTrigger).toBeVisible();
   await expect(activityTrigger).toHaveAttribute("aria-label", "Background activity: No recent activity");
   await expect(activityStatus).toHaveAttribute("title", "No recent activity");
+  // Library readiness does not imply that font-dependent toolbar layout settled.
+  await page.evaluate(async () => { await document.fonts.ready; });
+  await activityTrigger.hover();
   const idleBounds = await activityTrigger.boundingBox();
   expect(idleBounds).not.toBeNull();
 

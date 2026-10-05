@@ -1,7 +1,10 @@
 //! Freed Desktop native routing for the normalized SQLite Library Core.
 
+#[path = "library_core_checkpoint_session.rs"]
+mod checkpoint_session;
+
 use freed_library_core::{
-    accept_normalized_operation_transaction_v1, load_or_create_normalized_actor_id_v2,
+    accept_normalized_operation_transaction_v1, load_normalized_local_actor_id_v2,
     normalized_primary_mutation_context_v1, NormalizedMutationContextV1,
     NormalizedMutationReceiptV1,
 };
@@ -21,6 +24,7 @@ use super::library_core_actor_key_store::{
 };
 use super::library_core_authority_key_store::{
     load_established_authority_key_pair, PlatformAuthorityKeyStore,
+    PlatformHandoffAuthorityKeyStore,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -153,13 +157,12 @@ pub(super) struct DesktopNormalizedLibraryCloudIdentity {
     local_actor_id: String,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct ReassignNormalizedWriterEpochRequest {
-    canonical_source_control_json: String,
-    target_writer_id: String,
-    installation_witness: String,
-    accepted_at_ms: i64,
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DesktopNormalizedCloudPreflightIdentity {
+    #[serde(flatten)]
+    identity: freed_library_core::NormalizedCloudPreflightIdentityV1,
+    local_actor_id: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -301,23 +304,22 @@ impl TryFrom<NormalizedMutationReceiptV1> for DesktopNormalizedMutationReceipt {
     }
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct DesktopNormalizedWriterEpochReassignment {
-    authority: DesktopLibraryAcceptedAuthority,
-    canonical_epoch_certificate_json: String,
-}
-
 #[cfg(not(unix))]
 fn app_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     app.path().app_data_dir().map_err(|error| error.to_string())
 }
 
 fn open_normalized_database(app: &tauri::AppHandle) -> Result<Connection, String> {
+    open_normalized_database_with_identity(app).map(|(connection, _)| connection)
+}
+
+fn open_normalized_database_with_identity(
+    app: &tauri::AppHandle,
+) -> Result<(Connection, String), String> {
     #[cfg(unix)]
     if let Ok(binding) = freed_library_core::desktop_binding() {
         return binding
-            .connect_selected_normalized()
+            .connect_selected_normalized_with_identity()
             .map_err(|error| error.to_string());
     }
     #[cfg(unix)]
@@ -340,27 +342,12 @@ fn open_normalized_database(app: &tauri::AppHandle) -> Result<Connection, String
             return Err("normalized SQLite authority selection identity is invalid".into());
         }
         let connection = open_unselected_normalized_database(app, false)?;
-        let matches: i64 = connection
-            .query_row(
-                "SELECT count(*)
-                 FROM library_active_authority AS active
-                 JOIN library_authority_epochs AS epoch ON epoch.epoch_id = active.epoch_id
-                 JOIN library_meta AS meta ON meta.singleton_id = 1
-                 JOIN library_materialization_generation AS generation ON generation.singleton_id = 1
-                 WHERE active.active_key = 'active'
-                   AND active.library_id = ?1
-                   AND meta.library_id = active.library_id
-                   AND meta.authority_epoch = active.epoch_id
-                   AND epoch.library_id = active.library_id
-                   AND epoch.materialized_state_digest = generation.generation_id;",
-                [&selection.library_id],
-                |row| row.get(0),
-            )
-            .map_err(|error| error.to_string())?;
-        if matches != 1 {
-            return Err("normalized SQLite authority selection does not match SQLite".into());
-        }
-        Ok(connection)
+        freed_library_core::verify_normalized_library_selection_v1(
+            &connection,
+            &selection.library_id,
+        )
+        .map_err(|error| error.to_string())?;
+        Ok((connection, selection.library_id))
     }
 }
 
@@ -399,7 +386,15 @@ fn publish_windows_authority_selection(
     app: &tauri::AppHandle,
     prepared: &freed_library_core::NormalizedDesktopAuthorityPreparedV1,
 ) -> Result<(), String> {
-    if !valid_normalized_digest(&prepared.library_id) {
+    publish_windows_library_selection(app, &prepared.library_id)
+}
+
+#[cfg(not(unix))]
+fn publish_windows_library_selection(
+    app: &tauri::AppHandle,
+    library_id: &str,
+) -> Result<(), String> {
+    if !valid_normalized_digest(library_id) {
         return Err("normalized SQLite authority identity is invalid".into());
     }
     let path = app_root(app)?.join(AUTHORITY_SELECTION_FILE);
@@ -409,7 +404,7 @@ fn publish_windows_authority_selection(
     let pending = path.with_extension("pending");
     let bytes = serde_json::to_vec(&DesktopLibraryAuthoritySelectionV1 {
         format: "freed_desktop_sqlite_authority_selection_v1".into(),
-        library_id: prepared.library_id.clone(),
+        library_id: library_id.to_owned(),
     })
     .map_err(|error| error.to_string())?;
     fs::write(&pending, bytes).map_err(|error| error.to_string())?;
@@ -609,6 +604,353 @@ fn complete_windows_normalized_cutover(
     Ok(true)
 }
 
+fn desktop_setup_choice(
+    app: &tauri::AppHandle,
+) -> Result<Option<freed_library_core::DesktopLibrarySetupChoiceV1>, String> {
+    #[cfg(unix)]
+    {
+        let _ = app;
+        freed_library_core::desktop_binding()
+            .map_err(|error| error.to_string())?
+            .library_setup_choice_v1()
+            .map_err(|error| error.to_string())
+    }
+    #[cfg(not(unix))]
+    {
+        let path = app_root(app)?.join(freed_library_core::DESKTOP_LIBRARY_SETUP_FILE);
+        match fs::symlink_metadata(&path) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(error.to_string()),
+            Ok(metadata)
+                if !metadata.is_file()
+                    || metadata.file_type().is_symlink()
+                    || metadata.len()
+                        > freed_library_core::DESKTOP_LIBRARY_SETUP_MAXIMUM_BYTES as u64 =>
+            {
+                return Err("Desktop Library setup file is invalid".into())
+            }
+            Ok(_) => {}
+        }
+        freed_library_core::DesktopLibrarySetupChoiceV1::from_canonical_bytes(
+            &fs::read(path).map_err(|error| error.to_string())?,
+        )
+        .map(Some)
+    }
+}
+
+fn desktop_library_is_selected(app: &tauri::AppHandle) -> Result<bool, String> {
+    #[cfg(unix)]
+    {
+        let _ = app;
+        freed_library_core::desktop_binding()
+            .map_err(|error| error.to_string())?
+            .normalized_authority_is_selected_v1()
+            .map_err(|error| error.to_string())
+    }
+    #[cfg(not(unix))]
+    {
+        if !app_root(app)?.join(AUTHORITY_SELECTION_FILE).exists() {
+            return Ok(false);
+        }
+        open_normalized_database(app).map(|_| true)
+    }
+}
+
+fn open_setup_database(app: &tauri::AppHandle) -> Result<Connection, String> {
+    #[cfg(unix)]
+    {
+        let _ = app;
+        freed_library_core::desktop_binding()
+            .map_err(|error| error.to_string())?
+            .connect_normalized()
+            .map_err(|error| error.to_string())
+    }
+    #[cfg(not(unix))]
+    {
+        open_unselected_normalized_database(app, true)
+    }
+}
+
+fn publish_consumer_selection(app: &tauri::AppHandle, library_id: &str) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        let _ = app;
+        freed_library_core::desktop_binding()
+            .map_err(|error| error.to_string())?
+            .publish_follower_authority_selection_v1(library_id)
+            .map_err(|error| error.to_string())
+    }
+    #[cfg(not(unix))]
+    {
+        publish_windows_library_selection(app, library_id)
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DesktopLibraryInstallationStatus {
+    state: &'static str,
+    role: Option<&'static str>,
+    library_id: Option<String>,
+    authority_epoch_id: Option<String>,
+    actor_id: Option<String>,
+}
+
+#[tauri::command]
+pub(super) fn normalized_desktop_installation_status(
+    app: tauri::AppHandle,
+    legacy_follower_requested: Option<bool>,
+) -> Result<DesktopLibraryInstallationStatus, String> {
+    // A legacy renderer preference may revoke authority, never confer it. This
+    // one-way migration preserves an old consumer choice even if its previous
+    // build had already created a local Primary before joining.
+    if legacy_follower_requested.unwrap_or(false) {
+        let mut connection = open_setup_database(&app)?;
+        let transaction = connection
+            .transaction()
+            .map_err(|error| error.to_string())?;
+        transaction.execute_batch(
+            "DELETE FROM library_writer_admission; DELETE FROM library_local_cloud_writer_admission;",
+        ).map_err(|error| error.to_string())?;
+        transaction.commit().map_err(|error| error.to_string())?;
+    }
+    let choice = desktop_setup_choice(&app)?;
+    if !desktop_library_is_selected(&app)? {
+        // Recover the only split commit: a verified first checkpoint reached
+        // SQLite, but the process stopped before publishing its local selector.
+        if let Some(freed_library_core::DesktopLibrarySetupChoiceV1::Follower { library_id }) =
+            &choice
+        {
+            let connection = open_setup_database(&app)?;
+            let installed: bool = connection.query_row(
+                "SELECT EXISTS(SELECT 1 FROM library_follower_checkpoint_receipt WHERE library_id = ?1);",
+                [library_id], |row| row.get(0),
+            ).map_err(|error| error.to_string())?;
+            if installed {
+                freed_library_core::verify_normalized_library_selection_v1(&connection, library_id)
+                    .map_err(|error| error.to_string())?;
+                drop(connection);
+                publish_consumer_selection(&app, library_id)?;
+            }
+        }
+    }
+    if desktop_library_is_selected(&app)? {
+        let mut connection = open_normalized_database(&app)?;
+        let handoff = freed_library_core::read_native_handoff_status_v1(&mut connection)
+            .map_err(|error| error.to_string())?;
+        let active_target = handoff.as_ref().is_some_and(|status| {
+            status.installation_role == freed_library_core::HandoffInstallationRoleV1::Target
+                && status.phase == freed_library_core::HandoffPhaseV1::Active
+        });
+        if let Some(status) = handoff.as_ref() {
+            let demoted_source = status.installation_role
+                == freed_library_core::HandoffInstallationRoleV1::Source
+                && status.phase == freed_library_core::HandoffPhaseV1::Demoted;
+            if status.phase != freed_library_core::HandoffPhaseV1::Cancelled
+                && !demoted_source
+                && !active_target
+                && status.installation_role
+                    != freed_library_core::HandoffInstallationRoleV1::Consumer
+            {
+                return Ok(DesktopLibraryInstallationStatus {
+                    state: "fenced",
+                    role: None,
+                    library_id: Some(status.library_id.clone()),
+                    authority_epoch_id: Some(
+                        status
+                            .successor_epoch_id
+                            .clone()
+                            .unwrap_or_else(|| status.predecessor_epoch_id.clone()),
+                    ),
+                    actor_id: None,
+                });
+            }
+        }
+        // A staged/active successor retains its old consumer receipt for recovery.
+        // That receipt cannot decide the installation's role after an epoch transfer.
+        if !active_target {
+            let follower = freed_library_core::normalized_follower_runtime_status_v2(&connection)
+                .map_err(|error| error.to_string())?;
+            if follower.library_id.is_some() {
+                return Ok(DesktopLibraryInstallationStatus {
+                    state: if follower.state == "active" {
+                        "editable_consumer"
+                    } else {
+                        "awaiting_enrollment"
+                    },
+                    role: Some("follower"),
+                    library_id: follower.library_id,
+                    authority_epoch_id: follower.authority_epoch_id,
+                    actor_id: follower.actor_id,
+                });
+            }
+        }
+        if let Ok(primary) = freed_library_core::normalized_primary_mutation_context_v1(&connection)
+        {
+            return Ok(DesktopLibraryInstallationStatus {
+                state: if writer_admission_status(&connection)?.allowed {
+                    "shared_primary"
+                } else {
+                    "standalone_primary"
+                },
+                role: Some("primary"),
+                library_id: Some(primary.library_id),
+                authority_epoch_id: Some(primary.epoch_id),
+                actor_id: Some(primary.actor_id),
+            });
+        }
+        return Ok(DesktopLibraryInstallationStatus {
+            state: "fenced",
+            role: None,
+            library_id: None,
+            authority_epoch_id: None,
+            actor_id: None,
+        });
+    }
+    Ok(match choice {
+        Some(freed_library_core::DesktopLibrarySetupChoiceV1::Primary) => {
+            DesktopLibraryInstallationStatus {
+                state: "creating_primary",
+                role: Some("primary"),
+                library_id: None,
+                authority_epoch_id: None,
+                actor_id: None,
+            }
+        }
+        Some(freed_library_core::DesktopLibrarySetupChoiceV1::Follower { library_id }) => {
+            DesktopLibraryInstallationStatus {
+                state: "joining",
+                role: Some("follower"),
+                library_id: Some(library_id),
+                authority_epoch_id: None,
+                actor_id: None,
+            }
+        }
+        None => DesktopLibraryInstallationStatus {
+            state: "unconfigured",
+            role: None,
+            library_id: None,
+            authority_epoch_id: None,
+            actor_id: None,
+        },
+    })
+}
+
+static DESKTOP_SETUP_GATE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+#[tauri::command]
+pub(super) fn select_normalized_desktop_library_setup(
+    app: tauri::AppHandle,
+    choice: freed_library_core::DesktopLibrarySetupChoiceV1,
+) -> Result<DesktopLibraryInstallationStatus, String> {
+    let _gate = DESKTOP_SETUP_GATE
+        .lock()
+        .map_err(|_| "Desktop Library setup lock is poisoned")?;
+    choice.validate()?;
+    #[cfg(unix)]
+    {
+        freed_library_core::desktop_binding()
+            .map_err(|error| error.to_string())?
+            .select_library_setup_v1(&choice)
+            .map_err(|error| error.to_string())?;
+    }
+    #[cfg(not(unix))]
+    {
+        if let Some(existing) = desktop_setup_choice(&app)? {
+            if existing != choice {
+                return Err("Desktop Library setup is already pinned".into());
+            }
+        } else {
+            if desktop_library_is_selected(&app)?
+                || app_root(&app)?
+                    .join("library-core")
+                    .join(NORMALIZED_DATABASE_FILE)
+                    .exists()
+            {
+                return Err(
+                    "Existing Library data must be preserved before joining another Library".into(),
+                );
+            }
+            let connection = open_setup_database(&app)?;
+            let occupied: bool = connection.query_row(
+                "SELECT EXISTS(SELECT 1 FROM library_meta) OR EXISTS(SELECT 1 FROM library_active_authority);",
+                [], |row| row.get(0),
+            ).map_err(|error| error.to_string())?;
+            if occupied {
+                return Err(
+                    "Existing Library data must be preserved before joining another Library".into(),
+                );
+            }
+            let path = app_root(&app)?.join(freed_library_core::DESKTOP_LIBRARY_SETUP_FILE);
+            let pending = path.with_extension("pending");
+            use std::io::Write;
+            match fs::remove_file(&pending) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.to_string()),
+            }
+            let mut file = fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&pending)
+                .map_err(|error| error.to_string())?;
+            file.write_all(&choice.canonical_bytes()?)
+                .map_err(|error| error.to_string())?;
+            file.sync_all().map_err(|error| error.to_string())?;
+            drop(file);
+            fs::rename(&pending, &path).map_err(|error| error.to_string())?;
+        }
+    }
+    if choice == freed_library_core::DesktopLibrarySetupChoiceV1::Primary {
+        ensure_fresh_normalized_desktop_library(app.clone(), true)?;
+    }
+    normalized_desktop_installation_status(app, None)
+}
+
+fn open_checkpoint_import_database(app: &tauri::AppHandle) -> Result<Connection, String> {
+    if desktop_library_is_selected(app)? {
+        return open_normalized_database(app);
+    }
+    if matches!(
+        desktop_setup_choice(app)?,
+        Some(freed_library_core::DesktopLibrarySetupChoiceV1::Follower { .. })
+    ) {
+        return open_setup_database(app);
+    }
+    Err("Choose a Library before importing its checkpoint".into())
+}
+
+fn require_checkpoint_library(
+    app: &tauri::AppHandle,
+    connection: &Connection,
+    library_id: &str,
+) -> Result<(), String> {
+    let selected: Option<String> = connection
+        .query_row(
+            "SELECT library_id FROM library_meta WHERE singleton_id = 1;",
+            [],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+    if let Some(selected) = selected {
+        if selected == library_id {
+            return Ok(());
+        }
+        return Err(
+            "Checkpoint belongs to another Library; existing data has been preserved".into(),
+        );
+    }
+    if desktop_setup_choice(app)?
+        == Some(freed_library_core::DesktopLibrarySetupChoiceV1::Follower {
+            library_id: library_id.to_owned(),
+        })
+    {
+        return Ok(());
+    }
+    Err("Checkpoint does not match this installation's selected Library".into())
+}
+
 #[tauri::command]
 pub(super) fn ensure_fresh_normalized_desktop_library(
     app: tauri::AppHandle,
@@ -619,6 +961,11 @@ pub(super) fn ensure_fresh_normalized_desktop_library(
         if app_root(&app)?.join(AUTHORITY_SELECTION_FILE).exists() {
             open_normalized_database(&app)?;
             return Ok(true);
+        }
+        if desktop_setup_choice(&app)?
+            != Some(freed_library_core::DesktopLibrarySetupChoiceV1::Primary)
+        {
+            return Ok(false);
         }
         if !historical_data_absent {
             return Ok(false);
@@ -654,6 +1001,11 @@ pub(super) fn ensure_fresh_normalized_desktop_library(
             .map_err(|error| error.to_string())?
         {
             return Ok(true);
+        }
+        if desktop_setup_choice(&app)?
+            != Some(freed_library_core::DesktopLibrarySetupChoiceV1::Primary)
+        {
+            return Ok(false);
         }
         if !historical_data_absent {
             return Ok(false);
@@ -731,12 +1083,39 @@ pub(super) fn ensure_fresh_normalized_desktop_library(
 pub(super) async fn query_normalized_library(
     app: tauri::AppHandle,
     request: Value,
+    started: Option<tauri::ipc::JavaScriptChannelId>,
+    webview: tauri::Webview,
 ) -> Result<Value, String> {
-    run_normalized_query_off_main(move || {
-        let mut connection = open_normalized_database(&app)?;
-        freed_library_core::query_normalized_json_v1(&mut connection, request)
-            .map_err(|error| error.to_string())
-    })
+    let started = started.map(|channel| channel.channel_on(webview));
+    super::library_core_query_control::run(
+        Arc::clone(normalized_query_permits()),
+        started,
+        move |control| {
+            control.check()?;
+            let connection = open_normalized_database(&app)?;
+            freed_library_core::query_normalized_json_with_control_v1(connection, request, control)
+        },
+    )
+    .await
+}
+
+/// Read-only audit admission is independent of Primary publication admission.
+#[tauri::command]
+pub(super) async fn audit_normalized_library_replica(
+    app: tauri::AppHandle,
+    started: Option<tauri::ipc::JavaScriptChannelId>,
+    webview: tauri::Webview,
+) -> Result<freed_library_core::NormalizedReplicaAuditV1, String> {
+    let started = started.map(|channel| channel.channel_on(webview));
+    super::library_core_query_control::run(
+        Arc::clone(normalized_query_permits()),
+        started,
+        move |control| {
+            control.check()?;
+            let connection = open_normalized_database(&app)?;
+            freed_library_core::audit_normalized_replica_with_control_v1(connection, control)
+        },
+    )
     .await
 }
 
@@ -745,13 +1124,16 @@ where
     T: Send + 'static,
     F: FnOnce() -> Result<T, String> + Send + 'static,
 {
-    let _permit = Arc::clone(normalized_query_permits())
+    let permit = Arc::clone(normalized_query_permits())
         .acquire_owned()
         .await
         .map_err(|_| "normalized Library query limiter closed".to_owned())?;
-    tauri::async_runtime::spawn_blocking(query)
-        .await
-        .map_err(|error| format!("normalized Library query worker failed: {error}"))?
+    tauri::async_runtime::spawn_blocking(move || {
+        let _permit = permit;
+        query()
+    })
+    .await
+    .map_err(|error| format!("normalized Library query worker failed: {error}"))?
 }
 
 #[tauri::command]
@@ -835,24 +1217,79 @@ pub(super) fn query_normalized_device_contact_unmatched_page(
         .map_err(|error| error.to_string())
 }
 
+fn require_checkpoint_export_admission(
+    connection: &rusqlite::Connection,
+    handoff_id: Option<&str>,
+) -> Result<(), String> {
+    if let Some(handoff_id) = handoff_id {
+        freed_library_core::require_handoff_checkpoint_export_v1(connection, handoff_id)
+            .map_err(|error| error.to_string())
+    } else {
+        freed_library_core::normalized_primary_mutation_context_v1(connection)
+            .map(|_| ())
+            .map_err(|_| "Checkpoint publication requires native Primary authority".to_owned())
+    }
+}
+
 #[tauri::command]
 pub(super) fn begin_normalized_library_checkpoint_export(
     app: tauri::AppHandle,
+    handoff_id: Option<String>,
 ) -> Result<freed_library_core::NormalizedCheckpointExportDescriptorV2, String> {
-    ensure_checkpoint_export_reaper()?;
-    let export = freed_library_core::NormalizedCheckpointExportSessionV2::begin_current(
-        open_normalized_database(&app)?,
+    use super::library_core_native_timings::{
+        global_limiter, monotonic_us, with_trace, Scope, Stage,
+    };
+    use freed_library_core::{
+        NormalizedCheckpointDescriptionStageV2 as DescriptorStage,
+        NormalizedCheckpointPreparationStageV2 as PreparationStage,
+    };
+    with_trace(
+        Scope::CheckpointPrepare,
+        log::log_enabled!(log::Level::Info),
+        global_limiter(),
+        monotonic_us,
+        |event| log::info!("[library-native-timing] {event:?}"),
+        |timing| {
+            timing.stage(Stage::SelectedOpen);
+            let connection = open_normalized_database(&app)?;
+            timing.stage(Stage::CheckpointAdmission);
+            require_checkpoint_export_admission(&connection, handoff_id.as_deref())?;
+            timing.stage(Stage::ExportReaper);
+            ensure_checkpoint_export_reaper()?;
+            let export = freed_library_core::NormalizedCheckpointExportSessionV2::begin_current_with_observer(
+                connection,
+                |stage| timing.stage(match stage {
+                    PreparationStage::TransactionBegin => Stage::SnapshotBegin,
+                    PreparationStage::Descriptor(descriptor) => match descriptor {
+                        DescriptorStage::WriterIdentity => Stage::WriterIdentity,
+                        DescriptorStage::ExportCount => Stage::ExportCount,
+                        DescriptorStage::ItemCount => Stage::ItemCount,
+                        DescriptorStage::FrontierAndValidation => Stage::FrontierAndValidation,
+                    },
+                    PreparationStage::TemporaryMaterialization => Stage::TemporaryMaterialization,
+                    PreparationStage::OrderIndex => Stage::OrderIndex,
+                }),
+            ).map_err(|error| error.to_string())?;
+            timing.stage(Stage::DescriptorClone);
+            let snapshot = export.snapshot().clone();
+            checkpoint_session::replace(
+                checkpoint_export_session(),
+                || DesktopCheckpointExportSession {
+                    export,
+                    last_touched: Instant::now(),
+                },
+                |stage| {
+                    timing.stage(match stage {
+                        checkpoint_session::Stage::Acquire => Stage::SessionLock,
+                        checkpoint_session::Stage::Replace => Stage::SessionReplacement,
+                    })
+                },
+            )
+            .map_err(str::to_owned)?;
+            // replace released its guard before with_trace emits the summary.
+            Ok(snapshot)
+        },
     )
-    .map_err(|error| error.to_string())?;
-    let snapshot = export.snapshot().clone();
-    let mut guard = checkpoint_export_session()
-        .lock()
-        .map_err(|_| "normalized checkpoint export session lock failed".to_owned())?;
-    *guard = Some(DesktopCheckpointExportSession {
-        export,
-        last_touched: Instant::now(),
-    });
-    Ok(snapshot)
 }
 
 #[tauri::command]
@@ -869,25 +1306,99 @@ pub(super) fn describe_normalized_library_cloud_identity(
     app: tauri::AppHandle,
     installation_witness: String,
 ) -> Result<DesktopNormalizedLibraryCloudIdentity, String> {
-    let connection = open_normalized_database(&app)?;
-    let checkpoint = freed_library_core::describe_normalized_checkpoint_export_v2(&connection)
-        .map_err(|error| error.to_string())?;
-    let local_actor_id = load_or_create_normalized_actor_id_v2(
-        &checkpoint.library_id,
-        &installation_witness,
-        &PlatformActorKeyStore,
-    )?;
-    Ok(DesktopNormalizedLibraryCloudIdentity {
-        checkpoint,
-        local_actor_id,
-    })
+    use super::library_core_native_timings::{
+        global_limiter, monotonic_us, with_trace, Scope, Stage,
+    };
+    use freed_library_core::NormalizedCheckpointDescriptionStageV2 as CheckpointStage;
+    with_trace(
+        Scope::CloudIdentity,
+        log::log_enabled!(log::Level::Info),
+        global_limiter(),
+        monotonic_us,
+        |event| log::info!("[library-native-timing] {event:?}"),
+        |timing| {
+            timing.stage(Stage::SelectedOpen);
+            let connection = open_normalized_database(&app)?;
+            let checkpoint =
+                freed_library_core::describe_normalized_checkpoint_export_with_observer_v2(
+                    &connection,
+                    |stage| {
+                        timing.stage(match stage {
+                            CheckpointStage::WriterIdentity => Stage::WriterIdentity,
+                            CheckpointStage::ExportCount => Stage::ExportCount,
+                            CheckpointStage::ItemCount => Stage::ItemCount,
+                            CheckpointStage::FrontierAndValidation => Stage::FrontierAndValidation,
+                        });
+                    },
+                )
+                .map_err(|error| error.to_string())?;
+            timing.stage(Stage::ActorIdentity);
+            let local_actor_id = load_normalized_local_actor_id_v2(
+                &connection,
+                &checkpoint.library_id,
+                &installation_witness,
+                &PlatformActorKeyStore,
+            )?;
+            Ok(DesktopNormalizedLibraryCloudIdentity {
+                checkpoint,
+                local_actor_id,
+            })
+        },
+    )
+}
+
+#[tauri::command]
+pub(super) fn describe_normalized_library_cloud_preflight_identity(
+    app: tauri::AppHandle,
+    installation_witness: String,
+) -> Result<DesktopNormalizedCloudPreflightIdentity, String> {
+    use super::library_core_native_timings::{
+        global_limiter, monotonic_us, with_trace, Scope, Stage,
+    };
+    with_trace(
+        Scope::CloudPreflightIdentity,
+        log::log_enabled!(log::Level::Info),
+        global_limiter(),
+        monotonic_us,
+        |event| log::info!("[library-native-timing] {event:?}"),
+        |timing| {
+            timing.stage(Stage::SelectedOpen);
+            let (mut connection, selected_library_id) =
+                open_normalized_database_with_identity(&app)?;
+            let transaction = connection
+                .transaction()
+                .map_err(|error| error.to_string())?;
+            timing.stage(Stage::WriterIdentity);
+            let identity = freed_library_core::describe_normalized_cloud_preflight_identity_v1(
+                &transaction,
+                &selected_library_id,
+            )
+            .map_err(|error| error.to_string())?;
+            timing.stage(Stage::ActorIdentity);
+            let local_actor_id = load_normalized_local_actor_id_v2(
+                &transaction,
+                &identity.library_id,
+                &installation_witness,
+                &PlatformActorKeyStore,
+            )?;
+            transaction.commit().map_err(|error| error.to_string())?;
+            Ok(DesktopNormalizedCloudPreflightIdentity {
+                identity,
+                local_actor_id,
+            })
+        },
+    )
 }
 
 #[tauri::command]
 pub(super) fn read_normalized_library_checkpoint_page(
     app: tauri::AppHandle,
     request: freed_library_core::PinnedNormalizedCheckpointExportRequestV2,
+    handoff_id: Option<String>,
 ) -> Result<freed_library_core::NormalizedCheckpointExportPageV2, String> {
+    let connection = open_normalized_database(&app)?;
+    require_checkpoint_export_admission(&connection, handoff_id.as_deref())?;
+    drop(connection);
     ensure_checkpoint_export_reaper()?;
     let starting = request.page.after.is_none();
     let mut guard = checkpoint_export_session()
@@ -945,7 +1456,8 @@ pub(super) fn begin_normalized_library_checkpoint_import(
     app: tauri::AppHandle,
     request: freed_library_core::BeginNormalizedCheckpointStageV2,
 ) -> Result<freed_library_core::NormalizedCheckpointStageStatusV2, String> {
-    let connection = open_normalized_database(&app)?;
+    let connection = open_checkpoint_import_database(&app)?;
+    require_checkpoint_library(&app, &connection, &request.library_id)?;
     freed_library_core::begin_normalized_checkpoint_stage_v2(&connection, &request)
         .map_err(|error| error.to_string())
 }
@@ -955,7 +1467,7 @@ pub(super) fn append_normalized_library_checkpoint_import_page(
     app: tauri::AppHandle,
     request: AppendNormalizedLibraryCheckpointPageRequest,
 ) -> Result<freed_library_core::NormalizedCheckpointStageStatusV2, String> {
-    let mut connection = open_normalized_database(&app)?;
+    let mut connection = open_checkpoint_import_database(&app)?;
     freed_library_core::append_normalized_checkpoint_stage_page_v2(
         &mut connection,
         &request.stage_id,
@@ -964,13 +1476,87 @@ pub(super) fn append_normalized_library_checkpoint_import_page(
     .map_err(|error| error.to_string())
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct PredecessorCheckpointReadRequest {
+    stage_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct ActivatePredecessorCheckpointRequest {
+    stage_id: String,
+    successor_stage_id: String,
+    follower_receipt: freed_library_core::NormalizedFollowerCheckpointReceiptV2,
+}
+
+#[tauri::command]
+pub(super) fn prepare_normalized_library_predecessor_checkpoint_read(
+    app: tauri::AppHandle,
+    request: PredecessorCheckpointReadRequest,
+) -> Result<Option<serde_json::Value>, String> {
+    let mut connection = open_checkpoint_import_database(&app)?;
+    let proof = freed_library_core::prepare_normalized_predecessor_checkpoint_read_v1(
+        &mut connection,
+        &request.stage_id,
+    )?;
+    if let Some(proof) = &proof {
+        require_checkpoint_library(
+            &app,
+            &connection,
+            proof["pointer"]["libraryId"]
+                .as_str()
+                .ok_or("predecessor Library is missing")?,
+        )?;
+    }
+    Ok(proof)
+}
+
+#[tauri::command]
+pub(super) fn activate_normalized_library_predecessor_checkpoint(
+    app: tauri::AppHandle,
+    request: ActivatePredecessorCheckpointRequest,
+) -> Result<freed_library_core::NormalizedCheckpointActivationReceiptV2, String> {
+    freed_library_core::require_library_transfer_capability()?;
+    let mut connection = open_checkpoint_import_database(&app)?;
+    let library_id: String = connection
+        .query_row(
+            "SELECT library_id FROM library_checkpoint_stages WHERE stage_id=?1;",
+            [&request.stage_id],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    require_checkpoint_library(&app, &connection, &library_id)?;
+    let receipt = freed_library_core::activate_normalized_predecessor_checkpoint_v1(
+        &mut connection,
+        &request.successor_stage_id,
+        &request.stage_id,
+        &request.follower_receipt,
+    )?;
+    drop(connection);
+    publish_consumer_selection(&app, &receipt.library_id)?;
+    Ok(receipt)
+}
+
 #[tauri::command]
 pub(super) fn activate_normalized_library_checkpoint_import(
     app: tauri::AppHandle,
     request: ActivateNormalizedLibraryCheckpointImportRequest,
 ) -> Result<freed_library_core::NormalizedCheckpointActivationReceiptV2, String> {
-    let mut connection = open_normalized_database(&app)?;
-    match request.follower_receipt {
+    let mut connection = open_checkpoint_import_database(&app)?;
+    let library_id: String = connection
+        .query_row(
+            "SELECT library_id FROM library_checkpoint_stages WHERE stage_id = ?1;",
+            [&request.stage_id],
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())?;
+    require_checkpoint_library(&app, &connection, &library_id)?;
+    let follower = request.follower_receipt.is_some();
+    if !follower && !desktop_library_is_selected(&app)? {
+        return Err("Consumer setup requires a verified follower checkpoint".into());
+    }
+    let receipt = match request.follower_receipt {
         Some(receipt) => freed_library_core::replace_with_normalized_follower_checkpoint_stage_v2(
             &mut connection,
             &request.stage_id,
@@ -981,14 +1567,57 @@ pub(super) fn activate_normalized_library_checkpoint_import(
             &request.stage_id,
         ),
     }
-    .map_err(|error| error.to_string())
+    .map_err(|error| error.to_string())?;
+    drop(connection);
+    if follower {
+        publish_consumer_selection(&app, &receipt.library_id)?;
+    }
+    Ok(receipt)
+}
+
+#[tauri::command]
+pub(super) fn describe_normalized_library_operation_export(
+    app: tauri::AppHandle,
+) -> Result<freed_library_core::NormalizedOperationExportDescriptorV2, String> {
+    let connection = open_normalized_database(&app)?;
+    freed_library_core::normalized_primary_mutation_context_v1(&connection)
+        .map_err(|error| error.to_string())?;
+    freed_library_core::describe_normalized_operation_export_v2(&connection)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub(super) fn read_normalized_library_operation_page(
+    app: tauri::AppHandle,
+    request: freed_library_core::NormalizedOperationExportRequestV2,
+) -> Result<freed_library_core::NormalizedOperationExportPageV2, String> {
+    let connection = open_normalized_database(&app)?;
+    freed_library_core::normalized_primary_mutation_context_v1(&connection)
+        .map_err(|error| error.to_string())?;
+    freed_library_core::export_normalized_operation_page_v2(&connection, &request)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub(super) fn import_normalized_library_operation_page(
+    app: tauri::AppHandle,
+    request: freed_library_core::NormalizedOperationImportPageV2,
+) -> Result<freed_library_core::NormalizedOperationImportReceiptV2, String> {
+    let mut connection = open_normalized_database(&app)?;
+    let follower = freed_library_core::normalized_follower_runtime_status_v2(&connection)
+        .map_err(|error| error.to_string())?;
+    if follower.library_id.as_deref() != Some(request.snapshot.library_id.as_str()) {
+        return Err("Operation catch-up requires a verified consumer Library".into());
+    }
+    freed_library_core::import_normalized_operation_page_v2(&mut connection, &request)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 pub(super) fn normalized_library_follower_runtime_status(
     app: tauri::AppHandle,
 ) -> Result<freed_library_core::NormalizedFollowerRuntimeStatusV2, String> {
-    let connection = open_normalized_database(&app)?;
+    let connection = open_checkpoint_import_database(&app)?;
     freed_library_core::normalized_follower_runtime_status_v2(&connection)
         .map_err(|error| error.to_string())
 }
@@ -1010,6 +1639,904 @@ pub(super) fn page_normalized_library_follower_transport(
     let connection = open_normalized_database(&app)?;
     freed_library_core::page_normalized_follower_transport_v2(&connection, &page)
         .map_err(|error| error.to_string())
+}
+
+#[cfg(not(unix))]
+static HANDOFF_RESET_GATE: Mutex<()> = Mutex::new(());
+
+#[tauri::command]
+pub(super) async fn reapply_normalized_library_archived_assignments(
+    app: tauri::AppHandle,
+    request: freed_library_core::RecoveryReissueRequestV1,
+    primary: Option<bool>,
+) -> Result<freed_library_core::RecoveryReissueReceiptV1, String> {
+    freed_library_core::require_library_transfer_capability()?;
+    run_normalized_query_off_main(move || {
+        // This selects a verifier, never an authority grant. Native admission
+        // is rechecked inside the atomic recovery transaction without fallback.
+        let authority_store = primary
+            .unwrap_or(false)
+            .then_some(&PlatformAuthorityKeyStore as &dyn freed_library_core::AuthorityKeyStore);
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|_| "native recovery clock is invalid")?
+            .as_millis();
+        let now = i64::try_from(now).map_err(|_| "native recovery clock is invalid")?;
+        #[cfg(unix)]
+        {
+            let _ = app;
+            freed_library_core::desktop_binding()
+                .map_err(|e| e.to_string())?
+                .reapply_archived_assignments_v1(
+                    &request,
+                    &PlatformActorKeyStore,
+                    authority_store,
+                    now,
+                )
+                .map_err(|e| e.to_string())
+        }
+        #[cfg(not(unix))]
+        {
+            let _gate = HANDOFF_RESET_GATE
+                .lock()
+                .map_err(|_| "Desktop Library handoff/reset gate is poisoned")?;
+            let mut connection = open_normalized_database(&app)?;
+            match authority_store {
+                Some(store) => freed_library_core::reapply_archived_primary_assignments_v1(
+                    &mut connection,
+                    &request,
+                    &PlatformActorKeyStore,
+                    store,
+                    now,
+                ),
+                None => freed_library_core::reapply_archived_assignments_v1(
+                    &mut connection,
+                    &request,
+                    &PlatformActorKeyStore,
+                    now,
+                ),
+            }
+        }
+    })
+    .await
+}
+
+#[tauri::command]
+pub(super) async fn reapply_normalized_library_archived_editor_transaction(
+    app: tauri::AppHandle,
+    request: freed_library_core::RecoveryReissueRequestV1,
+    primary: Option<bool>,
+    canonical_envelope_json: Vec<String>,
+) -> Result<freed_library_core::RecoveryReissueReceiptV1, String> {
+    freed_library_core::require_library_transfer_capability()?;
+    run_normalized_query_off_main(move || {
+        // This selects a verifier, never an authority grant. Native admission
+        // is rechecked inside the atomic recovery transaction without fallback.
+        let authority_store = primary
+            .unwrap_or(false)
+            .then_some(&PlatformAuthorityKeyStore as &dyn freed_library_core::AuthorityKeyStore);
+        let envelopes: Vec<Vec<u8>> = canonical_envelope_json
+            .into_iter()
+            .map(String::into_bytes)
+            .collect();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|_| "native recovery clock is invalid")?
+            .as_millis();
+        let now = i64::try_from(now).map_err(|_| "native recovery clock is invalid")?;
+        #[cfg(unix)]
+        {
+            let _ = app;
+            freed_library_core::desktop_binding()
+                .map_err(|e| e.to_string())?
+                .reapply_archived_editor_transaction_v1(&request, &envelopes, authority_store, now)
+                .map_err(|e| e.to_string())
+        }
+        #[cfg(not(unix))]
+        {
+            let _gate = HANDOFF_RESET_GATE
+                .lock()
+                .map_err(|_| "Desktop Library handoff/reset gate is poisoned")?;
+            let mut connection = open_normalized_database(&app)?;
+            match authority_store {
+                Some(store) => freed_library_core::reapply_archived_primary_editor_transaction_v1(
+                    &mut connection,
+                    &request,
+                    &envelopes,
+                    store,
+                    now,
+                ),
+                None => freed_library_core::reapply_archived_editor_transaction_v1(
+                    &mut connection,
+                    &request,
+                    &envelopes,
+                    now,
+                ),
+            }
+        }
+    })
+    .await
+}
+
+#[tauri::command]
+pub(super) async fn read_normalized_library_consumer_recovery(
+    app: tauri::AppHandle,
+) -> Result<Option<freed_library_core::ConsumerRecoverySummaryV1>, String> {
+    run_normalized_query_off_main(move || {
+        freed_library_core::read_consumer_recovery_summary_v1(&open_normalized_database(&app)?)
+    })
+    .await
+}
+
+#[tauri::command]
+pub(super) async fn prepare_normalized_library_consumer_recovery(
+    app: tauri::AppHandle,
+) -> Result<freed_library_core::ConsumerRecoverySummaryV1, String> {
+    freed_library_core::require_library_transfer_capability()?;
+    run_normalized_query_off_main(move || {
+        let witness = crate::get_desktop_installation_witness()?;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|_| "native recovery clock is invalid")?
+            .as_millis();
+        let now = u64::try_from(now).map_err(|_| "native recovery clock is invalid")?;
+        #[cfg(unix)]
+        {
+            let _ = app;
+            freed_library_core::desktop_binding()
+                .map_err(|e| e.to_string())?
+                .prepare_consumer_recovery_v1(&witness, &PlatformActorKeyStore, now)
+                .map_err(|e| e.to_string())
+        }
+        #[cfg(not(unix))]
+        {
+            let _gate = HANDOFF_RESET_GATE
+                .lock()
+                .map_err(|_| "Desktop Library handoff/reset gate is poisoned")?;
+            freed_library_core::prepare_consumer_recovery_v1(
+                &mut open_normalized_database(&app)?,
+                &witness,
+                &PlatformActorKeyStore,
+                now,
+            )
+        }
+    })
+    .await
+}
+
+#[tauri::command]
+pub(super) async fn commit_normalized_library_consumer_recovery(
+    app: tauri::AppHandle,
+    recovery_id: String,
+) -> Result<freed_library_core::ConsumerRecoverySummaryV1, String> {
+    freed_library_core::require_library_transfer_capability()?;
+    run_normalized_query_off_main(move || {
+        let witness = crate::get_desktop_installation_witness()?;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|_| "native recovery clock is invalid")?
+            .as_millis();
+        let now = u64::try_from(now).map_err(|_| "native recovery clock is invalid")?;
+        #[cfg(unix)]
+        {
+            let _ = app;
+            freed_library_core::desktop_binding()
+                .map_err(|e| e.to_string())?
+                .commit_consumer_recovery_v1(&recovery_id, &witness, &PlatformActorKeyStore, now)
+                .map_err(|e| e.to_string())
+        }
+        #[cfg(not(unix))]
+        {
+            let _gate = HANDOFF_RESET_GATE
+                .lock()
+                .map_err(|_| "Desktop Library handoff/reset gate is poisoned")?;
+            let mut connection = open_normalized_database(&app)?;
+            freed_library_core::commit_consumer_epoch_reenrollment_v1(
+                &mut connection,
+                &recovery_id,
+                &witness,
+                &PlatformActorKeyStore,
+                now,
+            )?;
+            freed_library_core::read_consumer_recovery_summary_v1(&connection)?
+                .ok_or_else(|| "committed consumer recovery is missing".into())
+        }
+    })
+    .await
+}
+
+#[tauri::command]
+pub(super) async fn prepare_normalized_library_handoff_readiness(
+    app: tauri::AppHandle,
+    created_at_ms: u64,
+) -> Result<String, String> {
+    freed_library_core::require_library_transfer_capability()?;
+    run_normalized_query_off_main(move || {
+        #[cfg(unix)]
+        {
+            let _ = app;
+            freed_library_core::desktop_binding()
+                .map_err(|error| error.to_string())?
+                .prepare_target_handoff_readiness_v1(
+                    &PlatformActorKeyStore,
+                    &PlatformHandoffAuthorityKeyStore,
+                    created_at_ms,
+                )
+                .map_err(|error| error.to_string())
+        }
+        #[cfg(not(unix))]
+        {
+            let _gate = HANDOFF_RESET_GATE
+                .lock()
+                .map_err(|_| "Desktop Library handoff/reset gate is poisoned".to_string())?;
+            let mut connection = open_normalized_database(&app)?;
+            freed_library_core::prepare_target_handoff_readiness_v1(
+                &mut connection,
+                &PlatformActorKeyStore,
+                &PlatformHandoffAuthorityKeyStore,
+                created_at_ms,
+            )
+        }
+    })
+    .await
+}
+
+#[tauri::command]
+pub(super) async fn begin_normalized_library_source_handoff(
+    app: tauri::AppHandle,
+    canonical_readiness: String,
+    selected_target_actor_id: String,
+    prepared_at_ms: u64,
+) -> Result<String, String> {
+    freed_library_core::require_library_transfer_capability()?;
+    let provider_gate = {
+        use tauri::Manager;
+        app.state::<crate::CaptureState>()
+            .provider_operations
+            .clone()
+    };
+    let drained = provider_gate.drain().await;
+    let window_app = app.clone();
+    let (handoff_id, _drained) = run_normalized_query_off_main(move || {
+        #[cfg(unix)]
+        let result = {
+            let _ = app;
+            freed_library_core::desktop_binding()
+                .map_err(|error| error.to_string())?
+                .begin_source_handoff_v1(
+                    canonical_readiness.as_bytes(),
+                    &selected_target_actor_id,
+                    &PlatformAuthorityKeyStore,
+                    prepared_at_ms,
+                )
+                .map_err(|error| error.to_string())
+        };
+        #[cfg(not(unix))]
+        let result = {
+            let _gate = HANDOFF_RESET_GATE
+                .lock()
+                .map_err(|_| "Desktop Library handoff/reset gate is poisoned".to_string())?;
+            let mut connection = open_normalized_database(&app)?;
+            freed_library_core::begin_source_handoff_v1(
+                &mut connection,
+                canonical_readiness.as_bytes(),
+                &selected_target_actor_id,
+                &PlatformAuthorityKeyStore,
+                prepared_at_ms,
+            )
+        };
+        result.map(|handoff_id| (handoff_id, drained))
+    })
+    .await?;
+    crate::close_provider_windows_for_handoff(&window_app).await?;
+    Ok(handoff_id)
+}
+
+#[tauri::command]
+pub(super) async fn seal_normalized_library_source_handoff(
+    app: tauri::AppHandle,
+    handoff_id: String,
+    expected: freed_library_core::NormalizedCheckpointExportDescriptorV2,
+    sealed_at_ms: u64,
+) -> Result<freed_library_core::NormalizedCheckpointExportDescriptorV2, String> {
+    freed_library_core::require_library_transfer_capability()?;
+    let provider_gate = {
+        use tauri::Manager;
+        app.state::<crate::CaptureState>()
+            .provider_operations
+            .clone()
+    };
+    let drained = provider_gate.drain().await;
+    let window_app = app.clone();
+    let (snapshot, _drained) = run_normalized_query_off_main(move || {
+        #[cfg(unix)]
+        let result = {
+            let _ = app;
+            freed_library_core::desktop_binding()
+                .map_err(|error| error.to_string())?
+                .seal_source_handoff_v1(&handoff_id, &expected, sealed_at_ms)
+                .map_err(|error| error.to_string())
+        };
+        #[cfg(not(unix))]
+        let result = {
+            let _gate = HANDOFF_RESET_GATE
+                .lock()
+                .map_err(|_| "Desktop Library handoff/reset gate is poisoned".to_string())?;
+            let mut connection = open_normalized_database(&app)?;
+            freed_library_core::seal_source_handoff_v1(
+                &mut connection,
+                &handoff_id,
+                &expected,
+                sealed_at_ms,
+            )
+            .map_err(|error| error.to_string())
+        };
+        result.map(|snapshot| (snapshot, drained))
+    })
+    .await?;
+    // A lost response must repeat checked closure before reporting the sealed
+    // frontier. Failure leaves the durable seal in place for recovery.
+    crate::close_provider_windows_for_handoff(&window_app).await?;
+    Ok(snapshot)
+}
+
+#[tauri::command]
+pub(super) async fn read_normalized_library_handoff_status(
+    app: tauri::AppHandle,
+) -> Result<Option<freed_library_core::NativeHandoffStatusV1>, String> {
+    run_normalized_query_off_main(move || {
+        #[cfg(unix)]
+        {
+            let _ = app;
+            freed_library_core::desktop_binding()
+                .map_err(|error| error.to_string())?
+                .read_native_handoff_status_v1()
+                .map_err(|error| error.to_string())
+        }
+        #[cfg(not(unix))]
+        {
+            let _gate = HANDOFF_RESET_GATE
+                .lock()
+                .map_err(|_| "Desktop Library handoff/reset gate is poisoned".to_string())?;
+            let mut connection = open_normalized_database(&app)?;
+            freed_library_core::read_native_handoff_status_v1(&mut connection)
+                .map_err(|error| error.to_string())
+        }
+    })
+    .await
+}
+
+/// Stage and control are proposals. Only the native remote verifier supplies proof.
+#[tauri::command]
+pub(super) async fn adopt_normalized_library_source_handoff(
+    app: tauri::AppHandle,
+    handoff_id: String,
+    stage_id: String,
+    canonical_control: String,
+    access_token: String,
+) -> Result<freed_library_core::NativeHandoffStatusV1, String> {
+    freed_library_core::require_library_transfer_capability()?;
+    if canonical_control.len() > 16384 || stage_id.is_empty() || stage_id.len() > 255 {
+        return Err("source adoption request exceeds its bounds".into());
+    }
+    enum Preparation {
+        Done(freed_library_core::NativeHandoffStatusV1),
+        Pending(freed_library_core::HandoffVerificationPlanV1),
+    }
+    let provider_gate = {
+        use tauri::Manager;
+        app.state::<crate::CaptureState>()
+            .provider_operations
+            .clone()
+    };
+    let drained = provider_gate.drain().await;
+    crate::close_provider_windows_for_handoff(&app).await?;
+    let prepare_app = app.clone();
+    let prepared = run_normalized_query_off_main(move || {
+        #[cfg(unix)]
+        {
+            let _ = prepare_app;
+            let binding = freed_library_core::desktop_binding().map_err(|e| e.to_string())?;
+            if let Some(status) = binding
+                .recover_demoted_source_handoff_v1(
+                    &handoff_id,
+                    &stage_id,
+                    canonical_control.as_bytes(),
+                )
+                .map_err(|e| e.to_string())?
+            {
+                return Ok(Preparation::Done(status));
+            }
+            binding
+                .source_handoff_verification_plan_v1(
+                    &handoff_id,
+                    &stage_id,
+                    canonical_control.as_bytes(),
+                )
+                .map(Preparation::Pending)
+                .map_err(|e| e.to_string())
+        }
+        #[cfg(not(unix))]
+        {
+            let _gate = HANDOFF_RESET_GATE
+                .lock()
+                .map_err(|_| "Desktop Library handoff/reset gate is poisoned")?;
+            let mut connection = open_normalized_database(&prepare_app)?;
+            if let Some(status) = freed_library_core::recover_demoted_source_handoff_v1(
+                &mut connection,
+                &handoff_id,
+                &stage_id,
+                canonical_control.as_bytes(),
+            )? {
+                return Ok(Preparation::Done(status));
+            }
+            freed_library_core::source_handoff_verification_plan_v1(
+                &mut connection,
+                &handoff_id,
+                &stage_id,
+                canonical_control.as_bytes(),
+            )
+            .map(Preparation::Pending)
+        }
+    })
+    .await?;
+    let plan = match prepared {
+        Preparation::Done(status) => return Ok(status),
+        Preparation::Pending(plan) => plan,
+    };
+    let verified =
+        super::library_core_handoff_remote::verify_remote_handoff(plan, access_token).await?;
+    run_normalized_query_off_main(move || {
+        let _drained = drained;
+        let now = u64::try_from(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(|_| "source adoption clock is invalid")?
+                .as_millis(),
+        )
+        .map_err(|_| "source adoption clock exceeds its bound")?;
+        #[cfg(unix)]
+        {
+            let _ = app;
+            freed_library_core::desktop_binding()
+                .map_err(|e| e.to_string())?
+                .adopt_source_handoff_after_remote_verification_v1(
+                    &verified.plan,
+                    &verified.control_revision,
+                    now,
+                )
+                .map_err(|e| e.to_string())
+        }
+        #[cfg(not(unix))]
+        {
+            let _gate = HANDOFF_RESET_GATE
+                .lock()
+                .map_err(|_| "Desktop Library handoff/reset gate is poisoned")?;
+            let mut connection = open_normalized_database(&app)?;
+            freed_library_core::adopt_source_handoff_after_remote_verification_v1(
+                &mut connection,
+                &verified.plan,
+                &verified.control_revision,
+                now,
+            )
+        }
+    })
+    .await
+}
+
+// Only native remote verification can supply an uncommitted activation proof.
+#[tauri::command]
+pub(super) async fn activate_normalized_library_target_handoff(
+    app: tauri::AppHandle,
+    handoff_id: String,
+    access_token: String,
+) -> Result<freed_library_core::NativeHandoffStatusV1, String> {
+    freed_library_core::require_library_transfer_capability()?;
+    enum Preparation {
+        Active(freed_library_core::NativeHandoffStatusV1),
+        Pending(freed_library_core::HandoffVerificationPlanV1),
+    }
+    let provider_gate = {
+        use tauri::Manager;
+        app.state::<crate::CaptureState>()
+            .provider_operations
+            .clone()
+    };
+    let drained = provider_gate.drain().await;
+    let prepare_app = app.clone();
+    let preparation = run_normalized_query_off_main(move || {
+        #[cfg(unix)]
+        {
+            let _ = prepare_app;
+            let binding = freed_library_core::desktop_binding().map_err(|e| e.to_string())?;
+            let status = binding
+                .read_native_handoff_status_v1()
+                .map_err(|e| e.to_string())?;
+            if status.is_some_and(|s| s.phase == freed_library_core::HandoffPhaseV1::Active) {
+                return binding
+                    .recover_active_target_handoff_v1(
+                        &handoff_id,
+                        &PlatformActorKeyStore,
+                        &PlatformAuthorityKeyStore,
+                    )
+                    .map(Preparation::Active)
+                    .map_err(|e| e.to_string());
+            }
+            binding
+                .handoff_verification_plan_v1(&handoff_id)
+                .map(Preparation::Pending)
+                .map_err(|e| e.to_string())
+        }
+        #[cfg(not(unix))]
+        {
+            let _gate = HANDOFF_RESET_GATE
+                .lock()
+                .map_err(|_| "Desktop Library handoff/reset gate is poisoned".to_string())?;
+            let mut connection = open_normalized_database(&prepare_app)?;
+            let status = freed_library_core::read_native_handoff_status_v1(&mut connection)
+                .map_err(|e| e.to_string())?;
+            if status.is_some_and(|s| s.phase == freed_library_core::HandoffPhaseV1::Active) {
+                return freed_library_core::recover_active_target_handoff_v1(
+                    &mut connection,
+                    &handoff_id,
+                    &PlatformActorKeyStore,
+                    &PlatformAuthorityKeyStore,
+                )
+                .map(Preparation::Active);
+            }
+            freed_library_core::HandoffVerificationPlanV1::from_target(&mut connection, &handoff_id)
+                .map(Preparation::Pending)
+        }
+    })
+    .await?;
+    let plan = match preparation {
+        Preparation::Active(status) => return Ok(status),
+        Preparation::Pending(plan) => plan,
+    };
+    let verified =
+        super::library_core_handoff_remote::verify_remote_handoff(plan, access_token).await?;
+    run_normalized_query_off_main(move || {
+        // The blocking commit owns the permit even if its async caller disappears.
+        let _drained = drained;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|_| "handoff activation clock is invalid")?
+            .as_millis();
+        let now = u64::try_from(now).map_err(|_| "handoff activation clock exceeds its bound")?;
+        #[cfg(unix)]
+        {
+            let _ = app;
+            freed_library_core::desktop_binding()
+                .map_err(|e| e.to_string())?
+                .activate_target_handoff_after_remote_verification_v1(
+                    &verified.plan,
+                    &verified.control_revision,
+                    &PlatformActorKeyStore,
+                    &PlatformHandoffAuthorityKeyStore,
+                    &PlatformAuthorityKeyStore,
+                    now,
+                )
+                .map_err(|e| e.to_string())
+        }
+        #[cfg(not(unix))]
+        {
+            let _gate = HANDOFF_RESET_GATE
+                .lock()
+                .map_err(|_| "Desktop Library handoff/reset gate is poisoned".to_string())?;
+            let mut connection = open_normalized_database(&app)?;
+            freed_library_core::activate_target_handoff_after_remote_verification_v1(
+                &mut connection,
+                &verified.plan,
+                &verified.control_revision,
+                &PlatformActorKeyStore,
+                &PlatformHandoffAuthorityKeyStore,
+                &PlatformAuthorityKeyStore,
+                now,
+            )
+        }
+    })
+    .await
+}
+
+#[tauri::command]
+pub(super) async fn prepare_normalized_library_handoff_activation(
+    app: tauri::AppHandle,
+    handoff_id: String,
+    control_file_id: String,
+    canonical_control: String,
+    prepared_at_ms: u64,
+) -> Result<String, String> {
+    freed_library_core::require_library_transfer_capability()?;
+    run_normalized_query_off_main(move || {
+        #[cfg(unix)]
+        {
+            let _ = app;
+            freed_library_core::desktop_binding()
+                .map_err(|error| error.to_string())?
+                .prepare_target_handoff_activation_v1(
+                    &handoff_id,
+                    &control_file_id,
+                    canonical_control.as_bytes(),
+                    prepared_at_ms,
+                )
+                .map_err(|error| error.to_string())
+        }
+        #[cfg(not(unix))]
+        {
+            let _gate = HANDOFF_RESET_GATE
+                .lock()
+                .map_err(|_| "Desktop Library handoff/reset gate is poisoned".to_string())?;
+            let mut connection = open_normalized_database(&app)?;
+            freed_library_core::prepare_target_handoff_activation_v1(
+                &mut connection,
+                &handoff_id,
+                &control_file_id,
+                canonical_control.as_bytes(),
+                prepared_at_ms,
+            )
+        }
+    })
+    .await
+}
+
+#[tauri::command]
+pub(super) async fn stage_normalized_library_target_handoff(
+    app: tauri::AppHandle,
+    handoff_id: String,
+    staged_at_ms: u64,
+) -> Result<String, String> {
+    freed_library_core::require_library_transfer_capability()?;
+    run_normalized_query_off_main(move || {
+        let witness = crate::get_desktop_installation_witness()?;
+        #[cfg(unix)]
+        let prepared = {
+            let _ = app;
+            freed_library_core::desktop_binding()
+                .map_err(|error| error.to_string())?
+                .stage_target_handoff_v1(
+                    &handoff_id,
+                    &witness,
+                    &PlatformActorKeyStore,
+                    &PlatformHandoffAuthorityKeyStore,
+                    staged_at_ms,
+                )
+                .map_err(|error| error.to_string())?
+        };
+        #[cfg(not(unix))]
+        let prepared = {
+            let _gate = HANDOFF_RESET_GATE
+                .lock()
+                .map_err(|_| "Desktop Library handoff/reset gate is poisoned".to_string())?;
+            let mut connection = open_normalized_database(&app)?;
+            freed_library_core::stage_target_handoff_v1(
+                &mut connection,
+                &handoff_id,
+                &witness,
+                &PlatformActorKeyStore,
+                &PlatformHandoffAuthorityKeyStore,
+                staged_at_ms,
+            )?
+        };
+        Ok(prepared.canonical_certificate_json)
+    })
+    .await
+}
+
+#[tauri::command]
+pub(super) async fn accept_normalized_library_target_handoff_cancellation(
+    app: tauri::AppHandle,
+    canonical_cancellation: String,
+    applied_at_ms: u64,
+) -> Result<String, String> {
+    freed_library_core::require_library_transfer_capability()?;
+    run_normalized_query_off_main(move || {
+        #[cfg(unix)]
+        {
+            let _ = app;
+            freed_library_core::desktop_binding()
+                .map_err(|e| e.to_string())?
+                .accept_target_handoff_cancellation_v1(
+                    canonical_cancellation.as_bytes(),
+                    applied_at_ms,
+                )
+                .map_err(|e| e.to_string())
+        }
+        #[cfg(not(unix))]
+        {
+            let _gate = HANDOFF_RESET_GATE
+                .lock()
+                .map_err(|_| "Desktop Library handoff/reset gate is poisoned".to_string())?;
+            let mut connection = open_normalized_database(&app)?;
+            freed_library_core::accept_target_handoff_cancellation_v1(
+                &mut connection,
+                canonical_cancellation.as_bytes(),
+                applied_at_ms,
+            )
+        }
+    })
+    .await
+}
+
+#[tauri::command]
+pub(super) async fn accept_normalized_library_target_handoff_authorization(
+    app: tauri::AppHandle,
+    canonical_authorization: String,
+    accepted_at_ms: u64,
+) -> Result<String, String> {
+    freed_library_core::require_library_transfer_capability()?;
+    run_normalized_query_off_main(move || {
+        #[cfg(unix)]
+        {
+            let _ = app;
+            freed_library_core::desktop_binding()
+                .map_err(|error| error.to_string())?
+                .accept_target_handoff_authorization_v1(
+                    canonical_authorization.as_bytes(),
+                    &PlatformActorKeyStore,
+                    &PlatformHandoffAuthorityKeyStore,
+                    accepted_at_ms,
+                )
+                .map_err(|error| error.to_string())
+        }
+        #[cfg(not(unix))]
+        {
+            let _gate = HANDOFF_RESET_GATE
+                .lock()
+                .map_err(|_| "Desktop Library handoff/reset gate is poisoned".to_string())?;
+            let mut connection = open_normalized_database(&app)?;
+            freed_library_core::accept_target_handoff_authorization_v1(
+                &mut connection,
+                canonical_authorization.as_bytes(),
+                &PlatformActorKeyStore,
+                &PlatformHandoffAuthorityKeyStore,
+                accepted_at_ms,
+            )
+        }
+    })
+    .await
+}
+
+#[tauri::command]
+pub(super) async fn prepare_normalized_library_handoff_authorization(
+    app: tauri::AppHandle,
+    handoff_id: String,
+    canonical_control: String,
+    control_revision: String,
+    control_file_id: String,
+) -> Result<String, String> {
+    freed_library_core::require_library_transfer_capability()?;
+    run_normalized_query_off_main(move || {
+        #[cfg(unix)]
+        {
+            let _ = app;
+            freed_library_core::desktop_binding()
+                .map_err(|error| error.to_string())?
+                .prepare_source_handoff_authorization_v1(
+                    &handoff_id,
+                    canonical_control.as_bytes(),
+                    &control_revision,
+                    &control_file_id,
+                )
+                .map_err(|error| error.to_string())
+        }
+        #[cfg(not(unix))]
+        {
+            let _gate = HANDOFF_RESET_GATE
+                .lock()
+                .map_err(|_| "Desktop Library handoff/reset gate is poisoned".to_string())?;
+            let mut connection = open_normalized_database(&app)?;
+            freed_library_core::prepare_source_handoff_authorization_v1(
+                &mut connection,
+                &handoff_id,
+                canonical_control.as_bytes(),
+                &control_revision,
+                &control_file_id,
+            )
+        }
+    })
+    .await
+}
+
+#[tauri::command]
+pub(super) async fn authorize_normalized_library_source_handoff(
+    app: tauri::AppHandle,
+    handoff_id: String,
+    canonical_body: String,
+    authorized_at_ms: u64,
+) -> Result<String, String> {
+    freed_library_core::require_library_transfer_capability()?;
+    let provider_gate = {
+        use tauri::Manager;
+        app.state::<crate::CaptureState>()
+            .provider_operations
+            .clone()
+    };
+    let drained = provider_gate.drain().await;
+    let preflight_app = app.clone();
+    let drained = run_normalized_query_off_main(move || {
+        let connection = open_normalized_database(&preflight_app)?;
+        freed_library_core::require_handoff_checkpoint_export_v1(&connection, &handoff_id)
+            .map_err(|error| error.to_string())?;
+        Ok(drained)
+    })
+    .await?;
+    // A renderer receipt is not evidence that persistent provider windows have
+    // stopped. Check again before the irreversible consent transaction.
+    crate::close_provider_windows_for_handoff(&app).await?;
+    run_normalized_query_off_main(move || {
+        // Retain ownership in the blocking worker even if the IPC caller dies.
+        let _drained = drained;
+        #[cfg(unix)]
+        {
+            let _ = app;
+            freed_library_core::desktop_binding()
+                .map_err(|error| error.to_string())?
+                .authorize_source_handoff_v1(
+                    canonical_body.as_bytes(),
+                    &PlatformAuthorityKeyStore,
+                    authorized_at_ms,
+                )
+                .map_err(|error| error.to_string())
+        }
+        #[cfg(not(unix))]
+        {
+            let _gate = HANDOFF_RESET_GATE
+                .lock()
+                .map_err(|_| "Desktop Library handoff/reset gate is poisoned".to_string())?;
+            let mut connection = open_normalized_database(&app)?;
+            freed_library_core::authorize_source_handoff_v1(
+                &mut connection,
+                canonical_body.as_bytes(),
+                &PlatformAuthorityKeyStore,
+                authorized_at_ms,
+            )
+        }
+    })
+    .await
+}
+
+#[tauri::command]
+pub(super) async fn cancel_normalized_library_source_handoff(
+    app: tauri::AppHandle,
+    handoff_id: String,
+    cancelled_at_ms: u64,
+) -> Result<(), String> {
+    freed_library_core::require_library_transfer_capability()?;
+    let provider_gate = {
+        use tauri::Manager;
+        app.state::<crate::CaptureState>()
+            .provider_operations
+            .clone()
+    };
+    let drained = provider_gate.drain().await;
+    run_normalized_query_off_main(move || {
+        let _drained = drained;
+        #[cfg(unix)]
+        {
+            let _ = app;
+            freed_library_core::desktop_binding()
+                .map_err(|error| error.to_string())?
+                .cancel_source_handoff_v1(&handoff_id, cancelled_at_ms, &PlatformAuthorityKeyStore)
+                .map(|_| ())
+                .map_err(|error| error.to_string())
+        }
+        #[cfg(not(unix))]
+        {
+            let _gate = HANDOFF_RESET_GATE
+                .lock()
+                .map_err(|_| "Desktop Library handoff/reset gate is poisoned".to_string())?;
+            let mut connection = open_normalized_database(&app)?;
+            freed_library_core::cancel_source_handoff_with_proof_v1(
+                &mut connection,
+                &handoff_id,
+                cancelled_at_ms,
+                &PlatformAuthorityKeyStore,
+            )
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+        }
+    })
+    .await
 }
 
 #[tauri::command]
@@ -1199,6 +2726,22 @@ pub(super) fn normalized_library_primary_follower_actor_transport_state(
         .map_err(|error| error.to_string())
 }
 
+/// Enumerate durable source results, including retired actors, without admitting
+/// enrollments or intents. A keyset bounds each read while the source is sealed.
+#[tauri::command]
+pub(super) async fn read_normalized_library_handoff_result_actors(
+    app: tauri::AppHandle,
+    handoff_id: String,
+    after: Option<String>,
+) -> Result<Vec<String>, String> {
+    run_normalized_query_off_main(move || {
+        let mut connection = open_normalized_database(&app)?;
+        let tx = connection.transaction().map_err(|e| e.to_string())?;
+        freed_library_core::read_sealed_handoff_result_actors_v1(&tx, &handoff_id, after.as_deref())
+    })
+    .await
+}
+
 #[tauri::command]
 pub(super) fn read_normalized_library_follower_result_page(
     app: tauri::AppHandle,
@@ -1242,45 +2785,6 @@ pub(super) fn import_normalized_library_follower_result_transport_segment(
 pub(super) struct ActivateNormalizedLibraryCheckpointImportRequest {
     stage_id: String,
     follower_receipt: Option<freed_library_core::NormalizedFollowerCheckpointReceiptV2>,
-}
-
-#[tauri::command]
-pub(super) fn reassign_normalized_library_writer_epoch(
-    app: tauri::AppHandle,
-    request: ReassignNormalizedWriterEpochRequest,
-) -> Result<DesktopNormalizedWriterEpochReassignment, String> {
-    let mut connection = open_normalized_database(&app)?;
-    let reassigned = freed_library_core::reassign_normalized_writer_epoch_v2(
-        &mut connection,
-        &request.canonical_source_control_json,
-        &request.target_writer_id,
-        &request.installation_witness,
-        &PlatformActorKeyStore,
-        &PlatformAuthorityKeyStore,
-        request.accepted_at_ms,
-    )
-    .map_err(|error| error.to_string())?;
-    Ok(DesktopNormalizedWriterEpochReassignment {
-        authority: DesktopLibraryAcceptedAuthority {
-            library_id: reassigned.authority.library_id,
-            epoch: reassigned.authority.epoch,
-            epoch_id: reassigned.authority.epoch_id,
-            authority_key_id: reassigned.authority.authority_key_id,
-            authority_public_key: reassigned.authority.authority_public_key,
-            observed_frontier: reassigned
-                .authority
-                .observed_frontier
-                .into_iter()
-                .map(|tip| DesktopLibraryCausalTip {
-                    actor_id: tip.actor_id,
-                    sequence: tip.sequence,
-                    operation_id: tip.operation_id,
-                    chain_digest: tip.chain_digest,
-                })
-                .collect(),
-        },
-        canonical_epoch_certificate_json: reassigned.canonical_certificate_json,
-    })
 }
 
 /// Read the exact admitted Primary actor tip for one normalized transaction.
@@ -1687,7 +3191,9 @@ fn writer_admission_status(connection: &Connection) -> Result<CloudWriterAdmissi
         },
         Some((local, active, epoch, revision, verified_at_ms)) => CloudWriterAdmissionStatus {
             configured: true,
-            allowed: local == active,
+            allowed: local == active
+                && freed_library_core::normalized_primary_mutation_context_v1(connection)
+                    .is_ok_and(|context| context.actor_id == local && context.epoch_id == epoch),
             local_writer_id: Some(local),
             active_writer_id: Some(active),
             storage_epoch: Some(epoch),
@@ -1715,6 +3221,8 @@ pub(super) fn set_sqlite_library_cloud_writer_admission(
     let transaction = connection
         .transaction()
         .map_err(|error| error.to_string())?;
+    freed_library_core::require_normalized_provider_handoff_admission_v2(&transaction)
+        .map_err(|error| error.to_string())?;
     transaction
         .execute(
             "INSERT INTO library_local_cloud_writer_admission (
@@ -1739,6 +3247,15 @@ pub(super) fn set_sqlite_library_cloud_writer_admission(
     let status = writer_admission_status(&transaction)?;
     transaction.commit().map_err(|error| error.to_string())?;
     Ok(status)
+}
+
+pub(super) fn require_primary_library_authority(app: &tauri::AppHandle) -> Result<(), String> {
+    let connection = open_normalized_database(app)?;
+    freed_library_core::require_normalized_provider_handoff_admission_v2(&connection)
+        .map_err(|error| error.to_string())?;
+    freed_library_core::normalized_primary_mutation_context_v1(&connection)
+        .map(|_| ())
+        .map_err(|_| "Provider work requires native Primary authority on this Freed Desktop".into())
 }
 
 #[tauri::command]
@@ -1869,6 +3386,13 @@ pub(super) fn reset_normalized_library(app: tauri::AppHandle) -> Result<(), Stri
     }
     #[cfg(not(unix))]
     {
+        let _gate = HANDOFF_RESET_GATE
+            .lock()
+            .map_err(|_| "Desktop Library handoff/reset gate is poisoned".to_string())?;
+        let connection = open_normalized_database(&app)?;
+        freed_library_core::require_normalized_handoff_reset_v1(&connection)
+            .map_err(|error| error.to_string())?;
+        drop(connection);
         let root = app_root(&app)?;
         for directory in [
             "library-core",
@@ -1881,6 +3405,11 @@ pub(super) fn reset_normalized_library(app: tauri::AppHandle) -> Result<(), Stri
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
                 Err(error) => return Err(error.to_string()),
             }
+        }
+        match fs::remove_file(root.join(freed_library_core::DESKTOP_LIBRARY_SETUP_FILE)) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.to_string()),
         }
         match fs::remove_file(root.join(AUTHORITY_SELECTION_FILE)) {
             Ok(()) => {}
@@ -1958,5 +3487,10 @@ mod tests {
             Some("3333333333333333333333333333333333333333333333333333333333333333")
         );
         assert_eq!(status.control_revision.as_deref(), Some("etag-2"));
+        connection.execute("UPDATE library_local_cloud_writer_admission SET active_writer_id = local_writer_id;", []).unwrap();
+        assert!(
+            !writer_admission_status(&connection).unwrap().allowed,
+            "renderer lease equality cannot confer native Primary authority"
+        );
     }
 }

@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer, request, type Server } from "node:http";
@@ -11,12 +11,13 @@ import {
   type Page,
 } from "@playwright/test";
 import {
-  SAMPLE_SHOWCASE_FEED_COUNT,
-  SAMPLE_SHOWCASE_FRIEND_COUNT,
-  SAMPLE_SHOWCASE_ITEM_COUNT,
-  SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT,
+  generateDemoLibraryData,
 } from "@freed/shared";
 import { pwaOpfsE2eBaseUrl } from "./opfs-e2e-settings";
+import { prepareWebKitTestCustody, WEBKIT_TEST_MASTER_KEY } from "../../../scripts/lib/webkit-test-custody.mjs";
+const previewPopulation = generateDemoLibraryData({ batchId: "preview-test", generatedAt: 1_788_800_000_000, presentationSeed: 42 });
+const previewCounts = { feeds: previewPopulation.feeds.length, accounts: previewPopulation.accounts.length, items: previewPopulation.items.length, persons: previewPopulation.persons.length };
+
 
 let testOrigin = pwaOpfsE2eBaseUrl;
 let originServer: Server | null = null;
@@ -25,7 +26,7 @@ const openedProfiles = new Set<string>();
 // A fresh profile alone does not reliably isolate macOS WebKit OPFS. Keep a
 // distinct origin for each case, but preserve it across that case's restarts
 // and tabs so the durability and exclusive-writer assertions stay meaningful.
-test.beforeEach(async () => {
+async function startTestOrigin(): Promise<void> {
   const target = new URL(pwaOpfsE2eBaseUrl);
   const server = createServer((incoming, outgoing) => {
     const upstream = request(
@@ -55,7 +56,9 @@ test.beforeEach(async () => {
   if (!address || typeof address === "string")
     throw new Error("Test origin unavailable");
   testOrigin = `http://127.0.0.1:${address.port}`;
-});
+}
+
+test.beforeEach(startTestOrigin);
 
 test.afterEach(async () => {
   const server = originServer;
@@ -103,16 +106,19 @@ async function readFacetSummary(page: Page) {
 async function expectShowcaseSampleData(
   page: Page,
   baseline: Awaited<ReturnType<typeof readFacetSummary>>,
+  counts = previewCounts,
 ): Promise<void> {
+  // A reload may still expose the previous complete batch during replacement.
+  await expect(page.getByRole("status").filter({ hasText: /^Loading ·/ })).toHaveCount(0, { timeout: 90_000 });
   await expect
     .poll(() => readFacetSummary(page), { timeout: 90_000 })
     .toMatchObject({
-      rssFeedCount: SAMPLE_SHOWCASE_FEED_COUNT,
-      sampleAccountCount: SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT,
-      sampleFeedCount: SAMPLE_SHOWCASE_FEED_COUNT,
-      sampleItemCount: SAMPLE_SHOWCASE_ITEM_COUNT,
-      samplePersonCount: SAMPLE_SHOWCASE_FRIEND_COUNT,
-      totalCount: baseline.totalCount + SAMPLE_SHOWCASE_ITEM_COUNT,
+      rssFeedCount: counts.feeds,
+      sampleAccountCount: counts.accounts,
+      sampleFeedCount: counts.feeds,
+      sampleItemCount: counts.items,
+      samplePersonCount: counts.persons,
+      totalCount: baseline.totalCount + counts.items,
     });
 }
 
@@ -161,8 +167,10 @@ async function openLibrary(page: Page): Promise<void> {
 async function launchPersistentLibraryContext(
   profileRoot: string,
   baseURL = testOrigin,
+  originAttempt = 0,
 ): Promise<BrowserContext> {
   const iphone = devices["iPhone 14"];
+  const custody = prepareWebKitTestCustody(profileRoot, webkit.executablePath(), openedProfiles.has(profileRoot));
   const context = await webkit.launchPersistentContext(profileRoot, {
     userAgent: iphone.userAgent,
     viewport: iphone.viewport,
@@ -172,7 +180,9 @@ async function launchPersistentLibraryContext(
     hasTouch: iphone.hasTouch,
     baseURL,
     headless: true,
+    ...custody.launchOptions,
   });
+  try { custody.verifyLoaded(); } catch (error) { await context.close(); throw error; }
   if (!openedProfiles.has(profileRoot)) {
     try {
       const page = context.pages()[0] ?? (await context.newPage());
@@ -183,6 +193,19 @@ async function launchPersistentLibraryContext(
         for await (const name of root.keys()) names.push(name);
         return names;
       });
+      // macOS WebKit can retain OPFS beyond a temporary profile's lifetime.
+      // An OS-assigned port may therefore name an old test origin. Before any
+      // app code runs, retry with another origin instead of deleting that data.
+      if (entries.length > 0 && openedProfiles.size === 0 && originAttempt < 3) {
+        await context.close();
+        const server = originServer!;
+        server.closeAllConnections();
+        await new Promise<void>((resolve, reject) => {
+          server.close(error => error ? reject(error) : resolve());
+        });
+        await startTestOrigin();
+        return launchPersistentLibraryContext(profileRoot, testOrigin, originAttempt + 1);
+      }
       expect(
         entries,
         "a fresh test Library must not inherit another profile's OPFS",
@@ -478,6 +501,69 @@ async function verifyDurableOpfsLibrary(profileRoot: string): Promise<void> {
   }
 }
 
+test("iPhone WebKit keeps a fresh device in setup until a Library is selected", async () => {
+  test.setTimeout(180_000);
+  const profileRoot = await mkdtemp(join(tmpdir(), "freed-pwa-first-library-"));
+  let context: BrowserContext | null = null;
+  try {
+    context = await launchPersistentLibraryContext(profileRoot);
+    await context.route("**/src/App.tsx*", async route => {
+      const response = await route.fetch();
+      const body = (await response.text()).replace(
+        /const IS_FEATURE_PREVIEW = [^;]+;/,
+        "const IS_FEATURE_PREVIEW = false;",
+      );
+      await route.fulfill({ response, body });
+    });
+    const page = context.pages()[0] ?? await context.newPage();
+    await page.goto("/");
+    await expect(page.getByTestId("legal-gate-accept")).toBeVisible();
+    await acceptLegalGate(page);
+    await waitForLibrary(page);
+    await expect(page.getByTestId("pwa-library-setup")).toBeVisible();
+    await expect(page.getByText("Unable to load this feed")).toHaveCount(0);
+    for (const activeView of ["map", "friends", "feed"]) {
+      await page.evaluate(view => {
+        const store = (window as unknown as {
+          __FREED_STORE__: { getState(): { setActiveView(view: string): void } };
+        }).__FREED_STORE__;
+        store.getState().setActiveView(view);
+      }, activeView);
+      await expect(page.getByTestId("pwa-library-setup")).toBeVisible();
+      await expect(page.getByTestId("map-view-loading")).toHaveCount(0);
+      await expect(page.getByTestId("friends-view-loading")).toHaveCount(0);
+    }
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent(
+      "freed:open-settings", { detail: { scrollTo: "saved" } },
+    )));
+    await expect(page.getByRole("button", { name: "Close settings", exact: true })).toBeVisible();
+    await expect(page.getByTestId("pwa-library-setup")).toHaveCount(2);
+    await expect(page.getByText("Loading saved overview...")).toHaveCount(0);
+    await page.getByRole("button", { name: "Close settings", exact: true }).click();
+    const receipt = await page.evaluate(async () => {
+      const runtime = await import("/src/lib/library-core-sqlite-runtime.ts");
+      return (await runtime.readPwaNormalizedCheckpointReceipt()).receipt;
+    });
+    expect(receipt).toBeNull();
+    await openDangerZone(page);
+    await page.getByRole("button", { name: /Populate sample data Adds/ }).click();
+    // Selection can remount Settings after the first durable sample batch.
+    // A disabled sample button then proves presence, not completed population.
+    await expect(page.getByRole("status").filter({ hasText: /^Sample data added: 100%/ }))
+      .toBeVisible({ timeout: 90_000 });
+    await page.getByRole("button", { name: "Close settings", exact: true }).click();
+    await expect(page.getByTestId("pwa-library-setup")).toHaveCount(0);
+    await expect(page.locator("[data-feed-item-id]").first()).toBeVisible();
+    await page.reload();
+    await waitForLibrary(page);
+    await expect(page.getByTestId("pwa-library-setup")).toHaveCount(0);
+    await expect(page.locator("[data-feed-item-id]").first()).toBeVisible();
+  } finally {
+    await context?.close();
+    await rm(profileRoot, { recursive: true, force: true });
+  }
+});
+
 test("iPhone WebKit persists, clears, and rebuilds the local sample Library", async () => {
   test.setTimeout(240_000);
   const profileRoot = await mkdtemp(join(tmpdir(), "freed-pwa-sample-webkit-"));
@@ -495,8 +581,8 @@ test("iPhone WebKit persists, clears, and rebuilds the local sample Library", as
     const populated = await readFacetSummary(page);
     const baseline = {
       ...populated,
-      rssFeedCount: populated.rssFeedCount - SAMPLE_SHOWCASE_FEED_COUNT,
-      totalCount: populated.totalCount - SAMPLE_SHOWCASE_ITEM_COUNT,
+      rssFeedCount: populated.rssFeedCount - previewCounts.feeds,
+      totalCount: populated.totalCount - previewCounts.items,
     };
     await openDangerZone(page);
     await expect(
@@ -509,6 +595,18 @@ test("iPhone WebKit persists, clears, and rebuilds the local sample Library", as
     context = opened.context;
     const reopened = opened.page;
     await expectShowcaseSampleData(reopened, baseline);
+    // Scrolling the feed queues read assignments before Settings clears the
+    // samples. Those signed results must include their sparse replacements.
+    const item = reopened.locator("[data-feed-item-id]").first();
+    await expect(item).toBeVisible();
+    const itemId = await item.getAttribute("data-feed-item-id");
+    expect(itemId).toBeTruthy();
+    await reopened.evaluate(async (itemId) => {
+      const store = (window as unknown as {
+        __FREED_STORE__: { getState(): { markAsRead(id: string): Promise<void> } };
+      }).__FREED_STORE__;
+      await store.getState().markAsRead(itemId!);
+    }, itemId);
     await openDangerZone(reopened);
     await expect(
       reopened.getByRole("button", { name: /Sample data populated/ }),
@@ -553,6 +651,113 @@ test("iPhone WebKit persists, clears, and rebuilds the local sample Library", as
   }
 });
 
+test("iPhone WebKit recovers a rejected v26.9.803 sample result after restart", async () => {
+  test.setTimeout(180_000);
+  const profileRoot = await mkdtemp(join(tmpdir(), "freed-pwa-rejected-sample-webkit-"));
+  let context: BrowserContext | null = null;
+  try {
+    context = await launchPersistentLibraryContext(profileRoot);
+    await context.route("**/src/lib/library-core-preview-bootstrap.ts*", async (route) => {
+      const response = await route.fetch();
+      const body = await response.text();
+      const projection = /replacement_fields: members\.flatMap\([\s\S]*?resolved_at_ms:/;
+      expect(body).toMatch(projection);
+      await route.fulfill({ response, body: body.replace(projection, "replacement_fields: [], resolved_at_ms:") });
+    });
+    const page = context.pages()[0] ?? await context.newPage();
+    await openLibrary(page);
+    await expect.poll(() => readFacetSummary(page), { timeout: 90_000 }).toMatchObject({ sampleItemCount: previewCounts.items });
+    // Item rows become durable before sample startup finishes publishing UI state.
+    await expect(page.getByRole("status").filter({ hasText: /^Loading ·/ }))
+      .toHaveCount(0, { timeout: 90_000 });
+    const item = page.locator("[data-feed-item-id]").first();
+    await expect(item).toBeVisible();
+    const itemId = await item.getAttribute("data-feed-item-id");
+    expect(await page.evaluate(async (id) => {
+      const store = (window as unknown as { __FREED_STORE__: { getState(): {
+        markAsRead(id: string): Promise<void>;
+        clearSampleData(): Promise<void>;
+      } } }).__FREED_STORE__.getState();
+      await store.markAsRead(id!);
+      try { await store.clearSampleData(); return null; }
+      catch (error) { return String(error); }
+    }, itemId)).toContain("follower result replacement projection is incomplete");
+    await context.close();
+    context = null;
+    const opened = await openPersistentLibrary(profileRoot);
+    context = opened.context;
+    await expect.poll(() => readFacetSummary(opened.page), { timeout: 90_000 }).toMatchObject({ sampleItemCount: previewCounts.items });
+    await opened.page.evaluate(async () => {
+      await (window as unknown as { __FREED_STORE__: { getState(): {
+        clearSampleData(): Promise<void>;
+      } } }).__FREED_STORE__.getState().clearSampleData();
+    });
+    await expect.poll(() => readFacetSummary(opened.page)).toMatchObject({ sampleItemCount: 0, sampleFeedCount: 0, samplePersonCount: 0 });
+  } finally {
+    await context?.close();
+    await rm(profileRoot, { force: true, recursive: true });
+  }
+});
+
+test("iPhone WebKit resets populated storage after every open tab quiesces", async () => {
+  test.setTimeout(180_000);
+  const profileRoot = await mkdtemp(join(tmpdir(), "freed-pwa-reset-webkit-"));
+  let context: BrowserContext | null = null;
+  try {
+    context = await launchPersistentLibraryContext(profileRoot);
+    const resetErrors: string[] = [];
+    context.on("console", message => { if (message.text().startsWith("RESET_TEST_FAILURE")) resetErrors.push(message.text()); });
+    // Exercise ordinary startup. The feature-preview server must not silently
+    // repopulate the emptied Library on the reset navigation.
+    await context.route("**/src/App.tsx*", async (route) => {
+      const response = await route.fetch();
+      const body = await response.text();
+      expect(body).toMatch(/const IS_FEATURE_PREVIEW = [^;]+;/);
+      await route.fulfill({ response, body: body.replace(/const IS_FEATURE_PREVIEW = [^;]+;/, "const IS_FEATURE_PREVIEW = false;").replace("onFailure: (error) => {", 'onFailure: (error) => { console.error("RESET_TEST_FAILURE", error);') });
+    });
+    const page = context.pages()[0] ?? await context.newPage();
+    await page.goto("/");
+    await expect(page.getByTestId("legal-gate-accept")).toBeVisible();
+    await acceptLegalGate(page);
+    await waitForLibrary(page);
+    await openDangerZone(page);
+    await page.getByRole("button", { name: /Populate sample data Adds/ }).click();
+    await expect(page.getByRole("button", { name: /Sample data populated/ })).toBeDisabled({ timeout: 90_000 });
+    const peer = await context.newPage();
+    await peer.goto("/");
+    await expect(peer.getByText(/another app window|another Freed window|another tab/).first()).toBeVisible({ timeout: 30_000 });
+    await page.getByRole("button", { name: /Reset this device Wipes/ }).click();
+    await Promise.all([
+      page.waitForEvent("domcontentloaded"),
+      page.getByRole("button", { name: "Reset Device", exact: true }).click(),
+    ]);
+    await expect(page.getByRole("button", { name: "Reset Device", exact: true })).toHaveCount(0, { timeout: 30_000 });
+    expect(resetErrors).toEqual([]);
+    await peer.close();
+    const retry = page.getByRole("button", { name: "Retry here", exact: true });
+    await expect(retry.or(page.getByRole("button", { name: "Open menu" }))).toBeVisible();
+    if (await retry.isVisible()) {
+      await Promise.all([page.waitForEvent("domcontentloaded"), retry.click()]);
+    }
+    await waitForLibrary(page);
+    await expect.poll(() => page.evaluate(async () => {
+      const modulePath = "/src/lib/library-core-sqlite-runtime.ts";
+      const runtime = await import(modulePath);
+      return runtime.readPwaNormalizedCheckpointReceipt();
+    }), { timeout: 30_000 }).toEqual({ receipt: null });
+    await page.reload();
+    await waitForLibrary(page);
+    expect(await page.evaluate(async () => {
+      const modulePath = "/src/lib/library-core-sqlite-runtime.ts";
+      const runtime = await import(modulePath);
+      return runtime.readPwaNormalizedCheckpointReceipt();
+    })).toEqual({ receipt: null });
+  } finally {
+    await context?.close();
+    await rm(profileRoot, { force: true, recursive: true });
+  }
+});
+
 test("iPhone WebKit completes interrupted sample population after restart", async () => {
   test.setTimeout(180_000);
   const profileRoot = await mkdtemp(
@@ -561,18 +766,27 @@ test("iPhone WebKit completes interrupted sample population after restart", asyn
   let context: BrowserContext | null = null;
 
   try {
-    let opened = await openPersistentLibrary(profileRoot);
-    context = opened.context;
+    context = await launchPersistentLibraryContext(profileRoot);
+    // Stop after feed settlement, before capturing items. Do not depend on a
+    // natural failure or a transient percentage to create the partial Library.
+    await context.route("**/src/lib/store.ts*", async (route) => {
+      const response = await route.fetch();
+      const body = await response.text();
+      const boundary = "await enqueuePwaLibraryCoreFeedItemCaptures(data.items";
+      expect(body).toContain(boundary);
+      await route.fulfill({
+        response,
+        body: body.replace(boundary, `await new Promise(() => {});\n    ${boundary}`),
+      });
+    });
+    let opened = { context, page: context.pages()[0] ?? await context.newPage() };
+    await openLibrary(opened.page);
     await expect(
-      opened.page.getByText("30% complete", { exact: true }),
+      opened.page.getByRole("status").filter({ hasText: /^Loading · \d+%$/ }),
     ).toBeVisible({ timeout: 90_000 });
-    await expect(
-      opened.page.getByRole("status", { name: "Populating demo", exact: true }),
-    ).toBeVisible();
-    const interrupted = await readFacetSummary(opened.page);
-    expect(interrupted).toMatchObject({
-      rssFeedCount: SAMPLE_SHOWCASE_FEED_COUNT,
-      sampleFeedCount: SAMPLE_SHOWCASE_FEED_COUNT,
+    await expect.poll(() => readFacetSummary(opened.page)).toMatchObject({
+      rssFeedCount: previewCounts.feeds,
+      sampleFeedCount: previewCounts.feeds,
       sampleItemCount: 0,
       samplePersonCount: 0,
     });
@@ -626,6 +840,43 @@ test("iPhone WebKit reopens the accepted OPFS Library after worker loss", async 
       .poll(() => trackedLibrarySqliteWorkerCount(page), { timeout: 5_000 })
       .toBe(firstGenerationCount + 1);
     await expect(recoveredSummary).resolves.toEqual(expectedSummary);
+
+    // Force dirty pages to spill while the transaction is still uncommitted.
+    // This catches a VFS that reports a reserved writer after termination and
+    // therefore suppresses SQLite's hot-journal rollback on the next open.
+    const engineRoute = "**/src/lib/library-core-sqlite-engine.ts*";
+    await context.route(engineRoute, async (route) => {
+      const response = await route.fetch();
+      const body = await response.text();
+      const marker = "mutateDeviceContactSync(input) {";
+      expect(body).toContain(marker);
+      await route.fulfill({ response, body: body.replace(marker, `${marker}
+        this.#database.exec("PRAGMA cache_size = 1; BEGIN IMMEDIATE; UPDATE library_feed_items SET archived = 1, content_text = 'interrupted write';");
+        globalThis.postMessage({ faultBoundary: 'uncommitted-pages-spilled' });
+        for (;;) {}
+      `) });
+    });
+    await stopActiveLibrarySqliteWorker(page);
+    await expect(readFacetSummary(page)).resolves.toEqual(expectedSummary);
+    await page.evaluate(() => {
+      const current = window as unknown as Record<string, unknown>;
+      const workers = current.__FREED_OPFS_TEST_SQLITE_WORKERS__ as Worker[];
+      current.__FREED_OPFS_WRITE_SPILLED__ = false;
+      workers.at(-1)!.addEventListener("message", event => {
+        if (event.data?.faultBoundary === "uncommitted-pages-spilled") {
+          current.__FREED_OPFS_WRITE_SPILLED__ = true;
+        }
+      });
+    });
+    const interruptedWrite = setContactSyncError(page);
+    const refusedWrite = expect(interruptedWrite).rejects.toThrow();
+    await page.waitForFunction(() =>
+      (window as unknown as Record<string, unknown>).__FREED_OPFS_WRITE_SPILLED__ === true);
+    await context.unroute(engineRoute);
+    await stopActiveLibrarySqliteWorker(page);
+    await refusedWrite;
+    await expect(readFacetSummary(page)).resolves.toEqual(expectedSummary);
+
   } finally {
     await context?.close();
     await rm(profileRoot, { force: true, recursive: true });
@@ -678,7 +929,39 @@ test("iPhone WebKit reopens and signs with the same actor key", async () => {
           fromHex(signature),
           Uint8Array.from(signingMessage),
         );
-        return { identity, verified };
+        // Exercise native CryptoKey serialization, not a mock or exported key.
+        // Only booleans leave the browser; synthetic private bytes never do.
+        const database = await new Promise<IDBDatabase>((resolve, reject) => {
+          const request = indexedDB.open(keyVault.PWA_LIBRARY_CORE_KEY_DATABASE_NAME);
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        });
+        let custody;
+        try {
+          const stored = await new Promise<{ actorPrivateKey: CryptoKey }>((resolve, reject) => {
+            const request = database.transaction("actor_keys", "readonly")
+              .objectStore("actor_keys").get(expectedLibraryId);
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+          });
+          const key = stored.actorPrivateKey;
+          const refusesExport = async (format: "pkcs8" | "jwk") => {
+            try {
+              if (format === "jwk") await crypto.subtle.exportKey("jwk", key);
+              else await crypto.subtle.exportKey("pkcs8", key);
+              return false;
+            }
+            catch (error) { return error instanceof DOMException && error.name === "InvalidAccessError"; }
+          };
+          custody = {
+            nonextractable: key instanceof CryptoKey && key.extractable === false,
+            signingOnly: key.type === "private" && key.algorithm.name === "Ed25519"
+              && key.usages.length === 1 && key.usages[0] === "sign",
+            pkcs8ExportRefused: await refusesExport("pkcs8"),
+            jwkExportRefused: await refusesExport("jwk"),
+          };
+        } finally { database.close(); }
+        return { identity, verified, custody };
       },
       {
         expectedLibraryId: libraryId,
@@ -691,6 +974,8 @@ test("iPhone WebKit reopens and signs with the same actor key", async () => {
     context = opened.context;
     const first = await readIdentityAndSign(opened.page);
     expect(first.verified).toBe(true);
+    expect(first.custody).toEqual({ nonextractable: true, signingOnly: true,
+      pkcs8ExportRefused: true, jwkExportRefused: true });
     await context.close();
     context = null;
 
@@ -699,6 +984,136 @@ test("iPhone WebKit reopens and signs with the same actor key", async () => {
     const reopened = await readIdentityAndSign(opened.page);
     expect(reopened.identity).toEqual(first.identity);
     expect(reopened.verified).toBe(true);
+    expect(reopened.custody).toEqual(first.custody);
+    if (process.platform === "darwin") {
+      await context.close(); context = null;
+      const masterPath = join(profileRoot, WEBKIT_TEST_MASTER_KEY);
+      const originalMaster = await readFile(masterPath);
+      const wrongMaster = Buffer.from(originalMaster);
+      wrongMaster[0] ^= 1;
+      try {
+        await writeFile(masterPath, wrongMaster, { mode: 0o600 });
+        opened = await openKeyVaultPage(); context = opened.context;
+        await expect(readIdentityAndSign(opened.page)).rejects.toThrow(/clone|CryptoKey|deserialize|Cannot inject key into script value/i);
+        const actors = await opened.page.evaluate(async () => {
+          const vault = await import("/src/lib/library-core-browser-key-vault.ts");
+          const database = await new Promise<IDBDatabase>((resolve, reject) => {
+            const request = indexedDB.open(vault.PWA_LIBRARY_CORE_KEY_DATABASE_NAME);
+            request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
+          });
+          try { return await new Promise<number>((resolve, reject) => {
+            const request = database.transaction("actor_keys", "readonly").objectStore("actor_keys").count();
+            request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
+          }); } finally { database.close(); }
+        });
+        expect(actors).toBe(1); // Failed unwrap must not fabricate a replacement actor.
+      } finally {
+        await context?.close(); context = null;
+        await writeFile(masterPath, originalMaster, { mode: 0o600 });
+      }
+      opened = await openKeyVaultPage(); context = opened.context;
+      const restored = await readIdentityAndSign(opened.page);
+      expect(restored).toEqual(first);
+    }
+  } finally {
+    await context?.close();
+    await rm(profileRoot, { force: true, recursive: true });
+  }
+});
+
+test("iPhone WebKit reads pinned reader content after restart without its source", async () => {
+  test.setTimeout(120_000);
+  const profileRoot = await mkdtemp(
+    join(tmpdir(), "freed-pwa-offline-reader-webkit-"),
+  );
+  const articlePath = "/__freed_offline_reader_source__";
+  const expectedHtml =
+    "<article><h1>Offline field note</h1><p>The pinned rendition survived restart.</p></article>";
+  let context: BrowserContext | null = null;
+
+  try {
+    context = await launchPersistentLibraryContext(profileRoot);
+    await context.route(`**${articlePath}`, (route) =>
+      route.fulfill({
+        body: expectedHtml,
+        contentType: "text/html; charset=utf-8",
+        status: 200,
+      }),
+    );
+    const page = context.pages()[0] ?? (await context.newPage());
+    await openLibrary(page);
+    await expectShowcaseSampleData(page, {
+      rssFeedCount: 0,
+      sampleAccountCount: 0,
+      sampleFeedCount: 0,
+      sampleItemCount: 0,
+      samplePersonCount: 0,
+      totalCount: 0,
+    });
+
+    const pinned = await page.evaluate(
+      async ({ articleUrl }) => {
+        const runtime = await import("/src/lib/library-core-runtime.ts");
+        const readerCache = await import("/src/lib/reader-cache.ts");
+        const reader = await runtime.openPwaLibraryCoreFeedReader(
+          {},
+          Date.now(),
+        );
+        try {
+          const item = (await reader.readNext())[0];
+          if (!item) throw new Error("sample reader item is unavailable");
+          const readerItem = {
+            ...item,
+            globalId: "rss:offline-reader-real-record",
+            contentType: "article" as const,
+            sampleDataFingerprint: undefined,
+            contentSignals: undefined,
+            content: {
+              ...item.content,
+              linkPreview: {
+                description: "Pinned WebKit lifecycle proof",
+                imageUrl: null,
+                siteName: "Freed test source",
+                title: "Offline field note",
+                url: articleUrl,
+              },
+            },
+            sourceUrl: articleUrl,
+          };
+          const store = await import("/src/lib/store.ts");
+          await store.useAppStore.getState().addItems([readerItem]);
+          await runtime.settlePwaLibraryCoreLocalSampleState();
+          await readerCache.pinReaderItemInPwa(readerItem);
+          return { globalId: readerItem.globalId };
+        } finally {
+          await reader.close();
+        }
+      },
+      { articleUrl: `${testOrigin}${articlePath}` },
+    );
+
+    await context.close();
+    context = null;
+
+    context = await launchPersistentLibraryContext(profileRoot);
+    await context.route(`**${articlePath}`, (route) =>
+      route.abort("internetdisconnected"),
+    );
+    const reopened = context.pages()[0] ?? (await context.newPage());
+    await reopened.goto(`/?item=${encodeURIComponent(pinned.globalId)}`);
+    await acceptLegalGate(reopened);
+    await waitForLibrary(reopened);
+    await expectShowcaseSampleData(reopened, { totalCount: 1 } as Awaited<ReturnType<typeof readFacetSummary>>);
+    const sourceUnavailable = await reopened.evaluate((articleUrl) =>
+      fetch(articleUrl)
+        .then(() => false)
+        .catch(() => true),
+      `${testOrigin}${articlePath}`,
+    );
+    expect(sourceUnavailable).toBe(true);
+    const reader = reopened.getByTestId("reader-article");
+    await expect(reader.getByRole("heading", { name: "Offline field note" })).toBeVisible();
+    await expect(reader).toContainText("The pinned rendition survived restart.");
   } finally {
     await context?.close();
     await rm(profileRoot, { force: true, recursive: true });

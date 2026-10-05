@@ -15104,6 +15104,77 @@ function leaseStateDirectoryGenerationDigest(
   });
 }
 
+function identityWithDevice(identity, device) {
+  return Object.freeze({ ...identity, dev: BigInt(device) });
+}
+
+function pathIsWithinRoot(filePath, rootPath) {
+  if (typeof filePath !== "string" || !path.isAbsolute(filePath)) return false;
+  const relative = path.relative(rootPath, filePath);
+  return (
+    relative === "" ||
+    (!relative.startsWith("..") && !path.isAbsolute(relative))
+  );
+}
+
+export function completedDarwinLeaseHistoricalDevices(
+  transaction,
+  relatedTransactions = [],
+  { platform = process.platform, stateRoot } = {},
+) {
+  if (
+    platform !== "darwin" ||
+    transaction?.phase !== "complete" ||
+    typeof stateRoot !== "string" ||
+    !path.isAbsolute(stateRoot)
+  ) {
+    return Object.freeze([]);
+  }
+  const tokenDigest = transaction.tokenDigest;
+  const devices = new Set();
+  for (const candidate of [transaction, ...relatedTransactions]) {
+    const capability = candidate?.capability;
+    if (
+      candidate?.phase !== "complete" ||
+      candidate?.tokenDigest !== tokenDigest ||
+      capability === null ||
+      capability === undefined ||
+      !/^\d+$/.test(String(capability.sourceDevice ?? "")) ||
+      !pathIsWithinRoot(capability.sourcePath, stateRoot)
+    ) {
+      continue;
+    }
+    devices.add(String(capability.sourceDevice));
+  }
+  return Object.freeze([...devices].sort());
+}
+
+function leaseStateDirectoryGenerationNameMatches(
+  entryName,
+  namespace,
+  paths,
+  transaction,
+  purpose,
+  directoryIdentity,
+  descriptor,
+  historicalDevices = [],
+) {
+  const devices = [
+    directoryIdentity.dev.toString(),
+    ...historicalDevices.map(String),
+  ];
+  return [...new Set(devices)].some((device) => {
+    const digest = leaseStateDirectoryGenerationDigest(
+      paths,
+      transaction,
+      purpose,
+      identityWithDevice(directoryIdentity, device),
+      descriptor,
+    );
+    return entryName === `${namespace}.${digest}.lease`;
+  });
+}
+
 function readBoundedLeaseDirectoryEntries(
   directoryPath,
   {
@@ -18150,6 +18221,7 @@ function admitParsedLeaseCleanupEvidence(
   archiveScope,
   directory,
   selected,
+  historicalDevices = [],
 ) {
   const snapshot = privateBatchFileSnapshot(selected);
   const quarantinePath = path.join(directory.path, selected.name);
@@ -18168,6 +18240,7 @@ function admitParsedLeaseCleanupEvidence(
       quarantinePath,
       specification,
       snapshot,
+      historicalDevices,
     ),
   );
   if (atomicMatches.length > 1) {
@@ -18248,6 +18321,7 @@ function admitParsedLeaseCleanupEvidence(
         quarantinePath,
         originalPath,
         snapshot,
+        historicalDevices,
       )
     ) {
       throw new AutomationControlError(
@@ -18285,6 +18359,7 @@ function admitParsedLeaseCleanupEvidence(
       quarantinePath,
       spec.filePath,
       snapshot,
+      historicalDevices,
     ),
   );
   if (matches.length !== 1) {
@@ -19003,6 +19078,21 @@ function inspectLeaseTransactionEventHistoryInternal({
         transaction,
       ]),
     );
+    const relatedTransactions = validatedTransactions.map(
+      (entry) => entry.transaction,
+    );
+    const historicalDevicesByOperationId = new Map(
+      validatedTransactions.map(({ transaction }) => [
+        transaction.operationId,
+        completedDarwinLeaseHistoricalDevices(
+          transaction,
+          relatedTransactions,
+          {
+            stateRoot: paths.stateRoot,
+          },
+        ),
+      ]),
+    );
     const admittedParsedCleanupEvidence = new Map();
     if (topologyReady && pendingTransactionArtifactCount === 0) {
       for (const archiveScope of ["transaction", "receipt"]) {
@@ -19040,6 +19130,7 @@ function inspectLeaseTransactionEventHistoryInternal({
                   archiveScope,
                   directory,
                   selected,
+                  historicalDevicesByOperationId.get(operationId) ?? [],
                 );
                 const operationEvidence =
                   admittedParsedCleanupEvidence.get(operationId) ?? [];
@@ -19112,14 +19203,18 @@ function inspectLeaseTransactionEventHistoryInternal({
           recordDigest: candidate.record?.digest ?? null,
           recordSize: Number(candidate.record?.size ?? 0),
         });
-        const expectedDigest = leaseStateDirectoryGenerationDigest(
-          paths,
-          transaction,
-          "release",
-          privateBatchDirectoryIdentity(candidate),
-          descriptor,
-        );
-        if (candidate.name !== `${namespace}.${expectedDigest}.lease`) {
+        if (
+          !leaseStateDirectoryGenerationNameMatches(
+            candidate.name,
+            namespace,
+            paths,
+            transaction,
+            "release",
+            privateBatchDirectoryIdentity(candidate),
+            descriptor,
+            historicalDevicesByOperationId.get(transaction.operationId) ?? [],
+          )
+        ) {
           issues.push(
             `lease transaction receipt ${transaction.operationId} retired authority directory changed generation`,
           );
@@ -26005,9 +26100,7 @@ function requireCanonicalEventHistoryWitnessRepairAuthorization(
   const ownerApprovedAt = Date.parse(
     String(ownerConfirmation?.approvedAt ?? ""),
   );
-  const ownerExpiresAt = Date.parse(
-    String(ownerConfirmation?.expiresAt ?? ""),
-  );
+  const ownerExpiresAt = Date.parse(String(ownerConfirmation?.expiresAt ?? ""));
   const recordedAt = Date.parse(String(value?.recordedAt ?? ""));
   let embeddedOwnerIntentDigest = "";
   try {
@@ -26024,8 +26117,7 @@ function requireCanonicalEventHistoryWitnessRepairAuthorization(
     value.action !== EVENT_HISTORY_WITNESS_REPAIR_ACTION ||
     value.policy !== EVENT_HISTORY_WITNESS_REPAIR_POLICY ||
     !SHA256_PATTERN.test(String(value.operationId ?? "")) ||
-    value.eventId !==
-      `event-history-witness-repaired:${value.operationId}` ||
+    value.eventId !== `event-history-witness-repaired:${value.operationId}` ||
     value.authorizationPath !== admitted.snapshot.filePath ||
     !IDENTIFIER_PATTERN.test(String(value.taskId ?? "")) ||
     !SHA256_PATTERN.test(String(value.intentDigest ?? "")) ||
@@ -26059,9 +26151,7 @@ function requireCanonicalEventHistoryWitnessRepairAuthorization(
     !SHA256_PATTERN.test(String(value.witness?.digest ?? "")) ||
     !/^\d+$/u.test(String(value.witness?.inode ?? "")) ||
     !SHA256_PATTERN.test(String(value.witness?.namespaceDigest ?? "")) ||
-    !SHA256_PATTERN.test(
-      String(value.witness?.successorStableDigest ?? ""),
-    ) ||
+    !SHA256_PATTERN.test(String(value.witness?.successorStableDigest ?? "")) ||
     !Number.isSafeInteger(value.witness?.recordCount) ||
     value.witness.recordCount < 0 ||
     value.witness.recordCount + 1 !== value.canonical.recordCount ||
@@ -26095,7 +26185,8 @@ function requireCanonicalEventHistoryWitnessRepairAuthorization(
     typeof ownerConfirmation.approvalSource.reference !== "string" ||
     ownerConfirmation.approvalSource.reference.trim() === "" ||
     ownerConfirmation?.taskId !== value.taskId ||
-    ownerConfirmation?.intent?.schemaVersion !== OWNER_CAPABILITY_SCHEMA_VERSION ||
+    ownerConfirmation?.intent?.schemaVersion !==
+      OWNER_CAPABILITY_SCHEMA_VERSION ||
     ownerConfirmation?.intent?.taskId !== value.taskId ||
     typeof ownerConfirmation?.intent?.action !== "string" ||
     ownerConfirmation.intent.action.trim() === "" ||
@@ -26109,8 +26200,7 @@ function requireCanonicalEventHistoryWitnessRepairAuthorization(
     recordedAt >= ownerExpiresAt ||
     ownerExpiresAt <= ownerApprovedAt ||
     ownerExpiresAt - ownerApprovedAt > OWNER_CONFIRMATION_MAX_LIFETIME_MS ||
-    ownerConfirmationDigest(ownerConfirmation) !==
-      value.ownerConfirmationDigest
+    ownerConfirmationDigest(ownerConfirmation) !== value.ownerConfirmationDigest
   ) {
     throw new AutomationControlError(
       "authority_generation_conflict",
@@ -26127,8 +26217,10 @@ function requireCanonicalEventHistoryWitnessRepairEvent(paths, event) {
     paths,
     authorizationPath,
   );
-  const authorization =
-    requireCanonicalEventHistoryWitnessRepairAuthorization(paths, admitted);
+  const authorization = requireCanonicalEventHistoryWitnessRepairAuthorization(
+    paths,
+    admitted,
+  );
   if (
     event?.type !== EVENT_HISTORY_WITNESS_REPAIR_EVENT_TYPE ||
     event?.eventId !== `event-history-witness-repaired:${operationId}` ||
@@ -27600,8 +27692,23 @@ function eventHistoryWitnessRepairOwnerIntent(taskId, parameters) {
   });
 }
 
-function requireHealthyEventHistoryWitnessRepairState(paths, eventHistory) {
-  admitTaskManifestAuthorityStage(paths);
+function readEventHistoryRepairTaskManifest(
+  paths,
+  { expectedWitness = undefined } = {},
+) {
+  let candidate = null;
+  try {
+    admitTaskManifestAuthorityStage(paths);
+  } catch (error) {
+    if (
+      error instanceof AutomationControlError &&
+      error.code === "authority_generation_conflict"
+    ) {
+      candidate = readStrandedTaskManifestAuthorityWitness(paths);
+    } else {
+      throw error;
+    }
+  }
   const taskSnapshot = readAutomationAuthorityFileSnapshot(paths.taskManifest, {
     allowEmpty: false,
     privateRoot: paths.controlRoot,
@@ -27610,6 +27717,47 @@ function requireHealthyEventHistoryWitnessRepairState(paths, eventHistory) {
     label: "Event-history witness repair task manifest",
     invalidCode: "authority_generation_conflict",
   });
+  if (
+    candidate !== null &&
+    !automationAuthoritySnapshotMatches(taskSnapshot, candidate.current)
+  ) {
+    throw new AutomationControlError(
+      "authority_generation_conflict",
+      "Event-history witness repair task manifest changed while its stranded witness was admitted.",
+    );
+  }
+  const witness =
+    candidate === null
+      ? null
+      : Object.freeze({
+          entry: candidate.stageEntry.entry,
+          namespaceDigest: candidate.stageEntry.namespaceDigest,
+          successorStableDigest: candidate.stageEntry.successorStableDigest,
+          predecessorRevision: candidate.predecessorManifest.revision,
+          lineageOperationId: candidate.semantic.operationId,
+          snapshot: authorityWitnessRepairSnapshotDescriptor(candidate.stage),
+        });
+  if (
+    expectedWitness !== undefined &&
+    !canonicalValuesEqual(witness, expectedWitness)
+  ) {
+    throw new AutomationControlError(
+      "authority_generation_conflict",
+      "Event-history witness repair task-manifest witness changed after planning.",
+    );
+  }
+  return Object.freeze({ taskSnapshot, witness });
+}
+
+function requireHealthyEventHistoryWitnessRepairState(
+  paths,
+  eventHistory,
+  { expectedTaskManifestWitness = undefined } = {},
+) {
+  const taskState = readEventHistoryRepairTaskManifest(paths, {
+    expectedWitness: expectedTaskManifestWitness,
+  });
+  const taskSnapshot = taskState.taskSnapshot;
   const manifest = parseTaskManifestAuthoritySnapshot(
     taskSnapshot,
     "Event-history witness repair task manifest",
@@ -27640,7 +27788,11 @@ function requireHealthyEventHistoryWitnessRepairState(paths, eventHistory) {
       },
     );
   }
-  return Object.freeze({ taskSnapshot, manifest });
+  return Object.freeze({
+    taskSnapshot,
+    manifest,
+    taskManifestWitness: taskState.witness,
+  });
 }
 
 function readStrandedEventHistoryAuthorityWitness(paths) {
@@ -27756,6 +27908,7 @@ export function planEventHistoryAuthorityWitnessRepair({ stateRoot, taskId }) {
         snapshot: authorityWitnessRepairSnapshotDescriptor(
           healthy.taskSnapshot,
         ),
+        witness: healthy.taskManifestWitness,
       },
       lineage: {
         operationId: candidate.semantic.operationId,
@@ -27812,6 +27965,9 @@ export function planEventHistoryAuthorityWitnessRepair({ stateRoot, taskId }) {
       label: "Event-history witness repair task manifest",
       invalidCode: "authority_generation_conflict",
     });
+    const taskWitnessAfter = readEventHistoryRepairTaskManifest(paths, {
+      expectedWitness: healthy.taskManifestWitness,
+    });
     const kernelGuardAfter = readAutomationAuthorityFileSnapshot(
       cutover.paths.globalReceipt,
       {
@@ -27828,9 +27984,10 @@ export function planEventHistoryAuthorityWitnessRepair({ stateRoot, taskId }) {
       !automationAuthoritySnapshotMatches(stageAfter, candidate.stage) ||
       !automationAuthoritySnapshotMatches(taskAfter, healthy.taskSnapshot) ||
       !automationAuthoritySnapshotMatches(
-        kernelGuardAfter,
-        kernelGuardReceipt,
-      )
+        taskWitnessAfter.taskSnapshot,
+        healthy.taskSnapshot,
+      ) ||
+      !automationAuthoritySnapshotMatches(kernelGuardAfter, kernelGuardReceipt)
     ) {
       throw new AutomationControlError(
         "authority_generation_conflict",
@@ -27902,7 +28059,11 @@ function requireEventHistoryAuthorityWitnessRepairPlan(plan, taskId, paths) {
       "snapshot",
       "successorStableDigest",
     ]) ||
-    !exactObjectKeys(parameters.taskManifest, ["revision", "snapshot"]) ||
+    !exactObjectKeys(parameters.taskManifest, [
+      "revision",
+      "snapshot",
+      "witness",
+    ]) ||
     !exactObjectKeys(parameters.lineage, [
       "activeOwner",
       "actor",
@@ -27930,6 +28091,35 @@ function requireEventHistoryAuthorityWitnessRepairPlan(plan, taskId, paths) {
       parameters.witness.snapshot?.filePath ||
     parameters.canonical.snapshot?.filePath !== paths.events ||
     parameters.taskManifest.snapshot?.filePath !== paths.taskManifest ||
+    !(
+      parameters.taskManifest.witness === null ||
+      (exactObjectKeys(parameters.taskManifest.witness, [
+        "entry",
+        "lineageOperationId",
+        "namespaceDigest",
+        "predecessorRevision",
+        "snapshot",
+        "successorStableDigest",
+      ]) &&
+        IDENTIFIER_PATTERN.test(
+          String(parameters.taskManifest.witness.lineageOperationId ?? ""),
+        ) &&
+        Number.isSafeInteger(
+          parameters.taskManifest.witness.predecessorRevision,
+        ) &&
+        parameters.taskManifest.witness.predecessorRevision + 1 ===
+          parameters.taskManifest.revision &&
+        SHA256_PATTERN.test(
+          String(parameters.taskManifest.witness.namespaceDigest ?? ""),
+        ) &&
+        SHA256_PATTERN.test(
+          String(parameters.taskManifest.witness.successorStableDigest ?? ""),
+        ) &&
+        parameters.taskManifest.witness.entry ===
+          `.${path.basename(paths.taskManifest)}.authority.${parameters.taskManifest.witness.namespaceDigest}.${parameters.taskManifest.witness.successorStableDigest}.tmp` &&
+        path.join(paths.controlRoot, parameters.taskManifest.witness.entry) ===
+          parameters.taskManifest.witness.snapshot?.filePath)
+    ) ||
     parameters.lineage.operationId !==
       `control-event:${parameters.lineage.eventId}` ||
     !IDENTIFIER_PATTERN.test(String(parameters.lineage.eventId ?? "")) ||
@@ -27975,6 +28165,12 @@ function requireEventHistoryAuthorityWitnessRepairPlan(plan, taskId, paths) {
     parameters.taskManifest.snapshot,
     "Event-history witness repair task-manifest snapshot",
   );
+  if (parameters.taskManifest.witness !== null) {
+    requireAuthorityWitnessRepairSnapshotDescriptor(
+      parameters.taskManifest.witness.snapshot,
+      "Event-history witness repair stranded task-manifest snapshot",
+    );
+  }
   const expectedOperationId = canonicalLeaseRequestDigest(
     eventHistoryWitnessRepairOperationSeed(taskId, parameters),
   );
@@ -28173,10 +28369,7 @@ export function repairEventHistoryAuthorityWitness(
     taskId,
     paths,
   );
-  if (
-    parameters.filesystemType !==
-    (cutover.receipt?.filesystemType ?? null)
-  ) {
+  if (parameters.filesystemType !== (cutover.receipt?.filesystemType ?? null)) {
     throw new AutomationControlError(
       "authority_generation_conflict",
       "Event-history witness repair filesystem authority changed after planning.",
@@ -28282,6 +28475,9 @@ export function repairEventHistoryAuthorityWitness(
               parameters.canonical.snapshot.size,
             ),
           }),
+      {
+        expectedTaskManifestWitness: parameters.taskManifest.witness,
+      },
     );
     if (healthy.manifest.revision !== parameters.taskManifest.revision) {
       throw new AutomationControlError(
@@ -28411,11 +28607,10 @@ export function repairEventHistoryAuthorityWitness(
         paths,
         parameters.authorizationFile,
       );
-      authorization =
-        requireCanonicalEventHistoryWitnessRepairAuthorization(
-          paths,
-          admittedAuthorization,
-        );
+      authorization = requireCanonicalEventHistoryWitnessRepairAuthorization(
+        paths,
+        admittedAuthorization,
+      );
       authorizationDigest = digestBytes(admittedAuthorization.snapshot.bytes);
       if (
         !eventHistoryRepairAuthorizationMatchesPlan(
@@ -30578,21 +30773,37 @@ function leaseCleanupQuarantinePathMatches(
   filePath,
   cleanupOperationId,
   snapshot,
+  historicalDevices = [],
 ) {
-  if (
-    leaseCleanupQuarantinePath(filePath, cleanupOperationId, snapshot) ===
-    archivePath
-  ) {
-    return true;
+  for (const device of [
+    snapshot.identity.dev.toString(),
+    ...historicalDevices.map(String),
+  ]) {
+    const candidate = Object.freeze({
+      ...snapshot,
+      identity: identityWithDevice(snapshot.identity, device),
+    });
+    if (
+      leaseCleanupQuarantinePath(filePath, cleanupOperationId, candidate) ===
+      archivePath
+    ) {
+      return true;
+    }
+    const legacyDigest = legacyLeaseCleanupGenerationDigest(
+      filePath,
+      candidate,
+    );
+    if (
+      legacyDigest !== null &&
+      path.join(
+        leaseCleanupQuarantineDirectory(filePath),
+        `${cleanupOperationId}.${legacyDigest}.json`,
+      ) === archivePath
+    ) {
+      return true;
+    }
   }
-  const legacyDigest = legacyLeaseCleanupGenerationDigest(filePath, snapshot);
-  return (
-    legacyDigest !== null &&
-    path.join(
-      leaseCleanupQuarantineDirectory(filePath),
-      `${cleanupOperationId}.${legacyDigest}.json`,
-    ) === archivePath
-  );
+  return false;
 }
 
 function leaseAtomicArchiveSpecifications(paths, transaction, archiveScope) {
@@ -30706,31 +30917,44 @@ function leaseAtomicArchiveSpecificationMatches(
   archivePath,
   specification,
   snapshot,
+  historicalDevices = [],
 ) {
   const archiveDirectory = path.dirname(archivePath);
-  const currentDigest = leaseCleanupGenerationDigest(
-    specification.temporaryPath,
-    snapshot,
-  );
-  if (
-    path.join(
-      archiveDirectory,
-      `${specification.selectionPrefix}.${currentDigest}.json`,
-    ) === archivePath
-  ) {
-    return true;
+  for (const device of [
+    snapshot.identity.dev.toString(),
+    ...historicalDevices.map(String),
+  ]) {
+    const candidate = Object.freeze({
+      ...snapshot,
+      identity: identityWithDevice(snapshot.identity, device),
+    });
+    const currentDigest = leaseCleanupGenerationDigest(
+      specification.temporaryPath,
+      candidate,
+    );
+    if (
+      path.join(
+        archiveDirectory,
+        `${specification.selectionPrefix}.${currentDigest}.json`,
+      ) === archivePath
+    ) {
+      return true;
+    }
+    const legacyDigest = legacyLeaseCleanupGenerationDigest(
+      specification.temporaryPath,
+      candidate,
+    );
+    if (
+      legacyDigest !== null &&
+      path.join(
+        archiveDirectory,
+        `${specification.selectionPrefix}.${legacyDigest}.json`,
+      ) === archivePath
+    ) {
+      return true;
+    }
   }
-  const legacyDigest = legacyLeaseCleanupGenerationDigest(
-    specification.temporaryPath,
-    snapshot,
-  );
-  return (
-    legacyDigest !== null &&
-    path.join(
-      archiveDirectory,
-      `${specification.selectionPrefix}.${legacyDigest}.json`,
-    ) === archivePath
-  );
+  return false;
 }
 
 function leaseCleanupArchivePrefixes(paths, transaction, archiveScope) {
@@ -30751,6 +30975,7 @@ function leaseCleanupQuarantinePathMatchesTransaction(
   archivePath,
   filePath,
   snapshot,
+  historicalDevices = [],
 ) {
   if (
     leaseCleanupQuarantinePathMatches(
@@ -30758,6 +30983,7 @@ function leaseCleanupQuarantinePathMatchesTransaction(
       filePath,
       transaction.operationId,
       snapshot,
+      historicalDevices,
     )
   ) {
     return true;
@@ -30780,7 +31006,12 @@ function leaseCleanupQuarantinePathMatchesTransaction(
   ).find((candidate) => candidate.target === "wal" && candidate.kind === "WAL");
   return (
     specification !== undefined &&
-    leaseAtomicArchiveSpecificationMatches(archivePath, specification, snapshot)
+    leaseAtomicArchiveSpecificationMatches(
+      archivePath,
+      specification,
+      snapshot,
+      historicalDevices,
+    )
   );
 }
 

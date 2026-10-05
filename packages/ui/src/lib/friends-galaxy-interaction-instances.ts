@@ -29,9 +29,9 @@ export function writeFriendsGalaxyInteractionInstances(
       target[targetOffset + component] = semanticInstances[sourceOffset + component]!;
     }
     target[targetOffset + 3] *= role === "selected"
-      ? 1.58
-      : role === "hovered" ? 1.36 : 1.16;
-    target[targetOffset + 6] = role === "linked" ? 0.62 : 1;
+      ? 3.2
+      : role === "hovered" ? 1.36 : 2.2;
+    target[targetOffset + 6] = 1;
     target[targetOffset + 7] = 1;
     interactionCount += 1;
   }

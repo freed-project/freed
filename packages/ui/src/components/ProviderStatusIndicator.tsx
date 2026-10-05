@@ -37,9 +37,9 @@ export function ProviderStatusIndicator({
   const activeLabel = syncing && tone === "healthy" ? "Syncing" : label;
   const emojiClass =
     size === "xxs"
-      ? "text-[10px]"
+      ? "text-[0.625rem]"
       : size === "xs"
-        ? "text-[11px]"
+        ? "text-[0.6875rem]"
         : "text-xs";
 
   if (isCoolingDown) {

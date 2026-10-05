@@ -1,0 +1,52 @@
+{
+  "status": "hold_exact_prose_biology",
+  "episode": {
+    "subject": "ground pangolin",
+    "theme": "movement",
+    "title": "Claws held clear",
+    "body": "Walked across the hard ground with my front claws tucked up. A small stone shifted beneath one hind foot. Put a forefoot down, steadied myself, lifted it again.\n\nNobody saw. I checked.\n\nThen I crossed the rest of the patch in that dignified, careful posture and immediately used the protected claws to tear apart a mound. They were being saved for something much less delicate than walking.",
+    "platform": "rss",
+    "mediaSha1": "0b7618d57532d0364af4cd5d5819f81e3f449f29"
+  },
+  "imageVerdict": "PASS. Exact file individually opened. Side-on ground pangolin with curved foreclaws held up near the chest, separated from the soil; a hind foot supports the animal farther back. Broad tail extends rearward. Image supports the central walking posture. No photographic stumble, onlooker or mound is claimed.",
+  "rightsVerdict": "PASS. Cached photo-specific primary record, creator Shedron Mukhumo, CC BY4.0, published delivery URL and both byte hashes verified. Same observation as admitted curled frame but distinct exact photograph.",
+  "canonVerdict": "PASS. Read current complete Mallow arc including Quiet on the outside and all ten unbound passages. Same source individual adds no appearance issue. Adult female narration and Kruger home remain fiction canon; sex is not independently determined in this photograph. No actual chronological sequence between photographs inferred.",
+  "proseVerdict": "HOLD unchanged. The main protected-walking-claws versus digging use is a viable embodied contrast. The Nobody saw aside is conventional but not the central mechanism. The biological issue is tear apart a mound: ordinary reading implies substantial destruction of the structure, while the detailed species account describes shallow feeding excavations and rare small openings into softened mound coverings. General scratch-digging anatomy establishes capability, not the scope of this particular claimed demolition.",
+  "biologyEvidence": {
+    "url": "https://africanpangolin.org/about-us/the-four-african-pangolin-species/temmincks-pangolin/",
+    "access": "Fresh primary-site search extract read. Prior full-page request timed out and was not retried.",
+    "summary": "APWG Diet section says most semi-arid foraging digs are less than4cm, ants are approached at shallow surface holes or crumbling old mounds, active termite nests often accessed after another animal opens the exterior, and self-made small openings are rare and usually during or just after rain."
+  },
+  "parentEvidenceBoundary": "Parent reports Steyn2018 doi10.1002/ar.23733 supports scratch digging into hard soil and termite mounds. This independent review did not retrieve its full text and does not falsely claim to have read it. That anatomical capability does not by itself establish wholesale mound destruction.",
+  "disposition": "Do not bind unchanged yet. Preserve exact original passage in runtime and evidence. Lead could separately authorize the smallest factual revision, replacing tear apart a mound with dig open an ant tunnel, while retaining every other word. This suggestion is not applied or independently admitted.",
+  "media": {
+    "photoId": 621140647,
+    "observationId": 341230008,
+    "sourceUrl": "https://www.inaturalist.org/observations/341230008",
+    "primaryMetadataUrl": "https://www.inaturalist.org/observations/341230008.json",
+    "primaryMetadataPath": "/tmp/freed-land134/341230008.json",
+    "url": "https://inaturalist-open-data.s3.amazonaws.com/photos/621140647/large.jpg",
+    "localPath": "/tmp/freed-land134/621140647.jpg",
+    "attribution": "(c) Shedron Mukhumo, some rights reserved (CC BY), uploaded by Shedron Mukhumo",
+    "licenseCode": "CC-BY",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+    "bytes": 511516,
+    "sha1": "0b7618d57532d0364af4cd5d5819f81e3f449f29",
+    "sha256": "b5642148013e9f8c2f014a107a5cfd4057e311b2a348fe9f646075f960d00af0",
+    "width": 1024,
+    "height": 485,
+    "originalWidth": 2048,
+    "originalHeight": 970,
+    "originalBytesReviewed": false,
+    "originalDimensionsEvidence": "Primary iNaturalist photo object width and height. Native original bytes not downloaded or measured.",
+    "taxonId": 75083,
+    "scientificName": "Smutsia temminckii",
+    "sourcePlace": "Ehlanzeni, ZA-MP, ZA",
+    "sourceDescription": null,
+    "qualityGrade": "research",
+    "sourceCaptive": false,
+    "individuallyOpened": true,
+    "status": "screened_unused"
+  },
+  "runtimeEdited": false
+}

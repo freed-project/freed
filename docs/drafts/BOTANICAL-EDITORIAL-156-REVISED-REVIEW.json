@@ -1,0 +1,13 @@
+{
+  "candidateId": "156-01",
+  "verdict": "PASS exact minimal revision; pending root admission",
+  "originalBody": "A finger pressed down and a pale cloud burst out of me. I wanted it to go away. Then it lifted, carrying some of me on its skin, and I wanted it to wait.",
+  "revisedBody": "A finger pressed down and a pale cloud burst out of me. I wanted the finger to go away. Then it lifted, carrying some of me on its skin, and I wanted it to wait.",
+  "replacement": {
+    "from": "I wanted it to go away",
+    "to": "I wanted the finger to go away"
+  },
+  "allOtherWordsUnchanged": true,
+  "mediaSha1": "ecdcaeed543cec9d423065f500bdada9ec77d7ef",
+  "runtimeChanged": false
+}

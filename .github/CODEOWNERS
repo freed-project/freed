@@ -26,6 +26,7 @@
 /packages/desktop/src/components/MobileSyncTab.tsx @AubreyF
 /packages/desktop/src/components/ProviderSyncActionButton.tsx @AubreyF
 /packages/desktop/src/components/ProviderSyncCadenceControl.tsx @AubreyF
+/packages/desktop/src/components/ProviderAdvancedSettings.tsx @AubreyF
 /packages/desktop/src/components/ScraperWindowModeControl.tsx @AubreyF
 /packages/desktop/src/components/SyncProviderSectionSurface.tsx @AubreyF
 /packages/desktop/src/components/XFeedEmptyState.tsx @AubreyF
@@ -113,6 +114,7 @@
 /packages/shared/src/contact-sync-state.ts @AubreyF
 /packages/shared/src/legal.ts @AubreyF
 /packages/shared/src/preferences.ts @AubreyF
+/packages/shared/src/provider-admission.ts @AubreyF
 /packages/shared/src/schema.ts @AubreyF
 /packages/shared/src/sync-write-policy.ts @AubreyF
 /packages/shared/src/youtube.ts @AubreyF
@@ -154,3 +156,8 @@
 /docs/STABILITY-PROGRAM.md @AubreyF
 /docs/AUTOMATION-CONTROL-PLANE.md @AubreyF
 /docs/roadmap-status.json @AubreyF
+
+# Saved URL recovery can admit content to the Primary fetch policy.
+/packages/desktop/src/components/ConsumerRecoverySavedUrlEditor.tsx @AubreyF
+/packages/pwa/src/components/PwaRecoverySavedUrlEditor.tsx @AubreyF
+/packages/ui/src/components/RecoverySavedUrlFields.tsx @AubreyF

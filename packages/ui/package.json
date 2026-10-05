@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./components/LoadingState": "./src/components/LoadingState.tsx",
     "./index.css": "./src/index.css",
     "./components/layout": "./src/components/layout/index.ts",
     "./components/layout/BackgroundAtmosphere": "./src/components/layout/BackgroundAtmosphere.tsx",
@@ -19,9 +20,11 @@
     "./components/SettingsToggle": "./src/components/SettingsToggle.tsx",
     "./components/AddFeedDialog": "./src/components/AddFeedDialog.tsx",
     "./components/SettingsDialog": "./src/components/SettingsDialog.tsx",
+    "./components/UpdateBackupStatus": "./src/components/UpdateBackupStatus.tsx",
     "./components/UpdateProgressBar": "./src/components/UpdateProgressBar.tsx",
     "./components/settings/GoogleContactsSection": "./src/components/settings/GoogleContactsSection.tsx",
     "./components/settings/FeedsSection": "./src/components/settings/FeedsSection.tsx",
+    "./components/settings/LibraryReplicaAudit": "./src/components/settings/LibraryReplicaAudit.tsx",
     "./components/settings/SettingsListPanel": "./src/components/settings/SettingsListPanel.tsx",
     "./components/BugReportBoundary": "./src/components/BugReportBoundary.tsx",
     "./components/FatalErrorScreen": "./src/components/FatalErrorScreen.tsx",
@@ -34,11 +37,13 @@
     "./components/CloudProviderCard": "./src/components/CloudProviderCard.tsx",
     "./components/ThemePreviewButton": "./src/components/ThemePreviewButton.tsx",
     "./components/SampleDataTestingSection": "./src/components/SampleDataTestingSection.tsx",
+    "./lib/friends-galaxy-long-tasks": "./src/lib/friends-galaxy-long-tasks.ts",
     "./lib/debug-store": "./src/lib/debug-store.ts",
     "./lib/background-activity-store": "./src/lib/background-activity-store.ts",
     "./lib/bug-report": "./src/lib/bug-report.ts",
     "./lib/build-info": "./src/lib/build-info.ts",
     "./lib/clipboard": "./src/lib/clipboard.ts",
+    "./lib/workspace-navigation": "./src/lib/workspace-navigation.ts",
     "./lib/command-surface-store": "./src/lib/command-surface-store.ts",
     "./lib/date-format": "./src/lib/date-format.ts",
     "./lib/device-ai-preferences": "./src/lib/device-ai-preferences.ts",
@@ -62,7 +67,17 @@
     "./hooks/useLibraryFacetSummary": "./src/hooks/useLibraryFacetSummary.ts",
     "./hooks/useLibraryRssFeedDetail": "./src/hooks/useLibraryRssFeedDetail.ts",
     "./context": "./src/context/index.ts",
-    "./components/friends": "./src/components/friends/index.ts"
+    "./components/friends": "./src/components/friends/index.ts",
+    "./components/RecoveryAnnotationFields": "./src/components/RecoveryAnnotationFields.tsx",
+    "./components/RecoveryRssSubscriptionFields": "./src/components/RecoveryRssSubscriptionFields.tsx",
+    "./components/RecoverySavedUrlFields": "./src/components/RecoverySavedUrlFields.tsx",
+    "./components/RecoveryAccountFields": "./src/components/RecoveryAccountFields.tsx",
+    "./components/RecoveryPreferenceFields": "./src/components/RecoveryPreferenceFields.tsx",
+    "./components/RecoveryReachOutFields": "./src/components/RecoveryReachOutFields.tsx",
+    "./components/RecoveryPersonFields": "./src/components/RecoveryPersonFields.tsx",
+    "./components/RecoveryAccountLinkFields": "./src/components/RecoveryAccountLinkFields.tsx",
+    "./components/RecoveryFriendFields": "./src/components/RecoveryFriendFields.tsx",
+    "./components/settings/AISection": "./src/components/settings/AISection.tsx"
   },
   "peerDependencies": {
     "react": ">=19",
@@ -86,5 +101,8 @@
     "@types/three": "^0.185.1",
     "@webgpu/types": "^0.1.71",
     "typescript": "~5.9.3"
+  },
+  "scripts": {
+    "test": "node ../../node_modules/vitest/vitest.mjs run --maxWorkers=1"
   }
 }

@@ -1,3 +1,5 @@
+import { formatFeedItemCount } from "../../lib/feed-count-presentation.js";
+import { usePlatformCapabilities } from "../../context/PlatformContext.js";
 import {
   useState,
   useEffect,
@@ -24,7 +26,6 @@ import { THEME_DEFINITIONS, type ThemeId } from "@freed/shared/themes";
 import { Tooltip } from "../Tooltip.js";
 import { toast } from "../Toast.js";
 import { BackgroundActivityPopover } from "../BackgroundActivityPopover.js";
-import { ProviderStatusIndicator } from "../ProviderStatusIndicator.js";
 import { ThemePreviewButton } from "../ThemePreviewButton.js";
 import {
   ArchiveIcon,
@@ -40,7 +41,7 @@ import {
 } from "../icons.js";
 import { useSearchResults } from "../../hooks/useSearchResults.js";
 import { useFeedSignalCounts } from "../../hooks/useFeedSignalCounts.js";
-import { useLibraryFacetSummary } from "../../hooks/useLibraryFacetSummary.js";
+import { useLibraryFacetSummaryState } from "../../hooks/useLibraryFacetSummary.js";
 import { useLibraryFilterScopeSummary } from "../../hooks/useLibraryFilterScopeSummary.js";
 import { useLibraryItemDetail } from "../../hooks/useLibraryItemDetail.js";
 import { useLibraryCommandPaletteReader } from "../../hooks/useLibraryCommandPaletteReader.js";
@@ -77,6 +78,7 @@ import {
   noDragRegionStyle as noDrag,
 } from "../../lib/native-drag-region.js";
 import {
+  COMPACT_MACOS_TRAFFIC_LIGHT_INSET_PX,
   PRIMARY_SIDEBAR_GAP_WIDTH_PX,
   TOP_TOOLBAR_HEIGHT_PX,
   TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX,
@@ -103,6 +105,7 @@ interface ToolbarOverflowAction {
   icon: ReactNode;
   active?: boolean;
   danger?: boolean;
+  disabled?: boolean;
 }
 
 const toolbarControlStyle = { ...noDrag, userSelect: "none" } as CSSProperties;
@@ -112,8 +115,7 @@ const TOOLBAR_READER_LAYOUT_TOGGLE_BUTTON_CLASS =
   "theme-toolbar-reader-layout-button rounded-lg";
 const TOOLBAR_ICON_BUTTON_SIZE = "2.25rem";
 const READER_LAYOUT_CONTROL_BUTTON_SIZE_PX = 32;
-const READER_LAYOUT_CONTROL_ICON_SIZE_PX = 20;
-const READER_LAYOUT_CONTROL_BUTTON_GAP_PX = 0;
+const READER_LAYOUT_CONTROL_BUTTON_GAP_PX = 8;
 const LAYOUT_CONTROL_SAFE_GAP_PX = 8;
 const MENU_VIEWPORT_MARGIN_PX = 8;
 const CLOSED_SIDEBAR_TOGGLE_LEFT_PX = 12;
@@ -122,17 +124,14 @@ const DEFAULT_LAYOUT_CONTROL_RESERVED_WIDTH_PX = 280;
 const COLLAPSED_LAYOUT_CONTROL_EXTRA_WIDTH_PX = 72;
 const TOOLBAR_SLOT_WIDTH_CONTENT = "max-content";
 const TOOLBAR_COLLAPSE_BREAKPOINT_PX = 1200;
-const READER_BOOKMARK_INLINE_MIN_WIDTH_PX = 980;
+const READER_COUNT_MIN_WIDTH_PX = 640;
+const READER_BOOKMARK_INLINE_MIN_WIDTH_PX = 360;
 const SAVED_SORT_OPTIONS: Array<{ value: SavedContentSortMode; label: string }> = [
   { value: "date_saved", label: "Date saved" },
   { value: "date_published", label: "Date published" },
   { value: "recommended", label: "Recommended" },
   { value: "shortest_read", label: "Shortest read" },
 ];
-
-function formatItemCount(count: number): string {
-  return `${count.toLocaleString()} item${count === 1 ? "" : "s"}`;
-}
 
 function parsePixelValue(value: string, fallback: number): number {
   const parsed = Number.parseFloat(value);
@@ -142,21 +141,18 @@ function parsePixelValue(value: string, fallback: number): number {
 function ToolbarAnimatedSlot({
   visible,
   width,
-  flushStartMargin = false,
   className = "",
   style,
   children,
 }: {
   visible: boolean;
   width: string;
-  flushStartMargin?: boolean;
   className?: string;
   style?: CSSProperties;
   children: ReactNode;
 }) {
   const slotStyle = {
     ["--toolbar-slot-width" as string]: width,
-    ...(flushStartMargin ? { marginInlineStart: 0 } : {}),
     ...style,
   } as CSSProperties;
 
@@ -300,12 +296,12 @@ function contextualFeedTitle({
   activeSignalModes: readonly FeedSignalMode[];
   allSignalsSelected: boolean;
 }): string {
-  if (filter.savedOnly || filter.archivedOnly) return scopeLabel;
+  if (filter.archivedOnly) return scopeLabel;
 
   const signalPart = allSignalsSelected ? null : signalTitlePart(activeSignalModes);
   const kindPart = contentKindTitlePart(filter);
   const providerPart =
-    filter.platform && filter.platform !== "rss"
+    filter.savedOnly || (filter.platform && filter.platform !== "rss")
       ? scopeLabel
       : null;
   const hasContentFilter = !!signalPart || filter.socialContentFilter === "posts" || filter.socialContentFilter === "stories";
@@ -326,16 +322,16 @@ export function Header({
   onFriendsMobileSurfaceChange,
 }: HeaderProps) {
   const {
+    store,
     HeaderSyncIndicator,
     headerDragRegion,
     addRssFeed,
     saveUrl,
     importMarkdown,
     exportMarkdown,
-    openUrl,
-    interactionMode,
   } = usePlatform();
-  const readOnly = interactionMode === "read-only";
+  const capabilities = usePlatformCapabilities();
+  const readOnly = !capabilities.libraryEdits;
   const isMobile = useIsMobile();
   const isMobileDevice = useIsMobileDevice();
   const visibleDesktopSidebarMode = desktopSidebarDisplayMode ?? desktopSidebarMode;
@@ -364,10 +360,12 @@ export function Header({
   const visibleFeedTotalCount = useAppStore(
     (state) => state.visibleFeedTotalCount,
   );
-  const libraryFacets = useLibraryFacetSummary(
+  const { summary: libraryFacets, status: libraryFacetStatus } = useLibraryFacetSummaryState(
     searchCorpusVersion,
     isLibraryInitialized,
   );
+  const latestFacetAdmission = useRef({ status: libraryFacetStatus, version: searchCorpusVersion });
+  latestFacetAdmission.current = { status: libraryFacetStatus, version: searchCorpusVersion };
   const filterScope = useLibraryFilterScopeSummary(activeFilter, searchCorpusVersion);
   const selectedItemId = useAppStore((s) => s.selectedItemId);
   const pendingMatchCount = useAppStore((s) => s.pendingMatchCount);
@@ -380,6 +378,9 @@ export function Header({
   const setFilter = useAppStore((s) => s.setFilter);
   const display = useAppStore((s) => s.preferences.display);
   const [deviceDisplay, setDeviceDisplay] = useDeviceDisplayPreferences();
+  const effectiveFriendsMode = activeView === "feed" && activeFilter.savedOnly
+    ? "all_content"
+    : deviceDisplay.friendsMode;
   const [themeId, setThemePreference] = useThemePreference();
   const activeSearchQuery = searchQuery.trim();
   const [feedCardDensity, setFeedCardDensity] = useFeedCardDensity();
@@ -388,14 +389,15 @@ export function Header({
   const toolbarGapHalfPx = scaleInterfaceChromePx(PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2, interfaceZoom);
   const toolbarSlotPaddingRightPx = scaleInterfaceChromePx(TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX, interfaceZoom);
 
-  const { filteredItems, isSearching, resultCount, searchUnavailable } = useSearchResults(
+  const { filteredItems, isSearching, resultCount, searchUnavailable, resultsCurrent } = useSearchResults(
     searchQuery,
     activeFilter,
     searchCorpusVersion,
-    deviceDisplay.friendsMode,
+    effectiveFriendsMode,
     libraryItemVersion,
   );
   const {
+    scopeActionsReady,
     archivableScopeCount: archivableCount,
     archiveScopeRead,
     markScopeRead,
@@ -404,11 +406,12 @@ export function Header({
     activeFilter,
     activeView,
     commandScopeItems: filteredItems,
+    commandScopeCurrent: activeSearchQuery.length === 0 || resultsCurrent === true,
     enabled:
       isLibraryInitialized &&
       activeView === "feed" &&
       selectedItemId === null,
-    identityMode: deviceDisplay.friendsMode,
+    identityMode: effectiveFriendsMode,
     inputValue: searchQuery,
     searchQuery,
     selectedItemId: null,
@@ -431,14 +434,14 @@ export function Header({
   const backgroundActivityActive = activeBackgroundActivityCount > 0;
   const [activityPopoverOpen, setActivityPopoverOpen] = useState(false);
   const activityButtonRef = useRef<HTMLButtonElement | null>(null);
-  const backgroundActivityStatus = backgroundActivityActive
-    ? { label: "Syncing", tone: "healthy" as const }
-    : latestBackgroundActivityLevel === "error"
-      ? { label: "Last activity failed", tone: "critical" as const }
-      : latestBackgroundActivityLevel === "warning"
-        ? { label: "Last activity needs attention", tone: "warning" as const }
+  const backgroundActivityStatus = latestBackgroundActivityLevel === "error"
+    ? { label: "Last activity failed", tone: "critical" as const }
+    : latestBackgroundActivityLevel === "warning"
+      ? { label: "Last activity needs attention", tone: "warning" as const }
+      : backgroundActivityActive
+        ? { label: "Syncing", tone: "idle" as const }
         : latestBackgroundActivityLevel === "success"
-          ? { label: "Last activity succeeded", tone: "healthy" as const }
+          ? { label: "Last activity succeeded", tone: "idle" as const }
           : { label: "No recent activity", tone: "idle" as const };
 
   const scopeLabel = useMemo(() => {
@@ -459,21 +462,23 @@ export function Header({
     mappedFriendCount,
     mappedAllContentCount,
   );
-  const effectiveFriendsMode = deviceDisplay.friendsMode;
   const [isBelowLargeToolbar, setIsBelowLargeToolbar] = useState(
     () => typeof window !== "undefined" && window.innerWidth < TOOLBAR_COLLAPSE_BREAKPOINT_PX,
   );
-  const [isBelowReaderBookmarkToolbar, setIsBelowReaderBookmarkToolbar] = useState(
-    () => typeof window !== "undefined" && window.innerWidth < READER_BOOKMARK_INLINE_MIN_WIDTH_PX,
+  const [toolbarViewportWidth, setToolbarViewportWidth] = useState(
+    () => typeof window !== "undefined" ? window.innerWidth : 0,
   );
+  // Give bookmarking priority over the count, including at enlarged interface sizes.
+  const showReaderItemCount = toolbarViewportWidth >= scaleInterfaceChromePx(READER_COUNT_MIN_WIDTH_PX, interfaceZoom);
+  const isBelowReaderBookmarkToolbar = toolbarViewportWidth < scaleInterfaceChromePx(READER_BOOKMARK_INLINE_MIN_WIDTH_PX, interfaceZoom);
   const showWorkspaceIdentityControls =
     activeView === "friends" ||
     activeView === "map" ||
-    (activeView === "feed" && !readerActive);
+    (activeView === "feed" && !readerActive && !activeFilter.savedOnly);
   const showFeedBulkActions = activeView === "feed" && !readOnly;
   const showFeedSignalFilter = activeView === "feed" && !readerActive;
   const showSavedSortControl = showFeedSignalFilter && activeFilter.savedOnly === true;
-  const showArchivedToolbar = activeView === "feed" && activeFilter.archivedOnly === true;
+  const showArchivedToolbar = !readOnly && activeView === "feed" && activeFilter.archivedOnly === true;
   const showArchivedDeleteAction =
     !readOnly && showArchivedToolbar && (display.archivePruneDays ?? 30) > 0;
   const showSocialContentControls =
@@ -495,12 +500,10 @@ export function Header({
     showSocialContentControls && !collapseToolbarViewControls;
   const showFeedCardDensityControl =
     activeView === "feed" &&
-    !readerActive &&
-    !isMobile;
+    !readerActive;
   const hideMobileDrawerToolbarActions = mobileSidebarOpen;
   const showCollapsedToolbarFilterMenu =
-    !hideMobileDrawerToolbarActions &&
-    !readerActive;
+    !hideMobileDrawerToolbarActions;
   const showInlineFeedSignalFilter =
     !hideMobileDrawerToolbarActions &&
     showFeedSignalFilter &&
@@ -519,16 +522,6 @@ export function Header({
     showFeedSignalFilter;
   const showInlineReaderBookmark =
     !readOnly && !!selectedItem && !isBelowReaderBookmarkToolbar;
-  const collapsedReaderBaseActionWidthRem = selectedItem?.sourceUrl
-    ? showInlineReaderBookmark ? 11 : 8.5
-    : showInlineReaderBookmark ? 6.5 : 3.5;
-  const collapsedReaderActionWidthRem = collapsedReaderBaseActionWidthRem + 2.75;
-  const collapsedReaderTitleStyle = readerActive && isBelowLargeToolbar
-    ? ({ paddingRight: `${collapsedReaderActionWidthRem}rem` } as CSSProperties)
-    : undefined;
-  const collapsedReaderActionStyle = readerActive && isBelowLargeToolbar
-    ? ({ width: `${collapsedReaderActionWidthRem}rem` } as CSSProperties)
-    : undefined;
 
   const handleSocialContentFilterChange = useCallback(
     (value: SocialContentFilter) => {
@@ -609,7 +602,7 @@ export function Header({
       if (searchUnavailable) return "Search is temporarily unavailable";
       return `${resultCount.toLocaleString()} result${resultCount === 1 ? "" : "s"} in ${scopeLabel}`;
     }
-    return formatItemCount(
+    return formatFeedItemCount(
       fullScopeItemCount ??
         (isSearching ? filteredItems.length : visibleFeedTotalCount),
     );
@@ -859,6 +852,8 @@ export function Header({
   });
 
   const handleCloseReader = useCallback(() => {
+    // Returning to the list should reveal it, not leave it behind the drawer.
+    if (mobileSidebarOpen) onMobileMenuToggle();
     if (deviceDisplay.dualColumnMode && !isMobile && selectedItemId) {
       runFeedLayoutTransition(() => {
         setSelectedItem(null);
@@ -866,7 +861,7 @@ export function Header({
       return;
     }
     setSelectedItem(null);
-  }, [deviceDisplay.dualColumnMode, isMobile, selectedItemId, setSelectedItem]);
+  }, [deviceDisplay.dualColumnMode, isMobile, selectedItemId, setSelectedItem, mobileSidebarOpen, onMobileMenuToggle]);
 
   const handleToggleReaderSaved = useCallback(() => {
     if (!selectedItem) return;
@@ -876,10 +871,9 @@ export function Header({
   const handleToggleReaderArchived = useCallback(() => {
     if (!selectedItem) return;
     const wasArchived = selectedItem.userState.archived;
-    toggleArchived(selectedItem.globalId);
-    if (!wasArchived) {
-      setSelectedItem(null);
-    }
+    void toggleArchived(selectedItem.globalId).then(() => {
+      if (!wasArchived) setSelectedItem(null);
+    }, () => {}); // The store reports failed writes; keep the reader open.
   }, [selectedItem, setSelectedItem, toggleArchived]);
 
   const handleToggleFocusMode = useCallback(() => {
@@ -895,24 +889,14 @@ export function Header({
   }, [display.reading.focusMode, updatePreferences]);
 
   const handleToggleDualColumn = useCallback(() => {
-    runFeedLayoutTransition(() => {
-      if (!setDeviceDisplay({ dualColumnMode: !deviceDisplay.dualColumnMode })) {
-        toast.error("Freed could not save the reader layout on this device.");
-      }
-    });
+    if (!setDeviceDisplay({ dualColumnMode: !deviceDisplay.dualColumnMode })) {
+      toast.error("Freed could not save the reader layout on this device.");
+    }
   }, [deviceDisplay.dualColumnMode, setDeviceDisplay]);
 
   const [deleteConfirmArmed, setDeleteConfirmArmed] = useState(false);
   const deleteConfirmTimerRef = useRef<number | null>(null);
 
-  const handleOpenReaderUrl = useCallback(() => {
-    if (!selectedItem?.sourceUrl) return;
-    if (openUrl) {
-      openUrl(selectedItem.sourceUrl);
-      return;
-    }
-    window.open(selectedItem.sourceUrl, "_blank", "noopener,noreferrer");
-  }, [openUrl, selectedItem]);
 
   const handleDeleteArchivedClick = useCallback(() => {
     if (!deleteConfirmArmed) {
@@ -935,8 +919,11 @@ export function Header({
   }, [deleteAllArchived, deleteConfirmArmed]);
 
   const handleUnarchiveSavedClick = useCallback(() => {
+    const current = store.getState();
+    if (latestFacetAdmission.current.status !== "ready" || latestFacetAdmission.current.version !== searchCorpusVersion
+      || current.searchCorpusVersion !== searchCorpusVersion || current.activeView !== "feed" || !current.activeFilter.archivedOnly) return;
     void unarchiveSavedItems();
-  }, [unarchiveSavedItems]);
+  }, [searchCorpusVersion, store, unarchiveSavedItems]);
 
   const handleMarkFilteredUnreadAsRead = useCallback(() => {
     void markScopeRead();
@@ -950,21 +937,11 @@ export function Header({
     const actions: ToolbarOverflowAction[] = [];
 
     if (selectedItem && isBelowLargeToolbar) {
-      actions.push({
-        id: "focus",
-        label: display.reading.focusMode ? "Disable focus mode" : "Enable focus mode",
-        onClick: handleToggleFocusMode,
-        active: display.reading.focusMode,
-        icon: (
-          <span className="inline-flex h-5 w-5 items-center justify-center text-sm font-black" aria-hidden="true">
-            F
-          </span>
-        ),
-      });
 
-      if (!readOnly && !showInlineReaderBookmark) {
+      if ((!readOnly || isMobile) && !showInlineReaderBookmark) {
         actions.push({
           id: "bookmark-reader",
+          disabled: readOnly,
           label: selectedItem.userState.saved ? "Remove bookmark" : "Bookmark",
           onClick: handleToggleReaderSaved,
           active: selectedItem.userState.saved,
@@ -982,9 +959,10 @@ export function Header({
         });
       }
 
-      if (!readOnly) {
+      if (!readOnly || isMobile) {
         actions.push({
           id: "archive-reader",
+          disabled: readOnly,
           label: selectedItem.userState.archived ? "Unarchive" : "Archive",
           onClick: handleToggleReaderArchived,
           active: selectedItem.userState.archived,
@@ -997,6 +975,7 @@ export function Header({
       if (showArchivedToolbar && savedArchivedCount > 0) {
         actions.push({
           id: "unarchive-saved",
+          disabled: libraryFacetStatus !== "ready",
           label: `Unarchive saved (${savedArchivedCount.toLocaleString()})`,
           onClick: handleUnarchiveSavedClick,
           icon: <ArchiveIcon className="h-5 w-5" />,
@@ -1022,6 +1001,7 @@ export function Header({
     if (!readerActive && showFeedBulkActions && unreadCount > 0) {
       actions.push({
         id: "mark-read",
+        disabled: !scopeActionsReady,
         label: `Mark ${unreadCount.toLocaleString()} unread as read`,
         onClick: handleMarkFilteredUnreadAsRead,
         icon: (
@@ -1035,6 +1015,7 @@ export function Header({
     if (!readerActive && showFeedBulkActions && archivableCount > 0) {
       actions.push({
         id: "archive-read",
+        disabled: !scopeActionsReady,
         label: `Archive ${archivableCount.toLocaleString()} read items`,
         onClick: handleArchiveFilteredRead,
         icon: (
@@ -1048,17 +1029,19 @@ export function Header({
     return actions;
   }, [
     archivableCount,
+    scopeActionsReady,
+    libraryFacetStatus,
     deleteConfirmArmed,
     display.reading.focusMode,
     handleArchiveFilteredRead,
     handleDeleteArchivedClick,
     handleMarkFilteredUnreadAsRead,
-    handleOpenReaderUrl,
     handleToggleFocusMode,
     handleToggleReaderSaved,
     handleToggleReaderArchived,
     handleUnarchiveSavedClick,
     isBelowLargeToolbar,
+    isMobile,
     readerActive,
     readOnly,
     savedArchivedCount,
@@ -1129,14 +1112,14 @@ export function Header({
     handleIdentityModeChange,
   ]);
   const macosTrafficLightInsetStyle = headerDragRegion
-    ? ({ paddingLeft: `${MACOS_TRAFFIC_LIGHT_INSET}px` } as CSSProperties)
+    ? ({ paddingLeft: `${COMPACT_MACOS_TRAFFIC_LIGHT_INSET_PX}px` } as CSSProperties)
     : undefined;
   const sidebarHandleCenterline = "var(--freed-sidebar-handle-centerline, 264px)";
   const toolbarBoundaryWidth = `calc(${sidebarHandleCenterline} + ${px(toolbarGapHalfPx)})`;
-  const leftToolbarWidth = !isMobileDevice
+  const leftToolbarWidth = !isMobile
     ? px(layoutControlMetrics.reservedWidthPx)
     : toolbarBoundaryWidth;
-  const leftToolbarStyle = !isMobileDevice
+  const leftToolbarStyle = !isMobile
     ? ({
         position: "relative",
         width: leftToolbarWidth,
@@ -1178,6 +1161,11 @@ export function Header({
   const layoutControlWrapperClass = "absolute inset-y-0 inline-flex items-center";
   const toolbarContainerStyle = {
     ...(headerDragRegion ? dragStyle : {}),
+    // Keep narrow-screen controls clear of rounded device edges and safe areas.
+    ...((isMobile || isMobileDevice) && !headerDragRegion ? {
+      paddingLeft: "max(6px, var(--safe-area-left, env(safe-area-inset-left, 0px)))",
+      paddingRight: "max(6px, var(--safe-area-right, env(safe-area-inset-right, 0px)))",
+    } : {}),
     boxSizing: "border-box",
     height: px(topToolbarHeightPx),
     minHeight: px(topToolbarHeightPx),
@@ -1230,7 +1218,7 @@ export function Header({
   useEffect(() => {
     const updateToolbarBreakpoints = () => {
       setIsBelowLargeToolbar(window.innerWidth < TOOLBAR_COLLAPSE_BREAKPOINT_PX);
-      setIsBelowReaderBookmarkToolbar(window.innerWidth < READER_BOOKMARK_INLINE_MIN_WIDTH_PX);
+      setToolbarViewportWidth(window.innerWidth);
     };
 
     updateToolbarBreakpoints();
@@ -1302,7 +1290,7 @@ export function Header({
   }, [hideMobileDrawerToolbarActions]);
 
   useLayoutEffect(() => {
-    if (isMobileDevice) return undefined;
+    if (isMobile) return undefined;
 
     let active = true;
     const updateLayoutControlMetrics = () => {
@@ -1350,12 +1338,9 @@ export function Header({
       const previewToggleLeftPx = Math.ceil(
         sidebarToggleLeftPx + READER_LAYOUT_CONTROL_BUTTON_SIZE_PX + READER_LAYOUT_CONTROL_BUTTON_GAP_PX,
       );
-      const readerLayoutControlVisualInsetPx =
-        (READER_LAYOUT_CONTROL_BUTTON_SIZE_PX - READER_LAYOUT_CONTROL_ICON_SIZE_PX) / 2;
       const toolbarBoundaryWidthPx =
         sidebarToggleLeftPx +
-        readerLayoutControlPairWidthPx -
-        (readerActive ? readerLayoutControlVisualInsetPx : 0);
+        readerLayoutControlPairWidthPx;
       const toolbarSlotPaddingRightPx = readerActive
         ? 0
         : TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX;
@@ -1426,7 +1411,7 @@ export function Header({
     };
   }, [
     isBelowLargeToolbar,
-    isMobileDevice,
+    isMobile,
     previewToggleMounted,
     readerActive,
     showDesktopReaderLayoutToggle,
@@ -1511,14 +1496,14 @@ export function Header({
           style={toolbarContainerStyle}
         >
           <div
-            className={`theme-toolbar-cluster theme-toolbar-cluster-tight flex h-full shrink-0 items-center ${isMobileDevice ? "pl-2" : ""}`}
+            className={`theme-toolbar-cluster theme-toolbar-cluster-tight flex h-full shrink-0 items-center ${isMobile && !headerDragRegion ? "pl-2" : ""}`}
           >
             <div
               ref={layoutControlHostRef}
               className="relative flex h-full shrink-0 items-center"
               style={leftToolbarStyle}
             >
-              {isMobileDevice ? (
+              {isMobile ? (
                 <Tooltip label="Menu">
                   <button
                     onClick={onMobileMenuToggle}
@@ -1534,7 +1519,7 @@ export function Header({
 
               <div
                 data-testid="workspace-toolbar-logo-drag-region"
-                className="flex h-full min-w-0 flex-1 items-center pl-3 sm:pl-4"
+                className={`${isMobile ? "hidden" : "flex"} h-full min-w-0 flex-1 items-center pl-3 sm:pl-4`}
                 {...getPassiveDragRegionProps(headerDragRegion, toolbarLogoRowStyle)}
               >
                 <span
@@ -1547,7 +1532,7 @@ export function Header({
                 </span>
               </div>
 
-              {!isMobileDevice ? (
+              {!isMobile ? (
                 <div
                   data-testid="desktop-layout-control-cluster"
                   className="absolute inset-y-0"
@@ -1603,9 +1588,7 @@ export function Header({
 
           <div
             className="min-w-0 basis-0 flex-1 overflow-hidden"
-            style={headerDragRegion
-              ? ({ ...collapsedReaderTitleStyle, ...dragStyle } as CSSProperties)
-              : collapsedReaderTitleStyle}
+            style={headerDragRegion ? dragStyle : undefined}
             {...(headerDragRegion ? { "data-tauri-drag-region": true } : {})}
           >
             {readerActive ? (
@@ -1637,18 +1620,22 @@ export function Header({
                     {...getPassiveDragRegionProps(headerDragRegion)}
                   >
                     {contextualListTitle}
-                    <span
-                      className="mx-1.5 font-normal text-[var(--theme-text-muted)]"
-                      {...getPassiveDragRegionProps(headerDragRegion)}
-                    >
-                      •
-                    </span>
-                    <span
-                      className="font-normal text-[var(--theme-text-muted)]"
-                      {...getPassiveDragRegionProps(headerDragRegion)}
-                    >
-                      {currentListSubtitle}
-                    </span>
+                    {showReaderItemCount ? (
+                      <>
+                        <span
+                          className="mx-1.5 font-normal text-[var(--theme-text-muted)]"
+                          {...getPassiveDragRegionProps(headerDragRegion)}
+                        >
+                          •
+                        </span>
+                        <span
+                          className="font-normal text-[var(--theme-text-muted)]"
+                          {...getPassiveDragRegionProps(headerDragRegion)}
+                        >
+                          {currentListSubtitle}
+                        </span>
+                      </>
+                    ) : null}
                   </p>
                 </div>
               </button>
@@ -1681,12 +1668,7 @@ export function Header({
           </div>
 
           <div
-            className={readerActive
-              ? isBelowLargeToolbar
-                ? "theme-toolbar-cluster theme-toolbar-cluster-tight absolute right-0 top-1/2 z-10 flex shrink-0 -translate-y-1/2 items-center justify-end pr-2"
-                : "theme-toolbar-cluster theme-toolbar-cluster-tight ml-auto flex min-w-max shrink-0 items-center pr-2"
-              : "theme-toolbar-cluster theme-toolbar-cluster-tight flex min-w-max shrink-0 items-center pr-2"}
-            style={collapsedReaderActionStyle}
+            className="theme-toolbar-cluster theme-toolbar-cluster-tight flex min-w-max shrink-0 items-center pr-2"
           >
             <ToolbarAnimatedSlot
               visible={!readOnly}
@@ -1702,7 +1684,7 @@ export function Header({
                   className={`${TOOLBAR_ICON_BUTTON_CLASS} ${
                     activityPopoverOpen
                       ? "theme-toolbar-button-active"
-                      : isMobileDevice
+                      : isMobile
                         ? "theme-toolbar-button-ghost"
                         : "theme-toolbar-button-neutral"
                   }`}
@@ -1710,23 +1692,20 @@ export function Header({
                   aria-expanded={activityPopoverOpen}
                   aria-label={`Background activity: ${backgroundActivityStatus.label}`}
                 >
-                  {backgroundActivityStatus.tone === "idle" ? (
-                    <span
-                      className="inline-flex h-4 w-4 items-center justify-center"
-                      data-testid="background-activity-status"
-                      aria-label={backgroundActivityStatus.label}
-                      title={backgroundActivityStatus.label}
-                    >
-                      <RefreshIcon />
-                    </span>
-                  ) : (
-                    <ProviderStatusIndicator
-                      tone={backgroundActivityStatus.tone}
-                      syncing={backgroundActivityActive}
-                      label={backgroundActivityStatus.label}
-                      testId="background-activity-status"
-                    />
-                  )}
+                  <span
+                    className={`inline-flex h-4 w-4 items-center justify-center ${
+                      backgroundActivityStatus.tone === "critical"
+                        ? "text-[rgb(var(--theme-feedback-danger-rgb))]"
+                        : backgroundActivityStatus.tone === "warning"
+                          ? "text-[rgb(var(--theme-feedback-warning-rgb))]"
+                          : "text-[var(--theme-text-muted)]"
+                    }`}
+                    data-testid="background-activity-status"
+                    aria-label={backgroundActivityStatus.label}
+                    title={backgroundActivityStatus.label}
+                  >
+                    <RefreshIcon />
+                  </span>
                 </button>
               </Tooltip> : null}
             </ToolbarAnimatedSlot>
@@ -1741,32 +1720,6 @@ export function Header({
               </span>
             ) : selectedItem ? (
               <>
-                <ToolbarAnimatedSlot visible={!isMobile && !isBelowLargeToolbar} width="4.5rem" className="hidden lg:flex">
-                  {!isBelowLargeToolbar ? (
-                  <Tooltip label={display.reading.focusMode ? "Disable focus mode" : "Enable focus mode"}>
-                    <button
-                      onClick={handleToggleFocusMode}
-                      {...getToolbarControlProps()}
-                      style={{
-                        ...(headerDragRegion ? toolbarControlStyle : undefined),
-                        width: "4.5rem",
-                      }}
-                      className={`inline-flex h-9 w-full items-center justify-center rounded-lg px-2.5 py-0 text-sm font-bold leading-none ${
-                        display.reading.focusMode
-                          ? "theme-toolbar-button-active"
-                          : "theme-toolbar-button-neutral"
-                      }`}
-                      aria-pressed={display.reading.focusMode}
-                      aria-label="Toggle focus reading mode"
-                    >
-                      <span className="inline-flex items-baseline leading-none" aria-hidden="true">
-                        <span className="font-black">F</span>
-                        <span className="text-xs font-light">ocus</span>
-                      </span>
-                    </button>
-                  </Tooltip>
-                  ) : null}
-                </ToolbarAnimatedSlot>
 
                 <ToolbarAnimatedSlot visible={showInlineReaderBookmark} width={TOOLBAR_ICON_BUTTON_SIZE}>
                   {showInlineReaderBookmark ? (
@@ -1780,6 +1733,7 @@ export function Header({
                             : "theme-toolbar-button-neutral"
                         }`}
                         aria-label={selectedItem.userState.saved ? "Unsave" : "Save"}
+                        aria-pressed={selectedItem.userState.saved}
                       >
                         <svg
                           className="h-5 w-5"
@@ -1797,7 +1751,6 @@ export function Header({
                 <ToolbarAnimatedSlot
                   visible={showToolbarOverflowMenuButton}
                   width={TOOLBAR_ICON_BUTTON_SIZE}
-                  flushStartMargin={isBelowLargeToolbar && !showInlineReaderBookmark}
                   style={{ order: 98 }}
                 >
                   {showToolbarOverflowMenuButton ? (
@@ -1809,7 +1762,7 @@ export function Header({
                         {...getToolbarControlProps()}
                         data-testid="toolbar-overflow-button"
                         className={`${TOOLBAR_ICON_BUTTON_CLASS} ${
-                          isMobileDevice ? "theme-toolbar-button-ghost" : "theme-toolbar-button-neutral"
+                          isMobile ? "theme-toolbar-button-ghost" : "theme-toolbar-button-neutral"
                         }`}
                         aria-haspopup="menu"
                         aria-expanded={toolbarOverflowMenuOpen}
@@ -1833,6 +1786,7 @@ export function Header({
                           : "theme-toolbar-button-neutral"
                       }`}
                       aria-label={selectedItem.userState.archived ? "Unarchive" : "Archive"}
+                      aria-pressed={selectedItem.userState.archived}
                     >
                       <ArchiveIcon className="h-5 w-5" />
                     </button>
@@ -1840,21 +1794,6 @@ export function Header({
                   ) : null}
                 </ToolbarAnimatedSlot>
 
-                {selectedItem.sourceUrl ? (
-                  <ToolbarAnimatedSlot visible={true} width="4.5rem" style={{ order: 99 }}>
-                    <button
-                      onClick={handleOpenReaderUrl}
-                      {...getToolbarControlProps({ width: "4.5rem" })}
-                      className="theme-toolbar-button-neutral inline-flex h-9 items-center justify-center gap-1.5 rounded-lg px-2.5 py-0 text-sm"
-                      aria-label="Open"
-                    >
-                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5h5m0 0v5m0-5L10 14M5 9v10h10" />
-                      </svg>
-                      <span>Open</span>
-                    </button>
-                  </ToolbarAnimatedSlot>
-                ) : null}
               </>
             ) : (
               <>
@@ -1898,6 +1837,7 @@ export function Header({
                   {showArchivedToolbar && savedArchivedCount > 0 && !isBelowLargeToolbar ? (
                     <button
                       onClick={handleUnarchiveSavedClick}
+                      disabled={libraryFacetStatus !== "ready"}
                       {...getToolbarControlProps()}
                       className="theme-toolbar-button-ghost inline-flex h-9 items-center rounded-lg px-3 py-0 text-sm"
                     >
@@ -2012,7 +1952,7 @@ export function Header({
                             {...getToolbarControlProps()}
                             data-testid="toolbar-overflow-button"
                             className={`${TOOLBAR_ICON_BUTTON_CLASS} ${
-                              isMobileDevice ? "theme-toolbar-button-ghost" : "theme-toolbar-button-neutral"
+                              isMobile ? "theme-toolbar-button-ghost" : "theme-toolbar-button-neutral"
                             }`}
                             aria-haspopup="menu"
                             aria-expanded={toolbarOverflowMenuOpen}
@@ -2031,7 +1971,7 @@ export function Header({
                             {...getToolbarControlProps()}
                             data-testid="mobile-toolbar-filter-button"
                             className={`${TOOLBAR_ICON_BUTTON_CLASS} ${
-                              isMobileDevice ? "theme-toolbar-button-ghost" : "theme-toolbar-button-neutral"
+                              isMobile ? "theme-toolbar-button-ghost" : "theme-toolbar-button-neutral"
                             }`}
                             aria-haspopup="menu"
                             aria-expanded={signalFilterMenuOpen}
@@ -2047,6 +1987,25 @@ export function Header({
 
               </>
             )}
+            {readerActive && showCollapsedToolbarFilterMenu ? (
+              <ToolbarAnimatedSlot visible width={TOOLBAR_ICON_BUTTON_SIZE} style={{ order: 100 }}>
+                <Tooltip label="View settings">
+                  <button
+                    ref={signalFilterButtonRef}
+                    type="button"
+                    onClick={toggleSignalFilterMenu}
+                    {...getToolbarControlProps()}
+                    data-testid="reader-view-settings-button"
+                    className={`${TOOLBAR_ICON_BUTTON_CLASS} ${isMobile ? "theme-toolbar-button-ghost" : "theme-toolbar-button-neutral"}`}
+                    aria-haspopup="menu"
+                    aria-expanded={signalFilterMenuOpen}
+                    aria-label="View settings"
+                  >
+                    <FilterIcon className="h-5 w-5" />
+                  </button>
+                </Tooltip>
+              </ToolbarAnimatedSlot>
+            ) : null}
           </div>
         </div>
       </header>
@@ -2075,13 +2034,15 @@ export function Header({
                   key={action.id}
                   type="button"
                   role="menuitem"
+                  disabled={action.disabled}
+                  title={action.disabled ? (readOnly ? "Unavailable in this read-only demo" : "Refreshing counts") : undefined}
                   onClick={() => {
                     action.onClick();
                     if (action.id !== "delete-archived" || action.danger) {
                       setToolbarOverflowMenuOpen(false);
                     }
                   }}
-                  className={`flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors hover:bg-[var(--theme-bg-muted)] ${
+                  className={`flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors hover:bg-[var(--theme-bg-muted)] disabled:cursor-not-allowed disabled:opacity-40 ${
                     action.danger
                       ? "text-red-400"
                       : action.active
@@ -2174,6 +2135,49 @@ export function Header({
               />
             </div>
           </div>
+
+          {readerActive ? (
+            <div className="px-3 pb-3">
+              <div className="mb-2 flex items-center justify-between gap-3 px-1">
+                <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
+                  Focus mode
+                </p>
+                <Tooltip
+                  label="Focus mode"
+                  description="Bolds word beginnings to help guide your eyes through the text."
+                  side="top"
+                >
+                  <button
+                    type="button"
+                    aria-label="About focus mode"
+                    className="flex h-5 w-5 items-center justify-center rounded text-[var(--theme-text-muted)] hover:text-[var(--theme-text-primary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--theme-accent-primary)]"
+                  >
+                    <svg
+                      className="h-4 w-4"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={1.5}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </button>
+                </Tooltip>
+              </div>
+              <ToolbarToggleGroup
+                dataTestId="reader-focus-toggle"
+                options={[{ value: "off", label: "Focus off" }, { value: "on", label: "Focus on" }]}
+                value={display.reading.focusMode ? "on" : "off"}
+                onChange={(value) => {
+                  if ((value === "on") !== display.reading.focusMode) handleToggleFocusMode();
+                }}
+                fullWidth
+              />
+            </div>
+          ) : null}
 
           {showFilterMenuFeedCardDensityControl ? (
             <div

@@ -40,7 +40,7 @@ fn binary64_wrapper(value: f64) -> Value {
     })
 }
 
-fn decode_binary64_wrapper(value: &Value) -> Result<f64, ContentRecordError> {
+pub(crate) fn decode_binary64_wrapper(value: &Value) -> Result<f64, ContentRecordError> {
     let object = value.as_object().ok_or_else(|| {
         ContentRecordError("checkpoint fractional wrapper must be an object".into())
     })?;

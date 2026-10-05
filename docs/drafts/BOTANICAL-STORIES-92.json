@@ -1,0 +1,179 @@
+{
+  "status": "bounded_review_complete_zero_proposals",
+  "counts": {
+    "exactPublishedImagesOpened": 5,
+    "proposals": 0,
+    "admitted": 0,
+    "newIdentities": 0
+  },
+  "proposals": [],
+  "media": [],
+  "holds": [
+    {
+      "verdict": "image_hold",
+      "reason": "Cultivated fern beside bright blue wall, finger intrudes lower left, many fallen leaves and other plants. Subject identification present but no strong Story framing.",
+      "media": {
+        "observationId": 193477182,
+        "photoId": 339881943,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/339881943/large.jpg",
+        "localFile": "/tmp/botanical92/193477182.jpg",
+        "bytes": 592121,
+        "sha1": "24e1ebe84dcbeef9710039523d647fa35b93ee16",
+        "sha256": "5bc37861daece5b2908eaf85498a7a92bd417957f7452fda58bc93eccd384906",
+        "dimensions": [
+          768,
+          1024
+        ],
+        "seconds": 0.782,
+        "status": 200,
+        "attribution": "no rights reserved, uploaded by Anthony O'Leary",
+        "license": "CC0",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "sourceUrl": "https://www.inaturalist.org/observations/193477182",
+        "sourceLocal": "/tmp/botanical92/obs-193477182.json",
+        "sourceMetadataUrl": "https://www.inaturalist.org/observations/193477182.json",
+        "sourceTaxon": "Polystichum setiferum",
+        "qualityGrade": "casual",
+        "identificationAgreements": 2,
+        "identificationDisagreements": 0,
+        "aggregated": false
+      },
+      "body": null
+    },
+    {
+      "verdict": "unspent_source_no_prose",
+      "reason": "Attractive isolated green pinna against soft dark foliage; fine silk strands visible above. No spider or prey legibly documented. An imagined response to transmitted web vibration approached the recent Hester lingering-tremor mechanism. No literal passage written. The image remains usable for a genuinely different scene.",
+      "media": {
+        "observationId": 246030415,
+        "photoId": 439131872,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/439131872/large.jpg",
+        "localFile": "/tmp/botanical92/246030415.jpg",
+        "bytes": 186886,
+        "sha1": "4822caf37d69cdaedda9696e9910b86f3b6a48c8",
+        "sha256": "6eb6be20e1c8376c0c220c8b3d75184c3b0bdf5aaa01a92a004054d7e98d22ce",
+        "dimensions": [
+          1024,
+          680
+        ],
+        "seconds": 0.639,
+        "status": 200,
+        "attribution": "(c) Ben Mitchell, some rights reserved (CC BY), uploaded by Ben Mitchell",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "sourceUrl": "https://www.inaturalist.org/observations/246030415",
+        "sourceLocal": "/tmp/botanical92/obs-246030415.json",
+        "sourceMetadataUrl": "https://www.inaturalist.org/observations/246030415.json",
+        "sourceTaxon": "Polystichum setiferum",
+        "qualityGrade": "research",
+        "identificationAgreements": 2,
+        "identificationDisagreements": 0,
+        "aggregated": false
+      },
+      "body": null
+    },
+    {
+      "verdict": "image_hold",
+      "reason": "Large fronds at a brick opening among bare saplings and debris. Crossed twigs are visible but do not establish a young frond pinned by a fallen branch or springing free. Busy broad portrait; no invented mechanism promoted as observation.",
+      "media": {
+        "observationId": 261120060,
+        "photoId": 469054877,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/469054877/large.jpeg",
+        "localFile": "/tmp/botanical92/261120060.jpg",
+        "bytes": 935630,
+        "sha1": "3fe6e454e54bd4995e87ff4b6bcaa4e187eab366",
+        "sha256": "86a31eeb16f320dded764a1d911aff4e3d483ff1db9018a4629ac01bf0bfa39f",
+        "dimensions": [
+          1024,
+          771
+        ],
+        "seconds": 0.867,
+        "status": 200,
+        "attribution": "(c) Karen Fry, some rights reserved (CC BY), uploaded by Karen Fry",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "sourceUrl": "https://www.inaturalist.org/observations/261120060",
+        "sourceLocal": "/tmp/botanical92/obs-261120060.json",
+        "sourceMetadataUrl": "https://www.inaturalist.org/observations/261120060.json",
+        "sourceTaxon": "Polystichum setiferum",
+        "qualityGrade": "research",
+        "identificationAgreements": 1,
+        "identificationDisagreements": 0,
+        "aggregated": false
+      },
+      "body": null
+    },
+    {
+      "verdict": "unspent_source_no_prose",
+      "reason": "Clear yellowish slug on dark wood below multiple pink Lycogala bodies. Slug contact, grazing, mucus on a fruiting body or deformation is not visible. Oona already turned gray in Rosy, so any pink scene needs explicit recollection. Genus-level primary identification matches the intentionally limited canon, despite needs_id status. No distinct worthwhile incident authored; no invented predation.",
+      "media": {
+        "observationId": 28294878,
+        "photoId": 44096193,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/44096193/large.jpeg",
+        "localFile": "/tmp/botanical92/28294878.jpg",
+        "bytes": 151381,
+        "sha1": "9253162de1a7d057faaf8d5e9683493ef1b6dcb0",
+        "sha256": "f522dbd41be4136e1290555dbaf9f6bd61573a76b046b7a490d17e0825b69a27",
+        "dimensions": [
+          1024,
+          707
+        ],
+        "seconds": 0.561,
+        "status": 200,
+        "attribution": "(c) Sarah Culliton, some rights reserved (CC BY), uploaded by Sarah Culliton",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "sourceUrl": "https://www.inaturalist.org/observations/28294878",
+        "sourceLocal": "/tmp/botanical92/obs-28294878.json",
+        "sourceMetadataUrl": "https://www.inaturalist.org/observations/28294878.json",
+        "sourceTaxon": "Lycogala",
+        "qualityGrade": "needs_id",
+        "identificationAgreements": 1,
+        "identificationDisagreements": 0,
+        "aggregated": false
+      },
+      "body": null
+    },
+    {
+      "verdict": "image_hold",
+      "reason": "Collected Mycena interrupta fruiting bodies on a wood fragment on white paper with a large ruler. Pale blue undersides visible but whole scene is a specimen display, soft at the mushroom details. Does not meet visual Story bar; no relocation or picking episode forced onto Ludo.",
+      "media": {
+        "observationId": 215643883,
+        "photoId": 381285019,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/381285019/large.jpeg",
+        "localFile": "/tmp/botanical92/215643883.jpg",
+        "bytes": 447329,
+        "sha1": "f47c58562c8d4f0513aeca9145d3e4ccbec1fe70",
+        "sha256": "9b9a0d971e080e758e2ffd56462db5291c2b67d28b3179f11666ba1edcf9e093",
+        "dimensions": [
+          768,
+          1024
+        ],
+        "seconds": 0.828,
+        "status": 200,
+        "attribution": "(c) Vicki and Craig Moffat, some rights reserved (CC BY), uploaded by Vicki and Craig Moffat",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "sourceUrl": "https://www.inaturalist.org/observations/215643883",
+        "sourceLocal": "/tmp/botanical92/obs-215643883.json",
+        "sourceMetadataUrl": "https://www.inaturalist.org/observations/215643883.json",
+        "sourceTaxon": "Mycena interrupta",
+        "qualityGrade": "research",
+        "identificationAgreements": 1,
+        "identificationDisagreements": 0,
+        "aggregated": false
+      },
+      "body": null
+    }
+  ],
+  "canonReview": [
+    "Read current Oona full arc and strange-canon02/10 references: genus Lycogala, one fruiting episode, mature gray after Rosy, no walking fruit bodies or Physarum borrowed behaviors.",
+    "Ivo retains existing Polystichum setiferum identity and Coimbra home; no new bodily mechanism or location authored.",
+    "Ludo retains Mycena interrupta and Tasmanian woodland home. Specimen-table photo does not establish a coherent new entry."
+  ],
+  "limitations": [
+    "Only published large files individually opened, not full uploads.",
+    "Fine silk and nearby slug are visible; particular interaction is not documented.",
+    "No conclusion that these characters or sources are exhausted. Two sources are expressly unspent.",
+    "Only92 draft files written. No runtime, prior prose, avatars or other-task files changed."
+  ]
+}

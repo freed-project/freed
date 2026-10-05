@@ -23,6 +23,9 @@
 
 set -euo pipefail
 
+# Directory resolution must not depend on caller shell navigation settings.
+unset CDPATH
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=./lib/node-tooling.sh
 source "${SCRIPT_DIR}/lib/node-tooling.sh"
@@ -95,6 +98,10 @@ while [[ $# -gt 0 ]]; do
       TARGET_HINT="${1#*=}"
       shift
       ;;
+    --)
+      PASSTHROUGH_ARGS+=("$@")
+      break
+      ;;
     --help|-h)
       usage
       exit 0
@@ -118,32 +125,92 @@ print_node_tooling_preflight
 # Machine preflight, warn-only: report broken tooling before worktree work.
 "$(resolve_node_bin)" "${SCRIPT_DIR}/doctor.mjs" || true
 
-EXISTING_WORKTREES=()
-while IFS= read -r line; do
-  EXISTING_WORKTREES+=("$line")
-done < <(git worktree list --porcelain | awk '/^worktree / { print $2 }')
-
-git worktree add "${PASSTHROUGH_ARGS[@]}"
-
-CURRENT_WORKTREES=()
-while IFS= read -r line; do
-  CURRENT_WORKTREES+=("$line")
-done < <(git worktree list --porcelain | awk '/^worktree / { print $2 }')
-
-NEW_WT=""
-for candidate in "${CURRENT_WORKTREES[@]}"; do
-  if ! printf '%s\n' "${EXISTING_WORKTREES[@]}" | grep -Fxq "${candidate}"; then
-    NEW_WT="${candidate}"
-    break
+# Resolve the path supplied to this invocation, never a difference between
+# global worktree lists: another caller can create a worktree concurrently.
+REQUESTED_PATH=""
+EXPECT_VALUE=false
+OPTIONS_ENDED=false
+for arg in "${PASSTHROUGH_ARGS[@]}"; do
+  if ${EXPECT_VALUE}; then
+    EXPECT_VALUE=false
+    continue
   fi
+  if ! ${OPTIONS_ENDED}; then
+    case "${arg}" in
+      --) OPTIONS_ENDED=true; continue ;;
+      --*)
+        # Git accepts unambiguous long-option abbreviations. Resolve them
+        # against the worktree-add options before deciding whether to skip a value.
+        option="${arg%%=*}"
+        matches=()
+        for known in force detach checkout lock quiet track guess-remote reason relative-paths orphan no-relative-paths no-orphan no-force no-detach no-checkout no-lock no-quiet no-track no-guess-remote no-reason; do
+          if [[ "--${known}" == "${option}" ]]; then
+            matches=("${known}")
+            break
+          fi
+          if [[ "--${known}" == "${option}"* ]]; then
+            matches+=("${known}")
+          fi
+        done
+        if [[ ${#matches[@]} -ne 1 ]]; then
+          echo "Error: ambiguous or unsupported worktree option '${arg}'." >&2
+          exit 1
+        fi
+        if [[ "${matches[0]}" == reason && "${arg}" != *=* ]]; then
+          EXPECT_VALUE=true
+        fi
+        continue
+        ;;
+      -?*)
+        # Short flags may be clustered; -b/-B consume the remaining suffix
+        # as their branch name, or the next argument when that suffix is empty.
+        short_options="${arg#-}"
+        while [[ -n "${short_options}" ]]; do
+          flag="${short_options:0:1}"
+          short_options="${short_options:1}"
+          case "${flag}" in
+            f|d|q) ;;
+            b|B)
+              [[ -n "${short_options}" ]] || EXPECT_VALUE=true
+              break
+              ;;
+            *)
+              echo "Error: unsupported worktree option '${arg}'." >&2
+              exit 1
+              ;;
+          esac
+        done
+        continue
+        ;;
+    esac
+  fi
+  REQUESTED_PATH="${arg}"
+  break
 done
+if [[ -z "${REQUESTED_PATH}" ]]; then
+  echo "Error: a worktree destination is required." >&2
+  exit 1
+fi
 
-if [[ -z "${NEW_WT}" ]]; then
-  echo "Error: failed to detect the newly created worktree path." >&2
+# Pin repository identity before Git creates the worktree. Verify the requested
+# directory is its own worktree root in this repository before initialization.
+if [[ "${REQUESTED_PATH}" != /* ]]; then
+  REQUESTED_PATH="$(pwd -P)/${REQUESTED_PATH}"
+fi
+COMMON_DIR="$(cd "$(git rev-parse --git-common-dir)" && pwd -P)"
+git worktree add "${PASSTHROUGH_ARGS[@]}"
+NEW_WT="$(cd "${REQUESTED_PATH}" && pwd -P)"
+CREATED_ROOT="$(git -C "${NEW_WT}" rev-parse --show-toplevel)"
+CREATED_ROOT="$(cd "${CREATED_ROOT}" && pwd -P)"
+CREATED_COMMON="$(git -C "${NEW_WT}" rev-parse --git-common-dir)"
+CREATED_COMMON="$(cd "${NEW_WT}" && cd "${CREATED_COMMON}" && pwd -P)"
+if [[ "${CREATED_ROOT}" != "${NEW_WT}" || "${CREATED_COMMON}" != "${COMMON_DIR}" ]]; then
+  echo "Error: requested destination is not the created worktree in this repository." >&2
   exit 1
 fi
 
 record_worktree_metadata "${NEW_WT}" "${INSTALL_MODE}" "${TARGET_HINT}"
+"$(resolve_node_bin)" "${SCRIPT_DIR}/task-decisions.mjs" init --worktree "${NEW_WT}"
 
 echo ""
 case "${INSTALL_MODE}" in

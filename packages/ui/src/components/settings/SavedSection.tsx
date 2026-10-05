@@ -59,7 +59,7 @@ function TabBar({
 // ── Root section component ─────────────────────────────────────────────────────
 
 export function SavedSection() {
-  const { importMarkdown } = usePlatform();
+  const { importMarkdown, LibrarySetupState } = usePlatform();
 
   const availableTabs: { id: SavedTab; label: string }[] = [
     { id: "overview" as const, label: "Overview" },
@@ -75,7 +75,7 @@ export function SavedSection() {
       {availableTabs.length > 1 && (
         <TabBar tabs={availableTabs} active={activeTab} onChange={setActiveTab} />
       )}
-      {activeTab === "overview" && <OverviewPane />}
+      {activeTab === "overview" && (LibrarySetupState ? <LibrarySetupState /> : <OverviewPane />)}
       {activeTab === "import" && importMarkdown && <ImportPane />}
       {activeTab === "export" && <ExportPane />}
     </div>
@@ -87,8 +87,12 @@ export function SavedSection() {
 function OverviewPane() {
   const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
   const [selectedRange, setSelectedRange] = useState<HealthChartRange>("daily");
-  const { analytics, loading, request } =
+  const { analytics, loading, status, request } =
     useLibrarySavedAnalytics(searchCorpusVersion);
+
+  if (status === "failed" || status === "unavailable") {
+    return <div role="status" className="py-8 text-center text-sm text-[var(--theme-text-muted)]">Saved overview is temporarily unavailable.</div>;
+  }
 
   if (loading || !analytics) {
     return (

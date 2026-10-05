@@ -19,6 +19,7 @@ export const LAND_TWENTY_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
         "subject": "Bison bison",
         "platform": "medium",
         "contentType": "article",
+        "classification": "personal",
         "mediaSha1": "c29681ffde90bac11c4aa14c6ac8bc8d174f84ce",
         "theme": "family",
         "title": "Four places to stand",
@@ -26,12 +27,32 @@ export const LAND_TWENTY_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       },
       {
         "subject": "Bison bison",
+        "classification": "inspiring",
         "mediaSha1": "cf117a4d5acc57acea92cf259c21fcf806bb9a28",
         "theme": "wonder",
         "title": "A use for this",
         "body": "I had been rubbing every tree in the meadow. This flat thing reaches the part they miss. Kept my back under it until the itch went quiet. Nobody can have it. I found what it is for."
       },
-      {"subject": "Bison bison", "platform": "facebook", "contentType": "post", "theme": "danger", "title": "Where I put my weight", "body": "He pushed my head sideways until I could see grass with one eye and nothing but him with the other.\n\nI drove harder. My back feet dug in. My front feet slid.\n\nHad to stop trying to move him long enough to move one foot of my own. Set it farther out. Felt the ground hold. Brought my head back against his and pushed from there.\n\nWe turned a little. Neither of us went backward. I could feel him breathing through the hair against my forehead.\n\nWhen we parted, I stood with my feet still spread. He stood that way too.", "mediaSha1": "5ab8b5fdd92d8cca93b3d561da37407641b854cb"}
+      {
+        "subject": "Bison bison",
+        "platform": "facebook",
+        "contentType": "post",
+        "theme": "danger",
+        "title": "Where I put my weight",
+        "body": "He pushed my head sideways until I could see grass with one eye and nothing but him with the other.\n\nI drove harder. My back feet dug in. My front feet slid.\n\nHad to stop trying to move him long enough to move one foot of my own. Set it farther out. Felt the ground hold. Brought my head back against his and pushed from there.\n\nWe turned a little. Neither of us went backward. I could feel him breathing through the hair against my forehead.\n\nWhen we parted, I stood with my feet still spread. He stood that way too.",
+        "classification": "inspiring",
+        "mediaSha1": "5ab8b5fdd92d8cca93b3d561da37407641b854cb"
+      },
+      {
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "social",
+        "title": "I waited out the dust",
+        "body": "I shook the dust out of my coat. The bull beside me got up and shook his into it.\n\nWaited with my eyes shut. I could hear another one getting up. I kept them shut.",
+        "subject": "Bison bison",
+        "classification": "conversation",
+        "mediaSha1": "b5cd337d6cc362dbf4829502bc4202ecb96a3e20"
+      }
     ]
   },
   {
@@ -49,6 +70,7 @@ export const LAND_TWENTY_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
     "episodes": [
       {
         "subject": "Taxidea taxus",
+        "classification": "inspiring",
         "mediaSha1": "4be2cf255c005a07d899b8bb1522dd58a2120c72",
         "theme": "wonder",
         "title": "Learning its reach",
@@ -58,6 +80,7 @@ export const LAND_TWENTY_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
         "subject": "Taxidea taxus",
         "platform": "facebook",
         "contentType": "post",
+        "classification": "inspiring",
         "mediaSha1": "85e52e9105ab6f18f47fe1111c7e8c7c3912096b",
         "theme": "danger",
         "title": "After the feet",
@@ -80,6 +103,7 @@ export const LAND_TWENTY_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
     "episodes": [
       {
         "subject": "Cervus canadensis",
+        "classification": "personal",
         "mediaSha1": "ccd2101fdbfd45a5f221e5ff182c44a1a369f889",
         "theme": "family",
         "title": "Near enough",
@@ -87,6 +111,7 @@ export const LAND_TWENTY_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       },
       {
         "subject": "Cervus canadensis",
+        "classification": "inspiring",
         "mediaSha1": "e2427cea43cb4c2c2b6763a241744c67a528f72c",
         "theme": "transformation",
         "title": "Into the branches",
@@ -94,6 +119,7 @@ export const LAND_TWENTY_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       },
       {
         "subject": "Cervus canadensis",
+        "classification": "conversation",
         "mediaSha1": "df569e2b717b2d5401148e14802d61ab3524603f",
         "theme": "social",
         "title": "Last year's gap",
@@ -101,6 +127,7 @@ export const LAND_TWENTY_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       },
       {
         "subject": "Cervus canadensis",
+        "classification": "inspiring",
         "mediaSha1": "88d35b10fe0b6e20202fbf03e21cc3a12fe91c48",
         "theme": "transformation",
         "title": "Across the old antler",

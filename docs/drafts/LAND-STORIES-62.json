@@ -1,0 +1,416 @@
+{
+  "batch": "LAND-STORIES-62",
+  "status": "One Story admitted in isolated worktree; second source held",
+  "worktree": "/Users/aubreyfalconer/dev/freed-editorial-isolated",
+  "scope": "Two owned proposal documents and task-local evidence only. No runtime admission, provider changes, publication or other-task coordination.",
+  "entries": [
+    {
+      "id": "LAND-STORIES-62-01",
+      "status": "admitted",
+      "characterId": "edith-scrabble",
+      "identityName": "Edith Scrabble",
+      "platform": "instagram",
+      "contentType": "story",
+      "theme": "family",
+      "title": "I thought he was pushing",
+      "body": "Mother was already on top. I dug my claws into the snow and my brother took hold of me from behind. I thought he was pushing. Then his feet left the ground.\n\nI let go. We rolled over together. He crawled out from under me and began climbing the snow.",
+      "wordCount": 50,
+      "media": {
+        "index": 2,
+        "query": "black bear page 2",
+        "item": 81,
+        "sourceUrl": "https://npgallery.nps.gov/AssetDetail/e760d052-8be1-4010-8c3d-4dccf45a7672",
+        "sourceCachePath": "/tmp/freed-land62/2.html",
+        "record": {
+          "AltText": "Two bear cubs look at their mother who has successfully scaled the snow wall. One cub holds the other as the other puts its paw up towards the direction of the mother bear.",
+          "AssetBaseType": "File",
+          "AssetID": "e760d052-8be1-4010-8c3d-4dccf45a7672",
+          "AssetType": "Standard File",
+          "Brandings": [
+            {
+              "Name": "MAIN"
+            }
+          ],
+          "ConstraintsInformation": {
+            "Constraint": "Public domain",
+            "GrantingRights": "Full"
+          },
+          "CustomTextFields": [
+            {
+              "Name": "XmpMetadataDate",
+              "Value": "2024-06-27T20:02:06-07:00"
+            }
+          ],
+          "Description": "Bear cubs try to scale a snow wall",
+          "ImageCreateDate": {
+            "Date": "06/25/2024"
+          },
+          "ImageCreateDateTime": "06/25/2024 01:07:30 PM",
+          "Keywords": [
+            "Black Bear",
+            "Bear",
+            "Lassen"
+          ],
+          "NPSUnits": [
+            {
+              "Name": "Lassen Volcanic National Park",
+              "Type": "National Park",
+              "Code": "LAVO"
+            }
+          ],
+          "PhotoCredit": "NPS Photo/ Jake Edwards",
+          "PrimaryType": "image",
+          "Rating": 5,
+          "RelatedCollections": [
+            "NPS.gov Collection"
+          ],
+          "ResourceFormat": "jpg",
+          "ResourceType": "Image",
+          "Submitter": "hdhue",
+          "SubType": "jpeg",
+          "Title": "Bear Cubs try to Climb"
+        },
+        "original": {
+          "url": "https://npgallery.nps.gov/GetAsset/e760d052-8be1-4010-8c3d-4dccf45a7672/original.jpg?",
+          "publishedLabel": "2.9 MB, 5000x3333",
+          "localPath": "/tmp/freed-land62/2-original.jpg",
+          "bytes": 2891913,
+          "width": 5000,
+          "height": 3333,
+          "sha1": "a3de3c5d20a8bbfb6d86cb9cd07aebf86463deba",
+          "sha256": "1a40f7e5719224e003042bc2702abe4c7172cf6030f66dc8152f67163312485b"
+        },
+        "delivery": {
+          "url": "https://npgallery.nps.gov/GetAsset/e760d052-8be1-4010-8c3d-4dccf45a7672/proxyhires.jpg?",
+          "publishedLabel": "298.5 KB, 2000x1333",
+          "localPath": "/tmp/freed-land62/2-delivery.jpg",
+          "bytes": 305640,
+          "width": 2000,
+          "height": 1333,
+          "sha1": "1e45c1c5b6a2a37e1c57741b2e78efc7924ded44",
+          "sha256": "e583bf66d028c43d847841551e1a200d8ec1756e2474bb2ef9d7c6d17bf15142"
+        }
+      },
+      "attribution": "NPS Photo / Jake Edwards",
+      "license": "Public domain",
+      "licenseEvidence": "Exact NPS asset page says Public domain; search record ConstraintsInformation is Public domain / Full with no conflicting credit notice.",
+      "visibleScene": "Two cinnamon-colored black bear cubs stand in close contact at the base of a vertical snow wall. The left/front cub raises a forepaw toward the wall; the right/rear cub has its forelimbs around the other. An adult bear's lower legs are visible above them. Both cubs' feet are on the ground in the still.",
+      "fictionBoundary": "The foreground cub is Edith in fiction. Maternal location above and sibling-like contact are visible/source-captioned; identities and sexes, the mistaken interpretation, the brother lifting his feet, letting go, rolling and subsequent separate climbing are invented around that central contact. No falling or hanging companion is claimed photographed.",
+      "imageReview": "Exact 5000x3333 original and source-published 2000x1333 delivery individually opened before prose. Snow texture remains visible and cubs are legible; broad white space and partial adult at top are intentional scene context. Do not crop away either cub or the adult legs.",
+      "distinctness": "Does not turn escape into supporting a sleeper. Nobody stays still for another creature; two competing attempts collapse together and the brother tries a different surface. No meal, wing-space, nest-stick or paw-identification joke.",
+      "leadReview": "Lead independently opened exact delivery, portrait and220/48circles; image, prose and canon passed. Exact source hashes and byte lengths verified. See LAND-STORIES-62-ADMISSION.md."
+    },
+    {
+      "id": "LAND-STORIES-62-02",
+      "status": "hold",
+      "characterId": null,
+      "body": null,
+      "reason": "The separate single-cub snow-wall photograph is excellent but belongs to the same obstacle and would repeat the new candidate's central climbing failure. No second Story or second profile manufactured from it.",
+      "media": {
+        "index": 1,
+        "query": "black bear page 2",
+        "item": 79,
+        "sourceUrl": "https://npgallery.nps.gov/AssetDetail/67a92b7e-d516-4428-b3b6-f24145410119",
+        "sourceCachePath": "/tmp/freed-land62/1.html",
+        "record": {
+          "AltText": "Black Bear cub clutches onto a wall of snow as its legs dangle.",
+          "AssetBaseType": "File",
+          "AssetID": "67a92b7e-d516-4428-b3b6-f24145410119",
+          "AssetType": "Standard File",
+          "Brandings": [
+            {
+              "Name": "MAIN"
+            }
+          ],
+          "ConstraintsInformation": {
+            "Constraint": "Public domain",
+            "GrantingRights": "Full"
+          },
+          "Description": "Black Bear cub scales a snow wall",
+          "ImageCreateDate": {
+            "Date": "06/25/2024"
+          },
+          "ImageCreateDateTime": "06/25/2024 01:07:53 PM",
+          "Keywords": [
+            "Lassen",
+            "Black Bear",
+            "Bears"
+          ],
+          "NPSUnits": [
+            {
+              "Name": "Lassen Volcanic National Park",
+              "Type": "National Park",
+              "Code": "LAVO"
+            }
+          ],
+          "PhotoCredit": "NPS Photo/ Jake Edwards",
+          "PrimaryType": "image",
+          "Rating": 5,
+          "RelatedCollections": [
+            "NPS.gov Collection"
+          ],
+          "ResourceFormat": "jpg",
+          "ResourceType": "Image",
+          "Submitter": "hdhue",
+          "SubType": "jpeg",
+          "Title": "Black Bear Cub Climbs"
+        },
+        "original": {
+          "url": "https://npgallery.nps.gov/GetAsset/67a92b7e-d516-4428-b3b6-f24145410119/original.jpg?",
+          "publishedLabel": "3.1 MB, 5000x3333",
+          "localPath": "/tmp/freed-land62/1-original.jpg",
+          "bytes": 3160999,
+          "width": 5000,
+          "height": 3333,
+          "sha1": "30f5cc78a2d5102f7ce782be0f2f377fa2af8a3f",
+          "sha256": "11311195b6cdfdae3003c0e8bbb4bb09d4c153e7329c48076d9117df4fb16001"
+        },
+        "delivery": {
+          "url": "https://npgallery.nps.gov/GetAsset/67a92b7e-d516-4428-b3b6-f24145410119/proxyhires.jpg?",
+          "publishedLabel": "323.9 KB, 2000x1333",
+          "localPath": "/tmp/freed-land62/1-delivery.jpg",
+          "bytes": 331690,
+          "width": 2000,
+          "height": 1333,
+          "sha1": "47ccb5edc3c608c332dae3264ae917d7913868cc",
+          "sha256": "4e53a9efd0b8d2669589f8cf3fdc0df2ff7f57e66d64a2b9c56c641b465d5913"
+        }
+      },
+      "imageReview": "Exact original individually opened. Delivery metadata verified; full delivery not independently opened because episode-distinctness failed."
+    }
+  ],
+  "proposedCanon": {
+    "characterId": "edith-scrabble",
+    "identityName": "Edith Scrabble",
+    "species": "American black bear",
+    "taxon": "Ursus americanus",
+    "sex": "Female in fiction; photographic sex unrecorded",
+    "lifeStage": "Dependent juvenile cub; no numerical age and no future adult episode established",
+    "coat": "Cinnamon-brown; no inference that brown coat makes this Ursus arctos; no subspecies or genotype claim",
+    "platform": "instagram",
+    "bio": "I thought he was helping.",
+    "home": {
+      "name": "Forested slopes in Lassen Volcanic National Park, California",
+      "coordinates": {
+        "lat": 40.47,
+        "lng": -121.5
+      },
+      "boundary": "Approximate fictional home, not an exact den or claimed photo coordinate"
+    },
+    "relationships": "Mother and one unnamed brother. Primary narrative record identifies mother and two cubs; narrator and brother sexes and individual identities are fictional. No mate, offspring, orphanhood, injury or rescue.",
+    "body": "Rounded ears, small muzzle, clawed paws and a short tail; four weight-bearing limbs. Can grip and climb. No hands, opposable thumbs or unsupported anatomical claims.",
+    "privatePersonality": "Edith wants to get her body where she has decided it belongs and is quick to accept any contact that seems to help. She notices pressure before she works out its direction. She fears being left below, but does not become a generic anxious child. Her sibling is an active rival with the same immediate desire, not a caretaker or permanent antagonist.",
+    "voice": "Immediate physical reports, brief interpretation, then the consequence that corrects it. Retain the incomplete childhood understanding without baby talk, motivational morals or repeated pratfalls.",
+    "firstEvent": "A grip mistaken for a push turns out to be a brother trying to climb on her. Releasing the snow sends both cubs down, after which the brother changes climbing surface. This is the only proposed episode.",
+    "continuity": "New identity required because Beatrice has a black coat and Smokies home; do not mutate her to fit these Lassen cinnamon cub photographs. Do not bind the unused adult cinnamon mother photograph as Edith. The portrait is a same-session juvenile, not proof of the same biological individual.",
+    "spentIfAdmitted": "Mistaking a sibling grip for useful pushing, then discovering that the sibling is trying to climb on the narrator. Do not repeat this using another wall, child or animal.",
+    "biologicalSources": [
+      {
+        "url": "https://www.nps.gov/lavo/learn/nature/bear.htm",
+        "verifiedClaims": "Lassen American black bears are Ursus americanus, can have cinnamon fur, have rounded ears and non-retractable claws, inhabit forest and mountains, and cubs stay with their mother. No numeric reproduction, smell or torpor claim used."
+      }
+    ],
+    "admissionBoundary": "Entire new profile, Story and portrait require independent lead approval. No runtime or global canon edits in this batch."
+  },
+  "avatar": {
+    "characterId": "edith-scrabble",
+    "status": "admitted with focal .5/.445/2.4",
+    "source": {
+      "index": 4,
+      "query": "black bear page 2",
+      "item": 84,
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/664debdd-374c-476a-9b0e-b37a5ac8be18",
+      "sourceCachePath": "/tmp/freed-land62/4.html",
+      "record": {
+        "AltText": "Bear cub stands on snow-covered ground with a white backdrop. ",
+        "AssetBaseType": "File",
+        "AssetID": "664debdd-374c-476a-9b0e-b37a5ac8be18",
+        "AssetType": "Standard File",
+        "Brandings": [
+          {
+            "Name": "MAIN"
+          }
+        ],
+        "ConstraintsInformation": {
+          "Constraint": "Public domain",
+          "GrantingRights": "Full"
+        },
+        "CustomTextFields": [
+          {
+            "Name": "XmpMetadataDate",
+            "Value": "2024-06-27T20:59:55-07:00"
+          }
+        ],
+        "Description": "Bear cub in the snow ",
+        "ImageCreateDate": {
+          "Date": "06/25/2024"
+        },
+        "ImageCreateDateTime": "06/25/2024 12:56:53 PM",
+        "Keywords": [
+          "Lassen",
+          "Black Bear",
+          "Bear cub"
+        ],
+        "NPSUnits": [
+          {
+            "Name": "Lassen Volcanic National Park",
+            "Type": "National Park",
+            "Code": "LAVO"
+          }
+        ],
+        "PhotoCredit": "NPS Photo/ Jake Edwards",
+        "PrimaryType": "image",
+        "Rating": 5,
+        "RelatedCollections": [
+          "NPS.gov Collection"
+        ],
+        "ResourceFormat": "jpg",
+        "ResourceType": "Image",
+        "Submitter": "hdhue",
+        "SubType": "jpeg",
+        "Title": "Bear Cub in the Snow "
+      },
+      "original": {
+        "url": "https://npgallery.nps.gov/GetAsset/664debdd-374c-476a-9b0e-b37a5ac8be18/original.jpg?",
+        "publishedLabel": "3.0 MB, 7000x4667",
+        "localPath": "/tmp/freed-land62/4-original.jpg",
+        "bytes": 2906073,
+        "width": 7000,
+        "height": 4667,
+        "sha1": "fd9a7fed4a2beea7a1ce4d22229bb1841c596076",
+        "sha256": "7fdf08ce7fe4be01c880ed1f9d1cf1d2367c12e3daf7a975a20d34ff609dcc2f"
+      },
+      "delivery": {
+        "url": "https://npgallery.nps.gov/GetAsset/664debdd-374c-476a-9b0e-b37a5ac8be18/proxyhires.jpg?",
+        "publishedLabel": "521.9 KB, 3500x2333",
+        "localPath": "/tmp/freed-land62/4-delivery.jpg",
+        "bytes": 534388,
+        "width": 3499,
+        "height": 2333,
+        "sha1": "15ea5019ad83a2f700c94d3b45467808f9a430f4",
+        "sha256": "291ff7bd86305ffa59751aa8dc7f9a234492f7d443b22ec1336d4912535e941c"
+      }
+    },
+    "attribution": "NPS Photo / Jake Edwards",
+    "license": "Public domain / Full",
+    "alt": "Cinnamon-colored black bear cub facing the camera on snow.",
+    "sourceBoundary": "Juvenile color and life stage match narrative; sex and individual identity unrecorded. Same source session does not prove the same cub.",
+    "review": "Original, published delivery and actual 220/48 circular PNGs individually opened. Both ears, both eyes and muzzle remain recognizable at 48px; no other animal or watermark intrudes.",
+    "focalPoint": {
+      "x": 0.5,
+      "y": 0.445,
+      "zoom": 2.4
+    },
+    "sourceDimensions": [
+      3499,
+      2333
+    ],
+    "cropRectangle": [
+      1263.4583333333333,
+      552.1433333333332,
+      2235.5416666666665,
+      1524.2266666666667
+    ],
+    "rendering": "Square crop of source-published delivery centered on normalized focal point, side=min(width,height)/zoom; Lanczos resize and circular alpha mask. Proposed crop review, not a runtime screenshot.",
+    "renders": [
+      {
+        "localPath": "/tmp/freed-land62/edith-220-circle.png",
+        "width": 220,
+        "height": 220,
+        "bytes": 66269,
+        "sha256": "07f3534c312fcacac0f99e0f43c88c387a9e38c22eea245aa1e6a1430f1b4f4e"
+      },
+      {
+        "localPath": "/tmp/freed-land62/edith-48-circle.png",
+        "width": 48,
+        "height": 48,
+        "bytes": 6867,
+        "sha256": "e3d04bfd095d1921145d32e6f378f2f115063273e75a2901cf08786583751509"
+      }
+    ]
+  },
+  "additionalHold": {
+    "media": {
+      "index": 3,
+      "query": "black bear page 2",
+      "item": 98,
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/cd2360d3-018a-425b-a866-34219bf0e450",
+      "sourceCachePath": "/tmp/freed-land62/3.html",
+      "record": {
+        "AltText": "Two small black bear cubs climbing a tree.",
+        "AssetBaseType": "File",
+        "AssetID": "cd2360d3-018a-425b-a866-34219bf0e450",
+        "AssetType": "Standard File",
+        "Brandings": [
+          {
+            "Name": "MAIN"
+          }
+        ],
+        "ConstraintsInformation": {
+          "Constraint": "Public domain",
+          "GrantingRights": "Full"
+        },
+        "Description": "Two small black bear cubs climbing a tree.",
+        "ImageCreateDate": {
+          "Date": "08/01/2022"
+        },
+        "ImageCreateDateTime": "08/01/2022 11:22:46 AM",
+        "Keywords": [
+          "KAWW",
+          "Katahdin Woods and Waters",
+          "Katahdin",
+          "Maine",
+          "animal",
+          "animals",
+          "bear",
+          "black bear",
+          "bear cubs"
+        ],
+        "NPSUnits": [
+          {
+            "Name": "Katahdin Woods and Waters National Monument",
+            "Type": "National Monument",
+            "Code": "KAWW"
+          }
+        ],
+        "PhotoCredit": "NPS / K. Stauffer",
+        "PrimaryType": "image",
+        "Rating": 5,
+        "RelatedCollections": [
+          "NPS.gov Collection"
+        ],
+        "ResourceFormat": "jpg",
+        "ResourceType": "Image",
+        "Submitter": "amattei",
+        "SubType": "jpeg",
+        "Title": "20220801_KAWW_BlackBearCubs_CreditNPS_KStauffer.jpg"
+      },
+      "original": {
+        "url": "https://npgallery.nps.gov/GetAsset/cd2360d3-018a-425b-a866-34219bf0e450/original.jpg?",
+        "publishedLabel": "1.6 MB, 2381x1807",
+        "localPath": "/tmp/freed-land62/3-original.jpg",
+        "bytes": 1655488,
+        "width": 2381,
+        "height": 1807,
+        "sha1": "797c286765f9388860fc6214ab2eeaa08c549683",
+        "sha256": "64bb96caa342ec1e86adebdf1a6d7747355ea5352a43589d78e80f8c444c5623"
+      },
+      "delivery": {
+        "url": "https://npgallery.nps.gov/GetAsset/cd2360d3-018a-425b-a866-34219bf0e450/proxymdres.jpg?",
+        "publishedLabel": "439.6 KB, 1000x758",
+        "localPath": "/tmp/freed-land62/3-delivery.jpg",
+        "bytes": 450135,
+        "width": 999,
+        "height": 758,
+        "sha1": "fe0fa9cb58e69954c61b7e7f3e518de71bfe8c35",
+        "sha256": "d35b993a1d7259fcc7052d89e93ba334128f079fca1995036de4602663bf10cd"
+      }
+    },
+    "reason": "Two black cubs are tiny dark shapes high in a busy conifer scene. Exact original individually opened; no specific interaction clear enough for a Story, no existing character bound."
+  },
+  "verification": {
+    "sourceDeduplication": "All four original/delivery SHA-1 digests absent from current sample-corpus media JSON catalogs at review time. Edith name absent from current arcs/canon.",
+    "schema": "JSON parsed successfully.",
+    "restrictions": "No blocked-source retries, guessed media derivatives, network circumvention, dependency installation, runtime edits or admission. LAND58 holds preserved."
+  }
+}

@@ -10,6 +10,7 @@ import { create } from "zustand";
 import { isTauri } from "@tauri-apps/api/core";
 import type {
   BaseAppState,
+  VisibleFeedTotalCount,
   FeedItem,
   FilterOptions,
   RemoveFeedOptions,
@@ -284,7 +285,7 @@ interface AppState {
   mapFriendLocationCount: number;
   mapAllContentLocationCount: number;
   setMapLocationCounts: (friendCount: number, allContentCount: number) => void;
-  visibleFeedTotalCount: number;
+  visibleFeedTotalCount: VisibleFeedTotalCount;
 
   // X auth state
   xAuth: XAuthState;
@@ -311,7 +312,7 @@ interface AppState {
   selectedItemId: string | null;
   selectedPersonId: string | null;
   selectedAccountId: string | null;
-  setVisibleFeedTotalCount: (totalCount: number) => void;
+  setVisibleFeedTotalCount: (totalCount: VisibleFeedTotalCount) => void;
 
   // Initialization
   initialize: () => Promise<void>;
@@ -395,6 +396,7 @@ function shallowEqualRecord(
   );
 }
 
+// Resolved, time-filtered map counts belong to MapView, not runtime DTO placeholders.
 function runtimeStatePatch(state: LibraryCoreRuntimeStateV1): Pick<
   AppState,
   | "archivableCountByPlatform"
@@ -404,8 +406,6 @@ function runtimeStatePatch(state: LibraryCoreRuntimeStateV1): Pick<
   | "archivedItemCount"
   | "friendPersonCount"
   | "socialAccountCount"
-  | "mapAllContentLocationCount"
-  | "mapFriendLocationCount"
   | "preferences"
   | "searchCorpusVersion"
   | "totalArchivableCount"
@@ -421,8 +421,6 @@ function runtimeStatePatch(state: LibraryCoreRuntimeStateV1): Pick<
     archivedItemCount: state.archivedItemCount,
     friendPersonCount: state.friendPersonCount,
     socialAccountCount: state.socialAccountCount,
-    mapAllContentLocationCount: state.mapAllContentLocationCount,
-    mapFriendLocationCount: state.mapFriendLocationCount,
     preferences: state.preferences,
     searchCorpusVersion: state.searchCorpusVersion,
     totalArchivableCount: state.totalArchivableCount,
@@ -434,6 +432,34 @@ function runtimeStatePatch(state: LibraryCoreRuntimeStateV1): Pick<
 
 function isMergeablePreferenceObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/**
+ * Reuse equal preference branches after a full SQLite snapshot reload.
+ * Object identity drives background watchers, so a fresh DTO must not pretend
+ * the ranking policy changed. Iterate the new keys so removals still apply.
+ */
+function reconcilePreferenceSnapshot<T>(current: T, incoming: T): T {
+  if (Object.is(current, incoming)) return current;
+  if (Array.isArray(current) && Array.isArray(incoming)) {
+    const next = incoming.map((value, index) =>
+      reconcilePreferenceSnapshot(current[index], value),
+    );
+    const unchanged = next.length === current.length &&
+      next.every((value, index) => value === current[index]);
+    return (unchanged ? current : next) as T;
+  }
+  if (!isMergeablePreferenceObject(current) || !isMergeablePreferenceObject(incoming)) {
+    return incoming;
+  }
+  const keys = Object.keys(incoming);
+  const entries = keys.map((key) => [
+    key,
+    reconcilePreferenceSnapshot(current[key], incoming[key]),
+  ] as const);
+  const unchanged = keys.length === Object.keys(current).length &&
+    entries.every(([key, value]) => Object.hasOwn(current, key) && value === current[key]);
+  return (unchanged ? current : Object.fromEntries(entries)) as T;
 }
 
 function mergePreferenceUpdate<T extends object>(
@@ -667,7 +693,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           },
     );
   },
-  visibleFeedTotalCount: 0,
+  visibleFeedTotalCount: { status: "loading", lastKnownCount: null },
   xAuth: { isAuthenticated: false },
   fbAuth: { isAuthenticated: false },
   igAuth: { isAuthenticated: false },
@@ -739,6 +765,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         librarySubscriptionTeardown = subscribeDesktopLibraryRuntime((state, event) => {
           if (!storeAcceptingResetSensitiveWork || isFactoryResetInProgress()) return;
           const prev = get();
+          const preferences = reconcilePreferenceSnapshot(prev.preferences, state.preferences);
           const libraryItemVersion =
             event.source === "item_patch" || event.source === "state_update"
               ? prev.libraryItemVersion + 1
@@ -756,7 +783,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           // on the current bounded Saved generation.
           const savedFeedRankingWeightsChanged =
             event.source === "preferences_patch" &&
-            state.preferences.weights !== prev.preferences.weights;
+            preferences.weights !== prev.preferences.weights;
           const savedFeedVersion =
             event.source === "state_update" ||
             savedFeedRankingWeightsChanged ||
@@ -783,6 +810,7 @@ export const useAppStore = create<AppState>((set, get) => ({
                 : prev.savedFeedPresentationPatch;
           let next: Partial<AppState> = {
             ...runtimeStatePatch(state),
+            preferences,
             libraryItemVersion,
             savedFeedPresentationPatch,
             savedFeedVersion,
@@ -969,7 +997,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     await runStoreMutation(
       "desktop:toggleArchived",
       () => toggleLibraryItemArchived(id),
-      { waitForPersistence: false },
     );
   },
 

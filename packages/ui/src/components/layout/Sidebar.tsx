@@ -7,7 +7,7 @@ import {
   type RssFeed,
   type SidebarMode,
 } from "@freed/shared";
-import { useAppStore, usePlatform, type SidebarSourceStatusSummary } from "../../context/PlatformContext.js";
+import { useAppStore, usePlatform, usePlatformCapabilities, type SidebarSourceStatusSummary } from "../../context/PlatformContext.js";
 import { ProviderStatusIndicator } from "../ProviderStatusIndicator.js";
 import { SettingsDialog } from "../SettingsDialog.js";
 import { toast } from "../Toast.js";
@@ -23,8 +23,7 @@ import {
 import { MapPinIcon, RssIcon, BookmarkIcon, ArchiveIcon, UsersIcon, CopyIcon } from "../icons.js";
 import { getTopSourceItems, type SourceNavigationItem } from "../../lib/source-navigation.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
-import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
-import { useLibraryFacetSummary } from "../../hooks/useLibraryFacetSummary.js";
+import { useLibraryNavigationCounts } from "../../hooks/useLibraryFacetSummary.js";
 import { useLibraryRssFeedPage } from "../../hooks/useLibraryRssFeedPage.js";
 import { SearchJumpField } from "./SearchJumpField.js";
 import { resolveAnimationIntensity } from "../../lib/animation-preferences.js";
@@ -102,7 +101,7 @@ function SidebarNavMenuButton({
         event.stopPropagation();
         onToggle(event.currentTarget);
       }}
-      className={`${positionClass} rounded-md transition-all duration-200 ease-in-out hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)] ${
+      className={`sidebar-nav-menu-button ${positionClass} rounded-md transition-all duration-200 ease-in-out hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)] ${
         menuOpen
           ? "translate-x-0 bg-[color:var(--theme-bg-muted)] text-[color:var(--theme-text-primary)] opacity-100"
           : "pointer-events-none translate-x-[-4px] text-[color:var(--theme-text-muted)] opacity-0 group-hover/sidebar-row:pointer-events-auto group-hover/sidebar-row:translate-x-0 group-hover/sidebar-row:opacity-100"
@@ -187,7 +186,7 @@ function SidebarNavRow({
       <span data-sidebar-icon-slot="true">{icon}</span>
       {afterLabel ? (
         <span className="flex min-w-0 flex-1 items-center gap-1">
-          <span className={labelClass}>{label}</span>
+          <span className={labelClass} style={{ flex: "0 1 auto" }}>{label}</span>
           {afterLabel}
         </span>
       ) : (
@@ -231,7 +230,8 @@ function SidebarNavRow({
         >
           <div
             data-sidebar-action-slot="true"
-            className={`relative self-stretch shrink-0 ${actionSlotClass}`}
+            data-sidebar-has-count={Boolean(count)}
+            className={`relative self-stretch shrink-0 ${menu ? "sidebar-nav-action-slot-with-menu" : ""} ${actionSlotClass}`}
           >
             {count ? (
               <span
@@ -281,7 +281,7 @@ function SidebarSection({
           {title}
         </span>
         {!open && count !== undefined && count > 0 && (
-          <span className="text-[10px] tabular-nums text-[color:var(--theme-text-soft)] mr-1.5">{count}</span>
+          <span className="text-[0.625rem] tabular-nums text-[color:var(--theme-text-soft)] mr-1.5">{count}</span>
         )}
         <svg
           className={`w-3 h-3 text-[color:var(--theme-text-soft)] transition-transform shrink-0 ${open ? "rotate-90" : ""}`}
@@ -429,8 +429,8 @@ function FeedContextMenu({
       <div className="theme-dialog-divider border-b px-3 py-2.5">
         <div className="flex items-center gap-2">
           <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${syncDotClass(feed.lastFetched)}`} />
-          <span className="text-[11px] text-[color:var(--theme-text-muted)]">{syncStatusLabel(feed.lastFetched)}</span>
-          <span className="ml-auto text-[11px] text-[color:var(--theme-text-soft)]">{formatLastSync(feed.lastFetched)}</span>
+          <span className="text-[0.6875rem] text-[color:var(--theme-text-muted)]">{syncStatusLabel(feed.lastFetched)}</span>
+          <span className="ml-auto text-[0.6875rem] text-[color:var(--theme-text-soft)]">{formatLastSync(feed.lastFetched)}</span>
         </div>
       </div>
 
@@ -521,8 +521,8 @@ function SourceContextMenu({
     >
       <div className="theme-dialog-divider border-b px-3 py-2.5">
         <div className="flex items-center gap-2">
-          <span className="truncate text-[11px] font-medium text-[color:var(--theme-text-primary)]">{sourceLabel}</span>
-          <span className="ml-auto text-[11px] text-[color:var(--theme-text-soft)]">{totalLabel}</span>
+          <span className="truncate text-[0.6875rem] font-medium text-[color:var(--theme-text-primary)]">{sourceLabel}</span>
+          <span className="ml-auto text-[0.6875rem] text-[color:var(--theme-text-soft)]">{totalLabel}</span>
         </div>
       </div>
 
@@ -540,7 +540,7 @@ function SourceContextMenu({
             </span>
           </div>
           {status.detail ? (
-            <p className="mt-1.5 text-[11px] leading-4 text-[color:var(--theme-text-muted)]">
+            <p className="mt-1.5 text-[0.6875rem] leading-4 text-[color:var(--theme-text-muted)]">
               {status.detail}
             </p>
           ) : null}
@@ -613,10 +613,10 @@ function FriendsContextMenu({
       testId="friends-context-menu"
     >
       <div className="theme-dialog-divider flex items-center border-b px-3 py-2.5">
-        <span className="truncate text-[11px] font-medium text-[color:var(--theme-text-primary)]">
+        <span className="truncate text-[0.6875rem] font-medium text-[color:var(--theme-text-primary)]">
           Friends
         </span>
-        <span className="ml-auto text-[11px] text-[color:var(--theme-text-soft)]">
+        <span className="ml-auto text-[0.6875rem] text-[color:var(--theme-text-soft)]">
           {friendLabel}
         </span>
       </div>
@@ -666,10 +666,9 @@ export function Sidebar({
     getSourceStatus,
     interactionMode,
   } = usePlatform();
+  const capabilities = usePlatformCapabilities();
   const readOnly = interactionMode === "read-only";
   const isMobileViewport = useIsMobile();
-  const isMobileDevice = useIsMobileDevice();
-  const forceCompactDesktopRail = !isMobileDevice && isMobileViewport;
   const activeFilter = useAppStore((s) => s.activeFilter);
   const setFilter = useAppStore((s) => s.setFilter);
   const setSelectedItem = useAppStore((s) => s.setSelectedItem);
@@ -707,13 +706,15 @@ export function Sidebar({
   const display = useAppStore((s) => s.preferences.display);
   const animationIntensity = resolveAnimationIntensity(display.animationIntensity);
   const health = useDebugStore((s) => s.health);
-  const libraryFacets = useLibraryFacetSummary(searchCorpusVersion);
+  const { facets: facetState, rss: rssState } = useLibraryNavigationCounts(searchCorpusVersion);
+  const libraryFacets = facetState.summary;
   const totalUnreadCount = libraryFacets.unreadCount;
   const totalItemCount = libraryFacets.totalCount;
   const unreadCountByPlatform = Object.fromEntries(libraryFacets.platformCounts.map(row => [row.platform, row.unreadCount]));
   const itemCountByPlatform = Object.fromEntries(libraryFacets.platformCounts.map(row => [row.platform, row.totalCount]));
-  const rssUnreadCount = unreadCountByPlatform.rss ?? 0;
-  const rssItemCount = itemCountByPlatform.rss ?? 0;
+  const rssSummary = rssState.summary;
+  const rssUnreadCount = rssSummary?.unreadCount ?? 0;
+  const rssItemCount = rssSummary?.totalCount ?? 0;
   const savedCount = libraryFacets.savedCount;
   const archivedCount = libraryFacets.archivedCount;
   const friendCount = libraryFacets.friendPersonCount;
@@ -822,14 +823,12 @@ export function Sidebar({
     activeView === "feed" &&
     !!selectedItemId &&
     deviceDisplay.dualColumnMode &&
-    !forceCompactDesktopRail;
+    !isMobileViewport;
   const visualGapWidthPx = compactReaderRailVisible
     ? Math.min(effectiveGapWidthPx, COMPACT_READER_RAIL_VISUAL_GAP_WIDTH_PX)
     : effectiveGapWidthPx;
-  const renderMode: SidebarMode = isMobileDevice
+  const renderMode: SidebarMode = isMobileViewport
     ? "expanded"
-    : forceCompactDesktopRail
-      ? (desktopMode === "closed" ? "closed" : "compact")
     : dragWidth !== null
       ? getDesktopModeForWidth(dragWidth, interfaceZoom)
       : desktopMode;
@@ -849,14 +848,14 @@ export function Sidebar({
   const searchVariant = compactRail ? "trigger" : "inline";
   const expandedSidebarUsesCondensedPadding =
     renderMode === "expanded" && desktopWidth < expandedSidebarPaddingCrossoverWidthPx;
-  const sidebarPaddingInlinePx = isMobileDevice
+  const sidebarPaddingInlinePx = isMobileViewport
     ? 8
     : compactRail
     ? compactRailOuterInsetPx
     : expandedSidebarUsesCondensedPadding
       ? expandedSidebarCondensedPaddingPx
       : expandedSidebarRoomyPaddingPx;
-  const sidebarPaddingBlockPx = isMobileDevice
+  const sidebarPaddingBlockPx = isMobileViewport
     ? 8
     : compactRail
     ? compactRailOuterInsetPx
@@ -866,7 +865,7 @@ export function Sidebar({
   const sidebarBodyStyle = {
     paddingTop: `${sidebarPaddingBlockPx}px`,
     paddingInline: `${sidebarPaddingInlinePx}px`,
-    paddingBottom: isMobileDevice
+    paddingBottom: isMobileViewport
       ? `${sidebarPaddingBlockPx}px`
       : compactRail
       ? `${compactRailOuterInsetPx}px`
@@ -897,33 +896,33 @@ export function Sidebar({
   const desktopAsideWidth = desktopWidth;
   const desktopAsideRenderedWidth = closedPreviewActive ? compactSidebarWidthPx : desktopAsideWidth;
   const compactSidebar = compactRail;
-  const rowPaddingClass = isMobileDevice
+  const rowPaddingClass = isMobileViewport
     ? "px-2"
     : compactRail
       ? "px-1.5"
       : narrowLabeledSidebar
         ? "pl-2 pr-0"
         : "px-2.5";
-  const rowLeadingPaddingClass = isMobileDevice
+  const rowLeadingPaddingClass = isMobileViewport
     ? "pl-2"
     : compactRail
       ? "pl-1.5"
       : narrowLabeledSidebar
         ? "pl-2"
         : "pl-2.5";
-  const rowTrailingPaddingClass = isMobileDevice
+  const rowTrailingPaddingClass = isMobileViewport
     ? "pr-2"
     : compactRail
       ? "pr-1.5"
       : narrowLabeledSidebar
         ? "pr-1.5"
         : "pr-2.5";
-  const rowGapClass = isMobileDevice ? "gap-2" : narrowLabeledSidebar ? "gap-2" : "gap-3";
-  const rowTextClass = isMobileDevice ? "text-base" : "text-sm";
-  const rowVerticalPaddingClass = isMobileDevice ? "py-2" : "py-1.5";
+  const rowGapClass = isMobileViewport ? "gap-2" : narrowLabeledSidebar ? "gap-2" : "gap-3";
+  const rowTextClass = isMobileViewport ? "text-base" : "text-sm";
+  const rowVerticalPaddingClass = isMobileViewport ? "py-2" : "py-1.5";
   const feedRowVerticalPaddingClass = "py-2";
-  const countTextClass = isMobileDevice ? "text-xs" : "text-[10px]";
-  const inlineSearchGapPx = isMobileDevice ? sidebarPaddingBlockPx + 8 : sidebarPaddingBlockPx;
+  const countTextClass = isMobileViewport ? "text-xs" : "text-[0.625rem]";
+  const inlineSearchGapPx = isMobileViewport ? sidebarPaddingBlockPx + 8 : sidebarPaddingBlockPx;
   const desktopShellTransition = animationIntensity === "none" || (dragWidth !== null && !snapPreviewActive)
     ? "none"
     : snapPreviewActive
@@ -947,7 +946,7 @@ export function Sidebar({
       ? "translateX(calc(-100% - var(--feed-card-gap, 8px)))"
       : `translateX(calc(-100% - ${px(effectiveGapWidthPx)}))`
     : "translateX(0)";
-  const resizeHandleVisible = !forceCompactDesktopRail && (dragWidth !== null || renderMode !== "closed");
+  const resizeHandleVisible = !isMobileViewport && (dragWidth !== null || renderMode !== "closed");
 
   useEffect(() => {
     onDesktopDisplayModeChange?.(renderMode);
@@ -982,7 +981,7 @@ export function Sidebar({
 
   const handleDragStart = useCallback(
     (e: React.MouseEvent) => {
-      if (forceCompactDesktopRail || isMobileDevice) {
+      if (isMobileViewport) {
         return;
       }
       e.preventDefault();
@@ -1036,10 +1035,9 @@ export function Sidebar({
       committedWidth,
       compactSidebarWidthPx,
       desktopMode,
-      forceCompactDesktopRail,
       interfaceChromeScale,
       interfaceZoom,
-      isMobileDevice,
+      isMobileViewport,
       maxSidebarWidthPx,
       onDesktopModeChange,
       setDeviceDisplay,
@@ -1432,13 +1430,13 @@ export function Sidebar({
           <SearchJumpField
             compactSidebar={compactSidebar}
             narrowSidebar={narrowLabeledSidebar}
-            mobileSidebar={isMobileDevice}
+            mobileSidebar={isMobileViewport}
             variant={searchVariant}
             inlineMarginBottomPx={inlineSearchGapPx}
             onInputValueChange={handleSidebarSearchInputChange}
           />
 
-          <ul className={`flex flex-col ${compactRail ? "gap-[2px]" : isMobileDevice ? "gap-1" : "gap-0.5"}`}>
+          <ul className={`flex flex-col ${compactRail ? "gap-[2px]" : isMobileViewport ? "gap-1" : "gap-0.5"}`}>
             {[allSource].map((source) => (
               compactRail ? (
                 <li key={source.id ?? "all"} className="order-1">
@@ -1570,7 +1568,7 @@ export function Sidebar({
                   icon={renderSidebarRowIcon(<UsersIcon />, pendingFriendsBadge)}
                   label="Friends"
                   labelClass={sidebarLabelClass}
-                  menu={renderRowMenu("friends", "Friends", true)}
+                  menu={renderRowMenu("friends", "Friends", capabilities.diagnostics)}
                   menuOpen={openMenuSourceKey === "friends"}
                   onClick={() => {
                     setActiveView("friends");
@@ -1740,7 +1738,7 @@ export function Sidebar({
                                           menu={readOnly ? null : renderFeedMenu(feed, menuOpen)}
                                           menuOpen={menuOpen}
                                           onClick={() => handleFeedClick(feed.url)}
-                                          primaryClassName={isMobileDevice ? "text-sm" : ""}
+                                          primaryClassName={isMobileViewport ? "text-sm" : ""}
                                           rowGapClass="gap-2"
                                           rowLeadingPaddingClass={rowLeadingPaddingClass}
                                           rowTextClass={rowTextClass}
@@ -1780,15 +1778,15 @@ export function Sidebar({
                                 )}
                               </>
                             ) : rssFeedPage.loading ? (
-                              <p className={`${rowPaddingClass} py-2 text-[11px] text-[color:var(--theme-text-muted)]`}>
+                              <p className={`${rowPaddingClass} py-2 text-[0.6875rem] text-[color:var(--theme-text-muted)]`}>
                                 Loading feeds...
                               </p>
                             ) : rssFeedPage.error ? (
-                              <p className={`${rowPaddingClass} py-2 text-[11px] text-[color:var(--theme-text-muted)]`}>
+                              <p className={`${rowPaddingClass} py-2 text-[0.6875rem] text-[color:var(--theme-text-muted)]`}>
                                 Feed list unavailable.
                               </p>
                             ) : (
-                              <p className={`${rowPaddingClass} py-2 text-[11px] text-[color:var(--theme-text-muted)]`}>
+                              <p className={`${rowPaddingClass} py-2 text-[0.6875rem] text-[color:var(--theme-text-muted)]`}>
                                 {deferredSidebarSearchInput.trim()
                                   ? <>No feeds match &ldquo;{deferredSidebarSearchInput.trim()}&rdquo;.</>
                                   : <>No feeds subscribed yet.</>}
@@ -1816,7 +1814,7 @@ export function Sidebar({
                       )}
                       label={source.label}
                       afterLabel={source.stage === "beta" ? (
-                        <span className="shrink-0 rounded border border-[color:var(--theme-border-subtle)] px-1 py-0.5 text-[8px] font-semibold uppercase leading-none text-[color:var(--theme-text-muted)]">
+                        <span className="shrink-0 rounded border border-[color:var(--theme-border-subtle)] px-1 py-0.5 text-[0.5rem] font-semibold uppercase leading-none text-[color:var(--theme-text-muted)]">
                           Beta
                         </span>
                       ) : null}
@@ -1872,7 +1870,7 @@ export function Sidebar({
           )}
 
           {/* Settings — pushed to bottom */}
-          {!isMobileDevice ? (
+          {!isMobileViewport ? (
             <div className="mt-auto shrink-0">
             {compactRail ? (
               <Tooltip key="settings" label="Settings" side="right" className="flex w-full">
@@ -1906,7 +1904,7 @@ export function Sidebar({
     </nav>
   );
 
-  const mobileSidebarLayer = isMobileDevice ? (
+  const mobileSidebarLayer = isMobileViewport ? (
     <>
       {mobileOpen && (
         <div
@@ -1917,6 +1915,8 @@ export function Sidebar({
       )}
 
       <aside
+        data-library-facets-status={facetState.status}
+        data-library-rss-status={rssState.status}
         data-testid="app-sidebar-mobile"
         data-open={mobileOpen ? "true" : "false"}
         className={`
@@ -1963,7 +1963,7 @@ export function Sidebar({
     <>
       {renderedMobileSidebarLayer}
 
-      {!isMobileDevice ? (
+      {!isMobileViewport ? (
       <div
         data-testid="app-sidebar-shell"
         className="relative flex flex-none overflow-visible"
@@ -1977,6 +1977,8 @@ export function Sidebar({
         <div className="relative h-full w-full overflow-visible">
           {renderMode !== "closed" || closedPreviewActive ? (
             <aside
+        data-library-facets-status={facetState.status}
+        data-library-rss-status={rssState.status}
               data-testid="app-sidebar"
               className="theme-floating-panel relative z-10 flex h-full min-h-0 shrink-0 flex-col overflow-hidden"
               style={{
@@ -2066,7 +2068,7 @@ export function Sidebar({
         />
       )}
 
-      {openMenuSourceKey === "friends" && sourceMenuAnchorRect ? (
+      {capabilities.diagnostics && openMenuSourceKey === "friends" && sourceMenuAnchorRect ? (
         <FriendsContextMenu
           anchorRect={sourceMenuAnchorRect}
           anchorElement={sourceMenuAnchorElement}

@@ -22,3 +22,13 @@ export function isFreedDemoMode(
     (explicitPreviewRequest && isFreedNewsletterPreviewHostname(hostname))
   );
 }
+
+/** Keep an accepted preview demo in the same mode through navigation and reload. */
+export function preserveFreedDemoNavigationUrl(path: string, entryUrl: string): string {
+  const entry = new URL(entryUrl);
+  if (!isFreedNewsletterPreviewHostname(entry.hostname) ||
+      entry.searchParams.get("freed-demo") !== "1") return path;
+  const next = new URL(path, entry.origin);
+  next.searchParams.set("freed-demo", "1");
+  return `${next.pathname}${next.search}`;
+}

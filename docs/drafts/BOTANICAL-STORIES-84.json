@@ -1,0 +1,226 @@
+{
+  "status": "bounded_review_complete_zero_proposals",
+  "counts": {
+    "newExactPublishedImagesOpened": 6,
+    "cachedExactImagesReopened": 1,
+    "proposals": 0,
+    "admitted": 0,
+    "newIdentities": 0
+  },
+  "proposals": [],
+  "media": [],
+  "holds": [
+    {
+      "media": {
+        "observationId": 279101673,
+        "photoId": 501171698,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/501171698/large.jpeg",
+        "localFile": "/tmp/botanical84/279101673.jpg",
+        "bytes": 582314,
+        "sha1": "e921b0c543dcc73d2b1c949041f6c87c43277bb4",
+        "sha256": "e5294a4994f59efd143ab611142915f80498f9a13dd6a6962c2d925818323716",
+        "dimensions": [
+          577,
+          1024
+        ],
+        "seconds": 0.987,
+        "status": 200,
+        "attribution": "(c) Christine E. Willis, some rights reserved (CC BY), uploaded by Christine E. Willis",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "sourceUrl": "https://www.inaturalist.org/observations/279101673",
+        "sourceLocal": "/tmp/botanical84/obs-279101673.json",
+        "sourceMetadataUrl": "https://www.inaturalist.org/observations/279101673.json",
+        "species": "Carnegiea gigantea",
+        "qualityGrade": "casual",
+        "identificationAgreements": 0,
+        "identificationDisagreements": 0,
+        "aggregated": false
+      },
+      "verdict": "hold_no_prose",
+      "reason": "Casual-grade cultivated parking-lot plant, with support stake and irrigation. First frame does not reveal the active nest mentioned by observer. No clear cavity, contact or existing mature arms; no claim that this frame shows nesting action."
+    },
+    {
+      "media": {
+        "observationId": 69675929,
+        "photoId": 113108388,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/113108388/large.jpeg",
+        "localFile": "/tmp/botanical84/69675929.jpg",
+        "bytes": 517194,
+        "sha1": "8fe50c6b0599b1ff2bc082c69f0969b4cdbf9bd9",
+        "sha256": "1f943d9a6e04d71d5d56c8a79e9fdb545fd1baefd6a36a91e5ff6cb9bc67c217",
+        "dimensions": [
+          768,
+          1024
+        ],
+        "seconds": 0.836,
+        "status": 200,
+        "attribution": "(c) Bob Miller, some rights reserved (CC BY), uploaded by Bob Miller",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "sourceUrl": "https://www.inaturalist.org/observations/69675929",
+        "sourceLocal": "/tmp/botanical84/obs-69675929.json",
+        "sourceMetadataUrl": "https://www.inaturalist.org/observations/69675929.json",
+        "species": "Carnegiea gigantea",
+        "qualityGrade": "research",
+        "identificationAgreements": 10,
+        "identificationDisagreements": 0,
+        "aggregated": false
+      },
+      "verdict": "hold_no_prose",
+      "reason": "Research-grade saguaro with unusual drooping arms curving inward. Distant, soft detail and heavily altered silhouette make a poor existing-Ambrose visual match; no unobserved cause or reversible arm movement assigned."
+    },
+    {
+      "media": {
+        "observationId": 9263053,
+        "photoId": 12546952,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/12546952/large.jpg",
+        "localFile": "/tmp/botanical84/9263053.jpg",
+        "bytes": 226383,
+        "sha1": "0a71aa6f1b47f50212488752f20f2b06f396b3ee",
+        "sha256": "808c1ceebfa4e1c84954d65f70ad41aa38d13f0445945701644a52bc6943bf64",
+        "dimensions": [
+          700,
+          1024
+        ],
+        "seconds": 0.685,
+        "status": 200,
+        "attribution": "(c) CK2AZ, some rights reserved (CC BY), uploaded by CK2AZ",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "sourceUrl": "https://www.inaturalist.org/observations/9263053",
+        "sourceLocal": "/tmp/botanical84/obs-9263053.json",
+        "sourceMetadataUrl": "https://www.inaturalist.org/observations/9263053.json",
+        "species": "Carnegiea gigantea",
+        "qualityGrade": "research",
+        "identificationAgreements": 5,
+        "identificationDisagreements": 0,
+        "aggregated": false
+      },
+      "verdict": "hold_no_prose",
+      "reason": "Distant unbranched roadside plant with buildings and overhead cable. Soft subject detail; not a gorgeous visual or new incident."
+    },
+    {
+      "media": {
+        "observationId": 9263052,
+        "photoId": 12546949,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/12546949/large.jpg",
+        "localFile": "/tmp/botanical84/9263052.jpg",
+        "bytes": 300580,
+        "sha1": "daf656bbe6942120fd8e545d135f3120858f0b41",
+        "sha256": "7f3e4b57e42b02e55dcaefe00c2e64beb9785bb6ee369ecf7cbbc540efdceb33",
+        "dimensions": [
+          700,
+          1024
+        ],
+        "seconds": 0.717,
+        "status": 200,
+        "attribution": "(c) CK2AZ, some rights reserved (CC BY), uploaded by CK2AZ",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "sourceUrl": "https://www.inaturalist.org/observations/9263052",
+        "sourceLocal": "/tmp/botanical84/obs-9263052.json",
+        "sourceMetadataUrl": "https://www.inaturalist.org/observations/9263052.json",
+        "species": "Carnegiea gigantea",
+        "qualityGrade": "research",
+        "identificationAgreements": 5,
+        "identificationDisagreements": 0,
+        "aggregated": false
+      },
+      "verdict": "hold_no_prose",
+      "reason": "Roadside adult with arms, foreground vegetation and overhead cable. Usable identification scene but not strong visual Story quality or a new interaction."
+    },
+    {
+      "media": {
+        "observationId": 6118777,
+        "photoId": 7659209,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/7659209/large.jpg",
+        "localFile": "/tmp/botanical84/6118777.jpg",
+        "bytes": 295471,
+        "sha1": "5f82255518ffa23c3eea5e0d1146717e454078f7",
+        "sha256": "88d01ed0e8f3b66b92ad74f43602c80637cbe3b7519cb57f6755509ae7919a46",
+        "dimensions": [
+          1024,
+          769
+        ],
+        "seconds": 0.707,
+        "status": 200,
+        "attribution": "(c) CK2AZ, some rights reserved (CC BY), uploaded by CK2AZ",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "sourceUrl": "https://www.inaturalist.org/observations/6118777",
+        "sourceLocal": "/tmp/botanical84/obs-6118777.json",
+        "sourceMetadataUrl": "https://www.inaturalist.org/observations/6118777.json",
+        "species": "Carnegiea gigantea",
+        "qualityGrade": "research",
+        "identificationAgreements": 6,
+        "identificationDisagreements": 0,
+        "aggregated": false
+      },
+      "verdict": "hold_no_prose",
+      "reason": "Small central adult in broad yellow-flowering landscape, weak subject detail. Search matched rain but actual image does not document rainfall or a physical rain event."
+    },
+    {
+      "media": {
+        "observationId": 6118751,
+        "photoId": 7659153,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/7659153/large.jpg",
+        "localFile": "/tmp/botanical84/6118751.jpg",
+        "bytes": 332173,
+        "sha1": "c864c140a477de1f274e23cf590404625dcf1b55",
+        "sha256": "1237a76a97aeba3ec34f4796388a3511f41edc6b2b4787edf2eaa7d90648023c",
+        "dimensions": [
+          768,
+          1024
+        ],
+        "seconds": 0.661,
+        "status": 200,
+        "attribution": "(c) CK2AZ, some rights reserved (CC BY), uploaded by CK2AZ",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "sourceUrl": "https://www.inaturalist.org/observations/6118751",
+        "sourceLocal": "/tmp/botanical84/obs-6118751.json",
+        "sourceMetadataUrl": "https://www.inaturalist.org/observations/6118751.json",
+        "species": "Carnegiea gigantea",
+        "qualityGrade": "research",
+        "identificationAgreements": 6,
+        "identificationDisagreements": 0,
+        "aggregated": false
+      },
+      "verdict": "hold_no_prose",
+      "reason": "Adult saguaro partly obscured by flowering shrub. More distinct plant than preceding frame, but this would repeat Ambrose38 intergrown-neighbor mechanism without a new consequence."
+    },
+    {
+      "media": {
+        "observationId": 96348144,
+        "photoId": 160054487,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/160054487/large.jpeg",
+        "localFile": "/tmp/botanical77/96348144.jpg",
+        "bytes": 259389,
+        "sha1": "13a87e9a9673ea14261e7e6bd073edb07a90df1d",
+        "sha256": "769d26f8f22b0fe3c83cacee4b32169091705d6057a2cdd0838e453c74e13737",
+        "dimensions": [
+          594,
+          1024
+        ],
+        "seconds": 0.849,
+        "status": 200,
+        "attribution": "(c) Jan Vršovský, some rights reserved (CC BY-SA), uploaded by Jan Vršovský",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "license": "CC-BY-SA",
+        "sourceUrl": "https://www.inaturalist.org/observations/96348144",
+        "sourceMetadataUrl": "https://www.inaturalist.org/observations/96348144.json",
+        "sourceLocal": "/tmp/botanical77/obs-96348144.json"
+      },
+      "verdict": "hold_no_prose",
+      "reason": "Exact cached published image reopened individually. White young Coprinus cap is clear; slug body is visible at base, but head and contact point are hidden. A feeding, climbing or touching sequence cannot be read from this frame. No new body authored. Any future young-cap scene must be explicit recollection because Lionel40 is already mature. Prior77 hold preserved."
+    }
+  ],
+  "scope": "Only draft84 files written, no runtime edits or prior prose changes.",
+  "limitations": [
+    "Only exact published large files inspected; no full-upload original claims.",
+    "A search match is not taxon or scene evidence. Current primary metadata checked separately.",
+    "No proof that existing cast has exhausted usable sources. This limited search did not yield an earned pairing.",
+    "No denied source retries or application relay verification."
+  ]
+}

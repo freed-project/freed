@@ -11,6 +11,7 @@ import {
   releaseOnlyParent,
   selectExactIntegrationReceipt,
   selectIntegrationReceipt,
+  validateDevIntegrationReceipt,
 } from "./validate-dev-integration-receipt.mjs";
 
 const OPTIONS = Object.freeze({
@@ -207,6 +208,12 @@ test("releaseOnlyParent accepts only a single-parent release metadata change", (
   const releaseCommit = commit(cwd, "release metadata");
   assert.equal(releaseOnlyParent(releaseCommit, { cwd }), parent);
 
+  writeFileSync(
+    path.join(cwd, "packages", "desktop", "package.json"),
+    '{"version":"1.0.2","scripts":{"build":"unvalidated-command"}}\n',
+  );
+  assert.equal(releaseOnlyParent(commit(cwd, "changed build inputs"), { cwd }), null);
+
   writeFileSync(path.join(cwd, "app.txt"), "changed product\n");
   const productCommit = commit(cwd, "product change");
   assert.equal(releaseOnlyParent(productCommit, { cwd }), null);
@@ -233,5 +240,19 @@ test("fetchWorkflowRuns binds the request to the reviewed workflow, branch, and 
   );
   assert.equal(requested.url.searchParams.get("branch"), "dev");
   assert.equal(requested.url.searchParams.get("event"), "push");
+  assert.equal(requested.url.searchParams.get("head_sha"), OPTIONS.sha);
   assert.equal(requested.init.headers.Authorization, "Bearer test-token");
+
+  const requests = [];
+  const receipt = await validateDevIntegrationReceipt(OPTIONS, {
+    token: "test-token",
+    fetchImpl: async (url) => {
+      requests.push(url.pathname);
+      return { ok: true, json: async () => url.pathname.endsWith("/jobs")
+        ? { jobs: ["Dev integration", "Tooling smoke", "PWA OPFS durability (macOS WebKit)"].map((name) => ({ name, status: "completed", conclusion: "success" })) }
+        : { workflow_runs: [run()] } };
+    },
+  });
+  assert.equal(receipt.runId, 42);
+  assert.equal(requests[1], "/repos/freed-project/freed/actions/runs/42/attempts/1/jobs");
 });

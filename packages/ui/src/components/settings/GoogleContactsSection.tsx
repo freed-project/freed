@@ -26,7 +26,7 @@ function StatusPill({
             : "bg-[color:var(--theme-bg-muted)] text-[color:var(--theme-text-secondary)]";
 
   return (
-    <span className={`inline-flex items-center rounded-full px-2 py-1 text-[11px] font-medium ${toneClass}`}>
+    <span className={`inline-flex items-center rounded-full px-2 py-1 text-[0.6875rem] font-medium ${toneClass}`}>
       {label}
     </span>
   );
@@ -128,15 +128,15 @@ export function GoogleContactsSection() {
 
         <div className="grid grid-cols-2 gap-3">
           <div className="theme-card-soft rounded-xl px-3 py-2.5">
-            <p className="text-[11px] uppercase tracking-wider text-[color:var(--theme-text-soft)]">Cached contacts</p>
+            <p className="text-[0.6875rem] uppercase tracking-wider text-[color:var(--theme-text-soft)]">Cached contacts</p>
             <p className="mt-1 text-base font-semibold text-[color:var(--theme-text-primary)]">{cachedCount}</p>
           </div>
           <div className="theme-card-soft rounded-xl px-3 py-2.5">
-            <p className="text-[11px] uppercase tracking-wider text-[color:var(--theme-text-soft)]">Needs review</p>
+            <p className="text-[0.6875rem] uppercase tracking-wider text-[color:var(--theme-text-soft)]">Needs review</p>
             <p className="mt-1 text-base font-semibold text-[color:var(--theme-text-primary)]">{pendingCount}</p>
           </div>
           <div className="theme-card-soft rounded-xl px-3 py-2.5">
-            <p className="text-[11px] uppercase tracking-wider text-[color:var(--theme-text-soft)]">Created friends</p>
+            <p className="text-[0.6875rem] uppercase tracking-wider text-[color:var(--theme-text-soft)]">Created friends</p>
             <p className="mt-1 text-base font-semibold text-[color:var(--theme-text-primary)]">{createdFriendCount}</p>
           </div>
         </div>

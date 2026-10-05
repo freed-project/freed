@@ -19,6 +19,7 @@ var __spreadArray = (this && this.__spreadArray) || function (to, from, pack) {
     return to.concat(ar || Array.prototype.slice.call(from));
 };
 import { defineConfig } from "vitest/config";
+import { tauriInitScript } from "./src/__mocks__/tauri-init.js";
 import react from "@vitejs/plugin-react";
 import wasm from "vite-plugin-wasm";
 import topLevelAwait from "vite-plugin-top-level-await";
@@ -27,6 +28,7 @@ import { fileURLToPath } from "url";
 import pkg from "./package.json" with { type: "json" };
 import { getBuildMetadata } from "../../scripts/lib/build-metadata.mjs";
 import { assertNoRetiredAutomergeRollupBundle } from "../../scripts/lib/retired-automerge-runtime.mjs";
+import { jevPreviewPlugin } from "./dev/jev-preview-server.mjs";
 // Resolve workspace packages directly from their TypeScript source so that
 // worktrees don't need to build dist/ artifacts before running the dev server.
 var src = function (name) {
@@ -81,6 +83,11 @@ var rejectRetiredDesktopLibraryAssets = {
 };
 var buildMetadata = getBuildMetadata(pkg.version);
 export default defineConfig({
+    // Development and production-React test servers must not replace each
+    // other's optimized dependency graph when the complete suite runs both.
+    cacheDir: process.env.FREED_E2E_PERF === "1"
+        ? rootFile("node_modules/.vite-feed-perf")
+        : undefined,
     define: {
         __APP_VERSION__: JSON.stringify(buildMetadata.appVersion),
         __BUILD_KIND__: JSON.stringify(buildMetadata.buildKind),
@@ -101,12 +108,27 @@ export default defineConfig({
             topLevelAwait(),
         ]; },
     },
-    plugins: [
+    plugins: __spreadArray(__spreadArray([
+        jevPreviewPlugin()
+    ], (process.env.VITE_TEST_TAURI
+        ? [{
+                name: "desktop-mock-bootstrap",
+                transformIndexHtml: function () { return [{
+                        tag: "meta",
+                        attrs: { name: "freed-e2e-render-mode", content: process.env.NODE_ENV === "production" ? "production" : "development" },
+                        injectTo: "head-prepend",
+                    }, {
+                        tag: "script",
+                        children: tauriInitScript(),
+                        injectTo: "head-prepend",
+                    }]; },
+            }]
+        : []), true), [
         rejectRetiredDesktopLibraryAssets,
         wasm(),
         topLevelAwait(),
         react(),
-    ],
+    ], false),
     optimizeDeps: {
         exclude: __spreadArray(__spreadArray([], tauriMockExclude, true), [
             "maplibre-gl/dist/maplibre-gl-worker.mjs",

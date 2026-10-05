@@ -15,6 +15,15 @@ if (!hasConfiguredPort) {
   process.env.PLAYWRIGHT_PORT = String(defaultPort);
 }
 const BASE_URL = process.env.BASE_URL ?? `http://127.0.0.1:${String(defaultPort)}`;
+const configuredPerfPort = Number.parseInt(process.env.PLAYWRIGHT_PERF_PORT ?? "", 10);
+const perfPort = Number.isInteger(configuredPerfPort) && configuredPerfPort > 0 && configuredPerfPort <= 65_535
+  ? configuredPerfPort
+  : await findFreePort(defaultPort + 1);
+process.env.PLAYWRIGHT_PERF_PORT = String(perfPort);
+const PERF_BASE_URL = process.env.PERF_BASE_URL ?? (USE_LOCAL_SERVER
+  ? `http://127.0.0.1:${String(perfPort)}`
+  : BASE_URL);
+const FEED_SCROLL_TIMING_TESTS = /perf-feed\.spec\.ts.*(?:Scroll performance|frame delivery during fast scroll)/;
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -37,19 +46,37 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
+      grepInvert: FEED_SCROLL_TIMING_TESTS,
       use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      name: "chromium-feed-perf",
+      testMatch: "**/perf-feed.spec.ts",
+      grep: FEED_SCROLL_TIMING_TESTS,
+      use: { ...devices["Desktop Chrome"], baseURL: PERF_BASE_URL },
     },
   ],
 
   webServer: USE_LOCAL_SERVER
-    ? {
-        command: `${process.execPath} ../../node_modules/vite/bin/vite.js --host 127.0.0.1 --port ${String(defaultPort)} --strictPort`,
+    ? [{
+        command: `${process.execPath} ../../node_modules/vite/bin/vite.js --config vite.config.ts --host 127.0.0.1 --port ${String(defaultPort)} --strictPort`,
         url: BASE_URL,
         reuseExistingServer: false,
         timeout: 60_000,
         env: {
           VITE_TEST_TAURI: "1",
+          NODE_ENV: "development",
         },
-      }
+      }, {
+        command: `${process.execPath} ../../node_modules/vite/bin/vite.js --config vite.config.ts --host 127.0.0.1 --port ${String(perfPort)} --strictPort`,
+        url: PERF_BASE_URL,
+        reuseExistingServer: false,
+        timeout: 60_000,
+        env: {
+          VITE_TEST_TAURI: "1",
+          NODE_ENV: "production",
+          FREED_E2E_PERF: "1",
+        },
+      }]
     : undefined,
 });

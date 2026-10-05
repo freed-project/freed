@@ -21,6 +21,7 @@ export const DEEPSEA_BONDS_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "hermit crab with Stylobates aeneus",
         "platform": "rss",
+        "classification": "conversation",
         "mediaSha1": "b71ee74565c3225a352dde7836f5ab0103455a49",
         "theme": "social",
         "title": "Where I end",
@@ -44,6 +45,7 @@ export const DEEPSEA_BONDS_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "Bolosoma glass sponge",
         "platform": "linkedin",
+        "classification": "news",
         "mediaSha1": "18761b3b2a4daea875bb7aa8928fad973df5f8d6",
         "theme": "wonder",
         "title": "A substantial objection",
@@ -67,6 +69,7 @@ export const DEEPSEA_BONDS_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "brittle star intertwined with Hemicorallium",
         "platform": "rss",
+        "classification": "conversation",
         "mediaSha1": "4c12fb7bd84991f61a9a96780c86f3e11dae1e47",
         "theme": "social",
         "title": "Whose arm",
@@ -90,6 +93,7 @@ export const DEEPSEA_BONDS_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "Parapagurus crab carrying anemone",
         "platform": "facebook",
+        "classification": "conversation",
         "mediaSha1": "7a612bcaa1f78609cc63de844a170a33767be7a9",
         "theme": "social",
         "title": "Credit where it's due",
@@ -113,6 +117,7 @@ export const DEEPSEA_BONDS_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "Branchiocerianthus solitary hydroid",
         "platform": "linkedin",
+        "classification": "event",
         "mediaSha1": "2c3064e735ea2e7b73e57776059b0e01bae4262d",
         "theme": "weather",
         "title": "A clarification",
@@ -136,6 +141,7 @@ export const DEEPSEA_BONDS_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "Corbitellinae glass sponge",
         "platform": "instagram",
+        "classification": "conversation",
         "mediaSha1": "1158131494b68860738eb1df4c9bed8f4b9c671f",
         "theme": "social",
         "title": "Which opening",
@@ -159,6 +165,7 @@ export const DEEPSEA_BONDS_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "undescribed stalked crinoids",
         "platform": "rss",
+        "classification": "news",
         "mediaSha1": "2cfb1c2339098c2fe1bf38a227ed3703fdd44a6d",
         "theme": "wonder",
         "title": "My following",

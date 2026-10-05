@@ -8,9 +8,11 @@ export const AUXILIARY_DRAWER_GAP_WIDTH_PX = 12;
 export const FRIENDS_SIDEBAR_GAP_WIDTH_PX = 12;
 export const TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX = 8;
 export const TOOLBAR_ICON_BUTTON_SIZE_PX = 40;
+// Native stoplights end at 80 px. Compact headers need only a small gutter.
+export const COMPACT_MACOS_TRAFFIC_LIGHT_INSET_PX = 84;
 export const TOOLBAR_BOUNDARY_BUTTON_GAP_PX = 8;
 export const CANVAS_CONTROL_BUTTON_CLASS =
-  "btn-secondary rounded-lg px-3 py-1.5 text-xs shadow-sm theme-canvas-control";
+  "btn-secondary inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg !p-0 text-xs shadow-sm theme-canvas-control";
 
 export const COMPACT_PRIMARY_SIDEBAR_WIDTH_PX = 48;
 export const TOP_TOOLBAR_HEIGHT_PX =

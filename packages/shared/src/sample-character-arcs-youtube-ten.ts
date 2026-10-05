@@ -19,6 +19,7 @@ export const YOUTUBE_TEN_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
         "subject": "Rhodaliidae dandelion siphonophore",
         "platform": "youtube",
         "contentType": "video",
+        "classification": "personal",
         "mediaSha1": "2a8c53dba8e27cdf42fcdf7c071ff183743deb55",
         "theme": "courtship",
         "title": "I mean every part of me",
@@ -52,6 +53,7 @@ export const YOUTUBE_TEN_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
         "subject": "Bathynomus giganteus",
         "platform": "youtube",
         "contentType": "video",
+        "classification": "personal",
         "mediaSha1": "8684d164b157c314b104a33690d99a1079f8a772",
         "theme": "courtship",
         "title": "I came softly",
@@ -69,10 +71,21 @@ export const YOUTUBE_TEN_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "Bathynomus giganteus",
         "platform": "facebook",
+        "classification": "inspiring",
         "mediaSha1": "210f32dbfc3420dc6763e593d93ef7e142de02b3",
         "theme": "feeding",
         "title": "A smaller present",
         "body": "Swam back with a fish head for her. Had to hold it right against my mouth. I have brought her a smaller fish head and an explanation."
+      },
+      {
+        "subject": "Bathynomus giganteus",
+        "platform": "facebook",
+        "contentType": "post",
+        "theme": "movement",
+        "title": "It has moved again",
+        "body": "I went round the whip coral. It swung into my path. I went round it again. We are both still exactly where it lives.",
+        "classification": "event",
+        "mediaSha1": "7ac2ff3e6b3bc8dc47934a16af52f6dc114a4894"
       }
     ]
   },
@@ -82,7 +95,7 @@ export const YOUTUBE_TEN_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
     "platform": "youtube",
     "bio": "An armored searobin. Capable of swimming. Enjoying the lesson.",
     "location": {
-      "name": "Rocky deep slopes near Ta\u2019u, American Samoa",
+      "name": "Rocky deep slopes near Ta’u, American Samoa",
       "coordinates": {
         "lat": -14.3,
         "lng": -169.5
@@ -93,6 +106,7 @@ export const YOUTUBE_TEN_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
         "subject": "armored searobin",
         "platform": "youtube",
         "contentType": "video",
+        "classification": "conversation",
         "mediaSha1": "c96dab1949ca9960c6df765c5073e2c3289f3d9d",
         "theme": "social",
         "title": "I can swim",
@@ -126,6 +140,7 @@ export const YOUTUBE_TEN_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
         "subject": "Rhopalonematidae cosmic jellyfish",
         "platform": "youtube",
         "contentType": "video",
+        "classification": "news",
         "mediaSha1": "b7a3987f9e500dd2bc842e44d9e8b6c883fe3107",
         "theme": "wonder",
         "title": "I wanted to move",

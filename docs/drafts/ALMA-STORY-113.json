@@ -1,0 +1,29 @@
+{
+  "status": "new_story_pending_independent_review",
+  "characterId": "alma-eight",
+  "episode": {
+    "subject": "octopus underwater",
+    "platform": "instagram",
+    "contentType": "story",
+    "theme": "movement",
+    "title": "The way round",
+    "body": "I could see the weed under the clear floor. Kept reaching for it. When an arm finally found the top of the wall, I nearly pulled it back to help the others. It was the only one going the right way.",
+    "mediaSha1": "cd9f07eeaa5ac2ec4e391fd18e4f792c0480af0c"
+  },
+  "media": {
+    "observationId": 395451474,
+    "photoId": 725107208,
+    "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/725107208/large.jpg",
+    "localPath": "/tmp/freed-alma112/725107208.jpg",
+    "sha1": "cd9f07eeaa5ac2ec4e391fd18e4f792c0480af0c",
+    "bytes": 989474,
+    "attribution": "(c) Vsevolod Rudyi, some rights reserved (CC BY), uploaded by Vsevolod Rudyi",
+    "license": "CC-BY",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+    "sha256": "c069cfc307b145ffe28faf37e7145854a100c9ddf5f0783d1adf4a28ed71159b"
+  },
+  "rootReview": "Previously inspected exact photograph shows sharp common octopus in a transparent shallow container among shore weed. Arms reach toward the rim, suckers and clear walls visible. The photograph earned the transparent barrier and conflicting directions. Perceived weed position, repeated reaching, finding rim and nearly recalling an arm are fiction. No escape or return actually claimed.",
+  "canon": "Append as a new temporary handling encounter without relocating Mouro home or changing previous approved passages. No captor, cause, injury or actual photographer motive assigned. No independent arm personhood or biological separate mind is asserted; it is Alma describing her own divided actions.",
+  "sourceEvidence": "Primary photo-specific observation395451474 metadata cached in /tmp/freed-alma112/395451474.json. Taxon49315 Octopus vulgaris, Cascais Portugal. Vsevolod Rudyi, CC BY4.0, exact published large URL. No pixel transformations.",
+  "admitted": 0
+}

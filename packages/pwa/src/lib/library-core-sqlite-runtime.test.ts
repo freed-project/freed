@@ -126,6 +126,37 @@ describe("PWA SQLite runtime worker recovery", () => {
     vi.unstubAllGlobals();
   });
 
+  it("fences background reads throughout device reset without reopening OPFS", async () => {
+    const { beginFactoryResetBoundary } = await import("@freed/ui/lib/factory-reset");
+    const { queryPwaNormalizedLibrary } = await import("./library-core-sqlite-runtime");
+    beginFactoryResetBoundary();
+    await expect(queryPwaNormalizedLibrary({
+      queryId: "library_facet_summary_v1",
+      schemaVersion: 1,
+    })).rejects.toThrow("unavailable while this device resets");
+    expect(RecoveringWorker.instances).toHaveLength(0);
+  });
+
+  it("coalesces storage deletion and refuses a new worker during local reset", async () => {
+    let finish!: () => void;
+    const removal = new Promise<void>((resolve) => { finish = resolve; });
+    const removeEntry = vi.fn(() => removal);
+    vi.stubGlobal("navigator", {
+      storage: { getDirectory: vi.fn(async () => ({ removeEntry })) },
+    });
+    const { queryPwaNormalizedLibrary, resetPwaNormalizedLibrary } = await import("./library-core-sqlite-runtime");
+    const first = resetPwaNormalizedLibrary();
+    const second = resetPwaNormalizedLibrary();
+    await expect(queryPwaNormalizedLibrary({
+      queryId: "library_facet_summary_v1",
+      schemaVersion: 1,
+    })).rejects.toThrow("unavailable while this device resets");
+    expect(RecoveringWorker.instances).toHaveLength(0);
+    finish();
+    await Promise.all([first, second]);
+    expect(removeEntry).toHaveBeenCalledTimes(2);
+  });
+
   it("reopens the accepted OPFS Library and retries one read after worker loss", async () => {
     const { queryPwaNormalizedLibrary } = await import(
       "./library-core-sqlite-runtime"

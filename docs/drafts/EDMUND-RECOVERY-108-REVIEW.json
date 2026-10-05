@@ -1,0 +1,56 @@
+{
+  "decision": "pass_verbatim",
+  "runtimeAdmission": false,
+  "episode": {
+    "subject": "giant sequoia",
+    "platform": "instagram",
+    "contentType": "story",
+    "theme": "social",
+    "title": "The wrong trunk",
+    "body": "A cone fell from me onto the path. The man beneath it looked up and complained to the tree beside me. I was enjoying the mistake until he stroked her bark to apologize.",
+    "mediaSha1": "839219caf31bfdc396ea75a032faffe9d8eb6717"
+  },
+  "imageDecision": "pass",
+  "proseDecision": "pass",
+  "canonDecision": "pass",
+  "rightsDecision": "independently_verified_primary_photo_specific_CC_BY_3_0",
+  "individuallyOpened": "/tmp/freed-edmund108/hug.jpg",
+  "visibleScene": "A person leans against an enormous sequoia trunk with arms embracing its bark. Several other trunks are visible beyond it; dry forest floor and woody debris surround the base. The contact is unambiguous. No cone drop, apology, complaint or narrator identification is documented.",
+  "imageFit": "Foreground embraced sequoia is fictional neighbor, not narrator. This composition shows the affection that reverses his pleasure in the mistaken accusation. First-person prose can illustrate the other participant in the incident; narrator need not occupy foreground.",
+  "proseReason": "The precise reversal from enjoying misplaced blame to envying the apology is economical and legible. Cone and complaint set up the invented episode; photographed embrace supplies the consequential change. No rewrite needed.",
+  "canonReview": {
+    "file": "packages/shared/src/sample-character-arcs-botanical-twenty-seven.ts",
+    "episodes": [
+      "Hold still",
+      "Rain from below",
+      "The old opening"
+    ],
+    "placement": "Append as proposed; no dated chronology asserted.",
+    "reason": "Prior episodes reveal awkward acceptance of care. This adds desire for affection that somebody else receives, without retelling firefighting help. Western Sierra home, avatar and accepted words preserved. Neighbor feminine pronoun is fictional personality, not a claim about separate biological sexes in sequoias."
+  },
+  "media": {
+    "localPath": "/tmp/freed-edmund108/hug.jpg",
+    "sha1": "839219caf31bfdc396ea75a032faffe9d8eb6717",
+    "sha256": "17520b58a81f96b3cd21bd67466e69013c85a5d8f35d6640a12aac9d814831a8",
+    "bytes": 321471,
+    "width": 960,
+    "height": 720,
+    "hashScope": "Exact inspected960px delivery",
+    "fullUploadInspected": false
+  },
+  "primarySource": {
+    "url": "https://commons.wikimedia.org/wiki/File:TreeHugger.JPG",
+    "creator": "Jcesare at English Wikipedia (Joseph Cesare)",
+    "license": "CC BY 3.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/3.0/",
+    "verification": "Fresh web.open succeeded. Primary description names giant sequoia in Sequoia National Park and photographer Joseph Cesare; licensing section explicitly offers selectable CC BY3.0.",
+    "publishedOriginal": {
+      "width": 1984,
+      "height": 1488,
+      "bytes": 732122,
+      "sha1": "f9b7db7db2ab3da3d343400336bf12fc6c82d28a",
+      "verification": "Published source metadata only; original bytes not downloaded or opened."
+    }
+  },
+  "scope": "Only108 review documents written; no runtime edits or publication."
+}

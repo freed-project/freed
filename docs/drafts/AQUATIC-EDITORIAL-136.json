@@ -1,0 +1,157 @@
+{
+  "status": "closed_with_holds_no_admission_proposals",
+  "admitted": 0,
+  "exactImagesOpened": 4,
+  "proposals": [],
+  "media": [
+    {
+      "index": 1,
+      "observationId": 217584017,
+      "photoId": 384935642,
+      "sourcePage": "https://www.inaturalist.org/observations/217584017",
+      "sourceMetadataUrl": "https://www.inaturalist.org/observations/217584017.json",
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/384935642/large.jpg",
+      "localPath": "/tmp/freed-aquatic-136/source-01.jpg",
+      "width": 1024,
+      "height": 684,
+      "originalDimensions": [
+        2048,
+        1368
+      ],
+      "byteLength": 125437,
+      "sha1": "613a134fbcfb8b45033df5d4fb5c50c23fa4beaa",
+      "sha256": "87c800a7382f1cd63615efd0026dd34acb34850f258b67c9a8d37951d41e60ab",
+      "creator": "(c) Vsevolod Rudyi, some rights reserved (CC BY), uploaded by Vsevolod Rudyi",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "taxon": "Beroe cucumis",
+      "place": "Ersvika",
+      "description": null,
+      "individuallyOpened": true,
+      "decision": "hold",
+      "reason": "Close view of an expanded, lobed comb-jelly body with iridescent rows. Dark, soft and heavily cropped. No prey or other organism is visible. Does not meet the image bar for a new Orin scene.",
+      "hashScope": "Exact inspected source-published large delivery, not upload original.",
+      "changes": "None"
+    },
+    {
+      "index": 2,
+      "observationId": 117429277,
+      "photoId": 198321500,
+      "sourcePage": "https://www.inaturalist.org/observations/117429277",
+      "sourceMetadataUrl": "https://www.inaturalist.org/observations/117429277.json",
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/198321500/large.jpeg",
+      "localPath": "/tmp/freed-aquatic-136/source-02.jpg",
+      "width": 1024,
+      "height": 768,
+      "originalDimensions": [
+        2048,
+        1536
+      ],
+      "byteLength": 95927,
+      "sha1": "cbcfb7a36bfbe702e237f43f2b1f9ace1382749c",
+      "sha256": "f95a40289a94447b479abbc4c423349d83122b6b24534bad75dc0fe6a276ca94",
+      "creator": "(c) John Hepburn, some rights reserved (CC BY), uploaded by John Hepburn",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "taxon": "Beroe cucumis",
+      "place": "Plymouth, UK",
+      "description": "About 6cm long",
+      "individuallyOpened": true,
+      "decision": "hold",
+      "reason": "Pale jelly in a white specimen container. Body is faint and the container dominates. Hold visual quality and setting.",
+      "hashScope": "Exact inspected source-published large delivery, not upload original.",
+      "changes": "None"
+    },
+    {
+      "index": 3,
+      "observationId": 367224182,
+      "photoId": 670601917,
+      "sourcePage": "https://www.inaturalist.org/observations/367224182",
+      "sourceMetadataUrl": "https://www.inaturalist.org/observations/367224182.json",
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/670601917/large.jpg",
+      "localPath": "/tmp/freed-aquatic-136/source-03.jpg",
+      "width": 1024,
+      "height": 768,
+      "originalDimensions": [
+        2048,
+        1536
+      ],
+      "byteLength": 890001,
+      "sha1": "6b690e83ed93c8135e338f0785a70fe34cd7b8cc",
+      "sha256": "084ba7de704835aaa685deba0ef3da2821cc6c81134b60d5e7dabc414050ceab",
+      "creator": "(c) Geoff Morgan, some rights reserved (CC BY), uploaded by Geoff Morgan",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "taxon": "Beroe cucumis",
+      "place": "Scotland, GB",
+      "description": null,
+      "individuallyOpened": true,
+      "decision": "hold",
+      "reason": "Solitary jelly above green rocky bottom. Body identifiable but soft and low contrast; no legible contact or distinct incident.",
+      "hashScope": "Exact inspected source-published large delivery, not upload original.",
+      "changes": "None"
+    },
+    {
+      "index": 4,
+      "observationId": 380026930,
+      "photoId": 695206264,
+      "sourcePage": "https://www.inaturalist.org/observations/380026930",
+      "sourceMetadataUrl": "https://www.inaturalist.org/observations/380026930.json",
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/695206264/large.jpg",
+      "localPath": "/tmp/freed-aquatic-136/source-04.jpg",
+      "width": 1024,
+      "height": 774,
+      "originalDimensions": [
+        1057,
+        799
+      ],
+      "byteLength": 142048,
+      "sha1": "496418cd837150e272f1897bd698584e237f32d4",
+      "sha256": "7eb0a5ca274c5043a230875dff3e22aa49001b81fdb97da573fd5c2096152dd8",
+      "creator": "(c) Rachel Crane, some rights reserved (CC BY), uploaded by Rachel Crane",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "taxon": "Beroe cucumis",
+      "place": "Sermersooq, GL",
+      "description": "",
+      "individuallyOpened": true,
+      "decision": "hold",
+      "reason": "Solitary translucent jelly in blue water. Low contrast and no visible encounter; does not earn a fresh scene.",
+      "hashScope": "Exact inspected source-published large delivery, not upload original.",
+      "changes": "None"
+    }
+  ],
+  "continuityRead": [
+    "Orin full sole admitted episode and ocean-canon-05",
+    "Iris full ten-episode current arc",
+    "Deepsea-next full arcs for Etta, Miri, Iona, Tess and Gilda",
+    "Deepsea-nine Romy, Oswald, Severin and Dorian arcs",
+    "Percy and Vera current arcs"
+  ],
+  "researchHolds": [
+    {
+      "subject": "Orin Beroe cucumis",
+      "reason": "Four inspected licensed images fail visual or incident quality. Smithsonian mouth-agape image is explicitly only a beroid ctenophore; mention of B. cucumis in surrounding prose is not photo-specific identification. No upgrade of genus-level photo into Orin species.",
+      "source": "https://ocean.si.edu/holding-tank/images-hide/mouth-agape-comb-jelly"
+    },
+    {
+      "subject": "Iris Sepia officinalis",
+      "reason": "Licensed egg queries yield isolated eggs or South African/Mozambique observations. Eating results are all South African records. These do not establish the exact European common-cuttlefish taxon required for Iris; no image downloaded or counted. A crowdsourced label alone does not remove the geographic taxonomic concern."
+    },
+    {
+      "subject": "Neopetrolisthes maculatus",
+      "reason": "A discovery query was made before checking the character roster. No such current identity exists. No photos downloaded, no invented character or avatar."
+    },
+    {
+      "subject": "Deep-sea candidates",
+      "reason": "Searches of glass sponges, crinoids and Atolla yielded taxon-limited photographs or repeated feeding/perching/long-tentacle scenes. No additional images opened or proposed."
+    }
+  ],
+  "draftAttempt": {
+    "characterId": "orin-clear",
+    "status": "held_not_proposed",
+    "title": "The other side of me",
+    "body": "I turned away from the current. It pressed the other side of me. I turned farther. For a while I was occupied in every direction.\n\nWhen it eased, I had forgotten which way I had meant to go. I stayed there until I wanted somewhere again.",
+    "review": "Rejected by author. Flow can affect the body, but none of the exact images shows a compelling consequence. The ending turns into quiet observation rather than an earned event, and the sequence could fit many drifting animals. Preserve only as a rejected attempt, never runtime copy."
+  }
+}

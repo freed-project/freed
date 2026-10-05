@@ -9,6 +9,7 @@ export const AIR_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
     bio: "An Atlantic puffin who can carry a mouthful of fish across the sea but struggles with the last step into his own front door.",
     location: { name: "Skomer Island, Wales", coordinates: { lat: 51.738, lng: -5.296 } },
     episodes: [
+      { "classification": "event","subject": "Atlantic puffin", "platform": "instagram", "contentType": "story", "theme": "movement", "title": "Fish first", "body": "Got every fish across the water. Put my feet down for the grass. They stopped before the rest of me did.\n\nLay on my chest with my bill held up. Kept the fish clean. Picked grass out of my own feathers later.", "mediaSha1": "949bdefd0d3da7e2427cb30e64f63b93cfc91ace"},
       { subject: "Atlantic puffin", mediaSha1: null, theme: "movement", title: "Width problem", body: "Flew home with fish sticking out of both sides of my beak. Reached the burrow. Turned my head sideways to fit. The fish fitted beautifully. My head was now sideways in a hole." },
       { subject: "Atlantic puffin", mediaSha1: null, theme: "social", title: "Wrong darkness", body: "Someone hissed at me from inside my burrow. I hissed back. We did this twice before I noticed that my burrow was the next one along. I left without turning around, which took some time." },
       { subject: "Atlantic puffin", mediaSha1: null, theme: "weather", title: "Assisted departure", body: "A gust lifted my tail while I was leaning over the cliff. There was a brief period in which my feet still believed we were standing. I have decided to describe the rest as takeoff." },
@@ -38,6 +39,16 @@ export const AIR_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       { subject: "panther chameleon", mediaSha1: null, theme: "wonder", title: "The other eye", body: "Watched an insect crawl along a leaf until it disappeared behind me. My other eye picked it up without asking me to turn. I stayed with it all the way around. The insect got somewhere. I had an afternoon." },
       { subject: "panther chameleon", mediaSha1: null, theme: "social", title: "A little too close", body: "He passed beneath my sleeping branch. I flattened sideways to show him how large I was. He kept walking. I followed him with one eye until he disappeared, then spent the next minute trying to remember how wide I normally am." },
       { subject: "panther chameleon", mediaSha1: null, theme: "movement", title: "Tail first, this time", body: "There is a better sleeping fork beyond the gap. I wrapped my tail around the old branch before reaching, instead of forgetting it afterward. Halfway across, I stopped to eat a fly. For once I had arranged somewhere to be indecisive." },
+      {
+        "subject": "panther chameleon",
+        "platform": "facebook",
+        "contentType": "post",
+        "theme": "transformation",
+        "title": "Back above ground",
+        "body": "I kept trying to hold the ground.\n\nMy front feet closed on earth. It broke apart. I pushed it behind me and took another grip. By the time the hole was deep enough, my tail was curled tightly around nothing.\n\nWent backward into the dark. For a while there was only the wall against my sides and the slow work inside me.\n\nWhen I came out, the eggs stayed below.\n\nI pushed earth into the opening. More earth. The place grew flat and stopped looking like a place I had been.\n\nAt the first branch I reached, my tail went round before either front foot. For a while I stayed with all five grips closed.",
+        "classification": "inspiring",
+        "mediaSha1": "20122eb5631317a11a8ad44e883411edb8004564"
+      },
     ],
   },
   {
@@ -47,6 +58,7 @@ export const AIR_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
     bio: "A northern royal albatross whose certainty lasts for thousands of miles, then abandons her a few feet above the ground.",
     location: { name: "South Pacific east of the Chatham Islands", coordinates: { lat: -44.8, lng: -172.3 } },
     episodes: [
+      { "classification": "event","subject": "northern royal albatross", "platform": "instagram", "contentType": "story", "theme": "movement", "title": "One more turn", "body": "Put my feet down for the landing. A gust lifted me and I went round again.\n\nOn the next pass I tucked them up. The grass was still there. Everything was going so well while I wasn't touching it.", "mediaSha1": "7863016ae9346a01af7c8c6096eb97878b1ec1f8"},
       { subject: "northern royal albatross", mediaSha1: null, theme: "movement", title: "The last six feet", body: "The wind carried me over the swell all morning. I rose through it, turned, and fell back toward the water without once needing to hurry. A bird far below became a white fleck behind me.\n\nAt the headland I spread my feet and came down beside the grass. One foot touched. The other found a hollow. My wings, which had been so useful over an entire ocean, now filled every available direction.\n\nI stopped with my beak in a plant. A beetle was climbing its stem. It carried on past my eye. I stayed there until it had gone, then pulled myself upright as though I had come specifically to examine it." },
       { subject: "northern royal albatross", mediaSha1: null, theme: "weather", title: "Waiting for a shoulder", body: "Nothing moved the feathers along my back. The sea had gone smooth enough to make the sky look trapped in it. I ran across the surface, struck at the air, and settled back into the same patch of water, considerably wetter.\n\nA second attempt took more effort and achieved a small change of address. I folded my wings. There was no one to be impressive for, which helped.\n\nMuch later, a line of wrinkles came toward me over the water. I felt the breeze under the loose feathers first. This time I rose. Below me remained two ridiculous trails where I had tried to run across an ocean that was offering no assistance." },
       { subject: "northern royal albatross", mediaSha1: null, theme: "feeding", title: "Someone else found it", body: "A bird ahead dropped toward the water. I turned after it. Another turned after me. Within a few breaths we had become a crowd, all apparently certain that the bird in front knew something.\n\nThere was food. There was also a great deal of wing, beak, and unhappiness about proximity. I reached for a piece of squid and took a mouthful of water from under another bird's chest.\n\nI waited at the edge until the flurry moved on. A small piece drifted past, unclaimed. I swallowed it alone. The flock was already assembling around another bird far off. I watched for a moment before following, pretending to have chosen the same direction independently." },
@@ -66,6 +78,26 @@ export const AIR_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
     bio: "A male southern masked weaver with exacting tastes, a stubborn grass loop, and a growing suspicion that strength and neatness are different things.",
     location: { name: "Okavango floodplain, Botswana", coordinates: { lat: -19.332, lng: 23.018 } },
     episodes: [
+      {
+        "subject": "southern masked weaver",
+        "platform": "rss",
+        "contentType": "article",
+        "theme": "wonder",
+        "title": "Held below",
+        "body": "The walls are finished, but I still land on the branch beside them. I know what a branch can hold. I had watched half the grass in this nest fall past me at least once.\n\nToday I missed the branch. One foot caught the rim. The other followed, and I swung underneath the whole green thing.\n\nIt held.\n\nI pulled myself toward the wood, then stopped. My feet were pulling at grass. The grass was pulling at more grass. Somewhere above me was the little join I'd nearly thrown away.\n\nLet go with one foot. Put it back. Tried the other.\n\nA loose end brushed my face. I reached to tear it out, remembered what I was hanging from, and tucked my bill shut.",
+        "classification": "news",
+        "mediaSha1": "fd3304658ce6946538369efebf6711b121a5ba19"
+      },
+      {
+        "subject": "southern masked weaver",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "movement",
+        "title": "I put it down to look",
+        "body": "I chose a green piece without a single brown edge. Carried it all the way back. Now the leaves are in front of my eyes. I turn my head; they come with me.\n\nI put it down to look for the entrance. Watched it fall past the nest.",
+        "classification": "event",
+        "mediaSha1": "11813ad1f71a820e68955cf108a98368f6a7793d"
+      },
       { subject: "southern masked weaver", mediaSha1: null, theme: "movement", title: "The loop that stayed", body: "I carried a green strip to the branch and bent it around the fork. Held one end with my foot. Pulled the other with my bill. The whole thing slid free and came with me when I leaned back.\n\nThe next strip did the same. The third caught on a rough place in the bark. I tugged it, harder this time, and it held.\n\nI hung beneath it to test the join. My weight drew it tight. The loose end tickled my face, but I left it alone while I dangled there. For the first time that morning, something I had made was holding something I was. Then I sneezed and nearly let go." },
       { subject: "southern masked weaver", mediaSha1: null, theme: "social", title: "Borrowed green", body: "A strip of fresh grass disappeared from my nest while I was collecting another. I saw it traveling across the tree in a familiar bill.\n\nI followed. My neighbor fitted it into his wall. It looked very good there. This made the matter worse. I pulled at the trailing end, and he pulled at a different piece because he had mistaken my tugging for a flaw in his construction.\n\nWe loosened a substantial portion of the wall before he noticed me. I left with a short piece of grass and a large piece of his opinion. Back at my branch, I could not find where the stolen strip had belonged. I put it somewhere new and sat on it." },
       { subject: "southern masked weaver", mediaSha1: null, theme: "weather", title: "A roof with holes", body: "The rain found every small space I had chosen not to worry about. I stood inside and watched drops gather over my head. One struck the middle of my back. I moved. Another found the new position.\n\nOutside, the tree thrashed and the other nests swung. Mine held. This was useful information delivered in an unpleasant way.\n\nWhen the rain eased, I tucked more strips across the wet places. The walls grew thicker, the light dimmer. I went inside to inspect the work and found a dry patch exactly large enough for me. I stood on it until a drop fell from my own tail." },
@@ -95,6 +127,16 @@ export const AIR_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       { subject: "satanic leaf-tailed gecko", mediaSha1: null, theme: "movement", title: "Bark included", body: "The new hiding place had a narrow exit. I eased my head through, placed one foot outside, and pulled. A strip of loose bark moved with my other foot.\n\nI stopped. The bark stopped. I released two toes and tried again. The remaining toes were evidently sufficient to continue the arrangement.\n\nBy the time I emerged, I had dragged the strip halfway out of the shelter. I climbed over it and rested on the trunk. Behind me was a much wider opening than I had started with. I had spent the previous night appreciating the concealment. Now I had improved my departure at the expense of every possible return." },
       { subject: "satanic leaf-tailed gecko", mediaSha1: null, theme: "weather", title: "The colder fork", body: "The old fork felt cold when I returned. I wrapped my toes around it and waited for my body to become less reluctant. Nothing hurried. The forest was full of movements I could see without being ready to follow.\n\nA patch of pale light reached the branch beside me. I moved into it a little at a time. My foot became a foot I could use quickly again. Then my shoulder followed.\n\nThe other gecko appeared below, equally slow. It settled near the edge of the light. I did not move it along. We had both arrived with more argument in us than warmth, and warmth was the thing the branch was offering." },
       { subject: "satanic leaf-tailed gecko", mediaSha1: null, theme: "social", title: "A small deliberate movement", body: "The gecko from the fork passed below me at dusk. I could have stayed unnoticed. The leaves matched my tail, and the dark hid the curve of my head.\n\nI moved one foot. My neighbor stopped and looked up. For a few breaths I was plainly a creature looking at another creature, with none of the useful dead-leaf business in between.\n\nThen a moth moved nearby and both our heads turned. My neighbor climbed after it. I stayed on the branch, visible for a little longer than necessary. When I finally flattened back among the leaves, I chose a position from which I could still see the route below." },
+      {
+        "subject": "satanic leaf-tailed gecko",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "weather",
+        "title": "Holding still together",
+        "body": "I have been trying to look dead for most of the afternoon. A leaf slipped beneath my chin, and I caught it. Now the wind has stopped. I am still holding it, waiting for everything else to move first.",
+        "classification": "event",
+        "mediaSha1": "353d0536fba174d05cadab50498cc6755aa8e936"
+      },
     ],
   },
   {
@@ -108,7 +150,7 @@ export const AIR_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       { subject: "reticulated glass frog", mediaSha1: null, theme: "social", title: "A voice under the noise", body: "I called from the leaf above the water. The stream took the sound apart. I called again, louder, and felt my throat swell against the cool air.\n\nFrom nearby came an answer. I turned toward it. Another call arrived from farther off, then a third, until I could no longer tell which one had first replied to me.\n\nI stayed quiet for a while. The frogs continued. I had wanted to be heard and found myself listening with my whole body instead. Then the nearest frog stopped, leaving a space in the noise. I called into it so quickly that I startled myself." },
       { subject: "reticulated glass frog", mediaSha1: null, theme: "weather", title: "The heavy part of rain", body: "Small drops had been landing around me for some time. Then water collected in the leaves above and came down all at once. My leaf sagged, sprang back, and sent me sliding toward its edge.\n\nMy toes caught. I climbed toward the stem and tucked beneath the curve. The stream below grew louder and browner. Pieces of leaf went past in the water, moving faster than anything a frog could decide.\n\nWhen the rain eased, I came out to the top again. My calling place was still there, but the branch had shifted. The view was different by half a leaf. I spent the evening being suspicious of that half." },
       { subject: "reticulated glass frog", mediaSha1: null, theme: "feeding", title: "Dinner after the pause", body: "A tiny insect settled on the underside of the leaf. I could see it through the thin green surface, a dark mark that moved when the light changed.\n\nI went around the edge. By then it had gone to the top. I climbed back. It moved underneath again. Neither of us was traveling far, but I was doing considerably more climbing.\n\nI stopped beside the stem and waited. The insect eventually came into reach and I caught it. After swallowing, I stayed where I was. Another landed near the edge. I looked at it for a moment, then chose to remain a frog with a small dinner rather than begin a second tour." },
-      { subject: "reticulated glass frog", mediaSha1: null, theme: "family", title: "The leaf I could not leave", body: "The eggs lay in their clear mound on the leaf. I had gone to the edge to call when a small insect moved toward them. I returned at once.\n\nI put myself across the clutch. The insect changed direction. I watched it disappear along the stem, then checked the surface of the eggs with the underside of my body. They were still wet.\n\nLater I tried the edge again. Nothing approached, but I came back anyway. The leaf had grown very large. Every distance from the eggs felt longer than it had before, even the distance of my own body. I settled over them and called from there, less impressively and much closer to the point." },
+      { classification: "personal", subject: "reticulated glass frog", mediaSha1: "d9e24bbec626e74e29836831e55905d50e1a57c2", theme: "family", title: "The leaf I could not leave", body: "The eggs lay in their clear mound on the leaf. I had gone to the edge to call when a small insect moved toward them. I returned at once.\n\nI put myself across the clutch. The insect changed direction. I watched it disappear along the stem, then checked the surface of the eggs with the underside of my body. They were still wet.\n\nLater I tried the edge again. Nothing approached, but I came back anyway. The leaf had grown very large. Every distance from the eggs felt longer than it had before, even the distance of my own body. I settled over them and called from there, less impressively and much closer to the point." },
       { subject: "reticulated glass frog", mediaSha1: null, theme: "danger", title: "A shape with too many legs", body: "The spider appeared on the branch beyond my leaf. Its legs tested the surface separately. I watched the nearest one touch the stem.\n\nI moved to the far side and pressed low. The spider paused where I had been. It moved again, and I jumped to a leaf below. That leaf bent, but this time I was ready for it.\n\nFrom underneath I watched the spider cross my old calling place. It turned there, reached down, and began cleaning a leg. I had never considered how long that could take. I waited through two legs, then found somewhere else to spend the night." },
       { subject: "reticulated glass frog", mediaSha1: null, theme: "wonder", title: "Lights moving under skin", body: "At dusk I crossed a leaf with the pale sky behind it. My legs looked different against the light: thin, green at the edges, with darker little shapes inside.\n\nI stopped and placed one foot farther forward. The shapes moved with it. Everything I used to cling and spring was packed into something the evening could almost shine through.\n\nA frog called nearby, and I answered. My throat changed shape. My whole small body was busy doing things I usually noticed only when they failed. Then the leaf tipped under my weight and I grabbed the stem. There were apparently still occasions on which thinking about my feet was less useful than using them." },
       { subject: "reticulated glass frog", mediaSha1: null, theme: "family", title: "The downward beginning", body: "The tadpoles had become dark, wriggling shapes inside the eggs. I sat nearby while rain ticked against the leaves. One moved, then another. The clear mound began to open.\n\nThey slipped free and fell toward the stream. I followed each drop with my eyes until there were too many small movements to follow. The water received them without changing its sound.\n\nAfterward I went across the leaf to the place where the clutch had been. It was suddenly easy to move there. I sat down, then stood, then went to the edge. I had spent so long keeping small bodies on that leaf that watching them leave it felt like failing at the thing I had been doing correctly." },
@@ -133,6 +175,17 @@ export const AIR_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       { subject: "Inca tern", mediaSha1: null, theme: "feeding", title: "An unshared discovery", body: "Found a small patch of fish close to the rocks and kept my descent shallow. No calling. No circling. One neat little meal to myself. When I looked up, he was already coming down beside me. Apparently discretion has a visible shape." },
       { subject: "Inca tern", mediaSha1: null, theme: "social", title: "The vacant warm bit", body: "He didn't return with the others. I took his part of the ledge because it was available, then kept looking out to sea from it. When he finally landed, I gave it back too quickly to make the complaint I had been preparing." },
       { subject: "Inca tern", mediaSha1: null, theme: "weather", title: "Room on the sheltered side", body: "The wind pushed spray around the corner all afternoon. I stood behind the rock until he arrived, shaking water from his head. Shifted enough to let him in. He took slightly more than enough. I left him most of it until his feathers settled." },
+      {
+        "subject": "Inca tern",
+        "classification": "event",
+        "mediaSha1": "932e005ea793c0bf1080dcbd3c5e924c0c41ceb8",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "weather",
+        "title": "Finished twice",
+        "body": "Put the last feather back. Turned my head and found my tail spread open.\n\nClosed it. The wind lifted the feathers along my back.\n\nI've gone round myself twice. Now I'm holding the last one down with my bill, waiting for the wind to get bored first."
+      },
+      { "classification": "personal","subject": "Inca tern pair on a rocky ledge", "platform": "instagram", "contentType": "story", "theme": "courtship", "title": "A little encouragement", "body": "He put one foot on my back. I waited for the other. Then all the flapping began.\n\nI looked round.\n\nHe was concentrating so hard that I kept still. Even when the tip of his wing brushed my face.\n\nAfterward he stood beside me with both feet on the rock. I leaned into him. He wobbled again.", "mediaSha1": "676abc2d87a30092804dae9a3835796d594f33f0"},
     ],
   },
   {
@@ -142,6 +195,7 @@ export const AIR_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
     bio: "A roseate spoonbill who finds her meals by touch and objects to being judged by people who have to see theirs first.",
     location: { name: "Florida Bay mangrove shallows", coordinates: { lat: 25.099, lng: -80.666 } },
     episodes: [
+      { "classification": "inspiring","subject": "roseate spoonbill", "platform": "instagram", "contentType": "story", "mediaSha1": "c394060c2e6cc387ad0b85ea6520fdb0690727c5", "theme": "wonder", "title": "After preening", "body": "Worked a loose feather out of my breast. It drifted away so slowly I thought I could catch it.\n\nMissed. Tried again.\n\nNow I'm leaning off the branch with my bill open, waiting for the thing I just pulled out to come back."},
       { subject: "roseate spoonbill", mediaSha1: null, theme: "feeding", title: "The mud is occupied", body: "Swept my bill through a cloud of mud and felt something small strike the tip. Caught it without seeing it. The heron beside me has been staring at clear water for several minutes. I would offer advice, but my mouth is full." },
       { subject: "roseate spoonbill", mediaSha1: null, theme: "movement", title: "The foot that stayed", body: "I lifted a foot from the mud. The mud declined. I leaned, tugged, and released it with a wet sound large enough to turn several heads. Took the next step in a much less ambitious fashion." },
       { subject: "roseate spoonbill", mediaSha1: null, theme: "social", title: "A bill's width", body: "She started sweeping toward me while I was sweeping toward her. Our bills met in the middle. We both lifted our heads, offended by the same discovery. There was enough water for either of us to be somewhere else. Neither went." },
@@ -152,6 +206,7 @@ export const AIR_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       { subject: "roseate spoonbill", mediaSha1: null, theme: "danger", title: "The root breathed", body: "A dark shape beside the mangroves lifted two eyes above the water. I had been feeding toward it. Turned at once and walked back with the measured pace of a bird whose legs would have preferred a much louder exit." },
       { subject: "roseate spoonbill", mediaSha1: null, theme: "movement", title: "Shallow enough for her", body: "I followed the taller heron into a channel until the water reached my belly. He kept walking. I stopped. Nothing about his route had promised to accommodate my legs, but I resented him as though we had discussed it." },
       { subject: "roseate spoonbill", mediaSha1: null, theme: "social", title: "One small adjustment", body: "We fed beside each other at dusk. When she swept left, I swept right. A whole meal without striking bills. Then we both turned to leave and collided at the shoulder. She stayed leaning against me until I moved the correct foot." },
+      { "classification": "personal","subject": "roseate spoonbill with young", "platform": "instagram", "contentType": "story", "theme": "family", "title": "Nearly level", "body": "I used to bend down to feed them.\n\nToday I lifted my head. Three necks came up after it. One bill reached into mine; the others kept trying.\n\nSpread my wings and held the branch.\n\nWhen they were done, I kept my head up. Just to have it to myself.", "mediaSha1": "cbae1316dbf6bc2683efc4f2c01f4643831c0310"},
     ],
   },
   {
@@ -162,7 +217,7 @@ export const AIR_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
     location: { name: "Serengeti grasslands, Tanzania", coordinates: { lat: -2.543, lng: 34.822 } },
     episodes: [
       { subject: "secretary bird", mediaSha1: null, theme: "movement", title: "A long way to nothing", body: "Saw movement beyond the grass and walked toward it with purpose. It was a leaf caught on a stem. I had covered a considerable distance by then, so I inspected it from the other side before leaving." },
-      { subject: "secretary bird", mediaSha1: "7e47acff9f3b3657e6635f8da66500def75bccf8", theme: "feeding", title: "Measured force", body: "The locust jumped past my foot. I threw out both wings to keep my balance, which sent the rest of me around after it. By the time I was facing lunch again, lunch was beyond the grass and I was standing in the hole I had kicked into the ground." },
+      { classification: "news", subject: "secretary bird", mediaSha1: "7e47acff9f3b3657e6635f8da66500def75bccf8", theme: "feeding", title: "Measured force", body: "The locust jumped past my foot. I threw out both wings to keep my balance, which sent the rest of me around after it. By the time I was facing lunch again, lunch was beyond the grass and I was standing in the hole I had kicked into the ground." },
       { subject: "secretary bird", mediaSha1: null, theme: "social", title: "The shorter stride", body: "The bird beside me took two steps for every one of mine. I slowed enough to stay alongside. She stopped to investigate a beetle. I waited. By midday she had eaten more, traveled less, and shown no interest in explaining herself." },
       { subject: "secretary bird", mediaSha1: null, theme: "weather", title: "Crest with other plans", body: "Walked into the wind with my head level and my eyes forward. The feathers at the back of my head stood in several incompatible directions. I could feel each of them disagreeing with the impression I intended to make." },
       { subject: "secretary bird", mediaSha1: null, theme: "danger", title: "Respect at a distance", body: "The snake lifted its front half. I stepped back before deciding to step back. Kept my wings spread and watched it enter the thicker grass. I have retained all my toes and abandoned the claim that every retreat is deliberate." },
@@ -171,6 +226,7 @@ export const AIR_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       { subject: "secretary bird", mediaSha1: null, theme: "movement", title: "Too many feet of bird", body: "The roosting branch was sound. I landed, folded my wings, and began arranging my legs beneath me. A twig caught the long feather at my side. I rose to free it and had to arrange the legs again. There is quite a lot of me to put away." },
       { subject: "secretary bird", mediaSha1: null, theme: "feeding", title: "The second look down", body: "Missed a beetle, walked three more paces, then turned back. It was still beside the same clump. I had nearly allowed the appearance of decisiveness to cost me a beetle. I ate it before developing that thought any further." },
       { subject: "secretary bird", mediaSha1: null, theme: "movement", title: "A useful lack of progress", body: "Found shade beneath a tree and stayed there through the hottest part of the day. The bird with the short stride joined me. We watched a grass stem move for a long time. Neither of us went to investigate. It was the best use I made of my legs all afternoon." },
+      { "classification": "inspiring","subject": "secretary bird", "platform": "instagram", "contentType": "story", "mediaSha1": "30689084b48ce409bc82d0213918688a02168d17", "theme": "danger", "title": "A movement beside me", "body": "Something moved beside my face. Stepped back. It came with me.\n\nTook another step before I remembered the bit of lunch still hanging from my bill.\n\nFinished swallowing. Looked at the bush again. I had moved quite a long way for something I was already eating."},
     ],
   },
   {
@@ -180,7 +236,17 @@ export const AIR_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
     bio: "A red-eyed tree frog whose ideal day involves sleeping through it, provided the leaf and everybody near it will cooperate.",
     location: { name: "Tortuguero lowland forest, Costa Rica", coordinates: { lat: 10.542, lng: -83.502 } },
     episodes: [
-      { subject: "red-eyed tree frog", mediaSha1: null, theme: "movement", title: "Fold until invisible", body: "Tucked in the blue sides, folded the orange feet, and shut my red eyes. An entire loud-colored frog became a small green shape under a leaf. Then I needed to scratch my face and the whole arrangement came apart." },
+      {
+        "subject": "red-eyed tree frog",
+        "platform": "rss",
+        "contentType": "article",
+        "theme": "wonder",
+        "title": "Before feet",
+        "body": "A small trembling came through the clear wall. Then another. I stopped turning.\n\nThe trembling grew until there was nowhere in the egg it did not reach. I pressed my face outward and waited while the whole soft place shook around me.\n\nIt went on for so long that I curled my tail back beside my face.\n\nEventually the shaking thinned and stopped.\n\nSomeone next to me wriggled. A little movement reached me through the jelly. I turned too.\n\nFor a while we disturbed only each other.",
+        "classification": "news",
+        "mediaSha1": "5190c6ad87e8bc78659ab136f4b48d200c5e4462"
+      },
+      { classification: "event", subject: "red-eyed tree frog", mediaSha1: "a2ff75a5da81be80f135ebce2625c12c7bdc1bc5", theme: "movement", title: "Fold until invisible", body: "Tucked in the blue sides, folded the orange feet, and shut my red eyes. An entire loud-colored frog became a small green shape under a leaf. Then I needed to scratch my face and the whole arrangement came apart." },
       { subject: "red-eyed tree frog", mediaSha1: null, theme: "weather", title: "Cold drop, open eye", body: "One drop reached my sleeping face. I opened one eye. Another hit the other side. I opened the second. The rain now had my full attention, which appeared to be all it had wanted before stopping." },
       { subject: "red-eyed tree frog", mediaSha1: null, theme: "feeding", title: "A tongue-sized error", body: "The moth landed just beyond the reach of my tongue. I leaned. It walked farther along the leaf. I leaned more. There is a particular moment when hunting becomes falling, and I met it with my mouth open." },
       { subject: "red-eyed tree frog", mediaSha1: null, theme: "social", title: "Someone else's orange foot", body: "Woke with a foot against my face. Not mine. Followed it to a frog asleep beside me, taking up most of the underside of the leaf. I pushed the foot away. It returned more comfortably arranged." },
@@ -190,6 +256,16 @@ export const AIR_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       { subject: "red-eyed tree frog", mediaSha1: null, theme: "social", title: "The toe truce", body: "He was on the leaf again, already asleep. I settled beside him with enough room between our feet. Later the leaf curled as it dried and brought us together. I stayed. It was easier to blame the leaf than find another bed." },
       { subject: "red-eyed tree frog", mediaSha1: null, theme: "feeding", title: "A smaller mouthful", body: "A huge moth passed and I crouched after it. Then a smaller insect landed against my foot. Ate the small one without moving. Watched the moth go with the peaceful expression of a frog pretending size had never interested her." },
       { subject: "red-eyed tree frog", mediaSha1: null, theme: "weather", title: "Under the torn bit", body: "The sleeping leaf has a small tear now. I chose a place beyond it. He chose the old place, got dripped on, and shifted toward me with one eye open. I made room without unfolding all my colors. We are getting better at being inconvenient together." },
+      {
+        "subject": "red-eyed tree frog",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "courtship",
+        "title": "Before I objected",
+        "body": "At dusk I went down to complain about his calling. Halfway along the stem he called again, and I stopped with one foot raised. Without the leaf between us, I liked it.\n\nNow he is on my back, silent. I had several things prepared to say about keeping a frog awake. I am trying to turn one of them into a request.",
+        "classification": "personal",
+        "mediaSha1": "962df5cef52e8c9eb2dcf404f0403f4498c421e5"
+      },
     ],
   },
   {
@@ -202,7 +278,7 @@ export const AIR_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       { subject: "Maratus volans", mediaSha1: null, theme: "movement", title: "A very small ridge", body: "Climbed the bark ridge and found another ridge behind it. Crossed that too. From the top I could see the leaf I had started on, still close enough to make the expedition difficult to describe." },
       { subject: "Maratus volans", mediaSha1: null, theme: "feeding", title: "A faceful of yellow", body: "Followed a tiny fly into the flower. Lost it behind the stamens. Backed out with yellow grains on my face and spent so long cleaning that the flower closed around the place I had intended to search next." },
       { subject: "Maratus volans", mediaSha1: null, theme: "weather", title: "Round water", body: "A drop filled the hollow I meant to cross. I went around it, placing each foot on the dry rim. The rim ended before the water did. Backed all the way out of a route that had looked extremely sensible from above." },
-      { subject: "Maratus volans", mediaSha1: "4c6c74bb4ef16b62c0c7c16c358c035eef7a4d03", theme: "courtship", title: "The full fan", body: "She turned toward me. I lifted the fan, raised my legs, and began the careful little sideways steps. She watched. I forgot the next step and held one leg in the air. She kept watching. That leg has never felt so long." },
+      { classification: "personal", subject: "Maratus volans", mediaSha1: "4c6c74bb4ef16b62c0c7c16c358c035eef7a4d03", theme: "courtship", title: "The full fan", body: "She turned toward me. I lifted the fan, raised my legs, and began the careful little sideways steps. She watched. I forgot the next step and held one leg in the air. She kept watching. That leg has never felt so long." },
       { subject: "Maratus volans", mediaSha1: null, theme: "danger", title: "Down before the shadow", body: "The light changed above the leaf. I dropped over the edge on silk before I had seen the bird. Hung below while its feet moved the surface I had been standing on. For once, being small enough to lose track of was useful to me." },
       { subject: "Maratus volans", mediaSha1: null, theme: "movement", title: "A line back up", body: "Pulled myself along the silk after the bird left. At the top, one foot met my own trailing line and held it against the leaf. I climbed harder. Nothing happened. Released the foot and arrived suddenly, with rather more enthusiasm than intended." },
       { subject: "Maratus volans", mediaSha1: null, theme: "wonder", title: "The bright underside", body: "The curled leaf turned over in the breeze and showed a pale underside I had never seen. I crossed onto it and looked back at the dark bark. My whole familiar world could change color without moving me farther than a leg's length." },
@@ -228,6 +304,16 @@ export const AIR_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       { subject: "regal jumping spider", mediaSha1: null, theme: "movement", title: "New reach", body: "Came out with longer legs and tried the familiar gap. Overshot the useful part of the leaf. Caught the far edge. Growing has made my old mistakes available from new directions." },
       { subject: "regal jumping spider", mediaSha1: null, theme: "feeding", title: "A smaller detour", body: "The next fly landed near the stem. I went only halfway around this time. Reached it before it left. Ate against the bark while a long, perfectly good alternative route remained unused." },
       { subject: "regal jumping spider", mediaSha1: null, theme: "social", title: "Both on the same leaf", body: "Another spider landed beside me. We raised our front legs, lowered them, and moved to opposite ends. The leaf bent under our combined weight. For a moment we both hurried toward the middle, completely forgetting to look formidable." },
+      {
+        "subject": "regal jumping spider",
+        "platform": "facebook",
+        "contentType": "post",
+        "theme": "feeding",
+        "title": "The far end of lunch",
+        "body": "I caught the yellow caterpillar near his head and settled on the rough ground.\n\nSomething brushed a leg. I moved it. The touch came again, from the other side.\n\nI turned while keeping hold of dinner. Nothing behind me. I turned farther. The caterpillar swung with me, and a long black hair drew across my foot.\n\nI put one foot on him, farther back, and waited. The touch stopped.\n\nI lifted the foot to make myself comfortable. The hair reached me again.\n\nI kept the foot there while I fed.",
+        "classification": "inspiring",
+        "mediaSha1": "776123ed75fc3317199e27a14cd37e459da3a336"
+      },
     ],
   },
   {
@@ -247,6 +333,7 @@ export const AIR_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       { subject: "common darter dragonfly", mediaSha1: null, theme: "social", title: "An affordable border", body: "The other darter landed two reeds away. I watched. He watched. A fly crossed between us and we both went after it. He got the fly. I got my reed back without having to defend it from someone already busy eating." },
       { subject: "common darter dragonfly", mediaSha1: null, theme: "weather", title: "Sun on the narrow side", body: "Raised my abdomen toward the midday sun to give the heat less of me to land on. A breeze turned the reed. Adjusted. The reed turned back. I am spending a hot afternoon being carefully pointed." },
       { subject: "common darter dragonfly", mediaSha1: null, theme: "movement", title: "A perch without history", body: "The old reed broke in the wind. I circled where its tip had been, then landed on a nearby stem. It held me. The view was almost identical. I stayed irritated longer than the replacement took." },
+      { "classification": "event","subject": "common darter dragonfly", "platform": "instagram", "contentType": "story", "mediaSha1": "ec120c4e80f4497517d12aa9f726a1bf38a01e56", "theme": "movement", "title": "Resting place", "body": "The reed is gone. Stopped above the place anyway.\n\nHeld there. Slipped sideways. Came back.\n\nI used to rest here. Today I'm using all four wings to do it."},
     ],
   },
   {
@@ -256,7 +343,8 @@ export const AIR_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
     bio: "An atlas moth carrying the consequences of a very hungry youth into a brief adult life with magnificent wings and no working appetite.",
     location: { name: "Western Ghats forest, southern India", coordinates: { lat: 10.375, lng: 77.125 } },
     episodes: [
-      { subject: "atlas moth", mediaSha1: "42278fec6e965262d43eaad25091aab733dad3c5", theme: "transformation", title: "A larger problem unfolds", body: "Came out of the cocoon and hung beneath the branch while my wings expanded. More wing. Then more. I had left a narrow little room and immediately become too wide to turn around beside it." },
+      { classification: "inspiring", subject: "atlas moth", mediaSha1: "42278fec6e965262d43eaad25091aab733dad3c5", theme: "transformation", title: "A larger problem unfolds", body: "Came out of the cocoon and hung beneath the branch while my wings expanded. More wing. Then more. I had left a narrow little room and immediately become too wide to turn around beside it." },
+      { "classification": "conversation","subject": "atlas moth", "title": "Warm perch", "platform": "instagram", "contentType": "story", "theme": "social", "body": "I thought the warm thing had caught me. Held on harder when it moved.\n\nTried lifting one foot. Nothing stopped it. Tried another. I had been helping.", "mediaSha1": "daf2f85450ab0482bd89c1b86d7d747ba90558ee"},
       { subject: "atlas moth", mediaSha1: null, theme: "feeding", title: "Past appetite", body: "The leaf smells like the sort I used to eat. I stayed beside it for a while, with no useful mouth to continue the relationship. Somewhere in this enormous new body is a caterpillar who ate enough for both of us. I hope he was thorough." },
       { subject: "atlas moth", mediaSha1: null, theme: "movement", title: "Width of the night", body: "Opened my wings between two twigs and touched both. Closed them. Turned. Opened them again and touched a different pair. There is a great deal of open forest and I have chosen the smallest available part." },
       { subject: "atlas moth", mediaSha1: null, theme: "danger", title: "The useful wrong shape", body: "A bird came along the branch. I held still with my wing tips angled outward. It paused, tipped its head, and went elsewhere. I do not know what it thought I was. I am willing to remain that for a little longer." },

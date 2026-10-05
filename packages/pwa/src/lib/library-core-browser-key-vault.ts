@@ -170,7 +170,11 @@ function openKeyDatabase(): Promise<IDBDatabase> {
       },
       { once: true },
     );
-    request.addEventListener("success", () => resolve(request.result), {
+    request.addEventListener("success", () => {
+      const database = request.result;
+      database.addEventListener("versionchange", () => database.close());
+      resolve(database);
+    }, {
       once: true,
     });
     request.addEventListener(
@@ -514,6 +518,24 @@ export async function preparePwaLibraryCoreLocalSampleResult(
   });
 }
 
+/** Retire only the exact local result SQLite has rejected before admission. */
+export async function discardRejectedPwaLibraryCoreLocalSampleResult(
+  libraryId: LibraryCoreLowercaseHex64,
+  resultDigest: LibraryCoreLowercaseHex64,
+): Promise<PwaLibraryCoreLocalSampleAuthority> {
+  const stored = await updateStoredLocalSampleAuthority((current) => {
+    if (
+      current.libraryId !== libraryId ||
+      current.status !== "ready" ||
+      current.preparedResult?.previousResultDigest !== resultDigest
+    ) {
+      throw new Error("PWA rejected local sample result changed");
+    }
+    return Object.freeze({ ...current, preparedResult: null });
+  });
+  return publicLocalSampleAuthority(stored);
+}
+
 export async function commitPwaLibraryCoreLocalSampleResult(
   libraryId: LibraryCoreLowercaseHex64,
   resultDigest: LibraryCoreLowercaseHex64,
@@ -730,6 +752,40 @@ export async function getOrCreatePwaLibraryCoreActorIdentity(
   return publicIdentity(readback);
 }
 
+function recoveryIdentity(stored: StoredActorKeyRecord, recoveryId: LibraryCoreLowercaseHex64): PwaLibraryCoreActorIdentity {
+  if (!isLibraryCoreLowercaseHex64(recoveryId)) throw new Error("PWA recovery identity is invalid");
+  return Object.freeze({ ...publicIdentity(stored), actorIncarnationNonce: recoveryId,
+    actorId: libraryCoreDigest("actor-id", {
+      library_id: stored.libraryId, installation_incarnation: stored.installationIncarnation,
+      signature_algorithm: "ed25519", actor_public_key: stored.actorPublicKey, actor_incarnation_nonce: recoveryId,
+    }),
+  });
+}
+
+/** Derive another incarnation from the existing key. SQLite owns enrollment and recovery. */
+export async function readPwaLibraryCoreRecoveryActorIdentity(
+  libraryId: LibraryCoreLowercaseHex64, recoveryId: LibraryCoreLowercaseHex64,
+): Promise<PwaLibraryCoreActorIdentity> {
+  const stored = await readStoredActorKey(libraryId);
+  if (!stored) throw new Error("PWA recovery requires the original actor key");
+  return recoveryIdentity(stored, recoveryId);
+}
+
+/** Explicit recovery signing never replaces the stable key-vault record. */
+export async function signPwaLibraryCoreRecoveryActorProof(
+  identity: PwaLibraryCoreActorIdentity, recoveryId: LibraryCoreLowercaseHex64, message: Uint8Array,
+): Promise<LibraryCoreEd25519SignatureHex> {
+  const stored = await readStoredActorKey(identity.libraryId);
+  if (!stored) throw new Error("PWA recovery requires the original actor key");
+  const expected = recoveryIdentity(stored, recoveryId);
+  if (identity.actorId !== expected.actorId || identity.actorPublicKey !== expected.actorPublicKey ||
+      identity.installationIncarnation !== expected.installationIncarnation || identity.actorIncarnationNonce !== recoveryId) {
+    throw new Error("PWA recovery signing identity changed");
+  }
+  return lowerHex(await crypto.subtle.sign({ name: "Ed25519" }, stored.actorPrivateKey,
+    exactArrayBuffer(message))) as LibraryCoreEd25519SignatureHex;
+}
+
 export async function signPwaLibraryCoreActorProof(
   identity: PwaLibraryCoreActorIdentity,
   message: Uint8Array,
@@ -754,6 +810,7 @@ export async function signPwaLibraryCoreActorProof(
 export async function signPwaLibraryCoreFollowerOperation(
   context: LibraryCoreFollowerMutationContextV1,
   operationSigningBodyDigest: LibraryCoreLowercaseHex64,
+  recoveryId?: LibraryCoreLowercaseHex64,
 ): Promise<LibraryCoreEd25519SignatureHex> {
   if (!isLibraryCoreLowercaseHex64(operationSigningBodyDigest)) {
     throw new TypeError("PWA follower signing digest is invalid");
@@ -764,7 +821,7 @@ export async function signPwaLibraryCoreFollowerOperation(
   const stored = await readStoredActorKey(context.library_id);
   if (
     !stored ||
-    stored.actorId !== context.actor_id ||
+    (recoveryId ? recoveryIdentity(stored, recoveryId).actorId : stored.actorId) !== context.actor_id ||
     stored.actorPublicKey !== context.actor_public_key
   ) {
     throw new Error("PWA Library actor key does not match SQLite authority");

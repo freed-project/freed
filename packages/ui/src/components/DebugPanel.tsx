@@ -70,7 +70,7 @@ const KIND_STYLES: Record<SyncEventKind, { badge: string; dot: string; label: st
 
 const EMPTY_PROVIDER_SYNC_COUNTS: Partial<Record<HealthProviderId, number>> = {};
 const DEBUG_CARD_CLASS = "theme-card-soft rounded-xl p-3";
-const DEBUG_LABEL_CLASS = "mb-1 text-[10px] uppercase tracking-wider text-[var(--theme-text-soft)]";
+const DEBUG_LABEL_CLASS = "mb-1 text-[0.625rem] uppercase tracking-wider text-[var(--theme-text-soft)]";
 const DEBUG_BUTTON_CLASS = "btn-secondary px-2.5 py-1 text-xs";
 
 // ---------------------------------------------------------------------------
@@ -81,10 +81,10 @@ function EventRow({ event }: { event: SyncEvent }) {
   const style = KIND_STYLES[event.kind];
   return (
     <div className="flex items-start gap-2.5 border-b border-[var(--theme-border-subtle)] py-2 last:border-0">
-      <span className="mt-0.5 shrink-0 font-mono text-[10px] tabular-nums text-[var(--theme-text-soft)]">
+      <span className="mt-0.5 shrink-0 font-mono text-[0.625rem] tabular-nums text-[var(--theme-text-soft)]">
         {formatTs(event.ts)}
       </span>
-      <span className={`shrink-0 mt-0.5 text-[10px] px-1.5 py-0.5 rounded border font-mono ${style.badge}`}>
+      <span className={`shrink-0 mt-0.5 text-[0.625rem] px-1.5 py-0.5 rounded border font-mono ${style.badge}`}>
         {style.label}
       </span>
       <div className="flex-1 min-w-0">
@@ -92,7 +92,7 @@ function EventRow({ event }: { event: SyncEvent }) {
           <p className="truncate font-mono text-xs text-[var(--theme-text-muted)]">{event.detail}</p>
         )}
         {event.bytes !== undefined && (
-          <p className="font-mono text-[10px] text-[var(--theme-text-soft)]">{formatBytes(event.bytes)}</p>
+          <p className="font-mono text-[0.625rem] text-[var(--theme-text-soft)]">{formatBytes(event.bytes)}</p>
         )}
       </div>
     </div>
@@ -143,9 +143,9 @@ function CloudProviderRow({
         <span className={`text-xs font-medium ${s.labelColor}`}>{s.label}</span>
       </div>
       {error && (
-        <p className="theme-feedback-text-danger mt-1 break-all font-mono text-[10px] leading-snug">{error}</p>
+        <p className="theme-feedback-text-danger mt-1 break-all font-mono text-[0.625rem] leading-snug">{error}</p>
       )}
-      <div className="mt-2 grid grid-cols-2 gap-x-2 gap-y-1 font-mono text-[10px] text-[var(--theme-text-soft)]">
+      <div className="mt-2 grid grid-cols-2 gap-x-2 gap-y-1 font-mono text-[0.625rem] text-[var(--theme-text-soft)]">
         <span>Stage</span>
         <span className="text-right text-[var(--theme-text-muted)]">{state.stage ?? "-"}</span>
         <span>Remote</span>
@@ -155,7 +155,7 @@ function CloudProviderRow({
         <span>Local</span>
         <span className="text-right text-[var(--theme-text-muted)]">{formatOptionalBytes(state.lastLocalBytes)}</span>
       </div>
-      <div className="mt-2 space-y-0.5 font-mono text-[10px] text-[var(--theme-text-soft)]">
+      <div className="mt-2 space-y-0.5 font-mono text-[0.625rem] text-[var(--theme-text-soft)]">
         <p>Download: {state.lastDownloadAt ? formatRelative(state.lastDownloadAt) : "-"}</p>
         <p>Merge: {state.lastMergeAt ? formatRelative(state.lastMergeAt) : "-"}</p>
         <p>Upload: {state.lastUploadAt ? formatRelative(state.lastUploadAt) : "-"}</p>
@@ -211,7 +211,7 @@ function ConnectionTab() {
 
       {/* ── Cloud Sync ─────────────────────────────────────────────────────── */}
       <div>
-        <p className="mb-2 px-0.5 text-[10px] uppercase tracking-widest text-[var(--theme-text-soft)]">
+        <p className="mb-2 px-0.5 text-[0.625rem] uppercase tracking-widest text-[var(--theme-text-soft)]">
           Cloud Sync
         </p>
         <div className="grid grid-cols-2 gap-2">
@@ -230,7 +230,7 @@ function ConnectionTab() {
 
       {/* ── Local Sync ─────────────────────────────────────────────────────── */}
       <div>
-        <p className="mb-2 px-0.5 text-[10px] uppercase tracking-widest text-[var(--theme-text-soft)]">
+        <p className="mb-2 px-0.5 text-[0.625rem] uppercase tracking-widest text-[var(--theme-text-soft)]">
           Local Sync
         </p>
 
@@ -293,12 +293,12 @@ function ConnectionTab() {
             <div className={DEBUG_CARD_CLASS}>
               <p className={DEBUG_LABEL_CLASS}>Last Sent</p>
               <p className="theme-feedback-text-info font-mono text-xs">{lastSent ? formatBytes(lastSent.bytes ?? 0) : "-"}</p>
-              {lastSent && <p className="mt-0.5 font-mono text-[10px] text-[var(--theme-text-soft)]">{formatRelative(lastSent.ts)}</p>}
+              {lastSent && <p className="mt-0.5 font-mono text-[0.625rem] text-[var(--theme-text-soft)]">{formatRelative(lastSent.ts)}</p>}
             </div>
             <div className={DEBUG_CARD_CLASS}>
               <p className={DEBUG_LABEL_CLASS}>Last Received</p>
               <p className="theme-feedback-text-info font-mono text-xs">{lastReceived ? formatBytes(lastReceived.bytes ?? 0) : "-"}</p>
-              {lastReceived && <p className="mt-0.5 font-mono text-[10px] text-[var(--theme-text-soft)]">{formatRelative(lastReceived.ts)}</p>}
+              {lastReceived && <p className="mt-0.5 font-mono text-[0.625rem] text-[var(--theme-text-soft)]">{formatRelative(lastReceived.ts)}</p>}
             </div>
           </div>
         </div>
@@ -307,7 +307,7 @@ function ConnectionTab() {
       {/* ── Runtime Memory ───────────────────────────────────────────────── */}
       {runtimeMemory && (
         <div>
-          <p className="mb-2 px-0.5 text-[10px] uppercase tracking-widest text-[var(--theme-text-soft)]">
+          <p className="mb-2 px-0.5 text-[0.625rem] uppercase tracking-widest text-[var(--theme-text-soft)]">
             Runtime Memory
           </p>
 
@@ -539,7 +539,7 @@ function LibraryTab() {
         </button>
       </div>
 
-      <p className="text-center text-[10px] text-[var(--theme-text-soft)]">
+      <p className="text-center text-[0.625rem] text-[var(--theme-text-soft)]">
         Or run <code className="font-mono">window.__freed.getLibrarySummaryJson()</code> in DevTools
       </p>
     </div>
@@ -598,7 +598,7 @@ function FpsDisplay({ fps }: { fps: number }) {
       <p className={`text-4xl font-bold font-mono tabular-nums ${color}`}>
         {fps.toLocaleString()}
       </p>
-      <p className="mt-0.5 text-[10px] uppercase tracking-widest text-[var(--theme-text-soft)]">fps</p>
+      <p className="mt-0.5 text-[0.625rem] uppercase tracking-widest text-[var(--theme-text-soft)]">fps</p>
     </div>
   );
 }
@@ -608,7 +608,7 @@ function StatCell({ label, value, sub }: { label: string; value: string; sub?: s
     <div className={DEBUG_CARD_CLASS}>
       <p className={DEBUG_LABEL_CLASS}>{label}</p>
       <p className="font-mono text-sm font-semibold tabular-nums text-[var(--theme-text-primary)]">{value}</p>
-      {sub && <p className="mt-0.5 font-mono text-[10px] text-[var(--theme-text-soft)]">{sub}</p>}
+      {sub && <p className="mt-0.5 font-mono text-[0.625rem] text-[var(--theme-text-soft)]">{sub}</p>}
     </div>
   );
 }
@@ -656,17 +656,17 @@ function PerformanceTabContent({ snap }: { snap: FpsSnapshot | null }) {
       {/* Sparkline */}
       <div>
         <div className="flex items-center justify-between mb-1">
-          <p className="text-[10px] uppercase tracking-wider text-[var(--theme-text-soft)]">
+          <p className="text-[0.625rem] uppercase tracking-wider text-[var(--theme-text-soft)]">
             Frame Times (2s)
           </p>
           <div className="flex items-center gap-2">
             <span className="flex items-center gap-1">
               <span className="inline-block w-3 border-t border-[rgb(var(--theme-feedback-info-rgb))]" />
-              <span className="text-[9px] text-[var(--theme-text-soft)]">actual</span>
+              <span className="text-[0.5625rem] text-[var(--theme-text-soft)]">actual</span>
             </span>
             <span className="flex items-center gap-1">
               <span className="inline-block w-3 border-t border-dashed border-[rgb(var(--theme-feedback-danger-rgb))]" />
-              <span className="text-[9px] text-[var(--theme-text-soft)]">32 ms</span>
+              <span className="text-[0.5625rem] text-[var(--theme-text-soft)]">32 ms</span>
             </span>
           </div>
         </div>
@@ -777,7 +777,7 @@ function HealthTab() {
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
-        <p className="text-[10px] uppercase tracking-widest text-[var(--theme-text-soft)]">
+        <p className="text-[0.625rem] uppercase tracking-widest text-[var(--theme-text-soft)]">
           Provider Health
         </p>
         <button
@@ -892,7 +892,7 @@ function HealthTab() {
       </div>
 
       <div className="space-y-3">
-        <p className="text-[10px] uppercase tracking-widest text-[var(--theme-text-soft)]">
+        <p className="text-[0.625rem] uppercase tracking-widest text-[var(--theme-text-soft)]">
           Failing RSS Feeds
         </p>
         {health.failingRssFeeds.length === 0 ? (
@@ -913,7 +913,7 @@ function HealthTab() {
                     {feed.lastError && (
                       <p className="theme-feedback-text-warning-muted mt-1 text-xs">{feed.lastError}</p>
                     )}
-                    <p className="mt-1 text-[11px] text-[var(--theme-text-muted)]">
+                    <p className="mt-1 text-[0.6875rem] text-[var(--theme-text-muted)]">
                       Last success {formatHealthRelative(feed.lastSuccessfulAt)}
                     </p>
                   </div>
@@ -1063,7 +1063,7 @@ function PanelContent({
 
       {/* Footer - subtle bg tint mirrors the header */}
       <div className="theme-dialog-divider shrink-0 px-5 py-3">
-        <p className="text-center font-mono text-[10px] text-[var(--theme-text-soft)]">
+        <p className="text-center font-mono text-[0.625rem] text-[var(--theme-text-soft)]">
           Esc to close · Cmd+Shift+D to toggle · window.__freed in DevTools
         </p>
       </div>

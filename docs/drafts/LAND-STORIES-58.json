@@ -1,0 +1,707 @@
+{
+  "batch": "LAND-STORIES-58",
+  "status": "Two holds; zero admission recommendations",
+  "scope": "Proposal evidence only. Instagram visual Stories. No runtime edits, publication, provider behavior or admission.",
+  "worktree": "/Users/aubreyfalconer/dev/freed-editorial-isolated",
+  "review": {
+    "author": "All eight newly downloaded exact originals individually opened. Both fox and raven published delivery files independently opened. Lead review required for any later recovery.",
+    "leadUpdate": "Root reported newly accepted Mabel scene with the same attempted-movement-to-supporting-resting-companion mechanism. Rufus is held on overlap before integration."
+  },
+  "entries": [
+    {
+      "id": "LAND-STORIES-58-01",
+      "characterId": "rufus-russet",
+      "identityName": "Rufus Russet",
+      "platform": "instagram",
+      "contentType": "story",
+      "title": "Back under her",
+      "body": "When we were small, my sister fell asleep with her chin on my head. I eased forward until I was nearly free. Then her head began to slide off. I backed under it. I felt her sigh through my forehead.",
+      "wordCount": 40,
+      "status": "hold",
+      "holdReason": "The newly accepted Mabel alligator Story already turns attempted movement into holding a posture for a resting companion. Different taxa and a tactile final sensation do not make this a distinct event. Do not admit or merely reskin this draft.",
+      "media": {
+        "sourceUrl": "https://www.fws.gov/media/red-fox-kits-3",
+        "sourceCachePath": "/tmp/freed-land58/red-fox-kits-3.html",
+        "creator": "Photo",
+        "license": "Public domain",
+        "original": {
+          "url": "https://www.fws.gov/sites/default/files/images/2024-03-2/2930.jpg",
+          "localPath": "/tmp/freed-land58/red-fox-kits-3-original.jpg",
+          "width": 3650,
+          "height": 2402,
+          "bytes": 1204055,
+          "sha1": "541e9e4e7738c164571856d85ce4817458e5a48e",
+          "sha256": "24e396d4aa73e4e4f6b844d1947bfd3a29e91e08c63952af6f40c2280496d5b4",
+          "publishedLink": "<a href=\"https://www.fws.gov/sites/default/files/images/2024-03-2/2930.jpg\" download=\"usfws-red-fox-kits\">Original (3650 x 2402)"
+        },
+        "delivery": {
+          "url": "https://www.fws.gov/sites/default/files/styles/max_1300x1300/public/images/2024-03-2/2930.jpg?itok=nJJQ-rz8",
+          "localPath": "/tmp/freed-land58/red-fox-kits-3-delivery.jpg",
+          "width": 1300,
+          "height": 856,
+          "bytes": 875838,
+          "sha1": "afe43ab7c0f08a90903279b8dce3a9903278748b",
+          "sha256": "57290c3676972b857764d46fa1b7cb6c7a3b83b85509af8444cc38c7cb8d3f0b",
+          "publishedLink": "<a href=\"https://www.fws.gov/sites/default/files/styles/max_1300x1300/public/images/2024-03-2/2930.jpg?itok=nJJQ-rz8\" download=\"usfws-red-fox-kits-large\">Large (1300 x 856)"
+        }
+      },
+      "attribution": "USFWS; photographer uncredited (source credit field literally reads Photo)",
+      "licenseEvidence": "Exact FWS page labels Media Usage Rights/License Public Domain. Photo By/Credit is Photo; no named creator supplied.",
+      "visibleScene": "Two juvenile red foxes rest closely in dry vegetation. The left fox rests its lower jaw against the forehead of the right fox; both have visible eyes. The right fox is the proposed narrator.",
+      "fictionBoundary": "Narrator and sister identities, sex, past sleep, easing away, sliding, returning and sigh are invented. The still shows close head contact, not those temporal actions or sleep.",
+      "taxonEvidence": {
+        "taxon": "Vulpes vulpes",
+        "primaryMediaIdentification": "FWS source title Red fox kits",
+        "biologyUrl": "https://www.nps.gov/yell/learn/nature/red-fox.htm",
+        "age": "Juvenile kits; exact numerical age unrecorded",
+        "sex": "Photographic sexes unrecorded; male narrator and female sister remain fiction",
+        "sourceLocation": "Not specified on source page; no geographic claim extracted from it"
+      },
+      "continuity": "Existing ordinary-red-coat male Rufus, fictional southern Ontario home, approximately 44.0, -79.5. Existing juvenile brother and sister already established. When we were small explicitly makes this an adult recollection, without reversing chronology or changing existing passages. No offspring, mate, subspecies or new profile.",
+      "distinctionAudit": "Not a new wrestling defeat, yawn, mouse pounce or egg carry, but root identified a cross-cast repeat of newly accepted Mabel. Hold takes precedence.",
+      "avatar": "Existing approved Rufus portrait unchanged; no new portrait proposed."
+    },
+    {
+      "id": "LAND-STORIES-58-02",
+      "characterId": "maud-overhead",
+      "identityName": "Maud Overhead",
+      "platform": "instagram",
+      "contentType": "story",
+      "title": "A little nearer",
+      "body": "I came down to make him run. He walked towards me. I hopped back, and he came again. We've gone quite a distance now. I haven't turned round.",
+      "wordCount": 28,
+      "status": "hold",
+      "holdReason": "Specific faceoff is visible, but original and published delivery have soft dark feather detail, a heavy blue cast and limited tonal separation. This does not meet the gorgeous image bar. Prose remains an unapproved literal draft, not an admission recommendation.",
+      "media": {
+        "index": 5,
+        "query": "raven",
+        "item": 37,
+        "sourceUrl": "https://npgallery.nps.gov/AssetDetail/855d7c24-7e0a-45c3-9ba3-502533b23d6d",
+        "sourceCachePath": "/tmp/freed-land58/5.html",
+        "record": {
+          "AltText": "A raven and grouse stand in the snow facing one another.",
+          "AssetBaseType": "File",
+          "AssetID": "855d7c24-7e0a-45c3-9ba3-502533b23d6d",
+          "AssetType": "Standard File",
+          "Brandings": [
+            {
+              "Name": "MAIN"
+            }
+          ],
+          "ConstraintsInformation": {
+            "Constraint": "Public domain",
+            "GrantingRights": "Full"
+          },
+          "CustomTextFields": [
+            {
+              "Name": "XmpMetadataDate",
+              "Value": "2019-03-26T16:57:45-06:00"
+            }
+          ],
+          "Description": "Common raven and grouse stand off at Old Faithful",
+          "ImageCreateDate": {
+            "Date": "01/08/1998"
+          },
+          "ImageCreateDateTime": "01/08/1998 12:00:00 AM",
+          "Keywords": [
+            "yellowstone national park",
+            "wildlife",
+            "birds",
+            "common raven",
+            "corvus corax",
+            "passeriformes",
+            "15660"
+          ],
+          "NPSUnits": [
+            {
+              "Name": "Yellowstone National Park",
+              "Type": "National Park",
+              "Code": "YELL"
+            }
+          ],
+          "PhotoCredit": "NPS/Robert Bower",
+          "PrimaryType": "image",
+          "Rating": 4,
+          "RelatedCollections": [
+            "NPS.gov Collection"
+          ],
+          "ResourceFormat": "jpg",
+          "ResourceType": "Image",
+          "Submitter": "dianerenkin",
+          "SubType": "jpeg",
+          "Title": "Common raven and grouse stand off at Old Faithful"
+        },
+        "original": {
+          "url": "https://npgallery.nps.gov/GetAsset/855d7c24-7e0a-45c3-9ba3-502533b23d6d/original.jpg?",
+          "publishedLabel": "742.0 KB, 1999x1319",
+          "localPath": "/tmp/freed-land58/5-original.jpg",
+          "bytes": 759769,
+          "width": 1999,
+          "height": 1319,
+          "sha1": "1dbcc3913ad645eb5bd9d14d6a5c6a6cc5be107a",
+          "sha256": "1e62d6ad9fc997c558944a139526a5f9d7002c0c75be68277b6014941ef356f6"
+        },
+        "delivery": {
+          "url": "https://npgallery.nps.gov/GetAsset/855d7c24-7e0a-45c3-9ba3-502533b23d6d/proxymdres.jpg?",
+          "publishedLabel": "165.5 KB, 1000x659",
+          "localPath": "/tmp/freed-land58/5-delivery.jpg",
+          "bytes": 169472,
+          "width": 999,
+          "height": 659,
+          "sha1": "491d9824cb531afd1fdaa0b0ff834b716c37d55f",
+          "sha256": "efbd32fc73c58158e79cd3f60ca37d873c41b2435a2c3a2ca07576c46c8880d1"
+        }
+      },
+      "attribution": "NPS/Robert Bower",
+      "licenseEvidence": "NPS record ConstraintsInformation explicitly says Public domain and Full; same exact source page confirms Public domain.",
+      "visibleScene": "Common raven at right and smaller grouse at left face each other on snow. Both bodies and feet are visible, with the raven appearing fluffed. No attack or flight is pictured.",
+      "fictionBoundary": "Desire to make the grouse run, landing, forward steps, retreating hops and duration are invented around the documented standoff. Grouse sex is unrecorded; he is fictional. No grouse species more specific than the source label is claimed.",
+      "taxonEvidence": {
+        "taxon": "Corvus corax",
+        "primaryMediaIdentification": "NPS title and keywords identify common raven and Corvus corax",
+        "biologyUrl": "https://www.nps.gov/arch/learn/nature/ravens.htm",
+        "age": "Adult-compatible raven plumage; numerical age unrecorded",
+        "sex": "Photographic sex unrecorded; existing fictional female Maud",
+        "sourceLocation": "Old Faithful, Yellowstone National Park"
+      },
+      "continuity": "Existing adult female Maud in Yellowstone, no change to her frog or snow-print episodes. No new mate, offspring, nest or fixed antagonist. This is a proposed Instagram Story for an established identity, not permission to alter runtime platforms.",
+      "distinctionAudit": "Grounded retreat from intended intimidation differs from the admitted dead-frog meal and deliberate wing prints. Earlier held aerial hawk pursuit remains held. Do not recover this photograph by correcting color locally or upscaling it.",
+      "avatar": "Existing approved Maud portrait unchanged; no new portrait proposed."
+    }
+  ],
+  "additionalDiscoveryHolds": [
+    {
+      "status": "hold",
+      "reason": "Strong leafy-branch image, but no sufficiently distinct original event emerged beyond repeated food handling or branch logistics. No prose proposed.",
+      "media": {
+        "index": 1,
+        "query": "beaver",
+        "item": 12,
+        "sourceUrl": "https://npgallery.nps.gov/AssetDetail/3a710438-0afd-49c1-968f-cafa3ed6707f",
+        "sourceCachePath": "/tmp/freed-land58/1.html",
+        "record": {
+          "AltText": "A beaver partially submerged in water chews on a branch by a pond bank. ",
+          "AssetBaseType": "File",
+          "AssetID": "3a710438-0afd-49c1-968f-cafa3ed6707f",
+          "AssetType": "Standard File",
+          "Brandings": [
+            {
+              "Name": "MAIN"
+            }
+          ],
+          "ConstraintsInformation": {
+            "Constraint": "Public domain",
+            "GrantingRights": "Full"
+          },
+          "Description": "A beaver in Lynx Pond.",
+          "ImageCreateDate": {
+            "Date": "08/25/2021"
+          },
+          "ImageCreateDateTime": "08/25/2021 12:02:54 PM",
+          "Keywords": [
+            "water",
+            "water feature",
+            "animal",
+            "mammal",
+            "beaver",
+            "KAWW",
+            "Katahdin",
+            "Maine",
+            "Katahdin Woods and Waters"
+          ],
+          "NPSUnits": [
+            {
+              "Name": "Katahdin Woods and Waters National Monument",
+              "Type": "National Monument",
+              "Code": "KAWW"
+            }
+          ],
+          "PhotoCredit": "NPS",
+          "PrimaryType": "image",
+          "Rating": 5,
+          "RelatedCollections": [
+            "NPS.gov Collection"
+          ],
+          "ResourceFormat": "jpg",
+          "ResourceType": "Image",
+          "Submitter": "amattei",
+          "SubType": "jpeg",
+          "Title": "20210825_KAWW_Beaver_LynxPd.JPG"
+        },
+        "original": {
+          "url": "https://npgallery.nps.gov/GetAsset/3a710438-0afd-49c1-968f-cafa3ed6707f/original.jpg?",
+          "publishedLabel": "3.6 MB, 4608x3456",
+          "localPath": "/tmp/freed-land58/1-original.jpg",
+          "bytes": 3614399,
+          "width": 4608,
+          "height": 3456,
+          "sha1": "f92dafcac871fc4becb1add9a1fb09802a0dec49",
+          "sha256": "4d78267d0330fcc3c0d280aec101fa547dd83eb20efce9fa7247db283628db7f"
+        },
+        "delivery": {
+          "url": "https://npgallery.nps.gov/GetAsset/3a710438-0afd-49c1-968f-cafa3ed6707f/proxyhires.jpg?",
+          "publishedLabel": "1.1 MB, 2000x1500",
+          "localPath": "/tmp/freed-land58/1-delivery.jpg",
+          "bytes": 1151422,
+          "width": 2000,
+          "height": 1500,
+          "sha1": "b645145d70468eb13cbaa24238cfa1bfae7495a5",
+          "sha256": "ad18491fe5a6f65dddc00e12c95ec216343760549b28e4f4fd849c45c3e8e822"
+        }
+      },
+      "visualReview": "Exact original individually opened. Delivery not individually opened because original/event failed."
+    },
+    {
+      "status": "hold",
+      "reason": "Dark soft resting portrait; no strong specific event.",
+      "media": {
+        "index": 2,
+        "query": "beaver",
+        "item": 24,
+        "sourceUrl": "https://npgallery.nps.gov/AssetDetail/0b6c0602-69dc-4fec-8ccb-2175b7c6bdc1",
+        "sourceCachePath": "/tmp/freed-land58/2.html",
+        "record": {
+          "AltText": "A photo of a beaver from above with the beaver center image facing to the left, its tail turned towards the bottom of the image. Around the beaver is a mat of tall green plants and small twigs",
+          "AssetBaseType": "File",
+          "AssetID": "0b6c0602-69dc-4fec-8ccb-2175b7c6bdc1",
+          "AssetType": "Standard File",
+          "Brandings": [
+            {
+              "Name": "MAIN"
+            }
+          ],
+          "ConstraintsInformation": {
+            "Constraint": "Public domain",
+            "GrantingRights": "Full"
+          },
+          "Description": "A beaver in a bed of green grasses",
+          "ImageCreateDate": {
+            "Date": "11/15/2010"
+          },
+          "ImageCreateDateTime": "11/15/2010 09:24:39 PM",
+          "Keywords": [
+            "Beaver",
+            "Mammals",
+            "WHMI"
+          ],
+          "NPSUnits": [
+            {
+              "Name": "Whitman Mission National Historic Site",
+              "Type": "National Historic Site",
+              "Code": "WHMI"
+            }
+          ],
+          "PhotoCredit": "NPS Photo",
+          "PrimaryType": "image",
+          "Rating": 5,
+          "RelatedCollections": [
+            "NPS.gov Collection"
+          ],
+          "ResourceFormat": "jpg",
+          "ResourceType": "Image",
+          "Submitter": "mfanderson",
+          "SubType": "jpeg",
+          "Title": "Doan_Creek_Beaver.jpg"
+        },
+        "original": {
+          "url": "https://npgallery.nps.gov/GetAsset/0b6c0602-69dc-4fec-8ccb-2175b7c6bdc1/original.jpg?",
+          "publishedLabel": "221.6 KB, 1280x960",
+          "localPath": "/tmp/freed-land58/2-original.jpg",
+          "bytes": 223877,
+          "width": 1280,
+          "height": 960,
+          "sha1": "98ba38fa3e9bf26caeddf7e1ddc13843d3c642b6",
+          "sha256": "6983ab15660a7bfb039d5ea61d1f943f16d42d6f16b9713832e1d0d0cce4dbd3"
+        },
+        "delivery": {
+          "url": "https://npgallery.nps.gov/GetAsset/0b6c0602-69dc-4fec-8ccb-2175b7c6bdc1/original.jpg?",
+          "publishedLabel": "221.6 KB, 1280x960",
+          "localPath": "/tmp/freed-land58/2-delivery.jpg",
+          "bytes": 223877,
+          "width": 1280,
+          "height": 960,
+          "sha1": "98ba38fa3e9bf26caeddf7e1ddc13843d3c642b6",
+          "sha256": "6983ab15660a7bfb039d5ea61d1f943f16d42d6f16b9713832e1d0d0cce4dbd3"
+        }
+      },
+      "visualReview": "Exact original individually opened. Delivery not individually opened because original/event failed."
+    },
+    {
+      "status": "hold",
+      "reason": "Busy felled-tree scene with no visible animal; no supported distinctive episode.",
+      "media": {
+        "index": 3,
+        "query": "beaver",
+        "item": 43,
+        "sourceUrl": "https://npgallery.nps.gov/AssetDetail/9a196dac-37ff-4a9b-9050-8d8378b72320",
+        "sourceCachePath": "/tmp/freed-land58/3.html",
+        "record": {
+          "AltText": "three trees, one falling over, with signs of beavers chewing on them",
+          "AssetBaseType": "File",
+          "AssetID": "9a196dac-37ff-4a9b-9050-8d8378b72320",
+          "AssetType": "Standard File",
+          "Brandings": [
+            {
+              "Name": "MAIN"
+            }
+          ],
+          "ConstraintsInformation": {
+            "Constraint": "Public domain",
+            "GrantingRights": "Full"
+          },
+          "Copyright": "NPS Photo / Chris Smith;",
+          "Description": "Beavers working their way through the trees around Horseshoe Lake",
+          "ImageCreateDate": {
+            "Date": "06/20/2010"
+          },
+          "ImageCreateDateTime": "06/20/2010 09:45:19 PM",
+          "Keywords": [
+            "beaver",
+            "wildlife",
+            "mammal"
+          ],
+          "NPSUnits": [
+            {
+              "Name": "Denali National Park and Preserve",
+              "Type": "National Park and Preserve",
+              "Code": "DENA"
+            }
+          ],
+          "PrimaryType": "image",
+          "Rating": 5,
+          "RelatedCollections": [
+            "NPS.gov Collection"
+          ],
+          "ResourceFormat": "jpg",
+          "ResourceType": "Image",
+          "Submitter": "alindeman",
+          "SubType": "jpeg",
+          "Title": "Evidence"
+        },
+        "original": {
+          "url": "https://npgallery.nps.gov/GetAsset/9a196dac-37ff-4a9b-9050-8d8378b72320/original.jpg?",
+          "publishedLabel": "4.3 MB, 3000x4000",
+          "localPath": "/tmp/freed-land58/3-original.jpg",
+          "bytes": 4502185,
+          "width": 3000,
+          "height": 4000,
+          "sha1": "061bde6b184deb75a0b2028b552e30131fa3ed70",
+          "sha256": "7bdf90647b123692e26933061b91151bd581c9452e2cae83bc1ed7441c7dbc64"
+        },
+        "delivery": {
+          "url": "https://npgallery.nps.gov/GetAsset/9a196dac-37ff-4a9b-9050-8d8378b72320/proxyhires.jpg?",
+          "publishedLabel": "427.9 KB, 750x1000",
+          "localPath": "/tmp/freed-land58/3-delivery.jpg",
+          "bytes": 438215,
+          "width": 750,
+          "height": 1000,
+          "sha1": "72c60c2f88c4e8835bf9d321bd163bf7162522ce",
+          "sha256": "43a83a224513df9948b77f791aa94c2875061716fee9e1e5e7ecdaf142683362"
+        }
+      },
+      "visualReview": "Exact original individually opened. Delivery not individually opened because original/event failed."
+    },
+    {
+      "status": "hold",
+      "reason": "Soft tail splash with blown highlights; no recovery of earlier alarm-image weakness.",
+      "media": {
+        "index": 4,
+        "query": "beaver",
+        "item": 60,
+        "sourceUrl": "https://npgallery.nps.gov/AssetDetail/8b17a775-b2c2-4ab6-9f01-f4de2172fc4d",
+        "sourceCachePath": "/tmp/freed-land58/4.html",
+        "record": {
+          "AltText": "A beaver slapping its tail in Horseshoe Lake",
+          "AssetBaseType": "File",
+          "AssetID": "8b17a775-b2c2-4ab6-9f01-f4de2172fc4d",
+          "AssetType": "Standard File",
+          "Brandings": [
+            {
+              "Name": "MAIN"
+            }
+          ],
+          "ConstraintsInformation": {
+            "Constraint": "Public domain",
+            "GrantingRights": "Full"
+          },
+          "Description": "A beaver slapping its tail in Horseshoe Lake",
+          "ImageCreateDate": {
+            "Date": "05/23/2009"
+          },
+          "ImageCreateDateTime": "05/23/2009 08:46:26 PM",
+          "Keywords": [
+            "beaver",
+            "wildlife",
+            "mammal"
+          ],
+          "NPSUnits": [
+            {
+              "Name": "Denali National Park and Preserve",
+              "Type": "National Park and Preserve",
+              "Code": "DENA"
+            }
+          ],
+          "PrimaryType": "image",
+          "Rating": 5,
+          "RelatedCollections": [
+            "NPS.gov Collection"
+          ],
+          "ResourceFormat": "jpg",
+          "ResourceType": "Image",
+          "Submitter": "alindeman",
+          "SubType": "jpeg",
+          "Title": "Slap!"
+        },
+        "original": {
+          "url": "https://npgallery.nps.gov/GetAsset/8b17a775-b2c2-4ab6-9f01-f4de2172fc4d/original.jpg?",
+          "publishedLabel": "2.0 MB, 2923x1741",
+          "localPath": "/tmp/freed-land58/4-original.jpg",
+          "bytes": 2088761,
+          "width": 2923,
+          "height": 1741,
+          "sha1": "2c6f90bb0be6c2b9df2ab9c9b42c68d7be3c70da",
+          "sha256": "214dc9a8b28c841b0b097622c997a132e5a1477ac4ef62f53d69d87b22347cbe"
+        },
+        "delivery": {
+          "url": "https://npgallery.nps.gov/GetAsset/8b17a775-b2c2-4ab6-9f01-f4de2172fc4d/proxyhires.jpg?",
+          "publishedLabel": "130.9 KB, 1000x595",
+          "localPath": "/tmp/freed-land58/4-delivery.jpg",
+          "bytes": 134092,
+          "width": 999,
+          "height": 595,
+          "sha1": "4762e0f4d95d6c9dfd0964ee196beb119b45ff66",
+          "sha256": "0c558080b1927bed92340407563730aa4a99ef6835f5ba242bd6379479c0d9af"
+        }
+      },
+      "visualReview": "Exact original individually opened. Delivery not individually opened because original/event failed."
+    },
+    {
+      "status": "hold",
+      "reason": "Rainy owl on a rock is a portrait without a developed event; no profile manufactured for it.",
+      "media": {
+        "index": 7,
+        "query": "great horned owl",
+        "item": 19,
+        "sourceUrl": "https://npgallery.nps.gov/AssetDetail/4ab414a3-06b3-4a21-b009-0c6877e1a05b",
+        "sourceCachePath": "/tmp/freed-land58/7.html",
+        "record": {
+          "AltText": "a large brown striped owl on a rock in the rain",
+          "AssetBaseType": "File",
+          "AssetID": "4ab414a3-06b3-4a21-b009-0c6877e1a05b",
+          "AssetType": "Standard File",
+          "Brandings": [
+            {
+              "Name": "MAIN"
+            }
+          ],
+          "ConstraintsInformation": {
+            "Constraint": "Public domain",
+            "GrantingRights": "Full"
+          },
+          "Description": "A great-horned owl sits in the rain. Great-horned owls are the park's largest resident owl and are mostly nocturnal. During the summer it is common to hear them at the campground.",
+          "ImageCreateDate": {
+            "Date": "05/25/2015"
+          },
+          "ImageCreateDateTime": "05/25/2015 07:06:46 PM",
+          "Keywords": [
+            "owl",
+            "great horned owl"
+          ],
+          "NPSUnits": [
+            {
+              "Name": "Wind Cave National Park",
+              "Type": "National Park",
+              "Code": "WICA"
+            }
+          ],
+          "PhotoCredit": "NPS Photo",
+          "PrimaryType": "image",
+          "Rating": 4,
+          "RelatedCollections": [
+            "NPS.gov Collection"
+          ],
+          "ResourceFormat": "jpg",
+          "ResourceType": "Image",
+          "Submitter": "lbreid",
+          "SubType": "jpeg",
+          "Title": "Soggy Great-horned Owl"
+        },
+        "original": {
+          "url": "https://npgallery.nps.gov/GetAsset/4ab414a3-06b3-4a21-b009-0c6877e1a05b/original.jpg?",
+          "publishedLabel": "4.8 MB, 2952x5248",
+          "localPath": "/tmp/freed-land58/7-original.jpg",
+          "bytes": 4732450,
+          "width": 2952,
+          "height": 5248,
+          "sha1": "64208abfedae24ed1ac9a74bc2d844cb21939613",
+          "sha256": "1c6ca8a0e31cb72489b7c5e1820a971a7c1cc5ca773b042c8f13bf98088992ad"
+        },
+        "delivery": {
+          "url": "https://npgallery.nps.gov/GetAsset/4ab414a3-06b3-4a21-b009-0c6877e1a05b/proxyhires.jpg?",
+          "publishedLabel": "1.3 MB, 1476x2624",
+          "localPath": "/tmp/freed-land58/7-delivery.jpg",
+          "bytes": 1394222,
+          "width": 1476,
+          "height": 2624,
+          "sha1": "6e721646442a1786778f0861a4ccbead3317a38b",
+          "sha256": "7717cc0e8d194f2470b94aad53b7dbf24c1c4ca533074a0c78762e941146169f"
+        }
+      },
+      "visualReview": "Exact original individually opened. Delivery not individually opened because original/event failed."
+    },
+    {
+      "status": "hold",
+      "reason": "Three juvenile owls visually overlap on a branch. No sufficiently distinct episode beyond repeated crowded-sibling positioning; no profile manufactured for it.",
+      "media": {
+        "index": 8,
+        "query": "great horned owl",
+        "item": 25,
+        "sourceUrl": "https://npgallery.nps.gov/AssetDetail/3e13afee-fbca-4ca2-9238-aaf9816783a9",
+        "sourceCachePath": "/tmp/freed-land58/8.html",
+        "record": {
+          "AltText": "Three owlets at Mammoth sitting vertically above one another.",
+          "AssetBaseType": "File",
+          "AssetID": "3e13afee-fbca-4ca2-9238-aaf9816783a9",
+          "AssetType": "Standard File",
+          "Brandings": [
+            {
+              "Name": "MAIN"
+            }
+          ],
+          "ConstraintsInformation": {
+            "Constraint": "Public domain",
+            "GrantingRights": "Full"
+          },
+          "CustomTextFields": [
+            {
+              "Name": "XmpMetadataDate",
+              "Value": "2014-09-16T13:10:44-06:00"
+            }
+          ],
+          "Description": "Owlets at Mammoth;\nJan Laye;\nJuly 2014;\nCatalog #19526d",
+          "ImageCreateDate": {
+            "Date": "07/02/2014"
+          },
+          "ImageCreateDateTime": "07/02/2014 08:37:16 AM",
+          "Keywords": [
+            "yellowstone national park",
+            "birds",
+            "wildlife",
+            "owls",
+            "strigiformes",
+            "great horned owl",
+            "bubo virginianus",
+            "19526d"
+          ],
+          "NPSUnits": [
+            {
+              "Name": "Yellowstone National Park",
+              "Type": "National Park",
+              "Code": "YELL"
+            }
+          ],
+          "PhotoCredit": "NPS/Jan Laye",
+          "PrimaryType": "image",
+          "Rating": 4,
+          "RelatedCollections": [
+            "NPS.gov Collection"
+          ],
+          "ResourceFormat": "jpg",
+          "ResourceType": "Image",
+          "Submitter": "dianerenkin",
+          "SubType": "jpeg",
+          "Title": "Owlets at Mammoth"
+        },
+        "original": {
+          "url": "https://npgallery.nps.gov/GetAsset/3e13afee-fbca-4ca2-9238-aaf9816783a9/original.jpg?",
+          "publishedLabel": "3.2 MB, 1944x2592",
+          "localPath": "/tmp/freed-land58/8-original.jpg",
+          "bytes": 3353187,
+          "width": 1944,
+          "height": 2592,
+          "sha1": "f1dfd66d853effa4b4f56b5fc30bbab80c7e3c46",
+          "sha256": "3490c7ae475505e18057afa5878196eb5fb7f1c888b74956c43bfa944efb1053"
+        },
+        "delivery": {
+          "url": "https://npgallery.nps.gov/GetAsset/3e13afee-fbca-4ca2-9238-aaf9816783a9/proxymdres.jpg?",
+          "publishedLabel": "323.8 KB, 750x1000",
+          "localPath": "/tmp/freed-land58/8-delivery.jpg",
+          "bytes": 331569,
+          "width": 750,
+          "height": 1000,
+          "sha1": "fe25f73c9358c3e9d49cb5f6e40128e0ed7db1d9",
+          "sha256": "0d4db62fc1f839ae5f5211b077ffb46d45afeddfa7c8d6d1057da3841f93c8ee"
+        }
+      },
+      "visualReview": "Exact original individually opened. Delivery not individually opened because original/event failed."
+    },
+    {
+      "status": "rights hold before download",
+      "sourceUrl": "https://npgallery.nps.gov/AssetDetail/ab64c45c-4f24-4f14-aab1-46bd83fde688",
+      "sourceRecord": {
+        "AltText": "An otter looks forward with a piece of ice on its forehead. The surface of the surrounding brown water is partially frozen.",
+        "AssetBaseType": "File",
+        "AssetID": "ab64c45c-4f24-4f14-aab1-46bd83fde688",
+        "AssetType": "Standard File",
+        "Brandings": [
+          {
+            "Name": "MAIN"
+          }
+        ],
+        "ConstraintsInformation": {
+          "Constraint": "Public domain",
+          "GrantingRights": "Full"
+        },
+        "Contributors": [
+          {}
+        ],
+        "CustomTextFields": [
+          {
+            "Name": "XmpMetadataDate",
+            "Value": "2015-09-01T05:19:38-04:00"
+          }
+        ],
+        "Description": "This otter peeks its head up through the thin ice of a wetland. When an otter swims at the surface, only its head will stick out of the water. Otters have poor eyesight. They rely on their long whiskers and broad noses to sense underwater prey.",
+        "ImageCreateDate": {
+          "Date": "12/26/2014"
+        },
+        "ImageCreateDateTime": "12/26/2014 08:09:44 AM",
+        "Keywords": [
+          "CUVA",
+          "CVNP",
+          "Cuyahoga Valley National Park",
+          "Mammal",
+          "Aquatic mammal",
+          "River Otter",
+          "Otter",
+          "North American River Otter",
+          "Beaver Marsh",
+          "Cuyahoga River",
+          "Regions 3, 4, 5",
+          "Midwest",
+          "wildlife watching",
+          "wildlife"
+        ],
+        "NPSUnits": [
+          {
+            "Name": "Cuyahoga Valley National Park",
+            "Type": "National Park",
+            "Code": "CUVA"
+          }
+        ],
+        "PhotoCredit": "\u00a9 Rick McMeechan",
+        "PrimaryType": "image",
+        "Rating": 4,
+        "RelatedCollections": [
+          "NPS.gov Collection"
+        ],
+        "ResourceFormat": "jpg",
+        "ResourceType": "Image",
+        "Submitter": "mhyla",
+        "SubType": "jpeg",
+        "Title": "River Otter Pokes Through Ice"
+      },
+      "reason": "Search record does not satisfy explicit clean Public domain/Full rights check; no exact original downloaded and no retry."
+    }
+  ]
+}

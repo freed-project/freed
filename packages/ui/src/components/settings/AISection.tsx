@@ -39,7 +39,7 @@ const DEFAULT_MODELS: Record<AIProvider, string> = {
   none: "",
   integrated: "",
   ollama: "qwen2.5:1.5b",
-  openai: "gpt-4o-mini",
+  openai: "gpt-6-astra",
   anthropic: "claude-haiku-4-5",
   gemini: "gemini-2.0-flash",
 };
@@ -246,7 +246,7 @@ function ProviderSelector({
                 <span className="text-sm font-semibold text-[var(--theme-text-primary)]">
                   {option.label}
                 </span>
-                <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                <span className={`rounded-full px-2 py-0.5 text-[0.625rem] font-medium ${
                   selected
                     ? "bg-[color:color-mix(in_srgb,var(--theme-accent-secondary)_18%,transparent)] text-[var(--theme-accent-secondary)]"
                     : "bg-[var(--theme-bg-muted)] text-[var(--theme-text-soft)]"
@@ -315,23 +315,23 @@ function LocalModelCard({
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-sm font-semibold text-[var(--theme-text-primary)]">{model.manifest.title}</p>
-            <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${statusTone(model.state.status)}`}>
+            <span className={`rounded-full px-2 py-0.5 text-[0.6875rem] font-medium ${statusTone(model.state.status)}`}>
               {statusLabel(model)}
             </span>
             {selected ? (
-              <span className="rounded-full bg-[color:color-mix(in_srgb,var(--theme-accent-secondary)_18%,transparent)] px-2 py-0.5 text-[11px] font-medium text-[var(--theme-accent-secondary)]">
+              <span className="rounded-full bg-[color:color-mix(in_srgb,var(--theme-accent-secondary)_18%,transparent)] px-2 py-0.5 text-[0.6875rem] font-medium text-[var(--theme-accent-secondary)]">
                 Selected
               </span>
             ) : null}
             {recommended ? (
-              <span className="rounded-full bg-[rgb(var(--theme-feedback-success-rgb)/0.12)] px-2 py-0.5 text-[11px] font-medium text-[rgb(var(--theme-feedback-success-rgb))]">
+              <span className="rounded-full bg-[rgb(var(--theme-feedback-success-rgb)/0.12)] px-2 py-0.5 text-[0.6875rem] font-medium text-[rgb(var(--theme-feedback-success-rgb))]">
                 Recommended
               </span>
             ) : null}
           </div>
           <p className="mt-1 text-xs leading-5 text-[var(--theme-text-muted)]">{model.manifest.description}</p>
         </div>
-        <p className="shrink-0 rounded-full bg-[var(--theme-bg-muted)] px-2 py-0.5 text-[11px] text-[var(--theme-text-muted)]">
+        <p className="shrink-0 rounded-full bg-[var(--theme-bg-muted)] px-2 py-0.5 text-[0.6875rem] text-[var(--theme-text-muted)]">
           {model.manifest.capability}
         </p>
       </div>
@@ -363,7 +363,7 @@ function LocalModelCard({
               style={{ width: `${progress}%` }}
             />
           </div>
-          <p className="mt-1 text-[11px] text-[var(--theme-text-muted)]">
+          <p className="mt-1 text-[0.6875rem] text-[var(--theme-text-muted)]">
             {formatBytes(model.state.downloadedBytes)} of {formatBytes(progressTotal)}
           </p>
         </div>
@@ -459,78 +459,104 @@ function OllamaStatus({
   );
 }
 
-function ApiKeyInput({
+export function ApiKeyInput({
   provider,
   getApiKey,
   setApiKey,
   clearApiKey,
+  onChanged,
 }: {
-  provider: CloudAIProvider;
+  provider: string;
   getApiKey: (p: string) => Promise<string | null>;
   setApiKey: (p: string, key: string) => Promise<void>;
   clearApiKey: (p: string) => Promise<void>;
+  onChanged?: (configured: boolean) => void;
 }) {
   const [keyDraft, setKeyDraft] = useState("");
   const [hasSaved, setHasSaved] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const keyRevision = useRef(0);
 
   useEffect(() => {
-    getApiKey(provider).then((key) => setHasSaved(!!key));
+    let active = true;
+    const revision = keyRevision.current;
+    getApiKey(provider).then((key) => { if (active && revision === keyRevision.current) setHasSaved(!!key); })
+      .catch(() => { if (active && revision === keyRevision.current) setError("Could not read the saved key."); });
+    return () => { active = false; };
   }, [provider, getApiKey]);
 
   const handleSave = async () => {
     if (!keyDraft.trim()) return;
+    keyRevision.current += 1;
     setSaving(true);
+    setError(null);
     try {
       await setApiKey(provider, keyDraft.trim());
       setKeyDraft("");
       setHasSaved(true);
+      onChanged?.(true);
+    } catch {
+      setError("Could not save the key. Try again.");
     } finally {
       setSaving(false);
     }
   };
 
   const handleClear = async () => {
-    await clearApiKey(provider);
-    setHasSaved(false);
-    setKeyDraft("");
+    keyRevision.current += 1;
+    setSaving(true);
+    setError(null);
+    try {
+      await clearApiKey(provider);
+      setHasSaved(false);
+      setKeyDraft("");
+      onChanged?.(false);
+    } catch {
+      setError("Could not remove the key. Try again.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="space-y-2">
+    <div className="flex flex-wrap items-center gap-2">
       <input
         type="password"
-        value={hasSaved && !keyDraft ? "****************" : keyDraft}
+        aria-label={`${provider} API key`}
+        disabled={saving}
+        value={keyDraft}
         onChange={(event) => {
-          setHasSaved(false);
           setKeyDraft(event.target.value);
         }}
-        onFocus={() => {
-          if (hasSaved) setHasSaved(false);
-        }}
-        placeholder="Paste API key"
-        className="flex-1 rounded-lg border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-input)] px-3 py-1.5 font-mono text-sm text-[var(--theme-text-secondary)] placeholder-[var(--theme-text-soft)] transition-colors focus:border-[var(--theme-border-strong)] focus:outline-none"
+        placeholder={hasSaved ? "Key saved. Paste a replacement" : "Paste API key"}
+        className="min-w-0 flex-1 rounded-lg border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-input)] px-3 py-1.5 font-mono text-sm text-[var(--theme-text-secondary)] placeholder-[var(--theme-text-soft)] transition-colors focus:border-[var(--theme-border-strong)] focus:outline-none"
         spellCheck={false}
         autoComplete="off"
       />
-      {!hasSaved ? (
+      {(!hasSaved || keyDraft) && (
         <button
           type="button"
           onClick={handleSave}
           disabled={!keyDraft.trim() || saving}
           className="theme-accent-button rounded-lg px-3 py-1.5 text-xs transition-colors disabled:opacity-40"
         >
-          {saving ? "Saving" : "Save"}
+          {saving ? "Saving" : hasSaved ? "Replace" : "Save"}
         </button>
-      ) : (
+      )}
+      {hasSaved && (
         <button
           type="button"
           onClick={handleClear}
+          disabled={saving}
           className="rounded-lg px-3 py-1.5 text-xs text-[color:var(--theme-text-muted)] transition-colors hover:bg-[rgb(var(--theme-feedback-danger-rgb)/0.1)] hover:text-[rgb(var(--theme-feedback-danger-rgb))]"
         >
           Clear
         </button>
       )}
+    </div>
+    {error && <p role="alert" className="text-xs text-[rgb(var(--theme-feedback-danger-rgb))]">{error}</p>}
     </div>
   );
 }
@@ -566,6 +592,7 @@ export function AISection() {
     localAIModels,
     checkOllamaReachable,
     openUrl,
+    AISettingsContent,
   } = usePlatform();
   const preferences = useAppStore((state) => state.preferences);
   const updatePreferences = useAppStore((state) => state.updatePreferences);
@@ -798,12 +825,13 @@ export function AISection() {
 
   return (
     <div className="space-y-5">
+      {AISettingsContent && <AISettingsContent />}
       <div className="mb-5 flex items-center justify-between gap-3">
         <h3 className="text-sm font-semibold uppercase tracking-wide text-text-muted">
-          AI
+          {AISettingsContent ? "Summaries and local AI" : "AI"}
         </h3>
         <span
-          className="shrink-0 rounded-full bg-[var(--theme-bg-muted)] px-2.5 py-1 text-[11px] font-medium text-[var(--theme-text-secondary)]"
+          className="shrink-0 rounded-full bg-[var(--theme-bg-muted)] px-2.5 py-1 text-[0.6875rem] font-medium text-[var(--theme-text-secondary)]"
           data-testid="ai-provider-sharing-label"
         >
           {getAIProviderSharingLabel(displayedAI.provider)}
@@ -918,8 +946,8 @@ export function AISection() {
                 setApiKey={secureStorage.setApiKey}
                 clearApiKey={secureStorage.clearApiKey}
               />
-              <p className="mt-1 text-[11px] text-[var(--theme-text-soft)]">
-                Stored encrypted on this device. Never synced.
+              <p className="mt-1 text-[0.6875rem] text-[var(--theme-text-soft)]">
+                Stored on this device. Never synced.
               </p>
             </div>
           ) : (

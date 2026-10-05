@@ -1,3 +1,7 @@
+import type { LibraryCoreReapplyConsumerIntentV1, LibraryCoreRecoveryReissueReceiptV1 } from "@freed/shared/library-core";
+import type {
+  LibraryCoreConsumerRecoveryStatusV1, LibraryCorePrepareConsumerRecoveryV1, LibraryCoreCommitConsumerRecoveryV1,
+} from "@freed/shared/library-core";
 import type {
   LibraryCoreNormalizedQueryExecutor,
   LibraryCoreSqliteQueryRequest,
@@ -47,6 +51,7 @@ import {
   PwaLibraryCoreSqliteClient,
 } from "./library-core-sqlite-client";
 import { deletePwaLibraryCoreSqliteStorage } from "./library-core-sqlite-storage";
+import { isFactoryResetInProgress } from "@freed/ui/lib/factory-reset";
 
 interface ClientGeneration {
   readonly client: PwaLibraryCoreSqliteClient;
@@ -54,6 +59,13 @@ interface ClientGeneration {
 }
 
 let clientGeneration: ClientGeneration | null = null;
+let resetTask: Promise<void> | null = null;
+
+function assertLibraryAvailable(): void {
+  if (resetTask || isFactoryResetInProgress()) {
+    throw new Error("PWA Library SQLite is unavailable while this device resets");
+  }
+}
 
 function clearClientGeneration(active: PwaLibraryCoreSqliteClient): void {
   if (clientGeneration?.client === active) clientGeneration = null;
@@ -81,8 +93,10 @@ function createClientGeneration(): ClientGeneration {
 }
 
 async function openClient(): Promise<PwaLibraryCoreSqliteClient> {
+  assertLibraryAvailable();
   const generation = clientGeneration ?? createClientGeneration();
   await generation.openTask;
+  assertLibraryAvailable();
   return generation.client;
 }
 
@@ -210,6 +224,14 @@ export async function readPwaNormalizedCheckpointReceipt(): Promise<LibraryCoreN
   );
 }
 
+/** Explicit audit: cancellation never retries or replaces the active worker. */
+export async function auditPwaNormalizedReplica(signal: AbortSignal) {
+  signal.throwIfAborted();
+  const active = await openClient();
+  signal.throwIfAborted();
+  return active.auditNormalizedReplica(signal);
+}
+
 export async function describePwaNormalizedCheckpointExport(): Promise<LibraryCoreNormalizedCheckpointExportDescriptorV2> {
   return runReplaySafeRead((active) =>
     active.describeNormalizedCheckpointExport(),
@@ -236,6 +258,17 @@ export async function appendPwaNormalizedCheckpointStagePage(
 ): Promise<LibraryCoreNormalizedCheckpointStageStatusV2> {
   const active = await openClient();
   return active.appendNormalizedCheckpointStagePage(page);
+}
+
+export async function preparePwaNormalizedPredecessorCheckpointRead(stageId: string) {
+  return runReplaySafeRead(active => active.preparePredecessorCheckpointRead(stageId));
+}
+
+export async function activatePwaNormalizedPredecessorCheckpoint(
+  activation: LibraryCoreActivateNormalizedCheckpointStageV2, successorStageId: string,
+): Promise<LibraryCoreNormalizedCheckpointActivationReceiptV2> {
+  const active = await openClient();
+  return active.activateVerifiedPredecessorCheckpoint(activation, successorStageId);
 }
 
 export async function activatePwaNormalizedCheckpointStage(
@@ -266,6 +299,23 @@ export async function importPwaNormalizedOperationPage(
   return active.importNormalizedOperationPage(imported);
 }
 
+/** Mutations are never automatically replayed after an ambiguous worker response. */
+export async function reapplyPwaConsumerIntent(input: LibraryCoreReapplyConsumerIntentV1): Promise<LibraryCoreRecoveryReissueReceiptV1> {
+  return (await openClient()).reapplyConsumerIntent(input);
+}
+
+export async function readPwaConsumerRecoveryStatus(): Promise<LibraryCoreConsumerRecoveryStatusV1> {
+  return runReplaySafeRead(active => active.consumerRecoveryStatus());
+}
+
+export async function preparePwaConsumerRecoveryRequest(recovery: LibraryCorePrepareConsumerRecoveryV1): Promise<LibraryCoreConsumerRecoveryStatusV1> {
+  return (await openClient()).prepareConsumerRecovery(recovery);
+}
+
+export async function commitPwaConsumerRecoveryRequest(recovery: LibraryCoreCommitConsumerRecoveryV1): Promise<LibraryCoreConsumerRecoveryStatusV1> {
+  return (await openClient()).commitConsumerRecovery(recovery);
+}
+
 export async function readPwaFollowerActorEnrollmentContext(): Promise<LibraryCoreFollowerActorEnrollmentContextV2> {
   return runReplaySafeRead((active) =>
     active.followerActorEnrollmentContext(),
@@ -286,7 +336,7 @@ export async function installPwaFollowerActorEnrollment(
   return active.installFollowerActorEnrollment(install);
 }
 
-async function closePwaNormalizedLibrary(): Promise<void> {
+export async function closePwaNormalizedLibrary(): Promise<void> {
   const active = clientGeneration?.client ?? null;
   clientGeneration = null;
   if (!active) return;
@@ -303,6 +353,14 @@ async function closePwaNormalizedLibrary(): Promise<void> {
 }
 
 export async function resetPwaNormalizedLibrary(): Promise<void> {
-  await closePwaNormalizedLibrary();
-  await deletePwaLibraryCoreSqliteStorage();
+  if (resetTask) return resetTask;
+  resetTask = (async () => {
+    await closePwaNormalizedLibrary();
+    await deletePwaLibraryCoreSqliteStorage();
+  })();
+  try {
+    await resetTask;
+  } finally {
+    resetTask = null;
+  }
 }

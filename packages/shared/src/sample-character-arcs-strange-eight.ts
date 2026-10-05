@@ -21,6 +21,7 @@ export const STRANGE_EIGHT_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "Chrysochroa fulgidissima",
         "platform": "instagram",
+        "classification": "conversation",
         "mediaSha1": "2e325a6591444fc75fc2b9373cde31e58ef17e93",
         "theme": "social",
         "title": "Handle with care",
@@ -29,6 +30,7 @@ export const STRANGE_EIGHT_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "Chrysochroa fulgidissima",
         "platform": "rss",
+        "classification": "news",
         "mediaSha1": "3460694d343233755283aeecba36a9ab2a4eda72",
         "theme": "transformation",
         "title": "The hole I made",
@@ -37,10 +39,21 @@ export const STRANGE_EIGHT_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "Chrysochroa fulgidissima",
         "platform": "linkedin",
+        "classification": "news",
         "mediaSha1": "ee5b0a2346ffd42485ec7920fef7c8bd7c610040",
         "theme": "wonder",
         "title": "Depending on the light",
         "body": "A person turned me sideways and said, 'Oh. You're blue.' Turned me back. 'No, green.'\n\nI had been quite certain who was confused until they picked me up."
+      },
+      {
+        "subject": "Chrysochroa fulgidissima",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "movement",
+        "title": "A firm grip",
+        "body": "On my first flight, the trunk dropped away beneath me. I went after it and caught the bark with all six feet. The tree stopped. I stayed there for a while, very pleased with myself.",
+        "classification": "event",
+        "mediaSha1": "47b9aabce7a85ff59273d35e2296b76c9eb08685"
       }
     ]
   },
@@ -60,6 +73,7 @@ export const STRANGE_EIGHT_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "Chrysoperla carnea group",
         "platform": "instagram",
+        "classification": "inspiring",
         "mediaSha1": "35274dc188adf8c331cec1f1fa64f5a292cd081c",
         "theme": "feeding",
         "title": "A better person",
@@ -68,6 +82,7 @@ export const STRANGE_EIGHT_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "Chrysoperla carnea group",
         "platform": "rss",
+        "classification": "news",
         "mediaSha1": "2b896f6dc7d2c3d59b0213366eae85e301a8c9bd",
         "theme": "wonder",
         "title": "The weather indoors",
@@ -76,6 +91,7 @@ export const STRANGE_EIGHT_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "Chrysoperla carnea group",
         "platform": "x",
+        "classification": "inspiring",
         "mediaSha1": "48d133c84ba8fa29892be77740fe9f5e442243b9",
         "theme": "transformation",
         "title": "Adult supervision",
@@ -99,6 +115,7 @@ export const STRANGE_EIGHT_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "Tettigonia viridissima",
         "platform": "instagram",
+        "classification": "inspiring",
         "mediaSha1": "842d0e00e53b9e4f6f74cffdad0357f891e88038",
         "theme": "danger",
         "title": "A bold entrance",
@@ -107,6 +124,7 @@ export const STRANGE_EIGHT_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "Tettigonia viridissima",
         "platform": "instagram",
+        "classification": "conversation",
         "mediaSha1": "61df0e82ddecdc3579fd1f2b4ac8098daafc1929",
         "theme": "social",
         "title": "For the children",
@@ -115,10 +133,31 @@ export const STRANGE_EIGHT_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "Tettigonia viridissima",
         "platform": "rss",
+        "classification": "news",
         "mediaSha1": "bc67fd84f3b0575a6f00163b3681b0ff6f22cab2",
         "theme": "transformation",
         "title": "One foot left",
         "body": "Most of me was out. One back foot was still inside the old one.\n\nI hung there and tried patience. Then force. Then patience again, mainly because force had tired me out.\n\nThe empty face above me had its mouth open. It looked astonished. I told it this was hardly helping.\n\nAt last the foot slipped free. My new legs were soft. My new wings were crumpled. I held the stem and waited for all of it to become usable.\n\nI'd imagined leaving the old body would feel like making a grand entrance. Mostly I wanted nobody to touch me.\n\nThe breeze moved the empty foot. I caught myself worrying that it would lose its grip."
+      },
+      {
+        "subject": "Tettigonia viridissima",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "family",
+        "title": "The next egg",
+        "body": "I found sand between the bricks and began to lay. The rain reached my head first. I moved one foot toward shelter, then put it back. There was still an egg on its way.",
+        "classification": "personal",
+        "mediaSha1": "1481b996534f9ca41260b3149634b30a1b838cb1"
+      },
+      {
+        "subject": "Tettigonia viridissima",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "social",
+        "title": "After I was released",
+        "body": "When I was small, a hand picked me up. I bit the finger holding me. The hand opened at once. I had been so intent on being put down that I forgot to let go.",
+        "classification": "conversation",
+        "mediaSha1": "232112c6a5eebdd22ceca1c1c181920c4f94e3e0"
       }
     ]
   },
@@ -138,6 +177,7 @@ export const STRANGE_EIGHT_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "Peripatoides novaezealandiae complex",
         "platform": "x",
+        "classification": "inspiring",
         "mediaSha1": "864a40391372478cb552c4611505c641284c098d",
         "theme": "wonder",
         "title": "Not that kind",
@@ -146,6 +186,7 @@ export const STRANGE_EIGHT_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "Peripatoides novaezealandiae complex",
         "platform": "instagram",
+        "classification": "inspiring",
         "mediaSha1": "69785ecdfada1db4664e0c9ae2afff80058fe750",
         "theme": "wonder",
         "title": "Velvet",
@@ -155,6 +196,7 @@ export const STRANGE_EIGHT_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
         "subject": "Peripatoides novaezealandiae complex",
         "platform": "instagram",
         "contentType": "story",
+        "classification": "inspiring",
         "mediaSha1": "9285264a60c60d7f649f878f77da75166c57b910",
         "theme": "wonder",
         "title": "Back and forth",
@@ -178,6 +220,7 @@ export const STRANGE_EIGHT_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "Archispirostreptus gigas",
         "platform": "instagram",
+        "classification": "conversation",
         "mediaSha1": "730c8b9acda2c3c1d833423c8014e7e0dd4cf08e",
         "theme": "social",
         "title": "Nothing to add",
@@ -186,6 +229,7 @@ export const STRANGE_EIGHT_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "Archispirostreptus gigas",
         "platform": "rss",
+        "classification": "news",
         "mediaSha1": "1d6fc6065a586dd0b62cf2166c73623f9b5f775a",
         "theme": "wonder",
         "title": "The foot that hurt",
@@ -194,6 +238,7 @@ export const STRANGE_EIGHT_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "Archispirostreptus gigas",
         "platform": "instagram",
+        "classification": "personal",
         "mediaSha1": "f3f1b8bdcfa0bb5d7f1e214cae6bd82ca00fc833",
         "theme": "courtship",
         "title": "Taking it slowly",
@@ -202,6 +247,7 @@ export const STRANGE_EIGHT_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "Archispirostreptus gigas",
         "platform": "x",
+        "classification": "event",
         "mediaSha1": "1204b6cab19b96a1956f229ffc2c5b1b34448798",
         "theme": "movement",
         "title": "Almost across",
@@ -225,6 +271,7 @@ export const STRANGE_EIGHT_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "Phidippus regius",
         "platform": "instagram",
+        "classification": "personal",
         "mediaSha1": "1f0d53836e150a08fd44b1addb8a3d938a5b0759",
         "theme": "courtship",
         "title": "Which ones",
@@ -233,6 +280,7 @@ export const STRANGE_EIGHT_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "Phidippus regius",
         "platform": "rss",
+        "classification": "conversation",
         "mediaSha1": "8c1d61059bd9a7bf67ccac9a602d56e8ce4f7e1c",
         "theme": "social",
         "title": "When I was little",
@@ -242,6 +290,7 @@ export const STRANGE_EIGHT_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
         "subject": "Phidippus regius",
         "platform": "facebook",
         "contentType": "story",
+        "classification": "event",
         "mediaSha1": "68a48b9bed5ab12b9b757a087ae480a925e43613",
         "theme": "movement",
         "title": "A temporary loss of menace",

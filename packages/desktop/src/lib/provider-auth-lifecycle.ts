@@ -6,6 +6,7 @@ import {
 } from "@freed/ui/lib/factory-reset";
 import {
   assertFactoryResetEpoch,
+  isDesktopHandoffPaused,
   runFactoryResetSensitiveDesktopOperation,
 } from "./factory-reset-guard";
 import { safeUnlisten } from "./safe-unlisten";
@@ -28,7 +29,13 @@ function trackProviderAuthRequest<T>(operation: Promise<T>): Promise<T> {
 
 /** True while provider login callbacks may issue work or persist auth state. */
 export function isDesktopProviderAuthAllowed(): boolean {
-  return acceptingProviderAuthWork && !isFactoryResetInProgress();
+  return acceptingProviderAuthWork && !isFactoryResetInProgress() && !isDesktopHandoffPaused();
+}
+
+function authPausedError(): Error {
+  return new Error(isDesktopHandoffPaused()
+    ? "Library transfer is pausing provider login"
+    : "Factory reset is in progress");
 }
 
 /** Register a live login flow so factory reset can cancel its timers and polling. */
@@ -55,19 +62,19 @@ export function runDesktopProviderAuthRequest<T>(
   operation: (signal: AbortSignal) => Promise<T>,
 ): Promise<T> {
   if (!isDesktopProviderAuthAllowed()) {
-    return Promise.reject(new Error("Factory reset is in progress"));
+    return Promise.reject(authPausedError());
   }
 
   const controller = new AbortController();
   activeProviderAuthControllers.add(controller);
   const request = runFactoryResetSensitiveDesktopOperation(async (epoch) => {
     if (!isDesktopProviderAuthAllowed()) {
-      throw new Error("Factory reset is in progress");
+      throw authPausedError();
     }
     const result = await operation(controller.signal);
     assertFactoryResetEpoch(epoch);
     if (!isDesktopProviderAuthAllowed()) {
-      throw new Error("Factory reset is in progress");
+      throw authPausedError();
     }
     return result;
   });
@@ -134,6 +141,17 @@ export function requestDesktopProviderAuthCheck<Payload>({
 /** Stop every renderer-owned provider login flow before account cleanup starts. */
 export async function quiesceDesktopProviderAuthForFactoryReset(): Promise<void> {
   acceptingProviderAuthWork = false;
+  await quiesceProviderAuth();
+}
+
+/** Cancel login flows while the handoff owner prevents new ones. Releasing that
+ * pause never reverses a factory reset's permanent auth closure. */
+export async function quiesceDesktopProviderAuthForHandoff(): Promise<void> {
+  if (!isDesktopHandoffPaused()) throw new Error("Provider auth drain requires the handoff pause");
+  await quiesceProviderAuth();
+}
+
+async function quiesceProviderAuth(): Promise<void> {
   for (const controller of activeProviderAuthControllers) controller.abort();
   const handlerResults = [...providerAuthQuiesceHandlers].map((handler) =>
     Promise.resolve().then(handler),

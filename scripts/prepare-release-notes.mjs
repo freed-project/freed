@@ -50,7 +50,7 @@ const DEV_SUFFIX = "-dev";
 
 const GITHUB_API = "https://api.github.com";
 const OPENAI_API = "https://api.openai.com/v1/chat/completions";
-const OPENAI_MODEL = process.env.OPENAI_RELEASE_NOTES_MODEL || "gpt-5.4";
+const OPENAI_MODEL = process.env.OPENAI_RELEASE_NOTES_MODEL || "gpt-6-astra";
 const OPENAI_TIMEOUT_MS = Math.max(
   1_000,
   Number.parseInt(process.env.OPENAI_RELEASE_NOTES_TIMEOUT_MS || "20000", 10) ||
@@ -1307,6 +1307,7 @@ async function generateWithOpenAI(promptInput) {
       signal: controller.signal,
       body: JSON.stringify({
         model: OPENAI_MODEL,
+        ...(OPENAI_MODEL === "gpt-6-astra" ? { reasoning_effort: "low" } : {}),
         messages: [
           { role: "system", content: system },
           {

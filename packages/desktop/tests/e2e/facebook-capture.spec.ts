@@ -183,9 +183,23 @@ test("Facebook sync excludes posts from filtered groups", async ({
     };
 
     setTimeout(() => {
+      const admitted = <T extends { id: string }>(post: T) => ({
+        ...post,
+        admission: {
+          provider: "facebook",
+          surface: "feed",
+          placementIdentity: post.id,
+          observationGeneration: 1,
+          inspectionStatus: "complete",
+          evidenceCodes: [],
+          ruleVersion: "facebook-admission-v1",
+          decision: "admit",
+          reasons: ["supported_inspection_without_advertising_evidence"],
+        },
+      });
       emit("fb-feed-data", {
         posts: [
-          {
+          admitted({
             id: "group-post-1",
             url: "https://www.facebook.com/groups/excluded-group/posts/1",
             authorName: "Alice Example",
@@ -209,8 +223,8 @@ test("Facebook sync excludes posts from filtered groups", async ({
               name: "Excluded Group",
               url: "https://www.facebook.com/groups/excluded-group",
             },
-          },
-          {
+          }),
+          admitted({
             id: "feed-post-2",
             url: "https://www.facebook.com/story.php?story_fbid=2&id=3",
             authorName: "Bob Builder",
@@ -230,8 +244,8 @@ test("Facebook sync excludes posts from filtered groups", async ({
             isShare: false,
             sharedFrom: null,
             group: null,
-          },
-          {
+          }),
+          admitted({
             id: "create-account-post",
             url: "https://www.facebook.com/story.php?story_fbid=4&id=5",
             authorName: "Create New Account",
@@ -251,8 +265,8 @@ test("Facebook sync excludes posts from filtered groups", async ({
             isShare: false,
             sharedFrom: null,
             group: null,
-          },
-          {
+          }),
+          admitted({
             id: "shortcuts-post",
             url: "https://www.facebook.com/story.php?story_fbid=6&id=7",
             authorName: "Your Shortcuts",
@@ -272,10 +286,11 @@ test("Facebook sync excludes posts from filtered groups", async ({
             isShare: false,
             sharedFrom: null,
             group: null,
-          },
+          }),
         ],
         extractedAt: Date.now(),
         url: "https://www.facebook.com/",
+        admissionRuleVersion: "facebook-admission-v1",
       });
     }, 0);
 

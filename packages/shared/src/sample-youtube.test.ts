@@ -25,9 +25,10 @@ describe("demo YouTube provenance", () => {
   });
 
   it("keeps canonical playback identity and real creator attribution separate from fiction", () => {
-    const result = projectSampleYouTubeVideo(fixture, fixture.thumbnailUrl, "Synthetic character commentary.");
+    const commentary = "I waited beside the rock.\n\nThen I swam home.";
+    const result = projectSampleYouTubeVideo(fixture, fixture.thumbnailUrl, commentary);
     expect(result.sourceUrl).toBe("https://www.youtube.com/watch?v=TESTvideo01");
-    expect(result.text).toBe(`Synthetic character commentary.\n\nOriginal video: ${fixture.title}\nUploaded by ${fixture.uploader}: ${fixture.channelUrl}\nSource: ${fixture.primarySourceUrl}`);
+    expect(result.text).toBe(`${commentary}\n\nOriginal video: ${fixture.title}\nUploaded by ${fixture.uploader}: ${fixture.channelUrl}\nSource: ${fixture.primarySourceUrl}`);
     expect(result.text).not.toContain("Fictional character commentary:");
     expect(result.attribution).toContain(fixture.title);
     expect(result.attribution).toContain(fixture.uploader);

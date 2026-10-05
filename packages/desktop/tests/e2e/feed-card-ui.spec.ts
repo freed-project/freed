@@ -268,7 +268,8 @@ async function showStoriesFilter(page: import("@playwright/test").Page): Promise
   });
 }
 
-test("feed card overhaul actions and reader open flow work", async ({ app }) => {
+test("unified feed cards open reader actions and preserve media policy", async ({ app }) => {
+  await app.page.route("**/freed.svg?fallback", (route) => route.fulfill({ status: 404, body: "Not found" }));
   await app.goto();
   await app.waitForReady();
   await injectCardUiItems(app.page);
@@ -276,43 +277,45 @@ test("feed card overhaul actions and reader open flow work", async ({ app }) => 
 
   const facebookCard = app.page.locator("article").filter({ hasText: FACEBOOK_TITLE }).first();
   await expect(facebookCard).toBeVisible();
-  await expect(facebookCard).toContainText("1,234");
-  await expect(facebookCard).toContainText("45");
+  await expect(facebookCard).not.toContainText("1,234");
+  await expect(facebookCard.locator('button[aria-label="Comment"]')).toHaveCount(0);
   await expect(facebookCard).toHaveClass(/grayscale/);
-  await expect(facebookCard.locator('button[aria-label="Archive"]').first()).toBeVisible();
+  await expect(facebookCard.getByRole("button", { name: "Archive", exact: true })).toHaveCount(0);
   const facebookImage = facebookCard.locator(`img[src="${FACEBOOK_MEDIA_URL}"]`).first();
-  await expect(facebookImage).toHaveCount(0);
+  await expect(facebookImage).toBeVisible();
+  await expect(facebookImage).toHaveAttribute("loading", "lazy");
+  await expect(facebookImage).toHaveAttribute("decoding", "async");
+  await facebookImage.scrollIntoViewIfNeeded();
+  await facebookImage.evaluate(async (image: HTMLImageElement) => {
+    await image.decode();
+    if (!image.complete || image.naturalWidth === 0 || image.naturalHeight === 0) {
+      throw new Error("Lazy feed thumbnail did not decode");
+    }
+  });
 
   const storyTile = app.page.locator('[data-feed-item-id="test-instagram-story-thumbnail"]');
   const storyImage = storyTile.locator(`img[src="${STORY_MEDIA_URL}"]`).first();
   await expect(storyImage).toBeVisible();
+  // A visible img can still be broken. Prove that the local fixture decoded.
+  await storyImage.evaluate(async (image: HTMLImageElement) => {
+    await image.decode();
+    if (!image.complete || image.naturalWidth === 0 || image.naturalHeight === 0) {
+      throw new Error("Story thumbnail did not decode");
+    }
+  });
 
   const brokenCard = app.page.locator('[data-feed-item-id="test-broken-thumbnail-fallback"]');
+  await brokenCard.scrollIntoViewIfNeeded();
   const brokenImage = brokenCard.locator("img").first();
   await expect(brokenImage).toHaveCount(0);
   await expect(brokenCard).toContainText(BROKEN_TITLE);
 
   await facebookCard.hover();
-  await expect(facebookCard).toHaveCSS("border-width", "1px");
-  const focusedEdge = await facebookCard.evaluate((card) => {
-    const style = window.getComputedStyle(card);
-    return {
-      boxShadow: style.boxShadow,
-      outlineStyle: style.outlineStyle,
-    };
-  });
-  expect(focusedEdge.boxShadow).not.toMatch(/0px 0px 0px [12]px inset/);
-  expect(focusedEdge.outlineStyle).toBe("none");
-  const likeButton = facebookCard.locator('button[aria-label="Like"]').last();
-  await likeButton.hover();
-  await expect(facebookCard.locator('button[aria-label="Love"]')).toBeVisible();
-
+  await expect(facebookCard.getByRole("button", { name: "Like", exact: true })).toHaveCount(0);
   const rssCard = app.page.locator("article").filter({ hasText: RSS_TITLE }).first();
   await expect(rssCard).toBeVisible();
-  await rssCard.hover();
-  await expect(rssCard.locator('button[aria-label="Love"]')).toHaveCount(0);
 
-  await expect(facebookCard.locator('button[aria-label="Open"]')).toBeVisible();
+  await expect(facebookCard.locator('button[aria-label="Open"]')).toHaveCount(0);
 
   await setShowEngagementCounts(app.page, false);
   await expect(facebookCard).not.toContainText("1,234");
@@ -325,7 +328,16 @@ test("feed card overhaul actions and reader open flow work", async ({ app }) => 
   await expect(app.page.getByLabel("Archive").first()).toBeVisible();
   const compactRailCard = app.page.locator('[data-testid="compact-feed-panel-scroll-container"] [data-feed-item-id="test-facebook-card-ui-overhaul"]');
   const compactRailImage = compactRailCard.locator(`img[src="${FACEBOOK_MEDIA_URL}"]`).first();
-  await expect(compactRailImage).toHaveCount(0);
+  await expect(compactRailImage).toBeVisible();
+  await expect(compactRailImage).toHaveAttribute("loading", "lazy");
+  await expect(compactRailImage).toHaveAttribute("decoding", "async");
+  await compactRailImage.scrollIntoViewIfNeeded();
+  await compactRailImage.evaluate(async (image: HTMLImageElement) => {
+    await image.decode();
+    if (!image.complete || image.naturalWidth === 0 || image.naturalHeight === 0) {
+      throw new Error("Lazy feed thumbnail did not decode");
+    }
+  });
   await expect(compactRailCard).toHaveAttribute("data-selected", "true");
 
   await app.page.mouse.move(0, 0);
@@ -347,10 +359,12 @@ test("feed card overhaul actions and reader open flow work", async ({ app }) => 
     };
   });
   expect(selectedCardRestingStyle.borderLeftWidth).toBe("2px");
-  expect(selectedCardHoverStyle).toEqual(selectedCardRestingStyle);
+  expect(selectedCardHoverStyle.borderLeftWidth).toBe(selectedCardRestingStyle.borderLeftWidth);
+  expect(selectedCardHoverStyle.borderLeftColor).toBe(selectedCardRestingStyle.borderLeftColor);
+  expect(selectedCardHoverStyle.backgroundColor).not.toBe(selectedCardRestingStyle.backgroundColor);
 
-  const openReaderButton = app.page.getByRole("button", { name: "Open", exact: true }).first();
-  await expect(openReaderButton).toBeVisible();
+  await expect(app.page.getByRole("link", { name: "View original on Facebook" })).toBeVisible();
+  await expect(app.page.getByTestId("workspace-toolbar").getByRole("button", { name: "Open", exact: true })).toHaveCount(0);
 });
 
 test("story grid top padding aligns with the sidebar panel", async ({ app, page }) => {
@@ -385,18 +399,20 @@ test("story grid top padding aligns with the sidebar panel", async ({ app, page 
   expect(geometry.storyTop).toBe(geometry.sidebarInnerTop);
 });
 
-test("feed card archive removes the visible card immediately", async ({ app }) => {
+test("reader archive removes its feed card immediately", async ({ app }) => {
   await app.goto();
   await app.waitForReady();
   await injectCardUiItems(app.page);
+  await app.setDeviceDisplayPreferences({ dualColumnMode: true });
 
   const card = app.page.locator('[data-feed-item-id="test-facebook-card-ui-overhaul"]').first();
   await expect(card).toBeVisible();
+  await card.click();
+  await expect(app.page.getByTestId("reader-article")).toBeVisible();
 
   const elapsedMs = await app.page.evaluate(async () => {
     const selector = '[data-feed-item-id="test-facebook-card-ui-overhaul"]';
-    const cardElement = document.querySelector(selector) as HTMLElement | null;
-    const archiveButton = cardElement?.querySelector('button[aria-label="Archive"]') as HTMLButtonElement | null;
+    const archiveButton = document.querySelector('button[aria-label="Archive"]') as HTMLButtonElement | null;
     if (!archiveButton) {
       throw new Error("Archive button was not found");
     }
@@ -416,10 +432,11 @@ test("feed card archive removes the visible card immediately", async ({ app }) =
   await expect(card).toHaveCount(0);
 });
 
-test("feed card archive rollback restores the visible card after a failed mutation", async ({ app }) => {
+test("reader archive rollback restores its feed card after a failed mutation", async ({ app }) => {
   await app.goto();
   await app.waitForReady();
   await injectCardUiItems(app.page);
+  await app.setDeviceDisplayPreferences({ dualColumnMode: true });
 
   await app.page.evaluate(() => {
     (window as Window & {
@@ -430,9 +447,11 @@ test("feed card archive rollback restores the visible card after a failed mutati
 
   const card = app.page.locator('[data-feed-item-id="test-facebook-card-ui-overhaul"]').first();
   await expect(card).toBeVisible();
+  await card.click();
+  await expect(app.page.getByTestId("reader-article")).toBeVisible();
 
-  const archiveButton = card.locator('button[aria-label="Archive"]').first();
-  await archiveButton.click({ force: true });
+  const archiveButton = app.page.getByRole("button", { name: "Archive", exact: true });
+  await archiveButton.click();
 
   await expect.poll(async () =>
     app.page.evaluate(() => {
@@ -483,13 +502,17 @@ test("liking an X post keeps it in the unified feed", async ({ app, ipc }) => {
   const xCard = app.page.locator('[data-feed-item-id="x:2049705418436600244"]');
   await expect(xCard).toBeVisible();
   await expect(xCard).toContainText(X_LIKE_TITLE);
-  await xCard.hover();
-
-  await xCard.getByRole("button", { name: "Like", exact: true }).click();
+  await xCard.click();
+  await expect(app.page.getByTestId("reader-article")).toBeVisible();
+  const search = app.page.getByRole("textbox", { name: "Search or run", exact: true });
+  await search.fill("Like current item");
+  await app.page.getByTestId("search-command-action-item-toggle-liked").click();
+  await search.fill("");
+  await search.press("Escape");
+  await app.page.getByTestId("workspace-toolbar-reader-back").click();
 
   await expect(xCard).toBeVisible();
   await expect(xCard).toContainText(X_LIKE_TITLE);
-  await expect(xCard.getByRole("button", { name: /Liked/ })).toBeVisible();
   await expect.poll(() => app.page.evaluate(() => {
     const state = (window as unknown as {
       __TAURI_MOCK_SQLITE_LIBRARY__: {
@@ -498,9 +521,6 @@ test("liking an X post keeps it in the unified feed", async ({ app, ipc }) => {
     }).__TAURI_MOCK_SQLITE_LIBRARY__;
     return state.items["x:2049705418436600244"]?.userState.likedSyncedAt ?? null;
   }), { timeout: 10_000 }).toEqual(expect.any(Number));
-  await expect(xCard.getByRole("button", { name: "Liked on X" })).toBeVisible({
-    timeout: 8_000,
-  });
   await expect(xCard).toBeVisible();
   await expect(xCard).toContainText(X_LIKE_TITLE);
 
@@ -1119,4 +1139,32 @@ test("feed cards show compact event metadata from semantic enrichment", async ({
   const eventCard = app.page.locator("article").filter({ hasText: "Semantic Event Card" }).first();
   await expect(eventCard).toBeVisible();
   await expect(eventCard).toContainText(/Event/);
+});
+
+
+test("failed feed refresh shows a retry action instead of an empty Library", async ({ app }) => {
+  await app.goto();
+  await app.waitForReady();
+  await injectCardUiItems(app.page);
+  await expect(app.page.locator("article").first()).toBeVisible();
+  await app.page.evaluate(() => {
+    const w = window as Record<string, unknown>;
+    const handlers = w.__TAURI_MOCK_HANDLERS__ as Record<string, (args: any) => unknown>;
+    const original = handlers.query_normalized_library;
+    w.__RESTORE_FEED_QUERY__ = () => { handlers.query_normalized_library = original; };
+    handlers.query_normalized_library = (args) => {
+      if (args.request?.queryId === "feed_browse_page_v3") throw new Error("forced feed failure");
+      return original(args);
+    };
+    const store = w.__FREED_STORE__ as { getState(): { setFilter(filter: unknown): void } };
+    store.getState().setFilter({ platform: "facebook" });
+  });
+  await expect(app.page.getByRole("alert")).toContainText("Unable to load this feed.");
+  await expect(app.page.getByText("Welcome to Freed", { exact: true })).toHaveCount(0);
+  await app.page.evaluate(() => {
+    ((window as Record<string, unknown>).__RESTORE_FEED_QUERY__ as () => void)();
+  });
+  await app.page.getByRole("button", { name: "Try again", exact: true }).click();
+  await expect(app.page.getByRole("alert")).toHaveCount(0);
+  await expect(app.page.locator("article").filter({ hasText: FACEBOOK_TITLE }).first()).toBeVisible();
 });

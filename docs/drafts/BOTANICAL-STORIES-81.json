@@ -1,0 +1,215 @@
+{
+  "status": "admitted_by_root",
+  "counts": {
+    "exactPublishedImagesOpened": 8,
+    "proposals": 1,
+    "newIdentities": 0,
+    "admitted": 1
+  },
+  "proposals": [
+    {
+      "candidateId": "81-01",
+      "characterId": "coral-clad",
+      "identityNameBase": "Coral Clad",
+      "episode": {
+        "subject": "British soldier lichen",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "danger",
+        "title": "The unfinished argument",
+        "body": "A boot pressed the far end of our plank. The crack beneath us opened.\n\nI stopped arguing with my green partner and waited for the wood to settle.\n\nWhen the foot lifted, he asked what I'd been about to say. I couldn't remember. He said he could, but it could wait.",
+        "mediaSha1": "3195110d8e9633e739e9e5e6d9d9efe79b076f0f"
+      },
+      "admission": "pass_exact_by_root",
+      "visualReview": "Exact frame individually opened. Central upright red-tipped lichen and flanking structures are sharp against pale weathered wood; deep split directly below its base is visible. Background soft focus leaves the subject distinct. Four further exact observation frames opened separately, including split-plank context and whole overgrown trailer. Wider frame corroborates old wooden truckbed description, but no boot is present.",
+      "fictionBoundary": "The existing split wood and attached lichen are observed. Boot contact, crack widening, movement and the exchange between principal voices are invented. Neither the still nor observer records the incident. No claim of fungal eating of its substrate, separation of symbiotic partners, locomotion, truck operation or documented injury. The wider trailer is overgrown and decayed; a moving-truck premise was rejected.",
+      "continuity": "Retains established one-speaking-lichen/two-principal-voices embodiment, without asserting exactly two biological organisms. Fiction stays in northern Georgia mixed woodland34.68/-84.08; observer source is Thurman, New York. A weathered abandoned wooden truckbed at the woodland edge is a proposed local substrate detail, not relocation to the real observation. No new identity, avatar or autonomous red-cap individuals.",
+      "proseReview": "An external disturbance interrupts their habitual argument. The green partner remembers the argument but chooses to postpone it after their shared alarm. No pronoun dispute or explained moral. Root must judge whether the brief change in their relationship earns a Story and whether visible split wood sufficiently supports the invented pressure incident."
+    }
+  ],
+  "media": [
+    {
+      "observationId": 58305399,
+      "photoId": 93066957,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/93066957/large.jpg",
+      "localFile": "/tmp/botanical81/58305399.jpg",
+      "bytes": 199569,
+      "sha1": "3195110d8e9633e739e9e5e6d9d9efe79b076f0f",
+      "sha256": "f2283a9fcb8c9b8aae82f6d698fc05543e665eec834efa093332aff7a4b17d7b",
+      "dimensions": [
+        1024,
+        800
+      ],
+      "seconds": 0.771,
+      "status": 200,
+      "attribution": "(c) Nova Patch, some rights reserved (CC BY-SA), uploaded by Nova Patch",
+      "license": "CC-BY-SA",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/58305399",
+      "sourceLocal": "/tmp/botanical81/obs-58305399.json",
+      "id": "botanical81-lichen-split-plank",
+      "category": "wildlife",
+      "subject": "British soldier lichen",
+      "species": "Cladonia cristatella",
+      "creator": "Nova Patch",
+      "aggregated": true,
+      "alt": "Red-tipped British soldier lichen rises from deeply split silver-grey wood.",
+      "sourceMetadataUrl": "https://www.inaturalist.org/observations/58305399.json",
+      "rightsEvidence": "Photo93066957 explicitly carries CC-BY-SA and the BY-SA4.0 license URL in the primary observation JSON. Credit Nova Patch, the real photographer and uploader, separately from fictional Coral Clad.",
+      "taxonEvidence": "Current primary observation is research-grade Cladonia cristatella, with two current identifications agreeing, one agreement and zero disagreements. Red apothecia and granular greenish podetia on wood match the named taxon; no claim that pixels alone distinguish every similar Cladonia.",
+      "deliveryEvidence": "Exact published large_url downloaded and individually opened. This is a1024px published delivery file, not an inspected full-upload original."
+    }
+  ],
+  "supportingImages": [
+    {
+      "observationId": 58305399,
+      "photoId": 93066948,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/93066948/large.jpg",
+      "localFile": "/tmp/botanical81/93066948.jpg",
+      "bytes": 192094,
+      "sha1": "72373c7de6e7744481f96afe0652393434de119c",
+      "sha256": "8aecf63bec92025ee30fd21a20c08705ac05118005fc94e0e872660e099195c1",
+      "dimensions": [
+        1024,
+        768
+      ],
+      "seconds": 0.68,
+      "status": 200,
+      "license": "CC-BY-SA",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "attribution": "(c) Nova Patch, some rights reserved (CC BY-SA), uploaded by Nova Patch"
+    },
+    {
+      "observationId": 58305399,
+      "photoId": 93066909,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/93066909/large.jpg",
+      "localFile": "/tmp/botanical81/93066909.jpg",
+      "bytes": 238567,
+      "sha1": "8143ff1c5ee63da5fccc98baf9beed85e967249e",
+      "sha256": "b7bb0c7467e69349939e93f93345ee2b3410285759d0e61bb8df3b68cd7e1ae3",
+      "dimensions": [
+        919,
+        1024
+      ],
+      "seconds": 0.689,
+      "status": 200,
+      "license": "CC-BY-SA",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "attribution": "(c) Nova Patch, some rights reserved (CC BY-SA), uploaded by Nova Patch"
+    },
+    {
+      "observationId": 58305399,
+      "photoId": 93066980,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/93066980/large.jpg",
+      "localFile": "/tmp/botanical81/93066980.jpg",
+      "bytes": 267851,
+      "sha1": "2beb01280a675dcbab44fc84c67dd57fc17d03e7",
+      "sha256": "9db378ad4110e0cecd344a1a13e137a9f6edb25ca77e9aa7db75913498752498",
+      "dimensions": [
+        1024,
+        768
+      ],
+      "seconds": 0.627,
+      "status": 200,
+      "license": "CC-BY-SA",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "attribution": "(c) Nova Patch, some rights reserved (CC BY-SA), uploaded by Nova Patch"
+    },
+    {
+      "observationId": 58305399,
+      "photoId": 93067006,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/93067006/large.jpg",
+      "localFile": "/tmp/botanical81/93067006.jpg",
+      "bytes": 465506,
+      "sha1": "a1a94184ebab64461d3c3efae569078adc768522",
+      "sha256": "7c8aabe893f042094ec6fa708d0d2621c8fa7f7d11b2d640c3d68e5ac31aee6c",
+      "dimensions": [
+        903,
+        1024
+      ],
+      "seconds": 0.739,
+      "status": 200,
+      "license": "CC-BY-SA",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "attribution": "(c) Nova Patch, some rights reserved (CC BY-SA), uploaded by Nova Patch"
+    }
+  ],
+  "holds": [
+    {
+      "media": {
+        "observationId": 9866319,
+        "photoId": 13518516,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/13518516/large.jpg",
+        "localFile": "/tmp/botanical81/9866319.jpg",
+        "bytes": 620622,
+        "sha1": "d8ae559c22985145fec3ba48ad0481b715ca3ae7",
+        "sha256": "a49fbc852aa5bcb2c037c7cafcd506ef33ad7001fcb1b6c5e5a5c461cac8aea3",
+        "dimensions": [
+          1024,
+          768
+        ],
+        "seconds": 0.885,
+        "status": 200,
+        "attribution": "(c) Jim Morefield, some rights reserved (CC BY)",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "sourceUrl": "https://www.inaturalist.org/observations/9866319",
+        "sourceLocal": "/tmp/botanical81/obs-9866319.json"
+      },
+      "reason": "Clear branch with cones of three ages, explicitly described by the photographer. No sufficiently distinct incident authored; age-to-maturity explanation alone would be a caption. Unspent source, not rejected for quality."
+    },
+    {
+      "media": {
+        "observationId": 209788964,
+        "photoId": 371176240,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/371176240/large.jpg",
+        "localFile": "/tmp/botanical81/209788964.jpg",
+        "bytes": 108170,
+        "sha1": "0b97c11e7344cf8a20216bc86e1beb3e64941e86",
+        "sha256": "7017e81136d632281d0060aa670233dda905cbdfc9ef2687c3e6c2e1e010891e",
+        "dimensions": [
+          1024,
+          683
+        ],
+        "seconds": 0.565,
+        "status": 200,
+        "attribution": "(c) Flavien Saboureau, some rights reserved (CC BY), uploaded by Flavien Saboureau",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "sourceUrl": "https://www.inaturalist.org/observations/209788964",
+        "sourceLocal": "/tmp/botanical81/obs-209788964.json"
+      },
+      "reason": "Excluded for Ivo: the detailed current observation taxon is Polystichum sinense, despite broad search returning it for setiferum. Individually opened but cannot bind to existing setiferum character."
+    },
+    {
+      "media": {
+        "observationId": 254985857,
+        "photoId": 456854636,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/456854636/large.jpg",
+        "localFile": "/tmp/botanical81/254985857.jpg",
+        "bytes": 300720,
+        "sha1": "2d715aa24b5fd2890b959a35446c19054dcd7339",
+        "sha256": "c372360056eb2ad5ff1d28abba31580ef6bb3445b676894f6c412fe6e8eb437c",
+        "dimensions": [
+          771,
+          1024
+        ],
+        "seconds": 0.649,
+        "status": 200,
+        "attribution": "(c) Timothy McNitt, some rights reserved (CC BY), uploaded by Timothy McNitt",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "sourceUrl": "https://www.inaturalist.org/observations/254985857",
+        "sourceLocal": "/tmp/botanical81/obs-254985857.json"
+      },
+      "reason": "Current research-grade Polystichum setiferum, three current IDs agree. Individually opened clean frond portrait with some damage, but no strong distinct incident; no story written."
+    }
+  ],
+  "limitations": [
+    "Only published large files inspected, not full upload originals.",
+    "No application relay or rendered Story UI verification.",
+    "Photograph documents the substrate and lichen, not the fictional boot event.",
+    "Only draft81 Markdown and JSON written; runtime and prior passages preserved."
+  ],
+  "leadReview": "Root opened exact lichen and whole trailer images, refreshed primary JSON, checked prior two episodes, verified SHA-1 and SHA-256, and admitted exact prose on 2026-09-06."
+}

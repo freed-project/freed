@@ -313,6 +313,12 @@ export function extractTopLevelTestUnits(
   return units;
 }
 
+export function extractToolingSmokeTestUnits(suite, source, testFile) {
+  return extractTopLevelTestUnits(source, testFile, {
+    allowTransparentLocalWrapper: suite === "nightly-self-improve",
+  });
+}
+
 export function extractTopLevelTestNames(source, label = "test source") {
   return extractTopLevelTestUnits(source, label).map(({ name }) => name);
 }
@@ -382,16 +388,45 @@ function readRecordedDurations(repoRoot) {
   }
 }
 
-function completeMeasuredUnitWeights(durations, suite, names) {
-  const units = durations?.suites?.[suite]?.units;
-  if (units === null || typeof units !== "object") return null;
-  const weights = new Map();
-  for (const name of names) {
-    const seconds = Number(units?.[name]?.seconds);
-    if (!Number.isFinite(seconds) || seconds <= 0) return null;
-    weights.set(name, seconds);
+function withRecordedUnitWeights(units, durations, suite) {
+  const recorded = durations?.suites?.[suite];
+  if (recorded?.capped || recorded?.failures > 0 || recorded?.flaky) {
+    return units;
   }
-  return weights;
+  const weights = new Map();
+  let measuredWeight = 0;
+  let measuredSourceWeight = 0;
+  for (const unit of units) {
+    const measurement = recorded?.units?.[unit.name];
+    const seconds = measurement?.seconds;
+    if (
+      !Number.isFinite(seconds) ||
+      seconds < 0 ||
+      measurement.capped ||
+      measurement.failures > 0 ||
+      measurement.flaky
+    ) {
+      continue;
+    }
+    // The catalog rounds to milliseconds. A scheduling floor keeps zero-time
+    // units from leaving empty shards; it is not an elapsed-time measurement.
+    const weight = Math.max(0.001, seconds);
+    weights.set(unit.name, weight);
+    measuredWeight += weight;
+    measuredSourceWeight += unit.weight;
+  }
+  if (weights.size === 0) return units;
+
+  // New files/names must not invalidate all known timings. Convert their source
+  // weights to the measured scale using only current, attributable units.
+  // These fallback weights are estimates and never enter the timing catalog.
+  const secondsPerSourceWeight = measuredWeight / measuredSourceWeight;
+  return units.map((unit) => ({
+    ...unit,
+    weight:
+      weights.get(unit.name) ??
+      Math.max(0.001, unit.weight * secondsPerSourceWeight),
+  }));
 }
 
 export function buildToolingSmokeShardPlan(
@@ -401,20 +436,17 @@ export function buildToolingSmokeShardPlan(
   const recorded = durations ?? readRecordedDurations(repoRoot);
   if (suite === "general") {
     const testFiles = generalTestFiles(repoRoot);
-    const measuredWeights = completeMeasuredUnitWeights(
-      recorded,
-      suite,
-      testFiles,
-    );
     const generalUnits = testFiles.map((testFile) => ({
       name: testFile,
-      weight:
-        measuredWeights?.get(testFile) ??
+      weight: Math.max(
+        1,
         readFileSync(path.join(repoRoot, testFile), "utf8").length,
+      ),
     }));
-    const files = partitionWeightedTestUnits(generalUnits, shardCount)[
-      shardIndex - 1
-    ].map(({ name }) => name);
+    const files = partitionWeightedTestUnits(
+      withRecordedUnitWeights(generalUnits, recorded, suite),
+      shardCount,
+    )[shardIndex - 1].map(({ name }) => name);
     if (files.length === 0) {
       fail(
         `General tooling smoke shard ${shardIndex.toLocaleString()} is empty.`,
@@ -433,18 +465,8 @@ export function buildToolingSmokeShardPlan(
   }
   const testFile = SHARDED_TEST_FILES[suite];
   const source = readFileSync(path.join(repoRoot, testFile), "utf8");
-  const extractedUnits = extractTopLevelTestUnits(source, testFile, {
-    allowTransparentLocalWrapper: suite === "nightly-self-improve",
-  });
-  const measuredWeights = completeMeasuredUnitWeights(
-    recorded,
-    suite,
-    extractedUnits.map(({ name }) => name),
-  );
-  const allUnits = extractedUnits.map((unit) => ({
-    ...unit,
-    weight: measuredWeights?.get(unit.name) ?? unit.weight,
-  }));
+  const extractedUnits = extractToolingSmokeTestUnits(suite, source, testFile);
+  const allUnits = withRecordedUnitWeights(extractedUnits, recorded, suite);
   const selectedUnits = partitionWeightedTestUnits(allUnits, shardCount)[
     shardIndex - 1
   ];
@@ -480,8 +502,13 @@ function runChecked(command, args, repoRoot) {
 // until the job-level timeout kills the whole run with no useful signal. Any
 // tooling test slower than this in a blocking lane is a defect, not a long test.
 export const SHARD_TEST_TIMEOUT_MS = 300_000;
+const NIGHTLY_SUPERVISOR = "scripts/test-helpers/nightly-fixture-supervisor.py";
+const NIGHTLY_PRELOAD = "scripts/test-helpers/nightly-fixture-preload.mjs";
 
-export function runToolingSmokeShard(plan, { repoRoot = REPO_ROOT } = {}) {
+export function runToolingSmokeShard(
+  plan,
+  { repoRoot = REPO_ROOT, nightlyDeadlines = {} } = {},
+) {
   if (plan.shellFiles.length > 0) {
     runChecked("bash", ["-n", ...plan.shellFiles], repoRoot);
   }
@@ -502,7 +529,22 @@ export function runToolingSmokeShard(plan, { repoRoot = REPO_ROOT } = {}) {
     args.push(`--test-name-pattern=${plan.testNamePattern}`);
   }
   args.push(...plan.testFiles);
-  runChecked(process.execPath, args, repoRoot);
+  if (plan.suite === "nightly-self-improve") {
+    // The Python parent remains runnable during imported synchronous operations.
+    // The outer bound also covers a blocked event loop or stalled module setup.
+    runChecked("python3", [
+      "-B",
+      path.join(REPO_ROOT, NIGHTLY_SUPERVISOR),
+      String(nightlyDeadlines.operationMs ?? 30_000),
+      String(nightlyDeadlines.testMs ?? SHARD_TEST_TIMEOUT_MS),
+      String(nightlyDeadlines.shardMs ?? 60 * 60_000),
+      process.execPath,
+      `--import=${path.join(REPO_ROOT, NIGHTLY_PRELOAD)}`,
+      ...args,
+    ], repoRoot);
+  } else {
+    runChecked(process.execPath, args, repoRoot);
+  }
 }
 
 function isMain() {

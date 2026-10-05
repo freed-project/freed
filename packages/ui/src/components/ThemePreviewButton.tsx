@@ -70,7 +70,7 @@ export function ThemePreviewButton({
         aria-hidden="true"
       >
         {active ? (
-          <span className="absolute right-2 top-2 rounded-full border border-black/10 bg-[color:color-mix(in_srgb,var(--theme-bg-root)_72%,transparent)] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-primary)] shadow-sm backdrop-blur-md">
+          <span className="absolute right-2 top-2 rounded-full border border-black/10 bg-[color:color-mix(in_srgb,var(--theme-bg-root)_72%,transparent)] px-2 py-1 text-[0.625rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-primary)] shadow-sm backdrop-blur-md">
             Active
           </span>
         ) : null}

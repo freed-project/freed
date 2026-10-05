@@ -1,0 +1,45 @@
+{
+  "status": "root_authored_pending_independent_review",
+  "characterId": "rhea-return",
+  "platform": "instagram",
+  "contentType": "story",
+  "title": "Their lunch",
+  "theme": "social",
+  "body": "I pulled a piece of sponge loose. The angelfish ate the bits that escaped my mouth.\n\nWith everyone watching, I took more care over the next bite. Nothing fell. They waited.\n\nI had been tidying away their lunch.",
+  "media": {
+    "index": 4,
+    "assetId": "2d59917d-1dd8-b71c-0709-275786b1daba",
+    "sourcePage": "https://www.nps.gov/media/photo/gallery-item.htm?gid=2D330A75-1DD8-B71C-076E2F0FC64EDBD8&id=2d59917d-1dd8-b71c-0709-275786b1daba",
+    "sourceMetadataUrl": "https://www.nps.gov/npgallery/api/search/execute/albumid/2D330A75-1DD8-B71C-076E2F0FC64EDBD8",
+    "sourceMetadataLocal": "/tmp/freed-aquatic-147/nps-gallery.json",
+    "imageUrl": "https://www.nps.gov/npgallery/GetAsset/2d59917d-1dd8-b71c-0709-275786b1daba",
+    "localPath": "/tmp/freed-aquatic-147/source-04.jpg",
+    "width": 850,
+    "height": 638,
+    "originalDimensions": [
+      850,
+      638
+    ],
+    "byteLength": 521563,
+    "sha1": "eb14ef05ae266ab7ec29df1626b6df34c7305655",
+    "sha256": "6324a055ac1c7060355e1a2e3b925b68f9eef5cd6ec82d8c65964576608ac714",
+    "creator": "Caroline Rogers",
+    "credit": "Photo by Caroline Rogers",
+    "license": "Public domain",
+    "licenseEvidence": {
+      "Constraint": "Public domain",
+      "GrantingRights": "Full"
+    },
+    "licenseUrl": "https://www.nps.gov/media/photo/gallery-item.htm?gid=2D330A75-1DD8-B71C-076E2F0FC64EDBD8&id=2d59917d-1dd8-b71c-0709-275786b1daba",
+    "taxon": "Eretmochelys imbricata",
+    "place": "Virgin Islands National Park",
+    "title": "Hawksbill and Gray Angels",
+    "caption": "Hawksbill and Gray Angels",
+    "individuallyOpened": true,
+    "hashScope": "Exact published Original delivery; dimensions and bytes match NPS FileInfo.Original.",
+    "decision": "hold",
+    "reason": "Clear turtle with head among reef and gray angelfish nearby. Useful unused source, but no distinct new authored incident earned in this batch; does not show cleaning contact or a remora."
+  },
+  "biologySource": "https://awsassets.panda.org/downloads/ecology_of_hawksbill_turtles_eretmochelys_imbricata_on_a_western_caribbean_foraging_grou.pdf",
+  "review": "Root opened exact source04, full twelve-episode arc, primary manuscript abstract and feeding association text. Image shows turtle head among reef growth and several adjacent angelfish, with shell and foreground fish sharp. Bite sequence, crumbs and social embarrassment are fictional, not visible timing. Distinct from childhood remora navigation approval, crowded-school passage and shell cleaning. No species-specific sponge identification or fish cleaning claim. Source Virgin Islands does not move Little Cayman home. Pending independent prose, image-quality, canon and rights verdict."
+}

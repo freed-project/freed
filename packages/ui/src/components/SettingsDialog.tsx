@@ -1,3 +1,4 @@
+import { usePlatformCapabilities } from "../context/PlatformContext.js";
 /**
  * SettingsDialog — unified two-column settings experience.
  *
@@ -13,16 +14,14 @@ import {
   formatReleaseVersion,
   RELEASE_CHANNEL_LABELS,
   RELEASE_CHANNELS,
-  SAMPLE_SHOWCASE_FEED_COUNT,
-  SAMPLE_SHOWCASE_FRIEND_COUNT,
-  SAMPLE_SHOWCASE_ITEM_COUNT,
-  SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT,
+  DEMO_POPULATION_COUNTS,
   stripReleaseChannelSuffix,
   type AnimationIntensity,
   type ReleaseChannel,
 } from "@freed/shared";
 import { THEME_DEFINITIONS, type ThemeId } from "@freed/shared/themes";
 import { createPortal } from "react-dom";
+import { lockBodyScroll } from "../lib/body-scroll-lock.js";
 import {
   useAppStore,
   usePlatform,
@@ -60,6 +59,7 @@ import {
 } from "../lib/interface-zoom.js";
 import { ProviderStatusIndicator } from "./ProviderStatusIndicator.js";
 import { toast } from "./Toast.js";
+import { UpdateBackupStatus } from "./UpdateBackupStatus.js";
 import { UpdateProgressBar } from "./UpdateProgressBar.js";
 import {
   buildSettingsSectionMetas,
@@ -73,6 +73,7 @@ import { StoryWallView } from "./story-wall/StoryWallView.js";
 import { SettingsToggle } from "./SettingsToggle.js";
 import { ReportComposer } from "./report/ReportComposer.js";
 import { SearchField } from "./SearchField.js";
+import { COMPACT_MACOS_TRAFFIC_LIGHT_INSET_PX } from "./layout/layoutConstants.js";
 import { ThemePreviewButton } from "./ThemePreviewButton.js";
 import {
   FeedCardDensitySlider,
@@ -505,6 +506,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     installedReleaseChannel,
     setReleaseChannel,
     updateDownloadProgress,
+    interactionMode,
   } = usePlatform();
   const preferences = useAppStore((s) => s.preferences);
   const updatePreferences = useAppStore((s) => s.updatePreferences);
@@ -512,6 +514,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const themeBlurRestoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollOptimizationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const capabilities = usePlatformCapabilities();
   const [readerOfflineCacheMode, setReaderOfflineCacheMode] = useReaderOfflineCacheMode();
   const [feedCardDensity, setFeedCardDensity] = useFeedCardDensity();
   const [interfaceZoom, setInterfaceZoom] = useInterfaceZoom();
@@ -536,6 +539,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         hasYouTube: !!YouTubeSettingsContent,
         hasUpdateChecks: !!checkForUpdates,
         hasFactoryReset: !!factoryReset,
+        hasLegal: interactionMode !== "read-only",
       }).map((section) => ({
         ...section,
         icon: ICONS[section.id],
@@ -559,6 +563,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       secureStorage,
       ShortcutsSettingsContent,
       NewsletterSettingsContent,
+      interactionMode,
     ],
   );
 
@@ -601,7 +606,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       },
       ...(sectionById.updates ? [sectionById.updates] : []),
       ...(sectionById.newsletter ? [sectionById.newsletter] : []),
-      sectionById.legal!,
+      ...(sectionById.legal ? [sectionById.legal] : []),
       ...(sectionById.danger ? [sectionById.danger] : []),
     ],
     [
@@ -1228,6 +1233,11 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     };
 
     const scheduleActiveSectionUpdate = () => {
+      // Preserve the current offset before a resize can restore the anchor.
+      // Only the navigation highlight waits for scrolling to settle.
+      if (!isScrollingProgrammatically.current) {
+        updateScrollAnchorFromPosition();
+      }
       suppressSettingsScrollportDescendantsDuringScroll();
       clearTimeout(scrollIdleTimer);
       scrollIdleTimer = setTimeout(() => {
@@ -1393,12 +1403,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
   // Body scroll lock
   useEffect(() => {
-    if (open) {
-      document.body.style.overflow = "hidden";
-    }
-    return () => {
-      document.body.style.overflow = "";
-    };
+    if (open) return lockBodyScroll();
   }, [open]);
 
   if (!open) return null;
@@ -1464,6 +1469,22 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       case "appearance":
         return (
           <>
+            {interactionMode === "read-only" && (
+              <div className="theme-card-soft mb-6 rounded-2xl p-4 sm:p-5" data-testid="demo-settings-welcome">
+                <h3 className="text-base font-semibold text-[var(--theme-text-primary)]">
+                  Welcome to the Freed demo
+                </h3>
+                <p className="mt-2 text-sm leading-relaxed text-[var(--theme-text-muted)]">
+                  Explore Freed with sample content and try the settings freely.
+                  Preference changes reset when you reload, except your theme and demo welcome choice.
+                  Download Freed Desktop to connect your accounts and configure your own Library.
+                </p>
+                <a href="https://freed.wtf/get" target="_blank" rel="noopener noreferrer"
+                  className="theme-accent-button mt-5 inline-flex items-center justify-center rounded-lg px-4 py-2 text-xs">
+                  Download Freed Desktop
+                </a>
+              </div>
+            )}
             <SectionHeading label="Appearance" />
             <div data-testid="settings-display-scale-controls" className="space-y-5">
               <div
@@ -1591,6 +1612,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   ))}
                 </div>
               </div>
+              {capabilities.maintenance && <>
               <div className="flex items-center justify-between gap-4">
                 <div className="min-w-0">
                   <p className="text-sm text-text-primary">Offline reader cache</p>
@@ -1627,6 +1649,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   <option value={0}>Never</option>
                 </select>
               </div>
+              </>}
             </div>
           </>
         );
@@ -1753,7 +1776,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       case "sync":
         return (
           <div className="flex flex-col flex-1">
-            <SectionHeading label="Sync" />
+            <SectionHeading label="Cloud Sync" />
             {SettingsExtraSections && <SettingsExtraSections />}
           </div>
         );
@@ -1808,7 +1831,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 <div ref={checkButtonRef} className="flex items-center gap-3">
                   <button
                     onClick={handleCheckForUpdates}
-                    disabled={updateState.status === "checking" || updateDownloadProgress?.phase === "downloading"}
+                    disabled={updateState.status === "checking" || updateDownloadProgress?.phase === "downloading" || updateDownloadProgress?.phase === "backing-up"}
                     className="btn-primary rounded-lg px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {updateState.status === "checking" ? (
@@ -1829,7 +1852,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                       {applyUpdate && (
                         <button
                           onClick={applyUpdate}
-                          disabled={updateDownloadProgress?.phase === "downloading"}
+                          disabled={updateDownloadProgress?.phase === "downloading" || updateDownloadProgress?.phase === "backing-up"}
                           className="btn-primary px-2.5 py-1 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           {headerDragRegion ? "Install & Restart" : "Reload"}
@@ -1841,6 +1864,9 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                     <span className="theme-feedback-text-danger text-xs">Check failed</span>
                   )}
                 </div>
+              )}
+              {updateDownloadProgress?.phase === "backing-up" && (
+                <UpdateBackupStatus className="text-xs text-text-secondary" startedAtMonotonicMs={updateDownloadProgress.startedAtMonotonicMs} />
               )}
               {updateDownloadProgress?.phase === "downloading" && (
                 <div className="space-y-1.5">
@@ -1887,7 +1913,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   <p className="text-sm text-[var(--theme-text-secondary)]">Open Debug Panel</p>
                   <p className="mt-0.5 text-xs text-[var(--theme-text-soft)]">Sync diagnostics, event log, document inspector</p>
                 </div>
-                <span className="ml-3 shrink-0 text-[10px] font-mono text-[var(--theme-text-soft)]">⌘⇧D</span>
+                <span className="ml-3 shrink-0 text-[0.625rem] font-mono text-[var(--theme-text-soft)]">⌘⇧D</span>
               </button>
               <button
                 onClick={requestSeedSampleData}
@@ -1907,7 +1933,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                       ? "Durable Library writes are in progress"
                       : hasSampleData
                         ? "Clear the current sample library before populating it again"
-                        : `Adds ${SAMPLE_SHOWCASE_FEED_COUNT.toLocaleString()} RSS feeds, ${SAMPLE_SHOWCASE_ITEM_COUNT.toLocaleString()} items, ${SAMPLE_SHOWCASE_FRIEND_COUNT.toLocaleString()} friends, ${SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT.toLocaleString()} social identities, and location-linked data`}
+                        : `Adds ${DEMO_POPULATION_COUNTS.feeds.toLocaleString()} RSS feeds, ${DEMO_POPULATION_COUNTS.items.toLocaleString()} items, ${DEMO_POPULATION_COUNTS.persons.toLocaleString()} people, ${DEMO_POPULATION_COUNTS.accounts.toLocaleString()} social identities, and location-linked data`}
                   </p>
                 </div>
                 {seeding ? (
@@ -1993,7 +2019,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         </span>
         <span>{section.label}</span>
         {section.stage === "beta" ? (
-          <span className="rounded border border-[var(--theme-border-subtle)] px-1.5 py-0.5 text-[9px] font-semibold uppercase text-[var(--theme-text-muted)]">
+          <span className="rounded border border-[var(--theme-border-subtle)] px-1.5 py-0.5 text-[0.5625rem] font-semibold uppercase text-[var(--theme-text-muted)]">
             Beta
           </span>
         ) : null}
@@ -2081,8 +2107,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         <div
           data-testid="settings-nav-panel"
           className={`
-            theme-dialog-divider flex shrink-0 flex-col
-            sm:w-52 sm:border-r
+            theme-dialog-divider flex min-h-0 flex-1 flex-col
+            sm:w-52 sm:flex-none sm:border-r
             ${mobileView === "section" ? "hidden sm:flex" : "flex"}
           `}
         >
@@ -2097,7 +2123,10 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
           <div
             className="flex shrink-0 items-center justify-between px-4 pb-1.5 pt-2 sm:hidden"
-            style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.5rem)" }}
+            style={{
+              paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.5rem)",
+              paddingLeft: headerDragRegion ? COMPACT_MACOS_TRAFFIC_LIGHT_INSET_PX : undefined,
+            }}
           >
             <h2 className="text-base font-semibold text-text-primary">Freed Settings</h2>
             <CloseButton
@@ -2149,18 +2178,22 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         {/* ── Right column ────────────────────────────────────────────────── */}
         <div
           className={`
-            flex-1 flex flex-col overflow-hidden
+            min-h-0 flex-1 flex flex-col overflow-hidden
             ${mobileView === "nav" ? "hidden sm:flex" : "flex"}
           `}
         >
           <div
             className="theme-dialog-divider sm:hidden flex shrink-0 items-center justify-between gap-3 border-b px-4 pb-2 pt-2"
-            style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.5rem)" }}
+            style={{
+              paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.5rem)",
+              paddingLeft: headerDragRegion ? COMPACT_MACOS_TRAFFIC_LIGHT_INSET_PX : undefined,
+            }}
           >
             <button
               onClick={() => setMobileView("nav")}
               className="-ml-1 flex min-w-0 items-center gap-1.5 rounded-lg px-1.5 py-1.5 text-text-secondary transition-colors hover:bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_72%,transparent)] hover:text-text-primary"
               aria-label="Back to settings"
+              style={{ marginLeft: headerDragRegion ? 0 : undefined }}
             >
               <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -2202,7 +2235,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           <div
             ref={scrollRef}
             data-testid="settings-scroll-container"
-            className="theme-settings-scrollport flex-1 overflow-y-auto px-4 pt-2 text-base sm:px-6 sm:pt-6 sm:text-sm sm:[&>section+section]:mt-24 [&>section+section]:mt-6"
+            className="theme-settings-scrollport min-h-0 flex-1 overflow-y-auto px-4 pt-2 text-base sm:px-6 sm:pt-6 sm:text-sm sm:[&>section+section]:mt-24 [&>section+section]:mt-6"
             style={{
               paddingBottom: scrollContainerBottomPadding,
             }}
@@ -2498,7 +2531,7 @@ function SectionHeading({
     >
       <span>{label}</span>
       {stage === "beta" ? (
-        <span className="rounded border border-[var(--theme-border-subtle)] px-1.5 py-0.5 text-[9px] font-semibold text-[var(--theme-text-muted)]">
+        <span className="rounded border border-[var(--theme-border-subtle)] px-1.5 py-0.5 text-[0.5625rem] font-semibold text-[var(--theme-text-muted)]">
           Beta
         </span>
       ) : null}

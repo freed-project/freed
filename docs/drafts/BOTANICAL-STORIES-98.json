@@ -1,0 +1,83 @@
+{
+  "status": "proposal_pending_independent_root_review",
+  "counts": {
+    "cachedExactImagesReopened": 1,
+    "newExactImagesOpened": 0,
+    "actualDraftsWritten": 1,
+    "proposals": 1,
+    "admitted": 0,
+    "newIdentities": 0
+  },
+  "proposals": [
+    {
+      "candidateId": "98-01",
+      "characterId": "oona-rose",
+      "identityNameBase": "Oona Rose",
+      "episode": {
+        "subject": "Lycogala slime mold",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "social",
+        "title": "A poor reception",
+        "body": "While I was still pink, a slug came straight toward me. I began to think of something welcoming to say. She stopped, tasted the wood beside me, and turned away. I spent the afternoon being offended on behalf of the log.",
+        "mediaSha1": "9253162de1a7d057faaf8d5e9683493ef1b6dcb0"
+      },
+      "admission": "pending_independent_root_review",
+      "visualReview": "Exact frame reopened individually. Pink-orange Lycogala bodies are clearly separated across dark textured wood; yellowish slug in lower center has distinct head/tentacles. Small fruiting body near the slug head supports proximity. Frame is dark overall, but subject colors and slug silhouette remain readable. No oral contact or damaged fruiting body visible. Author recommends review, with darkness and distributed composition as image risks.",
+      "fictionBoundary": "Observed: Lycogala fruiting bodies, slug and weathered wood in one frame; primary description explicitly mentions slug. Fiction: approach toward Oona, intended greeting, tasting, turn away and afternoon offense. No claim that pictured slug is eating wood, eating slime mold, identified to species, or behaving exactly as photographed in a sequence. Tasted describes invented brief oral investigation without a food or digestive claim. Female pronoun is literary. No actual slime-mold sense organs, walking or literal speech asserted.",
+      "continuity": "Read all six current Oona episodes and strange-canon02/10. While I was still pink explicitly recollects a stage before Rosy, where Oona becomes gray. No reversal in one fruiting episode. Central European woodland48.95/9.1 remains, actual source Ohio is provenance only. Retains genus Lycogala, separate neighboring bodies and existing portrait.",
+      "proseAssessment": "Actual41-word body written and assessed after inspecting exact image. Oona prepares to welcome an approaching creature, then displaces her disappointment onto the log when the visitor stops nearby and leaves. Offense on behalf of the substrate exposes her own wish to be noticed without explaining it. Distinct from earlier flattening/crowding, identification debate, cold-rain outburst, crack-side crush and mutual aging. The vulnerability is small and comic, not a predation joke. Root should judge whether the projection earns its brief ending.",
+      "recommendation": "Propose exact body for independent review; not admitted."
+    }
+  ],
+  "media": [
+    {
+      "observationId": 28294878,
+      "photoId": 44096193,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/44096193/large.jpeg",
+      "localFile": "/tmp/botanical92/28294878.jpg",
+      "bytes": 151381,
+      "sha1": "9253162de1a7d057faaf8d5e9683493ef1b6dcb0",
+      "sha256": "f522dbd41be4136e1290555dbaf9f6bd61573a76b046b7a490d17e0825b69a27",
+      "dimensions": [
+        1024,
+        707
+      ],
+      "seconds": 0.561,
+      "status": 200,
+      "attribution": "(c) Sarah Culliton, some rights reserved (CC BY), uploaded by Sarah Culliton",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/28294878",
+      "sourceLocal": "/tmp/botanical92/obs-28294878.json",
+      "id": "botanical98-lycogala-slug-approach",
+      "category": "wildlife",
+      "subject": "Lycogala slime mold",
+      "taxon": "Lycogala",
+      "creator": "Sarah Culliton",
+      "sourceMetadataUrl": "https://www.inaturalist.org/observations/28294878.json",
+      "aggregated": false,
+      "alt": "Pink Lycogala fruiting bodies occupy dark fallen wood above a yellowish slug.",
+      "rightsEvidence": "Photo44096193 explicitly supplies CC-BY and BY4.0 URL in cached detailed primary observation JSON, reread in98. Creator Sarah Culliton, separate from fictional Oona.",
+      "taxonEvidence": "Current taxon Lycogala. Two current identifications agree at genus; older Lycogala epidendrum identification withdrawn. Needs_id status does not establish a narrowly delimited species, which is intentionally not claimed. Existing Oona is genus-level.",
+      "deliveryEvidence": "Exact published large_url reopened individually from cache. Recomputed bytes and both hashes match92. Inspected1024×707 file, not source-upload2048×1413."
+    }
+  ],
+  "sourceHolds": [
+    {
+      "sourceUrl": "https://commons.wikimedia.org/wiki/File:Soca_river_in_Trenta_(3).jpg",
+      "creator": "Krzysztof Golik",
+      "license": "CC BY-SA4.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4d/Soca_river_in_Trenta_%283%29.jpg/960px-Soca_river_in_Trenta_%283%29.jpg?utm_campaign=index&utm_content=thumbnail&utm_source=commons.wikimedia.org",
+      "result": "Published960px link clicked from primary page; web tool returned TimeoutError. No downloaded image, no pixel inspection, no hashes, no local file, no retry or alternate host attempt. Source not usable for a proposal in this batch.",
+      "prose": null
+    }
+  ],
+  "limitations": [
+    "Primary cached rights and taxon reread, not fresh network revalidation.",
+    "Published delivery inspected, not full upload.",
+    "Single still does not document the invented behavior.",
+    "No application relay/render checks, runtime edits or prior prose changes."
+  ]
+}

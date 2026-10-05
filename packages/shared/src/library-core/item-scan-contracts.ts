@@ -79,6 +79,7 @@ export const LIBRARY_CORE_ITEM_SCAN_PROJECTION = Object.freeze({
     "rankingEngagementViews",
     "rssSource",
     "sampleDataFingerprint",
+    "seenSyncedAt",
     "topics",
   ]),
   orderedColumns: Object.freeze(["globalId"]),
@@ -122,6 +123,7 @@ export interface LibraryCoreItemScanSampleFingerprintV1 {
 
 export interface LibraryCoreItemScanRowV1 extends LibraryCoreFeedCardV1 {
   readonly hidden: boolean;
+  readonly seenSyncedAt: number | null;
   readonly rankingCareLevel: number | null;
   readonly rankingEngagementReposts: number | null;
   readonly rankingEngagementViews: number | null;
@@ -183,6 +185,7 @@ function parseRow(
   if (!record) return failure("item scan row is invalid");
   const {
     hidden,
+    seenSyncedAt,
     rankingCareLevel,
     rankingEngagementReposts,
     rankingEngagementViews,
@@ -208,6 +211,8 @@ function parseRow(
   if (
     !card.ok ||
     typeof hidden !== "boolean" ||
+    (seenSyncedAt !== null &&
+      (!Number.isSafeInteger(seenSyncedAt) || (seenSyncedAt as number) < -1 || Object.is(seenSyncedAt, -0))) ||
     (rankingCareLevel !== null &&
       (!Number.isSafeInteger(rankingCareLevel) ||
         (rankingCareLevel as number) < 1 ||
@@ -243,6 +248,7 @@ function parseRow(
     value: Object.freeze({
       ...card.value,
       hidden,
+      seenSyncedAt: seenSyncedAt as number | null,
       rankingCareLevel: rankingCareLevel as number | null,
       rankingEngagementReposts: rankingEngagementReposts as number | null,
       rankingEngagementViews: rankingEngagementViews as number | null,

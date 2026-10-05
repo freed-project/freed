@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { addDebugEvent } from "../../lib/debug-store.js";
 import type { FeedItem, FilterOptions } from "@freed/shared";
 import type {
   BoundedFeedPage,
@@ -12,7 +13,7 @@ export interface BoundedFeedItemsState {
   readonly hasMore: boolean;
   /** Whether an evicted page can still be restored above the resident window. */
   readonly hasPrevious: boolean;
-  /** Number of source rows traversed before the first resident row. */
+  /** Traversal offset used for layout continuity, not a count at a new revision. */
   readonly windowStartIndex: number;
   /** Exact count returned by the bounded SQLite reader. */
   readonly totalCount: number;
@@ -67,16 +68,20 @@ export function useBoundedFeedItems({
   sourceVersion: number;
 }): {
   readonly feed: BoundedFeedItemsState;
+  retry(): void;
   loadMore(): void;
   loadPrevious(): void;
   patchItems(update: (item: FeedItem) => FeedItem | null): void;
 } {
+  const [retryVersion, setRetryVersion] = useState(0);
+  const retry = useCallback(() => setRetryVersion((value) => value + 1), []);
   const readerRef = useRef<BoundedFeedReader | null>(null);
   const loadRef = useRef<Promise<void> | null>(null);
   const pagesRef = useRef<ResidentPage[]>([]);
   const windowStartIndexRef = useRef(0);
   const windowEndIndexRef = useRef(0);
   const closedReadersRef = useRef(new WeakSet<object>());
+  const selectionRef = useRef<{ key: string; reader: typeof openReader } | null>(null);
   const [feed, setFeed] = useState<BoundedFeedItemsState>(EMPTY_BOUNDED_FEED);
 
   const closeReader = useCallback(async (reader: BoundedFeedReader) => {
@@ -97,9 +102,10 @@ export function useBoundedFeedItems({
     setFeed({
       status: "ready",
       items: pages.flatMap((page) => page.items),
-      hasMore: windowEndIndexRef.current < totalCount,
+      hasMore: readerRef.current?.readPage
+        ? (pages.at(-1)?.nextCursor ?? null) !== null
+        : windowEndIndexRef.current < totalCount,
       hasPrevious:
-        windowStartIndexRef.current > 0 &&
         (pages[0]?.previousCursor ?? null) !== null,
       windowStartIndex: windowStartIndexRef.current,
       totalCount,
@@ -125,9 +131,16 @@ export function useBoundedFeedItems({
 
   useEffect(() => {
     let cancelled = false;
+    let attempts = 0;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
     let openedReader: BoundedFeedReader | null = null;
+    const selection = JSON.stringify(activeFilter);
+    const retainWindow = selectionRef.current?.key === selection && selectionRef.current.reader === openReader && eligible;
+    selectionRef.current = { key: selection, reader: openReader };
+    const previousPages = retainWindow ? pagesRef.current : [];
+    const previousStart = retainWindow ? windowStartIndexRef.current : 0;
     loadRef.current = null;
-    resetWindow();
+    if (!retainWindow) resetWindow();
     const previous = readerRef.current;
     readerRef.current = null;
     if (previous) void closeReader(previous);
@@ -140,80 +153,115 @@ export function useBoundedFeedItems({
     }
 
     setFeed((current) => ({
-      ...current,
+      ...(retainWindow ? current : EMPTY_BOUNDED_FEED),
       status: "loading",
       hasMore: false,
       hasPrevious: false,
     }));
-    void openReader(activeFilter, rankingClockMs)
-      .then(async (reader) => {
-        openedReader = reader;
-        if (cancelled) {
-          await closeReader(reader);
-          return;
-        }
-        readerRef.current = reader;
-        const firstPage: BoundedFeedPage = reader.readPage
-          ? await reader.readPage(null, "next")
-          : {
-              items: await reader.readNext(),
-              nextCursor: null,
-              previousCursor: null,
-            };
-        if (cancelled || readerRef.current !== reader) {
-          await closeReader(reader);
-          return;
-        }
-        if (
-          firstPage.items.length > maxPageItems ||
-          firstPage.items.length > reader.totalCount ||
-          (firstPage.items.length === 0 && reader.totalCount > 0)
-        ) {
-          readerRef.current = null;
-          resetWindow();
-          await closeReader(reader);
-          setFeed({
-            status: "failed",
-            items: [],
-            hasMore: false,
-            hasPrevious: false,
-            windowStartIndex: 0,
-            totalCount: 0,
-          });
-          return;
-        }
-        pagesRef.current = [
-          {
-            items: [...firstPage.items],
-            sourceCount: firstPage.items.length,
-            previousCursor: firstPage.previousCursor,
-            nextCursor: firstPage.nextCursor,
-          },
-        ];
-        windowStartIndexRef.current = 0;
-        windowEndIndexRef.current = firstPage.items.length;
-        publishWindow(reader.totalCount);
-      })
-      .catch(() => {
-        const failedReader = openedReader;
-        openedReader = null;
-        if (failedReader) void closeReader(failedReader);
-        if (!cancelled) {
-          readerRef.current = null;
-          resetWindow();
-          setFeed({
-            status: "failed",
-            items: [],
-            hasMore: false,
-            hasPrevious: false,
-            windowStartIndex: 0,
-            totalCount: 0,
-          });
-        }
-      });
+    const openPage = () => {
+      attempts += 1;
+      void openReader(activeFilter, rankingClockMs)
+        .then(async (reader) => {
+          openedReader = reader;
+          if (cancelled) {
+            await closeReader(reader);
+            return;
+          }
+          readerRef.current = reader;
+          const firstPage: BoundedFeedPage = reader.readPage
+            ? await reader.readPage(null, "next")
+            : {
+                items: await reader.readNext(),
+                nextCursor: null,
+                previousCursor: null,
+              };
+          if (cancelled || readerRef.current !== reader) {
+            await closeReader(reader);
+            return;
+          }
+          if (
+            firstPage.items.length > maxPageItems ||
+            firstPage.items.length > reader.totalCount ||
+            (firstPage.items.length === 0 && reader.totalCount > 0)
+          ) {
+            readerRef.current = null;
+            resetWindow();
+            await closeReader(reader);
+            setFeed({
+              status: "failed",
+              items: [],
+              hasMore: false,
+              hasPrevious: false,
+              windowStartIndex: 0,
+              totalCount: 0,
+            });
+            return;
+          }
+          // Build the replacement window offscreen. Publishing only its first
+          // page clamps a deep scroll position before subsequent pages arrive.
+          const replacement: ResidentPage[] = [];
+          let page = previousStart > 0 && previousPages[0]?.previousCursor && reader.resumePage
+            ? await reader.resumePage(previousPages[0].previousCursor)
+            : firstPage;
+          const targetPages = Math.max(1, Math.min(maxResidentPages, previousPages.length));
+          for (let index = 0; index < targetPages; index++) {
+            if (cancelled || readerRef.current !== reader) return;
+            if (page.items.length > maxPageItems) throw new Error("Oversized feed refresh page");
+            if (page.items.length === 0) break;
+            replacement.push({
+              items: [...page.items],
+              sourceCount: page.items.length,
+              previousCursor: page.previousCursor,
+              nextCursor: page.nextCursor,
+            });
+            if (index + 1 === targetPages || !reader.readPage || !page.nextCursor) break;
+            page = await reader.readPage(page.nextCursor, "next");
+          }
+          if (cancelled || readerRef.current !== reader) return;
+          pagesRef.current = replacement;
+          windowStartIndexRef.current = replacement[0]?.previousCursor ? previousStart : 0;
+          windowEndIndexRef.current = windowStartIndexRef.current +
+            replacement.reduce((count, entry) => count + entry.sourceCount, 0);
+          publishWindow(reader.totalCount);
+          if (previousPages.length > 1) {
+            addDebugEvent("change", `[feed-reader] refreshed ${replacement.length.toLocaleString()} resident pages atomically`);
+          }
+          if (attempts > 1) {
+            addDebugEvent("change", `[feed-reader] source race recovered after ${attempts.toLocaleString()} attempts`);
+          }
+        })
+        .catch((error: unknown) => {
+          const failedReader = openedReader;
+          openedReader = null;
+          if (failedReader) void closeReader(failedReader);
+          if (!cancelled) {
+            readerRef.current = null;
+            const message = error instanceof Error ? error.message : String(error);
+            // Retry only a recognized source race, always from a fresh reader.
+            // Never accept rows and overlays from different SQLite revisions.
+            const sourceRace = message === "SQLite Library changed while optimistic fields were loading" || message.includes("CURSOR_STALE");
+            if (sourceRace && attempts < 3) {
+              retryTimer = setTimeout(openPage, attempts * 250);
+              return;
+            }
+            addDebugEvent("error", `[feed-reader] open failed category=${sourceRace ? "source-race" : "query"} attempts=${attempts.toLocaleString()}`);
+            resetWindow();
+            setFeed({
+              status: "failed",
+              items: [],
+              hasMore: false,
+              hasPrevious: false,
+              windowStartIndex: 0,
+              totalCount: 0,
+            });
+          }
+        });
+    };
+    openPage();
 
     return () => {
       cancelled = true;
+      if (retryTimer !== null) clearTimeout(retryTimer);
       const reader = readerRef.current;
       readerRef.current = null;
       if (reader) void closeReader(reader);
@@ -229,6 +277,7 @@ export function useBoundedFeedItems({
     rankingClockMs,
     resetWindow,
     sourceVersion,
+    retryVersion,
   ]);
 
   const loadMore = useCallback(() => {
@@ -254,7 +303,7 @@ export function useBoundedFeedItems({
         const nextWindowEnd = windowEndIndexRef.current + page.items.length;
         if (
           page.items.length === 0 ||
-          nextWindowEnd > reader.totalCount ||
+          (!reader.readPage && nextWindowEnd > reader.totalCount) ||
           page.items.length > maxPageItems
         ) {
           failClosed(reader);
@@ -324,8 +373,10 @@ export function useBoundedFeedItems({
           publishWindow(reader.totalCount);
           return;
         }
-        const nextWindowStart = windowStartIndexRef.current - page.items.length;
-        if (page.items.length > maxPageItems || nextWindowStart < 0) {
+        const nextWindowStart = page.previousCursor === null
+          ? 0
+          : Math.max(1, windowStartIndexRef.current - page.items.length);
+        if (page.items.length > maxPageItems) {
           failClosed(reader);
           return;
         }
@@ -386,5 +437,5 @@ export function useBoundedFeedItems({
     [],
   );
 
-  return { feed, loadMore, loadPrevious, patchItems };
+  return { feed, retry, loadMore, loadPrevious, patchItems };
 }

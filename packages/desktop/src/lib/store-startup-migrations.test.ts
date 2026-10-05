@@ -327,6 +327,52 @@ describe("store startup migrations", () => {
     expect(mockStartOutboxProcessor).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps resolved map counts through runtime updates until the map publishes a new snapshot", async () => {
+    const { useAppStore } = await import("./store");
+    await useAppStore.getState().initialize();
+    const subscriber = mockSubscribe.mock.calls.at(-1)![0];
+    useAppStore.getState().setMapLocationCounts(3, 22);
+    for (const source of ["state_update", "item_patch", "preferences_patch", "feeds_patch"]) {
+      subscriber(createLibraryState(), { source });
+      expect(useAppStore.getState()).toMatchObject({ mapFriendLocationCount: 3, mapAllContentLocationCount: 22 });
+    }
+    // New filtered/resolved marker snapshots remain authoritative, including empty.
+    useAppStore.getState().setMapLocationCounts(0, 5);
+    subscriber(createLibraryState(), { source: "state_update" });
+    expect(useAppStore.getState()).toMatchObject({ mapFriendLocationCount: 0, mapAllContentLocationCount: 5 });
+    useAppStore.getState().setMapLocationCounts(0, 0);
+    expect(useAppStore.getState()).toMatchObject({ mapFriendLocationCount: 0, mapAllContentLocationCount: 0 });
+  });
+
+  it("does not report weight changes when SQLite reloads identical preferences", async () => {
+    const { useAppStore } = await import("./store");
+    await useAppStore.getState().initialize();
+    const subscriber = mockSubscribe.mock.calls.at(-1)![0];
+    const initial = useAppStore.getState().preferences;
+    const weightChanged = vi.fn();
+    const unsubscribe = useAppStore.subscribe((state, previous) => {
+      if (state.preferences.weights !== previous.preferences.weights) weightChanged();
+    });
+    try {
+      // Ranking completion and unrelated item changes both reload full DTOs.
+      subscriber(createLibraryState(), { source: "state_update" });
+      subscriber(createLibraryState(), { source: "item_patch" });
+      expect(weightChanged).not.toHaveBeenCalled();
+      expect(useAppStore.getState().preferences).toBe(initial);
+      const changed = createLibraryState();
+      changed.preferences.weights.authors = { ada: 90 };
+      subscriber(changed, { source: "preferences_patch" });
+      expect(weightChanged).toHaveBeenCalledTimes(1);
+      expect(useAppStore.getState().preferences.ai).toBe(initial.ai);
+      expect(useAppStore.getState().preferences.weights.authors).toEqual({ ada: 90 });
+      subscriber(createLibraryState(), { source: "preferences_patch" });
+      expect(weightChanged).toHaveBeenCalledTimes(2);
+      expect(useAppStore.getState().preferences.weights.authors).toEqual({});
+    } finally {
+      unsubscribe();
+    }
+  });
+
   it("increments Library and Saved sources only for their relevant SQLite changes", async () => {
     const { useAppStore } = await import("./store");
 

@@ -9,12 +9,14 @@ import {
   LIBRARY_CORE_OPERATION_TRANSACTION_MAXIMUM_BYTES,
   LIBRARY_CORE_OPERATION_TRANSACTION_MAXIMUM_MEMBERS,
   libraryCoreFollowerResultBodyV1,
+  libraryCoreOptimisticFieldsForEnvelopeV1,
   parseLibraryCoreFollowerResultEnvelopeV1,
   sha256LowerHex,
   type LibraryCoreCanonicalValue,
   type LibraryCoreDigestDomain,
   type LibraryCoreEd25519SignatureHex,
   type LibraryCoreLowercaseHex64,
+  type LibraryCoreOperationEnvelopeV1,
 } from "@freed/shared/library-core";
 import {
   installPwaLibraryCoreFollowerEnrollment,
@@ -34,6 +36,7 @@ import {
   commitPwaLibraryCoreLocalSampleResult,
   createPwaLibraryCoreLocalSampleAuthority,
   deletePwaLibraryCoreLocalSampleAuthority,
+  discardRejectedPwaLibraryCoreLocalSampleResult,
   markPwaLibraryCoreLocalSampleAuthorityReady,
   preparePwaLibraryCoreLocalSampleResult,
   PwaLibraryCoreLegacyLocalSampleAuthorityError,
@@ -120,16 +123,35 @@ async function createPreviewLibrary(): Promise<void> {
     }
     if (authority?.status === "ready") {
       if (authority.preparedResult) {
-        const receipt = await applyPwaFollowerResult({
-          canonicalResultBytes: authority.preparedResult.canonicalResultBytes,
-        });
-        if (!isLibraryCoreLowercaseHex64(receipt.resultDigest)) {
-          throw new Error("PWA local sample result digest is invalid");
+        try {
+          const receipt = await applyPwaFollowerResult({
+            canonicalResultBytes: authority.preparedResult.canonicalResultBytes,
+          });
+          if (!isLibraryCoreLowercaseHex64(receipt.resultDigest)) {
+            throw new Error("PWA local sample result digest is invalid");
+          }
+          authority = await commitPwaLibraryCoreLocalSampleResult(
+            authority.libraryId,
+            receipt.resultDigest,
+          );
+        } catch (error) {
+          if (
+            !(error instanceof Error) ||
+            error.message !== "follower result replacement projection is incomplete" ||
+            !selected.receipt.controlRevision.startsWith("preview:")
+          ) {
+            throw error;
+          }
+          // v26.9.803 could prepare a local result without its care projections.
+          // This exact SQLite rejection rolls back before result admission.
+          // Keep the intent and all cursors so settlement can rebuild the result
+          // from the original envelopes. Admitted results return a retry receipt
+          // above and never enter this recovery path.
+          authority = await discardRejectedPwaLibraryCoreLocalSampleResult(
+            authority.libraryId,
+            authority.preparedResult!.previousResultDigest,
+          );
         }
-        authority = await commitPwaLibraryCoreLocalSampleResult(
-          authority.libraryId,
-          receipt.resultDigest,
-        );
       }
       localSampleAuthority = authority;
       previewActorId = authority.actorId;
@@ -422,7 +444,20 @@ async function settlePwaLibraryCorePreviewIntentsExclusive(): Promise<void> {
         previous_result_digest: previewPreviousResultDigest,
         receipt_ids: envelopeDigests,
         rejection_reason: null,
-        replacement_fields: [],
+        replacement_fields: members.flatMap((member) =>
+          libraryCoreOptimisticFieldsForEnvelopeV1(
+            member as unknown as LibraryCoreOperationEnvelopeV1,
+          ).map((field) => ({
+            entity_type: field.entityType,
+            entity_id: field.entityId,
+            field_path: field.fieldPath,
+            value_type: field.valueType,
+            boolean_value: field.valueType === "boolean" ? field.value : null,
+            integer_value: field.valueType === "integer" ? field.value : null,
+            real_value: null,
+            text_value: null,
+          })),
+        ),
         resolved_at_ms: resolvedAt,
         result_body_digest: "0".repeat(64),
         result_sequence: previewNextResultSequence,

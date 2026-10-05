@@ -8,12 +8,14 @@ import {
 
 import {
   commitPwaLibraryCoreLocalSampleResult,
+  discardRejectedPwaLibraryCoreLocalSampleResult,
   createPwaLibraryCoreLocalSampleAuthority,
   markPwaLibraryCoreLocalSampleAuthorityReady,
   PwaLibraryCoreLegacyLocalSampleAuthorityError,
   preparePwaLibraryCoreLocalSampleResult,
   readPwaLibraryCoreLocalSampleAuthority,
   getOrCreatePwaLibraryCoreActorIdentity,
+  readPwaLibraryCoreRecoveryActorIdentity, signPwaLibraryCoreRecoveryActorProof,
   signPwaLibraryCoreLocalSampleAuthority,
   signPwaLibraryCoreActorProof,
   signPwaLibraryCoreFollowerOperation,
@@ -135,6 +137,24 @@ describe("PWA Library Core browser key vault", () => {
     await expect(
       signPwaLibraryCoreActorProof(first, Uint8Array.of(1, 2, 3)),
     ).resolves.toMatch(/^[0-9a-f]{128}$/);
+  });
+
+  it("derives recovery incarnations without replacing the key or original identity", async () => {
+    const library = lowercaseHex64(HEX.library), recovery = lowercaseHex64(HEX.digest);
+    await expect(readPwaLibraryCoreRecoveryActorIdentity(library, recovery)).rejects.toThrow(/original actor key/);
+    const original = await getOrCreatePwaLibraryCoreActorIdentity(library);
+    const recovered = await readPwaLibraryCoreRecoveryActorIdentity(library, recovery);
+    expect(recovered.actorId).not.toBe(original.actorId);
+    expect(recovered.actorPublicKey).toBe(original.actorPublicKey);
+    expect(recovered.installationIncarnation).toBe(original.installationIncarnation);
+    const bytes = Uint8Array.of(1, 2, 3);
+    expect(await signPwaLibraryCoreRecoveryActorProof(recovered, recovery, bytes)).toBe(await signPwaLibraryCoreActorProof(original, bytes));
+    expect(await getOrCreatePwaLibraryCoreActorIdentity(library)).toEqual(original);
+    expect(await readPwaLibraryCoreRecoveryActorIdentity(library, recovery)).toEqual(recovered);
+    await expect(signPwaLibraryCoreRecoveryActorProof(recovered, lowercaseHex64(HEX.epoch), bytes)).rejects.toThrow(/identity changed/);
+    const accepted = context(recovered.actorId, recovered.actorPublicKey);
+    await expect(signPwaLibraryCoreFollowerOperation(accepted, lowercaseHex64(HEX.digest))).rejects.toThrow(/SQLite authority/);
+    await expect(signPwaLibraryCoreFollowerOperation(accepted, lowercaseHex64(HEX.digest), recovery)).resolves.toMatch(/^[0-9a-f]{128}$/);
   });
 
   it("returns one durable actor identity to concurrent first creators", async () => {
@@ -276,6 +296,19 @@ describe("PWA Library Core browser key vault", () => {
       previousResultDigest: resultDigest,
       sourceRevision: 1,
     });
+  });
+
+  it("retires only the rejected prepared result without advancing its cursors", async () => {
+    const created = await createPwaLibraryCoreLocalSampleAuthority();
+    const ready = await markPwaLibraryCoreLocalSampleAuthorityReady(created.libraryId, lowercaseHex64("55".repeat(32)));
+    const resultDigest = lowercaseHex64("66".repeat(32));
+    await preparePwaLibraryCoreLocalSampleResult(created.libraryId, {
+      canonicalResultBytes: Uint8Array.of(4, 5, 6), nextActorCounter: 2,
+      nextResultSequence: 2, previousResultDigest: resultDigest, sourceRevision: 1,
+    });
+    await expect(discardRejectedPwaLibraryCoreLocalSampleResult(created.libraryId, lowercaseHex64("77".repeat(32)))).rejects.toThrow("rejected local sample result changed");
+    await expect(discardRejectedPwaLibraryCoreLocalSampleResult(created.libraryId, resultDigest)).resolves.toEqual(ready);
+    await expect(discardRejectedPwaLibraryCoreLocalSampleResult(created.libraryId, resultDigest)).rejects.toThrow("rejected local sample result changed");
   });
 
   it("identifies the retired WebKit sample authority for bounded recovery", async () => {

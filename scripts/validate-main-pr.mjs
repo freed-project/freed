@@ -253,6 +253,7 @@ function main() {
   const driftFiles = listPromotionBranchDiffFiles({
     fromRef: options.snapshotRef,
     toRef: options.headRef,
+    baseRef: options.baseRef,
     cwd: options.cwd,
   });
 

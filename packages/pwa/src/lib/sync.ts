@@ -1,6 +1,7 @@
 /** PWA Library Core synchronization and OAuth credential lifecycle. */
 
 import type { CloudProvider } from "@freed/sync/cloud/library-core";
+import { GoogleDriveLibrarySelectionRequiredError } from "@freed/sync/cloud/library-core";
 import {
   recordCloudProviderEvent,
   updateCloudProvider,
@@ -19,6 +20,31 @@ import { syncPwaLibraryCoreFromGoogleDrive } from "./library-core-runtime";
 export type { CloudProvider };
 
 const CLOUD_PROVIDER_KEY = "freed_cloud_provider";
+const CLOUD_LIBRARY_KEY = "freed_cloud_library_gdrive";
+const emptyLibraryChoices: readonly string[] = Object.freeze([]);
+let libraryChoices = emptyLibraryChoices;
+const libraryChoiceListeners = new Set<() => void>();
+
+export function getCloudLibraryChoices(): readonly string[] { return libraryChoices; }
+export function subscribeCloudLibraryChoices(listener: () => void): () => void {
+  libraryChoiceListeners.add(listener);
+  return () => { libraryChoiceListeners.delete(listener); };
+}
+function setCloudLibraryChoices(choices: readonly string[]): void {
+  libraryChoices = Object.freeze([...choices]);
+  for (const listener of libraryChoiceListeners) listener();
+}
+
+/** Persist an explicit first-import choice; SQLite still verifies its authority. */
+export async function selectCloudLibrary(libraryId: string): Promise<void> {
+  if (!libraryChoices.includes(libraryId)) {
+    throw new Error("Refresh Google Drive before choosing this Library");
+  }
+  stopCloudSync();
+  localStorage.setItem(CLOUD_LIBRARY_KEY, libraryId);
+  setCloudLibraryChoices(emptyLibraryChoices);
+  await syncCloudProviderNow("gdrive");
+}
 const CLOUD_TOKEN_KEY = (provider: CloudProvider) =>
   `freed_cloud_token_${provider}`;
 const CLOUD_TOKEN_META_KEY = (provider: CloudProvider) =>
@@ -48,6 +74,11 @@ let cloudGeneration = 0;
 let cloudAbort: AbortController | null = null;
 let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 let refreshPromise: Promise<string | null> | null = null;
+let syncFlight: {
+  generation: number;
+  signal: AbortSignal;
+  promise: Promise<void>;
+} | null = null;
 
 function notifyStatus(): void {
   for (const listener of statusListeners) listener(cloudConnected);
@@ -98,6 +129,8 @@ function persistCloudToken(
   const bundle: CloudTokenBundle = {
     ...input,
     refreshToken: input.refreshToken ?? previous?.refreshToken,
+    expiresAt: input.expiresAt ??
+      (input.accessToken === previous?.accessToken ? previous.expiresAt : undefined),
   };
   localStorage.setItem(CLOUD_TOKEN_KEY(provider), bundle.accessToken);
   localStorage.setItem(CLOUD_TOKEN_META_KEY(provider), JSON.stringify(bundle));
@@ -170,9 +203,29 @@ function isGoogleAuthenticationFailure(error: unknown): boolean {
 async function syncGoogleDriveWithFreshCredentials(
   accessToken: string,
   signal: AbortSignal,
-): Promise<void> {
+  onSyncStage: (message: string) => void,
+): Promise<Awaited<ReturnType<typeof syncPwaLibraryCoreFromGoogleDrive>>> {
+  const generation = cloudGeneration;
+  const googleFetch: typeof fetch = async (resource, options) => {
+    const assertCurrent = () => {
+      if (signal.aborted || generation !== cloudGeneration) {
+        throw new DOMException("Cloud sync stopped", "AbortError");
+      }
+    };
+    assertCurrent();
+    const token = await getValidCloudToken("gdrive");
+    assertCurrent();
+    if (!token) {
+      throw new Error("Google Drive authorization expired. Reconnect Google Drive to continue sync.");
+    }
+    const headers = new Headers(options?.headers ??
+      (resource instanceof Request ? resource.headers : undefined));
+    headers.set("Authorization", `Bearer ${token}`);
+    return fetch(resource, { ...options, headers });
+  };
   try {
-    await syncPwaLibraryCoreFromGoogleDrive({ accessToken, signal });
+    return await syncPwaLibraryCoreFromGoogleDrive({ accessToken, signal, onSyncStage, googleFetch,
+      libraryId: localStorage.getItem(CLOUD_LIBRARY_KEY) ?? undefined });
   } catch (error) {
     if (!isGoogleAuthenticationFailure(error)) throw error;
 
@@ -189,14 +242,35 @@ async function syncGoogleDriveWithFreshCredentials(
         "Google Drive authorization expired. Reconnect Google Drive to continue sync.",
       );
     }
-    await syncPwaLibraryCoreFromGoogleDrive({
+    return await syncPwaLibraryCoreFromGoogleDrive({
       accessToken: refreshedAccessToken,
+      googleFetch,
+      onSyncStage,
+      libraryId: localStorage.getItem(CLOUD_LIBRARY_KEY) ?? undefined,
       signal,
     });
   }
 }
 
-async function syncGoogleDriveOnce(
+function syncGoogleDriveOnce(
+  generation: number,
+  signal: AbortSignal,
+): Promise<void> {
+  if (syncFlight?.generation === generation && syncFlight.signal === signal) {
+    return syncFlight.promise;
+  }
+  const promise = performGoogleDriveSync(generation, signal);
+  const flight = { generation, signal, promise };
+  syncFlight = flight;
+  const release = () => {
+    if (syncFlight === flight) syncFlight = null;
+  };
+  // Both outcomes release the slot without creating an unhandled rejection.
+  void promise.then(release, release);
+  return promise;
+}
+
+async function performGoogleDriveSync(
   generation: number,
   signal: AbortSignal,
 ): Promise<void> {
@@ -209,10 +283,17 @@ async function syncGoogleDriveOnce(
     statusMessage: "Refreshing the SQLite Library checkpoint.",
     error: undefined,
   });
+  let syncResult: Awaited<ReturnType<typeof syncGoogleDriveWithFreshCredentials>>;
   try {
-    await syncGoogleDriveWithFreshCredentials(accessToken, signal);
+    syncResult = await syncGoogleDriveWithFreshCredentials(accessToken, signal, (message) => {
+      if (generation !== cloudGeneration || signal.aborted) return;
+      updateCloudProvider("gdrive", { statusMessage: message });
+    });
   } catch (error) {
     if (generation !== cloudGeneration || signal.aborted) throw error;
+    if (error instanceof GoogleDriveLibrarySelectionRequiredError) {
+      setCloudLibraryChoices(error.libraryIds);
+    }
     const message = error instanceof Error ? error.message : String(error);
     const isWaitingForPrimary = message === MISSING_PUBLISHED_LIBRARY_ERROR;
     updateCloudProvider("gdrive", {
@@ -236,6 +317,12 @@ async function syncGoogleDriveOnce(
   }
   if (generation !== cloudGeneration || signal.aborted) return;
   const now = Date.now();
+  const enrollmentPending = syncResult.followerEnrollmentState !== "enrolled";
+  const discovery = syncResult.enrollmentDiscovery;
+  const enrollmentDetail = discovery
+    ? `Device ...${discovery.actorSuffix}, request ...${discovery.requestDigestSuffix}. Certificates found: ${discovery.certificateCount.toLocaleString()}; for this device: ${discovery.actorMatchCount.toLocaleString()}; matching this request: ${discovery.exactMatchCount.toLocaleString()}.`
+    : null;
+  setCloudLibraryChoices(emptyLibraryChoices);
   updateCloudProvider("gdrive", {
     status: "connected",
     stage: "idle",
@@ -243,14 +330,20 @@ async function syncGoogleDriveOnce(
     lastSyncAt: now,
     lastDownloadAt: now,
     lastMergeAt: now,
-    statusMessage: "SQLite Library synchronized.",
-    pendingReason: "Waiting for the next checkpoint, intent, or result change.",
+    statusMessage: enrollmentPending
+      ? "Library downloaded. Device enrollment pending."
+      : "SQLite Library synchronized.",
+    pendingReason: enrollmentPending
+      ? enrollmentDetail ?? "Open the Primary Freed Desktop and resolve any Drive sync error so this device can sync edits."
+      : "Waiting for the next checkpoint, intent, or result change.",
     error: undefined,
   });
   recordCloudProviderEvent("gdrive", {
-    kind: "success",
+    kind: enrollmentPending ? "waiting" : "success",
     stage: "idle",
-    message: "Synchronized the SQLite Library and follower state.",
+    message: enrollmentPending
+      ? "Library downloaded; waiting for device enrollment before syncing edits."
+      : "Synchronized the SQLite Library and follower state.",
   });
 }
 
@@ -317,6 +410,8 @@ export function getCloudProvider(): CloudProvider | null {
 
 export function clearCloudSync(provider: CloudProvider): void {
   stopCloudSync();
+  localStorage.removeItem(CLOUD_LIBRARY_KEY);
+  setCloudLibraryChoices(emptyLibraryChoices);
   localStorage.removeItem(CLOUD_TOKEN_KEY(provider));
   localStorage.removeItem(CLOUD_TOKEN_META_KEY(provider));
   if (getCloudProvider() === provider) localStorage.removeItem(CLOUD_PROVIDER_KEY);
@@ -351,6 +446,7 @@ export async function startCloudSync(
 
 export function stopCloudSync(): void {
   cloudGeneration += 1;
+  syncFlight = null;
   cloudAbort?.abort();
   cloudAbort = null;
   if (refreshTimer) clearTimeout(refreshTimer);

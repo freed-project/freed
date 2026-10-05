@@ -53,6 +53,10 @@ import {
   repairOutcomeLedger,
 } from "./lib/outcome-ledger-repair.mjs";
 import {
+  repairEventPlanParentsMatch,
+  repairPublicationIdentityMatchesFile,
+} from "./lib/outcome-ledger-repair-validation.mjs";
+import {
   OUTCOME_LEDGER_REPAIR_MAX_BYTES,
   OUTCOME_LEDGER_REPAIR_MAX_LINE_BYTES,
   OUTCOME_LEDGER_REPAIR_MAX_LINES,
@@ -88,6 +92,128 @@ const MOVE_HELPER_PATH = path.join(
   "lib",
   "lease-archive-move.py",
 );
+
+test("completed Darwin repair replay admits only coherent device renumbering", () => {
+  const recordedHistoryParent = {
+    dev: "16777234",
+    ino: "101",
+    mode: 0o40700,
+    uid: 501,
+  };
+  const recordedReplacementParent = {
+    dev: "16777234",
+    ino: "202",
+    mode: 0o40700,
+    uid: 501,
+  };
+  const currentHistoryParent = {
+    ...recordedHistoryParent,
+    dev: "16777232",
+  };
+  const currentReplacementParent = {
+    ...recordedReplacementParent,
+    dev: "16777232",
+  };
+  const parents = {
+    recordedHistoryParent,
+    currentHistoryParent,
+    recordedReplacementParent,
+    currentReplacementParent,
+    completedAdmission: true,
+  };
+  assert.equal(
+    repairEventPlanParentsMatch(parents, { platform: "darwin" }),
+    true,
+  );
+  assert.equal(
+    repairEventPlanParentsMatch(parents, { platform: "linux" }),
+    false,
+  );
+  assert.equal(
+    repairEventPlanParentsMatch(
+      { ...parents, completedAdmission: false },
+      { platform: "darwin" },
+    ),
+    false,
+  );
+  assert.equal(
+    repairEventPlanParentsMatch(
+      {
+        ...parents,
+        currentReplacementParent: {
+          ...currentReplacementParent,
+          dev: "16777231",
+        },
+      },
+      { platform: "darwin" },
+    ),
+    false,
+  );
+  assert.equal(
+    repairEventPlanParentsMatch(
+      {
+        ...parents,
+        currentHistoryParent: { ...currentHistoryParent, ino: "999" },
+      },
+      { platform: "darwin" },
+    ),
+    false,
+  );
+
+  const bytes = Buffer.from("durable repair evidence\n", "utf8");
+  const identity = {
+    device: "16777234",
+    inode: "303",
+    uid: 501,
+    mode: 0o100600,
+    linkCount: 1,
+    size: bytes.length,
+    digest: createHash("sha256").update(bytes).digest("hex"),
+  };
+  const file = {
+    bytes,
+    identity: {
+      dev: "16777232",
+      ino: identity.inode,
+      uid: identity.uid,
+      mode: identity.mode,
+      nlink: identity.linkCount,
+      size: identity.size,
+    },
+  };
+  assert.equal(
+    repairPublicationIdentityMatchesFile(identity, file, bytes, {
+      allowDarwinDeviceRenumbering: true,
+      platform: "darwin",
+    }),
+    true,
+  );
+  assert.equal(
+    repairPublicationIdentityMatchesFile(identity, file, bytes, {
+      allowDarwinDeviceRenumbering: true,
+      platform: "linux",
+    }),
+    false,
+  );
+  assert.equal(
+    repairPublicationIdentityMatchesFile(
+      identity,
+      { ...file, identity: { ...file.identity, ino: "404" } },
+      bytes,
+      { allowDarwinDeviceRenumbering: true, platform: "darwin" },
+    ),
+    false,
+  );
+  assert.equal(
+    repairPublicationIdentityMatchesFile(
+      identity,
+      { ...file, bytes: Buffer.from("changed\n", "utf8") },
+      bytes,
+      { allowDarwinDeviceRenumbering: true, platform: "darwin" },
+    ),
+    false,
+  );
+});
 
 function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
@@ -141,7 +267,9 @@ function stableJson(value) {
   return JSON.stringify(value);
 }
 
-function temporaryStateRoot(t) {
+// Admission-only tests need a private control tree, not a task/lease lifecycle.
+// Keep each tree isolated and let the production bundle admit its fresh files.
+function temporaryControlStateRoot(t) {
   const stateRoot = realpathSync(
     mkdtempSync(path.join(os.tmpdir(), "freed-outcome-ledger-repair-")),
   );
@@ -160,6 +288,11 @@ function temporaryStateRoot(t) {
   chmodSync(paths.events, 0o600);
   writeFileSync(paths.outcomes, "", { mode: 0o600 });
   chmodSync(paths.outcomes, 0o600);
+  return { stateRoot, paths };
+}
+
+function temporaryStateRoot(t) {
+  const { stateRoot, paths } = temporaryControlStateRoot(t);
   const nowMs = Date.now();
   const controller = actorLease(stateRoot, "freed-stability-controller", nowMs);
   createTask({
@@ -1562,7 +1695,7 @@ test("plans a 0644 legacy ledger without mutating canonical state", (t) => {
 });
 
 test("aggregate repair admission exhaustion is sticky across admission kinds", (t) => {
-  const { stateRoot, paths } = temporaryStateRoot(t);
+  const { stateRoot, paths } = temporaryControlStateRoot(t);
   const tree = path.join(stateRoot, "artifacts", "repair-budget-probe");
   ensurePrivateDirectoryTree(stateRoot, tree);
   for (let index = 0; index < 4_096; index += 1) {
@@ -1596,7 +1729,7 @@ test("aggregate repair admission exhaustion is sticky across admission kinds", (
 });
 
 test("outcome repair selection preserves its admitted retirement directory", (t) => {
-  const { stateRoot, paths } = temporaryStateRoot(t);
+  const { stateRoot, paths } = temporaryControlStateRoot(t);
   const transactionDirectory = path.join(
     paths.controlRoot,
     "outcome-ledger-transactions",
@@ -1725,7 +1858,7 @@ test("source ledger mode admission accepts only the explicit compatibility matri
 
   for (const mode of [0o755, 0o4644]) {
     await t.test(`rejects ${mode.toString(8)}`, (t) => {
-      const { stateRoot, paths } = temporaryStateRoot(t);
+      const { stateRoot, paths } = temporaryControlStateRoot(t);
       const source = legacyLine(`rejected-mode-${mode.toString(8)}`);
       const sourceDigest = writeLedger(paths, source, mode);
       assert.equal(statSync(paths.outcomes).mode & 0o7777, mode);
@@ -7541,8 +7674,10 @@ test("an existing ledger with an interior blank and 100,001 physical lines is un
 });
 
 test("safe source admission rejects symlinks, writable files, oversize files, and invalid bytes", async (t) => {
+  // These file-admission failures precede task lookup. Keep the canonical-task
+  // fixture below for content classification, which requires a real task.
   await t.test("symlink", () => {
-    const { stateRoot, paths } = temporaryStateRoot(t);
+    const { stateRoot, paths } = temporaryControlStateRoot(t);
     const target = path.join(stateRoot, "legacy-target.jsonl");
     writeFileSync(target, legacyLine("symlink-target"), { mode: 0o600 });
     rmSync(paths.outcomes);
@@ -7559,7 +7694,7 @@ test("safe source admission rejects symlinks, writable files, oversize files, an
   });
 
   await t.test("group writable", () => {
-    const { stateRoot, paths } = temporaryStateRoot(t);
+    const { stateRoot, paths } = temporaryControlStateRoot(t);
     const source = legacyLine("writable");
     const sourceDigest = writeLedger(paths, source, 0o664);
     assert.throws(
@@ -7574,7 +7709,7 @@ test("safe source admission rejects symlinks, writable files, oversize files, an
   });
 
   await t.test("hard-linked ledger", () => {
-    const { stateRoot, paths } = temporaryStateRoot(t);
+    const { stateRoot, paths } = temporaryControlStateRoot(t);
     const source = legacyLine("hard-linked-ledger");
     const sourceDigest = writeLedger(paths, source, 0o600);
     const alias = path.join(stateRoot, "outcomes-hard-link.jsonl");
@@ -7609,7 +7744,7 @@ test("safe source admission rejects symlinks, writable files, oversize files, an
   });
 
   await t.test("oversize", () => {
-    const { stateRoot, paths } = temporaryStateRoot(t);
+    const { stateRoot, paths } = temporaryControlStateRoot(t);
     writeFileSync(paths.outcomes, "", { mode: 0o600 });
     truncateSync(paths.outcomes, OUTCOME_LEDGER_REPAIR_MAX_BYTES + 1);
     assert.throws(
@@ -7624,7 +7759,7 @@ test("safe source admission rejects symlinks, writable files, oversize files, an
   });
 
   await t.test("invalid UTF-8", () => {
-    const { stateRoot, paths } = temporaryStateRoot(t);
+    const { stateRoot, paths } = temporaryControlStateRoot(t);
     const source = Buffer.from([
       0x7b, 0x22, 0x78, 0x22, 0x3a, 0xff, 0x7d, 0x0a,
     ]);
@@ -7696,7 +7831,7 @@ test("safe source admission rejects symlinks, writable files, oversize files, an
 });
 
 test("FIFO admission is bounded in a child process", (t) => {
-  const { stateRoot, paths } = temporaryStateRoot(t);
+  const { stateRoot, paths } = temporaryControlStateRoot(t);
   rmSync(paths.outcomes);
   const created = spawnSync("mkfifo", [paths.outcomes], { encoding: "utf8" });
   assert.equal(created.status, 0, created.stderr);
@@ -7730,7 +7865,7 @@ test("FIFO admission is bounded in a child process", (t) => {
 
 test("nightly summary rejects canonical outcome and event FIFOs without hanging", async (t) => {
   await t.test("outcomes FIFO", () => {
-    const { stateRoot, paths } = temporaryStateRoot(t);
+    const { stateRoot, paths } = temporaryControlStateRoot(t);
     rmSync(paths.outcomes);
     const created = spawnSync("mkfifo", [paths.outcomes], { encoding: "utf8" });
     assert.equal(created.status, 0, created.stderr);
@@ -7771,7 +7906,7 @@ test("nightly summary rejects canonical outcome and event FIFOs without hanging"
 
 test("nightly summary rejects canonical outcome and event symlinks without following them", async (t) => {
   await t.test("outcomes symlink", () => {
-    const { stateRoot, paths } = temporaryStateRoot(t);
+    const { stateRoot, paths } = temporaryControlStateRoot(t);
     const target = path.join(stateRoot, "valid-outcomes-target.jsonl");
     writeFileSync(target, `${JSON.stringify({ syntactically: "valid" })}\n`, {
       mode: 0o600,

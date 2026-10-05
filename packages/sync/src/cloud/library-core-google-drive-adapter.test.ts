@@ -16,6 +16,9 @@ import {
 } from "@freed/shared/library-core";
 import {
   createGoogleDriveLibraryCoreAdapterV1,
+  createGoogleDriveLibraryCoreOperationAdapterV2,
+  discoverGoogleDriveLibraryCoreOperationHeadV2,
+  provisionGoogleDriveLibraryCoreOperationHeadV2,
   createGoogleDriveLibraryCoreIntentAdapterV1,
   createGoogleDriveLibraryCoreNormalizedIntentAdapterV2,
   createGoogleDriveLibraryCoreNormalizedResultAdapterV2,
@@ -24,6 +27,7 @@ import {
   discoverGoogleDriveLibraryCoreIntentHeadV1,
   discoverGoogleDriveLibraryCoreIntentSegmentsV1,
   discoverPublishedGoogleDriveLibraryCoreControlV1,
+  GoogleDriveLibrarySelectionRequiredError,
   provisionGoogleDriveLibraryCoreControlV1,
   provisionGoogleDriveLibraryCoreIntentHeadV1,
   provisionGoogleDriveLibraryCoreNormalizedIntentHeadV2,
@@ -583,6 +587,32 @@ describe("Google Drive Library Core immutable adapter", () => {
         googleFetch: fake.fetch,
       }),
     ).rejects.toThrow("more than one published Library Core control");
+  });
+
+  it("offers distinct Libraries and isolates later discovery to the chosen identity", async () => {
+    const fake = new FakeGoogleDrive();
+    fake.addControl("control-1", publishedControlBytes());
+    const second = fake.addControl("control-2", publishedControlBytes("library-2"));
+    second.appProperties.freedLibraryDigest = libraryDigest("library-2");
+    const discovery = { accessToken: "test-token", googleFetch: fake.fetch };
+    await expect(discoverPublishedGoogleDriveLibraryCoreControlV1(discovery))
+      .rejects.toMatchObject({
+        name: GoogleDriveLibrarySelectionRequiredError.name,
+        libraryIds: ["library-1", "library-2"],
+      });
+    await expect(discoverPublishedGoogleDriveLibraryCoreControlV1({
+      ...discovery, libraryId: "library-2",
+    })).resolves.toMatchObject({ libraryId: "library-2", controlFileId: "control-2" });
+    const lastQuery = fake.requests.filter((request) => new URL(request.url).searchParams.has("q")).at(-1);
+    expect(lastQuery?.url).toContain("freedLibraryDigest");
+  });
+
+  it("rejects selected controls whose body changes Library identity", async () => {
+    const fake = new FakeGoogleDrive();
+    fake.addControl("control-1", publishedControlBytes("library-2"));
+    await expect(discoverPublishedGoogleDriveLibraryCoreControlV1({
+      accessToken: "test-token", googleFetch: fake.fetch, libraryId: "library-1",
+    })).rejects.toThrow("does not match the selected Library");
   });
 
   it("fails closed when a control body is malformed", async () => {
@@ -1306,5 +1336,36 @@ describe("Google Drive Library Core immutable adapter", () => {
     await expect(boundedAdapter.readControl()).rejects.toThrow(
       "exceeds 65,536 bytes",
     );
+  });
+});
+
+
+describe("normalized operation Drive head", () => {
+  it("binds discovery and strong compare-and-swap to one Library, epoch and writer", async () => {
+    const fake = new FakeGoogleDrive();
+    const libraryId = "1".repeat(64), epochId = "2".repeat(64), writerId = "3".repeat(64);
+    const head = { libraryId, storageEpoch: epochId, writerId, checkpointDigest: "4".repeat(64), checkpointRevision: 0,
+      format: "freed_normalized_operation_head_v2" as const, protocolVersion: 2 as const, segmentCount: 0, tail: null };
+    const file: FakeDriveFile = { id: "operation-head-1", name: `freed-v2-operation-head~${libraryId}~e${epochId}.json`,
+      bytes: encodeLibraryCoreCanonicalValue(head), etag: '"operation-head-revision-1"',
+      appProperties: { freedProtocol: "library-core-v1", freedLibraryDigest: libraryDigest(libraryId),
+        freedEpochDigest: libraryDigest(epochId), freedObjectKind: "operation-head" } };
+    fake.files.set(file.id,file);
+    const discovery = { accessToken: "test-token", libraryId, epochId, googleFetch: fake.fetch };
+    expect(await discoverGoogleDriveLibraryCoreOperationHeadV2(discovery)).toBe(file.id);
+    expect(await provisionGoogleDriveLibraryCoreOperationHeadV2({ ...discovery, head })).toBe(file.id);
+    expect(fake.requests.some((request)=>request.method==="POST")).toBe(false);
+    const transport = createGoogleDriveLibraryCoreOperationAdapterV2({ ...discovery, writerId, controlFileId: "control-1", operationHeadFileId: file.id });
+    const initial = await transport.readOperationHead();
+    expect(initial.head).toEqual(head);
+    expect(await transport.compareAndSwapOperationHead({ expectedRevision: initial.revision, head })).toBe("committed");
+    expect(await transport.compareAndSwapOperationHead({ expectedRevision: initial.revision, head })).toBe("conflict");
+    await expect(transport.compareAndSwapOperationHead({ expectedRevision: initial.revision, head: {...head, writerId:"f".repeat(64)} })).rejects.toThrow("authority identity");
+    const updates=fake.requests.filter((request)=>request.method==="PUT");
+    expect(updates).toHaveLength(2);
+    expect(updates[0]!.headers.get("If-Match")).toBe(initial.revision);
+    expect(updates[0]!.url).toContain("/upload/drive/v2/files/operation-head-1?");
+    fake.files.set("duplicate",{...file,id:"duplicate"});
+    await expect(discoverGoogleDriveLibraryCoreOperationHeadV2(discovery)).rejects.toThrow("ambiguous");
   });
 });

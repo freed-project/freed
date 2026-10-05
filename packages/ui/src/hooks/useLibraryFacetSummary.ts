@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import type { LibraryCoreRssItemSummaryResponseV1 } from "@freed/shared/library-core";
 import {
   usePlatform,
   type LibraryFacetSummary,
@@ -18,10 +19,44 @@ interface CachedFacetSummary {
 
 interface VersionedFacetSummary {
   sourceVersion: number;
+  reader: FacetReader;
   summary: LibraryFacetSummary;
 }
 
 let facetCache: CachedFacetSummary | null = null;
+
+export type LibrarySummaryStatus = "unavailable" | "loading" | "refreshing" | "ready" | "error";
+
+/** Count RSS-backed items without losing their original provider attribution. */
+export function useLibraryRssItemSummaryState(sourceVersion: number, enabled = true) {
+  const { queryLibraryCore } = usePlatform();
+  const [result, setResult] = useState<{ version: number; reader: typeof queryLibraryCore; summary: LibraryCoreRssItemSummaryResponseV1 } | null>(null);
+  const [failure, setFailure] = useState<{ version: number; reader: typeof queryLibraryCore } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setFailure(null);
+    if (!enabled || !queryLibraryCore) {
+      setResult(null);
+      return;
+    }
+    setResult(current => current?.reader === queryLibraryCore && current.version <= sourceVersion ? current : null);
+    void queryLibraryCore({ queryId: "rss_item_summary_v1", schemaVersion: 1 })
+      .then(summary => { if (!cancelled) setResult({ version: sourceVersion, reader: queryLibraryCore, summary }); })
+      .catch(() => { if (!cancelled) setFailure({ version: sourceVersion, reader: queryLibraryCore }); });
+    return () => { cancelled = true; };
+  }, [enabled, queryLibraryCore, sourceVersion]);
+  const summary = enabled && queryLibraryCore && result?.reader === queryLibraryCore && result.version <= sourceVersion ? result.summary : null;
+  const status: LibrarySummaryStatus = !enabled || !queryLibraryCore ? "unavailable"
+    : failure?.reader === queryLibraryCore && failure.version === sourceVersion ? "error"
+    : summary && result?.version === sourceVersion ? "ready"
+    : summary ? "refreshing" : "loading";
+  return { summary: status === "error" ? null : summary, status };
+}
+
+export function useLibraryRssItemSummary(sourceVersion: number): LibraryCoreRssItemSummaryResponseV1 | null {
+  const state = useLibraryRssItemSummaryState(sourceVersion);
+  return state.status === "ready" ? state.summary : null;
+}
 const EMPTY_FACET_SUMMARY: LibraryFacetSummary = Object.freeze({
   archivedCount: 0,
   archivableCount: 0,
@@ -71,39 +106,49 @@ function prepareFacetSummary(
 }
 
 /** Return exact Library counts and tags without retaining row identities or bodies. */
-export function useLibraryFacetSummary(
+export function useLibraryFacetSummaryState(
   sourceVersion: number,
   enabled = true,
-): LibraryFacetSummary {
+) {
   const { readLibraryFacetSummary } = usePlatform();
   const [versionedSummary, setVersionedSummary] = useState<VersionedFacetSummary | null>(() => {
     if (!enabled || !readLibraryFacetSummary) return null;
     const result = prepareFacetSummary(readLibraryFacetSummary, sourceVersion).result;
-    return result ? { sourceVersion, summary: result } : null;
+    return result ? { sourceVersion, reader: readLibraryFacetSummary, summary: result } : null;
   });
-  const [failedVersion, setFailedVersion] = useState<number | null>(null);
+  const [failure, setFailure] = useState<{ sourceVersion: number; reader: FacetReader } | null>(null);
+  const needsFreshRead = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
     if (!enabled || !readLibraryFacetSummary) {
       setVersionedSummary(null);
-      setFailedVersion(null);
+      needsFreshRead.current = true;
+      setFailure(null);
       return () => {
         cancelled = true;
       };
     }
 
-    setFailedVersion(null);
+    setFailure(null);
+    setVersionedSummary(current => current?.reader === readLibraryFacetSummary && current.sourceVersion <= sourceVersion ? current : null);
+    if (needsFreshRead.current) {
+      facetCache = null;
+      needsFreshRead.current = false;
+    }
     const prepared = prepareFacetSummary(readLibraryFacetSummary, sourceVersion);
     if (prepared.result) {
-      setVersionedSummary({ sourceVersion, summary: prepared.result });
+      setVersionedSummary({ sourceVersion, reader: readLibraryFacetSummary, summary: prepared.result });
     }
     prepared.promise
       .then((result) => {
-        if (!cancelled) setVersionedSummary({ sourceVersion, summary: result });
+        if (!cancelled) setVersionedSummary({ sourceVersion, reader: readLibraryFacetSummary, summary: result });
       })
       .catch(() => {
-        if (!cancelled) setFailedVersion(sourceVersion);
+        if (!cancelled) {
+          setVersionedSummary(null);
+          setFailure({ sourceVersion, reader: readLibraryFacetSummary });
+        }
       });
 
     return () => {
@@ -111,11 +156,37 @@ export function useLibraryFacetSummary(
     };
   }, [enabled, readLibraryFacetSummary, sourceVersion]);
 
-  if (!enabled) return EMPTY_FACET_SUMMARY;
-  if (!readLibraryFacetSummary || failedVersion === sourceVersion) {
-    return EMPTY_FACET_SUMMARY;
-  }
-  return versionedSummary?.sourceVersion === sourceVersion
-    ? versionedSummary.summary
-    : EMPTY_FACET_SUMMARY;
+  const available = enabled && !!readLibraryFacetSummary;
+  const retained = available && versionedSummary?.reader === readLibraryFacetSummary
+    && versionedSummary.sourceVersion <= sourceVersion ? versionedSummary : null;
+  const status: LibrarySummaryStatus = !available ? "unavailable"
+    : failure?.reader === readLibraryFacetSummary && failure.sourceVersion === sourceVersion ? "error"
+    : retained?.sourceVersion === sourceVersion ? "ready"
+    : retained ? "refreshing" : "loading";
+  return { summary: status === "error" ? EMPTY_FACET_SUMMARY : retained?.summary ?? EMPTY_FACET_SUMMARY, status };
+}
+
+/** Current-version accessor; callers may use these counts to enable actions. */
+export function useLibraryFacetSummary(sourceVersion: number, enabled = true): LibraryFacetSummary {
+  const state = useLibraryFacetSummaryState(sourceVersion, enabled);
+  return state.status === "ready" ? state.summary : EMPTY_FACET_SUMMARY;
+}
+
+const EMPTY_NAVIGATION_RESOURCE = Object.freeze({ status: "unavailable" as const, committed: null, activation: 0, attempts: 0, error: null });
+const noSubscription = () => () => {};
+const emptyResourceSnapshot = () => EMPTY_NAVIGATION_RESOURCE;
+
+/** Desktop consumes one published snapshot; platforms without it retain their query API. */
+export function useLibraryNavigationCounts(sourceVersion: number) {
+  const { libraryCountResource } = usePlatform();
+  const resource = useSyncExternalStore(libraryCountResource?.subscribe ?? noSubscription,
+    libraryCountResource?.getSnapshot ?? emptyResourceSnapshot,
+    libraryCountResource?.getSnapshot ?? emptyResourceSnapshot);
+  const facets = useLibraryFacetSummaryState(sourceVersion, !libraryCountResource);
+  const rss = useLibraryRssItemSummaryState(sourceVersion, !libraryCountResource);
+  if (!libraryCountResource) return { facets, rss };
+  return {
+    facets: { summary: resource.committed?.facets ?? EMPTY_FACET_SUMMARY, status: resource.status },
+    rss: { summary: resource.committed?.rss ?? null, status: resource.status },
+  };
 }

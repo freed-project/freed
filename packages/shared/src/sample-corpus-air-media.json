@@ -75,7 +75,7 @@
     "category": "insect",
     "identityNameBase": "Pearl Underfoot",
     "detail": "A male Maratus volans displays its colorful raised abdominal fan and raised legs",
-    "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/5/53/MalePeacockSpider.jpg",
+    "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/5/53/MalePeacockSpider.jpg/500px-MalePeacockSpider.jpg",
     "sourceUrl": "https://commons.wikimedia.org/wiki/File:MalePeacockSpider.jpg",
     "creator": "Jürgen Otto",
     "license": "CC BY-SA 2.0",
@@ -135,7 +135,7 @@
   {
     "id": "commons-ada-avatar-e1d4179d", "subject": "red-eyed tree frog", "category": "wildlife", "identityNameBase": "Ada Dew",
     "detail": "A live red-eyed tree frog grips a vertical banana stem with its legs tucked close and red eye open",
-    "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/0/00/Agalychnis_callidryas_%28on_Musa%29.jpg",
+    "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/00/Agalychnis_callidryas_%28on_Musa%29.jpg/960px-Agalychnis_callidryas_%28on_Musa%29.jpg",
     "sourceUrl": "https://commons.wikimedia.org/wiki/File:Agalychnis_callidryas_(on_Musa).jpg",
     "creator": "Hans Hillewaert", "license": "CC BY-SA 4.0", "width": 1621, "height": 2161, "sha1": "e1d4179d81ce86cdbc9d467daa7be57264a9daab"
   }

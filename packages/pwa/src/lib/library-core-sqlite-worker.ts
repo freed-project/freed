@@ -2,6 +2,7 @@ import sqlite3InitModule from "@sqlite.org/sqlite-wasm";
 import { isFreedDemoMode } from "./demo-mode";
 import {
   parseLibraryCoreSqliteWorkerRequest,
+  LIBRARY_CORE_SQLITE_WORKER_MAXIMUM_PENDING_REQUESTS,
   type LibraryCoreSqliteWorkerRequest,
   type LibraryCoreSqliteWorkerResponse,
   type LibraryCoreSqliteWorkerResult,
@@ -11,7 +12,7 @@ import {
   PwaLibraryCoreOpfsContentVault,
   type PwaContentRangeStorageV1,
 } from "./library-core-opfs-content-vault";
-import { installPwaLibraryCoreOpfsSahPool } from "./library-core-sqlite-opfs-bootstrap";
+import { configurePwaExclusiveOpfsRecovery, installPwaLibraryCoreOpfsSahPool } from "./library-core-sqlite-opfs-bootstrap";
 import {
   PWA_LIBRARY_CORE_SQLITE_DATABASE_FILENAME,
   PWA_LIBRARY_CORE_SQLITE_OWNERSHIP_LOCK,
@@ -34,6 +35,8 @@ const useDemoMemoryStorage = scope.name === "freed-library-core-sqlite-demo" &&
 const useMemoryStorage = useMemoryE2eStorage || useDemoMemoryStorage;
 let engine: PwaLibraryCoreSqliteEngine | null = null;
 let contentVault: PwaLibraryCoreOpfsContentVault | null = null;
+let releaseRecovery: (() => void) | null = null;
+let opfsPool: { pauseVfs(): unknown } | null = null;
 let releaseOwnership: (() => void) | null = null;
 let ownershipTask: Promise<unknown> | null = null;
 
@@ -69,6 +72,10 @@ function isAcceptedWorkerMessage(event: MessageEvent<unknown>): boolean {
 
 async function acquireOwnership(): Promise<void> {
   if (!("locks" in navigator)) return;
+  const controller = new AbortController();
+  // Terminating a worker does not synchronously release its browser-owned lock.
+  // Queue behind that release, but never wait indefinitely for another tab.
+  const timeout = setTimeout(() => controller.abort(), 3_000);
   let resolveAcquired: (() => void) | null = null;
   let rejectAcquired: ((error: Error) => void) | null = null;
   const acquired = new Promise<void>((resolve, reject) => {
@@ -77,8 +84,9 @@ async function acquireOwnership(): Promise<void> {
   });
   ownershipTask = navigator.locks.request(
     PWA_LIBRARY_CORE_SQLITE_OWNERSHIP_LOCK,
-    { ifAvailable: true, mode: "exclusive" },
+    { signal: controller.signal, mode: "exclusive" },
     async (lock) => {
+      clearTimeout(timeout);
       if (!lock) {
         rejectAcquired?.(
           new Error("PWA Library SQLite is already open in another app window"),
@@ -90,7 +98,12 @@ async function acquireOwnership(): Promise<void> {
         releaseOwnership = resolve;
       });
     },
-  );
+  ).catch((error: unknown) => {
+    clearTimeout(timeout);
+    rejectAcquired?.(controller.signal.aborted
+      ? new Error("PWA Library SQLite is already open in another app window")
+      : error instanceof Error ? error : new Error("PWA Library SQLite ownership failed"));
+  });
   await acquired;
 }
 
@@ -107,17 +120,26 @@ async function open(): Promise<PwaLibraryCoreSqliteEngine> {
     openingStage = useMemoryStorage
       ? "open the isolated memory database"
       : "install the OPFS SAH pool VFS";
-    const database = useMemoryStorage
-      ? new sqlite3.oo1.DB(":memory:", "c")
-      : new (
-          await installPwaLibraryCoreOpfsSahPool((options) =>
-            sqlite3.installOpfsSAHPoolVfs(options),
-          )
-        ).OpfsSAHPoolDb(PWA_LIBRARY_CORE_SQLITE_DATABASE_FILENAME);
+    const pool = useMemoryStorage ? null : await installPwaLibraryCoreOpfsSahPool(
+      (options) => sqlite3.installOpfsSAHPoolVfs(options),
+    );
+    opfsPool = pool;
+    const database = pool
+      ? new pool.OpfsSAHPoolDb(PWA_LIBRARY_CORE_SQLITE_DATABASE_FILENAME)
+      : new sqlite3.oo1.DB(":memory:", "c");
+    if (pool) {
+      try {
+        releaseRecovery = configurePwaExclusiveOpfsRecovery(sqlite3, database);
+      } catch (error) {
+        database.close();
+        throw error;
+      }
+    }
     openingStage = "initialize the normalized schema";
     const next = new PwaLibraryCoreSqliteEngine(
       database,
       sqlite3.version.libVersion,
+      { capi: sqlite3.capi, persistentAuditTemporaryStorage: pool !== null },
     );
     openingEngine = next;
     next.initialize();
@@ -133,6 +155,10 @@ async function open(): Promise<PwaLibraryCoreSqliteEngine> {
     return next;
   } catch (error) {
     openingEngine?.close();
+    releaseRecovery?.();
+    releaseRecovery = null;
+    opfsPool?.pauseVfs();
+    opfsPool = null;
     releaseOwnership?.();
     releaseOwnership = null;
     await ownershipTask?.catch(() => undefined);
@@ -239,6 +265,13 @@ async function executeClose(
   contentVault = null;
   active.close();
   engine = null;
+  // Closing the DB retains the pool's SyncAccessHandles. Explicitly release
+  // them before acknowledging quiescence or allowing another tab to open.
+  // Worker termination alone does not synchronously release handles in WebKit.
+  releaseRecovery?.();
+  releaseRecovery = null;
+  opfsPool?.pauseVfs();
+  opfsPool = null;
   releaseOwnership?.();
   releaseOwnership = null;
   await ownershipTask?.catch(() => undefined);
@@ -253,10 +286,30 @@ async function executeActivateCheckpoint(
   await active.verifyNormalizedCheckpointActorRetirements(
     request.activation.stageId,
   );
+  await active.verifyNormalizedCheckpointSuccessor(request.activation);
   return result(
     request.requestId,
-    active.activateNormalizedCheckpointStage(request.activation),
+    active.activateNormalizedCheckpointStage(request.activation, (completedRecords, totalRecords) => {
+      scope.postMessage({ kind: "checkpoint_activation_progress", requestId: request.requestId,
+        completedRecords, totalRecords });
+    }),
   );
+}
+
+async function executePreparePredecessorRead(request: WorkerRequest<"prepare_predecessor_checkpoint_read">): Promise<LibraryCoreSqliteWorkerResponse> {
+  return result(request.requestId, await requireEngine().preparePredecessorCheckpointRead(request.stageId));
+}
+
+async function executeActivatePredecessor(
+  request: WorkerRequest<"activate_verified_predecessor_checkpoint">,
+): Promise<LibraryCoreSqliteWorkerResponse> {
+  const receipt = await requireEngine().activateVerifiedPredecessorCheckpoint(
+    request.activation, request.successorStageId, (completedRecords, totalRecords) => {
+      scope.postMessage({ kind: "checkpoint_activation_progress", requestId: request.requestId,
+        completedRecords, totalRecords });
+    },
+  );
+  return result(request.requestId, receipt);
 }
 
 function executeBeginCheckpoint(
@@ -275,6 +328,34 @@ function executeReadCheckpointReceipt(
     request.requestId,
     requireEngine().readNormalizedCheckpointReceipt(),
   );
+}
+
+const replicaAudits = new Map<string, { cancelled: boolean; interrupted: boolean; deadline: number }>();
+
+function executeCancelReplicaAudit(
+  request: WorkerRequest<"cancel_normalized_replica_audit">,
+): LibraryCoreSqliteWorkerResponse {
+  const control = replicaAudits.get(request.auditRequestId);
+  if (control) control.cancelled = true;
+  // Cancellation only marks an existing reader. Unknown tickets allocate nothing.
+  return result(request.requestId, null);
+}
+
+async function executeReplicaAudit(
+  request: WorkerRequest<"audit_normalized_replica">,
+): Promise<LibraryCoreSqliteWorkerResponse> {
+  const control = replicaAudits.get(request.requestId);
+  if (!control) throw new Error("Replica audit registration is missing");
+  const check = () => {
+    if (control.cancelled) throw new Error("AUDIT_CANCELLED");
+    if (control.interrupted) throw new Error("Replica audit interrupted by Library activity. Retry after sync finishes.");
+    if (performance.now() >= control.deadline) throw new Error("AUDIT_DEADLINE");
+  };
+  check();
+  return result(request.requestId, await requireEngine().auditNormalizedReplica({
+    check,
+    yieldControl: () => new Promise<void>((resolve) => setTimeout(resolve, 0)),
+  }));
 }
 
 function executeDescribeCheckpointExport(
@@ -304,10 +385,10 @@ function executeAppendCheckpointPage(
   );
 }
 
-function executeQuery(
+async function executeQuery(
   request: WorkerRequest<"query">,
-): LibraryCoreSqliteWorkerResponse {
-  return result(request.requestId, requireEngine().query(request.query));
+): Promise<LibraryCoreSqliteWorkerResponse> {
+  return result(request.requestId, await requireEngine().queryWithVerification(request.query));
 }
 
 function executeBeginScopeAction(
@@ -641,10 +722,18 @@ function compileCommand(
       return bindCommand(request, executeClose, true);
     case "activate_normalized_checkpoint_stage":
       return bindCommand(request, executeActivateCheckpoint);
+    case "prepare_predecessor_checkpoint_read":
+      return bindCommand(request, executePreparePredecessorRead);
+    case "activate_verified_predecessor_checkpoint":
+      return bindCommand(request, executeActivatePredecessor);
     case "begin_normalized_checkpoint_stage":
       return bindCommand(request, executeBeginCheckpoint);
     case "read_normalized_checkpoint_receipt":
       return bindCommand(request, executeReadCheckpointReceipt);
+    case "audit_normalized_replica":
+      return bindCommand(request, executeReplicaAudit);
+    case "cancel_normalized_replica_audit":
+      return bindCommand(request, executeCancelReplicaAudit);
     case "describe_normalized_checkpoint_export":
       return bindCommand(request, executeDescribeCheckpointExport);
     case "read_normalized_checkpoint_export_page":
@@ -711,6 +800,20 @@ function compileCommand(
       return bindCommand(request, executeImportNormalizedResultTransport);
     case "import_normalized_operation_page":
       return bindCommand(request, executeImportNormalizedOperationPage);
+    case "reapply_consumer_intent":
+      return bindCommand(request, async current => result(current.requestId, await requireEngine().reapplyConsumerIntent(current.recovery)));
+    case "read_consumer_recovery":
+      return bindCommand(request, current => result(current.requestId, requireEngine().consumerRecoveryStatus()));
+    case "prepare_consumer_recovery":
+      return bindCommand(request, async current => {
+        await requireEngine().prepareConsumerRecovery(current.recovery.recoveryId, current.recovery.request);
+        return result(current.requestId, requireEngine().consumerRecoveryStatus());
+      });
+    case "commit_consumer_recovery":
+      return bindCommand(request, async current => {
+        await requireEngine().commitConsumerRecovery(current.recovery.recoveryId, current.recovery.committedAt);
+        return result(current.requestId, requireEngine().consumerRecoveryStatus());
+      });
     case "read_follower_actor_enrollment_context":
       return bindCommand(request, executeReadFollowerEnrollmentContext);
     case "store_follower_actor_request":
@@ -722,18 +825,49 @@ function compileCommand(
   }
 }
 
+// Keep asynchronous verification and storage work in the same bounded command
+// order. Another request must never enter a transaction owned by an earlier one.
+let commandFlight = Promise.resolve();
+let queuedCommands = 0;
 scope.onmessage = (event) => {
   if (!isAcceptedWorkerMessage(event)) return;
-  void (async () => {
-    let requestId = "invalid";
-    try {
-      const request = parseLibraryCoreSqliteWorkerRequest(event.data);
-      const command = compileCommand(request);
-      requestId = command.requestId;
-      scope.postMessage(await command.execute());
-      if (command.closeAfterResponse) scope.close();
-    } catch (error) {
-      scope.postMessage(failure(requestId, error));
+  let requestId = "invalid";
+  try {
+    const request = parseLibraryCoreSqliteWorkerRequest(event.data);
+    requestId = request.requestId;
+    // Only this flag-only control bypasses the serialized database queue.
+    // Queuing it behind its audit would make cancellation ineffective.
+    if (request.kind === "cancel_normalized_replica_audit") {
+      scope.postMessage(executeCancelReplicaAudit(request));
+      return;
     }
-  })();
+    if (queuedCommands >= LIBRARY_CORE_SQLITE_WORKER_MAXIMUM_PENDING_REQUESTS) {
+      throw new Error("PWA Library SQLite worker queue is full");
+    }
+    const command = compileCommand(request);
+    if (request.kind === "audit_normalized_replica") {
+      // Audits are optional diagnostics. Never queue them behind product work or
+      // let several audits occupy the connection ahead of an edit or sync.
+      if (queuedCommands !== 0) throw new Error("Library is busy. Retry the replica audit after sync finishes.");
+      replicaAudits.set(request.requestId, { cancelled: false, interrupted: false, deadline: performance.now() + 30_000 });
+    } else {
+      // The flag is safe outside the SQL queue. The audit rolls back its read
+      // snapshot at its next bounded page before this command enters SQLite.
+      for (const control of replicaAudits.values()) control.interrupted = true;
+    }
+    queuedCommands += 1;
+    commandFlight = commandFlight.then(async () => {
+      try {
+        scope.postMessage(await command.execute());
+        if (command.closeAfterResponse) scope.close();
+      } catch (error) {
+        scope.postMessage(failure(command.requestId, error));
+      } finally {
+        if (request.kind === "audit_normalized_replica") replicaAudits.delete(request.requestId);
+        queuedCommands -= 1;
+      }
+    });
+  } catch (error) {
+    scope.postMessage(failure(requestId, error));
+  }
 };

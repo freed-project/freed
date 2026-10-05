@@ -26,6 +26,20 @@ during follower replay. Ranking refresh never changes an item's content
 `updatedAt`, and React never sorts a corpus or recomputes canonical priority.
 Library invalidations and weight changes coalesce into a follow-up pass, while
 one hourly pass refreshes the time-decaying recent window.
+After an exact-source completed pass, an unchanged hourly request may use
+`priority_time_page_v1` within its 25,000-item census admission envelope.
+Native and browser readers check generation and canonical revision inside the
+read boundary and use the existing priority-refresh index to select only
+missing computations or rows computed before the shared seven-day decay
+horizon. The final boundary assignment still uses the ordinary signed writer.
+Settled rows retain their canonical computation times. Returned metadata is
+bounded to 64 rows; the old prefix can still be scanned, so this query is not
+a constant-work physical scan. Above the admission envelope, on restart,
+explicit invalidation, or any source drift, the scheduler uses full passes.
+Actual batch sources and each signed transaction's source advance fence
+completion; unexpected writes require a full follow-up. No ephemeral completion
+proof is persisted or used as storage authority. This prevents some future
+ranking receipts and does not compact existing history.
 
 The ordinary and Friends visible-window lifecycles reopen on the host's exact
 Library item invalidation revision. Saved uses its dedicated presentation
@@ -33,6 +47,19 @@ revision, and search uses its own committed-query revision. These ephemeral
 React fences never become storage authority. A successful mutation cannot
 advance navigation counts while leaving an older empty or stale feed window
 selected.
+
+A source refresh prepares the complete resident window before publishing it to
+React. It retains at most the configured page count and never briefly replaces
+a deep window with page one. The shared adapter can interpret a prior leading
+edge as an ordering bookmark after validating its generation and filter (and
+Saved sort mode) against a fresh reader. It constructs a new cursor at the
+fresh revision, reads the predecessor edge, then resumes inclusively from that
+edge. Normal `readPage` calls still reject stale cursors. Every returned page
+and optimistic overlay must pass the current source fence; an intervening
+revision fails closed. This uses bounded keyset reads without scanning to an
+offset or treating the bookmark as storage authority. Traversal offsets in
+React are layout hints after a refresh; cursor edges determine whether either
+side has more rows.
 
 `saved_analytics_v2` is the normalized Saved overview aggregate. One deferred
 SQLite snapshot materializes only each saved row's bounded platform, content
@@ -43,6 +70,13 @@ request accepts no SQL or arbitrary grouping, the result is one row under
 2 MiB, and source generation or revision movement invalidates the response.
 The historical Saved analytics reader and its document-head source vocabulary
 are not part of this final query.
+
+`rss_item_summary_v1` returns exact total and unread counts for items whose
+platform is RSS or whose source is an RSS feed. The two disjoint SQL branches
+prevent double counting. This scalar aggregate does not return item identities
+or bodies. It is separate from `library_facet_summary_v1`, whose platform totals
+must remain disjoint. RSS-backed Substack and Medium items therefore count in
+Feeds without losing their provider attribution.
 
 `saved_feed_page_v2` is the normalized Saved list query. Its closed sort enum
 selects one of four generated SQL variants for date saved, date published,

@@ -1,0 +1,28 @@
+{
+  "verdict": "PASS unchanged",
+  "title": "Their lunch",
+  "body": "I pulled a piece of sponge loose. The angelfish ate the bits that escaped my mouth.\n\nWith everyone watching, I took more care over the next bite. Nothing fell. They waited.\n\nI had been tidying away their lunch.",
+  "characterId": "rhea-return",
+  "imageVerdict": "PASS. Individually opened exact850x638original. Turtle shell pattern, neck/head at reef, and adjacent gray angelfish are clearly readable. Some underwater blue haze and softness do not obscure the central association. The head is partly among growth; no actual falling crumb is claimed visible.",
+  "proseVerdict": "PASS. The concrete social misunderstanding turns on a useful contradiction: careful eating deprives the followers. Final sentence names that particular discovery rather than offering a general lesson. With everyone watching is a familiar device, but here the primary biology and photographed feeding company earn the reversal. No changes requested.",
+  "sceneBoundary": "Visible turtle feeding position and neighboring angelfish support the scene. Exact sponge species, escaping crumbs, next bite, watching, waiting and inner realization remain fiction. No remora, cleaning contact, or proof of sequence claimed.",
+  "canonVerdict": "PASS. Full thirteen-entry current array read, including twelve older entries plus the childhood remora narrative. This feeding association differs from childhood route approval, At my speed school passage and unillustrated shell cleaning. Keep existing Little Cayman home, identity and avatar. The photograph does not establish sex or exact age; it can serve an independent later foraging episode after childhood without claiming adulthood from scale.",
+  "rightsVerdict": "PASS on exact cached primary NPS asset record. Asset2d59917d-1dd8-b71c-0709-275786b1daba explicitly has ConstraintsInformation.Constraint Public domain and GrantingRights Full, with PhotoCredit Photo by Caroline Rogers. This is photo-specific evidence, not a blanket inference from NPS hosting. FileInfo.Original850x638,521563bytes matches exact downloaded original. Public gallery web open returned non-retryable safe-open error; no retry. Primary cached record independently inspected.",
+  "metadata": {
+    "localPath": "/tmp/freed-aquatic-147/source-04.jpg",
+    "width": 850,
+    "height": 638,
+    "bytes": 521563,
+    "sha1": "eb14ef05ae266ab7ec29df1626b6df34c7305655",
+    "sha256": "6324a055ac1c7060355e1a2e3b925b68f9eef5cd6ec82d8c65964576608ac714",
+    "sourceMetadataLocal": "/tmp/freed-aquatic-147/nps-gallery.json",
+    "sourceMetadataUrl": "https://www.nps.gov/npgallery/api/search/execute/albumid/2D330A75-1DD8-B71C-076E2F0FC64EDBD8",
+    "sourcePage": "https://www.nps.gov/media/photo/gallery-item.htm?gid=2D330A75-1DD8-B71C-076E2F0FC64EDBD8&id=2d59917d-1dd8-b71c-0709-275786b1daba",
+    "creator": "Caroline Rogers",
+    "license": "Public domain"
+  },
+  "biologyVerdict": "PASS. Independently opened Blumenthal et al. primary manuscript. Page11 lines179-183 and page15 lines268-270 explicitly describe angelfish eating exposed sponge tissue and turtle-dropped crumbs. This supports the biological association, not this exact photographed bite. Generic sponge reference avoids unsupported species identification.",
+  "biologySource": "https://awsassets.panda.org/downloads/ecology_of_hawksbill_turtles_eretmochelys_imbricata_on_a_western_caribbean_foraging_grou.pdf",
+  "historicalStatus": "Nested media.decision hold belongs to the earlier source-discovery ledger where no new scene was authored. It is not a rights or image rejection and does not override this independent review of153.",
+  "authority": "Review files only. No draft changes, runtime edits or admission. Root owns integration."
+}

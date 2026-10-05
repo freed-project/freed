@@ -6,7 +6,7 @@ import { applyAnimationIntensityToDocument } from "./animation-preferences.js";
 import { runFeedLayoutTransition } from "./view-transitions.js";
 
 type ViewTransitionDocument = Document & {
-  startViewTransition?: (update: () => void) => { finished: Promise<void> };
+  startViewTransition?: (update: () => void) => { ready: Promise<void>; finished: Promise<void> };
 };
 
 afterEach(() => {
@@ -21,7 +21,7 @@ describe("runFeedLayoutTransition", () => {
     const update = vi.fn();
     const startViewTransition = vi.fn((callback: () => void) => {
       callback();
-      return { finished: Promise.resolve() };
+      return { ready: Promise.resolve(), finished: Promise.resolve() };
     });
     (document as ViewTransitionDocument).startViewTransition = startViewTransition;
 
@@ -37,7 +37,7 @@ describe("runFeedLayoutTransition", () => {
     const update = vi.fn();
     const startViewTransition = vi.fn((callback: () => void) => {
       callback();
-      return { finished: Promise.resolve() };
+      return { ready: Promise.resolve(), finished: Promise.resolve() };
     });
     (document as ViewTransitionDocument).startViewTransition = startViewTransition;
 
@@ -48,12 +48,32 @@ describe("runFeedLayoutTransition", () => {
     expect(document.documentElement.dataset.animation).toBe("light");
   });
 
+  it("preserves the update and clears transition styling when a resize skips the animation", async () => {
+    applyAnimationIntensityToDocument("detailed");
+    const update = vi.fn();
+    (document as ViewTransitionDocument).startViewTransition = (callback) => {
+      callback();
+      return {
+        ready: Promise.reject(new DOMException(
+          "Transition was aborted because of invalid state", "InvalidStateError",
+        )),
+        finished: Promise.resolve(),
+      };
+    };
+
+    runFeedLayoutTransition(update);
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(document.documentElement.classList.contains("feed-layout-transition")).toBe(false);
+  });
+
   it("bypasses view transitions when animation is none", () => {
     applyAnimationIntensityToDocument("none");
     const update = vi.fn();
     const startViewTransition = vi.fn((callback: () => void) => {
       callback();
-      return { finished: Promise.resolve() };
+      return { ready: Promise.resolve(), finished: Promise.resolve() };
     });
     (document as ViewTransitionDocument).startViewTransition = startViewTransition;
 

@@ -1,8 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { runtimeHealthIdentityFields } from "./runtime-health-events";
+import { runtimeHealthIdentityFields, withRuntimeHealthIdentity } from "./runtime-health-events";
 
 describe("runtime health identity", () => {
+  it("identifies legal-gate hidden startup without initialization and prevents stale payload provenance", () => {
+    const original = { event: "renderer_heartbeat", appPhase: "legal", visibility: "hidden", buildCommitSha: "stale", appSessionId: "stale" };
+    const result = withRuntimeHealthIdentity(original);
+    expect(result).toMatchObject({ event: "renderer_heartbeat", appPhase: "legal", visibility: "hidden", ...runtimeHealthIdentityFields() });
+    expect(original.buildCommitSha).toBe("stale");
+    expect(withRuntimeHealthIdentity({ reason: "interval" }).appSessionId).toBe(result.appSessionId);
+  });
   it("keeps one build and app session identity for the renderer lifetime", () => {
     const first = runtimeHealthIdentityFields();
     const second = runtimeHealthIdentityFields();

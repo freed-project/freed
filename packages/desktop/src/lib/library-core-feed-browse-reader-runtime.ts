@@ -21,6 +21,7 @@ export interface BoundedDesktopFeedPage {
 }
 
 export interface BoundedDesktopFeedReader {
+  resumePage?(firstEdge: string): Promise<BoundedDesktopFeedPage>;
   readonly totalCount: number;
   readNext(): Promise<readonly FeedItem[]>;
   readPage(

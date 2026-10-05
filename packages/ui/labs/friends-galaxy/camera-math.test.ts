@@ -52,18 +52,17 @@ describe("Friends Galaxy raw WebGPU camera math", () => {
     );
     expect(limits.resistance).toBeGreaterThan(limits.fitMinimum);
     expect(limits.fitMinimum).toBeGreaterThan(limits.minimum);
-    expect(closestCameraZ - maximumSceneZ).toBeCloseTo(
-      FRIENDS_GALAXY_CAMERA_NEAR_CLEARANCE,
-      8,
-    );
+    expect(closestCameraZ - maximumSceneZ).toBeGreaterThanOrEqual(FRIENDS_GALAXY_CAMERA_NEAR_CLEARANCE);
+    expect(limits.maximum).toBe(2);
   });
 
-  it("moves both safe scale limits closer on a taller viewport", () => {
+  it("adapts outward limits to viewport height while retaining the avatar zoom cap", () => {
     const compact = friendsGalaxyCameraScaleLimits(667, -224, 220);
     const tall = friendsGalaxyCameraScaleLimits(1_366, -224, 220);
 
     expect(tall.minimum).toBeGreaterThan(compact.minimum);
-    expect(tall.maximum).toBeGreaterThan(compact.maximum);
+    expect(tall.maximum).toBe(2);
+    expect(compact.maximum).toBe(2);
     expect(tall.resistance / tall.minimum).toBeCloseTo(
       compact.resistance / compact.minimum,
       12,

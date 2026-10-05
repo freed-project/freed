@@ -51,6 +51,8 @@ const LIBRARY_CORE_RELEASE_ACTIVATION_PATHS = new Set([
   "scripts/lib/library-core-release-activation.mjs",
   "scripts/lib/library-core-release-activation.test.mjs",
   "scripts/prepare-release-notes.mjs",
+  "scripts/prepare-signed-measurement.mjs",
+  "scripts/prepare-signed-measurement.test.mjs",
   "scripts/release-receipt.mjs",
   "scripts/release-receipt.test.mjs",
   "scripts/validate-library-core-activation-manifest.mjs",
@@ -73,10 +75,14 @@ const RELEASE_TOOLING_PATHS = new Set([
   "scripts/release.sh",
   "scripts/validate-dev-integration-receipt.mjs",
   "scripts/validate-dev-integration-receipt.test.mjs",
+  "scripts/validate-release-integration.mjs",
+  "scripts/validate-release-integration.test.mjs",
   "scripts/validate-release-notes.mjs",
 ]);
 
 const RELEASE_ADMISSION_PATHS = new Set([
+  "scripts/validate-release-integration.mjs",
+  "scripts/validate-release-integration.test.mjs",
   ".github/workflows/ci.yml",
   ".github/workflows/main-release-validation.yml",
   ".github/workflows/release.yml",
@@ -92,6 +98,7 @@ const RELEASE_ADMISSION_PATHS = new Set([
 ]);
 
 const RELEASE_ADMISSION_TEST_FILES = [
+  "scripts/validate-release-integration.test.mjs",
   "scripts/validate-dev-integration-receipt.test.mjs",
   "scripts/release-governance.test.mjs",
   "scripts/release-workflow-matrix.test.mjs",
@@ -149,13 +156,22 @@ const RELEASE_PUBLISHER_TEST_FILES = [
 
 const PULL_REQUEST_PUBLISHER_TOOLING_PATHS = new Set([
   "scripts/worktree-publish.sh",
+  "scripts/lib/provider-query-snapshot.mjs",
   "scripts/worktree-publish.test.mjs",
+  "scripts/task-decisions.mjs",
+  "scripts/task-decisions.test.mjs",
+  "scripts/worktree-add.sh",
+  "scripts/worktree-add.test.mjs",
+  "scripts/worktree-cleanup.sh",
 ]);
 
-const PULL_REQUEST_PUBLISHER_TEST_FILES = ["scripts/worktree-publish.test.mjs"];
+const PULL_REQUEST_PUBLISHER_TEST_FILES = ["scripts/worktree-publish.test.mjs", "scripts/task-decisions.test.mjs", "scripts/worktree-add.test.mjs"];
 
 const TOOLING_SMOKE_RUNNER_PATHS = new Set([
+  ".github/workflows/nightly-fixture-acceptance.yml",
+  "scripts/nightly-fixture-acceptance.mjs",
   ".github/workflows/ci.yml",
+  ".github/workflows/tooling-nightly.yml",
   "scripts/lib/tooling-smoke-plan.mjs",
   "scripts/measure-tooling-smoke.mjs",
   "scripts/measure-tooling-smoke.test.mjs",
@@ -164,6 +180,9 @@ const TOOLING_SMOKE_RUNNER_PATHS = new Set([
   "scripts/run-native-acceptance.test.mjs",
   "scripts/run-tooling-smoke-shard.mjs",
   "scripts/run-tooling-smoke-shard.test.mjs",
+  "scripts/test-helpers/nightly-fixture-preload.mjs",
+  "scripts/test-helpers/nightly-fixture-supervisor.py",
+  "scripts/test-helpers/nightly_fixture_darwin.py",
   "scripts/tooling-smoke-plan.test.mjs",
 ]);
 
@@ -197,7 +216,7 @@ Modes:
   feature  Run root typecheck plus changed-surface checks derived from git diff or --changed-files.
   providers  Run focused social provider checks for extractor, auth, memory-preflight, and capture-runtime work.
   dev      Run the integration suite used for dev branch pushes and dev builds.
-  production  Run the full production validation suite for public release prep.
+  production  Verify inherited integration and the production release delta.
   release  Compatibility alias for production.
 
 Options:
@@ -358,6 +377,8 @@ export function isPwaOpfsDurabilityPath(filePath) {
     filePath === "packages/pwa/src/main.tsx" ||
     filePath === "packages/pwa/tests/opfs-e2e-settings.ts" ||
     filePath === "packages/pwa/tests/sqlite-opfs-durability.spec.ts" ||
+    filePath.startsWith("scripts/lib/webkit-test-custody") ||
+    filePath === "scripts/webkit-test-custody.test.mjs" ||
     filePath.startsWith("packages/pwa/src/lib/library-core-sqlite") ||
     filePath.startsWith("packages/shared/src/library-core/")
   );
@@ -662,6 +683,15 @@ function shouldRunPwaOpfsDurability() {
   return process.env.FREED_SKIP_PWA_OPFS_DURABILITY !== "true";
 }
 
+function captureTestCommands() {
+  return readdirSync(path.join(REPO_ROOT, "packages"))
+    .filter((name) => name.startsWith("capture-"))
+    .sort()
+    .map((name) => `packages/${name}`)
+    .filter((workspace) => workspaceHasScript(workspace, "test"))
+    .map((workspace) => npmCommand(`${workspace} tests`, ["run", "test"], workspace));
+}
+
 function addCaptureWorkspaceChecks(plan, workspacePath) {
   if (workspaceHasScript(workspacePath, "test")) {
     addCommand(
@@ -706,6 +736,11 @@ function libraryCoreNativeRustChecks() {
     cargoCommand(
       "Library Core native rust tests",
       ["test", "--all-features"],
+      "packages/library-core-native",
+    ),
+    cargoCommand(
+      "Library Core default-off transfer tests",
+      ["test", "--no-default-features", "--test", "transfer_hold"],
       "packages/library-core-native",
     ),
   ];
@@ -925,6 +960,9 @@ export function buildValidationPlan(mode, changedFiles) {
       npmCommand("skill validation", ["run", "validate:skills"]),
       npmCommand("website tests", ["run", "test"], "website"),
       npmCommand("shared unit tests", ["run", "test"], "packages/shared"),
+      npmCommand("ui unit tests", ["run", "test"], "packages/ui"),
+      npmCommand("sync unit tests", ["run", "test"], "packages/sync"),
+      ...captureTestCommands(),
       npmCommand(
         "library service tests",
         ["run", "test"],
@@ -935,11 +973,6 @@ export function buildValidationPlan(mode, changedFiles) {
       npmCommand(
         "desktop unit tests",
         ["run", "test:unit"],
-        "packages/desktop",
-      ),
-      npmCommand(
-        "desktop e2e smoke",
-        ["run", "test:e2e:smoke"],
         "packages/desktop",
       ),
       npmCommand(
@@ -973,47 +1006,19 @@ export function buildValidationPlan(mode, changedFiles) {
 
   if (normalizedMode === "production") {
     const plan = [
-      ...buildValidationPlan("dev", changedFiles)
-        .filter(
-          (item) =>
-            ![
-              "root build",
-              "root typecheck",
-              "root lint",
-              "website tests",
-              "retired Automerge release artifact guard",
-            ].includes(item.label),
-        )
-        .flatMap((item) =>
-          item.label === "native rust clippy"
-            ? [
-                npmCommand(
-                  "desktop frontend context build",
-                  ["run", "build"],
-                  "packages/desktop",
-                ),
-                item,
-              ]
-            : [item],
-        ),
-      nodeCommand("release notes shared tests", [
-        "--test",
-        path.join("scripts", "release-notes-shared.test.mjs"),
+      nodeCommand("exact dev integration receipt", [
+        path.join("scripts", "validate-release-integration.mjs"),
       ]),
-      // The website is a separate lane. It ships from `www` through the
-      // publish-website job against the reviewed marketing branch, so building
-      // it here proved nothing about the Desktop release and coupled two lanes
-      // that AGENTS.md keeps apart. The root build, typecheck, and lint fanouts
-      // also include the website, so production validation inherits the green dev
-      // product build and reruns only the release-critical product checks.
-      //
-      // The signed Desktop build remains in the release matrix. Production
-      // validation builds only the frontend context required by Tauri's
-      // generate_context! macro before native clippy and tests.
+      nodeCommand("release admission contracts", [
+        "--test",
+        ...RELEASE_ADMISSION_TEST_FILES,
+      ]),
+      // Integration owns product tests. Signed native builds remain in the
+      // platform matrix; the PWA release delta still builds its shipped bytes.
       npmCommand("pwa production build", ["run", "build"], "packages/pwa"),
       nodeCommand("retired Automerge release artifact guard", [
         path.join("scripts", "validate-retired-automerge-runtime.mjs"),
-        "all",
+        "pwa",
       ]),
     ];
 
@@ -1081,6 +1086,9 @@ export function buildValidationPlan(mode, changedFiles) {
   );
   const sharedPackageChanged = productFiles.some((filePath) =>
     filePath.startsWith("packages/shared/"),
+  );
+  const uiPackageChanged = productFiles.some((filePath) =>
+    filePath.startsWith("packages/ui/"),
   );
   const syncPackageChanged = productFiles.some((filePath) =>
     filePath.startsWith("packages/sync/"),
@@ -1207,7 +1215,15 @@ export function buildValidationPlan(mode, changedFiles) {
     );
   }
 
-  if (syncPackageChanged) {
+  if (sharedPackageChanged) {
+    for (const check of captureTestCommands()) addCommand(plan, check);
+  }
+
+  if (uiPackageChanged || sharedPackageChanged) {
+    addCommand(plan, npmCommand("ui unit tests", ["run", "test"], "packages/ui"));
+  }
+
+  if (syncPackageChanged || sharedPackageChanged) {
     addCommand(
       plan,
       npmCommand("sync unit tests", ["run", "test"], "packages/sync"),
@@ -1402,6 +1418,14 @@ export function buildValidationPlan(mode, changedFiles) {
     );
   }
 
+  if (changedFiles.some(file => [".github/workflows/cloud-release-request.yml", ".github/workflows/cloud-release-inbox.yml", ".github/workflows/cloud-release-policy-probe.yml", ".github/workflows/cloud-release-policy-response.yml", "scripts/cloud-release-policy.mjs", "scripts/cloud-release-policy.test.mjs", "scripts/cloud-release-request.mjs", "scripts/cloud-release-request.test.mjs"].includes(file))) {
+    addCommand(plan, nodeCommand("cloud release request tests", ["--test", "scripts/cloud-release-request.test.mjs", "scripts/cloud-release-policy.test.mjs"]));
+  }
+
+  if (changedFiles.some(file => [".github/workflows/release.yml", "scripts/prepare-signed-measurement.mjs", "scripts/prepare-signed-measurement.test.mjs"].includes(file))) {
+    addCommand(plan, nodeCommand("signed measurement identity tests", ["--test", "scripts/prepare-signed-measurement.test.mjs"]));
+  }
+
   if (releasePublisherToolingChanged) {
     addCommand(
       plan,
@@ -1422,6 +1446,18 @@ export function buildValidationPlan(mode, changedFiles) {
     );
   }
 
+  if (changedFiles.some((file) => [
+    "scripts/worktree-preview.sh",
+    "scripts/worktree-processes.sh",
+    "scripts/lib/worktree-runtime.sh",
+    "scripts/lib/preview-processes.py",
+    "scripts/worktree-preview.test.mjs",
+  ].includes(file))) {
+    addCommand(plan, nodeCommand("worktree preview process tests", [
+      "--test", "scripts/worktree-preview.test.mjs", "scripts/task-decisions.test.mjs",
+    ]));
+  }
+
   if (toolingSmokeRunnerChanged) {
     addCommand(
       plan,
@@ -1433,6 +1469,16 @@ export function buildValidationPlan(mode, changedFiles) {
         path.join("scripts", "run-tooling-smoke-shard.test.mjs"),
       ]),
     );
+  }
+
+  if (changedFiles.some((file) => [
+    "scripts/vercel-deploy-preview.sh",
+    "scripts/lib/vercel-project-link.mjs",
+    "scripts/lib/vercel-project-link.test.mjs",
+  ].includes(file))) {
+    addCommand(plan, nodeCommand("Vercel preview deployment tests", [
+      "--test", path.join("scripts", "lib", "vercel-project-link.test.mjs"),
+    ]));
   }
 
   if (retiredAutomergeRuntimeGuardChanged) {
@@ -1461,6 +1507,10 @@ export function buildValidationPlan(mode, changedFiles) {
 
   if (stabilityStatusChanged) {
     addCommand(plan, stabilityStatusTestsCommand());
+  }
+
+  if (changedFiles.some(filePath => filePath.startsWith("scripts/lib/webkit-test-custody") || filePath === "scripts/webkit-test-custody.test.mjs")) {
+    addCommand(plan, nodeCommand("WebKit test custody fixture contracts", ["--test", "scripts/webkit-test-custody.test.mjs"]));
   }
 
   if (roadmapStatusChanged) {

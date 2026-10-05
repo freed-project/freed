@@ -1,0 +1,54 @@
+{
+  "verdict": "PASS",
+  "operation": "Bind the proposed exact image to original index0 only; preserve literal title/body and LinkedIn regular format. Root owns admission.",
+  "episode": {
+    "subject": "flamingo",
+    "title": "Before the pink",
+    "body": "I began gray. The pink arrived one mouthful at a time. Adults kept checking as if I were late.",
+    "theme": "transformation",
+    "platform": "linkedin",
+    "mediaSha1": "9d875e71ac887bb4ff3b0565fc02415d3dbd58e8"
+  },
+  "literalBodyUnchanged": true,
+  "imageReview": "Individually opened the exact1024x680delivery. The foreground dark juvenile is small in the whole landscape but clearly separated against reflective water, with dark bill and legs, curved lowered neck and brown-gray wing pattern. Pale adults surround it at comparable foreground scale. Golden marsh grass, peach light and ordered reflections give the frame a coherent composition. This is an environmental age-comparison scene with readable subjects, not an enlarged blurry portrait. PASS at full delivered scale.",
+  "proseReview": "The brief retrospective moves from biological origin to a particular imagined social pressure. The last sentence gives Flora a prickly memory of adults measuring her progress. The image supplies the actual age/color comparison and feeding context. No word change needed. No claimed immediate color transformation.",
+  "fictionBoundary": "Adult checking, their apparent impatience, individual memory and the long transition are fiction. The still shows feeding postures and age-related coloration, not documented social inspection or a time-lapse. Female Flora is fictional casting; the photograph is not sex evidence.",
+  "canonReview": "Read all four episodes in sample-character-arcs.ts and canon greater-flamingo restriction. Recover earliest juvenile episode before courtship and adult feeding/weather. Distinct from admitted Upside-down supper: developmental recollection rather than adult interrupted boasting. Phoenicopterus roseus is consistent with Camargue salt lagoon43.43,4.64; Italy source provenance does not relocate her. Adult avatar and all four literal passages remain unchanged.",
+  "media": {
+    "observationId": 330143047,
+    "photo": {
+      "id": 598593716,
+      "license_code": "cc-by",
+      "original_dimensions": {
+        "width": 2048,
+        "height": 1360
+      },
+      "url": "https://inaturalist-open-data.s3.amazonaws.com/photos/598593716/square.jpg",
+      "attribution": "(c) Mateusz Bronikowski, some rights reserved (CC BY)",
+      "flags": [],
+      "moderator_actions": [],
+      "hidden": false
+    },
+    "url": "https://inaturalist-open-data.s3.amazonaws.com/photos/598593716/large.jpg",
+    "localPath": "/tmp/freed-flora166/598593716.jpg",
+    "sha1": "9d875e71ac887bb4ff3b0565fc02415d3dbd58e8",
+    "bytes": 469873,
+    "width": 1024,
+    "height": 680,
+    "sha256": "100208a4638f8166149412b716f399f81b72b73a59cebe54793d001ab1367f82",
+    "creator": "Mateusz Bronikowski",
+    "license": "CC BY 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+    "sourceUrl": "https://www.inaturalist.org/observations/330143047",
+    "sourceMetadataLocal": "/tmp/freed-flora166/obs-330143047.json",
+    "verifiedBytes": 469873,
+    "verifiedSha1": "9d875e71ac887bb4ff3b0565fc02415d3dbd58e8",
+    "verifiedSha256": "100208a4638f8166149412b716f399f81b72b73a59cebe54793d001ab1367f82",
+    "originalBytesReviewed": false,
+    "individuallyOpened": true
+  },
+  "rightsReview": "Independently read cached primary observation330143047.json at actual path obs-330143047.json. Exact photo598593716 is LocalPhoto, attributed to Mateusz Bronikowski, CC-BY with explicit by/4.0 URL. Its published large_url matches delivered bytes record; original metadata2048x1360. Research identification Phoenicopterus roseus and captive false. No PD or alternate native-license claim invented.",
+  "biologyReview": "Independently opened the Smithsonian National Zoo primary husbandry account. It describes gray-white hatchling plumage and dietary carotenoids incorporated into pink plumage over development. Supports gradual dietary coloration; no exact age or speed is claimed.",
+  "biologyUrl": "https://nationalzoo.si.edu/animals/news/why-are-flamingos-pink-and-other-flamingo-facts",
+  "scope": "Independent proposal review only; no runtime or source draft edits."
+}

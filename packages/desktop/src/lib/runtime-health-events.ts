@@ -34,6 +34,11 @@ export function runtimeHealthIdentityFields(): RuntimeHealthIdentityFields {
   };
 }
 
+/** Add build/session provenance even before legal acceptance or Library initialization. */
+export function withRuntimeHealthIdentity<T extends object>(payload: T): T & RuntimeHealthIdentityFields {
+  return { ...payload, ...runtimeHealthIdentityFields() };
+}
+
 export type CloudUploadCause =
   "subscriber" | "manual" | "poll" | "startup-repair";
 
@@ -67,7 +72,7 @@ export function recordRuntimeHealthEvent(
   try {
     if (!isTauri()) return;
     void invoke("record_runtime_health_event", {
-      payload: { ...payload, ...runtimeHealthIdentityFields() },
+      payload: withRuntimeHealthIdentity(payload),
     }).catch(() => {});
   } catch {
     // Counters must never propagate into sync or capture paths.
@@ -182,6 +187,22 @@ export function recordFacebookGroupDiscoveryUpdate(input: {
 }): void {
   recordRuntimeHealthEvent({
     event: "facebook_group_discovery_update",
+    ...input,
+  });
+}
+
+/** Aggregate Facebook admission decisions without recording provider content. */
+export function recordFacebookAdmissionSummary(input: {
+  ruleVersion: string;
+  inspectedPlacements: number;
+  observationCount: number;
+  excludedAdvertising: number;
+  deferredAdvertising: number;
+  detectorErrors: number;
+}): void {
+  recordRuntimeHealthEvent({
+    event: "facebook_admission_summary",
+    provider: "facebook",
     ...input,
   });
 }

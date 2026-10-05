@@ -144,6 +144,7 @@ export function MapView({ viewportInsets }: MapViewProps) {
   const { geographicMapMode = "online" } = usePlatform();
   const searchCorpusVersion = useAppStore((state) => state.searchCorpusVersion);
   const selectedPersonId = useAppStore((state) => state.selectedPersonId);
+  const selectedAccountId = useAppStore((state) => state.selectedAccountId);
   const setSelectedPerson = useAppStore((state) => state.setSelectedPerson);
   const setSelectedAccount = useAppStore((state) => state.setSelectedAccount);
   const setSelectedItem = useAppStore((state) => state.setSelectedItem);
@@ -156,7 +157,7 @@ export function MapView({ viewportInsets }: MapViewProps) {
   const [rangeSelection, setRangeSelection] = useState<LocationTimeRange | null>(null);
 
   const locationCandidates = useLibraryMapCandidates(searchCorpusVersion);
-  const { resolvedItems } = useResolvedLocationCandidates(locationCandidates, {
+  const { resolvedItems, resolvingCount } = useResolvedLocationCandidates(locationCandidates, {
     resolveNamedLocations: geographicMapMode !== "local-showcase",
   });
   const rawTimeBounds = useMemo(() => getLocationTimelineBounds(resolvedItems), [resolvedItems]);
@@ -259,8 +260,10 @@ export function MapView({ viewportInsets }: MapViewProps) {
   }, [timeBounds]);
 
   const focusedMarker = useMemo(
-    () => markers.find((marker) => marker.friend?.id === selectedPersonId) ?? null,
-    [markers, selectedPersonId]
+    () => markers.find((marker) => selectedPersonId
+      ? marker.friend?.id === selectedPersonId
+      : Boolean(selectedAccountId && marker.accountId === selectedAccountId)) ?? null,
+    [markers, selectedAccountId, selectedPersonId]
   );
 
   const rangeDuration = timeBounds ? Math.max(1, timeBounds.endAt - timeBounds.startAt) : 1;
@@ -317,7 +320,7 @@ export function MapView({ viewportInsets }: MapViewProps) {
           data-map-floating-control="timeline"
           data-map-floating-control-edge="bottom"
         >
-          <div className="flex items-center justify-end text-[10px] font-medium text-[color:var(--theme-text-muted)]">
+          <div className="flex items-center justify-end text-[0.625rem] font-medium text-[color:var(--theme-text-muted)]">
             <div className="flex flex-wrap items-center justify-end gap-1 text-right">
               {timePresets.map((preset) => {
                 const active = activePreset === preset.value;
@@ -328,7 +331,7 @@ export function MapView({ viewportInsets }: MapViewProps) {
                     data-testid={preset.testId}
                     aria-pressed={active}
                     disabled={!timeBounds}
-                    className={`rounded-full border px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                    className={`rounded-full border px-2 py-0.5 text-[0.625rem] font-medium transition-colors ${
                       active
                         ? "border-[color:rgb(var(--theme-accent-secondary-rgb)/0.28)] bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.14)] text-[color:var(--theme-text-primary)]"
                         : "border-transparent text-[color:var(--theme-text-muted)] hover:bg-[color:var(--theme-bg-soft)] hover:text-[color:var(--theme-text-secondary)]"
@@ -375,14 +378,14 @@ export function MapView({ viewportInsets }: MapViewProps) {
               onChange={(event) => handleRangeEndChange(Number.parseInt(event.currentTarget.value, 10))}
             />
             <span
-              className="absolute top-7 whitespace-nowrap text-[10px] text-[color:var(--theme-text-soft)]"
+              className="absolute top-7 whitespace-nowrap text-[0.625rem] text-[color:var(--theme-text-soft)]"
               data-testid="map-time-range-start-label"
               style={labelPositionStyle(rangeStartPercent, "start", labelsAreClose)}
             >
               {effectiveTimeRange ? formatRangeEdge(effectiveTimeRange.startAt) : "Start"}
             </span>
             <span
-              className="absolute top-7 whitespace-nowrap text-[10px] text-[color:var(--theme-text-soft)]"
+              className="absolute top-7 whitespace-nowrap text-[0.625rem] text-[color:var(--theme-text-soft)]"
               data-testid="map-time-range-end-label"
               style={labelPositionStyle(rangeEndPercent, "end", labelsAreClose)}
             >
@@ -394,6 +397,8 @@ export function MapView({ viewportInsets }: MapViewProps) {
 
       <MapSurface
         markers={markers}
+        cameraContentSettled={resolvingCount === 0}
+        cameraContentKey={JSON.stringify([effectiveMode, effectiveTimeRange])}
         focusedMarkerKey={focusedMarker?.key ?? null}
         themeId={themeId}
         viewportInsets={viewportInsets}

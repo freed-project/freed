@@ -1,0 +1,35 @@
+{
+  "verdict": "PASS exact proposed prose and photograph, pending root admission",
+  "reviewerScope": "Independent review only; no runtime changes, no inspection of unrelated tasks.",
+  "characterId": "alma-eight",
+  "title": "The way round",
+  "imagePath": "/tmp/freed-alma112/725107208.jpg",
+  "imageIndividuallyOpened": true,
+  "bytes": 989474,
+  "sha1": "cd9f07eeaa5ac2ec4e391fd18e4f792c0480af0c",
+  "sha256": "c069cfc307b145ffe28faf37e7145854a100c9ddf5f0783d1adf4a28ed71159b",
+  "deliveryDimensions": [
+    1024,
+    768
+  ],
+  "sourceOriginalDimensions": [
+    2048,
+    1536
+  ],
+  "originalBytesReviewed": false,
+  "primaryMetadataPath": "/tmp/freed-alma112/395451474.json",
+  "sourceUrl": "https://www.inaturalist.org/observations/395451474",
+  "photoId": 725107208,
+  "taxonId": 49315,
+  "taxon": "Octopus vulgaris",
+  "rightsVerdict": "PASS cached primary photo-specific CC BY 4.0 record",
+  "attribution": "(c) Vsevolod Rudyi, some rights reserved (CC BY), uploaded by Vsevolod Rudyi",
+  "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+  "deliveryUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/725107208/large.jpg",
+  "imageFit": "Transparent shallow container, submerged patterned octopus, distinct arms and suckers, weed visible through and beside container. The impossible direct reach toward visible material through a floor is genuinely grounded. No arm clearly escapes over the rim in this exact frame; finding the top is an allowed fictional moment around the photographed situation, not documentary evidence.",
+  "proseVerdict": "PASS. The urge to recall the useful arm to help the frustrated arms supplies a specific mistake and reversal. The final sentence resolves the divided action rather than appending a global lesson. Short enough to retain the physical joke.",
+  "canonVerdict": "PASS. Read all eight current Alma bodies, presently null-media. This separate temporary handling encounter adds no den, crab, shell, loss, travel, offspring or injury history and does not reinstate any held passage. Adult female fictional identity and Mouro home remain unchanged; the photograph does not establish sex or exact age. Append without using it to illustrate the preserved den passage.",
+  "sourceBoundary": "Cascais Portugal is provenance. Captive flag false is an observation field, not proof of absence of human handling; the container is visibly real. Do not describe this as an undisturbed free-swimming wild scene. Photographer motive, who handled the octopus, duration and release are unknown.",
+  "requiredChanges": [],
+  "catalogNote": "If later integrated, include measured 1024x768 delivery dimensions and source-reported 2048x1536 original dimensions. Existing 113 JSON has hashes and bytes but omits dimensions. No prose change required."
+}

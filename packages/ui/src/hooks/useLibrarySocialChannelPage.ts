@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Account } from "@freed/shared";
 import {
   LIBRARY_CORE_FRIENDS_IDENTITY_PAGE_MAXIMUM_LIMIT,
@@ -17,6 +17,8 @@ export interface LibrarySocialChannelPageState {
   readonly channels: readonly SocialChannelDestination[];
   readonly error: string | null;
   readonly loading: boolean;
+  readonly resultsCurrent: boolean;
+  isAccountCurrent(account: CommandSocialAccount): boolean;
 }
 
 function normalizedTerms(query: string): readonly string[] {
@@ -86,34 +88,45 @@ export function useLibrarySocialChannelPage({
   readonly query: string;
   readonly sourceVersion: number;
 }): LibrarySocialChannelPageState {
-  const { queryLibraryCore } = usePlatform();
-  const terms = useMemo(() => normalizedTerms(query), [query]);
+  const { queryLibraryCore, readLibraryPersonDetail } = usePlatform();
+  const termsKey = JSON.stringify(normalizedTerms(query));
+  const terms = useMemo<readonly string[]>(() => JSON.parse(termsKey), [termsKey]);
   const queryKey = JSON.stringify({ enabled, sourceVersion, terms });
-  const [channels, setChannels] = useState<readonly SocialChannelDestination[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  type Resource = {
+    termsKey: string;
+    queryReader: typeof queryLibraryCore;
+    personReader: typeof readLibraryPersonDetail;
+    sourceVersion: number;
+    channels: readonly SocialChannelDestination[];
+    error: string | null;
+  };
+  const [resource, setResource] = useState<Resource | null>(null);
+  const contextMatches = enabled && terms.length > 0 && resource !== null &&
+    resource.termsKey === termsKey && resource.queryReader === queryLibraryCore &&
+    resource.personReader === readLibraryPersonDetail && resource.sourceVersion <= sourceVersion;
+  const channels = contextMatches ? resource.channels : [];
+  const resultsCurrent = contextMatches && resource.sourceVersion === sourceVersion && resource.error === null;
+  const admission = useRef({ channels, resultsCurrent });
+  admission.current = { channels, resultsCurrent };
+  const isAccountCurrent = useMemo(() => (account: CommandSocialAccount) =>
+    admission.current.resultsCurrent && admission.current.channels.some((destination) => destination.account === account), []);
 
   useEffect(() => {
     let cancelled = false;
     if (!enabled || terms.length === 0) {
-      setChannels([]);
-      setLoading(false);
-      setError(null);
+      setResource(null);
       return () => {
         cancelled = true;
       };
     }
     if (!queryLibraryCore) {
-      setChannels([]);
-      setLoading(false);
-      setError("SQLite social channel query is unavailable");
+      setResource({ termsKey, queryReader: queryLibraryCore, personReader: readLibraryPersonDetail, sourceVersion, channels: [], error: "SQLite social channel query is unavailable" });
       return () => {
         cancelled = true;
       };
     }
 
-    setLoading(true);
-    setError(null);
+    const provenance = { termsKey, queryReader: queryLibraryCore, personReader: readLibraryPersonDetail, sourceVersion };
     const readerSessionId = `social-channel-page-reader:${crypto.randomUUID()}`;
     void (async () => {
       const matchesPage: SocialChannelDestination[] = [];
@@ -128,10 +141,16 @@ export function useLibrarySocialChannelPage({
             readerSessionId,
             schemaVersion: 1,
           });
+        if (cancelled) return Object.freeze([]);
         for (const row of page.rows) {
           const account = toCommandAccount(row);
           if (!account || !matches(account, row.personName, terms)) continue;
+          const person = account.personId && readLibraryPersonDetail
+            ? await readLibraryPersonDetail(account.personId)
+            : undefined;
+          if (cancelled) return Object.freeze([]);
           matchesPage.push(Object.freeze({
+            person: person ?? undefined,
             account,
             personName: row.personName ?? undefined,
           }));
@@ -145,19 +164,18 @@ export function useLibrarySocialChannelPage({
     })()
       .then((result) => {
         if (cancelled) return;
-        setChannels(result);
-        setLoading(false);
+        setResource({ ...provenance, channels: result, error: null });
       })
       .catch((reason: unknown) => {
         if (cancelled) return;
-        setChannels([]);
-        setLoading(false);
-        setError(reason instanceof Error ? reason.message : String(reason));
+        setResource({ ...provenance, channels: [], error: reason instanceof Error ? reason.message : String(reason) });
       });
     return () => {
       cancelled = true;
     };
-  }, [queryKey, queryLibraryCore, terms]);
+  }, [queryKey, queryLibraryCore, readLibraryPersonDetail, terms, termsKey]);
 
-  return { channels, error, loading };
+  const error = contextMatches && resource.sourceVersion === sourceVersion ? resource.error : null;
+  const loading = enabled && terms.length > 0 && Boolean(queryLibraryCore) && !resultsCurrent && error === null;
+  return { channels, error, loading, resultsCurrent, isAccountCurrent };
 }

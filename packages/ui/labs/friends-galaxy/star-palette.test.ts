@@ -39,7 +39,8 @@ describe("Friends Galaxy GPU star palette", () => {
     expect(target.slice(friendOffset, friendOffset + 3)).not.toEqual(
       target.slice(selectionOffset, selectionOffset + 3),
     );
-    expect(target[backgroundOffset + 3]).toBeCloseTo(0.2);
+    expect(target[backgroundOffset + 3]).toBeGreaterThan(0);
+    expect(target[backgroundOffset + 3]).toBeLessThan(target[friendOffset + 3]!);
     expect(target[selectionOffset + 3]).toBe(1);
   });
 
@@ -114,7 +115,7 @@ describe("Friends Galaxy GPU star palette", () => {
       palette.friend,
     );
     expect(friendsGalaxySemanticColor(connectionScene, palette, friendIndex)).toBe(
-      palette.connection,
+      palette.friend,
     );
   });
 

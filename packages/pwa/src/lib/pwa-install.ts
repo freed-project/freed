@@ -16,29 +16,39 @@ type NavigatorWithStandalone = Navigator & {
 };
 
 export function isStandalonePwa(win: Window = window): boolean {
-  const displayModeStandalone = win.matchMedia?.("(display-mode: standalone)")?.matches === true;
-  const navigatorStandalone = (win.navigator as NavigatorWithStandalone).standalone === true;
+  const displayModeStandalone =
+    win.matchMedia?.("(display-mode: standalone)")?.matches === true;
+  const navigatorStandalone =
+    (win.navigator as NavigatorWithStandalone).standalone === true;
   return displayModeStandalone || navigatorStandalone;
 }
 
-export function dismissInstallNotice(storage: StorageLike = window.localStorage): void {
+export function dismissInstallNotice(
+  storage: StorageLike = window.localStorage,
+): void {
   storage.setItem(INSTALL_PROMPT_DISMISS_KEY, "1");
 }
 
-export function clearInstallNoticeDismissal(storage: StorageLike = window.localStorage): void {
+export function clearInstallNoticeDismissal(
+  storage: StorageLike = window.localStorage,
+): void {
   storage.removeItem(INSTALL_PROMPT_DISMISS_KEY);
 }
 
-export function isInstallNoticeDismissed(storage: StorageLike = window.localStorage): boolean {
+export function isInstallNoticeDismissed(
+  storage: StorageLike = window.localStorage,
+): boolean {
   return storage.getItem(INSTALL_PROMPT_DISMISS_KEY) === "1";
 }
 
-export function isIosSafariInstallCandidate(win: Window = window): boolean {
+export function isIosManualInstallCandidate(win: Window = window): boolean {
   const ua = win.navigator.userAgent;
-  const isIosDevice = /iPhone|iPad|iPod/.test(ua)
-    || (ua.includes("Macintosh") && win.navigator.maxTouchPoints > 1);
+  const isIosDevice =
+    /iPhone|iPad|iPod/.test(ua) ||
+    (ua.includes("Macintosh") && win.navigator.maxTouchPoints > 1);
   const isSafari = /Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(ua);
-  return isIosDevice && isSafari;
+  const isChrome = /CriOS/.test(ua);
+  return isIosDevice && (isSafari || isChrome);
 }
 
 export function getInitialInstallNotice(
@@ -49,7 +59,7 @@ export function getInitialInstallNotice(
     return null;
   }
 
-  if (isIosSafariInstallCandidate(win)) {
+  if (isIosManualInstallCandidate(win)) {
     return { kind: "ios" };
   }
 
@@ -79,11 +89,17 @@ export function watchInstallPrompt(
     callbacks.onInstalled();
   };
 
-  win.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt as EventListener);
+  win.addEventListener(
+    "beforeinstallprompt",
+    handleBeforeInstallPrompt as EventListener,
+  );
   win.addEventListener("appinstalled", handleInstalled);
 
   return () => {
-    win.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt as EventListener);
+    win.removeEventListener(
+      "beforeinstallprompt",
+      handleBeforeInstallPrompt as EventListener,
+    );
     win.removeEventListener("appinstalled", handleInstalled);
   };
 }

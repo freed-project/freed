@@ -59,6 +59,8 @@ export interface NewsletterSignupProps {
   siteKey?: string;
   compact?: boolean;
   previewOnly?: boolean;
+  submitLabel?: string;
+  showPrivacyNote?: boolean;
   onSubscribed?: () => void;
 }
 
@@ -115,6 +117,8 @@ export function NewsletterSignup({
   siteKey = FREED_NEWSLETTER_TURNSTILE_SITE_KEY,
   compact = false,
   previewOnly = false,
+  submitLabel = "Join the newsletter",
+  showPrivacyNote = true,
   onSubscribed,
 }: NewsletterSignupProps = {}) {
   const [verificationStarted, setVerificationStarted] = useState(false);
@@ -255,7 +259,9 @@ export function NewsletterSignup({
         };
 
         if (!response.ok || !data.success) {
-          throw new Error(data.error ?? "Signup failed. Please try again.");
+          throw new Error(response.status === 429
+            ? "Too many signup attempts. Please wait a moment and try again."
+            : "Your signup could not be completed. Please try again.");
         }
 
         rememberSubscription();
@@ -265,9 +271,9 @@ export function NewsletterSignup({
       } catch (error) {
         setStatus("error");
         setMessage(
-          error instanceof Error
+          error instanceof Error && error.message === "Too many signup attempts. Please wait a moment and try again."
             ? error.message
-            : "Signup failed. Please try again.",
+            : "Your signup could not be completed. Check your connection and try again.",
         );
         setTurnstileToken("");
         if (widgetIdRef.current && window.turnstile) {
@@ -410,7 +416,7 @@ export function NewsletterSignup({
           className="btn-primary inline-flex min-h-11 w-full items-center justify-center px-5 py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
           disabled={status === "submitting"}
         >
-          {status === "submitting" ? "Joining…" : "Join the newsletter"}
+          {status === "submitting" ? "Joining…" : submitLabel}
         </button>
 
         {message ? (
@@ -423,10 +429,10 @@ export function NewsletterSignup({
         ) : null}
       </form>
 
-      <p className={`text-[11px] leading-relaxed text-[var(--theme-text-soft)] ${compact ? "text-center" : ""}`}>
+      {showPrivacyNote && <p className={`text-[0.6875rem] leading-relaxed text-[var(--theme-text-soft)] ${compact ? "text-center" : ""}`}>
         Unsubscribe anytime. Your email goes to our newsletter provider and
         nowhere else.
-      </p>
+      </p>}
     </section>
   );
 }

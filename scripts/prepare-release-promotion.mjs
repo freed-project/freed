@@ -135,7 +135,7 @@ function applyPromotionPatch({ cwd, patch, indexFile = null }) {
   }
 }
 
-function verifyPreparedSnapshot({ cwd, fromRef, expectedFiles, indexFile }) {
+function verifyPreparedSnapshot({ cwd, fromRef, baseRef, expectedFiles, indexFile }) {
   const env = { ...process.env, GIT_INDEX_FILE: indexFile };
   const stagedFiles = runGit(["diff", "--cached", "--name-only", "--no-renames"], {
     cwd,
@@ -155,6 +155,7 @@ function verifyPreparedSnapshot({ cwd, fromRef, expectedFiles, indexFile }) {
   const remaining = listPromotionBranchDiffFiles({
     fromRef,
     toRef: preparedTree,
+    baseRef,
     cwd,
   });
   if (remaining.length > 0) {
@@ -176,6 +177,7 @@ function prepareInTemporaryIndex({ cwd, fromRef, baseRef, files, patch }) {
     return verifyPreparedSnapshot({
       cwd,
       fromRef,
+      baseRef,
       expectedFiles: files,
       indexFile,
     });

@@ -34,7 +34,7 @@ describe("Friends Galaxy avatar atlas selection", () => {
     )).toEqual([]);
   });
 
-  it("keeps the close atlas capped and retains a selected low-priority identity", () => {
+  it("does not drop close identities to a priority cap on either layout", () => {
     const selectedNodeId = "person:lab-person-4999";
     const desktop = selectFriendsGalaxyAvatars(
       fixture,
@@ -53,8 +53,8 @@ describe("Friends Galaxy avatar atlas selection", () => {
       "close",
     );
 
-    expect(desktop).toHaveLength(12);
-    expect(compact).toHaveLength(6);
+    expect(desktop).toHaveLength(fixture.personCount);
+    expect(compact).toHaveLength(fixture.personCount);
     expect(desktop.some((avatar) => avatar.nodeId === selectedNodeId && avatar.selected)).toBe(true);
     expect(compact.some((avatar) => avatar.nodeId === selectedNodeId && avatar.selected)).toBe(true);
   });
@@ -71,7 +71,7 @@ describe("Friends Galaxy avatar atlas selection", () => {
     expect(avatars.some((avatar) => avatar.nodeId === "person:lab-person-0" && avatar.selected)).toBe(true);
   });
 
-  it("can prebuild a bounded hidden roster from compact atlas metadata", () => {
+  it("keeps the hidden roster within admitted metadata until selection metadata arrives", () => {
     const atlasPersonIds = new Set(
       fixture.atlas.nodes
         .filter((node) => node.kind === "friend_person" || node.kind === "connection_person")
@@ -90,10 +90,10 @@ describe("Friends Galaxy avatar atlas selection", () => {
     );
 
     expect(atlasPersonIds.has(selectedNodeId)).toBe(false);
-    expect(avatars).toHaveLength(6);
-    expect(avatars.some((avatar) => avatar.nodeId === selectedNodeId && avatar.selected)).toBe(true);
+    expect(avatars).toHaveLength(atlasPersonIds.size);
+    expect(avatars.some((avatar) => avatar.nodeId === selectedNodeId)).toBe(false);
     expect(
-      avatars.every((avatar) => avatar.nodeId === selectedNodeId || atlasPersonIds.has(avatar.nodeId)),
+      avatars.every((avatar) => atlasPersonIds.has(avatar.nodeId)),
     ).toBe(true);
   });
 
@@ -122,6 +122,7 @@ describe("Friends Galaxy avatar atlas selection", () => {
 
     expect(avatars.some((avatar) => avatar.nodeId === "person:lab-person-4999")).toBe(true);
     expect(avatars.some((avatar) => avatar.nodeId === "person:lab-person-0")).toBe(false);
-    expect(avatars).toHaveLength(12);
+    expect(avatars.length).toBeGreaterThan(12);
+    expect(avatars.length).toBeLessThan(fixture.personCount);
   });
 });

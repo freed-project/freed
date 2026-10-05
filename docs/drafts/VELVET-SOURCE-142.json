@@ -1,0 +1,49 @@
+{
+  "status": "source_holds_only",
+  "media": [
+    {
+      "observationId": 38181000,
+      "photoId": 60643931,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/60643931/large.jpg",
+      "attribution": "(c) Oleg Kosterin, some rights reserved (CC BY)",
+      "license": "cc-by",
+      "localPath": "/tmp/freed-velvet142/60643931.jpg",
+      "sha1": "4fe51a7ccf85040bf4833af2b361a592074418b2",
+      "sha256": "96b5e7132ed4102c9b10c58118dc24142c7dd8edee15aafe501ca530177e6711",
+      "review": "Root individually opened; no admission."
+    },
+    {
+      "observationId": 84652942,
+      "photoId": 139156344,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/139156344/large.jpg",
+      "attribution": "(c) Lawrence Hylton, some rights reserved (CC BY)",
+      "license": "cc-by",
+      "localPath": "/tmp/freed-velvet142/139156344.jpg",
+      "sha1": "05ddd565df08555300d65352cc8970bccff7a317",
+      "sha256": "44a24f960c40b7c21fb6c4c84cffec5a3caa0aac06ccbe0b87338ed334fb465c",
+      "review": "Root individually opened; no admission."
+    },
+    {
+      "observationId": 136439781,
+      "photoId": 232859670,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/232859670/large.jpeg",
+      "attribution": "(c) Cheryl Stinchcomb, some rights reserved (CC BY)",
+      "license": "cc-by",
+      "localPath": "/tmp/freed-velvet142/232859670.jpg",
+      "sha1": "daf2f85450ab0482bd89c1b86d7d747ba90558ee",
+      "sha256": "52131e8cda740d0ebdc3af576d27368b94162c120c5318333b8ae4756e71f938",
+      "review": "Already admitted as Warm perch; do not duplicate."
+    },
+    {
+      "observationId": 3819804,
+      "photoId": 4466444,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/4466444/large.jpg",
+      "attribution": "no rights reserved",
+      "license": "cc0",
+      "localPath": "/tmp/freed-velvet142/4466444.jpg",
+      "sha1": "34fce873e2f9f3a53be07f3a323333b59a311649",
+      "sha256": "959f63f571785c59b532427303d1b062126618f514dccbed50bcdde885a515c9",
+      "review": "Root individually opened; no admission."
+    }
+  ]
+}

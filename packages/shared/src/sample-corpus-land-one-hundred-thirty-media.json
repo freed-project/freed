@@ -1,0 +1,18 @@
+[
+  {
+    "id": "land130-ada-dew",
+    "subject": "red-eyed tree frog",
+    "category": "wildlife",
+    "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/60761643/large.jpeg",
+    "sourceUrl": "https://www.inaturalist.org/observations/38247422",
+    "creator": "Lena Struwe",
+    "license": "CC BY-SA 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+    "sha1": "5190c6ad87e8bc78659ab136f4b48d200c5e4462",
+    "width": 1024,
+    "height": 768,
+    "identityNameBase": "Ada Dew",
+    "alt": "Red-eyed tree frog embryos curl within translucent eggs clustered beneath a leaf.",
+    "detail": "Eyes and curled tails are visible through rounded egg capsules in a hanging gelatinous clutch. Peripheral eggs are softer; no hatching or predator is shown."
+  }
+]

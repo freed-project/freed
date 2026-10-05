@@ -19,6 +19,7 @@ export const PROMOTION_SCOPE_PATHS = [
   "bunfig.toml",
   "tsconfig.json",
   "tsconfig.base.json",
+  "vitest.config.ts",
 ];
 
 export const RELEASE_ONLY_FILES = [
@@ -49,6 +50,7 @@ export const PROMOTION_CONTROL_FILES = [
   "scripts/deploy-pwa-production-snapshot.sh",
   "scripts/promote-dev-to-main.sh",
   "scripts/promote-dev-to-main.test.mjs",
+  "scripts/prepare-release-promotion.mjs",
   "scripts/release-promotion-shared.mjs",
   "scripts/release-promotion.test.mjs",
   "scripts/release-workflow-matrix.test.mjs",
@@ -65,6 +67,12 @@ export const PROMOTION_COMMIT_SUBJECT_PATTERN =
   /^chore: promote dev (?:into|to) main(?: for production release)?(?: \(#\d+\))?$/;
 const HISTORICAL_MAIN_BACKPORT_SUBJECTS = new Set([
   "fix: backport simplified provider approval (#980)",
+]);
+// Immutable snapshot controls were already on dev before the unchanged
+// reverse-integration checkpoint. Pin the backport identity, not its subject:
+// a later main rollback must still require reverse integration.
+const HISTORICAL_MAIN_BACKPORT_COMMITS = new Set([
+  "8f179b4ef898e1e3025b3a7ae5a4407561459474",
 ]);
 const HISTORICAL_MAIN_PROMOTION_SUBJECTS = new Set([
   "chore: refresh dev promotion for production release (#1538)",
@@ -173,7 +181,12 @@ export function listPromotionDiffFiles({ fromRef, toRef, cwd }) {
   );
 }
 
-export function listPromotionBranchDiffFiles({ fromRef, toRef, cwd }) {
+export function listPromotionBranchDiffFiles({
+  fromRef,
+  toRef,
+  baseRef = "origin/main",
+  cwd,
+}) {
   const promotionScopeFiles = listChangedFiles({
     fromRef,
     toRef,
@@ -186,11 +199,18 @@ export function listPromotionBranchDiffFiles({ fromRef, toRef, cwd }) {
     cwd,
     pathspec: PROMOTION_WEBSITE_CONFIG_FILES,
   });
-  const releaseNoteFiles = listChangedFiles({
-    fromRef,
-    toRef,
-    cwd,
-    pathspec: RELEASE_ONLY_PREFIXES,
+  // Production receipts belong to main. A dev snapshot may predate their
+  // reverse integration, but promotion must never erase or rewrite them.
+  const releaseNoteFiles = uniqueSorted([
+    ...listChangedFiles({ fromRef, toRef, cwd, pathspec: RELEASE_ONLY_PREFIXES }),
+    ...listChangedFiles({
+      fromRef: baseRef, toRef, cwd, pathspec: RELEASE_ONLY_PREFIXES,
+    }),
+  ]).filter((filePath) => {
+    const expected =
+      readBlobId(baseRef, filePath, { cwd }) ??
+      readBlobId(fromRef, filePath, { cwd });
+    return readBlobId(toRef, filePath, { cwd }) !== expected;
   });
 
   return uniqueSorted([
@@ -234,7 +254,11 @@ export function listPromotionBranchPatchFiles({ fromRef, toRef, cwd }) {
   ]).filter(
     (filePath) =>
       !BRANCH_SPECIFIC_RELEASE_LANE_FILES.has(filePath) &&
-      !isPromotionControlFile(filePath),
+      !isPromotionControlFile(filePath) &&
+      !(
+        RELEASE_ONLY_PREFIXES.some((prefix) => filePath.startsWith(prefix)) &&
+        readBlobId(toRef, filePath, { cwd })
+      ),
   );
 }
 
@@ -259,6 +283,20 @@ function blobExistsInHistory(ref, filePath, blobId, { cwd } = {}) {
   return commits.some(
     (commit) => readBlobId(commit, filePath, { cwd }) === blobId,
   );
+}
+
+function treeEntryExistsInHistory(ref, filePath, sourceRef, { cwd } = {}) {
+  const readEntry = (commit) => tryRunGit(
+    ["ls-tree", "--format=%(objectmode) %(objecttype) %(objectname)", commit,
+      "--", `:(literal)${filePath}`],
+    { cwd },
+  );
+  const entry = readEntry(sourceRef);
+  if (!entry) return false;
+  const commits = splitLines(
+    tryRunGit(["log", "--format=%H", ref, "--", filePath], { cwd }) ?? "",
+  );
+  return commits.some((commit) => readEntry(commit) === entry);
 }
 
 function commitIsAncestor(ancestorRef, descendantRef, { cwd } = {}) {
@@ -301,6 +339,23 @@ function fileStateWasReverseIntegrated(
   });
 }
 
+// Release commits may obscure the last promoted lockfile blob. Strip only
+// proven application-version-only changes, preserving dependency provenance.
+function cargoLockProductRef(ref, { cwd }) {
+  let current = ref;
+  for (;;) {
+    const change = latestFileCommit(current, CARGO_LOCK_PATH, { cwd });
+    if (!change) return current;
+    const parent = tryRunGit(["rev-parse", `${change.commit}^`], { cwd });
+    if (!parent || !isCargoLockReleaseOnlyChange({
+      fromRef: parent,
+      toRef: change.commit,
+      cwd,
+    })) return current;
+    current = parent;
+  }
+}
+
 export function listMainBackflowDiffFiles({ devRef, mainRef, cwd }) {
   const mainChangedFiles = uniqueSorted(
     splitLines(
@@ -331,9 +386,12 @@ export function listMainBackflowDiffFiles({ devRef, mainRef, cwd }) {
         }),
     )
     .filter((filePath) => {
-      const mainBlobId = readBlobId(mainRef, filePath, { cwd });
+      const productMainRef = filePath === CARGO_LOCK_PATH
+        ? cargoLockProductRef(mainRef, { cwd })
+        : mainRef;
+      const mainBlobId = readBlobId(productMainRef, filePath, { cwd });
       const devBlobId = readBlobId(devRef, filePath, { cwd });
-      const mainChange = latestFileCommit(mainRef, filePath, { cwd });
+      const mainChange = latestFileCommit(productMainRef, filePath, { cwd });
 
       if (!mainBlobId) {
         if (!mainChange) {
@@ -360,6 +418,15 @@ export function listMainBackflowDiffFiles({ devRef, mainRef, cwd }) {
       if (
         mainChange &&
         commitIsAncestor(mainChange.commit, devRef, { cwd })
+      ) {
+        return false;
+      }
+
+      if (
+        mainBlobId &&
+        mainChange &&
+        HISTORICAL_MAIN_BACKPORT_COMMITS.has(mainChange.commit) &&
+        treeEntryExistsInHistory(devRef, filePath, productMainRef, { cwd })
       ) {
         return false;
       }

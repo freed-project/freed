@@ -195,14 +195,14 @@ test("mobile source toolbar collapses social and signal filters into one menu", 
   await app.waitForReady();
   await injectInstagramItems(page);
 
+  await page.getByRole("button", { name: "Open menu", exact: true }).click();
   await page.getByTestId("source-row-instagram").first().click();
   await expect(page.getByTestId("social-content-toolbar-filter")).toBeHidden();
   await expect(page.getByTestId("feed-signal-filter-button")).toBeHidden();
 
   const filterButton = page.getByTestId("mobile-toolbar-filter-button");
   await expect(filterButton).toBeVisible();
-  await expect(filterButton).toHaveClass(/theme-toolbar-button-neutral/);
-  await expect(filterButton).not.toHaveClass(/theme-toolbar-button-ghost/);
+  await expect(filterButton).toHaveClass(/theme-toolbar-button-ghost/);
 
   await filterButton.click();
   const menu = page.getByTestId("feed-signal-filter-menu");

@@ -1,0 +1,18 @@
+[
+  {
+    "id": "botanical101-luna-web-spider",
+    "subject": "luna moth",
+    "category": "wildlife",
+    "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/663948899/large.jpg",
+    "sourceUrl": "https://www.inaturalist.org/observations/363718292",
+    "creator": "Samuel Paul Galick",
+    "license": "CC0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "sha1": "0972c379561111b2433aee7c4998ddb4ce8afd23",
+    "alt": "A green luna moth lies caught among silk strands and leaves beside a glossy black spider with red markings.",
+    "identityNameBase": "Luna After",
+    "width": 1024,
+    "height": 768,
+    "detail": "A green luna moth lies caught among silk strands and leaves beside a glossy black spider with red markings."
+  }
+]

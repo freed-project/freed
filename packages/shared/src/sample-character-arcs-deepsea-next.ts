@@ -21,6 +21,7 @@ export const DEEPSEA_NEXT_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "Graneledone boreopacifica",
         "platform": "instagram",
+        "classification": "inspiring",
         "mediaSha1": "d71834762a2df7d346bfacdfabdd9b3c7c73f4cb",
         "theme": "wonder",
         "title": "Still on me",
@@ -29,6 +30,7 @@ export const DEEPSEA_NEXT_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "Graneledone boreopacifica",
         "platform": "facebook",
+        "classification": "conversation",
         "mediaSha1": "0717f5268d8b9cb2f58fc44dd4a5dccd81e31036",
         "theme": "social",
         "title": "Hold this",
@@ -37,6 +39,7 @@ export const DEEPSEA_NEXT_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "Graneledone boreopacifica",
         "platform": "rss",
+        "classification": "conversation",
         "mediaSha1": "40107dd03b68a122652d19eaa94f250f4b9226f4",
         "theme": "social",
         "title": "Everybody was listening",
@@ -45,6 +48,7 @@ export const DEEPSEA_NEXT_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "Graneledone boreopacifica",
         "platform": "instagram",
+        "classification": "inspiring",
         "mediaSha1": "7a7faa3a7a3b3913252f02ac72fccefe432f7f05",
         "theme": "danger",
         "title": "Still interesting",
@@ -53,6 +57,7 @@ export const DEEPSEA_NEXT_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "Graneledone boreopacifica",
         "platform": "facebook",
+        "classification": "personal",
         "mediaSha1": "5eae6c6eace4377f05c3908083d142ca7e23afcf",
         "theme": "family",
         "title": "Small movements",
@@ -76,6 +81,7 @@ export const DEEPSEA_NEXT_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "Atolla jellyfish Puerto Rico",
         "platform": "x",
+        "classification": "personal",
         "mediaSha1": "f46eb6021e1de3735550cb5567d346f8394a6c85",
         "theme": "courtship",
         "title": "The rest of goodbye",
@@ -99,6 +105,7 @@ export const DEEPSEA_NEXT_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "deep water octopus brittle star",
         "platform": "rss",
+        "classification": "conversation",
         "mediaSha1": "a61f8b0466c8304c7468eeb54c7c81dddf5c49d4",
         "theme": "social",
         "title": "That bit of my face",
@@ -122,6 +129,7 @@ export const DEEPSEA_NEXT_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "Atolla jellyfish marine snow",
         "platform": "rss",
+        "classification": "news",
         "mediaSha1": "f4ea6b19e7b17e7a2447496e97792e3b88bc30fc",
         "theme": "cosmic",
         "title": "What fell between us",
@@ -145,6 +153,7 @@ export const DEEPSEA_NEXT_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "Atolla jellyfish red",
         "platform": "x",
+        "classification": "conversation",
         "mediaSha1": "a0efe5c0a717ba17cbc504f3d1aef64143346262",
         "theme": "social",
         "title": "Since when",

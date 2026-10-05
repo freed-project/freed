@@ -1,0 +1,58 @@
+{
+  "decision": "pass_image_prose_physical_plausibility_and_canon; independent_primary_rights_refresh_unavailable",
+  "runtimeAdmission": false,
+  "exactProsePreserved": {
+    "subject": "river",
+    "platform": "instagram",
+    "contentType": "story",
+    "theme": "social",
+    "title": "Before they came in",
+    "body": "I listened while he explained the rocks to them. The first sounded awkward. The second sounded worse. I had been going around both all morning without a thought. Now I wanted everyone to be quiet so I could hear what he was going to say about the bend.",
+    "mediaSha1": "26bbb7f76d510d407c180bcb893883f251620e33"
+  },
+  "imageReview": {
+    "decision": "pass",
+    "individuallyOpened": true,
+    "localPath": "/tmp/freed-sela103/wait.jpg",
+    "sha1": "26bbb7f76d510d407c180bcb893883f251620e33",
+    "sha256": "8908c3d6b575c2e21f71d76a6b4e5f34b4dd227ba4155c8d4d69dc8cc516e2d8",
+    "bytes": 358259,
+    "width": 960,
+    "height": 1445,
+    "visibleScene": "Sharp foreground helmeted paddler with upright paddle, several other equipped people and a green-shirted adult nearer turquoise flowing water. Sloping pale bank, rocky margins, trees and bridge. A bank-side gathering before entry is credible. No literal speech, numbered rock hazards or bend can be verified from still.",
+    "composition": "Retain full frame: river and lower group supply scene; crop concentrating only foreground back would weaken narrative."
+  },
+  "proseReview": {
+    "decision": "pass_verbatim",
+    "reason": "River starts indifferent to familiar obstacles, then hears her ordinary body described as difficult and becomes curious about the next part. Final desire for quiet has an immediate purpose, rather than explaining a moral. The literal setup provides listeners beside flowing water; dialogue and timing are valid fiction."
+  },
+  "physicalPlausibility": {
+    "decision": "pass",
+    "reason": "Water flowing around rocks is compatible with visible river and Sela body. Hearing and attention are established anthropomorphism, not invented animal anatomy. The narrator does not control upstream flow or physically stop the river."
+  },
+  "continuity": {
+    "decision": "pass",
+    "reviewedFile": "packages/shared/src/sample-character-arcs-strange-foundations.ts",
+    "reviewedEpisodes": [
+      "At ankle depth",
+      "Unconstrained",
+      "The edge I remember",
+      "I was going to be quiet",
+      "Separate arrangements"
+    ],
+    "placement": "Append as proposed. No dependence on a named visitor, injury or dated previous incident.",
+    "reason": "Existing erosion scene gives intimate tactile familiarity with rocks; this adds interest in another viewpoint without denying that familiarity. Separate arrangements already includes human speech, but has a transport mishap rather than the present shift in curiosity."
+  },
+  "rightsReview": {
+    "decision": "independent_refresh_unavailable",
+    "reportedCreator": "Darren Glanville",
+    "reportedLicense": "CC BY-SA 2.0",
+    "reportedLicenseUrl": "https://creativecommons.org/licenses/by-sa/2.0/",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:The_long_wait_(8959320603).jpg",
+    "originalSourceUrl": "https://www.flickr.com/photos/darren_j_glanville/8959320603/",
+    "reportedLocationEvidence": "Commons categoryWater sports on So\u010da and geographic coordinate46.340528,13.654083 place scene on same river.",
+    "evidenceLimit": "Author record reports live Commons license, coordinates and Flickr review. Reviewer attempted both primary pages once with web.open; both returned non-retryable unsafe-open errors. No further requests or bypass. Do not label these claims freshly independently verified by this reviewer. Root may rely on its separately retained primary evidence.",
+    "sourceUploadInspected": false
+  },
+  "scope": "Only review docs written. No runtime changes, publication or other-task inspection."
+}

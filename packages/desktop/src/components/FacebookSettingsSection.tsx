@@ -52,6 +52,7 @@ import {
 } from "../lib/provider-auth-errors";
 import { useProviderRiskGate } from "../hooks/useProviderRiskGate";
 import { ScraperWindowModeControl } from "./ScraperWindowModeControl";
+import { ProviderAdvancedSettings } from "./ProviderAdvancedSettings";
 import { ProviderHealthSectionSummary } from "./ProviderHealthSectionSummary";
 import { ProviderSyncCadenceControl } from "./ProviderSyncCadenceControl";
 import { ProviderSyncActionButton } from "./ProviderSyncActionButton";
@@ -182,7 +183,7 @@ function Toggle({
             data-testid={testId ? `${testId}-switch` : undefined}
             onClick={() => onChange(!checked)}
             className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${
-              checked ? "bg-[#8b5cf6]" : "bg-white/10"
+              checked ? "bg-[var(--theme-accent-secondary)]" : "bg-[var(--theme-bg-muted)]"
             }`}
           >
             <span
@@ -650,6 +651,20 @@ export function FacebookSettingsSection({
     !!healthSnapshot?.pause && healthSnapshot.pause.pausedUntil > Date.now();
   // ── Connected state ──────────────────────────────────────────────────────
 
+  // Local troubleshooting controls must remain reachable when login expires.
+  const advancedSettings = (
+    <ProviderAdvancedSettings>
+      <ScraperWindowModeControl
+        sourceLabel="Facebook"
+        mode={windowMode}
+        onChange={(nextMode) => {
+          setWindowMode(nextMode);
+          setFbScraperWindowMode(nextMode);
+        }}
+      />
+    </ProviderAdvancedSettings>
+  );
+
   if (fbAuth.isAuthenticated) {
     const statusLine = (() => {
       if (!lastDiag) return null;
@@ -861,7 +876,7 @@ export function FacebookSettingsSection({
                         <span
                           aria-label={`Refreshing group: ${title}`}
                           data-testid={`facebook-group-${group.id}-refreshing`}
-                          className="h-3 w-3 shrink-0 rounded-full border border-[#8b5cf6]/50 border-t-[#c4b5fd] animate-spin"
+                          className="h-3 w-3 shrink-0 rounded-full border border-[var(--theme-border-strong)] border-t-[var(--theme-accent-secondary)] animate-spin"
                         />
                       ) : null
                     }
@@ -895,24 +910,7 @@ export function FacebookSettingsSection({
               }}
             />
 
-            <details className="group">
-              <summary className="text-xs text-[#52525b] hover:text-[#71717a] cursor-pointer select-none list-none flex items-center gap-1">
-                <span className="group-open:rotate-90 transition-transform inline-block">
-                  ›
-                </span>
-                Advanced
-              </summary>
-              <div className="mt-3 pl-3 border-l border-white/10">
-                <ScraperWindowModeControl
-                  sourceLabel="Facebook"
-                  mode={windowMode}
-                  onChange={(nextMode) => {
-                    setWindowMode(nextMode);
-                    setFbScraperWindowMode(nextMode);
-                  }}
-                />
-              </div>
-            </details>
+            {advancedSettings}
 
             <p className="text-xs text-[#52525b] leading-relaxed">
               {copy.connectedInfo}
@@ -964,6 +962,7 @@ export function FacebookSettingsSection({
             provider="facebook"
             showMessages={surface === "debug-card" && !actionError}
           />
+          {advancedSettings}
         </div>
       </SyncProviderSectionSurface>
       {dialog}

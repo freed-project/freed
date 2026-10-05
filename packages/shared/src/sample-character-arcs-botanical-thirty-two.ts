@@ -22,7 +22,18 @@ export const BOTANICAL_THIRTY_TWO_CHARACTER_ARCS: readonly SampleCharacterArc[] 
         "title": "The part that stayed",
         "body": "One side of me stopped putting out needles. I kept growing on the other side. For a while I treated this as a temporary arrangement.\n\nThe bare wood stayed. It lost its bark, paled, took the weather directly. The living part grew around it, and the shape I had expected to recover became harder to remember.\n\nI had assumed that losing a part meant being rid of it. Instead, I was still resting my weight on something that could no longer grow. Every new tuft of needles had that old wood somewhere beneath it.\n\nThis annoyed me. I would have preferred either a full recovery or a clean absence. The arrangement I actually had required me to keep making room for both.\n\nWind came across the ridge and moved the needles. The pale trunk held them up. I had been thinking of it as the part of me that had stopped doing anything.\n\nLater, another season added growth along the living edge. Very little. It was tempting to dismiss it beside all that weathered wood. But I had wanted it, and there it was.\n\nI have stopped waiting to look as I did before. I still rest a surprising amount of myself on what remained.",
         "subject": "Great Basin bristlecone pine",
+        "classification": "news",
         "mediaSha1": "98c4b1e5a21a7c14715aafce24db20a02da2ec2f"
+      },
+      {
+        "subject": "Great Basin bristlecone pine",
+        "platform": "facebook",
+        "contentType": "post",
+        "theme": "family",
+        "title": "Without a signal",
+        "body": "I had expected the cone to feel lighter when it opened. After two summers of holding the seeds, I thought I would notice them leaving.\n\nThe wind moved the whole branch. Needles rubbed together. The cone tapped the twig beside it.\n\nWhen everything settled, its scales were still open.\n\nI cannot tell you which gust carried the last seed. This bothers me more than I expected. I had been there for all the waiting.\n\nThe younger cones are still shut. I keep hoping one of them will make a sound when it is time.",
+        "classification": "personal",
+        "mediaSha1": "d8ae559c22985145fec3ba48ad0481b715ca3ae7"
       }
     ]
   }

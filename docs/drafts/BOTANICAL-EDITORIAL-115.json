@@ -1,0 +1,544 @@
+{
+  "status": "three_proposals_pending_independent_root_review",
+  "counts": {
+    "exactImagesOpened": 16,
+    "actualDraftsWritten": 4,
+    "regularProposals": 2,
+    "instagramStoryProposals": 1,
+    "heldDrafts": 1,
+    "admitted": 0,
+    "newIdentities": 0
+  },
+  "proposals": [
+    {
+      "candidateId": "115-01",
+      "characterId": "vesta-prickle",
+      "identityNameBase": "Vesta Prickle",
+      "episode": {
+        "subject": "spiny leaf insect",
+        "platform": "rss",
+        "contentType": "post",
+        "theme": "transformation",
+        "title": "The meal above me",
+        "body": "Before I was grown, I left a whole set of legs hanging from a leaf.\n\nI stayed beneath them while my new skin hardened. The old feet were still holding on. I had used those feet all morning; now the leaf could move them without consulting me.\n\nWhen I climbed back up, I began at a leg.\n\nIt made a small dry crack between my jaws. I stopped chewing. For a moment I tried to remember which steps it had taken.\n\nThen I ate the rest of that leg.\n\nThere were five more. I went on more slowly than I do with leaves.",
+        "mediaSha1": "4276eb7c1b0899c021d7e0392a0405b2a78aa861"
+      },
+      "imageReview": "Pass for independent review. Exact vertical photograph opened. Pale empty exoskeleton attached below a green leaf, with the newly emerged leaf-lobed insect hanging beneath, head and legs distinct. Central molt anatomy is sharp; background is softly separated. This supports the remembered shedding event and the exact material later eaten. The still does not show feeding.",
+      "fictionBoundary": "Primary source labels the event moulting. Photographed living insect and cast skin are visible. Subsequent hardening, climbing, eating order, dry crack, remembered steps and pace are fiction. Eating shed skin is independently documented for this exact species by Edinburgh Zoo; it is not predation, self-injury, flesh removal or consumption of another insect. Six old legs are fictional complete exuvia anatomy, not a pixel count of unoccluded limbs.",
+      "canon": "Current Vesta arc and strange-canon03/05/08 reviewed. Existing female Extatosoma tiaratum, Brisbane woodland -27.44/152.95; exact instar not asserted. Explicit before-grown recollection precedes adult mating and does not make an adult molt again. Source Bartle Frere, Queensland, illustrates species without relocation. No limb loss/regrowth, stinger or invented hands. Prior104 wrist episode and accepted bodies unchanged.",
+      "proseAssessment": "Regular RSS remembrance with six brief paragraphs. Her former means of walking becomes a meal; hesitation changes the pace rather than producing a moral about renewal. Distinct from Greta\u2019s delayed foot and concern for a cast skin: Vesta is already out, and the conflict is eating something familiar. No padding to make a Medium article.",
+      "biologySources": [
+        "https://www.edinburghzoo.org.uk/animals/animal-inhabitants/macleays-spectre",
+        "https://australian.museum/learn/animals/insects/care-of-stick-insects/"
+      ],
+      "biologyEvidence": "Both primary institutions independently opened. Edinburgh Zoo explicitly states this species leaves its skin and eats it. Australian Museum describes hanging emergence and soft new skin expanding/hardening. Neither documents this photograph\u2019s later feeding sequence.",
+      "admission": "pending_independent_root_review"
+    },
+    {
+      "candidateId": "115-02",
+      "characterId": "lionel-fringe",
+      "identityNameBase": "Lionel Fringe",
+      "episode": {
+        "subject": "shaggy mane mushroom",
+        "platform": "facebook",
+        "contentType": "post",
+        "theme": "danger",
+        "title": "Under the path",
+        "body": "Before my rim turned black, I grew into the underside of a stone.\n\nThe soil was damp. I had been rising easily until then. I kept pressing upward, and for a long time the only change was how much of me was against it.\n\nAt last the stone tipped. Light came through a thin gap. A few grains slipped past my cap. Then the weight slid off.\n\nI stood there with bits of the path around me, pleased to have finished with pressure from above.\n\nA shoe landed beside my stalk.\n\nThe gravel shifted. I had scarcely begun to be alarmed when the shoe lifted again.\n\nThe next walker went around us. I waited until both feet had passed.",
+        "mediaSha1": "75260dcad9974dd3e80e1a23f0be4f4a8183e449"
+      },
+      "imageReview": "Sharp exact frame of young shaggy caps and one mature cap emerging amid a raised patch of soil and loose gravel. Observer reports growth through newly upgraded track material. Overhead context was also individually opened, showing disturbed clods in an otherwise flat gravel surface. No human or shoe is visible. Lead must judge whether the clearly documented path/emergence scene supports the later imagined near-step; do not report that part as photographed.",
+      "fictionBoundary": "Ground emergence and gravel-track setting are observed. A particular stone tipping, exact pressure, first glimpse, falling grains and both walkers are fiction. No claim of breaking a metal plate or asphalt: source\u2019s word metal is not converted into a literal metal substrate, and pixels show aggregate. No measured force, crushed fungus, intentional walking or physical escape. One additional source view shows a picked younger specimen on a sign; that is not identified as Lionel and is not proposed for his timeline.",
+      "canon": "Full current botanical40 arc and canon read. Existing Coprinus comatus, grassy woodland margin in Michigan Upper Peninsula46.5/-86.5. A gravel woodland path is compatible with that home. Explicit earlier recollection anchors young foreground cap before established mature deliquescence; mature neighbor in source is not identified as the narrator\u2019s simultaneous future self. No mature-to-young reversal, fungal death or new avatar. New Zealand source illustrates compatible species/substrate without moving the fictional home.",
+      "proseAssessment": "Regular Facebook narrative. Relief after emerging is unsettled by a different pressure from above, then close attention to a person\u2019s altered route. Ends on both feet passing, not a resilience lesson. Actual growth setting carries the first half. The unpictured walkers are the material remaining image-fit question for independent root review.",
+      "biologySources": [
+        "https://www.nps.gov/sapu/learn/nature/mushrooms.htm"
+      ],
+      "biologyEvidence": "NPS account independently opened, specifically identifies shaggy scales and ground-growing solitary or clustered Coprinus comatus. Detailed primary observation has five agreeing current species identifications and explicit track-emergence description. Stone displacement is restrained fictional inference from the raised broken substrate, not a documented experimental force.",
+      "admission": "pending_independent_root_review"
+    },
+    {
+      "candidateId": "115-03",
+      "characterId": "ludo-bluecap",
+      "identityNameBase": "Ludo Bluecap",
+      "episode": {
+        "subject": "pixie's parasol fungus",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "social",
+        "title": "Before the introductions",
+        "body": "The white mushroom beside me asked if I knew the blue one farther along the log. I said that was me too. He has stopped explaining what happened between them.",
+        "mediaSha1": "36a6e4e1b4acdd785f42ed731ab3fdf1ffb3e40d"
+      },
+      "imageReview": "Pass for independent review. Exact full frame opened. Several vivid blue caps span decaying horizontal wood; small white mushrooms stand below and at the right. Main caps, curved stalks and wood surface are sharp, moss and small twigs supply depth. Both described color forms and their spatial separation are visible, not invented visitors over a solitary portrait.",
+      "fictionBoundary": "Blue Mycena interrupta identified by source; white mushroom species left unassigned. Multiple visible fruiting bodies do not prove a connected genotype. Ludo\u2019s identification with several blue caps is established animistic canon, not a scientific claim about this collection. Dialogue, earlier disagreement and the white neighbor\u2019s hesitation are fiction. The white neighbor is not called a child, a clone, a biological male or a named new cast identity.",
+      "canon": "Full current Ludo arc and strange-canon02/10 reviewed. Existing Mycena interrupta, wet forest near Collinsvale Tasmania -42.84/147.17. Source Middlesex Tasmania is compatible illustration without relocation. Several caps can be voiced by Ludo under explicit canon; no walking, wound repair or transporting objects. No nutrient gift, host providing shelter, crowding or cap-debris repetition. Existing identity, biography and avatar unchanged.",
+      "proseAssessment": "Short Instagram Story. An apparently ordinary introduction reveals an inconvenient earlier encounter. The narrator\u2019s distributed body changes the social situation; the prose neither explains fungal networks nor supplies an abstract moral. This works at30 words and was not inflated into a regular article.",
+      "biologySources": [
+        "https://www.anbg.gov.au/fungi/mycogeography-distant.html"
+      ],
+      "biologyEvidence": "Australian National Botanic Gardens account independently opened: saprotrophic Mycena interrupta in damp southeastern Australian forest habitat. Primary Tasmanian observation research grade with two current agreeing species identifications. Genomic connection and dialogue explicitly remain fictional.",
+      "admission": "pending_independent_root_review"
+    }
+  ],
+  "media": [
+    {
+      "observationId": 326167591,
+      "photoId": 590683363,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/590683363/large.jpg",
+      "localFile": "/tmp/botanical115/326167591.jpg",
+      "bytes": 263633,
+      "sha1": "4276eb7c1b0899c021d7e0392a0405b2a78aa861",
+      "sha256": "d423ba9f5b45244237ecd5483c084f42aaa184c818744e57607110888dae5f2d",
+      "dimensions": [
+        768,
+        1024
+      ],
+      "seconds": 0.631,
+      "status": 200,
+      "attribution": "(c) Suzanne Muzic, some rights reserved (CC BY), uploaded by Suzanne Muzic",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/326167591",
+      "sourceLocal": "/tmp/botanical115/obs-326167591.json",
+      "category": "wildlife",
+      "aggregated": false,
+      "taxon": "Extatosoma tiaratum",
+      "sourceDimensions": [
+        1536,
+        2048
+      ],
+      "originalInspection": "Exact explicitly published large_url individually opened. Full-resolution source upload was not fetched; dimensions/hashes describe delivered bytes. No guessed derivative, editing or crop."
+    },
+    {
+      "observationId": 44099220,
+      "photoId": 69921600,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/69921600/large.jpeg",
+      "localFile": "/tmp/botanical115/44099220.jpg",
+      "bytes": 202164,
+      "sha1": "75260dcad9974dd3e80e1a23f0be4f4a8183e449",
+      "sha256": "bc018c26c00afe770a8beccfbf05b30a89778ef697ffd4cc2ccf1831484ad202",
+      "dimensions": [
+        1024,
+        768
+      ],
+      "seconds": 0.76,
+      "status": 200,
+      "attribution": "(c) Jacqui Geux, some rights reserved (CC BY), uploaded by Jacqui Geux",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/44099220",
+      "sourceLocal": "/tmp/botanical115/obs-44099220.json",
+      "category": "wildlife",
+      "aggregated": false,
+      "taxon": "Coprinus comatus",
+      "sourceDimensions": [
+        1600,
+        1200
+      ],
+      "originalInspection": "Exact explicitly published large_url individually opened. Full-resolution source upload was not fetched; dimensions/hashes describe delivered bytes. No guessed derivative, editing or crop."
+    },
+    {
+      "observationId": 111077254,
+      "photoId": 187469269,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/187469269/large.jpg",
+      "localFile": "/tmp/botanical115/111077254.jpg",
+      "bytes": 398094,
+      "sha1": "36a6e4e1b4acdd785f42ed731ab3fdf1ffb3e40d",
+      "sha256": "9e9c1808a875c2f41cd37e320336b120f86890a79479f3ae2fcb39f004045f9e",
+      "dimensions": [
+        1024,
+        655
+      ],
+      "seconds": 0.719,
+      "status": 200,
+      "attribution": "(c) Brendan Costello, some rights reserved (CC BY), uploaded by Brendan Costello",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/111077254",
+      "sourceLocal": "/tmp/botanical115/obs-111077254.json",
+      "category": "wildlife",
+      "aggregated": false,
+      "taxon": "Mycena interrupta",
+      "sourceDimensions": [
+        1600,
+        1023
+      ],
+      "originalInspection": "Exact explicitly published large_url individually opened. Full-resolution source upload was not fetched; dimensions/hashes describe delivered bytes. No guessed derivative, editing or crop."
+    }
+  ],
+  "holds": [
+    {
+      "characterId": "lucette-vein",
+      "title": "A premature spring",
+      "body": "The room grew warm and I unfolded my wings. Then the window opened. I landed on the frame and waited for the room to become spring again.",
+      "admission": "held_by_author",
+      "reason": "Literal short draft evaluated. Three exact photos from a winter-brown lacewing observation were opened; all are dark or soft, with no window frame shown. Seasonal biology not advanced to a proposal or asserted as settled for the whole carnea group. Do not admit."
+    },
+    {
+      "characterId": "delphine-silkspill",
+      "admission": "held_by_author",
+      "reason": "Exact sharp milkweed frame shows caterpillar, bee and red beetle, but new food-host prose would repeat established feeding generosity and multiple visitors. Source retained; no forced draft."
+    },
+    {
+      "characterId": "hester-stillcup",
+      "admission": "held_by_author",
+      "reason": "Flowering field and aging flower individually opened. Both lack a new distinct action beyond completed flower visitors. No forced Story from color or floral senescence alone."
+    }
+  ],
+  "sourceReviewLedger": [
+    {
+      "observationId": 44099220,
+      "photoId": 69921600,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/69921600/large.jpeg",
+      "localFile": "/tmp/botanical115/44099220.jpg",
+      "bytes": 202164,
+      "sha1": "75260dcad9974dd3e80e1a23f0be4f4a8183e449",
+      "sha256": "bc018c26c00afe770a8beccfbf05b30a89778ef697ffd4cc2ccf1831484ad202",
+      "dimensions": [
+        1024,
+        768
+      ],
+      "seconds": 0.76,
+      "status": 200,
+      "attribution": "(c) Jacqui Geux, some rights reserved (CC BY), uploaded by Jacqui Geux",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/44099220",
+      "sourceLocal": "/tmp/botanical115/obs-44099220.json",
+      "individuallyOpened": true,
+      "review": "Proposed115-02; raised gravel and soil around emerging caps."
+    },
+    {
+      "observationId": 208923293,
+      "photoId": 369682111,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/369682111/large.jpeg",
+      "localFile": "/tmp/botanical115/208923293.jpg",
+      "bytes": 597362,
+      "sha1": "326c2a6f585d660b259f941268c85f3f33d4010c",
+      "sha256": "1deb708d8ea9149da7e814943a59d5d21f9a0bc9ff042e0529ed6a64482efaf6",
+      "dimensions": [
+        1024,
+        683
+      ],
+      "seconds": 0.803,
+      "status": 200,
+      "attribution": "(c) Reid Hardin, some rights reserved (CC BY), uploaded by Reid Hardin",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/208923293",
+      "sourceLocal": "/tmp/botanical115/obs-208923293.json",
+      "individuallyOpened": true,
+      "review": "Hester flowering-field overview; no distinct unspent event."
+    },
+    {
+      "observationId": 126662173,
+      "photoId": 214935398,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/214935398/large.jpeg",
+      "localFile": "/tmp/botanical115/126662173.jpg",
+      "bytes": 501009,
+      "sha1": "d82e8b87eaa963ee93dd5f7f8b201f31f84565de",
+      "sha256": "d8ffb081e8a749624d9b5820c73d833c64883873bd2abceed753ce9b84111a8b",
+      "dimensions": [
+        1024,
+        576
+      ],
+      "seconds": 0.746,
+      "status": 200,
+      "attribution": "(c) Joseph Aubert, some rights reserved (CC BY), uploaded by Joseph Aubert",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/126662173",
+      "sourceLocal": "/tmp/botanical115/obs-126662173.json",
+      "individuallyOpened": true,
+      "review": "Hester aging flower/capsule; no earned new event."
+    },
+    {
+      "observationId": 4220039,
+      "photoId": 5036688,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/5036688/large.jpeg",
+      "localFile": "/tmp/botanical115/4220039.jpg",
+      "bytes": 373348,
+      "sha1": "32c0f8db425cfca24bd5634bf1bbc4359d6ff142",
+      "sha256": "7324fab2fc6e537aa90cee70033a71dec65903a254ea793be2c3bdd4d461465d",
+      "dimensions": [
+        768,
+        1024
+      ],
+      "seconds": 0.676,
+      "status": 200,
+      "attribution": "(c) Thomas Koffel, some rights reserved (CC BY), uploaded by Thomas Koffel",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/4220039",
+      "sourceLocal": "/tmp/botanical115/obs-4220039.json",
+      "individuallyOpened": true,
+      "review": "Ansel canyon scene held: orange Bryce terrain conflicts with limestone-ridge home."
+    },
+    {
+      "observationId": 171979343,
+      "photoId": 298486886,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/298486886/large.jpg",
+      "localFile": "/tmp/botanical115/171979343.jpg",
+      "bytes": 311441,
+      "sha1": "e9f5ca1d34b72c268d6fa973d226ee4da638e0d0",
+      "sha256": "28d5994bb8a3d33a13df07ef61482e33cea61b336dac566e196f0c5f072954fa",
+      "dimensions": [
+        768,
+        1024
+      ],
+      "seconds": 0.669,
+      "status": 200,
+      "attribution": "no rights reserved, uploaded by Chris",
+      "license": "CC0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/171979343",
+      "sourceLocal": "/tmp/botanical115/obs-171979343.json",
+      "individuallyOpened": true,
+      "review": "Ansel wholly bare tree portrait; living crown not established, cannot substitute for existing partly living individual."
+    },
+    {
+      "observationId": 311923098,
+      "photoId": 563122857,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/563122857/large.jpg",
+      "localFile": "/tmp/botanical115/311923098.jpg",
+      "bytes": 566860,
+      "sha1": "c20cbd608248a0681cfc6411141c0d80e4874924",
+      "sha256": "ecd31162d6b84336379693472512796e64dd7a59b026982700768ccdf9dc9aa8",
+      "dimensions": [
+        771,
+        1024
+      ],
+      "seconds": 0.761,
+      "status": 200,
+      "attribution": "(c) Stefano Menchetti, some rights reserved (CC BY-SA), uploaded by Stefano Menchetti",
+      "license": "CC-BY-SA",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/311923098",
+      "sourceLocal": "/tmp/botanical115/obs-311923098.json",
+      "individuallyOpened": true,
+      "review": "Ansel young cone with drops: sharp but no new event beyond existing cones and ornamental moisture."
+    },
+    {
+      "observationId": 226969574,
+      "photoId": 402589666,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/402589666/large.jpeg",
+      "localFile": "/tmp/botanical115/226969574.jpg",
+      "bytes": 631400,
+      "sha1": "87ec1189f06a2724c3d34b7dc572e45a4cb9a02a",
+      "sha256": "76aec009b04149b8c211cd15d1cf1bea7d6409b08086a1e675f91ae346bfb12a",
+      "dimensions": [
+        768,
+        1024
+      ],
+      "seconds": 3.073,
+      "status": 200,
+      "attribution": "(c) Judy Dobles, some rights reserved (CC BY), uploaded by Judy Dobles",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/226969574",
+      "sourceLocal": "/tmp/botanical115/obs-226969574.json",
+      "individuallyOpened": true,
+      "review": "Delphine feeding/visitors repeat; visual pass, prose premise hold."
+    },
+    {
+      "observationId": 153372993,
+      "photoId": 264886856,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/264886856/large.jpeg",
+      "localFile": "/tmp/botanical115/153372993.jpg",
+      "bytes": 136996,
+      "sha1": "ee7aedc13b8f91879958522980fbbf6831ba89d0",
+      "sha256": "cf9a107f68c98b326bc01793b3838ca369e289ef7a0bce1dc718021d359d8663",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "seconds": 0.651,
+      "status": 200,
+      "attribution": "(c) Matthew Vosper, some rights reserved (CC BY), uploaded by Matthew Vosper",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/153372993",
+      "sourceLocal": "/tmp/botanical115/obs-153372993.json",
+      "individuallyOpened": true,
+      "review": "Lucette dark indoor photo, image hold."
+    },
+    {
+      "observationId": 111077254,
+      "photoId": 187469269,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/187469269/large.jpg",
+      "localFile": "/tmp/botanical115/111077254.jpg",
+      "bytes": 398094,
+      "sha1": "36a6e4e1b4acdd785f42ed731ab3fdf1ffb3e40d",
+      "sha256": "9e9c1808a875c2f41cd37e320336b120f86890a79479f3ae2fcb39f004045f9e",
+      "dimensions": [
+        1024,
+        655
+      ],
+      "seconds": 0.719,
+      "status": 200,
+      "attribution": "(c) Brendan Costello, some rights reserved (CC BY), uploaded by Brendan Costello",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/111077254",
+      "sourceLocal": "/tmp/botanical115/obs-111077254.json",
+      "individuallyOpened": true,
+      "review": "Proposed115-03; blue caps and white neighboring mushrooms visible."
+    },
+    {
+      "observationId": 120925297,
+      "photoId": 204581418,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/204581418/large.jpg",
+      "localFile": "/tmp/botanical115/120925297.jpg",
+      "bytes": 491151,
+      "sha1": "0f22b500a16e9427733fded38ed06748b3c649c6",
+      "sha256": "6641f2455c11d924b64f7cb8159dbbcaf9a2a373f01d3067d0e42a1b62a2970c",
+      "dimensions": [
+        1024,
+        847
+      ],
+      "seconds": 0.875,
+      "status": 200,
+      "attribution": "(c) Brendan Costello, some rights reserved (CC BY), uploaded by Brendan Costello",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/120925297",
+      "sourceLocal": "/tmp/botanical115/obs-120925297.json",
+      "individuallyOpened": true,
+      "review": "Ludo young and open caps on wood: attractive but no additional distinct scene."
+    },
+    {
+      "observationId": 329877062,
+      "photoId": 598051136,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/598051136/large.jpg",
+      "localFile": "/tmp/botanical115/329877062.jpg",
+      "bytes": 476613,
+      "sha1": "45d191b4991120eb13fe34637ff06dbe7f6d4501",
+      "sha256": "5a1363ba694da77184e137df467f539a14418e31e4764ab3a309a2489c227ac4",
+      "dimensions": [
+        768,
+        1024
+      ],
+      "seconds": 0.763,
+      "status": 200,
+      "attribution": "(c) Suzanne Muzic, some rights reserved (CC BY), uploaded by Suzanne Muzic",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/329877062",
+      "sourceLocal": "/tmp/botanical115/obs-329877062.json",
+      "individuallyOpened": true,
+      "review": "Vesta alternate molt view: central cast skin and living insect visible, but busy branches and some edge truncation. Not a second molt episode."
+    },
+    {
+      "observationId": 326167591,
+      "photoId": 590683363,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/590683363/large.jpg",
+      "localFile": "/tmp/botanical115/326167591.jpg",
+      "bytes": 263633,
+      "sha1": "4276eb7c1b0899c021d7e0392a0405b2a78aa861",
+      "sha256": "d423ba9f5b45244237ecd5483c084f42aaa184c818744e57607110888dae5f2d",
+      "dimensions": [
+        768,
+        1024
+      ],
+      "seconds": 0.631,
+      "status": 200,
+      "attribution": "(c) Suzanne Muzic, some rights reserved (CC BY), uploaded by Suzanne Muzic",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/326167591",
+      "sourceLocal": "/tmp/botanical115/obs-326167591.json",
+      "individuallyOpened": true,
+      "review": "Proposed115-01; clear cast skin and newly emerged insect."
+    },
+    {
+      "observationId": 153372993,
+      "photoId": 264887628,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/264887628/large.jpeg",
+      "localFile": "/tmp/botanical115/264887628.jpg",
+      "bytes": 132964,
+      "sha1": "a42be3203209915d271fffd56b19054028241ad5",
+      "sha256": "afb246c0dcad19867e473b8d86b7ee3e62b83bfaaecae20262e2be6cbac4dac1",
+      "dimensions": [
+        1024,
+        683
+      ],
+      "seconds": 0.624,
+      "status": 200,
+      "attribution": "(c) Matthew Vosper, some rights reserved (CC BY), uploaded by Matthew Vosper",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/153372993",
+      "sourceLocal": "/tmp/botanical115/obs-153372993.json",
+      "individuallyOpened": true,
+      "review": "Lucette dark soft side view, image hold."
+    },
+    {
+      "observationId": 153372993,
+      "photoId": 264887757,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/264887757/large.jpeg",
+      "localFile": "/tmp/botanical115/264887757.jpg",
+      "bytes": 159247,
+      "sha1": "d76d8157f7b6f053e494e9fabb91aa8c7a574a91",
+      "sha256": "3d41bcab10facbec5a069afd95d5532d153e75ae28b1a2b2a4371c72da84655c",
+      "dimensions": [
+        683,
+        1024
+      ],
+      "seconds": 0.585,
+      "status": 200,
+      "attribution": "(c) Matthew Vosper, some rights reserved (CC BY), uploaded by Matthew Vosper",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/153372993",
+      "sourceLocal": "/tmp/botanical115/obs-153372993.json",
+      "individuallyOpened": true,
+      "review": "Lucette dark oblique view, image hold."
+    },
+    {
+      "observationId": 44099220,
+      "photoId": 69921603,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/69921603/large.jpeg",
+      "localFile": "/tmp/botanical115/69921603.jpg",
+      "bytes": 342272,
+      "sha1": "adf22d575c797cc10ceeceaad24511fc6e10fea1",
+      "sha256": "472e6bf821365a3b55592291fb9fc1a64cc2bf3fb2eee79a35499cccf80eb0b5",
+      "dimensions": [
+        1024,
+        768
+      ],
+      "seconds": 0.732,
+      "status": 200,
+      "attribution": "(c) Jacqui Geux, some rights reserved (CC BY), uploaded by Jacqui Geux",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/44099220",
+      "sourceLocal": "/tmp/botanical115/obs-44099220.json",
+      "individuallyOpened": true,
+      "review": "Lionel overhead substrate context, individually opened; same source event, not another proposal."
+    },
+    {
+      "observationId": 44099220,
+      "photoId": 69921620,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/69921620/large.jpeg",
+      "localFile": "/tmp/botanical115/69921620.jpg",
+      "bytes": 166807,
+      "sha1": "1503743ae5a14bbe35cfd828ddd250157d29b4c3",
+      "sha256": "ef3b1983df992f6afb8a95d02595ed420aab41ca4d492fff4f620b2282a297cf",
+      "dimensions": [
+        1024,
+        768
+      ],
+      "seconds": 0.576,
+      "status": 200,
+      "attribution": "(c) Jacqui Geux, some rights reserved (CC BY), uploaded by Jacqui Geux",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/44099220",
+      "sourceLocal": "/tmp/botanical115/obs-44099220.json",
+      "individuallyOpened": true,
+      "review": "Picked younger Coprinus on a sign; context only, not proposed as Lionel or a new episode."
+    }
+  ],
+  "limits": "Fourth requested slot not padded. Lionel has an explicit unpictured-walker review question; Vesta feeding is a species-supported fictional continuation of the photographed molt. Only115 documents and task-local sources written; no runtime or admissions."
+}

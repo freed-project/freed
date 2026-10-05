@@ -13,6 +13,7 @@ import {
 import type { FriendsGalaxyActivityScenePatchBatch } from "./friends-galaxy-activity-patches.js";
 import { FriendsGalaxyBackendHealth } from "./friends-galaxy-backend-health.js";
 import type { FriendsGalaxyAvatarAtlas } from "./friends-galaxy-avatar-atlas.js";
+import { projectFriendsGalaxyWorldPoint } from "./friends-galaxy-projection.js";
 import {
   writeFriendsGalaxyWebGpuMotionUniforms,
   writeFriendsGalaxyWebGpuViewProjection,
@@ -42,7 +43,6 @@ import {
 } from "./friends-galaxy-star-geometry.js";
 import {
   createFriendsGalaxyProviderFields,
-  FRIENDS_GALAXY_PROVIDER_FIELD_CULL_SCALE,
   FRIENDS_GALAXY_PROVIDER_FIELD_INSTANCE_STRIDE,
   type FriendsGalaxyFieldStyle,
   type FriendsGalaxyProviderFields,
@@ -112,10 +112,6 @@ fn vertexMain(input: VertexInput) -> VertexOutput {
   output.local = input.corner;
   output.color = input.color;
   output.parameters = input.parameters;
-  if (abs(uniforms.cameraScale) >= ${String(FRIENDS_GALAXY_PROVIDER_FIELD_CULL_SCALE)}) {
-    output.position = vec4<f32>(2.0, 2.0, 0.0, 1.0);
-    return output;
-  }
   let world = input.center + vec3<f32>(input.corner * input.halfSize, 0.0);
   output.position = uniforms.viewProjection * vec4<f32>(world, 1.0);
   return output;
@@ -144,19 +140,33 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
   let arms = input.parameters.y;
   let style = input.parameters.z;
   let point = input.local;
-  let cameraScale = abs(uniforms.cameraScale);
   // Keep the same visible field while dragging and while settled.
   let radius = length(point);
   let coarseNoise = noise(
     point * 2.36 + vec2<f32>(seed * 17.0, seed * 7.0),
   );
+  // Stable detail in field coordinates adds texture without flickering on zoom.
+  let mediumNoise = noise(point * 15.0 + vec2<f32>(seed * 31.0, seed * 13.0));
+  let fineNoise = noise(point * 53.0 + vec2<f32>(seed * 11.0, seed * 29.0));
+  let texture = mediumNoise * 0.7 + fineNoise * 0.3;
   let edgeRadius = radius + (coarseNoise - 0.5) * 0.26;
   let envelope = 1.0 - smoothstep(0.48, 1.07, edgeRadius);
   let core = 1.0 - smoothstep(0.02, 0.52, radius);
   let cloud = smoothstep(0.28, 0.78, coarseNoise);
-  var density = envelope * (0.52 + cloud * 0.38 + core * 0.1);
+  // Nebula includes spiral arms in the WebGL renderer too. Do not reserve
+  // arms for the optional ring styles or fallback changes turn these into blobs.
+  let angle = atan2(point.y, point.x);
+  let spiralArms = pow(
+    0.5 + 0.5 * cos(angle * arms - radius * 10.8 + seed * 6.28318 + (mediumNoise - 0.5) * 1.1),
+    4.0,
+  );
+  // Suppress angular wedges at the origin and blend into a rounded luminous core.
+  let spiral = mix(0.65, spiralArms, smoothstep(0.12, 0.38, radius));
+  let dust = envelope * (0.18 + spiral * 0.82) *
+    (0.38 + coarseNoise * 0.86);
+  let coreGlow = exp(-radius * radius * 32.0);
+  var density = dust * 0.72 + core * 0.2 + coreGlow * 0.28;
   if (style > 0.5) {
-    let angle = atan2(point.y, point.x);
     let armFade = smoothstep(0.18, 0.48, radius) *
       (1.0 - smoothstep(0.82, 1.08, radius));
     let armPhase = angle * arms - radius * 9.2 + seed * 6.28318;
@@ -169,13 +179,15 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
       style > 1.5,
     );
   }
-  let detailFade = mix(1.0, 0.22, smoothstep(0.24, 1.2, cameraScale));
+  density *= 0.55 + texture * 0.9;
+  // Retain the field at every zoom with a subtle, continuous opacity floor.
+  let zoomOpacity = mix(0.56, 0.08, smoothstep(0.0, 1.6, abs(uniforms.cameraScale)));
   let alpha = clamp(
-    density * input.color.a * 0.82 * detailFade,
+    density * input.color.a * 0.82,
     0.0,
     0.28,
-  );
-  if (alpha < 0.004) {
+  ) * zoomOpacity;
+  if (alpha < 0.001) {
     discard;
   }
   let darkTheme = step(0.24, input.color.a);
@@ -389,7 +401,11 @@ struct Uniforms {
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var labelAtlas: texture_2d<f32>;
 @group(0) @binding(2) var labelSampler: sampler;
-@group(0) @binding(3) var<uniform> billboardOpacity: f32;
+struct BillboardPresentation {
+  opacity: f32,
+  worldSpace: f32,
+};
+@group(0) @binding(3) var<uniform> billboard: BillboardPresentation;
 
 struct VertexInput {
   @location(0) corner: vec2<f32>,
@@ -411,7 +427,13 @@ fn vertexMain(input: VertexInput) -> VertexOutput {
   var output: VertexOutput;
   var clip = uniforms.viewProjection * vec4<f32>(input.anchor, 1.0);
   let pixelPosition = input.offset + input.corner * input.size * 0.5;
-  clip = vec4<f32>(clip.xy + pixelPosition * 2.0 / uniforms.viewport * clip.w, clip.zw);
+  if (billboard.worldSpace > 0.5) {
+    clip = uniforms.viewProjection * vec4<f32>(
+      input.anchor + vec3<f32>(pixelPosition, 0.0), 1.0,
+    );
+  } else {
+    clip = vec4<f32>(clip.xy + pixelPosition * 2.0 / uniforms.viewport * clip.w, clip.zw);
+  }
   let localUv = vec2<f32>(input.corner.x * 0.5 + 0.5, 0.5 - input.corner.y * 0.5);
   output.position = clip;
   output.uv = mix(input.uvRect.xy, input.uvRect.zw, localUv);
@@ -422,7 +444,7 @@ fn vertexMain(input: VertexInput) -> VertexOutput {
 @fragment
 fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
   let sample = textureSample(labelAtlas, labelSampler, input.uv);
-  let alpha = sample.a * billboardOpacity * input.opacity;
+  let alpha = sample.a * billboard.opacity * input.opacity;
   if (alpha < 0.015) {
     discard;
   }
@@ -538,7 +560,7 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
     FRIENDS_GALAXY_STAR_PALETTE_FLOAT_OFFSET + FRIENDS_GALAXY_STAR_PALETTE_FLOAT_COUNT,
   );
   private readonly labelOpacityData = new Float32Array([1, 0, 0, 0]);
-  private readonly avatarOpacityData = new Float32Array(4);
+  private readonly avatarOpacityData = new Float32Array([0, 1, 0, 0]);
   private readonly identityDetailFade = new FriendsGalaxyIdentityDetailFade();
   private colorAttachment: GPURenderPassColorAttachment | null = null;
   private renderPassDescriptor: GPURenderPassDescriptor | null = null;
@@ -1149,6 +1171,26 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
 
   pickNode(viewportX: number, viewportY: number): string | null {
     if (!this.sceneIndex) return null;
+    // Hit the surfaces actually drawn, using the same projection and offsets
+    // as the billboard shader. Both hover and click use this picker.
+    const projection = { viewProjection: this.viewProjection, width: this.width, height: this.height };
+    const point = new Float32Array(2);
+    for (const label of this.labelAtlas?.labels ?? []) {
+      if (!this.desiredLabels.has(label.id)) continue;
+      if (!projectFriendsGalaxyWorldPoint(point, projection, label.anchorX, label.anchorY, label.anchorZ, 160)) continue;
+      const centerY = point[1]! - (label.centered ? 0 : label.gapY + label.height / 2);
+      if (Math.abs(viewportX - point[0]!) <= label.width / 2 &&
+          Math.abs(viewportY - centerY) <= label.height / 2) return label.nodeId;
+    }
+    if (this.avatarOpacityData[0]! > 0.015) {
+      const edge = new Float32Array(2);
+      for (const avatar of this.avatarAtlas?.avatars ?? []) {
+        if (!projectFriendsGalaxyWorldPoint(point, projection, avatar.anchorX, avatar.anchorY, avatar.anchorZ, 160)) continue;
+        projectFriendsGalaxyWorldPoint(edge, projection, avatar.anchorX + avatar.size / 2, avatar.anchorY, avatar.anchorZ, 160);
+        const radius = Math.abs(edge[0]! - point[0]!);
+        if (Math.hypot(viewportX - point[0]!, viewportY - point[1]!) <= radius) return avatar.nodeId;
+      }
+    }
     return this.sceneIndex.pickNode(
       this.viewProjection,
       this.width,
@@ -1375,6 +1417,7 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
     this.avatarCandidateSource = "atlas";
     this.avatarBundleVisible = false;
     this.avatarOpacityData.fill(0);
+    this.avatarOpacityData[1] = 1;
     this.identityDetailFade.restartFromHidden();
   }
 
@@ -1552,7 +1595,7 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
       "close",
       this.avatarImages,
       undefined,
-      this.settledProjectionValid ? this.settledProjection : undefined,
+      { viewProjection: this.viewProjection, width: this.width, height: this.height },
       candidateSource,
       this.loadedAvatarImagesOnly,
     );

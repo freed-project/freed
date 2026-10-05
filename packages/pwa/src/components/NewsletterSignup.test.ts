@@ -106,6 +106,26 @@ describe("NewsletterSignup", () => {
     container.remove();
   });
 
+  it("keeps entered details and redacts service errors without recording success", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: "SQL token=private-debug" }), { status: 500 })));
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () => root.render(createElement(NewsletterSignup)));
+    const email = container.querySelector<HTMLInputElement>('input[type="email"]')!;
+    const name = container.querySelector<HTMLInputElement>('input[autocomplete="name"]')!;
+    await act(async () => { setInput(email, "reader@example.com"); setInput(name, "Reader"); });
+    await act(async () => findButton(container, "Join the newsletter")!.click());
+    expect(email.value).toBe("reader@example.com");
+    expect(name.value).toBe("Reader");
+    expect(container.textContent).toContain("Check your connection and try again.");
+    expect(container.textContent).not.toContain("private-debug");
+    expect(localStorage.getItem("freed-newsletter-subscribed-v1")).toBeNull();
+    expect(findButton(container, "Join the newsletter")!.disabled).toBe(false);
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
   it("waits for verification and cancels queued signup when details change", async () => {
     let verify: ((token: string) => void) | undefined;
     window.turnstile!.render = vi.fn((_container, options) => {

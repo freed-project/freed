@@ -3,6 +3,7 @@
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { isDeepStrictEqual } from "node:util";
 
 import {
   CARGO_LOCK_PATH,
@@ -154,6 +155,36 @@ function runGit(args, cwd) {
   }).trim();
 }
 
+// A release may change a version, not dependencies, commands or capabilities
+// that happen to live in the same file. Compare every remaining byte/field.
+export function isVersionOnlyChange(file, fromRef, toRef, { cwd } = {}) {
+  if (!isReleaseOnlyFile(file) || file.startsWith("release-notes/")) return false;
+  try {
+    for (const ref of [fromRef, toRef]) {
+      if (!runGit(["ls-tree", ref, "--", file], cwd).startsWith("100644 blob ")) return false;
+    }
+    const normalize = (ref) => {
+      const contents = runGit(["show", `${ref}:${file}`], cwd);
+      if (file.endsWith(".json")) {
+        const value = JSON.parse(contents);
+        if (typeof value.version !== "string") throw new Error("Missing version");
+        delete value.version;
+        return value;
+      }
+      const block = contents.match(/\[package\]([\s\S]*?)(?=\n\[|$)/);
+      if (!block || !/^version\s*=\s*"[^"\n]+"\s*$/m.test(block[1])) {
+        throw new Error("Missing package version");
+      }
+      return contents.replace(block[0], block[0].replace(
+        /^version\s*=\s*"[^"\n]+"\s*$/m, 'version = "<release-version>"',
+      ));
+    };
+    return isDeepStrictEqual(normalize(fromRef), normalize(toRef));
+  } catch {
+    return false;
+  }
+}
+
 export function releaseOnlyParent(sha, { cwd = process.cwd() } = {}) {
   try {
     const parents = runGit(["show", "-s", "--format=%P", sha], cwd)
@@ -172,7 +203,8 @@ export function releaseOnlyParent(sha, { cwd = process.cwd() } = {}) {
     if (files.length === 0) return null;
 
     const releaseOnly = files.every((file) => {
-      if (isReleaseOnlyFile(file)) return true;
+      if (file.startsWith("release-notes/")) return true;
+      if (isVersionOnlyChange(file, parent, sha, { cwd })) return true;
       if (file !== CARGO_LOCK_PATH) return false;
       return inspectCargoLockReleaseChange({
         fromRef: parent,
@@ -225,7 +257,7 @@ export function selectIntegrationReceipt(
 }
 
 export async function fetchWorkflowRuns(
-  { branch, repository, workflow },
+  { branch, repository, workflow, sha },
   { token = resolveToken(), fetchImpl = fetch } = {},
 ) {
   if (!token) {
@@ -238,6 +270,7 @@ export async function fetchWorkflowRuns(
   );
   endpoint.searchParams.set("branch", branch);
   endpoint.searchParams.set("event", "push");
+  endpoint.searchParams.set("head_sha", sha);
   endpoint.searchParams.set("per_page", "100");
 
   const response = await fetchImpl(endpoint, {
@@ -258,9 +291,38 @@ export async function fetchWorkflowRuns(
 
 export async function validateDevIntegrationReceipt(options, dependencies) {
   const payload = await fetchWorkflowRuns(options, dependencies);
-  return selectIntegrationReceipt(payload, options, {
-    inheritedFromSha: releaseOnlyParent(options.sha, dependencies),
+  const inheritedFromSha = releaseOnlyParent(options.sha, dependencies);
+  if (inheritedFromSha) {
+    const inherited = await fetchWorkflowRuns({ ...options, sha: inheritedFromSha }, dependencies);
+    payload.workflow_runs.push(...normalizeRuns(inherited));
+  }
+  const receipt = selectIntegrationReceipt(payload, options, {
+    inheritedFromSha,
   });
+  const { token = resolveToken(), fetchImpl = fetch } = dependencies ?? {};
+  const jobs = [];
+  for (let page = 1; ; page += 1) {
+    const response = await fetchImpl(
+      new URL(`https://api.github.com/repos/${options.repository}/actions/runs/${receipt.runId}/attempts/${receipt.runAttempt}/jobs?per_page=100&page=${page}`),
+      { headers: { Accept: "application/vnd.github+json", Authorization: `Bearer ${token}`, "X-GitHub-Api-Version": "2022-11-28" } },
+    );
+    if (!response.ok) fail(`Integration job lookup failed with ${response.status}.`);
+    const result = await response.json();
+    if (!Array.isArray(result.jobs)) fail("Invalid integration job response.");
+    jobs.push(...result.jobs);
+    if (result.jobs.length < 100) break;
+  }
+  validateIntegrationJobs(jobs);
+  return receipt;
+}
+
+export function validateIntegrationJobs(jobs) {
+  for (const name of ["Dev integration", "Tooling smoke", "PWA OPFS durability (macOS WebKit)"]) {
+    const matching = jobs.filter((job) => job.name === name);
+    if (matching.length !== 1 || matching[0].status !== "completed" || matching[0].conclusion !== "success") {
+      fail(`Integration receipt lacks successful ${name}.`);
+    }
+  }
 }
 
 async function main(argv) {

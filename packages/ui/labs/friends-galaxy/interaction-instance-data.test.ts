@@ -24,11 +24,11 @@ describe("Friends Galaxy interaction overlay instances", () => {
 
     expect(count).toBe(2);
     expect(target.slice(0, 3)).toEqual(new Float32Array([10, 11, 12]));
-    expect(target[3]).toBeCloseTo(31.6);
+    expect(target[3]).toBeCloseTo(64);
     expect(target[6]).toBe(1);
     expect(target.slice(8, 11)).toEqual(new Float32Array([50, 51, 52]));
-    expect(target[11]).toBeCloseTo(5.8);
-    expect(target[14]).toBeCloseTo(0.62);
+    expect(target[11]).toBeCloseTo(11);
+    expect(target[14]).toBe(1);
     expect(target.slice(16)).toEqual(new Float32Array(8));
   });
 

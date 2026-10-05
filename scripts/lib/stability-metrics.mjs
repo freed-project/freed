@@ -6,7 +6,7 @@
  * surfaces cannot quietly invent different definitions for the same symptom.
  */
 
-export const STABILITY_METRIC_REGISTRY_VERSION = 9;
+export const STABILITY_METRIC_REGISTRY_VERSION = 10;
 export const MIN_LIFECYCLE_CREDITED_APP_ALIVE_HOURS = 6;
 export const MIN_COMPARABLE_WINDOW_DURATION_RATIO = 0.8;
 export const MAX_COMPARABLE_WINDOW_DURATION_RATIO = 1.25;
@@ -444,6 +444,26 @@ export const STABILITY_METRICS = Object.freeze([
         tolerance: Object.freeze({ kind: "ratio", allowance: 1.5 }),
       }),
     ]),
+  }),
+  Object.freeze({
+    id: "facebook-admission-detector-health",
+    soakAssertionId: null,
+    eventNames: Object.freeze(["facebook_admission_summary"]),
+    outcomeMeasurement: Object.freeze({
+      unit: "errors/inspected-placement",
+      direction: "lower",
+      tolerance: 0,
+    }),
+    target: Object.freeze({
+      kind: "max_rate",
+      unit: "errors/inspected-placement",
+      denominator: "inspectedPlacements",
+      value: 0,
+      minObservations: 10,
+    }),
+    triageBucketId: null,
+    alarmNames: Object.freeze([]),
+    canaryMetrics: Object.freeze([]),
   }),
   Object.freeze({
     id: "rss-pull-attempt-rate",

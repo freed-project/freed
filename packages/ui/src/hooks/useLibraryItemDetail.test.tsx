@@ -110,6 +110,32 @@ describe("useLibraryItemDetail", () => {
     ]);
   });
 
+  it("retains the same row during refresh, but clears missing rows and changed readers", async () => {
+    let resolveDetail: (value: FeedItem | null) => void = () => {};
+    const reader = vi.fn(() => new Promise<FeedItem | null>((resolve) => { resolveDetail = resolve; }));
+    let config = platformConfig(reader);
+    let version = 1;
+    let latest: LibraryItemDetailResult | null = null;
+    function Harness() {
+      latest = useLibraryItemDetail("item-1", version);
+      return null;
+    }
+    const rerender = () => root?.render(<PlatformProvider value={config}><Harness /></PlatformProvider>);
+    render(<Harness />, config);
+    await act(async () => { resolveDetail(item("item-1")); });
+    version = 2;
+    await act(async () => { rerender(); });
+    expect(latest).toMatchObject({ item: { globalId: "item-1" }, status: "loading" });
+    await act(async () => { resolveDetail(null); });
+    expect(latest).toEqual({ item: null, status: "ready" });
+    version = 3;
+    await act(async () => { rerender(); });
+    await act(async () => { resolveDetail(item("item-1")); });
+    config = platformConfig(() => new Promise(() => {}));
+    await act(async () => { rerender(); });
+    expect(latest).toEqual({ item: null, status: "loading" });
+  });
+
   it("never exposes a late response for a previous item", async () => {
     const pending = new Map<string, (value: FeedItem | null) => void>();
     const readLibraryItemDetail = vi.fn(

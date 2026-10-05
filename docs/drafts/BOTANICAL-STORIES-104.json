@@ -1,0 +1,450 @@
+{
+  "status": "two_proposals_pending_independent_root_review",
+  "counts": {
+    "exactImagesOpened": 15,
+    "actualDraftsWritten": 3,
+    "proposals": 2,
+    "heldDrafts": 1,
+    "admitted": 0,
+    "newIdentities": 0
+  },
+  "scope": "Only these104 proposal documents and task-local sources. No runtime changes or admissions.",
+  "proposals": [
+    {
+      "candidateId": "104-01",
+      "characterId": "vesta-prickle",
+      "identityNameBase": "Vesta Prickle",
+      "episode": {
+        "subject": "spiny leaf insect",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "social",
+        "title": "Being shown",
+        "body": "When I was smaller, a man held me up to show someone. I walked toward his sleeve. Each time I nearly reached it, he turned his wrist to put me back in the light.",
+        "mediaSha1": "588f5694160dbe964f69135e4f5c00eb362e7a17"
+      },
+      "admission": "pending_independent_root_review",
+      "imageReview": "Individually opened exact 1024 by 768 frame. Pale green leaf-lobed phasmid stands across a human wrist or forearm. Jointed legs, head, body and curled abdomen are clearly legible; background foliage is soft. The nearest extended foreleg leaves the frame at left, but all central contact and body structures remain readable. No sleeve or second person is pictured. Suitable scene image, subject sufficiently sharp despite mild grain.",
+      "fictionBoundary": "Visible insect on human skin, not a photographed threat or rescue. Human sex, earlier lift, intended audience, sleeve, repeated turning, walking and intentions are invented. No assumption about photographer identity or motives. Earlier-life opening avoids treating a possible immature body as the adult from the mating episode; exact instar and sex remain unassigned. No invented stinger, hands, flight or eating human skin.",
+      "canon": "Existing Extatosoma tiaratum, Brisbane-area woodland -27.44/152.95. Read current strange-next runtime and strange-canon03/05. Explicit smaller-body recollection precedes current adult relationship; home and avatar unchanged. Queensland source illustrates this fiction without relocating the character. Distinct from camouflage while eating and a clingy mate dispensing advice: she tries to leave a human display and is repeatedly repositioned.",
+      "proseAssessment": "The repeated physical turn makes her attempted departure serve the person showing her. The body ends on that concrete frustration without explaining an ethical lesson. The human substrate is visible rather than fabricated over a neutral leaf portrait.",
+      "biologySources": [
+        "https://www.taronga.org.au/about/newsroom/posts/meet-the-masters-of-disguise/"
+      ],
+      "biologyEvidence": "Keeper account independently opened; describes species as phasmid with nymphal development and camouflage. Narrative uses observed walking anatomy and simple handling, not an undocumented biological mechanism."
+    },
+    {
+      "candidateId": "104-02",
+      "characterId": "lucille-loop",
+      "identityNameBase": "Lucille Loop",
+      "episode": {
+        "subject": "wild cucumber",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "danger",
+        "title": "Before the squeeze",
+        "body": "She put her hand beneath my fruit and took its weight. My stem went slack. Then her fingers began to close, and I wanted every bit of the weight back.",
+        "mediaSha1": "1da78055c9224b59ffb88f4c3b86ac2e88858742"
+      },
+      "admission": "pending_independent_root_review",
+      "imageReview": "Exact 1000 by 1000 source original individually opened. Bright green spiny fruit fills the lower center on a human palm. Attached green stem, other vine stems, small white flowers and hand are visible. Fruit surface and spines are sharp; distant flowers are soft. The hand is central evidence, not an imagined participant absent from a landscape. Fruit attachment is visible; no detached or cut specimen asserted.",
+      "fictionBoundary": "Photographed fruit supported by a hand on an identified Marah vine. Earlier lifting, load change, fingers beginning to close and Lucille interpreting possible removal are fiction. No documented harvesting, injury, intention to eat, prick, successful picking, detachment or seed dispersal. Her fear is allowed to be mistaken. Human sex is fictional voice convention, not source metadata.",
+      "canon": "Existing Marah macrocarpa, Point Loma coastal sage scrub 32.67/-117.24. Read botanical50 canon. Whole perennial vine, monoecious, rooted in its tuber. Fruit is part of Lucille, not a speaking seed child. Compatible later fruiting scene after existing tendril attachment; no reversal, relocation, new avatar or altered admitted words. Human support temporarily unloads a fruit stem, rather than stretching and recoiling the old tendril. End state remains attached with feared removal unresolved.",
+      "proseAssessment": "Relief at losing a burden changes into wanting the burden back when support begins to resemble taking. Specific bodily reversal, with no seed departure, generosity, moral or claim of a rescue. Unlike Edmund101, exact central human contact and the object are both visible.",
+      "biologySources": [
+        "https://www.nps.gov/cabr/blogs/rising-to-the-top.htm"
+      ],
+      "biologyEvidence": "Primary NPS account independently opened. Names Marah macrocarpa, perennial tuber and climbing vine, monoecious flowers, hanging spiny fruit, and this exact fruit-in-hand photograph. Stem unloading is ordinary fictional mechanical inference, not a measured force or source-reported temporal sequence."
+    }
+  ],
+  "media": [
+    {
+      "observationId": 251935922,
+      "photoId": 450888148,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/450888148/large.jpeg",
+      "localFile": "/tmp/botanical104/251935922.jpg",
+      "bytes": 275179,
+      "sha1": "588f5694160dbe964f69135e4f5c00eb362e7a17",
+      "sha256": "0ba3616e3c62fad0a0bb0ae4c7d96059d687e6511d74a5d312d1f972ac5908da",
+      "dimensions": [
+        1024,
+        768
+      ],
+      "seconds": 0.625,
+      "status": 200,
+      "attribution": "(c) Sockrosma, some rights reserved (CC BY), uploaded by Sockrosma",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/251935922",
+      "sourceLocal": "/tmp/botanical104/obs-251935922.json",
+      "category": "wildlife",
+      "aggregated": false,
+      "creator": "Sockrosma",
+      "taxon": "Extatosoma tiaratum",
+      "sourceTaxonEvidence": "Current observation research grade; three current species identifications, all Extatosoma tiaratum. Exact life stage and sex are not independently established.",
+      "sourceDimensions": [
+        2048,
+        1536
+      ],
+      "originalInspection": "Published large_url individually opened; full-resolution upload not fetched or inspected.",
+      "individuallyOpened": true,
+      "review": "Proposed104-01."
+    },
+    {
+      "imageUrl": "https://www.nps.gov/cabr/blogs/images/Seed-Pod-2.JPG",
+      "localFile": "/tmp/botanical104/nps-fruit-hand.jpg",
+      "sha1": "1da78055c9224b59ffb88f4c3b86ac2e88858742",
+      "sha256": "cb4d6f69b906410ff18d5578c8b7754bc9d3eb987a84321b6c6fbe190e7fafa7",
+      "bytes": 283660,
+      "dimensions": [
+        1000,
+        1000
+      ],
+      "seconds": 0.344,
+      "status": 200,
+      "credit": "NPS / Andrew Rosales",
+      "sourceUrl": "https://www.nps.gov/cabr/blogs/rising-to-the-top.htm",
+      "category": "wildlife",
+      "aggregated": false,
+      "creator": "Andrew Rosales / National Park Service",
+      "license": "Public domain, U.S. Government work",
+      "licenseUrl": "https://www.nps.gov/aboutus/disclaimer.htm",
+      "rightsEvidence": "Exact article caption credits NPS Photo/Andrew Rosales for this single seed-pod-in-hand image. No third-party copyright restriction on the image. NPS Ownership policy independently opened. Attribution retained.",
+      "taxon": "Marah macrocarpa",
+      "originalInspection": "Exact source-linked JPEG original individually opened at 1000 by 1000. No guessed derivative or generated crop.",
+      "sourceLocal": "/tmp/botanical104/nps-fruit-hand.json"
+    }
+  ],
+  "heldDrafts": [
+    {
+      "characterId": "sylvia-bead",
+      "title": "A missed opening",
+      "body": "A leaf fell across my cap. By the time it slid away, the little mushroom beside me had opened. I had been waiting all morning to see that.",
+      "admission": "held_by_author",
+      "mediaSha1": "b3a4c3fd5ef26dd9c6df3856a87a1c0c49839282",
+      "reason": "Actual body assessed after opening the exact Rhodotus cluster. Wet mature caps and plant litter are clear, but the blocking leaf and newly opening small neighbor are not. The premise also approaches Ludo\u2019s existing externally arriving cap-debris mechanism. Do not turn this into a reviewed Story or an admission. Preserve literal attempt and evidence only."
+    }
+  ],
+  "sourceReviewLedger": [
+    {
+      "observationId": 212517983,
+      "photoId": 375558747,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/375558747/large.jpg",
+      "localFile": "/tmp/botanical104/212517983.jpg",
+      "bytes": 475307,
+      "sha1": "d9cf779f98779e88065e6efb96f1f14d7489f51e",
+      "sha256": "3de71bbcc5e8b5287bbe90aeb0f9a51f499bb4c7504f9e15a603641eaeb39b86",
+      "dimensions": [
+        1024,
+        695
+      ],
+      "seconds": 0.812,
+      "status": 200,
+      "attribution": "(c) Victor Heng, some rights reserved (CC BY), uploaded by Victor Heng",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/212517983",
+      "sourceLocal": "/tmp/botanical104/obs-212517983.json",
+      "individuallyOpened": true,
+      "review": "Sharp handled weevil on artificial white rim; no feeding or acorn scene."
+    },
+    {
+      "observationId": 170523483,
+      "photoId": 295768805,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/295768805/large.jpeg",
+      "localFile": "/tmp/botanical104/170523483.jpg",
+      "bytes": 129247,
+      "sha1": "8f6c77f41c4c2dc4ef0c0be299d993e7eb59fde2",
+      "sha256": "27c4855900474833d4cf0e49c7954b5da81e1bca0cb2a3fa1562001fd5a84d80",
+      "dimensions": [
+        600,
+        450
+      ],
+      "seconds": 0.582,
+      "status": 200,
+      "attribution": "(c) M Funnell, some rights reserved (CC BY), uploaded by M Funnell",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/170523483",
+      "sourceLocal": "/tmp/botanical104/obs-170523483.json",
+      "individuallyOpened": true,
+      "review": "Grainy small weevil on fabric; image hold."
+    },
+    {
+      "observationId": 251935922,
+      "photoId": 450888148,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/450888148/large.jpeg",
+      "localFile": "/tmp/botanical104/251935922.jpg",
+      "bytes": 275179,
+      "sha1": "588f5694160dbe964f69135e4f5c00eb362e7a17",
+      "sha256": "0ba3616e3c62fad0a0bb0ae4c7d96059d687e6511d74a5d312d1f972ac5908da",
+      "dimensions": [
+        1024,
+        768
+      ],
+      "seconds": 0.625,
+      "status": 200,
+      "attribution": "(c) Sockrosma, some rights reserved (CC BY), uploaded by Sockrosma",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/251935922",
+      "sourceLocal": "/tmp/botanical104/obs-251935922.json",
+      "category": "wildlife",
+      "aggregated": false,
+      "creator": "Sockrosma",
+      "taxon": "Extatosoma tiaratum",
+      "sourceTaxonEvidence": "Current observation research grade; three current species identifications, all Extatosoma tiaratum. Exact life stage and sex are not independently established.",
+      "sourceDimensions": [
+        2048,
+        1536
+      ],
+      "originalInspection": "Published large_url individually opened; full-resolution upload not fetched or inspected.",
+      "individuallyOpened": true,
+      "review": "Proposed104-01."
+    },
+    {
+      "observationId": 261091076,
+      "photoId": 468995721,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/468995721/large.jpeg",
+      "localFile": "/tmp/botanical104/261091076.jpg",
+      "bytes": 124145,
+      "sha1": "359433f3d1260861651983f3bebf994e9ea23395",
+      "sha256": "461326a79e571ef4ddba577d8e4289be793626ea19ec30be4bb15342146c6df1",
+      "dimensions": [
+        1024,
+        768
+      ],
+      "seconds": 0.552,
+      "status": 200,
+      "attribution": "(c) Scott W. Gavins, some rights reserved (CC BY), uploaded by Scott W. Gavins",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/261091076",
+      "sourceLocal": "/tmp/botanical104/obs-261091076.json",
+      "individuallyOpened": true,
+      "review": "Good brown phasmid on eaten leaf, but current Vesta leaf resemblance/feeding is already spent."
+    },
+    {
+      "observationId": 192725181,
+      "photoId": 338393075,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/338393075/large.jpg",
+      "localFile": "/tmp/botanical104/192725181.jpg",
+      "bytes": 1185619,
+      "sha1": "06f929bd4a302c830cb5084865d8dd50d265cc1b",
+      "sha256": "5f3faa079ebf552efbc090e5abf8d65aa82a3b2013b53896219c8ad99c7de520",
+      "dimensions": [
+        779,
+        1024
+      ],
+      "seconds": 0.928,
+      "status": 200,
+      "attribution": "(c) Daniel Greenwood, some rights reserved (CC BY), uploaded by Daniel Greenwood",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/192725181",
+      "sourceLocal": "/tmp/botanical104/obs-192725181.json",
+      "individuallyOpened": true,
+      "review": "Dramatic underside cluster but grain, watermark and overlapping bodies weaken a new exact incident."
+    },
+    {
+      "observationId": 324942888,
+      "photoId": 588237043,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/588237043/large.jpg",
+      "localFile": "/tmp/botanical104/324942888.jpg",
+      "bytes": 251088,
+      "sha1": "b3a4c3fd5ef26dd9c6df3856a87a1c0c49839282",
+      "sha256": "f226d0d38c5f2f644fa7b9c6e960bd7509f0402002ceff97ed4358863d2e6673",
+      "dimensions": [
+        1024,
+        722
+      ],
+      "seconds": 0.658,
+      "status": 200,
+      "attribution": "(c) Gilles San Martin, some rights reserved (CC BY-SA), uploaded by Gilles San Martin",
+      "license": "CC-BY-SA",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/324942888",
+      "sourceLocal": "/tmp/botanical104/obs-324942888.json",
+      "individuallyOpened": true,
+      "review": "Sharp wet mature Rhodotus cluster, held prose pairing detailed separately."
+    },
+    {
+      "observationId": 95984386,
+      "photoId": 159408012,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/159408012/large.jpeg",
+      "localFile": "/tmp/botanical104/159408012.jpg",
+      "bytes": 442150,
+      "sha1": "433a6d8da996cea63ba2eb1004153180cdcb9241",
+      "sha256": "fcb0bff01863d035c035b738f022b84bb9596d458d6ab04c610c3346279be7b7",
+      "dimensions": [
+        985,
+        1024
+      ],
+      "seconds": 0.846,
+      "status": 200,
+      "attribution": "no rights reserved, uploaded by Thomas",
+      "license": "CC0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/95984386",
+      "sourceLocal": "/tmp/botanical104/obs-95984386.json",
+      "individuallyOpened": true,
+      "review": "Sharp weevil on hand-held twig; no mouthpart-in-acorn action."
+    },
+    {
+      "observationId": 95984386,
+      "photoId": 159408035,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/159408035/large.jpeg",
+      "localFile": "/tmp/botanical104/159408035.jpg",
+      "bytes": 413039,
+      "sha1": "f08833826a4fb2ef6324f3c44fefa089006ba97b",
+      "sha256": "d1a3966820df84acc347da398349223a53b61d13836c8a709b80ed29f06023fd",
+      "dimensions": [
+        768,
+        1024
+      ],
+      "seconds": 0.776,
+      "status": 200,
+      "attribution": "no rights reserved, uploaded by Thomas",
+      "license": "CC0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/95984386",
+      "sourceLocal": "/tmp/botanical104/obs-95984386.json",
+      "individuallyOpened": true,
+      "review": "Sharp hand-held branch context, no feeding."
+    },
+    {
+      "observationId": 95984386,
+      "photoId": 159408072,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/159408072/large.jpeg",
+      "localFile": "/tmp/botanical104/159408072.jpg",
+      "bytes": 460363,
+      "sha1": "d5b7af823d0821be376eb58f7cc5fae343d6b165",
+      "sha256": "ea25f59df9cf20944ea8c84f767c71dd873756040062d6dc00a319275029e7fb",
+      "dimensions": [
+        1024,
+        934
+      ],
+      "seconds": 0.764,
+      "status": 200,
+      "attribution": "no rights reserved, uploaded by Thomas",
+      "license": "CC0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/95984386",
+      "sourceLocal": "/tmp/botanical104/obs-95984386.json",
+      "individuallyOpened": true,
+      "review": "Handling context; no feeding."
+    },
+    {
+      "observationId": 95984386,
+      "photoId": 159408104,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/159408104/large.jpeg",
+      "localFile": "/tmp/botanical104/159408104.jpg",
+      "bytes": 420675,
+      "sha1": "2644357ce170d75efed5502775c0837b93d2e509",
+      "sha256": "1915f49695445cfe1020c6a8a39136d05315a0e7b0575c5d34d769acdb08ac71",
+      "dimensions": [
+        1024,
+        900
+      ],
+      "seconds": 0.698,
+      "status": 200,
+      "attribution": "no rights reserved, uploaded by Thomas",
+      "license": "CC0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/95984386",
+      "sourceLocal": "/tmp/botanical104/obs-95984386.json",
+      "individuallyOpened": true,
+      "review": "Acorn visible but weevil and main contact are blurred, feeding not photographed."
+    },
+    {
+      "observationId": 72000852,
+      "photoId": 117318589,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/117318589/large.jpeg",
+      "localFile": "/tmp/botanical104/117318589.jpg",
+      "bytes": 631304,
+      "sha1": "27087b15228b5465e2b86eeeba1c4843bfef3ba5",
+      "sha256": "cfa28ae2b27cf4b96ec2b0224181a48c1bed178b2351a30f6398040e33b923d0",
+      "dimensions": [
+        1024,
+        768
+      ],
+      "seconds": 0.796,
+      "status": 200,
+      "attribution": "(c) Daniel S., some rights reserved (CC BY), uploaded by Daniel S.",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/72000852",
+      "sourceLocal": "/tmp/botanical104/obs-72000852.json",
+      "individuallyOpened": true,
+      "review": "Sharp hanging fruit, superseded by NPS exact hand contact for this proposal."
+    },
+    {
+      "observationId": 72000852,
+      "photoId": 117318608,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/117318608/large.jpeg",
+      "localFile": "/tmp/botanical104/117318608.jpg",
+      "bytes": 776504,
+      "sha1": "308766762c5c18e87f9bed8efd1ec540cf7a4a83",
+      "sha256": "6cf38deb1b2949b1b4345a83142503f921bb8db0daf197bd9f9be43a45b43249",
+      "dimensions": [
+        1024,
+        768
+      ],
+      "seconds": 1.463,
+      "status": 200,
+      "attribution": "(c) Daniel S., some rights reserved (CC BY), uploaded by Daniel S.",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/72000852",
+      "sourceLocal": "/tmp/botanical104/obs-72000852.json",
+      "individuallyOpened": true,
+      "review": "Clear Marah leaves over wood, no distinct additional event."
+    },
+    {
+      "observationId": 72000852,
+      "photoId": 117318631,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/117318631/large.jpeg",
+      "localFile": "/tmp/botanical104/117318631.jpg",
+      "bytes": 819099,
+      "sha1": "051395b155d5217aea2e1a91ce36db8dfd9399fe",
+      "sha256": "c90e9c00c21d913acf930955da4df016dc428fc54c4e4612ee3e8719aadc894e",
+      "dimensions": [
+        1024,
+        768
+      ],
+      "seconds": 1.003,
+      "status": 200,
+      "attribution": "(c) Daniel S., some rights reserved (CC BY), uploaded by Daniel S.",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/72000852",
+      "sourceLocal": "/tmp/botanical104/obs-72000852.json",
+      "individuallyOpened": true,
+      "review": "Marah leaves and coils, no distinct event beyond existing attachment."
+    },
+    {
+      "observationId": 72000852,
+      "photoId": 117318653,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/117318653/large.jpeg",
+      "localFile": "/tmp/botanical104/117318653.jpg",
+      "bytes": 887686,
+      "sha1": "4bcdca6f934b6e4e09f1b5dbf0881a8940d6b2b1",
+      "sha256": "40848e7c0937c0761bf39802e1482ff1f452c66d34ad5f4e375c3050bc1ec440",
+      "dimensions": [
+        1024,
+        768
+      ],
+      "seconds": 2.432,
+      "status": 200,
+      "attribution": "(c) Daniel S., some rights reserved (CC BY), uploaded by Daniel S.",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "sourceUrl": "https://www.inaturalist.org/observations/72000852",
+      "sourceLocal": "/tmp/botanical104/obs-72000852.json",
+      "individuallyOpened": true,
+      "review": "Broad woodland vine overview, no specific incident."
+    }
+  ],
+  "priorHoldPreserved": "Edmund101 body remains unchanged in101. No replacement media claim; root owns its separate recovery.",
+  "validation": "Owned JSON parse and exact title/body/hash duplicate checks only. No runtime tests needed for proposal-only writing."
+}

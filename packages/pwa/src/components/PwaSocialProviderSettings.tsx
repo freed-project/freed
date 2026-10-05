@@ -1,12 +1,12 @@
 import { useMemo, type ReactNode } from "react";
 
 import { getWebsiteHostForChannel } from "@freed/shared";
-import { YoutubeIcon } from "@freed/ui/components/icons";
+import { MediumIcon, SubstackIcon, YoutubeIcon } from "@freed/ui/components/icons";
 import { usePlatform, type SyncProviderSectionProps } from "@freed/ui/context";
 import { useLibraryFacetSummary } from "@freed/ui/hooks/useLibraryFacetSummary";
 import { useAppStore } from "../lib/store";
 
-type SocialPlatform = "x" | "facebook" | "instagram" | "linkedin" | "youtube";
+type SocialPlatform = "x" | "facebook" | "instagram" | "linkedin" | "youtube" | "substack" | "medium";
 
 interface ProviderContent {
   label: string;
@@ -16,6 +16,18 @@ interface ProviderContent {
 }
 
 const PROVIDER_CONTENT: Record<SocialPlatform, ProviderContent> = {
+  substack: {
+    label: "Substack",
+    body: "Substack connections are managed in Freed Desktop. This view shows what has synced here.",
+    icon: <SubstackIcon className="h-10 w-10" />,
+    iconClassName: "text-[var(--theme-accent-secondary)]",
+  },
+  medium: {
+    label: "Medium",
+    body: "Medium connections are managed in Freed Desktop. This view shows what has synced here.",
+    icon: <MediumIcon className="h-10 w-10" />,
+    iconClassName: "text-[var(--theme-text-primary)]",
+  },
   x: {
     label: "X / Twitter",
     body: "X / Twitter connections are managed in Freed Desktop. This view shows what has synced here.",
@@ -85,7 +97,7 @@ function StatCard({
 }) {
   return (
     <div className="rounded-lg border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-muted)] px-3 py-3 text-left">
-      <p className="text-[11px] uppercase tracking-wide text-[var(--theme-text-soft)]">{label}</p>
+      <p className="text-[0.6875rem] uppercase tracking-wide text-[var(--theme-text-soft)]">{label}</p>
       <p className="mt-1 text-sm font-semibold text-[var(--theme-text-primary)]">{value}</p>
     </div>
   );
@@ -128,7 +140,7 @@ function DemoConnectionNotice({ label }: { label: string }) {
     <div className="rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-muted)] p-4" data-testid="demo-provider-disabled">
       <p className="text-xs font-semibold text-[var(--theme-text-primary)]">Connections are off in the demo</p>
       <p className="mt-1 text-xs leading-relaxed text-[var(--theme-text-muted)]">
-        The sample Library is read only and cannot connect to {label}. Download Freed Desktop free to configure your own sources.
+        The sample Library is read only and cannot connect to {label}. Download Freed Desktop to configure your own sources.
       </p>
     </div>
   );
@@ -310,4 +322,12 @@ export function PwaLinkedInSettings(props: SyncProviderSectionProps) {
 
 export function PwaYouTubeSettings(props: SyncProviderSectionProps) {
   return <PwaSocialProviderSettings platform="youtube" {...props} />;
+}
+
+export function PwaSubstackSettings(props: SyncProviderSectionProps) {
+  return <PwaSocialProviderSettings platform="substack" {...props} />;
+}
+
+export function PwaMediumSettings(props: SyncProviderSectionProps) {
+  return <PwaSocialProviderSettings platform="medium" {...props} />;
 }

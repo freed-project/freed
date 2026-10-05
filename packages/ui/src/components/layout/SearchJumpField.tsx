@@ -1,3 +1,4 @@
+import { usePlatformCapabilities } from "../../context/PlatformContext.js";
 import { createPortal } from "react-dom";
 import {
   useCallback,
@@ -333,7 +334,8 @@ export function SearchJumpField({
     replaceLibraryFriend,
     upsertLibraryPerson,
   } = platform;
-  const readOnly = platform.interactionMode === "read-only";
+  const capabilities = usePlatformCapabilities();
+  const readOnly = !capabilities.libraryEdits;
   const searchPaletteRequestId = useCommandSurfaceStore((s) => s.searchPaletteRequestId);
   const openAddFeedDialog = useCommandSurfaceStore((s) => s.openAddFeedDialog);
   const openSavedContentDialog = useCommandSurfaceStore((s) => s.openSavedContentDialog);
@@ -355,7 +357,7 @@ export function SearchJumpField({
   const unarchiveSavedItems = useAppStore((s) => s.unarchiveSavedItems);
   const deleteAllArchived = useAppStore((s) => s.deleteAllArchived);
   const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
-  const [deviceDisplay] = useDeviceDisplayPreferences();
+  const [deviceDisplay, setDeviceDisplay] = useDeviceDisplayPreferences();
   const [inputValue, setInputValue] = useState(searchQuery);
   const [isFocused, setIsFocused] = useState(false);
   const [isTriggerOpen, setIsTriggerOpen] = useState(false);
@@ -389,13 +391,16 @@ export function SearchJumpField({
   const deferredIdentityQuery = useDeferredValue(inputValue);
   const inlineBlurTimerRef = useRef<number | null>(null);
 
-  const { filteredItems: commandScopeItems } = useSearchResults(
+  const { filteredItems: commandScopeItems, resultsCurrent: searchResultsCurrent } = useSearchResults(
     searchQuery,
     activeFilter,
     searchCorpusVersion,
     deviceDisplay.friendsMode,
     libraryItemVersion,
   );
+  const searchScopeCurrent = inputValue.trim().length === 0 || searchResultsCurrent === true;
+  const latestSearchScopeCurrent = useRef(searchScopeCurrent);
+  latestSearchScopeCurrent.current = searchScopeCurrent;
   const {
     archivableScopeCount,
     archivedUnsavedCount: archivedCount,
@@ -409,6 +414,7 @@ export function SearchJumpField({
     activeFilter,
     activeView,
     commandScopeItems,
+    commandScopeCurrent: searchScopeCurrent,
     enabled: showCommandSurface,
     identityMode: deviceDisplay.friendsMode,
     inputValue,
@@ -470,6 +476,7 @@ export function SearchJumpField({
         hasYouTube: !!YouTubeSettingsContent,
         hasUpdateChecks: !!checkForUpdates,
         hasFactoryReset: !!factoryReset,
+        hasLegal: !readOnly,
       }),
     [
       FacebookSettingsContent,
@@ -489,6 +496,7 @@ export function SearchJumpField({
       secureStorage,
       ShortcutsSettingsContent,
       exportFeedsAsOPML,
+      readOnly,
     ],
   );
   const currentSourceId = useMemo<Platform | null>(() => {
@@ -510,6 +518,7 @@ export function SearchJumpField({
   const ensurePersonForAccount = useCallback(
     async (accountId: string, personId: string | null) => {
       if (personId) return personId;
+      if (!capabilities.createPerson) throw new Error("Choose an existing person in this demo.");
       if (!readLibraryAccountDetail || !replaceLibraryFriend) {
         throw new Error("The Friend SQLite mutation is unavailable.");
       }
@@ -529,13 +538,14 @@ export function SearchJumpField({
       ]);
       return person.id;
     },
-    [readLibraryAccountDetail, replaceLibraryFriend],
+    [readLibraryAccountDetail, replaceLibraryFriend, capabilities.createPerson],
   );
 
   const actions = useMemo(
     () =>
       buildCommandPaletteActions({
         query: inputValue,
+        allowPersonCreation: capabilities.createPerson,
         activeView,
         activeFilter,
         settingsSections,
@@ -577,6 +587,7 @@ export function SearchJumpField({
           setActiveView("map");
         },
         navigateToSocialProfileFriends: (account, personId) => {
+          if (!socialChannelPage.isAccountCurrent(account)) return;
           clearQueryForNavigation();
           setSelectedItem(null);
           if (personId) {
@@ -586,15 +597,23 @@ export function SearchJumpField({
           }
           setActiveView("friends");
         },
-        navigateToSocialProfileMap: async (account, personId) => {
-          const resolvedPersonId = await ensurePersonForAccount(account.id, personId);
+        navigateToSocialProfileMap: (account, personId) => {
+          if (!socialChannelPage.isAccountCurrent(account)) return;
           clearQueryForNavigation();
           setSelectedItem(null);
-          setSelectedPerson(resolvedPersonId);
+          setSelectedPerson(personId);
+          setSelectedAccount(personId ? null : account.id);
+          // Viewing an author's location is not a relationship mutation.
+          setDeviceDisplay({ mapMode: "all_content" });
           setActiveView("map");
         },
-        promoteSocialProfile: async (account, level) => {
+        promoteSocialProfile: capabilities.changeCare ? async (account, level) => {
           const resolvedPersonId = await ensurePersonForAccount(account.id, account.personId ?? null);
+          if (readOnly && platform.onReadOnlyPersonCareChange) {
+            await platform.onReadOnlyPersonCareChange(resolvedPersonId, level);
+            setSelectedPerson(resolvedPersonId);
+            return;
+          }
           if (!readLibraryPersonDetail || !upsertLibraryPerson) {
             throw new Error("The Person SQLite mutation is unavailable.");
           }
@@ -607,7 +626,7 @@ export function SearchJumpField({
             updatedAt: Date.now(),
           });
           setSelectedPerson(resolvedPersonId);
-        },
+        } : null,
         applyFeedSearch: (nextQuery: string) =>
           applyFeedSearch(
             {
@@ -626,7 +645,7 @@ export function SearchJumpField({
         openExportLibraryDialog: exportMarkdown
           ? () => openLibraryDialog("export")
           : null,
-        openCurrentItemUrl: selectedItem?.sourceUrl
+        openCurrentItemUrl: capabilities.externalLinks && selectedItem?.sourceUrl
           ? () => {
               if (openUrl) {
                 openUrl(selectedItem.sourceUrl!);
@@ -657,12 +676,12 @@ export function SearchJumpField({
             ? () => toggleLiked(selectedItem.globalId)
             : null,
         markScopeRead:
-          !readOnly && activeView === "feed" && unreadScopeCount > 0
-            ? markScopeRead
+          !readOnly && activeView === "feed" && searchScopeCurrent && unreadScopeCount > 0
+            ? () => { if (latestSearchScopeCurrent.current) return markScopeRead(); }
             : null,
         archiveScopeRead:
-          !readOnly && activeView === "feed" && archivableScopeCount > 0
-            ? archiveScopeRead
+          !readOnly && activeView === "feed" && searchScopeCurrent && archivableScopeCount > 0
+            ? () => { if (latestSearchScopeCurrent.current) return archiveScopeRead(); }
             : null,
         unarchiveSavedItems: readOnly ? null : unarchiveSavedItems,
         syncRssNow,
@@ -674,6 +693,10 @@ export function SearchJumpField({
       }),
     [
       activeCloudProviderLabel,
+      capabilities.createPerson,
+      capabilities.changeCare,
+      capabilities.externalLinks,
+      platform.onReadOnlyPersonCareChange,
       activeFilter,
       activeView,
       addRssFeed,
@@ -689,6 +712,7 @@ export function SearchJumpField({
       inputValue,
       ensurePersonForAccount,
       markScopeRead,
+      searchScopeCurrent,
       openAddFeedDialog,
       openSavedContentDialog,
       openSettingsTo,
@@ -699,12 +723,14 @@ export function SearchJumpField({
       savedArchivedCount,
       selectedItem,
       setActiveView,
+      setDeviceDisplay,
       setFilter,
       setSearchQuery,
       setSelectedAccount,
       setSelectedItem,
       setSelectedPerson,
       socialChannels,
+      socialChannelPage.isAccountCurrent,
       settingsSections,
       syncRssNow,
       syncSourceNow,
@@ -1051,7 +1077,7 @@ export function SearchJumpField({
               >
                 {actionSections.map((section) => (
                   <div key={section.section} className="pb-3 last:pb-0">
-                    <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-soft)]">
+                    <p className="px-2 pb-1 text-[0.625rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-soft)]">
                       {section.section}
                     </p>
                     <div className="space-y-1">
@@ -1080,7 +1106,7 @@ export function SearchJumpField({
                             <PaletteLineIcon>{actionIcon}</PaletteLineIcon>
                             <span className="min-w-0 flex-1 truncate">{action.title}</span>
                             {action.confirm ? (
-                              <span className="shrink-0 rounded-md border border-[var(--theme-border-subtle)] px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--theme-text-soft)]">
+                              <span className="shrink-0 rounded-md border border-[var(--theme-border-subtle)] px-1.5 py-0.5 text-[0.625rem] font-medium uppercase tracking-[0.14em] text-[var(--theme-text-soft)]">
                                 Confirm
                               </span>
                             ) : null}

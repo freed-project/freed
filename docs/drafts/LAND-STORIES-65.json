@@ -1,0 +1,149 @@
+{
+  "batch": "LAND-STORIES-65",
+  "status": "One existing-cast Story admitted locally; Mavis sources held",
+  "worktree": "/Users/aubreyfalconer/dev/freed-editorial-isolated",
+  "scope": "Existing identities only. Two proposal files and /tmp evidence. No runtime, avatar changes, publication or other-task coordination.",
+  "entries": [
+    {
+      "id": "LAND-STORIES-65-01",
+      "characterId": "oswin-broadback",
+      "platform": "instagram",
+      "contentType": "story",
+      "theme": "social",
+      "title": "I kept them shut",
+      "body": "I shook the dust out of my coat. The bull beside me got up and shook his into it.\n\nWaited with my eyes shut. I could hear another one getting up. I kept them shut.",
+      "wordCount": 35,
+      "status": "admitted after author and independent lead review",
+      "media": {
+        "sourceUrl": "https://www.fws.gov/media/american-bison-dust",
+        "sourceCachePath": "/tmp/freed-land65/american-bison-dust.html",
+        "creator": "Jonsson, Kayt/USFWS",
+        "license": "Public domain",
+        "original": {
+          "url": "https://www.fws.gov/sites/default/files/images/2016-07/24669.jpg",
+          "localPath": "/tmp/freed-land65/american-bison-dust-original.jpg",
+          "width": 5472,
+          "height": 3648,
+          "bytes": 15033001,
+          "sha1": "e73344a45d25227c4ebf9600c0f8e49dfdf2913a",
+          "sha256": "205bb80968a4c5496b8c6babaa29f4e02f0a96c6cfd03adb672f0dfc1196a27a",
+          "publishedLink": "<a href=\"https://www.fws.gov/sites/default/files/images/2016-07/24669.jpg\" download=\"usfws-american-bison-dust\">Original (5472 x 3648)"
+        },
+        "delivery": {
+          "url": "https://www.fws.gov/sites/default/files/styles/max_1300x1300/public/images/2016-07/24669.jpg?itok=s6haW5nA",
+          "localPath": "/tmp/freed-land65/american-bison-dust-delivery.jpg",
+          "width": 1300,
+          "height": 867,
+          "bytes": 870239,
+          "sha1": "b5cd337d6cc362dbf4829502bc4202ecb96a3e20",
+          "sha256": "fc98e41ba11a5f9df206a0419e3156eed74b88f93f38fd29c3daaae906305f80",
+          "publishedLink": "<a href=\"https://www.fws.gov/sites/default/files/styles/max_1300x1300/public/images/2016-07/24669.jpg?itok=s6haW5nA\" download=\"usfws-american-bison-dust-large\">Large (1300 x 867)"
+        }
+      },
+      "attribution": "Kayt Jonsson/USFWS",
+      "license": "Public Domain",
+      "licenseEvidence": "Exact FWS page explicitly labels Public Domain and credits Jonsson, Kayt/USFWS. Page supplies Original and Large links; no derivative URL guessed.",
+      "sourceLocation": "Rocky Mountain Arsenal National Wildlife Refuge",
+      "sourceDate": "2016-07-14",
+      "sourceTaxon": "Bison bison explicitly linked by primary media page",
+      "visibleScene": "A large bison stands broadside in suspended, backlit dust among several reclining bison in a grassy field. Other bison are visible farther back. Dark foreground bodies contrast with warm dust; distant human structures are visible.",
+      "fictionBoundary": "Oswin identity, neighboring bulls' sex, who raised each part of the dust, individual shakes, getting up in sequence, closed eyes, hearing and anticipation are invented. The still shows the herd, standing/reclining contrast and dust, not the full sequence or a specific eye state.",
+      "imageReview": "Original and source-published 1300x867 Large delivery individually opened before literal prose. Warm backlit dust is distinct and luminous, foreground silhouettes legible; faces are dark rather than artificially brightened. No crop or image modification.",
+      "distinctness": "A neighboring animal extends the consequence of the narrator's action. This does not repeat sign scratching, a traction contest, food retrieval, advice rejection, climbing or holding still to support a sleeper. Prose is intentionally a brief comic sequence; lead may hold if the payoff is too slight.",
+      "canon": {
+        "characterId": "oswin-broadback",
+        "identityName": "Oswin Broadback",
+        "taxon": "Bison bison",
+        "sexAge": "Existing adult male in fiction; exact source age and sex unrecorded. Large adult-sized foreground bison is compatible. No subspecies.",
+        "home": "Existing Yellowstone grassland range, 44.7, -110.4. Source photograph is Rocky Mountain Arsenal National Wildlife Refuge; this is an illustrative species-compatible field scene, not evidence of Oswin travelling there. Distant human structures remain visible and source location is preserved.",
+        "continuity": "Append within adult chronology after admitted newborn memory, sign scratching and bull pressure contest. No change to approved prose, profile, portrait, mates or offspring. Unnamed neighboring bulls already belong to Oswin's canon.",
+        "voice": "Short physical declarations. The new consequence is one animal's dust removal being prolonged by the next animal, ending with Oswin anticipating another cloud. No audience humiliation or claims that others copy or ridicule him.",
+        "biologicalSource": {
+          "url": "https://www.nps.gov/articles/bison-bellow-1-28-16.htm",
+          "supportedClaims": "Bison roll in dry dirt for dust bathing; it can occur in a social setting. No precise medicinal, mating, communication or behavioral-trigger claim used."
+        },
+        "spentIfAdmitted": "Sequential dust clouds from neighboring animals force the narrator to keep waiting with eyes shut. Do not turn later bison scenes into repeated dust/itch complaints.",
+        "newRelationships": "None named. No hostile bull carried over from the earlier contest and no permanent cooperation inferred.",
+        "approval": "See LAND-STORIES-65-ADMISSION.md; original character and prior episodes preserved."
+      }
+    },
+    {
+      "id": "LAND-STORIES-65-02",
+      "characterId": "mavis-spade",
+      "platform": "instagram",
+      "contentType": "story",
+      "status": "hold",
+      "body": null,
+      "reason": "No sufficiently strong matched event emerged from the two licensed badger/coyote frames. Do not write a new hunt or friendship around absent prey and generic travel. Mavis's existing defensive aftermath and tire interaction remain unchanged.",
+      "sources": [
+        {
+          "sourceUrl": "https://www.fws.gov/media/coyote-and-badger-hunting-together",
+          "sourceCachePath": "/tmp/freed-land65/coyote-and-badger-hunting-together.html",
+          "creator": "USFWS",
+          "license": "Public domain",
+          "original": {
+            "url": "https://www.fws.gov/sites/default/files/images/2025-03/coyote-and-badger-collage-national-bff-by-usfws.jpg",
+            "localPath": "/tmp/freed-land65/coyote-and-badger-hunting-together-original.jpg",
+            "width": 2246,
+            "height": 1497,
+            "bytes": 989000,
+            "sha1": "ba2fc90ada7c1bf7cefb112a2e5f6e23daf1daea",
+            "sha256": "97ec61e5a891f5dbed86a16da107b4bf9c8d9b923a0369be6c2a7ac11e5087dd",
+            "publishedLink": "<a href=\"https://www.fws.gov/sites/default/files/images/2025-03/coyote-and-badger-collage-national-bff-by-usfws.jpg\" download=\"usfws-coyote-and-badger-hunting-together\">Original (2246 x 1497)"
+          },
+          "delivery": {
+            "url": "https://www.fws.gov/sites/default/files/styles/max_1300x1300/public/images/2025-03/coyote-and-badger-collage-national-bff-by-usfws.jpg?itok=_6tLP_dy",
+            "localPath": "/tmp/freed-land65/coyote-and-badger-hunting-together-delivery.jpg",
+            "width": 1300,
+            "height": 866,
+            "bytes": 782664,
+            "sha1": "87378c4de02677df3d72625010556cedb5b321fa",
+            "sha256": "ad5d684a28a2ea6dd22549632d458132a290a99418dc4a9fc0a0f1be5f61f994",
+            "publishedLink": "<a href=\"https://www.fws.gov/sites/default/files/styles/max_1300x1300/public/images/2025-03/coyote-and-badger-collage-national-bff-by-usfws.jpg?itok=_6tLP_dy\" download=\"usfws-coyote-and-badger-hunting-together-large\">Large (1300 x 866)"
+          }
+        },
+        {
+          "sourceUrl": "https://www.fws.gov/media/coyote-and-badgerjpg",
+          "sourceCachePath": "/tmp/freed-land65/coyote-and-badgerjpg.html",
+          "creator": "Rickey Jones/USFWS",
+          "license": "Public domain",
+          "original": {
+            "url": "https://www.fws.gov/sites/default/files/banner_images/2021-07/Coyote%20and%20Badger.JPG",
+            "localPath": "/tmp/freed-land65/coyote-and-badgerjpg-original.jpg",
+            "width": 4896,
+            "height": 3672,
+            "bytes": 7467609,
+            "sha1": "5f0a22ac313d77c36423a6fd2dcaddb23fc9af66",
+            "sha256": "f18805ed09133d1039132ab60ab8b6629af488f7cc8af79e28730e4bf1f1a1fd",
+            "publishedLink": "<a href=\"https://www.fws.gov/sites/default/files/banner_images/2021-07/Coyote%20and%20Badger.JPG\" download=\"usfws-coyote-and-badgerjpg\">Original (4896 x 3672)"
+          },
+          "delivery": {
+            "url": "https://www.fws.gov/sites/default/files/styles/max_1300x1300/public/banner_images/2021-07/Coyote%20and%20Badger.JPG?itok=eL850JFR",
+            "localPath": "/tmp/freed-land65/coyote-and-badgerjpg-delivery.jpg",
+            "width": 1300,
+            "height": 975,
+            "bytes": 1098245,
+            "sha1": "73657162b7001488ca86d3edf4e90dc091806670",
+            "sha256": "55fa2f23f0257dafbce9201615047c47e374c45a684f8d10cdcc9846e2f1a18d",
+            "publishedLink": "<a href=\"https://www.fws.gov/sites/default/files/styles/max_1300x1300/public/banner_images/2021-07/Coyote%20and%20Badger.JPG?itok=eL850JFR\" download=\"usfws-coyote-and-badgerjpg-large\">Large (1300 x 975)"
+          }
+        }
+      ],
+      "visualReview": "Both exact originals individually opened. The first is a four-frame source collage with uneven color, distant animals and some soft detail. The second shows an opposite-facing coyote and badger beside railway track; the badger is partially obscured by rail and vegetation. Neither supplies a developed episode without offscreen action doing too much work.",
+      "biologySource": "https://www.fws.gov/story/spotted-coyote-and-badger-hunting-together",
+      "biologyBoundary": "Primary FWS article supports occasional hunting associations, not a universal friendship, safe coyote encounter or division of every meal. No new relationship enters canon."
+    }
+  ],
+  "cachedRecoveryHold": {
+    "sourceUrl": "https://npgallery.nps.gov/AssetDetail/b498be69-208a-48aa-947f-51c766788668",
+    "localOriginal": "/tmp/freed-land20/1.jpg",
+    "sha1": "532a9a09ecfafe8da0e54dc37323d133839e5aef",
+    "review": "Exact cached rolling bison original independently reopened. No new passage proposed: repeating bodily pleasure would overlap Oswin's existing sign scratching and earlier rejected rolling material. No redownload."
+  },
+  "checks": {
+    "mediaDeduplication": "Both Oswin source/delivery SHA-1 digests absent from current sample-corpus media catalogs; recalculated bytes match recorded hashes.",
+    "files": "Only LAND-STORIES-65.md and LAND-STORIES-65.json written in worktree. LAND58 and LAND62 holds preserved.",
+    "sourceRequests": "Three new FWS exact originals downloaded with their source-published Large variants, plus one cached bison reopened. No blocked-source retries or Commons requests. One local creator-parser mismatch was resolved from already cached HTML without a second page request.",
+    "validation": "JSON parsing and scoped diff whitespace check passed."
+  }
+}

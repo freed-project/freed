@@ -140,10 +140,20 @@ export function YouTubeFocusPlayer({
   const playerRef = useRef<YouTubePlayerInstance | null>(null);
   const endedNotifiedRef = useRef(false);
   const onEndedRef = useRef(onEnded);
-  const [session, setSession] = useState<YouTubeSession | null>(null);
+  const [session, setSession] = useState<YouTubeSession | null>(() => reference
+    ? { videoId: reference.videoId, revision: 0, phase: "loaded" }
+    : null);
   const [playbackStatus, setPlaybackStatus] = useState<YouTubePlaybackStatus>("ready");
 
   const activeSession = reference && session?.videoId === reference.videoId ? session : null;
+
+  useEffect(() => {
+    endedNotifiedRef.current = false;
+    setPlaybackStatus("ready");
+    setSession((current) => current?.videoId === reference?.videoId ? current : reference
+      ? { videoId: reference.videoId, revision: 0, phase: "loaded" }
+      : null);
+  }, [reference?.videoId]);
 
   useEffect(() => {
     onEndedRef.current = onEnded;
@@ -242,36 +252,7 @@ export function YouTubeFocusPlayer({
     }));
   };
 
-  if (!activeSession) {
-    return (
-      <section
-        aria-label="YouTube focus player"
-        data-state="idle"
-        className="rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-muted)] p-5"
-      >
-        <h2 className="text-lg font-semibold text-[var(--theme-text-primary)]">Watch without the feed</h2>
-        <p className="mt-1 text-sm leading-6 text-[var(--theme-text-secondary)]">
-          The player loads only after you choose to watch. It will not autoplay or start another video.
-        </p>
-        <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-          <button
-            type="button"
-            onClick={startFocusSession}
-            className="btn-primary rounded-lg px-4 py-2.5 text-sm font-semibold"
-          >
-            Watch here in Focus Mode
-          </button>
-          <button
-            type="button"
-            onClick={openInYouTube}
-            className="btn-secondary rounded-lg px-4 py-2.5 text-sm font-semibold"
-          >
-            Play in YouTube
-          </button>
-        </div>
-      </section>
-    );
-  }
+  if (!activeSession) return null;
 
   if (activeSession.phase === "ended") {
     return (

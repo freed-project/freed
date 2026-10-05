@@ -1,270 +1,97 @@
-import { createHash } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { execFileSync, spawn } from "node:child_process";
+import { mkdir, mkdtemp, readFile, writeFile, copyFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
-import aquaticMedia from "../packages/shared/src/sample-corpus-aquatic-forty-four-media.json" with { type: "json" };
+import { SHOWCASE_THEME_IDS, SHOWCASE_FRAME_IDS, resolveShowcaseReleaseIdentity } from "./lib/release-showcase-assets.mjs";
 
-const baseUrl = process.env.FREED_SHOWCASE_URL ?? "http://127.0.0.1:4173";
-const outputDirectory = path.resolve(
-  process.env.FREED_SHOWCASE_OUTPUT ?? "release-showcase",
-);
-const releaseTag = process.env.GITHUB_REF_NAME ?? "local-preview";
-const releaseSha = process.env.GITHUB_SHA ?? "local-preview";
-const baseOrigin = new URL(baseUrl).origin;
-// NPS delivers this reviewed sockeye pair without filename extensions. Keep
-// the exception bound to the catalog's exact URLs, not arbitrary NPS assets.
-const reviewedExtensionlessMediaUrls = new Set(aquaticMedia.map((item) => item.imageUrl));
-const useMemorySqlite = process.env.FREED_SHOWCASE_SQLITE_MEMORY === "1";
-const reviewedMediaHosts = new Set([
-  "thumb.wikimedia.org",
-  "upload.wikimedia.org",
-  "oceanexplorer.noaa.gov",
-  "archive.oceanexplorer.noaa.gov",
-  "www.fisheries.noaa.gov",
-  "media.fisheries.noaa.gov",
-  "npgallery.nps.gov",
-  "www.nps.gov",
-  "www.fws.gov",
-  "d9-wret.s3.us-west-2.amazonaws.com",
-  "chandra.harvard.edu",
-  "i.ytimg.com",
-]);
-
-const captures = [
-  { file: "freed-showcase-unified-midas.png", theme: "midas", view: "unified" },
-  { file: "freed-showcase-stories-ember.png", theme: "ember", view: "stories" },
-  { file: "freed-showcase-instagram-neon.png", theme: "neon", view: "instagram" },
-  { file: "freed-showcase-map-scriptorium.png", theme: "scriptorium", view: "map" },
-  { file: "freed-showcase-friends-dark-star.png", theme: "dark-star", view: "friends" },
-];
-
-function stableShuffle(values, seed) {
-  const bytes = createHash("sha256").update(seed).digest();
-  return values
-    .map((value, index) => ({ value, weight: bytes[index % bytes.length] }))
-    .sort((left, right) => left.weight - right.weight)
-    .map(({ value }) => value);
+const root = fileURLToPath(new URL("../", import.meta.url));
+const output = path.resolve(process.env.FREED_SHOWCASE_OUTPUT ?? "release-showcase");
+const identity = resolveShowcaseReleaseIdentity();
+const sha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
+if (sha !== process.env.GITHUB_SHA || execFileSync("git", ["status", "--porcelain"], { cwd: root, encoding: "utf8" }).trim()) {
+  throw new Error("Release showcase requires the exact clean release checkout.");
 }
-
-async function waitForShowcase(page) {
-  await page.locator("header").getByText(/[1-9][0-9,]* items/).waitFor({
-    state: "visible",
-    timeout: 30_000,
+// Stage outside the checkout so every theme independently proves clean source.
+// Keep failed captures for diagnosis, but never upload a partial set.
+const staging = await mkdtemp(path.join(os.tmpdir(), "freed-release-showcase-"));
+async function run(command, args, env = {}) {
+  await new Promise((resolve, reject) => {
+    const child = spawn(command, args, { cwd: root, env: { ...process.env, ...env }, stdio: "inherit" });
+    child.on("error", reject);
+    child.on("exit", (code, signal) => code === 0 ? resolve() : reject(new Error(`${command} failed: ${signal ?? code}`)));
   });
 }
 
-async function selectView(page, view) {
-  if (view === "unified") {
-    await page.getByRole("button", { name: "Unified Feed", exact: true }).click();
-    return;
-  }
-  if (view === "stories") {
-    await page.getByRole("button", { name: "Unified Feed", exact: true }).click();
-    await page.getByRole("button", { name: "Stories", exact: true }).click();
-    return;
-  }
-  if (view === "friends") {
-    await page.locator('[data-testid="source-row-friends"]:visible').click();
-    return;
-  }
-  const label = view === "instagram" ? "Instagram" : "Map";
-  await page.getByRole("button", { name: label, exact: true }).click();
-}
-
-async function selectTheme(page, theme) {
-  // Demo presentation storage is intentionally document-local. Select through
-  // the real UI after loading instead of writing a preference before reload.
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await page.locator(`button:has([data-theme-preview="${theme}"])`).filter({ visible: true }).click();
-  await page.mouse.move(0, 0);
-  await page.waitForFunction((expected) =>
-    document.documentElement.dataset.theme === expected, theme);
-  await page.locator(".theme-settings-overlay").click({ position: { x: 5, y: 5 } });
-  await page.locator(".theme-settings-overlay").waitFor({ state: "hidden" });
-}
-
-async function waitForVisibleImages(page) {
-  try {
-    await page.waitForFunction(() => [...document.images].every((image) => {
-      const rect = image.getBoundingClientRect();
-      if (rect.width === 0 || rect.height === 0 || rect.bottom <= 0 ||
-          rect.right <= 0 || rect.top >= innerHeight || rect.left >= innerWidth) return true;
-      return image.complete && image.naturalWidth > 0;
-    }), undefined, { timeout: 30_000 });
-  } catch (cause) {
-    const media = await page.evaluate(() => ({
-      pending: [...document.images].filter((image) => {
-        const rect = image.getBoundingClientRect();
-        return rect.width > 0 && rect.height > 0 && rect.bottom > 0 &&
-          rect.right > 0 && rect.top < innerHeight && rect.left < innerWidth &&
-          (!image.complete || image.naturalWidth === 0);
-      }).slice(0, 10).map((image) => ({
-        url: (image.currentSrc || image.src).slice(0, 1_000),
-        complete: image.complete,
-        naturalWidth: image.naturalWidth,
-      })),
-      failures: (window.__freedShowcaseImageFailures ?? []).slice(0, 10),
-      policyViolations: (window.__freedShowcasePolicyViolations ?? []).slice(0, 10),
-    }));
-    throw new Error(`Visible showcase media did not settle: ${JSON.stringify(media)}`, { cause });
-  }
-  await page.evaluate(async () => {
-    await Promise.all([...document.images].filter((image) => image.complete && image.naturalWidth > 0)
-      .map((image) => image.decode()));
-    await document.fonts.ready;
+const manifests = [];
+for (const theme of SHOWCASE_THEME_IDS) {
+  const directory = path.join(staging, theme);
+  await run(process.execPath, ["scripts/capture-showcase-local.mjs"], {
+    FREED_SHOWCASE_THEME: theme, FREED_SHOWCASE_OUTPUT: directory, FREED_SHOWCASE_DESKTOP_ONLY: "0",
   });
+  const manifest = JSON.parse(await readFile(path.join(directory, "freed-showcase-manifest.json"), "utf8"));
+  const order = SHOWCASE_FRAME_IDS.map(frame => `freed-showcase-${frame}-${theme}.png`);
+  if (manifest.releaseSha !== sha || manifest.sourceDirty || JSON.stringify(manifest.gifOrder) !== JSON.stringify(order)) {
+    throw new Error(`Capture source or frame order mismatch: ${theme}`);
+  }
+  await run(process.env.FFMPEG_PATH ?? "ffmpeg", [
+    "-hide_banner", "-loglevel", "error", "-f", "concat", "-safe", "0",
+    "-i", path.join(directory, "gif-order.txt"), "-vf", "scale=1920:1280:flags=lanczos,format=bgra",
+    "-fps_mode", "passthrough", "-frames:v", "6", "-c:v", "libwebp_anim",
+    "-lossless", "0", "-quality", "90", "-compression_level", "6", "-loop", "0",
+    path.join(directory, `freed-showcase-${theme}.webp`),
+  ]);
+  manifests.push(manifest);
 }
 
-await mkdir(outputDirectory, { recursive: true });
+// Decode all frames and verify alpha clearing, not just a successful encoder exit.
 const browser = await chromium.launch({ headless: true });
-const context = await browser.newContext({
-  locale: "en-US",
-  reducedMotion: "reduce",
-  viewport: { width: 1440, height: 960 },
-});
-if (useMemorySqlite) {
-  await context.addInitScript(() => {
-    window.__FREED_PWA_SQLITE_MEMORY_E2E__ = true;
-  });
-}
-const page = await context.newPage();
-await page.addInitScript(() => {
-  window.__freedShowcasePolicyViolations = [];
-  window.__freedShowcaseImageFailures = [];
-  // React can remove failed images and leave a decorative fallback. Record
-  // failures before removal so a screenshot cannot silently accept that tile.
-  addEventListener("error", (event) => {
-    const image = event.target;
-    if (!(image instanceof HTMLImageElement)) return;
-    const rect = image.getBoundingClientRect();
-    if (rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.right > 0 &&
-        rect.top < innerHeight && rect.left < innerWidth) {
-      window.__freedShowcaseImageFailures.push(image.currentSrc || image.src);
-    }
-  }, true);
-  addEventListener("securitypolicyviolation", (event) => {
-    window.__freedShowcasePolicyViolations.push({
-      directive: event.effectiveDirective,
-      blocked: event.blockedURI,
-    });
-  });
-});
-const checkpointDurationsMs = [];
-const contentCounts = { total: null, regular: null, stories: null };
-const remoteRequestUrls = new Set();
-const unexpectedRequestUrls = new Set();
-page.on("request", (request) => {
-  const url = new URL(request.url());
-  if ((url.protocol === "http:" || url.protocol === "https:") && url.origin !== baseOrigin) {
-    remoteRequestUrls.add(url.href);
-    // Observe the public media the demo already loads. This does not initiate
-    // requests, retries, authenticated provider navigation, or video playback.
-    const existingPublicMapAsset = url.protocol === "https:" && url.hostname === "tiles.openfreemap.org";
-    if (!existingPublicMapAsset && (url.protocol !== "https:" || !reviewedMediaHosts.has(url.hostname) ||
-        !["image", "fetch"].includes(request.resourceType()) ||
-        (!/\.(?:jpe?g|png|webp|avif)(?:$|\/)/i.test(url.pathname) &&
-          !reviewedExtensionlessMediaUrls.has(url.href)))) {
-      unexpectedRequestUrls.add(url.href);
-    }
-  }
-});
-
 try {
-  for (const [index, capture] of captures.entries()) {
-    // Exercise the real production demo policy even on a loopback build server.
-    const captureUrl = new URL(baseUrl);
-    captureUrl.searchParams.set("freed-demo", "1");
-    await page.goto(captureUrl.href, { waitUntil: "domcontentloaded" });
-    await waitForShowcase(page);
-    if (index === 0) {
-      await page.getByRole("button", { name: "Explore Freed Demo", exact: true }).click();
-    } else {
-      // The same visitor has already dismissed the welcome card. Reloads
-      // preserve the banner state, so waiting for the original CTA would hang.
-      await page.getByRole("button", { name: "Minimize demo banner", exact: true })
-        .waitFor({ state: "visible" });
-    }
-    await selectTheme(page, capture.theme);
-    checkpointDurationsMs.push(
-      await page.evaluate(
-        () => performance.getEntriesByName("freed-demo-checkpoint").at(-1)?.duration ?? null,
-      ),
-    );
-    await selectView(page, capture.view);
-    if (capture.view === "unified" || capture.view === "stories") {
-      const countLabel = page.locator("header").getByText(
-        capture.view === "stories" ? /Stories.*[0-9,]+ items/ : /[0-9,]+ items/,
-      );
-      await countLabel.waitFor({ state: "visible" });
-      const match = (await countLabel.innerText()).match(/([0-9][0-9,]*) items/);
-      if (!match) throw new Error(`Missing ${capture.view} showcase item count`);
-      const count = Number(match[1].replaceAll(",", ""));
-      if (capture.view === "unified") contentCounts.total = count;
-      else contentCounts.stories = count;
-    }
-    if (capture.view === "map") {
-      await page.locator('[data-testid="map-surface"][data-map-ready="true"][data-map-tiles-ready="true"]').waitFor({ timeout: 30_000 });
-    } else if (capture.view === "friends") {
-      await page.locator('[data-testid="friend-graph-viewport"][data-graph-diagnostics="published"]').waitFor();
-      await page.waitForFunction(() => Number(document.querySelector(
-        '[data-testid="friend-graph-viewport"]',
-      )?.getAttribute("data-ready-renderer-label-count")) > 0);
-    }
-    if (index > 0) {
-      await page.addStyleTag({
-        content: '[data-testid="demo-welcome-desktop"] { display: none !important; }',
-      });
-    }
-    await waitForVisibleImages(page);
-    const policyViolations = await page.evaluate(() => window.__freedShowcasePolicyViolations);
-    if (policyViolations.length > 0) {
-      throw new Error(`Showcase policy blocked ${capture.view}: ${JSON.stringify(policyViolations)}`);
-    }
-    const imageFailures = await page.evaluate(() => window.__freedShowcaseImageFailures);
-    if (imageFailures.length > 0) {
-      throw new Error(`Showcase images failed in ${capture.view}: ${JSON.stringify(imageFailures)}`);
-    }
-    await page.screenshot({
-      animations: "disabled",
-      path: path.join(outputDirectory, capture.file),
-      type: "png",
-    });
+  const page = await browser.newPage();
+  await page.goto(process.env.FREED_SHOWCASE_URL ?? "http://127.0.0.1:4173", { waitUntil: "domcontentloaded" });
+  for (const theme of SHOWCASE_THEME_IDS) {
+    const bytes = await readFile(path.join(staging, theme, `freed-showcase-${theme}.webp`));
+    await page.evaluate(async (base64) => {
+      const decoder = new ImageDecoder({ data: Uint8Array.from(atob(base64), char => char.charCodeAt(0)), type: "image/webp" });
+      await decoder.tracks.ready;
+      const track = decoder.tracks.selectedTrack;
+      if (track.frameCount !== 6 || track.repetitionCount !== Infinity) throw new Error("Showcase frame count or looping is invalid");
+      for (let index = 0; index < 6; index++) {
+        const { image } = await decoder.decode({ frameIndex: index });
+        try {
+          if (image.displayWidth !== 1920 || image.displayHeight !== 1280 || image.duration !== 3_000_000) throw new Error("Showcase dimensions or timing changed");
+          const canvas = new OffscreenCanvas(1920, 1280);
+          const context = canvas.getContext("2d");
+          context.drawImage(image, 0, 0);
+          if (context.getImageData(0, 0, 1, 1).data[3] !== 0) throw new Error("Showcase corner lost transparency");
+          if (index >= 4 && context.getImageData(100, 640, 1, 1).data[3] !== 0) throw new Error("Desktop frame leaked into mobile canvas");
+          if (context.getImageData(960, 640, 1, 1).data[3] === 0) throw new Error("Showcase frame is empty");
+        } finally { image.close(); }
+      }
+      decoder.close();
+    }, bytes.toString("base64"));
   }
-} finally {
-  await browser.close();
+} finally { await browser.close(); }
+
+const first = manifests[0];
+if (execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim() !== sha ||
+    execFileSync("git", ["status", "--porcelain"], { cwd: root, encoding: "utf8" }).trim()) {
+  throw new Error("Release checkout changed during capture.");
 }
-
-if (unexpectedRequestUrls.size > 0) {
-  throw new Error(
-    `Showcase made unexpected remote requests:\n${[...unexpectedRequestUrls].join("\n")}`,
-  );
+if (manifests.some(manifest => JSON.stringify(manifest.contentCounts) !== JSON.stringify(first.contentCounts))) {
+  throw new Error("Showcase themes disagree on corpus counts");
 }
-
-const gifOrder = stableShuffle(captures, releaseSha).map(({ file }) => file);
-contentCounts.regular = contentCounts.total - contentCounts.stories;
-await writeFile(
-  path.join(outputDirectory, "gif-order.txt"),
-  `${gifOrder.map((file) => `file '${file}'\nduration 1.8`).join("\n")}\nfile '${gifOrder.at(-1)}'\n`,
-);
-await writeFile(
-  path.join(outputDirectory, "freed-showcase-manifest.json"),
-  `${JSON.stringify(
-    {
-      schemaVersion: 1,
-      releaseTag,
-      releaseSha,
-      generatedAt: new Date().toISOString(),
-      captures,
-      gifOrder,
-      checkpointDurationsMs,
-      contentCounts,
-      remoteMediaUrls: [...remoteRequestUrls].sort(),
-    },
-    null,
-    2,
-  )}\n`,
-);
-
-process.stdout.write(
-  `Captured ${captures.length.toLocaleString()} Freed showcase views in ${outputDirectory}.\n`,
-);
+await mkdir(output, { recursive: true });
+for (const theme of SHOWCASE_THEME_IDS) {
+  for (const filename of [...SHOWCASE_FRAME_IDS.map(frame => `freed-showcase-${frame}-${theme}.png`), `freed-showcase-${theme}.webp`]) {
+    await copyFile(path.join(staging, theme, filename), path.join(output, filename));
+  }
+}
+await writeFile(path.join(output, "freed-showcase-manifest.json"), JSON.stringify({
+  ...first, releaseTag: identity.tag,
+  captures: manifests.flatMap(manifest => manifest.captures), gifOrder: undefined,
+  encoding: { format: "webp", quality: 90, width: 1920, height: 1280, loop: 0, durationMs: 3000 },
+  remoteMediaUrls: [...new Set(manifests.flatMap(manifest => manifest.remoteMediaUrls))].sort(),
+}, null, 2) + "\n");
+console.log(`Captured and decoded ${SHOWCASE_THEME_IDS.length} theme animations. Source PNGs: ${staging}`);

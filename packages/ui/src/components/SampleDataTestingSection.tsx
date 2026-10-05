@@ -4,10 +4,11 @@ import {
   formatSampleDataSummary,
   populateSampleLibraryDataWithProgressToast,
 } from "../lib/sample-library-seed.js";
-import { useAppStore, usePlatform } from "../context/PlatformContext.js";
+import { useAppStore, usePlatform, usePlatformCapabilities } from "../context/PlatformContext.js";
 import { useLibraryFacetSummary } from "../hooks/useLibraryFacetSummary.js";
 
 export function SampleDataTestingSection() {
+  const { maintenance } = usePlatformCapabilities();
   const initialize = useAppStore((s) => s.initialize);
   const isInitialized = useAppStore((s) => s.isInitialized);
   const addSampleLibraryData = useAppStore((s) => s.addSampleLibraryData);
@@ -36,7 +37,7 @@ export function SampleDataTestingSection() {
   const hasSampleData = sampleDataSummary.total > 0;
 
   const handleSeedSampleData = useCallback(async () => {
-    if (hasSampleData) return;
+    if (!maintenance || hasSampleData) return;
     setSeeding(true);
     try {
       await populateSampleLibraryDataWithProgressToast({
@@ -53,12 +54,14 @@ export function SampleDataTestingSection() {
   }, [
     addSampleLibraryData,
     hasSampleData,
+    maintenance,
     initialize,
     isInitialized,
     seedSocialConnections,
   ]);
 
   const handleClearSampleData = useCallback(async () => {
+    if (!maintenance) return;
     setClearing(true);
     try {
       await clearSampleLibraryDataWithProgressToast({ clearSampleData });
@@ -68,7 +71,9 @@ export function SampleDataTestingSection() {
     } finally {
       setClearing(false);
     }
-  }, [clearSampleData]);
+  }, [clearSampleData, maintenance]);
+
+  if (!maintenance) return null;
 
   return (
     <div className="mt-10 flex w-full max-w-xl flex-col items-center">

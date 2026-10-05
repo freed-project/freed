@@ -1,0 +1,3 @@
+# AQUATIC-EDITORIAL-159 admission
+
+A practice attempt is admitted unchanged after author and root review. Root opened the exact photo, read Mabel complete prior arc and verified photo-specific Sue Keefer CC BY 4.0 permission and SHA1. Juvenile bands and whole-body chin-shell contact are legible despite grain. NPS species profile supports juvenile appearance and range. The contest and movement sequence are fictional; the alligator folds feet against its sides, never retracts limbs. Existing childhood passages, adult avatar, female identity and Everglades home remain unchanged. The initial repeated chin-speaking draft remains held. Adds one Instagram Story.

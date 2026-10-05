@@ -389,7 +389,8 @@ describe("Friends Galaxy product engine", () => {
     expect(backends[0]?.presentationAtlas?.nodes.slice(0, 2).map((node) => node.id))
       .toEqual(["account:product-account-2", "person:product-person-2"]);
     expect(engine.focusNode("account:product-account-47", 1.2)).toBe(true);
-    expect(engine.pickNode(195, 422)).toBe("account:product-account-47");
+    // Rendered labels and avatars take precedence over the point-only fallback.
+    expect(engine.pickNode(195, 422)).toBe("pick:195:422");
     engine.render({ x: 0, y: 0, scale: 0.52 }, 120);
     expect(backends[0]?.events).toContain("render:0.52:120");
   });

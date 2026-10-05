@@ -1,0 +1,195 @@
+{
+  "status": "Held after independent lead image and prose review; no admission",
+  "counts": {
+    "exactPublishedImagesOpened": 6,
+    "fullUploadsOpened": 0,
+    "proposals": 1,
+    "newIdentities": 0
+  },
+  "proposals": [
+    {
+      "candidateId": "69-01",
+      "characterId": "lucille-loop",
+      "identityNameBase": "Lucille Loop",
+      "episode": {
+        "subject": "Cucamonga manroot",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "weather",
+        "title": "Below the slender stems",
+        "body": "Rain washed the soil off my tuber. The part of me that had always been underground was suddenly holding a fallen leaf.\n\nUp in the scrub, a leaf that size could pull a thin stem sideways.\n\nI waited for the familiar tug. The leaf lay flat. That part of me did not bend.",
+        "mediaSha1": "beda7ee6c8aea0a32aafa2513d8d65ee8101fc24"
+      },
+      "admission": "Held for mechanically predictable event without consequential response",
+      "visualReview": "Exact published large image opened individually. An exposed pale-brown tuber fills the center and lower frame; rooted green stems pass above and around it, eroded soil surrounds it, and one bright green leaf rests on its broad surface. Bark-like surface cracks and old marks visible; no cause or freshness assigned to these marks. The tuber and leaf are sharp, with good separation from darker soil.",
+      "fictionBoundary": "Observer explicitly reports exposure after recent rains. Leaf descent, familiar tug expected from a thin stem, and absence of perceived bending are fictional temporal and felt experience. The photo shows a resting leaf, not its fall. No conscious mechanosensory threshold, root locomotion, biological diagnosis, measured weight or new injury claimed.",
+      "continuity": "Existing Marah macrocarpa perennial with large underground tuber and slender seasonal vines. Existing Point Loma home32.67/-117.24 retained; source is Glendale, compatible species imagery, not proof of travel or a tracked individual. The episode does not require a new neighbor or repeat a coil holding during a gust. She experiences the same leaf load through newly exposed tuber tissue rather than tendril tension. No new avatar or identity.",
+      "leadReview": "Lead opened exact image and read literal body. Source is sharp, but a tiny leaf failing to bend a massive tuber is mechanically predictable and creates no consequential response or relationship beyond stated scale. Preserve passage and evidence."
+    }
+  ],
+  "media": [
+    {
+      "observationId": 198833660,
+      "photoId": 350530180,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/350530180/large.jpg",
+      "localFile": "/tmp/botanical69/198833660-large.jpg",
+      "bytes": 548911,
+      "sha1": "beda7ee6c8aea0a32aafa2513d8d65ee8101fc24",
+      "sha256": "9c437a634a16aa03e1ad9520a5518322bd2eeda7ba1a0b4651d47348dabf333b",
+      "dimensions": [
+        768,
+        1024
+      ],
+      "seconds": 0.874,
+      "status": 200,
+      "attribution": "(c) klicklo, some rights reserved (CC BY), uploaded by klicklo",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "license": "CC-BY",
+      "sourceUrl": "https://www.inaturalist.org/observations/198833660",
+      "sourceMetadataUrl": "https://www.inaturalist.org/observations/198833660.json",
+      "sourceLocal": "/tmp/botanical69/obs-198833660.json",
+      "id": "botanical69-marah-exposed-tuber",
+      "category": "wildlife",
+      "subject": "Cucamonga manroot",
+      "species": "Marah macrocarpa",
+      "creator": "klicklo",
+      "alt": "A large exposed Marah macrocarpa tuber rests in eroded earth with green stems above it and one green leaf on its broad surface.",
+      "aggregated": false,
+      "rightsEvidence": "Per-photo API metadata explicitly CC-BY with https://creativecommons.org/licenses/by/4.0/ and photographer attribution klicklo. Observation license not substituted for image license.",
+      "taxonEvidence": "Observation198833660 research grade; two current Marah macrocarpa identifications, one agreement, zero disagreements; wild record9February2024. The legacy common-name field Chilicothe is not substituted for the accepted scientific taxon.",
+      "variantEvidence": "Exact large_url published in observation_photos.photo; no guessed size URL. Only published large inspected, not an unavailable full upload. Source photo metadata1536x2048; measured delivered image768x1024.",
+      "uploadedDimensions": [
+        1536,
+        2048
+      ]
+    }
+  ],
+  "holds": [
+    {
+      "media": {
+        "observationId": 67877674,
+        "photoId": 109780219,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/109780219/large.jpeg",
+        "localFile": "/tmp/botanical69/67877674-large.jpg",
+        "bytes": 791634,
+        "sha1": "394fb61338520bca08ccd13f31774bc3de0f3f37",
+        "sha256": "18c885da0327aff7f14ac2e8ef5f83519edcd01370ef3b65993d5aeb9e216af7",
+        "dimensions": [
+          768,
+          1024
+        ],
+        "seconds": 1.055,
+        "status": 200,
+        "attribution": "(c) Amy, some rights reserved (CC BY), uploaded by Amy",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "license": "CC-BY",
+        "sourceUrl": "https://www.inaturalist.org/observations/67877674",
+        "sourceMetadataUrl": "https://www.inaturalist.org/observations/67877674.json",
+        "sourceLocal": "/tmp/botanical69/obs-67877674.json"
+      },
+      "reason": "Exposed two-lobed tuber beneath dense crossing twigs. A weak frame for a discrete event; no prose."
+    },
+    {
+      "media": {
+        "observationId": 74775794,
+        "photoId": 122254658,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/122254658/large.jpg",
+        "localFile": "/tmp/botanical69/74775794-large.jpg",
+        "bytes": 530566,
+        "sha1": "cd867da6e3f25f11bc3d8e9b0c5025d0a329fa7e",
+        "sha256": "41258c7f33876f2be866aed9556fc6a13b97daa76e6a2491ccf16684923f4490",
+        "dimensions": [
+          768,
+          1024
+        ],
+        "seconds": 0.846,
+        "status": 200,
+        "attribution": "(c) Chad King, some rights reserved (CC BY), uploaded by Chad King",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "license": "CC-BY",
+        "sourceUrl": "https://www.inaturalist.org/observations/74775794",
+        "sourceMetadataUrl": "https://www.inaturalist.org/observations/74775794.json",
+        "sourceLocal": "/tmp/botanical69/obs-74775794.json"
+      },
+      "reason": "Large exposed tuber with green stems, but coarse surface and no discrete interaction. No narrative reason to count a second exposure."
+    },
+    {
+      "media": {
+        "observationId": 186459563,
+        "photoId": 325851333,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/325851333/large.jpg",
+        "localFile": "/tmp/botanical69/186459563-large.jpg",
+        "bytes": 391208,
+        "sha1": "c8e717c958d43d3e9da202cafc734783805f7017",
+        "sha256": "bd3372151a298994a906193a8664c2a2383bd5849fa7a79f6de61f39454f255c",
+        "dimensions": [
+          1024,
+          771
+        ],
+        "seconds": 12.12,
+        "status": 200,
+        "attribution": "(c) Viktor, some rights reserved (CC BY), uploaded by Viktor",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "license": "CC-BY",
+        "sourceUrl": "https://www.inaturalist.org/observations/186459563",
+        "sourceMetadataUrl": "https://www.inaturalist.org/observations/186459563.json",
+        "sourceLocal": "/tmp/botanical69/obs-186459563.json"
+      },
+      "reason": "Rhodotus cap with open hole and missing tissue. Cause not observed. Do not invent slug feeding or a recovery event."
+    },
+    {
+      "media": {
+        "observationId": 98215665,
+        "photoId": 163479657,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/163479657/large.jpeg",
+        "localFile": "/tmp/botanical69/98215665-large.jpg",
+        "bytes": 650898,
+        "sha1": "47d3d0643960ff6572c2ab0ba643ed85e1424e03",
+        "sha256": "2a0b6132657a8acfbcb4cceb0c8c60eb15e1560f670aba1f02191b899de330f4",
+        "dimensions": [
+          1024,
+          768
+        ],
+        "seconds": 1.802,
+        "status": 200,
+        "attribution": "(c) Matthew Rose, some rights reserved (CC BY), uploaded by Matthew Rose",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "license": "CC-BY",
+        "sourceUrl": "https://www.inaturalist.org/observations/98215665",
+        "sourceMetadataUrl": "https://www.inaturalist.org/observations/98215665.json",
+        "sourceLocal": "/tmp/botanical69/obs-98215665.json"
+      },
+      "reason": "Beautiful young Rhodotus with conspicuous stem droplets and nearby pins. Droplet decoration and mentoring younger fungus would repeat spent mechanisms."
+    },
+    {
+      "media": {
+        "observationId": 132400640,
+        "photoId": 225467933,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/225467933/large.jpeg",
+        "localFile": "/tmp/botanical69/132400640-large.jpg",
+        "bytes": 470101,
+        "sha1": "2a07878afea4a439961607fcaadaecad29c934d0",
+        "sha256": "0d1f889859732c068efdf02feaf3031d6205d6c4ab088aef53db74e812d652fb",
+        "dimensions": [
+          1024,
+          769
+        ],
+        "seconds": 1.083,
+        "status": 200,
+        "attribution": "(c) \u0415\u043b\u0435\u043d\u0430 \u0421\u043c\u0438\u0440\u043d\u043e\u0432\u0430, some rights reserved (CC BY), uploaded by \u0415\u043b\u0435\u043d\u0430 \u0421\u043c\u0438\u0440\u043d\u043e\u0432\u0430",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "license": "CC-BY",
+        "sourceUrl": "https://www.inaturalist.org/observations/132400640",
+        "sourceMetadataUrl": "https://www.inaturalist.org/observations/132400640.json",
+        "sourceLocal": "/tmp/botanical69/obs-132400640.json"
+      },
+      "reason": "Beautiful intact reticulated Rhodotus cap, but generic portrait supplies no distinctive action."
+    }
+  ],
+  "sources": [
+    "https://api.inaturalist.org/v1/docs/",
+    "https://www.inaturalist.org/observations/198833660.json",
+    "https://www.nps.gov/cabr/blogs/rising-to-the-top.htm"
+  ],
+  "scope": "Only69 proposal docs and task-local /tmp sources. No retries of denied sources, newidentities, runtime writes, publication, or other-task coordination."
+}

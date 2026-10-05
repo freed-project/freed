@@ -328,15 +328,15 @@ export function compileIdentityGalaxyScene(
     const personIndex = personIndexById.get(node.linkedPersonId);
     if (personIndex === undefined) continue;
     const personDepth = positions[personIndex * 3 + 2]!;
-    // Atlas orbits are world-space, while avatars remain bounded on screen.
-    // Tighten automatic shells without changing their stable angular slots or
-    // moving a profile away from the position the user explicitly pinned.
-    if (!node.graphPinned) {
-      for (const axis of [0, 1]) {
-        const parentCoordinate = positions[personIndex * 3 + axis]!;
-        positions[index * 3 + axis] = parentCoordinate +
-          (positions[index * 3 + axis]! - parentCoordinate) * 0.3;
-      }
+    // Match the largest selected-avatar radius, with a small world-space gap.
+    const avatarDiameter = 28 + Math.max(0, Math.min(4, (radii[personIndex]! - 48) / 8)) * 6 + 6;
+    const dx = positions[index * 3]! - positions[personIndex * 3]!;
+    const dy = positions[index * 3 + 1]! - positions[personIndex * 3 + 1]!;
+    const distance = Math.hypot(dx, dy);
+    const orbitRadius = avatarDiameter / 2 + 8;
+    if (distance > 0 && !node.graphPinned) {
+      positions[index * 3] = positions[personIndex * 3]! + dx / distance * orbitRadius;
+      positions[index * 3 + 1] = positions[personIndex * 3 + 1]! + dy / distance * orbitRadius;
     }
     // A linked profile belongs to the same compact system as its identity.
     // Large depth separation made even tiny XY orbits project far apart.

@@ -1,0 +1,182 @@
+{
+  "batch": "AQUATIC-STORIES-90",
+  "status": "zero_proposals_four_new_image_holds",
+  "reviewDate": "2026-09-06",
+  "proposals": [],
+  "profiles": [],
+  "sourceReviews": [
+    {
+      "index": 1,
+      "observationId": 245524935,
+      "photoId": 438147755,
+      "sourcePage": "https://www.inaturalist.org/observations/245524935",
+      "sourceMetadataUrl": "https://www.inaturalist.org/observations/245524935.json",
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/438147755/large.jpeg",
+      "localPath": "/tmp/freed-aquatic-stories-90/source-01.jpg",
+      "width": 802,
+      "height": 1024,
+      "originalDimensions": [
+        1170,
+        1494
+      ],
+      "sha1": "d2d2848f5392527540385955251a5f324778fd04",
+      "sha256": "fe65862d3ae133c32596d2b78c056293a6275bc9450eedd52b790b64198c1539",
+      "byteLength": 369572,
+      "license": "CC0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "attribution": "no rights reserved, uploaded by Possum86",
+      "description": "In last few pics the seal is eating a fish (salmon?). The seal kept going underwater and then popping back up to bite at the fish while the gulls went crazy trying to get a piece. ",
+      "taxon": "Phoca vitulina richardii",
+      "place": "Whidbey Island, Oak Harbor, WA, US",
+      "observedOn": "2024-10-03",
+      "individuallyOpened": true,
+      "rightsVerifiedAt": "2026-09-06",
+      "decision": "hold",
+      "visibleScene": "The seal holds a fish at the surface while several gulls approach or float nearby. The head, fish and birds are small and strongly processed; water fills most of the frame.",
+      "reason": "Hold for image quality. This is an actual encounter, but not a gorgeous Story delivery. Do not turn the observer's uncertainty about salmon into an exact prey identification.",
+      "deliveryKind": "Exact large_url explicitly published in primary observation JSON. Hashes and bytes describe this delivery; original upload dimensions are metadata only.",
+      "canonCompatibility": "Phoca vitulina species identity is compatible with Fenn Lowtide. Preserve his Kenai Fjords home, adult chronology and unassigned reproductive sex. Source geography is separate; no personal travel established."
+    },
+    {
+      "index": 2,
+      "observationId": 245524935,
+      "photoId": 438147774,
+      "sourcePage": "https://www.inaturalist.org/observations/245524935",
+      "sourceMetadataUrl": "https://www.inaturalist.org/observations/245524935.json",
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/438147774/large.jpeg",
+      "localPath": "/tmp/freed-aquatic-stories-90/source-02.jpg",
+      "width": 720,
+      "height": 1024,
+      "originalDimensions": [
+        1170,
+        1665
+      ],
+      "sha1": "b2e687a530a9a772c219bdb467e31c836ef92efe",
+      "sha256": "033dfd2c5fb91f93f3742f69b3a251b7c3a9e3b62dc88efcd5f09fe204f274c5",
+      "byteLength": 332951,
+      "license": "CC0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "attribution": "no rights reserved, uploaded by Possum86",
+      "description": "In last few pics the seal is eating a fish (salmon?). The seal kept going underwater and then popping back up to bite at the fish while the gulls went crazy trying to get a piece. ",
+      "taxon": "Phoca vitulina richardii",
+      "place": "Whidbey Island, Oak Harbor, WA, US",
+      "observedOn": "2024-10-03",
+      "individuallyOpened": true,
+      "rightsVerifiedAt": "2026-09-06",
+      "decision": "hold",
+      "visibleScene": "The seal faces forward with exposed fish flesh at its mouth; a gull flies directly above and others float nearby.",
+      "reason": "Hold for image quality. The action is clearer than source01, but the seal remains small and edges have strong phone-processing artifacts. This is a second frame of the same event, never a second proposed Story.",
+      "deliveryKind": "Exact large_url explicitly published in primary observation JSON. Hashes and bytes describe this delivery; original upload dimensions are metadata only.",
+      "canonCompatibility": "Phoca vitulina species identity is compatible with Fenn Lowtide. Preserve his Kenai Fjords home, adult chronology and unassigned reproductive sex. Source geography is separate; no personal travel established."
+    },
+    {
+      "index": 3,
+      "observationId": 396168964,
+      "photoId": 726501689,
+      "sourcePage": "https://www.inaturalist.org/observations/396168964",
+      "sourceMetadataUrl": "https://www.inaturalist.org/observations/396168964.json",
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/726501689/large.jpg",
+      "localPath": "/tmp/freed-aquatic-stories-90/source-03.jpg",
+      "width": 576,
+      "height": 1024,
+      "originalDimensions": [
+        1152,
+        2048
+      ],
+      "sha1": "bdaae8423a7dab21838bca8c24b756821198c2a8",
+      "sha256": "057f5bb1e4621272b6cb4305c0f8dc62afbae73b946a97663f39dc26dbb484c9",
+      "byteLength": 683231,
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "attribution": "(c) Kristiina Hurme, some rights reserved (CC BY), uploaded by Kristiina Hurme",
+      "description": "Inside fish ladder ",
+      "taxon": "Phoca vitulina",
+      "place": "W Commodore Way, Seattle, WA, US",
+      "observedOn": "2026-08-29",
+      "individuallyOpened": true,
+      "rightsVerifiedAt": "2026-09-06",
+      "decision": "hold",
+      "visibleScene": "A pale spotted seal curves through churning water between concrete fish-ladder walls. Its head is small and the water and structures dominate.",
+      "reason": "Hold for image quality and setting. The source explicitly documents a Seattle fish ladder. This is not proof of Fenn visiting Seattle or an unnamed natural channel at his Alaskan home. No earned Story pairing.",
+      "deliveryKind": "Exact large_url explicitly published in primary observation JSON. Hashes and bytes describe this delivery; original upload dimensions are metadata only.",
+      "canonCompatibility": "Phoca vitulina species identity is compatible with Fenn Lowtide. Preserve his Kenai Fjords home, adult chronology and unassigned reproductive sex. Source geography is separate; no personal travel established."
+    },
+    {
+      "index": 4,
+      "observationId": 333826582,
+      "photoId": 606088789,
+      "sourcePage": "https://www.inaturalist.org/observations/333826582",
+      "sourceMetadataUrl": "https://www.inaturalist.org/observations/333826582.json",
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/606088789/large.jpg",
+      "localPath": "/tmp/freed-aquatic-stories-90/source-04.jpg",
+      "width": 1024,
+      "height": 1024,
+      "originalDimensions": [
+        1134,
+        1134
+      ],
+      "sha1": "4bb4362fbeb5044f00f09beb86fca402e4863933",
+      "sha256": "cafb147ad7266ab3670c40d707d718f96e07df238e1fd1e0a5ecacd9c98760c9",
+      "byteLength": 1141862,
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "attribution": "(c) Tser, some rights reserved (CC BY), uploaded by Tser",
+      "description": "With some unidentifiable fish!",
+      "taxon": "Phoca vitulina richardii",
+      "place": "Seattle, WA, USA",
+      "observedOn": "2026-01-05",
+      "individuallyOpened": true,
+      "rightsVerifiedAt": "2026-09-06",
+      "decision": "hold",
+      "visibleScene": "A dark harbor seal head rises among bright horizontal reflections. Whiskers and nose are visible; any fish is hidden or too unclear to carry an incident.",
+      "reason": "Hold for scene fit. Source description mentions unidentified fish, but this frame does not visibly establish a fish encounter. A mouth or head portrait alone does not earn an invented fishing sequence.",
+      "deliveryKind": "Exact large_url explicitly published in primary observation JSON. Hashes and bytes describe this delivery; original upload dimensions are metadata only.",
+      "canonCompatibility": "Phoca vitulina species identity is compatible with Fenn Lowtide. Preserve his Kenai Fjords home, adult chronology and unassigned reproductive sex. Source geography is separate; no personal travel established."
+    }
+  ],
+  "duplicateRecoveryReviews": [
+    {
+      "sourceId": 12630,
+      "sourcePage": "https://oceanexplorer.noaa.gov/multimedia/okeanos-explorations-22voyage-to-the-ridge-gallery-media-dive10-shrimp/",
+      "sourceTitle": "Shrimp Peeking Out Of An Iridogorgia Coral",
+      "sourceCaption": "A shrimp peeks out from the branches of an Iridogorgia coral observed at a depth of 1,680 meters (5,512 feet) during Dive 10 of the second Voyage to the Ridge 2022 expedition.\n",
+      "attribution": "NOAA Ocean Exploration, Voyage to the Ridge 2022",
+      "imageUrl": "https://oceanexplorer.noaa.gov/wp-content/uploads/2022/08/dive10-shrimp-hires.jpg",
+      "subjectGroup": "Iridogorgia",
+      "index": 18,
+      "localPath": "/tmp/freed-aquatic-26/source-18.jpg",
+      "width": 1920,
+      "height": 1080,
+      "sha1": "40ec7c41f6b5833e0b16cc95fcfda5a86f843b1e",
+      "sha256": "c94e268c0580268e5db170f80a334d8004f446205b6088e96a50b7b87d1736dd",
+      "individuallyOpened": true,
+      "decision": "exclude_duplicate",
+      "reason": "Exact source reopened. The shrimp amid open Iridogorgia polyps is strong, but this hash is already bound to Romy Helix, Hold your claws still. No reuse or new prose proposed.",
+      "rightsVerifiedAt": null
+    }
+  ],
+  "discovery": {
+    "queries": [
+      {
+        "taxon": "Phoca vitulina",
+        "descriptionSearch": "fish",
+        "results": 20
+      },
+      {
+        "taxon": "Nembrotha kubaryana",
+        "descriptionSearch": "eggs",
+        "results": 0
+      },
+      {
+        "taxon": "Sepia officinalis",
+        "descriptionSearch": "mating",
+        "results": 2,
+        "decision": "Not downloaded; Mozambique observation setting requires separate taxonomic resolution before existing Iris casting."
+      }
+    ],
+    "newExactImagesOpened": 4,
+    "cachedExactImagesReopened": 1
+  },
+  "fictionBoundary": "No literal Story proposed. Observer behavior descriptions are preserved as source evidence, not adopted as character memories. No changes to established bodies, homes, avatars or chronology.",
+  "validation": "Decoded all four new deliveries for dimensions and recomputed SHA-1, SHA-256 and byte lengths. Rights are photo-specific fields from primary observation JSON, distinct from observation-data licensing. No source endpoint returned a denial and no retries or bypasses were used."
+}

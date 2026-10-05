@@ -65,6 +65,37 @@ const toolingNightlyWorkflow = readFileSync(
   path.join(scriptsDir, "..", ".github", "workflows", "tooling-nightly.yml"),
   "utf8",
 );
+
+test("nightly PWA corpus failures retain progress and browser evidence", () => {
+  assert.match(
+    toolingNightlyWorkflow,
+    /pwa-library-corpus-hardening-progress\.json/,
+  );
+  assert.match(
+    toolingNightlyWorkflow,
+    /packages\/pwa\/test-results\/pwa-library-corpus-playwright/,
+  );
+  assert.match(
+    toolingNightlyWorkflow,
+    /Upload PWA corpus progress and failure evidence[\s\S]*?if: always\(\)/,
+  );
+});
+
+test("nightly WebKit corpus proof uses a macOS OPFS environment", () => {
+  assert.match(toolingNightlyWorkflow, /runs-on: \$\{\{ matrix\.runner \}\}/);
+  assert.match(
+    toolingNightlyWorkflow,
+    /browser: chromium\s+runner: ubuntu-latest\s+target: "100000"/,
+  );
+  assert.match(
+    toolingNightlyWorkflow,
+    /browser: webkit\s+runner: macos-latest\s+target: "25000"/,
+  );
+  assert.match(
+    toolingNightlyWorkflow,
+    /Install browser system dependencies\s+if: runner\.os == 'Linux'/,
+  );
+});
 const aptSourceSanitizer = readFileSync(
   path.join(scriptsDir, "ci-sanitize-apt-sources.sh"),
   "utf8",
@@ -85,10 +116,7 @@ test("release preparation uses the channel's protected branch as its exact base"
   assert.match(releasePrep, /npm run validate:release/);
   assert.match(releasePrep, /npm run validate:feature/);
   assert.match(releasePrep, /--promoted-dev-sha=<40-hex-sha>/);
-  assert.match(
-    releasePrep,
-    /--from-ref="\$\{PROMOTED_DEV_COMMIT_SHA\}"/,
-  );
+  assert.match(releasePrep, /--from-ref="\$\{PROMOTED_DEV_COMMIT_SHA\}"/);
   assert.doesNotMatch(
     releasePrep,
     /validate-release-promotion\.mjs --from-ref=origin\/dev/,
@@ -98,20 +126,14 @@ test("release preparation uses the channel's protected branch as its exact base"
 
 test("PWA production snapshots bind one promoted dev SHA without generating a release", () => {
   assert.match(pwaProductionSnapshot, /git fetch origin main/);
-  assert.match(
-    pwaProductionSnapshot,
-    /\$\{HEAD_SHA\}" != "\$\{MAIN_SHA\}"/,
-  );
+  assert.match(pwaProductionSnapshot, /\$\{HEAD_SHA\}" != "\$\{MAIN_SHA\}"/);
   assert.match(
     pwaProductionSnapshot,
     /validate-release-promotion\.mjs[\s\S]*--from-ref="\$\{SNAPSHOT_SHA\}"[\s\S]*--to-ref="\$\{MAIN_SHA\}"/,
   );
   assert.match(pwaProductionSnapshot, /FREED_BUILD_KIND=snapshot/);
   assert.match(pwaProductionSnapshot, /FREED_BUILD_CHANNEL=production/);
-  assert.match(
-    pwaProductionSnapshot,
-    /vercel-deploy-production\.sh" pwa/,
-  );
+  assert.match(pwaProductionSnapshot, /vercel-deploy-production\.sh" pwa/);
   assert.doesNotMatch(pwaProductionSnapshot, /release\.sh/);
   assert.doesNotMatch(pwaProductionSnapshot, /release-notes/);
 });
@@ -148,7 +170,10 @@ test("release publication delegates one exact tag to the trusted App publisher",
     releasePublish,
     /for \(\(TAG_FETCH_ATTEMPT = 1; TAG_FETCH_ATTEMPT <= TAG_FETCH_MAX_ATTEMPTS; TAG_FETCH_ATTEMPT \+= 1\)\)/,
   );
-  assert.match(releasePublish, /Waiting for GitHub to expose newly published tag/);
+  assert.match(
+    releasePublish,
+    /Waiting for GitHub to expose newly published tag/,
+  );
   assert.match(
     releasePublish,
     /published tag \$\{TAG\} did not become readable after \$\{TAG_FETCH_MAX_ATTEMPTS\} attempts/,
@@ -251,6 +276,12 @@ test("native dependency setup sanitizes unstable runner sources before apt updat
     aptSourceSanitizer,
     /\/etc\/apt\/sources\.list\.d\/azure-cli\.list/,
   );
+  for (const extension of ["list", "sources"]) {
+    assert.ok(
+      aptSourceSanitizer.includes(`/etc/apt/sources.list.d/google-chrome.${extension}`),
+      `unused Chrome ${extension} source is removed before apt update`,
+    );
+  }
   assert.match(aptSourceSanitizer, /\/etc\/apt\/apt-mirrors\.txt/);
   const archiveAssignment = aptSourceSanitizer
     .split("\n")
@@ -267,13 +298,13 @@ test("native dependency setup sanitizes unstable runner sources before apt updat
 
   for (const [name, workflow, expectedCount] of [
     ["CI", ciWorkflow, 2],
-    ["production validation", mainReleaseValidationWorkflow, 1],
-    ["release", releaseWorkflow, 1],
+    ["production validation", mainReleaseValidationWorkflow, 0],
+    ["release", releaseWorkflow, 0],
   ]) {
     const blocks = workflow.match(
       /- name: Install native Linux dependencies[\s\S]*?(?=\n      - name:)/g,
     );
-    assert.equal(blocks?.length, expectedCount, `${name} native setup count`);
+    assert.equal(blocks?.length ?? 0, expectedCount, `${name} native setup count`);
     for (const block of blocks ?? []) {
       const sourceSanitizer = block.indexOf(
         "bash scripts/ci-sanitize-apt-sources.sh",
@@ -328,34 +359,15 @@ test("dev tag validation inherits the exact successful dev integration receipt",
   assert.match(validationJob, /npm run validate:production/);
 });
 
-test("production validation runs OPFS durability on macOS WebKit", () => {
-  const releaseValidationJob = releaseWorkflow.slice(
-    releaseWorkflow.indexOf("\n  validation:"),
-    releaseWorkflow.indexOf("\n  pwa-opfs-acceptance:"),
-  );
-  const releaseOpfsJob = releaseWorkflow.slice(
-    releaseWorkflow.indexOf("\n  pwa-opfs-acceptance:"),
-    releaseWorkflow.indexOf("\n  create-release:"),
-  );
-
-  assert.match(
-    mainReleaseValidationWorkflow,
-    /FREED_SKIP_PWA_OPFS_DURABILITY: "true"/,
-  );
-  assert.match(mainReleaseValidationWorkflow, /runs-on: macos-latest/);
-  assert.match(mainReleaseValidationWorkflow, /playwright install webkit/);
-  assert.match(mainReleaseValidationWorkflow, /npm run test:e2e:opfs/);
-  assert.match(
-    releaseValidationJob,
-    /FREED_SKIP_PWA_OPFS_DURABILITY: "true"/,
-  );
-  assert.match(releaseOpfsJob, /runs-on: macos-latest/);
-  assert.match(releaseOpfsJob, /playwright install webkit/);
-  assert.match(releaseOpfsJob, /npm run test:e2e:opfs/);
-  assert.match(
-    releaseWorkflow,
-    /needs: \[notes, validation, pwa-opfs-acceptance\]/,
-  );
+test("production reuses admitted OPFS proof and leaves its execution in dev integration", () => {
+  assert.match(mainReleaseValidationWorkflow, /actions:\s*read/);
+  assert.match(mainReleaseValidationWorkflow, /npm run validate:production/);
+  assert.doesNotMatch(mainReleaseValidationWorkflow, /playwright install|npm run test:e2e:opfs|Install Rust/);
+  const validation = releaseWorkflow.slice(releaseWorkflow.indexOf("\n  validation:"), releaseWorkflow.indexOf("\n  create-release:"));
+  assert.doesNotMatch(validation, /playwright install|npm run test:e2e:opfs|Install Rust/);
+  assert.match(ciWorkflow, /PWA OPFS durability \(macOS WebKit\)/);
+  assert.match(ciWorkflow, /npm run test:e2e:opfs/);
+  assert.match(releaseWorkflow, /needs: \[notes, validation\]/);
 });
 
 test("draft release assets and publication use the exact release ID", () => {
@@ -368,14 +380,8 @@ test("draft release assets and publication use the exact release ID", () => {
     releaseWorkflow.indexOf("\n  # Redeploy the public marketing site"),
   );
 
-  assert.match(
-    updaterJob,
-    /releases\/\$\{RELEASE_ID\}/,
-  );
-  assert.match(
-    updaterJob,
-    /releases\/assets\/\$\{asset_id\}/,
-  );
+  assert.match(updaterJob, /releases\/\$\{RELEASE_ID\}/);
+  assert.match(updaterJob, /releases\/assets\/\$\{asset_id\}/);
   assert.match(
     updaterJob,
     /uploads\.github\.com\/repos\/\$\{\{ github\.repository \}\}\/releases\/\$\{RELEASE_ID\}\/assets\?name=latest\.json/,
@@ -426,7 +432,7 @@ test("dev releases publish a signed isolated Apple Silicon verifier without upda
   assert.match(isolatedJob, /--target aarch64-apple-darwin/);
   assert.match(isolatedJob, /--bundles app/);
   assert.match(isolatedJob, /--features isolated-preview-data-root/);
-  assert.match(isolatedJob, /--config src-tauri\/tauri\.preview\.conf\.json/);
+  assert.match(isolatedJob, /--config \$\{\{ steps\.measurement-config\.outputs\.config_path \}\}/);
   assert.match(
     isolatedJob,
     /releaseAssetNamePattern: Freed_Preview_\[version\]_aarch64\[ext\]/,
@@ -437,7 +443,7 @@ test("dev releases publish a signed isolated Apple Silicon verifier without upda
   assert.match(isolatedJob, /xcrun stapler validate/);
   assert.match(
     isolatedJob,
-    /Print:CFBundleIdentifier[\s\S]*wtf\.freed\.desktop\.sqlite-native-preview/,
+    /Print:CFBundleIdentifier[\s\S]*steps\.measurement-config\.outputs\.identifier/,
   );
 
   assert.match(
@@ -446,7 +452,35 @@ test("dev releases publish a signed isolated Apple Silicon verifier without upda
   );
 });
 
+test("dev transfer acceptance stays isolated and outside the updater", () => {
+  const job = releaseWorkflow.slice(
+    releaseWorkflow.indexOf("\n  isolated-dev-macos:"),
+    releaseWorkflow.indexOf("\n  updater-manifest:"),
+  );
+  const acceptance = job.slice(job.indexOf("      - name: Build and release transfer acceptance"));
+  assert.match(job, /release_channel == 'dev'/);
+  assert.match(acceptance, /--features library-transfer-acceptance --config src-tauri\/tauri\.transfer-acceptance\.conf\.json/);
+  assert.match(acceptance, /releaseAssetNamePattern: Freed-Transfer-Acceptance_\[version\]_aarch64\[ext\]/);
+  assert.match(acceptance, /uploadUpdaterJson: false/);
+  assert.match(acceptance, /uploadUpdaterSignatures: false/);
+  assert.match(acceptance, /codesign --verify --deep --strict/);
+  assert.match(acceptance, /spctl --assess --type execute/);
+  assert.match(acceptance, /xcrun stapler validate/);
+  assert.match(acceptance, /Print:CFBundleIdentifier[\s\S]*wtf\.freed\.desktop\.preview\.transfer-acceptance/);
+  const config = JSON.parse(readFileSync(path.join(scriptsDir, "..",
+    "packages/desktop/src-tauri/tauri.transfer-acceptance.conf.json"), "utf8"));
+  assert.equal(config.identifier, "wtf.freed.desktop.preview.transfer-acceptance");
+  assert.equal(config.build.beforeBuildCommand, "npm run build:transfer-acceptance");
+  assert.equal(config.bundle.createUpdaterArtifacts, false);
+  assert.deepEqual(config.plugins.updater.endpoints, []);
+});
+
 test("production releases publish an exact-tag PWA showcase with reviewed media", () => {
+  const websiteJobHeader = releaseWorkflow.slice(
+    releaseWorkflow.indexOf("\n  publish-website:"),
+    releaseWorkflow.indexOf("\n  publish-pwa:"),
+  ).split("    steps:")[0];
+  assert.match(websiteJobHeader, /if: needs\.notes\.outputs\.release_channel == 'production'/);
   const showcaseJob = releaseWorkflow.slice(
     releaseWorkflow.indexOf("\n  showcase-assets:"),
     releaseWorkflow.indexOf("\n  # After all platform builds succeed"),
@@ -457,15 +491,36 @@ test("production releases publish an exact-tag PWA showcase with reviewed media"
   assert.match(showcaseJob, /FREED_BUILD_CHANNEL:\s*"production"/);
   assert.match(showcaseJob, /VITE_FREED_DEMO:\s*"1"/);
   assert.match(showcaseJob, /capture-release-showcase\.mjs/);
-  assert.match(showcaseJob, /freed-showcase\.gif/);
+  assert.match(showcaseJob, /release-showcase\/\*\.\{webp,json\}/);
+  assert.match(showcaseJob, /name: release-showcase-source/);
+  assert.doesNotMatch(showcaseJob, /--clobber/);
   assert.match(showcaseJob, /gh release upload "\$TAG"/);
-  assert.match(showcaseJob, /release-showcase-assets\.mjs finalize --directory release-showcase/);
-  const publishJob = releaseWorkflow.slice(releaseWorkflow.indexOf("\n  publish:"), releaseWorkflow.indexOf("\n  publish-website:"));
-  assert.match(publishJob, /release-showcase-assets\.mjs verify-public --directory release-showcase/);
+  assert.match(
+    showcaseJob,
+    /release-showcase-assets\.mjs finalize --directory release-showcase/,
+  );
+  const publishJob = releaseWorkflow.slice(
+    releaseWorkflow.indexOf("\n  publish:"),
+    releaseWorkflow.indexOf("\n  publish-website:"),
+  );
+  assert.match(
+    publishJob,
+    /release-showcase-assets\.mjs verify-public --directory release-showcase/,
+  );
   assert.match(publishJob, /needs\.showcase-assets\.result == 'success'/);
-  const capture = readFileSync(path.join(scriptsDir, "capture-release-showcase.mjs"), "utf8");
+  const runner = readFileSync(
+    path.join(scriptsDir, "capture-release-showcase.mjs"),
+    "utf8",
+  );
+  assert.match(runner, /for \(const theme of SHOWCASE_THEME_IDS\)/);
+  assert.match(runner, /capture-showcase-local\.mjs/);
+  assert.match(runner, /ImageDecoder/);
+  assert.match(runner, /releaseSha !== sha/);
+  const capture = readFileSync(path.join(scriptsDir, "capture-showcase-local.mjs"), "utf8");
   assert.match(capture, /Explore Freed Demo/);
   assert.match(capture, /await selectTheme\(page, capture.theme\)/);
+  assert.match(capture, /getByText\("Sela Current", \{ exact: true \}\)\.click\(\)/,
+    "friend detail capture must select the title, not the card center containing its slider");
   assert.doesNotMatch(capture, /page\.reload\(/);
   assert.match(capture, /unexpectedRequestUrls\.size > 0/);
   assert.match(capture, /remoteMediaUrls:/);
@@ -529,10 +584,7 @@ test("main PR validation inspects the actual PR head instead of the synthetic me
     ciWorkflow,
     /validate-main-pr\.mjs[\s\S]*--head-ref=HEAD/,
   );
-  assert.match(
-    ciWorkflow,
-    /trailers:key=Freed-Dev-Snapshot,valueonly/,
-  );
+  assert.match(ciWorkflow, /trailers:key=Freed-Dev-Snapshot,valueonly/);
   assert.match(ciWorkflow, /--snapshot-ref="\$\{snapshot_ref\}"/);
 });
 

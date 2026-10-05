@@ -1,0 +1,18 @@
+[
+  {
+    "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/13518516/large.jpg",
+    "sourceUrl": "https://www.inaturalist.org/observations/9866319",
+    "sha1": "d8ae559c22985145fec3ba48ad0481b715ca3ae7",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+    "id": "botanical85-ansel-cones",
+    "identityNameBase": "Ansel Threadbark",
+    "subject": "Great Basin bristlecone pine",
+    "category": "wildlife",
+    "creator": "Jim Morefield",
+    "license": "CC BY 4.0",
+    "width": 1024,
+    "height": 768,
+    "alt": "An open brown bristlecone pine cone hangs below closed purple cones among dense green needles.",
+    "detail": "An open brown bristlecone pine cone hangs below closed purple cones among dense green needles."
+  }
+]

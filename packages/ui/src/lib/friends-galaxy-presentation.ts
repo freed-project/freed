@@ -81,7 +81,8 @@ export function selectFriendsGalaxyAvatars(
 ): readonly FriendsGalaxyAvatarSeed[] {
   if (detail !== "close") return [];
   const selectedPersonId = friendsGalaxySelectedPersonNodeId(scene, selectedNodeId);
-  const cap = compact ? 6 : 12;
+  // Close views retain every visible identity, rather than swapping a ranked
+  // handful of avatars whenever another identity enters the viewport.
   const selectedIndex = findFriendsGalaxySceneNodeIndex(
     scene.scene,
     scene.interactionIndex,
@@ -97,30 +98,17 @@ export function selectFriendsGalaxyAvatars(
       scene.scene.positions[offset]!,
       scene.scene.positions[offset + 1]!,
       scene.scene.positions[offset + 2]!,
-      64,
+      160,
     );
   };
-  const selectedVisible = selectedIndex !== null && visible(selectedIndex);
-  const candidateCap = Math.max(0, cap - (selectedVisible ? 1 : 0));
+  // Selection can arrive before the worker's next metadata atlas. As with
+  // labels, defer the selected avatar until its presentation is admitted.
+  const selectedAdmitted = presentationCandidateSource(scene, candidateSource) !== "atlas" ||
+    scene.atlas.nodes.some(node => node.id === selectedPersonId);
+  const selectedVisible = selectedIndex !== null && selectedAdmitted && visible(selectedIndex);
   const ranked: Array<{ nodeIndex: number; rank: number }> = [];
   const insertCandidate = (nodeIndex: number, rank: number): void => {
-    if (candidateCap === 0) return;
-    const last = ranked[ranked.length - 1];
-    if (
-      ranked.length >= candidateCap && last &&
-      (rank < last.rank || (rank === last.rank && nodeIndex > last.nodeIndex))
-    ) return;
-    let insertionIndex = ranked.length;
-    while (insertionIndex > 0) {
-      const previous = ranked[insertionIndex - 1]!;
-      if (
-        previous.rank > rank ||
-        (previous.rank === rank && previous.nodeIndex < nodeIndex)
-      ) break;
-      insertionIndex -= 1;
-    }
-    ranked.splice(insertionIndex, 0, { nodeIndex, rank });
-    if (ranked.length > candidateCap) ranked.pop();
+    ranked.push({ nodeIndex, rank });
   };
 
   const considerNode = (nodeIndex: number): void => {
@@ -162,6 +150,9 @@ export function selectFriendsGalaxyAvatars(
       color: friendsGalaxySemanticColor(scene.scene, palette, nodeIndex),
     };
   };
+  // The former tiny top-N roster used insertion sorting. With all visible
+  // avatars admitted, sort once instead of shifting the array for every node.
+  ranked.sort((left, right) => right.rank - left.rank || left.nodeIndex - right.nodeIndex);
   const accepted = ranked.map(({ nodeIndex }) => createSeed(nodeIndex, false));
   if (selectedVisible && selectedIndex !== null) {
     accepted.push(createSeed(selectedIndex, true));
@@ -266,12 +257,14 @@ export function selectFriendsGalaxyVisibleLabelSeeds<
     const height = "height" in label ? Number(label.height) : label.fontSize * 1.42 + 10;
     return { x: point[0]!, y: point[1]! - (label.centered ? 0 : label.gapY + height / 2), width, height };
   };
-  const hoverBounds = hovered ? bounds(hovered) : null;
-  const available = hovered && hoverBounds ? seeds.filter(label => {
-    if (label === hovered) return true;
+  const emphasized = seeds.filter(label => label.priority >= 1_000_000 && labelIsVisible(label));
+  const protectedBounds = emphasized.map(bounds);
+  const available = protectedBounds.length ? seeds.filter(label => {
+    if (emphasized.includes(label)) return true;
     const box = bounds(label);
-    return Math.abs(box.x - hoverBounds.x) >= (box.width + hoverBounds.width) / 2 + 8 ||
-      Math.abs(box.y - hoverBounds.y) >= (box.height + hoverBounds.height) / 2 + 8;
+    return protectedBounds.every(protectedBox =>
+      Math.abs(box.x - protectedBox.x) >= (box.width + protectedBox.width) / 2 + 40 ||
+      Math.abs(box.y - protectedBox.y) >= (box.height + protectedBox.height) / 2 + 40);
   }) : seeds;
   const providers = available.filter((label) => label.provider && labelIsVisible(label));
   const semantic = available
@@ -483,7 +476,12 @@ function buildFriendsGalaxyLabelSeeds(
       scene.interactionIndex,
       selectedPersonId,
     );
-    if (nodeIndex !== null) seeds.push(seedForIdentityNode(nodeIndex));
+    // Interaction can select a resident node before the worker admits its
+    // metadata. Keep selection responsive and add its label on the next atlas.
+    if (nodeIndex !== null && (presentationCandidateSource(scene, candidateSource) !== "atlas" ||
+      scene.atlas.nodes.some(node => node.id === selectedPersonId))) {
+      seeds.push(seedForIdentityNode(nodeIndex));
+    }
   }
   if (hoveredNodeId) {
     const nodeIndex = findFriendsGalaxySceneNodeIndex(scene.scene, scene.interactionIndex, hoveredNodeId);

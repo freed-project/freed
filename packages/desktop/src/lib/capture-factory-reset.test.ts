@@ -116,7 +116,7 @@ function socialResult(provider: ProviderStage): unknown {
 }
 
 describe("capture factory reset boundary", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.resetModules();
     vi.clearAllMocks();
     window.localStorage.clear();
@@ -133,6 +133,16 @@ describe("capture factory reset boundary", () => {
     mocks.captureIgFeed.mockResolvedValue(socialResult("instagram"));
     mocks.captureLiFeed.mockResolvedValue(socialResult("linkedin"));
     mocks.captureYouTube.mockResolvedValue(socialResult("youtube"));
+    mocks.invoke.mockResolvedValueOnce({
+      state: "standalone_primary",
+      role: "primary",
+      libraryId: "a".repeat(64),
+      authorityEpochId: "b".repeat(64),
+      actorId: "c".repeat(64),
+    });
+    const { refreshLibraryCoreDesktopRole } = await import("./library-core-desktop-role");
+    await refreshLibraryCoreDesktopRole();
+    mocks.invoke.mockClear();
   });
 
   it("rejects a new RSS subscription before issuing a request during reset", async () => {
@@ -246,7 +256,7 @@ describe("capture factory reset boundary", () => {
     await refreshing;
 
     expect(mocks.invoke).toHaveBeenCalledTimes(7);
-    expect(mocks.invoke).not.toHaveBeenCalledWith("fetch_url", {
+    expect(mocks.invoke).not.toHaveBeenCalledWith("fetch_rss_url", {
       url: "https://example.com/feed-6.xml",
     });
     expect(mocks.captureXTimeline).not.toHaveBeenCalled();

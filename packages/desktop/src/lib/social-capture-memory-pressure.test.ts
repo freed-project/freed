@@ -1,6 +1,26 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BackgroundRuntimeTask } from "./background-runtime-coordinator";
 
+const FACEBOOK_ADMISSION_RULE_VERSION = "facebook-admission-v1";
+
+function admittedFacebookPost(post: Record<string, unknown>, generation: number) {
+  return {
+    ...post,
+    postType: "post",
+    admission: {
+      provider: "facebook",
+      surface: "feed",
+      placementIdentity: String(post.id ?? `fixture-${generation}`),
+      observationGeneration: generation,
+      inspectionStatus: "complete",
+      evidenceCodes: [],
+      ruleVersion: FACEBOOK_ADMISSION_RULE_VERSION,
+      decision: "admit",
+      reasons: ["supported_inspection_without_advertising_evidence"],
+    },
+  };
+}
+
 const mocks = vi.hoisted(() => {
   const recordProviderHealthEvent = vi.fn();
   const storeState = {
@@ -185,7 +205,13 @@ beforeEach(() => {
 });
 
 describe("social capture completion", () => {
-  it("keeps Facebook listeners active until the native scraper finishes", async () => {
+  it.each([
+    ["short then expanded", ["First", "First expanded #walk"], "First expanded #walk", true],
+    ["expanded then short", ["First expanded #walk", "First"], "First expanded #walk", true],
+    ["repeated expansion", ["First", "First expanded #walk", "First expanded #walk"], "First expanded #walk", true],
+    ["equal-length later text", ["First", "Other"], "First", true],
+    ["no permalink", ["First", "First expanded #walk"], "First", false],
+  ] as const)("retains richer Facebook observations and listener lifetime: %s", async (_case, texts, expectedText, hasPermalink) => {
     const listeners = new Map<string, (event: { payload: unknown }) => void>();
     mocks.prepareSocialScrapeMemory.mockResolvedValue({
       before: {},
@@ -215,22 +241,31 @@ describe("social capture completion", () => {
       });
       listeners.get("fb-feed-data")?.({
         payload: {
-          posts: [{ id: "post-one", authorName: "One", text: "First" }],
+          posts: [admittedFacebookPost({ id: "post-one", url: hasPermalink ? "https://www.facebook.com/one/posts/123" : null, authorName: "One", text: texts[0], hashtags: texts[0].includes("#walk") ? ["walk"] : [] }, 1)],
           extractedAt: Date.now(),
           url: "https://www.facebook.com/",
           strategy: "test",
           candidateCount: 1,
+          admissionRuleVersion: FACEBOOK_ADMISSION_RULE_VERSION,
         },
       });
       listeners.get("fb-feed-data")?.({
         payload: {
-          posts: [{ id: "post-two", authorName: "Two", text: "Second" }],
+          posts: [admittedFacebookPost({ id: "post-two", authorName: "Two", text: "Second" }, 2)],
           extractedAt: Date.now(),
           url: "https://www.facebook.com/",
           strategy: "test",
           candidateCount: 1,
+          admissionRuleVersion: FACEBOOK_ADMISSION_RULE_VERSION,
         },
       });
+      for (const text of texts.slice(1)) {
+        listeners.get("fb-feed-data")?.({ payload: {
+          posts: [admittedFacebookPost({ id: "post-one", url: hasPermalink ? "https://www.facebook.com/one/posts/123" : null, authorName: "Later observation", text, hashtags: text.includes("#walk") ? ["walk"] : [] }, 3)],
+          extractedAt: Date.now(), url: "https://www.facebook.com/", strategy: "test",
+          candidateCount: 1, admissionRuleVersion: FACEBOOK_ADMISSION_RULE_VERSION,
+        } });
+      }
       return null;
     });
 
@@ -241,10 +276,55 @@ describe("social capture completion", () => {
     expect(result.diag.errorStage).toBeNull();
     expect(result.diag.postsExtracted).toBe(2);
     expect(result.items).toHaveLength(2);
+    expect(mocks.fbPostsToFeedItems).toHaveBeenCalledWith([
+      expect.objectContaining({
+        id: "post-one", url: hasPermalink ? "https://www.facebook.com/one/posts/123" : null,
+        authorName: "One", text: expectedText,
+        hashtags: expectedText.includes("#walk") ? ["walk"] : [],
+        admission: expect.objectContaining({ observationGeneration: 1 }),
+      }),
+      expect.objectContaining({ id: "post-two", text: "Second" }),
+    ]);
     expect(addDebugEvent).toHaveBeenCalledWith(
       "change",
       '[FB] DOM diag: title="Facebook", scrollHeight=12,345, url=https://www.facebook.com/',
     );
+  });
+
+  it("fails closed when a Facebook post bypasses the admission envelope", async () => {
+    const listeners = new Map<string, (event: { payload: unknown }) => void>();
+    mocks.prepareSocialScrapeMemory.mockResolvedValue({
+      before: {},
+      after: { appResidentBytes: 512 * 1024 * 1024 },
+      recycledScraperWindows: false,
+      cacheTrimmed: false,
+      mayProceed: true,
+    });
+    mocks.listen.mockImplementation(async (eventName: string, callback: (event: { payload: unknown }) => void) => {
+      listeners.set(eventName, callback);
+      return vi.fn();
+    });
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command !== "fb_scrape_feed") return null;
+      listeners.get("fb-feed-data")?.({
+        payload: {
+          posts: [{ id: "bypass", postType: "post" }],
+          extractedAt: Date.now(),
+          url: "https://www.facebook.com/",
+          strategy: "test",
+          candidateCount: 1,
+          admissionRuleVersion: FACEBOOK_ADMISSION_RULE_VERSION,
+        },
+      });
+      return null;
+    });
+
+    const { fetchFbFeed } = await import("./fb-capture");
+    const result = await fetchFbFeed();
+
+    expect(result.items).toEqual([]);
+    expect(result.diag.errorStage).toBe("admission");
+    expect(result.diag.errorMessage).toContain("valid advertising admission envelope");
   });
 
   it("treats extracted Facebook posts that normalize to zero items as a sync failure", async () => {
@@ -266,11 +346,12 @@ describe("social capture completion", () => {
 
       listeners.get("fb-feed-data")?.({
         payload: {
-          posts: [{ id: "raw-post", authorName: "Raw", text: "Rejected" }],
+          posts: [admittedFacebookPost({ id: "raw-post", authorName: "Raw", text: "Rejected" }, 1)],
           extractedAt: Date.now(),
           url: "https://www.facebook.com/",
           strategy: "test",
           candidateCount: 1,
+          admissionRuleVersion: FACEBOOK_ADMISSION_RULE_VERSION,
         },
       });
       return null;
@@ -465,11 +546,12 @@ describe("social capture completion", () => {
 
       listeners.get("fb-feed-data")?.({
         payload: {
-          posts: [{ id: "existing-post", authorName: "Existing", text: "Already here" }],
+          posts: [admittedFacebookPost({ id: "existing-post", authorName: "Existing", text: "Already here" }, 1)],
           extractedAt: Date.now(),
           url: "https://www.facebook.com/",
           strategy: "test",
           candidateCount: 1,
+          admissionRuleVersion: FACEBOOK_ADMISSION_RULE_VERSION,
         },
       });
       return null;
@@ -619,6 +701,7 @@ describe("social capture completion", () => {
           url: "https://www.facebook.com/",
           strategy: "role-main-fallback",
           candidateCount: 3,
+          admissionRuleVersion: FACEBOOK_ADMISSION_RULE_VERSION,
           rejected: {
             suggestedOrSponsored: 1,
             missingAuthor: 2,
@@ -655,6 +738,12 @@ describe("social capture completion", () => {
     expect(result.diag.totalCandidateCount).toBe(3);
     expect(result.diag.totalRejected).toEqual({
       suggestedOrSponsored: 1,
+      advertising: 0,
+      recommendation: 0,
+      deferredAdvertising: 0,
+      detectorErrors: 0,
+      inspectedPlacements: 0,
+      observationCount: 0,
       missingAuthor: 2,
       missingContent: 1,
     });

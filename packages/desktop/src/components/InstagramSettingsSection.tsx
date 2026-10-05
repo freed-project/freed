@@ -33,6 +33,7 @@ import {
 } from "../lib/provider-auth-errors";
 import { useProviderRiskGate } from "../hooks/useProviderRiskGate";
 import { ScraperWindowModeControl } from "./ScraperWindowModeControl";
+import { ProviderAdvancedSettings } from "./ProviderAdvancedSettings";
 import { ProviderHealthSectionSummary } from "./ProviderHealthSectionSummary";
 import { ProviderSyncCadenceControl } from "./ProviderSyncCadenceControl";
 import { ProviderSyncActionButton } from "./ProviderSyncActionButton";
@@ -261,6 +262,19 @@ export function InstagramSettingsSection({
     !!healthSnapshot?.pause && healthSnapshot.pause.pausedUntil > Date.now();
   // ── Connected state ──────────────────────────────────────────────────────
 
+  const advancedSettings = (
+    <ProviderAdvancedSettings>
+      <ScraperWindowModeControl
+        sourceLabel="Instagram"
+        mode={windowMode}
+        onChange={(nextMode) => {
+          setWindowMode(nextMode);
+          setIgScraperWindowMode(nextMode);
+        }}
+      />
+    </ProviderAdvancedSettings>
+  );
+
   if (igAuth.isAuthenticated) {
     const statusLine = (() => {
       if (!lastDiag) return null;
@@ -381,24 +395,7 @@ export function InstagramSettingsSection({
               authenticated={igAuth.isAuthenticated}
             />
 
-            <details className="group">
-              <summary className="text-xs text-[#52525b] hover:text-[#71717a] cursor-pointer select-none list-none flex items-center gap-1">
-                <span className="group-open:rotate-90 transition-transform inline-block">
-                  ›
-                </span>
-                Advanced
-              </summary>
-              <div className="mt-3 pl-3 border-l border-white/10">
-                <ScraperWindowModeControl
-                  sourceLabel="Instagram"
-                  mode={windowMode}
-                  onChange={(nextMode) => {
-                    setWindowMode(nextMode);
-                    setIgScraperWindowMode(nextMode);
-                  }}
-                />
-              </div>
-            </details>
+            {advancedSettings}
 
             <p className="text-xs text-[#52525b] leading-relaxed">
               {copy.connectedInfo}
@@ -450,6 +447,7 @@ export function InstagramSettingsSection({
             provider="instagram"
             showMessages={surface === "debug-card" && !actionError}
           />
+          {advancedSettings}
         </div>
       </SyncProviderSectionSurface>
       {dialog}

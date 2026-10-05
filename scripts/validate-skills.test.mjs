@@ -57,7 +57,7 @@ test("feature tasks refresh policy before owner authorization", () => {
   assert.match(agentInstructions, /git show <remote-ref>:AGENTS\.md/);
   assert.match(
     agentInstructions,
-    /Internal (?:actor )?labels[\s\S]*never replace/,
+    /Internal (?:actor )?labels[\s\S]*never replace/i,
   );
   assert.ok(
     featureSkill.indexOf("## Start from current policy") <

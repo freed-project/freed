@@ -1,4 +1,5 @@
 import "./test-helpers/lease-archive-python-runtime.mjs";
+import { withNightlyFixture } from "./test-helpers/nightly-fixture-preload.mjs";
 
 import assert from "node:assert/strict";
 import {
@@ -9,17 +10,22 @@ import { createHash } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 import {
   chmodSync,
+  closeSync,
+  constants,
+  fstatSync,
   existsSync,
   linkSync,
   lstatSync,
   mkdirSync,
   mkdtempSync as nodeMkdtempSync,
+  openSync,
   readFileSync,
   readdirSync,
   realpathSync,
   renameSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import os from "node:os";
@@ -165,7 +171,7 @@ function test(name, optionsOrFn, maybeFn) {
     process.stderr.write(`[nightly fixture] start test=${name}\n`);
     return fixtureContext.run(state, async () => {
       try {
-        return await callback(context);
+        return await withNightlyFixture(name, () => callback(context));
       } finally {
         process.stderr.write(`[nightly fixture] finish test=${name}\n`);
       }
@@ -3103,7 +3109,7 @@ test("pending outcome planning rejects an event FIFO without blocking", () => {
   const child = spawnSync(
     process.execPath,
     ["--input-type=module", "--eval", childScript],
-    { encoding: "utf8", timeout: 2_000 },
+    { encoding: "utf8" },
   );
   assert.notEqual(child.error?.code, "ETIMEDOUT");
   assert.equal(child.signal, null);
@@ -3147,7 +3153,7 @@ for (const [authorityFile, healthField] of [
     const child = spawnSync(
       process.execPath,
       ["--input-type=module", "--eval", childScript],
-      { encoding: "utf8", timeout: 2_000 },
+      { encoding: "utf8" },
     );
     assert.notEqual(child.error?.code, "ETIMEDOUT");
     assert.equal(child.signal, null);
@@ -7244,6 +7250,56 @@ test("appendOutcomeLedger rejects unresolved verification evidence", () => {
   assert.deepEqual(readFileSync(ledgerPath), baselineLedger);
 });
 
+// Leaf-file identity only: callers own the private fixture's ancestor directories.
+function readFixtureAuthorityFile(file, expected) {
+  assert.equal(typeof constants.O_NOFOLLOW, "number");
+  assert.equal(typeof constants.O_NONBLOCK, "number");
+  const descriptor = openSync(
+    file,
+    constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+  );
+  try {
+    const before = fstatSync(descriptor);
+    assert.ok(before.isFile(), "Fixture authority entry must be a regular file");
+    const unchanged = (actual, captured) => {
+      for (const key of [
+        "dev", "ino", "mode", "uid", "gid", "nlink", "size", "mtimeMs", "ctimeMs",
+      ]) {
+        assert.equal(actual[key], captured[key], `Fixture authority changed: ${key}`);
+      }
+    };
+    unchanged(before, expected);
+    const bytes = readFileSync(descriptor);
+    unchanged(fstatSync(descriptor), before);
+    assert.equal(bytes.length, before.size);
+    return bytes;
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
+test("fixture authority reads refuse substituted files, symlinks, and FIFOs", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "freed-authority-read-"));
+  const file = path.join(dir, "authority");
+  const held = path.join(dir, "original");
+  const replacement = path.join(dir, "replacement");
+  writeFileSync(file, "original", { mode: 0o600, flag: "wx" });
+  writeFileSync(replacement, "replacement", { mode: 0o600, flag: "wx" });
+  const captured = lstatSync(file);
+  assert.equal(readFixtureAuthorityFile(file, captured).toString(), "original");
+  // Retain the original inode so replacement cannot accidentally reuse it.
+  renameSync(file, held);
+  renameSync(replacement, file);
+  assert.throws(() => readFixtureAuthorityFile(file, captured), /Fixture authority changed/);
+  rmSync(file);
+  symlinkSync(held, file);
+  assert.throws(() => readFixtureAuthorityFile(file, captured), { code: "ELOOP" });
+  rmSync(file);
+  execFileSync("mkfifo", [file]);
+  assert.throws(() => readFixtureAuthorityFile(file, captured), /must be a regular file/);
+  assert.equal(readFileSync(held, "utf8"), "original");
+});
+
 test("verification outcomes bind exact verdict semantics, installed build, and soak window", () => {
   const dir = temporaryOutcomeStateRoot("freed-outcome-contract-");
   const ledgerPath = path.join(dir, "outcomes.jsonl");
@@ -7258,22 +7314,10 @@ test("verification outcomes bind exact verdict semantics, installed build, and s
     ...overrides,
   });
 
-  for (const [index, taskId] of [
-    "wrong-status",
-    "wrong-effect",
-    "stale-window",
-    "wrong-build",
-  ].entries()) {
-    prepareTaskAtState(
-      dir,
-      taskId,
-      "soaking",
-      lifecycleNow.getTime() + index * 7 * 60_000,
-      {
-        build: "v26.7.100-dev",
-      },
-    );
-  }
+  const taskId = "verdict-contract";
+  prepareTaskAtState(dir, taskId, "soaking", lifecycleNow.getTime(), {
+    build: "v26.7.100-dev",
+  });
   const baselineLedger = readFileSync(ledgerPath);
   const authentication = outcomeAuthentication(
     dir,
@@ -7282,32 +7326,67 @@ test("verification outcomes bind exact verdict semantics, installed build, and s
   );
   const now = new Date();
 
-  const wrongStatusVerdict = writeOutcomeVerdict(dir, {
-    taskId: "wrong-status",
+  // Reuse authority only while each refusal leaves its entire durable tree
+  // unchanged. Evidence lives outside that tree; a valid append below proves
+  // the same authenticated task remains usable after all four refusals.
+  const evidenceDir = mkdtempSync(path.join(os.tmpdir(), "freed-verdict-evidence-"));
+  const authoritySnapshot = () => {
+    const entries = [];
+    const visit = (relative) => {
+      const file = path.join(dir, relative);
+      const stat = lstatSync(file);
+      assert.ok(stat.isDirectory() || stat.isFile(), relative);
+      entries.push({
+        relative,
+        dev: stat.dev,
+        ino: stat.ino,
+        mode: stat.mode,
+        uid: stat.uid,
+        gid: stat.gid,
+        nlink: stat.nlink,
+        bytes: stat.isFile() ? readFixtureAuthorityFile(file, stat) : null,
+      });
+      if (stat.isDirectory()) {
+        for (const name of readdirSync(file).sort()) {
+          visit(path.join(relative, name));
+        }
+      }
+    };
+    visit("");
+    return entries;
+  };
+  const baselineAuthority = authoritySnapshot();
+  const assertRefusal = (callback, expected) => {
+    assert.throws(callback, expected);
+    assert.deepEqual(authoritySnapshot(), baselineAuthority);
+  };
+
+  const wrongStatusVerdict = writeOutcomeVerdict(evidenceDir, {
+    taskId,
     build: "v26.7.100-dev",
     windowEnd: "2026-07-10T12:00:00Z",
     outcome: "regressed",
   });
-  assert.throws(
+  assertRefusal(
     () =>
       appendOutcomeLedger(
         ledgerPath,
-        entryFor("wrong-status", wrongStatusVerdict),
+        entryFor(taskId, wrongStatusVerdict),
         { ...authentication, now },
       ),
     /schema, task, status, and outcome/,
   );
 
-  const wrongEffectVerdict = writeOutcomeVerdict(dir, {
-    taskId: "wrong-effect",
+  const wrongEffectVerdict = writeOutcomeVerdict(evidenceDir, {
+    taskId,
     build: "v26.7.100-dev",
     windowEnd: "2026-07-10T12:00:00Z",
   });
-  assert.throws(
+  assertRefusal(
     () =>
       appendOutcomeLedger(
         ledgerPath,
-        entryFor("wrong-effect", wrongEffectVerdict, {
+        entryFor(taskId, wrongEffectVerdict, {
           effect: {
             metric: "main-footprint-slope",
             before: 30,
@@ -7320,17 +7399,17 @@ test("verification outcomes bind exact verdict semantics, installed build, and s
     /derived from the referenced verdict, not caller input/,
   );
 
-  const staleWindowVerdict = writeOutcomeVerdict(dir, {
-    taskId: "stale-window",
+  const staleWindowVerdict = writeOutcomeVerdict(evidenceDir, {
+    taskId,
     build: "v26.7.100-dev",
     windowStart: "2026-07-09T19:00:00Z",
     windowEnd: "2026-07-10T01:00:00Z",
   });
-  assert.throws(
+  assertRefusal(
     () =>
       appendOutcomeLedger(
         ledgerPath,
-        entryFor("stale-window", staleWindowVerdict, {
+        entryFor(taskId, staleWindowVerdict, {
           evidenceWindowEnd: "2026-07-10T01:00:00Z",
         }),
         { ...authentication, now },
@@ -7338,21 +7417,34 @@ test("verification outcomes bind exact verdict semantics, installed build, and s
     /must begin after the task entered soaking/,
   );
 
-  const wrongBuildVerdict = writeOutcomeVerdict(dir, {
-    taskId: "wrong-build",
+  const wrongBuildVerdict = writeOutcomeVerdict(evidenceDir, {
+    taskId,
     build: "v26.7.101-dev",
     windowEnd: "2026-07-10T12:00:00Z",
   });
-  assert.throws(
+  assertRefusal(
     () =>
       appendOutcomeLedger(
         ledgerPath,
-        entryFor("wrong-build", wrongBuildVerdict),
+        entryFor(taskId, wrongBuildVerdict),
         { ...authentication, now },
       ),
     /canonical installed build and soak timestamps/,
   );
   assert.deepEqual(readFileSync(ledgerPath), baselineLedger);
+  const accepted = appendOutcomeLedger(
+    ledgerPath,
+    entryFor(taskId, wrongEffectVerdict, {
+      evidenceWindowEnd: "2026-07-10T12:00:00.000Z",
+    }),
+    { ...authentication, now },
+  );
+  assert.equal(accepted.authentication.actor, "freed-release-verifier");
+  assert.ok(accepted.authentication.controlEventId);
+  assert.ok(accepted.authentication.transitionEventId);
+  assert.equal(readTask({ stateRoot: dir, taskId }).state, "verified_effective");
+  assert.equal(readTask({ stateRoot: dir, taskId }).pendingOutcome, undefined);
+  assert.equal(readFileSync(ledgerPath, "utf8").trim().split("\n").length, 3);
 });
 
 test("appendOutcomeLedger requires a canonical task at the verification lifecycle gate", () => {

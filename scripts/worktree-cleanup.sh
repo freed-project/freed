@@ -7,7 +7,8 @@
 #
 # Usage:
 #   ./scripts/worktree-cleanup.sh          # interactive: confirms each removal
-#   ./scripts/worktree-cleanup.sh --yes    # non-interactive: removes everything
+#   ./scripts/worktree-cleanup.sh --yes --worktree <path>  # one merged task
+#   ./scripts/worktree-cleanup.sh --yes    # all clean, unchanged merged heads
 #
 # How it works:
 #   1. Lists every git worktree except the primary one.
@@ -24,10 +25,20 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/lib/node-tooling.sh"
+NODE_BIN="$(resolve_node_bin)"
 YES=false
-if [[ "${1:-}" == "--yes" ]]; then
-  YES=true
-fi
+TARGET=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --yes) YES=true; shift ;;
+    --worktree)
+      [[ $# -ge 2 ]] || { echo "--worktree requires a path" >&2; exit 1; }
+      TARGET="$(cd "$2" && pwd -P)"; shift 2 ;;
+    *) echo "Usage: worktree-cleanup.sh [--yes] [--worktree <path>]" >&2; exit 1 ;;
+  esac
+done
 
 confirm() {
   local msg="$1"
@@ -36,10 +47,10 @@ confirm() {
     return 0
   fi
   read -r -p "  $msg [y/N] " reply
-  [[ "${reply,,}" == "y" ]]
+  [[ "$reply" == "y" || "$reply" == "Y" ]]
 }
 
-PRIMARY=$(git worktree list --porcelain | awk 'NR==1 && /^worktree/ {print $2}')
+PRIMARY=$(git worktree list --porcelain | sed -n '1s/^worktree //p')
 echo "Primary worktree: $PRIMARY"
 echo ""
 
@@ -73,6 +84,7 @@ for i in "${!PATHS[@]}"; do
   path="${PATHS[$i]}"
   branch="${BRANCHES[$i]}"
 
+  [[ -z "$TARGET" || "$path" == "$TARGET" ]] || continue
   echo "Checking $branch ($path) ..."
 
   # Ask GitHub if a PR for this branch has been merged.
@@ -94,9 +106,24 @@ for i in "${!PATHS[@]}"; do
 
   echo "  -> Merged via PR #$pr_number"
 
+  if [[ -n "$(git -C "$path" status --porcelain)" ]]; then
+    echo "  -> Working tree has changes. Retaining it."
+    skipped=$((skipped + 1)); continue
+  fi
+  merged_head=$(gh pr view "$pr_number" --json headRefOid --jq '.headRefOid')
+  if [[ "$(git -C "$path" rev-parse HEAD)" != "$merged_head" ]]; then
+    echo "  -> Local head differs from the merged PR head. Retaining it."
+    skipped=$((skipped + 1)); continue
+  fi
+
   if confirm "Remove worktree '$path' and delete branch '$branch'?"; then
-    ./scripts/worktree-processes.sh stop --worktree "$path" >/dev/null 2>&1 || true
-    git worktree remove --force "$path"
+    if ! archive=$("${NODE_BIN}" "${SCRIPT_DIR}/task-decisions.mjs" preserve --worktree "$path"); then
+      echo "  -> Decision log preservation failed. Retaining worktree."
+      skipped=$((skipped + 1)); continue
+    fi
+    echo "  Decision record: $archive"
+    "${SCRIPT_DIR}/worktree-processes.sh" stop --worktree "$path"
+    git worktree remove "$path"
     # -D because squash merges leave branch commits unreachable from the
     # target branch.
     git branch -D "$branch" 2>/dev/null || true
@@ -109,11 +136,16 @@ for i in "${!PATHS[@]}"; do
   echo ""
 done
 
+if [[ -n "$TARGET" ]]; then
+  echo "Done. Removed: $removed  Skipped: $skipped"
+  exit 0
+fi
+
 # Also clean up local branches with [gone] tracking refs that have no worktree.
 echo "Checking for stale local branches (no worktree, remote gone) ..."
 while IFS= read -r line; do
   branch=$(echo "$line" | awk '{print $1}')
-  [[ -z "$branch" || "$branch" == "main" || "$branch" == "dev" ]] && continue
+  [[ -z "$branch" || "$branch" == "main" || "$branch" == "dev" || "$branch" == "www" ]] && continue
 
   pr_number=$(
     gh pr list \

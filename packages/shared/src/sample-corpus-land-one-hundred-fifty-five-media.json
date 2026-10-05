@@ -1,0 +1,18 @@
+[
+  {
+    "id": "land155-mira-mask",
+    "subject": "raccoon",
+    "category": "wildlife",
+    "identityNameBase": "Mira Mask",
+    "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/573979768/large.jpg",
+    "sourceUrl": "https://www.inaturalist.org/observations/317633319",
+    "creator": "Chrissy McClarren and Andy Reago",
+    "license": "CC0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "sha1": "1a3e9d48fb945a61507f60f0934b6b958f057b68",
+    "width": 1024,
+    "height": 789,
+    "alt": "A raccoon is tucked headfirst into a tree hollow, with ringed tail and rear fur visible inside the sharply detailed cavity.",
+    "detail": "Primary observer reports hiding during bird mobbing. No bird is visible. Silence, inability to turn and backing out are fiction. The scene does not establish sex or change the older held bear-hollow sequence."
+  }
+]

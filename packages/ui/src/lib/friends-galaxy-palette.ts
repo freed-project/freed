@@ -104,7 +104,7 @@ export function writeFriendsGalaxyStarPaletteUniforms(
     target[offset + 1] = green;
     target[offset + 2] = blue;
     target[offset + 3] = role === FriendsGalaxyStarColorRole.Background
-      ? lightSurface ? 0.2 : 0.5
+      ? lightSurface ? 0.55 : 0.5
       : role === FriendsGalaxyStarColorRole.Selection
         ? 1
         : lightSurface ? 0.88 : 0.97;

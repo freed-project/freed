@@ -1,0 +1,106 @@
+{
+  "status": "pending independent review, no admission",
+  "characterId": "flora-mingo",
+  "operation": "recover original index0 media only, preserve LinkedIn regular format and literal title/body",
+  "episode": {
+    "subject": "flamingo",
+    "title": "Before the pink",
+    "body": "I began gray. The pink arrived one mouthful at a time. Adults kept checking as if I were late.",
+    "theme": "transformation",
+    "platform": "linkedin",
+    "mediaSha1": "9d875e71ac887bb4ff3b0565fc02415d3dbd58e8"
+  },
+  "media": {
+    "observationId": 330143047,
+    "photo": {
+      "id": 598593716,
+      "license_code": "cc-by",
+      "original_dimensions": {
+        "width": 2048,
+        "height": 1360
+      },
+      "url": "https://inaturalist-open-data.s3.amazonaws.com/photos/598593716/square.jpg",
+      "attribution": "(c) Mateusz Bronikowski, some rights reserved (CC BY)",
+      "flags": [],
+      "moderator_actions": [],
+      "hidden": false
+    },
+    "url": "https://inaturalist-open-data.s3.amazonaws.com/photos/598593716/large.jpg",
+    "localPath": "/tmp/freed-flora166/598593716.jpg",
+    "sha1": "9d875e71ac887bb4ff3b0565fc02415d3dbd58e8",
+    "bytes": 469873,
+    "width": 1024,
+    "height": 680,
+    "sha256": "100208a4638f8166149412b716f399f81b72b73a59cebe54793d001ab1367f82",
+    "creator": "Mateusz Bronikowski",
+    "license": "CC BY 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+    "sourceUrl": "https://www.inaturalist.org/observations/330143047",
+    "sourceMetadataLocal": "/tmp/freed-flora166/obs-330143047.json"
+  },
+  "rootReview": "Read complete four-episode arc and canon species restriction. Exact photo is a composed warm-toned lagoon landscape with a clearly darker juvenile feeding among pink adult greater flamingos. Juvenile is small within the frame but distinctly isolated by dark plumage at the foreground water edge. Legs, bent neck and feeding posture readable. This is an environmental scene, not a portrait. Root proposes quality pass for composition and relational color contrast; independent reviewer must judge. Adult checking and lifelong transition are fictional, not witnessed in this still. Italy provenance does not change Camargue home or adult avatar. All four exact downloads individually opened; other three held for image softness or absent adult comparison.",
+  "biology": "Smithsonian flamingo facts primary zoo account supports food-derived pigments and gray juvenile coloration. No age or immediate color change is claimed. Source observation identified Phoenicopterus roseus; no Chilean species substitution.",
+  "biologyUrl": "https://nationalzoo.si.edu/animals/news/why-are-flamingos-pink-and-other-flamingo-facts",
+  "otherMedia": [
+    {
+      "observationId": 44514193,
+      "photo": {
+        "id": 70576315,
+        "license_code": "cc-by",
+        "original_dimensions": {
+          "width": 852,
+          "height": 1278
+        },
+        "url": "https://inaturalist-open-data.s3.amazonaws.com/photos/70576315/square.jpg",
+        "attribution": "(c) Roy Lowry, some rights reserved (CC BY)",
+        "flags": [],
+        "moderator_actions": [],
+        "hidden": false
+      },
+      "url": "https://inaturalist-open-data.s3.amazonaws.com/photos/70576315/large.jpg",
+      "localPath": "/tmp/freed-flora166/70576315.jpg",
+      "sha1": "6209e12696fd7aabfbb19cd52d7c977960463c24",
+      "bytes": 505297
+    },
+    {
+      "observationId": 29255871,
+      "photo": {
+        "id": 45649125,
+        "license_code": "cc-by-sa",
+        "original_dimensions": {
+          "width": 1536,
+          "height": 2048
+        },
+        "url": "https://inaturalist-open-data.s3.amazonaws.com/photos/45649125/square.jpeg",
+        "attribution": "(c) Noeleen du Toit, some rights reserved (CC BY-SA)",
+        "flags": [],
+        "moderator_actions": [],
+        "hidden": false
+      },
+      "url": "https://inaturalist-open-data.s3.amazonaws.com/photos/45649125/large.jpeg",
+      "localPath": "/tmp/freed-flora166/45649125.jpg",
+      "sha1": "5dfa0640b553886b1df6ad3695f762571f082a35",
+      "bytes": 639027
+    },
+    {
+      "observationId": 63472993,
+      "photo": {
+        "id": 101869824,
+        "license_code": "cc-by",
+        "original_dimensions": {
+          "width": 1536,
+          "height": 2048
+        },
+        "url": "https://inaturalist-open-data.s3.amazonaws.com/photos/101869824/square.jpeg",
+        "attribution": "(c) Miguel Vega Ruiz, some rights reserved (CC BY)",
+        "flags": [],
+        "moderator_actions": [],
+        "hidden": false
+      },
+      "url": "https://inaturalist-open-data.s3.amazonaws.com/photos/101869824/large.jpeg",
+      "localPath": "/tmp/freed-flora166/101869824.jpg",
+      "sha1": "7139141ddf9e89f216dcb0e6fc8f952ac245b163",
+      "bytes": 580303
+    }
+  ]
+}

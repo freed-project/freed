@@ -1,0 +1,915 @@
+{
+  "batch": "BOTANICAL-EDITORIAL-160",
+  "status": "One preserved regular recovery offered for root review; zero new Stories passed author review",
+  "runtimeChanged": false,
+  "acceptedCountAdded": 0,
+  "proposals": [
+    {
+      "candidateId": "160-R1",
+      "characterId": "manny-tis",
+      "identityNameBase": "Manny Tis",
+      "admission": "Pending independent root review",
+      "operation": "Recover current null media binding only; preserve original regular entry and stable index 1",
+      "episode": {
+        "subject": "praying mantis",
+        "platform": "instagram",
+        "contentType": "post",
+        "theme": "feeding",
+        "title": "Violence, and better lighting.",
+        "body": "Caught a bee where the light was good. Then a bird landed above me. I carried breakfast under a leaf and ate in the dark, where I am considerably less impressive and still alive.",
+        "mediaSha1": "11733f05f36f7f850672fe7b8b87460ef5675b59"
+      },
+      "media": {
+        "observationId": 318065852,
+        "photoId": 574805449,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/574805449/large.jpg",
+        "localFile": "/tmp/botanical160/574805449.jpg",
+        "sourceLocal": "/tmp/botanical160/obs-318065852.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/318065852",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) Bryn, some rights reserved (CC BY), uploaded by Bryn",
+        "dimensions": [
+          771,
+          1024
+        ],
+        "originalUploadDimensions": [
+          1542,
+          2048
+        ],
+        "bytes": 465047,
+        "sha1": "11733f05f36f7f850672fe7b8b87460ef5675b59",
+        "sha256": "764072de64743f1085ff215400717ca99c59b6afcd35c88d49bdcc38facb6c9c",
+        "seconds": 0.792,
+        "status": 200,
+        "individuallyOpened": true,
+        "category": "wildlife",
+        "aggregated": false,
+        "alt": "A brown European mantis hangs beneath leafy stems, holding a bee against its mouth. Sunlight outlines its forelegs and long folded wings against blurred pink flowers."
+      },
+      "sourceEvidence": {
+        "taxon": "Mantis religiosa",
+        "qualityGrade": "research",
+        "currentMatchingIdentifications": 2,
+        "observedOn": "2025-10-01",
+        "actualPlace": "Guelph, Ontario, Canada",
+        "captive": false,
+        "description": "Eating a honeybee",
+        "sex": "No source sex annotation; no reproductive anatomy or sex claim inferred from this view",
+        "rights": "Exact photo 574805449 is CC BY 4.0, Bryn; source page attribution preserved separately from fictional narrator"
+      },
+      "imageReview": {
+        "verdict": "Pass quality and proposed feeding-under-foliage pairing, pending root",
+        "visible": "Long brown winged mantis holds bee remains to mouth beneath intersecting leafy stems. Actual feeding, vegetation overhead and shade on torso are legible. Warm rim light and pink background provide a strong vertical composition. Face/prey are small but readable; comparison 574805280 shows the same feeding contact more closely.",
+        "limits": "No bird, initial capture, carrying movement or fully dark concealment is pictured. Image shows mixed light, including bright edges. Do not claim that every temporal beat was photographed; root must judge whether this supports the preserved short scene."
+      },
+      "canon": {
+        "read": [
+          "packages/shared/src/sample-character-arcs.ts: Manny complete nine-entry arc",
+          "docs/SAMPLE-CHARACTER-CANON.md: Manny voice",
+          "docs/drafts/manny-lead-13.md",
+          "docs/drafts/LEGACY-REVIEW-16.md: Manny index 1 source conflict"
+        ],
+        "chronology": "Retain index 1 exactly. Recovery adds no later history and preserves all nine original bodies, including null episodes.",
+        "appearance": "Brown long-bodied Mantis religiosa matches the explicit accepted brown species anchor; green feeding subjects in this batch are held. No claim that multiple photographed animals are the same real individual.",
+        "home": "Mediterranean scrub near Hy\u00e8res, 43.12, 6.15, unchanged. Ontario is source provenance only.",
+        "avatar": "Retain existing approved avatar without edits"
+      },
+      "fictionBoundary": "Manny\u2019s vanity, the bird, prior carrying and relief are fiction. This observation documents the mantis feeding on a bee and supplies the physical posture and setting. It does not document the invented sequence.",
+      "proseAssessment": "Pass preserved original body as a compact regular Instagram post. The reversal belongs to Manny\u2019s vanity and survival, not prolonged prey suffering. Do not relabel as a Story merely to satisfy the preferred ratio.",
+      "biologySources": [
+        {
+          "url": "https://www.inaturalist.org/observations/318065852",
+          "cached": "/tmp/botanical160/obs-318065852.json",
+          "supports": "Primary observation directly documents Mantis religiosa eating a honeybee; two current matching species identifications. The photographs directly establish grasping forelegs and feeding posture."
+        }
+      ]
+    }
+  ],
+  "holds": [
+    {
+      "character": "Barnaby Many",
+      "title": "The next part",
+      "body": "I walked onto his hand. He turned it toward his face and smiled. I went on walking. His smile disappeared when I reached the edge. I had meant to see what the rest of him was like.",
+      "photoIds": [
+        599566770
+      ],
+      "verdict": "Hold image and payoff",
+      "reason": "The person and hand are clear but the millipede is small and soft. The ending remains a mild handling misunderstanding rather than a strong changed relationship. No claim of pictured departure or fear."
+    },
+    {
+      "character": "Sylvia",
+      "title": "Through the cap",
+      "body": "The first drop went straight through the hole in my cap. I braced for the next one. It landed on the edge and stayed there, trembling. I had forgotten I could still keep something from falling.",
+      "photoIds": [
+        325851333
+      ],
+      "verdict": "Hold prose and pairing",
+      "reason": "Sharp actual hole, but no falling rain is pictured. The final sentence explains recovery as a moral and repeats a spent damaged-body mechanism. Cause of hole not assigned to an unseen snail."
+    },
+    {
+      "character": "Manny Tis",
+      "title": "The watering can",
+      "body": "The person who soaked me put me in the sun. I turned my head toward them. They turned the watering can away. I kept looking. They put it down.",
+      "photoIds": [
+        215567056,
+        215567004,
+        215566945
+      ],
+      "verdict": "Hold payoff and pairing",
+      "reason": "Brown mantis and water exposure have strong primary provenance, but the pictured sequence is largely a drying portrait. The imagined exchange depends on an absent can and a familiar intimidating stare. Do not recover Rain has hands using a pallet image without the leaf/drop-catching scene."
+    }
+  ],
+  "inspection": {
+    "exactImagesOpened": 30,
+    "allHashesReverified": true,
+    "sources": [
+      {
+        "observationId": 21870664,
+        "photoId": 33883628,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/33883628/large.jpg",
+        "localFile": "/tmp/botanical160/33883628.jpg",
+        "sourceLocal": "/tmp/botanical160/obs-21870664.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/21870664",
+        "license": "CC0",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "attribution": "no rights reserved, uploaded by Simon Tonge",
+        "dimensions": [
+          1024,
+          675
+        ],
+        "originalUploadDimensions": [
+          1800,
+          1186
+        ],
+        "bytes": 104030,
+        "sha1": "15f41e85fa91a41ca9e9e29fbfd343b0f9945389",
+        "sha256": "d70b5d327c5252b5b1e99566511f961fab57b415426ab00561e9fee76a641432",
+        "seconds": 0.642,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 393062710,
+        "photoId": 720413386,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/720413386/large.jpg",
+        "localFile": "/tmp/botanical160/720413386.jpg",
+        "sourceLocal": "/tmp/botanical160/obs-393062710.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/393062710",
+        "license": "CC0",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "attribution": "no rights reserved",
+        "dimensions": [
+          576,
+          1024
+        ],
+        "originalUploadDimensions": [
+          1152,
+          2048
+        ],
+        "bytes": 501288,
+        "sha1": "ec6f51135308896dcaeb989cf68429fb0d306633",
+        "sha256": "042a9ed5bfd8a43f5e007c9b81809cc0c946cd017e5e0c4d8b3d6740fc1eda5f",
+        "seconds": 0.76,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 47085258,
+        "photoId": 74676995,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/74676995/large.jpg",
+        "localFile": "/tmp/botanical160/74676995.jpg",
+        "sourceLocal": "/tmp/botanical160/obs-47085258.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/47085258",
+        "license": "CC-BY-SA",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attribution": "(c) Stephanie Dolrenry, some rights reserved (CC BY-SA), uploaded by Stephanie Dolrenry",
+        "dimensions": [
+          1024,
+          768
+        ],
+        "originalUploadDimensions": [
+          2048,
+          1536
+        ],
+        "bytes": 234804,
+        "sha1": "1d8239c8d14163cef5f1dc62dc01f00ede20f0e0",
+        "sha256": "6ba00c10875909802938e6cb670d9da6604dbbfdf95c7f21f8405f77adb2b382",
+        "seconds": 0.662,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 250705622,
+        "photoId": 448437924,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/448437924/large.jpeg",
+        "localFile": "/tmp/botanical160/448437924.jpg",
+        "sourceLocal": "/tmp/botanical160/obs-250705622.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/250705622",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) Chanda Miyanda, some rights reserved (CC BY), uploaded by Chanda Miyanda",
+        "dimensions": [
+          576,
+          1024
+        ],
+        "originalUploadDimensions": [
+          1080,
+          1920
+        ],
+        "bytes": 402503,
+        "sha1": "b3fa3678c741328e5246bb6b4bdbdc8c2a9c2dbd",
+        "sha256": "23b772c63479673664316461d3171c0d043a0d71d0673a82590901c434a9bd71",
+        "seconds": 0.818,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 322348612,
+        "photoId": 583123109,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/583123109/large.jpg",
+        "localFile": "/tmp/botanical160/583123109.jpg",
+        "sourceLocal": "/tmp/botanical160/obs-322348612.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/322348612",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) Chanda Miyanda, some rights reserved (CC BY), uploaded by Chanda Miyanda",
+        "dimensions": [
+          576,
+          1024
+        ],
+        "originalUploadDimensions": [
+          1152,
+          2048
+        ],
+        "bytes": 367466,
+        "sha1": "12350e18ea4b865ca8c6c7547bc722c8cf545775",
+        "sha256": "faba3209ba649953a505811efb8c237631fa9babe7b68dadabcf7080082621e0",
+        "seconds": 0.754,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 195378300,
+        "photoId": 343702185,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/343702185/large.jpeg",
+        "localFile": "/tmp/botanical160/343702185.jpg",
+        "sourceLocal": "/tmp/botanical160/obs-195378300.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/195378300",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) Nico Hernandez, some rights reserved (CC BY), uploaded by Nico Hernandez",
+        "dimensions": [
+          1024,
+          768
+        ],
+        "originalUploadDimensions": [
+          2048,
+          1536
+        ],
+        "bytes": 574025,
+        "sha1": "401d55283ba00399bee5e0fe753ec6acc11f9cd6",
+        "sha256": "50ed7b10c5cd70c4fe8c6948535451adf1b287e564c0e1c6b4e2f72ff3227697",
+        "seconds": 0.809,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 99884141,
+        "photoId": 166626516,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/166626516/large.jpg",
+        "localFile": "/tmp/botanical160/166626516.jpg",
+        "sourceLocal": "/tmp/botanical160/obs-99884141.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/99884141",
+        "license": "CC-BY-SA",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attribution": "(c) Stephanie Dolrenry, some rights reserved (CC BY-SA), uploaded by Stephanie Dolrenry",
+        "dimensions": [
+          768,
+          1024
+        ],
+        "originalUploadDimensions": [
+          1536,
+          2048
+        ],
+        "bytes": 486310,
+        "sha1": "728227cf9198e6d40f8662a9db08e3682bbca311",
+        "sha256": "9a47d052bd12038f731998a6e8dfa33707f160eca68cccb0b7183ad604ce5656",
+        "seconds": 0.858,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 330617520,
+        "photoId": 599566770,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/599566770/large.jpg",
+        "localFile": "/tmp/botanical160/599566770.jpg",
+        "sourceLocal": "/tmp/botanical160/obs-330617520.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/330617520",
+        "license": "CC0",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "attribution": "no rights reserved",
+        "dimensions": [
+          768,
+          1024
+        ],
+        "originalUploadDimensions": [
+          1536,
+          2048
+        ],
+        "bytes": 470199,
+        "sha1": "14a2315f72d744235f6a875170596bd4e53132a5",
+        "sha256": "fbf0a69cbed10441f212cc1615cd92a462107141f54e23681ea852eb610f3149",
+        "seconds": 1.536,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 72487588,
+        "photoId": 118190225,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/118190225/large.jpg",
+        "localFile": "/tmp/botanical160/118190225.jpg",
+        "sourceLocal": "/tmp/botanical160/obs-72487588.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/72487588",
+        "license": "CC-BY-SA",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attribution": "(c) nothobranchius, some rights reserved (CC BY-SA)",
+        "dimensions": [
+          1024,
+          768
+        ],
+        "originalUploadDimensions": [
+          2048,
+          1536
+        ],
+        "bytes": 535691,
+        "sha1": "a003cdcc4518a9362cce04bad963bbfedf1f3f4f",
+        "sha256": "b375c4265213b3e43e35029255ccdba422515495b79267ded7b537e9c48ab685",
+        "seconds": 0.774,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 186459563,
+        "photoId": 325851333,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/325851333/large.jpg",
+        "localFile": "/tmp/botanical160/325851333.jpg",
+        "sourceLocal": "/tmp/botanical160/obs-186459563.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/186459563",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) Viktor, some rights reserved (CC BY), uploaded by Viktor",
+        "dimensions": [
+          1024,
+          771
+        ],
+        "originalUploadDimensions": [
+          2048,
+          1542
+        ],
+        "bytes": 391208,
+        "sha1": "c8e717c958d43d3e9da202cafc734783805f7017",
+        "sha256": "bd3372151a298994a906193a8664c2a2383bd5849fa7a79f6de61f39454f255c",
+        "seconds": 0.794,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 192725181,
+        "photoId": 338393075,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/338393075/large.jpg",
+        "localFile": "/tmp/botanical160/338393075.jpg",
+        "sourceLocal": "/tmp/botanical160/obs-192725181.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/192725181",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) Daniel Greenwood, some rights reserved (CC BY), uploaded by Daniel Greenwood",
+        "dimensions": [
+          779,
+          1024
+        ],
+        "originalUploadDimensions": [
+          1141,
+          1500
+        ],
+        "bytes": 1185619,
+        "sha1": "06f929bd4a302c830cb5084865d8dd50d265cc1b",
+        "sha256": "5f3faa079ebf552efbc090e5abf8d65aa82a3b2013b53896219c8ad99c7de520",
+        "seconds": 1.012,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 324942888,
+        "photoId": 588237043,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/588237043/large.jpg",
+        "localFile": "/tmp/botanical160/588237043.jpg",
+        "sourceLocal": "/tmp/botanical160/obs-324942888.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/324942888",
+        "license": "CC-BY-SA",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "attribution": "(c) Gilles San Martin, some rights reserved (CC BY-SA), uploaded by Gilles San Martin",
+        "dimensions": [
+          1024,
+          722
+        ],
+        "originalUploadDimensions": [
+          2000,
+          1410
+        ],
+        "bytes": 251088,
+        "sha1": "b3a4c3fd5ef26dd9c6df3856a87a1c0c49839282",
+        "sha256": "f226d0d38c5f2f644fa7b9c6e960bd7509f0402002ceff97ed4358863d2e6673",
+        "seconds": 0.871,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 127007660,
+        "photoId": 215567056,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/215567056/large.jpeg",
+        "localFile": "/tmp/botanical160/215567056.jpg",
+        "sourceLocal": "/tmp/botanical160/obs-127007660.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/127007660",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) olrett, some rights reserved (CC BY), uploaded by olrett",
+        "dimensions": [
+          1024,
+          768
+        ],
+        "originalUploadDimensions": [
+          1855,
+          1391
+        ],
+        "bytes": 453276,
+        "sha1": "b4be5c4bf6e6ee29ad1f8e0ce902cef218b4ba09",
+        "sha256": "d4cc17e29ae925f9a26a8ab0e709fe9ebbb53ad81de627658c06a4792869394b",
+        "seconds": 0.779,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 127007660,
+        "photoId": 215567004,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/215567004/large.jpeg",
+        "localFile": "/tmp/botanical160/215567004.jpg",
+        "sourceLocal": "/tmp/botanical160/obs-127007660.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/127007660",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) olrett, some rights reserved (CC BY), uploaded by olrett",
+        "dimensions": [
+          1024,
+          768
+        ],
+        "originalUploadDimensions": [
+          1079,
+          809
+        ],
+        "bytes": 461350,
+        "sha1": "3a447f9ba0dfd1da7757b7e667e0e13d9fb36c4c",
+        "sha256": "49617bb803926eb392b0fb503d8abd5924fef6cedc22a4c1be3a937dd3dbd493",
+        "seconds": 0.83,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 127007660,
+        "photoId": 215566945,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/215566945/large.jpeg",
+        "localFile": "/tmp/botanical160/215566945.jpg",
+        "sourceLocal": "/tmp/botanical160/obs-127007660.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/127007660",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) olrett, some rights reserved (CC BY), uploaded by olrett",
+        "dimensions": [
+          1024,
+          768
+        ],
+        "originalUploadDimensions": [
+          1153,
+          865
+        ],
+        "bytes": 502914,
+        "sha1": "dd8348d6213e6a7bbdd92e220bdaa2cb577da337",
+        "sha256": "4c76dc1d0d481973caf7f19c3a614a10c8fd433e9b493a65f2773cea1162f9f8",
+        "seconds": 0.751,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 183249358,
+        "photoId": 319669190,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/319669190/large.jpg",
+        "localFile": "/tmp/botanical160/319669190.jpg",
+        "sourceLocal": "/tmp/botanical160/obs-183249358.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/183249358",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) JT Tomaschke, some rights reserved (CC BY), uploaded by JT Tomaschke",
+        "dimensions": [
+          1024,
+          576
+        ],
+        "originalUploadDimensions": [
+          2048,
+          1152
+        ],
+        "bytes": 289244,
+        "sha1": "788db9f094ea392aea8d5ab8975d4a2f5f58f8e7",
+        "sha256": "2a88d7de566fb38cb0a50c92b3b1a581238afefd4782c4e279cef7dd3470ec2f",
+        "seconds": 0.747,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 183249358,
+        "photoId": 319669019,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/319669019/large.jpg",
+        "localFile": "/tmp/botanical160/319669019.jpg",
+        "sourceLocal": "/tmp/botanical160/obs-183249358.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/183249358",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) JT Tomaschke, some rights reserved (CC BY), uploaded by JT Tomaschke",
+        "dimensions": [
+          1024,
+          768
+        ],
+        "originalUploadDimensions": [
+          2048,
+          1536
+        ],
+        "bytes": 308160,
+        "sha1": "df0cdd869df29e7d233eaf6546db8cc6399e4f99",
+        "sha256": "a799a64146863b768f1f2c74502d19ca0492a12e10dba21f42606021cb58c2bf",
+        "seconds": 0.723,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 183249358,
+        "photoId": 319668982,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/319668982/large.jpg",
+        "localFile": "/tmp/botanical160/319668982.jpg",
+        "sourceLocal": "/tmp/botanical160/obs-183249358.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/183249358",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) JT Tomaschke, some rights reserved (CC BY), uploaded by JT Tomaschke",
+        "dimensions": [
+          1024,
+          768
+        ],
+        "originalUploadDimensions": [
+          2048,
+          1536
+        ],
+        "bytes": 294679,
+        "sha1": "a38ceef331f3cadfb8e1c24eeef6d113de871ad4",
+        "sha256": "3737b222de96c3874cbc87e6e55cd0f6cfe97ff045ee89790c9a2ca962f90f21",
+        "seconds": 0.639,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 228041426,
+        "photoId": 404622209,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/404622209/large.jpeg",
+        "localFile": "/tmp/botanical160/404622209.jpg",
+        "sourceLocal": "/tmp/botanical160/obs-228041426.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/228041426",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) Benjamin Carbuccia, some rights reserved (CC BY), uploaded by Benjamin Carbuccia",
+        "dimensions": [
+          1024,
+          578
+        ],
+        "originalUploadDimensions": [
+          2048,
+          1155
+        ],
+        "bytes": 181046,
+        "sha1": "21fcff7ac37a837cc43e5a0338c63ece42276a71",
+        "sha256": "69eaefa2356077a148316460a27936736296f84831d200cf448e20ee530c553d",
+        "seconds": 0.587,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 313508784,
+        "photoId": 566164393,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/566164393/large.jpg",
+        "localFile": "/tmp/botanical160/566164393.jpg",
+        "sourceLocal": "/tmp/botanical160/obs-313508784.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/313508784",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) SteveM4560, some rights reserved (CC BY), uploaded by SteveM4560",
+        "dimensions": [
+          1024,
+          1024
+        ],
+        "originalUploadDimensions": [
+          2048,
+          2048
+        ],
+        "bytes": 362837,
+        "sha1": "25b5ebe56427771cb2afec5ab6bb3f30a057eb7a",
+        "sha256": "471225e4e44b3222f66d6b94474b29edbfb53ba1246e57a8c8d48d4871a48713",
+        "seconds": 1.044,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 313508784,
+        "photoId": 566164515,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/566164515/large.jpg",
+        "localFile": "/tmp/botanical160/566164515.jpg",
+        "sourceLocal": "/tmp/botanical160/obs-313508784.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/313508784",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) SteveM4560, some rights reserved (CC BY), uploaded by SteveM4560",
+        "dimensions": [
+          1024,
+          1024
+        ],
+        "originalUploadDimensions": [
+          2048,
+          2048
+        ],
+        "bytes": 382597,
+        "sha1": "fc8c170a63747492e7dfe0a3906fc4054cc7d08d",
+        "sha256": "32af19d9def36196547192905bc43d61dde0a409cb257bc813429c1d846559bf",
+        "seconds": 0.731,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 185358851,
+        "photoId": 323712422,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/323712422/large.jpeg",
+        "localFile": "/tmp/botanical160/323712422.jpg",
+        "sourceLocal": "/tmp/botanical160/obs-185358851.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/185358851",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) John Hibbard, some rights reserved (CC BY), uploaded by John Hibbard",
+        "dimensions": [
+          1024,
+          768
+        ],
+        "originalUploadDimensions": [
+          2048,
+          1536
+        ],
+        "bytes": 223306,
+        "sha1": "7fc71f349fe95d09f7a18d838fcfc7c5cfc5d468",
+        "sha256": "a17bd238080a4239313fe7d99a451af168bf43f77be5b9f1edcd8f2d642f1b8f",
+        "seconds": 0.699,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 4235429,
+        "photoId": 5060112,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/5060112/large.jpg",
+        "localFile": "/tmp/botanical160/5060112.jpg",
+        "sourceLocal": "/tmp/botanical160/obs-4235429.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/4235429",
+        "license": "CC0",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "attribution": "no rights reserved, uploaded by Theodoros Alexandropoulos",
+        "dimensions": [
+          1024,
+          683
+        ],
+        "originalUploadDimensions": [
+          2048,
+          1366
+        ],
+        "bytes": 111975,
+        "sha1": "9b75e3f69dfa8a21b563ca52d018d982f109e194",
+        "sha256": "54e09401e921ab0e72ba64c8347ec738cf02d3befeb91f5804ea4964a29552d8",
+        "seconds": 0.608,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 130120793,
+        "photoId": 221233073,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/221233073/large.jpg",
+        "localFile": "/tmp/botanical160/221233073.jpg",
+        "sourceLocal": "/tmp/botanical160/obs-130120793.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/130120793",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) PLAT Vincent, some rights reserved (CC BY), uploaded by PLAT Vincent",
+        "dimensions": [
+          768,
+          1024
+        ],
+        "originalUploadDimensions": [
+          1536,
+          2048
+        ],
+        "bytes": 350905,
+        "sha1": "77243ac7207328e2341d5b4c97343c8d407ddcb5",
+        "sha256": "8eb8a5a3f5a15758b7c9f135079a302d0598b169a87c89776f270e5bf6db81f9",
+        "seconds": 0.637,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 318065852,
+        "photoId": 574805228,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/574805228/large.jpg",
+        "localFile": "/tmp/botanical160/574805228.jpg",
+        "sourceLocal": "/tmp/botanical160/obs-318065852.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/318065852",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) Bryn, some rights reserved (CC BY), uploaded by Bryn",
+        "dimensions": [
+          771,
+          1024
+        ],
+        "originalUploadDimensions": [
+          1542,
+          2048
+        ],
+        "bytes": 444177,
+        "sha1": "38075d352e92a727ca563d3c695245315356f3c7",
+        "sha256": "fc4d1d12eebab543a32c0208a0a813e91c391925f910f7e1636bb9f0e8f4017e",
+        "seconds": 0.827,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 123287457,
+        "photoId": 208839158,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/208839158/large.jpeg",
+        "localFile": "/tmp/botanical160/208839158.jpg",
+        "sourceLocal": "/tmp/botanical160/obs-123287457.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/123287457",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) sdash, some rights reserved (CC BY), uploaded by sdash",
+        "dimensions": [
+          768,
+          1024
+        ],
+        "originalUploadDimensions": [
+          1536,
+          2048
+        ],
+        "bytes": 660328,
+        "sha1": "af90590249e25221a3c4e1fa047ddb8fd79f0445",
+        "sha256": "2dd27e7e281c8984f168075a7191b8da4c6818f7899b1950fcf765ea3a957baf",
+        "seconds": 0.756,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 16368867,
+        "photoId": 24610673,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/24610673/large.jpeg",
+        "localFile": "/tmp/botanical160/24610673.jpg",
+        "sourceLocal": "/tmp/botanical160/obs-16368867.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/16368867",
+        "license": "CC0",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "attribution": "no rights reserved, uploaded by Tait Sougstad",
+        "dimensions": [
+          576,
+          1024
+        ],
+        "originalUploadDimensions": [
+          1152,
+          2048
+        ],
+        "bytes": 440666,
+        "sha1": "3a375a12daa70952be34653afe083c2560b8fcf4",
+        "sha256": "3cef3a1f5b59e26e2a115a49bdfdc6af60cd0e98dcb58b105b17f9a917ad016e",
+        "seconds": 0.744,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 318065852,
+        "photoId": 574805280,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/574805280/large.jpg",
+        "localFile": "/tmp/botanical160/574805280.jpg",
+        "sourceLocal": "/tmp/botanical160/obs-318065852.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/318065852",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) Bryn, some rights reserved (CC BY), uploaded by Bryn",
+        "dimensions": [
+          771,
+          1024
+        ],
+        "originalUploadDimensions": [
+          1542,
+          2048
+        ],
+        "bytes": 380805,
+        "sha1": "0aee6159e34c58b07a8dc6995d8fa1f44e920c53",
+        "sha256": "483884875e69abd639c9f117f6c1d9fb61ff09349b78a35d9b11dc6cee9ab59e",
+        "seconds": 0.688,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 318065852,
+        "photoId": 574805359,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/574805359/large.jpg",
+        "localFile": "/tmp/botanical160/574805359.jpg",
+        "sourceLocal": "/tmp/botanical160/obs-318065852.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/318065852",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) Bryn, some rights reserved (CC BY), uploaded by Bryn",
+        "dimensions": [
+          771,
+          1024
+        ],
+        "originalUploadDimensions": [
+          1542,
+          2048
+        ],
+        "bytes": 380807,
+        "sha1": "e5db54c14eb4b6093371d22bf2a283d11f12f66b",
+        "sha256": "ee43e34e9413a6f69b4aa4b5255f671e99b784af455692873e5fa2fa021fcc5b",
+        "seconds": 0.777,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 318065852,
+        "photoId": 574805449,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/574805449/large.jpg",
+        "localFile": "/tmp/botanical160/574805449.jpg",
+        "sourceLocal": "/tmp/botanical160/obs-318065852.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/318065852",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) Bryn, some rights reserved (CC BY), uploaded by Bryn",
+        "dimensions": [
+          771,
+          1024
+        ],
+        "originalUploadDimensions": [
+          1542,
+          2048
+        ],
+        "bytes": 465047,
+        "sha1": "11733f05f36f7f850672fe7b8b87460ef5675b59",
+        "sha256": "764072de64743f1085ff215400717ca99c59b6afcd35c88d49bdcc38facb6c9c",
+        "seconds": 0.792,
+        "status": 200,
+        "individuallyOpened": true
+      }
+    ],
+    "dispositions": {
+      "33883628": "Hold generic walking/coiling, repeated existing mechanism, soft subject or obstructed detail; no new episode assigned.",
+      "720413386": "Hold generic walking/coiling, repeated existing mechanism, soft subject or obstructed detail; no new episode assigned.",
+      "74676995": "Hold generic walking/coiling, repeated existing mechanism, soft subject or obstructed detail; no new episode assigned.",
+      "448437924": "Hold generic walking/coiling, repeated existing mechanism, soft subject or obstructed detail; no new episode assigned.",
+      "583123109": "Hold generic walking/coiling, repeated existing mechanism, soft subject or obstructed detail; no new episode assigned.",
+      "343702185": "Hold generic walking/coiling, repeated existing mechanism, soft subject or obstructed detail; no new episode assigned.",
+      "166626516": "Hold generic walking/coiling, repeated existing mechanism, soft subject or obstructed detail; no new episode assigned.",
+      "599566770": "Hold generic walking/coiling, repeated existing mechanism, soft subject or obstructed detail; no new episode assigned.",
+      "118190225": "Hold generic walking/coiling, repeated existing mechanism, soft subject or obstructed detail; no new episode assigned.",
+      "325851333": "Sharp hole in cap; held actual prose above.",
+      "338393075": "Grainy underside cluster; no distinct new physical event beyond adjacent caps.",
+      "588237043": "Sharp fallen leaf across mature caps, but no earned new draft beyond shelter/contact repetitions.",
+      "215567056": "Brown drying mantis; held literal draft above.",
+      "215567004": "Brown drying mantis; held literal draft above.",
+      "215566945": "Brown drying mantis; held literal draft above.",
+      "319669190": "Green mantis incompatible with accepted brown anchor. Feeding scenes do not permit individual recoloring.",
+      "319669019": "Green mantis incompatible with accepted brown anchor. Feeding scenes do not permit individual recoloring.",
+      "319668982": "Green mantis incompatible with accepted brown anchor. Feeding scenes do not permit individual recoloring.",
+      "404622209": "Green mantis incompatible with accepted brown anchor. Feeding scenes do not permit individual recoloring.",
+      "566164393": "Soft wall portraits, one brown and one green in wider frame; no distinct scene or identified courtship.",
+      "566164515": "Soft wall portraits, one brown and one green in wider frame; no distinct scene or identified courtship.",
+      "323712422": "Brown mantis with skipper, but broad abdomen requires sex/canon review and no distinct earned prose. Do not substitute a skipper into preserved bee text.",
+      "5060112": "Green mantis incompatible with accepted brown anchor. Feeding scenes do not permit individual recoloring.",
+      "221233073": "Green mantis incompatible with accepted brown anchor. Feeding scenes do not permit individual recoloring.",
+      "574805228": "Same observation and same feeding episode, inspected supporting context only. Not additional entries.",
+      "208839158": "Green mantis incompatible with accepted brown anchor. Feeding scenes do not permit individual recoloring.",
+      "24610673": "Pale brown feeding mantis but soft subject, broad abdomen and no proposed narrative; do not substitute hoverfly into bee text.",
+      "574805280": "Same observation and same feeding episode, inspected supporting context only. Not additional entries.",
+      "574805359": "Same observation and same feeding episode, inspected supporting context only. Not additional entries.",
+      "574805449": "Proposed recovery display."
+    },
+    "webStops": [
+      "web open of observation HTML and Missouri field-guide URL returned non-retryable safe-open errors; not retried. Previously fetched primary observation JSON remains evidence."
+    ]
+  },
+  "constraints": "No new identity, no runtime or avatar writes, no external publication. All earlier prose preserved. Oona156 release remains a lasting change."
+}

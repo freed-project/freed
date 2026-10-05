@@ -3,11 +3,23 @@ const PRESENTATION_KEYS = new Set([
   "freed-theme-legacy-migration-v1",
   "freed-device-display-preferences-v1",
   "freed-feed-card-density",
+  "freed.reader.offlineCacheMode",
   "freed-interface-zoom",
   "freed-device-graph-layout-v1",
   "freed.pwa.install.dismissed",
   "freed.demo.last-top-item.v1",
 ]);
+
+/** Only this display-only choice may bypass synchronized demo preferences. */
+export function isDemoFocusPreferenceUpdate(update: unknown): boolean {
+  if (!update || typeof update !== "object") return false;
+  const root = update as Record<string, unknown>;
+  if (Object.keys(root).length !== 1 || !root.display || typeof root.display !== "object") return false;
+  const display = root.display as Record<string, unknown>;
+  if (Object.keys(display).length !== 1 || !display.reading || typeof display.reading !== "object") return false;
+  const reading = display.reading as Record<string, unknown>;
+  return Object.keys(reading).length === 1 && typeof reading.focusMode === "boolean";
+}
 
 function isPresentationKey(key: string): boolean {
   return PRESENTATION_KEYS.has(key) || [...PRESENTATION_KEYS].some(

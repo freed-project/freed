@@ -33,7 +33,9 @@ function stubNavigator(options?: {
 }) {
   Object.defineProperty(window.navigator, "userAgent", {
     configurable: true,
-    value: options?.userAgent ?? "Mozilla/5.0 (X11; Linux x86_64) Chrome/123.0.0.0 Safari/537.36",
+    value:
+      options?.userAgent ??
+      "Mozilla/5.0 (X11; Linux x86_64) Chrome/123.0.0.0 Safari/537.36",
   });
   Object.defineProperty(window.navigator, "standalone", {
     configurable: true,
@@ -64,6 +66,29 @@ describe("pwa install helpers", () => {
     });
 
     expect(getInitialInstallNotice()).toEqual({ kind: "ios" });
+  });
+
+  it("offers manual install guidance in Chrome on iOS", () => {
+    stubNavigator({
+      userAgent:
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/151.0.7390.41 Mobile/15E148 Safari/604.1",
+    });
+
+    expect(getInitialInstallNotice()).toEqual({ kind: "ios" });
+  });
+
+  it("keeps standalone and dismissal fences for Chrome on iOS", () => {
+    stubNavigator({
+      userAgent:
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/151.0.7390.41 Mobile/15E148 Safari/604.1",
+    });
+
+    stubMatchMedia(true);
+    expect(getInitialInstallNotice()).toBeNull();
+
+    stubMatchMedia(false);
+    dismissInstallNotice();
+    expect(getInitialInstallNotice()).toBeNull();
   });
 
   it("suppresses the notice after dismissal until install completes", () => {

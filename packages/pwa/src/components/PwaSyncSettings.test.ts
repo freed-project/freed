@@ -1,3 +1,4 @@
+vi.mock("./PwaConsumerRecovery", () => ({ PwaConsumerRecovery: () => null }));
 import { act, createElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -7,6 +8,8 @@ import { useAppStore } from "../lib/store";
 import { PwaDemoSyncSettings, PwaSyncSettings } from "./PwaSyncSettings";
 
 const mocks = vi.hoisted(() => ({
+  libraryChoices: Object.freeze([]) as readonly string[],
+  selectCloudLibrary: vi.fn(async () => {}),
   clipboardWrite: vi.fn(async () => {}),
   clearCloudSync: vi.fn(),
   getCloudProvider: vi.fn<() => "gdrive" | null>(() => "gdrive"),
@@ -45,7 +48,7 @@ const mocks = vi.hoisted(() => ({
     enabledRssFeedCount: 1,
     friendPersonCount: 0,
     latestContactImportedAt: null,
-    latestRssFeedFetchedAt: Date.now() - 90_000,
+    latestRssFeedFetchedAt: Date.now() - 59 * 24 * 60 * 60 * 1_000,
     platformCounts: [],
     rssFeedCount: 1,
     sampleAccountCount: 0,
@@ -63,6 +66,9 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../lib/sync", () => ({
+  getCloudLibraryChoices: () => mocks.libraryChoices,
+  subscribeCloudLibraryChoices: () => () => {},
+  selectCloudLibrary: mocks.selectCloudLibrary,
   clearCloudSync: mocks.clearCloudSync,
   getCloudProvider: mocks.getCloudProvider,
   stopCloudSync: mocks.stopCloudSync,
@@ -119,6 +125,7 @@ describe("PwaSyncSettings cloud diagnostics", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-09T12:00:30Z"));
     vi.clearAllMocks();
+    mocks.libraryChoices = Object.freeze([]);
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: { writeText: mocks.clipboardWrite },
@@ -142,6 +149,7 @@ describe("PwaSyncSettings cloud diagnostics", () => {
           status: "connected",
           stage: "idle",
           lastDownloadAt: Date.now(),
+          lastSuccessfulAt: Date.now() - 90_000,
           lastRemoteBytes: 0,
           statusMessage: "No remote changes found.",
           pendingReason: "Waiting for local document changes or Sync now.",
@@ -170,6 +178,38 @@ describe("PwaSyncSettings cloud diagnostics", () => {
     (
       globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
     ).IS_REACT_ACT_ENVIRONMENT = false;
+  });
+
+  it("keeps receipt refresh single flight and stops after unmount", async () => {
+    let release!: (value: Awaited<ReturnType<typeof mocks.readCloudReceipt>>) => void;
+    const receipt = await mocks.readCloudReceipt();
+    mocks.readCloudReceipt.mockClear();
+    mocks.readCloudReceipt.mockImplementationOnce(() => new Promise((resolve) => {
+      release = resolve;
+    }));
+    const { root } = renderWithPlatform(createElement(PwaSyncSettings));
+    await act(async () => { await Promise.resolve(); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+    expect(mocks.readCloudReceipt).toHaveBeenCalledTimes(1);
+    await act(async () => { release(receipt); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
+    expect(mocks.readCloudReceipt).toHaveBeenCalledTimes(2);
+    act(() => root.unmount());
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+    expect(mocks.readCloudReceipt).toHaveBeenCalledTimes(2);
+  });
+
+  it("requires an explicit Library choice and forwards the exact identity", async () => {
+    mocks.libraryChoices = Object.freeze(["11".repeat(32), "22".repeat(32)]);
+    const { container, root } = renderWithPlatform(createElement(PwaSyncSettings));
+    await act(async () => { await Promise.resolve(); });
+    expect(mocks.selectCloudLibrary).not.toHaveBeenCalled();
+    const choices = container.querySelectorAll<HTMLButtonElement>("[data-testid='pwa-library-choice'] button");
+    expect(choices).toHaveLength(2);
+    expect(choices[1]!.textContent).toContain("...22222222");
+    await act(async () => { choices[1]!.click(); });
+    expect(mocks.selectCloudLibrary).toHaveBeenCalledWith("22".repeat(32));
+    act(() => root.unmount());
   });
 
   it("explains a missing upload and lets the user run sync now", async () => {

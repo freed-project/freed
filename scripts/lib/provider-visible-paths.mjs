@@ -84,6 +84,8 @@ export const SOCIAL_PROVIDER_DESKTOP_FILES = new Set([
   "packages/desktop/src/lib/youtube-capture.ts",
   "packages/desktop/src/lib/youtube-playlist.ts",
   "packages/desktop/src-tauri/src/fb-comments-extract.js",
+  "packages/desktop/src-tauri/src/facebook-admission-collector.source.js",
+  "packages/desktop/src-tauri/src/facebook-admission-policy.generated.js",
   "packages/desktop/src-tauri/src/fb-extract.js",
   "packages/desktop/src-tauri/src/fb-groups-extract.js",
   "packages/desktop/src-tauri/src/fb-stories-extract.js",
@@ -97,6 +99,7 @@ export const SOCIAL_PROVIDER_DESKTOP_FILES = new Set([
   "packages/desktop/src-tauri/src/youtube-playlist-action.js",
   "packages/desktop/src-tauri/src/youtube.rs",
   "scripts/dev-sync-trigger.mjs",
+  "scripts/generate-provider-admission-policy.mjs",
 ]);
 
 // Social capture packages whose focused provider tests validate-worktree runs.
@@ -134,6 +137,7 @@ export const PROVIDER_VISIBLE_EXTRA_FILES = new Set([
   "packages/pwa/src/lib/sync.ts",
   "packages/pwa/src/lib/youtube-handoff.ts",
   "packages/shared/src/google-contacts-automation.ts",
+  "packages/shared/src/provider-admission.ts",
   "packages/shared/src/bug-report.ts",
   "packages/shared/src/redact-sensitive.ts",
   "packages/shared/src/google-contacts.ts",
@@ -194,6 +198,17 @@ const ALL_PROVIDER_SCOPES = Object.freeze([
 ]);
 
 export const PROVIDER_VISIBLE_EXACT_SCOPES = new Map([
+  // Explicit recovery can make saved URLs eligible for the Primary content policy.
+  ["packages/desktop/src/components/ConsumerRecoverySavedUrlEditor.tsx", ALL_PROVIDER_SCOPES],
+  ["packages/pwa/src/components/PwaRecoverySavedUrlEditor.tsx", ALL_PROVIDER_SCOPES],
+  ["packages/ui/src/components/RecoverySavedUrlFields.tsx", ALL_PROVIDER_SCOPES],
+  ["packages/desktop/src-tauri/src/fb-login-auth.js", ["facebook"]],
+  ["packages/desktop/src-tauri/capabilities/fb-login.json", ["facebook"]],
+  ["packages/desktop/src/components/ProviderAdvancedSettings.tsx", ["facebook", "instagram", "linkedin", "medium", "substack"]],
+  ["packages/desktop/src-tauri/src/facebook-admission-collector.source.js", ["facebook"]],
+  ["packages/desktop/src-tauri/src/facebook-admission-policy.generated.js", ["facebook"]],
+  ["packages/shared/src/provider-admission.ts", ["facebook"]],
+  ["scripts/generate-provider-admission-policy.mjs", ["facebook"]],
   ["packages/capture-rss/src/discovery.ts", ["other"]],
   ["packages/capture-save/src/extract.ts", ["other"]],
   ["packages/library-service/src/cli-runtime.ts", ["other"]],

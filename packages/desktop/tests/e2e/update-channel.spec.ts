@@ -270,7 +270,7 @@ test("settings nav clicks keep destination headings visible", async ({ app, page
     { label: "Updates", sectionId: "updates" },
     { label: "Legal", sectionId: "legal" },
     { label: "Appearance", sectionId: "appearance" },
-    { label: "Sync", sectionId: "sync" },
+    { label: "Cloud Sync", sectionId: "sync" },
   ] as const;
 
   for (const destination of destinations) {

@@ -1,3 +1,6 @@
+import { LibraryReplicaAudit } from "@freed/ui/components/settings/LibraryReplicaAudit";
+import { auditPwaNormalizedReplica } from "../lib/library-core-sqlite-runtime";
+import { PwaConsumerRecovery } from "./PwaConsumerRecovery";
 /**
  * PwaSyncSettings, sync section content for the Settings panel on the PWA.
  *
@@ -9,10 +12,9 @@
  *   last-synced time, and a Disconnect action.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { getWebsiteHostForChannel } from "@freed/shared";
 import { usePlatform } from "@freed/ui/context";
-import { useLibraryFacetSummary } from "@freed/ui/hooks/useLibraryFacetSummary";
 import {
   useDebugStore,
   type CloudProviderDebugState,
@@ -24,6 +26,9 @@ import {
   clearCloudSync,
   stopCloudSync,
   syncCloudProviderNow,
+  getCloudLibraryChoices,
+  subscribeCloudLibraryChoices,
+  selectCloudLibrary,
 } from "../lib/sync";
 import { PwaCloudSyncConnect } from "./PwaCloudSyncConnect";
 import { useCloudSyncActivity } from "./cloudSyncActivity";
@@ -80,7 +85,7 @@ function SyncDiagnosticCell({
 }) {
   return (
     <div className="rounded-lg bg-[var(--theme-bg-muted)] px-3 py-2">
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--theme-text-soft)]">
+      <p className="text-[0.625rem] font-semibold uppercase tracking-wider text-[var(--theme-text-soft)]">
         {label}
       </p>
       <p
@@ -158,7 +163,7 @@ export function PwaDemoSyncSettings() {
           <div className="rounded-xl bg-[var(--theme-bg-muted)] p-3 text-[var(--theme-accent-secondary)]"><ProviderLogo /></div>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold text-[var(--theme-text-primary)]">Sync is off in this demo</p>
-            <p className="mt-1 text-xs leading-relaxed text-[var(--theme-text-muted)]">This showcase resets on refresh and never connects to a cloud account. Download Freed Desktop free to create a private Library and configure sync.</p>
+            <p className="mt-1 text-xs leading-relaxed text-[var(--theme-text-muted)]">This showcase resets on refresh and never connects to a cloud account. Download Freed Desktop to create a private Library and configure sync.</p>
           </div>
         </div>
         <a href={websiteGetUrl} target="_blank" rel="noopener noreferrer" className="theme-accent-button mt-5 inline-flex items-center justify-center rounded-lg px-4 py-2 text-xs">
@@ -170,11 +175,10 @@ export function PwaDemoSyncSettings() {
 }
 
 export function PwaSyncSettings() {
+  const libraryChoices = useSyncExternalStore(subscribeCloudLibraryChoices, getCloudLibraryChoices);
   const { releaseChannel } = usePlatform();
   const syncConnected = useAppStore((s) => s.syncConnected);
   const isSyncing = useAppStore((s) => s.isSyncing);
-  const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
-  const libraryFacets = useLibraryFacetSummary(searchCorpusVersion);
   const librarySnapshot = useDebugStore((s) => s.librarySnapshot);
   const cloudProviders = useDebugStore((s) => s.cloudProviders);
   const [manualSyncingProvider, setManualSyncingProvider] = useState<
@@ -193,10 +197,9 @@ export function PwaSyncSettings() {
     useState(false);
   const websiteGetUrl = `https://${getWebsiteHostForChannel(releaseChannel ?? "production")}/get`;
 
-  const lastSyncTime = libraryFacets.latestRssFeedFetchedAt;
-
   const { label, provider } = getProviderInfo(configuredCloudProvider);
   const cloudProviderState = provider ? cloudProviders?.gdrive : null;
+  const lastSyncTime = cloudProviderState?.lastSuccessfulAt;
   const activeCloudProvider = provider;
   const cloudActivity = useCloudSyncActivity(cloudProviderState);
   const isManualSyncing = manualSyncingProvider !== null;
@@ -205,22 +208,36 @@ export function PwaSyncSettings() {
   const selectedCheckpoint = cloudReceipt?.checkpoint ?? null;
   const followerReceipt = cloudReceipt?.follower ?? null;
 
-  const refreshSelectedCheckpoint = useCallback(async () => {
+  const receiptRefresh = useRef<Promise<void> | null>(null);
+  const receiptGeneration = useRef(0);
+  const refreshSelectedCheckpoint = useCallback((): Promise<void> => {
     if (activeCloudProvider !== "gdrive") {
       setCloudReceipt(null);
       setSelectedCheckpointError(null);
-      return;
+      return Promise.resolve();
     }
-    try {
-      setCloudReceipt(await readPwaLibraryCoreCloudReceiptV2());
-      setSelectedCheckpointError(null);
-    } catch (error) {
-      setSelectedCheckpointError(
-        error instanceof Error
-          ? error.message
-          : "SQLite checkpoint receipt is unavailable.",
-      );
-    }
+    if (receiptRefresh.current) return receiptRefresh.current;
+    const generation = receiptGeneration.current;
+    const task = (async () => {
+      try {
+        const receipt = await readPwaLibraryCoreCloudReceiptV2();
+        if (generation !== receiptGeneration.current) return;
+        setCloudReceipt(receipt);
+        setSelectedCheckpointError(null);
+      } catch (error) {
+        if (generation !== receiptGeneration.current) return;
+        setSelectedCheckpointError(
+          error instanceof Error
+            ? error.message
+            : "SQLite checkpoint receipt is unavailable.",
+        );
+      }
+    })();
+    receiptRefresh.current = task;
+    void task.finally(() => {
+      if (receiptRefresh.current === task) receiptRefresh.current = null;
+    });
+    return task;
   }, [activeCloudProvider]);
 
   const copySelectedCheckpoint = useCallback(async () => {
@@ -240,12 +257,19 @@ export function PwaSyncSettings() {
   }, [cloudReceipt]);
 
   useEffect(() => {
-    queueMicrotask(() => void refreshSelectedCheckpoint());
-    const timer = window.setInterval(
-      () => void refreshSelectedCheckpoint(),
-      15_000,
-    );
-    return () => window.clearInterval(timer);
+    let canceled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const refresh = async () => {
+      if (canceled) return;
+      await refreshSelectedCheckpoint();
+      if (!canceled) timer = setTimeout(() => void refresh(), 15_000);
+    };
+    queueMicrotask(() => void refresh());
+    return () => {
+      canceled = true;
+      receiptGeneration.current += 1;
+      clearTimeout(timer);
+    };
   }, [refreshSelectedCheckpoint]);
 
   const handleDisconnect = () => {
@@ -373,6 +397,38 @@ export function PwaSyncSettings() {
 
   return (
     <div className="space-y-4">
+      {selectedCheckpoint && <PwaConsumerRecovery key={selectedCheckpoint.authorityEpoch} />}
+      {selectedCheckpoint && <LibraryReplicaAudit key={`audit:${selectedCheckpoint.authorityEpoch}`} audit={auditPwaNormalizedReplica} client="pwa" />}
+      {libraryChoices.length > 0 && (
+        <div className="theme-card-soft rounded-xl p-4" data-testid="pwa-library-choice">
+          <p className="text-sm font-semibold">Choose your Library</p>
+          <p className="mt-1 text-xs text-text-muted">Google Drive contains several Libraries. Match the Library ID shown in Freed Desktop. Other Libraries remain untouched.</p>
+          <div className="mt-3 space-y-2">
+            {libraryChoices.map((libraryId) => (
+              <button
+                key={libraryId}
+                type="button"
+                disabled={isManualSyncing}
+                className="btn-secondary block w-full rounded-lg px-3 py-2 text-sm"
+                onClick={async () => {
+                  setManualSyncingProvider("gdrive");
+                  setManualSyncError(null);
+                  try {
+                    await selectCloudLibrary(libraryId);
+                    await refreshSelectedCheckpoint();
+                  } catch (error) {
+                    setManualSyncError(error instanceof Error ? error.message : "Library connection failed.");
+                  } finally {
+                    setManualSyncingProvider(null);
+                  }
+                }}
+              >
+                Sync Library {formatIdentityTail(libraryId)}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="flex items-center gap-4 rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] px-4 py-4">
         {provider && <ProviderLogo />}
         <div className="min-w-0 flex-1">
@@ -386,7 +442,7 @@ export function PwaSyncSettings() {
             </span>
           </div>
           {lastSyncTime && (
-            <p className="mt-1 text-[11px] tabular-nums text-[var(--theme-text-soft)]">
+            <p className="mt-1 text-[0.6875rem] tabular-nums text-[var(--theme-text-soft)]">
               Last synced {formatRelativeTime(lastSyncTime)}
             </p>
           )}
@@ -421,7 +477,7 @@ export function PwaSyncSettings() {
           </div>
           <div className="flex shrink-0 flex-col items-end gap-2 sm:flex-row sm:items-center">
             {cloudProviderState?.stage && (
-              <span className="rounded-full bg-[var(--theme-bg-muted)] px-2 py-1 text-[11px] font-medium text-[var(--theme-text-muted)]">
+              <span className="rounded-full bg-[var(--theme-bg-muted)] px-2 py-1 text-[0.6875rem] font-medium text-[var(--theme-text-muted)]">
                 {cloudProviderState.stage}
               </span>
             )}
@@ -637,7 +693,7 @@ export function PwaSyncSettings() {
 
         {cloudProviderState?.events && cloudProviderState.events.length > 0 && (
           <div className="mt-3 space-y-2">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--theme-text-soft)]">
+            <p className="text-[0.625rem] font-semibold uppercase tracking-wider text-[var(--theme-text-soft)]">
               Activity
             </p>
             <div data-testid="pwa-cloud-sync-activity" className="space-y-1.5">
@@ -650,11 +706,11 @@ export function PwaSyncSettings() {
                     <p className="truncate text-[var(--theme-text-secondary)]">
                       {event.message}
                     </p>
-                    <p className="mt-0.5 text-[10px] uppercase tracking-wider text-[var(--theme-text-soft)]">
+                    <p className="mt-0.5 text-[0.625rem] uppercase tracking-wider text-[var(--theme-text-soft)]">
                       {event.kind}, {event.stage}
                     </p>
                   </div>
-                  <div className="shrink-0 text-right font-mono text-[10px] text-[var(--theme-text-muted)]">
+                  <div className="shrink-0 text-right font-mono text-[0.625rem] text-[var(--theme-text-muted)]">
                     <p>{formatDiagnosticTime(event.ts)}</p>
                     {typeof event.bytes === "number" && (
                       <p>{formatBytes(event.bytes)}</p>

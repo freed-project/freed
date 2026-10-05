@@ -1,14 +1,13 @@
-import { memo, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import { memo, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { formatDistanceToNow } from "date-fns";
-import { AuthorIdentityLink } from "../AuthorIdentityLink.js";
-import { PLATFORM_LABELS, type FeedItem as FeedItemType } from "@freed/shared";
+import type { FeedItem as FeedItemType } from "@freed/shared";
 import { usePlatform } from "../../context/PlatformContext.js";
-import type { FeedCardDensity } from "../../lib/feed-card-density.js";
+import { DESKTOP_FEED_CARD_HEIGHT_BY_DENSITY, type FeedCardDensity } from "../../lib/feed-card-density.js";
 import { useDebugStore, type RuntimeMemorySnapshot } from "../../lib/debug-store.js";
 import { useHasTouchOnlyPointer } from "../../hooks/useHasTouchOnlyPointer.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import { ChannelAvatar } from "../ChannelAvatar.js";
-import { Tooltip } from "../Tooltip.js";
+import { isSamplePreviewItem } from "../../lib/sample-preview-media.js";
 import {
   RssIcon,
   XIcon,
@@ -23,18 +22,19 @@ import {
   MastodonIcon,
   BookmarkIcon,
   TrashIcon,
-  ExternalLinkIcon,
 } from "../icons.js";
 
 interface FeedItemProps {
   item: FeedItemType;
+  /** Text-only activity preview, using the same bounded card structure. */
+  summary?: boolean;
   onClick?: () => void;
   showEngagement?: boolean;
   showReadInGrayscale?: boolean;
   focused?: boolean;
   /** Square card variant for the dual-column sidebar */
   compact?: boolean;
-  /** Hides avatars and platform icons in compact mode to maximize title space */
+  /** Hides avatars and platform icons on narrow cards to preserve title space */
   narrow?: boolean;
   /** Highlights as the currently-open item in dual-column mode */
   selected?: boolean;
@@ -53,7 +53,7 @@ interface FeedItemProps {
    * ratio (capped at 288px). Defaults to 288 if omitted.
    */
   storyHeight?: number;
-  /** Fixed primary-feed card height. Used by desktop virtualization. */
+  /** Fixed primary-feed card height, shared by desktop and mobile virtualization. */
   fixedHeight?: number;
 }
 
@@ -62,16 +62,11 @@ function feedCardTransitionName(globalId: string): string {
 }
 
 const cls = "w-3.5 h-3.5";
-const feedActionButtonClass = "inline-flex h-7 min-w-7 items-center justify-center gap-1 rounded-lg px-1.5 text-xs leading-none transition-colors";
-const feedIconActionButtonClass = "inline-flex h-7 w-7 items-center justify-center rounded-lg p-0 transition-colors";
-const feedActionIconClass = "block h-4 w-4 shrink-0";
-const feedActionStatusIconClass = "block h-2.5 w-2.5 shrink-0";
 const SWIPE_THRESHOLD = 72;
 const EVENT_CHIP_THRESHOLD = 0.7;
-const STORY_CARD_TEXT_LIMIT = 240;
 const COMPACT_CARD_TEXT_LIMIT = 500;
+const COMPACT_CARD_WORD_LIMIT = 45;
 const FIXED_CARD_TEXT_LIMIT = 900;
-const FULL_CARD_TEXT_LIMIT = 1_500;
 const FEED_IMAGE_SHED_APP_PRESSURE_BYTES = 2.25 * 1024 * 1024 * 1024;
 const FEED_IMAGE_SHED_WEBKIT_BYTES = 1.5 * 1024 * 1024 * 1024;
 const FEED_IMAGE_SHED_APP_HIGH_FRACTION = 0.85;
@@ -109,44 +104,6 @@ const platformIcons: Record<string, ReactNode> = {
   saved: <BookmarkIcon className={cls} />,
 };
 
-const PLATFORM_REACTIONS: Partial<Record<FeedItemType["platform"], ReadonlyArray<{ emoji: string; label: string }>>> = {
-  facebook: [
-    { emoji: "👍", label: "Like" },
-    { emoji: "❤️", label: "Love" },
-    { emoji: "😂", label: "Haha" },
-    { emoji: "😮", label: "Wow" },
-    { emoji: "😢", label: "Sad" },
-    { emoji: "😡", label: "Angry" },
-  ],
-  linkedin: [
-    { emoji: "👍", label: "Like" },
-    { emoji: "🎉", label: "Celebrate" },
-    { emoji: "🤝", label: "Support" },
-    { emoji: "😂", label: "Funny" },
-    { emoji: "❤️", label: "Love" },
-    { emoji: "💡", label: "Insightful" },
-    { emoji: "🤔", label: "Curious" },
-  ],
-  github: [
-    { emoji: "👍", label: "+1" },
-    { emoji: "👎", label: "-1" },
-    { emoji: "😄", label: "Laugh" },
-    { emoji: "🎉", label: "Hooray" },
-    { emoji: "😕", label: "Confused" },
-    { emoji: "❤️", label: "Heart" },
-    { emoji: "🚀", label: "Rocket" },
-    { emoji: "👀", label: "Eyes" },
-  ],
-  youtube: [
-    { emoji: "👍", label: "Like" },
-    { emoji: "👎", label: "Dislike" },
-  ],
-  reddit: [
-    { emoji: "⬆️", label: "Upvote" },
-    { emoji: "⬇️", label: "Downvote" },
-  ],
-};
-
 const FEED_CARD_LAYOUT_CONTAINMENT_STYLE = {
   contain: "layout paint style",
 } satisfies React.CSSProperties;
@@ -176,35 +133,15 @@ function shouldShedFeedImages(memory: RuntimeMemorySnapshot | null): boolean {
   return webkitBytes >= webkitShedBytes;
 }
 
-function useFeedImageBudget(feedMediaPreviews: "inline" | "reader-only"): {
+function useFeedImageBudget(feedMediaPreviews: "inline" | "lazy-thumbnails" | "reader-only"): {
   showInlineMedia: boolean;
   showAvatarImages: boolean;
 } {
   const shedImages = useDebugStore((state) => shouldShedFeedImages(state.runtimeMemory));
   return {
-    showInlineMedia: feedMediaPreviews === "inline" && !shedImages,
+    showInlineMedia: feedMediaPreviews !== "reader-only" && !shedImages,
     showAvatarImages: !shedImages,
   };
-}
-
-function likeState(item: FeedItemType): "none" | "noted" | "synced" | "failed" {
-  const us = item.userState;
-  if (!us.liked) return "none";
-  if (us.likedSyncedAt === -1) return "failed";
-  if (us.likedSyncedAt && us.likedSyncedAt > 0) return "synced";
-  return "noted";
-}
-
-function formatEngagementCount(value: number | undefined): string | null {
-  if (value === undefined) return null;
-  return value.toLocaleString();
-}
-
-function getLikeLabel(item: FeedItemType, state: ReturnType<typeof likeState>): string {
-  if (state === "synced") return `Liked on ${PLATFORM_LABELS[item.platform] ?? item.platform}`;
-  if (state === "noted") return `Liked, syncing to ${PLATFORM_LABELS[item.platform] ?? item.platform}...`;
-  if (state === "failed") return `Could not sync to ${PLATFORM_LABELS[item.platform] ?? item.platform}`;
-  return "Like";
 }
 
 function cardPreviewText(text: string | undefined, limit: number): string | null {
@@ -223,23 +160,21 @@ function cardPreviewText(text: string | undefined, limit: number): string | null
 export const FeedItem = memo(function FeedItem({
   item,
   onClick,
-  showEngagement = false,
   showReadInGrayscale = true,
   focused = false,
   compact = false,
+  summary = false,
   narrow = false,
   selected = false,
   onMouseEnter,
-  onSave,
   onArchive,
-  onLike,
-  onOpenCommentUrl,
   density = "comfortable",
   storyHeight = 288,
   fixedHeight,
 }: FeedItemProps) {
-  const { feedMediaPreviews = "inline" } = usePlatform();
-  const feedMediaPreviewMode = item.contentType === "story" ? "inline" : feedMediaPreviews;
+  const { feedMediaPreviews = "inline", sampleMediaPreviews } = usePlatform();
+  const showSampleMedia = sampleMediaPreviews === "inline" && isSamplePreviewItem(item);
+  const feedMediaPreviewMode = item.contentType === "story" || showSampleMedia ? "inline" : feedMediaPreviews;
   const { showInlineMedia, showAvatarImages } = useFeedImageBudget(feedMediaPreviewMode);
   const isTouchMobileDevice = useIsMobileDevice();
   const hasTouchOnlyPointer = useHasTouchOnlyPointer();
@@ -250,121 +185,124 @@ export const FeedItem = memo(function FeedItem({
   const timeAgo = formatDistanceToNow(item.publishedAt, { addSuffix: true });
   const platformIcon = platformIcons[item.platform] ?? <span className="text-xs">📄</span>;
   const isRead = Boolean(item.userState.readAt);
-  const readVisualClass = isRead && showReadInGrayscale ? "grayscale opacity-60" : "";
-  const reactions = PLATFORM_REACTIONS[item.platform] ?? [];
-  const hasReactionPalette = reactions.length > 1;
-  const likeCount = formatEngagementCount(item.engagement?.likes);
-  const commentCount = formatEngagementCount(item.engagement?.comments);
+  const readVisualClass = isRead && showReadInGrayscale ? "grayscale opacity-60 hover:grayscale-0 hover:opacity-100 !transition-[filter,opacity] duration-300 motion-reduce:transition-none" : "";
   const semanticLabel = semanticChip(item);
   const firstMediaUrl = item.content.mediaUrls[0];
-  const storyPreviewText = cardPreviewText(item.content.text, STORY_CARD_TEXT_LIMIT);
-  const compactPreviewText = cardPreviewText(item.content.text, COMPACT_CARD_TEXT_LIMIT);
-  const fixedPreviewText = cardPreviewText(item.content.text, FIXED_CARD_TEXT_LIMIT);
-  const fullPreviewText = cardPreviewText(item.content.text, FULL_CARD_TEXT_LIMIT);
+  // Layout is a presentation option, never a separate card implementation.
+  const photoLayout = !summary && (compact || item.contentType === "story");
+  const cardHeight = compact ? undefined : photoLayout ? storyHeight : fixedHeight ?? DESKTOP_FEED_CARD_HEIGHT_BY_DENSITY[density];
+  const photoCardRef = useRef<HTMLElement>(null);
+  const [showPhotoTime, setShowPhotoTime] = useState(false);
+  const [photoSizing, setPhotoSizing] = useState({ padding: 8, avatar: 16 });
+  useLayoutEffect(() => {
+    const card = photoCardRef.current;
+    if (!card) return;
+    const measure = () => {
+      const shortSide = Math.min(card.clientWidth, card.clientHeight);
+      setShowPhotoTime(card.clientHeight >= 220);
+      setPhotoSizing({
+        padding: Math.max(4, Math.min(20, shortSide * 0.06)),
+        avatar: Math.max(16, Math.min(40, shortSide * 0.14)),
+      });
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(card);
+    return () => observer.disconnect();
+  }, [compact, item.contentType]);
+  const compactPreview = cardPreviewText(item.content.text, COMPACT_CARD_TEXT_LIMIT);
+  const compactWords = compactPreview?.split(/\s+/) ?? [];
+  const compactPreviewText = compactWords.length > COMPACT_CARD_WORD_LIMIT
+    ? `${compactWords.slice(0, COMPACT_CARD_WORD_LIMIT).join(" ")}…`
+    : compactPreview;
+  const compactTextAreaRef = useRef<HTMLDivElement>(null);
+  const [compactTextLines, setCompactTextLines] = useState(0);
+  useLayoutEffect(() => {
+    const area = compactTextAreaRef.current;
+    if (!photoLayout || !area) return;
+    let disposed = false;
+    const measure = () => {
+      if (disposed) return;
+      const text = area.querySelector("p");
+      if (!text) return;
+      const lineHeight = Number.parseFloat(getComputedStyle(text).lineHeight);
+      if (lineHeight > 0) {
+        const title = area.querySelector("h3");
+        const titleStyle = title ? getComputedStyle(title) : null;
+        const titleHeight = title ? title.offsetHeight + Number.parseFloat(titleStyle!.marginTop) + Number.parseFloat(titleStyle!.marginBottom) : 0;
+        const areaStyle = getComputedStyle(area);
+        const padding = Number.parseFloat(areaStyle.paddingTop) + Number.parseFloat(areaStyle.paddingBottom);
+        // Only allocate complete lines inside the content box, never its padding.
+        setCompactTextLines(Math.max(0, Math.floor((area.clientHeight - padding - titleHeight) / lineHeight)));
+      }
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(area);
+    const title = area.querySelector("h3");
+    if (title) observer.observe(title);
+    // Theme fonts can settle after the card's outer dimensions stop changing.
+    void document.fonts.ready.then(measure);
+    document.fonts.addEventListener("loadingdone", measure);
+    return () => {
+      disposed = true;
+      observer.disconnect();
+      document.fonts.removeEventListener("loadingdone", measure);
+    };
+  }, [photoLayout, narrow, item.globalId, compactPreviewText, item.content.linkPreview?.title]);
+  const previewText = cardPreviewText(summary
+    ? item.content.text?.trim() || item.content.linkPreview?.title || "Open post"
+    : item.content.text, FIXED_CARD_TEXT_LIMIT);
 
   const [swipeX, setSwipeX] = useState(0);
   const [mediaFailed, setMediaFailed] = useState(false);
-  const fullCardDensity = {
+  const cardDensity = {
     compact: {
-      article: "p-3",
-      padding: "12px",
-      headerGap: "gap-2 mb-2",
-      avatarSize: 32,
-      author: "text-sm",
-      meta: "text-[11px]",
-      title: "mb-1 line-clamp-1 text-base leading-snug",
-      body: "mb-2 line-clamp-2 text-sm leading-relaxed",
-      chipWrap: "mb-2 gap-1.5",
-      chip: "px-2 py-0.5 text-[11px]",
-      mediaWrap: "mt-2 rounded-lg",
-      media: "h-36 sm:h-40",
-      tagWrap: "mt-2 gap-1.5",
-    },
-    comfortable: {
-      article: "",
-      padding: undefined,
-      headerGap: "gap-3 mb-3",
-      avatarSize: 40,
-      author: "",
-      meta: "text-xs",
-      title: "mb-1.5 line-clamp-2 text-lg leading-snug",
-      body: "mb-3 line-clamp-3 leading-relaxed",
-      chipWrap: "mb-3 gap-2",
-      chip: "px-2.5 py-1 text-xs",
-      mediaWrap: "mt-3 rounded-xl",
-      media: "h-48 sm:h-56",
-      tagWrap: "mt-3 gap-2",
-    },
-    expansive: {
-      article: "p-5",
-      padding: "20px",
-      headerGap: "gap-3.5 mb-4",
-      avatarSize: 44,
-      author: "text-[17px]",
-      meta: "text-sm",
-      title: "mb-2 line-clamp-3 text-xl leading-snug",
-      body: "mb-4 line-clamp-5 text-[15px] leading-7",
-      chipWrap: "mb-4 gap-2",
-      chip: "px-3 py-1.5 text-xs",
-      mediaWrap: "mt-4 rounded-xl",
-      media: "h-64 sm:h-72",
-      tagWrap: "mt-4 gap-2",
-    },
-  }[density];
-  const fixedCardDensity = {
-    compact: {
-      article: "p-2.5",
-      gap: "gap-2.5",
+      padding: "0.75rem",
+      textInset: "0.375rem",
       headerGap: "mb-1.5 gap-2",
-      avatarSize: 28,
-      author: "text-[13px]",
-      handle: "text-xs",
-      meta: "text-[11px]",
+      author: "text-[0.8125rem]",
+      meta: "text-[0.6875rem]",
       title: "mb-0.5 line-clamp-1 text-sm leading-snug",
       bodyWithMedia: "line-clamp-1 text-xs leading-relaxed",
       bodyWithoutMedia: "line-clamp-2 text-xs leading-relaxed",
       chipWrap: "gap-1 pt-1.5",
-      chip: "px-2 py-0.5 text-[11px]",
-      mediaWell: "w-[32%] min-w-[112px] max-w-[160px] rounded-lg",
+      chip: "px-2 py-0.5 text-[0.6875rem]",
       tagLimitWithMedia: 0,
       tagLimitWithoutMedia: 1,
     },
     comfortable: {
-      article: "p-4",
-      gap: "gap-4",
+      padding: "1.25rem",
+      textInset: "0.5rem",
       headerGap: "mb-3 gap-3",
-      avatarSize: 40,
       author: "",
-      handle: "text-sm",
       meta: "text-xs",
       title: "mb-1.5 line-clamp-2 text-lg leading-snug",
-      bodyWithMedia: "line-clamp-3 leading-relaxed",
-      bodyWithoutMedia: "line-clamp-4 leading-relaxed",
+      bodyWithMedia: "line-clamp-3 text-sm leading-[1.6]",
+      bodyWithoutMedia: "line-clamp-4 text-sm leading-[1.6]",
       chipWrap: "gap-2 pt-3",
       chip: "px-2.5 py-1 text-xs",
-      mediaWell: "w-[42%] min-w-[190px] max-w-[260px] rounded-xl",
       tagLimitWithMedia: 2,
       tagLimitWithoutMedia: 4,
     },
     expansive: {
-      article: "p-5",
-      gap: "gap-5",
+      padding: "1.75rem",
+      textInset: "0.75rem",
       headerGap: "mb-4 gap-3.5",
-      avatarSize: 44,
-      author: "text-[17px]",
-      handle: "text-sm",
+      author: "text-[1.0625rem]",
       meta: "text-sm",
       title: "mb-2 line-clamp-3 text-xl leading-snug",
-      bodyWithMedia: "line-clamp-5 text-[15px] leading-7",
-      bodyWithoutMedia: "line-clamp-6 text-[15px] leading-7",
+      bodyWithMedia: "line-clamp-5 text-sm leading-[1.6]",
+      bodyWithoutMedia: "line-clamp-6 text-sm leading-[1.6]",
       chipWrap: "gap-2 pt-4",
       chip: "px-3 py-1.5 text-xs",
-      mediaWell: "w-[44%] min-w-[220px] max-w-[300px] rounded-xl",
       tagLimitWithMedia: 3,
       tagLimitWithoutMedia: 6,
     },
   }[density];
-  const showFixedMedia = showInlineMedia && firstMediaUrl && !mediaFailed;
+  const thumbnailAllowed = feedMediaPreviewMode !== "lazy-thumbnails" ||
+    item.content.mediaTypes[0] === "image";
+  const showMedia = !summary && showInlineMedia && thumbnailAllowed && firstMediaUrl && !mediaFailed;
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
   const swipeLocked = useRef<"horizontal" | "vertical" | null>(null);
@@ -412,469 +350,21 @@ export const FeedItem = memo(function FeedItem({
     onClick?.();
   };
   const handleActivateKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.target !== event.currentTarget) return;
     if (event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
     onClick?.();
   };
 
-  if (item.contentType === "story") {
-    const bg = firstMediaUrl;
-    const firstMediaType = item.content.mediaTypes[0];
-    const showStoryMedia = showInlineMedia && bg && !mediaFailed;
-    const isIg = item.platform === "instagram";
-    const gradientFallback = isIg
-      ? "from-[var(--theme-media-rss)] via-[var(--theme-media-instagram)] to-[var(--theme-accent-secondary)]"
-      : "from-[var(--theme-media-facebook)] to-[var(--theme-media-linkedin)]";
-
-    return (
-      <div className="relative overflow-hidden rounded-[var(--feed-card-radius)]" style={sharedTransitionStyle}>
-        <div
-          data-feed-item-id={item.globalId}
-          data-focused={focused ? "true" : "false"}
-          data-selected={selected ? "true" : "false"}
-          data-feed-card-density={density}
-          className={`relative overflow-hidden rounded-[var(--feed-card-radius)] cursor-pointer select-none w-full transition-opacity ${quickActionsEnabled ? "group" : ""} ${readVisualClass}`}
-          style={{ height: storyHeight }}
-          onClick={handleActivateClick}
-          onMouseEnter={onMouseEnter}
-          role="button"
-          tabIndex={0}
-          onKeyDown={handleActivateKeyDown}
-        >
-          {showStoryMedia && firstMediaType === "video" ? (
-            <video
-              src={bg}
-              muted
-              playsInline
-              controls
-              preload="metadata"
-              onClick={(event) => event.stopPropagation()}
-              onError={() => setMediaFailed(true)}
-              className="absolute inset-0 w-full h-full object-cover"
-            />
-          ) : showStoryMedia ? (
-            <img
-              src={bg}
-              alt=""
-              loading="lazy"
-              decoding="async"
-              onError={() => setMediaFailed(true)}
-              className={`absolute inset-0 w-full h-full object-cover ${quickActionsEnabled ? "transition-transform duration-300 group-hover:scale-[1.03]" : ""}`}
-            />
-          ) : (
-            <div className={`absolute inset-0 bg-gradient-to-br ${gradientFallback}`} />
-          )}
-
-          <div className="absolute inset-0 bg-gradient-to-b from-black/65 via-black/10 to-black/55 pointer-events-none" />
-
-          <div className="absolute top-0 left-0 right-0 p-3 flex items-center gap-2">
-            <ChannelAvatar
-              name={item.author.displayName}
-              avatarUrl={showAvatarImages ? item.author.avatarUrl : null}
-              size={28}
-              className={`bg-gradient-to-br ${gradientFallback} text-[11px] font-bold text-white ring-2 ring-white/50`}
-              imageClassName="ring-0"
-            />
-            <div className="flex-1 min-w-0">
-              <span className="text-[11px] font-semibold text-white drop-shadow truncate block leading-tight">
-                {item.author.displayName}
-              </span>
-              <span className="text-[10px] text-white/70 leading-none">{timeAgo}</span>
-            </div>
-            <span className="shrink-0 px-1.5 py-0.5 rounded-full bg-white/20 backdrop-blur-sm text-[10px] text-white font-medium">
-              Story
-            </span>
-          </div>
-
-          <div className="absolute bottom-0 left-0 right-0 p-3 flex items-end gap-2">
-            <div className="flex items-center gap-1.5 shrink-0 text-white/75">
-              {platformIcons[item.platform] ?? <span className="text-xs">📄</span>}
-            </div>
-
-            <div className="flex-1 min-w-0">
-              {storyPreviewText && (
-                <p className="text-[11px] text-white/90 drop-shadow line-clamp-1 leading-tight mb-1">
-                  {storyPreviewText}
-                </p>
-              )}
-              {item.location?.name && (
-                <span className="inline-flex items-center gap-1 text-[10px] text-white/80 bg-black/35 backdrop-blur-sm rounded-full px-2 py-0.5">
-                  <svg className="w-2.5 h-2.5 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                    <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
-                  </svg>
-                  {item.location.name}
-                </span>
-              )}
-            </div>
-
-            {quickActionsEnabled && (onSave || onArchive) && (
-              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                {onSave && (
-                  <Tooltip label={item.userState.saved ? "Remove bookmark" : "Bookmark"} side="top">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onSave(e); }}
-                      aria-label={item.userState.saved ? "Remove bookmark" : "Bookmark"}
-                      className={`p-1.5 rounded-lg bg-black/35 backdrop-blur-sm transition-colors ${
-                        item.userState.saved ? "text-[var(--theme-accent-secondary)]" : "text-white/70 hover:text-[var(--theme-accent-secondary)]"
-                      }`}
-                    >
-                      <svg className="w-3.5 h-3.5" fill={item.userState.saved ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-                      </svg>
-                    </button>
-                  </Tooltip>
-                )}
-                {onArchive && (
-                  <Tooltip label="Archive" side="top">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onArchive(e); }}
-                      aria-label="Archive"
-                      className="p-1.5 rounded-lg bg-black/35 backdrop-blur-sm text-white/70 hover:text-[rgb(var(--theme-feedback-success-rgb))] transition-colors"
-                    >
-                      <TrashIcon className="w-3.5 h-3.5" />
-                    </button>
-                  </Tooltip>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (compact) {
-    const showCompactMedia = showInlineMedia && firstMediaUrl && !mediaFailed;
-
-    return (
-      <div className="relative overflow-hidden rounded-[var(--feed-card-radius)]" style={sharedTransitionStyle}>
-        <article
-          data-feed-item-id={item.globalId}
-          data-focused={focused ? "true" : "false"}
-          data-selected={selected ? "true" : "false"}
-          className={`feed-card ${quickActionsEnabled ? "group" : ""} relative min-w-0 cursor-pointer aspect-square overflow-hidden p-3 flex flex-col transition-colors ${
-            selected
-              ? "border-l-2 border-l-[var(--theme-accent-secondary)] bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.12)]"
-              : quickActionsEnabled
-                ? "hover:bg-[var(--theme-bg-muted)]"
-                : ""
-          } ${readVisualClass}`}
-          style={FEED_CARD_LAYOUT_CONTAINMENT_STYLE}
-          onClick={handleActivateClick}
-          onMouseEnter={onMouseEnter}
-          role="button"
-          tabIndex={0}
-          onKeyDown={handleActivateKeyDown}
-        >
-          {showCompactMedia && (
-            <>
-              <img
-                src={firstMediaUrl}
-                alt=""
-                loading="lazy"
-                decoding="async"
-                onError={() => setMediaFailed(true)}
-                className="absolute inset-0 h-full w-full object-cover"
-              />
-              <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/5 to-black/70 pointer-events-none" />
-            </>
-          )}
-
-          {!narrow && (
-            <div className="mb-2 flex min-w-0 items-center gap-2">
-              <ChannelAvatar
-                name={item.author.displayName}
-                avatarUrl={showAvatarImages ? item.author.avatarUrl : null}
-                size={28}
-                className={`text-xs ring-1 ${showCompactMedia ? "ring-white/40" : "ring-white/10"}`}
-              />
-              <div className="flex-1 min-w-0">
-                <span className={`font-medium text-xs truncate block ${showCompactMedia ? "text-white drop-shadow" : ""}`}>{item.author.displayName}</span>
-                <div className={`flex items-center gap-1.5 text-[10px] ${showCompactMedia ? "text-white/75" : "text-[var(--theme-text-muted)]"}`}>
-                  <span>{platformIcon}</span>
-                  <span className="truncate">{timeAgo}</span>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {item.content.linkPreview?.title && (
-            <h3 className={`mb-1 min-w-0 break-words font-semibold leading-snug ${showCompactMedia ? "mt-auto text-white drop-shadow" : ""} ${narrow ? "text-xs line-clamp-3" : "text-sm line-clamp-2"}`}>
-              {item.content.linkPreview.title}
-            </h3>
-          )}
-
-          {compactPreviewText && (
-            <p className={`min-h-0 min-w-0 break-words ${showCompactMedia ? "text-white/85 drop-shadow flex-none" : "text-[var(--theme-text-secondary)] flex-1"} leading-relaxed ${narrow ? "text-[10px] line-clamp-4" : "text-xs line-clamp-3"}`}>
-              {compactPreviewText}
-            </p>
-          )}
-
-          {(semanticLabel || item.userState.tags.length > 0) && (
-            <div className="mt-auto flex min-w-0 flex-wrap gap-1 pt-2">
-              {semanticLabel && (
-                <span className="theme-accent-tag rounded-full px-1.5 py-0.5 text-[10px]">
-                  {semanticLabel}
-                </span>
-              )}
-              {item.userState.tags.slice(0, 2).map((tag) => (
-                <span
-                  key={tag}
-                  className="theme-accent-tag max-w-full truncate rounded-full px-1.5 py-0.5 text-[10px]"
-                >
-                  {tag}
-                </span>
-              ))}
-            </div>
-          )}
-        </article>
-      </div>
-    );
-  }
-
-  const likeStatus = likeState(item);
-  const likeLabel = getLikeLabel(item, likeStatus);
-  const visibleTags = fixedHeight
+  const photoMedia = photoLayout && showMedia;
+  const visibleTags = !photoLayout
     ? item.userState.tags.slice(
         0,
-        showFixedMedia
-          ? fixedCardDensity.tagLimitWithMedia
-          : fixedCardDensity.tagLimitWithoutMedia,
+        showMedia
+          ? cardDensity.tagLimitWithMedia
+          : cardDensity.tagLimitWithoutMedia,
       )
-    : item.userState.tags;
-
-  if (fixedHeight) {
-    return (
-      <div className="relative overflow-hidden rounded-[var(--feed-card-radius)]" style={sharedTransitionStyle}>
-        {enableSwipe && swipeX < 0 && (
-          <div
-            className="absolute inset-y-0 right-0 flex items-center justify-end pr-5 rounded-[var(--feed-card-radius)] transition-colors"
-            style={{
-              width: `${Math.abs(swipeX) + 16}px`,
-              backgroundColor: pastThreshold
-                ? "rgb(var(--theme-feedback-success-rgb) / 0.25)"
-                : "rgb(var(--theme-feedback-success-rgb) / 0.12)",
-            }}
-            aria-hidden
-          >
-            <TrashIcon
-              className="h-5 w-5 text-[rgb(var(--theme-feedback-success-rgb))] transition-transform"
-              style={{ transform: `scale(${0.7 + swipeProgress * 0.3})`, opacity: swipeProgress } as React.CSSProperties}
-            />
-          </div>
-        )}
-
-        <article
-          data-feed-item-id={item.globalId}
-          data-focused={focused ? "true" : "false"}
-          data-feed-card-density={density}
-          className={`feed-card ${quickActionsEnabled ? "group" : ""} min-w-0 cursor-pointer active:scale-[0.99] transition-transform ${fixedCardDensity.article} ${readVisualClass}`}
-          style={{
-            ...FEED_CARD_LAYOUT_CONTAINMENT_STYLE,
-            height: fixedHeight,
-            transform: swipeX !== 0 ? `translateX(${swipeX}px)` : undefined,
-            transition: swipeX === 0 ? "transform 0.25s ease" : undefined,
-            willChange: swipeX !== 0 ? "transform" : undefined,
-          }}
-          onClick={handleActivateClick}
-          onMouseEnter={onMouseEnter}
-          onTouchStart={enableSwipe ? handleTouchStart : undefined}
-          onTouchMove={enableSwipe ? handleTouchMove : undefined}
-          onTouchEnd={enableSwipe ? handleTouchEnd : undefined}
-          role="button"
-          tabIndex={0}
-          onKeyDown={handleActivateKeyDown}
-        >
-          <div className={`flex h-full min-h-0 min-w-0 ${fixedCardDensity.gap} ${showFixedMedia ? "items-stretch" : "items-start"}`}>
-            <div className="flex min-w-0 flex-1 flex-col">
-              <div className={`flex min-w-0 items-start ${fixedCardDensity.headerGap}`}>
-                <ChannelAvatar
-                  name={item.author.displayName}
-                  avatarUrl={showAvatarImages ? item.author.avatarUrl : null}
-                  size={fixedCardDensity.avatarSize}
-                  className="text-lg ring-1 ring-white/10"
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <AuthorIdentityLink item={item} className={`truncate font-medium ${fixedCardDensity.author}`} />
-                    <span className={`truncate text-[var(--theme-text-muted)] ${fixedCardDensity.handle}`}>@{item.author.handle}</span>
-                  </div>
-                  <div className={`flex min-w-0 items-center gap-2 ${fixedCardDensity.meta} text-[var(--theme-text-muted)]`}>
-                    <span>{platformIcon}</span>
-                    <span className="min-w-0 truncate">{timeAgo}</span>
-                    {item.preservedContent?.readingTime && (
-                      <>
-                        <span>•</span>
-                        <span>{item.preservedContent.readingTime} min</span>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                {quickActionsEnabled ? (
-                  <div className="flex shrink-0 items-center gap-1">
-                    {onLike && (
-                      <div className="relative group/reactions">
-                        {hasReactionPalette && (
-                          <div className="pointer-events-none absolute right-0 bottom-full mb-2 flex translate-y-1 rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-elevated)] p-1 opacity-0 shadow-lg shadow-black/30 transition-all group-hover/reactions:pointer-events-auto group-hover/reactions:translate-y-0 group-hover/reactions:opacity-100 group-focus-within/reactions:pointer-events-auto group-focus-within/reactions:translate-y-0 group-focus-within/reactions:opacity-100">
-                            {reactions.map((reaction) => (
-                              <Tooltip key={reaction.label} label={reaction.label} side="top">
-                                <button
-                                  type="button"
-                                  onClick={(e) => { e.stopPropagation(); onLike(e as unknown as React.MouseEvent); }}
-                                  className="flex h-8 w-8 items-center justify-center rounded-lg text-base transition-transform hover:scale-110 hover:bg-white/10"
-                                  aria-label={reaction.label}
-                                >
-                                  <span aria-hidden="true">{reaction.emoji}</span>
-                                </button>
-                              </Tooltip>
-                            ))}
-                          </div>
-                        )}
-
-                        <Tooltip label={likeLabel} side="top">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); onLike(e); }}
-                            aria-label={likeLabel}
-                            className={`${feedActionButtonClass} ${
-                              likeStatus !== "none" ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
-                            } ${
-                              likeStatus === "synced"
-                                ? "text-red-400"
-                                : likeStatus === "noted"
-                                ? "text-amber-400"
-                                : likeStatus === "failed"
-                                ? "text-orange-400"
-                              : "text-[var(--theme-text-soft)] hover:text-red-400"
-                            }`}
-                          >
-                            <svg className={feedActionIconClass} viewBox="0 0 24 24" fill={likeStatus !== "none" ? "currentColor" : "none"} stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                            </svg>
-                            {showEngagement && likeCount !== null && <span>{likeCount}</span>}
-                            {likeStatus === "noted" && (
-                              <svg className={`${feedActionStatusIconClass} animate-spin opacity-70`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                              </svg>
-                            )}
-                            {likeStatus === "failed" && (
-                              <svg className={`${feedActionStatusIconClass} opacity-70`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                              </svg>
-                            )}
-                          </button>
-                        </Tooltip>
-                      </div>
-                    )}
-
-                    {onOpenCommentUrl && item.sourceUrl && (
-                      <Tooltip label={`Comment on ${PLATFORM_LABELS[item.platform] ?? item.platform}`} side="top">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); onOpenCommentUrl(item.sourceUrl!); }}
-                          aria-label={`Comment on ${PLATFORM_LABELS[item.platform] ?? item.platform}`}
-                          className={`${feedActionButtonClass} text-[var(--theme-text-soft)] hover:text-[var(--theme-text-secondary)] opacity-0 group-hover:opacity-100`}
-                        >
-                          <svg className={feedActionIconClass} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                          </svg>
-                          {showEngagement && commentCount !== null && <span>{commentCount}</span>}
-                        </button>
-                      </Tooltip>
-                    )}
-
-                    {onSave && (
-                      <Tooltip label={item.userState.saved ? "Remove bookmark" : "Bookmark"} side="top">
-                        <button
-                          onClick={onSave}
-                          aria-label={item.userState.saved ? "Remove bookmark" : "Bookmark"}
-                          className={`${feedIconActionButtonClass} ${
-                            item.userState.saved
-                              ? "text-[var(--theme-accent-secondary)]"
-                              : "text-[var(--theme-text-soft)] hover:text-[var(--theme-accent-secondary)] opacity-0 group-hover:opacity-100"
-                          }`}
-                        >
-                          <svg className={feedActionIconClass} fill={item.userState.saved ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-                          </svg>
-                        </button>
-                      </Tooltip>
-                    )}
-
-                    {onArchive && !item.userState.saved && (
-                      <Tooltip label="Archive" side="top">
-                        <button
-                          onClick={onArchive}
-                          aria-label="Archive"
-                          className={`${feedIconActionButtonClass} text-[var(--theme-text-soft)] hover:text-[rgb(var(--theme-feedback-success-rgb))] opacity-0 group-hover:opacity-100`}
-                        >
-                          <TrashIcon className={feedActionIconClass} />
-                        </button>
-                      </Tooltip>
-                    )}
-
-                    {onOpenCommentUrl && item.sourceUrl && (
-                      <Tooltip label="Open" side="top">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); onOpenCommentUrl(item.sourceUrl!); }}
-                          aria-label="Open"
-                          className={`${feedIconActionButtonClass} text-[var(--theme-text-soft)] hover:text-[var(--theme-text-secondary)] opacity-0 group-hover:opacity-100`}
-                        >
-                          <ExternalLinkIcon className={feedActionIconClass} />
-                        </button>
-                      </Tooltip>
-                    )}
-                  </div>
-                ) : null}
-              </div>
-
-              {item.content.linkPreview?.title && (
-                <h3 className={`min-w-0 break-words font-semibold ${fixedCardDensity.title}`}>
-                  {item.content.linkPreview.title}
-                </h3>
-              )}
-
-              {fixedPreviewText && (
-                <p className={`min-h-0 min-w-0 break-words text-[var(--theme-text-secondary)] ${showFixedMedia ? fixedCardDensity.bodyWithMedia : fixedCardDensity.bodyWithoutMedia}`}>
-                  {fixedPreviewText}
-                </p>
-              )}
-
-              {(semanticLabel || visibleTags.length > 0) && (
-                <div className={`mt-auto flex min-w-0 flex-wrap overflow-hidden ${fixedCardDensity.chipWrap}`}>
-                  {semanticLabel && (
-                    <span className={`theme-accent-tag max-w-full truncate rounded-full ${fixedCardDensity.chip}`}>
-                      {semanticLabel}
-                    </span>
-                  )}
-                  {visibleTags.map((tag) => (
-                    <span
-                      key={tag}
-                      className={`theme-accent-tag max-w-full truncate rounded-full ${fixedCardDensity.chip}`}
-                    >
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {showFixedMedia && (
-              <div className={`h-full shrink-0 overflow-hidden ring-1 ring-white/5 ${fixedCardDensity.mediaWell}`}>
-                <img
-                  src={firstMediaUrl}
-                  alt=""
-                  loading="lazy"
-                  decoding="async"
-                  onError={() => setMediaFailed(true)}
-                  className="h-full w-full bg-white/5 object-cover"
-                />
-              </div>
-            )}
-          </div>
-        </article>
-      </div>
-    );
-  }
+    : [];
 
   return (
     <div className="relative overflow-hidden rounded-[var(--feed-card-radius)]" style={sharedTransitionStyle}>
@@ -897,13 +387,16 @@ export const FeedItem = memo(function FeedItem({
       )}
 
       <article
+        ref={photoCardRef}
         data-feed-item-id={item.globalId}
         data-focused={focused ? "true" : "false"}
         data-feed-card-density={density}
-        className={`feed-card ${quickActionsEnabled ? "group" : ""} min-w-0 cursor-pointer active:scale-[0.99] transition-transform ${fullCardDensity.article} ${readVisualClass}`}
+        data-feed-card-layout={summary ? "summary" : photoLayout ? "photo" : "split"}
+        data-selected={selected ? "true" : "false"}
+        className={`feed-card group relative overflow-hidden min-w-0 cursor-pointer active:scale-[0.99] transition-transform !p-0 ${summary ? "!rounded-2xl" : ""} ${quickActionsEnabled ? photoLayout ? "hover:!bg-[var(--theme-bg-muted)]" : "hover:!bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.12)]" : ""} ${compact ? "aspect-square" : ""} ${selected ? "border-l-2 border-l-[var(--theme-accent-secondary)] bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.12)]" : ""} ${readVisualClass}`}
         style={{
           ...FEED_CARD_LAYOUT_CONTAINMENT_STYLE,
-          padding: fullCardDensity.padding,
+          height: cardHeight,
           transform: swipeX !== 0 ? `translateX(${swipeX}px)` : undefined,
           transition: swipeX === 0 ? "transform 0.25s ease" : undefined,
           willChange: swipeX !== 0 ? "transform" : undefined,
@@ -914,194 +407,113 @@ export const FeedItem = memo(function FeedItem({
         onTouchMove={enableSwipe ? handleTouchMove : undefined}
         onTouchEnd={enableSwipe ? handleTouchEnd : undefined}
         role="button"
+        aria-label={summary ? `Read post: ${previewText}` : undefined}
         tabIndex={0}
         onKeyDown={handleActivateKeyDown}
       >
-        <div className={`flex min-w-0 items-center ${fullCardDensity.headerGap}`}>
-          <ChannelAvatar
-            name={item.author.displayName}
-            avatarUrl={showAvatarImages ? item.author.avatarUrl : null}
-            size={fullCardDensity.avatarSize}
-            className="text-lg ring-1 ring-white/10"
-          />
-          <div className="flex-1 min-w-0">
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <AuthorIdentityLink item={item} className={`font-medium truncate ${fullCardDensity.author}`} />
-              <span className="min-w-0 truncate text-sm text-[var(--theme-text-muted)]">@{item.author.handle}</span>
-            </div>
-            <div className={`flex min-w-0 items-center gap-2 ${fullCardDensity.meta} text-[var(--theme-text-muted)]`}>
-              <span>{platformIcon}</span>
-              <span className="min-w-0 truncate">{timeAgo}</span>
-              {item.preservedContent?.readingTime && (
-                <>
-                  <span>•</span>
-                  <span>{item.preservedContent.readingTime} min</span>
-                </>
-              )}
-            </div>
-          </div>
 
-          {quickActionsEnabled ? (
-            <div className="flex items-center gap-1 shrink-0">
-              {onLike && (
-                <div className="relative group/reactions">
-                  {hasReactionPalette && (
-                    <div className="pointer-events-none absolute right-0 bottom-full mb-2 flex translate-y-1 rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-elevated)] p-1 opacity-0 shadow-lg shadow-black/30 transition-all group-hover/reactions:pointer-events-auto group-hover/reactions:translate-y-0 group-hover/reactions:opacity-100 group-focus-within/reactions:pointer-events-auto group-focus-within/reactions:translate-y-0 group-focus-within/reactions:opacity-100">
-                      {reactions.map((reaction) => (
-                        <Tooltip key={reaction.label} label={reaction.label} side="top">
-                          <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); onLike(e as unknown as React.MouseEvent); }}
-                            className="flex h-8 w-8 items-center justify-center rounded-lg text-base transition-transform hover:scale-110 hover:bg-white/10"
-                            aria-label={reaction.label}
-                          >
-                            <span aria-hidden="true">{reaction.emoji}</span>
-                          </button>
-                        </Tooltip>
-                      ))}
-                    </div>
+        {showMedia && (
+          <div aria-hidden={item.content.mediaTypes[0] === "video" ? undefined : true} className="absolute inset-y-0 right-0 overflow-hidden" style={{
+            width: photoLayout ? "100%" : `calc(50% + 1.5rem)`,
+            maskImage: photoLayout ? undefined : "linear-gradient(to right, transparent, black 65%)",
+            WebkitMaskImage: photoLayout ? undefined : "linear-gradient(to right, transparent, black 65%)",
+          }}>
+            {photoLayout && item.content.mediaTypes[0] === "video" ? (
+              <video src={firstMediaUrl} muted playsInline controls={!compact} preload="metadata"
+                onClick={(event) => { if (!compact) event.stopPropagation(); }}
+                onError={() => setMediaFailed(true)} className="h-full w-full object-cover" />
+            ) : (
+              <img src={firstMediaUrl} alt="" loading="lazy" decoding="async"
+                onError={() => setMediaFailed(true)}
+                className="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.03] motion-reduce:transform-none motion-reduce:transition-none" />
+            )}
+            <div aria-hidden="true" className={`pointer-events-none absolute mix-blend-soft-light ${photoLayout ? "inset-0 opacity-15" : "inset-y-0 left-0 w-[65%] opacity-30"}`} style={{
+                backgroundImage: "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 160 160' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.82' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E\")",
+                backgroundSize: "160px 160px",
+                maskImage: photoLayout ? "linear-gradient(to bottom, black, transparent 40%, black)" : "linear-gradient(to right, black, transparent)",
+                WebkitMaskImage: photoLayout ? "linear-gradient(to bottom, black, transparent 40%, black)" : "linear-gradient(to right, black, transparent)",
+              }} />
+            {photoLayout && <>
+              <div className="absolute inset-0 pointer-events-none transition-opacity duration-300 ease-out group-hover:opacity-0 motion-reduce:transition-none" style={{ background: "linear-gradient(to bottom, rgb(var(--theme-thumbnail-tint-rgb) / .3), rgb(var(--theme-thumbnail-tint-rgb) / .05), rgb(var(--theme-thumbnail-tint-rgb) / .7))" }} />
+              <div className="pointer-events-none absolute inset-0 bg-[rgb(var(--theme-thumbnail-tint-rgb)/0.45)] transition-opacity duration-300 ease-out motion-reduce:transition-none group-hover:opacity-0" />
+            </>}
+          </div>
+        )}
+        {!showMedia && photoLayout && item.contentType === "story" && (
+          <div className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${item.platform === "instagram" ? "from-[var(--theme-media-rss)] via-[var(--theme-media-instagram)] to-[var(--theme-accent-secondary)]" : "from-[var(--theme-media-facebook)] to-[var(--theme-media-linkedin)]"}`} />
+        )}
+        <div className="relative flex h-full min-h-0 min-w-0 pointer-events-none">
+          <div className="flex min-w-0 flex-col pointer-events-auto" style={{ padding: summary ? 12 : compact ? photoSizing.padding / 2 : cardDensity.padding, width: !photoLayout && showMedia ? "55%" : "100%" }}>
+
+            <div className={`flex min-w-0 items-center ${photoLayout ? "gap-2" : cardDensity.headerGap}`} style={compact ? { padding: photoSizing.padding / 2 } : undefined}>
+              {!summary && <ChannelAvatar
+                name={item.author.displayName}
+                avatarUrl={showAvatarImages ? item.author.avatarUrl : null}
+                size={photoSizing.avatar}
+                className={`text-xs ring-1 ${photoMedia ? "ring-white/40" : "ring-white/10"}`}
+              />}
+              <div className="min-w-0 flex-1 leading-tight" style={{ columnGap: "inherit" }}>
+                {!summary && <div className="flex min-w-0 items-center" style={{ columnGap: "inherit" }}>
+                  <span className={`truncate font-medium ${compact ? "text-xs" : cardDensity.author} ${photoMedia ? "text-white drop-shadow" : ""}`}>{item.author.displayName}</span>
+                  <span className={`flex shrink-0 items-center ${photoLayout ? "ml-auto" : ""} ${photoMedia ? "text-white/70" : "text-[var(--theme-text-muted)]"}`}>{platformIcon}</span>
+                </div>}
+                {(!photoLayout || showPhotoTime) && <div className={`flex min-w-0 items-center gap-2 ${summary ? "justify-end" : "mt-0.5"} ${cardDensity.meta} ${photoMedia ? "text-white/70" : "text-[var(--theme-text-muted)]"}`}>
+                  <span className="min-w-0 truncate">{timeAgo}</span>
+                  {item.preservedContent?.readingTime && (
+                    <>
+                      <span>•</span>
+                      <span>{item.preservedContent.readingTime} min</span>
+                    </>
                   )}
+                </div>}
+              </div>
 
-                  <Tooltip label={likeLabel} side="top">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onLike(e); }}
-                      aria-label={likeLabel}
-                      className={`${feedActionButtonClass} ${
-                        likeStatus !== "none" ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
-                      } ${
-                        likeStatus === "synced"
-                          ? "text-red-400"
-                          : likeStatus === "noted"
-                          ? "text-amber-400"
-                          : likeStatus === "failed"
-                          ? "text-orange-400"
-                        : "text-[var(--theme-text-soft)] hover:text-red-400"
-                      }`}
-                    >
-                      <svg className={feedActionIconClass} viewBox="0 0 24 24" fill={likeStatus !== "none" ? "currentColor" : "none"} stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                      </svg>
-                      {showEngagement && likeCount !== null && <span>{likeCount}</span>}
-                      {likeStatus === "noted" && (
-                        <svg className={`${feedActionStatusIconClass} animate-spin opacity-70`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                        </svg>
-                      )}
-                      {likeStatus === "failed" && (
-                        <svg className={`${feedActionStatusIconClass} opacity-70`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                        </svg>
-                      )}
-                    </button>
-                  </Tooltip>
-                </div>
+            </div>
+
+            <div ref={compactTextAreaRef} className={`relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden ${photoMedia ? "feed-card-photo-copy" : ""} ${photoLayout ? "justify-end" : "justify-center"}`} style={{ padding: summary ? 0 : compact ? photoSizing.padding / 2 : cardDensity.textInset }}>
+              {!summary && item.content.linkPreview?.title && (
+                <h3 className={`min-w-0 shrink-0 break-words font-semibold ${photoLayout ? "m-0 truncate leading-[1.6] " + (compact && narrow ? "text-xs" : "text-sm") : cardDensity.title} ${photoMedia ? "text-white drop-shadow" : ""}`}>
+                  {item.content.linkPreview.title}
+                </h3>
               )}
 
-              {onOpenCommentUrl && item.sourceUrl && (
-                <Tooltip label={`Comment on ${PLATFORM_LABELS[item.platform] ?? item.platform}`} side="top">
-                  <button
-                    onClick={(e) => { e.stopPropagation(); onOpenCommentUrl(item.sourceUrl!); }}
-                    aria-label={`Comment on ${PLATFORM_LABELS[item.platform] ?? item.platform}`}
-                    className={`${feedActionButtonClass} text-[var(--theme-text-soft)] hover:text-[var(--theme-text-secondary)] opacity-0 group-hover:opacity-100`}
-                  >
-                    <svg className={feedActionIconClass} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                    </svg>
-                    {showEngagement && commentCount !== null && <span>{commentCount}</span>}
-                  </button>
-                </Tooltip>
-              )}
-
-              {onSave && (
-                <Tooltip label={item.userState.saved ? "Remove bookmark" : "Bookmark"} side="top">
-                  <button
-                    onClick={onSave}
-                    aria-label={item.userState.saved ? "Remove bookmark" : "Bookmark"}
-                    className={`${feedIconActionButtonClass} ${
-                      item.userState.saved
-                        ? "text-[var(--theme-accent-secondary)]"
-                        : "text-[var(--theme-text-soft)] hover:text-[var(--theme-accent-secondary)] opacity-0 group-hover:opacity-100"
-                    }`}
-                  >
-                    <svg className={feedActionIconClass} fill={item.userState.saved ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-                    </svg>
-                  </button>
-                </Tooltip>
-              )}
-
-              {onArchive && !item.userState.saved && (
-                <Tooltip label="Archive" side="top">
-                  <button
-                    onClick={onArchive}
-                    aria-label="Archive"
-                    className={`${feedIconActionButtonClass} text-[var(--theme-text-soft)] hover:text-[rgb(var(--theme-feedback-success-rgb))] opacity-0 group-hover:opacity-100`}
-                  >
-                    <TrashIcon className={feedActionIconClass} />
-                  </button>
-                </Tooltip>
-              )}
-
-              {onOpenCommentUrl && item.sourceUrl && (
-                <Tooltip label="Open" side="top">
-                  <button
-                    onClick={(e) => { e.stopPropagation(); onOpenCommentUrl(item.sourceUrl!); }}
-                    aria-label="Open"
-                    className={`${feedIconActionButtonClass} text-[var(--theme-text-soft)] hover:text-[var(--theme-text-secondary)] opacity-0 group-hover:opacity-100`}
-                  >
-                    <ExternalLinkIcon className={feedActionIconClass} />
-                  </button>
-                </Tooltip>
+              {(photoLayout ? compactPreviewText : previewText) && (
+                <p style={photoLayout ? { display: compactTextLines ? "-webkit-box" : "none", WebkitBoxOrient: "vertical", WebkitLineClamp: Math.max(1, Math.min(2, compactTextLines)) } : undefined} className={`min-h-0 min-w-0 overflow-hidden break-words ${photoMedia ? "text-white/85 drop-shadow" : summary ? "text-[var(--theme-text-primary)]" : "text-[var(--theme-text-secondary)]"} ${photoLayout ? "m-0 shrink-0 leading-[1.6] " + (compact ? narrow ? "text-[0.625rem]" : "text-xs" : "text-sm") : summary ? "line-clamp-3 text-sm" : showMedia ? cardDensity.bodyWithMedia : cardDensity.bodyWithoutMedia}`}>
+                  {photoLayout ? compactPreviewText : previewText}
+                </p>
               )}
             </div>
-          ) : null}
+
+            <div className={`relative flex min-w-0 shrink-0 items-center gap-3 ${photoMedia ? "text-white/85 drop-shadow" : "text-[var(--theme-text-muted)]"}`}>
+              {!summary && item.location?.name && (
+                <span title={item.location.name} className={`${photoLayout ? "ml-auto" : "mr-auto"} flex min-w-0 whitespace-nowrap items-center gap-1 rounded-full px-2 py-0.5 text-[0.625rem] ${photoMedia ? "bg-[rgb(var(--theme-thumbnail-tint-rgb)/0.35)]" : "bg-[var(--theme-bg-muted)]"}`}>
+                  <svg className="h-2.5 w-2.5 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
+                  </svg>
+                  <span className="min-w-0 truncate">{item.location.name}</span>
+                </span>
+              )}
+            </div>
+
+            {(!compact && !summary && (semanticLabel || visibleTags.length > 0)) && (
+              <div className={`mt-auto flex min-w-0 flex-wrap overflow-hidden ${cardDensity.chipWrap}`}>
+                {semanticLabel && (
+                  <span className={`theme-accent-tag max-w-full truncate rounded-full ${cardDensity.chip}`}>
+                    {semanticLabel}
+                  </span>
+                )}
+                {visibleTags.map((tag) => (
+                  <span
+                    key={tag}
+                    className={`theme-accent-tag max-w-full truncate rounded-full ${cardDensity.chip}`}
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
-
-        {item.content.linkPreview?.title && (
-          <h3 className={`min-w-0 break-words font-semibold ${fullCardDensity.title}`}>
-            {item.content.linkPreview.title}
-          </h3>
-        )}
-
-        {fullPreviewText && (
-          <p className={`min-w-0 break-words ${fullCardDensity.body} text-[var(--theme-text-secondary)]`}>
-            {fullPreviewText}
-          </p>
-        )}
-
-        {semanticLabel && (
-          <div className={`flex min-w-0 flex-wrap ${fullCardDensity.chipWrap}`}>
-            <span className={`theme-accent-tag max-w-full truncate rounded-full ${fullCardDensity.chip}`}>
-              {semanticLabel}
-            </span>
-          </div>
-        )}
-
-        {showInlineMedia && firstMediaUrl && !mediaFailed && (
-          <div className={`${fullCardDensity.mediaWrap} overflow-hidden ring-1 ring-white/5`}>
-            <img
-              src={firstMediaUrl}
-              alt=""
-              loading="lazy"
-              decoding="async"
-              onError={() => setMediaFailed(true)}
-              className={`w-full ${fullCardDensity.media} object-cover bg-white/5`}
-            />
-          </div>
-        )}
-
-        {visibleTags.length > 0 && (
-          <div className={`flex min-w-0 flex-wrap ${fullCardDensity.tagWrap}`}>
-            {visibleTags.map((tag) => (
-              <span
-                key={tag}
-                className={`theme-accent-tag max-w-full truncate rounded-full ${fullCardDensity.chip}`}
-              >
-                {tag}
-              </span>
-            ))}
-          </div>
-        )}
       </article>
     </div>
   );

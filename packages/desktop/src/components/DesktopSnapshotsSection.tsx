@@ -62,12 +62,12 @@ export function DesktopSnapshotsSection() {
   if (!tauriAvailable) {
     return (
       <div className="mt-8">
-        <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-[#71717a]">
+        <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-text-muted">
           Local Snapshots
         </h3>
-        <div className="rounded-2xl border border-[rgba(255,255,255,0.08)] bg-white/5 p-4">
-          <p className="text-sm text-white">Snapshots are unavailable in browser preview</p>
-          <p className="mt-1 max-w-xl text-xs text-[#71717a]">
+        <div className="rounded-2xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-surface)] p-4">
+          <p className="text-sm text-text-primary">Snapshots are unavailable in browser preview</p>
+          <p className="mt-1 max-w-xl text-xs text-text-muted">
             Local snapshot creation and restore use native Freed Desktop storage APIs, so this section only works in the real app.
           </p>
         </div>
@@ -110,15 +110,15 @@ export function DesktopSnapshotsSection() {
 
   return (
     <div className="mt-8">
-      <h3 className="text-xs font-semibold text-[#71717a] uppercase tracking-wider mb-4">
+      <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-4">
         Local Snapshots
       </h3>
 
-      <div className="rounded-2xl border border-[rgba(255,255,255,0.08)] bg-white/5 p-4">
+      <div className="rounded-2xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-surface)] p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="space-y-1">
-            <p className="text-sm text-white">Automatic rotating snapshots</p>
-            <p className="text-xs text-[#71717a] max-w-xl">
+            <p className="text-sm text-text-primary">Automatic rotating snapshots</p>
+            <p className="text-xs text-text-muted max-w-xl">
               Freed Desktop keeps up to {(24).toLocaleString()} verified snapshots of your
               normalized library records. Device caches and Google Contacts matching data stay
               local and are not included.
@@ -127,16 +127,16 @@ export function DesktopSnapshotsSection() {
           <button
             onClick={() => void handleCreateSnapshot()}
             disabled={creating || restoringId !== null}
-            className="shrink-0 rounded-xl bg-white/10 px-3 py-2 text-sm text-[#a1a1aa] transition-colors hover:bg-white/15 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+            className="shrink-0 rounded-xl bg-[var(--theme-bg-muted)] px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-[var(--theme-bg-elevated)] hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
           >
             {creating ? "Creating..." : "Create snapshot now"}
           </button>
         </div>
 
         {loading ? (
-          <p className="mt-4 text-xs text-[#71717a]">Loading snapshots...</p>
+          <p className="mt-4 text-xs text-text-muted">Loading snapshots...</p>
         ) : snapshots.length === 0 ? (
-          <p className="mt-4 text-xs text-[#71717a]">
+          <p className="mt-4 text-xs text-text-muted">
             Your first snapshot appears automatically after the library starts changing.
           </p>
         ) : (
@@ -147,29 +147,29 @@ export function DesktopSnapshotsSection() {
               return (
                 <div
                   key={snapshot.id}
-                  className="flex flex-col gap-3 rounded-xl border border-[rgba(255,255,255,0.06)] bg-black/20 px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
+                  className="flex flex-col gap-3 rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-input)] px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
                 >
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-sm text-white">
+                      <p className="text-sm text-text-primary">
                         {dateFormatter.format(snapshot.createdAt)}
                       </p>
-                      <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] uppercase tracking-wide text-[#71717a]">
+                      <span className="rounded-full bg-[var(--theme-bg-muted)] px-2 py-0.5 text-[11px] uppercase tracking-wide text-text-muted">
                         {snapshot.reason}
                       </span>
                     </div>
-                    <p className="mt-1 text-xs text-[#71717a]">
+                    <p className="mt-1 text-xs text-text-muted">
                       {snapshot.itemCount.toLocaleString()} items, {snapshot.recordCount.toLocaleString()} normalized records,{" "}
                       {formatByteSize(snapshot.byteSize)}
                     </p>
-                    <p className="mt-1 text-[11px] font-mono text-[#52525b]">
+                    <p className="mt-1 text-[11px] font-mono text-text-muted">
                       Snapshot ...{snapshot.id.slice(-8)}
                     </p>
                   </div>
                   <button
                     onClick={() => void handleRestoreSnapshot(snapshot)}
                     disabled={creating || restoringId !== null}
-                    className="shrink-0 rounded-xl bg-[#8b5cf6]/15 px-3 py-2 text-sm text-[#c4b5fd] transition-colors hover:bg-[#8b5cf6]/25 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                    className="shrink-0 rounded-xl theme-accent-button px-3 py-2 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {isRestoring ? "Restoring..." : "Restore"}
                   </button>

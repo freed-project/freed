@@ -12,6 +12,7 @@
 //   node scripts/doctor.mjs            # report only, always exits 0 (warn-only)
 //   node scripts/doctor.mjs --strict   # exit non-zero on hard failures (loops/CI)
 //   node scripts/doctor.mjs --json     # machine-readable report
+//   node scripts/doctor.mjs --strict --factory-worker # isolated build tools only
 //
 // Worktree helpers run this automatically in warn-only mode. Continuous loops,
 // mutation plans, and CI gates use --strict and stop on failures.
@@ -509,7 +510,9 @@ function shellQuote(value) {
 
 function automationKernelGuardCutoverRemediation(stateDir) {
   return [
-    "Keep every automation actor PAUSED and stop every old control-plane process.",
+    "Scope: automation control-plane operations only. This finding does not block ordinary builds, GitHub-authenticated PR publication, or the dedicated release tag publisher.",
+    "Do not migrate the host merely to ship a release. Repair is required before using the affected automation control plane.",
+    "For an authorized cutover, keep every automation actor PAUSED and stop every old control-plane process.",
     "Plan command:",
     `npm run --silent automation:cutover-kernel-guards -- plan --task-id <task-id> --plan-file <absolute-plan-file> --state-root ${shellQuote(stateDir)}`,
     "Apply command:",
@@ -1043,32 +1046,70 @@ export function checkTrustedPublisherConfig(
 }
 
 export function runChecks(options = {}) {
+  const scope = options.scope ?? "host";
+  if (!["host", "factory-worker"].includes(scope)) {
+    throw new Error("Unknown doctor scope.");
+  }
   const home = options.home ?? os.homedir();
   const repoRoot = options.repoRoot ?? REPO_ROOT;
   const machineArch = options.machineArch ?? os.arch();
   const platform = options.platform ?? os.platform();
   const stateDir = options.stateDir ?? path.join(home, ".freed", "automation");
 
-  const checks = [
-    checkPinnedToolchain(home, repoRoot),
-    checkPathNode(home, repoRoot),
-    checkGh(machineArch, platform),
-    checkGitCredentialHelpers(),
-    checkSimpleCommand(
-      "git",
-      "git",
-      "git",
-      ["--version"],
-      "Install git (xcode-select --install).",
-    ),
-    checkSimpleCommand("curl", "curl", "curl", ["--version"], "Install curl."),
-    checkKernelGuardTool(platform),
-    checkSystemPython(),
-    checkAutomationStateDir(stateDir),
-    checkTrustedPublisherConfig(options.env ?? process.env, home),
-  ];
+  // Workers deliberately have no controller credentials or authority store.
+  // This scope verifies build prerequisites and grants no execution authority.
+  const checks =
+    scope === "factory-worker"
+      ? [
+          checkPinnedToolchain(home, repoRoot),
+          checkPathNode(home, repoRoot),
+          checkSimpleCommand(
+            "git",
+            "git",
+            "git",
+            ["--version"],
+            "Install git.",
+          ),
+          checkSimpleCommand(
+            "curl",
+            "curl",
+            "curl",
+            ["--version"],
+            "Install curl.",
+          ),
+          checkSystemPython(),
+        ].map((item) =>
+          item.id === "path-node" && item.status === "warn"
+            ? { ...item, status: "fail" }
+            : item,
+        )
+      : [
+          checkPinnedToolchain(home, repoRoot),
+          checkPathNode(home, repoRoot),
+          checkGh(machineArch, platform),
+          checkGitCredentialHelpers(),
+          checkSimpleCommand(
+            "git",
+            "git",
+            "git",
+            ["--version"],
+            "Install git (xcode-select --install).",
+          ),
+          checkSimpleCommand(
+            "curl",
+            "curl",
+            "curl",
+            ["--version"],
+            "Install curl.",
+          ),
+          checkKernelGuardTool(platform),
+          checkSystemPython(),
+          checkAutomationStateDir(stateDir),
+          checkTrustedPublisherConfig(options.env ?? process.env, home),
+        ];
 
   return {
+    scope,
     checks,
     failures: checks.filter((item) => item.status === "fail").length,
     warnings: checks.filter((item) => item.status === "warn").length,
@@ -1078,7 +1119,11 @@ export function runChecks(options = {}) {
 const STATUS_GLYPHS = { ok: "ok", warn: "WARN", fail: "FAIL" };
 
 export function formatReport(result) {
-  const lines = ["Freed machine preflight (scripts/doctor.mjs)"];
+  const lines = [
+    result.scope === "factory-worker"
+      ? "Freed Factory worker preflight (build tools only)"
+      : "Freed machine preflight (scripts/doctor.mjs)",
+  ];
   for (const item of result.checks) {
     lines.push(
       `  [${STATUS_GLYPHS[item.status] ?? item.status}] ${item.title}: ${item.detail}`,
@@ -1115,25 +1160,40 @@ function main() {
   const argv = process.argv.slice(2);
   const strict = argv.includes("--strict");
   const requirePublisher = argv.includes("--require-publisher");
+  const factoryWorker = argv.includes("--factory-worker");
   const json = argv.includes("--json");
   const unknown = argv.filter(
     (arg) =>
-      !["--strict", "--require-publisher", "--json", "--help", "-h"].includes(
-        arg,
-      ),
+      ![
+        "--strict",
+        "--factory-worker",
+        "--require-publisher",
+        "--json",
+        "--help",
+        "-h",
+      ].includes(arg),
   );
-  if (argv.includes("--help") || argv.includes("-h") || unknown.length > 0) {
+  const incompatible = factoryWorker && requirePublisher;
+  if (
+    argv.includes("--help") ||
+    argv.includes("-h") ||
+    unknown.length > 0 ||
+    incompatible
+  ) {
     process.stdout.write(
-      "Usage: node scripts/doctor.mjs [--strict] [--require-publisher] [--json]\n" +
+      "Usage: node scripts/doctor.mjs [--strict] [--factory-worker | --require-publisher] [--json]\n" +
         "  --strict  Exit non-zero on hard failures (loop/CI contexts).\n" +
+        "  --factory-worker  Check isolated worker build tools; does not authorize controller or publisher operations.\n" +
         "  --require-publisher  Exit non-zero unless the root-owned publisher trust chain is ready.\n" +
         "  --json    Machine-readable report.\n",
     );
-    process.exitCode = unknown.length > 0 ? 1 : 0;
+    process.exitCode = unknown.length > 0 || incompatible ? 1 : 0;
     return;
   }
 
-  const result = runChecks();
+  const result = runChecks({
+    scope: factoryWorker ? "factory-worker" : "host",
+  });
   if (json) {
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   } else {

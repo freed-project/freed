@@ -1,0 +1,3 @@
+# LAND-EDITORIAL-161 admission
+
+Two invitations is admitted unchanged after author and root review. Root opened the exact three-raven photo and read all four existing Maud episodes. Clear feather detail and raised twig support the scene. Exact photo-specific CC0 permission, Kim Selbee credit and SHA1 were verified. The observer explicitly reports twig and ice offerings; the ice is not clearly visible in this still. Acceptance, preference, dropping and renewed offering are fiction. Author read the primary gesture-study abstract; root publisher fetch failed and no full-paper access is claimed. No lifetime bond or home change. Adds one Instagram Story.

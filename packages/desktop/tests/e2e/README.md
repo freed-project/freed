@@ -35,11 +35,20 @@ test("renders the expected state", async ({ app, ipc }) => {
 });
 ```
 
+Native window-chrome tests explicitly set `window.__TAURI_MOCK_NATIVE__ = true`
+in a pre-navigation init script. The default mock reports a browser preview,
+so native drag-region checks must opt in without changing browser preview spacing.
+
 The shared `app` fixture injects `tauriInitScript()` with
 `page.addInitScript()` before application JavaScript runs. That script installs
 `window.__TAURI_INTERNALS__`, default IPC handlers, and the mock state used at
-startup. A test that creates its own page setup must inject `tauriInitScript()`
-first and must do so before `page.goto()`.
+startup. Tests that need pre-startup overrides must inject `tauriInitScript()` before
+`page.goto()`. The standalone preview startup test deliberately omits injection
+so it checks the same HTML bootstrap used by a person opening the preview.
+
+The shared implementation lives in `src/__mocks__/tauri-init.js`. Vite inserts
+it before app modules only when `VITE_TEST_TAURI` is enabled. Installation is
+idempotent so loading HTML preserves any handlers or state installed by tests.
 
 ## Running the suite
 
@@ -53,6 +62,21 @@ The standard command starts and stops its Vite server automatically and runs
 headless. `npm run test:e2e:ui` and `npm run test:e2e:debug` open external
 browser surfaces, so use them only when the owner explicitly requests that
 surface.
+
+The full command includes the `chromium` functional project and the
+`chromium-feed-perf` scroll benchmark project. The two feed scroll probes use a separate
+mock server with production React and an isolated dependency cache. This keeps
+development JSX validation and StrictMode diagnostics out of shipping-path
+timing measurements. The ordinary functional project retains development
+checks, including the React Profiler case. External benchmark servers must use `PERF_BASE_URL` and advertise the
+production render-mode marker; a development preview fails the benchmark
+precondition. No performance limits are relaxed by this routing.
+
+Mock Library writes are serialized and save the same complete reload snapshot
+before acknowledging a mutation. Encoding yields between bounded work slices so
+full-fixture serialization does not monopolize the renderer during scrolling.
+No snapshot is deferred until navigation. Native SQLite commit acknowledgments
+and durability are unchanged.
 
 ## Test-specific state and assertions
 
@@ -83,7 +107,7 @@ handler for a module-level plugin call.
 When the app starts invoking a new Tauri command, add a safe default response
 in both places:
 
-1. `tests/e2e/fixtures/tauri-init.ts`, inside the object assigned to
+1. `src/__mocks__/tauri-init.js`, re-exported by the test fixture, inside the object assigned to
    `window.__TAURI_MOCK_HANDLERS__`. This is the reliable pre-page path used by
    the Playwright fixture.
 2. `src/__mocks__/@tauri-apps/api/core.ts`, inside its `handlers` map. This is

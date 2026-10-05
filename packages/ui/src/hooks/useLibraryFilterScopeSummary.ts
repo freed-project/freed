@@ -6,6 +6,7 @@ import { usePlatform } from "../context/PlatformContext.js";
 export interface LibraryFilterScopeSummaryState {
   readonly error: string | null;
   readonly loading: boolean;
+  readonly status: "idle" | "loading" | "refreshing" | "ready" | "failed";
   readonly summary: LibraryCoreFilterScopeSummaryResponseV1 | null;
 }
 
@@ -36,19 +37,22 @@ export function useLibraryFilterScopeSummary(
     }
     return null;
   }, [filter.authorId, filter.feedUrl, filter.platform]);
+  const contextKey = request ? JSON.stringify(request) : null;
   const queryKey = request ? JSON.stringify({ request, sourceVersion }) : null;
   const [result, setResult] = useState<{
     readonly queryKey: string;
+    readonly reader: typeof queryLibraryCore;
+    readonly contextKey: string;
+    readonly sourceVersion: number;
     readonly summary: LibraryCoreFilterScopeSummaryResponseV1;
   } | null>(null);
-  const [loadingKey, setLoadingKey] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+
+  const [error, setError] = useState<{ key: string; reader: typeof queryLibraryCore; message: string } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     if (!request || !queryKey) {
       setResult(null);
-      setLoadingKey(null);
       setError(null);
       return () => {
         cancelled = true;
@@ -56,35 +60,30 @@ export function useLibraryFilterScopeSummary(
     }
     if (!queryLibraryCore) {
       setResult(null);
-      setLoadingKey(null);
-      setError("SQLite filter scope query is unavailable");
+      setError({ key: queryKey, reader: queryLibraryCore, message: "SQLite filter scope query is unavailable" });
       return () => {
         cancelled = true;
       };
     }
 
-    setLoadingKey(queryKey);
     setError(null);
     void queryLibraryCore(request)
       .then((summary) => {
         if (cancelled) return;
-        setResult({ queryKey, summary });
-        setLoadingKey(null);
-      })
+        setResult({ queryKey, reader: queryLibraryCore, contextKey: contextKey!, sourceVersion, summary });
+        })
       .catch((reason: unknown) => {
         if (cancelled) return;
         setResult(null);
-        setLoadingKey(null);
-        setError(reason instanceof Error ? reason.message : String(reason));
+          setError({ key: queryKey, reader: queryLibraryCore, message: reason instanceof Error ? reason.message : String(reason) });
       });
     return () => {
       cancelled = true;
     };
-  }, [queryKey, queryLibraryCore, request]);
+  }, [queryKey, queryLibraryCore, request, contextKey, sourceVersion]);
 
-  return {
-    error,
-    loading: queryKey !== null && loadingKey === queryKey,
-    summary: result?.queryKey === queryKey ? result.summary : null,
-  };
+  const retained = result !== null && result.reader === queryLibraryCore && result.contextKey === contextKey && result.sourceVersion <= sourceVersion ? result : null;
+  const message = error?.key === queryKey && error.reader === queryLibraryCore ? error.message : null;
+  const status = !request ? "idle" : !queryLibraryCore || message ? "failed" : retained?.queryKey === queryKey ? "ready" : retained ? "refreshing" : "loading";
+  return { error: message, loading: status === "loading", status, summary: status === "failed" ? null : retained?.summary ?? null };
 }

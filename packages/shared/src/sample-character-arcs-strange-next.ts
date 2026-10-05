@@ -23,6 +23,7 @@ export const STRANGE_NEXT_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "spiny leaf insect",
         "platform": "x",
+        "classification": "personal",
         "mediaSha1": "23a201fdf77d9cb25c842e7243723ef5ad3d4d12",
         "theme": "courtship",
         "title": "Good advice",
@@ -32,10 +33,31 @@ export const STRANGE_NEXT_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
         "subject": "spiny leaf insect",
         "platform": "instagram",
         "contentType": "story",
+        "classification": "inspiring",
         "mediaSha1": "9542f5e8bbb2c77c1152dcb66712f0e350e40bff",
         "theme": "feeding",
         "title": "Which came first",
         "body": "I stopped chewing because the leaf looked a little too familiar. Then remembered which of us was copying whom."
+      },
+      {
+        "subject": "spiny leaf insect",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "social",
+        "title": "Being shown",
+        "body": "When I was smaller, a man held me up to show someone. I walked toward his sleeve. Each time I nearly reached it, he turned his wrist to put me back in the light.",
+        "classification": "conversation",
+        "mediaSha1": "588f5694160dbe964f69135e4f5c00eb362e7a17"
+      },
+      {
+        "subject": "spiny leaf insect",
+        "platform": "rss",
+        "contentType": "post",
+        "theme": "transformation",
+        "title": "The meal above me",
+        "body": "Before I was grown, I left a whole set of legs hanging from a leaf.\n\nI stayed beneath them while my new skin hardened. The old feet were still holding on. I had used those feet all morning; now the leaf could move them without consulting me.\n\nWhen I climbed back up, I began at a leg.\n\nIt made a small dry crack between my jaws. I stopped chewing. For a moment I tried to remember which steps it had taken.\n\nThen I ate the rest of that leg.\n\nThere were five more. I went on more slowly than I do with leaves.",
+        "classification": "news",
+        "mediaSha1": "4276eb7c1b0899c021d7e0392a0405b2a78aa861"
       }
     ]
   },
@@ -55,6 +77,7 @@ export const STRANGE_NEXT_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "acorn weevil",
         "platform": "rss",
+        "classification": "news",
         "mediaSha1": "26c60e7b308fe6997dcf3e357496698e620f29d9",
         "theme": "wonder",
         "title": "Outside lunch",
@@ -63,6 +86,7 @@ export const STRANGE_NEXT_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "acorn weevil",
         "platform": "instagram",
+        "classification": "personal",
         "mediaSha1": "69926205f23b654c33b99b2351ea48431920e771",
         "theme": "courtship",
         "title": "After you",
@@ -71,6 +95,7 @@ export const STRANGE_NEXT_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "acorn weevil",
         "platform": "x",
+        "classification": "event",
         "mediaSha1": "a2e52494b406f3ad2cd1c4a2e5a7ae595483d3d1",
         "theme": "movement",
         "title": "Don't tell the ants",
@@ -79,6 +104,7 @@ export const STRANGE_NEXT_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "acorn weevil",
         "platform": "facebook",
+        "classification": "conversation",
         "mediaSha1": "33e602914896bde7c9db4d64315e428d754b8281",
         "theme": "social",
         "title": "Off duty",
@@ -88,6 +114,7 @@ export const STRANGE_NEXT_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
         "subject": "weevil macro",
         "platform": "instagram",
         "contentType": "story",
+        "classification": "personal",
         "mediaSha1": "7e0e472ff7d4136bc85b17db77be60af69852abd",
         "theme": "courtship",
         "title": "An advance",
@@ -111,6 +138,7 @@ export const STRANGE_NEXT_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "round-leaved sundew",
         "platform": "rss",
+        "classification": "event",
         "mediaSha1": "db71996f60b3841bd00ca9c0af433a048d7fff92",
         "theme": "weather",
         "title": "Expansion plans",
@@ -119,6 +147,7 @@ export const STRANGE_NEXT_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "round-leaved sundew",
         "platform": "linkedin",
+        "classification": "news",
         "mediaSha1": "1635820ef6ab5f2e3ac4cb221100a842583312f1",
         "theme": "wonder",
         "title": "Further research",
@@ -127,10 +156,21 @@ export const STRANGE_NEXT_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "round-leaved sundew",
         "platform": "x",
+        "classification": "conversation",
         "mediaSha1": "d5e11d663090853daf19ecb79b4c5b80bbab69bb",
         "theme": "social",
         "title": "You come here",
         "body": "My neighbor says I never come over. I asked her to demonstrate."
+      },
+      {
+        "subject": "round-leaved sundew",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "feeding",
+        "title": "Too close together",
+        "body": "My first fly this spring pulled two of my leaves together trying to get free. Now they're stuck to each other, and every time he struggles I tug on myself.",
+        "classification": "inspiring",
+        "mediaSha1": "a9ab2bb90150d0a85f07e3208a2f5d91b3d3ae48"
       }
     ]
   },
@@ -150,10 +190,21 @@ export const STRANGE_NEXT_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "moth macro",
         "platform": "x",
+        "classification": "inspiring",
         "mediaSha1": "087e61f22c2daaed6758efad158754137ec574e3",
         "theme": "transformation",
         "title": "Caught up",
         "body": "I spent my entire childhood eating. They said it would catch up with me. It caught up with me as wings."
+      },
+      {
+        "subject": "luna moth",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "danger",
+        "title": "Every step tells",
+        "body": "I pulled one foot free and set it down on another thread. The spider moved toward the place I'd just touched. I am trying to stop explaining where I am.",
+        "classification": "inspiring",
+        "mediaSha1": "0972c379561111b2433aee7c4998ddb4ce8afd23"
       }
     ]
   },
@@ -173,6 +224,7 @@ export const STRANGE_NEXT_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "British soldier lichen",
         "platform": "x",
+        "classification": "conversation",
         "mediaSha1": "a29abff9df4aa3f1112d7e057af1be2d512c789d",
         "theme": "social",
         "title": "Eyes up",
@@ -181,10 +233,21 @@ export const STRANGE_NEXT_CHARACTER_ARCS: readonly SampleCharacterArc[] = [
       {
         "subject": "British soldier lichen",
         "platform": "rss",
+        "classification": "news",
         "mediaSha1": "5a1c5c6f2bd3fe586f2a362f4e9a1b706552e3b0",
         "theme": "wonder",
         "title": "The first word",
         "body": "I started an autobiography. My green partner objected to the first word.\n\nWe, then.\n\nHe wanted to know who was telling it. I said someone had to. He said that sounded very much like I again.\n\nWe have been together so long that I cannot remember what being alone felt like. I suspect it was peaceful. He suspects I would have starved.\n\nI have dedicated it to him. He says that is exactly the problem."
+      },
+      {
+        "subject": "British soldier lichen",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "danger",
+        "title": "The unfinished argument",
+        "body": "A boot pressed the far end of our plank. The crack beneath us opened.\n\nI stopped arguing with my green partner and waited for the wood to settle.\n\nWhen the foot lifted, he asked what I'd been about to say. I couldn't remember. He said he could, but it could wait.",
+        "classification": "inspiring",
+        "mediaSha1": "3195110d8e9633e739e9e5e6d9d9efe79b076f0f"
       }
     ]
   }

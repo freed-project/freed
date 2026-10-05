@@ -39,7 +39,8 @@ async function acceptLegalGateIfPresent(
   page: Page,
 ): Promise<void> {
   const acceptButton = page.getByTestId("legal-gate-accept");
-  const visible = await acceptButton.isVisible({ timeout: 2_000 }).catch(() => false);
+  await expect(acceptButton.or(page.locator("main"))).toBeVisible({ timeout: 10_000 });
+  const visible = await acceptButton.isVisible();
   if (!visible) return;
 
   await page.getByRole("checkbox").evaluate((element) => {
@@ -126,7 +127,7 @@ async function openSeededFriendsGraph(page: Page, friendId: string, friendName: 
     }, { id: friendId, name: friendName });
   }
   await expect(page.getByTestId("friend-graph-viewport")).toBeVisible({ timeout: 10_000 });
-  await page.getByRole("button", { name: "Fit all", exact: true }).click();
+  await page.getByRole("button", { name: "Fit All", exact: true }).click();
   const deadline = Date.now() + 15_000;
   let lastPerf: unknown = null;
   let previousSceneSyncCount = -1;
@@ -212,6 +213,76 @@ test.describe("Safari viewport layout — iPhone 14 / WebKit", () => {
     await page.goto("/", { waitUntil: "load" });
     await page.waitForTimeout(500); // let React hydrate
     await acceptLegalGateIfPresent(page);
+  });
+
+  test("rotation retains document scrolling and safe-area toolbar", async ({ page }, testInfo) => {
+    // Crossing 767px must not replace the feed's scroll owner.
+    await page.waitForFunction(() => {
+      const store = (window as unknown as Record<string, unknown>).__FREED_STORE__ as
+        { getState: () => { isInitialized: boolean } } | undefined;
+      return store?.getState().isInitialized;
+    });
+    await page.evaluate(async () => {
+      const library = (window as unknown as Record<string, unknown>).__FREED_LIBRARY_CORE__ as
+        { addItems: (items: unknown[]) => Promise<void> };
+      const now = Date.now();
+      const items = Array.from({ length: 40 }, (_, index) => ({
+        globalId: `rss:rotation:${index}`, platform: "rss", contentType: "article",
+        capturedAt: now, publishedAt: now - index * 60000,
+        author: { id: "rotation", handle: "rotation", displayName: "Rotation Fixture" },
+        content: {
+          text: `Rotation article ${index}. ` + "Local synthetic content for checking phone scrolling. ".repeat(10),
+          mediaUrls: [], mediaTypes: [],
+        },
+        userState: { hidden: false, saved: false, archived: false, tags: [] },
+        topics: [], sourceUrl: `https://example.com/rotation/${index}`,
+      }));
+      for (const item of items) await library.addItems([item]);
+    });
+    await expect(page.locator("[data-feed-row-index]").first()).toBeVisible();
+    const originalList = await page.locator("[data-feed-row-index]").first().evaluateHandle(
+      element => element.parentElement!.parentElement!,
+    );
+    for (const viewport of [{ width: 844, height: 390 }, { width: 390, height: 844 }]) {
+      await page.setViewportSize(viewport);
+      // Emulation has no hardware insets. Supply landscape safe-area geometry.
+      await page.evaluate(({ width }) => {
+        document.documentElement.style.setProperty("--safe-area-left", width > 767 ? "47px" : "0px");
+        document.documentElement.style.setProperty("--safe-area-right", width > 767 ? "47px" : "0px");
+      }, viewport);
+      await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).overflowY)).toBe("visible");
+      expect(await originalList.evaluate(element => element.isConnected)).toBe(true);
+      const geometry = await page.evaluate(() => {
+        const toolbar = document.querySelector('[data-testid="workspace-toolbar"]')!;
+        const frame = document.querySelector('[data-testid="workspace-content-frame"]')!;
+        const rect = toolbar.getBoundingClientRect();
+        return {
+          left: rect.left, right: rect.right,
+          toolbarPadding: parseFloat(getComputedStyle(toolbar).paddingLeft),
+          contentPadding: parseFloat(getComputedStyle(frame).paddingLeft),
+          smooth: getComputedStyle(document.documentElement).scrollBehavior,
+          overflow: document.documentElement.scrollWidth > innerWidth,
+        };
+      });
+      expect(geometry.left).toBe(0);
+      expect(geometry.right).toBe(viewport.width);
+      expect(geometry.contentPadding).toBe(viewport.width > 767 ? 47 : 8);
+      expect(geometry.toolbarPadding).toBe(viewport.width > 767 ? 47 : 6);
+      expect(geometry.smooth).toBe("auto");
+      expect(geometry.overflow).toBe(false);
+      await page.evaluate(() => window.scrollTo({ top: 600, behavior: "instant" }));
+      await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(600);
+      const positions = await page.evaluate(async () => {
+        const samples: number[] = [];
+        for (let i = 0; i < 12; i++) {
+          await new Promise(requestAnimationFrame);
+          samples.push(scrollY);
+        }
+        return samples;
+      });
+      expect(Math.max(...positions) - Math.min(...positions)).toBeLessThanOrEqual(1);
+      await page.screenshot({ path: testInfo.outputPath(`rotation-${viewport.width}.png`) });
+    }
   });
 
   test("dvh and lvh resolve to non-zero pixel values", async ({ page }) => {
@@ -468,6 +539,8 @@ test.describe("Friends graph touch gestures in WebKit", () => {
 
 test.describe("BottomSheet / drawer viewport", () => {
   test("Settings drawer panel is visible and its top edge is within viewport", async ({ page }) => {
+    // A short phone viewport forces the navigation list to overflow.
+    await page.setViewportSize({ width: 390, height: 540 });
     await page.goto("/", { waitUntil: "load" });
     await page.waitForTimeout(500);
     await acceptLegalGateIfPresent(page);
@@ -495,5 +568,31 @@ test.describe("BottomSheet / drawer viewport", () => {
     expect(box!.y).toBeGreaterThanOrEqual(0);
     // Panel top must be below the header (not covering it entirely).
     expect(box!.y).toBeLessThan(viewportHeight * 0.5);
+
+    // The menu must own overflow instead of growing behind the clipped shell.
+    const nav = page.getByTestId("settings-nav-panel").locator("nav");
+    const navMetrics = await nav.evaluate((element) => ({
+      bottom: element.getBoundingClientRect().bottom,
+      height: element.clientHeight,
+      scrollHeight: element.scrollHeight,
+    }));
+    expect(navMetrics.bottom).toBeLessThanOrEqual(viewportHeight);
+    expect(navMetrics.scrollHeight).toBeGreaterThan(navMetrics.height);
+    await nav.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+    await expect.poll(() => nav.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
+
+    await page.getByRole("button", { name: "Appearance", exact: true }).click();
+    const scrollport = page.locator(".theme-settings-scrollport");
+    await expect(scrollport).toBeVisible();
+    const scrollHeight = await scrollport.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+      return element.clientHeight;
+    });
+    expect(scrollHeight).toBeGreaterThan(0);
+    expect(scrollHeight).toBeLessThan(viewportHeight);
+    await expect.poll(() => scrollport.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
+    await page.getByRole("button", { name: "Close settings", exact: true }).click();
+    await expect(panel).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => document.body.style.overflow)).toBe("");
   });
 });

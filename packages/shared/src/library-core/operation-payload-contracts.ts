@@ -1,3 +1,4 @@
+import { decodeLibraryCoreFractionalNumbersV1, encodeLibraryCoreFractionalNumbersV1 } from "./fractional-number-codec.js";
 import {
   decodeLibraryCoreCanonicalValue,
   encodeLibraryCoreCanonicalValue,
@@ -475,7 +476,8 @@ function validateFeedItemCaptureUpsertPayload(
   }
 }
 
-function compareUtf8(left: string, right: string): number {
+/** SQLite BINARY/native row identity order; canonical object keys use their separate UTF-16 rule. */
+export function compareLibraryCoreUtf8V1(left: string, right: string): number {
   const encoder = new TextEncoder();
   const leftBytes = encoder.encode(left);
   const rightBytes = encoder.encode(right);
@@ -505,7 +507,7 @@ export function canonicalizeFeedItemTagsV1(
   if (unique.size > 64) {
     throw new RangeError("a FeedItem may contain at most 64 tags");
   }
-  return Object.freeze([...unique].sort(compareUtf8));
+  return Object.freeze([...unique].sort(compareLibraryCoreUtf8V1));
 }
 
 export function canonicalizeFeedItemHighlightsV1(
@@ -860,7 +862,7 @@ function validateFeedItemAnnotationsReplacePayload(
     ) {
       return invalid("each tag must be a bounded nonempty string");
     }
-    if (tags.length > 0 && compareUtf8(tags[tags.length - 1]!, tag) >= 0) {
+    if (tags.length > 0 && compareLibraryCoreUtf8V1(tags[tags.length - 1]!, tag) >= 0) {
       return invalid("tags must be strictly binary sorted with no duplicates");
     }
     tags.push(tag);
@@ -1166,8 +1168,9 @@ function validateRssFeedRemovePayload(
   return { ok: true, value: Object.freeze({ removed_at_ms: removedAt.value }) };
 }
 
-function validatePreferencesLeafAssignmentPayload(
+function validatePreferencesPayload(
   value: unknown,
+  historical: boolean,
 ): LibraryCorePayloadValidationResult<PreferencesLeafAssignmentPayloadV1> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return invalid("payload must be a plain object");
@@ -1243,15 +1246,39 @@ function validatePreferencesLeafAssignmentPayload(
     ) {
       return invalid("updates exceed normalized preference node bounds");
     }
-    const synchronized = sanitizeUserPreferenceWrite(
-      updates as Partial<UserPreferences>,
-    ) as unknown as LibraryCoreCanonicalValue;
-    const synchronizedBytes = encodeLibraryCoreCanonicalValue(synchronized, {
+    if (historical) {
+      const allowed = new Set(["weights", "ulysses", "display", "xCapture", "fbCapture", "friendSuggestions", "ai", "storyWall"]);
+      if (Object.keys(updates).some(key => !allowed.has(key))) {
+        return invalid("updates contain unsupported historical sections");
+      }
+      const object = (value: LibraryCoreCanonicalValue | undefined): Readonly<Record<string, LibraryCoreCanonicalValue>> =>
+        typeof value === "object" && value !== null && !Array.isArray(value) ? value as Readonly<Record<string, LibraryCoreCanonicalValue>> : {};
+      const fields = object(updates);
+      const forbidden: Readonly<Record<string, readonly string[]>> = {
+        display: ["themeId", "sidebarWidth", "sidebarMode", "friendsSidebarWidth", "friendsSidebarOpen", "friendsMode", "debugPanelWidth", "mapMode", "mapTimeMode", "feedSignalMode", "feedSignalModes", "savedContentSortMode"],
+        ai: ["provider", "model", "ollamaUrl"],
+        fbCapture: ["knownGroups"],
+      };
+      if (Object.entries(forbidden).some(([parent, keys]) => keys.some(key => Object.hasOwn(object(fields[parent]), key))) ||
+          Object.hasOwn(object(object(fields.display).reading), "dualColumnMode") ||
+          ["lastError", "status"].some(key => Object.hasOwn(object(object(fields.storyWall).publishTarget), key))) {
+        return invalid("updates contain device-local historical fields");
+      }
+      return { ok: true, value: Object.freeze({ updates: fields }) };
+    }
+    // Validate semantic numbers, retaining the original authenticated wire value.
+    // Compare normalized copies so historical finite integer wrappers remain valid.
+    const decodedNumbers = decodeLibraryCoreFractionalNumbersV1(updates);
+    const synchronized = sanitizeUserPreferenceWrite(decodedNumbers as Partial<UserPreferences>);
+    const synchronizedBytes = encodeLibraryCoreCanonicalValue(encodeLibraryCoreFractionalNumbersV1(synchronized), {
+      maximumBytes: PREFERENCES_PATCH_MAXIMUM_BYTES,
+    });
+    const semanticBytes = encodeLibraryCoreCanonicalValue(encodeLibraryCoreFractionalNumbersV1(decodedNumbers), {
       maximumBytes: PREFERENCES_PATCH_MAXIMUM_BYTES,
     });
     if (
-      synchronizedBytes.byteLength !== encoded.byteLength ||
-      synchronizedBytes.some((byte, index) => byte !== encoded[index])
+      synchronizedBytes.byteLength !== semanticBytes.byteLength ||
+      synchronizedBytes.some((byte, index) => byte !== semanticBytes[index])
     ) {
       return invalid("updates contain unsupported fields");
     }
@@ -1266,6 +1293,15 @@ function validatePreferencesLeafAssignmentPayload(
       error instanceof Error ? error.message : "updates are not canonical",
     );
   }
+}
+
+function validatePreferencesLeafAssignmentPayload(value: unknown): LibraryCorePayloadValidationResult<PreferencesLeafAssignmentPayloadV1> {
+  return validatePreferencesPayload(value, false);
+}
+
+/** Match native historical authentication without sanitizing signed bytes. Never use for fresh writes. */
+export function validateHistoricalPreferencesPayloadV1(value: unknown): LibraryCorePayloadValidationResult<PreferencesLeafAssignmentPayloadV1> {
+  return validatePreferencesPayload(value, true);
 }
 
 function validatePersonUpsertPayload(
@@ -1410,6 +1446,7 @@ function validatePersonUpsertPayload(
 
 function validateFriendReplacePayload(
   value: unknown,
+  archivedOrder = false,
 ): LibraryCorePayloadValidationResult<FriendReplacePayloadV1> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return invalid("payload must be a plain object");
@@ -1442,7 +1479,7 @@ function validateFriendReplacePayload(
     if (
       account.personId !== personResult.value.person.id ||
       accountIds.has(accountId) ||
-      (priorAccountId !== null && priorAccountId.localeCompare(accountId) >= 0)
+      (!archivedOrder && priorAccountId !== null && compareLibraryCoreUtf8V1(priorAccountId, accountId) >= 0)
     ) {
       return invalid(
         "accounts must be unique, sorted by ID, and linked to the Person",
@@ -1964,7 +2001,7 @@ export const FRIEND_REPLACE_PAYLOAD_SCHEMA = Object.freeze({
   schemaVersion: 1,
   operationType: "friend_replace",
   canonicalKeys: FRIEND_REPLACE_KEYS,
-  validate: validateFriendReplacePayload,
+  validate: (value: unknown) => validateFriendReplacePayload(value),
 }) satisfies LibraryCoreOperationPayloadSchema<
   "friend_replace",
   FriendReplacePayloadV1
@@ -2055,3 +2092,8 @@ export const FEED_ITEM_ARCHIVE_ASSIGNMENT_PAYLOAD_SCHEMA =
   userStateAssignmentPayloadSchema("feed_item_archive_assignment");
 export const FEED_ITEM_LIKE_ASSIGNMENT_PAYLOAD_SCHEMA =
   userStateAssignmentPayloadSchema("feed_item_like_assignment");
+
+/** Read-only archive syntax: retain signed account order; all other bounds remain strict. */
+export function validateArchivedFriendReplacePayloadV1(value: unknown): LibraryCorePayloadValidationResult<FriendReplacePayloadV1> {
+  return validateFriendReplacePayload(value, true);
+}

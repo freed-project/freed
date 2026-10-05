@@ -1,5 +1,7 @@
+import catchupVector from "../../../shared/src/library-core/native-handoff-catchup-vector-v1.json";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  parseLibraryCoreReapplyConsumerIntentV1,
   LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256,
   LIBRARY_CORE_SQLITE_CONTRACT_VERSION,
   LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
@@ -109,6 +111,24 @@ describe("PWA SQLite worker response boundary", () => {
     expect(activeWorker().options?.name).toBe("freed-library-core-sqlite-demo");
   });
 
+  it("validates replacement receipts and never retries an ambiguous recovery mutation", async () => {
+    const id = "a".repeat(64);
+    const input = parseLibraryCoreReapplyConsumerIntentV1({ review: { schemaVersion: 1, recoveryId: id, archiveDigest: id,
+      transactionId: "original-edit", transactionDigest: id, reviewedGenerationId: id, reviewedRevision: 1, reviewedLocalSequence: 0, memberCount: 1 },
+      intent: { envelopeBytes: [Uint8Array.of(123, 125)] } });
+    const client = new PwaLibraryCoreSqliteClient(), worker = activeWorker();
+    const pending = client.reapplyConsumerIntent(input);
+    expect(worker.posted[0]).toMatchObject({ kind: "reapply_consumer_intent", recovery: input });
+    worker.respond({ requestId: requestId(worker), ok: true, result: { schemaVersion: 1, recoveryId: id, originalTransactionId: "another-edit",
+      replacementTransactionId: "replacement-edit", replacementTransactionDigest: id, replacementEpochId: id, replacementActorId: id,
+      firstCounter: 1, lastCounter: 1, memberCount: 1, createdAt: 10 } });
+    await expect(pending).rejects.toThrow(/receipt/);
+    const lost = client.reapplyConsumerIntent(input);
+    worker.emit("error");
+    await expect(lost).rejects.toMatchObject({ code: "pwa_sqlite_worker_unavailable" });
+    expect(worker.posted).toHaveLength(2);
+  });
+
   it("terminally retires the client when its worker errors", async () => {
     const onUnavailable = vi.fn();
     const client = new PwaLibraryCoreSqliteClient(onUnavailable);
@@ -167,6 +187,42 @@ describe("PWA SQLite worker response boundary", () => {
     expect(onUnavailable).toHaveBeenCalledOnce();
   });
 
+  it.each([null, catchupVector.expectedReadProof])("decodes the predecessor read response without creating an activation token", async (reference) => {
+    const client = new PwaLibraryCoreSqliteClient();
+    const pending = client.preparePredecessorCheckpointRead("successor");
+    const worker = activeWorker();
+    expect(worker.posted.at(-1)).toMatchObject({ kind: "prepare_predecessor_checkpoint_read", stageId: "successor" });
+    worker.respond({ ok: true, requestId: requestId(worker), result: reference });
+    await expect(pending).resolves.toEqual(reference === null ? null : [reference]);
+  });
+
+  it.each(["abort", "deadline"] as const)("settles an audit %s without retiring other requests", async (mode) => {
+    vi.useFakeTimers();
+    const onUnavailable = vi.fn();
+    const client = new PwaLibraryCoreSqliteClient(onUnavailable);
+    const controller = new AbortController();
+    const audit = client.auditNormalizedReplica(controller.signal);
+    const rejected = expect(audit).rejects.toThrow();
+    const worker = activeWorker();
+    const auditId = requestId(worker);
+    await vi.advanceTimersByTimeAsync(1);
+    const status = client.status();
+    const statusId = requestId(worker);
+    if (mode === "abort") controller.abort();
+    else await vi.advanceTimersByTimeAsync(29_999);
+    await rejected;
+    expect(worker.posted.at(-1)).toMatchObject({
+      kind: "cancel_normalized_replica_audit", auditRequestId: auditId,
+    });
+    expect(worker.terminateCount).toBe(0);
+    expect(onUnavailable).not.toHaveBeenCalled();
+    worker.respond({ ok: true, requestId: statusId, status: validStatus() });
+    await expect(status).resolves.toEqual(validStatus());
+    worker.respond({ ok: true, requestId: auditId, result: { late: true } });
+    expect(worker.terminateCount).toBe(0);
+    client.dispose();
+  });
+
   it("retires the complete client generation when a request times out", async () => {
     vi.useFakeTimers();
     const onUnavailable = vi.fn();
@@ -174,7 +230,7 @@ describe("PWA SQLite worker response boundary", () => {
     const pending = client.status();
     const rejection = expect(pending).rejects.toMatchObject({
       code: "pwa_sqlite_worker_unavailable",
-      message: "PWA Library SQLite request timed out",
+      message: "PWA Library SQLite request timed out (status)",
     });
     const worker = activeWorker();
 
@@ -183,6 +239,70 @@ describe("PWA SQLite worker response boundary", () => {
     await rejection;
     expect(worker.terminateCount).toBe(1);
     expect(onUnavailable).toHaveBeenCalledOnce();
+  });
+
+  it.each(["ordinary", "predecessor"] as const)("keeps queued reads alive only while %s checkpoint records advance", async (kind) => {
+    vi.useFakeTimers();
+    const client = new PwaLibraryCoreSqliteClient();
+    const activation = kind === "ordinary" ? client.activateNormalizedCheckpointStage({
+      followerReceipt: null, replaceExisting: false, stageId: "progress-test",
+    }) : client.activateVerifiedPredecessorCheckpoint({ stageId: "predecessor", replaceExisting: true,
+      followerReceipt: { checkpointGeneration: 1, controlRevision: "revision", installedAt: 2400,
+        manifestContentDigest: "a".repeat(64) as never, manifestObjectKey: "manifest",
+        manifestTransportObjectId: "object", writerActorId: "writer" },
+    }, "successor");
+    const activationFailure = expect(activation).rejects.toThrow("timed out");
+    const worker = activeWorker();
+    const activationId = requestId(worker);
+    const read = client.status();
+    const readId = requestId(worker);
+    for (let completedRecords = 0; completedRecords < 3; completedRecords += 1) {
+      await vi.advanceTimersByTimeAsync(20_000);
+      worker.respond({ kind: "checkpoint_activation_progress", requestId: activationId,
+        completedRecords, totalRecords: 100 });
+      expect(worker.terminateCount).toBe(0);
+    }
+    worker.respond({ ok: true, requestId: readId, status: validStatus() });
+    await expect(read).resolves.toEqual(validStatus());
+    await vi.advanceTimersByTimeAsync(30_000);
+    await activationFailure;
+    expect(worker.terminateCount).toBe(1);
+  });
+
+  it("caps checkpoint work even when valid progress never stops", async () => {
+    vi.useFakeTimers();
+    const client = new PwaLibraryCoreSqliteClient();
+    const activation = client.activateNormalizedCheckpointStage({
+      followerReceipt: null, replaceExisting: false, stageId: "deadline-test",
+    });
+    const failure = expect(activation).rejects.toThrow("timed out");
+    const worker = activeWorker();
+    for (let completedRecords = 0; completedRecords < 30; completedRecords += 1) {
+      worker.respond({ kind: "checkpoint_activation_progress", requestId: requestId(worker),
+        completedRecords, totalRecords: 100 });
+      await vi.advanceTimersByTimeAsync(20_000);
+    }
+    await failure;
+    expect(worker.terminateCount).toBe(1);
+  });
+
+  it.each([
+    { completedRecords: 1, totalRecords: 100 },
+    { completedRecords: 0, totalRecords: 100 },
+    { completedRecords: 2, totalRecords: 101 },
+    { completedRecords: 2, totalRecords: 100, extra: true },
+  ])("rejects nonmonotonic or open checkpoint progress: %j", async (invalid) => {
+    const client = new PwaLibraryCoreSqliteClient();
+    const activation = client.activateNormalizedCheckpointStage({
+      followerReceipt: null, replaceExisting: false, stageId: "invalid-progress-test",
+    });
+    const failure = expect(activation).rejects.toThrow("checkpoint progress is invalid");
+    const worker = activeWorker();
+    const envelope = { kind: "checkpoint_activation_progress", requestId: requestId(worker) };
+    worker.respond({ ...envelope, completedRecords: 1, totalRecords: 100 });
+    worker.respond({ ...envelope, ...invalid });
+    await failure;
+    expect(worker.terminateCount).toBe(1);
   });
 
   it("accepts only the exact typed status for a status request", async () => {

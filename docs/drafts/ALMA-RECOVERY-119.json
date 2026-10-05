@@ -1,0 +1,29 @@
+{
+  "status": "preserved_passage_pair_pending_independent_review",
+  "characterId": "alma-eight",
+  "episode": {
+    "subject": "octopus underwater",
+    "platform": "rss",
+    "theme": "social",
+    "title": "Not empty",
+    "body": "The smooth shell moved during the night. I returned it to its corner. Later it moved farther. I put a stone beside it so it would stop rolling.\n\nA hermit crab came out, climbed over the stone, and started dragging the shell toward the entrance. I had been moving him around my room for two days. He had waited until I was asleep to leave, and I had caught him twice.\n\nI moved the stone. He went out very slowly. I wanted to help him over the lip, but I could not think of a way to touch him that would not look like the beginning of a third day.",
+    "mediaSha1": "8a723a73f4877b300ec621959412dd7ac517b7cd"
+  },
+  "media": {
+    "observationId": 164842609,
+    "photoId": 285264344,
+    "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/285264344/large.jpg",
+    "localPath": "/tmp/freed-alma119/285264344.jpg",
+    "sha1": "8a723a73f4877b300ec621959412dd7ac517b7cd",
+    "bytes": 336495,
+    "attribution": "(c) Donald Davesne, some rights reserved (CC BY), uploaded by Donald Davesne",
+    "license": "CC-BY",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+    "sha256": "c69cce4bc8f7f09182b2b0d714fa84725af7f4ddef6c331e634891f2613ebae7",
+    "sourceUrl": "https://www.inaturalist.org/observations/164842609"
+  },
+  "rootReview": "Exact photo individually opened. Sharp marine hermit crab extends legs, antennae, eyes and claws from a striped gastropod shell among rounded stones and shell fragments. This illustrates the formerly hidden occupant becoming visible, the central revelation. Octopus is off frame. Previous manipulation, the specific blocking stone, subsequent departure and hesitation to touch are fiction. No occupancy change or named crab is documented.",
+  "reviewQuestion": "Judge whether the revealed occupied shell and pebbled substrate sufficiently earn this preserved passage without an octopus in frame. Do not use it for Premature condolences: no visibly empty old shell is established.",
+  "canon": "All nine current Alma episodes read, including recovered den opening and appended container encounter. Bind original Not empty slot without adding an episode or changing words. Unnamed marine hermit companion gains no name or new biography. Source Tr\u00e9gastel France, Pagurus bernhardus, is NEAtlantic marine illustration; Mouro home unchanged.",
+  "admitted": 0
+}

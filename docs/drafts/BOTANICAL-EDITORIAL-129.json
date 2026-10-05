@@ -1,0 +1,561 @@
+{
+  "batch": "BOTANICAL-EDITORIAL-129",
+  "status": "proposal_only",
+  "proposals": [
+    {
+      "candidateId": "129-01",
+      "characterId": "ada-dew",
+      "identityNameBase": "Ada Dew",
+      "episode": {
+        "subject": "red-eyed tree frog",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "courtship",
+        "title": "Before I objected",
+        "body": "At dusk I went down to complain about his calling. Halfway along the stem he called again, and I stopped with one foot raised. Without the leaf between us, I liked it.\n\nNow he is on my back, silent. I had several things prepared to say about keeping a frog awake. I am trying to turn one of them into a request.",
+        "mediaSha1": "962df5cef52e8c9eb2dcf404f0403f4498c421e5"
+      },
+      "imageReview": "PASS for independent review. Individually opened exact 1024x768 frame shows two red-eyed tree frogs in clear amplexus on a slender upright stem, larger female below and smaller male clasping above. Eyes, orange feet and blue side pattern are readable; the pair occupies a smaller central part of the full frame, with dark environmental space. The source explicitly describes mating pairs at the wetland. Full framing retained, no crop or modification.",
+      "fictionBoundary": "The mating pair and stem are visible and primary observer reports amplexus. Dusk, a former resting leaf, complaint, approach, raised foot, silence and desire to hear him again are fiction. No recording documents a call, and no claim of calling during amplexus is needed. These are adults in courtship, not a parent carrying a juvenile. No egg laying, offspring, disease testing or handling is added to the scene.",
+      "canon": "Full ten-entry Ada arc read. Existing female Agalychnis callidryas; Tortuguero lowland Costa Rica 10.542/-83.502; avatar and all prior bodies unchanged. Source La Suerte Costa Rica is regional species illustration, not a move of the fictional home. New dusk courtship follows the existing progression toward tolerating closeness. This does not assert that every past neighboring frog was the photographed mate. No established reproductive event is repeated.",
+      "proseAssessment": "PASS for independent review. A planned complaint becomes attraction; she then wants the very interruption she meant to stop. The visible mating pair makes that change concrete. Her existing preference for sleep supplies character continuity without another shared-bed, dripping-leaf or foot-in-face scene. The request remains unspoken at the ending. Short Instagram Story, not padded into a regular article.",
+      "biologySources": [
+        "https://datadryad.org/dataset/doi:10.5061/dryad.ncjsxksx4",
+        "https://animaldiversity.org/accounts/Agalychnis_callidryas/"
+      ],
+      "biologyEvidence": "Primary author dataset for Caldwell2022 independently opened: exact-species female mate choice responds to male calls, including sound and substrate vibration. No measured playback preference or vibrational mechanism is assigned to this fictional pair. University of Michigan ADW description/reproduction independently opened for female larger than male and male clasping female during amplexus. No breeding-age, gestation or egg-placement claims imported from that account.",
+      "admission": "pending_independent_root_review",
+      "operation": "Append only if independently admitted. Preserve prior literal text and avatars.",
+      "media": {
+        "observationId": 153931,
+        "photoId": 211233,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/211233/large.JPG",
+        "localFile": "/tmp/botanical129/211233.jpg",
+        "sourceLocal": "/tmp/botanical129/obs-153931.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/153931",
+        "license": "CC0",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "attribution": "no rights reserved, uploaded by Mark Spangler",
+        "dimensions": [
+          1024,
+          768
+        ],
+        "originalUploadDimensions": [
+          2048,
+          1536
+        ],
+        "bytes": 88119,
+        "sha1": "962df5cef52e8c9eb2dcf404f0403f4498c421e5",
+        "sha256": "54a3107dabce406d04445ba7f952d10c46250557f473e2c8a1e723c3db0f4a27",
+        "seconds": 0.674,
+        "status": 200,
+        "sourcePhotoUrl": "https://www.inaturalist.org/photos/211233",
+        "category": "wildlife",
+        "aggregated": false,
+        "primaryTaxon": "Agalychnis callidryas",
+        "primaryTaxonId": 23702,
+        "qualityGrade": "research",
+        "currentAgreeingIdentifications": 5,
+        "delivery": "Exact source-published large_url, fetched once and individually opened; recorded upload dimensions are source metadata, not a claim that the full upload was decoded."
+      }
+    },
+    {
+      "candidateId": "129-02",
+      "characterId": "ludo-leap",
+      "identityNameBase": "Ludo Leap",
+      "episode": {
+        "subject": "regal jumping spider",
+        "platform": "facebook",
+        "contentType": "post",
+        "theme": "feeding",
+        "title": "The far end of lunch",
+        "body": "I caught the yellow caterpillar near his head and settled on the rough ground.\n\nSomething brushed a leg. I moved it. The touch came again, from the other side.\n\nI turned while keeping hold of dinner. Nothing behind me. I turned farther. The caterpillar swung with me, and a long black hair drew across my foot.\n\nI put one foot on him, farther back, and waited. The touch stopped.\n\nI lifted the foot to make myself comfortable. The hair reached me again.\n\nI kept the foot there while I fed.",
+        "mediaSha1": "776123ed75fc3317199e27a14cd37e459da3a336"
+      },
+      "imageReview": "PASS with a quality qualification for independent review. Exact 768x1024 vertical frame individually opened. Large black-and-white jumping spider holds the head end of a bright yellow tufted caterpillar on granular ground. Spider legs, caterpillar body, tufts and long dark hairs are distinctly readable. Fine spider face detail is darker and less crisp than a studio macro, with some phone processing visible; the physical feeding interaction is substantially clearer than the earlier blurred cactus series. Do not substitute the portrait-only context frames for this feeding image.",
+      "fictionBoundary": "Feeding contact, hairy caterpillar and granular substrate are visible; primary observer explicitly reports later predation on a fir tussock moth caterpillar after moving the spider outside. The approach, settling, repeated touch, turns, exact leg placement and reaction are fiction. The prose calls prey only a caterpillar, not a separately verified species. No claim about stinging hairs, toxin resistance, venom, injury, prey emotion, immobilization time or biting solid food. The joke concerns the hunter being bothered by his own meal, not prey suffering.",
+      "canon": "Full ten-entry Ludo Leap arc and male avatar anchoring reviewed. Existing Phidippus regius, central Florida scrub edge 28.584/-81.379. Source Florida fits home and the photographed black/white spider with green chelicerae is compatible with the male portrait; exact sex is not represented as a new source annotation. Preserve existing name, avatar and all null drafts. New adult feeding event after the earlier molt/reach sequence; no adult remolt. Distinct from failed and successful fly detours: this begins after capture and concerns tactile attention, not route planning. Facebook regular post provides room for the repeated action; no duplicate X entry.",
+      "proseAssessment": "PASS for independent review. A successful hunter repeatedly rearranges himself to get comfortable, then gives up resting one foot. The final action resolves the small physical conflict without an explanatory moral, invented dialogue or prey suffering punchline. Six short paragraphs preserve Ludo's clipped voice while supporting a regular narrative rather than a caption.",
+      "biologySources": [
+        "https://ask.ifas.ufl.edu/publication/IN309"
+      ],
+      "biologyEvidence": "University of Florida IFAS exact-species account independently opened: Florida occurrence, adult male appearance and insect predation are documented. Primary observation currently research grade with four agreeing species IDs and explicit caterpillar feeding report. Leg-contact sequence is restrained fiction around pictured hairs and predator/prey contact, not a claimed experimental observation.",
+      "admission": "pending_independent_root_review",
+      "operation": "Append only if independently admitted. Preserve prior literal text and avatars.",
+      "media": {
+        "observationId": 204156165,
+        "photoId": 360815827,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/360815827/large.jpg",
+        "localFile": "/tmp/botanical129/360815827.jpg",
+        "sourceLocal": "/tmp/botanical129/obs-204156165.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/204156165",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) Eldritch, some rights reserved (CC BY), uploaded by Eldritch",
+        "dimensions": [
+          768,
+          1024
+        ],
+        "originalUploadDimensions": [
+          1536,
+          2048
+        ],
+        "bytes": 431634,
+        "sha1": "776123ed75fc3317199e27a14cd37e459da3a336",
+        "sha256": "88d286e1a90e71b526e6956137f931446bdae78a74d96f93f014fc3c108847ff",
+        "seconds": 0.791,
+        "status": 200,
+        "sourcePhotoUrl": "https://www.inaturalist.org/photos/360815827",
+        "category": "wildlife",
+        "aggregated": false,
+        "primaryTaxon": "Phidippus regius",
+        "primaryTaxonId": 179749,
+        "qualityGrade": "research",
+        "currentAgreeingIdentifications": 4,
+        "delivery": "Exact source-published large_url, fetched once and individually opened; recorded upload dimensions are source metadata, not a claim that the full upload was decoded."
+      }
+    }
+  ],
+  "reviewedExactImages": 16,
+  "reviewedMedia": [
+    {
+      "observationId": 153931,
+      "photoId": 211233,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/211233/large.JPG",
+      "localFile": "/tmp/botanical129/211233.jpg",
+      "sourceLocal": "/tmp/botanical129/obs-153931.json",
+      "sourceUrl": "https://www.inaturalist.org/observations/153931",
+      "license": "CC0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "attribution": "no rights reserved, uploaded by Mark Spangler",
+      "dimensions": [
+        1024,
+        768
+      ],
+      "originalUploadDimensions": [
+        2048,
+        1536
+      ],
+      "bytes": 88119,
+      "sha1": "962df5cef52e8c9eb2dcf404f0403f4498c421e5",
+      "sha256": "54a3107dabce406d04445ba7f952d10c46250557f473e2c8a1e723c3db0f4a27",
+      "seconds": 0.674,
+      "status": 200
+    },
+    {
+      "observationId": 101602835,
+      "photoId": 169703933,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/169703933/large.jpeg",
+      "localFile": "/tmp/botanical129/169703933.jpg",
+      "sourceLocal": "/tmp/botanical129/obs-101602835.json",
+      "sourceUrl": "https://www.inaturalist.org/observations/101602835",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "attribution": "(c) Ben Machado, some rights reserved (CC BY), uploaded by Ben Machado",
+      "dimensions": [
+        1024,
+        768
+      ],
+      "originalUploadDimensions": [
+        2048,
+        1536
+      ],
+      "bytes": 198282,
+      "sha1": "0282b18b33f737454d03ef8f6356297e9bb59124",
+      "sha256": "53ffcf7935fa59b9615852146fd32ed473b2eb469304b4621a1393e30c0ed3e6",
+      "seconds": 0.714,
+      "status": 200
+    },
+    {
+      "observationId": 101602835,
+      "photoId": 169703958,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/169703958/large.jpeg",
+      "localFile": "/tmp/botanical129/169703958.jpg",
+      "sourceLocal": "/tmp/botanical129/obs-101602835.json",
+      "sourceUrl": "https://www.inaturalist.org/observations/101602835",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "attribution": "(c) Ben Machado, some rights reserved (CC BY), uploaded by Ben Machado",
+      "dimensions": [
+        1024,
+        768
+      ],
+      "originalUploadDimensions": [
+        2048,
+        1536
+      ],
+      "bytes": 229197,
+      "sha1": "9009e6539c14a33e718b34721ed5cfa2febdb550",
+      "sha256": "cc731eb75a24d859b79589212201b8b9bf489a7c794fd2e761fef0455b231064",
+      "seconds": 0.684,
+      "status": 200
+    },
+    {
+      "observationId": 101602835,
+      "photoId": 169703969,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/169703969/large.jpeg",
+      "localFile": "/tmp/botanical129/169703969.jpg",
+      "sourceLocal": "/tmp/botanical129/obs-101602835.json",
+      "sourceUrl": "https://www.inaturalist.org/observations/101602835",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "attribution": "(c) Ben Machado, some rights reserved (CC BY), uploaded by Ben Machado",
+      "dimensions": [
+        1024,
+        768
+      ],
+      "originalUploadDimensions": [
+        2048,
+        1536
+      ],
+      "bytes": 251186,
+      "sha1": "6bfc14bcf4d636d68e77df22d172eecc6321020e",
+      "sha256": "7b84dd6d2a85875c69b760f6bb5236bb386e31d984dedf096cbeb9d6bf5de208",
+      "seconds": 0.741,
+      "status": 200
+    },
+    {
+      "observationId": 204156165,
+      "photoId": 360815292,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/360815292/large.jpg",
+      "localFile": "/tmp/botanical129/360815292.jpg",
+      "sourceLocal": "/tmp/botanical129/obs-204156165.json",
+      "sourceUrl": "https://www.inaturalist.org/observations/204156165",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "attribution": "(c) Eldritch, some rights reserved (CC BY), uploaded by Eldritch",
+      "dimensions": [
+        768,
+        1024
+      ],
+      "originalUploadDimensions": [
+        1536,
+        2048
+      ],
+      "bytes": 199686,
+      "sha1": "15e1247c70adad36046571b3ae1dc78cf51ece50",
+      "sha256": "1ca3ee33ada5b1a8098da1d0c041dbcff62e6be326407dd7587f70c3c7d26d9d",
+      "seconds": 0.721,
+      "status": 200
+    },
+    {
+      "observationId": 204156165,
+      "photoId": 360815737,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/360815737/large.jpg",
+      "localFile": "/tmp/botanical129/360815737.jpg",
+      "sourceLocal": "/tmp/botanical129/obs-204156165.json",
+      "sourceUrl": "https://www.inaturalist.org/observations/204156165",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "attribution": "(c) Eldritch, some rights reserved (CC BY), uploaded by Eldritch",
+      "dimensions": [
+        1024,
+        768
+      ],
+      "originalUploadDimensions": [
+        2048,
+        1536
+      ],
+      "bytes": 363293,
+      "sha1": "123f2fab5851a2ca1dc772a90a45e7271ca31735",
+      "sha256": "7a38e6080a70c7de9e2ac0cf9c541405615d0d667a74f6e3e10b6c0f57a67d5f",
+      "seconds": 0.69,
+      "status": 200
+    },
+    {
+      "observationId": 204156165,
+      "photoId": 360815827,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/360815827/large.jpg",
+      "localFile": "/tmp/botanical129/360815827.jpg",
+      "sourceLocal": "/tmp/botanical129/obs-204156165.json",
+      "sourceUrl": "https://www.inaturalist.org/observations/204156165",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "attribution": "(c) Eldritch, some rights reserved (CC BY), uploaded by Eldritch",
+      "dimensions": [
+        768,
+        1024
+      ],
+      "originalUploadDimensions": [
+        1536,
+        2048
+      ],
+      "bytes": 431634,
+      "sha1": "776123ed75fc3317199e27a14cd37e459da3a336",
+      "sha256": "88d286e1a90e71b526e6956137f931446bdae78a74d96f93f014fc3c108847ff",
+      "seconds": 0.791,
+      "status": 200
+    },
+    {
+      "observationId": 170523483,
+      "photoId": 295768805,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/295768805/large.jpeg",
+      "localFile": "/tmp/botanical129/295768805.jpg",
+      "sourceLocal": "/tmp/botanical129/obs-170523483.json",
+      "sourceUrl": "https://www.inaturalist.org/observations/170523483",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "attribution": "(c) M Funnell, some rights reserved (CC BY), uploaded by M Funnell",
+      "dimensions": [
+        600,
+        450
+      ],
+      "originalUploadDimensions": [
+        600,
+        450
+      ],
+      "bytes": 129247,
+      "sha1": "8f6c77f41c4c2dc4ef0c0be299d993e7eb59fde2",
+      "sha256": "27c4855900474833d4cf0e49c7954b5da81e1bca0cb2a3fa1562001fd5a84d80",
+      "seconds": 0.608,
+      "status": 200
+    },
+    {
+      "observationId": 96340819,
+      "photoId": 160041513,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/160041513/large.jpeg",
+      "localFile": "/tmp/botanical129/160041513.jpg",
+      "sourceLocal": "/tmp/botanical129/obs-96340819.json",
+      "sourceUrl": "https://www.inaturalist.org/observations/96340819",
+      "license": "CC0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "attribution": "no rights reserved, uploaded by Daria",
+      "dimensions": [
+        1024,
+        668
+      ],
+      "originalUploadDimensions": [
+        2048,
+        1336
+      ],
+      "bytes": 270724,
+      "sha1": "987940bd34e84a1b3c9f23d4c169ce7dc2be34f5",
+      "sha256": "58d592551e3ad5397690aeba4c56dd750127506460183271d25ef1eb590bcf62",
+      "seconds": 0.702,
+      "status": 200
+    },
+    {
+      "observationId": 148812284,
+      "photoId": 256333017,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/256333017/large.jpg",
+      "localFile": "/tmp/botanical129/256333017.jpg",
+      "sourceLocal": "/tmp/botanical129/obs-148812284.json",
+      "sourceUrl": "https://www.inaturalist.org/observations/148812284",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "attribution": "(c) Piotr Lukasik, some rights reserved (CC BY), uploaded by Piotr Lukasik",
+      "dimensions": [
+        1024,
+        768
+      ],
+      "originalUploadDimensions": [
+        1920,
+        1440
+      ],
+      "bytes": 255948,
+      "sha1": "b5f08a6c3f17558284f5e13ceb3629ae2abaceee",
+      "sha256": "1706a8884f1c80ee5ac288a55480bdd46467a032b447d8175db545b6b4d7db4e",
+      "seconds": 0.646,
+      "status": 200
+    },
+    {
+      "observationId": 111536746,
+      "photoId": 188286646,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/188286646/large.jpg",
+      "localFile": "/tmp/botanical129/188286646.jpg",
+      "sourceLocal": "/tmp/botanical129/obs-111536746.json",
+      "sourceUrl": "https://www.inaturalist.org/observations/111536746",
+      "license": "CC0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "attribution": "no rights reserved, uploaded by Marius Burger",
+      "dimensions": [
+        1024,
+        644
+      ],
+      "originalUploadDimensions": [
+        2048,
+        1288
+      ],
+      "bytes": 187541,
+      "sha1": "7677a3cac0a228bb7e54c9bb5f7131f89cf9fd85",
+      "sha256": "508d1ce0bd994d869f8e570b5f178b6988d35c80dc5e2ad3b6c9e8a881c904c0",
+      "seconds": 0.576,
+      "status": 200
+    },
+    {
+      "observationId": 111536746,
+      "photoId": 188286585,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/188286585/large.jpg",
+      "localFile": "/tmp/botanical129/188286585.jpg",
+      "sourceLocal": "/tmp/botanical129/obs-111536746.json",
+      "sourceUrl": "https://www.inaturalist.org/observations/111536746",
+      "license": "CC0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "attribution": "no rights reserved, uploaded by Marius Burger",
+      "dimensions": [
+        1024,
+        677
+      ],
+      "originalUploadDimensions": [
+        2048,
+        1353
+      ],
+      "bytes": 172364,
+      "sha1": "a18310d3f661a50aa0c447bd6ba9072f8bdbcf36",
+      "sha256": "235fb8a5392bcc99ba42f296d1ebceff809428e338dbfeac93a474e3cdfde7e7",
+      "seconds": 0.603,
+      "status": 200
+    },
+    {
+      "observationId": 111536746,
+      "photoId": 188287316,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/188287316/large.jpg",
+      "localFile": "/tmp/botanical129/188287316.jpg",
+      "sourceLocal": "/tmp/botanical129/obs-111536746.json",
+      "sourceUrl": "https://www.inaturalist.org/observations/111536746",
+      "license": "CC0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "attribution": "no rights reserved, uploaded by Marius Burger",
+      "dimensions": [
+        1024,
+        679
+      ],
+      "originalUploadDimensions": [
+        2048,
+        1357
+      ],
+      "bytes": 203005,
+      "sha1": "20122eb5631317a11a8ad44e883411edb8004564",
+      "sha256": "1e4f20fb6a89268fa8d941e077f688b8dab06055162c10ea3d04c06c8473b62b",
+      "seconds": 0.677,
+      "status": 200
+    },
+    {
+      "observationId": 111536746,
+      "photoId": 188289705,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/188289705/large.jpg",
+      "localFile": "/tmp/botanical129/188289705.jpg",
+      "sourceLocal": "/tmp/botanical129/obs-111536746.json",
+      "sourceUrl": "https://www.inaturalist.org/observations/111536746",
+      "license": "CC0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "attribution": "no rights reserved, uploaded by Marius Burger",
+      "dimensions": [
+        1024,
+        678
+      ],
+      "originalUploadDimensions": [
+        2048,
+        1356
+      ],
+      "bytes": 201259,
+      "sha1": "531ecf162951cc1edf2923b804ba7a9635468300",
+      "sha256": "00a58db22ea01dc6623fdbf1eafa7e48bf5cc9fba819af071ad5e90062e516bf",
+      "seconds": 0.633,
+      "status": 200
+    },
+    {
+      "observationId": 204156165,
+      "photoId": 360815805,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/360815805/large.jpg",
+      "localFile": "/tmp/botanical129/360815805.jpg",
+      "sourceLocal": "/tmp/botanical129/obs-204156165.json",
+      "sourceUrl": "https://www.inaturalist.org/observations/204156165",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "attribution": "(c) Eldritch, some rights reserved (CC BY), uploaded by Eldritch",
+      "dimensions": [
+        1024,
+        768
+      ],
+      "originalUploadDimensions": [
+        2048,
+        1536
+      ],
+      "bytes": 351590,
+      "sha1": "fbd51620259f46022bfc19f4c6251219cd0d900d",
+      "sha256": "5a4b9cf5843c31f0fbd9f397706dd84f0916f2c0fccc939250b2ee8fcc81d09a",
+      "seconds": 0.618,
+      "status": 200
+    },
+    {
+      "observationId": 204156165,
+      "photoId": 360815778,
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/360815778/large.jpg",
+      "localFile": "/tmp/botanical129/360815778.jpg",
+      "sourceLocal": "/tmp/botanical129/obs-204156165.json",
+      "sourceUrl": "https://www.inaturalist.org/observations/204156165",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "attribution": "(c) Eldritch, some rights reserved (CC BY), uploaded by Eldritch",
+      "dimensions": [
+        1024,
+        768
+      ],
+      "originalUploadDimensions": [
+        2048,
+        1536
+      ],
+      "bytes": 364231,
+      "sha1": "d49908047b6cd979bde2436121c0ded92eb7dede",
+      "sha256": "035bb9b794417e8aba6cd668079fff6565010ac045ab3ca9fe78da7a38dd5805",
+      "seconds": 0.647,
+      "status": 200
+    }
+  ],
+  "holds": [
+    {
+      "photoIds": [
+        169703933,
+        169703958,
+        169703969
+      ],
+      "verdict": "image_hold",
+      "reason": "Additional frames of old101602835 remain motion-blurred; no retry or source bypass. No new prose was attached."
+    },
+    {
+      "photoIds": [
+        360815292,
+        360815737,
+        360815805,
+        360815778
+      ],
+      "verdict": "context_only",
+      "reason": "Same new204156165 observation before outdoor feeding: spider on office/fabric surfaces. Individually opened; useful identity and provenance context, but not substitutes for the feeding event."
+    },
+    {
+      "photoIds": [
+        295768805
+      ],
+      "verdict": "image_and_scene_hold",
+      "reason": "Small 600x450 weevil portrait on pale fabric, already weak in104; no visible acorn interaction."
+    },
+    {
+      "photoIds": [
+        160041513
+      ],
+      "verdict": "scene_hold",
+      "reason": "Two fallen acorns with holes, no insect or larva. Photograph alone does not securely identify the maker of each hole or supply a visible Ottilie event."
+    },
+    {
+      "photoIds": [
+        256333017
+      ],
+      "verdict": "canon_and_scene_hold",
+      "reason": "Bright green panther chameleon portrait does not securely satisfy female Cora appearance and offers no distinct event."
+    },
+    {
+      "photoIds": [
+        188286646,
+        188286585,
+        188287316,
+        188289705
+      ],
+      "verdict": "overlap_hold",
+      "reason": "Exact primary record reports female digging and egg laying. Last two images have strong clear face/earth detail. Full current Cora arc now includes admitted Back above ground, media20122eb5631317a11a8ad44e883411edb8004564, covering digging, laying, covering and regained branch grip. Preserve that body. Do not add another exposure of the same reproductive mechanism simply because these images are useful."
+    }
+  ],
+  "scope": "Only129 documents and task-local sources. No runtime changes, new identities, admissions or publication.",
+  "blockedSource": "https://panamabiota.org/stri/taxa/index.php?tid=10678 returned429 in web open. Stopped without retry or bypass. Independent primary research dataset used for the restricted mate-choice claim.",
+  "validation": "All sixteen exact downloaded files individually opened, hashes and dimensions recorded. JSON parse, exact hash checks, new-title and image-reuse checks passed. Runtime untouched."
+}

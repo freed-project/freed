@@ -1,29 +1,57 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm, symlink, truncate, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, symlink, truncate, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
 import {
   SHOWCASE_ASSET_FILENAMES,
+  SHOWCASE_THEME_IDS,
+  SHOWCASE_FRAME_IDS,
   SHOWCASE_MANIFEST_FILENAME,
   MAX_SHOWCASE_ASSET_BYTES,
   finalizeShowcaseManifest,
   resolveShowcaseReleaseIdentity,
   verifyPublishedShowcaseAssets,
+  readShowcaseMediaCatalog,
 } from "./lib/release-showcase-assets.mjs";
 
 const repository = "freed-project/freed";
 const tag = "v26.9.0500";
 const checkoutSha = "a".repeat(40);
+const captureContract = {
+  sourceDirty: false, transparentCanvas: true, desktopZoom: 120, mobileZoom: 100,
+  deviceScaleFactor: 2,
+  encoding: { format: "webp", quality: 90, width: 1920, height: 1280, loop: 0, durationMs: 3000 },
+  captures: SHOWCASE_THEME_IDS.flatMap(theme => SHOWCASE_FRAME_IDS.map(frame => ({
+    theme, file: `freed-showcase-${frame}-${theme}.png`,
+    mobile: frame === "stories" || frame === "reader",
+    desktopDecoration: { placement: "outside-content", captureBorderWidth: 7, captureRadius: 20 },
+    mobileDecoration: { placement: "outside-content", captureBorderWidth: 7, captureRadius: 44 },
+    rendererDiagnostics: { renderer: "raw-webgpu", decorativeStarCount: 100 },
+  }))),
+};
+
+test("showcase media admission follows exact reviewed catalog URLs", async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "freed-showcase-catalog-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const known = "https://images.example/photos/approved";
+  await writeFile(path.join(directory, "sample-corpus-reviewed-media.json"), JSON.stringify([
+    { imageUrl: known, sourceUrl: "https://images.example/unreviewed-page" },
+    { imageUrl: "http://images.example/insecure.jpg" },
+  ]));
+  await writeFile(path.join(directory, "unrelated.json"), JSON.stringify([{ imageUrl: "https://images.example/other.jpg" }]));
+  assert.deepEqual([...await readShowcaseMediaCatalog(directory)], [known]);
+});
 
 async function fixture(t, manifestOverrides = {}) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "freed-showcase-assets-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   await writeFile(
     path.join(directory, SHOWCASE_MANIFEST_FILENAME),
-    `${JSON.stringify({ schemaVersion: 1, captures: [], releaseTag: tag, releaseSha: checkoutSha, contentCounts: { total: 1_000, regular: 900, stories: 100 }, ...manifestOverrides })}\n`,
+    `${JSON.stringify({ schemaVersion: 1, ...captureContract, releaseTag: tag, releaseSha: checkoutSha, contentCounts: { total: 500, regular: 397, stories: 103 }, ...manifestOverrides })}\n`,
   );
   for (const [index, filename] of SHOWCASE_ASSET_FILENAMES.entries()) {
     await writeFile(path.join(directory, filename), `${filename}:${index}`);
@@ -56,7 +84,7 @@ test("finalizes only the exact regular showcase assets with release and latest U
     checkoutSha,
   });
 
-  assert.equal(finalized.assets.length, 6);
+  assert.equal(finalized.assets.length, SHOWCASE_THEME_IDS.length);
   assert.equal(finalized.corpusStage, "complete");
   assert.deepEqual(finalized.assets.map((asset) => asset.filename), SHOWCASE_ASSET_FILENAMES);
   for (const asset of finalized.assets) {
@@ -76,6 +104,8 @@ test("finalization rejects symlinked assets and mismatched capture identity", as
   for (const contentCounts of [undefined, { total: 241, regular: 203, stories: 39 },
     { total: 1_000, regular: 1_000, stories: 0 },
     { total: 1_100, regular: 1_000, stories: 100 },
+    { total: 500, regular: 396, stories: 104 },
+    { total: 500, regular: 398, stories: 102 },
     { total: "1000", regular: "900", stories: "100" }]) {
     const incomplete = await fixture(t, { contentCounts });
     await assert.rejects(
@@ -124,6 +154,19 @@ test("finalization rejects symlinked assets and mismatched capture identity", as
   );
 });
 
+test("release manifests reject missing themes, reordered frames and stale capture settings", async (t) => {
+  for (const override of [
+    { sourceDirty: true }, { transparentCanvas: false }, { desktopZoom: 100 },
+    { encoding: { ...captureContract.encoding, quality: 80 } },
+    { captures: captureContract.captures.slice(6) },
+    { captures: [...captureContract.captures].reverse() },
+    { captures: captureContract.captures.map((capture, index) => index === 0 ? { ...capture, retainedFromCapture: "earlier" } : capture) },
+  ]) {
+    const directory = await fixture(t, override);
+    await assert.rejects(finalizeShowcaseManifest({ outputDirectory: directory, repository, tag, ref: `refs/tags/${tag}`, checkoutSha }), /Showcase/);
+  }
+});
+
 test("functional releases retain truthful interim counts and cannot claim corpus completion", async (t) => {
   const contentCounts = { total: 241, regular: 202, stories: 39 };
   const directory = await fixture(t, { contentCounts });
@@ -158,9 +201,9 @@ test("public verifier checks both URL variants and rejects bounded or mismatched
       return streamResponse(bytesByUrl.get(url));
     },
   });
-  assert.equal(result.assetsVerified, 6);
-  assert.equal(result.downloadsVerified, 12);
-  assert.equal(requested.length, 12);
+  assert.equal(result.assetsVerified, SHOWCASE_ASSET_FILENAMES.length);
+  assert.equal(result.downloadsVerified, SHOWCASE_ASSET_FILENAMES.length * 2);
+  assert.equal(requested.length, SHOWCASE_ASSET_FILENAMES.length * 2);
   let incompleteFetches = 0;
   await assert.rejects(verifyPublishedShowcaseAssets({
     manifest: { ...manifest, contentCounts: { total: 1_000, regular: 1_000, stories: 0 } },
@@ -173,7 +216,7 @@ test("public verifier checks both URL variants and rejects bounded or mismatched
     manifest: interim,
     fetchImpl: async url => streamResponse(bytesByUrl.get(url)),
   });
-  assert.equal(interimResult.downloadsVerified, 12);
+  assert.equal(interimResult.downloadsVerified, SHOWCASE_ASSET_FILENAMES.length * 2);
   await assert.rejects(verifyPublishedShowcaseAssets({
     manifest: { ...interim, corpusStage: "complete" },
     fetchImpl: async () => { throw new Error("Invalid stage must fail before any download"); },
@@ -212,4 +255,68 @@ test("public verifier checks both URL variants and rejects bounded or mismatched
     }),
     /integrity mismatch/,
   );
+});
+
+// Tier 1 tooling: a failed local export must never replace the reviewed animation.
+test("local showcase rejects invalid themes and preserves the last animation on encoder failure", async (t) => {
+  const directory = await fixture(t);
+  const invalid = spawnSync(process.execPath, ["scripts/build-showcase-local.mjs", "--theme", "unknown", "--output", directory], { encoding: "utf8" });
+  assert.notEqual(invalid.status, 0);
+  assert.match(invalid.stderr, /Unknown theme/);
+  const themeDirectory = path.join(directory, "midas");
+  await mkdir(themeDirectory);
+  const captures = Array.from({ length: 6 }, (_, index) => ({ theme: "midas", file: `frame-${index}.png` }));
+  for (const capture of captures) await writeFile(path.join(themeDirectory, capture.file), "fixture frame");
+  await writeFile(path.join(themeDirectory, "freed-showcase-manifest.json"), JSON.stringify({ transparentCanvas: true, sourcePixelWidth: 2880, captures, gifOrder: captures.map(c => c.file) }));
+  await writeFile(path.join(themeDirectory, "freed-showcase-midas.webp"), "reviewed WebP");
+  await writeFile(path.join(themeDirectory, "latest.json"), "reviewed manifest");
+  const failed = spawnSync(process.execPath, ["scripts/build-showcase-local.mjs", "--theme", "midas", "--encode-only", "--output", directory], {
+    encoding: "utf8", env: { ...process.env, FFMPEG_PATH: path.join(directory, "missing-encoder") },
+  });
+  assert.notEqual(failed.status, 0);
+  assert.equal(await readFile(path.join(themeDirectory, "freed-showcase-midas.webp"), "utf8"), "reviewed WebP");
+  assert.equal(await readFile(path.join(themeDirectory, "latest.json"), "utf8"), "reviewed manifest");
+});
+
+// Tier 1: the local capture command must reject remote destinations before
+// opening a browser or creating artifacts. No network fixture is needed.
+test("local capture rejects non-loopback destinations before capture", async (t) => {
+  const directory = await fixture(t);
+  const output = path.join(directory, "uncreated");
+  const result = spawnSync(process.execPath, ["scripts/capture-showcase-local.mjs"], {
+    encoding: "utf8",
+    env: { ...process.env, FREED_SHOWCASE_URL: "https://example.invalid", FREED_SHOWCASE_OUTPUT: output, FREED_SHOWCASE_DESKTOP_ONLY: "0" },
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Local capture requires a loopback URL/);
+  await assert.rejects(readFile(path.join(output, "freed-showcase-manifest.json")), { code: "ENOENT" });
+});
+
+// Tier 1: publication must bind the review page to immutable frame copies.
+// Encoding quality is covered by decoded-image review; this stub isolates the
+// file publication contract from the host's FFmpeg installation.
+test("local export publishes a usable review index and immutable source frames", async (t) => {
+  const directory = await fixture(t);
+  const themeDirectory = path.join(directory, "midas");
+  await mkdir(themeDirectory);
+  const captures = Array.from({ length: 6 }, (_, index) => ({ theme: "midas", file: `frame-${index}.png` }));
+  for (const capture of captures) await writeFile(path.join(themeDirectory, capture.file), "reviewed frame");
+  await writeFile(path.join(themeDirectory, "freed-showcase-manifest.json"), JSON.stringify({ transparentCanvas: true, sourcePixelWidth: 2880, captures, gifOrder: captures.map(c => c.file) }));
+  const encoder = path.join(directory, "encoder");
+  await writeFile(encoder, `#!${process.execPath}\nrequire('node:fs').writeFileSync(process.argv.at(-1), 'encoded fixture');\n`);
+  await chmod(encoder, 0o755);
+  const result = spawnSync(process.execPath, ["scripts/build-showcase-local.mjs", "--theme", "midas", "--encode-only", "--output", directory], {
+    encoding: "utf8", env: { ...process.env, FFMPEG_PATH: encoder },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const [published] = JSON.parse(await readFile(path.join(directory, "index.json"), "utf8"));
+  assert.equal(published.format, "webp");
+  assert.equal(published.quality, 90);
+  assert.equal(published.width, 1920);
+  assert.equal(published.height, 1280);
+  assert.equal(published.variants[0].url, published.animation);
+  assert.equal(await readFile(path.join(directory, published.animation), "utf8"), "encoded fixture");
+  assert.equal(await readFile(path.join(directory, "index.html"), "utf8"), await readFile("scripts/showcase-local-preview.html", "utf8"));
+  await writeFile(path.join(themeDirectory, captures[0].file), "later capture");
+  assert.equal(await readFile(path.join(themeDirectory, "revisions", published.revision, captures[0].file), "utf8"), "reviewed frame");
 });

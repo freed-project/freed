@@ -1,0 +1,23 @@
+{
+  "binaryOrder": [
+    "account:A",
+    "account:a",
+    "account:é",
+    "account:",
+    "account:𐀀"
+  ],
+  "invalidLocaleOrder": [
+    "account:a",
+    "account:A",
+    "account:é",
+    "account:",
+    "account:𐀀"
+  ],
+  "invalidUtf16Order": [
+    "account:A",
+    "account:a",
+    "account:é",
+    "account:𐀀",
+    "account:"
+  ]
+}

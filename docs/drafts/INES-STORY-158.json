@@ -1,0 +1,42 @@
+{
+  "status": "root_authored_pending_independent_review",
+  "characterId": "ines-inkcap",
+  "identityNameBase": "Ines Inkcap",
+  "episode": {
+    "subject": "Inca tern pair on a rocky ledge",
+    "platform": "instagram",
+    "contentType": "story",
+    "theme": "courtship",
+    "title": "Both feet on the rock",
+    "body": "He put one foot on my back. I waited for the other. Then all the flapping began.\n\nI looked round.\n\nHe was concentrating so hard that I kept still. Even when the tip of his wing brushed my face.\n\nAfterward he stood beside me with both feet on the rock. I leaned into him. He wobbled again.",
+    "mediaSha1": "676abc2d87a30092804dae9a3835796d594f33f0"
+  },
+  "media": {
+    "observationId": 67525941,
+    "photo": {
+      "id": 109118056,
+      "license_code": "cc-by",
+      "original_dimensions": {
+        "width": 1618,
+        "height": 1080
+      },
+      "url": "https://inaturalist-open-data.s3.amazonaws.com/photos/109118056/square.jpg",
+      "attribution": "(c) Darío De la Fuente, some rights reserved (CC BY)",
+      "flags": [],
+      "moderator_actions": [],
+      "hidden": false
+    },
+    "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/109118056/large.jpg",
+    "localPath": "/tmp/freed-ines158/109118056.jpg",
+    "sha1": "676abc2d87a30092804dae9a3835796d594f33f0",
+    "sha256": "ce42b362d7683720959fa9c855bacb4317b4f98a3f26f132be7e6e46da2f9123",
+    "bytes": 370596,
+    "dimensions": [
+      1024,
+      684
+    ],
+    "sourceUrl": "https://www.inaturalist.org/observations/67525941",
+    "primaryMetadataPath": "/tmp/freed-ines158/search.json"
+  },
+  "review": "Root opened all six downloaded source images individually and read all eleven Ines episodes. Exact source109118056 is sharp, well composed and shows mounting, wings spread, both feet against lower bird and her head turned toward him. This is an actual mating context, not a landing error. Ines is cast as lower female and existing unnamed male friend as partner; identities, intent, sequential foot placement, wing brushing, aftermath and wobbling are fictional. No eggs, successful fertilization or lifetime pairing claim. Existing Punta San Juan home and avatar preserved; Concon Chile source provenance is compatible but does not move home. Original observer explicitly reports reproductive/territorial behavior, chick feeding and copulation. Primary identification Larosterna inca. No automatic translation of all source behaviors to this photo. Preserve all original words and chronology; append adult breeding episode."
+}

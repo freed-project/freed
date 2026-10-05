@@ -1,4 +1,4 @@
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import {
   chromium,
@@ -29,6 +29,14 @@ if (!supportedTargets.includes(requestedTarget as 256 | 25_000 | 100_000)) {
 }
 
 const target = requestedTarget as 256 | 25_000 | 100_000;
+const testTimeoutMs = Number(
+  process.env.FREED_PWA_CORPUS_TEST_TIMEOUT_MS ?? "3600000",
+);
+if (!Number.isSafeInteger(testTimeoutMs) || testTimeoutMs < 1_000) {
+  throw new Error(
+    "FREED_PWA_CORPUS_TEST_TIMEOUT_MS must be an integer of at least 1000",
+  );
+}
 const milestones =
   target === smokeTarget
     ? [smokeTarget]
@@ -38,11 +46,66 @@ const reportPath = resolve(
   process.env.FREED_PWA_CORPUS_REPORT ??
     "test-results/pwa-library-corpus-hardening.json",
 );
+const progressPath = resolve(
+  process.cwd(),
+  process.env.FREED_PWA_CORPUS_PROGRESS_REPORT ??
+    "test-results/pwa-library-corpus-hardening-progress.json",
+);
+
+type ProgressStage =
+  | "context_launch_pending"
+  | "context_opened"
+  | "legal_gate_pending"
+  | "legal_gate_accepted"
+  | "library_open_pending"
+  | "library_opened"
+  | "add_items_pending"
+  | "add_items_resolved"
+  | "milestone_verified"
+  | "complete";
+
+interface WorkerResponseSummary {
+  readonly kind:
+    "boolean" | "null" | "number" | "object" | "string" | "undefined";
+  readonly keys?: readonly string[];
+  readonly value?: boolean | number | string;
+}
+
+interface CorpusProgressUpdate {
+  readonly batchNumber: number;
+  readonly lastSuccessfulWorkerResponse: WorkerResponseSummary | null;
+  readonly operationStage: ProgressStage;
+  readonly recordCount: number;
+}
 
 interface BrowserLibraryCore {
-  addItems(items: unknown[]): Promise<void>;
+  addItems(items: unknown[]): Promise<unknown>;
   facetSummary(): Promise<{ totalCount: number }>;
   queryNormalized(query: unknown): Promise<unknown>;
+}
+
+async function writeProgress(
+  startedAtMs: number,
+  update: CorpusProgressUpdate,
+): Promise<void> {
+  const receipt = {
+    batchNumber: update.batchNumber,
+    browserEngine: pwaCorpusHardeningBrowser,
+    elapsedMs: Date.now() - startedAtMs,
+    generatedAt: new Date().toISOString(),
+    lastSuccessfulWorkerResponse: update.lastSuccessfulWorkerResponse,
+    operationStage: update.operationStage,
+    recordCount: update.recordCount,
+    schemaVersion: 1,
+    target,
+  };
+  const temporaryPath = `${progressPath}.tmp`;
+  await mkdir(dirname(progressPath), { recursive: true });
+  await writeFile(temporaryPath, `${JSON.stringify(receipt, null, 2)}\n`, {
+    encoding: "utf8",
+    mode: 0o600,
+  });
+  await rename(temporaryPath, progressPath);
 }
 
 interface MemorySample {
@@ -75,35 +138,65 @@ interface MilestoneReport {
   };
 }
 
-async function acceptLegalGate(page: Page): Promise<void> {
+async function acceptLegalGate(page: Page): Promise<boolean> {
   const accept = page.getByTestId("legal-gate-accept");
-  if (!(await accept.isVisible({ timeout: 5_000 }).catch(() => false))) return;
-  await page.getByRole("checkbox").check();
-  await expect(accept).toBeEnabled();
-  await accept.click();
+  await page.waitForFunction(
+    () => {
+      const current = window as unknown as Record<string, unknown>;
+      const store = current.__FREED_STORE__ as
+        { getState(): { isInitialized: boolean } } | undefined;
+      return (
+        document.querySelector('[data-testid="legal-gate-accept"]') !== null ||
+        (store?.getState().isInitialized === true &&
+          typeof current.__FREED_LIBRARY_CORE__ === "object")
+      );
+    },
+    undefined,
+    { timeout: 30_000 },
+  );
+  if (!(await accept.isVisible())) return false;
+  await page.getByRole("checkbox").check({ timeout: 15_000 });
+  await expect(accept).toBeEnabled({ timeout: 15_000 });
+  await accept.click({ timeout: 15_000 });
+  return true;
 }
 
-async function openLibrary(page: Page): Promise<void> {
+async function openLibrary(
+  page: Page,
+  writeStartupProgress: (stage: ProgressStage) => Promise<void>,
+): Promise<void> {
   await page.goto(pwaCorpusHardeningBaseUrl);
-  await acceptLegalGate(page);
-  await page.waitForFunction(() => {
-    const current = window as unknown as Record<string, unknown>;
-    const store = current.__FREED_STORE__ as
-      { getState(): { isInitialized: boolean } } | undefined;
-    return (
-      store?.getState().isInitialized === true &&
-      typeof current.__FREED_LIBRARY_CORE__ === "object"
-    );
-  });
+  await writeStartupProgress("legal_gate_pending");
+  if (await acceptLegalGate(page)) {
+    await writeStartupProgress("legal_gate_accepted");
+  }
+  await writeStartupProgress("library_open_pending");
+  await page.waitForFunction(
+    () => {
+      const current = window as unknown as Record<string, unknown>;
+      const store = current.__FREED_STORE__ as
+        { getState(): { isInitialized: boolean } } | undefined;
+      return (
+        store?.getState().isInitialized === true &&
+        typeof current.__FREED_LIBRARY_CORE__ === "object"
+      );
+    },
+    undefined,
+    { timeout: 120_000 },
+  );
 }
 
 async function seedUntil(
   page: Page,
   from: number,
   to: number,
-): Promise<number | null> {
+  previousWorkerResponse: WorkerResponseSummary | null,
+): Promise<{
+  lastSuccessfulWorkerResponse: WorkerResponseSummary | null;
+  sampledPeakPageHeapBytes: number | null;
+}> {
   return page.evaluate(
-    async ({ start, end }) => {
+    async ({ start, end, previousResponse }) => {
       const library = (window as unknown as Record<string, unknown>)
         .__FREED_LIBRARY_CORE__ as BrowserLibraryCore;
       const batchSize = 128;
@@ -112,8 +205,31 @@ async function seedUntil(
         memory?: { usedJSHeapSize: number };
       };
       let sampledPeakPageHeapBytes: number | null = null;
+      let lastSuccessfulWorkerResponse = previousResponse;
+      const publishProgress = (window as unknown as Record<string, unknown>)
+        .__FREED_CORPUS_PROGRESS__ as (
+        update: CorpusProgressUpdate,
+      ) => Promise<void>;
+      const summarizeWorkerResponse = (
+        value: unknown,
+      ): WorkerResponseSummary => {
+        if (value === undefined) return { kind: "undefined" };
+        if (value === null) return { kind: "null" };
+        if (typeof value === "boolean") return { kind: "boolean", value };
+        if (typeof value === "number") return { kind: "number", value };
+        if (typeof value === "string") {
+          return { kind: "string", value: value.slice(0, 256) };
+        }
+        return {
+          kind: "object",
+          keys: Object.keys(value as Record<string, unknown>)
+            .sort()
+            .slice(0, 16),
+        };
+      };
       for (let offset = start; offset < end; offset += batchSize) {
         const batchEnd = Math.min(offset + batchSize, end);
+        const batchNumber = Math.floor(offset / batchSize) + 1;
         const batch = [];
         for (let index = offset; index < batchEnd; index += 1) {
           batch.push({
@@ -145,7 +261,20 @@ async function seedUntil(
             },
           });
         }
-        await library.addItems(batch);
+        await publishProgress({
+          batchNumber,
+          lastSuccessfulWorkerResponse,
+          operationStage: "add_items_pending",
+          recordCount: offset,
+        });
+        const workerResponse = await library.addItems(batch);
+        lastSuccessfulWorkerResponse = summarizeWorkerResponse(workerResponse);
+        await publishProgress({
+          batchNumber,
+          lastSuccessfulWorkerResponse,
+          operationStage: "add_items_resolved",
+          recordCount: batchEnd,
+        });
         const usedHeap = memory.memory?.usedJSHeapSize;
         if (Number.isFinite(usedHeap)) {
           sampledPeakPageHeapBytes = Math.max(
@@ -159,9 +288,9 @@ async function seedUntil(
           );
         }
       }
-      return sampledPeakPageHeapBytes;
+      return { lastSuccessfulWorkerResponse, sampledPeakPageHeapBytes };
     },
-    { start: from, end: to },
+    { end: to, previousResponse: previousWorkerResponse, start: from },
   );
 }
 
@@ -316,8 +445,37 @@ async function writeReport(
   );
 }
 
+test("corpus startup waits for a legal gate that renders after navigation", async ({
+  page,
+}) => {
+  await page.setContent("<main>Loading Freed</main>");
+  await page.evaluate(() => {
+    window.setTimeout(() => {
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      const accept = document.createElement("button");
+      accept.dataset.testid = "legal-gate-accept";
+      accept.disabled = true;
+      accept.textContent = "Agree and open Freed";
+      checkbox.addEventListener("change", () => {
+        accept.disabled = !checkbox.checked;
+      });
+      accept.addEventListener("click", () => {
+        document.body.dataset.legalAccepted = "true";
+      });
+      document.body.append(checkbox, accept);
+    }, 100);
+  });
+
+  await expect(acceptLegalGate(page)).resolves.toBe(true);
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-legal-accepted",
+    "true",
+  );
+});
+
 test("OPFS SQLite keeps PWA queries bounded at representative corpus scale", async () => {
-  test.setTimeout(3_600_000);
+  test.setTimeout(testTimeoutMs);
   const profileRoot = resolve(
     process.cwd(),
     `test-results/pwa-library-corpus-${pwaCorpusHardeningBrowser}-profile`,
@@ -326,9 +484,20 @@ test("OPFS SQLite keeps PWA queries bounded at representative corpus scale", asy
   const reports: MilestoneReport[] = [];
   let completed = false;
   let sampledPeakPageHeapBytes: number | null = null;
+  let lastSuccessfulWorkerResponse: WorkerResponseSummary | null = null;
 
   try {
+    await rm(progressPath, { force: true });
     await rm(profileRoot, { force: true, recursive: true });
+    const progressStartedAtMs = Date.now();
+    const writeStartupProgress = (operationStage: ProgressStage) =>
+      writeProgress(progressStartedAtMs, {
+        batchNumber: 0,
+        lastSuccessfulWorkerResponse: null,
+        operationStage,
+        recordCount: 0,
+      });
+    await writeStartupProgress("context_launch_pending");
     context =
       pwaCorpusHardeningBrowser === "webkit"
         ? await webkit.launchPersistentContext(profileRoot, {
@@ -340,24 +509,42 @@ test("OPFS SQLite keeps PWA queries bounded at representative corpus scale", asy
             baseURL: pwaCorpusHardeningBaseUrl,
             headless: true,
           });
+    await context.exposeBinding(
+      "__FREED_CORPUS_PROGRESS__",
+      async (_source, update: CorpusProgressUpdate) =>
+        writeProgress(progressStartedAtMs, update),
+    );
     const page = context.pages()[0] ?? (await context.newPage());
+    await writeStartupProgress("context_opened");
     page.on("console", (message) => {
       if (message.type() === "info") console.info(message.text());
     });
-    await openLibrary(page);
+    await openLibrary(page, writeStartupProgress);
     const baseline = await page.evaluate(async () => {
       const library = (window as unknown as Record<string, unknown>)
         .__FREED_LIBRARY_CORE__ as BrowserLibraryCore;
       return (await library.facetSummary()).totalCount;
     });
+    await writeProgress(progressStartedAtMs, {
+      batchNumber: 0,
+      lastSuccessfulWorkerResponse: null,
+      operationStage: "library_opened",
+      recordCount: 0,
+    });
 
     let seeded = 0;
     for (const milestone of milestones) {
-      const segmentPeak = await seedUntil(page, seeded, milestone);
-      if (segmentPeak !== null) {
+      const segment = await seedUntil(
+        page,
+        seeded,
+        milestone,
+        lastSuccessfulWorkerResponse,
+      );
+      lastSuccessfulWorkerResponse = segment.lastSuccessfulWorkerResponse;
+      if (segment.sampledPeakPageHeapBytes !== null) {
         sampledPeakPageHeapBytes = Math.max(
           sampledPeakPageHeapBytes ?? 0,
-          segmentPeak,
+          segment.sampledPeakPageHeapBytes,
         );
       }
       seeded = milestone;
@@ -372,6 +559,12 @@ test("OPFS SQLite keeps PWA queries bounded at representative corpus scale", asy
           { timeout: 120_000 },
         )
         .toBe(baseline + milestone);
+      await writeProgress(progressStartedAtMs, {
+        batchNumber: Math.ceil(milestone / 128),
+        lastSuccessfulWorkerResponse,
+        operationStage: "milestone_verified",
+        recordCount: milestone,
+      });
       const report = await measureMilestone(page, baseline, milestone);
       reports.push({
         ...report,
@@ -387,6 +580,12 @@ test("OPFS SQLite keeps PWA queries bounded at representative corpus scale", asy
     }
 
     console.info(`PWA corpus report: ${reportPath}`);
+    await writeProgress(progressStartedAtMs, {
+      batchNumber: Math.ceil(target / 128),
+      lastSuccessfulWorkerResponse,
+      operationStage: "complete",
+      recordCount: target,
+    });
     completed = true;
   } finally {
     await context?.close();

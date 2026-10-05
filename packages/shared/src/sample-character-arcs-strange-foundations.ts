@@ -17,6 +17,7 @@ export const STRANGE_FOUNDATIONS_CHARACTER_ARCS: readonly SampleCharacterArc[] =
       {
         "subject": "river",
         "platform": "rss",
+        "classification": "conversation",
         "mediaSha1": "63038525eda76eae0a655ab8018847fefb28f83e",
         "theme": "social",
         "title": "At ankle depth",
@@ -25,6 +26,7 @@ export const STRANGE_FOUNDATIONS_CHARACTER_ARCS: readonly SampleCharacterArc[] =
       {
         "subject": "river",
         "platform": "x",
+        "classification": "inspiring",
         "mediaSha1": "a81ccb260ee10126319a446e0fac4894ea847c09",
         "theme": "wonder",
         "title": "Unconstrained",
@@ -34,6 +36,7 @@ export const STRANGE_FOUNDATIONS_CHARACTER_ARCS: readonly SampleCharacterArc[] =
         "subject": "river",
         "platform": "medium",
         "contentType": "article",
+        "classification": "news",
         "mediaSha1": "00cb21fba0c77d47fdf3f23d282ee8a570d00504",
         "theme": "transformation",
         "title": "The edge I remember",
@@ -43,10 +46,31 @@ export const STRANGE_FOUNDATIONS_CHARACTER_ARCS: readonly SampleCharacterArc[] =
         "subject": "river",
         "platform": "medium",
         "contentType": "article",
+        "classification": "news",
         "mediaSha1": "3472f0c01832161cd9e8fb1d9af133e393cc04ef",
         "theme": "wonder",
         "title": "I was going to be quiet",
         "body": "By the time I reached the narrow place, I had promised myself a quiet afternoon.\n\nThis was a decision made in a broad, comfortable part of me. There was room to spread out there. Light lay on the stones. The banks were being agreeable. I felt capable of almost anything, including restraint.\n\nThen the gorge brought both walls close. Behind me, more of me kept arriving. Farther up, a stream was adding an opinion I had not finished hearing. I could not explain the situation to the incoming water by sending a polite ripple against the current.\n\nI went through loudly.\n\nThe broad reach is still having a lovely afternoon. If you ask her, she will tell you how peaceful we are. I am the part wedged between two walls, carrying out the consequences of her excellent mood."
+      },
+      {
+        "subject": "river",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "movement",
+        "title": "Separate arrangements",
+        "body": "I was carrying him quite well until he became three things. Now I have a man, a boat and a paddle, all taking different routes. He is still trying to tell me where we are going.",
+        "classification": "event",
+        "mediaSha1": "181c4495c4102f05d70fbd8283455cf4082ac3e2"
+      },
+      {
+        "subject": "river",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "social",
+        "title": "Before they came in",
+        "body": "I listened while he explained the rocks to them. The first sounded awkward. The second sounded worse. I had been going around both all morning without a thought. Now I wanted everyone to be quiet so I could hear what he was going to say about the bend.",
+        "classification": "conversation",
+        "mediaSha1": "26bbb7f76d510d407c180bcb893883f251620e33"
       }
     ]
   },
@@ -66,6 +90,7 @@ export const STRANGE_FOUNDATIONS_CHARACTER_ARCS: readonly SampleCharacterArc[] =
       {
         "subject": "soft shield fern",
         "platform": "instagram",
+        "classification": "inspiring",
         "mediaSha1": "7337f395a64704af8c0de972e1591603f78314f5",
         "theme": "transformation",
         "title": "Not yet",
@@ -74,6 +99,7 @@ export const STRANGE_FOUNDATIONS_CHARACTER_ARCS: readonly SampleCharacterArc[] =
       {
         "subject": "soft shield fern",
         "platform": "rss",
+        "classification": "personal",
         "mediaSha1": "fe73ce0002de1158df2cc2ddba6fb4c948d140f7",
         "theme": "family",
         "title": "The tall one",
@@ -82,6 +108,7 @@ export const STRANGE_FOUNDATIONS_CHARACTER_ARCS: readonly SampleCharacterArc[] =
       {
         "subject": "soft shield fern",
         "platform": "rss",
+        "classification": "news",
         "mediaSha1": "f2572ff9846f6c040c5b533403a5f603c179d143",
         "theme": "transformation",
         "title": "Underneath",
@@ -90,10 +117,21 @@ export const STRANGE_FOUNDATIONS_CHARACTER_ARCS: readonly SampleCharacterArc[] =
       {
         "subject": "soft shield fern",
         "platform": "instagram",
+        "classification": "conversation",
         "mediaSha1": "1bf1e1e7f2e490e39f8d91129addacdc00e27f3b",
         "theme": "social",
         "title": "Primitive",
         "body": "A person called me primitive. Then he tried three times to unfold his map."
+      },
+      {
+        "subject": "soft shield fern",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "social",
+        "title": "A steadier place",
+        "body": "The spider finished her web between my fronds just before the wind rose. Each time I bent, another thread broke. She kept coming back with more silk. I wanted to be the stone beside me.",
+        "classification": "conversation",
+        "mediaSha1": "4822caf37d69cdaedda9696e9910b86f3b6a48c8"
       }
     ]
   },
@@ -113,6 +151,7 @@ export const STRANGE_FOUNDATIONS_CHARACTER_ARCS: readonly SampleCharacterArc[] =
       {
         "subject": "mugger crocodile",
         "platform": "rss",
+        "classification": "conversation",
         "mediaSha1": "31eafeac8470e02f874ff0ed07e1d35b7007783b",
         "theme": "social",
         "title": "Nothing to discuss",
@@ -121,6 +160,7 @@ export const STRANGE_FOUNDATIONS_CHARACTER_ARCS: readonly SampleCharacterArc[] =
       {
         "subject": "mugger crocodile",
         "platform": "facebook",
+        "classification": "event",
         "mediaSha1": "a8677c4f54ba2e8933a8a15f71b8baefbf53fe81",
         "theme": "movement",
         "title": "The departure",
@@ -129,6 +169,7 @@ export const STRANGE_FOUNDATIONS_CHARACTER_ARCS: readonly SampleCharacterArc[] =
       {
         "subject": "mugger crocodile",
         "platform": "x",
+        "classification": "conversation",
         "mediaSha1": "0eec1f1d295e99cf0bdbbaf159a4eb2440aeda4a",
         "theme": "social",
         "title": "You can come closer",
@@ -137,6 +178,7 @@ export const STRANGE_FOUNDATIONS_CHARACTER_ARCS: readonly SampleCharacterArc[] =
       {
         "subject": "mugger crocodile",
         "platform": "linkedin",
+        "classification": "conversation",
         "mediaSha1": "f3b9b0612ea760e975779b94c5d0317a653c631d",
         "theme": "social",
         "title": "Free will",
@@ -145,6 +187,7 @@ export const STRANGE_FOUNDATIONS_CHARACTER_ARCS: readonly SampleCharacterArc[] =
       {
         "subject": "mugger crocodile",
         "platform": "rss",
+        "classification": "personal",
         "mediaSha1": "6bc42f26293af5e766ceccd91760b9a68cae9f27",
         "theme": "family",
         "title": "First journey",
@@ -153,6 +196,7 @@ export const STRANGE_FOUNDATIONS_CHARACTER_ARCS: readonly SampleCharacterArc[] =
       {
         "subject": "mugger crocodile",
         "platform": "instagram",
+        "classification": "inspiring",
         "mediaSha1": "18890f38bf434b35bc6c6d1137dde82f7aacce13",
         "theme": "wonder",
         "title": "The long answer",
@@ -162,6 +206,7 @@ export const STRANGE_FOUNDATIONS_CHARACTER_ARCS: readonly SampleCharacterArc[] =
         "subject": "mugger crocodile",
         "platform": "facebook",
         "contentType": "story",
+        "classification": "inspiring",
         "mediaSha1": "ab568231471bb869d6f5c8090f4672268d4817eb",
         "theme": "wonder",
         "title": "The remaining leg",

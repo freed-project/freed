@@ -25,6 +25,28 @@ const SCROLL_LONG_TASK_WORST_MS_BUDGET = 120;
 const SCROLL_FRAME_P95_MS_BUDGET = 50;
 const SCROLL_DROPPED_FRAME_BUDGET = 10;
 
+async function readyFeedScrollContainer(page: Page) {
+  // External preview URLs must not silently benchmark development React.
+  await expect(page.locator('meta[name="freed-e2e-render-mode"]')).toHaveAttribute("content", "production");
+  const container = page.getByTestId("feed-list-scroll-container");
+  await expect(container.locator(".feed-card").first()).toBeVisible();
+  // Import completion acknowledges storage and aggregate counts, not painted
+  // feed rows or loaded fonts. Keep that startup work outside the scroll window.
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    });
+  });
+  const state = await container.evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+    scrollTop: element.scrollTop,
+  }));
+  expect(state.scrollHeight).toBeGreaterThan(state.clientHeight);
+  return { container, initialScrollTop: state.scrollTop };
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /**
@@ -371,9 +393,7 @@ test.describe("Scroll performance", () => {
     await app.waitForReady();
     await app.injectRssItems(ITEM_COUNT_LARGE);
 
-    // Desktop FeedList uses class="flex-1 min-h-0 overflow-auto ... minimal-scroll"
-    const scrollContainer = page.locator(".minimal-scroll").first();
-    await scrollContainer.waitFor({ state: "visible" });
+    const { container: scrollContainer, initialScrollTop } = await readyFeedScrollContainer(page);
 
     // Capture long-tasks (>50ms) via PerformanceObserver before scrolling.
     await page.evaluate(() => {
@@ -399,6 +419,7 @@ test.describe("Scroll performance", () => {
       await page.waitForTimeout(100);
     });
     const scrollEndedAt = await page.evaluate(() => performance.now());
+    expect(await scrollContainer.evaluate((element) => element.scrollTop)).toBeGreaterThan(initialScrollTop);
 
     const longTaskData = await page.evaluate(({ scrollStartedAt, scrollEndedAt }) => {
       const tasks = (window as Record<string, unknown>).__PERF_LONG_TASKS__ as PerformanceEntry[];
@@ -771,19 +792,7 @@ test.describe("FPS harness (rAF-based frame measurement)", () => {
     await app.waitForReady();
     await app.injectRssItems(ITEM_COUNT_LARGE);
 
-    const scrollContainer = page.getByTestId("feed-list-scroll-container");
-    await scrollContainer.waitFor({ state: "visible" });
-    const initialScrollState = await scrollContainer.evaluate((element) => {
-      const scrollable = element as HTMLElement;
-      return {
-        clientHeight: scrollable.clientHeight,
-        scrollHeight: scrollable.scrollHeight,
-        scrollTop: scrollable.scrollTop,
-      };
-    });
-    expect(initialScrollState.scrollHeight).toBeGreaterThan(
-      initialScrollState.clientHeight,
-    );
+    const { container: scrollContainer, initialScrollTop } = await readyFeedScrollContainer(page);
 
     const fps = await measureFps(
       page,
@@ -800,7 +809,25 @@ test.describe("FPS harness (rAF-based frame measurement)", () => {
     const finalScrollTop = await scrollContainer.evaluate((element) =>
       (element as HTMLElement).scrollTop,
     );
-    expect(finalScrollTop).toBeGreaterThan(initialScrollState.scrollTop);
+    expect(finalScrollTop).toBeGreaterThan(initialScrollTop);
+    await test.info().attach("feed-scroll-measurement", {
+      contentType: "application/json",
+      body: JSON.stringify({
+        browser: page.context().browser()?.version(),
+        environment: await page.evaluate(() => ({
+          platform: navigator.platform,
+          userAgent: navigator.userAgent,
+          hardwareConcurrency: navigator.hardwareConcurrency,
+          devicePixelRatio: window.devicePixelRatio,
+          visibilityState: document.visibilityState,
+          renderMode: document.querySelector('meta[name="freed-e2e-render-mode"]')?.getAttribute("content"),
+        })),
+        itemCount: ITEM_COUNT_LARGE,
+        initialScrollTop,
+        finalScrollTop,
+        fps,
+      }, null, 2),
+    });
     if (fps.p95Ms === null || fps.droppedFrames === null) {
       test.info().annotations.push({
         type: "inconclusive telemetry",

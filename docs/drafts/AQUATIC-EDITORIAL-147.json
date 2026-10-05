@@ -1,0 +1,217 @@
+{
+  "status": "one_unchanged_regular_recovery_pending_independent_review",
+  "admitted": 0,
+  "exactImagesOpened": 6,
+  "proposals": [
+    {
+      "characterId": "rhea-return",
+      "sourceIndex": 5,
+      "authorDecision": "propose_unchanged_recovery_pending_independent_image_review",
+      "operation": "Bind original held episode 2 only. Preserve all original fields and regular format; do not append duplicate or convert to Story.",
+      "episode": {
+        "subject": "sea turtle underwater",
+        "theme": "feeding",
+        "title": "A beak for the corner",
+        "body": "I reached the sponge at the back of the crack and bit off a piece. Pulled my head out. Went straight back for the part I had missed. The narrow face is useful; the determination is excessive.",
+        "mediaSha1": "be11bef8a40eb5254b636ad0cd9fefd522e01498"
+      },
+      "visibleScene": "Hawksbill turtle lies diagonally over a reef recess, narrow head turned left into attached growth. One front flipper braces nearby; mottled shell and rear flippers legible. NPS caption identifies sponge biting. Mouthful separation is not resolved.",
+      "fictionBoundary": "Sequence of biting off a piece, withdrawing, returning and determination is fictional. Still establishes the bite setup, not a documented two-bite sequence. No torn long strip, fish, eggs or second turtle asserted.",
+      "continuity": "Recover original slot 2 after childhood I said I was going back and before Still going down. Retain Little Cayman home, avatar and all existing words. Virgin Islands is image provenance for a compatible Caribbean species and reef, not a narrated journey.",
+      "biologySources": [
+        "https://www.fisheries.noaa.gov/species/hawksbill-turtle"
+      ],
+      "biologyEvidence": "NOAA Fisheries identifies Eretmochelys imbricata, reef sponge feeding and sharp narrow mouth reaching into holes and crevices. Primary page opened and relevant text read.",
+      "qualityRisk": "Original is 600x422 with hard sun highlights and some softness. Anatomical setup legible, but no assertion it passes lead visual review. Does not earn The attached end because no unraveling strip visible."
+    }
+  ],
+  "media": [
+    {
+      "index": 1,
+      "observationId": 209257180,
+      "photoId": 370315702,
+      "sourcePage": "https://www.inaturalist.org/observations/209257180",
+      "sourceMetadataUrl": "https://www.inaturalist.org/observations/209257180.json",
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/370315702/large.jpg",
+      "localPath": "/tmp/freed-aquatic-147/source-01.jpg",
+      "width": 760,
+      "height": 1024,
+      "originalDimensions": [
+        1284,
+        1730
+      ],
+      "byteLength": 307545,
+      "sha1": "54b4e56545ab1dbe9e11356da1b7186774ad5b1c",
+      "sha256": "02db519f4d39ead4e0751f7e4116b643b8c388d107df8e6f6c4d0e6273d34dea",
+      "creator": "(c) Robin White, some rights reserved (CC BY), uploaded by Robin White",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "taxon": "Eretmochelys imbricata",
+      "place": null,
+      "description": "Girl Scouts cleaning beach encountered sea turtle nesting at sunset. Time is approximate. Full moon on 24 April. ",
+      "individuallyOpened": true,
+      "decision": "hold",
+      "reason": "Soft nesting image; no prose authored. Photograph does not meet visual quality threshold.",
+      "hashScope": "Exact large delivery, not larger upload."
+    },
+    {
+      "index": 2,
+      "observationId": 209257180,
+      "photoId": 370315723,
+      "sourcePage": "https://www.inaturalist.org/observations/209257180",
+      "sourceMetadataUrl": "https://www.inaturalist.org/observations/209257180.json",
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/370315723/large.jpg",
+      "localPath": "/tmp/freed-aquatic-147/source-02.jpg",
+      "width": 473,
+      "height": 1024,
+      "originalDimensions": [
+        550,
+        1190
+      ],
+      "byteLength": 139223,
+      "sha1": "5384d0855e50841b84daa407613dab937d74d828",
+      "sha256": "660b8da2fd6b321b223e184bd0444269e3345eb342e7973be7a99ccf73af240a",
+      "creator": "(c) Robin White, some rights reserved (CC BY), uploaded by Robin White",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "taxon": "Eretmochelys imbricata",
+      "place": null,
+      "description": "Girl Scouts cleaning beach encountered sea turtle nesting at sunset. Time is approximate. Full moon on 24 April. ",
+      "individuallyOpened": true,
+      "decision": "hold",
+      "reason": "Soft nesting image; no prose authored. Photograph does not meet visual quality threshold.",
+      "hashScope": "Exact large delivery, not larger upload."
+    },
+    {
+      "index": 3,
+      "observationId": 209257180,
+      "photoId": 370315756,
+      "sourcePage": "https://www.inaturalist.org/observations/209257180",
+      "sourceMetadataUrl": "https://www.inaturalist.org/observations/209257180.json",
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/370315756/large.jpg",
+      "localPath": "/tmp/freed-aquatic-147/source-03.jpg",
+      "width": 863,
+      "height": 1024,
+      "originalDimensions": [
+        1284,
+        1524
+      ],
+      "byteLength": 276159,
+      "sha1": "402ff382ad0cf0f77f789707081e99993fa174f0",
+      "sha256": "20c8edc53892d22ee877310b6f7990c24ee5bcd6f9977f74353b77ce1416fe1d",
+      "creator": "(c) Robin White, some rights reserved (CC BY), uploaded by Robin White",
+      "license": "CC-BY",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "taxon": "Eretmochelys imbricata",
+      "place": null,
+      "description": "Girl Scouts cleaning beach encountered sea turtle nesting at sunset. Time is approximate. Full moon on 24 April. ",
+      "individuallyOpened": true,
+      "decision": "hold",
+      "reason": "Soft nesting image; no prose authored. Photograph does not meet visual quality threshold.",
+      "hashScope": "Exact large delivery, not larger upload."
+    },
+    {
+      "index": 4,
+      "assetId": "2d59917d-1dd8-b71c-0709-275786b1daba",
+      "sourcePage": "https://www.nps.gov/media/photo/gallery-item.htm?gid=2D330A75-1DD8-B71C-076E2F0FC64EDBD8&id=2d59917d-1dd8-b71c-0709-275786b1daba",
+      "sourceMetadataUrl": "https://www.nps.gov/npgallery/api/search/execute/albumid/2D330A75-1DD8-B71C-076E2F0FC64EDBD8",
+      "sourceMetadataLocal": "/tmp/freed-aquatic-147/nps-gallery.json",
+      "imageUrl": "https://www.nps.gov/npgallery/GetAsset/2d59917d-1dd8-b71c-0709-275786b1daba",
+      "localPath": "/tmp/freed-aquatic-147/source-04.jpg",
+      "width": 850,
+      "height": 638,
+      "originalDimensions": [
+        850,
+        638
+      ],
+      "byteLength": 521563,
+      "sha1": "eb14ef05ae266ab7ec29df1626b6df34c7305655",
+      "sha256": "6324a055ac1c7060355e1a2e3b925b68f9eef5cd6ec82d8c65964576608ac714",
+      "creator": "Caroline Rogers",
+      "credit": "Photo by Caroline Rogers",
+      "license": "Public domain",
+      "licenseEvidence": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "licenseUrl": "https://www.nps.gov/media/photo/gallery-item.htm?gid=2D330A75-1DD8-B71C-076E2F0FC64EDBD8&id=2d59917d-1dd8-b71c-0709-275786b1daba",
+      "taxon": "Eretmochelys imbricata",
+      "place": "Virgin Islands National Park",
+      "title": "Hawksbill and Gray Angels",
+      "caption": "Hawksbill and Gray Angels",
+      "individuallyOpened": true,
+      "hashScope": "Exact published Original delivery; dimensions and bytes match NPS FileInfo.Original.",
+      "decision": "hold",
+      "reason": "Clear turtle with head among reef and gray angelfish nearby. Useful unused source, but no distinct new authored incident earned in this batch; does not show cleaning contact or a remora."
+    },
+    {
+      "index": 5,
+      "assetId": "2d5c27d8-1dd8-b71c-07d9-0d714e4aad3e",
+      "sourcePage": "https://www.nps.gov/media/photo/gallery-item.htm?gid=2D330A75-1DD8-B71C-076E2F0FC64EDBD8&id=2d5c27d8-1dd8-b71c-07d9-0d714e4aad3e",
+      "sourceMetadataUrl": "https://www.nps.gov/npgallery/api/search/execute/albumid/2D330A75-1DD8-B71C-076E2F0FC64EDBD8",
+      "sourceMetadataLocal": "/tmp/freed-aquatic-147/nps-gallery.json",
+      "imageUrl": "https://www.nps.gov/npgallery/GetAsset/2d5c27d8-1dd8-b71c-07d9-0d714e4aad3e",
+      "localPath": "/tmp/freed-aquatic-147/source-05.jpg",
+      "width": 600,
+      "height": 422,
+      "originalDimensions": [
+        600,
+        422
+      ],
+      "byteLength": 307711,
+      "sha1": "be11bef8a40eb5254b636ad0cd9fefd522e01498",
+      "sha256": "6efe574e4650b2272b0a14ab0cd586bfa4d9323fc836e488d1f223e3a67084b9",
+      "creator": "Caroline Rogers",
+      "credit": "Photo by Caroline Rogers",
+      "license": "Public domain",
+      "licenseEvidence": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "licenseUrl": "https://www.nps.gov/media/photo/gallery-item.htm?gid=2D330A75-1DD8-B71C-076E2F0FC64EDBD8&id=2d5c27d8-1dd8-b71c-07d9-0d714e4aad3e",
+      "taxon": "Eretmochelys imbricata",
+      "place": "Virgin Islands National Park",
+      "title": "Hawksbill Biting Sponge",
+      "caption": "Hawksbill Biting Sponge",
+      "individuallyOpened": true,
+      "hashScope": "Exact published Original delivery; dimensions and bytes match NPS FileInfo.Original.",
+      "decision": "propose_unchanged_recovery",
+      "reason": "Beak visibly meets reef growth in a narrow uneven corner; primary caption specifically identifies sponge biting. Supports original feeding premise. Sunlight is harsh and image only 600 pixels wide; independent quality review required."
+    },
+    {
+      "index": 6,
+      "assetId": "2d5e2cda-1dd8-b71c-07fa-44a7eb1f5c46",
+      "sourcePage": "https://www.nps.gov/media/photo/gallery-item.htm?gid=2D330A75-1DD8-B71C-076E2F0FC64EDBD8&id=2d5e2cda-1dd8-b71c-07fa-44a7eb1f5c46",
+      "sourceMetadataUrl": "https://www.nps.gov/npgallery/api/search/execute/albumid/2D330A75-1DD8-B71C-076E2F0FC64EDBD8",
+      "sourceMetadataLocal": "/tmp/freed-aquatic-147/nps-gallery.json",
+      "imageUrl": "https://www.nps.gov/npgallery/GetAsset/2d5e2cda-1dd8-b71c-07fa-44a7eb1f5c46",
+      "localPath": "/tmp/freed-aquatic-147/source-06.jpg",
+      "width": 850,
+      "height": 623,
+      "originalDimensions": [
+        850,
+        623
+      ],
+      "byteLength": 558617,
+      "sha1": "6a3efd3a246a7c9952c761e504ad8cfba83c1b09",
+      "sha256": "7106e18e6d16106b990146a74d930b07defb5eae402d7eaebc0a6f52442bf8eb",
+      "creator": "Caroline Rogers",
+      "credit": "Photo by Caroline Rogers",
+      "license": "Public domain",
+      "licenseEvidence": {
+        "Constraint": "Public domain",
+        "GrantingRights": "Full"
+      },
+      "licenseUrl": "https://www.nps.gov/media/photo/gallery-item.htm?gid=2D330A75-1DD8-B71C-076E2F0FC64EDBD8&id=2d5e2cda-1dd8-b71c-07fa-44a7eb1f5c46",
+      "taxon": "Eretmochelys imbricata",
+      "place": "Virgin Islands National Park",
+      "title": "Hawksbill Checking Camera",
+      "caption": "Hawksbill Checking Camera",
+      "individuallyOpened": true,
+      "hashScope": "Exact published Original delivery; dimensions and bytes match NPS FileInfo.Original.",
+      "decision": "hold",
+      "reason": "Clear frontal swimming turtle; camera interest is captioned but no consequential original episode earned beyond portrait."
+    }
+  ],
+  "discovery": "Three iNaturalist nesting stills held for quality. NPS gallery had ten images: six hawksbills and four other turtle species; selected three exact hawksbill originals to open. Album and individual asset constraints read separately. No blocked endpoint retry. No new Story forced."
+}

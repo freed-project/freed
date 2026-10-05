@@ -16,6 +16,8 @@ Deploy only reviewed state from `www` and prove which commit produced the live s
 
 ## Modes
 
+For every production application release, read [the showcase release contract](../../../docs/RELEASE-SHOWCASE.md) before updating or verifying marketing animation references. Verify every active theme against that release manifest, even when stable URLs require no code change.
+
 ### Ship current or merged WWW
 
 1. Confirm the requested SHA is present on `origin/www` and required checks passed for that SHA.

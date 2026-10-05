@@ -1,0 +1,41 @@
+{
+  "status": "preserved_passage_recovery_pending_independent_review",
+  "characterId": "alma-eight",
+  "episode": {
+    "subject": "octopus underwater",
+    "platform": "rss",
+    "title": "The room behind the stone",
+    "theme": "movement",
+    "body": "I found the entrance with an arm. Sand, a lip of rock, then space. I put another arm in. Those two began exploring while I was still outside deciding whether to live there.\n\nGetting my head through required a fold I had not tried before. For a moment one eye was outside and nearly everything else was inside. I had an excellent view of the thing I was stuck in.\n\nWhen I finally squeezed through, an arm brought me a smooth shell from under the lip. Empty, I thought. I settled into the back with it. Two arms were still outside. I pulled them in and discovered they had brought a stone. Apparently we were moving in whether I liked it or not.",
+    "mediaSha1": "a72ef215b1265e2dda4eb754f72bf11015d8f86b"
+  },
+  "media": {
+    "observationId": 388406868,
+    "photoId": 711360406,
+    "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/711360406/large.jpg",
+    "localPath": "/tmp/freed-alma112/711360406.jpg",
+    "sha1": "a72ef215b1265e2dda4eb754f72bf11015d8f86b",
+    "bytes": 850607,
+    "attribution": "(c) Vsevolod Rudyi, some rights reserved (CC BY), uploaded by Vsevolod Rudyi",
+    "license": "CC-BY",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/"
+  },
+  "rootReview": "Individually opened exact image. Octopus body sits below a low encrusted rock roof among empty bivalve shells, with exposed eye and visible arm suckers. Slight underwater haze but skin, eye, shells and rock edge remain clear. Strong literal den-and-shell setting. Entering, squeezing, arm exploration and earlier collection are fiction, not an observed sequence. This image does not show a hermit crab and must not be bound to Not empty or Premature condolences.",
+  "canon": "Existing NEAtlantic Octopus vulgaris, Mouro home preserved. Source Sesimbra Portugal is compatible taxon region, not fictional travel. Bind existing first episode without adding a new episode or changing one word.",
+  "rights": "Primary exact observation photo object opened and cached. Vsevolod Rudyi CC BY4.0, unchanged published large URL. Attribution and license link required.",
+  "sourceHolds": [
+    {
+      "photoId": 725107208,
+      "reason": "Plastic tub, no rocky den."
+    },
+    {
+      "photoId": 711360397,
+      "reason": "Same observation alternate angle; selected more explicit low rock roof in711360406."
+    },
+    {
+      "photoId": 716230877,
+      "reason": "Soft solitary octopus among algae, no preserved scene match."
+    }
+  ],
+  "admitted": 0
+}

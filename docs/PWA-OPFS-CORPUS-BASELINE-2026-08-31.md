@@ -52,7 +52,36 @@ WebKit 26.5 on a fresh isolated profile and origin. The run took 14.0 minutes.
 
 WebKit kept the same bounded response and scan sizes as Chromium. Its feed,
 facet, and search timings remained inside the contract budgets. The nightly
-lane now runs the full envelope in both browser engines.
+lane runs 100,000 records in Chromium and a 25,000-record WebKit regression
+milestone. The same harness separately proved the full 100,000-record WebKit
+envelope above.
+
+## Nightly recovery verification, 2026-09-07
+
+Nightly run
+[34137856661](https://github.com/freed-project/freed/actions/runs/34137856661)
+revalidated the configured browser matrix at exact dev commit
+`35037c157caf6ff991619ca91d201b8fa8af31bb`. Both final progress receipts report
+operation stage `complete`.
+
+| Measurement              | WebKit 25,000 items | Chromium 100,000 items |
+| ------------------------ | ------------------: | ---------------------: |
+| Completed batches        |                 196 |                    782 |
+| Total runtime            |          289,375 ms |             819,641 ms |
+| Feed page rows           |                  64 |                     64 |
+| Feed page time           |            19.46 ms |               13.93 ms |
+| Facet time               |            13.92 ms |               15.37 ms |
+| Search rows              |                  32 |                     32 |
+| Search rows scanned      |                  32 |                     32 |
+| Search time              |            52.34 ms |               80.84 ms |
+| JavaScript heap snapshot |         unsupported |       84,970,884 bytes |
+| Sampled peak page heap   |         unsupported |      134,892,880 bytes |
+| OPFS usage               |   413,360,340 bytes |    1,619,571,368 bytes |
+
+WebKit ran on macOS because Playwright WebKit on Ubuntu does not expose the OPFS
+APIs required by SQLite's SAH pool VFS. Chromium remained on Ubuntu. The exact
+dev integration and CodeQL runs for the runner correction completed
+successfully before these receipts were accepted.
 
 ## Evidence limits
 

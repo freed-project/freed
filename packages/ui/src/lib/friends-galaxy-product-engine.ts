@@ -487,6 +487,8 @@ export class FriendsGalaxyProductEngine {
   }
 
   pickNode(viewportX: number, viewportY: number): string | null {
+    const renderedHit = this.renderer?.pickNode(viewportX, viewportY);
+    if (renderedHit) return renderedHit;
     const navigation = this.navigation;
     const sceneIndex = this.sceneIndex;
     if (!navigation || !sceneIndex) return null;

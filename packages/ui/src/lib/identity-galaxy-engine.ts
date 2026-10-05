@@ -705,8 +705,8 @@ function makeAvatarMaterial(): THREE.ShaderMaterial {
       attribute vec4 instanceUvRect;
       varying vec2 vUv;
       void main() {
-        vec4 center = projectionMatrix * modelViewMatrix * vec4(instanceAnchor, 1.0);
-        center.xy += position.xy * instanceGlyphSize * (2.0 / resolution) * center.w;
+        vec4 center = projectionMatrix * modelViewMatrix * vec4(
+          instanceAnchor + vec3(position.xy * instanceGlyphSize, 0.0), 1.0);
         gl_Position = center;
         vUv = mix(instanceUvRect.xy, instanceUvRect.zw, vec2(glyphUv.x, 1.0 - glyphUv.y));
       }
@@ -919,7 +919,7 @@ function drawFallbackLabels(
     context.globalAlpha = avatarOpacity;
     for (let index = 0; index < avatarAtlas.itemCount; index += 1) {
       const row = avatarAtlas.instanceData.subarray(index * 11, index * 11 + 11);
-      const size = row[5]!;
+      const size = row[5]! * transform.scale;
       const x = transform.x + row[0]! * transform.scale;
       const y = transform.y - row[1]! * transform.scale;
       context.drawImage(avatarAtlas.canvas, row[7]! * avatarAtlas.canvas.width, row[8]! * avatarAtlas.canvas.height,

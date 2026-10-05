@@ -1,0 +1,99 @@
+{
+  "status": "Admitted locally after independent image, revised prose and credited-republication review",
+  "counts": {
+    "exactOriginalsOpened": 1,
+    "publishedVariantsOpened": 1,
+    "proposals": 1,
+    "newIdentities": 0
+  },
+  "proposals": [
+    {
+      "candidateId": "63-01",
+      "characterId": "sabine-warmfold",
+      "identityNameBase": "Sabine Warmfold",
+      "episode": {
+        "subject": "eastern skunk cabbage",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "weather",
+        "title": "Winter stopped there",
+        "body": "Before I had pollen to give, snow pressed against my hood. I warmed the flowers inside it, and the white edge began to withdraw.\n\nFor a moment I thought the cold was leaving.\n\nThe hollow widened just enough to show the mud around me. Beyond that, nothing thawed. I kept warming the flowers.",
+        "mediaSha1": "7fa614646ba5085d6f57b48606e637b65f86d20d"
+      },
+      "admission": "admitted_in_isolated_worktree",
+      "visualReview": "Both exact original and display opened individually. One maroon mottled spathe emerges in a distinct oval of exposed dark substrate and green groundcover surrounded by white snow. The opening and red tissue are clear; background woodland blurred. The visible margin and surrounding snow carry the local thaw premise. No insect is asserted. The photograph does not determine reproductive phase; the revised opening supplies fictional remembered chronology.",
+      "fictionBoundary": "Snow pressing, the retreat over time and Sabine mistaking local thaw for broader warming are fictional reconstruction. Single photo does not establish a time interval or measure warmth. Warmed flowers and surrounding localized thaw are source-supported; no deliberate metabolic temperature setting is a scientific claim. The revised opening places the remembered incident before pollen availability; this stage is not established by visible pixels.",
+      "continuity": "Existing rooted perennial Symplocarpus foetidus; same plausible Potomac wet-woodland home, 39.0/-77.2. Remembered early flowering weather scene before the admitted pollen-shedding episode. Does not reverse that episode or require a new flowering stage. No new avatar/identity.",
+      "proseReview": "Distinct from sexual-role change, nutrient generosity, visitor invitation and parental dispersal. Relief at thaw is checked by its small extent, ending on continued physical warming. Lead should hold if the event remains too slight; no explanatory moral appended.",
+      "revisionReview": {
+        "verdict": "Pass",
+        "firstSentence": "Before I had pollen to give, snow pressed against my hood.",
+        "remainingBodyUnchanged": true,
+        "canonEvidence": "Botanical46 A different touch begins receptive and ends with anthers open and pollen available. Before I had pollen to give explicitly marks this appended dispatch as a memory preceding pollen availability. It does not reverse the flowers or create another season.",
+        "proseEvidence": "The short temporal clause refers to her established experience in her own vocabulary. The weather misreading remains the event; no additional explanation, invitation or moral enters the body.",
+        "imageEvidence": "Reopened the exact 1024x683 snow-1.jpg. The complete localized dark hollow, surrounding white snow and maroon spathe remain clear. The image does not independently establish pollen absence; the earlier stage is fictional chronology, not a source finding.",
+        "authority": "Review only, not admission. Root reports independent image and explicit NatureServe Ryan Johnson/BY-SA declaration inspection; original photographer-page404 qualification retained."
+      }
+    }
+  ],
+  "media": [
+    {
+      "imageUrl": "https://live.staticflickr.com/8363/8430223805_b5e624152d_b.jpg",
+      "localFile": "/tmp/botanical63/snow-1.jpg",
+      "bytes": 91828,
+      "sha1": "7fa614646ba5085d6f57b48606e637b65f86d20d",
+      "sha256": "b9635090af04b8c75d91538b97f20330ba4123d0da6cca0e9fbd0da7645ea3a7",
+      "dimensions": [
+        1024,
+        683
+      ],
+      "seconds": 0.38,
+      "status": 200,
+      "id": "botanical63-skunk-cabbage-snow",
+      "sourceUrl": "https://www.flickr.com/photos/natureserve/8430223805/",
+      "sourceLocal": "/tmp/botanical63/snow-source.html",
+      "creator": "Ryan Johnson, republished with credit by NatureServe",
+      "license": "CC BY-SA 2.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/2.0/",
+      "rightsEvidence": "NatureServe primary republication explicitly identifies Ryan Johnson and says Shared under Creative Commons BY-SA. Visible license and JSON-LD resolve to BY-SA2.0. Linked photographer original https://www.flickr.com/photos/kmonojo/434991882/ returned HTTP404 once; no retry. This is affirmative republisher licensing, not independently recovered photographer license. Lead must decide whether that chain is sufficient before admission.",
+      "category": "wildlife",
+      "subject": "eastern skunk cabbage",
+      "species": "Symplocarpus foetidus",
+      "alt": "A maroon eastern skunk cabbage spathe stands in a small thawed hollow surrounded by snow.",
+      "aggregated": true,
+      "original": {
+        "imageUrl": "https://live.staticflickr.com/8363/8430223805_0e4c35773d_o.jpg",
+        "localFile": "/tmp/botanical63/snow-0.jpg",
+        "bytes": 442246,
+        "sha1": "44c740a54e585c44ec8db25672221172ff1c0ad7",
+        "sha256": "845705052e5cb156451d87bb35f3427a65ee9917c9715570635ead55a5197cd1",
+        "dimensions": [
+          2048,
+          1365
+        ],
+        "seconds": 0.545,
+        "status": 200
+      },
+      "leadRightsDecision": "Accepted NatureServe explicit named credit and CC BY-SA 2.0 declaration, independently opened by lead; original photographer page remains unavailable. Preserve title, credit and license. No public-domain claim."
+    }
+  ],
+  "biologySources": [
+    {
+      "url": "https://www.nps.gov/miss/learn/nature/skunkcabbage.htm",
+      "evidence": "Eastern species, spathe enclosing flower-bearing spadix, early flowering amid frozen soil and snow; consumes stored carbohydrates while maintaining warmer flower interior."
+    },
+    {
+      "url": "https://www.flickr.com/photos/natureserve/8430223805/",
+      "evidence": "Exact frame explicitly identified Symplocarpus foetidus; caption describes thermogenesis."
+    }
+  ],
+  "holdsPreserved": [
+    "Botanical59 held for prose/overlap, source retained",
+    "Nova60 held for clipped image framing"
+  ],
+  "limitations": [
+    "Photographer original-page404 leaves license-chain qualification for lead.",
+    "Image is NatureServe licensed republication; do not credit NPS as photographer.",
+    "No full Story UI render or application-relay validation claimed."
+  ]
+}

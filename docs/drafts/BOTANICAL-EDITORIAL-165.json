@@ -1,0 +1,442 @@
+{
+  "batch": "BOTANICAL-EDITORIAL-165",
+  "status": "One Instagram Story proposed; no admission",
+  "runtimeChanged": false,
+  "acceptedCountAdded": 0,
+  "proposals": [
+    {
+      "candidateId": "165-01",
+      "characterId": "vesta-prickle",
+      "identityNameBase": "Vesta Prickle",
+      "admission": "Pending independent root review",
+      "operation": "Append an explicit early recollection; no existing body or avatar changes",
+      "episode": {
+        "subject": "spiny leaf insect",
+        "platform": "instagram",
+        "contentType": "story",
+        "theme": "wonder",
+        "title": "What met my foot",
+        "body": "When I had just hatched, I reached past the edge and found nothing. Then the wind pressed against my foot. For one hopeful moment I thought it had come to hold me. I leaned.",
+        "mediaSha1": "86a719598febe7f91a629418f7c77a9e43555aa2"
+      },
+      "media": {
+        "observationId": 6502903,
+        "photoId": 8231190,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/8231190/large.jpg",
+        "localFile": "/tmp/botanical165/8231190.jpg",
+        "sourceLocal": "/tmp/botanical165/obs-6502903.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/6502903",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) portioid, some rights reserved (CC BY), uploaded by portioid",
+        "dimensions": [
+          1024,
+          592
+        ],
+        "originalUploadDimensions": [
+          1485,
+          858
+        ],
+        "bytes": 88889,
+        "sha1": "86a719598febe7f91a629418f7c77a9e43555aa2",
+        "sha256": "80a92e46ec2818cd3267622f3df7196c0cf4fac9fd76e462244e30cb2689dc10",
+        "seconds": 0.525,
+        "status": 200,
+        "individuallyOpened": true,
+        "category": "wildlife",
+        "aggregated": false,
+        "alt": "A newly hatched spiny leaf insect with an orange head and tightly curled dark abdomen stands at a dark edge, extending a slender foreleg into the space ahead. The background is softly green and gold."
+      },
+      "sourceEvidence": {
+        "taxon": "Extatosoma tiaratum",
+        "qualityGrade": "casual",
+        "currentMatchingIdentifications": 2,
+        "captive": true,
+        "observedOn": "2004-02-07",
+        "actualPlace": "Nippes, Cologne, Germany",
+        "description": "Observer explicitly identifies the first instar and its ant-mimicking appearance.",
+        "rights": "Photo 8231190, portioid, CC BY 4.0. The license belongs to this photo, not a taxon default image."
+      },
+      "imageReview": {
+        "verdict": "Author pass for exact early-stage image and reaching pose; root must judge fictional wind pairing",
+        "visible": "Orange head, short antenna, thin legs, curled abdomen and forward-reaching foreleg are clear. The nearest supporting surface ends along a dark edge. Warm light makes the small body legible against green-gold blur; no distracting text or human equipment dominates.",
+        "limits": "The exact dark substrate is not established as a leaf or branch, so the body says edge only. No visible wind measurement, subsequent lean or fall. Those temporal sensations/actions are fiction. This is a captive photograph, not a documented event at the fictional Australian home. The still must not be described as proof of falling or gliding."
+      },
+      "proseAssessment": "Author pass as a brief embodied misreading. The new hatchling mistakes pressure on a searching foot for support and acts on the hope. The lean supplies a consequence rather than an explanatory moral. It neither threatens an audience nor confuses leaf camouflage with food. Root may hold if the implied action is too slight or the still too static; no admission is presumed.",
+      "canon": {
+        "read": [
+          "packages/shared/src/sample-character-arcs-strange-next.ts: full four-entry Vesta arc",
+          "docs/drafts/strange-canon-03.md: Vesta",
+          "docs/drafts/strange-canon-05.md: original reproductive draft distinction"
+        ],
+        "chronology": "Opening explicitly places this before adult courtship/feeding and before the later juvenile molt and handling memories. Present adult body does not turn orange or return to first instar. The older recollection implies survival; do not add a documented fall or injury.",
+        "appearance": "First-instar orange head and dark narrow body are a species-supported early appearance, not an adult morph switch.",
+        "home": "Woodland near Brisbane, Australia, -27.44, 152.95, unchanged. Cologne is provenance only.",
+        "avatar": "Retain existing approved adult portrait.",
+        "relationships": "No new individual or fictional named wind entity introduced."
+      },
+      "fictionBoundary": "Interior hope, tactile interpretation, wind and subsequent lean are original fiction. Photo documents the animal, early appearance and reaching posture. No claim of insect psychology, parental support or wind bearing body weight as fact.",
+      "biologySources": [
+        {
+          "url": "https://australian.museum/learn/animals/insects/care-of-stick-insects/",
+          "section": "Life Cycle and Spiny Leaf Insect",
+          "supports": "Newly hatched Extatosoma tiaratum have red heads and dark ant-like bodies; later stages become green or brown leaf mimics. Used for chronology and morphology only, not precise emergence duration or an assumed history inside an ant nest."
+        },
+        {
+          "url": "https://www.inaturalist.org/observations/6502903",
+          "cached": "/tmp/botanical165/obs-6502903.json",
+          "supports": "Primary photo-specific species identification, first-instar description and visible pose; two matching current identifications. Casual because captive, not represented as research grade."
+        }
+      ]
+    }
+  ],
+  "holds": [
+    {
+      "character": "Calder Mugger",
+      "title": "Into the green",
+      "body": "The water closed over my back and cooled every place the sun had found. I sank a little farther. My neighbor was already under, except for his nostrils. I wanted to ask how much of himself he had managed to forget.",
+      "photoIds": [
+        136013663
+      ],
+      "verdict": "Hold prose and image continuity",
+      "reason": "The body returns to warmth, withdrawal and abstract forgetting without a distinct payoff. The source animals also have marked pale nodular surfaces requiring a fresh individual-appearance review. Do not casually assign a skin condition or recolor Calder."
+    },
+    {
+      "character": "Vesta Prickle",
+      "title": "The patient edge",
+      "body": "When I had just hatched, I reached past the edge and found nothing. I kept the foot there. For a moment I thought the world might grow a little farther if I waited.",
+      "photoIds": [
+        8231190
+      ],
+      "verdict": "Hold earlier draft; superseded for proposal by 165-01, literal text preserved here",
+      "reason": "Waiting alone offers no consequent action. The proposed body adds the mistaken tactile invitation and her lean instead of explaining a lesson."
+    }
+  ],
+  "inspection": {
+    "exactImagesOpened": 12,
+    "allHashesReverified": true,
+    "sources": [
+      {
+        "observationId": 66195541,
+        "photoId": 106663266,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/106663266/large.jpg",
+        "localFile": "/tmp/botanical165/106663266.jpg",
+        "sourceLocal": "/tmp/botanical165/obs-66195541.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/66195541",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) Thomas Galewski, some rights reserved (CC BY), uploaded by Thomas Galewski",
+        "dimensions": [
+          1024,
+          683
+        ],
+        "originalUploadDimensions": [
+          2048,
+          1365
+        ],
+        "bytes": 553657,
+        "sha1": "5a8137e471174ba222e1acae2bcf34ed9201a446",
+        "sha256": "d8fff17e564e156bc3bf5a4b90921cae12b43cd9e6c3f097226b6755847c8160",
+        "seconds": 1.046,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 101979691,
+        "photoId": 170384551,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/170384551/large.jpg",
+        "localFile": "/tmp/botanical165/170384551.jpg",
+        "sourceLocal": "/tmp/botanical165/obs-101979691.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/101979691",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) Paul Asman and Jill Lenoble, some rights reserved (CC BY), uploaded by Paul Asman and Jill Lenoble",
+        "dimensions": [
+          1024,
+          683
+        ],
+        "originalUploadDimensions": [
+          2048,
+          1365
+        ],
+        "bytes": 480888,
+        "sha1": "9522c89a3cfc7b8d31b66bf87e49d685c600de51",
+        "sha256": "745dbe113a4f0feac405284a388316856712aa0eef341d355d630e5b7c9967f1",
+        "seconds": 0.863,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 200272104,
+        "photoId": 353310460,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/353310460/large.jpeg",
+        "localFile": "/tmp/botanical165/353310460.jpg",
+        "sourceLocal": "/tmp/botanical165/obs-200272104.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/200272104",
+        "license": "CC0",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "attribution": "no rights reserved, uploaded by \u0421\u0432\u0435\u0442\u043b\u0430\u043d\u0430 \u0426\u0430\u0440\u0430\u0445\u043e\u0432\u0430",
+        "dimensions": [
+          1024,
+          768
+        ],
+        "originalUploadDimensions": [
+          2048,
+          1536
+        ],
+        "bytes": 361036,
+        "sha1": "44e3df65a5c46e3064309ad252bc87926e22c035",
+        "sha256": "c3b0ed63be521bb23aab0daa37bfbd2bc5283a39a9de4f259563e1512e621c81",
+        "seconds": 0.813,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 200272107,
+        "photoId": 353310624,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/353310624/large.jpeg",
+        "localFile": "/tmp/botanical165/353310624.jpg",
+        "sourceLocal": "/tmp/botanical165/obs-200272107.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/200272107",
+        "license": "CC0",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "attribution": "no rights reserved, uploaded by \u0421\u0432\u0435\u0442\u043b\u0430\u043d\u0430 \u0426\u0430\u0440\u0430\u0445\u043e\u0432\u0430",
+        "dimensions": [
+          1024,
+          768
+        ],
+        "originalUploadDimensions": [
+          2048,
+          1536
+        ],
+        "bytes": 384961,
+        "sha1": "4f2c39e8afa45ff0c7c9eb8321dc875f20bf79e7",
+        "sha256": "6def879ecf74a5c136883dccec9e274dde9f0746b723c22e1854aef3dffdb7ba",
+        "seconds": 1.152,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 60308059,
+        "photoId": 96421128,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/96421128/large.jpg",
+        "localFile": "/tmp/botanical165/96421128.jpg",
+        "sourceLocal": "/tmp/botanical165/obs-60308059.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/60308059",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) Subhadra Devi, some rights reserved (CC BY), uploaded by Subhadra Devi",
+        "dimensions": [
+          1024,
+          768
+        ],
+        "originalUploadDimensions": [
+          1200,
+          900
+        ],
+        "bytes": 192304,
+        "sha1": "8a587386cd5edb95231e1df472290e27b4f60284",
+        "sha256": "28948f52b10a25488897f49625f130436c410faa803c08567d02310f957a7e65",
+        "seconds": 0.769,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 200272115,
+        "photoId": 353310919,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/353310919/large.jpeg",
+        "localFile": "/tmp/botanical165/353310919.jpg",
+        "sourceLocal": "/tmp/botanical165/obs-200272115.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/200272115",
+        "license": "CC0",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "attribution": "no rights reserved, uploaded by \u0421\u0432\u0435\u0442\u043b\u0430\u043d\u0430 \u0426\u0430\u0440\u0430\u0445\u043e\u0432\u0430",
+        "dimensions": [
+          1024,
+          768
+        ],
+        "originalUploadDimensions": [
+          2048,
+          1536
+        ],
+        "bytes": 404876,
+        "sha1": "ef6e6fca25d26c867798b131635c840949b311db",
+        "sha256": "22c2099d3d627cd58d57e47fb0c24275d20137cd0037a74970284455ec294122",
+        "seconds": 0.817,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 213379437,
+        "photoId": 377101700,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/377101700/large.jpeg",
+        "localFile": "/tmp/botanical165/377101700.jpg",
+        "sourceLocal": "/tmp/botanical165/obs-213379437.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/213379437",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) Mitul and Vijul Singh, some rights reserved (CC BY), uploaded by Mitul and Vijul Singh",
+        "dimensions": [
+          1024,
+          697
+        ],
+        "originalUploadDimensions": [
+          1872,
+          1275
+        ],
+        "bytes": 416232,
+        "sha1": "7b4470fffa9f426b7be39e9d21ec54db1552dade",
+        "sha256": "cdbbffb2699130357160b0f738f8ef3b18cc0415a52037570daaa5b8782903c6",
+        "seconds": 0.802,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 68450135,
+        "photoId": 110837420,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/110837420/large.jpg",
+        "localFile": "/tmp/botanical165/110837420.jpg",
+        "sourceLocal": "/tmp/botanical165/obs-68450135.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/68450135",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) Mike Prince, some rights reserved (CC BY), uploaded by Mike Prince",
+        "dimensions": [
+          1024,
+          683
+        ],
+        "originalUploadDimensions": [
+          1600,
+          1067
+        ],
+        "bytes": 416706,
+        "sha1": "d9636c59b6a36e3c0b94843c3590252c0c5d7c3c",
+        "sha256": "945cacee943e1b92dd871e2ca38d681d5d68a67e27d51cbea50f5a4f8257f114",
+        "seconds": 0.878,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 82849453,
+        "photoId": 136013663,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/136013663/large.jpg",
+        "localFile": "/tmp/botanical165/136013663.jpg",
+        "sourceLocal": "/tmp/botanical165/obs-82849453.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/82849453",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) Kseniia Marianna Prondzynska, some rights reserved (CC BY), uploaded by Kseniia Marianna Prondzynska",
+        "dimensions": [
+          1024,
+          768
+        ],
+        "originalUploadDimensions": [
+          2048,
+          1536
+        ],
+        "bytes": 971126,
+        "sha1": "9f96631b83d49bc3cc5e8be0e58387ea81249fa5",
+        "sha256": "26c833aab3ebe2b387b1a7628ffdd6af2873c50db748bf8273c02ddc75f72a3e",
+        "seconds": 0.996,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 113064524,
+        "photoId": 191031490,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/191031490/large.jpeg",
+        "localFile": "/tmp/botanical165/191031490.jpg",
+        "sourceLocal": "/tmp/botanical165/obs-113064524.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/113064524",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) Hopeland, some rights reserved (CC BY), uploaded by Hopeland",
+        "dimensions": [
+          1024,
+          768
+        ],
+        "originalUploadDimensions": [
+          2048,
+          1536
+        ],
+        "bytes": 210125,
+        "sha1": "00894fd5b0b5d4fa1b6af0b6280a8fa53d0e8266",
+        "sha256": "4f643bed1c3fd73964d96e65e1c549de2436ce7a714101f09414b08753d7e4b5",
+        "seconds": 0.719,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 6502903,
+        "photoId": 8231190,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/8231190/large.jpg",
+        "localFile": "/tmp/botanical165/8231190.jpg",
+        "sourceLocal": "/tmp/botanical165/obs-6502903.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/6502903",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) portioid, some rights reserved (CC BY), uploaded by portioid",
+        "dimensions": [
+          1024,
+          592
+        ],
+        "originalUploadDimensions": [
+          1485,
+          858
+        ],
+        "bytes": 88889,
+        "sha1": "86a719598febe7f91a629418f7c77a9e43555aa2",
+        "sha256": "80a92e46ec2818cd3267622f3df7196c0cf4fac9fd76e462244e30cb2689dc10",
+        "seconds": 0.525,
+        "status": 200,
+        "individuallyOpened": true
+      },
+      {
+        "observationId": 196980905,
+        "photoId": 346820425,
+        "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/346820425/large.jpg",
+        "localFile": "/tmp/botanical165/346820425.jpg",
+        "sourceLocal": "/tmp/botanical165/obs-196980905.json",
+        "sourceUrl": "https://www.inaturalist.org/observations/196980905",
+        "license": "CC-BY",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "(c) Suzanne Muzic, some rights reserved (CC BY), uploaded by Suzanne Muzic",
+        "dimensions": [
+          768,
+          1024
+        ],
+        "originalUploadDimensions": [
+          1536,
+          2048
+        ],
+        "bytes": 219365,
+        "sha1": "c9e2dfe9dfe309ae2104132e4496fcb3184adaf8",
+        "sha256": "016d731a122c99342de1779b08ebd63f55c58f8da96de1a093a8b72c480472d5",
+        "seconds": 0.744,
+        "status": 200,
+        "individuallyOpened": true
+      }
+    ],
+    "dispositions": {
+      "106663266": "Gaping bank portrait; would repeat existing mouth/temperature mechanisms.",
+      "170384551": "Strong pale/copper animal but incompatible adult color without exact continuity evidence.",
+      "353310460": "Distant hazy resting portrait.",
+      "353310624": "Static resting posture with haze; no earned new incident.",
+      "96421128": "Sharp handsome closed-mouth portrait; toothy reassurance already spent.",
+      "353310919": "Rear resting view; no distinct scene.",
+      "377101700": "Small soft swimming head.",
+      "110837420": "Sharp resting animal, generic portrait with no new payoff.",
+      "136013663": "Held literal draft and surface-appearance questions above.",
+      "191031490": "Animal nearly lost in bright moving water; image hold.",
+      "8231190": "Proposed 165-01.",
+      "346820425": "Dark hanging Vesta; different adult coloration and no new action, held."
+    },
+    "stops": [
+      {
+        "url": "https://upload.wikimedia.org/wikipedia/commons/7/76/Extatosoma.tiaratum.hatching.1.jpg",
+        "result": "HTTP 403; one request only, no retry or alternate delivery. No local pixels opened and no candidate paired to this source."
+      }
+    ]
+  },
+  "constraints": "Existing identities and avatars only. No runtime changes, publication or other-task inspection. Owner cap 500 remains root-controlled."
+}

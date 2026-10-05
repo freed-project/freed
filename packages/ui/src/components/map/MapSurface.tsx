@@ -7,6 +7,8 @@ import {
   type PointerEvent,
   type WheelEvent,
 } from "react";
+import { createPortal } from "react-dom";
+import { ProviderChip } from "../ProviderChip.js";
 import { formatDistanceToNow } from "date-fns";
 import {
   arrow,
@@ -23,6 +25,7 @@ import { createMarkerElement } from "./MarkerElement.js";
 import { createFriendAvatarPalette } from "../../lib/friend-avatar-style.js";
 import { buildThemedMapStyle } from "../../lib/map-style.js";
 import { CANVAS_CONTROL_BUTTON_CLASS } from "../layout/layoutConstants.js";
+import { LoadingState } from "../LoadingState.js";
 import { usePlatform } from "../../context/PlatformContext.js";
 
 type PopupInstance = HTMLElement;
@@ -32,14 +35,20 @@ type DisposableMapInstance = Pick<MapInstance, "getCanvas" | "remove" | "stop">;
 type MapMarkerMovingPriority = "primary" | "deferred";
 interface MapMarkerRecord {
   marker: MarkerInstance;
-  priority: MapMarkerMovingPriority;
-  attached: boolean;
+  element: HTMLElement;
+  data: LocationMarkerSummary;
+  interactive: boolean;
+  palette: ReturnType<typeof createFriendAvatarPalette>;
+  resolver: ((sourceUrl: string) => string) | undefined;
 }
 
 type MapLibreModule = typeof import("maplibre-gl");
 
 interface MapSurfaceProps {
   markers: LocationMarkerSummary[];
+  /** Eligible-content filter identity; layout and camera movement are excluded. */
+  cameraContentKey?: string;
+  cameraContentSettled?: boolean;
   focusedMarkerKey?: string | null;
   interactive?: boolean;
   themeId?: ThemeId;
@@ -72,13 +81,13 @@ const popupDateFormatter = new Intl.DateTimeFormat(undefined, {
   hour: "numeric",
   minute: "2-digit",
 });
-const MAP_POPUP_MAX_WIDTH = 560;
+const MAP_POPUP_MAX_WIDTH = 360;
 const MAP_POPUP_VIEWPORT_MARGIN = 40;
 const MAP_FLOATING_PANEL_GAP_PX = 12;
 const MAP_POPUP_ARROW_ALIGNMENT_TOLERANCE_PX = 1;
 const MAP_FLOATING_CONTROL_SELECTOR = "[data-map-floating-control]";
 const MAP_DOM_MARKER_LIMIT = 160;
-const MAP_MOVING_MARKER_PAINT_LIMIT = 24;
+const MAP_MOVING_MARKER_COMPOSITOR_LIMIT = 24;
 const MAP_DENSE_MARKER_RESTORE_DELAY_MS = 420;
 const MAP_CAMERA_PADDING_PX = 72;
 const MAP_CLUSTER_MAX_ZOOM = 7.5;
@@ -321,6 +330,10 @@ function setupMapFloatingPanelLayout({
     panel.style.left = `${Math.round(result.x)}px`;
     panel.style.top = `${Math.round(result.y)}px`;
     panel.style.visibility = "visible";
+    if (panel.dataset.focusOnOpen === "true") {
+      delete panel.dataset.focusOnOpen;
+      panel.focus({ preventScroll: true });
+    }
     panel.dataset.placement = result.placement.split("-")[0];
 
     if (popupArrow) {
@@ -449,22 +462,12 @@ function popupSnippet(text?: string | null): string | null {
   return text.length > 132 ? `${text.slice(0, 132)}...` : text;
 }
 
-function popupKicker(marker: LocationMarkerSummary): string {
-  if (marker.friend?.relationshipStatus === "friend") return "Linked Friend";
-  if (marker.friend) return "Linked Person";
-  return marker.item.contentType === "story" ? "Story Update" : "Location Update";
-}
-
 function popupTitle(marker: LocationMarkerSummary): string {
   return marker.friend?.name ?? marker.item.author.displayName;
 }
 
 function hasConfirmedFriend(marker: LocationMarkerSummary): boolean {
   return marker.friend?.relationshipStatus === "friend";
-}
-
-function popupMeta(marker: LocationMarkerSummary): string {
-  return `${popupRelativeTime(marker.seenAt)} · ${popupAbsoluteTime(marker.seenAt)}`;
 }
 
 function loadMapLibre(): Promise<MapLibreModule> {
@@ -501,101 +504,83 @@ function buildPopupContent(
   onOpenFriend?: (marker: LocationMarkerSummary) => void,
   onPromoteAccount?: (marker: LocationMarkerSummary) => void,
   onLinkAccount?: (marker: LocationMarkerSummary) => void,
-  onOpenPost?: (marker: LocationMarkerSummary) => void
+  onOpenPost?: (marker: LocationMarkerSummary) => void,
+  avatar?: HTMLImageElement | null,
 ): HTMLElement {
   const confirmedFriend = hasConfirmedFriend(marker);
   const root = document.createElement("div");
   root.style.cssText = [
     "display:flex",
     "flex-direction:column",
-    "gap:16px",
+    "gap:10px",
     `width:min(${MAP_POPUP_MAX_WIDTH}px,calc(100vw - ${MAP_POPUP_VIEWPORT_MARGIN}px))`,
-    `min-width:min(420px,calc(100vw - ${MAP_POPUP_VIEWPORT_MARGIN}px))`,
+    `min-width:min(280px,calc(100vw - ${MAP_POPUP_VIEWPORT_MARGIN}px))`,
     "max-width:100%",
-    "padding:20px",
+    "padding:14px",
     "color:var(--theme-text-primary)",
     "font-family:system-ui,sans-serif",
     "box-sizing:border-box",
   ].join(";");
 
-  const badgeRow = document.createElement("div");
-  badgeRow.style.cssText = "display:flex;align-items:flex-start;justify-content:space-between;gap:14px;";
-
-  const eyebrow = document.createElement("div");
-  eyebrow.textContent = popupKicker(marker);
-  eyebrow.style.cssText = [
-    "display:inline-flex",
-    "align-items:center",
-    "padding:5px 9px",
-    "border-radius:999px",
-    "border:1px solid var(--theme-border-strong)",
-    "background:color-mix(in oklab,var(--theme-accent-secondary) 16%,var(--theme-bg-surface))",
-    "font-size:10px",
-    "font-weight:700",
-    "text-transform:uppercase",
-    "letter-spacing:0.14em",
-    "color:var(--theme-text-primary)",
-  ].join(";");
-  badgeRow.appendChild(eyebrow);
-
-  const meta = document.createElement("div");
-  meta.textContent = popupMeta(marker);
-  meta.style.cssText = "font-size:11px;color:var(--theme-text-muted);white-space:nowrap;text-align:right;padding-top:6px;";
-  badgeRow.appendChild(meta);
-  root.appendChild(badgeRow);
-
   const header = document.createElement("div");
-  header.style.cssText = "display:flex;flex-direction:column;gap:8px;";
+  header.style.cssText = "display:flex;flex-direction:column;gap:3px;";
 
   const title = document.createElement("div");
   title.textContent = popupTitle(marker);
-  title.style.cssText = "font-size:22px;font-weight:700;color:var(--theme-text-primary);letter-spacing:-0.03em;line-height:1.08;";
+  title.style.cssText = "font-size: 0.9375rem;font-weight:700;color:var(--theme-text-primary);letter-spacing:-0.03em;line-height:1.08;";
   header.appendChild(title);
 
   if (marker.label) {
     const location = document.createElement("div");
     location.textContent = marker.label;
-    location.style.cssText = "font-size:14px;font-weight:600;color:var(--theme-accent-secondary);line-height:1.5;max-width:34ch;";
+    location.style.cssText = "font-size: 0.75rem;font-weight:500;color:var(--theme-accent-secondary);line-height:1.5;max-width:34ch;";
     header.appendChild(location);
   }
-  root.appendChild(header);
+  const identity = document.createElement("div");
+  identity.style.cssText = "display:flex;align-items:center;gap:10px;";
+  if (avatar) {
+    const portrait = avatar.cloneNode(false) as HTMLImageElement;
+    portrait.removeAttribute("class");
+    portrait.style.cssText = "width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0;";
+    identity.appendChild(portrait);
+  }
+  header.style.minWidth = "0";
+  header.style.overflowWrap = "anywhere";
+  identity.appendChild(header);
+  root.appendChild(identity);
 
   const snippetText = popupSnippet(marker.item.content.text);
   if (snippetText) {
     const snippetCard = document.createElement("div");
     snippetCard.style.cssText = [
-      "padding:12px 14px",
-      "border-radius:16px",
-      "border:1px solid var(--theme-border-subtle)",
-      "background:var(--theme-bg-card)",
+      "padding:0",
+      "border-radius:0",
+      "border:0",
+      "background:transparent",
       "box-shadow:inset 0 1px 0 rgb(255 255 255 / 0.04)",
     ].join(";");
 
     const snippet = document.createElement("p");
     snippet.textContent = snippetText;
-    snippet.style.cssText = "margin:0;font-size:14px;line-height:1.65;color:var(--theme-text-secondary);";
+    snippet.style.cssText = "margin:0;font-size: 0.75rem;line-height:1.5;color:var(--theme-text-secondary);";
     snippetCard.appendChild(snippet);
     root.appendChild(snippetCard);
   }
 
-  const facts = document.createElement("div");
-  facts.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;";
-
-  const updateFact = document.createElement("div");
-  updateFact.style.cssText = "padding:10px 12px;border-radius:14px;background:var(--theme-bg-card);border:1px solid var(--theme-border-subtle);";
-  updateFact.innerHTML = `<div style="font-size:10px;text-transform:uppercase;letter-spacing:0.14em;color:var(--theme-text-muted);margin-bottom:6px;">Seen</div><div style="font-size:13px;font-weight:600;color:var(--theme-text-primary);">${popupRelativeTime(marker.seenAt)}</div>`;
-  facts.appendChild(updateFact);
-
-  const sourceFact = document.createElement("div");
-  sourceFact.style.cssText = "padding:10px 12px;border-radius:14px;background:var(--theme-bg-card);border:1px solid var(--theme-border-subtle);";
-  sourceFact.innerHTML = `<div style="font-size:10px;text-transform:uppercase;letter-spacing:0.14em;color:var(--theme-text-muted);margin-bottom:6px;">Source</div><div style="font-size:13px;font-weight:600;color:var(--theme-text-primary);text-transform:capitalize;">${marker.item.platform}</div>`;
-  facts.appendChild(sourceFact);
-  root.appendChild(facts);
+  const meta = document.createElement("div");
+  const providerSlot = document.createElement("span");
+  providerSlot.dataset.mapProviderChip = "true";
+  const time = document.createElement("span");
+  time.textContent = popupRelativeTime(marker.seenAt);
+  meta.append(providerSlot, time);
+  meta.title = popupAbsoluteTime(marker.seenAt);
+  meta.style.cssText = "display:flex;align-items:center;flex-wrap:wrap;gap:6px;font-size: 0.6875rem;color:var(--theme-text-muted);";
+  header.appendChild(meta);
 
   if (marker.groupCount > 1) {
     const more = document.createElement("div");
     more.textContent = `${marker.groupCount.toLocaleString()} updates from this spot`;
-    more.style.cssText = "font-size:11px;color:var(--theme-accent-secondary);";
+    more.style.cssText = "font-size: 0.6875rem;color:var(--theme-accent-secondary);";
     root.appendChild(more);
   }
 
@@ -606,19 +591,15 @@ function buildPopupContent(
     const friendButton = document.createElement("button");
     friendButton.type = "button";
     friendButton.textContent = "Open Friend";
+    friendButton.className = "btn-primary";
     friendButton.style.cssText = [
-      "padding:10px 14px",
-      "border-radius:12px",
-      "border:1px solid var(--theme-border-strong)",
-      "background:var(--theme-button-primary-background)",
-      "color:var(--theme-button-primary-text)",
-      "font-size:12px",
+      "padding:7px 9px",
+      "border-radius:8px",
+      "font-size: 0.75rem",
       "font-weight:600",
       "cursor:pointer",
-      "outline:none",
       "width:100%",
       "white-space:nowrap",
-      "box-shadow:var(--theme-button-primary-shadow)",
     ].join(";");
     friendButton.addEventListener("click", () => onOpenFriend(marker));
     actions.appendChild(friendButton);
@@ -628,19 +609,15 @@ function buildPopupContent(
     const promoteButton = document.createElement("button");
     promoteButton.type = "button";
     promoteButton.textContent = "Promote to friend";
+    promoteButton.className = "btn-primary";
     promoteButton.style.cssText = [
-      "padding:10px 14px",
-      "border-radius:12px",
-      "border:1px solid var(--theme-border-strong)",
-      "background:var(--theme-button-primary-background)",
-      "color:var(--theme-button-primary-text)",
-      "font-size:12px",
+      "padding:7px 9px",
+      "border-radius:8px",
+      "font-size: 0.75rem",
       "font-weight:600",
       "cursor:pointer",
-      "outline:none",
       "width:100%",
       "white-space:nowrap",
-      "box-shadow:var(--theme-button-primary-shadow)",
     ].join(";");
     promoteButton.addEventListener("click", () => onPromoteAccount(marker));
     actions.appendChild(promoteButton);
@@ -650,16 +627,13 @@ function buildPopupContent(
     const linkButton = document.createElement("button");
     linkButton.type = "button";
     linkButton.textContent = "Link to existing friend";
+    linkButton.className = "btn-secondary";
     linkButton.style.cssText = [
-      "padding:10px 14px",
-      "border-radius:12px",
-      "border:1px solid var(--theme-border-subtle)",
-      "background:var(--theme-button-secondary-background)",
-      "color:var(--theme-text-primary)",
-      "font-size:12px",
+      "padding:7px 9px",
+      "border-radius:8px",
+      "font-size: 0.75rem",
       "font-weight:600",
       "cursor:pointer",
-      "outline:none",
       "width:100%",
       "white-space:nowrap",
     ].join(";");
@@ -671,16 +645,13 @@ function buildPopupContent(
     const postButton = document.createElement("button");
     postButton.type = "button";
     postButton.textContent = "Open Post";
+    postButton.className = "btn-secondary";
     postButton.style.cssText = [
-      "padding:10px 14px",
-      "border-radius:12px",
-      "border:1px solid var(--theme-border-subtle)",
-      "background:var(--theme-button-secondary-background)",
-      "color:var(--theme-text-primary)",
-      "font-size:12px",
+      "padding:7px 9px",
+      "border-radius:8px",
+      "font-size: 0.75rem",
       "font-weight:600",
       "cursor:pointer",
-      "outline:none",
       "width:100%",
       "white-space:nowrap",
     ].join(";");
@@ -713,36 +684,38 @@ function mapStyles(interactive: boolean) {
     }
 
     .freed-map-popup {
+      --map-popup-background: color-mix(in oklab, var(--theme-bg-surface) 94%, black);
       z-index: 70;
+      outline: none;
       max-width: min(${MAP_POPUP_MAX_WIDTH}px, calc(100vw - ${MAP_POPUP_VIEWPORT_MARGIN}px));
       pointer-events: none;
     }
 
+    html[data-theme="scriptorium"] .freed-map-popup {
+      --map-popup-background: color-mix(in oklab, var(--theme-bg-surface) 96%, black);
+    }
+
     .freed-map-popup .maplibregl-popup-content {
       width: min(${MAP_POPUP_MAX_WIDTH}px, calc(100vw - ${MAP_POPUP_VIEWPORT_MARGIN}px));
-      min-width: min(420px, calc(100vw - ${MAP_POPUP_VIEWPORT_MARGIN}px));
+      min-width: min(280px, calc(100vw - ${MAP_POPUP_VIEWPORT_MARGIN}px));
       max-width: none;
       padding: 0;
-      background:
-        color-mix(in oklab, var(--theme-bg-elevated) 96%, transparent);
-      border: 1px solid var(--theme-border-strong);
-      border-radius: 24px;
-      box-shadow:
-        var(--theme-map-popup-shadow),
-        0 0 0 1px var(--theme-border-subtle);
-      backdrop-filter: blur(18px);
-      overflow: hidden;
+      position: relative;
+      border-radius: 14px;
+      text-align: left;
+      overflow: auto;
       pointer-events: auto;
     }
 
     .freed-map-popup-arrow {
       position: absolute;
-      z-index: 0;
+      /* Cover the card border at the join, above the tooltip panel (z-index 400). */
+      z-index: 401;
       width: 10px;
       height: 10px;
       box-sizing: border-box;
-      background: color-mix(in oklab, var(--theme-bg-elevated) 96%, transparent);
-      border: 1px solid var(--theme-border-strong);
+      background: var(--map-popup-background);
+      border: 1px solid color-mix(in oklab, var(--theme-border-strong) 48%, var(--theme-border-subtle));
       transform: rotate(45deg);
       pointer-events: none;
     }
@@ -776,6 +749,7 @@ function mapStyles(interactive: boolean) {
       transition: box-shadow 160ms ease, border-color 160ms ease, filter 160ms ease, scale 160ms ease;
     }
 
+    /* Simplify paint during motion without removing geographic context. */
     .freed-map-shell[data-map-moving="true"] .freed-map-marker-body {
       transition: none;
       box-shadow: 0 0 0 1px var(--theme-border-subtle);
@@ -784,10 +758,6 @@ function mapStyles(interactive: boolean) {
 
     .freed-map-shell[data-map-moving="true"] .freed-map-marker[data-map-moving-priority="primary"] {
       will-change: transform;
-    }
-
-    .freed-map-shell[data-map-moving="true"] .freed-map-marker[data-map-moving-priority="deferred"] {
-      display: none;
     }
 
     .freed-map-shell[data-map-moving="true"] .freed-map-marker[data-map-marker-simplified="true"] [data-avatar-fallback] {
@@ -855,7 +825,7 @@ function fallbackLabel(marker: LocationMarkerSummary) {
 }
 
 function mapMovingPriority(markerIndex: number, useDenseMarkers: boolean): MapMarkerMovingPriority {
-  return useDenseMarkers && markerIndex >= MAP_MOVING_MARKER_PAINT_LIMIT
+  return useDenseMarkers && markerIndex >= MAP_MOVING_MARKER_COMPOSITOR_LIMIT
     ? "deferred"
     : "primary";
 }
@@ -954,6 +924,7 @@ function areLocationMarkersRenderEquivalent(
   const nextItem = next.item;
   return (
     current.key === next.key &&
+    current.accountId === next.accountId &&
     current.authorKey === next.authorKey &&
     current.lat === next.lat &&
     current.lng === next.lng &&
@@ -1106,8 +1077,55 @@ export function fitMapToMarkers(
   );
 }
 
+/** Advance only on eligible geometry/filter changes, never on camera movement. */
+function shouldFitChangedMapContent(
+  state: { initialized: boolean; initialContentSettled: boolean; pendingContentChange: boolean; contentKey: string | null },
+  contentKey: string,
+  markerCount: number,
+  hasVisibleMarker: boolean,
+  manuallyMoving: boolean,
+  contentSettled = true,
+): boolean {
+  if (state.contentKey !== contentKey) state.pendingContentChange = true;
+  state.contentKey = contentKey;
+  if (markerCount === 0) {
+    state.pendingContentChange = false;
+    return false;
+  }
+  if (!contentSettled) return false;
+  if (!state.initialContentSettled) {
+    state.initialContentSettled = true;
+    state.pendingContentChange = false;
+    if (state.initialized || manuallyMoving) return false;
+    state.initialized = true;
+    return true;
+  }
+  if (manuallyMoving || !state.pendingContentChange) return false;
+  state.pendingContentChange = false;
+  return !hasVisibleMarker;
+}
+
+function hasMarkerInMapViewport(
+  map: MapInstance,
+  markers: LocationMarkerSummary[],
+  insets?: MapViewportInsets,
+): boolean {
+  const container = map.getContainer();
+  const centerLng = map.getCenter().lng;
+  return markers.some(({ lng, lat }) => {
+    // Use the nearest world copy when the camera crosses the antimeridian.
+    const point = map.project([lng + 360 * Math.round((centerLng - lng) / 360), lat]);
+    return point.x >= (insets?.left ?? 0)
+      && point.x <= container.clientWidth - (insets?.right ?? 0)
+      && point.y >= (insets?.top ?? 0)
+      && point.y <= container.clientHeight - (insets?.bottom ?? 0);
+  });
+}
+
 export function MapSurface({
   markers,
+  cameraContentKey = "",
+  cameraContentSettled = true,
   focusedMarkerKey,
   interactive = true,
   themeId,
@@ -1120,7 +1138,7 @@ export function MapSurface({
   emptyBody = "Posts with location data will show up here.",
   showFitAllControl = false,
 }: MapSurfaceProps) {
-  const { geographicMapMode = "online", resolveAvatarUrl } = usePlatform();
+  const { geographicMapMode = "online", resolveAvatarUrl, interactionMode } = usePlatform();
   const resolvedThemeId = themeId ?? DEFAULT_THEME_ID;
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapInstance | null>(null);
@@ -1130,17 +1148,23 @@ export function MapSurface({
   const fallbackMovingTimeoutRef = useRef<number | null>(null);
   const nativeMarkerRestoreTimeoutRef = useRef<number | null>(null);
   const mapLifecycleRef = useRef(0);
+  const cameraPolicyRef = useRef({ initialized: false, initialContentSettled: false, pendingContentChange: false, contentKey: null as string | null });
+  const manuallyMovingRef = useRef(false);
+  const lastFocusedMarkerRef = useRef<string | null>(null);
   const mapStyleRequestRef = useRef(0);
   const desiredMapThemeRef = useRef(resolvedThemeId);
   const appliedMapThemeRef = useRef<ThemeId | null>(null);
-  const useDenseMarkersRef = useRef(false);
+  const [cameraInteractionRevision, setCameraInteractionRevision] = useState(0);
   const [mapReady, setMapReady] = useState(false);
   const [mapTilesReady, setMapTilesReady] = useState(false);
   const [mapGeneration, setMapGeneration] = useState(0);
   const [loadFailed, setLoadFailed] = useState(false);
-  const [fallbackMoving, setFallbackMoving] = useState(false);
   const [surfaceSize, setSurfaceSize] = useState<MapSurfaceSize>({ width: 900, height: 560 });
   const [selectedFallbackMarkerKey, setSelectedFallbackMarkerKey] = useState<string | null>(null);
+  const [providerChip, setProviderChip] = useState<{
+    target: HTMLElement;
+    provider: LocationMarkerSummary["item"]["platform"];
+  } | null>(null);
   const activePopupRef = useRef<PopupInstance | null>(null);
   const activePopupKeyRef = useRef<string | null>(null);
   const activePopupMarkerElementRef = useRef<HTMLElement | null>(null);
@@ -1173,19 +1197,10 @@ export function MapSurface({
     () => renderedMarkers.find((marker) => marker.key === selectedFallbackMarkerKey) ?? null,
     [renderedMarkers, selectedFallbackMarkerKey]
   );
-  const showFallback = loadFailed || !mapReady;
-  const fallbackRenderedMarkers = useMemo(() => {
-    if (!showFallback || !fallbackMoving || !useDenseMarkers) return renderedMarkers;
-    return renderedMarkers.filter((marker, markerIndex) => {
-      return getMapMovingPriority(
-        markerIndex,
-        marker.key,
-        true,
-        focusedMarkerKey,
-      ) === "primary";
-    });
-  }, [fallbackMoving, focusedMarkerKey, renderedMarkers, showFallback, useDenseMarkers]);
+  // Loading is not a failure: do not flash fallback labels before native pins.
+  const showFallback = loadFailed;
   const closeActivePopup = useCallback(() => {
+    setProviderChip(null);
     activePopupLayoutCleanupRef.current?.();
     activePopupLayoutCleanupRef.current = null;
     activePopupRef.current?.remove();
@@ -1204,13 +1219,51 @@ export function MapSurface({
     );
     if (!anchor) return;
 
-    return setupMapFloatingPanelLayout({
+    const handlers = actionHandlersRef.current;
+    const content = buildPopupContent(selectedFallbackMarker,
+      handlers.onOpenFriend, handlers.onPromoteAccount,
+      handlers.onLinkAccount, handlers.onOpenPost, anchor.querySelector("img"));
+    content.classList.add("maplibregl-popup-content", "theme-tooltip-panel");
+    panel.prepend(content);
+    setProviderChip({ target: content.querySelector<HTMLElement>("[data-map-provider-chip]")!,
+      provider: selectedFallbackMarker.item.platform });
+    panel.dataset.focusOnOpen = "true";
+    const cleanup = setupMapFloatingPanelLayout({
       panel,
       anchor,
       shell,
       getViewportInsets: () => viewportInsetsRef.current,
     });
+    return () => { cleanup(); content.remove(); };
   }, [selectedFallbackMarker, viewportInsets]);
+  // Both renderers share dismissal rules; moving within the card retains focus.
+  useEffect(() => {
+    const dismiss = (event: Event) => {
+      const panel = activePopupRef.current ?? fallbackPopupRef.current;
+      if (!panel) return;
+      const target = event.target;
+      if (target instanceof Node && (panel.contains(target) ||
+          activePopupMarkerElementRef.current?.contains(target))) return;
+      closeActivePopup();
+      setSelectedFallbackMarkerKey(null);
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      const anchor = activePopupMarkerElementRef.current;
+      closeActivePopup();
+      setSelectedFallbackMarkerKey(null);
+      anchor?.focus({ preventScroll: true });
+    };
+    document.addEventListener("pointerdown", dismiss, true);
+    document.addEventListener("focusin", dismiss);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("pointerdown", dismiss, true);
+      document.removeEventListener("focusin", dismiss);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [closeActivePopup]);
+
   const clearFallbackMovingTimeout = useCallback(() => {
     if (fallbackMovingTimeoutRef.current === null || typeof window === "undefined") return;
     window.clearTimeout(fallbackMovingTimeoutRef.current);
@@ -1220,30 +1273,6 @@ export function MapSurface({
     if (nativeMarkerRestoreTimeoutRef.current === null || typeof window === "undefined") return;
     window.clearTimeout(nativeMarkerRestoreTimeoutRef.current);
     nativeMarkerRestoreTimeoutRef.current = null;
-  }, []);
-  const syncNativeMarkerMotionLayer = useCallback((moving: boolean) => {
-    const map = mapRef.current;
-    if (!map) return;
-
-    const shouldCullDeferredMarkers = moving && useDenseMarkersRef.current;
-    for (const record of markersRef.current) {
-      const shouldAttach = !shouldCullDeferredMarkers || record.priority === "primary";
-      if (shouldAttach === record.attached) continue;
-
-      if (shouldAttach) {
-        try {
-          record.marker.addTo(map);
-          record.attached = true;
-        } catch (error) {
-          record.attached = false;
-          console.error("[MapSurface] Failed to restore map marker", error);
-        }
-        continue;
-      }
-
-      record.marker.remove();
-      record.attached = false;
-    }
   }, []);
   const applyMapThemeStyle = useCallback((nextThemeId: ThemeId) => {
     const map = mapRef.current;
@@ -1284,12 +1313,10 @@ export function MapSurface({
   }, []);
   const markFallbackMoving = useCallback(() => {
     if (!showFallback || typeof window === "undefined") return;
-    setFallbackMoving(true);
     setShellMoving(true);
     clearFallbackMovingTimeout();
     fallbackMovingTimeoutRef.current = window.setTimeout(() => {
       fallbackMovingTimeoutRef.current = null;
-      setFallbackMoving(false);
       setShellMoving(false);
     }, MAP_DENSE_MARKER_RESTORE_DELAY_MS);
   }, [clearFallbackMovingTimeout, setShellMoving, showFallback]);
@@ -1303,13 +1330,6 @@ export function MapSurface({
     if (event.pointerType === "mouse" && event.buttons === 0) return;
     markFallbackMoving();
   }, [markFallbackMoving]);
-
-  useEffect(() => {
-    useDenseMarkersRef.current = useDenseMarkers;
-    if (!useDenseMarkers) {
-      syncNativeMarkerMotionLayer(false);
-    }
-  }, [syncNativeMarkerMotionLayer, useDenseMarkers]);
 
   useEffect(() => () => {
     clearFallbackMovingTimeout();
@@ -1343,7 +1363,6 @@ export function MapSurface({
   useEffect(() => {
     if (showFallback) return;
     clearFallbackMovingTimeout();
-    setFallbackMoving(false);
   }, [clearFallbackMovingTimeout, showFallback]);
 
   useEffect(() => {
@@ -1359,7 +1378,49 @@ export function MapSurface({
     if (!containerRef.current) return;
     const lifecycleId = mapLifecycleRef.current + 1;
     mapLifecycleRef.current = lifecycleId;
+    cameraPolicyRef.current = { initialized: false, initialContentSettled: false, pendingContentChange: false, contentKey: null };
+    manuallyMovingRef.current = false;
+    lastFocusedMarkerRef.current = null;
     let cancelled = false;
+    let ownedMap: MapInstance | null = null;
+    let resizeTimeout: ReturnType<typeof setTimeout> | undefined;
+    let removeTrackpadPan: (() => void) | undefined;
+    let removeMapListeners: (() => void) | undefined;
+    const releaseMap = () => {
+      clearTimeout(resizeTimeout);
+      resizeTimeout = undefined;
+      removeMapListeners?.();
+      removeMapListeners = undefined;
+      removeTrackpadPan?.();
+      removeTrackpadPan = undefined;
+      closeActivePopup();
+      clearNativeMarkerRestoreTimeout();
+      for (const { marker } of markersRef.current) marker.remove();
+      markersRef.current = [];
+      const map = ownedMap;
+      ownedMap = null;
+      if (mapRef.current === map) mapRef.current = null;
+      if (map) {
+        try {
+          disposeMapInstance(map);
+        } catch (error) {
+          // MapLibre can return a partially initialized instance without a
+          // painter. Its remove() can then throw; still release our DOM owner.
+          console.error("[MapSurface] Failed to dispose MapLibre", error);
+        }
+      }
+      // A constructor can append DOM before throwing without returning a map.
+      containerRef.current?.replaceChildren();
+      setShellMoving(false);
+    };
+    const failInitialization = (error: unknown) => {
+      if (cancelled) return;
+      console.error("[MapSurface] Map renderer unavailable", error);
+      releaseMap();
+      setMapReady(false);
+      setMapTilesReady(false);
+      setLoadFailed(true);
+    };
     setShellMoving(false);
     setMapReady(false);
     setMapTilesReady(false);
@@ -1369,12 +1430,7 @@ export function MapSurface({
       setLoadFailed(true);
       return () => {
         cancelled = true;
-        closeActivePopup();
-        clearNativeMarkerRestoreTimeout();
-        for (const { marker } of markersRef.current) marker.remove();
-        markersRef.current = [];
-        if (mapRef.current) disposeMapInstance(mapRef.current);
-        mapRef.current = null;
+        releaseMap();
       };
     }
 
@@ -1403,19 +1459,54 @@ export function MapSurface({
           interactive,
           attributionControl: false,
         });
+        ownedMap = map;
         mapRef.current = map;
+        // MapLibre 6 can report GPU creation failure during its constructor,
+        // before listeners can attach, and return without a renderer.
+        if (!map.painter) throw new Error("MapLibre did not initialize a renderer");
+        if (interactive) {
+          const canvasContainer = map.getCanvasContainer();
+          const claimCamera = () => {
+            if (cancelled || ownedMap !== map || mapLifecycleRef.current !== lifecycleId) return;
+            cameraPolicyRef.current.initialized = true;
+            map.stop();
+          };
+          canvasContainer.addEventListener("pointerdown", claimCamera, true);
+          const panWithTrackpad = (event: globalThis.WheelEvent) => {
+            claimCamera();
+            if (cancelled || ownedMap !== map || mapLifecycleRef.current !== lifecycleId) return;
+            manuallyMovingRef.current = true;
+            // Trackpad scrolling is pixel-based; pinch gestures carry Ctrl.
+            // Capture before MapLibre treats a two-finger swipe as zoom.
+            if (event.ctrlKey || event.metaKey || event.shiftKey || event.deltaMode !== 0) return;
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            map.panBy([event.deltaX, event.deltaY], { duration: 0 });
+          };
+          canvasContainer.addEventListener("wheel", panWithTrackpad, { capture: true, passive: false });
+          removeTrackpadPan = () => {
+            canvasContainer.removeEventListener("wheel", panWithTrackpad, true);
+            canvasContainer.removeEventListener("pointerdown", claimCamera, true);
+          };
+        }
         appliedMapThemeRef.current = initialThemeId;
-        const setMoving = () => {
+        const setMoving = (event: { originalEvent?: unknown }) => {
+          if (cancelled || ownedMap !== map || mapLifecycleRef.current !== lifecycleId) return;
+          if (event?.originalEvent) {
+            cameraPolicyRef.current.initialized = true;
+            manuallyMovingRef.current = true;
+          }
           setMapTilesReady(false);
           clearNativeMarkerRestoreTimeout();
-          syncNativeMarkerMotionLayer(true);
           setShellMoving(true);
         };
         const clearMoving = () => {
+          if (cancelled || ownedMap !== map || mapLifecycleRef.current !== lifecycleId) return;
+          manuallyMovingRef.current = false;
+          if (cameraPolicyRef.current.pendingContentChange) setCameraInteractionRevision(value => value + 1);
           clearNativeMarkerRestoreTimeout();
           nativeMarkerRestoreTimeoutRef.current = window.setTimeout(() => {
             nativeMarkerRestoreTimeoutRef.current = null;
-            syncNativeMarkerMotionLayer(false);
             setShellMoving(false);
           }, MAP_DENSE_MARKER_RESTORE_DELAY_MS);
         };
@@ -1425,27 +1516,51 @@ export function MapSurface({
         map.on("zoomend", clearMoving);
         // Construction readiness permits marker placement, but does not prove
         // the basemap has rendered. Capture callers need the settled tile state.
-        map.on("dataloading", () => {
-          if (!cancelled) setMapTilesReady(false);
-        });
-        map.on("idle", () => {
-          if (!cancelled) setMapTilesReady(map.loaded());
-        });
+        const onError = (event: { error: Error }) => {
+          if (cancelled || ownedMap !== map) return;
+          // Tile, glyph and sprite errors do not imply an unusable map. Only
+          // explicit GPU initialization failure defeats context restoration.
+          if (interactionMode === "read-only" && event.error instanceof maplibre.GPUInitializationError) {
+            failInitialization(event.error);
+          }
+        };
+        const onDataLoading = () => {
+          if (!cancelled && ownedMap === map) setMapTilesReady(false);
+        };
+        const onIdle = () => {
+          if (!cancelled && ownedMap === map) setMapTilesReady(map.loaded());
+        };
+        removeMapListeners = () => {
+          map.off("movestart", setMoving);
+          map.off("zoomstart", setMoving);
+          map.off("moveend", clearMoving);
+          map.off("zoomend", clearMoving);
+          map.off("error", onError);
+          map.off("dataloading", onDataLoading);
+          map.off("idle", onIdle);
+        };
+        map.on("error", onError);
+        map.on("dataloading", onDataLoading);
+        map.on("idle", onIdle);
         setMapGeneration(lifecycleId);
         setMapReady(true);
-        setTimeout(() => map.resize(), 0);
+        resizeTimeout = setTimeout(() => {
+          resizeTimeout = undefined;
+          if (cancelled || ownedMap !== map) return;
+          try {
+            map.resize();
+          } catch (error) {
+            failInitialization(error);
+          }
+        }, 0);
         if (desiredMapThemeRef.current !== initialThemeId) {
           applyMapThemeStyle(desiredMapThemeRef.current);
         }
       } catch (error) {
-        console.error("[MapSurface] Failed to initialize MapLibre", error);
-        if (mapRef.current) disposeMapInstance(mapRef.current);
-        mapRef.current = null;
-        setLoadFailed(true);
+        failInitialization(error);
       }
     }).catch((error) => {
-      console.error("[MapSurface] Failed to load the themed map", error);
-      setLoadFailed(true);
+      failInitialization(error);
     });
 
     return () => {
@@ -1453,15 +1568,11 @@ export function MapSurface({
       mapLifecycleRef.current += 1;
       mapStyleRequestRef.current += 1;
       appliedMapThemeRef.current = null;
-      closeActivePopup();
-      clearNativeMarkerRestoreTimeout();
-      for (const { marker } of markersRef.current) marker.remove();
-      markersRef.current = [];
-      if (mapRef.current) disposeMapInstance(mapRef.current);
-      mapRef.current = null;
-      setShellMoving(false);
+      releaseMap();
     };
-  }, [applyMapThemeStyle, clearNativeMarkerRestoreTimeout, closeActivePopup, interactive, setShellMoving, syncNativeMarkerMotionLayer]);
+  }, [applyMapThemeStyle, clearNativeMarkerRestoreTimeout, closeActivePopup, geographicMapMode, interactionMode, interactive, setShellMoving]);
+
+  useEffect(() => { closeActivePopup(); setSelectedFallbackMarkerKey(null); }, [cameraContentKey, closeActivePopup]);
 
   useEffect(() => {
     applyMapThemeStyle(resolvedThemeId);
@@ -1475,10 +1586,11 @@ export function MapSurface({
       || mapGeneration !== mapLifecycleRef.current
     ) return;
 
-    closeActivePopup();
+    if (!interactive) closeActivePopup();
     clearNativeMarkerRestoreTimeout();
-    for (const { marker } of markersRef.current) marker.remove();
-    markersRef.current = [];
+    const previousMarkers = new Map(markersRef.current.map(record => [record.data.key, record]));
+    const nextMarkers: MapMarkerRecord[] = [];
+    markersRef.current = nextMarkers;
     setShellMoving(false);
 
     const map = mapRef.current;
@@ -1496,6 +1608,46 @@ export function MapSurface({
         useDenseMarkers,
         focusedMarkerKey,
       );
+      let existing = previousMarkers.get(markerData.key);
+      previousMarkers.delete(markerData.key);
+      // A pin key can outlive its latest post. Never associate an open card
+      // with a replacement item or a different account/person owner.
+      if (existing && (existing.interactive !== interactive || existing.data.item.globalId !== markerData.item.globalId
+        || existing.data.authorKey !== markerData.authorKey || existing.data.accountId !== markerData.accountId
+        || existing.data.friend?.id !== markerData.friend?.id)) {
+        if (activePopupMarkerElementRef.current === existing.element) closeActivePopup();
+        existing.marker.remove(); existing = undefined;
+      }
+      if (existing) {
+        const changed = !areLocationMarkersRenderEquivalent(existing.data, markerData)
+          || existing.palette !== avatarPalette || existing.resolver !== resolveAvatarUrl;
+        existing.data = markerData; existing.palette = avatarPalette; existing.resolver = resolveAvatarUrl;
+        existing.marker.setLngLat([markerData.lng, markerData.lat]);
+        existing.element.dataset.mapMovingPriority = priority;
+        if (changed) {
+          const fresh = createMarkerElement(markerData, avatarPalette, { showAvatar: true, resolveAvatarUrl, simplified: false });
+          existing.element.className = fresh.className;
+          existing.element.style.cssText = fresh.style.cssText;
+          for (const attribute of Array.from(fresh.attributes)) existing.element.setAttribute(attribute.name, attribute.value);
+          existing.element.replaceChildren(...Array.from(fresh.childNodes));
+          const popup = activePopupMarkerElementRef.current === existing.element ? activePopupRef.current : null;
+          if (popup) {
+            const record = existing;
+            const handlers = actionHandlersRef.current;
+            const content = buildPopupContent(markerData,
+              handlers.onOpenFriend ? () => actionHandlersRef.current.onOpenFriend?.(record.data) : undefined,
+              handlers.onPromoteAccount ? () => actionHandlersRef.current.onPromoteAccount?.(record.data) : undefined,
+              handlers.onLinkAccount ? () => actionHandlersRef.current.onLinkAccount?.(record.data) : undefined,
+              handlers.onOpenPost ? () => actionHandlersRef.current.onOpenPost?.(record.data) : undefined,
+              existing.element.querySelector("img"));
+            content.classList.add("maplibregl-popup-content", "theme-tooltip-panel");
+            popup.querySelector(".maplibregl-popup-content")?.replaceWith(content);
+            popup.setAttribute("aria-label", popupTitle(markerData));
+            setProviderChip({ target: content.querySelector<HTMLElement>("[data-map-provider-chip]")!, provider: markerData.item.platform });
+          }
+        }
+        nextMarkers.push(existing); continue;
+      }
       const element = createMarkerElement(markerData, avatarPalette, {
         // Marker admission is already bounded. Density must not erase identity
         // images or change their theme styling when switching audience filters.
@@ -1509,8 +1661,10 @@ export function MapSurface({
         markerData.lat,
       ]);
 
+      const record: MapMarkerRecord = { marker, element, data: markerData, interactive, palette: avatarPalette, resolver: resolveAvatarUrl };
       if (interactive) {
         element.addEventListener("click", (event) => {
+          const markerData = record.data;
           event.preventDefault();
           event.stopPropagation();
           if (activePopupKeyRef.current === markerData.key) {
@@ -1526,23 +1680,30 @@ export function MapSurface({
           const popupContent = buildPopupContent(
             markerData,
             currentHandlers.onOpenFriend
-              ? (marker) => actionHandlersRef.current.onOpenFriend?.(marker)
+              ? () => actionHandlersRef.current.onOpenFriend?.(record.data)
               : undefined,
             currentHandlers.onPromoteAccount
-              ? (marker) => actionHandlersRef.current.onPromoteAccount?.(marker)
+              ? () => actionHandlersRef.current.onPromoteAccount?.(record.data)
               : undefined,
             currentHandlers.onLinkAccount
-              ? (marker) => actionHandlersRef.current.onLinkAccount?.(marker)
+              ? () => actionHandlersRef.current.onLinkAccount?.(record.data)
               : undefined,
             currentHandlers.onOpenPost
-              ? (marker) => actionHandlersRef.current.onOpenPost?.(marker)
+              ? () => actionHandlersRef.current.onOpenPost?.(record.data)
               : undefined,
+            element.querySelector("img"),
           );
-          popupContent.classList.add("maplibregl-popup-content");
+          popupContent.classList.add("maplibregl-popup-content", "theme-tooltip-panel");
+          setProviderChip({ target: popupContent.querySelector<HTMLElement>("[data-map-provider-chip]")!,
+            provider: markerData.item.platform });
+          popupElement.tabIndex = -1;
+          popupElement.setAttribute("role", "dialog");
+          popupElement.setAttribute("aria-label", popupTitle(markerData));
           const popupArrow = document.createElement("span");
           popupArrow.className = "freed-map-popup-arrow";
           popupArrow.dataset.mapPopupArrow = "true";
           popupElement.append(popupContent, popupArrow);
+          popupElement.dataset.focusOnOpen = "true";
           document.body.appendChild(popupElement);
           activePopupLayoutCleanupRef.current = setupMapFloatingPanelLayout({
             panel: popupElement,
@@ -1566,7 +1727,7 @@ export function MapSurface({
 
       try {
         marker.addTo(map);
-        markersRef.current.push({ marker, priority, attached: true });
+        nextMarkers.push(record);
       } catch (error) {
         marker.remove();
         if (mapRef.current === map && mapLifecycleRef.current === lifecycleId) {
@@ -1577,10 +1738,11 @@ export function MapSurface({
       }
     }
 
-    return () => {
-      map.off("click", handleMapClick);
-      closeActivePopup();
-    };
+    for (const record of previousMarkers.values()) {
+      if (activePopupMarkerElementRef.current === record.element) closeActivePopup();
+      record.marker.remove();
+    }
+    return () => { map.off("click", handleMapClick); };
   }, [
     avatarPalette,
     clearNativeMarkerRestoreTimeout,
@@ -1602,8 +1764,25 @@ export function MapSurface({
       || !mapRef.current
       || mapGeneration !== mapLifecycleRef.current
     ) return;
-    fitMapToMarkers(mapRef.current, stableMarkers, focusedMarkerKey, viewportInsets);
-  }, [focusedMarkerKey, mapGeneration, mapReady, stableMarkers, viewportInsets]);
+    const map = mapRef.current;
+    if (!interactive) {
+      fitMapToMarkers(map, stableMarkers, focusedMarkerKey, viewportInsets);
+      return;
+    }
+    const focusChanged = lastFocusedMarkerRef.current !== (focusedMarkerKey ?? null);
+    const focusedMarkerAvailable = !!focusedMarkerKey && stableMarkers.some(marker => marker.key === focusedMarkerKey);
+    if (!focusedMarkerKey || focusedMarkerAvailable) lastFocusedMarkerRef.current = focusedMarkerKey ?? null;
+    const contentKey = JSON.stringify([cameraContentKey,
+      stableMarkers.map(({ key, lat, lng }) => [key, lat, lng]).sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
+    ]);
+    if (shouldFitChangedMapContent(cameraPolicyRef.current, contentKey, stableMarkers.length,
+      hasMarkerInMapViewport(map, stableMarkers, viewportInsets), manuallyMovingRef.current, cameraContentSettled)) {
+      fitMapToMarkers(map, stableMarkers, focusChanged ? focusedMarkerKey : null, viewportInsets);
+    } else if (focusChanged && focusedMarkerAvailable) {
+      // An explicit profile selection is intentional navigation, not hydration.
+      fitMapToMarkers(map, stableMarkers, focusedMarkerKey, viewportInsets);
+    }
+  }, [cameraContentKey, cameraContentSettled, cameraInteractionRevision, focusedMarkerKey, interactive, mapGeneration, mapReady, stableMarkers, viewportInsets]);
 
   const handleFitAll = useCallback(() => {
     closeActivePopup();
@@ -1613,6 +1792,8 @@ export function MapSurface({
   }, [closeActivePopup, loadFailed, mapReady, stableMarkers, viewportInsets]);
 
   return (
+    <>
+      {providerChip && createPortal(<ProviderChip provider={providerChip.provider} />, providerChip.target)}
     <div
       ref={shellRef}
       data-testid="map-surface"
@@ -1653,6 +1834,9 @@ export function MapSurface({
         </div>
       )}
       <div className="absolute inset-0 overflow-hidden">
+        {!mapReady && !loadFailed && (
+          <LoadingState message="Loading map" className="absolute inset-0 z-30 bg-[var(--theme-bg-primary)]" />
+        )}
         <div
           ref={containerRef}
           className={`h-full w-full ${showFallback ? "invisible" : "visible"}`}
@@ -1698,7 +1882,7 @@ export function MapSurface({
               )`,
             }}
           />
-          {fallbackRenderedMarkers.map((marker) => {
+          {renderedMarkers.map((marker) => {
             const position = fallbackPosition(marker, viewportInsets, surfaceSize);
             const renderedMarkerIndex = renderedMarkers.findIndex((entry) => entry.key === marker.key);
             return (
@@ -1712,7 +1896,7 @@ export function MapSurface({
                   useDenseMarkers,
                   focusedMarkerKey,
                 )}
-                className="freed-map-marker absolute -translate-x-1/2 -translate-y-1/2 rounded-full px-2.5 py-1.5 text-[11px] text-[color:var(--theme-text-primary)]"
+                className="freed-map-marker absolute -translate-x-1/2 -translate-y-1/2 rounded-full px-2.5 py-1.5 text-[0.6875rem] text-[color:var(--theme-text-primary)]"
                 style={{
                   ...position,
                   border: "1px solid color-mix(in oklab, var(--theme-border-strong) 78%, transparent)",
@@ -1732,102 +1916,11 @@ export function MapSurface({
               ref={fallbackPopupRef}
               data-testid="map-fallback-popup"
               data-map-floating-panel="popup"
-              className="freed-map-popup theme-dialog-shell fixed p-5"
+              className="freed-map-popup fixed"
+              tabIndex={-1}
+              role="dialog"
+              aria-label={popupTitle(selectedFallbackMarker)}
             >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="theme-card-soft rounded-full border-[color:var(--theme-border-strong)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-primary)]">
-                      {popupKicker(selectedFallbackMarker)}
-                    </span>
-                    <span className="text-[11px] text-[color:var(--theme-text-muted)]">
-                      {popupMeta(selectedFallbackMarker)}
-                    </span>
-                  </div>
-                  <p className="mt-3 text-xl font-semibold tracking-[-0.03em] text-[color:var(--theme-text-primary)]">
-                    {fallbackLabel(selectedFallbackMarker)}
-                  </p>
-                  {selectedFallbackMarker.label && (
-                    <p className="mt-1 text-sm font-medium text-[color:var(--theme-accent-secondary)]">
-                      {selectedFallbackMarker.label}
-                    </p>
-                  )}
-                  {popupSnippet(selectedFallbackMarker.item.content.text) && (
-                    <div className="theme-card-soft mt-4 rounded-2xl p-3">
-                      <p className="text-sm leading-6 text-[color:var(--theme-text-secondary)]">
-                        {popupSnippet(selectedFallbackMarker.item.content.text)}
-                      </p>
-                    </div>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  className="btn-secondary rounded-xl px-2.5 py-1.5 text-[11px]"
-                  onClick={() => setSelectedFallbackMarkerKey(null)}
-                >
-                  Close
-                </button>
-              </div>
-
-              <div className="mt-4 grid grid-cols-2 gap-2">
-                <div className="theme-card-soft rounded-2xl px-3 py-2.5">
-                  <p className="text-[10px] uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">Seen</p>
-                  <p className="mt-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">
-                    {popupRelativeTime(selectedFallbackMarker.seenAt)}
-                  </p>
-                </div>
-                <div className="theme-card-soft rounded-2xl px-3 py-2.5">
-                  <p className="text-[10px] uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">Source</p>
-                  <p className="mt-1 text-sm font-semibold capitalize text-[color:var(--theme-text-primary)]">
-                    {selectedFallbackMarker.item.platform}
-                  </p>
-                </div>
-              </div>
-
-              {selectedFallbackMarker.groupCount > 1 && (
-                <p className="mt-3 text-xs text-[color:var(--theme-accent-secondary)]">
-                  {selectedFallbackMarker.groupCount.toLocaleString()} updates from this spot
-                </p>
-              )}
-
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                {hasConfirmedFriend(selectedFallbackMarker) && onOpenFriend && (
-                  <button
-                    type="button"
-                    className="btn-primary w-full rounded-xl px-3.5 py-2 text-xs"
-                    onClick={() => onOpenFriend(selectedFallbackMarker)}
-                  >
-                    Open Friend
-                  </button>
-                )}
-                {!hasConfirmedFriend(selectedFallbackMarker) && onPromoteAccount && (
-                  <button
-                    type="button"
-                    className="btn-primary w-full rounded-xl px-3.5 py-2 text-xs"
-                    onClick={() => onPromoteAccount(selectedFallbackMarker)}
-                  >
-                    Promote to friend
-                  </button>
-                )}
-                {!hasConfirmedFriend(selectedFallbackMarker) && onLinkAccount && (
-                  <button
-                    type="button"
-                    className="btn-secondary w-full rounded-xl px-3.5 py-2 text-xs"
-                    onClick={() => onLinkAccount(selectedFallbackMarker)}
-                  >
-                    Link to existing friend
-                  </button>
-                )}
-                {onOpenPost && (
-                  <button
-                    type="button"
-                    className="btn-secondary w-full rounded-xl px-3.5 py-2 text-xs"
-                    onClick={() => onOpenPost(selectedFallbackMarker)}
-                  >
-                    Open Post
-                  </button>
-                )}
-              </div>
               <span
                 className="freed-map-popup-arrow"
                 data-map-popup-arrow="true"
@@ -1846,11 +1939,13 @@ export function MapSurface({
           >
             <div>
               <p className="text-sm font-medium text-[color:var(--theme-text-primary)]">
-                {loadFailed ? "Map failed to load" : emptyTitle}
+                {loadFailed ? interactionMode === "read-only" ? "Showing the simplified map" : "Map failed to load" : emptyTitle}
               </p>
               <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
                 {loadFailed
-                  ? "This browser could not initialize the live map, so a simplified view is shown instead."
+                  ? interactionMode === "read-only"
+                    ? "Explore the sample locations here. Reload to try the detailed map again."
+                    : "This browser could not initialize the live map, so a simplified view is shown instead."
                   : emptyBody}
               </p>
             </div>
@@ -1858,5 +1953,6 @@ export function MapSurface({
         )}
       </div>
     </div>
+    </>
   );
 }

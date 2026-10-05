@@ -1,3 +1,4 @@
+import { usePlatformCapabilities } from "../../context/PlatformContext.js";
 import {
   Suspense,
   lazy,
@@ -96,17 +97,31 @@ function sameCanvasViewportInsets(
 }
 
 export function AppShell({ children }: AppShellProps) {
+  const capabilities = usePlatformCapabilities();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [friendsMobileSurface, setFriendsMobileSurface] =
     useState<FriendsMobileSurface>("graph");
   const isMobileViewport = useIsMobile();
   const isMobileDevice = useIsMobileDevice();
-  const debugVisible = useDebugStore((s) => s.visible);
+  const usesDocumentScroll = isMobileViewport || isMobileDevice;
+  const requestedDebugVisible = useDebugStore((s) => s.visible);
+  const debugVisible = capabilities.diagnostics && requestedDebugVisible;
   const toggleDebug = useDebugStore((s) => s.toggle);
   const activeView = useAppStore((s) => s.activeView);
+  const selectedFriendId = useAppStore((s) => s.selectedPersonId);
+  const selectedFriendAccountId = useAppStore((s) => s.selectedAccountId);
+  useEffect(() => {
+    // Author links and map actions select through the shared store, without
+    // invoking the galaxy's sidebar callback. Reveal their detail on mobile.
+    if (isMobileViewport && activeView === "friends" &&
+      (selectedFriendId || selectedFriendAccountId)) {
+      setFriendsMobileSurface("details");
+    }
+  }, [activeView, isMobileViewport, selectedFriendId, selectedFriendAccountId]);
   const setActiveView = useAppStore((s) => s.setActiveView);
   const {
     queryLibraryCore,
+    LibrarySetupState,
     readLibraryAccountDetail,
     readLibraryPersonDetail,
     replaceLibraryFriend,
@@ -197,15 +212,8 @@ export function AppShell({ children }: AppShellProps) {
     closeSavedContentDialog();
   }, [closeSavedContentDialog]);
 
-  const forceCompactDesktopSidebar = !isMobileDevice && isMobileViewport;
-  const effectiveDesktopSidebarDisplayMode =
-    forceCompactDesktopSidebar && desktopSidebarMode !== "closed"
-      ? "compact"
-      : desktopSidebarDisplayMode;
-  const desktopSidebarToggleMode =
-    forceCompactDesktopSidebar && desktopSidebarMode !== "closed"
-      ? "compact"
-      : desktopSidebarMode;
+  const effectiveDesktopSidebarDisplayMode = desktopSidebarDisplayMode;
+  const desktopSidebarToggleMode = desktopSidebarMode;
 
   useEffect(() => {
     if (dragging.current || dragWidth !== null) return;
@@ -273,7 +281,7 @@ export function AppShell({ children }: AppShellProps) {
       observer.disconnect();
       window.removeEventListener("resize", scheduleUpdate);
     };
-  }, [activeView, debugVisible, debugWidth, desktopSidebarMode, effectiveDesktopSidebarDisplayMode, isMobileDevice]);
+  }, [activeView, debugVisible, debugWidth, desktopSidebarMode, effectiveDesktopSidebarDisplayMode, isMobileViewport]);
 
   const persistDesktopSidebarMode = useCallback((nextMode: SidebarMode) => {
     if (!setDeviceDisplay({ sidebarMode: nextMode })) {
@@ -297,10 +305,13 @@ export function AppShell({ children }: AppShellProps) {
   }, [desktopSidebarToggleMode, persistDesktopSidebarMode]);
 
   const handleFriendsSidebarOpenChange = useCallback((open: boolean) => {
+    if (isMobileViewport) {
+      setFriendsMobileSurface(open ? "details" : "graph");
+    }
     if (!setDeviceDisplay({ friendsSidebarOpen: open })) {
       toast.error("Freed could not save the sidebar layout on this device.");
     }
-  }, [setDeviceDisplay]);
+  }, [isMobileViewport, setDeviceDisplay]);
 
   const handleDebugDragStart = useCallback(
     (e: React.MouseEvent) => {
@@ -359,29 +370,29 @@ export function AppShell({ children }: AppShellProps) {
         requestSearchPalette();
       } else if (e.key === "D" && e.shiftKey && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
-        toggleDebug();
+        if (capabilities.diagnostics) toggleDebug();
       } else if (e.key === "Escape" && debugVisible) {
-        toggleDebug();
+        if (capabilities.diagnostics) toggleDebug();
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [blockingModalOpen, debugVisible, requestSearchPalette, toggleDebug]);
+  }, [blockingModalOpen, capabilities.diagnostics, debugVisible, requestSearchPalette, toggleDebug]);
 
   useEffect(() => {
-    if (!isMobileDevice && mobileSidebarOpen) {
+    if (!isMobileViewport && mobileSidebarOpen) {
       setMobileSidebarOpen(false);
     }
-  }, [isMobileDevice, mobileSidebarOpen]);
+  }, [isMobileViewport, mobileSidebarOpen]);
 
   useEffect(() => {
-    if (!isMobileDevice || !mobileSidebarOpen) return;
+    if (!isMobileViewport || !mobileSidebarOpen) return;
 
     document.documentElement.classList.add("freed-mobile-sidebar-open");
     return () => {
       document.documentElement.classList.remove("freed-mobile-sidebar-open");
     };
-  }, [isMobileDevice, mobileSidebarOpen]);
+  }, [isMobileViewport, mobileSidebarOpen]);
 
   useEffect(() => {
     if (activeView === "friends" && isMobileViewport) return;
@@ -498,10 +509,9 @@ export function AppShell({ children }: AppShellProps) {
 
   return (
     <ContactSyncContext.Provider value={{ ...contactSync, openReview }}>
-      {/* On actual mobile devices, the layout flows naturally in the document so
-          Safari can collapse its address bar when the feed scrolls. Desktop devices
-          keep the fixed-height shell even when the viewport is narrow. */}
-      <div className={`app-theme-shell relative flex min-w-0 flex-1 flex-col ${isMobileDevice ? "" : "min-h-0"}`}>
+      {/* On mobile layouts, the layout flows naturally in the document so
+          Safari can collapse its address bar when the feed scrolls. Wide layouts keep the fixed-height shell. */}
+      <div data-mobile-device={usesDocumentScroll} className={`app-theme-shell relative flex min-w-0 flex-1 flex-col ${usesDocumentScroll ? "" : "min-h-0"}`}>
         {showAtmosphere ? <BackgroundAtmosphere /> : null}
         <Header
           mobileSidebarOpen={mobileSidebarOpen}
@@ -519,8 +529,9 @@ export function AppShell({ children }: AppShellProps) {
 
         <div
           ref={contentFrameRef}
-          className={`relative z-10 flex flex-1 ${contentFrameSpacingClass} ${
-            isMobileDevice ? "" : "min-h-0 overflow-hidden"
+          data-testid="workspace-content-frame"
+          className={`app-content-frame relative z-10 flex flex-1 ${contentFrameSpacingClass} ${
+            usesDocumentScroll ? "" : "min-h-0 overflow-hidden"
           }`}
         >
           {activeView === "friends" ? (
@@ -529,7 +540,7 @@ export function AppShell({ children }: AppShellProps) {
               data-testid="friends-background-layer"
             />
           ) : null}
-          {activeView === "map" ? (
+          {activeView === "map" && !LibrarySetupState ? (
             <div
               className="absolute inset-0 z-0"
               data-testid="map-background-layer"
@@ -551,11 +562,11 @@ export function AppShell({ children }: AppShellProps) {
           </div>
           <main
             ref={mainRef}
-            className={`relative min-w-0 flex-1 ${activeView === "friends" ? "z-0" : "z-10"} ${activeView === "map" ? "pointer-events-none" : ""} ${
-              isMobileDevice ? "" : activeView === "friends" ? "min-h-0 overflow-visible" : "min-h-0 overflow-hidden"
+            className={`relative min-w-0 flex-1 ${activeView === "friends" ? "z-0" : "z-10"} ${activeView === "map" && !LibrarySetupState ? "pointer-events-none" : ""} ${
+              usesDocumentScroll ? "" : activeView === "friends" ? "min-h-0 overflow-visible" : "min-h-0 overflow-hidden"
             }`}
           >
-            {activeView === "friends"
+            {LibrarySetupState ? <LibrarySetupState /> : activeView === "friends"
               ? (
                 <Suspense fallback={<div className="h-full min-h-0" data-testid="friends-view-loading" />}>
                   <LazyFriendsView
@@ -572,7 +583,7 @@ export function AppShell({ children }: AppShellProps) {
 
           <div
             data-testid="debug-panel-drawer"
-            className="relative z-10 hidden flex-none overflow-hidden pb-[var(--feed-card-gap,8px)] sm:flex"
+            className={`relative z-10 flex-none overflow-hidden pb-[var(--feed-card-gap,8px)] ${isMobileViewport ? "hidden" : "flex"}`}
             style={{
               width: debugVisible ? debugWidth + AUXILIARY_DRAWER_GAP_WIDTH_PX : 0,
               opacity: debugVisible ? 1 : 0,
@@ -592,24 +603,24 @@ export function AppShell({ children }: AppShellProps) {
                   onMouseDown={handleDebugDragStart}
                 />
               )}
-              <DebugPanel variant="drawer" />
+              {debugVisible && <DebugPanel variant="drawer" />}
             </div>
           </div>
         </div>
         {debugVisible && isMobileViewport && (
-          <div className="sm:hidden">
+          <div>
             <DebugPanel variant="overlay" />
           </div>
         )}
-        <AddFeedDialog open={addFeedOpen} onClose={closeAddFeedDialog} />
+        <AddFeedDialog open={capabilities.libraryEdits && addFeedOpen} onClose={closeAddFeedDialog} />
         <SavedContentDialog
-          open={savedContentOpen}
+          open={capabilities.libraryEdits && savedContentOpen}
           initialUrl={savedContentInitialUrl}
           editItem={savedContentEditItem}
           initialError={savedContentError}
           onClose={handleCloseSavedContentDialog}
         />
-        {libraryDialogOpen ? (
+        {capabilities.libraryEdits && libraryDialogOpen ? (
           <LibraryDialog
             onClose={closeLibraryDialog}
             initialTab={libraryDialogTab}

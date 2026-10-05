@@ -1,0 +1,36 @@
+{
+  "decision": "pass_verbatim",
+  "imageDecision": "pass",
+  "proseDecision": "pass",
+  "canonDecision": "pass",
+  "titleDecision": "pass",
+  "episode": {
+    "subject": "harbor seal",
+    "platform": "instagram",
+    "contentType": "story",
+    "theme": "social",
+    "title": "The end without teeth",
+    "body": "Something pinched my back. I turned. The bird had its head down, examining the sand.\n\nI settled again. Another pinch.\n\nThis time I turned until my nose was where my tail had been. The bird walked around me.\n\nI watched it go, and began turning again.",
+    "mediaSha1": "4fbf56a88dea37d1ed11710a36b82f47b84d9609"
+  },
+  "independentlyOpened": "/tmp/freed-fenn145/168417224.jpg",
+  "sourceEvidence": "Independently read cached primary API observation100879811 in /tmp/freed-fenn145/gulls.json. Exact photo168417224 is cc-by, attributed Millie Basden. Observation identifies Phoca vitulina richardii and reports young Western Gull repeatedly trying to peck seal back. Subspecies supports species-level Fenn; no subspecies needs adding to canon.",
+  "localVerification": {
+    "width": 1024,
+    "height": 597,
+    "byteLength": 206746,
+    "originalDimensions": [
+      2048,
+      1194
+    ],
+    "sha1": "4fbf56a88dea37d1ed11710a36b82f47b84d9609",
+    "sha256": "f1003b423a5b75f0010dd87701212ae504aed96a3a171ebc6616192983deb3e9"
+  },
+  "imageReason": "Sharp full seal body and face, recognizable juvenile gull behind its back. Neither actor is clipped. Sand serves as readable stage. Gull bill is open; no contact captured. Primary observed behavior supports the encounter beyond a generic juxtaposition.",
+  "proseReason": "A repeated physical interruption changes Fenn from trying to rest into actively tracking the bird. The final turn keeps the predicament alive without a moral or injury gag. Strong sentences need no stylistic revision.",
+  "physicalPlausibility": "Seal can turn its body on sand without sea-lion walking. Prose claims no hind-flipper rotation under the body, gallop or impossible reach. Nose replacing prior tail position describes a change of heading, not a human pivot technique. Turning speed is unspecified.",
+  "continuityReason": "Full current two-entry arc reread. The ice scene is passive rotation of a resting group while Fenn declines involvement. This is active rotation of Fenn in response to a moving gull. Similar verb, different physical cause, desire and payoff. Childhood buoy play is distinct. Append as adult episode after both.",
+  "titleReason": "The end without teeth names the gull preferred access and makes the seal repeated turning legible. Six words and first-person dispatch remains in body. Title does not falsely claim a bite.",
+  "fictionBoundary": "Actual photograph shows proximity, not the pinch or turn sequence. Source observer reports attempted pecking; successful pinches, feigned sand examination and sequence are fiction. No recorded injury asserted. La Jolla remains source provenance, not travel from Kenai Fjords.",
+  "runtimeChanges": false
+}

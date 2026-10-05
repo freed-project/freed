@@ -13,3 +13,5 @@
    `inconclusive`, not a successful release verdict.
 5. For production, open the required reverse-integration PR from `main` into `dev` after release stability is established.
 6. Use `freed-ship-www` for changelog publication and any approved roadmap presentation update. Never merge `dev` into `www`.
+
+7. For production, complete [showcase asset and website verification](../../../../docs/RELEASE-SHOWCASE.md). Record any missing integration or website handoff as pending release work.

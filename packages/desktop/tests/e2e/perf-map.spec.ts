@@ -9,7 +9,7 @@ const MAP_FRAME_P95_BUDGET_MS = process.env.CI ? 67 : 50;
 const MAP_DROPPED_FRAME_BUDGET = process.env.CI ? 40 : 12;
 const MAP_LONG_TASK_COUNT_BUDGET = process.env.CI ? 4 : 2;
 const MAP_MARKER_DOM_BUDGET = 160;
-const MAP_MOVING_MARKER_PAINT_BUDGET = 24;
+const MAP_MOVING_MARKER_COMPOSITOR_BUDGET = 24;
 
 async function seedLargeMapWorkspace(page: Page): Promise<void> {
   await page.evaluate(async ({ authorCount, itemCount }) => {
@@ -220,7 +220,7 @@ test("Map view bounds 4,800 SQLite location rows within frame budget", async ({ 
       await page.waitForTimeout(180);
       await page.mouse.wheel(0, -900);
       await page.waitForTimeout(180);
-      const marker = page.locator(".freed-map-marker").nth(Math.floor(MAP_MOVING_MARKER_PAINT_BUDGET / 2));
+      const marker = page.locator(".freed-map-marker").nth(Math.floor(MAP_MOVING_MARKER_COMPOSITOR_BUDGET / 2));
       await marker.click({ force: true });
       await page.waitForTimeout(220);
     }),
@@ -246,10 +246,10 @@ test("Map view bounds 4,800 SQLite location rows within frame budget", async ({ 
   expect(totalMarkerCount).toBe(LIBRARY_CORE_MAP_MARKERS_MAXIMUM_LIMIT);
   expect(markerCount).toBeLessThanOrEqual(MAP_MARKER_DOM_BUDGET);
   expect(retainedMarkerCount).toBe(markerCount);
-  expect(movingPrimaryMarkerCount).toBeLessThanOrEqual(MAP_MOVING_MARKER_PAINT_BUDGET);
+  expect(movingPrimaryMarkerCount).toBeLessThanOrEqual(MAP_MOVING_MARKER_COMPOSITOR_BUDGET);
   expect(movingPrimaryMarkerCount + movingDeferredMarkerCount).toBe(markerCount);
-  expect(movingVisibleMarkerCount).toBeLessThanOrEqual(MAP_MOVING_MARKER_PAINT_BUDGET);
-  expect(movingAttachedMarkerCount).toBeLessThanOrEqual(MAP_MOVING_MARKER_PAINT_BUDGET);
+  expect(movingVisibleMarkerCount).toBe(markerCount);
+  expect(movingAttachedMarkerCount).toBe(markerCount);
   expect(restoredMarkerCount).toBe(markerCount);
   expect(interaction.result.p95Ms).toBeLessThan(MAP_FRAME_P95_BUDGET_MS);
   expect(interaction.result.droppedFrames).toBeLessThanOrEqual(MAP_DROPPED_FRAME_BUDGET);

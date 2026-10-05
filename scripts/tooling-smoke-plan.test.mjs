@@ -7,8 +7,21 @@ import {
   projectShardRuntime,
   selectApplicableSuites,
   selectNativeAcceptance,
+  selectPreviewNativeAcceptance,
   suiteWeights,
+  allocateShardBudget,
 } from "./lib/tooling-smoke-plan.mjs";
+
+test("short measured suites do not consume the entire runner budget", () => {
+  const weights = new Map([["general", { weight: 319.1, measured: true }]]);
+  assert.deepEqual(allocateShardBudget(["general"], 16, weights), [
+    { suite: "general", shardCount: 2 },
+  ]);
+  weights.set("general", { weight: 319.1, measured: false, capped: true });
+  assert.deepEqual(allocateShardBudget(["general"], 16, weights), [
+    { suite: "general", shardCount: 16 },
+  ]);
+});
 
 // The planner decides how every tooling smoke job is allocated and had no
 // coverage at all. What follows pins the specific failure that motivated it:
@@ -32,6 +45,18 @@ const COMPLETED = {
     "outcome-ledger-repair": { seconds: 5415, runs: 1, source: "completed" },
   },
 };
+
+test("the nightly 40-job plan fits two attempts with the observed imbalance margin", () => {
+  const plan = buildToolingSmokeMatrix({ changedFiles: [], maxJobs: 40 });
+  assert.equal(plan.jobCount, 40);
+  assert.deepEqual(plan.overrunSuites, []);
+  for (const projection of plan.projection) {
+    assert.ok(
+      projection.perShardSeconds * 2 * 1.5 <= DEFAULT_SHARD_TIMEOUT_SECONDS,
+      `${projection.suite} does not fit two attempts with the 1.5x imbalance margin`,
+    );
+  }
+});
 
 test("a capped duration is not treated as a measurement", () => {
   const capped = suiteWeights({ durations: CAPPED }).get(
@@ -173,6 +198,11 @@ test("release admission and repository configuration changes use focused feature
   const selection = selectApplicableSuites([
     ".github/dependabot.yml",
     ".github/workflows/release.yml",
+    ".github/workflows/cloud-release-request.yml",
+    ".github/workflows/cloud-release-inbox.yml",
+    "scripts/cloud-release-request.mjs",
+    "scripts/cloud-release-request.test.mjs",
+
     "scripts/generate-tauri-latest-from-release.mjs",
     "scripts/generate-tauri-latest-from-release.test.mjs",
     "scripts/lib/tooling-smoke-plan.mjs",
@@ -330,4 +360,20 @@ test("product fixture literals do not schedule unrelated tooling or native lanes
     required: false,
     files: [],
   });
+});
+
+
+test("preview native proof is required without actor or Windows work for cleanup-only changes", () => {
+  for (const file of [
+    "scripts/lib/preview-processes.py", "scripts/lib/worktree-runtime.sh",
+    "scripts/worktree-processes.sh", "scripts/worktree-preview.sh",
+    "scripts/worktree-preview.test.mjs",
+  ]) {
+    assert.equal(selectPreviewNativeAcceptance([file]), true, file);
+    assert.equal(selectNativeAcceptance([file]).required, false, file);
+  }
+  assert.equal(selectPreviewNativeAcceptance(["packages/ui/src/Button.tsx"]), false);
+  assert.equal(selectPreviewNativeAcceptance([]), true);
+  assert.equal(selectPreviewNativeAcceptance([".github/workflows/ci.yml"]), true);
+  assert.equal(selectPreviewNativeAcceptance(["scripts/plan-tooling-smoke.mjs"]), true);
 });

@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import demoAvatarSources from "./lib/demo-avatar-sources.json";
-import { markDemoItemRead, projectDemoItemRead, projectDemoFacetReads, projectDemoReaderReads } from "./lib/demo-read-session";
+import {
+  markDemoItemRead,
+  projectDemoItemRead,
+  projectDemoFacetReads,
+  projectDemoReaderReads,
+} from "./lib/demo-read-session";
 import {
   getWebsiteHostForChannel,
-  SAMPLE_SHOWCASE_FEED_COUNT,
-  SAMPLE_SHOWCASE_FRIEND_COUNT,
-  SAMPLE_SHOWCASE_ITEM_COUNT,
-  SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT,
   SAMPLE_CURATED_DEMO_MEDIA,
   SAMPLE_CHARACTER_AVATAR_MEDIA,
   SAMPLE_CHARACTER_AVATAR_FOCAL_POINTS,
@@ -23,6 +24,7 @@ import { ToastContainer, toast } from "@freed/ui/components/Toast";
 import { LegalGate } from "@freed/ui/components/legal/LegalGate";
 import { OAuthCallback } from "./components/OAuthCallback";
 import { DemoWelcomeBanner } from "./components/DemoWelcomeBanner";
+import { LoadingState } from "@freed/ui/components/LoadingState";
 import { DemoInitializationBoundary } from "./components/DemoInitializationBoundary";
 import {
   PlatformProvider,
@@ -58,6 +60,8 @@ import {
   PwaInstagramSettings,
   PwaLinkedInSettings,
   PwaYouTubeSettings,
+  PwaSubstackSettings,
+  PwaMediumSettings,
   PwaXSettings,
 } from "./components/PwaSocialProviderSettings";
 import { PwaLegalSettingsSection } from "./components/PwaLegalSettingsSection";
@@ -98,6 +102,7 @@ import {
   appendPwaLibraryCorePersonReachOut,
   assignPwaLibraryCoreAccountToPerson,
   ensurePwaLibraryCoreLocalSampleState,
+  clearPwaLibraryCoreLocalDataForFactoryReset,
   executePwaLibraryCoreScopeAction,
   openPwaLibraryCoreFeedReader,
   openPwaLibraryCoreFriendsFeedReader,
@@ -128,14 +133,13 @@ import {
   queryPwaDeviceContacts,
   queryPwaNormalizedLibrary,
 } from "./lib/library-core-sqlite-runtime";
-import {
-  refreshSampleLibraryData,
-} from "@freed/ui/lib/sample-library-seed";
+import { refreshSampleLibraryData } from "@freed/ui/lib/sample-library-seed";
 import {
   beginSamplePopulationProgress,
   completeSamplePopulationProgress,
   resetSamplePopulationProgress,
   updateSamplePopulationProgress,
+  useSamplePopulationProgress,
 } from "./lib/sample-population-progress";
 import {
   clearInstallNoticeDismissal,
@@ -149,7 +153,10 @@ import {
   preparePwaFactoryResetReload,
   runCoordinatedPwaFactoryReset,
 } from "./lib/factory-reset-coordinator";
-import { installFreedDemoCheckpoint, setFreedDemoPersonCare } from "./lib/demo-checkpoint";
+import {
+  installFreedDemoCheckpoint, mutateFreedDemoGraphLayout,
+  setFreedDemoPersonCare,
+} from "./lib/demo-checkpoint";
 import {
   isFreedDemoMode,
   isFreedNewsletterPreviewHostname,
@@ -164,10 +171,20 @@ const IS_DEMO = isFreedDemoMode(
 // Only images already admitted to the public demo can be requested by Galaxy.
 // Real libraries do not opt into this new image-loading path.
 const APPROVED_DEMO_AVATAR_URLS = IS_DEMO
-  ? new Set([...SAMPLE_CURATED_DEMO_MEDIA, ...SAMPLE_CHARACTER_AVATAR_MEDIA.values()].map((asset) => asset.baseUrl))
+  ? new Set(
+      [
+        ...SAMPLE_CURATED_DEMO_MEDIA,
+        ...SAMPLE_CHARACTER_AVATAR_MEDIA.values(),
+      ].map((asset) => asset.baseUrl),
+    )
   : undefined;
 const DEMO_AVATAR_DELIVERY_URLS = IS_DEMO
-  ? new Map(Object.entries(demoAvatarSources).map(([sha, source]) => [source, `/api/demo-avatar?sha=${sha}`]))
+  ? new Map(
+      Object.entries(demoAvatarSources).map(([sha, source]) => [
+        source,
+        `/api/demo-avatar?sha=${sha}`,
+      ]),
+    )
   : undefined;
 const LOCAL_PREVIEW_LABEL =
   import.meta.env.VITE_FREED_PREVIEW_LABEL?.trim() || null;
@@ -237,8 +254,15 @@ function FloatingNotice({
 }
 
 function App() {
+  const previewPopulationStarted = useRef(false);
+  const [previewPopulationReady, setPreviewPopulationReady] = useState(false);
+  const previewPopulationPercent = useSamplePopulationProgress(state => state.percent);
   const initialize = useAppStore((state) => state.initialize);
   const isInitialized = useAppStore((state) => state.isInitialized);
+  const hasSelectedLibrary = useAppStore((state) => state.hasSelectedLibrary);
+  // The anonymous demo activates its own checked fixture before initialization.
+  // It intentionally has no authenticated follower checkpoint receipt.
+  const canQueryLibrary = hasSelectedLibrary || (IS_DEMO && isInitialized);
   const initializationBlocker = useAppStore(
     (state) => state.initializationBlocker,
   );
@@ -328,24 +352,19 @@ function App() {
   }, [initialize, legalAccepted, setInitializationFailure]);
 
   useEffect(() => {
-    if (!isInitialized || !IS_FEATURE_PREVIEW || IS_DEMO) return;
+    if (!isInitialized || !IS_FEATURE_PREVIEW || IS_DEMO || previewPopulationStarted.current) return;
+    previewPopulationStarted.current = true;
+    beginSamplePopulationProgress();
     void (async () => {
       await ensurePwaLibraryCoreLocalSampleState();
       await settlePwaLibraryCoreLocalSampleState();
       const facets = await readPwaLibraryCoreFacetSummary();
-      const sampleIsComplete =
-        facets.sampleAccountCount >= SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT &&
-        facets.sampleFeedCount >= SAMPLE_SHOWCASE_FEED_COUNT &&
-        facets.sampleItemCount >= SAMPLE_SHOWCASE_ITEM_COUNT &&
-        facets.samplePersonCount >= SAMPLE_SHOWCASE_FRIEND_COUNT;
-      if (sampleIsComplete) return;
       const sampleTotal =
         facets.sampleAccountCount +
         facets.sampleFeedCount +
         facets.sampleItemCount +
         facets.samplePersonCount;
       const actions = useAppStore.getState();
-      beginSamplePopulationProgress();
       if (sampleTotal > 0) {
         await actions.clearSampleData();
       }
@@ -357,8 +376,10 @@ function App() {
       });
       completeSamplePopulationProgress();
       resetSamplePopulationProgress();
+      setPreviewPopulationReady(true);
     })().catch((error) => {
       resetSamplePopulationProgress();
+      setPreviewPopulationReady(true);
       console.error(
         "[sample-data] failed to seed local preview data:",
         error instanceof Error
@@ -464,7 +485,7 @@ function App() {
               resetInterfaceZoom,
               resetThemePreference,
             ],
-            clearLocalData: [],
+            clearLocalData: [clearPwaLibraryCoreLocalDataForFactoryReset],
             clearProviderDataAndConnections: async () => {
               stopCloudSync();
               await clearStoredCloudDataForFactoryReset(deleteFromCloud);
@@ -498,7 +519,7 @@ function App() {
       reset: async () => {
         beginFactoryResetBoundary();
         stopCloudSync();
-        await runCoordinatedPwaFactoryReset(async () => {});
+        await runCoordinatedPwaFactoryReset(clearPwaLibraryCoreLocalDataForFactoryReset);
       },
       reload: () => {
         preparePwaFactoryResetReload();
@@ -537,17 +558,23 @@ function App() {
     () => ({
       store: useAppStore,
       interactionMode: IS_DEMO ? "read-only" : "full",
-      onReadOnlyItemOpened: IS_DEMO ? (item) => {
-        if (markDemoItemRead(item)) useAppStore.setState(state => ({
-          searchCorpusVersion: state.searchCorpusVersion + 1,
-          libraryItemVersion: (state.libraryItemVersion ?? 0) + 1,
-        }));
-      } : undefined,
+      onReadOnlyItemOpened: IS_DEMO
+        ? (item) => {
+            if (markDemoItemRead(item))
+              useAppStore.setState((state) => ({
+                searchCorpusVersion: state.searchCorpusVersion + 1,
+                libraryItemVersion: (state.libraryItemVersion ?? 0) + 1,
+              }));
+          }
+        : undefined,
       approvedDemoAvatarUrls: APPROVED_DEMO_AVATAR_URLS,
       approvedDemoAvatarDeliveryUrls: DEMO_AVATAR_DELIVERY_URLS,
-      approvedDemoAvatarFocalPoints: IS_DEMO ? SAMPLE_CHARACTER_AVATAR_FOCAL_POINTS : undefined,
+      approvedDemoAvatarFocalPoints: IS_DEMO
+        ? SAMPLE_CHARACTER_AVATAR_FOCAL_POINTS
+        : undefined,
       geographicMapMode: "online",
       feedMediaPreviews: "inline",
+      sampleMediaPreviews: IS_FEATURE_PREVIEW && !IS_DEMO ? "inline" : undefined,
       SourceIndicator: null,
       HeaderSyncIndicator: null,
       FeedsSettingsContent: PwaFeedsSettings,
@@ -555,12 +582,13 @@ function App() {
       NewsletterSettingsContent: PwaNewsletterSignup,
       LegalSettingsContent: IS_DEMO ? null : PwaLegalSettingsSection,
       FeedEmptyState: PwaFeedEmptyState,
+      LibrarySetupState: canQueryLibrary ? undefined : PwaLibrarySetupState,
       XSettingsContent: PwaXSettings,
       FacebookSettingsContent: PwaFacebookSettings,
       InstagramSettingsContent: PwaInstagramSettings,
       LinkedInSettingsContent: PwaLinkedInSettings,
-      SubstackSettingsContent: null,
-      MediumSettingsContent: null,
+      SubstackSettingsContent: PwaSubstackSettings,
+      MediumSettingsContent: PwaMediumSettings,
       YouTubeSettingsContent: PwaYouTubeSettings,
       GoogleContactsSettingsContent: PwaGoogleContactsSettings,
       checkForUpdates: IS_DEMO ? undefined : checkForUpdates,
@@ -599,34 +627,54 @@ function App() {
         ? async () =>
             toast.info("External links are disabled in this read only demo")
         : openPwaUrl,
-      openBoundedFeedReader: IS_DEMO ? async (...args) => projectDemoReaderReads(await openPwaLibraryCoreFeedReader(...args)) : openPwaLibraryCoreFeedReader,
-      openBoundedFriendsFeedReader: IS_DEMO ? async (...args) => projectDemoReaderReads(await openPwaLibraryCoreFriendsFeedReader(...args)) : openPwaLibraryCoreFriendsFeedReader,
-      openBoundedSavedFeedReader: IS_DEMO ? async (...args) => projectDemoReaderReads(await openPwaLibraryCoreSavedFeedReader(...args)) : openPwaLibraryCoreSavedFeedReader,
+      openBoundedFeedReader: IS_DEMO
+        ? async (...args) =>
+            projectDemoReaderReads(await openPwaLibraryCoreFeedReader(...args))
+        : openPwaLibraryCoreFeedReader,
+      openBoundedFriendsFeedReader: IS_DEMO
+        ? async (...args) =>
+            projectDemoReaderReads(
+              await openPwaLibraryCoreFriendsFeedReader(...args),
+            )
+        : openPwaLibraryCoreFriendsFeedReader,
+      openBoundedSavedFeedReader: IS_DEMO
+        ? async (...args) =>
+            projectDemoReaderReads(
+              await openPwaLibraryCoreSavedFeedReader(...args),
+            )
+        : openPwaLibraryCoreSavedFeedReader,
       scanLibraryItems: scanPwaLibraryCoreItems,
       searchLibraryItems: searchPwaLibraryCoreItems,
       executeLibraryScopeAction: IS_DEMO
         ? undefined
         : executePwaLibraryCoreScopeAction,
       readFeedSignalCounts: readPwaLibraryCoreFeedSignalCounts,
-      readLibraryFacetSummary: IS_DEMO ? async () => projectDemoFacetReads(await readPwaLibraryCoreFacetSummary()) : readPwaLibraryCoreFacetSummary,
+      readLibraryFacetSummary: !canQueryLibrary ? undefined : IS_DEMO
+        ? async () =>
+            projectDemoFacetReads(await readPwaLibraryCoreFacetSummary())
+        : readPwaLibraryCoreFacetSummary,
       readLibrarySavedAnalytics: readPwaLibraryCoreSavedAnalytics,
       readLibraryFriendsGraph: readPwaLibraryCoreFriendsGraph,
       readLibraryPersonDetail: readPwaLibraryCorePersonDetail,
       readLibraryFriendDetail: readPwaLibraryCoreFriendDetail,
       replaceLibraryFriend: IS_DEMO ? undefined : replacePwaLibraryCoreFriend,
       upsertLibraryPerson: IS_DEMO ? undefined : upsertPwaLibraryCorePerson,
-      onReadOnlyPersonCareChange: IS_DEMO ? async (personId, level) => {
-        try {
-          await setFreedDemoPersonCare(personId, level);
-        } catch (error) {
-          toast.error("Could not update this demo. Reload the page to try again.");
-          throw error;
-        }
-        useAppStore.setState(state => ({
-          searchCorpusVersion: state.searchCorpusVersion + 1,
-          libraryItemVersion: (state.libraryItemVersion ?? 0) + 1,
-        }));
-      } : undefined,
+      onReadOnlyPersonCareChange: IS_DEMO
+        ? async (personId, level) => {
+            try {
+              await setFreedDemoPersonCare(personId, level);
+            } catch (error) {
+              toast.error(
+                "Could not update this demo. Reload the page to try again.",
+              );
+              throw error;
+            }
+            useAppStore.setState((state) => ({
+              searchCorpusVersion: state.searchCorpusVersion + 1,
+              libraryItemVersion: (state.libraryItemVersion ?? 0) + 1,
+            }));
+          }
+        : undefined,
       removeLibraryPerson: IS_DEMO ? undefined : removePwaLibraryCorePerson,
       assignLibraryAccountToPerson: IS_DEMO
         ? undefined
@@ -636,21 +684,23 @@ function App() {
         : appendPwaLibraryCorePersonReachOut,
       upsertLibraryAccount: IS_DEMO ? undefined : upsertPwaLibraryCoreAccount,
       readLibraryAccountDetail: readPwaLibraryCoreAccountDetail,
-      queryLibraryCore: queryPwaNormalizedLibrary,
-      mutateDeviceGraphLayout: IS_DEMO ? undefined : mutatePwaDeviceGraphLayout,
+      queryLibraryCore: canQueryLibrary ? queryPwaNormalizedLibrary : undefined,
+      mutateDeviceGraphLayout: IS_DEMO ? mutateFreedDemoGraphLayout : mutatePwaDeviceGraphLayout,
       mutateDeviceContacts: IS_DEMO ? undefined : mutatePwaDeviceContactSync,
       queryDeviceContacts: queryPwaDeviceContacts,
       readLibraryPersonTimeline: readPwaLibraryCorePersonTimeline,
       readLibraryFriendsLocationItem: readPwaLibraryCoreFriendsLocationItem,
       readLibraryStoryWallCandidates: readPwaLibraryCoreStoryWallCandidates,
       readLibraryMapCandidates: readPwaLibraryCoreMapCandidates,
-      readLibraryItemDetail: IS_DEMO ? async (id) => {
-        const item = await readPwaLibraryCoreItemDetail(id);
-        return item ? projectDemoItemRead(item) : null;
-      } : readPwaLibraryCoreItemDetail,
+      readLibraryItemDetail: IS_DEMO
+        ? async (id) => {
+            const item = await readPwaLibraryCoreItemDetail(id);
+            return item ? projectDemoItemRead(item) : null;
+          }
+        : readPwaLibraryCoreItemDetail,
       bugReporting: pwaBugReporting,
     }),
-    [checkForUpdates, handleFactoryReset, releaseChannel, setReleaseChannel],
+    [canQueryLibrary, checkForUpdates, handleFactoryReset, releaseChannel, setReleaseChannel],
   );
 
   if (!legalResolved) {
@@ -717,63 +767,78 @@ function App() {
   // Routed views issue Library queries as soon as they mount. In the demo,
   // the SQLite materialization does not exist until checkpoint activation.
   // Keep all routes behind initialization, including direct Map/Friends links.
+  // Never expose the previous batch while its replacement is still running.
+  if (IS_FEATURE_PREVIEW && !IS_DEMO && !previewPopulationReady) {
+    return <div className="app-theme-shell flex h-screen items-center justify-center">
+      <LoadingState message={`Loading · ${previewPopulationPercent.toLocaleString()}%`} />
+    </div>;
+  }
+
   return (
     <DemoInitializationBoundary pending={IS_DEMO && !isInitialized}>
-    <PlatformProvider value={platform}>
-      <BugReportBoundary>
-        <LocalPreviewBadge label={LOCAL_PREVIEW_LABEL} />
-        {IS_DEMO && (
-          <DemoWelcomeBanner
-            downloadUrl={`https://${getWebsiteHostForChannel(releaseChannel)}/get`}
-          />
-        )}
-        <AppShell>
-          <FeedView />
-        </AppShell>
-        <ToastContainer />
-        {(installNotice || showUpdateBanner) && (
-          <div className="fixed bottom-20 left-4 right-4 z-[120] flex flex-col gap-3 sm:bottom-4 sm:left-auto sm:w-[min(24rem,calc(100vw-2rem))]">
-            {installNotice && (
-              <FloatingNotice
-                title="Install Freed"
-                body={
-                  installNotice.kind === "browser"
-                    ? "Add Freed to your home screen for faster launch and offline reading."
-                    : "Add Freed to your home screen for faster launch and offline reading. In Safari, open Share, then tap Add to Home Screen."
-                }
-                actionLabel={
-                  installNotice.kind === "browser" ? "Install" : undefined
-                }
-                onAction={
-                  installNotice.kind === "browser"
-                    ? () => {
-                        void handleInstallAction();
-                      }
-                    : undefined
-                }
-                onDismiss={handleDismissInstallNotice}
-                testId="pwa-install-notice"
-              />
-            )}
-            {showUpdateBanner && (
-              <FloatingNotice
-                title="New version available"
-                body="Reload to apply the update."
-                actionLabel="Reload"
-                onAction={applyPwaUpdate}
-                onDismiss={() => setShowUpdateBanner(false)}
-                testId="pwa-update-notice"
-              />
-            )}
-          </div>
-        )}
-      </BugReportBoundary>
-    </PlatformProvider>
+      <PlatformProvider value={platform}>
+        <BugReportBoundary>
+          <LocalPreviewBadge label={LOCAL_PREVIEW_LABEL} />
+          {IS_DEMO && (
+            <DemoWelcomeBanner
+              downloadUrl={`https://${getWebsiteHostForChannel(releaseChannel)}/get`}
+            />
+          )}
+          <AppShell>
+            <FeedView />
+          </AppShell>
+          <ToastContainer />
+          {(installNotice || showUpdateBanner) && (
+            <div className="fixed bottom-20 left-4 right-4 z-[120] flex flex-col gap-3 sm:bottom-4 sm:left-auto sm:w-[min(24rem,calc(100vw-2rem))]">
+              {installNotice && (
+                <FloatingNotice
+                  title="Install Freed"
+                  body={
+                    installNotice.kind === "browser"
+                      ? "Add Freed to your home screen for faster launch and offline reading."
+                      : "Add Freed to your home screen for faster launch and offline reading. Open Share, then tap Add to Home Screen."
+                  }
+                  actionLabel={
+                    installNotice.kind === "browser" ? "Install" : undefined
+                  }
+                  onAction={
+                    installNotice.kind === "browser"
+                      ? () => {
+                          void handleInstallAction();
+                        }
+                      : undefined
+                  }
+                  onDismiss={handleDismissInstallNotice}
+                  testId="pwa-install-notice"
+                />
+              )}
+              {showUpdateBanner && (
+                <FloatingNotice
+                  title="New version available"
+                  body="Reload to apply the update."
+                  actionLabel="Reload"
+                  onAction={applyPwaUpdate}
+                  onDismiss={() => setShowUpdateBanner(false)}
+                  testId="pwa-update-notice"
+                />
+              )}
+            </div>
+          )}
+        </BugReportBoundary>
+      </PlatformProvider>
     </DemoInitializationBoundary>
   );
 }
 
 export default OAuthRouter;
+function PwaLibrarySetupState() {
+  const isInitialized = useAppStore((state) => state.isInitialized);
+  return (
+    <div className="flex min-h-64 flex-col items-center justify-center px-4 py-8 text-center" data-testid="pwa-library-setup">
+      {isInitialized ? <PwaFeedEmptyState /> : <LoadingState message="Opening Freed" />}
+    </div>
+  );
+}
 function PwaNewsletterSignup() {
   const previewOnly =
     import.meta.env.DEV ||

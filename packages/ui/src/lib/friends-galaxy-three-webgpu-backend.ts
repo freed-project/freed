@@ -1020,6 +1020,6 @@ export class ThreeWebGpuBackend implements FriendsGalaxyRendererBackend {
   private applyMaterialOpacity(palette: FriendsGalaxyRendererPalette): void {
     const lightSurface = paletteLuminance(palette) > 0.58;
     if (this.semanticBatch) this.semanticBatch.material.opacity = lightSurface ? 0.86 : 0.96;
-    if (this.backgroundBatch) this.backgroundBatch.material.opacity = lightSurface ? 0.2 : 0.48;
+    if (this.backgroundBatch) this.backgroundBatch.material.opacity = lightSurface ? 0.55 : 0.48;
   }
 }

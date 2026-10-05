@@ -22,10 +22,44 @@ pub fn freed_desktop_library_core_data_root() -> std::io::Result<PathBuf> {
                 "operating system data directory is unavailable",
             )
         })
-        .map(|root| {
-            root.join(FREED_DESKTOP_IDENTIFIER)
-                .join(LIBRARY_CORE_DIRECTORY)
+        .and_then(|root| {
+            Ok(root
+                .join(preview_identifier()?)
+                .join(LIBRARY_CORE_DIRECTORY))
         })
+}
+
+fn preview_identifier() -> std::io::Result<String> {
+    #[cfg(feature = "isolated-preview-data-root")]
+    if let Some(config) = option_env!("TAURI_CONFIG") {
+        return identifier_from_preview_config(config);
+    }
+    Ok(FREED_DESKTOP_IDENTIFIER.to_owned())
+}
+
+#[cfg(feature = "isolated-preview-data-root")]
+fn identifier_from_preview_config(config: &str) -> std::io::Result<String> {
+    let config: serde_json::Value = serde_json::from_str(config).map_err(|error| {
+        std::io::Error::other(format!("Invalid compiled preview config: {error}"))
+    })?;
+    let Some(identifier) = config.get("identifier").and_then(serde_json::Value::as_str) else {
+        return Ok(FREED_DESKTOP_IDENTIFIER.to_owned());
+    };
+    let allowed = identifier == FREED_DESKTOP_IDENTIFIER
+        || identifier
+            .strip_prefix("wtf.freed.desktop.preview.")
+            .is_some_and(|suffix| !suffix.is_empty());
+    if !allowed
+        || identifier.len() > 128
+        || !identifier
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'.' || byte == b'-')
+    {
+        return Err(std::io::Error::other(
+            "Isolated preview refuses a non-preview identifier",
+        ));
+    }
+    Ok(identifier.to_owned())
 }
 
 /// Desktop-owned lease wrapper held for the complete Tauri process lifetime.
@@ -122,8 +156,32 @@ mod tests {
             freed_desktop_library_core_data_root().expect("resolve preview data root"),
             dirs::data_dir()
                 .expect("resolve operating system data directory")
-                .join("wtf.freed.desktop.sqlite-native-preview")
+                .join(preview_identifier().expect("compiled preview identifier"))
                 .join(LIBRARY_CORE_DIRECTORY)
         );
+    }
+    #[test]
+    #[cfg(feature = "isolated-preview-data-root")]
+    fn preview_config_accepts_fresh_profiles_and_refuses_primary_or_path_injection() {
+        assert_eq!(
+            identifier_from_preview_config(
+                r#"{"identifier":"wtf.freed.desktop.preview.gliclass20261002"}"#
+            )
+            .unwrap(),
+            "wtf.freed.desktop.preview.gliclass20261002"
+        );
+        for identifier in [
+            "wtf.freed.desktop",
+            "other.app",
+            "wtf.freed.desktop.preview.",
+            "wtf.freed.desktop.preview../primary",
+            "wtf.freed.desktop.preview.a/../../primary",
+        ] {
+            assert!(identifier_from_preview_config(
+                &serde_json::json!({"identifier": identifier}).to_string()
+            )
+            .is_err());
+        }
+        assert!(identifier_from_preview_config("not-json").is_err());
     }
 }

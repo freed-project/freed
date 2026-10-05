@@ -1,0 +1,75 @@
+{
+  "status": "hold_only_no_admission",
+  "characterId": "sable-crest",
+  "imagesOpened": 3,
+  "media": [
+    {
+      "observationId": 10842762,
+      "photo": {
+        "id": 15202035,
+        "license_code": "cc-by-sa",
+        "original_dimensions": {
+          "width": 1453,
+          "height": 1660
+        },
+        "url": "https://inaturalist-open-data.s3.amazonaws.com/photos/15202035/square.jpg",
+        "attribution": "(c) Tony Rebelo, some rights reserved (CC BY-SA)",
+        "flags": [],
+        "moderator_actions": [],
+        "hidden": false
+      },
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/15202035/large.jpg",
+      "localPath": "/tmp/freed-sable162/15202035.jpg",
+      "sha1": "c47860f355a94c826d1c2648a69122abf4966e73",
+      "sha256": "677e06da8b33038539fe15e07e0025742353acce9b17e64a96de9d94fd323279",
+      "bytes": 305118
+    },
+    {
+      "observationId": 10842762,
+      "photo": {
+        "id": 15202038,
+        "license_code": "cc-by-sa",
+        "original_dimensions": {
+          "width": 2048,
+          "height": 1758
+        },
+        "url": "https://inaturalist-open-data.s3.amazonaws.com/photos/15202038/square.jpg",
+        "attribution": "(c) Tony Rebelo, some rights reserved (CC BY-SA)",
+        "flags": [],
+        "moderator_actions": [],
+        "hidden": false
+      },
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/15202038/large.jpg",
+      "localPath": "/tmp/freed-sable162/15202038.jpg",
+      "sha1": "3ec78cbce4bdd8c2d24d774a65f9efaac139afe4",
+      "sha256": "d7538cd48b32b8b7626aefea5da8c4495247304f119c091ebb5fc58d4d41393c",
+      "bytes": 274950
+    },
+    {
+      "observationId": 115686884,
+      "photo": {
+        "id": 195252933,
+        "license_code": "cc-by",
+        "original_dimensions": {
+          "width": 2048,
+          "height": 1558
+        },
+        "url": "https://inaturalist-open-data.s3.amazonaws.com/photos/195252933/square.jpeg",
+        "attribution": "(c) linkie, some rights reserved (CC BY)",
+        "flags": [],
+        "moderator_actions": [],
+        "hidden": false
+      },
+      "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/195252933/large.jpeg",
+      "localPath": "/tmp/freed-sable162/195252933.jpg",
+      "sha1": "ec97a61e43feade9d10b9c65d342ebed060d4d70",
+      "sha256": "2bbef829c83464a7201cd97bbdeb0588f5a8f67b3cbdd1a88430687e9f8d73e1",
+      "bytes": 500892
+    }
+  ],
+  "queries": [
+    "nest",
+    "drinking"
+  ],
+  "reason": "Distant or absent subject, no suitable image-backed episode."
+}

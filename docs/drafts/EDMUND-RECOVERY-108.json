@@ -1,0 +1,38 @@
+{
+  "status": "replacement_pair_pending_independent_review",
+  "characterId": "edmund-oldring",
+  "episode": {
+    "subject": "giant sequoia",
+    "platform": "instagram",
+    "contentType": "story",
+    "theme": "social",
+    "title": "The wrong trunk",
+    "body": "A cone fell from me onto the path. The man beneath it looked up and complained to the tree beside me. I was enjoying the mistake until he stroked her bark to apologize.",
+    "mediaSha1": "839219caf31bfdc396ea75a032faffe9d8eb6717"
+  },
+  "originalBodyPreserved": true,
+  "rootReview": "Exact960x720 photo opened. Clear person leaning with both arms against broad giant-sequoia bark; neighboring trunks and forest floor visible. This illustrates the affection at the ending, stronger than original tree-only image. Narrator need not be the hugged foreground tree: that tree is his neighbor in the fiction. Cone drop, complaint, apology and sequence remain invented. No actual photographed motive, name or age assigned.",
+  "continuity": "All three current Edmund episodes read. Append without named-tree identification, new injury or changing western Sierra home or portrait. This is jealousy about affection given elsewhere, distinct from his receiving firefighting help.",
+  "media": {
+    "id": "edmund108-neighbor-embrace",
+    "subject": "giant sequoia",
+    "category": "wildlife",
+    "imageUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/4/4c/TreeHugger.JPG/960px-TreeHugger.JPG?utm_campaign=index&utm_content=thumbnail&utm_source=commons.wikimedia.org",
+    "sourceUrl": "https://commons.wikimedia.org/wiki/File:TreeHugger.JPG",
+    "creator": "Jcesare at English Wikipedia (Joseph Cesare)",
+    "license": "CC BY 3.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/3.0/",
+    "sourceTitle": "TreeHugger.JPG",
+    "width": 960,
+    "height": 720,
+    "sha1": "839219caf31bfdc396ea75a032faffe9d8eb6717",
+    "sha256": "17520b58a81f96b3cd21bd67466e69013c85a5d8f35d6640a12aac9d814831a8",
+    "bytes": 321471,
+    "localPath": "/tmp/freed-edmund108/hug.jpg",
+    "alt": "A person embraces the broad bark of a giant sequoia, with other forest trunks nearby.",
+    "rightsEvidence": "Root freshly read Commons photo page: uploader/copyright holder Jcesare, photograph by Joseph Cesare, selectable CC BY3.0. No reliance on category for rights. Exact published960px URL clicked and downloaded unchanged.",
+    "taxonEvidence": "Primary photo description explicitly giant sequoia in Sequoia National Park.",
+    "fullUploadInspected": false
+  },
+  "admitted": 0
+}

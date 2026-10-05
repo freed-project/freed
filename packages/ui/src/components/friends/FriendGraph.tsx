@@ -1,3 +1,4 @@
+import { usePlatformCapabilities } from "../../context/PlatformContext.js";
 import {
   forwardRef,
   useCallback,
@@ -12,6 +13,7 @@ import {
 import type { MapMode, SampleAvatarFocalPoint } from "@freed/shared";
 import type { ThemeId } from "@freed/shared/themes";
 import { type LibraryCoreNormalizedQueryExecutor } from "@freed/shared/library-core";
+import { useActionOwnershipFence } from "../../hooks/useActionOwnershipFence.js";
 import { useLibraryPersonPicker } from "../../hooks/useLibraryPersonPicker.js";
 import {
   friendsGalaxyGraphDescription,
@@ -42,7 +44,7 @@ import type {
   FriendsGalaxyTransform,
   FriendsGalaxyViewportGeometry,
 } from "../../lib/friends-galaxy-viewport.js";
-import { FriendsGalaxySourceScheduler } from "../../lib/friends-galaxy-source-scheduler.js";
+import { FriendsGalaxySourceScheduler, friendsGalaxySourceControls } from "../../lib/friends-galaxy-source-scheduler.js";
 import {
   EMPTY_IDENTITY_GRAPH_ACTIVITY_SUMMARIES,
   type IdentityGraphActivitySummaries,
@@ -53,6 +55,7 @@ import type {
 } from "../../lib/identity-graph-atlas.js";
 import { IdentityGalaxyNodeKindCode } from "../../lib/identity-galaxy-scene.js";
 import { CANVAS_CONTROL_BUTTON_CLASS } from "../layout/layoutConstants.js";
+import { LoadingState } from "../LoadingState.js";
 
 export interface FriendGraphHandle {
   fitAll: () => void;
@@ -350,6 +353,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
     },
     ref,
   ) {
+    const capabilities = usePlatformCapabilities();
     const viewportRef = useRef<HTMLDivElement>(null);
     const contextMenuRef = useRef<HTMLDivElement>(null);
     const engineRef = useRef<FriendsGalaxyProductEngine | null>(null);
@@ -405,7 +409,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
     });
     const { channelCount, linkCount, personCount } = sourceCounts;
     const [graphReady, setGraphReady] = useState(false);
-    const [graphStatus, setGraphStatus] = useState("Building galaxy...");
+    const [graphStatus, setGraphStatus] = useState("Loading friends");
     const [graphError, setGraphError] = useState<string | null>(null);
     const decorativeStarMode = DECORATIVE_STAR_MODE;
     const [sourceRetry, setSourceRetry] = useState(0);
@@ -415,12 +419,13 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
       string | null
     >(null);
     const [linkPickerQuery, setLinkPickerQuery] = useState("");
-    const { rows: personPickerOptions } = useLibraryPersonPicker({
+    const { rows: personPickerOptions, resultsCurrent: pickerResultsCurrent } = useLibraryPersonPicker({
       enabled: linkPickerAccountId !== null,
       query: sqliteGraphQuery,
       search: linkPickerQuery,
       sourceVersion,
     });
+    const pickerActionCurrent = useActionOwnershipFence([linkPickerAccountId, linkPickerQuery, sourceVersion, sqliteGraphQuery, onLinkAccountToPerson, personPickerOptions], linkPickerAccountId !== null && pickerResultsCurrent);
     const [reducedMotion, setReducedMotion] = useState(false);
     const [announcement, setAnnouncement] = useState("");
     const copyDiagnosticsRequestId = useCommandSurfaceStore(
@@ -457,13 +462,14 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
           onClearSelection?.();
           return;
         }
-        const node = engineRef.current?.metadata(nodeId);
-        if (node?.personId) {
-          onSelectPersonId(node.personId);
+        // Normalized graph nodes remain selectable before optional label
+        // metadata is available. The canonical node ID is the selection key.
+        if (nodeId.startsWith("person:")) {
+          onSelectPersonId(nodeId.slice(7));
           return;
         }
-        if (node?.accountId) {
-          onSelectAccountId(node.accountId);
+        if (nodeId.startsWith("account:")) {
+          onSelectAccountId(nodeId.slice(8));
         } else if (nodeId.startsWith("feed:")) {
           onSelectFeedUrl?.(nodeId.slice(5));
         }
@@ -903,7 +909,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
         onLoading: ({ recovery }) => {
           if (!graphReadyRef.current) {
             setGraphStatus(
-              recovery ? "Recovering graphics..." : "Starting galaxy...",
+              recovery ? "Recovering graphics..." : "Loading friends",
             );
           }
         },
@@ -948,7 +954,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
           if (!engine.sourceReady) {
             graphReadyRef.current = false;
             setGraphReady(false);
-            setGraphStatus("Building galaxy...");
+            setGraphStatus("Loading friends");
           }
           sourceBuildStartedAtRef.current = nowMs();
           setGraphError(null);
@@ -1018,13 +1024,8 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
       const sourceRevision = sourceRevisionRef.current;
       const baseline = latestActivityRef.current ?? activitySummaries;
       const geometry = controller.geometry;
-      const controlSignature = [
-        mode,
-        backgroundStarCount,
-        proceduralBackgroundStarCount,
-        sourceVersion,
-        sourceRetry,
-      ].join(":");
+      const controls = friendsGalaxySourceControls({ mode, backgroundStarCount, proceduralBackgroundStarCount, sourceVersion, sourceRetry });
+      const controlSignature = controls.key;
       const controlsChanged =
         sourceControlSignatureRef.current !== null &&
         sourceControlSignatureRef.current !== controlSignature;
@@ -1034,7 +1035,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
       scheduler.request(
         {
           fallbackBaseline: baseline,
-          backgroundSeed: `freed-friends-${mode}-${sourceRevision.toLocaleString()}`,
+          backgroundSeed: controls.backgroundSeed,
           backgroundStarCount,
           mode,
           proceduralBackgroundStarCount,
@@ -1107,6 +1108,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
     );
 
     const handleCopyDiagnostics = useCallback(async () => {
+      if (!capabilities.diagnostics) return;
       const engine = engineRef.current;
       const controller = controllerRef.current;
       const receipt = diagnosticsRef.current.sourceReceipt;
@@ -1182,6 +1184,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
         setGraphStatus("Clipboard unavailable");
       }
     }, [
+      capabilities.diagnostics,
       activitySummaries,
       backgroundStarCount,
       channelCount,
@@ -1238,12 +1241,12 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
 
     const handleLinkAccountToPickerPerson = useCallback(
       async (personId: string) => {
-        if (!linkPickerAccountId || !onLinkAccountToPerson) return;
+        if (!pickerActionCurrent() || !linkPickerAccountId || !onLinkAccountToPerson || !personPickerOptions.some(person => person.id === personId)) return;
         nextSourceImmediateRef.current = true;
         await onLinkAccountToPerson(linkPickerAccountId, personId);
-        closeContextMenu();
+        if (pickerActionCurrent()) closeContextMenu();
       },
-      [closeContextMenu, linkPickerAccountId, onLinkAccountToPerson],
+      [closeContextMenu, linkPickerAccountId, onLinkAccountToPerson, pickerActionCurrent, personPickerOptions],
     );
 
     const contextMenuStyle = contextMenu
@@ -1293,8 +1296,8 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
         />
 
         {!graphReady || graphError || graphStatus ? (
-          <div className="pointer-events-none absolute inset-x-0 top-16 z-20 flex justify-center px-4">
-            <div className="max-w-[min(28rem,calc(100%-2rem))] rounded-lg border border-[color:rgb(var(--theme-border-rgb)/0.28)] bg-[color:rgb(var(--theme-surface-rgb)/0.9)] px-4 py-2 text-center text-xs text-[color:var(--theme-text-secondary)] shadow-lg backdrop-blur-md">
+          <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center px-4">
+            <div className="text-sm text-[var(--theme-text-muted)]">
               {graphError ? (
                 <div className="pointer-events-auto flex items-center gap-3">
                   <span>{graphError}</span>
@@ -1307,7 +1310,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
                   </button>
                 </div>
               ) : (
-                graphStatus || "Building galaxy..."
+                <LoadingState message={graphStatus || "Loading friends"} />
               )}
             </div>
           </div>
@@ -1352,6 +1355,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
                     <button
                       key={person.id}
                       type="button"
+                      disabled={!pickerResultsCurrent}
                       className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-[color:var(--theme-bg-card-hover)]"
                       onClick={() =>
                         void handleLinkAccountToPickerPerson(person.id)
@@ -1412,7 +1416,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
                   </button>
                 ) : null}
                 {onDropNodeToRelationshipTier &&
-                (contextMenu.node.personId || contextMenu.node.accountId) ? (
+                (contextMenu.node.personId || capabilities.createPerson && contextMenu.node.accountId) ? (
                   <>
                     <button
                       type="button"

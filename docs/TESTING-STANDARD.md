@@ -37,9 +37,11 @@ Local regression coverage does not automatically become a permanent universal re
 | Tier                | Runs on              | Contains                                                                                                       |
 | ------------------- | -------------------- | -------------------------------------------------------------------------------------------------------------- |
 | 1. Changed-path     | Every pull request   | Only suites the changed paths can affect                                                                       |
-| 2. Full integration | Every push to `dev`  | Every suite, unscoped. This is the proof release admission inherits                                            |
+| 2. Full integration | Every push to `dev`  | Full application integration plus changed-path tooling. This is the proof release admission inherits                                            |
 | 3. Release delta    | Tag and promotion    | Version, notes, identity, build, packaging, artifacts                                                          |
 | 4. Exhaustive       | Nightly and dispatch | Stress, fault injection, full visual and performance matrices, long control-plane simulations, flake discovery |
+
+Full integration explicitly runs the shared UI, sync, and every capture package with a declared test script. Desktop and PWA test discovery does not include these package suites. Shared-schema changes also run these consumers. UI component tests use an inert layout observer in jsdom; real geometry remains a browser-test responsibility.
 
 A test may be release-critical through an exact inherited receipt without rerunning inside the release workflow.
 
@@ -58,7 +60,18 @@ The planner fails closed. Any change under `scripts/` or `automation/` that cann
 
 Phase documents, `docs/roadmap-status.json`, and the roadmap validator have an explicit focused route. They run the manifest validator and its unit test. They do not launch general tooling shards or assert that one named phase must remain current forever.
 
-Shard budget is distributed across the selected suites by highest averages. Within each suite, complete per-file or per-test timings from `scripts/tooling-smoke-durations.json` replace source-size weights. Partial timing sets are ignored rather than mixing seconds with bytes. Every shard uploads JUnit timings so a completed integration run can refresh the exact units that need balancing.
+Shard budget is distributed across the selected suites by highest averages.
+The cap is a maximum: stop adding shards to a completed measurement once its
+predicted work fits five minutes per shard. Unknown or capped timings retain
+the available budget. This prevents a five-minute general suite from launching
+16 copies of dependency setup. Within each suite, valid per-file or per-test
+timings from `scripts/tooling-smoke-durations.json` replace source-size weights.
+Unknown units use source size scaled by the measured units' total seconds per
+source weight; without valid timings, all units use source size. Capped or
+failed measurements are excluded. Rounded-zero timings receive a 1 ms
+scheduling floor, which is never recorded as elapsed time. Every shard uploads
+JUnit timings so a completed integration run can refresh the exact units that
+need balancing.
 
 ## Platform routing
 
@@ -81,6 +94,46 @@ its own native lane.
 ## Timeouts
 
 Shards run with a per-test timeout of 5 minutes. `node --test` defaults to no timeout, which let one blocked test pin a shard until the job-level timeout with no useful signal. Any tooling test slower than this in a blocking lane is a defect, not a long test.
+
+The nightly self-improve shard additionally runs under a test-only external
+supervisor. Imported synchronous subprocess calls and `spawn` operations have a 30-second deadline, test
+callbacks have an independent 5-minute deadline, and the shard has a 60-minute
+outer deadline. Deadline detection adds at most one polling interval under
+normal scheduling (20 milliseconds); child cleanup has a separate 5-second
+budget. A blocked JavaScript event loop cannot disable these deadlines.
+Timeout diagnostics identify the active test and operation. The supervisor
+fails the shard even when an imported function would swallow a subprocess error.
+The supervisor keeps Git automatic maintenance in the foreground within its
+child environment, preserving inherited Git configuration and maintenance work.
+Local transport strips Git configuration parameters before `receive-pack`, so
+the child environment also sets Git's test-only `GIT_TEST_MAINT_AUTO_DETACH=false`
+default. Explicit remote configuration still takes precedence and any resulting
+orphan still fails the shard. The regression covers commit, local push and clone,
+including maintenance traces and matching Git versions for transport helpers.
+It does not change repository or global configuration, or exempt Git descendants
+from orphan detection.
+
+On Linux, a private subreaper adopts orphaned descendants and signals captured
+process generations through pidfds. On macOS, a private kernel responsibility
+anchor identifies descendants even after their intermediate parent exits;
+cleanup signals captured PID-version audit tokens. The Darwin supervisor reaps
+its direct children and requires nonchildren, including zombies, to disappear
+after their parents or launchd reap them. Zombies first seen without responsibility
+are accounted for through immutable parent unique IDs. A prelaunch process
+inventory distinguishes existing outside lifetimes; missing ancestry blocks
+successful cleanup until the unresolved zombie disappears. Uncertain processes
+are never signal targets. It does not claim Linux subreaper
+semantics on macOS. Both paths remove their private temporary fixture directory
+only after cleanup succeeds. Unrelated processes and shared process groups are
+never cleanup targets. An orphan fails the shard even if tests otherwise pass.
+Unavailable confinement fails before launch; cleanup failure retains the fixture
+and reports failure. This is test infrastructure, not production lifecycle authority.
+
+The `Nightly fixture supervision` workflow exercises failing actual shards,
+healthy nightly fixtures and the measurement command on Linux and macOS.
+Run `node scripts/nightly-fixture-acceptance.mjs` for the healthy execution checks.
+Direct `node --test scripts/nightly-self-improve.test.mjs` does not install the
+external supervisor; use the shard runner when validating these guarantees.
 
 ## Performance gates
 
@@ -145,3 +198,88 @@ A test that accepts success, failure, timeout, or continued loading detects no d
 | Tag to published artifacts | Under about 40 minutes                  |
 
 No UI-only pull request runs control-plane suites.
+
+## Validation reuse
+
+Ordinary PRs run the changed-path feature gate locally and require exact-head CI checks before merge. Full integration runs on the resulting dev push. Do not automatically run full local integration after a passing feature gate for every PR. Run it locally when the change crosses package contracts, a failure remains unexplained, or the release workflow requires it. Record the reason and relevant inputs.
+
+Production admission uses `validate-release-integration.mjs`. It resolves the immutable
+snapshot from the release receipt or promotion trailer, compares product inputs,
+and verifies the exact successful dev push and its integration, tooling and macOS
+WebKit durability jobs. A changed build command, dependency, capability or test
+configuration cannot inherit a version-only receipt. Dirty worktrees are rejected.
+The remaining production plan runs release contract checks, the PWA build and
+artifact guard, and applicable release notes and identity validation. Signed
+Desktop builds enforce their artifact guard inside Vite in each platform job.
+
+Dev regression already contains the smoke selection. Run smoke separately for
+changed-path feedback, not immediately before the same tests in full integration.
+The separate visual and nightly performance contracts remain intact.
+
+Reuse passing evidence only while the tested files, transitive dependencies, toolchain, configuration, fixtures, environment assumptions, and requested contract remain unchanged. A changed input invalidates its affected checks; a different Git SHA alone neither proves nor disproves equivalence. Never reuse an earlier CI head as the required current-head result. Preserve the full post-merge integration and release receipt requirements.
+
+Run focused tests during iteration, then one final applicable gate. Broaden or repeat only for changed inputs, new failures, or unresolved risks. A blocked remote queue is not a reason to repeat passing local tests. Never skip a required check by calling it redundant; change its maintained routing with equivalent contract coverage instead.
+
+
+## Release economy measurements
+
+Baseline: production v26.9.803, promoted dev snapshot
+`96a5c381263d67eedad3507bab9e4f084b123c5c`.
+
+| Work | Observed wall time |
+| --- | ---: |
+| Dev application integration | 20.42 min |
+| Promotion production validation, run 34301525388 | 20.78 min |
+| Preparation production validation, run 34304238026 | 21.55 min |
+| Tag production validation, run 34305676553 | 20.17 min |
+| Showcase capture | 8.87 min |
+| Apple Silicon packaging | 10.97 min |
+| Linux packaging | 11.22 min |
+| Windows packaging | 13.53 min |
+| Intel packaging including cleanup | 27.90 min |
+| Intel compilation alone | 20.65 min |
+| Tag run creation to public release | 49.52 min |
+
+The three admission jobs consumed 62.50 serial minutes. Their parallel OPFS
+jobs consumed another 17.31 macOS runner-minutes. Intel compilation missed its
+Rust cache; notarization took about 27 seconds. Its cache cleanup and upload
+took 2.35 minutes. Release jobs restore caches but no longer save tag-only Rust
+caches that the next version cannot use. Tag-scoped Rust caches cannot
+serve later tags, and the dev integration job uses a different cache key.
+
+The maintained benchmark must report both merge-to-public and
+ready-candidate-to-public wall time. Queueing, cache upload and notarization count.
+A prewarmed candidate is not a cold release. The 15-minute target remains
+unverified until a complete measured release, including the slowest platform,
+passes. Admission reductions alone cannot make the observed cold Intel build
+fit that target.
+
+After measurements and platform cache changes are pending. Do not substitute
+summed test durations or a projected saving for end-to-end release evidence.
+
+
+### macOS headless WebKit custody fixture
+
+The mandatory macOS OPFS suite retains real nonextractable Ed25519 CryptoKeys,
+IndexedDB persistence, native WebKit wrapping/unwrapping, and restart signing.
+The actor-vault case additionally requires signing-only key usage and refusal
+of PKCS8 and JWK private export before and after restart. A wrong synthetic
+profile wrapping key must fail without replacing the actor; restoring the
+original fixture key must recover the same identity.
+
+Playwright 1.62.0's macOS embedder lacks the Cocoa master-key delegate required
+for CryptoKey serialization. The test-only `webkit-test-custody` helper supplies
+only those missing callbacks in the verified headless `org.webkit.Playwright`
+binary. It never replaces an existing callback or intercepts cryptography,
+CryptoKey serialization/export, IndexedDB, or product code. Each owned synthetic temporary profile has permissions 0700 and a distinct
+random fixture wrapping key with permissions 0600;
+missing/corrupt reopen keys are refused. Each launch needs a fresh load receipt.
+The adapter source and browser binary hashes are logged, and another Playwright
+version requires renewed source review. The launcher and library are confined
+to test subprocesses and never linked into or launched with Freed.
+
+This fixture proves native wrapping/persistence and JavaScript nonextractability.
+Its profile-local test wrapping key is not Keychain custody or protection from
+same-user filesystem reads, and it does not prove physical Safari/iOS acceptance.
+No real vault, profile, credential or Library enters the fixture. A failed or
+missing adapter is a failed gate; the macOS job is not skipped or substituted.

@@ -1,0 +1,40 @@
+{
+  "status": "admitted_after_independent_review",
+  "characterId": "ansel-threadbark",
+  "episode": {
+    "subject": "Great Basin bristlecone pine",
+    "platform": "facebook",
+    "contentType": "post",
+    "theme": "family",
+    "title": "Without a signal",
+    "body": "I had expected the cone to feel lighter when it opened. After two summers of holding the seeds, I thought I would notice them leaving.\n\nThe wind moved the whole branch. Needles rubbed together. The cone tapped the twig beside it.\n\nWhen everything settled, its scales were still open.\n\nI cannot tell you which gust carried the last seed. This bothers me more than I expected. I had been there for all the waiting.\n\nThe younger cones are still shut. I keep hoping one of them will make a sound when it is time.",
+    "mediaSha1": "d8ae559c22985145fec3ba48ad0481b715ca3ae7"
+  },
+  "media": {
+    "observationId": 9866319,
+    "photoId": 13518516,
+    "imageUrl": "https://inaturalist-open-data.s3.amazonaws.com/photos/13518516/large.jpg",
+    "localFile": "/tmp/botanical81/9866319.jpg",
+    "bytes": 620622,
+    "sha1": "d8ae559c22985145fec3ba48ad0481b715ca3ae7",
+    "sha256": "a49fbc852aa5bcb2c037c7cafcd506ef33ad7001fcb1b6c5e5a5c461cac8aea3",
+    "dimensions": [
+      1024,
+      768
+    ],
+    "seconds": 0.885,
+    "status": 200,
+    "attribution": "(c) Jim Morefield, some rights reserved (CC BY)",
+    "license": "CC-BY",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+    "sourceUrl": "https://www.inaturalist.org/observations/9866319",
+    "sourceLocal": "/tmp/botanical81/obs-9866319.json"
+  },
+  "fictionBoundary": "The photographed cones have different ages, with an open brown cone and closed purple cone visible. Particular gusts, seed departure, rubbing/tapping sequence, expectations and awareness are fictional. No observed seed count, germination, successful offspring or auditory physiology is claimed.",
+  "canon": "Existing Ansel, Pinus longaeva, southern Snake Range limestone ridge. Source tree is White Mountains; source location is provenance, not fictional relocation. Existing article and avatar unchanged. New episode concerns departure of seeds, rather than loss and structural support of bare wood.",
+  "biologySource": "https://www.nps.gov/grba/planyourvisit/identifying-bristlecone-pines.htm",
+  "biologySupport": "NPS describes two-year cone maturation from purple to brown and possible wind dispersal. Root read current source and refreshed primary observation with explicit Pinus longaeva, three cone ages and photo-specific CC BY 4.0.",
+  "imageReview": "Root individually opened exact 1024 by 768 frame. Sharp open cone dominates lower center; closed purple cones and dense needles above. Photo bytes and both hashes verified. Original upload not opened.",
+  "originalDraftTitle": "The last seed",
+  "titleDecision": "Accepted independent reviewer suggestion to avoid verbatim title appearing in body; body unchanged."
+}

@@ -78,7 +78,7 @@ describe("Friends directory contract", () => {
     expect(
       coerceLibraryCoreGeneratedSqliteQueryRow("friends_directory_page_v1", {
         ...sqliteRow,
-        relationshipStatus: "connection",
+        relationshipStatus: "invalid-status",
       }),
     ).toBeNull();
     expect(

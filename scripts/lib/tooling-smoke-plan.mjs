@@ -42,6 +42,11 @@ export const FOCUSED_FEATURE_VALIDATION_PATHS = Object.freeze(
     ".github/dependabot.yml",
     ".github/workflows/main-release-validation.yml",
     ".github/workflows/release.yml",
+    ".github/workflows/cloud-release-request.yml",
+    ".github/workflows/cloud-release-inbox.yml", ".github/workflows/cloud-release-policy-probe.yml",
+    "scripts/cloud-release-request.mjs",
+    "scripts/cloud-release-request.test.mjs", "scripts/cloud-release-policy.mjs", "scripts/cloud-release-policy.test.mjs", ".github/workflows/cloud-release-policy-response.yml",
+
     ".agents/skills/freed-library-core/SKILL.md",
     ".agents/skills/freed-ship-build/SKILL.md",
     "docs/LIBRARY-CORE-CONTRACT.md",
@@ -52,6 +57,10 @@ export const FOCUSED_FEATURE_VALIDATION_PATHS = Object.freeze(
     "scripts/automation-control-docs.test.mjs",
     "scripts/create-release-github-app.mjs",
     "scripts/create-release-github-app.test.mjs",
+    "scripts/task-decisions.mjs",
+    "scripts/task-decisions.test.mjs",
+    "scripts/worktree-add.sh",
+    "scripts/worktree-cleanup.sh",
     "scripts/doctor.mjs",
     "scripts/doctor.test.mjs",
     "scripts/generate-tauri-latest-from-release.mjs",
@@ -69,6 +78,10 @@ export const FOCUSED_FEATURE_VALIDATION_PATHS = Object.freeze(
     "scripts/lib/retired-automerge-runtime.d.mts",
     "scripts/lib/retired-automerge-runtime.mjs",
     "scripts/lib/tooling-smoke-plan.mjs",
+    "scripts/lib/webkit-test-custody.mjs",
+    "scripts/lib/webkit-test-custody.d.mts",
+    "scripts/lib/webkit-test-custody-adapter.m",
+    "scripts/webkit-test-custody.test.mjs",
     "scripts/post-perf-comment.mjs",
     "scripts/post-perf-comment.test.mjs",
     "scripts/prepare-release-notes.mjs",
@@ -409,41 +422,31 @@ export function selectNativeAcceptance(
   return Object.freeze({ required: reached.length > 0, files: reached });
 }
 
+// Preview cleanup has real Darwin signaling contracts, independent of the
+// observe-only actor lane and its Windows compile selection.
+export function selectPreviewNativeAcceptance(changedFiles) {
+  const files = [...new Set(changedFiles.map(toPosix))].filter(Boolean);
+  const inputs = new Set([
+    "scripts/lib/preview-processes.py",
+    "scripts/lib/worktree-runtime.sh",
+    "scripts/worktree-processes.sh",
+    "scripts/worktree-preview.sh",
+    "scripts/worktree-preview.test.mjs",
+    "scripts/task-decisions.test.mjs",
+    "scripts/plan-tooling-smoke.mjs",
+    "scripts/lib/tooling-smoke-plan.mjs",
+  ]);
+  return files.length === 0 || files.some((file) =>
+    GLOBAL_INVALIDATION_PATHS.has(file) || inputs.has(file),
+  );
+}
+
 export const DURATIONS_FILE = "scripts/tooling-smoke-durations.json";
 
 /**
- * Total shard jobs the lane may schedule.
- *
- * 16, not 8. At 8 the allocator could not fit the measured suites inside the
- * 90 minute shard timeout no matter how it spread them. Every npm dependency
- * PR selects all four suites, because package-lock.json is a global tooling
- * input, so an unfittable budget meant the gate was structurally red for the
- * entire class.
- *
- * 12 was the first attempt and was not enough. The projection here divides a
- * suite total by its shard count, which assumes the shards are even, and they
- * are not: sharding is per test file, so one heavy file dominates. Measured
- * gap between projection and the actual worst shard is about 1.5x. At 12 that
- * left `general` on two shards running 82 to 90 minutes against a 90 minute
- * cap across eight consecutive runs. It passed at 89 minutes once and was
- * killed at 90 the next time, which is a coin flip, not a gate.
- *
- * 16 gives general a third shard, which isolates its heavy file at about 66
- * minutes, and gives kernel-guard-cutover a second. That is the practical
- * floor: the largest single test file in `general` is ~66 minutes on its own
- * and no shard count splits it further.
- *
- * This raises parallelism, not the clock. Issue #1147 rules out a longer
- * `timeout-minutes` because that hides the cost and finds out later; splitting
- * further keeps total runner seconds flat, adds only per-job setup, and lets
- * the suite actually finish, which is also the only way its duration entry can
- * ever be a measurement instead of a timeout floor.
- *
- * It is a mitigation and not the fix. outcome-ledger-repair is ~4.8 hours of
- * work because it spawns a pinned Python interpreter per lease-archive
- * operation, roughly 466 of them per test. Cutting that is #1147 and it
- * touches a deliberate security boundary. Once it lands this should come back
- * down.
+ * Maximum concurrent shard jobs. Slow authority suites still need this budget
+ * while issue #1147 remains open. Short measured selections use fewer jobs;
+ * do not spend the cap solely because slots are available.
  */
 export const DEFAULT_MAX_JOBS = 16;
 
@@ -559,13 +562,21 @@ export function allocateShardBudget(suites, maxJobs, weights) {
     let best = null;
     let bestValue = -Infinity;
     for (const suite of ordered) {
-      const weight = weights.get(suite)?.weight ?? 1;
+      const entry = weights.get(suite);
+      const weight = entry?.weight ?? 1;
+      // A cap is not a target. Splitting five measured minutes across sixteen
+      // runners buys mostly repeated checkout and dependency installation.
+      // Unknown and capped measurements retain the full available budget.
+      if (entry?.measured && !entry.capped && weight / counts.get(suite) <= 300) {
+        continue;
+      }
       const value = weight / (counts.get(suite) + 1);
       if (value > bestValue) {
         bestValue = value;
         best = suite;
       }
     }
+    if (best === null) break;
     counts.set(best, counts.get(best) + 1);
     remaining -= 1;
   }

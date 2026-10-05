@@ -280,6 +280,10 @@ fn load_active_target(
     transaction: &Transaction<'_>,
     actor_id: &str,
 ) -> Result<ActiveRetirementTarget, NormalizedSqliteError> {
+    crate::normalized_handoff::require_handoff_admission(
+        transaction,
+        crate::normalized_handoff::HandoffAdmission::CanonicalWrite,
+    )?;
     transaction
         .query_row(
             "SELECT epoch.library_id, epoch.epoch_number, epoch.epoch_id,
