@@ -10,17 +10,22 @@ import { createHash } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 import {
   chmodSync,
+  closeSync,
+  constants,
+  fstatSync,
   existsSync,
   linkSync,
   lstatSync,
   mkdirSync,
   mkdtempSync as nodeMkdtempSync,
+  openSync,
   readFileSync,
   readdirSync,
   realpathSync,
   renameSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import os from "node:os";
@@ -7245,6 +7250,54 @@ test("appendOutcomeLedger rejects unresolved verification evidence", () => {
   assert.deepEqual(readFileSync(ledgerPath), baselineLedger);
 });
 
+// Leaf-file identity only: callers own the private fixture's ancestor directories.
+function readFixtureAuthorityFile(file, expected) {
+  assert.equal(typeof constants.O_NOFOLLOW, "number");
+  assert.equal(typeof constants.O_NONBLOCK, "number");
+  const descriptor = openSync(
+    file,
+    constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+  );
+  try {
+    const before = fstatSync(descriptor);
+    assert.ok(before.isFile(), "Fixture authority entry must be a regular file");
+    const unchanged = (actual, captured) => {
+      for (const key of [
+        "dev", "ino", "mode", "uid", "gid", "nlink", "size", "mtimeMs", "ctimeMs",
+      ]) {
+        assert.equal(actual[key], captured[key], `Fixture authority changed: ${key}`);
+      }
+    };
+    unchanged(before, expected);
+    const bytes = readFileSync(descriptor);
+    unchanged(fstatSync(descriptor), before);
+    assert.equal(bytes.length, before.size);
+    return bytes;
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
+test("fixture authority reads refuse substituted files, symlinks, and FIFOs", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "freed-authority-read-"));
+  const file = path.join(dir, "authority");
+  const held = path.join(dir, "original");
+  writeFileSync(file, "original", { mode: 0o600 });
+  const captured = lstatSync(file);
+  assert.equal(readFixtureAuthorityFile(file, captured).toString(), "original");
+  // Retain the original inode so replacement cannot accidentally reuse it.
+  renameSync(file, held);
+  writeFileSync(file, "replacement", { mode: 0o600 });
+  assert.throws(() => readFixtureAuthorityFile(file, captured), /Fixture authority changed/);
+  rmSync(file);
+  symlinkSync(held, file);
+  assert.throws(() => readFixtureAuthorityFile(file, captured), { code: "ELOOP" });
+  rmSync(file);
+  execFileSync("mkfifo", [file]);
+  assert.throws(() => readFixtureAuthorityFile(file, captured), /must be a regular file/);
+  assert.equal(readFileSync(held, "utf8"), "original");
+});
+
 test("verification outcomes bind exact verdict semantics, installed build, and soak window", () => {
   const dir = temporaryOutcomeStateRoot("freed-outcome-contract-");
   const ledgerPath = path.join(dir, "outcomes.jsonl");
@@ -7289,7 +7342,7 @@ test("verification outcomes bind exact verdict semantics, installed build, and s
         uid: stat.uid,
         gid: stat.gid,
         nlink: stat.nlink,
-        bytes: stat.isFile() ? readFileSync(file) : null,
+        bytes: stat.isFile() ? readFixtureAuthorityFile(file, stat) : null,
       });
       if (stat.isDirectory()) {
         for (const name of readdirSync(file).sort()) {
