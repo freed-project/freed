@@ -11,6 +11,7 @@ import {
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import yaml from "js-yaml";
 
 import {
   DARWIN_ONLY_TEST_FILES,
@@ -159,9 +160,9 @@ test("recorded unit durations override source size when building shards", (t) =>
     suites: {
       general: {
         units: {
-          "scripts/alpha.test.mjs": { seconds: 1 },
-          "scripts/beta.test.mjs": { seconds: 1 },
-          "scripts/gamma.test.mjs": { seconds: 100 },
+          "scripts/alpha.test.mjs": { seconds: 0.001 },
+          "scripts/beta.test.mjs": { seconds: 0.001 },
+          "scripts/gamma.test.mjs": { seconds: 0.1 },
         },
       },
     },
@@ -183,6 +184,8 @@ test("recorded unit durations override source size when building shards", (t) =>
     { suite: "general", shardIndex: 1, shardCount: 2 },
     { repoRoot, durations: { suites: { general: { units: {} } } } },
   );
+  // Raw source lengths would dwarf these subsecond timings. The unknown
+  // file must be estimated on their scale without discarding known weights.
   const partial = buildToolingSmokeShardPlan(
     { suite: "general", shardIndex: 1, shardCount: 2 },
     {
@@ -190,13 +193,118 @@ test("recorded unit durations override source size when building shards", (t) =>
       durations: {
         suites: {
           general: {
-            units: { "scripts/gamma.test.mjs": { seconds: 100 } },
+            units: {
+              "scripts/alpha.test.mjs": { seconds: 0.001 },
+              "scripts/gamma.test.mjs": { seconds: 0.1 },
+              "scripts/deleted.test.mjs": { seconds: 1e9 },
+            },
           },
         },
       },
     },
   );
-  assert.deepEqual(partial, fallback);
+  assert.deepEqual(partial, plans[0]);
+  assert.notDeepEqual(partial, fallback);
+
+  for (const invalid of [null, "100", -1, NaN, Infinity]) {
+    const invalidPlan = buildToolingSmokeShardPlan(
+      { suite: "general", shardIndex: 1, shardCount: 2 },
+      {
+        repoRoot,
+        durations: {
+          suites: {
+            general: {
+              units: { "scripts/gamma.test.mjs": { seconds: invalid } },
+            },
+          },
+        },
+      },
+    );
+    assert.deepEqual(invalidPlan, fallback);
+  }
+  for (const evidence of [{ capped: true }, { failures: 1 }, { flaky: true }]) {
+    const invalidPlan = buildToolingSmokeShardPlan(
+      { suite: "general", shardIndex: 1, shardCount: 2 },
+      {
+        repoRoot,
+        durations: {
+          suites: { general: { ...durations.suites.general, ...evidence } },
+        },
+      },
+    );
+    assert.deepEqual(invalidPlan, fallback);
+  }
+
+  // Empty, newly added files still occupy exactly one shard in either mode.
+  writeFileSync(path.join(repoRoot, "scripts", "empty.test.mjs"), "");
+  for (const recorded of [durations, {}]) {
+    const fullPartition = [1, 2, 3, 4].map((shardIndex) =>
+      buildToolingSmokeShardPlan(
+        { suite: "general", shardIndex, shardCount: 4 },
+        { repoRoot, durations: recorded },
+      ),
+    );
+    assert.ok(fullPartition.every((plan) => plan.testFiles.length === 1));
+    assert.equal(new Set(fullPartition.flatMap((plan) => plan.testFiles)).size, 4);
+  }
+});
+
+test("name shards retain timings with new, rounded-zero, and invalid units", (t) => {
+  const repoRoot = mkdtempSync(path.join(os.tmpdir(), "freed-name-weights-"));
+  t.after(() => rmSync(repoRoot, { recursive: true, force: true }));
+  mkdirSync(path.join(repoRoot, "scripts"));
+  const names = ["alpha", "bravo", "heavy", "newer", "zeros"];
+  writeFileSync(
+    path.join(repoRoot, "scripts/automation-control.test.mjs"),
+    names.map((name) => `test("${name}", () => undefined);`).join("\n"),
+  );
+  const durations = {
+    suites: {
+      "automation-control": {
+        units: {
+          alpha: { seconds: 0.001 },
+          bravo: { seconds: 0.001 },
+          heavy: { seconds: 0.1 },
+          newer: { seconds: 10000, capped: true },
+          zeros: { seconds: 0 },
+        },
+      },
+    },
+  };
+  const plans = [1, 2].map((shardIndex) =>
+    buildToolingSmokeShardPlan(
+      { suite: "automation-control", shardIndex, shardCount: 2 },
+      { repoRoot, durations },
+    ),
+  );
+  assert.deepEqual(plans[0].testNames, ["heavy"]);
+  assert.deepEqual(plans[1].testNames, ["newer", "alpha", "bravo", "zeros"]);
+  assert.deepEqual(plans.flatMap((plan) => plan.testNames).sort(), names);
+  for (const plan of plans) {
+    assert.deepEqual(
+      names.filter((name) => new RegExp(plan.testNamePattern).test(name)).sort(),
+      [...plan.testNames].sort(),
+    );
+  }
+
+  // Rounded-zero measurements still fill each shard, including when no
+  // positive observations exist to calibrate the new unit's source size.
+  for (const name of names) {
+    durations.suites["automation-control"].units[name] = { seconds: 0 };
+  }
+  delete durations.suites["automation-control"].units.newer;
+  const zeroPlans = names.map((_, index) =>
+    buildToolingSmokeShardPlan(
+      {
+        suite: "automation-control",
+        shardIndex: index + 1,
+        shardCount: names.length,
+      },
+      { repoRoot, durations },
+    ),
+  );
+  assert.ok(zeroPlans.every((plan) => plan.testNames.length === 1));
+  assert.deepEqual(zeroPlans.flatMap((plan) => plan.testNames).sort(), names);
 });
 
 test("exact name patterns run selected parents and all of their subtests", (t) => {
@@ -393,7 +501,7 @@ test("validation workflow preserves the complete tooling smoke gate", () => {
   // The gate observes the planner, the shards, and the native lane together.
   assert.match(
     workflow,
-    /needs: \[tooling-smoke-plan, tooling-smoke-shards, native-acceptance\]/,
+    /needs: \[tooling-smoke-plan, tooling-smoke-shards, native-acceptance, preview-process-acceptance\]/,
   );
   assert.match(workflow, /^  tooling-smoke:\n    name: Tooling smoke$/m);
 
@@ -412,4 +520,55 @@ test("validation workflow preserves the complete tooling smoke gate", () => {
 
   // Superseded dev runs cancel.
   assert.match(workflow, /^  cancel-in-progress: true$/m);
+});
+
+
+test("preview macOS acceptance is focused and fails the existing gate when required proof is absent", () => {
+  const workflow = yaml.load(readFileSync(".github/workflows/ci.yml", "utf8"));
+  const job = workflow.jobs["preview-process-acceptance"];
+  assert.equal(job["runs-on"], "macos-latest");
+  assert.equal(job.if, "needs.tooling-smoke-plan.outputs.preview-native == 'true'");
+  assert.equal(job["timeout-minutes"], 5);
+  assert.equal(job["continue-on-error"] ?? false, false);
+  assert.ok(job.steps.every((step) => !step["continue-on-error"]));
+  const commands = job.steps.map((step) => step.run ?? "").join("\n");
+  assert.match(commands, /process.platform !== "darwin"/);
+  assert.match(commands, /node --test --test-timeout=30000 scripts\/worktree-preview.test.mjs scripts\/task-decisions.test.mjs/);
+  assert.doesNotMatch(commands, /npm ci|run-native-acceptance|cargo/);
+  assert.equal(workflow.jobs["tooling-smoke-plan"].outputs["preview-native"], "${{ steps.plan.outputs.preview-native }}");
+  const gate = workflow.jobs["tooling-smoke"];
+  assert.ok(gate.needs.includes("preview-process-acceptance"));
+  const step = gate.steps[0];
+  assert.equal(step.env.PREVIEW_RESULT, "${{ needs.preview-process-acceptance.result }}");
+  assert.equal(step.env.PREVIEW_REQUIRED, "${{ needs.tooling-smoke-plan.outputs.preview-native }}");
+  for (const [required, result, expected] of [
+    ["true", "success", 0], ["true", "failure", 1], ["true", "skipped", 1],
+    ["true", "cancelled", 1], ["false", "skipped", 0], ["false", "success", 1],
+    ["", "skipped", 1],
+  ]) {
+    const run = spawnSync("bash", ["-c", step.run], {
+      env: { ...process.env, PLAN_RESULT: "success", SHARD_RESULT: "success",
+        APPLICABLE: "true", JOB_COUNT: "2", NATIVE_REQUIRED: "false", NATIVE_RESULT: "skipped",
+        PREVIEW_REQUIRED: required, PREVIEW_RESULT: result },
+      encoding: "utf8", timeout: 5000,
+    });
+    assert.equal(run.status, expected, `${required}/${result}: ${run.stdout}${run.stderr}`);
+  }
+});
+
+
+test("planner publishes the required preview proof into GitHub job outputs", (t) => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "freed-preview-plan-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const output = path.join(root, "github-output");
+  const result = spawnSync(process.execPath, ["scripts/plan-tooling-smoke.mjs",
+    "--github-output", "--changed-files", "scripts/lib/preview-processes.py"], {
+    env: { ...process.env, GITHUB_OUTPUT: output }, encoding: "utf8", timeout: 5000,
+  });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  const values = Object.fromEntries(readFileSync(output, "utf8").trim().split("\n")
+    .map((line) => [line.slice(0, line.indexOf("=")), line.slice(line.indexOf("=") + 1)]));
+  assert.equal(values["preview-native"], "true");
+  assert.equal(values.native, "false");
+  assert.equal(values.applicable, "true");
 });
