@@ -24,7 +24,8 @@ export function RecoveryAccountLinkFields({ drafts, query, sourceVersion, saving
   const [confirmed, setConfirmed] = useState(false);
   const [selected, setSelected] = useState(() => drafts.map(draft => draft.archived));
   const picker = useLibraryPersonPicker({ enabled: !locked && !saving, query, search, sourceVersion });
-  const chooseCurrent = useActionOwnershipFence([drafts, page, query, sourceVersion, picker.rows], !saving && !locked);
+  const chooseCurrent = useActionOwnershipFence([drafts, page, search, query, sourceVersion, picker.rows], !saving && !locked);
+  const pickerChoiceCurrent = useActionOwnershipFence([drafts, page, search, query, sourceVersion, picker.rows], !saving && !locked && picker.resultsCurrent);
   const submitCurrent = useActionOwnershipFence([drafts, selected, query, sourceVersion, confirmed, seen, onSubmit, locked], !saving);
   useEffect(() => { if (!locked) setConfirmed(false); }, [drafts, query, sourceVersion, locked]);
   useEffect(() => { setSelected(drafts.map(draft => draft.archived)); setPage(0); setSeen(1); }, [drafts]);
@@ -43,7 +44,7 @@ export function RecoveryAccountLinkFields({ drafts, query, sourceVersion, saving
       <button type="button" className={button} disabled={saving || locked} onClick={() => choose({ id: null, label: "Unlinked", present: true })}>Unlink account</button>
     </div>
     <label className="block">Search people<input className="mt-1 w-full rounded-lg border border-[var(--theme-border-subtle)] bg-transparent px-3 py-2" value={search} disabled={saving || locked} onChange={event => setSearch(event.target.value)} /></label>
-    {picker.loading ? <p role="status">Searching people...</p> : <ul className="space-y-1">{picker.rows.map(person => <li key={person.id}><button type="button" className={button} disabled={saving || locked} onClick={() => choose({ id: person.id, label: person.name.slice(0, 240), present: true })}>Select {person.name} (...{person.id.slice(-8)})</button></li>)}</ul>}
+    {picker.loading ? <p role="status">Searching people...</p> : <ul className="space-y-1">{picker.rows.map(person => <li key={person.id}><button type="button" className={button} disabled={saving || locked || !picker.resultsCurrent} onClick={() => { if (pickerChoiceCurrent()) choose({ id: person.id, label: person.name.slice(0, 240), present: true }); }}>Select {person.name} (...{person.id.slice(-8)})</button></li>)}</ul>}
     <label className="flex items-start gap-2"><input type="checkbox" checked={confirmed} disabled={saving || locked} onChange={event => { if (chooseCurrent()) setConfirmed(event.target.checked); }} /><span>Apply all reviewed account links, including changes before Primary acceptance.</span></label>
     <div className="flex flex-wrap gap-2">
       {page > 0 && <button type="button" className={button} disabled={saving || locked} onClick={() => { if (!chooseCurrent()) return; setPage(page - 1); setSearch(""); }}>Previous account</button>}

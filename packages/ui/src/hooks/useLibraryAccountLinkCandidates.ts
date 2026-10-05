@@ -30,7 +30,7 @@ function toSuggestion(
 }
 
 /** Retain only the link candidates for the selected Person or Account. */
-export function useLibraryAccountLinkCandidates({
+export function useLibraryAccountLinkCandidatesState({
   entityId,
   entityKind,
   sourceVersion,
@@ -38,14 +38,18 @@ export function useLibraryAccountLinkCandidates({
   readonly entityId: string | null;
   readonly entityKind: "account" | "person";
   readonly sourceVersion: number;
-}): readonly AccountLinkSuggestion[] {
+}): { readonly rows: readonly AccountLinkSuggestion[]; readonly resultsCurrent: boolean; readonly status: "loading" | "refreshing" | "ready" | "failed" | "idle" } {
   const { queryLibraryCore } = usePlatform();
   const readerSessionId = useRef(operationId("account-link-reader"));
   const [result, setResult] = useState<{
     readonly attemptKey: string;
-  readonly reader: typeof queryLibraryCore;
+    readonly requestKey: string;
+    readonly sourceVersion: number;
+    readonly failed: boolean;
+    readonly reader: typeof queryLibraryCore;
     readonly rows: readonly AccountLinkSuggestion[];
   } | null>(null);
+  const requestKey = JSON.stringify([entityKind, entityId]);
   const attemptKey = JSON.stringify([entityKind, entityId, sourceVersion]);
 
   useEffect(() => {
@@ -68,18 +72,25 @@ export function useLibraryAccountLinkCandidates({
       .then((response) => {
         if (cancelled) return;
         setResult({
-          attemptKey,
+          attemptKey, requestKey, sourceVersion, failed: false,
           reader: queryLibraryCore,
           rows: Object.freeze(response.rows.map(toSuggestion)),
         });
       })
       .catch(() => {
-        if (!cancelled) setResult({ attemptKey, reader: queryLibraryCore, rows: Object.freeze([]) });
+        if (!cancelled) setResult({ attemptKey, requestKey, sourceVersion, failed: true, reader: queryLibraryCore, rows: Object.freeze([]) });
       });
     return () => {
       cancelled = true;
     };
   }, [attemptKey, entityId, entityKind, queryLibraryCore]);
 
-  return result?.reader === queryLibraryCore && result?.attemptKey === attemptKey ? result.rows : [];
+  const retained = entityId && result !== null && result.reader === queryLibraryCore && result.requestKey === requestKey && result.sourceVersion <= sourceVersion ? result : null;
+  const resultsCurrent = retained?.attemptKey === attemptKey && retained.failed === false;
+  const failed = retained?.attemptKey === attemptKey && retained.failed;
+  return { rows: retained?.rows ?? [], resultsCurrent, status: !entityId || !queryLibraryCore ? "idle" : failed ? "failed" : resultsCurrent ? "ready" : retained?.rows.length ? "refreshing" : "loading" };
+}
+
+export function useLibraryAccountLinkCandidates(options: Parameters<typeof useLibraryAccountLinkCandidatesState>[0]): readonly AccountLinkSuggestion[] {
+  return useLibraryAccountLinkCandidatesState(options).rows;
 }

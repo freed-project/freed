@@ -19,3 +19,11 @@ it('admits the currently displayed picker row',async()=>{await render();await ac
 it('rejects a captured picker action after reader replacement',async()=>{await render();const run=capture();fixture.platform.queryLibraryCore=vi.fn(()=>new Promise(()=>{}));await render();await act(async()=>run());expect(link).not.toHaveBeenCalled();});
 it('rejects a captured picker action while revision refresh is pending',async()=>{await render();const run=capture();reader.mockImplementation(()=>new Promise(()=>{}));await render(2);await act(async()=>run());expect(link).not.toHaveBeenCalled();});
 it('rejects a captured picker action after selected Account changes',async()=>{await render();const run=capture();await render(1,{...account,id:'synthetic-other'});await act(async()=>run());expect(link).not.toHaveBeenCalled();});
+
+it('keeps pending picker buttons visible but rejects current and captured clicks until ready',async()=>{
+ await render();const old=capture();let resolve!:(value:any)=>void;const pending=new Promise<any>(a=>resolve=a);reader.mockReturnValueOnce(pending);
+ await render(2);const during=capture();expect([...host.querySelectorAll('button')].find(x=>x.textContent?.includes('Synthetic Target'))!.disabled).toBe(true);
+ await act(async()=>{old();during();});expect(link).not.toHaveBeenCalled();
+ await act(async()=>resolve({rows:[{...person}]}));await act(async()=>capture()());expect(link).toHaveBeenCalledExactlyOnceWith(person.id);
+ await act(async()=>old());expect(link).toHaveBeenCalledOnce();
+});

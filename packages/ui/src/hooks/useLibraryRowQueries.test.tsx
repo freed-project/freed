@@ -796,6 +796,8 @@ describe("Library row query hooks", () => {
     );
     expect(state).toEqual({
       loading: false,
+      resultsCurrent: true,
+      status: "ready",
       rows: [
         expect.objectContaining({
           careLevel: 5,

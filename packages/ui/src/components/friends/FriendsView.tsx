@@ -44,8 +44,8 @@ import { useLibraryFacetSummaryState } from "../../hooks/useLibraryFacetSummary.
 import { useLibraryFriendsDirectory } from "../../hooks/useLibraryFriendsDirectory.js";
 import { executeCurrentAccountLink } from "../../lib/friends-account-link-action.js";
 import { useActionOwnershipFence } from "../../hooks/useActionOwnershipFence.js";
-import { useLibraryAccountLinkCandidates } from "../../hooks/useLibraryAccountLinkCandidates.js";
-import { useLibraryFriendCandidateReview } from "../../hooks/useLibraryFriendCandidateReview.js";
+import { useLibraryAccountLinkCandidatesState } from "../../hooks/useLibraryAccountLinkCandidates.js";
+import { useLibraryFriendCandidateReviewState } from "../../hooks/useLibraryFriendCandidateReview.js";
 import type { FriendGraphHandle } from "./FriendGraph.js";
 import { FriendAvatar } from "./FriendAvatar.js";
 import { FriendOverview } from "./FriendOverview.js";
@@ -271,11 +271,13 @@ function friendSuggestionSignalLabel(
 
 function FriendSuggestionEvidence({
   suggestion,
+  actionsCurrent = true,
   onPromoteToFriend,
   onPromoteToFam,
   onDismiss,
 }: {
   suggestion: FriendCandidateSuggestion;
+  actionsCurrent?: boolean;
   onPromoteToFriend?: () => void;
   onPromoteToFam?: () => void;
   onDismiss: (suggestionId: string) => void;
@@ -298,6 +300,7 @@ function FriendSuggestionEvidence({
         <div className="flex flex-wrap items-center justify-end gap-2">
           <button
             type="button"
+            disabled={!actionsCurrent}
             onClick={() => onDismiss(suggestion.id)}
             className="btn-secondary rounded-lg px-3 py-1.5 text-xs"
           >
@@ -306,6 +309,7 @@ function FriendSuggestionEvidence({
           {onPromoteToFriend ? (
             <button
               type="button"
+              disabled={!actionsCurrent}
               onClick={onPromoteToFriend}
               className="btn-primary rounded-lg px-3 py-1.5 text-xs"
             >
@@ -315,6 +319,7 @@ function FriendSuggestionEvidence({
           {onPromoteToFam ? (
             <button
               type="button"
+              disabled={!actionsCurrent}
               onClick={onPromoteToFam}
               className="btn-primary rounded-lg px-3 py-1.5 text-xs"
             >
@@ -353,6 +358,7 @@ function SuggestedProviderIcon({ accountId }: { accountId: string }) {
 
 function FriendCandidateRow({
   suggestion,
+  actionsCurrent = true,
   selected,
   onSelect,
   onDismiss,
@@ -360,6 +366,7 @@ function FriendCandidateRow({
   onCareLevelChange,
 }: {
   suggestion: FriendCandidateSuggestion;
+  actionsCurrent?: boolean;
   selected: boolean;
   onSelect: () => void;
   onDismiss: (suggestionId: string) => void;
@@ -378,14 +385,14 @@ function FriendCandidateRow({
           : ""
       }`}
     >
-      <div role="button" tabIndex={0} onClick={onSelect} onKeyDown={event => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onSelect(); } }} className="w-full text-left">
+      <div role="button" aria-disabled={!actionsCurrent} tabIndex={actionsCurrent ? 0 : -1} onClick={() => { if (actionsCurrent) onSelect(); }} onKeyDown={event => { if (actionsCurrent && event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onSelect(); } }} className="w-full text-left">
         <FriendOverview
           {...overview}
           id={suggestion.personId ?? account?.personId}
           accountId={suggestion.accountIds[0]}
           bio={overview?.bio ?? person?.bio}
           careLevel={overview?.careLevel ?? person?.careLevel ?? 1}
-          onCareLevelChange={level => onCareLevelChange(person ?? null, suggestion.accountIds[0], level)}
+          onCareLevelChange={actionsCurrent ? level => onCareLevelChange(person ?? null, suggestion.accountIds[0], level) : undefined}
           name={safeText(suggestion.displayName, "Unnamed friend")}
           avatarUrl={overview?.latestAvatarUrl ?? overview?.avatarUrl ?? person?.avatarUrl ?? account?.avatarUrl}
           latestActivityAt={suggestion.lastActivityAt}
@@ -394,6 +401,7 @@ function FriendCandidateRow({
               <div className="flex items-center gap-1">{suggestion.accountIds.map(id => <SuggestedProviderIcon key={id} accountId={id} />)}</div>
               <button
                 type="button"
+                disabled={!actionsCurrent}
                 onClick={event => { event.stopPropagation(); onDismiss(suggestion.id); }}
                 aria-label={`Dismiss suggestion for ${suggestion.displayName}`}
                 className="rounded-lg p-1 text-[color:var(--theme-text-muted)] hover:text-[color:var(--theme-text-primary)]"
@@ -652,17 +660,17 @@ export function FriendsView({
     [friendsRows.graph],
   );
 
-  const selectedAccountSuggestions = useLibraryAccountLinkCandidates({
+  const selectedAccountSuggestionState = useLibraryAccountLinkCandidatesState({
     entityId: selectedAccountId,
     entityKind: "account",
     sourceVersion: friendsReadVersion,
   });
-  const selectedPersonSuggestions = useLibraryAccountLinkCandidates({
+  const selectedPersonSuggestionState = useLibraryAccountLinkCandidatesState({
     entityId: selectedPersonId,
     entityKind: "person",
     sourceVersion: friendsReadVersion,
   });
-  const friendCandidateSuggestions = useLibraryFriendCandidateReview({
+  const friendCandidateState = useLibraryFriendCandidateReviewState({
     contactSuggestions: contactSync.suggestionPage.rows.map(
       (row) => row.suggestion,
     ),
@@ -670,9 +678,12 @@ export function FriendsView({
       friendSuggestionPreferences?.dismissedSuggestionIds ?? [],
     sourceVersion: friendsReadVersion,
   });
+  const selectedAccountSuggestions = selectedAccountSuggestionState.rows;
+  const selectedPersonSuggestions = selectedPersonSuggestionState.rows;
+  const friendCandidateSuggestions = friendCandidateState.rows;
   const mutationActionCurrent = useActionOwnershipFence([friendsReadVersion, selectedPersonId, selectedAccountId, queryLibraryCore, assignLibraryAccountToPerson, readLibraryAccountDetail, readLibraryPersonDetail, upsertLibraryPerson, replaceLibraryFriend, updatePreferences], !readOnly);
-  const personSuggestionCurrent = useActionOwnershipFence([friendsReadVersion, selectedPersonId, queryLibraryCore, selectedPersonSuggestions, assignLibraryAccountToPerson], !readOnly);
-  const candidateActionCurrent = useActionOwnershipFence([friendsReadVersion, queryLibraryCore, friendCandidateSuggestions, friendSuggestionPreferences, updatePreferences]);
+  const personSuggestionCurrent = useActionOwnershipFence([friendsReadVersion, selectedPersonId, queryLibraryCore, selectedPersonSuggestions, assignLibraryAccountToPerson], !readOnly && selectedPersonSuggestionState.resultsCurrent);
+  const candidateActionCurrent = useActionOwnershipFence([friendsReadVersion, queryLibraryCore, friendCandidateSuggestions, friendSuggestionPreferences, updatePreferences], friendCandidateState.resultsCurrent);
   const friendCandidateByPerson = useMemo(() => {
     const next = new Map<string, FriendCandidateSuggestion>();
     for (const suggestion of friendCandidateSuggestions) {
@@ -1320,6 +1331,7 @@ export function FriendsView({
                 <FriendCandidateRow
                   key={suggestion.id}
                   suggestion={suggestion}
+                  actionsCurrent={friendCandidateState.resultsCurrent}
                   selected={
                     (suggestion.personId !== undefined &&
                       suggestion.personId === selectedPerson?.id) ||
@@ -1329,10 +1341,13 @@ export function FriendsView({
                   onSelect={() => handleSelectFriendCandidate(suggestion)}
                   onDismiss={handleDismissFriendSuggestion}
                   onCareLevelChange={async (person, accountId, level) => {
+                    if (!candidateActionCurrent() || !friendCandidateSuggestions.includes(suggestion)) return;
                     const identity = person ?? (suggestion.personId ? await readLibraryPersonDetail?.(suggestion.personId) : null);
+                    if (!candidateActionCurrent()) return;
                     if (identity) await handleSetPersonRelationshipLevel(identity, level);
                     else if (accountId) {
                       const account = await readLibraryAccountDetail?.(accountId);
+                      if (!candidateActionCurrent()) return;
                       if (account) setEditorState({ kind: "new", draft: { ...friendDraftFromAccount(account), ...relationshipPatchForLevel(level) } });
                     }
                   }}
@@ -1488,8 +1503,9 @@ export function FriendsView({
       {selectedPersonFriendSuggestion && !readOnly ? (
         <FriendSuggestionEvidence
           suggestion={selectedPersonFriendSuggestion}
-          onPromoteToFriend={() => void handlePromoteSelectedPerson(3)}
-          onPromoteToFam={() => void handlePromoteSelectedPerson(5)}
+          actionsCurrent={friendCandidateState.resultsCurrent}
+          onPromoteToFriend={() => { if (candidateActionCurrent()) void handlePromoteSelectedPerson(3); }}
+          onPromoteToFam={() => { if (candidateActionCurrent()) void handlePromoteSelectedPerson(5); }}
           onDismiss={handleDismissFriendSuggestion}
         />
       ) : null}
@@ -1516,6 +1532,7 @@ export function FriendsView({
                 <button
                   key={`${suggestion.personId}:${suggestion.accountId}`}
                   type="button"
+                  disabled={!selectedPersonSuggestionState.resultsCurrent}
                   onClick={() => { if (personSuggestionCurrent()) void handleLinkAccountToPerson(suggestion.accountId, selectedPerson.id); }}
                   className="theme-card-soft flex w-full items-center justify-between gap-3 rounded-2xl px-3 py-3 text-left transition-colors hover:border-[color:var(--theme-border-strong)] hover:bg-[color:var(--theme-bg-card-hover)]"
                 >
@@ -1590,7 +1607,9 @@ export function FriendsView({
         account={selectedAccount}
         linkedPerson={linkedPerson}
         suggestions={selectedAccountSuggestions}
+        suggestionsCurrent={selectedAccountSuggestionState.resultsCurrent}
         friendSuggestion={selectedAccountFriendSuggestion}
+        friendSuggestionCurrent={friendCandidateState.resultsCurrent}
         sourceVersion={friendsReadVersion}
         feedItems={friendsRows.timelineItems}
         timelineLoading={friendsRows.timelineLoading}

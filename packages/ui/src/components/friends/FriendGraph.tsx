@@ -419,13 +419,13 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
       string | null
     >(null);
     const [linkPickerQuery, setLinkPickerQuery] = useState("");
-    const { rows: personPickerOptions } = useLibraryPersonPicker({
+    const { rows: personPickerOptions, resultsCurrent: pickerResultsCurrent } = useLibraryPersonPicker({
       enabled: linkPickerAccountId !== null,
       query: sqliteGraphQuery,
       search: linkPickerQuery,
       sourceVersion,
     });
-    const pickerActionCurrent = useActionOwnershipFence([linkPickerAccountId, linkPickerQuery, sourceVersion, sqliteGraphQuery, onLinkAccountToPerson, personPickerOptions], linkPickerAccountId !== null);
+    const pickerActionCurrent = useActionOwnershipFence([linkPickerAccountId, linkPickerQuery, sourceVersion, sqliteGraphQuery, onLinkAccountToPerson, personPickerOptions], linkPickerAccountId !== null && pickerResultsCurrent);
     const [reducedMotion, setReducedMotion] = useState(false);
     const [announcement, setAnnouncement] = useState("");
     const copyDiagnosticsRequestId = useCommandSurfaceStore(
@@ -1355,6 +1355,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
                     <button
                       key={person.id}
                       type="button"
+                      disabled={!pickerResultsCurrent}
                       className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-[color:var(--theme-bg-card-hover)]"
                       onClick={() =>
                         void handleLinkAccountToPickerPerson(person.id)

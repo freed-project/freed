@@ -22,7 +22,9 @@ interface AccountDetailPanelProps {
   account: Account;
   linkedPerson?: Person | null;
   suggestions: readonly AccountLinkSuggestion[];
+  suggestionsCurrent?: boolean;
   friendSuggestion?: FriendCandidateSuggestion | null;
+  friendSuggestionCurrent?: boolean;
   sourceVersion: number;
   feedItems: readonly FeedItem[];
   timelineLoading: boolean;
@@ -69,7 +71,9 @@ export function AccountDetailPanel({
   account,
   linkedPerson = null,
   suggestions,
+  suggestionsCurrent = true,
   friendSuggestion = null,
+  friendSuggestionCurrent = true,
   sourceVersion,
   feedItems,
   timelineLoading,
@@ -102,13 +106,13 @@ export function AccountDetailPanel({
     (person) => person.relationshipStatus === "friend",
   );
 
-  const admission = useRef({ accountId: account.id, sourceVersion, queryLibraryCore, rows: personPicker.rows, suggestions, readOnly, onLinkToPerson });
-  admission.current = { accountId: account.id, sourceVersion, queryLibraryCore, rows: personPicker.rows, suggestions, readOnly, onLinkToPerson };
+  const admission = useRef({ accountId: account.id, searchQuery, sourceVersion, queryLibraryCore, rows: personPicker.rows, pickerCurrent: personPicker.resultsCurrent, suggestions, suggestionsCurrent, readOnly, onLinkToPerson });
+  admission.current = { accountId: account.id, searchQuery, sourceVersion, queryLibraryCore, rows: personPicker.rows, pickerCurrent: personPicker.resultsCurrent, suggestions, suggestionsCurrent, readOnly, onLinkToPerson };
   const canLink = (row: unknown, kind: "picker" | "suggestion") => {
     const latest = admission.current;
-    return !latest.readOnly && latest.accountId === account.id && latest.sourceVersion === sourceVersion &&
+    return !latest.readOnly && latest.accountId === account.id && latest.searchQuery === searchQuery && latest.sourceVersion === sourceVersion &&
       latest.queryLibraryCore === queryLibraryCore && latest.onLinkToPerson === onLinkToPerson &&
-      (kind === "picker" ? latest.rows.includes(row as typeof personPicker.rows[number]) : latest.suggestions.includes(row as typeof suggestions[number]));
+      (kind === "picker" ? latest.pickerCurrent && latest.rows.includes(row as typeof personPicker.rows[number]) : latest.suggestionsCurrent && latest.suggestions.includes(row as typeof suggestions[number]));
   };
 
   return (
@@ -228,6 +232,7 @@ export function AccountDetailPanel({
                   {onDismissFriendSuggestion ? (
                     <button
                       type="button"
+                      disabled={!friendSuggestionCurrent}
                       onClick={() =>
                         onDismissFriendSuggestion(friendSuggestion.id)
                       }
@@ -295,6 +300,7 @@ export function AccountDetailPanel({
                     <button
                       key={`${suggestion.accountId}:${suggestion.personId}`}
                       type="button"
+                      disabled={!suggestionsCurrent || readOnly}
                       onClick={() => { if (canLink(suggestion, "suggestion")) onLinkToPerson(suggestion.personId); }}
                       className="theme-card-soft w-full rounded-2xl px-3 py-3 text-left transition-colors hover:border-[color:var(--theme-border-strong)] hover:bg-[color:var(--theme-bg-card-hover)]"
                     >
@@ -357,6 +363,7 @@ export function AccountDetailPanel({
                   <button
                     key={person.id}
                     type="button"
+                    disabled={!personPicker.resultsCurrent || readOnly}
                     onClick={() => { if (canLink(person, "picker")) onLinkToPerson(person.id); }}
                     className="theme-card-soft flex w-full items-center justify-between gap-3 rounded-2xl px-3 py-3 text-left transition-colors hover:border-[color:var(--theme-border-strong)] hover:bg-[color:var(--theme-bg-card-hover)]"
                   >

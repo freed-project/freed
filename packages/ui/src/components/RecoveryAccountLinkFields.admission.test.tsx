@@ -15,3 +15,10 @@ for(const change of ['locked','reader','batch','version'])it(`rejects captured s
 it('rejects captured picker choice after reader replacement',async()=>{await render();const run=capture('Select Synthetic Person');query=vi.fn(()=>new Promise(()=>{}));await render();await act(async()=>run());expect(host.textContent).toContain('Selected link: Unlinked');expect(host.textContent).not.toContain('Selected link: Synthetic Person');});
 
 it('keeps the current locked exact-retry action available while rejecting the pre-lock callback',async()=>{await render();await confirm();const beforeLock=capture('Store account links');locked=true;await render();await act(async()=>beforeLock());expect(submit).not.toHaveBeenCalled();await act(async()=>capture('Store account links')());expect(submit).toHaveBeenCalledOnce();expect((host.querySelector('input[type=checkbox]') as HTMLInputElement).disabled).toBe(true);});
+
+it('retains pending picker choices but rejects current and captured selection until ready',async()=>{
+ await render();const old=capture('Select Synthetic Person');let resolve!:(value:any)=>void;const pending=new Promise<any>(a=>resolve=a);query.mockReturnValueOnce(pending);version=2;await render();
+ const during=capture('Select Synthetic Person');const button=[...host.querySelectorAll('button')].find(x=>x.textContent?.includes('Select Synthetic Person'))!;expect(button.disabled).toBe(true);
+ await act(async()=>{old();during();});expect(host.textContent).toContain('Selected link: Unlinked');
+ await act(async()=>resolve({rows:[{id:'synthetic-person',name:'Synthetic Person'}]}));await act(async()=>capture('Select Synthetic Person')());expect(host.textContent).toContain('Selected link: Synthetic Person');
+});
