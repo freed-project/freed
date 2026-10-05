@@ -1,6 +1,6 @@
 import { expect, it, vi } from "vitest";
 import { generateSampleLibraryData } from "@freed/shared";
-import { decodeLibraryCoreItemScanCursorV1 } from "@freed/shared/library-core";
+import { decodeLibraryCoreItemScanCursorV1, parseLibraryCoreSqliteQueryResponse } from "@freed/shared/library-core";
 import { tauriInitScript } from "./tauri-init.js";
 
 it("serializes yielding mock writes and saves each complete snapshot before acknowledgment", async () => {
@@ -102,4 +102,24 @@ it("preview cleanup scans the entire showcase with bounded source-bound cursors"
     expect(seen.length).toBeLessThanOrEqual(items.length);
   } while (cursor);
   expect(seen).toEqual(items.map(item => item.globalId).sort());
+});
+
+
+it("mock background and item-detail responses preserve nullable seen confirmation through strict parsers", () => {
+  const runtime = {} as {
+    __TAURI_MOCK_SQLITE_LIBRARY__: { items: Record<string, unknown> };
+    __TAURI_MOCK_HANDLERS__: Record<string, (args: unknown) => unknown>;
+  };
+  new Function("window", tauriInitScript())(runtime);
+  const original = generateSampleLibraryData({ seed: 42 }).items[0]!;
+  for (const stamp of [null, -1, 0, 2000]) {
+    const item = { ...original, userState: { ...original.userState, seenSyncedAt: stamp } };
+    runtime.__TAURI_MOCK_SQLITE_LIBRARY__.items = { [item.globalId]: item };
+    const detailRequest = { queryId: "item_detail_v1", schemaVersion: 1, globalId: item.globalId } as const;
+    const detail = parseLibraryCoreSqliteQueryResponse(runtime.__TAURI_MOCK_HANDLERS__.query_normalized_library({ request: detailRequest }), detailRequest);
+    expect(detail.item?.seenSyncedAt).toBe(stamp);
+    const scanRequest = { queryId: "background_item_page_v1", schemaVersion: 1, analysisVersion: null, cancellationId: "cancel-seen-mock", readerSessionId: "reader-seen-mock", priorityComputedBeforeMs: null, limit: 64, cursor: null } as const;
+    const scan = parseLibraryCoreSqliteQueryResponse(runtime.__TAURI_MOCK_HANDLERS__.query_normalized_library({ request: scanRequest }), scanRequest);
+    expect(scan.rows[0]?.seenSyncedAt).toBe(stamp);
+  }
 });
