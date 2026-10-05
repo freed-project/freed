@@ -321,6 +321,9 @@ if (args[0] !== "pr") {
 
 if (args[1] === "list") {
   state.prListCallCount = (state.prListCallCount || 0) + 1;
+  if (state.providerListReplacement && state.prListCallCount === 2) {
+    state.prList = state.providerListReplacement;
+  }
   if (state.makeReadyOnPrListCall === state.prListCallCount) {
     state.prList = (state.prList || []).map((item) => ({
       ...item,
@@ -376,14 +379,26 @@ if (args[1] === "view") {
       item.number === requestedNumber ||
       item.url === requestedReference,
   ) || state.prList?.[0] || {};
+  let providerRead = {};
+  if (state.providerHeadReads && state.prListCallCount >= 2 && (args.includes("number,url,headRefOid,headRefName,headRepository,headRepositoryOwner,baseRefName,state,isDraft") || (!state.providerHeadReadCount && args.includes("headRefOid,baseRefName")))) {
+    state.providerHeadReadCount = (state.providerHeadReadCount || 0) + 1;
+    providerRead = state.providerHeadReads[Math.min(state.providerHeadReadCount - 1, state.providerHeadReads.length - 1)];
+    fs.writeFileSync(stateFile, JSON.stringify(state));
+    if (providerRead.error) process.exit(1);
+    if (providerRead.invalidateFile) fs.writeFileSync(providerRead.invalidateFile, "{}");
+  }
   process.stdout.write(JSON.stringify({
     number: pr.number,
+    url: pr.url,
+    headRepository: { name: "freed" },
+    headRepositoryOwner: { login: "freed-project" },
     headRefOid: state.viewHead || (state.prViewCallCount <= (state.staleHeadReads || 0) ? "a".repeat(40) : headRefOid),
     headRefName,
     baseRefName: state.viewBase || "dev",
     state: "OPEN",
     isDraft: pr.isDraft ?? true,
     ...state.viewOverrides,
+    ...providerRead,
   }));
   process.exit(0);
 }
@@ -843,46 +858,133 @@ test("ready publication stops private-log leaks before committing or publishing"
   assert.equal((await readGhLog(fixture.ghLogFile)).some((call) => ["create", "edit", "merge"].includes(call.args[1])), false);
 });
 
-test("provider subdiff query rejects dirty sources without staging, committing, or publishing", async (t) => {
+// Query receipts protect source state, including raw index bytes (not merely
+// porcelain status), and the publisher lease. Tier 1; invalidated by publisher,
+// snapshot, classifier, Git/toolchain, or fixture changes.
+async function queryState(fixture) {
+  async function bytes(directory) {
+    const result = {};
+    async function walk(relative = "") {
+      for (const entry of await fs.readdir(path.join(directory, relative), { withFileTypes: true })) {
+        const name = path.join(relative, entry.name);
+        if (entry.isDirectory()) await walk(name);
+        else if (entry.isSymbolicLink()) result[name] = await fs.readlink(path.join(directory, name));
+        else result[name] = createHash("sha256").update(await fs.readFile(path.join(directory, name))).digest("hex");
+      }
+    }
+    await walk();
+    return result;
+  }
+  return {
+    head: run("git", ["rev-parse", "HEAD"], { cwd: fixture.worktree }).stdout,
+    refs: run("git", ["show-ref"], { cwd: fixture.worktree }).stdout,
+    status: run("git", ["--no-optional-locks", "status", "--porcelain=v1"], { cwd: fixture.worktree }).stdout,
+    worktreeAndGit: await bytes(fixture.worktree),
+    lease: await bytes(fixture.automationStateRoot),
+    github: await fs.readFile(fixture.ghLogFile, "utf8"),
+  };
+}
+
+test("provider subdiff query accepts dirty candidates without source or lease writes", async (t) => {
+  const fixture = await createPublishFixture(t, { seedProviderFile: true, preacquirePublisherLease: true });
+  const cwd = fixture.worktree;
+  const provider = "packages/desktop/src-tauri/src/fb-extract.js";
+  const git = (...args) => { const result = run("git", args, { cwd }); assertSuccess(result); return result.stdout.trim(); };
+  await fs.writeFile(path.join(cwd, ".git/FETCH_HEAD"), "unchanged fetch receipt\n");
+  const realGit = run("which", ["git"]).stdout.trim();
+  const spy = path.join(path.dirname(cwd), "bin/git");
+  const callsFile = path.join(path.dirname(cwd), "query-git-calls.jsonl");
+  await fs.writeFile(spy, `#!${process.execPath}
+const fs = require("node:fs");
+const { spawnSync } = require("node:child_process");
+const args = process.argv.slice(2);
+fs.appendFileSync(${JSON.stringify(callsFile)}, JSON.stringify(args) + "\\n");
+if (["fetch", "commit", "push", "update-ref"].some(command => args.includes(command)) ||
+    (args.includes("add") && (!process.env.GIT_INDEX_FILE || process.env.GIT_INDEX_FILE.startsWith(${JSON.stringify(cwd)})))) process.exit(91);
+const result = spawnSync(${JSON.stringify(realGit)}, args, { stdio: "inherit" });
+process.exit(result.status ?? 92);
+`, { mode: 0o700 });
+  const query = async (environment, extra = [], success = true) => {
+    const before = await queryState(fixture);
+    const result = run("bash", [publishScript, "--print-provider-subdiff", ...extra], { cwd, env: environment });
+    if (success) assertSuccess(result);
+    else assert.notEqual(result.status, 0);
+    assert.deepEqual(await queryState(fixture), before);
+    return result;
+  };
+  // Protected/detached branches and incomplete publisher environments are
+  // irrelevant to a local query. No publication tooling may be required.
+  git("checkout", "dev");
+  await fs.writeFile(path.join(cwd, "README.md"), "neutral dirty candidate\n");
+  assert.equal((await query({ ...directPublishEnv(fixture), FREED_PUBLISH_SCOPE_JSON: "malformed" })).stdout, "");
+  git("checkout", "--detach");
+  await fs.writeFile(path.join(cwd, provider), "// original provider extractor\n// s\n");
+  git("add", provider);
+  await fs.appendFile(path.join(cwd, provider), "// u\n");
+  const mixed = await query(fixture.env);
+  assert.match(mixed.stdout.trim(), /^[a-f0-9]{40}$/);
+  git("add", "-u"); git("commit", "-m", "fix: intentional identical bytes");
+  const committed = await query(directPublishEnv(fixture));
+  assert.equal(mixed.stdout, committed.stdout);
+  const patch = run("git", ["diff", "--binary", "--no-ext-diff", "--no-textconv", "origin/dev...HEAD", "--", provider], { cwd }).stdout;
+  assert.equal(committed.stdout.trim(), run("git", ["hash-object", "--stdin"], { cwd, input: patch }).stdout.trim());
+
+  // Rename out of the provider surface binds both endpoints, with a binary
+  // addition, staged addition, deletion, and unstaged edits in the same tree.
+  git("mv", provider, "renamed-extractor.js");
+  await fs.writeFile(path.join(cwd, "packages/desktop/src-tauri/src/ig-extract.js"), Buffer.from([0, 1, 2, 255]));
+  await fs.writeFile(path.join(cwd, "staged.md"), "staged addition\n");
+  git("add", "staged.md");
+  await fs.unlink(path.join(cwd, "README.md"));
+  assert.match((await query(fixture.env, [], false)).stderr, /Untracked files/);
+  const dirty = await query(fixture.env, ["--include-untracked"]);
+  git("add", "-A"); git("commit", "-m", "fix: intentional renamed binary candidate");
+  assert.equal(dirty.stdout, (await query(fixture.env)).stdout);
+  const boundPatch = run("git", ["diff", "--binary", "--no-ext-diff", "--no-textconv", "origin/dev...HEAD", "--",
+    provider, "renamed-extractor.js", "packages/desktop/src-tauri/src/ig-extract.js"], { cwd }).stdout;
+  assert.match(boundPatch, /GIT binary patch/);
+  assert.match(boundPatch, /rename to renamed-extractor.js/);
+  assert.equal(dirty.stdout.trim(), run("git", ["hash-object", "--stdin"], { cwd, input: boundPatch }).stdout.trim());
+  assert.match((await query(fixture.env, ["--base", "www"], false)).stderr, /fetch the intended base explicitly/);
+  // Conflicted and sparse/hidden entries must fail without resolving/staging.
+  git("update-index", "--assume-unchanged", "staged.md");
+  assert.match((await query(fixture.env, [], false)).stderr, /assume-unchanged/);
+  git("update-index", "--no-assume-unchanged", "staged.md");
+  await fs.writeFile(path.join(cwd, ".gitattributes"), "*.md filter=forbidden\n");
+  assert.match((await query(fixture.env, ["--include-untracked"], false)).stderr, /External clean filters/);
+  await fs.unlink(path.join(cwd, ".gitattributes"));
+  const blob = git("rev-parse", "HEAD:staged.md");
+  assertSuccess(run("git", ["update-index", "--index-info"], {
+    cwd, input: `0 ${"0".repeat(40)}\tstaged.md\n100644 ${blob} 1\tstaged.md\n100644 ${blob} 2\tstaged.md\n`,
+  }));
+  assert.match((await query(fixture.env, [], false)).stderr, /Unmerged entries/);
+  assert.equal((await fs.readFile(callsFile, "utf8")).includes('"fetch"'), false);
+
+});
+
+test("provider subdiff query refuses a source edit during snapshotting", async (t) => {
   const fixture = await createPublishFixture(t);
-  const before = run("git", ["rev-parse", "HEAD"], {
-    cwd: fixture.worktree,
-  }).stdout;
-  await fs.writeFile(
-    path.join(fixture.worktree, "README.md"),
-    "unstaged change\n",
-  );
-  await fs.writeFile(path.join(fixture.worktree, "untracked.md"), "new file\n");
-  const status = run("git", ["status", "--porcelain"], {
-    cwd: fixture.worktree,
-  }).stdout;
-  const result = run(
-    "bash",
-    [publishScript, "--print-provider-subdiff", "--include-untracked"],
-    {
-      cwd: fixture.worktree,
-      env: directPublishEnv(fixture),
-    },
-  );
+  const cwd = fixture.worktree;
+  const realGit = run("which", ["git"]).stdout.trim();
+  const spy = path.join(path.dirname(cwd), "bin/git");
+  await fs.writeFile(spy, `#!${process.execPath}
+const fs = require("node:fs");
+const { spawnSync } = require("node:child_process");
+const args = process.argv.slice(2);
+const result = spawnSync(${JSON.stringify(realGit)}, args, { stdio: "inherit" });
+if (args.includes("write-tree")) fs.appendFileSync(${JSON.stringify(path.join(cwd, "README.md"))}, "concurrent edit\\n");
+process.exit(result.status ?? 92);
+`, { mode: 0o700 });
+  const before = await queryState(fixture);
+  const result = run("bash", [publishScript, "--print-provider-subdiff"], { cwd, env: directPublishEnv(fixture) });
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /never stages or commits/);
-  assert.equal(
-    run("git", ["rev-parse", "HEAD"], { cwd: fixture.worktree }).stdout,
-    before,
-  );
-  assert.equal(
-    run("git", ["status", "--porcelain"], { cwd: fixture.worktree }).stdout,
-    status,
-  );
-  assert.equal(
-    run("git", ["diff", "--cached"], { cwd: fixture.worktree }).stdout,
-    "",
-  );
-  const calls = await readGhLog(fixture.ghLogFile);
-  assert.equal(
-    calls.some((call) => ["create", "edit", "merge"].includes(call.args[1])),
-    false,
-  );
+  assert.match(result.stderr, /Source changed during the read-only snapshot/);
+  const after = await queryState(fixture);
+  // Only the edit deliberately injected by the fixture is allowed to differ.
+  assert.notEqual(after.worktreeAndGit["README.md"], before.worktreeAndGit["README.md"]);
+  after.worktreeAndGit["README.md"] = before.worktreeAndGit["README.md"];
+  after.status = before.status;
+  assert.deepEqual(after, before);
 });
 
 test("worktree-publish keeps the ordinary authenticated GitHub path available", async (t) => {
@@ -3181,6 +3283,163 @@ test("worktree-publish keeps a control-task provider PR draft until its audit co
       );
       const state = JSON.parse(await fs.readFile(fixture.ghStateFile, "utf8"));
       assert.equal((state.comments || []).length, failureCase.expectedComments);
+    });
+  }
+});
+
+// Tier 1: the provider check runs before normal existing-PR reconciliation.
+// Virtual sleep proves the retry budget without real blocking waits.
+test("worktree-publish reconciles only stale provider post-push heads", async (t) => {
+  const stale = { headRefOid: "a".repeat(40) };
+  const cases = [
+    { name: "draft convergence", reads: [stale, {}], success: true, count: 2 },
+    {
+      name: "ready convergence",
+      reads: [stale, {}],
+      ready: true,
+      success: true,
+      count: 2,
+    },
+    {
+      name: "last bounded read",
+      reads: [stale, stale, stale, stale, {}],
+      success: true,
+      count: 5,
+    },
+    { name: "exhaustion", reads: [stale], count: 5 },
+    { name: "first read API failure", reads: [{ error: true }], count: 1 },
+    ...[
+      { baseRefName: "main" },
+      { headRefName: "fix/other" },
+      { headRepositoryOwner: { login: "foreign" } },
+      { headRepository: { name: "other" } },
+      { url: "https://github.com/foreign/freed/pull/321" },
+      { number: 999 },
+      { state: "CLOSED" },
+      { headRefOid: "malformed" },
+      { isDraft: false },
+      { error: true },
+    ].map((change, index) => ({
+      name: `changed identity or state ${index}`,
+      reads: [stale, change],
+      count: 2,
+    })),
+    { name: "PR disappeared", reads: [stale], replacement: [], count: 0 },
+    {
+      name: "PR replaced",
+      reads: [stale],
+      replacement: [{ number: 999, isDraft: true }],
+      count: 0,
+    },
+    { name: "authority revoked", reads: [stale], revoke: true, count: 1 },
+    {
+      name: "audit write failure",
+      reads: [stale, {}],
+      failCommentPost: true,
+      count: 2,
+    },
+  ];
+  for (const scenario of cases) {
+    await t.test(scenario.name, async (t) => {
+      const fixture = await createPublishFixture(t);
+      const review = await writeProviderReviewArtifact(fixture, {
+        taskId: "provider-head-convergence",
+      });
+      const file = "packages/desktop/src-tauri/src/fb-extract.js";
+      await fs.mkdir(path.dirname(path.join(fixture.worktree, file)), {
+        recursive: true,
+      });
+      await fs.writeFile(
+        path.join(fixture.worktree, file),
+        "// offline provider fixture\n",
+      );
+      assertSuccess(run("git", ["add", file], { cwd: fixture.worktree }));
+      assertSuccess(
+        run("git", ["commit", "-m", "fix: provider fixture"], {
+          cwd: fixture.worktree,
+        }),
+      );
+      const sleepLog = path.join(fixture.worktree, "../sleep.log");
+      await fs.writeFile(
+        path.join(path.dirname(fixture.ghStateFile), "bin/sleep"),
+        `#!${process.execPath}\nrequire("node:fs").appendFileSync(${JSON.stringify(sleepLog)}, process.argv.slice(2).join(" ") + "\\n");\n`,
+        { mode: 0o755 },
+      );
+      const reads = scenario.revoke
+        ? [{ ...stale, invalidateFile: review.path }]
+        : scenario.reads;
+      await fs.writeFile(
+        fixture.ghStateFile,
+        JSON.stringify({
+          prList: [
+            {
+              number: 321,
+              url: "https://github.com/freed-project/freed/pull/321",
+              isDraft: true,
+            },
+          ],
+          providerHeadReads: reads,
+          providerListReplacement: scenario.replacement,
+          failCommentPost: scenario.failCommentPost,
+        }),
+      );
+      const result = run(
+        "bash",
+        [
+          publishScript,
+          "--title",
+          "fix: reconcile provider head",
+          "--provider-risk-review-artifact",
+          review.path,
+          ...(scenario.ready ? ["--ready"] : []),
+        ],
+        { cwd: fixture.worktree, env: directPublishEnv(fixture) },
+      );
+      if (scenario.success) assertSuccess(result);
+      else assert.notEqual(result.status, 0, result.stdout);
+      const state = JSON.parse(await fs.readFile(fixture.ghStateFile, "utf8"));
+      assert.equal(state.providerHeadReadCount || 0, scenario.count);
+      const waits = await fs.readFile(sleepLog, "utf8").catch(() => "");
+      assert.deepEqual(
+        waits.trim().split("\n").filter(Boolean),
+        Array(scenario.revoke ? 1 : Math.max(0, scenario.count - 1)).fill("1"),
+      );
+      const calls = (await fs.readFile(fixture.ghLogFile, "utf8"))
+        .trim()
+        .split("\n")
+        .map(JSON.parse);
+      const writes = calls.filter(
+        ({ args }) => args[0] === "api" && args.includes("POST"),
+      );
+      assert.equal(
+        writes.length,
+        scenario.success || scenario.failCommentPost ? 1 : 0,
+      );
+      if (!scenario.replacement)
+        assert.equal(
+          state.prList[0].isDraft,
+          !(scenario.success && scenario.ready),
+        );
+      assert.equal((state.comments || []).length, scenario.success ? 1 : 0);
+      assert.equal(calls.filter(({ args }) => args[1] === "create").length, 0);
+      assert.ok(
+        calls
+          .filter(({ args }) => args[1] === "view")
+          .every(
+            ({ args }) =>
+              args[args.indexOf("--repo") + 1] === "freed-project/freed",
+          ),
+      );
+      const pushed = run(
+        "git",
+        ["rev-parse", "refs/heads/fix/worktree-publish-test"],
+        { cwd: fixture.origin },
+      );
+      assertSuccess(pushed);
+      assert.equal(
+        pushed.stdout,
+        run("git", ["rev-parse", "HEAD"], { cwd: fixture.worktree }).stdout,
+      );
     });
   }
 });

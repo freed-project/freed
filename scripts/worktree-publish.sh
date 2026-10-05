@@ -4,70 +4,18 @@ set -euo pipefail
 set +x
 umask 077
 
-PUBLISH_LEASE_PRESENT="${FREED_PR_PUBLISHER_LEASE_TOKEN+x}"
-PUBLISH_STATE_ROOT_PRESENT="${FREED_PUBLISH_CONTROL_STATE_ROOT+x}"
-PUBLISH_SCOPE_PRESENT="${FREED_PUBLISH_SCOPE_JSON+x}"
-PUBLISH_GIT_PRESENT="${FREED_PUBLISH_GIT_BIN+x}"
-PUBLISH_GH_PRESENT="${FREED_PUBLISH_GH_BIN+x}"
-PUBLISH_PYTHON_PRESENT="${FREED_PUBLISH_PYTHON_BIN+x}"
-PUBLISH_LEASE_TOKEN="${FREED_PR_PUBLISHER_LEASE_TOKEN:-}"
-PUBLISH_CONTROL_STATE_ROOT="${FREED_PUBLISH_CONTROL_STATE_ROOT:-}"
-PUBLISH_SCOPE_JSON="${FREED_PUBLISH_SCOPE_JSON:-}"
-GIT_BIN="${FREED_PUBLISH_GIT_BIN:-}"
-GH_BIN="${FREED_PUBLISH_GH_BIN:-}"
-PYTHON_BIN="${FREED_PUBLISH_PYTHON_BIN:-}"
-PUBLISH_NODE_BIN="${NODE_BIN:-}"
-TRUSTED_PUBLISH_MODE=false
-if [[ -n "${PUBLISH_LEASE_PRESENT}" || -n "${PUBLISH_STATE_ROOT_PRESENT}" || -n "${PUBLISH_SCOPE_PRESENT}" || -n "${PUBLISH_GIT_PRESENT}" || -n "${PUBLISH_GH_PRESENT}" || -n "${PUBLISH_PYTHON_PRESENT}" ]]; then
-  TRUSTED_PUBLISH_MODE=true
-fi
-builtin unset \
-  FREED_PR_PUBLISHER_ACTOR_TOKEN \
-  FREED_PR_PUBLISHER_LEASE_TOKEN \
-  FREED_AUTOMATION_ACTOR_TOKEN \
-  FREED_AUTOMATION_LEASE_OPERATION_ID \
-  FREED_AUTOMATION_LEASE_TOKEN \
-  FREED_OWNER_BOOTSTRAP_TOKEN \
-  FREED_PUBLISH_CONTROL_STATE_ROOT \
-  FREED_PUBLISH_SCOPE_JSON \
-  FREED_PUBLISH_GIT_BIN \
-  FREED_PUBLISH_GH_BIN \
-  FREED_PUBLISH_PYTHON_BIN \
-  GH_HOST \
-  GH_REPO
-builtin declare +x PUBLISH_LEASE_TOKEN
-
 SCRIPT_DIR="$(builtin cd -P -- "${BASH_SOURCE[0]%/*}" && builtin pwd)"
-
-if ${TRUSTED_PUBLISH_MODE}; then
-  if [[ "${PUBLISH_CONTROL_STATE_ROOT}" != /* ]]; then
-    echo "Error: trusted publishing requires an absolute FREED_PUBLISH_CONTROL_STATE_ROOT." >&2
-    exit 1
-  fi
-  NODE_BIN="${PUBLISH_NODE_BIN}"
-else
-  # Normal feature and release work uses the repository-pinned toolchain and
-  # the caller's existing GitHub authentication. The optional trusted broker
-  # supplies all six private handoff values together; any partial handoff above
-  # enters trusted mode and fails closed instead of silently downgrading.
-  # shellcheck source=./lib/node-tooling.sh
-  source "${SCRIPT_DIR}/lib/node-tooling.sh"
-  NODE_BIN="$(resolve_node_bin)"
-  GIT_BIN="$(command -v git || true)"
-  GH_BIN="$("${NODE_BIN}" "${SCRIPT_DIR}/lib/github-tooling.mjs")"
-  PYTHON_BIN="$(command -v python3 || true)"
-  PUBLISH_CONTROL_STATE_ROOT="${HOME}/.freed/automation"
-  PUBLISH_SCOPE_JSON=""
-  PUBLISH_LEASE_TOKEN=""
-fi
 
 usage() {
   cat <<'EOF'
 Usage:
   ./scripts/worktree-publish.sh --title "<conventional-commit title>" [--summary "<bullet>"]... [--test "<bullet>"]... [--base <branch>] [--body-file <path>] [--include-untracked] [--ready] [--provider-risk-review-artifact <path>] [--provider-risk-approval-file <path>]
-  ./scripts/worktree-publish.sh --print-provider-subdiff
+  ./scripts/worktree-publish.sh --print-provider-subdiff [--base <branch>] [--include-untracked]
 
---print-provider-subdiff prints the current provider subdiff SHA and exits. Put
+--print-provider-subdiff snapshots committed and local candidate bytes using the
+existing local origin/<base> ref, without fetching or changing source state.
+Untracked files require --include-untracked; ignored files remain excluded.
+It prints the provider subdiff SHA (empty for a neutral candidate) and exits. Put
 that value in the audit record when useful. A human Gate 1 artifact approves
 the described provider behavior and provider set, not one exact diff. The
 optional signed control-task route remains exact-diff bound.
@@ -350,6 +298,8 @@ provider_diff_sha() {
   local base_ref="$1"
   local head_ref="$2"
   local files="$3"
+  local comparison=("${base_ref}...${head_ref}")
+  [[ "${4:-}" != tree ]] || comparison=("${base_ref}" "${head_ref}")
   local path_args=()
   local file_path
 
@@ -358,7 +308,7 @@ provider_diff_sha() {
     path_args+=("${file_path}")
   done <<< "${files}"
   "${GIT_BIN}" diff --binary --no-ext-diff --no-textconv \
-    "${base_ref}...${head_ref}" -- "${path_args[@]}" |
+    "${comparison[@]}" -- "${path_args[@]}" |
     "${GIT_BIN}" hash-object --stdin
 }
 
@@ -367,7 +317,9 @@ provider_bound_files() {
   local head_ref="$2"
   local provider_files="$3"
 
-  "${GIT_BIN}" diff --name-status -z -M "${base_ref}...${head_ref}" |
+  local comparison=("${base_ref}...${head_ref}")
+  [[ "${4:-}" != tree ]] || comparison=("${base_ref}" "${head_ref}")
+  "${GIT_BIN}" diff --name-status -z -M "${comparison[@]}" |
     "${PYTHON_BIN}" -c '
 import sys
 
@@ -532,6 +484,7 @@ PROVIDER_RISK_APPROVAL_FILE=""
 PROVIDER_RISK_APPROVAL_JSON=""
 PROVIDER_APPROVAL_SOURCE_KIND=""
 PRINT_PROVIDER_SUBDIFF=false
+HELP_REQUESTED=false
 PROVIDER_RISK_REVIEW_ARTIFACT_FILE=""
 PROVIDER_RISK_REVIEW_ARTIFACT_JSON=""
 PROVIDER_REVIEW_ARTIFACT_DIGEST=""
@@ -892,6 +845,7 @@ promote_pr_ready_with_rollback() {
 }
 
 ensure_provider_pr_draft_before_push() {
+  PROVIDER_PR_NUMBER=""
   if [[ -z "${FINAL_PROVIDER_VISIBLE_FILES}" ]]; then
     return
   fi
@@ -909,6 +863,7 @@ ensure_provider_pr_draft_before_push() {
       --limit 1
   )"
   existing_number="$(pr_field "${existing_json}" number)"
+  PROVIDER_PR_NUMBER="${existing_number}"
   existing_is_draft="$(pr_field "${existing_json}" isDraft)"
   existing_head="$(pr_field "${existing_json}" headRefOid)"
   if [[ -z "${existing_number}" ]]; then
@@ -954,22 +909,48 @@ verify_provider_pr_draft_after_push() {
       --limit 1
   )"
   existing_number="$(pr_field "${existing_json}" number)"
+  if [[ -n "${PROVIDER_PR_NUMBER}" && "${existing_number}" != "${PROVIDER_PR_NUMBER}" ]]; then
+    echo "Error: provider-visible pull request identity changed during publication." >&2
+    exit 1
+  fi
   if [[ -z "${existing_number}" ]]; then
     return
   fi
-  verify_pr_target "${existing_number}"
-  if verify_pr_is_draft "${existing_number}"; then
-    return
-  fi
-  if ! restore_pr_draft_after_failed_ready "${existing_number}"; then
-    echo "Error: provider-visible pull request became ready during publication and could not be returned to draft." >&2
-    exit 1
-  fi
-  echo "Error: provider-visible pull request became ready during publication and was returned to draft." >&2
+  local attempt pr_json pr_head
+  # This check precedes normal existing-PR reconciliation. Only a valid stale
+  # head may wait; recheck authority and the same draft PR before each read.
+  for attempt in 1 2 3 4 5; do
+    assert_publish_write_ready
+    pr_json="$("${GH_BIN}" pr view "${existing_number}" --repo "${PUBLISH_REPO}" --json number,url,headRefOid,headRefName,headRepository,headRepositoryOwner,baseRefName,state,isDraft)"
+    pr_head="$(json_nested_field "${pr_json}" headRefOid)"
+    if [[ "$(json_nested_field "${pr_json}" number)" != "${existing_number}" ||
+          "$(json_nested_field "${pr_json}" url)" != "https://github.com/${PUBLISH_REPO}/pull/${existing_number}" ||
+          "$(json_nested_field "${pr_json}" headRepositoryOwner login)/$(json_nested_field "${pr_json}" headRepository name)" != "${PUBLISH_REPO}" ||
+          "$(json_nested_field "${pr_json}" headRefName)" != "${BRANCH_NAME}" ||
+          "$(json_nested_field "${pr_json}" baseRefName)" != "${BASE_BRANCH}" ||
+          "$(json_nested_field "${pr_json}" state)" != "OPEN" ||
+          ! "${pr_head}" =~ ^[0-9a-f]{40}$ ]]; then
+      echo "Error: provider-visible pull request target or identity changed during publication." >&2
+      exit 1
+    fi
+    if [[ "$(json_nested_field "${pr_json}" isDraft)" != "true" ]]; then
+      if ! restore_pr_draft_after_failed_ready "${existing_number}"; then
+        echo "Error: provider-visible pull request became ready during publication and could not be returned to draft." >&2
+        exit 1
+      fi
+      echo "Error: provider-visible pull request became ready during publication and was returned to draft." >&2
+      exit 1
+    fi
+    if [[ "${pr_head}" == "${PUBLISH_HEAD}" ]]; then
+      return
+    fi
+    if [[ "${attempt}" -lt 5 ]]; then
+      sleep 1
+    fi
+  done
+  echo "Error: provider-visible pull request head did not converge to the inspected publish head after 5 reads." >&2
   exit 1
 }
-
-trap release_publish_lease EXIT
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -1025,8 +1006,8 @@ while [[ $# -gt 0 ]]; do
       exit 1
       ;;
     --help|-h)
-      usage
-      exit 0
+      HELP_REQUESTED=true
+      shift
       ;;
     *)
       echo "Error: unexpected argument '$1'." >&2
@@ -1036,17 +1017,105 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# --print-provider-subdiff is a read-only query, so it needs no PR title.
-if ${PRINT_PROVIDER_SUBDIFF}; then
-  # This path never consumes a lease, including when later preflight fails.
-  trap - EXIT
-fi
-if [[ -z "${TITLE}" ]] && ! ${PRINT_PROVIDER_SUBDIFF}; then
-  usage
-  exit 1
-fi
 if [[ -n "${PROVIDER_RISK_REVIEW_ARTIFACT_FILE}" && -n "${PROVIDER_RISK_APPROVAL_FILE}" ]]; then
   echo "Error: --provider-risk-review-artifact and --provider-risk-approval-file are mutually exclusive." >&2
+  exit 1
+fi
+
+# Dispatch before publication tooling, preflight, fetches, or lease handling.
+if ${PRINT_PROVIDER_SUBDIFF}; then
+  if ${HELP_REQUESTED}; then
+    usage
+    exit 0
+  fi
+  ensure_publishable_base "${BASE_BRANCH}"
+  source "${SCRIPT_DIR}/lib/node-tooling.sh"
+  NODE_BIN="$(resolve_node_bin)"
+  GIT_BIN="$(command -v git)"
+  PYTHON_BIN="$(command -v python3)"
+  export GIT_OPTIONAL_LOCKS=0 GIT_NO_LAZY_FETCH=1
+  QUERY_ROOT="$(mktemp -d)"
+  trap 'rm -rf -- "${QUERY_ROOT}"' EXIT
+  QUERY_SOURCE_OBJECTS="$("${GIT_BIN}" rev-parse --path-format=absolute --git-path objects)"
+  mkdir "${QUERY_ROOT}/objects"
+  # Only private objects and the private index may be written by the snapshot.
+  export GIT_OBJECT_DIRECTORY="${QUERY_ROOT}/objects"
+  export GIT_ALTERNATE_OBJECT_DIRECTORIES="${QUERY_SOURCE_OBJECTS}"
+  QUERY_REFS="$("${NODE_BIN}" "${SCRIPT_DIR}/lib/provider-query-snapshot.mjs" "${BASE_BRANCH}" "${INCLUDE_UNTRACKED}" "${QUERY_ROOT}")"
+  read -r QUERY_BASE QUERY_TREE <<< "${QUERY_REFS}"
+  QUERY_FILES="$("${GIT_BIN}" diff --no-renames --no-ext-diff --name-only "${QUERY_BASE}" "${QUERY_TREE}" | sort -u | "${NODE_BIN}" "${SCRIPT_DIR}/lib/provider-visible-paths.mjs" --stdin)"
+  if [[ -n "${QUERY_FILES}" ]]; then
+    QUERY_BOUND="$(provider_bound_files "${QUERY_BASE}" "${QUERY_TREE}" "${QUERY_FILES}" tree)"
+    provider_diff_sha "${QUERY_BASE}" "${QUERY_TREE}" "${QUERY_BOUND}" tree
+  else
+    echo "This candidate has no provider-visible diff." >&2
+  fi
+  exit 0
+fi
+
+PUBLISH_LEASE_PRESENT="${FREED_PR_PUBLISHER_LEASE_TOKEN+x}"
+PUBLISH_STATE_ROOT_PRESENT="${FREED_PUBLISH_CONTROL_STATE_ROOT+x}"
+PUBLISH_SCOPE_PRESENT="${FREED_PUBLISH_SCOPE_JSON+x}"
+PUBLISH_GIT_PRESENT="${FREED_PUBLISH_GIT_BIN+x}"
+PUBLISH_GH_PRESENT="${FREED_PUBLISH_GH_BIN+x}"
+PUBLISH_PYTHON_PRESENT="${FREED_PUBLISH_PYTHON_BIN+x}"
+PUBLISH_LEASE_TOKEN="${FREED_PR_PUBLISHER_LEASE_TOKEN:-}"
+PUBLISH_CONTROL_STATE_ROOT="${FREED_PUBLISH_CONTROL_STATE_ROOT:-}"
+PUBLISH_SCOPE_JSON="${FREED_PUBLISH_SCOPE_JSON:-}"
+GIT_BIN="${FREED_PUBLISH_GIT_BIN:-}"
+GH_BIN="${FREED_PUBLISH_GH_BIN:-}"
+PYTHON_BIN="${FREED_PUBLISH_PYTHON_BIN:-}"
+PUBLISH_NODE_BIN="${NODE_BIN:-}"
+TRUSTED_PUBLISH_MODE=false
+if [[ -n "${PUBLISH_LEASE_PRESENT}" || -n "${PUBLISH_STATE_ROOT_PRESENT}" || -n "${PUBLISH_SCOPE_PRESENT}" || -n "${PUBLISH_GIT_PRESENT}" || -n "${PUBLISH_GH_PRESENT}" || -n "${PUBLISH_PYTHON_PRESENT}" ]]; then
+  TRUSTED_PUBLISH_MODE=true
+fi
+builtin unset \
+  FREED_PR_PUBLISHER_ACTOR_TOKEN \
+  FREED_PR_PUBLISHER_LEASE_TOKEN \
+  FREED_AUTOMATION_ACTOR_TOKEN \
+  FREED_AUTOMATION_LEASE_OPERATION_ID \
+  FREED_AUTOMATION_LEASE_TOKEN \
+  FREED_OWNER_BOOTSTRAP_TOKEN \
+  FREED_PUBLISH_CONTROL_STATE_ROOT \
+  FREED_PUBLISH_SCOPE_JSON \
+  FREED_PUBLISH_GIT_BIN \
+  FREED_PUBLISH_GH_BIN \
+  FREED_PUBLISH_PYTHON_BIN \
+  GH_HOST \
+  GH_REPO
+builtin declare +x PUBLISH_LEASE_TOKEN
+
+if ${TRUSTED_PUBLISH_MODE}; then
+  if [[ "${PUBLISH_CONTROL_STATE_ROOT}" != /* ]]; then
+    echo "Error: trusted publishing requires an absolute FREED_PUBLISH_CONTROL_STATE_ROOT." >&2
+    exit 1
+  fi
+  NODE_BIN="${PUBLISH_NODE_BIN}"
+else
+  # Normal feature and release work uses the repository-pinned toolchain and
+  # the caller's existing GitHub authentication. The optional trusted broker
+  # supplies all six private handoff values together; any partial handoff above
+  # enters trusted mode and fails closed instead of silently downgrading.
+  # shellcheck source=./lib/node-tooling.sh
+  source "${SCRIPT_DIR}/lib/node-tooling.sh"
+  NODE_BIN="$(resolve_node_bin)"
+  GIT_BIN="$(command -v git || true)"
+  GH_BIN="$("${NODE_BIN}" "${SCRIPT_DIR}/lib/github-tooling.mjs")"
+  PYTHON_BIN="$(command -v python3 || true)"
+  PUBLISH_CONTROL_STATE_ROOT="${HOME}/.freed/automation"
+  PUBLISH_SCOPE_JSON=""
+  PUBLISH_LEASE_TOKEN=""
+fi
+
+trap release_publish_lease EXIT
+
+if ${HELP_REQUESTED}; then
+  usage
+  exit 0
+fi
+if [[ -z "${TITLE}" ]]; then
+  usage
   exit 1
 fi
 
@@ -1058,7 +1127,7 @@ require_executable "${NODE_BIN:-}" node
 # remediation before the publish flow trips over them.
 "${NODE_BIN}" "${SCRIPT_DIR}/doctor.mjs" || true
 
-${PRINT_PROVIDER_SUBDIFF} || ensure_conventional_title "${TITLE}"
+ensure_conventional_title "${TITLE}"
 ensure_publishable_base "${BASE_BRANCH}"
 
 if ! "${GIT_BIN}" rev-parse --git-dir >/dev/null 2>&1; then
@@ -1107,17 +1176,10 @@ if [[ "${BASE_BRANCH}" == "main" ]] && has_worktree_changes; then
   exit 1
 fi
 
-if ${PRINT_PROVIDER_SUBDIFF} && has_worktree_changes; then
-  echo "Error: --print-provider-subdiff requires a committed, clean branch; it never stages or commits files." >&2
-  exit 1
-fi
-
 # Check before staging, committing, or pushing private local decisions.
-if ! ${PRINT_PROVIDER_SUBDIFF}; then
-  DECISION_ARGS=(check --worktree "$("${GIT_BIN}" rev-parse --show-toplevel)" --base "origin/${BASE_BRANCH}" --git-bin "${GIT_BIN}")
-  ${READY_FOR_REVIEW} && DECISION_ARGS+=(--required)
-  "${NODE_BIN}" "${SCRIPT_DIR}/task-decisions.mjs" "${DECISION_ARGS[@]}"
-fi
+DECISION_ARGS=(check --worktree "$("${GIT_BIN}" rev-parse --show-toplevel)" --base "origin/${BASE_BRANCH}" --git-bin "${GIT_BIN}")
+${READY_FOR_REVIEW} && DECISION_ARGS+=(--required)
+"${NODE_BIN}" "${SCRIPT_DIR}/task-decisions.mjs" "${DECISION_ARGS[@]}"
 
 if has_worktree_changes; then
   UNTRACKED_FILES="$(list_untracked_files)"
@@ -1145,10 +1207,7 @@ elif ! branch_has_unique_commits "${BASE_BRANCH}"; then
   exit 1
 fi
 
-# --print-provider-subdiff writes nothing, so it must not consume the one-use
-# publish lease. Doing so would burn the caller's publish authority just to
-# answer a question.
-${PRINT_PROVIDER_SUBDIFF} || validate_publish_lease
+validate_publish_lease
 
 PUBLISH_HEAD="$("${GIT_BIN}" rev-parse HEAD)"
 if [[ "${BASE_BRANCH}" == "main" ]]; then
@@ -1178,13 +1237,6 @@ if [[ -n "${FINAL_PROVIDER_VISIBLE_FILES}" ]]; then
   FINAL_PROVIDER_DIFF_SHA="$(provider_diff_sha "origin/${BASE_BRANCH}" "${PUBLISH_HEAD}" "${FINAL_PROVIDER_BOUND_FILES}")"
   # This value identifies the provider-only bytes in the audit comment and in
   # the optional exact-diff control-task route.
-  if ${PRINT_PROVIDER_SUBDIFF}; then
-    # Disarm the EXIT trap: this query never took the publish lease, so it must
-    # not release the caller's.
-    trap - EXIT
-    printf '%s\n' "${FINAL_PROVIDER_DIFF_SHA}"
-    exit 0
-  fi
   FINAL_PROVIDER_IDS="$(
     printf '%s\n' "${FINAL_PROVIDER_VISIBLE_FILES}" |
       "${NODE_BIN}" "${SCRIPT_DIR}/lib/provider-visible-paths.mjs" \
@@ -1213,11 +1265,6 @@ if [[ -n "${FINAL_PROVIDER_VISIBLE_FILES}" ]]; then
     load_provider_review_artifact
   fi
 else
-  if ${PRINT_PROVIDER_SUBDIFF}; then
-    trap - EXIT
-    echo "This branch has no provider-visible committed diff." >&2
-    exit 0
-  fi
   if [[ -n "${PROVIDER_RISK_APPROVAL_FILE}" ]]; then
     echo "Error: --provider-risk-approval-file was provided, but this branch has no provider-visible committed diff." >&2
     exit 1
