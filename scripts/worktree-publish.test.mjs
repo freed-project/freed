@@ -321,6 +321,9 @@ if (args[0] !== "pr") {
 
 if (args[1] === "list") {
   state.prListCallCount = (state.prListCallCount || 0) + 1;
+  if (state.providerListReplacement && state.prListCallCount === 2) {
+    state.prList = state.providerListReplacement;
+  }
   if (state.makeReadyOnPrListCall === state.prListCallCount) {
     state.prList = (state.prList || []).map((item) => ({
       ...item,
@@ -369,10 +372,25 @@ if (args[1] === "view") {
       item.number === requestedNumber ||
       item.url === requestedReference,
   ) || state.prList?.[0] || {};
+  let providerRead = {};
+  if (state.providerHeadReads && state.prListCallCount >= 2 && (args.includes("number,url,headRefOid,headRefName,headRepository,headRepositoryOwner,baseRefName,state,isDraft") || (!state.providerHeadReadCount && args.includes("headRefOid,baseRefName")))) {
+    state.providerHeadReadCount = (state.providerHeadReadCount || 0) + 1;
+    providerRead = state.providerHeadReads[Math.min(state.providerHeadReadCount - 1, state.providerHeadReads.length - 1)];
+    fs.writeFileSync(stateFile, JSON.stringify(state));
+    if (providerRead.error) process.exit(1);
+    if (providerRead.invalidateFile) fs.writeFileSync(providerRead.invalidateFile, "{}");
+  }
   process.stdout.write(JSON.stringify({
+    number: pr.number,
+    url: pr.url,
+    headRefName: "fix/worktree-publish-test",
+    headRepository: { name: "freed" },
+    headRepositoryOwner: { login: "freed-project" },
+    state: "OPEN",
     headRefOid,
     baseRefName: state.viewBase || "dev",
     isDraft: pr.isDraft ?? true,
+    ...providerRead,
   }));
   process.exit(0);
 }
@@ -3101,6 +3119,163 @@ test("worktree-publish keeps a control-task provider PR draft until its audit co
       );
       const state = JSON.parse(await fs.readFile(fixture.ghStateFile, "utf8"));
       assert.equal((state.comments || []).length, failureCase.expectedComments);
+    });
+  }
+});
+
+// Tier 1: the provider check runs before normal existing-PR reconciliation.
+// Virtual sleep proves the retry budget without real blocking waits.
+test("worktree-publish reconciles only stale provider post-push heads", async (t) => {
+  const stale = { headRefOid: "a".repeat(40) };
+  const cases = [
+    { name: "draft convergence", reads: [stale, {}], success: true, count: 2 },
+    {
+      name: "ready convergence",
+      reads: [stale, {}],
+      ready: true,
+      success: true,
+      count: 2,
+    },
+    {
+      name: "last bounded read",
+      reads: [stale, stale, stale, stale, {}],
+      success: true,
+      count: 5,
+    },
+    { name: "exhaustion", reads: [stale], count: 5 },
+    { name: "first read API failure", reads: [{ error: true }], count: 1 },
+    ...[
+      { baseRefName: "main" },
+      { headRefName: "fix/other" },
+      { headRepositoryOwner: { login: "foreign" } },
+      { headRepository: { name: "other" } },
+      { url: "https://github.com/foreign/freed/pull/321" },
+      { number: 999 },
+      { state: "CLOSED" },
+      { headRefOid: "malformed" },
+      { isDraft: false },
+      { error: true },
+    ].map((change, index) => ({
+      name: `changed identity or state ${index}`,
+      reads: [stale, change],
+      count: 2,
+    })),
+    { name: "PR disappeared", reads: [stale], replacement: [], count: 0 },
+    {
+      name: "PR replaced",
+      reads: [stale],
+      replacement: [{ number: 999, isDraft: true }],
+      count: 0,
+    },
+    { name: "authority revoked", reads: [stale], revoke: true, count: 1 },
+    {
+      name: "audit write failure",
+      reads: [stale, {}],
+      failCommentPost: true,
+      count: 2,
+    },
+  ];
+  for (const scenario of cases) {
+    await t.test(scenario.name, async (t) => {
+      const fixture = await createPublishFixture(t);
+      const review = await writeProviderReviewArtifact(fixture, {
+        taskId: "provider-head-convergence",
+      });
+      const file = "packages/desktop/src-tauri/src/fb-extract.js";
+      await fs.mkdir(path.dirname(path.join(fixture.worktree, file)), {
+        recursive: true,
+      });
+      await fs.writeFile(
+        path.join(fixture.worktree, file),
+        "// offline provider fixture\n",
+      );
+      assertSuccess(run("git", ["add", file], { cwd: fixture.worktree }));
+      assertSuccess(
+        run("git", ["commit", "-m", "fix: provider fixture"], {
+          cwd: fixture.worktree,
+        }),
+      );
+      const sleepLog = path.join(fixture.worktree, "../sleep.log");
+      await fs.writeFile(
+        path.join(path.dirname(fixture.ghStateFile), "bin/sleep"),
+        `#!${process.execPath}\nrequire("node:fs").appendFileSync(${JSON.stringify(sleepLog)}, process.argv.slice(2).join(" ") + "\\n");\n`,
+        { mode: 0o755 },
+      );
+      const reads = scenario.revoke
+        ? [{ ...stale, invalidateFile: review.path }]
+        : scenario.reads;
+      await fs.writeFile(
+        fixture.ghStateFile,
+        JSON.stringify({
+          prList: [
+            {
+              number: 321,
+              url: "https://github.com/freed-project/freed/pull/321",
+              isDraft: true,
+            },
+          ],
+          providerHeadReads: reads,
+          providerListReplacement: scenario.replacement,
+          failCommentPost: scenario.failCommentPost,
+        }),
+      );
+      const result = run(
+        "bash",
+        [
+          publishScript,
+          "--title",
+          "fix: reconcile provider head",
+          "--provider-risk-review-artifact",
+          review.path,
+          ...(scenario.ready ? ["--ready"] : []),
+        ],
+        { cwd: fixture.worktree, env: directPublishEnv(fixture) },
+      );
+      if (scenario.success) assertSuccess(result);
+      else assert.notEqual(result.status, 0, result.stdout);
+      const state = JSON.parse(await fs.readFile(fixture.ghStateFile, "utf8"));
+      assert.equal(state.providerHeadReadCount || 0, scenario.count);
+      const waits = await fs.readFile(sleepLog, "utf8").catch(() => "");
+      assert.deepEqual(
+        waits.trim().split("\n").filter(Boolean),
+        Array(scenario.revoke ? 1 : Math.max(0, scenario.count - 1)).fill("1"),
+      );
+      const calls = (await fs.readFile(fixture.ghLogFile, "utf8"))
+        .trim()
+        .split("\n")
+        .map(JSON.parse);
+      const writes = calls.filter(
+        ({ args }) => args[0] === "api" && args.includes("POST"),
+      );
+      assert.equal(
+        writes.length,
+        scenario.success || scenario.failCommentPost ? 1 : 0,
+      );
+      if (!scenario.replacement)
+        assert.equal(
+          state.prList[0].isDraft,
+          !(scenario.success && scenario.ready),
+        );
+      assert.equal((state.comments || []).length, scenario.success ? 1 : 0);
+      assert.equal(calls.filter(({ args }) => args[1] === "create").length, 0);
+      assert.ok(
+        calls
+          .filter(({ args }) => args[1] === "view")
+          .every(
+            ({ args }) =>
+              args[args.indexOf("--repo") + 1] === "freed-project/freed",
+          ),
+      );
+      const pushed = run(
+        "git",
+        ["rev-parse", "refs/heads/fix/worktree-publish-test"],
+        { cwd: fixture.origin },
+      );
+      assertSuccess(pushed);
+      assert.equal(
+        pushed.stdout,
+        run("git", ["rev-parse", "HEAD"], { cwd: fixture.worktree }).stdout,
+      );
     });
   }
 });

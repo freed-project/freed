@@ -864,6 +864,7 @@ promote_pr_ready_with_rollback() {
 }
 
 ensure_provider_pr_draft_before_push() {
+  PROVIDER_PR_NUMBER=""
   if [[ -z "${FINAL_PROVIDER_VISIBLE_FILES}" ]]; then
     return
   fi
@@ -881,6 +882,7 @@ ensure_provider_pr_draft_before_push() {
       --limit 1
   )"
   existing_number="$(pr_field "${existing_json}" number)"
+  PROVIDER_PR_NUMBER="${existing_number}"
   existing_is_draft="$(pr_field "${existing_json}" isDraft)"
   existing_head="$(pr_field "${existing_json}" headRefOid)"
   if [[ -z "${existing_number}" ]]; then
@@ -926,18 +928,46 @@ verify_provider_pr_draft_after_push() {
       --limit 1
   )"
   existing_number="$(pr_field "${existing_json}" number)"
+  if [[ -n "${PROVIDER_PR_NUMBER}" && "${existing_number}" != "${PROVIDER_PR_NUMBER}" ]]; then
+    echo "Error: provider-visible pull request identity changed during publication." >&2
+    exit 1
+  fi
   if [[ -z "${existing_number}" ]]; then
     return
   fi
-  verify_pr_target "${existing_number}"
-  if verify_pr_is_draft "${existing_number}"; then
-    return
-  fi
-  if ! restore_pr_draft_after_failed_ready "${existing_number}"; then
-    echo "Error: provider-visible pull request became ready during publication and could not be returned to draft." >&2
-    exit 1
-  fi
-  echo "Error: provider-visible pull request became ready during publication and was returned to draft." >&2
+  local attempt pr_json pr_head
+  # This check precedes normal existing-PR reconciliation. Only a valid stale
+  # head may wait; recheck authority and the same draft PR before each read.
+  for attempt in 1 2 3 4 5; do
+    assert_publish_write_ready
+    pr_json="$("${GH_BIN}" pr view "${existing_number}" --repo "${PUBLISH_REPO}" --json number,url,headRefOid,headRefName,headRepository,headRepositoryOwner,baseRefName,state,isDraft)"
+    pr_head="$(json_nested_field "${pr_json}" headRefOid)"
+    if [[ "$(json_nested_field "${pr_json}" number)" != "${existing_number}" ||
+          "$(json_nested_field "${pr_json}" url)" != "https://github.com/${PUBLISH_REPO}/pull/${existing_number}" ||
+          "$(json_nested_field "${pr_json}" headRepositoryOwner login)/$(json_nested_field "${pr_json}" headRepository name)" != "${PUBLISH_REPO}" ||
+          "$(json_nested_field "${pr_json}" headRefName)" != "${BRANCH_NAME}" ||
+          "$(json_nested_field "${pr_json}" baseRefName)" != "${BASE_BRANCH}" ||
+          "$(json_nested_field "${pr_json}" state)" != "OPEN" ||
+          ! "${pr_head}" =~ ^[0-9a-f]{40}$ ]]; then
+      echo "Error: provider-visible pull request target or identity changed during publication." >&2
+      exit 1
+    fi
+    if [[ "$(json_nested_field "${pr_json}" isDraft)" != "true" ]]; then
+      if ! restore_pr_draft_after_failed_ready "${existing_number}"; then
+        echo "Error: provider-visible pull request became ready during publication and could not be returned to draft." >&2
+        exit 1
+      fi
+      echo "Error: provider-visible pull request became ready during publication and was returned to draft." >&2
+      exit 1
+    fi
+    if [[ "${pr_head}" == "${PUBLISH_HEAD}" ]]; then
+      return
+    fi
+    if [[ "${attempt}" -lt 5 ]]; then
+      sleep 1
+    fi
+  done
+  echo "Error: provider-visible pull request head did not converge to the inspected publish head after 5 reads." >&2
   exit 1
 }
 
