@@ -391,13 +391,16 @@ export function SearchJumpField({
   const deferredIdentityQuery = useDeferredValue(inputValue);
   const inlineBlurTimerRef = useRef<number | null>(null);
 
-  const { filteredItems: commandScopeItems } = useSearchResults(
+  const { filteredItems: commandScopeItems, resultsCurrent: searchResultsCurrent } = useSearchResults(
     searchQuery,
     activeFilter,
     searchCorpusVersion,
     deviceDisplay.friendsMode,
     libraryItemVersion,
   );
+  const searchScopeCurrent = inputValue.trim().length === 0 || searchResultsCurrent === true;
+  const latestSearchScopeCurrent = useRef(searchScopeCurrent);
+  latestSearchScopeCurrent.current = searchScopeCurrent;
   const {
     archivableScopeCount,
     archivedUnsavedCount: archivedCount,
@@ -411,6 +414,7 @@ export function SearchJumpField({
     activeFilter,
     activeView,
     commandScopeItems,
+    commandScopeCurrent: searchScopeCurrent,
     enabled: showCommandSurface,
     identityMode: deviceDisplay.friendsMode,
     inputValue,
@@ -583,6 +587,7 @@ export function SearchJumpField({
           setActiveView("map");
         },
         navigateToSocialProfileFriends: (account, personId) => {
+          if (!socialChannelPage.isAccountCurrent(account)) return;
           clearQueryForNavigation();
           setSelectedItem(null);
           if (personId) {
@@ -593,6 +598,7 @@ export function SearchJumpField({
           setActiveView("friends");
         },
         navigateToSocialProfileMap: (account, personId) => {
+          if (!socialChannelPage.isAccountCurrent(account)) return;
           clearQueryForNavigation();
           setSelectedItem(null);
           setSelectedPerson(personId);
@@ -670,12 +676,12 @@ export function SearchJumpField({
             ? () => toggleLiked(selectedItem.globalId)
             : null,
         markScopeRead:
-          !readOnly && activeView === "feed" && unreadScopeCount > 0
-            ? markScopeRead
+          !readOnly && activeView === "feed" && searchScopeCurrent && unreadScopeCount > 0
+            ? () => { if (latestSearchScopeCurrent.current) return markScopeRead(); }
             : null,
         archiveScopeRead:
-          !readOnly && activeView === "feed" && archivableScopeCount > 0
-            ? archiveScopeRead
+          !readOnly && activeView === "feed" && searchScopeCurrent && archivableScopeCount > 0
+            ? () => { if (latestSearchScopeCurrent.current) return archiveScopeRead(); }
             : null,
         unarchiveSavedItems: readOnly ? null : unarchiveSavedItems,
         syncRssNow,
@@ -706,6 +712,7 @@ export function SearchJumpField({
       inputValue,
       ensurePersonForAccount,
       markScopeRead,
+      searchScopeCurrent,
       openAddFeedDialog,
       openSavedContentDialog,
       openSettingsTo,
@@ -723,6 +730,7 @@ export function SearchJumpField({
       setSelectedItem,
       setSelectedPerson,
       socialChannels,
+      socialChannelPage.isAccountCurrent,
       settingsSections,
       syncRssNow,
       syncSourceNow,

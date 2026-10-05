@@ -124,3 +124,17 @@ it("consumes one runtime receipt atomically without duplicate facet or RSS queri
   expect(current.facets.summary.totalCount).toBe(0); expect(current.rss.summary).toBeNull();
   expect(fixture.platform.readLibraryFacetSummary).not.toHaveBeenCalled(); expect(fixture.platform.queryLibraryCore).not.toHaveBeenCalled();
 });
+
+it("does not resurrect pre-error facet counts while a recovery attempt is pending", async () => {
+  await render(1);
+  const failed = deferred<LibraryFacetSummary>();
+  fixture.platform.readLibraryFacetSummary.mockReturnValueOnce(failed.promise);
+  await render(2);
+  await act(async () => failed.reject(new Error("synthetic failure")));
+  const recovery = deferred<LibraryFacetSummary>();
+  fixture.platform.readLibraryFacetSummary.mockReturnValueOnce(recovery.promise);
+  await render(3);
+  expect(current.facets).toMatchObject({ status: "loading", summary: { totalCount: 0 } });
+  await act(async () => recovery.resolve(summary(7)));
+  expect(current.facets).toMatchObject({ status: "ready", summary: { totalCount: 7 } });
+});

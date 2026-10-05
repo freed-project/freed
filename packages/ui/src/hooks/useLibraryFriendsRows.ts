@@ -7,6 +7,7 @@ import {
 } from "@freed/shared";
 import {
   usePlatform,
+  type PlatformConfig,
   type LibraryFriendsGraph,
   type LibraryFriendsLocationItemRequest,
   type LibraryFriendsGraphRequest,
@@ -20,12 +21,14 @@ const TIMELINE_PAGE_SIZE = 50;
 const MAX_LOCATION_ITEMS = 8;
 
 interface VersionedFriendsGraph {
+  reader: PlatformConfig["readLibraryFriendsGraph"];
   request: LibraryFriendsGraphRequest;
   sourceVersion: number;
   graph: LibraryFriendsGraph;
 }
 
 interface VersionedTimeline {
+  reader: PlatformConfig["readLibraryPersonTimeline"];
   sources: readonly LibraryFriendsSource[];
   sourceVersion: number;
   items: readonly FeedItem[];
@@ -36,6 +39,7 @@ interface VersionedTimeline {
 }
 
 interface VersionedLocationItems {
+  readonly reader: PlatformConfig["readLibraryFriendsLocationItem"];
   readonly attemptKey: string;
   readonly sourceVersion: number;
   readonly sources: readonly LibraryFriendsSource[];
@@ -43,11 +47,13 @@ interface VersionedLocationItems {
 }
 
 interface GraphAttempt {
+  readonly reader?: PlatformConfig["readLibraryFriendsGraph"];
   readonly sourceVersion: number;
   readonly request: LibraryFriendsGraphRequest;
 }
 
 interface TimelineAttempt {
+  readonly reader?: PlatformConfig["readLibraryPersonTimeline"];
   readonly sourceVersion: number;
   readonly sources: readonly LibraryFriendsSource[];
 }
@@ -286,13 +292,15 @@ export function useLibraryFriendsRows({
   const [failedTimelineAttempt, setFailedTimelineAttempt] =
     useState<TimelineAttempt | null>(null);
   const inFlightTimelineCursorRef = useRef<TimelineCursorAttempt | null>(null);
+  const timelineReadGenerationRef = useRef(0);
+  const timelineReadActiveRef = useRef(false);
   const [versionedLocationItems, setVersionedLocationItems] =
     useState<VersionedLocationItems | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setFailedGraphAttempt((failedAttempt) =>
-      graphAttemptMatches(failedAttempt, sourceVersion, graphRequest)
+      failedAttempt?.reader === readLibraryFriendsGraph && graphAttemptMatches(failedAttempt, sourceVersion, graphRequest)
         ? failedAttempt
         : null,
     );
@@ -305,7 +313,7 @@ export function useLibraryFriendsRows({
     void readLibraryFriendsGraph(graphRequest)
       .then((graph) => {
         if (cancelled) return;
-        setVersionedGraph({ request: graphRequest, sourceVersion, graph });
+        setVersionedGraph({ reader: readLibraryFriendsGraph, request: graphRequest, sourceVersion, graph });
         setFailedGraphAttempt((failedAttempt) =>
           graphAttemptMatches(failedAttempt, sourceVersion, graphRequest)
             ? null
@@ -314,7 +322,8 @@ export function useLibraryFriendsRows({
       })
       .catch(() => {
         if (!cancelled) {
-          setFailedGraphAttempt({ sourceVersion, request: graphRequest });
+          setVersionedGraph(null);
+          setFailedGraphAttempt({ reader: readLibraryFriendsGraph, sourceVersion, request: graphRequest });
         }
       });
     return () => {
@@ -328,13 +337,15 @@ export function useLibraryFriendsRows({
 
   useEffect(() => {
     inFlightTimelineCursorRef.current = null;
+    timelineReadGenerationRef.current += 1;
+    timelineReadActiveRef.current = timelineActive && Boolean(readLibraryPersonTimeline);
     if (!timelineActive) {
       setVersionedTimeline(null);
       setFailedTimelineAttempt(null);
       return;
     }
     setFailedTimelineAttempt((failedAttempt) =>
-      timelineAttemptMatches(failedAttempt, sourceVersion, timelineSources)
+      failedAttempt?.reader === readLibraryPersonTimeline && timelineAttemptMatches(failedAttempt, sourceVersion, timelineSources)
         ? failedAttempt
         : null,
     );
@@ -354,6 +365,7 @@ export function useLibraryFriendsRows({
         if (cancelled) return;
         assertTimelinePage(page);
         setVersionedTimeline({
+          reader: readLibraryPersonTimeline,
           sources: timelineSources,
           sourceVersion,
           items: page.items,
@@ -370,11 +382,14 @@ export function useLibraryFriendsRows({
       })
       .catch(() => {
         if (!cancelled) {
-          setFailedTimelineAttempt({ sourceVersion, sources: timelineSources });
+          setVersionedTimeline(null);
+          setFailedTimelineAttempt({ reader: readLibraryPersonTimeline, sourceVersion, sources: timelineSources });
         }
       });
     return () => {
       cancelled = true;
+      timelineReadActiveRef.current = false;
+      timelineReadGenerationRef.current += 1;
     };
   }, [
     readLibraryPersonTimeline,
@@ -386,14 +401,18 @@ export function useLibraryFriendsRows({
 
   const currentGraph =
     versionedGraph?.request === graphRequest &&
-    versionedGraph.sourceVersion === sourceVersion
+    versionedGraph.reader === readLibraryFriendsGraph &&
+    versionedGraph.sourceVersion <= sourceVersion
       ? versionedGraph.graph
       : null;
   const currentTimeline =
     versionedTimeline?.sources === timelineSources &&
-    versionedTimeline.sourceVersion === sourceVersion
+    versionedTimeline.reader === readLibraryPersonTimeline &&
+    versionedTimeline.sourceVersion <= sourceVersion
       ? versionedTimeline
       : null;
+  const timelineOwnerRef = useRef({ reader: readLibraryPersonTimeline, identity: timelineIdentity, sources: timelineSources, sourceVersion, currentTimeline });
+  timelineOwnerRef.current = { reader: readLibraryPersonTimeline, identity: timelineIdentity, sources: timelineSources, sourceVersion, currentTimeline };
   const locationReadPlan = useMemo(
     () =>
       currentGraph && locationActive
@@ -407,6 +426,7 @@ export function useLibraryFriendsRows({
     const attemptKey = locationReadPlan?.attemptKey ?? "";
     if (
       !locationActive ||
+      versionedGraph?.sourceVersion !== sourceVersion ||
       !locationReadPlan?.complete ||
       locationReadPlan.requests.length === 0 ||
       !readLibraryFriendsLocationItem
@@ -430,6 +450,7 @@ export function useLibraryFriendsRows({
       .then((resolvedItems) => {
         if (cancelled) return;
         setVersionedLocationItems({
+          reader: readLibraryFriendsLocationItem,
           attemptKey,
           sourceVersion,
           sources: locationSources,
@@ -444,6 +465,7 @@ export function useLibraryFriendsRows({
     };
   }, [
     locationReadPlan,
+    versionedGraph?.sourceVersion,
     locationActive,
     locationSources,
     readLibraryFriendsLocationItem,
@@ -453,6 +475,7 @@ export function useLibraryFriendsRows({
   const locationAttemptKey = locationReadPlan?.attemptKey ?? "";
   const locationItems =
     versionedLocationItems?.sourceVersion === sourceVersion &&
+    versionedLocationItems.reader === readLibraryFriendsLocationItem &&
     versionedLocationItems.sources === locationSources &&
     versionedLocationItems.attemptKey === locationAttemptKey
       ? versionedLocationItems.items
@@ -460,10 +483,18 @@ export function useLibraryFriendsRows({
 
   const requestNativeTimelinePage = useCallback(
     (cursor: string | null) => {
+      const generation = timelineReadGenerationRef.current;
+      const ownerCurrent = () => timelineReadActiveRef.current && timelineReadGenerationRef.current === generation
+        && timelineOwnerRef.current.reader === readLibraryPersonTimeline && timelineOwnerRef.current.identity === timelineIdentity
+        && timelineOwnerRef.current.sources === timelineSources && timelineOwnerRef.current.sourceVersion === sourceVersion;
       if (
+        !ownerCurrent() ||
+        timelineOwnerRef.current.currentTimeline !== currentTimeline ||
         !readLibraryPersonTimeline ||
         timelineIdentity === null ||
         !currentTimeline ||
+        currentTimeline.sourceVersion !== sourceVersion ||
+        currentTimeline.reader !== readLibraryPersonTimeline ||
         currentTimeline.loadingMore ||
         timelineAttemptMatches(
           inFlightTimelineCursorRef.current,
@@ -485,10 +516,12 @@ export function useLibraryFriendsRows({
         cursor,
       })
         .then((page) => {
+          if (!ownerCurrent()) return;
           const next = replaceTimelinePage(currentTimeline, page, cursor);
           setVersionedTimeline((latest) => {
             if (
               !latest ||
+              latest.reader !== readLibraryPersonTimeline ||
               latest.sources !== timelineSources ||
               latest.sourceVersion !== sourceVersion ||
               latest.pageCursor !== currentTimeline.pageCursor
@@ -508,16 +541,19 @@ export function useLibraryFriendsRows({
           );
         })
         .catch(() => {
+          if (!ownerCurrent()) return;
           setVersionedTimeline((latest) =>
             latest?.sources === timelineSources &&
+            latest.reader === readLibraryPersonTimeline &&
             latest.sourceVersion === sourceVersion
               ? { ...latest, loadingMore: false }
               : latest,
           );
-          setFailedTimelineAttempt({ sourceVersion, sources: timelineSources });
+          setFailedTimelineAttempt({ reader: readLibraryPersonTimeline, sourceVersion, sources: timelineSources });
         })
         .finally(() => {
           if (
+            ownerCurrent() &&
             timelineCursorAttemptMatches(
               inFlightTimelineCursorRef.current,
               sourceVersion,
@@ -555,7 +591,7 @@ export function useLibraryFriendsRows({
     graphLoading:
       Boolean(readLibraryFriendsGraph) &&
       currentGraph === null &&
-      !graphAttemptMatches(failedGraphAttempt, sourceVersion, graphRequest),
+      !(failedGraphAttempt?.reader === readLibraryFriendsGraph && graphAttemptMatches(failedGraphAttempt, sourceVersion, graphRequest)),
     locationItems,
     timelineItems: currentTimeline?.items ?? [],
     timelineTotalCount: currentTimeline?.totalCount ?? 0,
@@ -563,13 +599,13 @@ export function useLibraryFriendsRows({
       timelineActive &&
       Boolean(readLibraryPersonTimeline) &&
       currentTimeline === null &&
-      !timelineAttemptMatches(
+      !(failedTimelineAttempt?.reader === readLibraryPersonTimeline && timelineAttemptMatches(
         failedTimelineAttempt,
         sourceVersion,
         timelineSources,
-      ),
+      )),
     timelineLoadingMore: currentTimeline?.loadingMore ?? false,
-    timelineHasMore: Boolean(currentTimeline?.nextCursor),
+    timelineHasMore: Boolean(currentTimeline?.sourceVersion === sourceVersion && currentTimeline?.nextCursor),
     timelineAwayFromNewest: Boolean(
       currentTimeline && currentTimeline.pageCursor !== null,
     ),

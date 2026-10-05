@@ -527,3 +527,5 @@ partial/error outcomes. Records identify candidate observations, not unique post
 The collector is capped at 250 records per pass, 500 across both providers per
 renderer lifetime and 100 passes. No uploader, durable writer or deletion is added.
 Live activation requires a separate exact-source, bounded-window checkpoint.
+
+Facebook disclosure inspection includes exact or anchored partial Sponsored labels on the visible owned placement root within the existing node budget. Root references, numeric metadata, nested-placement policy and group eligibility are unchanged. Synthetic controls verify this scope; live placement completeness remains unverified.

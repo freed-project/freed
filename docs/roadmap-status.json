@@ -27,19 +27,19 @@
     {
       "id": 5,
       "status": "current",
-      "reviewedAt": "2026-10-04T20:04:57.315438+00:00",
+      "reviewedAt": "2026-10-05T18:42:23.138737+00:00",
       "source": "docs/PHASE-5-DESKTOP.md"
     },
     {
       "id": 6,
       "status": "current",
-      "reviewedAt": "2026-10-04T20:04:57.315440+00:00",
+      "reviewedAt": "2026-10-05T18:46:27.825977+00:00",
       "source": "docs/PHASE-6-PWA.md"
     },
     {
       "id": 7,
       "status": "current",
-      "reviewedAt": "2026-10-04T06:01:53.365152+00:00",
+      "reviewedAt": "2026-10-05T18:42:23.138737+00:00",
       "source": "docs/PHASE-7-SOCIAL-CAPTURE.md",
       "updatedAt": "2026-10-02T16:47:14.397502+00:00"
     },
