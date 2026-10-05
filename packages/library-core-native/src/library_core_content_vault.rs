@@ -189,11 +189,12 @@ impl LibraryCoreContentVault {
 
     fn read_bounded_object(&self, storage_key: &str, expected_length: i64, offset: i64, maximum_bytes: i64) -> Result<Vec<u8>, LibraryCoreStorageError> {
         let name = c_name(storage_key)?;
+        // Do not wait for a FIFO peer before the descriptor type check below.
         let descriptor = unsafe {
             libc::openat(
                 self.directory.as_raw_fd(),
                 name.as_ptr(),
-                libc::O_RDONLY | libc::O_CLOEXEC | libc::O_NOFOLLOW,
+                libc::O_RDONLY | libc::O_CLOEXEC | libc::O_NOFOLLOW | libc::O_NONBLOCK,
             )
         };
         if descriptor < 0 {
@@ -865,6 +866,31 @@ mod tests {
         let connection = Connection::open_in_memory().expect("database");
         install_normalized_schema_v1(&connection).expect("schema");
         (fixture, vault, connection)
+    }
+
+    #[test]
+    fn annotation_fifo_is_refused_without_waiting_for_a_writer() {
+        use std::os::unix::ffi::OsStrExt;
+        use std::sync::mpsc;
+        use std::time::Duration;
+        let (fixture, vault, _) = fixture();
+        let path = std::ffi::CString::new(fixture.path().join("vault/quote.fifo").as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+        let (send, receive) = mpsc::channel();
+        let reader = std::thread::spawn(move || {
+            send.send(vault.read_annotation_object("quote.fifo", 1)).unwrap();
+        });
+        let result = receive.recv_timeout(Duration::from_secs(2));
+        if result.is_err() {
+            // Release a regressed blocking open so a failing test cannot strand a thread.
+            let peer = unsafe { libc::open(path.as_ptr(), libc::O_RDWR | libc::O_NONBLOCK | libc::O_CLOEXEC) };
+            assert!(peer >= 0);
+            reader.join().unwrap();
+            unsafe { libc::close(peer); }
+            panic!("annotation vault open waited for a FIFO writer");
+        }
+        reader.join().unwrap();
+        assert!(result.unwrap().unwrap_err().contains("invalid"));
     }
 
     fn insert_canonical_range(connection: &Connection, content_digest: &str) {

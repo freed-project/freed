@@ -89,8 +89,11 @@ partial quote set. Replacement assembly still enforces 64 highlights, 8,192
 note bytes and the existing 98,304-byte canonical payload cap.
 
 Native queries retain `query_only`; successful local recency bookkeeping runs
-separately with final source checks. PWA reads use the serialized worker and
-local OPFS vault. Windows authenticated-range vault support and atomic edit
+separately with final source checks. Native vault opens are nonblocking before
+regular-file, owner, mode, link-count and length checks, so a FIFO cannot wait
+for a peer before rejection. PWA reads use the serialized worker and local OPFS
+vault. Deadlines are checked around awaited I/O; they cannot interrupt a pending
+OPFS operation or guarantee a hard operating-system I/O deadline. Windows authenticated-range vault support and atomic edit
 admission remain acceptance gaps. Read authentication alone does not prove
 safe replacement of pending or concurrently changed annotations.
 Content pinning does not request annotations. Native and browser SQLite use
