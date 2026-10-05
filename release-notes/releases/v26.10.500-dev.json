@@ -1,0 +1,62 @@
+{
+  "tag": "v26.10.500-dev",
+  "version": "26.10.500-dev",
+  "channel": "dev",
+  "dayKey": "26.10.5",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-10-05T19:16:11.816Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.10.403-dev",
+    "previousPublishedDayTag": "v26.10.403-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "7319c80b9111315ebac2718b46ef39d224eee73c",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.10.403-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "2260591e820f599661d3e06f88e6da02f5a3cbd2",
+        "toInclusiveProductCommitSha": "7319c80b9111315ebac2718b46ef39d224eee73c"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:87ced2658785f1d28753666537ab09bef76d45848f728aeb12343f22ee70d6d1",
+        "currentDigest": "sha256:87ced2658785f1d28753666537ab09bef76d45848f728aeb12343f22ee70d6d1"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:22dd158c4a751e09382f27991a3f1ef268e56815c55d278161ed928552f2d454",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.10.500-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.10.500-dev"
+    ],
+    "prNumbers": [
+      2135
+    ],
+    "commitSubjects": [
+      "fix: retain outbox ownership and refine loading and disclosures (#2135)"
+    ]
+  },
+  "release": {
+    "deck": "Retain outbox ownership and refine loading and disclosures",
+    "features": [],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.10.500-dev\n\nRetain outbox ownership and refine loading and disclosures\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
