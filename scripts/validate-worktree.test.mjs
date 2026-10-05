@@ -934,6 +934,7 @@ test("feature plan isolates pull request publication from tag publisher host sui
     "scripts/task-decisions.mjs",
     "scripts/task-decisions.test.mjs",
     "scripts/worktree-add.sh",
+    "scripts/worktree-add.test.mjs",
     "scripts/worktree-cleanup.sh",
   ]) {
     assert.equal(isPullRequestPublisherToolingPath(filePath), true, filePath);
@@ -946,6 +947,7 @@ test("feature plan isolates pull request publication from tag publisher host sui
       "--test",
       "scripts/worktree-publish.test.mjs",
       "scripts/task-decisions.test.mjs",
+      "scripts/worktree-add.test.mjs",
     ]);
     assert.equal(
       plan.some((item) => item.label === "release publisher tests"),
@@ -1270,5 +1272,22 @@ test("cloud release workflow and entrypoint run their focused authority tests", 
     const plan=buildValidationPlan("feature", [changed]);
     assert.ok(plan.some(item => item.label === "cloud release request tests"));
     assert.ok(FOCUSED_FEATURE_VALIDATION_PATHS.has(changed));
+  }
+});
+
+
+test("preview process changes run scoped cleanup proof without product suites", () => {
+  for (const file of [
+    "scripts/worktree-preview.sh",
+    "scripts/worktree-processes.sh",
+    "scripts/lib/worktree-runtime.sh",
+    "scripts/lib/preview-processes.py",
+    "scripts/worktree-preview.test.mjs",
+  ]) {
+    const plan = buildValidationPlan("feature", [file]);
+    assert.deepEqual(describePlan(plan), ["root typecheck", "worktree preview process tests"]);
+    assert.deepEqual(plan[1].args, [
+      "--test", "scripts/worktree-preview.test.mjs", "scripts/task-decisions.test.mjs",
+    ]);
   }
 });

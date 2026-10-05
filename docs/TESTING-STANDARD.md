@@ -64,7 +64,14 @@ Shard budget is distributed across the selected suites by highest averages.
 The cap is a maximum: stop adding shards to a completed measurement once its
 predicted work fits five minutes per shard. Unknown or capped timings retain
 the available budget. This prevents a five-minute general suite from launching
-16 copies of dependency setup. Within each suite, complete per-file or per-test timings from `scripts/tooling-smoke-durations.json` replace source-size weights. Partial timing sets are ignored rather than mixing seconds with bytes. Every shard uploads JUnit timings so a completed integration run can refresh the exact units that need balancing.
+16 copies of dependency setup. Within each suite, valid per-file or per-test
+timings from `scripts/tooling-smoke-durations.json` replace source-size weights.
+Unknown units use source size scaled by the measured units' total seconds per
+source weight; without valid timings, all units use source size. Capped or
+failed measurements are excluded. Rounded-zero timings receive a 1 ms
+scheduling floor, which is never recorded as elapsed time. Every shard uploads
+JUnit timings so a completed integration run can refresh the exact units that
+need balancing.
 
 ## Platform routing
 

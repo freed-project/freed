@@ -126,6 +126,12 @@ Options:
 `;
 }
 
+function validateAppBinary(appBinary) {
+  if (typeof appBinary !== "string" || appBinary.trim().length === 0) {
+    throw new Error("app-binary requires a nonblank string.");
+  }
+}
+
 export function parseArgs(argv, now = new Date()) {
   const args = {
     soakDir: "",
@@ -159,7 +165,11 @@ export function parseArgs(argv, now = new Date()) {
         index += 1;
         break;
       case "--app-binary":
-        args.appBinary = argv[index + 1] ?? "";
+        validateAppBinary(argv[index + 1]);
+        if (argv[index + 1].startsWith("-")) {
+          throw new Error("app-binary requires a value before the next option.");
+        }
+        args.appBinary = argv[index + 1];
         index += 1;
         break;
       case "--artifact-digest":
@@ -285,6 +295,7 @@ export function buildSample(
   psRows,
   { appBinary, tsMs, collectorPid = process.pid },
 ) {
+  validateAppBinary(appBinary);
   const excludedPids = collectorProcessTreePids(psRows, collectorPid);
   const appRows = psRows.filter(
     (row) =>
