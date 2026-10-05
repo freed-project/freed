@@ -6,8 +6,8 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const SOURCE = "69f8446a5050a6881cb08a0064c7bfb59a6cacf4";
-export const BRANCH = "refs/heads/chore/issue-1627-native-experiment";
+export const SOURCE = "6364f7c7cc60413ffabb2388fcbf6375a8eefd9e";
+export const BRANCH = "refs/heads/chore/library-integration-native-proof";
 const RUNTIME = "src/runtime.integration.test.ts";
 const runtimeCase = (title) => [RUNTIME, `compiled freed-library runtime ${title}`];
 export const FOCUSED = [

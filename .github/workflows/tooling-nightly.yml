@@ -17,7 +17,7 @@ env:
 
 jobs:
   native-proof:
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/chore/issue-1627-native-experiment'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/chore/library-integration-native-proof'
     runs-on: macos-14
     timeout-minutes: 30
     steps:
@@ -28,7 +28,7 @@ jobs:
           mkdir receipts
           sw_vers > receipts/host.log
           uname -a >> receipts/host.log
-          printf 'experiment=%s\nsource=%s\nrun=%s\nattempt=%s\n' "$GITHUB_SHA" '69f8446a5050a6881cb08a0064c7bfb59a6cacf4' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" >> receipts/host.log
+          printf 'experiment=%s\nsource=%s\nrun=%s\nattempt=%s\n' "$GITHUB_SHA" '6364f7c7cc60413ffabb2388fcbf6375a8eefd9e' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" >> receipts/host.log
 
       - name: Checkout reviewed experiment
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
@@ -40,7 +40,7 @@ jobs:
       - name: Checkout frozen candidate
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
-          ref: 69f8446a5050a6881cb08a0064c7bfb59a6cacf4
+          ref: 6364f7c7cc60413ffabb2388fcbf6375a8eefd9e
           path: candidate
           persist-credentials: false
 

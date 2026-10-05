@@ -252,7 +252,8 @@ if (process.env.ISSUE_1627_REPLAY_DIR) {
     const receiptRoot = path.join(process.env.ISSUE_1627_REPLAY_DIR, "proof");
     const read = (name) => JSON.parse(readFileSync(path.join(receiptRoot, `${name}.json`)));
     const original = read("report");
-    assert.equal(original.source, SOURCE);
+    // Historical parser regression fixture remains bound to its original source.
+    assert.equal(original.source, "69f8446a5050a6881cb08a0064c7bfb59a6cacf4");
     assert.equal(original.run.id, "37244898484");
     assert.equal(original.experiment, "17401d170d83d828a4c9f0813304ba3478e405b4");
     assert.equal(original.accepted, false, "retain original wrapper failure");
