@@ -161,8 +161,12 @@
       var nodes = root.querySelectorAll(
         'header, h1, h2, h3, h4, a, span, [aria-label], [aria-labelledby], [data-testid]'
       );
-      for (var index = 0; index < nodes.length; index++) {
-        var node = nodes[index];
+      // querySelectorAll omits the placement itself, including its disclosure.
+      // Only standalone root disclosures are evidence, not descriptive prose.
+      var rootLabel = normalizeDisclosure(root.getAttribute("aria-label"));
+      var inspectRoot = rootLabel === "sponsored" || /^spons(?:or(?:e|ed?)?)?$/.test(rootLabel);
+      for (var index = inspectRoot ? -1 : 0; index < nodes.length; index++) {
+        var node = index === -1 ? root : nodes[index];
         if (!belongsToPlacement(node) || isBodyContent(node) || !isVisibleDisclosureNode(node)) continue;
         inspectedNodes++;
         if (inspectedNodes > maximumNodes) {
@@ -177,7 +181,8 @@
           addEvidence("partial_sponsored_disclosure");
         }
 
-        var labelledBy = String(node.getAttribute("aria-labelledby") || "").trim();
+        // Root references may describe the whole post, including body prose.
+        var labelledBy = index === -1 ? "" : String(node.getAttribute("aria-labelledby") || "").trim();
         if (labelledBy) {
           var ids = labelledBy.split(/\s+/);
           for (var refIndex = 0; refIndex < ids.length; refIndex++) {

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@freed/ui/lib/debug-store", () => ({
   addDebugEvent: vi.fn(),
@@ -16,6 +16,7 @@ async function loadScheduler() {
 }
 
 describe("side-effect scheduler", () => {
+  afterEach(() => vi.useRealTimers());
   it("runs tasks in queue order", async () => {
     const { scheduleSideEffect } = await loadScheduler();
     const events: string[] = [];
@@ -78,8 +79,9 @@ describe("side-effect scheduler", () => {
       },
     });
 
+    const rejected = expect(first).rejects.toThrow("timed_out_ms=10");
     await vi.advanceTimersByTimeAsync(10);
-    await expect(first).rejects.toThrow("timed_out_ms=10");
+    await rejected;
     expect(events).toEqual(["first:start"]);
 
     releaseFirst();
@@ -87,6 +89,38 @@ describe("side-effect scheduler", () => {
     await second;
     expect(events).toEqual(["first:start", "first:end", "second"]);
   });
+
+  it.each(["success", "failure"] as const)(
+    "retains an opted-in caller until late %s, preserving the deadline error", async (outcome) => {
+      vi.useFakeTimers();
+      const { scheduleSideEffect } = await loadScheduler();
+      let finish!: () => void;
+      let callerSettled = false;
+      let secondStarted = false;
+      const first = scheduleSideEffect({
+        queue: "outbox", source: "test", kind: "owned", timeoutMs: 10,
+        retainUntilSettledAfterTimeout: true,
+        run: () => new Promise<void>((resolve, reject) => {
+          finish = () => outcome === "success" ? resolve() : reject(new Error("late failure"));
+        }),
+      });
+      const observed = first.then(
+        () => { callerSettled = true; return null; },
+        error => { callerSettled = true; return error as Error; },
+      );
+      const second = scheduleSideEffect({
+        queue: "outbox", source: "test", kind: "second",
+        run: () => { secondStarted = true; },
+      });
+      await vi.advanceTimersByTimeAsync(10);
+      expect(callerSettled).toBe(false);
+      expect(secondStarted).toBe(false);
+      finish();
+      expect((await observed)?.message).toContain("timed_out_ms=10");
+      await second;
+      expect(secondStarted).toBe(true);
+    },
+  );
 
   it("keeps a queue alive after a failed task", async () => {
     const { scheduleSideEffect } = await loadScheduler();
