@@ -21,9 +21,11 @@
 Annotation text now has a bounded authenticated local read contract that retains
 canonical digest references separately from display text. Synthetic native
 SQLite/vault and Chromium PWA worker/OPFS restart proofs cover exact bytes and
-nondestructive read failures. Atomic edit admission, pending local annotations,
-all replacement callers, explicit UI states and Windows range-vault support
-remain open acceptance requirements. No new quote editor is included.
+nondestructive read failures. Optional source admission now checks inside the
+existing local write transaction after exact retry recognition. Unchanged quote
+digests survive note/tag assembly. Original rendered edit snapshots, pending
+local annotations, explicit UI states and Windows range-vault support remain
+open acceptance requirements. No new quote editor is included.
 
 ---
 

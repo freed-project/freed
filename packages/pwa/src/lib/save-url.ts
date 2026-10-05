@@ -4,6 +4,7 @@ import {
 import { extractMetadataBrowser } from "@freed/capture-save/browser";
 import { withSavedItemNote, type FeedItem } from "@freed/shared";
 import {
+  enqueuePwaLibraryCoreSavedItemNote,
   enqueuePwaLibraryCoreFeedItemCapture,
   enqueuePwaLibraryCoreFeedItemAnnotationSets,
   enqueuePwaLibraryCoreFeedItemRemove,
@@ -142,13 +143,7 @@ export async function updateSavedContentInPwa(
   const stableUrl = stableHttpUrl(input.url);
   const currentUrl = item.sourceUrl ?? item.content.linkPreview?.url ?? "";
   if (stableUrl === currentUrl) {
-    await enqueuePwaLibraryCoreFeedItemAnnotationSets([
-      {
-        entityId: item.globalId,
-        highlights: withSavedItemNote(item.userState.highlights, input.notes),
-        tags: item.userState.tags,
-      },
-    ]);
+    await enqueuePwaLibraryCoreSavedItemNote(item.globalId, input.notes);
     return { globalId: item.globalId };
   }
 

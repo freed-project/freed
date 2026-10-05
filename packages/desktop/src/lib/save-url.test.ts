@@ -23,12 +23,14 @@ const stubItem: FeedItem = {
 const mockAddLibraryStubItem = vi.fn(async () => stubItem);
 const mockEnqueue = vi.fn();
 const mockRemoveLibraryFeedItem = vi.fn(async () => undefined);
+const mockUpdateLibrarySavedItemNote = vi.fn(async () => undefined);
 const mockUpdateLibraryFeedItem = vi.fn(async () => undefined);
 
 vi.mock("./library-client.js", () => ({
   addLibraryStubItem: mockAddLibraryStubItem,
   removeLibraryFeedItem: mockRemoveLibraryFeedItem,
   updateLibraryFeedItem: mockUpdateLibraryFeedItem,
+  updateLibrarySavedItemNote: mockUpdateLibrarySavedItemNote,
 }));
 
 vi.mock("./content-fetcher.js", () => ({
@@ -130,5 +132,21 @@ describe("saveUrlInDesktop", () => {
 
     await expect(saveUrlInDesktop(SAMPLE_URL)).rejects.toThrow("Library unavailable");
     expect(mockEnqueue).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("same-URL saved note editing", () => {
+  it("uses canonical preservation without capture or URL fetching", async () => {
+    vi.clearAllMocks();
+    const { updateSavedContentInDesktop } = await import("./save-url.js");
+    await updateSavedContentInDesktop(stubItem, { url: SAMPLE_URL, notes: "Revised" });
+    expect(mockUpdateLibrarySavedItemNote).toHaveBeenCalledWith(stubItem.globalId, "Revised");
+    expect(mockUpdateLibraryFeedItem).not.toHaveBeenCalled();
+    expect(mockAddLibraryStubItem).not.toHaveBeenCalled();
+    expect(mockEnqueue).not.toHaveBeenCalled();
+    mockUpdateLibrarySavedItemNote.mockRejectedValueOnce(new Error("Annotation text is corrupt"));
+    await expect(updateSavedContentInDesktop(stubItem, { url: SAMPLE_URL, notes: "" })).rejects.toThrow("corrupt");
+    expect(mockRemoveLibraryFeedItem).not.toHaveBeenCalled();
   });
 });

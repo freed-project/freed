@@ -409,6 +409,9 @@ export const addLibraryFeedItems = (items: FeedItem[]) =>
   request({ type: "ADD_FEED_ITEMS", items }).then(() => {});
 export const removeLibraryFeedItem = (globalId: string) =>
   request({ type: "REMOVE_FEED_ITEM", globalId }).then(() => {});
+/** Update an existing note through the ordinary serialized mutation queue. */
+export const updateLibrarySavedItemNote = (globalId: string, note: string) =>
+  request({ type: "UPDATE_SAVED_ITEM_NOTE", globalId, note }).then(() => {});
 export const updateLibraryFeedItem = (
   globalId: string,
   updates: Partial<FeedItem>,

@@ -55,6 +55,7 @@ export type LibraryMutationRequest =
       persons: Person[];
       accounts: Account[];
     }
+  | { reqId: number; type: "UPDATE_SAVED_ITEM_NOTE"; globalId: string; note: string }
   | { reqId: number; type: "REMOVE_FEED_ITEM"; globalId: string }
   | { reqId: number; type: "CLEAR_SAMPLE_DATA" }
   | {

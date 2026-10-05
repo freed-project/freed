@@ -250,6 +250,21 @@ describe("SQLite editable follower mutations", () => {
     });
   });
 
+  it("carries the annotation snapshot through signing and rejects stale admission without resigning", async () => {
+    const original = mocks.invoke.getMockImplementation()!;
+    mocks.invoke.mockImplementation(async (command: string, args?: unknown) => {
+      if (command === "enqueue_normalized_library_follower_intent") {
+        const request = (args as { request: { expectedSource: unknown } }).request;
+        expect(request.expectedSource).toEqual({ generationId: "bc".repeat(32), projectionRevision: 2, transitionSequence: 2 });
+        throw new Error("LOCAL_ADMISSION_SOURCE_STALE");
+      }
+      return original(command, args);
+    });
+    await expect(dispatchSqliteMutation({ type: "UPDATE_SAVED_ITEM_NOTE", globalId: ITEM_ID, note: "changed", reqId: 20 })).rejects.toThrow("LOCAL_ADMISSION_SOURCE_STALE");
+    expect(mocks.invoke.mock.calls.filter(([command]) => command === "sign_normalized_library_follower_operation")).toHaveLength(1);
+    expect(mocks.invoke.mock.calls.filter(([command]) => command === "enqueue_normalized_library_follower_intent")).toHaveLength(1);
+  });
+
   it("signs Friend recovery account IDs in native binary order without reordering the caller", async () => {
     const person = { id: "person:one", name: "First", relationshipStatus: "friend" as const, careLevel: 3 as const, createdAt: 1, updatedAt: 2 };
     const accounts = [...orderVector.binaryOrder].reverse().map(id => ({ id, personId: person.id, kind: "social" as const, provider: "instagram" as const,
@@ -761,6 +776,25 @@ describe("SQLite Primary mutations", () => {
       }
       throw new Error(`Unexpected native command: ${command}`);
     });
+  });
+
+  it("passes the original annotation source to Primary commit without stale resigning", async () => {
+    const original = mocks.invoke.getMockImplementation()!;
+    mocks.invoke.mockImplementation(async (command: string, args?: unknown) => {
+      if (command === "query_normalized_library") {
+        const request = (args as { request: { queryId: string; globalId: string } }).request;
+        if (request.queryId === "item_annotations_v1") return { queryId: request.queryId, schemaVersion: 1, globalId: request.globalId, source: { generationId: "bc".repeat(32), projectionRevision: 2, transitionSequence: 2 }, tags: [], highlights: [] };
+      }
+      if (command === "commit_normalized_library_transaction") {
+        const request = (args as { request: { expectedSource: unknown } }).request;
+        expect(request.expectedSource).toEqual({ generationId: "bc".repeat(32), projectionRevision: 2, transitionSequence: 2 });
+        throw new Error("LOCAL_ADMISSION_SOURCE_STALE");
+      }
+      return original(command, args);
+    });
+    await expect(dispatchSqliteMutation({ type: "UPDATE_SAVED_ITEM_NOTE", globalId: ITEM_ID, note: "changed", reqId: 20 })).rejects.toThrow("LOCAL_ADMISSION_SOURCE_STALE");
+    expect(mocks.invoke.mock.calls.filter(([command]) => command === "sign_normalized_library_operations")).toHaveLength(1);
+    expect(mocks.invoke.mock.calls.filter(([command]) => command === "commit_normalized_library_transaction")).toHaveLength(1);
   });
 
   it("prepares Primary archive recovery with the selected actor and never commits outside recovery", async () => {

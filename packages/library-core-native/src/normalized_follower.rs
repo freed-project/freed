@@ -1076,6 +1076,25 @@ pub fn enqueue_normalized_follower_intent_v1(
     Ok(receipt)
 }
 
+/// Optional local source admission is checked after exact durable retry recognition.
+pub fn enqueue_normalized_follower_intent_with_source_v1(
+    connection: &mut Connection,
+    canonical_envelopes: &[Vec<u8>],
+    enqueued_at: i64,
+    expected_source: Option<&crate::normalized_query::NormalizedFeedPageSourceV1>,
+) -> Result<NormalizedFollowerIntentCommitReceiptV1, NormalizedSqliteError> {
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let receipt = enqueue_follower_intent_with_admission(
+        &transaction, canonical_envelopes, enqueued_at,
+        |connection| {
+            crate::normalized_handoff::require_handoff_follower_edit_admission_v1(connection)?;
+            crate::normalized_query::require_local_admission_source(connection, expected_source)
+        },
+    )?;
+    transaction.commit()?;
+    Ok(receipt)
+}
+
 /// Enqueue inside the caller's write transaction so recovery can commit its
 /// durable replacement link with the intent, overlay and actor tip. The helper
 /// never commits; any later failure must roll back the caller's whole transaction.
@@ -3097,8 +3116,28 @@ mod tests {
             .is_err());
             transaction.rollback().unwrap();
         }
-        let intent = enqueue_normalized_follower_intent_v1(&mut connection, &envelopes, 2_200)
+        let (generation_id, source_revision) = crate::normalized_query::query_source(&connection).unwrap();
+        let expected_source = crate::normalized_query::NormalizedFeedPageSourceV1 {
+            generation_id, projection_revision: source_revision, transition_sequence: source_revision,
+        };
+        let mut stale_source = expected_source.clone();
+        stale_source.transition_sequence += 1;
+        let before_stale = connection.total_changes();
+        assert!(enqueue_normalized_follower_intent_with_source_v1(&mut connection, &envelopes, 2200, Some(&stale_source)).unwrap_err().to_string().contains("LOCAL_ADMISSION_SOURCE_STALE"));
+        assert_eq!(connection.total_changes(), before_stale);
+        let intent = enqueue_normalized_follower_intent_with_source_v1(&mut connection, &envelopes, 2_200, Some(&expected_source))
             .expect("enqueue follower intent");
+        connection.execute_batch("UPDATE library_meta SET source_revision=source_revision+1; UPDATE library_change_state SET revision=revision+1;").unwrap();
+        let before_retry = connection.total_changes();
+        assert_eq!(enqueue_normalized_follower_intent_with_source_v1(&mut connection, &envelopes, 2201, Some(&expected_source)).unwrap(), intent);
+        assert_eq!(connection.total_changes(), before_retry);
+        let changed = crate::normalized_operation_test_fixtures::tests::signed_envelopes_from_tip(
+            &actor_key_pair, &verified, "tx:read:native-verified", 1, None,
+            &verified.actor_chain_genesis, &[("rss:item:1", 990), ("rss:item:2", 991)], "feed_item_read_assignment");
+        assert!(enqueue_normalized_follower_intent_with_source_v1(&mut connection, &changed, 2202, Some(&expected_source)).is_err());
+        assert_eq!(connection.total_changes(), before_retry);
+        connection.execute_batch("UPDATE library_meta SET source_revision=source_revision-1; UPDATE library_change_state SET revision=revision-1;").unwrap();
+
         assert_eq!(
             enqueue_normalized_follower_intent_v1(&mut connection, &envelopes, 2_201)
                 .expect("response-loss retry reads back the same intent"),

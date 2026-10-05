@@ -1,3 +1,4 @@
+import { assembleHydratedAnnotationReplacement, hydrateLibraryCoreAnnotations, replaceHydratedSavedNote, sameAnnotationSource } from "@freed/shared/library-core";
 import {
   sanitizeFeedItemCaptureWrite,
   sanitizeRssFeedWrite,
@@ -40,8 +41,6 @@ import {
   readLibraryCoreNormalizedFriendsLocationItemV1,
   readLibraryCoreNormalizedSavedAnalyticsV1,
   collectLibraryCoreSampleRemovalPlanV1,
-  canonicalizeFeedItemTagsV1,
-  canonicalizeFeedItemHighlightsV1,
   canonicalizeFeedItemAnalysisV1,
   createLibraryCoreOperationInstanceId,
   scanLibraryCoreNormalizedBackgroundItemsV1,
@@ -556,6 +555,17 @@ export async function enqueuePwaLibraryCoreFeedItemCaptures(
   await flush();
 }
 
+/** Note-only editing preserves the complete canonical quote set. */
+export async function enqueuePwaLibraryCoreSavedItemNote(globalId: string, note: string): Promise<void> {
+  const originals = await queryPwaNormalizedLibrary({ queryId: "item_annotations_v1", schemaVersion: 1, globalId });
+  const snapshot = await hydrateLibraryCoreAnnotations(queryPwaNormalizedLibrary, originals);
+  const now = Date.now();
+  const payload = replaceHydratedSavedNote(snapshot, note, now);
+  const current = await queryPwaNormalizedLibrary({ queryId: "item_annotations_v1", schemaVersion: 1, globalId });
+  if (!sameAnnotationSource(current.source, originals.source)) throw new Error("Annotation source changed; reopen the item");
+  await commitPwaLibraryCoreFeedItemAnnotationSets([{ entityId: globalId, highlights: payload.highlights, tags: payload.tags }], now, originals.source);
+}
+
 /** Commit bounded signed normalized FeedItem annotation replacements. */
 export async function enqueuePwaLibraryCoreFeedItemAnnotationSets(
   assignments: readonly Readonly<{
@@ -565,36 +575,20 @@ export async function enqueuePwaLibraryCoreFeedItemAnnotationSets(
   }>[],
   onCommitted?: (count: number) => void,
 ): Promise<void> {
-  if (assignments.length === 0) return;
-  const unique = new Map<
-    string,
-    Readonly<{
-      highlights: ReturnType<typeof canonicalizeFeedItemHighlightsV1>;
-      tags: ReturnType<typeof canonicalizeFeedItemTagsV1>;
-    }>
-  >();
-  for (const assignment of assignments) {
-    if (!assignment.entityId)
-      throw new TypeError("annotation entity ID is required");
-    unique.set(assignment.entityId, {
-      highlights: canonicalizeFeedItemHighlightsV1(assignment.highlights),
-      tags: canonicalizeFeedItemTagsV1(assignment.tags),
-    });
-  }
-  const rows = [...unique].map(([entityId, annotations]) => ({
-    entityId,
-    ...annotations,
-  }));
-  for (
-    let start = 0;
-    start < rows.length;
-    start += PWA_LIBRARY_CORE_SQLITE_ANNOTATION_BATCH_LIMIT
-  ) {
-    const batch = rows.slice(
-      start,
-      start + PWA_LIBRARY_CORE_SQLITE_ANNOTATION_BATCH_LIMIT,
-    );
-    await commitPwaLibraryCoreFeedItemAnnotationSets(batch, Date.now());
+  const rows = [...new Map(assignments.map(row => [row.entityId, row])).values()];
+  let expectedSource: import("@freed/shared/library-core").LibraryCoreFeedPageSourceV1 | undefined;
+  for (let start = 0; start < rows.length; start += PWA_LIBRARY_CORE_SQLITE_ANNOTATION_BATCH_LIMIT) {
+    const now = Date.now();
+    const batch = [];
+    for (const assignment of rows.slice(start, start + PWA_LIBRARY_CORE_SQLITE_ANNOTATION_BATCH_LIMIT)) {
+      const originals = await queryPwaNormalizedLibrary({ queryId: "item_annotations_v1", schemaVersion: 1, globalId: assignment.entityId });
+      if (expectedSource && !sameAnnotationSource(expectedSource, originals.source)) throw new Error("Annotation source changed; reopen the item");
+      expectedSource ??= originals.source;
+      const snapshot = await hydrateLibraryCoreAnnotations(queryPwaNormalizedLibrary, originals);
+      const payload = assembleHydratedAnnotationReplacement(snapshot, assignment.highlights, assignment.tags, now);
+      batch.push({ entityId: assignment.entityId, highlights: payload.highlights, tags: payload.tags });
+    }
+    await commitPwaLibraryCoreFeedItemAnnotationSets(batch, now, expectedSource);
     onCommitted?.(batch.length);
   }
 }

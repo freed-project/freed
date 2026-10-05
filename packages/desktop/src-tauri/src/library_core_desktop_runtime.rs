@@ -4,7 +4,7 @@
 mod checkpoint_session;
 
 use freed_library_core::{
-    accept_normalized_operation_transaction_v1, load_normalized_local_actor_id_v2,
+    load_normalized_local_actor_id_v2,
     normalized_primary_mutation_context_v1, NormalizedMutationContextV1,
     NormalizedMutationReceiptV1,
 };
@@ -230,6 +230,8 @@ pub(super) struct SignNormalizedOperationsRequest {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct CommitNormalizedTransactionRequest {
+    #[serde(default, deserialize_with = "freed_library_core::deserialize_local_admission_source")]
+    expected_source: Option<freed_library_core::NormalizedFeedPageSourceV1>,
     library_id: String,
     canonical_envelope_json: Vec<String>,
     committed_at_ms: i64,
@@ -238,6 +240,8 @@ pub(super) struct CommitNormalizedTransactionRequest {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct EnqueueFollowerIntentRequest {
+    #[serde(default, deserialize_with = "freed_library_core::deserialize_local_admission_source")]
+    expected_source: Option<freed_library_core::NormalizedFeedPageSourceV1>,
     canonical_envelope_json: Vec<String>,
     enqueued_at_ms: i64,
 }
@@ -2654,10 +2658,11 @@ pub(super) fn enqueue_normalized_library_follower_intent(
         .into_iter()
         .map(String::into_bytes)
         .collect::<Vec<_>>();
-    freed_library_core::enqueue_normalized_follower_intent_v1(
+    freed_library_core::enqueue_normalized_follower_intent_with_source_v1(
         &mut connection,
         &canonical,
         request.enqueued_at_ms,
+        request.expected_source.as_ref(),
     )
     .map_err(|error| error.to_string())
 }
@@ -2873,11 +2878,12 @@ pub(super) fn commit_normalized_library_transaction(
         .into_iter()
         .map(String::into_bytes)
         .collect::<Vec<_>>();
-    accept_normalized_operation_transaction_v1(
+    freed_library_core::accept_normalized_operation_transaction_with_source_v1(
         &mut connection,
         &canonical_envelopes,
         &authority_key_pair,
         request.committed_at_ms,
+        request.expected_source.as_ref(),
     )
     .map_err(|error| error.to_string())?
     .try_into()

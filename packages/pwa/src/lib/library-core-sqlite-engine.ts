@@ -5359,6 +5359,14 @@ export class PwaLibraryCoreSqliteEngine {
     if (retryInsideTransaction !== null) {
       return retryInsideTransaction;
     }
+    if (commit.expectedSource) {
+      const current = this.#querySource();
+      if (!sameAnnotationSource(commit.expectedSource, {
+        generationId: current.generationId,
+        projectionRevision: current.sourceRevision,
+        transitionSequence: current.sourceRevision,
+      })) throw new Error("LOCAL_ADMISSION_SOURCE_STALE");
+    }
     const enrollment = this.followerMutationContext();
     if (enrollment.actor_id !== actorState.actor_id || enrollment.actor_public_key !== actorState.actor_public_key ||
         String(enrollment.library_id) !== actorState.library_id || String(enrollment.epoch_id) !== actorState.epoch_id) {

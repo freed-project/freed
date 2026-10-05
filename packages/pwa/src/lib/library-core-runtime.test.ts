@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   commitReadAssignments: vi.fn(),
   commitUserStateAssignments: vi.fn(),
   commitFeedItemCaptures: vi.fn(),
+  commitAnnotations: vi.fn(),
   commitFeedItemRemove: vi.fn(),
   commitFeedItemRemoves: vi.fn(),
   commitRssFeedUpsert: vi.fn(),
@@ -46,6 +47,8 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("./library-core-pwa-follower-mutations", () => ({
   PWA_LIBRARY_CORE_SQLITE_CAPTURE_BATCH_LIMIT: 32,
+  PWA_LIBRARY_CORE_SQLITE_ANNOTATION_BATCH_LIMIT: 32,
+  commitPwaLibraryCoreFeedItemAnnotationSets: mocks.commitAnnotations,
   PWA_LIBRARY_CORE_SQLITE_RECORD_BATCH_LIMIT: 256,
   PWA_LIBRARY_CORE_SQLITE_REMOVE_BATCH_LIMIT: 256,
   PWA_LIBRARY_CORE_SQLITE_RSS_FEED_BATCH_LIMIT: 256,
@@ -390,6 +393,8 @@ describe("PWA Library Core bounded scanner", () => {
         },
       ],
     });
+
+
     mocks.createNormalizedCheckpointWriter.mockReset();
     mocks.createNormalizedCheckpointWriter.mockReturnValue({});
     mocks.createCloudAdapter.mockReset();
@@ -430,6 +435,23 @@ describe("PWA Library Core bounded scanner", () => {
     mocks.commitAccountUpserts.mockReset();
     mocks.commitAccountRemove.mockReset();
     mocks.commitAccountRemoves.mockReset();
+  });
+
+  it("preserves canonical quote digests and source in generic annotation replacements", async () => {
+    mocks.commitAnnotations.mockReset().mockResolvedValue(undefined);
+    const digest = "b".repeat(64);
+    const canonical = { createdAt: 1, text: null, textBlobDigest: digest, note: "old" };
+    const original = { queryId: "item_annotations_v1", schemaVersion: 1, globalId: "item", source: QUERY_SOURCE, tags: ["old-tag"], highlights: [canonical] };
+    mocks.queryNormalizedLibrary.mockImplementation(async request => request.queryId === "item_annotations_v1" ? original : {
+      queryId: request.queryId, schemaVersion: 1, globalId: "item", annotationIndex: 0, source: QUERY_SOURCE, state: "ready",
+      text: { blobDigest: digest, contentLength: 5, startOffset: 0, endOffset: 5, bytesBase64: "UXVvdGU=" },
+    });
+    const { enqueuePwaLibraryCoreFeedItemAnnotationSets } = await import("./library-core-runtime");
+    await enqueuePwaLibraryCoreFeedItemAnnotationSets([{ entityId: "item", highlights: [{ createdAt: 1, text: "Quote", note: "changed" }], tags: ["new-tag"] }]);
+    expect(mocks.commitAnnotations).toHaveBeenCalledWith([{ entityId: "item", highlights: [{ ...canonical, note: "changed" }], tags: ["new-tag"] }], expect.any(Number), QUERY_SOURCE);
+    mocks.commitAnnotations.mockClear();
+    await expect(enqueuePwaLibraryCoreFeedItemAnnotationSets([{ entityId: "item", highlights: [], tags: [] }])).rejects.toThrow("omits an authenticated quote");
+    expect(mocks.commitAnnotations).not.toHaveBeenCalled();
   });
 
   it("reads the exact selected OPFS SQLite checkpoint receipt", async () => {

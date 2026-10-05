@@ -3008,6 +3008,36 @@ pub(crate) fn query_source(connection: &Connection) -> Result<(String, i64), Nor
     Ok((source.0, source.1))
 }
 
+/// Closed optional IPC field: omission is allowed; explicit null and malformed tuples are not.
+pub fn deserialize_local_admission_source<'de, D>(deserializer: D) -> Result<Option<NormalizedFeedPageSourceV1>, D::Error>
+where D: serde::Deserializer<'de> {
+    let source = NormalizedFeedPageSourceV1::deserialize(deserializer)?;
+    if !valid_lower_hex_64(&source.generation_id)
+        || !valid_safe_integer(source.projection_revision)
+        || !valid_safe_integer(source.transition_sequence)
+    {
+        return Err(serde::de::Error::custom("local admission source is invalid"));
+    }
+    Ok(Some(source))
+}
+
+/// Local compare-and-admit guard. It grants no authority and is never replicated.
+pub(crate) fn require_local_admission_source(
+    connection: &Connection,
+    expected: Option<&NormalizedFeedPageSourceV1>,
+) -> Result<(), NormalizedSqliteError> {
+    if let Some(expected) = expected {
+        let (generation, revision) = query_source(connection)?;
+        if generation != expected.generation_id
+            || revision != expected.projection_revision
+            || revision != expected.transition_sequence
+        {
+            return Err(invalid("LOCAL_ADMISSION_SOURCE_STALE"));
+        }
+    }
+    Ok(())
+}
+
 fn query_graph_layout_revision(connection: &Connection) -> Result<i64, NormalizedSqliteError> {
     let revision = connection.query_row(
         "SELECT revision FROM library_device_graph_layout_state WHERE singleton_id = 1;",
@@ -8495,6 +8525,22 @@ pub(crate) fn query_normalized_json_with_content(connection: &mut Connection, re
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn local_admission_wire_source_is_optional_but_closed() {
+        #[derive(serde::Deserialize)]
+        #[serde(rename_all = "camelCase", deny_unknown_fields)]
+        struct Request {
+            #[serde(default, deserialize_with = "super::deserialize_local_admission_source")]
+            expected_source: Option<super::NormalizedFeedPageSourceV1>,
+        }
+        assert!(serde_json::from_value::<Request>(serde_json::json!({})).unwrap().expected_source.is_none());
+        let source = serde_json::json!({"generationId":"a".repeat(64),"projectionRevision":0,"transitionSequence":0});
+        assert!(serde_json::from_value::<Request>(serde_json::json!({"expectedSource":source})).unwrap().expected_source.is_some());
+        for source in [serde_json::Value::Null, serde_json::json!({"generationId":"a".repeat(64),"projectionRevision":-1,"transitionSequence":0}), serde_json::json!({"generationId":"a".repeat(64),"projectionRevision":0,"transitionSequence":0,"extra":true})] {
+            assert!(serde_json::from_value::<Request>(serde_json::json!({"expectedSource":source})).is_err());
+        }
+    }
+
     use super::*;
     use crate::normalized_sqlite::install_normalized_schema_v1;
     use crate::sqlite_contract_generated::QUERY_IDS;

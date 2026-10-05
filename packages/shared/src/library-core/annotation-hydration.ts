@@ -4,7 +4,7 @@ import { decodeLibraryCoreCanonicalBase64 } from "./canonical-base64.js";
 import { type LibraryCoreItemAnnotationsResponseV1, parseLibraryCoreItemAnnotationsResponseV1 } from "./item-annotations-contracts.js";
 import { ANNOTATION_TEXT_AGGREGATE_BYTES, ANNOTATION_TEXT_MAXIMUM_BYTES, sameAnnotationSource, type LibraryCoreAnnotationTextState } from "./item-annotation-text-contracts.js";
 import type { LibraryCoreNormalizedQueryExecutor } from "./normalized-feed-readers.js";
-import { FEED_ITEM_ANNOTATIONS_REPLACE_PAYLOAD_SCHEMA } from "./operation-payload-contracts.js";
+import { canonicalizeFeedItemHighlightsV1, canonicalizeFeedItemTagsV1, FEED_ITEM_ANNOTATIONS_REPLACE_PAYLOAD_SCHEMA } from "./operation-payload-contracts.js";
 
 export interface LibraryCoreHydratedAnnotations {
   readonly originals: LibraryCoreItemAnnotationsResponseV1;
@@ -63,6 +63,36 @@ export function replaceHydratedSavedNote(snapshot: LibraryCoreHydratedAnnotation
   const highlights = snapshot.originals.highlights.filter((_, index) => snapshot.highlights![index]!.text !== SAVED_ITEM_NOTE_MARKER);
   if (note.length > 0) highlights.push(Object.freeze({ createdAt: assignedAtMs, text: SAVED_ITEM_NOTE_MARKER, textBlobDigest: null, note }));
   const payload = FEED_ITEM_ANNOTATIONS_REPLACE_PAYLOAD_SCHEMA.validate({ assigned_at_ms: assignedAtMs, highlights, tags: snapshot.originals.tags });
+  if (!payload.ok) throw new TypeError(payload.reason);
+  return payload.value;
+}
+
+
+/** Preserve the canonical representation of unchanged quotes in complete replacements. */
+export function assembleHydratedAnnotationReplacement(
+  snapshot: LibraryCoreHydratedAnnotations,
+  input: readonly Highlight[],
+  tags: readonly string[],
+  assignedAtMs: number,
+) {
+  if (snapshot.state !== "ready" || !snapshot.highlights) throw new LibraryCoreAnnotationHydrationError(snapshot);
+  const used = new Set<number>();
+  const highlights = canonicalizeFeedItemHighlightsV1(input).map(row => {
+    const index = snapshot.highlights!.findIndex((old, index) =>
+      !used.has(index) && old.createdAt === row.createdAt && old.text === row.text);
+    if (index < 0) return row;
+    used.add(index);
+    return Object.freeze({ ...snapshot.originals.highlights[index]!, note: row.note });
+  });
+  // Existing generic callers cannot prove that an absent digest-backed quote
+  // means an intentional deletion. Fail closed until an explicit edit API does.
+  if (snapshot.originals.highlights.some((row, index) => row.textBlobDigest !== null &&
+      !used.has(index) && snapshot.highlights![index]!.text !== SAVED_ITEM_NOTE_MARKER)) {
+    throw new Error("Annotation replacement omits an authenticated quote; reopen the item");
+  }
+  const payload = FEED_ITEM_ANNOTATIONS_REPLACE_PAYLOAD_SCHEMA.validate({
+    assigned_at_ms: assignedAtMs, highlights, tags: canonicalizeFeedItemTagsV1(tags),
+  });
   if (!payload.ok) throw new TypeError(payload.reason);
   return payload.value;
 }

@@ -2911,7 +2911,26 @@ describe("PWA Library Core SQLite engine", () => {
     expect(database.selectValue("SELECT count(*) FROM library_optimistic_fields;")).toBe(0);
     expect(database.selectValue("SELECT count(*) FROM library_intent_actors;")).toBe(0);
     database.exec("DROP TRIGGER fail_final_intent_tip;");
-    const first = await engine.commitFollowerIntent({ envelopeBytes });
+    const expectedSource = engine.query({ queryId: "item_annotations_v1", schemaVersion: 1, globalId: "item-1" }).source;
+    const beforeStale = database.selectValue("SELECT total_changes()");
+    await expect(engine.commitFollowerIntent({ envelopeBytes, expectedSource: { ...expectedSource, transitionSequence: expectedSource.transitionSequence + 1 } })).rejects.toThrow("LOCAL_ADMISSION_SOURCE_STALE");
+    expect(database.selectValue("SELECT total_changes()")).toBe(beforeStale);
+    const verify = crypto.subtle.verify.bind(crypto.subtle);
+    const race = vi.spyOn(crypto.subtle, "verify").mockImplementationOnce(async (...args) => {
+      const valid = await verify(...args);
+      database.exec("UPDATE library_meta SET source_revision=source_revision+1; UPDATE library_change_state SET revision=revision+1;");
+      return valid;
+    });
+    await expect(engine.commitFollowerIntent({ envelopeBytes, expectedSource })).rejects.toThrow("LOCAL_ADMISSION_SOURCE_STALE");
+    race.mockRestore();
+    expect(database.selectValue("SELECT total_changes()")).toBe(Number(beforeStale) + 2);
+    database.exec("UPDATE library_meta SET source_revision=source_revision-1; UPDATE library_change_state SET revision=revision-1;");
+    const first = await engine.commitFollowerIntent({ envelopeBytes, expectedSource });
+    database.exec("UPDATE library_meta SET source_revision=source_revision+1; UPDATE library_change_state SET revision=revision+1;");
+    const beforeRetry = database.selectValue("SELECT total_changes()");
+    expect(await engine.commitFollowerIntent({ envelopeBytes, expectedSource })).toEqual(first);
+    expect(database.selectValue("SELECT total_changes()")).toBe(beforeRetry);
+    database.exec("UPDATE library_meta SET source_revision=source_revision-1; UPDATE library_change_state SET revision=revision-1;");
     expect(first).toEqual({
       actorId,
       firstCounter: 1,
@@ -3385,7 +3404,7 @@ describe("PWA Library Core SQLite engine", () => {
       }),
     ];
     await expect(
-      engine.commitFollowerIntent({ envelopeBytes: changed }),
+      engine.commitFollowerIntent({ envelopeBytes: changed, expectedSource: { ...expectedSource, projectionRevision: expectedSource.projectionRevision + 1 } }),
     ).rejects.toThrow(/reused with changed bytes/);
 
     database.exec(`CREATE TEMP TRIGGER fail_follower_optimistic_insert

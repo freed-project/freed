@@ -17,6 +17,7 @@ import {
   addLibraryStubItem,
   removeLibraryFeedItem,
   updateLibraryFeedItem,
+  updateLibrarySavedItemNote,
 } from "./library-client";
 import { enqueue } from "./content-fetcher.js";
 import { runFactoryResetSensitiveDesktopOperation } from "./factory-reset-guard";
@@ -149,12 +150,7 @@ async function updateSavedContentInDesktopInternal(
   const stableUrl = stableHttpUrl(input.url);
   const currentUrl = item.sourceUrl ?? item.content.linkPreview?.url ?? "";
   if (stableUrl === currentUrl) {
-    await updateLibraryFeedItem(item.globalId, {
-      userState: {
-        ...item.userState,
-        highlights: withSavedItemNote(item.userState.highlights, input.notes),
-      },
-    });
+    await updateLibrarySavedItemNote(item.globalId, input.notes);
     return { globalId: item.globalId };
   }
 

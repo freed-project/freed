@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseLibraryCoreItemAnnotationTextRequestV1, parseLibraryCoreItemAnnotationTextResponseV1 } from "./item-annotation-text-contracts.js";
-import { hydrateLibraryCoreAnnotations, replaceHydratedSavedNote } from "./annotation-hydration.js";
+import { assembleHydratedAnnotationReplacement, hydrateLibraryCoreAnnotations, replaceHydratedSavedNote } from "./annotation-hydration.js";
 import { encodeLibraryCoreCanonicalBase64 } from "./canonical-base64.js";
 import { parseLibraryCoreItemAnnotationsResponseV1 } from "./item-annotations-contracts.js";
 import { digestLibraryCoreMediaBlobBytesV1 } from "./media-blob-transport-contracts.js";
@@ -56,4 +56,16 @@ describe("authenticated annotation boundary", () => {
     const inline = { ...snapshot, originals: { ...snapshot.originals, highlights: [{ createdAt: 1, text: "a".repeat(65_536), textBlobDigest: null, note: null }, { createdAt: 2, text: "b".repeat(40_000), textBlobDigest: null, note: null }] }, highlights: [{ text: "a", createdAt: 1 }, { text: "b", createdAt: 2 }] };
     expect(() => replaceHydratedSavedNote(inline, "note", 3)).toThrow();
   });
+  it("preserves duplicate canonical quotes and changed notes in generic tag/highlight replacements", async () => {
+    const original = originals(2);
+    const query = (async (r: { queryId: string; annotationIndex?: number }) => r.queryId === "item_annotations_v1" ? original : { ...response, annotationIndex: r.annotationIndex }) as LibraryCoreNormalizedQueryExecutor;
+    const snapshot = await hydrateLibraryCoreAnnotations(query, original);
+    const input = snapshot.highlights!.map((row, index) => ({ ...row, note: index === 0 ? "changed" : row.note }));
+    const payload = assembleHydratedAnnotationReplacement(snapshot, input, ["new-tag"], 10);
+    expect(payload.highlights).toEqual([{ ...original.highlights[0], note: "changed" }, original.highlights[1]]);
+    expect(payload.tags).toEqual(["new-tag"]);
+    expect(() => assembleHydratedAnnotationReplacement(snapshot, input.slice(1), [], 10)).toThrow("omits an authenticated quote");
+    expect(() => assembleHydratedAnnotationReplacement({ ...snapshot, state: "unavailable", highlights: null }, [], [], 10)).toThrow();
+  });
+
 });
