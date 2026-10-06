@@ -40,6 +40,12 @@ jobs:
       - name: Validate skills
         run: npm run validate:skills
 
+      - name: Test changelog provenance and coverage
+        run: npm run test:changelog
+        working-directory: website
+
       - name: Build website
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: npm run build
         working-directory: website

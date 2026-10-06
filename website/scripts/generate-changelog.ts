@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
+import { pathToFileURL } from "node:url";
 import {
   groupReleasesByDay,
   normalizeGitHubReleases,
@@ -40,6 +41,7 @@ interface LocalReleaseArtifact {
   tag: string;
   version: string;
   dayKey: string;
+  approved?: boolean;
   source?: {
     previousPublishedTag?: string;
     prNumbers?: number[];
@@ -60,6 +62,7 @@ type ReleaseArtifactItem = string | { text?: unknown };
 
 interface GitHubCompare {
   commits: Array<{
+    sha: string;
     commit: {
       message: string;
     };
@@ -93,7 +96,9 @@ function getReleaseItemText(item: ReleaseArtifactItem): string | null {
   return null;
 }
 
-function toReleaseItems(items: ReleaseArtifactItem[] | undefined): ReleaseItem[] {
+function toReleaseItems(
+  items: ReleaseArtifactItem[] | undefined,
+): ReleaseItem[] {
   return dedupeItems(
     (items ?? [])
       .map(getReleaseItemText)
@@ -103,7 +108,10 @@ function toReleaseItems(items: ReleaseArtifactItem[] | undefined): ReleaseItem[]
 }
 
 async function fetchJson<T>(url: string): Promise<T> {
-  const response = await fetch(url, { headers: API_HEADERS });
+  const response = await fetch(url, {
+    headers: API_HEADERS,
+    signal: AbortSignal.timeout(30_000),
+  });
 
   if (!response.ok) {
     throw new Error(`GitHub API request failed: ${response.status} ${url}`);
@@ -137,23 +145,39 @@ function extractPrNumbersFromText(text: string): number[] {
     .filter((num) => Number.isInteger(num) && num > 0);
 }
 
-async function fetchComparePrNumbers(
+export async function fetchComparePrNumbers(
   baseTag: string | undefined,
   headTag: string,
 ): Promise<number[]> {
-  if (!baseTag || baseTag === headTag) {
-    return [];
+  if (!baseTag || baseTag === headTag) return [];
+  const commits: GitHubCompare["commits"] = [];
+  for (let page = 1; ; page += 1) {
+    const compare = await fetchJson<GitHubCompare>(
+      `https://api.github.com/repos/freed-project/freed/compare/${encodeURIComponent(baseTag)}...${encodeURIComponent(headTag)}?per_page=100&page=${page}`,
+    );
+    commits.push(...compare.commits);
+    if (compare.commits.length < 100) break;
   }
-
-  const compare = await fetchJson<GitHubCompare>(
-    `https://api.github.com/repos/freed-project/freed/compare/${encodeURIComponent(
-      baseTag,
-    )}...${encodeURIComponent(headTag)}`,
-  );
-
-  return compare.commits.flatMap((commit) =>
+  const numbers = commits.flatMap((commit) =>
     extractPrNumbersFromText(commit.commit.message),
   );
+  if (numbers.length) return numbers;
+
+  // Custom squash subjects can omit PR numbers. GitHub retains the association.
+  for (const commit of commits) {
+    for (let page = 1; ; page += 1) {
+      const pulls = await fetchJson<
+        Array<{ number: number; merged_at: string | null }>
+      >(
+        `https://api.github.com/repos/freed-project/freed/commits/${commit.sha}/pulls?per_page=100&page=${page}`,
+      );
+      numbers.push(
+        ...pulls.filter((pull) => pull.merged_at).map((pull) => pull.number),
+      );
+      if (pulls.length < 100) break;
+    }
+  }
+  return [...new Set(numbers)].sort((a, b) => a - b);
 }
 
 function readLocalReleaseArtifacts(): Map<string, LocalReleaseArtifact> {
@@ -192,7 +216,9 @@ function buildLinksFromArtifact(
     .map((candidate) => ({
       version: candidate.tag_name.replace(/^v/, ""),
       htmlUrl: candidate.html_url,
-      channel: (candidate.tag_name.endsWith("-dev") ? "dev" : "production") as ReleaseChannel,
+      channel: (candidate.tag_name.endsWith("-dev")
+        ? "dev"
+        : "production") as ReleaseChannel,
     }));
 
   if (buildLinks.length > 0) {
@@ -203,7 +229,9 @@ function buildLinksFromArtifact(
     {
       version: artifact.version || release.tag_name.replace(/^v/, ""),
       htmlUrl: release.html_url,
-      channel: (release.tag_name.endsWith("-dev") ? "dev" : "production") as ReleaseChannel,
+      channel: (release.tag_name.endsWith("-dev")
+        ? "dev"
+        : "production") as ReleaseChannel,
     },
   ];
 }
@@ -245,7 +273,9 @@ async function releaseFromLocalArtifact(
   const channel: ReleaseChannel = release.tag_name.endsWith("-dev")
     ? "dev"
     : "production";
-  const features = toReleaseItems(releaseShape.features ?? releaseShape.whatsNew);
+  const features = toReleaseItems(
+    releaseShape.features ?? releaseShape.whatsNew,
+  );
   const fixes = toReleaseItems(releaseShape.fixes);
   const followUps = toReleaseItems([
     ...(releaseShape.followUps ?? []),
@@ -273,29 +303,92 @@ async function releaseFromLocalArtifact(
   };
 }
 
+// Public tag contents travel with the release, regardless of the publishing machine.
+// Local historical artifacts retain their reviewed editorial corrections.
+export async function fetchPublishedArtifact(
+  tag: string,
+): Promise<LocalReleaseArtifact | null> {
+  const url = `https://raw.githubusercontent.com/freed-project/freed/${encodeURIComponent(tag)}/release-notes/releases/${encodeURIComponent(tag)}.json`;
+  const response = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+  if (response.status === 404) return null; // Early releases predate structured notes.
+  if (!response.ok)
+    throw new Error(
+      `Release artifact request failed: ${response.status} ${tag}`,
+    );
+  const artifact = (await response.json()) as LocalReleaseArtifact;
+  if (artifact.tag !== tag || artifact.approved !== true || !artifact.release) {
+    throw new Error(`Missing approval or mismatched release artifact: ${tag}`);
+  }
+  return artifact;
+}
+
+export function assertReleaseCoverage(
+  releases: { tag_name: string }[],
+  snapshot: ParsedRelease[],
+  expectedTag?: string,
+): void {
+  const builds = new Set(
+    snapshot.flatMap((day) =>
+      day.buildLinks.map((build) => `v${build.version}`),
+    ),
+  );
+  const missing = releases
+    .map((release) => release.tag_name)
+    .filter((tag) => !builds.has(tag));
+  if (
+    expectedTag &&
+    !releases.some((release) => release.tag_name === expectedTag)
+  ) {
+    throw new Error(`Expected release is not published: ${expectedTag}`);
+  }
+  if (missing.length)
+    throw new Error(
+      `Changelog is missing published builds: ${missing.join(", ")}`,
+    );
+}
+
 async function fetchChangelog(): Promise<ParsedRelease[]> {
   const releases = await fetchGitHubReleases();
   const publishedReleases = normalizeGitHubReleases(releases);
-  const releaseMap = new Map(releases.map((release) => [release.tag_name, release]));
-  const localReleaseArtifacts = readLocalReleaseArtifacts();
+  const releaseMap = new Map(
+    releases
+      .filter((release) => !release.draft)
+      .map((release) => [release.tag_name, release]),
+  );
+  const artifacts = readLocalReleaseArtifacts();
 
-  const detailedReleases = await Promise.all(publishedReleases.map((publishedRelease) => {
-    const release = releaseMap.get(publishedRelease.tagName);
-    const localArtifact = release ? localReleaseArtifacts.get(release.tag_name) : null;
-
-    if (release && localArtifact?.release) {
-      return releaseFromLocalArtifact(
-        localArtifact,
-        release,
-        releaseMap,
-        localReleaseArtifacts,
-      );
-    }
-
-    return publishedRelease;
-  }));
-
-  return groupReleasesByDay(detailedReleases);
+  // Bound requests rather than sending the entire historical inventory at once.
+  for (let offset = 0; offset < publishedReleases.length; offset += 6) {
+    await Promise.all(
+      publishedReleases.slice(offset, offset + 6).map(async (release) => {
+        if (artifacts.has(release.tagName)) return;
+        const artifact = await fetchPublishedArtifact(release.tagName);
+        if (artifact) artifacts.set(release.tagName, artifact);
+      }),
+    );
+  }
+  const detailedReleases: ParsedRelease[] = [];
+  for (const publishedRelease of publishedReleases) {
+    const release = releaseMap.get(publishedRelease.tagName)!;
+    const artifact = artifacts.get(release.tag_name);
+    detailedReleases.push(
+      artifact?.release
+        ? await releaseFromLocalArtifact(
+            artifact,
+            release,
+            releaseMap,
+            artifacts,
+          )
+        : publishedRelease,
+    );
+  }
+  const snapshot = groupReleasesByDay(detailedReleases);
+  assertReleaseCoverage(
+    publishedReleases.map((release) => ({ tag_name: release.tagName })),
+    snapshot,
+    process.env.CHANGELOG_EXPECT_TAG,
+  );
+  return snapshot;
 }
 
 function readExistingSnapshot(): ParsedRelease[] | null {
@@ -306,7 +399,7 @@ function readExistingSnapshot(): ParsedRelease[] | null {
   return JSON.parse(readFileSync(OUTPUT_PATH, "utf8")) as ParsedRelease[];
 }
 
-async function main() {
+export async function generateChangelog() {
   try {
     const releases = await fetchChangelog();
     writeFileSync(OUTPUT_PATH, `${JSON.stringify(releases, null, 2)}\n`);
@@ -315,7 +408,11 @@ async function main() {
     );
   } catch (error) {
     const existingSnapshot = readExistingSnapshot();
-    if (existingSnapshot) {
+    if (
+      existingSnapshot &&
+      process.env.CHANGELOG_ALLOW_STALE === "1" &&
+      !process.env.CHANGELOG_EXPECT_TAG
+    ) {
       console.warn(
         `[generate-changelog] Using existing snapshot with ${existingSnapshot.length.toLocaleString()} grouped days because refresh failed.`,
       );
@@ -327,8 +424,9 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error("[generate-changelog] Failed to build changelog snapshot.");
-  console.error(error);
-  process.exit(1);
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)
+  generateChangelog().catch((error) => {
+    console.error("[generate-changelog] Failed to build changelog snapshot.");
+    console.error(error);
+    process.exit(1);
+  });

@@ -31,8 +31,10 @@ For every production application release, read [the showcase release contract](.
 ### Refresh the changelog
 
 1. Require the published release ID, tag, channel, source SHA, and approved release-note artifact.
-2. Generate the checked-in presentation from current `www` without merging `dev`.
-3. Build, review, merge, and verify that the intended release appears at the production URL.
+2. From `website/` in the current `www` task worktree, run `CHANGELOG_EXPECT_TAG=<published-tag> npm run generate-changelog`. The generator reads missing approved artifacts from published tags and checks every published build. Never use `CHANGELOG_ALLOW_STALE=1` for release delivery; it is only an explicit offline preview escape hatch.
+3. Review the generated build links and PR numbers against the approved artifacts. A release with no product PRs may have an empty list; do not invent attribution. Preserve historical editorial corrections.
+4. Commit the refreshed snapshot through a tracked `www` PR. Record that PR URL in the release handoff, even when the website build already fetched newer releases during an unrelated deployment.
+5. Build, review, merge, and verify the intended build link and its expected PR links on the deployed changelog page, following pagination when needed. Record the deployment SHA and URL. Missing website authority leaves this handoff explicitly pending; a green Desktop build does not complete it.
 
 ### Publish roadmap status
 
