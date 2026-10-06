@@ -13310,6 +13310,7 @@ pub fn run() {
                 );
                 let _ = open_or_focus_recovery_window(&app_handle)?;
             } else {
+                library_core_desktop_runtime::start_annotation_continuation(&app_handle);
                 let _ = start_main_window_quietly(&app_handle)?;
                 let dev_sync_result_data_dir = data_dir.clone();
                 app.listen("dev-sync-trigger-native-result", move |event| {
@@ -14627,6 +14628,9 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building Freed")
         .run(|app, event| {
+            if matches!(&event,tauri::RunEvent::Exit) {
+                library_core_desktop_runtime::stop_annotation_continuation();
+            }
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Reopen {
                 has_visible_windows,

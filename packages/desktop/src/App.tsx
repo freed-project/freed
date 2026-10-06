@@ -1701,7 +1701,7 @@ function App() {
           : undefined,
       readLibraryItemDetail:
         tauriRuntimeAvailable && isInitialized
-          ? readLibraryCoreItemDetail
+          ? (id) => readLibraryCoreItemDetail(id, true)
           : undefined,
       readLibrarySavedAnalytics:
         tauriRuntimeAvailable && isInitialized

@@ -58,6 +58,13 @@ interface ClientGeneration {
   readonly openTask: Promise<void>;
 }
 
+const localChangeListeners=new Set<() => void>();
+/** Hints only; subscribers read the existing bounded local change feed. */
+export function subscribePwaLibraryCoreLocalChanges(listener: () => void): () => void {
+  localChangeListeners.add(listener);
+  return () => { localChangeListeners.delete(listener); };
+}
+
 let clientGeneration: ClientGeneration | null = null;
 let resetTask: Promise<void> | null = null;
 
@@ -72,7 +79,9 @@ function clearClientGeneration(active: PwaLibraryCoreSqliteClient): void {
 }
 
 function createClientGeneration(): ClientGeneration {
-  const active = new PwaLibraryCoreSqliteClient(clearClientGeneration);
+  const active = new PwaLibraryCoreSqliteClient(clearClientGeneration,() => {
+    if (clientGeneration?.client === active) for (const listener of localChangeListeners) listener();
+  });
   const generation = Object.freeze({
     client: active,
     openTask: active

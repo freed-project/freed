@@ -1,3 +1,7 @@
+import { subscribePwaLibraryCoreLocalChanges } from "./library-core-sqlite-runtime";
+import { assertLibraryCoreAnnotationEditEligible } from "@freed/shared/library-core";
+import { canonicalizeFeedItemHighlightsV1, canonicalizeFeedItemTagsV1, retainRenderedAnnotationSnapshot } from "@freed/shared/library-core";
+import { assembleHydratedAnnotationReplacement, replaceHydratedSavedNote, sameAnnotationSource } from "@freed/shared/library-core";
 import {
   sanitizeFeedItemCaptureWrite,
   sanitizeRssFeedWrite,
@@ -40,8 +44,6 @@ import {
   readLibraryCoreNormalizedFriendsLocationItemV1,
   readLibraryCoreNormalizedSavedAnalyticsV1,
   collectLibraryCoreSampleRemovalPlanV1,
-  canonicalizeFeedItemTagsV1,
-  canonicalizeFeedItemHighlightsV1,
   canonicalizeFeedItemAnalysisV1,
   createLibraryCoreOperationInstanceId,
   scanLibraryCoreNormalizedBackgroundItemsV1,
@@ -314,7 +316,29 @@ export function subscribePwaLibraryCoreState(
   return () => listeners.delete(listener);
 }
 
+let localChangeSubscription: (() => void) | null = null;
+let localRefreshRunning=false, localRefreshDirty=false;
+function observeLocalMaintenance(): void {
+  if (localChangeSubscription) return;
+  localChangeSubscription=subscribePwaLibraryCoreLocalChanges(() => {
+    localRefreshDirty=true;
+    if (localRefreshRunning) return;
+    localRefreshRunning=true;
+    void (async () => {
+      while (localRefreshDirty) {
+        localRefreshDirty=false;
+        const state=await readSelectedState();
+        if (!state) continue;
+        const change=await drainPwaLibraryCoreLocalChanges(state.searchCorpusVersion);
+        if (change) publishState(state,change);
+      }
+    })().catch(() => { console.error("Local annotation refresh failed; editing will be checked again before submission"); })
+      .finally(() => { localRefreshRunning=false; });
+  });
+}
+
 export async function initializePwaLibraryCoreState(): Promise<LibraryCoreRuntimeStateV1> {
+  observeLocalMaintenance();
   const selectedState = await readSelectedState();
   const state = selectedState ?? createEmptyLibraryCoreRuntimeStateV1();
   lastLocalChangeSequence =
@@ -556,45 +580,77 @@ export async function enqueuePwaLibraryCoreFeedItemCaptures(
   await flush();
 }
 
+/** Note-only editing preserves the complete canonical quote set. */
+export async function enqueuePwaLibraryCoreSavedItemNote(globalId: string, note: string, originalSnapshot: import("@freed/shared/library-core").LibraryCoreHydratedAnnotations): Promise<void> {
+  const snapshot = retainRenderedAnnotationSnapshot(originalSnapshot, globalId);
+  await assertLibraryCoreAnnotationEditEligible(queryPwaNormalizedLibrary, snapshot);
+  const originals = snapshot.originals;
+  const now = Date.now();
+  const payload = replaceHydratedSavedNote(snapshot, note, now);
+  const current = await queryPwaNormalizedLibrary({ queryId: "item_annotations_v1", schemaVersion: 1, globalId });
+  if (!sameAnnotationSource(current.source, originals.source)) throw new Error("Annotation source changed; reopen the item");
+  await commitPwaLibraryCoreFeedItemAnnotationSets([{ entityId: globalId, highlights: payload.highlights, tags: payload.tags }], now, originals.source);
+}
+
+/** Select only initially missing identities before capture. Existing annotations stay untouched. */
+export async function preparePwaNewItemAnnotations(items: readonly FeedItem[]) {
+  const result = [];
+  for (const item of new Map(items.map(item => [item.globalId, item])).values()) {
+    if (!item.userState.tags.length && !item.userState.highlights?.length) continue;
+    const original = await queryPwaNormalizedLibrary({ queryId: "item_detail_v1", schemaVersion: 1, globalId: item.globalId });
+    if (original.item !== null) continue;
+    result.push({ entityId: item.globalId,
+      highlights: canonicalizeFeedItemHighlightsV1(item.userState.highlights ?? []),
+      tags: canonicalizeFeedItemTagsV1(item.userState.tags) });
+  }
+  return result;
+}
+
+/** Initialize the fixed missing set after capture; never reinterpret an existing edit as initialization. */
+export async function initializePwaNewItemAnnotations(
+  assignments: Awaited<ReturnType<typeof preparePwaNewItemAnnotations>>,
+  onCommitted?: (count: number) => void,
+) {
+  for (let start = 0; start < assignments.length; start += PWA_LIBRARY_CORE_SQLITE_ANNOTATION_BATCH_LIMIT) {
+    const batch = assignments.slice(start, start + PWA_LIBRARY_CORE_SQLITE_ANNOTATION_BATCH_LIMIT);
+    let expectedSource: import("@freed/shared/library-core").LibraryCoreFeedPageSourceV1 | undefined;
+    for (const assignment of batch) {
+      const original = await queryPwaNormalizedLibrary({ queryId: "item_annotations_v1", schemaVersion: 1, globalId: assignment.entityId });
+      if (original.tags.length || original.highlights.length) throw new Error("Imported item annotations already exist; initialization refused");
+      if (expectedSource && !sameAnnotationSource(expectedSource, original.source)) throw new Error("Annotation source changed; initialization refused");
+      expectedSource ??= original.source;
+    }
+    await commitPwaLibraryCoreFeedItemAnnotationSets(batch, Date.now(), expectedSource);
+    onCommitted?.(batch.length);
+  }
+}
+
 /** Commit bounded signed normalized FeedItem annotation replacements. */
 export async function enqueuePwaLibraryCoreFeedItemAnnotationSets(
   assignments: readonly Readonly<{
     entityId: string;
     highlights: readonly Highlight[];
     tags: readonly string[];
+    annotationSnapshot: import("@freed/shared/library-core").LibraryCoreHydratedAnnotations;
   }>[],
   onCommitted?: (count: number) => void,
 ): Promise<void> {
-  if (assignments.length === 0) return;
-  const unique = new Map<
-    string,
-    Readonly<{
-      highlights: ReturnType<typeof canonicalizeFeedItemHighlightsV1>;
-      tags: ReturnType<typeof canonicalizeFeedItemTagsV1>;
-    }>
-  >();
-  for (const assignment of assignments) {
-    if (!assignment.entityId)
-      throw new TypeError("annotation entity ID is required");
-    unique.set(assignment.entityId, {
-      highlights: canonicalizeFeedItemHighlightsV1(assignment.highlights),
-      tags: canonicalizeFeedItemTagsV1(assignment.tags),
-    });
-  }
-  const rows = [...unique].map(([entityId, annotations]) => ({
-    entityId,
-    ...annotations,
-  }));
-  for (
-    let start = 0;
-    start < rows.length;
-    start += PWA_LIBRARY_CORE_SQLITE_ANNOTATION_BATCH_LIMIT
-  ) {
-    const batch = rows.slice(
-      start,
-      start + PWA_LIBRARY_CORE_SQLITE_ANNOTATION_BATCH_LIMIT,
-    );
-    await commitPwaLibraryCoreFeedItemAnnotationSets(batch, Date.now());
+  const rows = [...new Map(assignments.map(row => [row.entityId, { ...row, annotationSnapshot: retainRenderedAnnotationSnapshot(row.annotationSnapshot, row.entityId) }])).values()];
+  let expectedSource: import("@freed/shared/library-core").LibraryCoreFeedPageSourceV1 | undefined;
+  for (let start = 0; start < rows.length; start += PWA_LIBRARY_CORE_SQLITE_ANNOTATION_BATCH_LIMIT) {
+    const now = Date.now();
+    const batch = [];
+    for (const assignment of rows.slice(start, start + PWA_LIBRARY_CORE_SQLITE_ANNOTATION_BATCH_LIMIT)) {
+      const originals = await queryPwaNormalizedLibrary({ queryId: "item_annotations_v1", schemaVersion: 1, globalId: assignment.entityId });
+      const snapshot = assignment.annotationSnapshot;
+      await assertLibraryCoreAnnotationEditEligible(queryPwaNormalizedLibrary, snapshot);
+      if (!sameAnnotationSource(snapshot.originals.source, originals.source) ||
+          (expectedSource && !sameAnnotationSource(expectedSource, snapshot.originals.source))) throw new Error("Annotation source changed; reopen the item");
+      expectedSource ??= snapshot.originals.source;
+      const payload = assembleHydratedAnnotationReplacement(snapshot, assignment.highlights, assignment.tags, now);
+      batch.push({ entityId: assignment.entityId, highlights: payload.highlights, tags: payload.tags });
+    }
+    await commitPwaLibraryCoreFeedItemAnnotationSets(batch, now, expectedSource);
     onCommitted?.(batch.length);
   }
 }
@@ -1109,13 +1165,11 @@ export async function executePwaLibraryCoreScopeAction(
 }
 
 /** Read one compact item detail through normalized SQLite. */
-export async function readPwaLibraryCoreItemDetail(
-  globalId: string,
-): Promise<FeedItem | null> {
-  return readLibraryCoreNormalizedItemDetailV1(
-    NORMALIZED_READER_RUNTIME,
-    globalId,
-  );
+export function readPwaLibraryCoreItemDetail(globalId: string): Promise<FeedItem | null>;
+export function readPwaLibraryCoreItemDetail(globalId: string, withAnnotations: true): ReturnType<typeof readLibraryCoreNormalizedItemContentV1>;
+export async function readPwaLibraryCoreItemDetail(globalId: string, withAnnotations = false) {
+  if (withAnnotations) return readLibraryCoreNormalizedItemContentV1(NORMALIZED_READER_RUNTIME, globalId, true);
+  return readLibraryCoreNormalizedItemDetailV1(NORMALIZED_READER_RUNTIME, globalId);
 }
 
 /** Persist the device-local offline policy for every blob referenced by one item. */

@@ -161,6 +161,7 @@ const textEncoder = new TextEncoder();
 type PwaLibraryCoreSqliteWorkerErrorCode =
   | "invalid_request"
   | "library_busy"
+  | "annotation_upgrade_pending"
   | "sqlite_initialization_failed"
   | "sqlite_integrity_failed";
 
@@ -262,13 +263,16 @@ export class PwaLibraryCoreSqliteClient {
   readonly #onUnavailable:
     | ((client: PwaLibraryCoreSqliteClient) => void)
     | undefined;
+  readonly #onLocalChanges: (() => void) | undefined;
   readonly #pending = new Map<string, PendingRequest>();
   readonly #worker: Worker;
   #closed = false;
 
   constructor(
     onUnavailable?: (client: PwaLibraryCoreSqliteClient) => void,
+    onLocalChanges?: () => void,
   ) {
+    this.#onLocalChanges = onLocalChanges;
     this.#onUnavailable = onUnavailable;
     const memoryE2eRequested =
       (
@@ -902,6 +906,11 @@ export class PwaLibraryCoreSqliteClient {
   }
 
   async close(): Promise<LibraryCoreSqliteWorkerStatus> {
+    if ([...this.#pending.values()].some(request=>request.kind==="open")) {
+      const error=new PwaLibraryCoreSqliteWorkerUnavailableError("PWA Library startup was cancelled");
+      this.dispose(error);
+      throw error;
+    }
     const status = await this.#request("close");
     this.#closed = true;
     this.#worker.terminate();
@@ -985,6 +994,10 @@ export class PwaLibraryCoreSqliteClient {
 
   #receive(value: unknown): void {
     const response = closedResponseRecord(value);
+    if (response?.kind === "local_changes_available" && exactResponseKeys(response,["kind"])) {
+      if (!this.#closed) this.#onLocalChanges?.();
+      return;
+    }
     if (
       response === null ||
       typeof response.requestId !== "string" ||
@@ -995,6 +1008,22 @@ export class PwaLibraryCoreSqliteClient {
     }
     const pending = this.#pending.get(response.requestId);
     if (!pending) return;
+    if (response.kind === "annotation_upgrade_progress") {
+      const scanned=response.scannedMembers;
+      if (pending.kind!=="open" || !exactResponseKeys(response,["kind","requestId","scannedMembers"]) ||
+          typeof scanned!=="number" || !Number.isSafeInteger(scanned) || scanned<0 || scanned<=pending.completedRecords) {
+        this.#retireUnavailable(new PwaLibraryCoreSqliteWorkerUnavailableError("PWA Library annotation upgrade progress is invalid"));
+        return;
+      }
+      pending.completedRecords=scanned;
+      // Reuse existing stall and total request budgets. Only committed forward
+      // progress renews the stall budget, never an idle/busy heartbeat.
+      for (const request of this.#pending.values()) {
+        clearTimeout(request.timeout);
+        request.timeout=setTimeout(request.onTimeout,Math.max(0,Math.min(REQUEST_TIMEOUT_MS,request.deadline-Date.now())));
+      }
+      return;
+    }
     if (response.kind === "checkpoint_activation_progress") {
       this.#receiveCheckpointProgress(response, pending);
       return;
@@ -1016,6 +1045,7 @@ export class PwaLibraryCoreSqliteClient {
         !exactResponseKeys(response, ["code", "message", "ok", "requestId"]) ||
         (response.code !== "invalid_request" &&
           response.code !== "library_busy" &&
+          response.code !== "annotation_upgrade_pending" &&
           response.code !== "sqlite_initialization_failed" &&
           response.code !== "sqlite_integrity_failed") ||
         typeof response.message !== "string" ||

@@ -662,6 +662,11 @@ describe("Library Core SQLite worker protocol", () => {
     }
     bytes[0] = 9;
     expect(request.commit.envelopeBytes[0]).toEqual(Uint8Array.of(1, 2, 3));
+    const expectedSource = { generationId: "a".repeat(64), projectionRevision: 7, transitionSequence: 7 } as import("./feed-page-contracts.js").LibraryCoreFeedPageSourceV1;
+    const guarded = createLibraryCoreSqliteFollowerIntentCommitWorkerRequest("guarded", { envelopeBytes: [bytes], expectedSource });
+    const decoded = parseLibraryCoreSqliteWorkerRequest(structuredClone(guarded));
+    expect(decoded.kind === "commit_follower_intent" && decoded.commit.expectedSource).toEqual(expectedSource);
+
     expect(() =>
       parseLibraryCoreSqliteWorkerRequest({ ...request, sql: "SELECT 1" }),
     ).toThrow(/identity is invalid/);

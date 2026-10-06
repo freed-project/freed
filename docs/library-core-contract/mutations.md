@@ -39,6 +39,26 @@ evidence is represented by a content-addressed blob digest whose descriptor
 must already exist. `feed_item_capture_upsert` strips these child fields and
 therefore cannot overwrite either owner.
 
+Local annotation preparation may carry an optional `expectedSource` tuple of
+`generationId`, `projectionRevision` and `transitionSequence` through signing
+and IPC. It is local admission metadata, never part of the canonical envelope.
+Desktop Primary and both follower backends compare it inside their existing
+write transaction, after recognizing an exact durable retry and before new
+intent, overlay, actor-tip, journal, receipt or outbox writes. A mismatch returns
+`LOCAL_ADMISSION_SOURCE_STALE` without writes. An exact retry returns its stored
+receipt despite source advancement; changed bytes under the same identity fail.
+The caller must retain the original tuple and must not refresh it and resign a
+stale replacement. Existing authority, signature, recovery and causal checks
+still apply. This local guard does not change remote Primary conflict semantics.
+
+Canonical-preserving assembly retains unchanged quotes' original text/digest
+representation, ordering and notes. Generic array replacements refuse omitted
+digest-backed quotes because an incomplete array does not prove deletion intent.
+Existing item-note editing replaces only its saved-note marker. The rendered
+snapshot provenance of generic callers and pending optimistic annotation edits
+remain unresolved; a fresh canonical read must not be described as proof that
+an older rendered edit is current.
+
 Desktop and PWA construct that capture payload through one shared pure
 projector. It sanitizes synchronized root fields, removes Primary-owned
 analysis plus device-authored highlights, and replaces capture tags with the

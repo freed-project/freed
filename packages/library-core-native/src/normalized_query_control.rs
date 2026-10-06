@@ -66,6 +66,15 @@ pub fn query_normalized_json_with_control_v1(
     })
 }
 
+pub(crate) fn query_with_content_control(
+    connection: Connection, request: serde_json::Value, control: Arc<NormalizedQueryControl>,
+    read: &crate::annotation_text::RangeReader<'_>,
+) -> Result<serde_json::Value, String> {
+    run_controlled_read(connection, control, |connection| {
+        crate::normalized_query::query_normalized_json_with_content(connection, request, Some(read)).map_err(|error| error.to_string())
+    })
+}
+
 /// A fresh logical-state commitment, not an installed checkpoint receipt.
 /// Device-local queues, recovery archives and content caches are excluded by
 /// the existing logical exporter. This receipt grants no writer authority.

@@ -1,3 +1,4 @@
+import { parseLibraryCoreFeedPageSourceV1, type LibraryCoreFeedPageSourceV1 } from "./feed-page-contracts.js";
 import {
   LIBRARY_CORE_MAX_OPERATION_ENVELOPE_BYTES,
   LIBRARY_CORE_MAX_TRANSACTION_ENVELOPE_BYTES,
@@ -47,6 +48,8 @@ export interface LibraryCoreFollowerIntentPageResponseV1 {
 }
 
 export interface LibraryCoreFollowerIntentCommitV1 {
+  /** Local admission only; never part of signed or replicated envelopes. */
+  readonly expectedSource?: LibraryCoreFeedPageSourceV1;
   readonly envelopeBytes: readonly Uint8Array[];
 }
 
@@ -386,9 +389,17 @@ export function parseLibraryCoreFollowerIntentCommitV1(
   ) {
     throw new TypeError("follower intent commit must be a closed record");
   }
-  const names = Object.getOwnPropertyNames(value);
-  if (names.length !== 1 || names[0] !== "envelopeBytes") {
+  const names = Reflect.ownKeys(value);
+  if (!names.includes("envelopeBytes") || names.some(name => name !== "envelopeBytes" && name !== "expectedSource")) {
     throw new TypeError("follower intent commit has an invalid field set");
+  }
+  const sourceDescriptor = Object.getOwnPropertyDescriptor(value, "expectedSource");
+  let expectedSource: LibraryCoreFeedPageSourceV1 | undefined;
+  if (sourceDescriptor) {
+    if (!sourceDescriptor.enumerable || !("value" in sourceDescriptor)) throw new TypeError("local admission source must be a data field");
+    const source = parseLibraryCoreFeedPageSourceV1(sourceDescriptor.value);
+    if (!source.ok) throw new TypeError(source.error);
+    expectedSource = source.value;
   }
   const descriptor = Object.getOwnPropertyDescriptor(value, "envelopeBytes");
   if (
@@ -437,5 +448,5 @@ export function parseLibraryCoreFollowerIntentCommitV1(
     }
     snapshots.push(snapshot);
   }
-  return Object.freeze({ envelopeBytes: Object.freeze(snapshots) });
+  return Object.freeze({ envelopeBytes: Object.freeze(snapshots), ...(expectedSource ? { expectedSource } : {}) });
 }

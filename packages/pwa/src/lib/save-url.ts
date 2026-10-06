@@ -1,11 +1,14 @@
+import { retainRenderedAnnotationSnapshot, type LibraryCoreHydratedAnnotations } from "@freed/shared/library-core";
 import {
   buildSavedFeedItem,
 } from "@freed/capture-save/normalize";
 import { extractMetadataBrowser } from "@freed/capture-save/browser";
 import { withSavedItemNote, type FeedItem } from "@freed/shared";
 import {
+  enqueuePwaLibraryCoreSavedItemNote,
   enqueuePwaLibraryCoreFeedItemCapture,
-  enqueuePwaLibraryCoreFeedItemAnnotationSets,
+  preparePwaNewItemAnnotations,
+  initializePwaNewItemAnnotations,
   enqueuePwaLibraryCoreFeedItemRemove,
 } from "./library-core-runtime";
 
@@ -117,23 +120,18 @@ export async function saveUrlInPwa(
       tags: options.tags,
     },
   );
+  item.userState.highlights = withSavedItemNote([], options.notes ?? "");
   const canonicalItem = JSON.parse(JSON.stringify(item)) as typeof item;
+  const annotations = await preparePwaNewItemAnnotations([canonicalItem]);
   await enqueuePwaLibraryCoreFeedItemCapture(canonicalItem);
-  if ((options.tags?.length ?? 0) > 0 || (options.notes?.length ?? 0) > 0) {
-    await enqueuePwaLibraryCoreFeedItemAnnotationSets([
-      {
-        entityId: item.globalId,
-        highlights: withSavedItemNote([], options.notes ?? ""),
-        tags: options.tags ?? [],
-      },
-    ]);
-  }
+  await initializePwaNewItemAnnotations(annotations);
   return { globalId: item.globalId };
 }
 
 export async function updateSavedContentInPwa(
   item: FeedItem,
   input: {
+    annotationSnapshot?: LibraryCoreHydratedAnnotations;
     notes: string;
     preview?: SaveUrlOptions["preview"];
     url: string;
@@ -142,13 +140,7 @@ export async function updateSavedContentInPwa(
   const stableUrl = stableHttpUrl(input.url);
   const currentUrl = item.sourceUrl ?? item.content.linkPreview?.url ?? "";
   if (stableUrl === currentUrl) {
-    await enqueuePwaLibraryCoreFeedItemAnnotationSets([
-      {
-        entityId: item.globalId,
-        highlights: withSavedItemNote(item.userState.highlights, input.notes),
-        tags: item.userState.tags,
-      },
-    ]);
+    await enqueuePwaLibraryCoreSavedItemNote(item.globalId, input.notes, retainRenderedAnnotationSnapshot(input.annotationSnapshot, item.globalId));
     return { globalId: item.globalId };
   }
 

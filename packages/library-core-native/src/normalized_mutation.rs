@@ -2590,6 +2590,7 @@ pub(crate) fn materialize_verified_normalized_transaction_v1(
     committed_at: i64,
     publish_operations: bool,
 ) -> Result<(i64, i64), NormalizedSqliteError> {
+    crate::normalized_local_annotations::reject_building(transaction)?;
     let first = &verified.members[0];
     let last = verified
         .members
@@ -2772,6 +2773,7 @@ pub(crate) fn materialize_verified_normalized_transaction_v1(
             "normalized mutation revision changed concurrently",
         ));
     }
+    crate::normalized_local_annotations::retire_transaction(transaction, &verified.transaction_id)?;
     Ok((previous_revision, committed_revision))
 }
 
@@ -2801,6 +2803,25 @@ pub(crate) fn resolve_normalized_operation_transaction_in_transaction_v1(
     authority_key_pair: &Ed25519KeyPair,
     committed_at: i64,
 ) -> Result<NormalizedMutationResolutionV1, NormalizedSqliteError> {
+    resolve_normalized_operation_transaction_with_source(
+        transaction,
+        canonical_envelopes,
+        authority_key_pair,
+        committed_at,
+        None,
+        false,
+    )
+}
+
+fn resolve_normalized_operation_transaction_with_source(
+    transaction: &Transaction<'_>,
+    canonical_envelopes: &[Vec<u8>],
+    authority_key_pair: &Ed25519KeyPair,
+    committed_at: i64,
+    expected_source: Option<&crate::normalized_query::NormalizedFeedPageSourceV1>,
+    local_admission: bool,
+) -> Result<NormalizedMutationResolutionV1, NormalizedSqliteError> {
+    crate::normalized_local_annotations::reject_building(transaction)?;
     if !(0..=MAX_SAFE_INTEGER).contains(&committed_at) {
         return Err(NormalizedSqliteError::InvalidRequest(
             "normalized mutation commit time is invalid",
@@ -2844,8 +2865,15 @@ pub(crate) fn resolve_normalized_operation_transaction_in_transaction_v1(
         }
         .into());
     }
+    if local_admission && program.mutation_id == "feed_item_annotations_replace" {
+        crate::normalized_local_annotations::require_ready(transaction)?;
+    }
     if let Some(receipt) = stored_receipt(transaction, &verified)? {
         return Ok(NormalizedMutationResolutionV1::Accepted(receipt));
+    }
+    crate::normalized_query::require_local_admission_source(transaction, expected_source)?;
+    if local_admission {
+        crate::normalized_local_annotations::admit_members(transaction, &verified.members)?;
     }
     if active_epoch != verified.epoch || active_epoch_id != verified.epoch_id {
         if active_epoch <= verified.epoch || active_epoch_id == verified.epoch_id {
@@ -2993,6 +3021,33 @@ pub fn accept_normalized_operation_transaction_v1(
         authority_key_pair,
         committed_at,
     )? {
+        NormalizedMutationResolutionV1::Accepted(receipt) => Ok(receipt),
+        NormalizedMutationResolutionV1::FollowerResult(_) => Err(
+            NormalizedSqliteError::InvalidRequest("normalized mutation was rejected"),
+        ),
+    }
+}
+
+/// Local admission wrapper; canonical envelopes and durable retry identity are unchanged.
+pub fn accept_normalized_operation_transaction_with_source_v1(
+    connection: &mut Connection,
+    canonical_envelopes: &[Vec<u8>],
+    authority_key_pair: &Ed25519KeyPair,
+    committed_at: i64,
+    expected_source: Option<&crate::normalized_query::NormalizedFeedPageSourceV1>,
+) -> Result<NormalizedMutationReceiptV1, NormalizedSqliteError> {
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let resolution = resolve_normalized_operation_transaction_with_source(
+        &transaction,
+        canonical_envelopes,
+        authority_key_pair,
+        committed_at,
+        expected_source,
+        true,
+    )?;
+    // Preserve the existing resolver's durable rejection behavior.
+    transaction.commit()?;
+    match resolution {
         NormalizedMutationResolutionV1::Accepted(receipt) => Ok(receipt),
         NormalizedMutationResolutionV1::FollowerResult(_) => Err(
             NormalizedSqliteError::InvalidRequest("normalized mutation was rejected"),
@@ -3485,6 +3540,80 @@ pub(crate) mod tests {
                 .expect("resumed staging cleanup"),
             0
         );
+    }
+
+    #[test]
+    fn local_admission_primary_is_atomic_and_exact_retries_ignore_source_advance() {
+        let (mut db, key, enrollment) = fixture();
+        db.execute(
+            "INSERT OR REPLACE INTO library_materialization_generation VALUES(1,?1)",
+            ["a".repeat(64)],
+        )
+        .unwrap();
+        let expected = crate::normalized_query::NormalizedFeedPageSourceV1 {
+            generation_id: "a".repeat(64),
+            projection_revision: 0,
+            transition_sequence: 0,
+        };
+        let frames = signed_envelopes(&key, &enrollment);
+        db.execute_batch("UPDATE library_meta SET source_revision=1; UPDATE library_change_state SET revision=1;").unwrap();
+        let before = db.total_changes();
+        assert!(accept_normalized_operation_transaction_with_source_v1(
+            &mut db,
+            &frames,
+            &key,
+            2000,
+            Some(&expected)
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("LOCAL_ADMISSION_SOURCE_STALE"));
+        assert_eq!(
+            db.total_changes(),
+            before,
+            "stale admission must perform zero writes"
+        );
+        db.execute_batch("UPDATE library_meta SET source_revision=0; UPDATE library_change_state SET revision=0;").unwrap();
+        let receipt = accept_normalized_operation_transaction_with_source_v1(
+            &mut db,
+            &frames,
+            &key,
+            2000,
+            Some(&expected),
+        )
+        .unwrap();
+        let before_retry = db.total_changes();
+        assert_eq!(
+            accept_normalized_operation_transaction_with_source_v1(
+                &mut db,
+                &frames,
+                &key,
+                2100,
+                Some(&expected)
+            )
+            .unwrap(),
+            receipt
+        );
+        assert_eq!(db.total_changes(), before_retry);
+        let changed = signed_envelopes_from_tip(
+            &key,
+            &enrollment,
+            "tx:read:native-verified",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[("rss:item:1", 990), ("rss:item:2", 991)],
+            "feed_item_read_assignment",
+        );
+        assert!(accept_normalized_operation_transaction_with_source_v1(
+            &mut db,
+            &changed,
+            &key,
+            2200,
+            Some(&expected)
+        )
+        .is_err());
+        assert_eq!(db.total_changes(), before_retry);
     }
 
     #[test]
@@ -4105,6 +4234,34 @@ pub(crate) mod tests {
         assert!(plan
             .iter()
             .all(|detail| !detail.contains("USE TEMP B-TREE")));
+    }
+
+    pub(crate) fn persist_signed_already_applied_fixture(
+        connection: &mut Connection,
+        envelopes: &[Vec<u8>],
+        key: &Ed25519KeyPair,
+        original_digest: &str,
+        revision: i64,
+    ) {
+        let verified = verify_operation_transaction(envelopes, |identity| {
+            actor_state_at(connection, identity)
+        })
+        .unwrap();
+        let tx = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .unwrap();
+        persist_follower_result_outcome(
+            &tx,
+            &verified,
+            key,
+            revision,
+            2500,
+            FollowerResultOutcome::AlreadyApplied {
+                original_result_digest: original_digest,
+            },
+        )
+        .unwrap();
+        tx.commit().unwrap();
     }
 
     #[test]

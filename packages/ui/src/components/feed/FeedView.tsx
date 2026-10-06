@@ -33,7 +33,7 @@ import { AddFeedDialog } from "../AddFeedDialog.js";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { useSearchResults } from "../../hooks/useSearchResults.js";
 import { useLibraryFacetSummary } from "../../hooks/useLibraryFacetSummary.js";
-import { useLibraryItemDetail } from "../../hooks/useLibraryItemDetail.js";
+import { useLibraryItemDetail, annotationFailureLabel } from "../../hooks/useLibraryItemDetail.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { type FeedItem } from "@freed/shared";
 import { runFeedLayoutTransition } from "../../lib/view-transitions.js";
@@ -708,9 +708,9 @@ export function FeedView() {
     libraryItemVersion,
   );
   const selectedItem =
+    selectedItemDetail.item ??
     residentSelectedItem ??
-    (boundedFeedEligible ? currentSelectedItemPin : null) ??
-    selectedItemDetail.item;
+    (boundedFeedEligible ? currentSelectedItemPin : null);
   useEffect(() => {
     const patch = savedFeedPresentationPatch;
     if (
@@ -1106,6 +1106,8 @@ export function FeedView() {
           ) : null}
           <ReaderView
             item={selectedItem}
+            annotations={selectedItemDetail.status === "ready" ? selectedItemDetail.annotations : null}
+            annotationStatus={selectedItemDetail.annotationFailure ? annotationFailureLabel(selectedItemDetail.annotationFailure) : selectedItemDetail.status !== "ready" ? "Annotations are not ready for editing." : undefined}
             onClose={closeItem}
             dualColumn={showDualColumn}
             inline
@@ -1190,6 +1192,8 @@ export function FeedView() {
       {selectedItem && (
         <ReaderView
           item={selectedItem}
+          annotations={selectedItemDetail.status === "ready" ? selectedItemDetail.annotations : null}
+          annotationStatus={selectedItemDetail.annotationFailure ? annotationFailureLabel(selectedItemDetail.annotationFailure) : selectedItemDetail.status !== "ready" ? "Annotations are not ready for editing." : undefined}
           inline
           onClose={closeItem}
           onOpenUrl={handleOpenCommentUrl}

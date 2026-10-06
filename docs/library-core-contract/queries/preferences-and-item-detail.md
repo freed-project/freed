@@ -76,9 +76,35 @@ hydration policy. React receives no vault path or content byte buffer.
 the compact `item_detail_v1` contract and returns at most 64 tags and 64
 highlights, with a 1 MiB response ceiling. Both reads must have the same source
 generation and revision before the selected item receives its annotations.
-The query preserves blob references instead of substituting empty text. The
-current selected-item adapter rejects a blob-backed highlight until its text
-can be hydrated; it never passes incomplete annotations to a replacement write.
+The query preserves blob references instead of substituting empty text.
+Note, tag and inline quote projections return bounded blobs internally. Readers
+check their byte lengths before strict UTF-8 decoding, preserving NUL and a
+leading U+FEFF. Notes retain distinct null and empty values; tags remain nonempty.
+The limits are 8,192 note bytes, 512 tag bytes and 65,536 inline quote bytes.
+Each SQL projection retains at most its limit plus one byte, so oversized values
+are refused instead of silently truncated. Public response fields remain strings.
+`item_annotation_text_range_v1` takes an exact item, annotation index, expected
+source tuple and byte range. The backend resolves the canonical digest and
+verifies the complete quote length, range map, range digests, full digest and
+UTF-8 before returning any requested bytes. It checks generation, projection
+revision and transition sequence again after its read snapshot. The request
+accepts no renderer storage path. Body selectors remain `content` and `preserved`.
+
+Each quote is bounded to 65,536 UTF-8 bytes and 64 physical ranges. Shared
+hydration caps aggregate quote bytes at 524,288 and display JSON at 1 MiB.
+Canonical annotations remain separate from the hydrated view. Missing,
+unavailable, excluded, corrupt, oversized and invalid-text results expose no
+partial quote set. Replacement assembly still enforces 64 highlights, 8,192
+note bytes and the existing 98,304-byte canonical payload cap.
+
+Native queries retain `query_only`; successful local recency bookkeeping runs
+separately with final source checks. Native vault opens are nonblocking before
+regular-file, owner, mode, link-count and length checks, so a FIFO cannot wait
+for a peer before rejection. PWA reads use the serialized worker and local OPFS
+vault. Deadlines are checked around awaited I/O; they cannot interrupt a pending
+OPFS operation or guarantee a hard operating-system I/O deadline. Windows authenticated-range vault support and atomic edit
+admission remain acceptance gaps. Read authentication alone does not prove
+safe replacement of pending or concurrently changed annotations.
 Content pinning does not request annotations. Native and browser SQLite use
 the same generated point-query programs and reject oversized results.
 
@@ -89,3 +115,19 @@ the mutation receipt. If a bounded scan fails, provider delivery pauses. It
 must not read a projected item map, reconstruct a Library shell, or fall back
 to renderer state. This changes where candidates are discovered, not provider
 admission, request behavior, retry budgets, or confirmation semantics.
+
+
+### Local annotation edit eligibility
+
+`item_annotation_edit_state_v1` is a bounded point query over the device-local
+unresolved-marker entity index. It returns the canonical source tuple, local
+invalidation sequence and pending boolean. It neither hydrates text nor changes
+state. Missing query support or incomplete local upgrade refuses editing while
+preserving readable authenticated quotes and canonical references.
+
+The editor retains its original annotation snapshot through preparation and
+signing. A fresh eligibility check cannot refresh or replace that original.
+Native and PWA admission check unresolved markers inside the write transaction
+after exact committed-retry recognition. Owner maintenance retires covered
+markers and records local invalidation in one transaction. This query only
+observes those commits; it never schedules or performs maintenance.

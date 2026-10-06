@@ -1,3 +1,4 @@
+import { LibraryCoreAnnotationHydrationError, type LibraryCoreHydratedAnnotations } from "@freed/shared/library-core";
 import { useEffect, useState } from "react";
 import type { FeedItem } from "@freed/shared";
 
@@ -15,14 +16,16 @@ export type LibraryItemDetailStatus =
   | "failed";
 
 export interface LibraryItemDetailResult {
+  readonly annotations?: LibraryCoreHydratedAnnotations | null;
+  readonly annotationFailure?: LibraryCoreHydratedAnnotations["state"];
   readonly item: FeedItem | null;
   readonly status: LibraryItemDetailStatus;
 }
 
 interface CachedItemDetail {
   readonly key: string;
-  promise: Promise<FeedItem | null>;
-  result: FeedItem | null | undefined;
+  promise: ReturnType<ItemDetailReader>;
+  result: Awaited<ReturnType<ItemDetailReader>> | undefined;
 }
 
 interface ItemDetailState extends LibraryItemDetailResult {
@@ -59,6 +62,20 @@ function prepareItemDetail(
   return entry;
 }
 
+function detailFields(detail: Awaited<ReturnType<ItemDetailReader>>) {
+  return detail && "item" in detail ? { item: detail.item, annotations: detail.annotations } : { item: detail };
+}
+
+export function annotationFailureLabel(state: LibraryCoreHydratedAnnotations["state"]): string {
+  const labels = {
+    missing: "Saved annotation text is missing.", corrupt: "Saved annotation text is corrupt.",
+    oversized: "Saved annotation text exceeds the supported size.", stale: "Annotations changed. Reopen the item before editing.",
+    unavailable: "Saved annotation text is temporarily unavailable.", excluded: "Saved annotation text is unavailable on this device.",
+    invalid_text: "Saved annotation text is not valid UTF-8.", ready: "",
+  };
+  return `${labels[state]} Saved annotations have not changed.`;
+}
+
 /** Retain at most one exact SQLite item-detail row for the active host reader. */
 export function useLibraryItemDetail(
   globalId: string | null,
@@ -90,7 +107,7 @@ export function useLibraryItemDetail(
       sourceVersion,
     );
     if (prepared.result !== undefined) {
-      setState({ item: prepared.result, key, reader: readLibraryItemDetail, status: "ready" });
+      setState({ ...detailFields(prepared.result), key, reader: readLibraryItemDetail, status: "ready" });
     } else {
       setState((previous) => ({
         item: previous.reader === readLibraryItemDetail && previous.item?.globalId === globalId
@@ -102,10 +119,10 @@ export function useLibraryItemDetail(
     }
     void prepared.promise
       .then((item) => {
-        if (!cancelled) setState({ item, key, reader: readLibraryItemDetail, status: "ready" });
+        if (!cancelled) setState({ ...detailFields(item), key, reader: readLibraryItemDetail, status: "ready" });
       })
-      .catch(() => {
-        if (!cancelled) setState({ item: null, key, reader: readLibraryItemDetail, status: "failed" });
+      .catch((error: unknown) => {
+        if (!cancelled) setState({ item: null, key, reader: readLibraryItemDetail, status: "failed", ...(error instanceof LibraryCoreAnnotationHydrationError ? { annotations: error.snapshot, annotationFailure: error.snapshot.state } : {}) });
       });
     return () => {
       cancelled = true;
@@ -122,5 +139,5 @@ export function useLibraryItemDetail(
       status: "loading",
     };
   }
-  return { item: state.item, status: state.status };
+  return { item: state.item, status: state.status, ...(state.annotations !== undefined ? { annotations: state.annotations } : {}), ...(state.annotationFailure ? { annotationFailure: state.annotationFailure } : {}) };
 }

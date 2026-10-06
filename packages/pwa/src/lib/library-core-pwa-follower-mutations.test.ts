@@ -587,6 +587,20 @@ describe("PWA SQLite follower mutations", () => {
     ]);
   });
 
+  it("carries the original annotation source through context and signing without resigning stale writes", async () => {
+    const source = { generationId: "a".repeat(64) as import("@freed/shared/library-core").LibraryCoreLowercaseHex64, projectionRevision: 7, transitionSequence: 7 };
+    const context = await mocks.readFollowerMutationContext();
+    mocks.readFollowerMutationContext.mockClear();
+    mocks.readFollowerMutationContext.mockImplementationOnce(async () => { source.projectionRevision = 8; return context; });
+    mocks.signFollowerOperation.mockImplementationOnce(async () => { source.transitionSequence = 9; return HEX.signature; });
+    mocks.commitFollowerIntent.mockRejectedValueOnce(new Error("LOCAL_ADMISSION_SOURCE_STALE"));
+    await expect(commitPwaLibraryCoreFeedItemAnnotationSets([{ entityId: "item:1", highlights: [], tags: ["tag"] }], 5100, source)).rejects.toThrow("LOCAL_ADMISSION_SOURCE_STALE");
+    expect(mocks.commitFollowerIntent.mock.calls[0]![0].expectedSource).toEqual({ generationId: "a".repeat(64), projectionRevision: 7, transitionSequence: 7 });
+    expect(mocks.readFollowerMutationContext).toHaveBeenCalledOnce();
+    expect(mocks.signFollowerOperation).toHaveBeenCalledOnce();
+    expect(mocks.commitFollowerIntent).toHaveBeenCalledOnce();
+  });
+
   it("commits annotations and analysis as distinct closed child sets", async () => {
     await commitPwaLibraryCoreFeedItemAnnotationSets(
       [

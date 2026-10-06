@@ -1,3 +1,4 @@
+import { resumePwaAnnotationUpgrade } from "./library-core-annotation-storage";
 import sqlite3InitModule from "@sqlite.org/sqlite-wasm";
 import { isFreedDemoMode } from "./demo-mode";
 import {
@@ -107,7 +108,7 @@ async function acquireOwnership(): Promise<void> {
   await acquired;
 }
 
-async function open(): Promise<PwaLibraryCoreSqliteEngine> {
+async function open(requestId: string): Promise<PwaLibraryCoreSqliteEngine> {
   if (engine) return engine;
   let openingStage = "acquire writer ownership";
   // Anonymous demo databases belong to this worker alone. They never open
@@ -142,6 +143,27 @@ async function open(): Promise<PwaLibraryCoreSqliteEngine> {
       { capi: sqlite3.capi, persistentAuditTemporaryStorage: pool !== null },
     );
     openingEngine = next;
+    if (database.selectValue("PRAGMA user_version;") === 0) next.initialize();
+    openingStage = "resume the local annotation upgrade";
+    let scannedMembers=-1;
+    while (!resumePwaAnnotationUpgrade(database,sqlite3.capi,()=>new sqlite3.oo1.DB(":memory:","c"))) {
+      // Keep ownership, SAH and the unpublished engine through startup. Each
+      // invocation commits only bounded pages; no transaction crosses the yield.
+      const physicalVersion=Number(database.selectValue("PRAGMA user_version;"));
+      if (physicalVersion===4 || physicalVersion===5) {
+        const scanned=Number(database.selectValue("SELECT scanned_members FROM library_local_annotation_migration WHERE singleton_id=1;"));
+        if (!Number.isSafeInteger(scanned) || scanned<0 || scanned<scannedMembers) throw new Error("Annotation upgrade progress is invalid");
+        if (scanned>scannedMembers) {
+          scannedMembers=scanned;
+          scope.postMessage({kind:"annotation_upgrade_progress",requestId,scannedMembers:scanned});
+        }
+      } else if (physicalVersion!==1 && physicalVersion!==2) {
+        throw new Error("Annotation upgrade storage version is unsupported");
+      }
+      // Catalog verification may exhaust its budget before bootstrap. In source
+      // 1/2 there is no receipt and no committed progress to renew a stall budget.
+      await new Promise<void>(resolve=>setTimeout(resolve,25));
+    }
     next.initialize();
     openingStage = "reconcile the OPFS content vault";
     const nextContentVault = new PwaLibraryCoreOpfsContentVault(
@@ -151,6 +173,8 @@ async function open(): Promise<PwaLibraryCoreSqliteEngine> {
     await nextContentVault.reconcile();
     engine = next;
     contentVault = nextContentVault;
+    stopAnnotationContinuation();
+    markAnnotationWorkDirty();
     openingEngine = null;
     return next;
   } catch (error) {
@@ -182,7 +206,9 @@ function failure(
   const message =
     error instanceof Error ? error.message : "PWA Library SQLite failed";
   return {
-    code: message.includes("already open")
+    code: message.includes("LOCAL_ANNOTATION_UPGRADE_PENDING")
+      ? "annotation_upgrade_pending"
+      : message.includes("already open")
       ? "library_busy"
       : message.includes("quick check") || message.includes("storage identity")
         ? "sqlite_integrity_failed"
@@ -242,7 +268,7 @@ function bindCommand<K extends LibraryCoreSqliteWorkerRequest["kind"]>(
 async function executeOpen(
   request: WorkerRequest<"open">,
 ): Promise<LibraryCoreSqliteWorkerResponse> {
-  const active = await open();
+  const active = await open(request.requestId);
   return { ok: true, requestId: request.requestId, status: active.status() };
 }
 
@@ -261,6 +287,7 @@ async function executeClose(
 ): Promise<LibraryCoreSqliteWorkerResponse> {
   const active = requireEngine();
   const status = active.status();
+  stopAnnotationContinuation();
   await contentVault?.close();
   contentVault = null;
   active.close();
@@ -388,7 +415,8 @@ function executeAppendCheckpointPage(
 async function executeQuery(
   request: WorkerRequest<"query">,
 ): Promise<LibraryCoreSqliteWorkerResponse> {
-  return result(request.requestId, await requireEngine().queryWithVerification(request.query));
+  if (request.query.queryId === "item_annotation_edit_state_v1" && annotationMaintenanceFailure) throw annotationMaintenanceFailure;
+  return result(request.requestId, await requireEngine().queryWithVerification(request.query, (key, length) => requireContentVault().readAnnotationRange(key, length)));
 }
 
 function executeBeginScopeAction(
@@ -827,6 +855,75 @@ function compileCommand(
 
 // Keep asynchronous verification and storage work in the same bounded command
 // order. Another request must never enter a transaction owned by an earlier one.
+// Annotation-only owner continuation. Every SQL slice enters commandFlight;
+// timers merely enqueue work and never access the database themselves.
+let annotationSession = 0;
+let annotationTimer: ReturnType<typeof setTimeout> | null = null;
+let annotationQueued = false;
+let annotationDirty = false;
+let annotationPass: ReturnType<PwaLibraryCoreSqliteEngine["beginAnnotationReconciliation"]> = null;
+let annotationMaintenanceFailure: Error | null = null;
+function stopAnnotationContinuation(): void {
+  annotationSession += 1;
+  if (annotationTimer !== null) clearTimeout(annotationTimer);
+  annotationTimer = null;
+  annotationQueued = false;
+  annotationDirty = false;
+  annotationPass = null;
+  annotationMaintenanceFailure = null;
+}
+function markAnnotationWorkDirty(): void {
+  annotationDirty = true;
+  scheduleAnnotationTurn();
+}
+function scheduleAnnotationTurn(delay = 0): void {
+  if (!engine || annotationTimer !== null || annotationQueued || annotationMaintenanceFailure) return;
+  const active = engine, session = annotationSession;
+  annotationTimer = setTimeout(() => {
+    annotationTimer = null;
+    if (engine !== active || session !== annotationSession) return;
+    if (queuedCommands >= LIBRARY_CORE_SQLITE_WORKER_MAXIMUM_PENDING_REQUESTS) { scheduleAnnotationTurn(25); return; }
+    annotationQueued = true;
+    queuedCommands += 1;
+    commandFlight = commandFlight.then(() => {
+      let resume = false, retryDelay = 0;
+      try {
+        if (engine !== active || session !== annotationSession) return;
+        if (!annotationPass) {
+          if (!annotationDirty) return;
+          annotationDirty = false;
+          annotationPass = active.beginAnnotationReconciliation();
+        }
+        if (annotationPass) {
+          const page = active.reconcileAnnotationPage(annotationPass);
+          if (page.localChanged) scope.postMessage({kind:"local_changes_available"});
+          if (page.changed) { annotationPass = null; annotationDirty = true; }
+          else annotationPass = page.after ? { ...annotationPass, after: page.after } : null;
+        }
+        resume = annotationPass !== null || annotationDirty;
+      } catch (error) {
+        if (/SQLITE_BUSY|database is locked/.test(String(error))) { resume = true; retryDelay = 25; annotationDirty = true; }
+        else {
+          annotationMaintenanceFailure = new Error("Annotation maintenance refused; editing is unavailable until the Library is reopened", { cause: error });
+          console.error("Annotation maintenance refused; canonical annotations and pending evidence were preserved");
+          scope.postMessage({kind:"local_changes_available"});
+        }
+      } finally {
+        queuedCommands -= 1;
+        if (session === annotationSession) {
+          annotationQueued = false;
+          if (resume) scheduleAnnotationTurn(retryDelay);
+        }
+      }
+    });
+  }, delay);
+}
+const annotationEvidenceCommands = new Set<LibraryCoreSqliteWorkerRequest["kind"]>([
+  "commit_follower_intent", "import_normalized_follower_result_transport", "import_normalized_operation_page",
+  "activate_normalized_checkpoint_stage", "activate_verified_predecessor_checkpoint", "commit_consumer_recovery",
+  "reapply_consumer_intent", "install_follower_actor_enrollment",
+]);
+
 let commandFlight = Promise.resolve();
 let queuedCommands = 0;
 scope.onmessage = (event) => {
@@ -858,7 +955,9 @@ scope.onmessage = (event) => {
     queuedCommands += 1;
     commandFlight = commandFlight.then(async () => {
       try {
-        scope.postMessage(await command.execute());
+        const response = await command.execute();
+        if ("ok" in response && response.ok && annotationEvidenceCommands.has(request.kind)) markAnnotationWorkDirty();
+        scope.postMessage(response);
         if (command.closeAfterResponse) scope.close();
       } catch (error) {
         scope.postMessage(failure(command.requestId, error));

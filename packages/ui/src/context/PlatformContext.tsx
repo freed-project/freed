@@ -1,3 +1,4 @@
+import type { LibraryCoreHydratedAnnotations } from "@freed/shared/library-core";
 import type { LibraryCountResource } from "./library-count-resource.js";
 export type { LibraryCountResource, LibraryCountResourceState, LibraryCountSnapshot, LibraryCountSelectionIdentity } from "./library-count-resource.js";
 /**
@@ -451,6 +452,7 @@ export interface SaveUrlOptions {
 }
 
 export interface UpdateSavedContentInput {
+  annotationSnapshot?: LibraryCoreHydratedAnnotations;
   notes: string;
   preview?: SaveUrlPreview;
   url: string;
@@ -745,7 +747,7 @@ export interface PlatformConfig {
   readLibraryFacetSummary?: () => Promise<LibraryFacetSummary>;
 
   /** One exact source-fenced item row from platform-local Library storage. */
-  readLibraryItemDetail?: (globalId: string) => Promise<FeedItem | null>;
+  readLibraryItemDetail?: (globalId: string) => Promise<FeedItem | Readonly<{ item: FeedItem; annotations: LibraryCoreHydratedAnnotations | null }> | null>;
 
   /** One bounded Map candidate set with author identity joined inside SQLite. */
   readLibraryMapCandidates?: () => Promise<

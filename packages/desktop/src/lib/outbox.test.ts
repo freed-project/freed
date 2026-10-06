@@ -169,7 +169,8 @@ describe("outbox processor", () => {
               preservedBody: { storage: "none", blobDigest: null }, mediaBlobDigests: [] } }, request);
           if (!parsed.ok) throw new Error(parsed.error); return parsed.value;
         }
-        if (request.queryId === "item_annotations_v1") return { source, highlights: [], tags: [] };
+        if (request.queryId === "item_annotations_v1") return { queryId: request.queryId, schemaVersion: 1, globalId: request.globalId, source, highlights: [], tags: [] };
+        if (request.queryId === "item_annotation_edit_state_v1") return { queryId: request.queryId, schemaVersion: 1, globalId: request.globalId, source, pending: false, localSequence: 0 };
         if (request.queryId === "optimistic_fields_v1") return { source, rows: [] };
         throw new Error(`unexpected query ${request.queryId}`);
       } } as LibraryCoreNormalizedReaderRuntime;

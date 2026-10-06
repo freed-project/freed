@@ -1,3 +1,4 @@
+import { parseLibraryCoreFeedPageSourceV1 } from "@freed/shared/library-core";
 import { snapshotLibraryCoreRecoverySavedUrlEditsV1, reviseLibraryCoreRecoverySavedUrlV1, decodeLibraryCoreFractionalNumbersV1, type RecoverySavedUrlEdit } from "@freed/shared/library-core";
 import { loadPwaRecoverySavedUrlDrafts } from "./library-core-pwa-recovery-editors";
 import { snapshotLibraryCoreRecoveryPreferencePatchesV1, sameLibraryCoreRecoveryPreferenceScopeV1 } from "@freed/shared/library-core";
@@ -156,14 +157,16 @@ async function finalizeFollowerTransaction(
 async function commitFollowerTransaction(
   context: LibraryCoreFollowerMutationContextV1,
   members: Parameters<typeof assembleLibraryCoreTransactionV1>[0],
+  expectedSource?: import("@freed/shared/library-core").LibraryCoreFeedPageSourceV1,
 ): Promise<LibraryCoreFollowerIntentCommitResultV1> {
   const { commit, finalized } = await finalizeFollowerTransaction(context, members);
+  const localCommit = Object.freeze({ ...commit, ...(expectedSource ? { expectedSource } : {}) });
   let receipt: LibraryCoreFollowerIntentCommitResultV1;
   try {
-    receipt = await commitPwaFollowerIntent(commit);
+    receipt = await commitPwaFollowerIntent(localCommit);
   } catch (error) {
     if (!isPwaLibraryCoreSqliteWorkerUnavailableError(error)) throw error;
-    receipt = await commitPwaFollowerIntent(commit);
+    receipt = await commitPwaFollowerIntent(localCommit);
   }
   if (
     receipt.actorId !== context.actor_id ||
@@ -372,7 +375,10 @@ export async function commitPwaLibraryCoreFeedItemAnnotationSets(
     tags: readonly string[];
   }>[],
   assignedAtMs: number,
+  expectedSource?: import("@freed/shared/library-core").LibraryCoreFeedPageSourceV1,
 ): Promise<void> {
+  const source = expectedSource === undefined ? undefined : parseLibraryCoreFeedPageSourceV1(expectedSource);
+  if (source && !source.ok) throw new TypeError(source.error);
   if (
     assignments.length === 0 ||
     assignments.length > PWA_LIBRARY_CORE_SQLITE_ANNOTATION_BATCH_LIMIT
@@ -422,7 +428,7 @@ export async function commitPwaLibraryCoreFeedItemAnnotationSets(
       { digest },
     ),
   );
-  await commitFollowerTransaction(context, members);
+  await commitFollowerTransaction(context, members, source?.value);
 }
 
 export async function commitPwaLibraryCoreFeedItemAnalysisSets(

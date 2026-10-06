@@ -1,3 +1,7 @@
+import { assertLibraryCoreAnnotationEditEligible } from "@freed/shared/library-core";
+import { retainRenderedAnnotationSnapshot } from "@freed/shared/library-core";
+import { parseLibraryCoreFeedPageSourceV1 } from "@freed/shared/library-core";
+import { assembleHydratedAnnotationReplacement, replaceHydratedSavedNote, sameAnnotationSource } from "@freed/shared/library-core";
 import { desktopLibraryCountResource } from "./library-count-resource";
 import { refreshLibraryCoreDesktopRole, refreshLibraryCoreDesktopRoleAfterPending } from "./library-core-desktop-role";
 import { snapshotLibraryCoreRecoverySavedUrlEditsV1, reviseLibraryCoreRecoverySavedUrlV1, decodeLibraryCoreFractionalNumbersV1, type RecoverySavedUrlEdit } from "@freed/shared/library-core";
@@ -65,6 +69,7 @@ import {
   compareLibraryCoreUtf8V1,
   FRIEND_REPLACE_PAYLOAD_SCHEMA,
   finalizeLibraryCoreTransactionV1,
+  measureLibraryCoreTransactionEnvelopeBytesV1,
   LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_RECORDS,
   LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES,
   LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS,
@@ -95,8 +100,8 @@ import {
   RSS_FEED_TITLE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   RSS_FEED_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   readLibraryCoreNormalizedItemDetailV1,
-  canonicalizeFeedItemTagsV1,
   canonicalizeFeedItemHighlightsV1,
+  canonicalizeFeedItemTagsV1,
   canonicalizeFeedItemAnalysisV1,
   sha256LowerHex,
   type AccountRemoveTransactionMemberInputV1,
@@ -526,6 +531,7 @@ async function signNormalizedLibraryFollowerOperation(input: {
 
 async function enqueueNormalizedLibraryFollowerIntent(
   canonicalEnvelopeJson: readonly string[],
+  expectedSource?: import("@freed/shared/library-core").LibraryCoreFeedPageSourceV1,
 ): Promise<SqliteLibraryNormalizedFollowerIntentReceipt> {
   if (
     canonicalEnvelopeJson.length === 0 ||
@@ -541,6 +547,7 @@ async function enqueueNormalizedLibraryFollowerIntent(
       request: {
         canonicalEnvelopeJson: [...canonicalEnvelopeJson],
         enqueuedAtMs: Date.now(),
+        ...(expectedSource ? { expectedSource } : {}),
       },
     },
   );
@@ -755,10 +762,14 @@ async function finalizeAndSubmitTransaction(
   context: SqliteLibraryMutationContext,
   members: Parameters<typeof assembleLibraryCoreTransactionV1>[0],
   committedAtMs: number,
+  expectedSource?: import("@freed/shared/library-core").LibraryCoreFeedPageSourceV1,
 ): Promise<void> {
+  const source = expectedSource === undefined ? undefined : parseLibraryCoreFeedPageSourceV1(expectedSource);
+  if (source && !source.ok) throw new TypeError(source.error);
+  const admissionSource = source?.value;
   const { canonicalEnvelopeJson, finalized } = await finalizeSignedTransaction(context, members);
   if (context.mode === "follower") {
-    await enqueueNormalizedLibraryFollowerIntent(canonicalEnvelopeJson);
+    await enqueueNormalizedLibraryFollowerIntent(canonicalEnvelopeJson, admissionSource);
     return;
   }
   const receipt = await invoke<SqliteLibraryNormalizedMutationReceipt>(
@@ -768,6 +779,7 @@ async function finalizeAndSubmitTransaction(
         libraryId: context.libraryId,
         canonicalEnvelopeJson,
         committedAtMs,
+        ...(admissionSource ? { expectedSource: admissionSource } : {}),
       },
     },
   );
@@ -1083,52 +1095,97 @@ export async function prepareDesktopRecoveryAnnotationTransaction(
   return Object.freeze((await finalizeSignedTransaction(context, members)).canonicalEnvelopeJson);
 }
 
+/** Edit only the item note; untouched canonical quote digests never enter an inline assembler. */
+async function updateSqliteSavedItemNote(globalId: string, note: string, originalSnapshot: import("@freed/shared/library-core").LibraryCoreHydratedAnnotations): Promise<void> {
+  const snapshot = retainRenderedAnnotationSnapshot(originalSnapshot, globalId);
+  await assertLibraryCoreAnnotationEditEligible(queryNormalizedLibrary, snapshot);
+  const originals = snapshot.originals;
+  const context = await mutationContext();
+  if (!context) throw new Error("Normalized SQLite annotation context is required");
+  const now = Date.now();
+  const payload = replaceHydratedSavedNote(snapshot, note, now);
+  const current = await queryNormalizedLibrary({ queryId: "item_annotations_v1", schemaVersion: 1, globalId });
+  if (!sameAnnotationSource(current.source, originals.source)) throw new Error("Annotation source changed; reopen the item");
+  const transactionId = `desktop-library-annotations:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+  const members = annotationTransactionMembers(context, [{ entityId: globalId, highlights: payload.highlights, tags: payload.tags }], transactionId, now);
+  await finalizeAndSubmitTransaction(context, members, now, originals.source);
+}
+
+/** Only the fixed initially-missing import set may use independent initialization batches.
+ * Captures and batches commit separately. A failed import is not rolled back as a whole.
+ */
+async function initializeNewFeedItemAnnotations(
+  input: readonly Readonly<{ entityId: string; highlights: readonly Highlight[]; tags: readonly string[] }>[],
+  assignedAtMs: number,
+): Promise<boolean> {
+  const assignments = [...new Map(input.map(row => [row.entityId, row])).values()];
+  const limit = LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.feed_item_annotations_replace.maximumMembers;
+  for (let start = 0; start < assignments.length;) {
+    const context = await mutationContext();
+    if (!context) return false;
+    const transactionId = `desktop-library-annotations:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+    let count = Math.min(limit, assignments.length - start);
+    let members;
+    // Partition before reading originals or signing. Never resize/reprepare a stale batch.
+    for (;;) {
+      const batch = assignments.slice(start, start + count).map(row => ({
+        entityId: row.entityId,
+        highlights: canonicalizeFeedItemHighlightsV1(row.highlights),
+        tags: canonicalizeFeedItemTagsV1(row.tags),
+      }));
+      members = annotationTransactionMembers(context, batch, transactionId, assignedAtMs);
+      try {
+        measureLibraryCoreTransactionEnvelopeBytesV1(assembleLibraryCoreTransactionV1(
+          members, context.previousChainDigest as LibraryCoreLowercaseHex64, { digest: operationDigest },
+        ));
+        break;
+      } catch (error) {
+        if (!(error instanceof RangeError) || count === 1) throw error;
+        count = Math.max(1, Math.floor(count / 2));
+      }
+    }
+    let expectedSource: import("@freed/shared/library-core").LibraryCoreFeedPageSourceV1 | undefined;
+    for (const assignment of assignments.slice(start, start + count)) {
+      const originals = await queryNormalizedLibrary({ queryId: "item_annotations_v1", schemaVersion: 1, globalId: assignment.entityId });
+      if (originals.tags.length || originals.highlights.length) throw new Error("Imported item annotations already exist; initialization refused");
+      if (expectedSource && !sameAnnotationSource(expectedSource, originals.source)) throw new Error("Annotation source changed; initialization refused");
+      expectedSource ??= originals.source;
+    }
+    await finalizeAndSubmitTransaction(context, members, assignedAtMs, expectedSource);
+    start += count;
+  }
+  return true;
+}
+
 async function maybeSubmitFeedItemAnnotationSets(
   input: readonly Readonly<{
     entityId: string;
     highlights: readonly Highlight[];
     tags: readonly string[];
+    annotationSnapshot: import("@freed/shared/library-core").LibraryCoreHydratedAnnotations;
   }>[],
   assignedAtMs: number,
 ): Promise<boolean> {
-  let context = await mutationContext();
-  if (!context) return false;
-  const unique = new Map<
-    string,
-    Readonly<{
-      highlights: ReturnType<typeof canonicalizeFeedItemHighlightsV1>;
-      tags: ReturnType<typeof canonicalizeFeedItemTagsV1>;
-    }>
-  >();
-  for (const assignment of input) {
-    unique.set(assignment.entityId, {
-      highlights: canonicalizeFeedItemHighlightsV1(assignment.highlights),
-      tags: canonicalizeFeedItemTagsV1(assignment.tags),
-    });
-  }
-  const assignments = [...unique].map(([entityId, annotations]) => ({
-    entityId,
-    ...annotations,
-  }));
-  if (assignments.length === 0) return true;
-  const batchLimit =
-    LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.feed_item_annotations_replace
-      .maximumMembers;
+  const assignments = [...new Map(input.map(row => [row.entityId, { ...row, annotationSnapshot: retainRenderedAnnotationSnapshot(row.annotationSnapshot, row.entityId) }])).values()];
+  const batchLimit = LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.feed_item_annotations_replace.maximumMembers;
+  let expectedSource: import("@freed/shared/library-core").LibraryCoreFeedPageSourceV1 | undefined;
   for (let start = 0; start < assignments.length; start += batchLimit) {
-    const batchContext = context;
-    const batch = assignments.slice(start, start + batchLimit);
-    const transactionId =
-      `desktop-library-annotations:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
-    const members = annotationTransactionMembers(batchContext, batch, transactionId, assignedAtMs);
-    await finalizeAndSubmitTransaction(batchContext, members, assignedAtMs);
-    if (start + batch.length < assignments.length) {
-      context = await mutationContext();
-      if (!context) {
-        throw new Error(
-          "Library mutation context changed during annotation commit",
-        );
-      }
+    const batch = [];
+    for (const assignment of assignments.slice(start, start + batchLimit)) {
+      const originals = await queryNormalizedLibrary({ queryId: "item_annotations_v1", schemaVersion: 1, globalId: assignment.entityId });
+      const snapshot = assignment.annotationSnapshot;
+      await assertLibraryCoreAnnotationEditEligible(queryNormalizedLibrary, snapshot);
+      if (!sameAnnotationSource(snapshot.originals.source, originals.source) ||
+          (expectedSource && !sameAnnotationSource(expectedSource, snapshot.originals.source))) throw new Error("Annotation source changed; reopen the item");
+      expectedSource ??= snapshot.originals.source;
+      const payload = assembleHydratedAnnotationReplacement(snapshot, assignment.highlights, assignment.tags, assignedAtMs);
+      batch.push({ entityId: assignment.entityId, highlights: payload.highlights, tags: payload.tags });
     }
+    const context = await mutationContext();
+    if (!context) return false;
+    const transactionId = `desktop-library-annotations:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+    const members = annotationTransactionMembers(context, batch, transactionId, assignedAtMs);
+    await finalizeAndSubmitTransaction(context, members, assignedAtMs, expectedSource);
   }
   return true;
 }
@@ -2670,7 +2727,7 @@ async function insertMissingSqliteItems(
       (item.userState.highlights?.length ?? 0) > 0,
   );
   if (
-    !(await maybeSubmitFeedItemAnnotationSets(
+    !(await initializeNewFeedItemAnnotations(
       annotated.map((item) => ({
         entityId: item.globalId,
         highlights: item.userState.highlights ?? [],
@@ -3140,15 +3197,18 @@ export async function dispatchSqliteMutation(
       result = summary;
       break;
     }
+    case "UPDATE_SAVED_ITEM_NOTE": {
+      await updateSqliteSavedItemNote(message.globalId, message.note, message.annotationSnapshot);
+      changedIds = [message.globalId];
+      source = "item_patch";
+      break;
+    }
     case "UPDATE_FEED_ITEM": {
+      const changesAnnotations = message.updates.userState?.tags !== undefined || message.updates.userState?.highlights !== undefined;
+      const snapshot = changesAnnotations ? retainRenderedAnnotationSnapshot(message.annotationSnapshot, message.globalId) : null;
       const [item] = await readSqliteItems([message.globalId]);
       if (item) {
         const updated = deepMerge(item, message.updates);
-        if (!(await maybeSubmitFeedItemCaptures([updated], timestamp))) {
-          throw new Error(
-            "Normalized SQLite FeedItem mutation context is required",
-          );
-        }
         if (
           (message.updates.userState?.tags !== undefined ||
             message.updates.userState?.highlights !== undefined) &&
@@ -3156,8 +3216,9 @@ export async function dispatchSqliteMutation(
             [
               {
                 entityId: message.globalId,
-                highlights: updated.userState.highlights ?? [],
-                tags: updated.userState.tags,
+                highlights: message.updates.userState?.highlights ?? snapshot!.highlights!,
+                tags: message.updates.userState?.tags ?? snapshot!.originals.tags,
+                annotationSnapshot: snapshot!,
               },
             ],
             timestamp,
@@ -3165,6 +3226,13 @@ export async function dispatchSqliteMutation(
         ) {
           throw new Error(
             "Normalized SQLite FeedItem annotation mutation context is required",
+          );
+        }
+        // Annotation admission precedes capture, so stale provenance cannot partially capture.
+        // These remain separate transactions; later capture failure does not roll back annotations.
+        if (!(await maybeSubmitFeedItemCaptures([updated], timestamp))) {
+          throw new Error(
+            "Normalized SQLite FeedItem mutation context is required",
           );
         }
         if (

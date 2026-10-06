@@ -2,6 +2,58 @@
 
 > **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, Windows signing plan scaffolded, legal consent gate shipped, tri-state sidebar chrome shipped, public-safe bug reporting shipped, runtime memory telemetry shipped, native startup recovery shipped, bundled recovery updater flow shipped, permanent local social media vault shipped, desktop hot-path side-effect scheduling shipped, bounded SQLite user mutations and queries shipped, visible-scope bulk actions shipped, background runtime coordination shipped, renderer recovery safe mode shipped, deep local WebKit diagnostics shipped, adaptive high-memory scrape budgets shipped, explicit local-only primary Library authority shipped, normalized sample-data accounting, Story Wall candidates, Saved analytics, full-library native search, bounded scheduled RSS refresh, Google Drive checkpoint publication, follower intents, global background activity monitoring, and native terminal sync soaks shipped)
 
+Annotation text now has a bounded authenticated local read contract that retains
+canonical digest references separately from display text. Synthetic native
+SQLite/vault and Chromium PWA worker/OPFS restart proofs cover exact bytes and
+nondestructive read failures. Optional source admission now checks inside the
+existing local write transaction after exact retry recognition. Unchanged quote
+digests survive note/tag assembly. Selected-item results now carry separate original
+annotation snapshots through both existing note-editor entrances and local note
+admission. Missing, corrupt, oversized, unavailable and stale reads prevent
+incomplete edits. Unchanged-URL note edits use local metadata without requesting
+a preview; new-save and changed-URL previews retain their 350 ms delay.
+Bounded annotation reads preserve NUL and leading U+FEFF in notes, tags and inline
+quotes, distinguish null from empty notes, and refuse invalid UTF-8 or excess
+bytes. Synthetic signed native SQLite/vault and PWA worker/OPFS restart tests
+preserve edited notes and untouched canonical annotations. These fixtures do
+not establish installed Desktop IPC or pending-view editing acceptance.
+
+Primary new-item annotation initialization uses independent source-fenced batches
+bounded by 256 members and 4 MiB of envelopes. It refuses nonempty canonical
+originals and source races. Atomicity applies to each transaction, not the whole
+import; retry lookup can skip items whose initialization did not finish.
+Generic existing-item annotation replacement requires the caller's original
+snapshot and refuses missing or stale provenance before capture or annotation
+writes. Untouched fields retain their canonical values. Annotation admission and
+capture remain separate transactions: a later capture failure does not undo an
+accepted annotation. New-item initialization excludes initially existing IDs and
+refuses conflicting canonical annotations. Generic store APIs have no production
+annotation-edit UI caller; callers without a snapshot fail closed.
+
+The pending-edit repair refuses fresh replacement while the same item has an
+unresolved local annotation intent. Eligibility remains separate from authenticated
+quote display. READY-only admission preserves exact retries before this guard.
+Device-local physical catalogs 4/5 add bounded upgrade receipts and unresolved
+markers without changing canonical or wire identities. Owner continuations page
+only unresolved markers, yield between transactions, and publish local change
+hints when authenticated settlement permits editing again. Native SQLite and
+SQLite-WASM cursor fixtures plus a shipping Chromium OPFS owner/reopen fixture
+cover retained progress beyond an unresolved prefix. Runtime review and remaining
+lifecycle proofs are outstanding; Windows range-vault and installed acceptance
+remain open.
+Startup migration now retains the existing owner across bounded slices and yields
+until READY. Ordinary path opens cannot advance migration. Explicit fresh setup
+uses the owned upgrader before publication. Native subprocess interruption and
+PWA worker cancellation/reopen fixtures preserve committed progress and the
+original pin. Non-Unix startup is wired before runtime exposure; Linux path-helper
+proof does not establish Windows execution.
+PWA startup also yields safely when its first budget expires before bootstrap
+creates a receipt. Native maintenance uses one annotation-specific thread owner;
+reset and process exit stop and join its bounded current slice. Controlled-callback
+tests cover dirty arrivals, busy deferral, latched refusal and restart. Real binding
+and SQLite proofs remain separate from installed runtime acceptance.
+No new quote editor is included.
+
 Native provider admission now has bounded lifetime counters in the existing
 runtime-health sampler. The soak verdict reports their delta only across a
 stable, covered interval with no active provider commands or provider windows.

@@ -138,6 +138,7 @@ export function AppShell({ children }: AppShellProps) {
   const closeAddFeedDialog = useCommandSurfaceStore((s) => s.closeAddFeedDialog);
   const savedContentOpen = useCommandSurfaceStore((s) => s.savedContentOpen);
   const savedContentInitialUrl = useCommandSurfaceStore((s) => s.savedContentInitialUrl);
+  const savedContentAnnotations = useCommandSurfaceStore((s) => s.savedContentAnnotations);
   const savedContentEditItem = useCommandSurfaceStore((s) => s.savedContentEditItem);
   const openSavedContentDialog = useCommandSurfaceStore((s) => s.openSavedContentDialog);
   const openSavedContentEditor = useCommandSurfaceStore((s) => s.openSavedContentEditor);
@@ -193,8 +194,8 @@ export function AppShell({ children }: AppShellProps) {
       openSavedContentDialog(detail?.initialUrl);
     };
     const handleEditSavedContent = (event: Event) => {
-      const detail = (event as CustomEvent<{ item?: import("@freed/shared").FeedItem }>).detail;
-      if (detail?.item) openSavedContentEditor(detail.item);
+      const detail = (event as CustomEvent<{ item?: import("@freed/shared").FeedItem; annotations?: import("@freed/shared/library-core").LibraryCoreHydratedAnnotations }>).detail;
+      if (detail?.item) openSavedContentEditor(detail.item, detail.annotations);
     };
 
     window.addEventListener("freed:open-save-content-dialog", handleOpenSavedContent);
@@ -617,6 +618,7 @@ export function AppShell({ children }: AppShellProps) {
           open={capabilities.libraryEdits && savedContentOpen}
           initialUrl={savedContentInitialUrl}
           editItem={savedContentEditItem}
+          annotationSnapshot={savedContentAnnotations}
           initialError={savedContentError}
           onClose={handleCloseSavedContentDialog}
         />

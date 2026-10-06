@@ -1579,10 +1579,10 @@
     "item_annotations_v1": {
       "maximumScanRows": 64,
       "countSql": "SELECT count(*) FROM library_feed_item_highlights WHERE global_id = ?1;",
-      "sql": "SELECT created_at AS createdAt, substr(note, 1, 8193) AS note, text_value AS text, text_blob_digest AS textBlobDigest FROM library_feed_item_highlights WHERE global_id = ?1 ORDER BY ordinal LIMIT 65;",
+      "sql": "SELECT created_at AS createdAt, CASE WHEN length(CAST(note AS BLOB)) <= 8192 THEN CAST(note AS BLOB) ELSE substr(CAST(note AS BLOB), 1, 8193) END AS note, CASE WHEN length(CAST(text_value AS BLOB)) <= 65536 THEN CAST(text_value AS BLOB) ELSE substr(CAST(text_value AS BLOB), 1, 65537) END AS text, text_blob_digest AS textBlobDigest FROM library_feed_item_highlights WHERE global_id = ?1 ORDER BY ordinal LIMIT 65;",
       "variants": {
         "tags": {
-          "sql": "SELECT substr(tag, 1, 1025) AS tag FROM library_feed_item_tags WHERE global_id = ?1 ORDER BY tag COLLATE BINARY LIMIT 65;"
+          "sql": "SELECT CASE WHEN length(CAST(tag AS BLOB)) <= 512 THEN CAST(tag AS BLOB) ELSE substr(CAST(tag AS BLOB), 1, 513) END AS tag FROM library_feed_item_tags WHERE global_id = ?1 ORDER BY tag COLLATE BINARY LIMIT 65;"
         }
       }
     },
@@ -1755,6 +1755,24 @@
       "maximumScanRows": 65,
       "sql": "SELECT item.global_id AS globalId, item.platform, item.content_type AS contentType, item.published_at AS publishedAt, item.captured_at AS capturedAt, nullif(substr(item.author_id, 1, 1024), '') AS authorId, nullif(substr(item.author_display_name, 1, 512), '') AS authorDisplayName, nullif(substr(item.author_handle, 1, 256), '') AS authorHandle, substr(item.author_avatar_url, 1, 2048) AS authorAvatarUrl, substr(item.source_url, 1, 2048) AS sourceUrl, item.read_at AS readAt, item.seen_synced_at AS seenSyncedAt, item.saved, item.archived, item.liked, item.liked_at AS likedAt, item.liked_synced_at AS likedSyncedAt, substr(item.content_text, 1, 1500) AS contentText, substr(item.link_title, 1, 512) AS linkPreviewTitle, substr(item.link_url, 1, 2048) AS linkPreviewUrl, substr(item.location_name, 1, 512) AS locationName, item.engagement_likes AS engagementLikes, item.engagement_comments AS engagementComments, item.preserved_reading_time AS readingTimeMinutes, (SELECT json_group_array(source_url) FROM (SELECT media.source_url FROM library_feed_item_media AS media WHERE media.global_id = item.global_id ORDER BY media.ordinal LIMIT 8)) AS mediaUrlsJson, (SELECT json_group_array(media_type) FROM (SELECT media.media_type FROM library_feed_item_media AS media WHERE media.global_id = item.global_id ORDER BY media.ordinal LIMIT 8)) AS mediaTypesJson, (SELECT json_group_array(tag) FROM (SELECT item_tag.tag FROM library_feed_item_tags AS item_tag WHERE item_tag.global_id = item.global_id ORDER BY item_tag.tag COLLATE BINARY LIMIT 32)) AS tagsJson, (SELECT json_group_array(signal) FROM (SELECT score.signal FROM library_feed_item_signal_scores AS score WHERE score.global_id = item.global_id AND score.tagged = 1 ORDER BY score.signal COLLATE BINARY LIMIT 32)) AS contentSignalTagsJson, event.starts_at AS eventStartsAt, CAST(round(event.confidence * 10000.0) AS INTEGER) AS eventConfidenceBasisPoints, item.hidden, substr(item.rss_feed_url, 1, 8192) AS rssFeedUrl, COALESCE(substr(item.rss_feed_title, 1, 2048), '') AS rssFeedTitle, COALESCE(substr(item.rss_site_url, 1, 8192), '') AS rssSiteUrl, substr(item.sample_batch_id, 1, 4096) AS sampleBatchId, item.sample_generated_at AS sampleGeneratedAt, item.sample_generator_version AS sampleGeneratorVersion, (SELECT person.care_level FROM library_accounts AS account JOIN library_persons AS person ON person.id = account.person_id WHERE account.kind = 'social' AND account.provider = item.platform AND account.external_id = item.author_id AND person.relationship_status = 'friend' ORDER BY account.id COLLATE BINARY LIMIT 1) AS rankingCareLevel, item.engagement_reposts AS rankingEngagementReposts, item.engagement_views AS rankingEngagementViews, (SELECT json_group_array(topic) FROM (SELECT topic FROM library_feed_item_topics WHERE global_id = item.global_id ORDER BY topic COLLATE BINARY LIMIT 64)) AS rankingTopicsJson FROM library_feed_items AS item INDEXED BY library_feed_items_priority_refresh LEFT JOIN library_feed_item_events AS event ON event.global_id = item.global_id WHERE (item.priority_computed_at IS NULL OR item.priority_computed_at - item.published_at < 604800000) AND (item.priority_computed_at IS NULL OR item.priority_computed_at < ?1) ORDER BY item.priority_computed_at ASC, item.global_id COLLATE BINARY ASC LIMIT ?2;",
       "countSql": "SELECT total_count FROM library_facet_summary WHERE singleton_id = 1;"
+    },
+    "item_annotation_text_range_v1": {
+      "maximumScanRows": 65,
+      "countSql": "SELECT count(*) FROM (SELECT ordinal FROM library_feed_item_highlights WHERE global_id = ?1 ORDER BY ordinal LIMIT 65);",
+      "sql": "SELECT h.text_value AS text, h.text_blob_digest AS blobDigest, CASE WHEN h.text_value IS NOT NULL THEN length(CAST(h.text_value AS BLOB)) ELSE b.byte_length END AS byteLength, b.storage_layout AS storageLayout, b.chunk_count AS chunkCount, b.range_count AS rangeCount, b.range_index_root_digest AS rangeRoot, COALESCE(p.policy, 'metadata_only') AS policy FROM library_feed_item_highlights h LEFT JOIN library_blobs b ON b.content_digest = h.text_blob_digest LEFT JOIN library_device_content_policies p ON p.content_digest = h.text_blob_digest WHERE h.global_id = ?1 ORDER BY h.ordinal LIMIT 1 OFFSET ?2;",
+      "variants": {
+        "chunks": {
+          "sql": "SELECT chunk_index AS memberIndex, chunk_digest AS digest, bytes FROM library_blob_chunks WHERE content_digest = ?1 ORDER BY chunk_index LIMIT 2;"
+        },
+        "ranges": {
+          "sql": "SELECT r.range_index AS memberIndex, r.byte_offset AS byteOffset, r.byte_length AS byteLength, r.range_digest AS digest, l.storage_key AS storageKey, l.storage_kind AS storageKind FROM library_content_ranges r LEFT JOIN library_device_content_ranges l ON l.content_digest = r.content_digest AND l.range_index = r.range_index AND l.verified_byte_length = r.byte_length AND l.verified_range_digest = r.range_digest WHERE r.content_digest = ?1 ORDER BY r.range_index LIMIT 65;"
+        }
+      }
+    },
+    "item_annotation_edit_state_v1": {
+      "maximumScanRows": 1,
+      "countSql": "SELECT 1;",
+      "sql": "SELECT EXISTS (SELECT 1 FROM library_local_annotation_unresolved WHERE entity_id = ?1 LIMIT 1) AS pending, sequence AS localSequence FROM library_local_change_state WHERE singleton_id = 1;"
     }
   },
   "queryRowModels": {
@@ -2859,6 +2877,120 @@
         "name": "path",
         "nullable": false
       }
+    ],
+    "item_annotation_text_range_v1": [
+      {
+        "enumValues": [],
+        "integerValues": [],
+        "kind": "text",
+        "maximumInteger": null,
+        "maximumUtf8Bytes": 64,
+        "minimumInteger": null,
+        "minimumUtf8Bytes": 0,
+        "name": "blobDigest",
+        "nullable": true
+      },
+      {
+        "enumValues": [],
+        "integerValues": [],
+        "kind": "integer",
+        "maximumInteger": 9007199254740991,
+        "maximumUtf8Bytes": null,
+        "minimumInteger": 0,
+        "minimumUtf8Bytes": null,
+        "name": "byteLength",
+        "nullable": true
+      },
+      {
+        "enumValues": [],
+        "integerValues": [],
+        "kind": "integer",
+        "maximumInteger": 9007199254740991,
+        "maximumUtf8Bytes": null,
+        "minimumInteger": 0,
+        "minimumUtf8Bytes": null,
+        "name": "chunkCount",
+        "nullable": true
+      },
+      {
+        "enumValues": [],
+        "integerValues": [],
+        "kind": "text",
+        "maximumInteger": null,
+        "maximumUtf8Bytes": 32,
+        "minimumInteger": null,
+        "minimumUtf8Bytes": 0,
+        "name": "policy",
+        "nullable": false
+      },
+      {
+        "enumValues": [],
+        "integerValues": [],
+        "kind": "integer",
+        "maximumInteger": 9007199254740991,
+        "maximumUtf8Bytes": null,
+        "minimumInteger": 0,
+        "minimumUtf8Bytes": null,
+        "name": "rangeCount",
+        "nullable": true
+      },
+      {
+        "enumValues": [],
+        "integerValues": [],
+        "kind": "text",
+        "maximumInteger": null,
+        "maximumUtf8Bytes": 64,
+        "minimumInteger": null,
+        "minimumUtf8Bytes": 0,
+        "name": "rangeRoot",
+        "nullable": true
+      },
+      {
+        "enumValues": [],
+        "integerValues": [],
+        "kind": "text",
+        "maximumInteger": null,
+        "maximumUtf8Bytes": 32,
+        "minimumInteger": null,
+        "minimumUtf8Bytes": 0,
+        "name": "storageLayout",
+        "nullable": true
+      },
+      {
+        "enumValues": [],
+        "integerValues": [],
+        "kind": "text",
+        "maximumInteger": null,
+        "maximumUtf8Bytes": 65536,
+        "minimumInteger": null,
+        "minimumUtf8Bytes": 0,
+        "name": "text",
+        "nullable": true
+      }
+    ],
+    "item_annotation_edit_state_v1": [
+      {
+        "enumValues": [],
+        "integerValues": [],
+        "kind": "integer",
+        "maximumInteger": 9007199254740991,
+        "maximumUtf8Bytes": null,
+        "minimumInteger": 0,
+        "minimumUtf8Bytes": null,
+        "name": "localSequence",
+        "nullable": false
+      },
+      {
+        "enumValues": [],
+        "integerValues": [],
+        "kind": "boolean",
+        "maximumInteger": null,
+        "maximumUtf8Bytes": null,
+        "minimumInteger": null,
+        "minimumUtf8Bytes": null,
+        "name": "pending",
+        "nullable": false
+      }
     ]
   },
   "scopeActionPrograms": {
@@ -2886,6 +3018,8 @@
     "filter_scope_summary_v1",
     "friend_candidate_review_v1",
     "friends_directory_page_v1",
+    "item_annotation_edit_state_v1",
+    "item_annotation_text_range_v1",
     "item_annotations_v1",
     "item_detail_v1",
     "item_reader_body_v1",
@@ -2927,5 +3061,9 @@
     "selection_ancestors_v1": "SELECT fullkey FROM json_tree(?1) WHERE type='object' AND fullkey<>'$' ORDER BY id LIMIT 33;",
     "pending_object_extras_v1": "SELECT path FROM library_local_preference_nodes INDEXED BY library_local_preference_node_lookup WHERE actor_id=?1 AND path >= (?2 || '.') COLLATE BINARY AND path < (?2 || '/') COLLATE BINARY AND actor_counter>=?3 AND path <> (?2 || '.bits') AND NOT (path >= (?2 || '.bits' || '.') COLLATE BINARY AND path < (?2 || '.bits' || '/') COLLATE BINARY) AND NOT (path >= (?2 || '.bits' || '[') COLLATE BINARY AND path < (?2 || '.bits' || '\\') COLLATE BINARY) AND path <> (?2 || '.codec') AND NOT (path >= (?2 || '.codec' || '.') COLLATE BINARY AND path < (?2 || '.codec' || '/') COLLATE BINARY) AND NOT (path >= (?2 || '.codec' || '[') COLLATE BINARY AND path < (?2 || '.codec' || '\\') COLLATE BINARY) LIMIT 1;",
     "canonical_object_extras_v1": "SELECT path FROM library_preferences WHERE path >= (?1 || ?2 || '.') COLLATE BINARY AND path < (?1 || ?2 || '/') COLLATE BINARY AND path <> ((?1 || ?2) || '.bits') AND NOT (path >= ((?1 || ?2) || '.bits' || '.') COLLATE BINARY AND path < ((?1 || ?2) || '.bits' || '/') COLLATE BINARY) AND NOT (path >= ((?1 || ?2) || '.bits' || '[') COLLATE BINARY AND path < ((?1 || ?2) || '.bits' || '\\') COLLATE BINARY) AND path <> ((?1 || ?2) || '.codec') AND NOT (path >= ((?1 || ?2) || '.codec' || '.') COLLATE BINARY AND path < ((?1 || ?2) || '.codec' || '/') COLLATE BINARY) AND NOT (path >= ((?1 || ?2) || '.codec' || '[') COLLATE BINARY AND path < ((?1 || ?2) || '.codec' || '\\') COLLATE BINARY) LIMIT 1;"
-  }
+  },
+  "annotationStorageSchemaVersions": [
+    4,
+    5
+  ]
 }
