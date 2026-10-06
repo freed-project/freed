@@ -1,5 +1,6 @@
 import { getJevClassifierProvider, onJevClassifierProviderChange } from "../lib/jev-provider";
 import { subscribeToLocalAIModelState } from "../lib/local-ai-models";
+import { kevConnectionStatus } from "../lib/kev-client";
 import { gliclassModels } from "../lib/gliclass-client";
 import { useSettingsStore } from "@freed/ui/lib/settings-store";
 import { isJevNative, jevConnectionStatus, onJevCredentialChange } from "../lib/jev-client";
@@ -57,9 +58,11 @@ export function JevClassificationPreview({ embedded = false }: { embedded?: bool
   const libraryVersion = useAppStore((state) => state.libraryItemVersion);
   const readGeneration = useRef(0);
   const connectionGeneration = useRef(0);
+  const classificationGeneration = useRef(0);
   useEffect(() => {
     if (!isJevNative) return;
     readGeneration.current += 1;
+    classificationGeneration.current += 1;
     controller.current?.abort();
     setItems([]); setResults([]);
     decisionsRef.current = {}; setDecisions({});
@@ -79,7 +82,7 @@ export function JevClassificationPreview({ embedded = false }: { embedded?: bool
     try {
       const status = getJevClassifierProvider() === "gliclass-base"
         ? { configured: (await gliclassModels.listModels())[0]?.state.status === "available", model: "GLiClass Base v3.0 (local)", questionPackVersion: "freed-gliclass-signals-experimental-v1", inputUsdPerMillion: 0, maxConcurrency: 1 }
-        : await jevConnectionStatus();
+        : getJevClassifierProvider() === "kev" ? await kevConnectionStatus() : await jevConnectionStatus();
       if (!mounted.current || generation !== connectionGeneration.current) return;
       setConnection(status);
       setError(null);
@@ -102,6 +105,8 @@ export function JevClassificationPreview({ embedded = false }: { embedded?: bool
   }), []);
 
   useEffect(() => onJevClassifierProviderChange(() => {
+    classificationGeneration.current += 1;
+    setFlags(new Set()); setSessionUsage({ input: 0, output: 0, cost: 0 });
     controller.current?.abort(); setResults([]); decisionsRef.current = {}; setDecisions({}); void refreshConnection();
   }), []);
 
@@ -161,6 +166,7 @@ export function JevClassificationPreview({ embedded = false }: { embedded?: bool
   }
 
   async function classify(reclassify: boolean) {
+    const generation = ++classificationGeneration.current;
     const activeController = new AbortController();
     controller.current = activeController;
     setJob("classifying");
@@ -191,7 +197,7 @@ export function JevClassificationPreview({ embedded = false }: { embedded?: bool
           }
           const sourceKey = jevPreviewSourceKey(item);
           await applyJevPreviewSignals(item, signals);
-          if (mounted.current && sourceKey) updateDecisions((current) => ({
+          if (mounted.current && !activeController.signal.aborted && sourceKey) updateDecisions((current) => ({
             ...current,
             [item.globalId]: {
               sourceKey,
@@ -201,9 +207,9 @@ export function JevClassificationPreview({ embedded = false }: { embedded?: bool
             },
           }));
         },
-        onUpdate: (next) => { if (mounted.current) setResults(next); },
+        onUpdate: (next) => { if (mounted.current && generation === classificationGeneration.current) setResults(next); },
       });
-      if (mounted.current) updateDecisions((current) => {
+      if (mounted.current && !activeController.signal.aborted) updateDecisions((current) => {
         const next = { ...current };
         for (const result of completed) {
           const decision = next[result.item.globalId];
@@ -214,7 +220,7 @@ export function JevClassificationPreview({ embedded = false }: { embedded?: bool
         }
         return next;
       });
-      if (mounted.current) setSessionUsage((current) => completed.reduce((total, result) => ({
+      if (mounted.current && generation === classificationGeneration.current) setSessionUsage((current) => completed.reduce((total, result) => ({
         input: total.input + (result.response?.cached ? 0 : result.response?.usage.input_tokens ?? 0),
         output: total.output + (result.response?.cached ? 0 : result.response?.usage.output_tokens ?? 0),
         cost: total.cost + (result.response?.estimatedCostUsd ?? 0),
@@ -283,7 +289,8 @@ export function JevClassificationPreview({ embedded = false }: { embedded?: bool
     return result && sourceKeys.get(selectedId) === jevPreviewSourceKey(result.item) ? result : undefined;
   }, [results, selectedId, sourceKeys]);
   const selectedRules = useMemo(() => selected ? inferContentSignals(selected) : null, [selected]);
-  const classifierName = getJevClassifierProvider() === "gliclass-base" ? "GLiClass Base" : "Jev";
+  const classifierName = getJevClassifierProvider() === "gliclass-base" ? "GLiClass Base" : getJevClassifierProvider() === "kev" ? "Kev" : "Jev";
+  const signalThreshold = getJevClassifierProvider() === "kev" ? 0.8 : CONTENT_SIGNAL_THRESHOLD;
   const selectedJev = currentDecisions[selectedId]?.contentSignals;
   const selectedExperimental = selectedResult?.status === "success"
     ? selectedResult.response?.experimentalSignals ?? currentDecisions[selectedId]?.experimentalSignals
@@ -313,7 +320,7 @@ export function JevClassificationPreview({ embedded = false }: { embedded?: bool
         aria-controls="jev-preview-content"
         className="flex w-full items-center justify-between gap-4 rounded-2xl px-4 py-3 text-left text-sm font-semibold"
       >
-        <span>Jev classification {busy ? "· Working" : ""}</span>
+        <span>{classifierName} classification {busy ? "· Working" : ""}</span>
         <span aria-hidden="true">{expanded ? "−" : "+"}</span>
       </button>
         <div hidden={!expanded} id="jev-preview-content" className="max-h-[min(72vh,48rem)] space-y-4 overflow-y-auto border-t border-[var(--theme-border-subtle)] bg-[var(--theme-bg-elevated)] p-4 text-xs">
@@ -321,7 +328,7 @@ export function JevClassificationPreview({ embedded = false }: { embedded?: bool
             Explore {JEV_SIGNAL_KEYS.length.toLocaleString()} social content signals and requests you could contribute to. Images, audio, and video are not analyzed.
           </p>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-medium">{connectionBusy ? "Checking classifier…" : connection?.configured ? getJevClassifierProvider() === "gliclass-base" ? "Local model ready" : "Key configured" : getJevClassifierProvider() === "gliclass-base" ? "Download local model" : "Key not configured"}</span>
+            <span className="font-medium">{connectionBusy ? "Checking classifier…" : connection?.configured ? getJevClassifierProvider() !== "jev" ? "Local model ready" : "Key configured" : getJevClassifierProvider() !== "jev" ? "Prepare local model" : "Key not configured"}</span>
             <button type="button" onClick={() => void refreshConnection()} disabled={connectionBusy || busy} className={secondaryButton}>Refresh classifier status</button>
           </div>
           {connection && <p className="text-[var(--theme-text-secondary)]">{connection.model} · Questions {connection.questionPackVersion} · {connection.inputUsdPerMillion.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 3 })} / million input tokens{connection.attemptsRemaining !== undefined ? ` · ${connection.attemptsRemaining.toLocaleString()} requests remaining at last check` : ""}</p>}
@@ -369,7 +376,7 @@ export function JevClassificationPreview({ embedded = false }: { embedded?: bool
                   <button type="button" aria-pressed={mode === "rules"} onClick={() => void compare("rules")} disabled={busy} className={mode === "rules" ? primaryButton : secondaryButton}>Rules</button>
                   <button type="button" aria-pressed={mode === "jev"} onClick={() => void compare("jev")} disabled={busy || !hasDecisions} className={mode === "jev" ? primaryButton : secondaryButton}>Jev</button>
                 </div>}
-                <p className="text-[var(--theme-text-secondary)]">{isJevNative ? "Compare rule and Jev scores below. This evaluation does not change your feed." : "Rules recalculates items with usable source text. Jev restores completed decisions and uses rules for other eligible items. Compare the filters in your feed."}</p>
+                <p className="text-[var(--theme-text-secondary)]">{isJevNative ? "Compare rule and classifier scores below. This evaluation does not change your feed." : "Rules recalculates items with usable source text. Jev restores completed decisions and uses rules for other eligible items. Compare the filters in your feed."}</p>
               </div>
               {results.length > 0 && (
                 <div className="space-y-2 rounded-xl border border-[var(--theme-border-subtle)] p-3">
@@ -377,7 +384,7 @@ export function JevClassificationPreview({ embedded = false }: { embedded?: bool
                   <p role="status">{completedCount.toLocaleString()}/{results.length.toLocaleString()} finished · {counts.success.toLocaleString()} evaluated · {counts.failed.toLocaleString()} failed · {counts.skipped.toLocaleString()} skipped · {counts.cancelled.toLocaleString()} cancelled</p>
                   <p>{counts.running.toLocaleString()} active · {counts.queued.toLocaleString()} queued · {counts.cached.toLocaleString()} cached</p>
                   <p>Run usage: {counts.input.toLocaleString()} input / {counts.output.toLocaleString()} output tokens · Estimated {money(counts.cost)}</p>
-                  <p className="text-[var(--theme-text-secondary)]">Usage covers successful responses received by this tab. Failed or cancelled requests may incur additional charges. Cache hits add no new token usage.</p>
+                  <p className="text-[var(--theme-text-secondary)]">{getJevClassifierProvider() === "jev" ? "Usage covers successful responses received by this tab. Failed or cancelled requests may incur additional charges. Cache hits add no new token usage." : "Local inference has no API charge. Cancelling stops Freed’s queued work; the local service may finish an inference already started."}</p>
                   {counts.failed > 0 && <p role="alert" className="text-red-400">{results.find((result) => result.status === "failed")?.error}</p>}
                 </div>
               )}
@@ -397,12 +404,12 @@ export function JevClassificationPreview({ embedded = false }: { embedded?: bool
                   })} />Flag incorrect classification</label>
                   <p className="text-[var(--theme-text-secondary)]">{flags.size.toLocaleString()} flagged in this tab. Flags are cleared when the page reloads.</p>
                   <table className="w-full text-left">
-                    <caption className="mb-2 text-left text-[var(--theme-text-secondary)]">Rules are calculated from source text for comparison. Independent signals activate at {score(CONTENT_SIGNAL_THRESHOLD)}. Overlap is expected.</caption>
+                    <caption className="mb-2 text-left text-[var(--theme-text-secondary)]">Rules are calculated from source text for comparison. Independent signals activate at {score(getJevClassifierProvider() === "kev" ? 0.8 : CONTENT_SIGNAL_THRESHOLD)}. Kev marks uncertain signals as abstained. Overlap is expected.</caption>
                     <thead><tr className="border-b border-[var(--theme-border-subtle)]"><th className="py-2 font-semibold">Signal</th><th className="py-2 text-right font-semibold">Rules</th><th className="py-2 text-right font-semibold">{classifierName}</th></tr></thead>
                     <tbody>
-                      {CONTENT_SIGNAL_KEYS.map((signal) => <tr key={signal} className="border-b border-[var(--theme-border-subtle)]"><td className="py-1.5">{signal.replaceAll("_", " ")}</td><td className="py-1.5 text-right tabular-nums">{score(selectedRules?.scores[signal] ?? 0)}</td><td className={`py-1.5 text-right tabular-nums ${(selectedJev?.scores[signal] ?? 0) >= CONTENT_SIGNAL_THRESHOLD ? "font-semibold text-[var(--theme-accent-primary)]" : ""}`}>{score(selectedJev?.scores[signal])}</td></tr>)}
+                      {CONTENT_SIGNAL_KEYS.map((signal) => <tr key={signal} className="border-b border-[var(--theme-border-subtle)]"><td className="py-1.5">{signal.replaceAll("_", " ")}</td><td className="py-1.5 text-right tabular-nums">{score(selectedRules?.scores[signal] ?? 0)}</td><td className={`py-1.5 text-right tabular-nums ${(selectedJev?.scores[signal] ?? 0) >= signalThreshold ? "font-semibold text-[var(--theme-accent-primary)]" : ""}`}>{score(selectedJev?.scores[signal])}{selectedResult?.response?.abstainedSignals?.includes(signal) ? " · Abstained" : ""}</td></tr>)}
                       <tr><th colSpan={3} className="pb-1 pt-4 text-left font-medium">Preview signals</th></tr>
-                      {JEV_EXPERIMENTAL_SIGNAL_KEYS.map((signal) => <tr key={signal} className="border-b border-[var(--theme-border-subtle)]"><td className="py-1.5">{signal.replaceAll("_", " ")}</td><td className="py-1.5 text-right text-[var(--theme-text-muted)]">Not available</td><td className={`py-1.5 text-right tabular-nums ${(selectedExperimental?.scores[signal] ?? 0) >= CONTENT_SIGNAL_THRESHOLD ? "font-semibold text-[var(--theme-accent-primary)]" : ""}`}>{score(selectedExperimental?.scores[signal])}</td></tr>)}
+                      {JEV_EXPERIMENTAL_SIGNAL_KEYS.map((signal) => <tr key={signal} className="border-b border-[var(--theme-border-subtle)]"><td className="py-1.5">{signal.replaceAll("_", " ")}</td><td className="py-1.5 text-right text-[var(--theme-text-muted)]">Not available</td><td className={`py-1.5 text-right tabular-nums ${(selectedExperimental?.scores[signal] ?? 0) >= signalThreshold ? "font-semibold text-[var(--theme-accent-primary)]" : ""}`}>{score(selectedExperimental?.scores[signal])}{selectedResult?.response?.abstainedSignals?.includes(signal) ? " · Abstained" : ""}</td></tr>)}
                     </tbody>
                   </table>
                   <p className="text-[var(--theme-text-secondary)]">The first {CONTENT_SIGNAL_KEYS.length.toLocaleString()} signals {isJevNative ? "correspond to existing feed signals. These evaluation scores do not change filters." : "drive existing feed filters."} The {JEV_EXPERIMENTAL_SIGNAL_KEYS.length.toLocaleString()} preview signals stay in this tab and have no rule comparison yet.</p>

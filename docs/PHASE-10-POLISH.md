@@ -607,3 +607,14 @@ post and unmounting. Synthetic regressions cover adjacent posts, A-to-B-to-A,
 late success/failure and out-of-order local cache responses. These tests confirm
 the source defects; they do not attribute the exact installed incident or prove
 all native cache associations. Requests and provider cadence are unchanged.
+
+### Optional local Kev evaluation
+
+AI settings offers a per-device Kev selection alongside Jev and GLiClass. Kev
+uses a separately installed service at `127.0.0.1:8009`. Native transport disables
+proxies, redirects, and cloud fallback. Switching classifiers cancels active work.
+Kev keeps uncertain probabilities visible but abstains between 0.2 and 0.8. These
+thresholds are provisional. A six-example labeled evaluation compares raw accuracy,
+Brier score, decision coverage, accepted accuracy and latency. It is a smoke corpus,
+not a representative benchmark. Library scores remain session-local and do not
+change feed filters. See [setup and evaluation](JEV-CLASSIFICATION-PREVIEW.md#local-kev).

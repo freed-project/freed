@@ -1,7 +1,9 @@
 # Jev evaluation in Freed Desktop
 
-Open **Settings → AI → Jev**. Enter your own TypeSafe API key and choose **Save**.
-The native client stores it in the operating system credential vault on supported
+Open **Settings → AI → Post classification** and choose a classifier.
+For Jev API, enter your own TypeSafe API key and choose **Save**. Local Kev
+requires no key; follow [Local Kev](#local-kev) below.
+The native client stores the Jev key in the operating system credential vault on supported
 macOS and Windows builds. Replace or remove it from the same section. The key
 never enters the repository, Library records, synchronization, or diagnostics.
 
@@ -99,7 +101,7 @@ Run the repository preview helper with the pinned Node toolchain:
 ./scripts/worktree-preview.sh desktop --port 1423
 ```
 
-Use the same **Settings → AI → Jev** controls. Browser preview credentials stay
+Use the same **Settings → AI → Post classification** controls. Browser preview credentials stay
 in tab memory and disappear on reload. Each explicit request passes the key
 through the private development server without saving it. There are no environment
 or host-file credential fallbacks. Do not expose this development server publicly.
@@ -119,3 +121,51 @@ requests, cancellation, credential locality, and profile/source freshness. Brows
 checks use explicit test responses. They do not establish live Jev compatibility,
 accuracy, actual charges, native credential-vault access, or installed-build behavior.
 Enter a personal key in the installed client to evaluate those properties.
+
+## Local Kev
+
+Select **Kev · local service** in Settings → AI → Post classification. This is
+optional and per-device. Jev keys and spending limits remain independent. Kev
+never falls back to Jev, even when unavailable or uncertain.
+
+Install Git and [uv](https://docs.astral.sh/uv/getting-started/installation/), then
+start the pinned service in Terminal:
+
+```sh
+git clone --branch kev-1.0 https://github.com/jaredpalmer/kev.git
+cd kev
+uv sync --extra serve
+uv run --extra serve python -m kev.serve --run jaredpalmer/kev-4b@v1.0 --host 127.0.0.1 --port 8009
+```
+
+The initial setup downloads Python dependencies and model weights. Kev uses MLX
+on supported Apple Silicon hardware. Start with 4B; model installation and process
+lifetime are separate from Freed. Keep `KEV_API_KEY` unset and truncation disabled.
+Stop with Control-C to release model memory. Freed connects only to the literal
+loopback address above and disables HTTP proxies and redirects. It does not manage
+the service or authenticate other local processes.
+
+Click **Check local Kev**, then expand the classification view to load and classify
+up to 100 local posts. Images are not analyzed. Probabilities from 0.2 through 0.8
+are provisional decision boundaries: values strictly between them abstain; values
+at or outside them are accepted. Raw scores remain visible. Overlong source text
+and server-truncated responses abstain. Scores never update durable Library data.
+Capability matching still requires an explicit switch to Jev.
+
+### Labeled comparison
+
+**Run labeled evaluation** sends six synthetic examples with the same 26 questions
+to the selected model. Twenty-four explicit labels cover positive, negative and
+instruction-injection cases. Missing labels are not treated as negative. Run Kev,
+then select Jev and repeat to compare the two reports in the same Settings session.
+The Jev run uses the existing key and spending admission and can incur six API
+requests. Kev uses neither credentials nor the Jev budget. No Library content is
+used by this evaluation.
+
+Raw accuracy thresholds probabilities at 0.5. Brier score measures squared
+probability error. Kev decision coverage excludes its abstentions; accepted
+accuracy uses only accepted labels. Jev retains its existing 0.5 decision threshold.
+The report also shows median and maximum end-to-end latency and estimated API cost.
+Cancellation or failure produces no new aggregate. Previous completed reports stay
+visible until Settings closes. These examples are a smoke test, not evidence of
+quality on your feed; inspect real posts and flagged errors before tuning thresholds.

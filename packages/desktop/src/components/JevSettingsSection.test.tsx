@@ -7,6 +7,8 @@ vi.mock("@freed/ui/components/settings/AISection", () => ({ ApiKeyInput: () => <
 vi.mock("../lib/jev-client", () => ({ isJevNative: true, jevCredentials: {}, testJevConnection: connection, getJevBudget: budget.get, setJevBudget: budget.set, onJevBudgetChange: () => () => {} }));
 vi.mock("../lib/jev-provider", () => ({ getJevClassifierProvider: () => "jev", setJevClassifierProvider: selection }));
 vi.mock("../lib/gliclass-client", () => ({ gliclassModels: models, GLICLASS_MANIFEST: { estimatedDownloadBytes: 754861034 }, removeLocalGliclass: models.removeModel }));
+vi.mock("./ClassifierEvaluation", () => ({ ClassifierEvaluation: () => <div>Labeled evaluation</div> }));
+vi.mock("../lib/kev-client", () => ({ kevConnectionStatus: async () => ({ configured: true, model: "jaredpalmer/kev-4b@v1.0" }) }));
 vi.mock("./JevClassificationPreview", () => ({ JevClassificationPreview: () => <div>Classifier evaluation</div> }));
 import { JevSettingsSection } from "./JevSettingsSection";
 // Tier 1: selecting the optional model downloads it without a key and exposes
@@ -17,6 +19,17 @@ describe("classifier settings", () => {
   async function chooseLocal() { await act(async () => { const select = container.querySelector("select")!; select.value = "gliclass-base"; select.dispatchEvent(new Event("change", { bubbles: true })); }); }
   beforeEach(() => { (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true; container=document.createElement("div"); document.body.append(container); root=createRoot(container); vi.clearAllMocks(); budget.get.mockResolvedValue(null); models.listModels.mockResolvedValue([{ state: { status: "not_downloaded" } }]); models.pauseDownload.mockResolvedValue(undefined); });
   afterEach(async () => { await act(async () => root.unmount()); container.remove(); });
+  it("selects Kev without a key or download", async () => {
+    await act(async () => root.render(<JevSettingsSection />));
+    await act(async () => { const select = container.querySelector("select")!; select.value = "kev"; select.dispatchEvent(new Event("change", { bubbles: true })); });
+    expect(selection).toHaveBeenCalledWith("kev");
+    expect(models.downloadModel).not.toHaveBeenCalled();
+    expect(text()).toContain("No API key, paid usage, or cloud fallback");
+    expect(text()).not.toContain("Jev key input");
+    await act(async () => { Array.from(container.querySelectorAll("button")).find(button => button.textContent === "Check local Kev")!.click(); });
+    expect(text()).toContain("Local Kev ready: jaredpalmer/kev-4b@v1.0");
+    expect(connection).not.toHaveBeenCalled();
+  });
   it("keeps Jev available and automatically downloads explicit local selection", async () => {
     models.downloadModel.mockImplementation(async (_id, progress) => { progress({ downloadedBytes: 1024 }); return [{ state: { status: "available" } }]; });
     await act(async () => root.render(<JevSettingsSection />));

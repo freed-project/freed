@@ -1846,3 +1846,14 @@ unattributed.
 Captured Friends, graph-picker and recovery actions now require their current selection, reader and revision owners. Ownership changes remain fenced through A to B to A transitions and temporary disabling; native identity reads are checked again before account assignment, and obsolete completions cannot move the new selection. Mutation-facing suggestion rows retain one bounded proved window during same-context revision refresh; current and captured choice actions remain disabled until fresh results settle. Reader, request, rewind, real zero and error clear or replace that window. Native authority admission and installed UI acceptance remain separate checks.
 
 Friends activity uses the shared loading indicator while its directory loads. Outbox wrappers retain their existing coordinator and drain ownership after the 120-second deadline until underlying work settles, then report the original timeout. Hung work can retain ownership indefinitely; cancellation and screen-lock admission remain separate.
+
+### Optional local Kev evaluation
+
+AI settings offers a per-device Kev selection alongside Jev and GLiClass. Kev
+uses a separately installed service at `127.0.0.1:8009`. Native transport disables
+proxies, redirects, and cloud fallback. Switching classifiers cancels active work.
+Kev keeps uncertain probabilities visible but abstains between 0.2 and 0.8. These
+thresholds are provisional. A six-example labeled evaluation compares raw accuracy,
+Brier score, decision coverage, accepted accuracy and latency. It is a smoke corpus,
+not a representative benchmark. Library scores remain session-local and do not
+change feed filters. See [setup and evaluation](JEV-CLASSIFICATION-PREVIEW.md#local-kev).
