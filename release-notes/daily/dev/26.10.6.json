@@ -2,13 +2,15 @@
   "channel": "dev",
   "dayKey": "26.10.6",
   "date": "2026-10-06",
-  "preferredDeck": null,
+  "preferredDeck": "Local Kev classification, labeled comparisons, and restored annotation text",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
     "Demote internal cleanup unless it clearly changes the shipped product."
   ],
   "pinnedHighlights": [],
-  "editorialNotes": [],
-  "updatedAt": "2026-10-06T19:22:39.488Z"
+  "editorialNotes": [
+    "Lead with optional local Kev and the bounded comparison. State the annotation storage upgrade and refusal by older clients; do not imply automatic classification, installed acceptance or model parity."
+  ],
+  "updatedAt": "2026-10-06T19:23:33.248Z"
 }
