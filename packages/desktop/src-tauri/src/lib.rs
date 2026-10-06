@@ -6,6 +6,7 @@ mod avatar_cache;
 mod gliclass;
 mod jev;
 mod jev_budget;
+mod kev;
 mod library_core_actor_key_store;
 mod library_core_authority_key_store;
 mod library_core_desktop_runtime;
@@ -14468,6 +14469,9 @@ pub fn run() {
             jev::set_jev_api_key,
             jev::clear_jev_api_key,
             jev::request_jev,
+            kev::request_kev,
+            kev::cancel_kev_request,
+            kev::get_kev_models,
             jev::get_jev_budget,
             jev::set_jev_budget,
             jev::cancel_jev_request,

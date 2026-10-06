@@ -9,6 +9,7 @@ export interface JevPreviewResponse {
   experimentalSignals: JevExperimentalSignals;
   model: string;
   usage: { input_tokens: number; output_tokens: number };
+  abstainedSignals?: readonly string[];
   cached: boolean;
   estimatedCostUsd: number;
   elapsedMs: number;
@@ -121,6 +122,11 @@ export async function postJevPreviewRequest<TResponse>(
       const nativeRequest = request as Parameters<typeof requestNativeJev>[1];
       await assertJevSourceCurrent(nativeRequest.item);
       signal.throwIfAborted();
+      if (getJevClassifierProvider() === "kev") {
+        if (path.endsWith("/match")) throw new Error("Capability matching requires an explicit switch to Jev.");
+        const { requestLocalKev } = await import("./kev-client");
+        return await requestLocalKev(nativeRequest.item, signal) as TResponse;
+      }
       if (getJevClassifierProvider() === "gliclass-base") {
         if (path.endsWith("/match")) throw new Error("Capability matching currently requires Jev. Switch classifiers explicitly to use it.");
         const { requestLocalGliclass } = await import("./gliclass-client");
@@ -129,10 +135,11 @@ export async function postJevPreviewRequest<TResponse>(
       return await requestNativeJev(path, nativeRequest, signal) as TResponse;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Classifier request failed.";
-      const abstention = getJevClassifierProvider() === "gliclass-base" && /abstain|input limit|token limit/i.test(message);
+      const abstention = getJevClassifierProvider() !== "jev" && /abstain|input limit|token limit/i.test(message);
       throw new JevPreviewRequestError(message, abstention ? "local_abstention" : "preview_unavailable", abstention ? 422 : 503);
     }
   }
+  if (getJevClassifierProvider() !== "jev") throw new Error("Local classifiers require Freed Desktop. No cloud request was sent.");
   const response = await fetch(path, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-freed-jev-preview": "1", ...await jevPreviewHeaders() },
@@ -232,7 +239,7 @@ export async function runJevPreviewBatch<TResponse>(
   }
 
   try {
-    const concurrency = getJevClassifierProvider() === "gliclass-base" ? 1 : 4;
+    const concurrency = getJevClassifierProvider() === "jev" ? 4 : 1;
     await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, worker));
     for (let index = nextIndex; index < results.length; index += 1) {
       results[index] = { ...results[index], status: "cancelled" };

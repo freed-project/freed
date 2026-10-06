@@ -246,6 +246,9 @@ const handlers: Record<string, Handler> = {
   set_jev_budget: () => { throw new Error("Jev budget requires an explicit test handler."); },
   request_jev: () => { throw new Error("Native Jev requests require an explicit test handler."); },
   cancel_jev_request: () => undefined,
+  request_kev: () => { throw new Error("Local Kev requires Freed Desktop and a loopback server."); },
+  get_kev_models: () => { throw new Error("Local Kev requires Freed Desktop and a loopback server."); },
+  cancel_kev_request: () => undefined,
   normalized_desktop_installation_status: () => (window as unknown as Record<string, unknown>).__TAURI_MOCK_LIBRARY_INSTALLATION__ ?? ({
     state: "standalone_primary", role: "primary", libraryId: "a".repeat(64),
     authorityEpochId: "b".repeat(64), actorId: "6".repeat(64),
