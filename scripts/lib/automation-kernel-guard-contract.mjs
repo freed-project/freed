@@ -293,20 +293,128 @@ function queryPinnedFilesystemIdentity(descriptor, device, inode, namedPath) {
   return result.stdout;
 }
 
-// Unlike archive mutation admission, this read-only query must support ordinary
-// ancestors. Ownership/private-mode enforcement stays with each existing caller.
-export function readDarwinFilesystemIdentity(
-  namedPath,
+const FILESYSTEM_BATCH_MAX_ENTRIES = 32;
+const FILESYSTEM_PATH_MAX_BYTES = 4096;
+const FILESYSTEM_BATCH_REQUEST_MAX_BYTES = 1024 * 1024;
+const FILESYSTEM_BATCH_RESPONSE_MAX_BYTES = 32 * FILESYSTEM_IDENTITY_MAX_BYTES;
+
+function queryPinnedFilesystemIdentities(entries, request) {
+  // Each chunk independently admits its runtime and source. Nothing is cached.
+  const helper = openPinnedLeaseArchiveHelper();
+  const framed = framePinnedLeaseArchiveHelperInvocation(
+    helper.source,
+    "filesystem-identities",
+    [],
+    { input: request },
+  );
+  const result = spawnSync(helper.pythonRuntime, framed.argv, {
+    env: { HOME: os.homedir(), LANG: "C", LC_ALL: "C", PATH: "/usr/bin:/bin" },
+    input: framed.input,
+    stdio: [
+      "pipe",
+      "pipe",
+      "pipe",
+      ...entries.map((entry) => entry.descriptor),
+    ],
+    maxBuffer: FILESYSTEM_BATCH_RESPONSE_MAX_BYTES,
+    timeout: 10_000,
+  });
+  if (result.error || result.status !== 0 || result.signal) {
+    throw new Error(
+      `filesystem identity helper failed: ${String(result.error?.message ?? result.stderr ?? result.signal).slice(0, 1024)}`,
+    );
+  }
+  return result.stdout;
+}
+
+function decodeFilesystemReceipt(bytes, limit) {
+  if (!Buffer.isBuffer(bytes) || bytes.length === 0 || bytes.length > limit) {
+    throw new Error("helper receipt is missing or outside its size bound");
+  }
+  return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+}
+
+function validateFilesystemReceipt(value, held) {
+  if (
+    !sameKeys(value, [
+      "device",
+      "filesystemType",
+      "inode",
+      "local",
+      "platform",
+      "protocol",
+    ]) ||
+    value.protocol !== "freed-lease-archive-move-v1" ||
+    value.platform !== "darwin" ||
+    value.device !== held.dev.toString() ||
+    value.inode !== held.ino.toString() ||
+    typeof value.filesystemType !== "string" ||
+    value.filesystemType.length === 0 ||
+    value.filesystemType.length >= 16 ||
+    !/^[\x21-\x7e]+$/.test(value.filesystemType) ||
+    typeof value.local !== "boolean"
+  ) {
+    throw new Error(
+      `helper receipt identity/shape mismatch: name=${JSON.stringify(value?.filesystemType)} local=${JSON.stringify(value?.local)} boundDevice=${held.dev} boundInode=${held.ino}`,
+    );
+  }
+  return Object.freeze(value);
+}
+
+// One chunk holds every admitted generation until its complete receipt and all
+// postchecks pass. Ordinary ancestor permissions remain the caller's policy.
+export function readDarwinFilesystemIdentities(
+  namedPaths,
   {
-    query = queryPinnedFilesystemIdentity,
+    query = queryPinnedFilesystemIdentities,
     lstat = lstatSync,
     fstat = fstatSync,
+    open = openSync,
   } = {},
 ) {
-  const canonical = path.resolve(namedPath);
-  let descriptor;
+  if (
+    !Array.isArray(namedPaths) ||
+    namedPaths.length < 1 ||
+    namedPaths.length > FILESYSTEM_BATCH_MAX_ENTRIES
+  ) {
+    throw new Error("filesystem identity batch count must be 1..32");
+  }
+  let requestBound = 128;
+  const canonicalPaths = namedPaths.map((namedPath) => {
+    if (
+      typeof namedPath !== "string" ||
+      !namedPath.isWellFormed() ||
+      namedPath.includes("\0") ||
+      Buffer.byteLength(namedPath, "utf8") > FILESYSTEM_PATH_MAX_BYTES
+    ) {
+      throw new Error("filesystem identity path exceeds its byte boundary");
+    }
+    const canonical = path.resolve(namedPath);
+    const bytes = Buffer.byteLength(canonical, "utf8");
+    if (bytes > FILESYSTEM_PATH_MAX_BYTES)
+      throw new Error("filesystem identity path exceeds its byte boundary");
+    // JSON escaping costs at most six bytes per input byte; identities are
+    // bounded unsigned 64-bit decimals. Bound before opening or serializing.
+    requestBound += bytes * 6 + 256;
+    return canonical;
+  });
+  if (requestBound > FILESYSTEM_BATCH_REQUEST_MAX_BYTES)
+    throw new Error("filesystem identity request exceeds its byte boundary");
+  const entries = [];
   const same = (a, b) =>
     ["dev", "ino", "mode", "uid", "gid"].every((key) => a[key] === b[key]);
+  const check = (entry, phase) => {
+    const held = fstat(entry.descriptor, { bigint: true });
+    const named = lstat(entry.path, { bigint: true });
+    if (
+      named.isSymbolicLink() ||
+      realpathSync(entry.path) !== entry.path ||
+      !same(entry.held, held) ||
+      !same(entry.held, named)
+    ) {
+      throw new Error(`path/descriptor generation mismatch ${phase}`);
+    }
+  };
   try {
     if (
       ["O_NOFOLLOW", "O_NONBLOCK"].some(
@@ -315,83 +423,144 @@ export function readDarwinFilesystemIdentity(
     ) {
       throw new Error("safe filesystem descriptor admission is unavailable");
     }
-    // Opening establishes the admitted generation. Inspect it before querying
-    // the filesystem, then require the canonical name to still identify it.
-    descriptor = openSync(
-      canonical,
-      constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
-      0o600,
+    for (const canonical of canonicalPaths) {
+      const descriptor = open(
+        canonical,
+        constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+        0o600,
+      );
+      // Register immediately: even fstat/type admission failures must close it.
+      const entry = { descriptor, path: canonical };
+      entries.push(entry);
+      entry.held = fstat(descriptor, { bigint: true });
+      if (!entry.held.isDirectory() && !entry.held.isFile())
+        throw new Error("descriptor is not a regular file or directory");
+      for (const value of [entry.held.dev, entry.held.ino]) {
+        if (
+          typeof value !== "bigint" ||
+          value < 0n ||
+          value > 18446744073709551615n
+        )
+          throw new Error(
+            "filesystem identity is not an unsigned 64-bit integer",
+          );
+      }
+      check(entry, "before query");
+    }
+    // Opening a later path must not replace an earlier admitted generation.
+    for (const entry of entries) check(entry, "before query");
+    const request = Buffer.from(
+      JSON.stringify({
+        protocol: "freed-lease-archive-move-v1",
+        entries: entries.map((entry, index) => ({
+          index,
+          path: entry.path,
+          device: entry.held.dev.toString(),
+          inode: entry.held.ino.toString(),
+        })),
+      }),
     );
-    const held = fstat(descriptor, { bigint: true });
-    if (!held.isDirectory() && !held.isFile()) {
-      throw new Error("descriptor is not a regular file or directory");
-    }
-    const named = lstat(canonical, { bigint: true });
-    if (
-      named.isSymbolicLink() ||
-      realpathSync(canonical) !== canonical ||
-      !same(held, named)
-    ) {
-      throw new Error("path/descriptor generation mismatch before query");
-    }
-    const bytes = query(
-      descriptor,
-      held.dev.toString(),
-      held.ino.toString(),
-      canonical,
-    );
-    const after = fstat(descriptor, { bigint: true });
-    const namedAfter = lstat(canonical, { bigint: true });
-    if (
-      !same(held, after) ||
-      !same(held, namedAfter) ||
-      namedAfter.isSymbolicLink() ||
-      realpathSync(canonical) !== canonical
-    ) {
-      throw new Error("path/descriptor generation mismatch after query");
-    }
-    if (
-      !Buffer.isBuffer(bytes) ||
-      bytes.length === 0 ||
-      bytes.length > FILESYSTEM_IDENTITY_MAX_BYTES
-    ) {
-      throw new Error("helper receipt is missing or outside its size bound");
-    }
-    const value = JSON.parse(
-      new TextDecoder("utf-8", { fatal: true }).decode(bytes),
+    const bytes = query(entries, request);
+    for (const entry of entries) check(entry, "after query");
+    const response = decodeFilesystemReceipt(
+      bytes,
+      FILESYSTEM_BATCH_RESPONSE_MAX_BYTES,
     );
     if (
-      !sameKeys(value, [
-        "device",
-        "filesystemType",
-        "inode",
-        "local",
-        "platform",
-        "protocol",
-      ]) ||
-      value.protocol !== "freed-lease-archive-move-v1" ||
-      value.platform !== "darwin" ||
-      value.device !== held.dev.toString() ||
-      value.inode !== held.ino.toString() ||
-      typeof value.filesystemType !== "string" ||
-      value.filesystemType.length === 0 ||
-      value.filesystemType.length >= 16 ||
-      !/^[\x21-\x7e]+$/.test(value.filesystemType) ||
-      typeof value.local !== "boolean"
+      !sameKeys(response, ["entries", "protocol"]) ||
+      response.protocol !== "freed-lease-archive-move-v1" ||
+      !Array.isArray(response.entries) ||
+      response.entries.length !== entries.length
     ) {
       throw new Error(
-        `helper receipt identity/shape mismatch: name=${JSON.stringify(value?.filesystemType)} local=${JSON.stringify(value?.local)} boundDevice=${held.dev} boundInode=${held.ino}`,
+        "filesystem identity batch receipt cardinality/shape mismatch",
       );
     }
-    return Object.freeze(value);
+    const values = response.entries.map((value, index) => {
+      if (
+        !sameKeys(value, [
+          "device",
+          "filesystemType",
+          "index",
+          "inode",
+          "local",
+          "platform",
+          "protocol",
+        ]) ||
+        value.index !== index ||
+        Buffer.byteLength(JSON.stringify(value)) > FILESYSTEM_IDENTITY_MAX_BYTES
+      ) {
+        throw new Error(
+          "filesystem identity batch receipt index/size mismatch",
+        );
+      }
+      const receipt = { ...value };
+      delete receipt.index;
+      return validateFilesystemReceipt(receipt, entries[index].held);
+    });
+    return Object.freeze(values);
+  } finally {
+    // Attempt every close even if an earlier close itself fails.
+    let closeError;
+    for (const entry of entries) {
+      try {
+        closeSync(entry.descriptor);
+      } catch (error) {
+        closeError ??= error;
+      }
+    }
+    if (closeError) throw closeError;
+  }
+}
+
+export function readDarwinFilesystemIdentity(
+  namedPath,
+  {
+    query = queryPinnedFilesystemIdentity,
+    lstat = lstatSync,
+    fstat = fstatSync,
+  } = {},
+) {
+  try {
+    return readDarwinFilesystemIdentities([namedPath], {
+      lstat,
+      fstat,
+      query: (entries) => {
+        const entry = entries[0];
+        const value = decodeFilesystemReceipt(
+          query(
+            entry.descriptor,
+            entry.held.dev.toString(),
+            entry.held.ino.toString(),
+            entry.path,
+          ),
+          FILESYSTEM_IDENTITY_MAX_BYTES,
+        );
+        // Share the validator, including exact single-reader receipt shape.
+        validateFilesystemReceipt(value, entry.held);
+        return Buffer.from(
+          JSON.stringify({
+            protocol: "freed-lease-archive-move-v1",
+            entries: [{ ...value, index: 0 }],
+          }),
+        );
+      },
+    })[0];
   } catch (error) {
     throw new Error(
-      `Darwin filesystem query failed for path=${JSON.stringify(canonical)}: ${error.message}`,
+      `Darwin filesystem query failed for path=${JSON.stringify(path.resolve(namedPath))}: ${error.message}`,
       { cause: error },
     );
-  } finally {
-    if (descriptor !== undefined) closeSync(descriptor);
   }
+}
+
+function admitDarwinFilesystemType(observed, namedPath) {
+  if (observed.filesystemType !== "apfs" || observed.local !== true) {
+    throw new Error(
+      `Darwin filesystem rejected: name=${JSON.stringify(observed.filesystemType)} local=${JSON.stringify(observed.local)} device=${observed.device} path=${JSON.stringify(path.resolve(namedPath))}; requires exact local apfs`,
+    );
+  }
+  return "apfs";
 }
 
 export function resolveAutomationKernelGuardFilesystemType(
@@ -403,13 +572,10 @@ export function resolveAutomationKernelGuardFilesystemType(
   } = {},
 ) {
   if (platform === "darwin") {
-    const observed = queryFilesystem(path.resolve(stateRoot));
-    if (observed.filesystemType !== "apfs" || observed.local !== true) {
-      throw new Error(
-        `Darwin filesystem rejected: name=${JSON.stringify(observed.filesystemType)} local=${JSON.stringify(observed.local)} device=${observed.device} path=${JSON.stringify(path.resolve(stateRoot))}; requires exact local apfs`,
-      );
-    }
-    return "apfs";
+    return admitDarwinFilesystemType(
+      queryFilesystem(path.resolve(stateRoot)),
+      stateRoot,
+    );
   }
   const platformTypes = FILESYSTEM_TYPE_NAMES[platform];
   if (platformTypes === undefined) {
@@ -445,7 +611,11 @@ function nearestExistingPath(targetPath) {
 export function inspectAutomationKernelGuardFilesystemPaths(
   stateRoot,
   candidatePaths,
-  { resolveFilesystemType = resolveAutomationKernelGuardFilesystemType } = {},
+  {
+    resolveFilesystemType = resolveAutomationKernelGuardFilesystemType,
+    platform = process.platform,
+    readFilesystemIdentities = readDarwinFilesystemIdentities,
+  } = {},
 ) {
   const canonicalStateRoot = path.resolve(stateRoot);
   const problems = [];
@@ -467,6 +637,64 @@ export function inspectAutomationKernelGuardFilesystemPaths(
       admittedPaths.add(currentPath);
       if (currentPath === canonicalStateRoot) break;
       currentPath = path.dirname(currentPath);
+    }
+  }
+  if (
+    platform === "darwin" &&
+    resolveFilesystemType === resolveAutomationKernelGuardFilesystemType
+  ) {
+    let baseline;
+    const aliases = [];
+    let chunk = [];
+    const admitChunk = () => {
+      const receipts = readFilesystemIdentities(
+        chunk.map((entry) => entry.physical),
+      );
+      if (!Array.isArray(receipts) || receipts.length !== chunk.length)
+        throw new Error("filesystem identity chunk cardinality mismatch");
+      for (let index = 0; index < chunk.length; index += 1) {
+        const entry = chunk[index];
+        const observed = receipts[index];
+        admitDarwinFilesystemType(observed, entry.physical);
+        baseline ??= observed;
+        // Compare the queried, descriptor-bound device, never a new lstat generation.
+        if (observed.device !== baseline.device)
+          throw new Error(
+            `${entry.candidate} is not on the admitted apfs automation state filesystem`,
+          );
+        aliases.push(entry);
+      }
+      chunk = [];
+    };
+    try {
+      // Preserve duplicate baseline/root and missing-parent queries. Only process
+      // startup is amortized; every occurrence gets an independently held fd.
+      for (const candidate of [canonicalStateRoot, ...admittedPaths]) {
+        chunk.push({
+          candidate,
+          physical:
+            candidate === canonicalStateRoot
+              ? canonicalStateRoot
+              : nearestExistingPath(candidate),
+        });
+        if (chunk.length === FILESYSTEM_BATCH_MAX_ENTRIES) admitChunk();
+      }
+      if (chunk.length !== 0) admitChunk();
+      for (const entry of aliases) {
+        if (nearestExistingPath(entry.candidate) !== entry.physical)
+          throw new Error(
+            "filesystem missing-path ancestor changed during inspection",
+          );
+      }
+      const device = Number(baseline.device);
+      if (!Number.isSafeInteger(device))
+        throw new Error("filesystem device cannot be represented exactly");
+      if (problems.length !== 0)
+        throw new Error("filesystem candidate paths escape the state root");
+      return { ready: true, problems, filesystemType: "apfs", device };
+    } catch (error) {
+      problems.push(`Darwin filesystem inspection failed: ${error.message}`);
+      return { ready: false, problems, filesystemType: null, device: null };
     }
   }
   let baselineType;
@@ -2020,7 +2248,7 @@ const LEASE_ARCHIVE_MOVE_HELPER = fileURLToPath(
   new URL("./lease-archive-move.py", import.meta.url),
 );
 const LEASE_ARCHIVE_MOVE_HELPER_SHA256 =
-  "4b2998b6426fd6769f9855358ac0931ad0b4abda5a320a80743c94b38181b38d";
+  "bd44bf964a3f5e1d9e512d3d0e9e13ecc39081e13e698521a50a4dd2fca88ff5";
 const LEASE_ARCHIVE_HELPER_MAX_BYTES = 256 * 1024;
 const LEASE_ARCHIVE_MOVE_PYTHON_BOOTSTRAP = [
   "import hashlib,sys",

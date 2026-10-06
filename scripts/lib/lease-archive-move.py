@@ -6045,19 +6045,16 @@ LINUX_LOCAL_FILESYSTEMS = {
 }
 
 
-def filesystem_identity(arguments):
+def read_filesystem_identity(descriptor, expected_device, expected_inode, named_path):
     """Read-only identity query; unlike archive operations, ancestors need not be private."""
-    if len(arguments) != 3 or platform.system() != "Darwin":
+    if platform.system() != "Darwin":
         fail("filesystem-identity requires a Darwin file or directory generation and path")
-    expected_device = integer(arguments[0], "filesystem device")
-    expected_inode = integer(arguments[1], "filesystem inode")
-    named_path = arguments[2]
 
     def identity(value):
         return (value.st_dev, value.st_ino, value.st_mode, value.st_uid, value.st_gid)
 
     def inspect():
-        held = os.fstat(3)
+        held = os.fstat(descriptor)
         named = os.lstat(named_path)
         if (not os.path.isabs(named_path) or os.path.realpath(named_path) != named_path
                 or not (stat.S_ISDIR(held.st_mode) or stat.S_ISREG(held.st_mode))
@@ -6077,7 +6074,7 @@ def filesystem_identity(arguments):
         fail("filesystem-identity fstatfs is unavailable")
     operation.argtypes = [ctypes.c_int, ctypes.POINTER(DarwinStatFs)]
     operation.restype = ctypes.c_int
-    if operation(3, ctypes.byref(filesystem)) != 0:
+    if operation(descriptor, ctypes.byref(filesystem)) != 0:
         fail("filesystem-identity fstatfs failed: " + os.strerror(ctypes.get_errno()))
     raw_name = ctypes.string_at(
         ctypes.addressof(filesystem) + DarwinStatFs.f_fstypename.offset, 16
@@ -6088,14 +6085,73 @@ def filesystem_identity(arguments):
     name = name_bytes.decode("ascii", errors="strict")
     if inspect() != before:
         fail("filesystem-identity path changed during query")
-    sys.stdout.write(json.dumps({
+    return {
         "protocol": PROTOCOL,
         "platform": "darwin",
         "device": str(expected_device),
         "inode": str(expected_inode),
         "filesystemType": name,
         "local": bool(filesystem.f_flags & MNT_LOCAL),
-    }, sort_keys=True, separators=(",", ":")))
+    }
+
+
+def filesystem_identity(arguments):
+    if len(arguments) != 3:
+        fail("filesystem-identity requires one generation and path")
+    value = read_filesystem_identity(
+        3, integer(arguments[0], "filesystem device"),
+        integer(arguments[1], "filesystem inode"), arguments[2],
+    )
+    sys.stdout.write(json.dumps(value, sort_keys=True, separators=(",", ":")))
+
+
+def filesystem_identities(arguments):
+    if arguments:
+        fail("filesystem-identities takes no descriptor arguments")
+    request_limit = 1024 * 1024
+    raw = sys.stdin.buffer.read(request_limit + 1)
+    if not raw or len(raw) > request_limit:
+        fail("filesystem-identities request exceeds its byte boundary")
+    def unique_object(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                fail("filesystem-identities duplicate JSON key")
+            result[key] = value
+        return result
+    request = json.loads(raw.decode("utf-8", "strict"), object_pairs_hook=unique_object)
+    if (not isinstance(request, dict) or set(request) != {"protocol", "entries"}
+            or request["protocol"] != PROTOCOL or not isinstance(request["entries"], list)
+            or not 1 <= len(request["entries"]) <= 32):
+        fail("filesystem-identities request shape/count mismatch")
+    entries = request["entries"]
+    # Validate the entire bounded request before querying any descriptor.
+    for index, entry in enumerate(entries):
+        if (not isinstance(entry, dict) or set(entry) != {"index", "path", "device", "inode"}
+                or type(entry["index"]) is not int or entry["index"] != index
+                or not isinstance(entry["path"], str) or "\x00" in entry["path"]
+                or len(entry["path"].encode("utf-8", "strict")) > 4096
+                or not os.path.isabs(entry["path"])):
+            fail("filesystem-identities entry shape/index/path mismatch")
+        for key in ("device", "inode"):
+            value = entry[key]
+            if (not isinstance(value, str) or not value.isascii() or not value.isdecimal()
+                    or len(value) > 20 or str(int(value)) != value
+                    or int(value) > 18446744073709551615):
+                fail("filesystem-identities identity is not an unsigned decimal")
+    results = []
+    for index, entry in enumerate(entries):
+        # The caller cannot choose descriptor numbers: stdio maps slot 3+i.
+        value = read_filesystem_identity(3 + index, int(entry["device"]), int(entry["inode"]), entry["path"])
+        value["index"] = index
+        if len(json.dumps(value, separators=(",", ":")).encode("utf-8")) > 4096:
+            fail("filesystem-identities entry response exceeds its byte boundary")
+        results.append(value)
+    output = json.dumps({"protocol": PROTOCOL, "entries": results}, separators=(",", ":")).encode("utf-8")
+    if len(output) > 32 * 4096:
+        fail("filesystem-identities response exceeds its byte boundary")
+    # No partial response is emitted when any later query fails.
+    sys.stdout.buffer.write(output)
 
 
 def filesystem_capacity(arguments):
@@ -6173,6 +6229,7 @@ def main():
         "directory-child-proof": directory_child_proof,
         "filesystem": filesystem_capacity,
         "filesystem-identity": filesystem_identity,
+        "filesystem-identities": filesystem_identities,
         "list": list_directory,
         "list-bounded": list_directory_bounded,
         "list-bounded-batch": list_directories_bounded_batch,
