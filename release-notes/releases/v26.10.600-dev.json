@@ -1,0 +1,65 @@
+{
+  "tag": "v26.10.600-dev",
+  "version": "26.10.600-dev",
+  "channel": "dev",
+  "dayKey": "26.10.6",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-10-06T11:21:45.688Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.10.500-dev",
+    "previousPublishedDayTag": "v26.10.500-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "2e73441a96c1fa665012ff49f0a0d5e04857c932",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.10.500-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "8cdc9c673b4fad80b18f5a02008dd44cd774412b",
+        "toInclusiveProductCommitSha": "2e73441a96c1fa665012ff49f0a0d5e04857c932"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:87ced2658785f1d28753666537ab09bef76d45848f728aeb12343f22ee70d6d1",
+        "currentDigest": "sha256:87ced2658785f1d28753666537ab09bef76d45848f728aeb12343f22ee70d6d1"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:b234fde25fd9e5add8d045168e52d7a30a5698f2a2a1a4af3b4563d7b100d3d9",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.10.600-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.10.600-dev"
+    ],
+    "prNumbers": [],
+    "commitSubjects": [
+      "fix: distinguish failed search from empty results",
+      "fix: retain classifier state when download pause fails",
+      "chore: refresh dev501 publication boundary",
+      "chore: prepare v26.10.501-dev",
+      "feat: add optional local Kev classification and evaluation",
+      "fix: keep iOS Home Screen toolbar sharp"
+    ]
+  },
+  "release": {
+    "deck": "Optional local Kev classification and evaluation",
+    "features": [],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.10.600-dev\n\nOptional local Kev classification and evaluation\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
