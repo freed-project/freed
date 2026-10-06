@@ -2557,6 +2557,20 @@ mod tests {
     use rusqlite::params;
     use std::cell::RefCell;
 
+    // These signed fixtures retain an enrolled in-memory connection. Startup's
+    // path initializer cannot replace it. Exercise the same bounded resumer
+    // across yields instead of assuming one cooperative invocation completes.
+    fn finish_annotation_fixture_upgrade(connection: &mut Connection) {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while !crate::normalized_local_annotations::resume(connection).unwrap() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "annotation fixture upgrade did not finish"
+            );
+            std::thread::yield_now();
+        }
+    }
+
     #[derive(Default)]
     struct MemoryKeyStore(RefCell<Option<Vec<u8>>>);
 
@@ -3130,7 +3144,7 @@ mod tests {
                 ..
             } = enrolled_follower_fixture();
             connection.execute_batch("INSERT INTO library_feed_items(global_id,platform,content_type,captured_at,published_at,author_id,author_handle,author_display_name,hidden,saved,archived,updated_at) VALUES('item:a','saved','article',0,0,'author','author','Author',0,1,0,0);").unwrap();
-            assert!(crate::normalized_local_annotations::resume(&mut connection).unwrap());
+            finish_annotation_fixture_upgrade(&mut connection);
             let frames = signed_envelopes_from_tip_with_payload(
                 &actor_key_pair,
                 &verified,
@@ -3250,7 +3264,7 @@ mod tests {
                 ..
             } = enrolled_follower_fixture();
             connection.execute_batch("INSERT INTO library_feed_items(global_id,platform,content_type,captured_at,published_at,author_id,author_handle,author_display_name,hidden,saved,archived,updated_at) VALUES('item:a','saved','article',0,0,'a','a','A',0,1,0,0),('item:b','saved','article',0,0,'b','b','B',0,1,0,0);").unwrap();
-            assert!(crate::normalized_local_annotations::resume(&mut connection).unwrap());
+            finish_annotation_fixture_upgrade(&mut connection);
             let payload = json!({"assigned_at_ms":1200,"highlights":[],"tags":["original"]});
             let original = signed_envelopes_from_tip_with_payload(
                 &actor_key_pair,
@@ -3491,7 +3505,7 @@ mod tests {
             ..
         } = enrolled_follower_fixture();
         connection.execute_batch("INSERT INTO library_feed_items(global_id,platform,content_type,captured_at,published_at,author_id,author_handle,author_display_name,hidden,saved,archived,updated_at) VALUES('item:a','saved','article',0,0,'author','author','Author',0,1,0,0);").unwrap();
-        assert!(crate::normalized_local_annotations::resume(&mut connection).unwrap());
+        finish_annotation_fixture_upgrade(&mut connection);
         let authority_key =
             crate::load_established_authority_key_pair(&authority_store, &accepted.library_id)
                 .unwrap();
@@ -3605,7 +3619,7 @@ mod tests {
             verified,
             ..
         } = enrolled_follower_fixture();
-        assert!(crate::normalized_local_annotations::resume(&mut connection).unwrap());
+        finish_annotation_fixture_upgrade(&mut connection);
         let payload = json!({"assigned_at_ms":1200,"highlights":[],"tags":["original"]});
         let first = signed_envelopes_from_tip_with_payload(
             &actor_key_pair,
