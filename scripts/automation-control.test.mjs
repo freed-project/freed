@@ -2033,25 +2033,42 @@ test("kernel guard cutover admits only an explicit local filesystem type", () =>
   );
 });
 
-test("kernel guard filesystem resolver admits supported macOS APFS registrations and explicit Linux types", () => {
+test("kernel guard filesystem resolver admits exact local APFS independently of numeric slots and explicit Linux types", () => {
   const stateRoot = temporaryStateRoot();
-  for (const type of [0x19n, 0x1an]) {
+  for (const type of [0x19n, 0x1an, 0x1bn, 0xffffffffn]) {
     assert.equal(
       resolveAutomationKernelGuardFilesystemType(stateRoot, {
         platform: "darwin",
-        statfs: () => ({ type }),
+        statfs: () => {
+          throw new Error(`numeric slot ${type} must not be queried`);
+        },
+        queryFilesystem: () => ({
+          filesystemType: "apfs",
+          local: true,
+          device: "42",
+        }),
       }),
       "apfs",
     );
   }
-  assert.throws(
-    () =>
-      resolveAutomationKernelGuardFilesystemType(stateRoot, {
-        platform: "darwin",
-        statfs: () => ({ type: 0x1bn }),
-      }),
-    /not in the darwin local allowlist/,
-  );
+  for (const [filesystemType, local] of [
+    ["nfs", true],
+    ["smbfs", true],
+    ["unknown", true],
+    ["APFS", true],
+    ["apfs ", true],
+    ["apfs\0garbage", true],
+    ["apfs", false],
+  ]) {
+    assert.throws(
+      () =>
+        resolveAutomationKernelGuardFilesystemType(stateRoot, {
+          platform: "darwin",
+          queryFilesystem: () => ({ filesystemType, local, device: "42" }),
+        }),
+      /name=.*local=.*device=42.*path=.*requires exact local apfs/,
+    );
+  }
   for (const [type, expected] of [
     [0xef53n, "ext"],
     [0x01021994n, "tmpfs"],

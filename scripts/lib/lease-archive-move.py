@@ -6045,6 +6045,58 @@ LINUX_LOCAL_FILESYSTEMS = {
 }
 
 
+def filesystem_identity(arguments):
+    """Read-only identity query; unlike archive operations, ancestors need not be private."""
+    if len(arguments) != 3 or platform.system() != "Darwin":
+        fail("filesystem-identity requires a Darwin directory generation and path")
+    expected_device = integer(arguments[0], "directory device")
+    expected_inode = integer(arguments[1], "directory inode")
+    named_path = arguments[2]
+
+    def identity(value):
+        return (value.st_dev, value.st_ino, value.st_mode, value.st_uid, value.st_gid)
+
+    def inspect():
+        held = os.fstat(3)
+        named = os.lstat(named_path)
+        if (not os.path.isabs(named_path) or os.path.realpath(named_path) != named_path
+                or not stat.S_ISDIR(held.st_mode) or not stat.S_ISDIR(named.st_mode)
+                or held.st_dev != expected_device or held.st_ino != expected_inode
+                or identity(held) != identity(named)):
+            fail("filesystem-identity directory path/descriptor generation mismatch")
+        return identity(held)
+
+    before = inspect()
+    # Same Darwin statfs layout and syscall as filesystem_capacity. Numeric
+    # f_type is a registration slot and is deliberately not an admission input.
+    filesystem = DarwinStatFs()
+    libc = ctypes.CDLL(None, use_errno=True)
+    operation = getattr(libc, "fstatfs", None)
+    if operation is None:
+        fail("filesystem-identity fstatfs is unavailable")
+    operation.argtypes = [ctypes.c_int, ctypes.POINTER(DarwinStatFs)]
+    operation.restype = ctypes.c_int
+    if operation(3, ctypes.byref(filesystem)) != 0:
+        fail("filesystem-identity fstatfs failed: " + os.strerror(ctypes.get_errno()))
+    raw_name = ctypes.string_at(
+        ctypes.addressof(filesystem) + DarwinStatFs.f_fstypename.offset, 16
+    )
+    name_bytes, separator, padding = raw_name.partition(b"\x00")
+    if not name_bytes or not separator or any(padding):
+        fail("filesystem-identity returned a missing, unterminated or malformed filesystem name")
+    name = name_bytes.decode("ascii", errors="strict")
+    if inspect() != before:
+        fail("filesystem-identity directory changed during query")
+    sys.stdout.write(json.dumps({
+        "protocol": PROTOCOL,
+        "platform": "darwin",
+        "device": str(expected_device),
+        "inode": str(expected_inode),
+        "filesystemType": name,
+        "local": bool(filesystem.f_flags & MNT_LOCAL),
+    }, sort_keys=True, separators=(",", ":")))
+
+
 def filesystem_capacity(arguments):
     if len(arguments) != 2:
         fail("filesystem requires one directory generation")
@@ -6119,6 +6171,7 @@ def main():
         "authority-stage-rewrite": authority_stage_rewrite,
         "directory-child-proof": directory_child_proof,
         "filesystem": filesystem_capacity,
+        "filesystem-identity": filesystem_identity,
         "list": list_directory,
         "list-bounded": list_directory_bounded,
         "list-bounded-batch": list_directories_bounded_batch,

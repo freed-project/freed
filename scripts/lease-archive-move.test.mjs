@@ -31,6 +31,11 @@ import {
   resolveLeaseArchivePythonRuntime,
 } from "./lib/automation-control.mjs";
 
+import {
+  readDarwinFilesystemIdentity,
+  inspectAutomationKernelGuardFilesystemPaths,
+} from "./lib/automation-kernel-guard-contract.mjs";
+
 const helperPath = path.join(
   import.meta.dirname,
   "lib",
@@ -3659,4 +3664,237 @@ test("private lease state batch binds transient parent mutations across launches
     assert.notEqual(terminal.status, 0);
     assert.match(String(terminal.stderr), /full inventory identity changed/);
   });
+});
+
+// Tier 1: syscall identity, response framing and path-generation admission.
+// Only the syscall is synthetic; the directory and inherited descriptor are real.
+test("Darwin filesystem identity binds path generations and bounded helper receipts", (t) => {
+  const root = realpathSync(
+    mkdtempSync(path.join(os.tmpdir(), "freed-fs-identity-")),
+  );
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  chmodSync(root, 0o755);
+  const receipt = (fd, device, inode) =>
+    Buffer.from(
+      JSON.stringify({
+        protocol: "freed-lease-archive-move-v1",
+        platform: "darwin",
+        device,
+        inode,
+        filesystemType: "apfs",
+        local: true,
+      }),
+    );
+  assert.equal(
+    readDarwinFilesystemIdentity(root, { query: receipt }).filesystemType,
+    "apfs",
+  );
+  for (const value of [
+    null,
+    Buffer.alloc(0),
+    Buffer.alloc(4097),
+    Buffer.from("{"),
+    Buffer.from([0xff]),
+    Buffer.from("{}"),
+    Buffer.from("null"),
+  ]) {
+    assert.throws(
+      () => readDarwinFilesystemIdentity(root, { query: () => value }),
+      /Darwin filesystem query failed/,
+    );
+  }
+  for (const patch of [
+    { device: "0" },
+    { inode: "0" },
+    { local: "true" },
+    { filesystemType: "" },
+    { filesystemType: "apfs\0junk" },
+    { filesystemType: "x".repeat(16) },
+    { extra: true },
+    { platform: "linux" },
+    { protocol: "unknown" },
+  ]) {
+    assert.throws(
+      () =>
+        readDarwinFilesystemIdentity(root, {
+          query: (...args) =>
+            Buffer.from(
+              JSON.stringify({ ...JSON.parse(receipt(...args)), ...patch }),
+            ),
+        }),
+      /receipt identity\/shape mismatch/,
+    );
+  }
+  assert.throws(
+    () =>
+      readDarwinFilesystemIdentity(root, {
+        query: () => {
+          throw new Error("helper unavailable");
+        },
+      }),
+    /helper unavailable/,
+  );
+  for (const field of ["dev", "ino"]) {
+    for (const phase of [1, 2]) {
+      let calls = 0;
+      assert.throws(
+        () =>
+          readDarwinFilesystemIdentity(root, {
+            query: receipt,
+            fstat: (...args) => {
+              const stats = fstatSync(...args);
+              if (++calls === phase) stats[field] += 1n;
+              return stats;
+            },
+          }),
+        /generation mismatch/,
+      );
+    }
+  }
+  if (process.platform === "linux") {
+    assert.throws(
+      () => readDarwinFilesystemIdentity(root),
+      /filesystem identity helper failed:.*requires a Darwin/s,
+    );
+  }
+  const moved = `${root}-old`;
+  t.after(() => rmSync(moved, { recursive: true, force: true }));
+  assert.throws(
+    () =>
+      readDarwinFilesystemIdentity(root, {
+        query: (...args) => {
+          renameSync(root, moved);
+          mkdirSync(root);
+          return receipt(...args);
+        },
+      }),
+    /generation mismatch after query/,
+  );
+  rmSync(root, { recursive: true });
+  symlinkSync(moved, root);
+  assert.throws(
+    () => readDarwinFilesystemIdentity(root, { query: receipt }),
+    /canonical directory/,
+  );
+  rmSync(root);
+  renameSync(moved, root);
+  assert.throws(
+    () =>
+      readDarwinFilesystemIdentity(root, {
+        query: (...args) => {
+          renameSync(root, moved);
+          symlinkSync(moved, root);
+          return receipt(...args);
+        },
+      }),
+    /generation mismatch after query/,
+  );
+});
+
+test("Darwin filesystem syscall query preserves archive permissions and fails closed", (t) => {
+  const root = realpathSync(
+    mkdtempSync(path.join(os.tmpdir(), "freed-fs-syscall-")),
+  );
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  chmodSync(root, 0o755);
+  const fd = openSync(root, constants.O_RDONLY | constants.O_DIRECTORY);
+  t.after(() => closeSync(fd));
+  const stats = fstatSync(fd, { bigint: true });
+  const probe = (scenario, slot = 27) =>
+    spawnSync(
+      pythonPath,
+      [
+        "-E",
+        "-I",
+        "-S",
+        "-c",
+        `
+import ctypes, os, runpy, sys
+ns = runpy.run_path(sys.argv[1], run_name="fixture")
+ns["platform"].system = lambda: "Darwin"
+scenario = sys.argv[3]
+class Query:
+    def __call__(self, fd, output):
+        assert fd == 3
+        if scenario == "error":
+            ctypes.set_errno(5)
+            return -1
+        value = ctypes.cast(output, ctypes.POINTER(ns["DarwinStatFs"])).contents
+        value.f_type = int(sys.argv[4])
+        value.f_fstypename = b"" if scenario == "missing" else (b"x" * 16 if scenario == "unterminated" else b"apfs")
+        if scenario == "garbage":
+            ctypes.memmove(ctypes.addressof(value) + ns["DarwinStatFs"].f_fstypename.offset, b"apfs" + bytes([0]) + b"junk", 9)
+        value.f_flags = 0 if scenario == "nonlocal" else ns["MNT_LOCAL"]
+        if scenario == "swap":
+            os.rename(sys.argv[2], sys.argv[2] + "-old")
+            os.mkdir(sys.argv[2])
+        return 0
+class Lib:
+    fstatfs = Query()
+ns["ctypes"].CDLL = lambda *a, **k: object() if scenario == "unavailable" else Lib()
+held = os.fstat(3)
+ns["filesystem_identity"]([str(held.st_dev + (1 if scenario == "device" else 0)), str(held.st_ino + (1 if scenario == "inode" else 0)), sys.argv[2]])
+`,
+        helperPath,
+        root,
+        scenario,
+        String(slot),
+      ],
+      { stdio: ["ignore", "pipe", "pipe", fd] },
+    );
+  for (const slot of [0, 25, 26, 27, 0xffffffff]) {
+    const result = probe("ok", slot);
+    assert.equal(result.status, 0, result.stderr.toString());
+    assert.deepEqual(JSON.parse(result.stdout), {
+      protocol: "freed-lease-archive-move-v1",
+      platform: "darwin",
+      device: String(stats.dev),
+      inode: String(stats.ino),
+      filesystemType: "apfs",
+      local: true,
+    });
+  }
+  for (const scenario of [
+    "error",
+    "unavailable",
+    "missing",
+    "unterminated",
+    "garbage",
+    "device",
+    "inode",
+  ]) {
+    const result = probe(scenario);
+    assert.notEqual(result.status, 0, scenario);
+    assert.match(result.stderr.toString(), /filesystem-identity/);
+  }
+  const nonlocal = probe("nonlocal");
+  assert.equal(nonlocal.status, 0, nonlocal.stderr.toString());
+  assert.equal(JSON.parse(nonlocal.stdout).local, false);
+  const archive = runHelper(
+    "filesystem",
+    [String(stats.dev), String(stats.ino)],
+    [fd],
+  );
+  assert.notEqual(archive.status, 0);
+  assert.match(archive.stderr.toString(), /0700|private/);
+  t.after(() => rmSync(`${root}-old`, { recursive: true, force: true }));
+  assert.notEqual(probe("swap").status, 0);
+  rmSync(root, { recursive: true });
+  symlinkSync(`${root}-old`, root);
+  assert.notEqual(probe("ok").status, 0);
+});
+
+test("filesystem path admission rejects a different device even with the same APFS name", (t) => {
+  // /dev is an existing separate mount on Linux and Darwin; no mount mutation.
+  const root = path.parse(realpathSync(os.tmpdir())).root;
+  const candidate = "/dev";
+  if (lstatSync(root).dev === lstatSync(candidate).dev)
+    return t.skip("no separate fixture mount");
+  const result = inspectAutomationKernelGuardFilesystemPaths(
+    root,
+    [candidate],
+    { resolveFilesystemType: () => "apfs" },
+  );
+  assert.equal(result.ready, false);
+  assert.match(result.problems.join("\n"), /not on the admitted apfs/);
 });
