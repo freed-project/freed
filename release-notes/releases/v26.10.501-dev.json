@@ -1,0 +1,83 @@
+{
+  "tag": "v26.10.501-dev",
+  "version": "26.10.501-dev",
+  "channel": "dev",
+  "dayKey": "26.10.5",
+  "approved": true,
+  "editorialNotes": [
+    "Reviewed against merged product source. Lead with optional local Kev and bounded evaluation; retain intervening iOS, Friends, outbox and disclosure fixes. Do not claim automatic feed classification, Jev parity, M5 performance or installed acceptance."
+  ],
+  "generatedAt": "2026-10-06T06:13:35.331Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.10.403-dev",
+    "previousPublishedDayTag": "v26.10.403-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "4a431b48543aa5209fc5ba9323957d1feb4065b1",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.10.403-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "2260591e820f599661d3e06f88e6da02f5a3cbd2",
+        "toInclusiveProductCommitSha": "4a431b48543aa5209fc5ba9323957d1feb4065b1"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:87ced2658785f1d28753666537ab09bef76d45848f728aeb12343f22ee70d6d1",
+        "currentDigest": "sha256:87ced2658785f1d28753666537ab09bef76d45848f728aeb12343f22ee70d6d1"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:3de4a804b56ef04a33ef5baa5ee5783a7bf203d7079abaafc3233ef6fea5b603",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.10.501-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.10.501-dev"
+    ],
+    "prNumbers": [
+      2135
+    ],
+    "commitSubjects": [
+      "feat: add optional local Kev classification and evaluation",
+      "fix: keep iOS Home Screen toolbar sharp",
+      "chore: repair dev500 source receipt ancestry",
+      "chore: prepare v26.10.500-dev",
+      "docs: reconcile cloud release activation and deferred hardening (#2137)",
+      "docs: preserve ad capture exclusion research and handoff",
+      "fix: retain outbox ownership and refine loading and disclosures (#2135)"
+    ]
+  },
+  "release": {
+    "deck": "Local Kev classification and Jev comparisons",
+    "features": [
+      "Choose Kev or Jev in AI settings and compare read-only classification scores for Library posts. Kev uses a separately installed local service and abstains on uncertain answers without cloud fallback.",
+      "Run six labeled examples on each classifier to compare accuracy, decision coverage and latency. This small evaluation does not establish model parity."
+    ],
+    "fixes": [
+      "Keep the iOS Home Screen toolbar sharp without extra padding.",
+      "Show the shared loading indicator while Friends activity loads.",
+      "Retain outbox ownership until timed-out work settles, preventing a replacement drain from overlapping it.",
+      "Recognize standalone Sponsored disclosures on Facebook posts."
+    ],
+    "followUps": [
+      "Kev decision thresholds are provisional. Classification results remain a Settings preview and do not change saved classifications or feed filters.",
+      "Hung outbox work can remain pending; cancellation and screen-lock admission are separate follow-ups.",
+      "Broader Facebook paid-placement and nested organic classification remain outside this change.",
+      "Signed installed UI acceptance and passive deadline-path observation remain separate verification steps."
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.10.501-dev\n\nLocal Kev classification and Jev comparisons\n\n### Features\n\n- Choose Kev or Jev in AI settings and compare read-only classification scores for Library posts. Kev uses a separately installed local service and abstains on uncertain answers without cloud fallback\n- Run six labeled examples on each classifier to compare accuracy, decision coverage and latency. This small evaluation does not establish model parity\n\n### Fixes\n\n- Keep the iOS Home Screen toolbar sharp without extra padding\n- Show the shared loading indicator while Friends activity loads\n- Retain outbox ownership until timed-out work settles, preventing a replacement drain from overlapping it\n- Recognize standalone Sponsored disclosures on Facebook posts\n\n### Follow-ups\n\n- Kev decision thresholds are provisional. Classification results remain a Settings preview and do not change saved classifications or feed filters\n- Hung outbox work can remain pending; cancellation and screen-lock admission are separate follow-ups\n- Broader Facebook paid-placement and nested organic classification remain outside this change\n- Signed installed UI acceptance and passive deadline-path observation remain separate verification steps\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
