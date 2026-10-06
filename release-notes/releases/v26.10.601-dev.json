@@ -1,0 +1,86 @@
+{
+  "tag": "v26.10.601-dev",
+  "version": "26.10.601-dev",
+  "channel": "dev",
+  "dayKey": "26.10.6",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-10-06T19:22:39.488Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.10.500-dev",
+    "previousPublishedDayTag": "v26.10.500-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "df550492fed57385e8c3d5b656684056dc7f9f3d",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.10.500-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "8cdc9c673b4fad80b18f5a02008dd44cd774412b",
+        "toInclusiveProductCommitSha": "df550492fed57385e8c3d5b656684056dc7f9f3d"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:87ced2658785f1d28753666537ab09bef76d45848f728aeb12343f22ee70d6d1",
+        "currentDigest": "sha256:a33bb2eeba256d6ad9c3dc0ac5d833187d1460dbd7d1934d4d54246a49cc8086"
+      },
+      "transitions": [
+        {
+          "activationId": "annotation-pending-local-schema-v4-v5",
+          "gate": "F",
+          "kind": "schema_version_activation",
+          "failureResponse": "Refuse unknown catalogs and all ordinary access while the annotation-specific local upgrade is building. Resume bounded pages under the existing exclusive Library ownership with unchanged pinned source identity. Preserve unresolved annotation markers and exact retry evidence. Physical 4 retains the base catalog; physical 5 retains the recovery catalog. Refuse older clients and roll forward through a compatible build without deleting local state or changing the writer epoch.",
+          "receiptExpectations": [
+            "roll_forward_recovery_receipt",
+            "schema_migration_receipt"
+          ]
+        }
+      ],
+      "inspectionDigest": "sha256:562cb0d7507a80769000df5a0dc3b46424335c2b3feaa9d4e5d998b15a45eb37",
+      "decision": {
+        "state": "review_required",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.10.601-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.10.601-dev"
+    ],
+    "prNumbers": [
+      2152
+    ],
+    "commitSubjects": [
+      "fix: update sharp and preserve Next PostCSS security override (#2152)",
+      "fix: patch security dependencies and bound Darwin filesystem admission cost",
+      "fix: make annotation browser fixtures portable",
+      "fix: hydrate saved annotations and refuse unsafe replacements",
+      "fix: distinguish failed search from empty results",
+      "fix: retain classifier state when download pause fails",
+      "chore: refresh dev501 publication boundary",
+      "chore: prepare v26.10.501-dev",
+      "feat: add optional local Kev classification and evaluation",
+      "fix: keep iOS Home Screen toolbar sharp"
+    ]
+  },
+  "release": {
+    "deck": "Optional local Kev classification and evaluation, hydrate saved annotations and refuse unsafe replacements, and retain classifier state when download pause fails",
+    "features": [
+      "Optional local Kev classification and evaluation"
+    ],
+    "fixes": [
+      "Patch security dependencies and bound Darwin filesystem admission cost"
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.10.601-dev\n\nOptional local Kev classification and evaluation, hydrate saved annotations and refuse unsafe replacements, and retain classifier state when download pause fails\n\n### Features\n\n- Optional local Kev classification and evaluation\n\n### Fixes\n\n- Patch security dependencies and bound Darwin filesystem admission cost\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
