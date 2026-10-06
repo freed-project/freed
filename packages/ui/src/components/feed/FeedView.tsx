@@ -560,7 +560,12 @@ export function FeedView() {
 
   // Search is a separate bounded SQLite window. Ordinary browsing comes from
   // the feed query above and never falls back to a renderer-held corpus.
-  const { filteredItems, isSearching } = useSearchResults(
+  const {
+    filteredItems,
+    isSearching,
+    status: searchStatus,
+    failureCode: searchFailureCode,
+  } = useSearchResults(
     searchQuery,
     activeFilter,
     searchCorpusVersion,
@@ -1120,7 +1125,18 @@ export function FeedView() {
 
   return (
     <div className="h-full flex flex-col">
-      {!selectedItem &&
+      {!selectedItem && isSearching && searchStatus === "failed" ? (
+        <div
+          role="alert"
+          data-search-failure-code={searchFailureCode}
+          className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center"
+        >
+          <p>Unable to search this Library.</p>
+          <p className="text-sm theme-text-muted">
+            Search for <span className="font-medium">{searchQuery}</span> could not complete.
+          </p>
+        </div>
+      ) : !selectedItem &&
       boundedFeedEligible &&
       boundedFeedStatusIsCurrent &&
       boundedFeed.status === "failed" ? (
@@ -1158,8 +1174,9 @@ export function FeedView() {
             onOpenCommentUrl={handleOpenCommentUrl}
             isSearching={isSearching}
             loading={
-              boundedFeedEligible &&
-              (!boundedFeedStatusIsCurrent || boundedFeed.status === "loading")
+              (isSearching && (searchStatus === "loading" || searchStatus === "refreshing")) ||
+              (boundedFeedEligible &&
+                (!boundedFeedStatusIsCurrent || boundedFeed.status === "loading"))
             }
             searchQuery={searchQuery}
             onLoadMore={loadMoreBoundedItems}

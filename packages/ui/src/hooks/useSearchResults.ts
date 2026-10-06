@@ -14,6 +14,17 @@ import {
   type SearchLibraryItems,
 } from "../context/PlatformContext.js";
 
+export type SearchFailureCode =
+  | "INVALID_QUERY"
+  | "SEARCH_UNAVAILABLE"
+  | "CURSOR_STALE"
+  | "SOURCE_INVALID"
+  | "SQLITE_FAILURE"
+  | "QUERY_CAPACITY"
+  | "QUERY_DEADLINE"
+  | "QUERY_CANCELLED"
+  | "QUERY_FAILED";
+
 export interface SearchResults {
   /** The bounded visible search window retained by React. */
   filteredItems: FeedItem[];
@@ -23,6 +34,8 @@ export interface SearchResults {
   resultCount: number;
   /** The governed SQLite search path refused or failed this query. */
   searchUnavailable?: boolean;
+  /** Bounded diagnostic only; never retains native messages or Library content. */
+  failureCode?: SearchFailureCode;
   /** Presentation may be retained; pending results do not admit bulk actions. */
   status?: "idle" | "loading" | "refreshing" | "ready" | "failed";
   resultsCurrent?: boolean;
@@ -52,6 +65,27 @@ const EMPTY_BROWSE_RESULT: SearchResults = Object.freeze({
   resultsCurrent: false,
   resultCount: 0,
 });
+
+function searchFailureCode(error: unknown): SearchFailureCode {
+  const message = typeof error === "string" ? error : error instanceof Error ? error.message : "";
+  switch (message) {
+    case "QUERY_CAPACITY":
+    case "QUERY_DEADLINE":
+    case "QUERY_CANCELLED":
+    case "CURSOR_STALE":
+      return message;
+    case "normalized search cursor is stale or mismatched":
+    case "SQLite Library search cursor did not advance":
+      return "CURSOR_STALE";
+    case "normalized query source identity is invalid":
+    case "SQLite Library changed while optimistic fields were loading":
+      return "SOURCE_INVALID";
+    case "normalized search query identity is invalid":
+      return "INVALID_QUERY";
+    default:
+      return message.startsWith("normalized SQLite failure: ") ? "SQLITE_FAILURE" : "QUERY_FAILED";
+  }
+}
 
 function priorityValue(item: FeedItem): number {
   return item.priority ?? 0;
@@ -163,7 +197,7 @@ export function useSearchResults(
   );
   const [persistentResult, setPersistentResult] =
     useState<PersistentSearchResult | null>(null);
-  const [persistentFailedKey, setPersistentFailedKey] = useState<{ requestKey: string; searcher: SearchLibraryItems } | null>(null);
+  const [persistentFailedKey, setPersistentFailedKey] = useState<{ requestKey: string; searcher: SearchLibraryItems; failureCode: SearchFailureCode } | null>(null);
 
   useEffect(() => {
     if (!trimmedQuery || !searchQueryValid || !searchLibraryItems) {
@@ -192,10 +226,10 @@ export function useSearchResults(
           setPersistentFailedKey(null);
         }
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (!cancelled && !controller.signal.aborted) {
           setPersistentResult(null);
-          setPersistentFailedKey({ requestKey, searcher: searchLibraryItems });
+          setPersistentFailedKey({ requestKey, searcher: searchLibraryItems, failureCode: searchFailureCode(error) });
         }
       });
 
@@ -224,6 +258,7 @@ export function useSearchResults(
       isSearching: true,
       resultCount: 0,
       searchUnavailable: true,
+      failureCode: !searchQueryValid ? "INVALID_QUERY" : "SEARCH_UNAVAILABLE",
       status: "failed",
       resultsCurrent: false,
     };
@@ -235,6 +270,7 @@ export function useSearchResults(
       isSearching: true,
       resultCount: 0,
       searchUnavailable: true,
+      failureCode: persistentFailedKey.failureCode,
       status: "failed",
       resultsCurrent: false,
     };

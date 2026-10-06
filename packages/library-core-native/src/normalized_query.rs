@@ -12614,4 +12614,81 @@ mod tests {
             .collect::<Vec<_>>());
         assert!(query_normalized_json_v1(&mut connection, request).is_err());
     }
+    // Tier 1: real registered search SQL over a two-row synthetic generation.
+    fn native_search_fixture() -> Connection {
+        let connection = Connection::open_in_memory().expect("synthetic database");
+        install_normalized_schema_v1(&connection).expect("schema");
+        connection.execute_batch(&format!(
+            "INSERT INTO library_meta
+               (singleton_id, library_id, schema_version, authority_epoch, source_revision, updated_at)
+               VALUES (1, '{}', 1, 'epoch-fixture', 7, 1);
+             INSERT INTO library_materialization_generation SELECT 1, library_id FROM library_meta;
+             UPDATE library_change_state SET revision = 7 WHERE singleton_id = 1;
+             INSERT INTO library_feed_items
+               (global_id, platform, content_type, captured_at, published_at, author_id,
+                author_handle, author_display_name, content_text, priority, hidden, saved, archived, updated_at)
+               VALUES ('rss:apple', 'rss', 'article', 1, 1, 'author-fixture', 'fixture', 'Fixture', 'apple orchard', 42, 0, 0, 0, 1),
+                      ('rss:rocket', 'rss', 'article', 2, 2, 'author-fixture', 'fixture', 'Fixture', 'rocket launch', 21, 0, 0, 0, 2);",
+            "a".repeat(64)
+        )).expect("source and row fixture");
+        connection
+    }
+
+    fn native_search_request(query: &str) -> serde_json::Value {
+        serde_json::json!({
+            "cancellationId": "cancel-search-fixture", "cursor": null,
+            "filter": {"archivedOnly": false, "authorId": null, "feedUrl": null,
+                "platform": null, "savedOnly": false, "schemaVersion": 1,
+                "showHidden": false, "signals": [], "socialContentFilter": "all", "tags": []},
+            "friendsPredicateSchemaVersion": 1, "identityMode": "all_content", "limit": 32,
+            "query": query, "queryId": "search_page_v1", "readerSessionId": "reader-search-fixture",
+            "recommendationOrderSchemaVersion": 1, "schemaVersion": 1
+        })
+    }
+
+    #[test]
+    fn native_search_terms_and_zero_match_use_registered_sql() {
+        let mut connection = native_search_fixture();
+        for (term, id) in [("apple", "rss:apple"), ("rocket", "rss:rocket"), ("orchard", "rss:apple")] {
+            let result = query_normalized_json_v1(&mut connection, native_search_request(term)).expect("valid search");
+            assert_eq!(result["rows"].as_array().map(Vec::len), Some(1), "{term}");
+            assert_eq!(result["rows"][0]["card"]["globalId"], id);
+            assert_eq!(result["source"]["projectionRevision"], 7);
+            assert_eq!(result["scannedRows"], 2);
+            assert!(result["nextCursor"].is_null());
+        }
+        let zero = query_normalized_json_v1(&mut connection, native_search_request("zzzzzzzz")).expect("admitted zero");
+        assert_eq!(zero["rows"].as_array().map(Vec::len), Some(0));
+        assert_eq!(zero["scannedRows"], 2);
+        assert_eq!(zero["source"]["projectionRevision"], 7);
+        assert!(zero["nextCursor"].is_null());
+    }
+
+    #[test]
+    fn native_search_refuses_missing_source_and_changed_cursor() {
+        let mut absent = Connection::open_in_memory().expect("database");
+        install_normalized_schema_v1(&absent).expect("schema");
+        assert!(matches!(query_normalized_json_v1(&mut absent, native_search_request("apple")), Err(NormalizedSqliteError::Sqlite(_))));
+        let mut connection = native_search_fixture();
+        let mut request = native_search_request("apple");
+        request["limit"] = 1.into();
+        let first = query_normalized_json_v1(&mut connection, request.clone()).expect("first page");
+        assert!(first["nextCursor"].is_string());
+        request["cursor"] = first["nextCursor"].clone();
+        connection.execute_batch("UPDATE library_meta SET source_revision=8; UPDATE library_change_state SET revision=8;").expect("advance synthetic source");
+        assert!(matches!(query_normalized_json_v1(&mut connection, request), Err(NormalizedSqliteError::InvalidRequest("normalized search cursor is stale or mismatched"))));
+        connection.execute_batch("UPDATE library_change_state SET revision=9;").expect("inconsistent synthetic source");
+        assert!(matches!(query_normalized_json_v1(&mut connection, native_search_request("apple")), Err(NormalizedSqliteError::InvalidRequest("normalized query source identity is invalid"))));
+    }
+
+    #[test]
+    fn native_search_sql_and_row_errors_never_become_empty_success() {
+        let mut missing_table = native_search_fixture();
+        missing_table.execute_batch("DROP TABLE library_feed_item_tags;").expect("inject SQL failure");
+        assert!(matches!(query_normalized_json_v1(&mut missing_table, native_search_request("apple")), Err(NormalizedSqliteError::Sqlite(_))));
+        let mut invalid_row = native_search_fixture();
+        invalid_row.execute("INSERT INTO library_feed_item_tags (global_id, tag) VALUES ('rss:apple', ?1)", ["x".repeat(1025)]).expect("inject oversized row value");
+        assert!(matches!(query_normalized_json_v1(&mut invalid_row, native_search_request("apple")), Err(NormalizedSqliteError::Sqlite(_))));
+    }
+
 }
