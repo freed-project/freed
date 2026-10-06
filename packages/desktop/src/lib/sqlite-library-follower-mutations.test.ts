@@ -709,13 +709,14 @@ describe("SQLite Primary mutations", () => {
       if (command === "close_normalized_scope_action") return undefined;
       if (command === "query_normalized_library") {
         const request = (
-          args as { request: { queryId: string; schemaVersion: number; personId?: string } }
+          args as { request: { queryId: string; schemaVersion: number; personId?: string; globalId?: string } }
         ).request;
         const source = {
           generationId: "bc".repeat(32),
           projectionRevision: 2,
           transitionSequence: 2,
         };
+        if (request.queryId === "item_annotation_edit_state_v1") return { queryId: request.queryId, schemaVersion: 1, globalId: request.globalId, source, pending: false, localSequence: 0 };
         if (request.queryId === "rss_item_summary_v1") {
           return { queryId: request.queryId, schemaVersion: request.schemaVersion, source, totalCount: 1, unreadCount: 0 };
         }

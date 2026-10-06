@@ -19,7 +19,9 @@ function mockSurfaceQuery(
   }) => unknown | Promise<unknown>,
 ): void {
   mocks.queryNormalizedLibrary.mockImplementation(async (request) =>
-    request.queryId === "optimistic_fields_v1"
+    request.queryId === "item_annotation_edit_state_v1"
+      ? { queryId: request.queryId, schemaVersion: 1, globalId: request.globalId, source: QUERY_SOURCE, pending: false, localSequence: 0 }
+      : request.queryId === "optimistic_fields_v1"
       ? {
           queryId: request.queryId,
           rows: [],
@@ -198,6 +200,7 @@ describe("Freed Desktop normalized surface readers", () => {
     ).toEqual([
       "item_detail_v1",
       "item_annotations_v1",
+      "item_annotation_edit_state_v1",
       "optimistic_fields_v1",
       "library_facet_summary_v1",
       "saved_analytics_v2",
@@ -239,8 +242,8 @@ describe("Freed Desktop normalized surface readers", () => {
       });
       await expect(readLibraryCoreItemDetail("x:item-1")).rejects.toThrow(
         failure === "stale source"
-          ? "Annotation text is stale"
-          : "Annotation text is unavailable",
+          ? "Annotation editing is stale"
+          : "Annotation editing is unavailable",
       );
       expect(mocks.queryNormalizedLibrary.mock.calls).toHaveLength(failure === "stale source" ? 2 : 3);
     },

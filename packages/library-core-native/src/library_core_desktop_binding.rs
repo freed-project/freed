@@ -1571,6 +1571,13 @@ mod tests {
         }
         fs::write(&selector_path, &original).unwrap();
         let connection = binding.connect_selected_normalized().unwrap();
+        let original_schema_digest: String = connection
+            .query_row(
+                "SELECT schema_sha256 FROM library_storage_meta WHERE singleton_id=1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
         connection
             .execute(
                 "UPDATE library_storage_meta SET schema_sha256 = ?1",
@@ -1581,7 +1588,7 @@ mod tests {
         connection
             .execute(
                 "UPDATE library_storage_meta SET schema_sha256 = ?1",
-                [crate::sqlite_contract_generated::NORMALIZED_SCHEMA_SHA256],
+                [original_schema_digest],
             )
             .unwrap();
         connection
