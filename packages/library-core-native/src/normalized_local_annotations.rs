@@ -538,6 +538,109 @@ mod tests {
     }
 
     #[test]
+    fn annotation_path_owner_upgrades_both_sources_and_keeps_absent_storage_absent() {
+        use crate::normalized_sqlite::{
+            initialize_owned_normalized_sqlite_database_v1, open_normalized_sqlite_database_v1,
+        };
+        let dir = tempfile::tempdir().unwrap();
+        for source in [1, 2] {
+            let path = dir.path().join(format!("source-{source}.sqlite"));
+            let db = fixture(&path, source);
+            populate(&db);
+            drop(db);
+            let db = initialize_owned_normalized_sqlite_database_v1(&path, false)
+                .unwrap()
+                .unwrap();
+            assert_eq!(version(&db).unwrap(), source + 3);
+            assert_eq!(
+                db.query_row(
+                    "SELECT scanned_members FROM library_local_annotation_migration;",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+                1025
+            );
+            drop(db);
+            let db = open_normalized_sqlite_database_v1(&path, false).unwrap();
+            assert_eq!(db.total_changes(), 0, "ordinary READY open cannot backfill");
+        }
+        let absent = dir.path().join("absent").join("library.sqlite");
+        assert!(
+            initialize_owned_normalized_sqlite_database_v1(&absent, false)
+                .unwrap()
+                .is_none()
+        );
+        assert!(!absent.parent().unwrap().exists());
+        let fresh = initialize_owned_normalized_sqlite_database_v1(&absent, true)
+            .unwrap()
+            .unwrap();
+        assert_eq!(version(&fresh).unwrap(), 4);
+        require_ready(&fresh).unwrap();
+        assert_eq!(
+            fresh
+                .query_row(
+                    "SELECT count(*) FROM library_active_authority;",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            0
+        );
+    }
+
+    #[test]
+    fn annotation_ordinary_path_open_refuses_building_without_advancing() {
+        use crate::normalized_sqlite::{
+            initialize_owned_normalized_sqlite_database_v1, open_normalized_sqlite_database_v1,
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("library.sqlite");
+        let mut db = fixture(&path, 1);
+        populate(&db);
+        assert!(!resume(&mut db).unwrap());
+        let state = |db: &Connection| {
+            db.query_row("SELECT pinned_identity,scanned_members,(SELECT count(*) FROM library_local_annotation_unresolved),catalog_version FROM library_local_annotation_migration;",[],|row|Ok((row.get::<_,String>(0)?,row.get::<_,i64>(1)?,row.get::<_,i64>(2)?,row.get::<_,i64>(3)?))).unwrap()
+        };
+        let before = state(&db);
+        assert!(open_normalized_sqlite_database_v1(&path, false)
+            .unwrap_err()
+            .to_string()
+            .contains("BUILDING"));
+        assert_eq!(state(&db), before);
+        drop(db);
+        let reopened = initialize_owned_normalized_sqlite_database_v1(&path, false)
+            .unwrap()
+            .unwrap();
+        assert_eq!(state(&reopened).0, before.0);
+        require_ready(&reopened).unwrap();
+    }
+
+    #[test]
+    fn annotation_continuation_refuses_oversized_result_without_writes() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut db = fixture(&dir.path().join("library.sqlite"), 1);
+        populate(&db);
+        while !resume(&mut db).unwrap() {}
+        // Corruption fixture bypasses the normal producer/table size checks only
+        // to prove the maintenance boundary refuses oversized stored evidence.
+        db.execute_batch("PRAGMA ignore_check_constraints=ON;
+          DELETE FROM library_local_annotation_unresolved WHERE entity_id<>'item:258';
+          INSERT INTO library_intent_results SELECT transaction_id,actor_id,'epoch','epoch',first_counter,
+          printf('%064d',first_counter-1),transaction_digest,'accepted',0,
+          CAST(json_object('padding',printf('%0500000d',0)) AS BLOB),0
+          FROM library_intent_transactions WHERE first_counter=258;
+          PRAGMA ignore_check_constraints=OFF;").unwrap();
+        let before = db.total_changes();
+        assert!(reconcile_normalized_annotation_slice_v1(&mut db, None)
+            .unwrap_err()
+            .to_string()
+            .contains("maintenance result exceeds bound"));
+        assert_eq!(db.total_changes(), before);
+        assert!(pending(&db, "item:258").unwrap());
+    }
+
+    #[test]
     fn annotation_continuation_passes_unresolved_prefix_and_restarts_for_new_evidence() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("library.sqlite");

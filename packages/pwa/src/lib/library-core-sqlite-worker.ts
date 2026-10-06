@@ -108,7 +108,7 @@ async function acquireOwnership(): Promise<void> {
   await acquired;
 }
 
-async function open(): Promise<PwaLibraryCoreSqliteEngine> {
+async function open(requestId: string): Promise<PwaLibraryCoreSqliteEngine> {
   if (engine) return engine;
   let openingStage = "acquire writer ownership";
   // Anonymous demo databases belong to this worker alone. They never open
@@ -145,8 +145,17 @@ async function open(): Promise<PwaLibraryCoreSqliteEngine> {
     openingEngine = next;
     if (database.selectValue("PRAGMA user_version;") === 0) next.initialize();
     openingStage = "resume the local annotation upgrade";
-    if (!resumePwaAnnotationUpgrade(database,sqlite3.capi,()=>new sqlite3.oo1.DB(":memory:","c"))) {
-      throw new Error("LOCAL_ANNOTATION_UPGRADE_PENDING");
+    let scannedMembers=-1;
+    while (!resumePwaAnnotationUpgrade(database,sqlite3.capi,()=>new sqlite3.oo1.DB(":memory:","c"))) {
+      // Keep ownership, SAH and the unpublished engine through startup. Each
+      // invocation commits only bounded pages; no transaction crosses the yield.
+      const scanned=Number(database.selectValue("SELECT scanned_members FROM library_local_annotation_migration WHERE singleton_id=1;") ?? 0);
+      if (!Number.isSafeInteger(scanned) || scanned<0 || scanned<scannedMembers) throw new Error("Annotation upgrade progress is invalid");
+      if (scanned>scannedMembers) {
+        scannedMembers=scanned;
+        scope.postMessage({kind:"annotation_upgrade_progress",requestId,scannedMembers:scanned});
+      }
+      await new Promise<void>(resolve=>setTimeout(resolve,25));
     }
     next.initialize();
     openingStage = "reconcile the OPFS content vault";
@@ -252,7 +261,7 @@ function bindCommand<K extends LibraryCoreSqliteWorkerRequest["kind"]>(
 async function executeOpen(
   request: WorkerRequest<"open">,
 ): Promise<LibraryCoreSqliteWorkerResponse> {
-  const active = await open();
+  const active = await open(request.requestId);
   return { ok: true, requestId: request.requestId, status: active.status() };
 }
 

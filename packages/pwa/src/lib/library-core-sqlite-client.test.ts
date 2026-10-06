@@ -94,6 +94,42 @@ describe("PWA SQLite worker response boundary", () => {
     vi.unstubAllGlobals();
   });
 
+  it("renews startup only for committed progress and retains the total deadline", async () => {
+    vi.useFakeTimers();
+    const client=new PwaLibraryCoreSqliteClient();
+    const opening=client.open();
+    const failure=expect(opening).rejects.toThrow("timed out");
+    const worker=activeWorker();
+    const id=requestId(worker);
+    for (let index=0;index<30;index++) {
+      worker.respond({kind:"annotation_upgrade_progress",requestId:id,scannedMembers:index*256});
+      await vi.advanceTimersByTimeAsync(20_000);
+    }
+    await failure;
+    expect(worker.terminateCount).toBe(1);
+  });
+
+  it.each([{scannedMembers:256},{scannedMembers:512,extra:true},{scannedMembers:-1}])("refuses invalid startup progress %j", async invalid=>{
+    const client=new PwaLibraryCoreSqliteClient();
+    const opening=client.open();
+    const failure=expect(opening).rejects.toThrow("upgrade progress is invalid");
+    const worker=activeWorker();
+    const message={kind:"annotation_upgrade_progress",requestId:requestId(worker)};
+    worker.respond({...message,scannedMembers:256});
+    worker.respond({...message,...invalid});
+    await failure;
+    expect(worker.terminateCount).toBe(1);
+  });
+
+  it("cancels an unpublished startup worker when closed", async () => {
+    const client=new PwaLibraryCoreSqliteClient();
+    const opening=client.open();
+    const failedOpen=expect(opening).rejects.toThrow("startup was cancelled");
+    await expect(client.close()).rejects.toThrow("startup was cancelled");
+    await failedOpen;
+    expect(activeWorker().terminateCount).toBe(1);
+  });
+
   it("accepts only closed local maintenance hints and ignores the disposed worker", () => {
     const changed=vi.fn();
     const client=new PwaLibraryCoreSqliteClient(undefined,changed);

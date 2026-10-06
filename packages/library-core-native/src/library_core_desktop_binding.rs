@@ -176,8 +176,22 @@ impl LibraryCoreDesktopBinding {
         let mut normalized_connection = binding
             .normalized_database
             .open(normalized_sqlite_open_flags(true))?;
-        crate::normalized_local_annotations::open_owned(&mut normalized_connection)
-            .map_err(|error| LibraryCoreStorageError::from(error.to_string()))?;
+        // The process leases above remain held, and the binding is not published
+        // until READY. Each invocation retains its existing page/time/byte caps.
+        // Process cancellation drops ownership; committed pages resume on reopen.
+        loop {
+            match crate::normalized_local_annotations::open_owned(&mut normalized_connection) {
+                Ok(()) => break,
+                Err(crate::NormalizedSqliteError::InvalidRequest(
+                    "LOCAL_ANNOTATION_UPGRADE_PENDING",
+                )) => {
+                    #[cfg(test)]
+                    tests::pause_annotation_startup_for_process_fixture(&normalized_connection);
+                    std::thread::sleep(std::time::Duration::from_millis(25));
+                }
+                Err(error) => return Err(LibraryCoreStorageError::from(error.to_string())),
+            }
+        }
         binding
             .content_vault
             .reconcile_v1(&mut normalized_connection)?;
@@ -1317,6 +1331,150 @@ mod tests {
                 primary_actor_id: "primary-actor".to_owned(),
             })
             .expect("publish test authority selector");
+    }
+
+    pub(super) fn pause_annotation_startup_for_process_fixture(db: &Connection) {
+        let Some(signal) = std::env::var_os("FREED_TEST_ANNOTATION_STARTUP_PAUSE") else {
+            return;
+        };
+        let (scanned, pin): (i64, String) = db
+            .query_row(
+                "SELECT scanned_members,pinned_identity FROM library_local_annotation_migration;",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        if scanned == 0 {
+            return;
+        }
+        assert!(crate::normalized_sqlite::install_normalized_schema_v1(db)
+            .unwrap_err()
+            .to_string()
+            .contains("BUILDING"));
+        fs::write(signal, pin).unwrap();
+        // Test-only stop at a committed slice, while the real owner and bound
+        // connection remain held. Parent kills the process, not this receipt.
+        loop {
+            std::thread::sleep(std::time::Duration::from_millis(25));
+        }
+    }
+
+    #[test]
+    fn annotation_startup_child_process() {
+        let Some(root) = std::env::var_os("FREED_TEST_ANNOTATION_STARTUP_ROOT") else {
+            return;
+        };
+        let _binding = LibraryCoreDesktopBinding::open(Path::new(&root), TEST_IDENTITY).unwrap();
+    }
+
+    #[test]
+    fn annotation_owned_startup_recovers_after_process_interruption() {
+        use std::{
+            process::{Command, Stdio},
+            time::{Duration, Instant},
+        };
+        let fixture = tempfile::tempdir().unwrap();
+        let app_root = fixture.path().join("app-data");
+        fs::create_dir(&app_root).unwrap();
+        fs::set_permissions(&app_root, fs::Permissions::from_mode(0o700)).unwrap();
+        let normalized = app_root.join(NORMALIZED_LIBRARY_DIRECTORY);
+        fs::create_dir(&normalized).unwrap();
+        fs::set_permissions(&normalized, fs::Permissions::from_mode(0o700)).unwrap();
+        let path = normalized.join("library-core.sqlite");
+        let db = Connection::open(&path).unwrap();
+        crate::normalized_sqlite::install_normalized_schema_v1(&db).unwrap();
+        db.execute_batch(include_str!(
+            "../../shared/src/library-core/annotation-backfill-fixture-v1.sql"
+        ))
+        .unwrap();
+        drop(db);
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        // Same subprocess pattern as process-lease fixtures. Always reap it,
+        // including assertion failure, so no fixture owner survives the test.
+        struct ChildGuard(std::process::Child);
+        impl Drop for ChildGuard {
+            fn drop(&mut self) {
+                let _ = self.0.kill();
+                let _ = self.0.wait();
+            }
+        }
+        let signal = fixture.path().join("committed-startup-slice");
+        let mut child = ChildGuard(
+            Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "library_core_desktop_binding::tests::annotation_startup_child_process",
+                    "--nocapture",
+                ])
+                .env("FREED_TEST_ANNOTATION_STARTUP_ROOT", &app_root)
+                .env("FREED_TEST_ANNOTATION_STARTUP_PAUSE", &signal)
+                .stdout(Stdio::inherit())
+                .stderr(Stdio::inherit())
+                .spawn()
+                .unwrap(),
+        );
+        let deadline = Instant::now() + Duration::from_secs(15);
+        let pinned = loop {
+            if let Ok(pin) = fs::read_to_string(&signal) {
+                child.0.kill().unwrap();
+                child.0.wait().unwrap();
+                break pin;
+            }
+            assert!(
+                child.0.try_wait().unwrap().is_none(),
+                "startup exited before interruption evidence"
+            );
+            assert!(
+                Instant::now() < deadline,
+                "no committed startup page observed"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        };
+        let binding = LibraryCoreDesktopBinding::open(&app_root, TEST_IDENTITY).unwrap();
+        let db = binding.connect_normalized().unwrap();
+        let state:(String,i64,String)=db.query_row("SELECT phase,scanned_members,pinned_identity FROM library_local_annotation_migration;",[],|row|Ok((row.get(0)?,row.get(1)?,row.get(2)?))).unwrap();
+        assert_eq!(state, ("ready".to_string(), 1025, pinned));
+    }
+
+    #[test]
+    fn annotation_owned_startup_finishes_multiple_bounded_invocations() {
+        let fixture = tempfile::tempdir().unwrap();
+        let app_root = fixture.path().join("app-data");
+        fs::create_dir(&app_root).unwrap();
+        fs::set_permissions(&app_root, fs::Permissions::from_mode(0o700)).unwrap();
+        let normalized = app_root.join(NORMALIZED_LIBRARY_DIRECTORY);
+        fs::create_dir(&normalized).unwrap();
+        fs::set_permissions(&normalized, fs::Permissions::from_mode(0o700)).unwrap();
+        let path = normalized.join("library-core.sqlite");
+        let db = Connection::open(&path).unwrap();
+        crate::normalized_sqlite::install_normalized_schema_v1(&db).unwrap();
+        db.execute_batch(include_str!(
+            "../../shared/src/library-core/annotation-backfill-fixture-v1.sql"
+        ))
+        .unwrap();
+        drop(db);
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        // 1,025 source rows require more than one four-page invocation. The
+        // normal owned constructor must finish without relaunch or publication.
+        let binding = LibraryCoreDesktopBinding::open(&app_root, TEST_IDENTITY).unwrap();
+        let db = binding.connect_normalized().unwrap();
+        let state: (String, i64) = db
+            .query_row(
+                "SELECT phase,scanned_members FROM library_local_annotation_migration;",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(state, ("ready".to_string(), 1025));
+        assert_eq!(
+            db.query_row(
+                "SELECT count(*) FROM library_local_annotation_unresolved;",
+                [],
+                |row| row.get::<_, i64>(0)
+            )
+            .unwrap(),
+            768
+        );
     }
 
     #[test]

@@ -134,6 +134,25 @@ describe("annotation-specific local SQLite-WASM upgrade", () => {
     expect(readPwaLibraryStorageIdentity(db).schemaVersion).toBe(5);
     expect(db.selectValue("SELECT origin_version FROM library_local_annotation_migration;")).toBe(1);
   });
+  it("refuses an oversized maintenance result without losing its marker or cursor", () => {
+    const db=fixture(1);populate(db);finish(db);
+    db.exec("DELETE FROM library_local_annotation_unresolved WHERE entity_id<>'item:258';");
+    // Deliberately corrupted storage; ordinary producers and table CHECKs forbid this.
+    db.exec("PRAGMA ignore_check_constraints=ON;");
+    db.exec(`INSERT INTO library_intent_results SELECT transaction_id,actor_id,'epoch','epoch',first_counter,
+      printf('%064d',first_counter-1),transaction_digest,'accepted',0,
+      CAST(json_object('padding',printf('%0500000d',0)) AS BLOB),0
+      FROM library_intent_transactions WHERE first_counter=258;`);
+    db.exec("PRAGMA ignore_check_constraints=OFF;");
+    const engine=new PwaLibraryCoreSqliteEngine(db,sqlite.version.libVersion,{capi:sqlite.capi});
+    const pass=engine.beginAnnotationReconciliation()!;
+    const before=db.selectValue("SELECT total_changes();");
+    expect(()=>engine.reconcileAnnotationPage(pass)).toThrow("maintenance result exceeds bound");
+    expect(pass.after).toBeNull();
+    expect(pwaAnnotationPending(db,"item:258")).toBe(true);
+    expect(db.selectValue("SELECT total_changes();")).toBe(before);
+  });
+
   it("continues beyond an unresolved prefix and invalidates a pass on identity change", () => {
     const db=fixture(1);
     populate(db);

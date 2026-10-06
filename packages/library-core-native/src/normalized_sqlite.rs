@@ -63,6 +63,43 @@ pub fn open_normalized_sqlite_database_v1(
     database_path: &Path,
     create: bool,
 ) -> Result<Connection, NormalizedSqliteError> {
+    let connection = open_checked_normalized_sqlite_path(database_path, create)?;
+    configure_normalized_sqlite_connection(&connection)?;
+    Ok(connection)
+}
+
+/// Startup/setup only, after acquiring the existing process lease. An absent
+/// database remains absent unless this is explicit authorized fresh creation.
+/// The returned connection is unpublished until all bounded upgrade slices finish.
+pub fn initialize_owned_normalized_sqlite_database_v1(
+    database_path: &Path,
+    create: bool,
+) -> Result<Option<Connection>, NormalizedSqliteError> {
+    if !create {
+        match std::fs::symlink_metadata(database_path) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(NormalizedSqliteError::Transport(error.to_string())),
+            Ok(_) => {}
+        }
+    }
+    let mut connection = open_checked_normalized_sqlite_path(database_path, create)?;
+    loop {
+        match crate::normalized_local_annotations::open_owned(&mut connection) {
+            Ok(()) => return Ok(Some(connection)),
+            Err(NormalizedSqliteError::InvalidRequest("LOCAL_ANNOTATION_UPGRADE_PENDING")) => {
+                std::thread::sleep(std::time::Duration::from_millis(25))
+            }
+            Err(error) => return Err(error),
+        }
+    }
+}
+
+// Shared checked path boundary. Neither opener introduces another normalization,
+// URI, symlink or SQLite flag policy.
+fn open_checked_normalized_sqlite_path(
+    database_path: &Path,
+    create: bool,
+) -> Result<Connection, NormalizedSqliteError> {
     let parent = database_path
         .parent()
         .ok_or(NormalizedSqliteError::InvalidRequest(
@@ -88,10 +125,10 @@ pub fn open_normalized_sqlite_database_v1(
         Err(error) if error.kind() == std::io::ErrorKind::NotFound && create => {}
         Err(error) => return Err(NormalizedSqliteError::Transport(error.to_string())),
     }
-    let mut connection =
-        Connection::open_with_flags(&resolved, normalized_sqlite_open_flags(create))?;
-    crate::normalized_local_annotations::open_owned(&mut connection)?;
-    Ok(connection)
+    Ok(Connection::open_with_flags(
+        &resolved,
+        normalized_sqlite_open_flags(create),
+    )?)
 }
 
 #[derive(Debug)]

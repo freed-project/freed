@@ -388,3 +388,69 @@ test("owner continuation reaches a covered OPFS suffix and resumes safely after 
     await rm(profile,{recursive:true,force:true});
   }
 });
+
+
+for (const interrupt of [false,true]) test(`owned startup resumes bounded OPFS migration${interrupt ? " after cancellation" : " in one open"}`, async () => {
+  test.setTimeout(60_000);
+  const profile=await mkdtemp(resolve("../../.cache/annotation-startup-browser-"));
+  let context:BrowserContext|undefined;
+  try {
+    context=await chromium.launchPersistentContext(profile,offlineBrowser);
+    const fixture=await readFile(resolve("../shared/src/library-core/annotation-backfill-fixture-v1.sql"),"utf8");
+    await context.route("**/src/lib/library-core-sqlite-worker.ts*",async route=>{
+      const response=await route.fetch();
+      let body=await response.text();
+      const seed='openingStage = "resume the local annotation upgrade";';
+      expect(body).toContain(seed);
+      body=body.replace(seed,`database.exec(${JSON.stringify(fixture)});`+seed);
+      const progress='scannedMembers = scanned;';
+      expect(body).toContain(progress);
+      body=body.replace(progress,progress+`
+        let refused=false; try { next.status(); } catch(error) { refused=String(error).includes("BUILDING"); }
+        if (!refused) throw new Error("fixture: ordinary startup access escaped BUILDING");
+      `);
+      if (interrupt) {
+        const yieldPoint='await new Promise((resolve) => setTimeout(resolve, 25));';
+        expect(body).toContain(yieldPoint);
+        body=body.replace(yieldPoint,'await new Promise((resolve) => setTimeout(resolve, 100000));');
+      }
+      await route.fulfill({response,body});
+    });
+    if (interrupt) {
+      await context.route("**/annotation-test",route=>route.fulfill({contentType:"text/html",body:"<!doctype html>"}));
+      const page=context.pages()[0]!;
+      await page.goto("http://127.0.0.1:1435/annotation-test");
+      await page.evaluate(async()=>{
+        const state=window as unknown as {startupProgress?:number; startupClient?:import("../src/lib/library-core-sqlite-client").PwaLibraryCoreSqliteClient; startupError?:string};
+        const OriginalWorker=window.Worker;
+        window.Worker=class extends OriginalWorker {
+          constructor(url:URL|string,options?:WorkerOptions) {
+            super(url,options);
+            this.addEventListener("message",event=>{if(event.data.kind==="annotation_upgrade_progress") state.startupProgress=event.data.scannedMembers;});
+          }
+        };
+        const modulePath="/src/lib/library-core-sqlite-client.ts";
+        const {PwaLibraryCoreSqliteClient}=await import(modulePath);
+        state.startupClient=new PwaLibraryCoreSqliteClient();
+        void state.startupClient.open().catch((error:Error)=>{state.startupError=error.message;});
+      });
+      await expect.poll(()=>page.evaluate(()=>(window as unknown as {startupProgress?:number}).startupProgress),{timeout:15_000}).toBeGreaterThan(0);
+      expect(await page.evaluate(async()=>{
+        try { await (window as unknown as {startupClient:import("../src/lib/library-core-sqlite-client").PwaLibraryCoreSqliteClient}).startupClient.close(); return "unexpected"; }
+        catch(error) { return String(error); }
+      })).toContain("startup was cancelled");
+      await context.close();
+      context=await chromium.launchPersistentContext(profile,offlineBrowser);
+    }
+    const page=await openClient(context);
+    const state=await page.evaluate(async()=>{
+      const client=(window as unknown as {fixtureClient:import("../src/lib/library-core-sqlite-client").PwaLibraryCoreSqliteClient}).fixtureClient;
+      return {status:await client.status(),pending:await client.query({queryId:"item_annotation_edit_state_v1",schemaVersion:1,globalId:"item:1025"})};
+    });
+    expect(state.status.schemaVersion).toBe(4);
+    expect(state.pending.pending).toBe(true);
+  } finally {
+    await context?.close();
+    await rm(profile,{recursive:true,force:true});
+  }
+});

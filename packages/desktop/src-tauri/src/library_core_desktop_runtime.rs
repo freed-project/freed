@@ -486,13 +486,19 @@ fn open_unselected_normalized_database(
     app: &tauri::AppHandle,
     create: bool,
 ) -> Result<Connection, String> {
-    freed_library_core::open_normalized_sqlite_database_v1(
-        &app_root(app)?
-            .join(NORMALIZED_LIBRARY_DIRECTORY)
-            .join(NORMALIZED_DATABASE_FILE),
-        create,
-    )
-    .map_err(|error| error.to_string())
+    let database = app_root(app)?
+        .join(NORMALIZED_LIBRARY_DIRECTORY)
+        .join(NORMALIZED_DATABASE_FILE);
+    if create {
+        // Only authorized setup/cutover callers use create=true. Complete the
+        // owner upgrade before returning a target that can be published.
+        freed_library_core::initialize_owned_normalized_sqlite_database_v1(&database, true)
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| "fresh normalized storage is unavailable".to_string())
+    } else {
+        freed_library_core::open_normalized_sqlite_database_v1(&database, false)
+            .map_err(|error| error.to_string())
+    }
 }
 
 #[cfg(not(unix))]

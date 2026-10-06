@@ -1012,6 +1012,7 @@ export type LibraryCoreSqliteWorkerResult =
 
 export type LibraryCoreSqliteWorkerResponse =
   | Readonly<{ kind: "local_changes_available" }>
+  | Readonly<{ kind: "annotation_upgrade_progress"; requestId: string; scannedMembers: number }>
   | Readonly<{
       kind: "checkpoint_activation_progress";
       requestId: string;

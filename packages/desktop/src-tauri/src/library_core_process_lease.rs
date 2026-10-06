@@ -100,8 +100,20 @@ impl LibraryCoreProcessLease {
                     ),
                 }
             })?;
-            freed_library_core::LibraryCoreProcessLease::acquire(app_root, DESKTOP_IDENTITY)
-                .map(|lease| Self { _lease: lease })
+            let lease =
+                freed_library_core::LibraryCoreProcessLease::acquire(app_root, DESKTOP_IDENTITY)?;
+            // Same pre-Tauri app root and normalized path used by the runtime.
+            // Keep this lease alive through every bounded slice and after READY.
+            let database = app_root.join("library-sqlite").join("library-core.sqlite");
+            freed_library_core::initialize_owned_normalized_sqlite_database_v1(&database, false)
+                .map_err(
+                    |error| freed_library_core::LibraryCoreProcessLeaseError::Storage {
+                        operation: "annotation startup",
+                        path: database,
+                        source: std::io::Error::other(error.to_string()),
+                    },
+                )?;
+            Ok(Self { _lease: lease })
         }
     }
 

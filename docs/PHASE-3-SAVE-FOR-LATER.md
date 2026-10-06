@@ -57,6 +57,12 @@ SQLite-WASM cursor fixtures plus a shipping Chromium OPFS owner/reopen fixture
 cover retained progress beyond an unresolved prefix. Runtime review and remaining
 lifecycle proofs are outstanding; Windows range-vault and installed acceptance
 remain open.
+Startup migration now retains the existing owner across bounded slices and yields
+until READY. Ordinary path opens cannot advance migration. Explicit fresh setup
+uses the owned upgrader before publication. Native subprocess interruption and
+PWA worker cancellation/reopen fixtures preserve committed progress and the
+original pin. Non-Unix startup is wired before runtime exposure; Linux path-helper
+proof does not establish Windows execution.
 No new quote editor is included.
 
 ---
