@@ -1,0 +1,79 @@
+{
+  "tag": "v26.10.500-dev",
+  "version": "26.10.500-dev",
+  "channel": "dev",
+  "dayKey": "26.10.5",
+  "approved": true,
+  "editorialNotes": [
+    "Reviewed documentation-inclusive product4df723c5 against the current protected dev base. Approved Friends loading, outbox ownership and Facebook disclosure runtime/schema bytes remain unchanged. Source/activation receipt regenerated through the supported tool, with no activation declared or paid note generation. Exact local/cloud validation, signed packaging and installed verification remain required; broader UI, X surrogate and Drive admission work remain separate."
+  ],
+  "generatedAt": "2026-10-06T02:08:31.558Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.10.403-dev",
+    "previousPublishedDayTag": "v26.10.403-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "4df723c5bb8a591d1e552def3d3848299a78aff4",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.10.403-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "2260591e820f599661d3e06f88e6da02f5a3cbd2",
+        "toInclusiveProductCommitSha": "4df723c5bb8a591d1e552def3d3848299a78aff4"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:87ced2658785f1d28753666537ab09bef76d45848f728aeb12343f22ee70d6d1",
+        "currentDigest": "sha256:87ced2658785f1d28753666537ab09bef76d45848f728aeb12343f22ee70d6d1"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:d21c0a3c756e3a4c5053a8c5fe1d3f96ab0c1557bb2b97b1363031294ef08583",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.10.500-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.10.500-dev"
+    ],
+    "prNumbers": [
+      2135
+    ],
+    "commitSubjects": [
+      "Merge remote-tracking branch 'origin/dev' into chore/release-next-social-20261005",
+      "docs: reconcile cloud release activation and deferred hardening (#2137)",
+      "chore: refresh dev500 product boundary",
+      "Merge branch 'dev' into chore/release-next-social-20261005",
+      "docs: preserve ad capture exclusion research and handoff",
+      "chore: review v26.10.500-dev release notes",
+      "release: v26.10.500-dev",
+      "fix: retain outbox ownership and refine loading and disclosures (#2135)"
+    ]
+  },
+  "release": {
+    "deck": "Clearer Friends loading and safer outbox ownership",
+    "features": [],
+    "fixes": [
+      "Show the shared loading indicator while Friends activity loads.",
+      "Retain outbox ownership until timed-out work settles, preventing a replacement drain from overlapping it.",
+      "Recognize standalone Sponsored disclosures on Facebook posts."
+    ],
+    "followUps": [
+      "Hung outbox work can remain pending; cancellation and screen-lock admission are separate follow-ups.",
+      "Broader Facebook paid-placement and nested organic classification remain outside this change.",
+      "Signed installed UI acceptance and passive deadline-path observation remain separate verification steps."
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.10.500-dev\n\nClearer Friends loading and safer outbox ownership\n\n### Fixes\n\n- Show the shared loading indicator while Friends activity loads\n- Retain outbox ownership until timed-out work settles, preventing a replacement drain from overlapping it\n- Recognize standalone Sponsored disclosures on Facebook posts\n\n### Follow-ups\n\n- Hung outbox work can remain pending; cancellation and screen-lock admission are separate follow-ups\n- Broader Facebook paid-placement and nested organic classification remain outside this change\n- Signed installed UI acceptance and passive deadline-path observation remain separate verification steps\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
