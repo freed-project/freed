@@ -2,7 +2,7 @@
   "channel": "dev",
   "dayKey": "26.10.5",
   "date": "2026-10-05",
-  "preferredDeck": "Clearer Friends loading and safer outbox ownership",
+  "preferredDeck": "Local Kev classification and Jev comparisons",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
@@ -10,7 +10,8 @@
   ],
   "pinnedHighlights": [],
   "editorialNotes": [
-    "Reviewed bounded Friends loading, outbox ownership and standalone Sponsored disclosure fixes; do not claim cancellation, screen-lock repair, global ad exclusion or ranking activation."
+    "Reviewed bounded Friends loading, outbox ownership and standalone Sponsored disclosure fixes; do not claim cancellation, screen-lock repair, global ad exclusion or ranking activation.",
+    "Kev is an optional separate local service with abstention and no cloud fallback. Its read-only Settings evaluation is not automatic feed classification or evidence of Jev parity."
   ],
-  "updatedAt": "2026-10-06T06:13:35.334Z"
+  "updatedAt": "2026-10-06T06:15:04.994Z"
 }

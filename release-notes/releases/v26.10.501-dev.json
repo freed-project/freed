@@ -3,8 +3,10 @@
   "version": "26.10.501-dev",
   "channel": "dev",
   "dayKey": "26.10.5",
-  "approved": false,
-  "editorialNotes": [],
+  "approved": true,
+  "editorialNotes": [
+    "Reviewed against merged product source. Lead with optional local Kev and bounded evaluation; retain intervening iOS, Friends, outbox and disclosure fixes. Do not claim automatic feed classification, Jev parity, M5 performance or installed acceptance."
+  ],
   "generatedAt": "2026-10-06T06:13:35.331Z",
   "model": "heuristic",
   "source": {
@@ -59,18 +61,23 @@
     ]
   },
   "release": {
-    "deck": "Clearer Friends loading and safer outbox ownership",
+    "deck": "Local Kev classification and Jev comparisons",
     "features": [
-      "Optional local Kev classification and evaluation"
+      "Choose Kev or Jev in AI settings and compare read-only classification scores for Library posts. Kev uses a separately installed local service and abstains on uncertain answers without cloud fallback.",
+      "Run six labeled examples on each classifier to compare accuracy, decision coverage and latency. This small evaluation does not establish model parity."
     ],
     "fixes": [
-      "Keep iOS Home Screen toolbar sharp",
-      "Retain outbox ownership and refine loading and disclosures"
+      "Keep the iOS Home Screen toolbar sharp without extra padding.",
+      "Show the shared loading indicator while Friends activity loads.",
+      "Retain outbox ownership until timed-out work settles, preventing a replacement drain from overlapping it.",
+      "Recognize standalone Sponsored disclosures on Facebook posts."
     ],
     "followUps": [
-      "Repair dev500 source receipt ancestry",
-      "Prepare v26.10.500-dev"
+      "Kev decision thresholds are provisional. Classification results remain a Settings preview and do not change saved classifications or feed filters.",
+      "Hung outbox work can remain pending; cancellation and screen-lock admission are separate follow-ups.",
+      "Broader Facebook paid-placement and nested organic classification remain outside this change.",
+      "Signed installed UI acceptance and passive deadline-path observation remain separate verification steps."
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.10.501-dev\n\nClearer Friends loading and safer outbox ownership\n\n### Features\n\n- Optional local Kev classification and evaluation\n\n### Fixes\n\n- Keep iOS Home Screen toolbar sharp\n- Retain outbox ownership and refine loading and disclosures\n\n### Follow-ups\n\n- Repair dev500 source receipt ancestry\n- Prepare v26.10.500-dev\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.10.501-dev\n\nLocal Kev classification and Jev comparisons\n\n### Features\n\n- Choose Kev or Jev in AI settings and compare read-only classification scores for Library posts. Kev uses a separately installed local service and abstains on uncertain answers without cloud fallback\n- Run six labeled examples on each classifier to compare accuracy, decision coverage and latency. This small evaluation does not establish model parity\n\n### Fixes\n\n- Keep the iOS Home Screen toolbar sharp without extra padding\n- Show the shared loading indicator while Friends activity loads\n- Retain outbox ownership until timed-out work settles, preventing a replacement drain from overlapping it\n- Recognize standalone Sponsored disclosures on Facebook posts\n\n### Follow-ups\n\n- Kev decision thresholds are provisional. Classification results remain a Settings preview and do not change saved classifications or feed filters\n- Hung outbox work can remain pending; cancellation and screen-lock admission are separate follow-ups\n- Broader Facebook paid-placement and nested organic classification remain outside this change\n- Signed installed UI acceptance and passive deadline-path observation remain separate verification steps\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
