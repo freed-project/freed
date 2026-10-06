@@ -320,6 +320,7 @@ export function readDarwinFilesystemIdentity(
     descriptor = openSync(
       canonical,
       constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+      0o600,
     );
     const held = fstat(descriptor, { bigint: true });
     if (!held.isDirectory() && !held.isFile()) {

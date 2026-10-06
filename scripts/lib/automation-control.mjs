@@ -14036,6 +14036,16 @@ function readAndValidatePublisherCapability({
     throw new AutomationControlError(
       "publisher_capability_invalid",
       "The publisher capability does not match this lease request or is outside its validity window.",
+      {
+        // These payload times are diagnostic claims, not authenticated authority.
+        capabilityTiming: {
+          phase: "admission",
+          issuedAtMs: Number.isFinite(issuedAtMs) ? issuedAtMs : null,
+          expiresAtMs: Number.isFinite(expiresAtMs) ? expiresAtMs : null,
+          admissionAtMs: nowMs,
+          checkedAtMs: Date.now(),
+        },
+      },
     );
   }
   const expectedPath = capabilityFilePath(
@@ -21185,6 +21195,15 @@ function restoreLeaseCredential(descriptor) {
         "lease_transaction_conflict",
         "Lease capability source changed during rollback.",
       );
+    }
+    const consumedDirectory = path.dirname(descriptor.consumedPath);
+    if (!pathEntryExists(consumedDirectory)) {
+      // Consumption creates this directory lazily. Before that point, persist
+      // the unchanged source and the absent destination's parent, not a
+      // nonexistent directory. All other I/O failures remain fatal.
+      syncDirectory(path.dirname(descriptor.sourcePath));
+      syncDirectory(path.dirname(consumedDirectory));
+      return;
     }
     syncLeaseCredentialDirectories(descriptor, false);
     return;
@@ -33112,17 +33131,39 @@ function executePreparedLeaseTransaction(
       matched.snapshot.recordCount,
       transaction.event,
     );
+    const abortAfterAuthorityFailure = (primaryError) => {
+      try {
+        abortPreparedLeaseTransaction(
+          paths,
+          files,
+          transaction,
+          checkpoint,
+          activeEventsGuard,
+        );
+      } catch (rollbackError) {
+        // Failed rollback must not erase the authority refusal that triggered it.
+        throw new AutomationControlError(
+          "lease_transaction_abort_failed",
+          "Lease authority was rejected and transaction rollback also failed.",
+          {
+            primaryError: {
+              code: primaryError.code ?? null,
+              message: String(primaryError.message ?? primaryError),
+              details: primaryError.details,
+            },
+            rollbackError: {
+              code: rollbackError.code ?? null,
+              message: String(rollbackError.message ?? rollbackError),
+            },
+          },
+        );
+      }
+      throw primaryError;
+    };
     try {
       beforeCredentialCommit();
     } catch (error) {
-      abortPreparedLeaseTransaction(
-        paths,
-        files,
-        transaction,
-        checkpoint,
-        activeEventsGuard,
-      );
-      throw error;
+      abortAfterAuthorityFailure(error);
     }
     admitControlEventAuthorityStage(paths);
     consumeLeaseCredential(transaction.capability, checkpoint);
@@ -33130,14 +33171,7 @@ function executePreparedLeaseTransaction(
     try {
       beforeStateCommit();
     } catch (error) {
-      abortPreparedLeaseTransaction(
-        paths,
-        files,
-        transaction,
-        checkpoint,
-        activeEventsGuard,
-      );
-      throw error;
+      abortAfterAuthorityFailure(error);
     }
     admitControlEventAuthorityStage(paths);
     replaceLeaseStateFromTransaction(
@@ -34198,7 +34232,20 @@ function acquireLeaseAuthorized({
                 ? "owner_confirmation_invalid"
                 : "publisher_capability_invalid",
             `Lease ${name} authorization expired before acquisition committed.`,
-            { name },
+            {
+              name,
+              ...(publisherCapability === null
+                ? {}
+                : {
+                    capabilityTiming: {
+                      phase: "commit",
+                      issuedAtMs: Date.parse(publisherCapability.payload.issuedAt),
+                      expiresAtMs: credentialExpiresAtMs,
+                      admissionAtMs: operationNowMs,
+                      checkedAtMs: liveNowMs,
+                    },
+                  }),
+            },
           );
         }
       };

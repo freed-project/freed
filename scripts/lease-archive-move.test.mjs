@@ -3695,6 +3695,20 @@ test("Darwin filesystem identity binds path generations and bounded helper recei
     readDarwinFilesystemIdentity(root, { query: receipt }).filesystemType,
     "apfs",
   );
+  assert.equal(lstatSync(root).mode & 0o777, 0o755);
+  const missing = path.join(root, "missing");
+  let missingQueried = false;
+  assert.throws(
+    () =>
+      readDarwinFilesystemIdentity(missing, {
+        query: () => {
+          missingQueried = true;
+        },
+      }),
+    /ENOENT/,
+  );
+  assert.equal(missingQueried, false);
+  assert.equal(existsSync(missing), false);
   for (const value of [
     null,
     Buffer.alloc(0),
