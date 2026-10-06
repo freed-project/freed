@@ -1,0 +1,99 @@
+{
+  "tag": "v26.10.601-dev",
+  "version": "26.10.601-dev",
+  "channel": "dev",
+  "dayKey": "26.10.6",
+  "approved": true,
+  "editorialNotes": [
+    "Reviewed release copy and canonically generated unchanged annotation schema activation; owner approved publication and activation in the active task on 2026-10-06. Exact confirmation is recorded separately through the maintained helper. No installed acceptance or model parity claimed."
+  ],
+  "generatedAt": "2026-10-06T20:29:52.545Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.10.500-dev",
+    "previousPublishedDayTag": "v26.10.500-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "066a72269649dbd06aaa4b3cecc12ce527af6d84",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.10.500-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "8cdc9c673b4fad80b18f5a02008dd44cd774412b",
+        "toInclusiveProductCommitSha": "066a72269649dbd06aaa4b3cecc12ce527af6d84"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:87ced2658785f1d28753666537ab09bef76d45848f728aeb12343f22ee70d6d1",
+        "currentDigest": "sha256:a33bb2eeba256d6ad9c3dc0ac5d833187d1460dbd7d1934d4d54246a49cc8086"
+      },
+      "transitions": [
+        {
+          "activationId": "annotation-pending-local-schema-v4-v5",
+          "gate": "F",
+          "kind": "schema_version_activation",
+          "failureResponse": "Refuse unknown catalogs and all ordinary access while the annotation-specific local upgrade is building. Resume bounded pages under the existing exclusive Library ownership with unchanged pinned source identity. Preserve unresolved annotation markers and exact retry evidence. Physical 4 retains the base catalog; physical 5 retains the recovery catalog. Refuse older clients and roll forward through a compatible build without deleting local state or changing the writer epoch.",
+          "receiptExpectations": [
+            "roll_forward_recovery_receipt",
+            "schema_migration_receipt"
+          ]
+        }
+      ],
+      "inspectionDigest": "sha256:e9bb16de062ab14df9aec0f66a8c91dbcd5dd2bc8f31bb437761d7e3a5202d68",
+      "decision": {
+        "state": "owner_approved",
+        "ownerApprovalReference": "current-task:release-26-10-601-dev#sha256:544f2b5a3497b329d17c55b27717e6f6a7e3585f20f92766a1a51324e13d695d",
+        "approvedInspectionDigest": "sha256:e9bb16de062ab14df9aec0f66a8c91dbcd5dd2bc8f31bb437761d7e3a5202d68",
+        "approvedReleaseArtifactDigest": "sha256:281b6fd81c16141556f9d3cb78ddb7129f93699ae059eab8843907cdf5b52b27"
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.10.601-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.10.601-dev"
+    ],
+    "prNumbers": [
+      2152
+    ],
+    "commitSubjects": [
+      "fix: align clipboard and Friends fixtures with library contracts",
+      "fix: update sharp and preserve Next PostCSS security override (#2152)",
+      "fix: patch security dependencies and bound Darwin filesystem admission cost",
+      "fix: make annotation browser fixtures portable",
+      "fix: hydrate saved annotations and refuse unsafe replacements",
+      "fix: distinguish failed search from empty results",
+      "fix: retain classifier state when download pause fails",
+      "chore: refresh dev501 publication boundary",
+      "chore: prepare v26.10.501-dev",
+      "feat: add optional local Kev classification and evaluation",
+      "fix: keep iOS Home Screen toolbar sharp"
+    ]
+  },
+  "release": {
+    "deck": "Local Kev classification, labeled comparisons, and restored annotation text",
+    "features": [
+      "Choose Kev or Jev in AI settings and compare read-only Library classification scores. Kev uses a separate local service and abstains on uncertain answers without cloud fallback",
+      "Run six labeled examples on each classifier to compare accuracy, decision coverage and latency"
+    ],
+    "fixes": [
+      "Saved annotation text now loads through authenticated storage; incomplete or stale note replacements are refused",
+      "Show search failures with retry controls instead of presenting them as empty results",
+      "Keep the selected classifier and entered settings when pausing a model download fails",
+      "Update security dependencies and reduce Darwin filesystem admission overhead",
+      "Keep the iOS Home Screen toolbar sharp"
+    ],
+    "followUps": [
+      "Opening this build upgrades local annotation storage from catalog 1 or 2 to 4 or 5. Older clients refuse upgraded storage; recovery requires a compatible build",
+      "Kev thresholds are provisional. Classification scores remain a Settings preview and do not change saved classifications or feed filters",
+      "The small labeled evaluation does not establish model parity or quality on your feed",
+      "Installed native UI acceptance and Windows authenticated-range annotation hydration remain separate verification work"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.10.601-dev\n\nLocal Kev classification, labeled comparisons, and restored annotation text\n\n### Features\n\n- Choose Kev or Jev in AI settings and compare read-only Library classification scores. Kev uses a separate local service and abstains on uncertain answers without cloud fallback\n- Run six labeled examples on each classifier to compare accuracy, decision coverage and latency\n\n### Fixes\n\n- Saved annotation text now loads through authenticated storage; incomplete or stale note replacements are refused\n- Show search failures with retry controls instead of presenting them as empty results\n- Keep the selected classifier and entered settings when pausing a model download fails\n- Update security dependencies and reduce Darwin filesystem admission overhead\n- Keep the iOS Home Screen toolbar sharp\n\n### Follow-ups\n\n- Opening this build upgrades local annotation storage from catalog 1 or 2 to 4 or 5. Older clients refuse upgraded storage; recovery requires a compatible build\n- Kev thresholds are provisional. Classification scores remain a Settings preview and do not change saved classifications or feed filters\n- The small labeled evaluation does not establish model parity or quality on your feed\n- Installed native UI acceptance and Windows authenticated-range annotation hydration remain separate verification work\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
