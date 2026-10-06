@@ -68,7 +68,7 @@ import {
 } from "../nightly-self-improve.mjs";
 
 const OUTCOME_REPAIR_MOVE_HELPER_SHA256 =
-  "552274e78fbbee12c9e82b665240f0f8ed68e5ee3d889fe786a3e6038478b9e6";
+  "4b2998b6426fd6769f9855358ac0931ad0b4abda5a320a80743c94b38181b38d";
 const OUTCOME_REPAIR_MOVE_PYTHON = "/usr/bin/python3";
 
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;

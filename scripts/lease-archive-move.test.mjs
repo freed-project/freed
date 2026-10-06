@@ -34,7 +34,11 @@ import {
 import {
   readDarwinFilesystemIdentity,
   inspectAutomationKernelGuardFilesystemPaths,
+  inspectAutomationKernelGuardCutover,
+  resolveAutomationKernelGuardFilesystemType,
 } from "./lib/automation-kernel-guard-contract.mjs";
+
+import { installAutomationKernelGuardCutoverFixture } from "./test-helpers/automation-kernel-guard.mjs";
 
 const helperPath = path.join(
   import.meta.dirname,
@@ -3774,7 +3778,7 @@ test("Darwin filesystem identity binds path generations and bounded helper recei
   symlinkSync(moved, root);
   assert.throws(
     () => readDarwinFilesystemIdentity(root, { query: receipt }),
-    /canonical directory/,
+    /canonical regular file or directory/,
   );
   rmSync(root);
   renameSync(moved, root);
@@ -3800,7 +3804,7 @@ test("Darwin filesystem syscall query preserves archive permissions and fails cl
   const fd = openSync(root, constants.O_RDONLY | constants.O_DIRECTORY);
   t.after(() => closeSync(fd));
   const stats = fstatSync(fd, { bigint: true });
-  const probe = (scenario, slot = 27) =>
+  const probe = (scenario, slot = 27, namedPath = root, descriptor = fd) =>
     spawnSync(
       pythonPath,
       [
@@ -3836,11 +3840,11 @@ held = os.fstat(3)
 ns["filesystem_identity"]([str(held.st_dev + (1 if scenario == "device" else 0)), str(held.st_ino + (1 if scenario == "inode" else 0)), sys.argv[2]])
 `,
         helperPath,
-        root,
+        namedPath,
         scenario,
         String(slot),
       ],
-      { stdio: ["ignore", "pipe", "pipe", fd] },
+      { stdio: ["ignore", "pipe", "pipe", descriptor] },
     );
   for (const slot of [0, 25, 26, 27, 0xffffffff]) {
     const result = probe("ok", slot);
@@ -3877,6 +3881,30 @@ ns["filesystem_identity"]([str(held.st_dev + (1 if scenario == "device" else 0))
   );
   assert.notEqual(archive.status, 0);
   assert.match(archive.stderr.toString(), /0700|private/);
+  const filePath = path.join(root, "marker");
+  writeFileSync(filePath, "marker", { mode: 0o600 });
+  const fileFd = openSync(filePath, constants.O_RDONLY | constants.O_NOFOLLOW);
+  t.after(() => closeSync(fileFd));
+  const fileResult = probe("ok", 27, filePath, fileFd);
+  assert.equal(fileResult.status, 0, fileResult.stderr.toString());
+  assert.equal(
+    JSON.parse(fileResult.stdout).inode,
+    String(fstatSync(fileFd, { bigint: true }).ino),
+  );
+  const fifo = path.join(root, "fifo");
+  assert.equal(spawnSync("mkfifo", [fifo]).status, 0);
+  const fifoFd = openSync(fifo, constants.O_RDONLY | constants.O_NONBLOCK);
+  t.after(() => closeSync(fifoFd));
+  assert.notEqual(probe("ok", 27, fifo, fifoFd).status, 0);
+  assert.throws(
+    () =>
+      readDarwinFilesystemIdentity(fifo, {
+        query: () => {
+          throw new Error("FIFO must be rejected before the query");
+        },
+      }),
+    /canonical regular file or directory/,
+  );
   t.after(() => rmSync(`${root}-old`, { recursive: true, force: true }));
   assert.notEqual(probe("swap").status, 0);
   rmSync(root, { recursive: true });
@@ -3897,4 +3925,38 @@ test("filesystem path admission rejects a different device even with the same AP
   );
   assert.equal(result.ready, false);
   assert.match(result.problems.join("\n"), /not on the admitted apfs/);
+});
+
+
+test("Darwin cutover filesystem admission queries regular markers as well as directories", (t) => {
+  const root = realpathSync(
+    mkdtempSync(path.join(os.tmpdir(), "freed-cutover-query-")),
+  );
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  installAutomationKernelGuardCutoverFixture(root);
+  const kinds = new Set();
+  const result = inspectAutomationKernelGuardCutover(root, {
+    resolveFilesystemType: (candidate) =>
+      resolveAutomationKernelGuardFilesystemType(candidate, {
+        platform: "darwin",
+        queryFilesystem: (namedPath) =>
+          readDarwinFilesystemIdentity(namedPath, {
+            query: (fd, device, inode) => {
+              kinds.add(fstatSync(fd).isFile() ? "file" : "directory");
+              return Buffer.from(
+                JSON.stringify({
+                  protocol: "freed-lease-archive-move-v1",
+                  platform: "darwin",
+                  device,
+                  inode,
+                  filesystemType: "apfs",
+                  local: true,
+                }),
+              );
+            },
+          }),
+      }),
+  });
+  assert.equal(result.ready, true, JSON.stringify(result.problems));
+  assert.deepEqual([...kinds].sort(), ["directory", "file"]);
 });

@@ -6048,9 +6048,9 @@ LINUX_LOCAL_FILESYSTEMS = {
 def filesystem_identity(arguments):
     """Read-only identity query; unlike archive operations, ancestors need not be private."""
     if len(arguments) != 3 or platform.system() != "Darwin":
-        fail("filesystem-identity requires a Darwin directory generation and path")
-    expected_device = integer(arguments[0], "directory device")
-    expected_inode = integer(arguments[1], "directory inode")
+        fail("filesystem-identity requires a Darwin file or directory generation and path")
+    expected_device = integer(arguments[0], "filesystem device")
+    expected_inode = integer(arguments[1], "filesystem inode")
     named_path = arguments[2]
 
     def identity(value):
@@ -6060,10 +6060,11 @@ def filesystem_identity(arguments):
         held = os.fstat(3)
         named = os.lstat(named_path)
         if (not os.path.isabs(named_path) or os.path.realpath(named_path) != named_path
-                or not stat.S_ISDIR(held.st_mode) or not stat.S_ISDIR(named.st_mode)
+                or not (stat.S_ISDIR(held.st_mode) or stat.S_ISREG(held.st_mode))
+                or not (stat.S_ISDIR(named.st_mode) or stat.S_ISREG(named.st_mode))
                 or held.st_dev != expected_device or held.st_ino != expected_inode
                 or identity(held) != identity(named)):
-            fail("filesystem-identity directory path/descriptor generation mismatch")
+            fail("filesystem-identity path/descriptor generation mismatch")
         return identity(held)
 
     before = inspect()
@@ -6086,7 +6087,7 @@ def filesystem_identity(arguments):
         fail("filesystem-identity returned a missing, unterminated or malformed filesystem name")
     name = name_bytes.decode("ascii", errors="strict")
     if inspect() != before:
-        fail("filesystem-identity directory changed during query")
+        fail("filesystem-identity path changed during query")
     sys.stdout.write(json.dumps({
         "protocol": PROTOCOL,
         "platform": "darwin",

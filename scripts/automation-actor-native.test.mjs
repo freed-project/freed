@@ -1288,10 +1288,11 @@ test(
 
 // Exercise the production pinned transport and actual fstatfs ABI on hosted APFS.
 test(
-  "native kernel filesystem query admits only the bound local APFS directory",
+  "native kernel filesystem query admits bound APFS files and directories",
   { skip: !darwinOnly },
   async (t) => {
     const {
+      inspectAutomationKernelGuardCutover,
       readDarwinFilesystemIdentity,
       resolveAutomationKernelGuardFilesystemType,
     } = await import("./lib/automation-kernel-guard-contract.mjs");
@@ -1308,5 +1309,20 @@ test(
     assert.equal(observed.inode, String(held.ino));
     assert.equal(resolveAutomationKernelGuardFilesystemType(directory), "apfs");
     t.diagnostic(JSON.stringify({ path: directory, ...observed }));
+    const marker = path.join(directory, "marker");
+    await writeFile(marker, "marker", { mode: 0o600 });
+    const fileObserved = readDarwinFilesystemIdentity(marker);
+    assert.equal(fileObserved.filesystemType, "apfs");
+    assert.equal(fileObserved.local, true);
+    assert.equal(
+      fileObserved.inode,
+      String((await stat(marker, { bigint: true })).ino),
+    );
+    t.diagnostic(JSON.stringify({ path: marker, ...fileObserved }));
+    const { installAutomationKernelGuardCutoverFixture } =
+      await import("./test-helpers/automation-kernel-guard.mjs");
+    installAutomationKernelGuardCutoverFixture(directory);
+    const cutover = inspectAutomationKernelGuardCutover(directory);
+    assert.equal(cutover.ready, true, JSON.stringify(cutover.problems));
   },
 );

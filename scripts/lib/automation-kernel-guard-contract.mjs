@@ -313,25 +313,25 @@ export function readDarwinFilesystemIdentity(
         (name) => typeof constants[name] !== "number",
       )
     ) {
-      throw new Error("safe directory descriptor admission is unavailable");
+      throw new Error("safe filesystem descriptor admission is unavailable");
     }
     const before = lstat(canonical, { bigint: true });
     if (
-      !before.isDirectory() ||
+      (!before.isDirectory() && !before.isFile()) ||
       before.isSymbolicLink() ||
       realpathSync(canonical) !== canonical
     ) {
-      throw new Error("named path is not a canonical directory");
+      throw new Error("named path is not a canonical regular file or directory");
     }
     descriptor = openSync(
       canonical,
       constants.O_RDONLY |
-        constants.O_DIRECTORY |
+        (before.isDirectory() ? constants.O_DIRECTORY : 0) |
         constants.O_NOFOLLOW |
         constants.O_NONBLOCK,
     );
     const held = fstat(descriptor, { bigint: true });
-    if (!held.isDirectory() || !same(before, held))
+    if ((!held.isDirectory() && !held.isFile()) || !same(before, held))
       throw new Error("path/descriptor generation mismatch before query");
     const bytes = query(
       descriptor,
@@ -2019,7 +2019,7 @@ const LEASE_ARCHIVE_MOVE_HELPER = fileURLToPath(
   new URL("./lease-archive-move.py", import.meta.url),
 );
 const LEASE_ARCHIVE_MOVE_HELPER_SHA256 =
-  "552274e78fbbee12c9e82b665240f0f8ed68e5ee3d889fe786a3e6038478b9e6";
+  "4b2998b6426fd6769f9855358ac0931ad0b4abda5a320a80743c94b38181b38d";
 const LEASE_ARCHIVE_HELPER_MAX_BYTES = 256 * 1024;
 const LEASE_ARCHIVE_MOVE_PYTHON_BOOTSTRAP = [
   "import hashlib,sys",
