@@ -12,6 +12,6 @@
    coverage, and thresholds. Missing identity or coverage produces
    `inconclusive`, not a successful release verdict.
 5. For production, open the required reverse-integration PR from `main` into `dev` after release stability is established.
-6. Use `freed-ship-www` for changelog publication and any approved roadmap presentation update. Never merge `dev` into `www`.
+6. For every published dev or production release, on any machine, use `freed-ship-www`. Carry the published tag, source SHA, approved artifact digest and `source.prNumbers` into a tracked `www` PR. Record its URL and deployment identity; verify the exact build and PR links on the deployed changelog, including paginated pages. The generator reads published tag artifacts; never merge `dev` into `www`. A green build or installed app does not complete this handoff. Without website authority or deployment, report it as pending with the prepared worktree or PR. Exclude unpublished release preparations.
 
 7. For production, complete [showcase asset and website verification](../../../../docs/RELEASE-SHOWCASE.md). Record any missing integration or website handoff as pending release work.
