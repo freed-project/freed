@@ -73,9 +73,9 @@ function getReleaseItems(note: ReleaseNote): string[] {
 
 export function buildChangelogPreviewFromNotes(
   notes: ReleaseNote[],
-  limit = 5,
+  limit = 10,
 ): ChangelogPreviewRelease[] {
-  const seenDayChannels = new Set<string>();
+  const seenReleases = new Set<string>();
   const previews: ChangelogPreviewRelease[] = [];
 
   for (const note of [...notes].sort((left, right) => {
@@ -90,21 +90,22 @@ export function buildChangelogPreviewFromNotes(
       continue;
     }
 
-    const dayChannelKey = `${note.dayKey ?? note.version}:${note.channel}`;
-    if (seenDayChannels.has(dayChannelKey)) {
+    // Keep distinct same-day builds; only deduplicate repeated artifacts.
+    const releaseKey = `${note.version}:${note.channel}`;
+    if (seenReleases.has(releaseKey)) {
       continue;
     }
 
     const items = getReleaseItems(note);
     const summary = note.release?.deck?.trim() || items[0] || `Freed v${note.version}`;
 
-    seenDayChannels.add(dayChannelKey);
+    seenReleases.add(releaseKey);
     previews.push({
       version: note.version,
       channel: note.channel,
       date: note.generatedAt ?? null,
       summary,
-      items: items.filter((item) => item !== summary).slice(0, 2),
+      items: items.filter((item) => item !== summary),
     });
 
     if (previews.length >= limit) {

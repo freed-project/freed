@@ -147,9 +147,9 @@ test("updates settings shows recent changelog entries and opens the full changel
   const preview = settingsDialog.getByTestId("settings-changelog-preview");
   await expect(preview).toBeVisible({ timeout: 5_000 });
   await expect(settingsDialog.getByText(/Installed version:\s*v\d+\.\d+\.\d+(?:-dev)?/)).toBeVisible();
-  await expect(preview.getByRole("article")).toHaveCount(5);
+  await expect(preview.getByRole("article")).toHaveCount(10);
   await expect(preview.getByRole("article").first().getByText(/^v\d+\.\d+\.\d+$/)).toBeVisible();
-  await expect(preview.getByText(/-dev/)).toHaveCount(0);
+  await expect(preview.getByText(/^v\d+\.\d+\.\d+-dev$/)).toHaveCount(0);
 
   await preview.getByRole("button", { name: "Show full changelog" }).click();
   await expect.poll(async () => (await ipc.openedUrls()).at(-1)).toBe(
@@ -157,7 +157,7 @@ test("updates settings shows recent changelog entries and opens the full changel
   );
 
   await page.getByTestId("settings-release-channel-select").selectOption("dev");
-  await expect(preview.getByRole("article")).toHaveCount(5);
+  await expect(preview.getByRole("article")).toHaveCount(10);
   await expect(preview.getByText(/v\d+\.\d+\.\d+-dev/).first()).toBeVisible();
   await page.evaluate(() => {
     const store = window as unknown as Record<string, unknown>;

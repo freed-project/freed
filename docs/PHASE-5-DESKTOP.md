@@ -976,7 +976,7 @@ export async function captureDomFeed(
 - [x] System tray shows sync status
 - [x] App runs in background after window close
 - [x] Auto-updater checks GitHub Releases on launch and in the background, then installs updates in-app
-- [x] Desktop Settings > Updates embeds a compact scrolling preview of the latest five changelog cards with a full changelog link
+- [x] Desktop Settings > Updates shows the latest ten individual release builds with their complete notes in a scrolling list and a full changelog link; same-day builds remain separate
 - [x] Desktop Settings includes an in-app Newsletter section that completes protected signup without opening the marketing site or exposing the Brevo credential
 - [x] CI/CD release pipeline builds for macOS (ARM + Intel), Windows, Linux on tag push
 - [x] Native Library Core changes compile on Windows during pull request and dev integration validation, before release packaging
