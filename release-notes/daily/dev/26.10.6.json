@@ -2,13 +2,15 @@
   "channel": "dev",
   "dayKey": "26.10.6",
   "date": "2026-10-06",
-  "preferredDeck": null,
+  "preferredDeck": "Clearer search errors and safer model controls",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
     "Demote internal cleanup unless it clearly changes the shipped product."
   ],
   "pinnedHighlights": [],
-  "editorialNotes": [],
-  "updatedAt": "2026-10-06T11:21:45.688Z"
+  "editorialNotes": [
+    "Reviewed source2e73441: Jev/Search plus inherited localKev/iOS changes. Installed search diagnosis and native UI verification remain pending."
+  ],
+  "updatedAt": "2026-10-06T11:23:48.665Z"
 }

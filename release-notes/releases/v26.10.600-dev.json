@@ -3,8 +3,12 @@
   "version": "26.10.600-dev",
   "channel": "dev",
   "dayKey": "26.10.6",
-  "approved": false,
-  "editorialNotes": [],
+  "approved": true,
+  "editorialNotes": [
+    "Reviewed full product range8cdc9c673b4fad80b18f5a02008dd44cd774412b..2e73441a96c1fa665012ff49f0a0d5e04857c932 including inherited optionalKev/iOS and newly mergedJev/Search. No Primary ranking/history cleanup or new provider behavior claim.",
+    "Spending-limit fixtures strengthen existing coverage; budgets/defaults/enforcement are unchanged. Registered nativeKev fixtures and isolated debug compile passed without app launch/model/service contact.",
+    "Native UI/custody acceptance held; no installed all-term fix, accuracy parity or live-provider/Drive72hour acceptance claim."
+  ],
   "generatedAt": "2026-10-06T11:21:45.688Z",
   "model": "heuristic",
   "source": {
@@ -56,10 +60,21 @@
     ]
   },
   "release": {
-    "deck": "Optional local Kev classification and evaluation",
-    "features": [],
-    "fixes": [],
-    "followUps": []
+    "deck": "Clearer search errors and safer model controls",
+    "features": [
+      "Choose Kev or Jev in AI settings and compare read-only classification scores for Library posts. Kev uses a separately installed local service and abstains on uncertain answers without cloud fallback.",
+      "Compare each classifier on six labeled examples for accuracy, decision coverage and latency. This small evaluation does not establish model parity."
+    ],
+    "fixes": [
+      "Show search errors when a query fails and a loading state while it refreshes. Show no matches only after a successful query returns none.",
+      "Keep the selected classifier and download state consistent when a model download cannot be paused, and report the failure without starting another download.",
+      "Keep the iOS Home Screen toolbar sharp without extra padding."
+    ],
+    "followUps": [
+      "The reported installed search problem remains under investigation. Improved failure feedback does not establish its cause or repair.",
+      "Kev decision thresholds remain provisional. Classification previews do not update saved classifications or feed filters.",
+      "Signed installed UI verification remains pending."
+    ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.10.600-dev\n\nOptional local Kev classification and evaluation\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.10.600-dev\n\nClearer search errors and safer model controls\n\n### Features\n\n- Choose Kev or Jev in AI settings and compare read-only classification scores for Library posts. Kev uses a separately installed local service and abstains on uncertain answers without cloud fallback\n- Compare each classifier on six labeled examples for accuracy, decision coverage and latency. This small evaluation does not establish model parity\n\n### Fixes\n\n- Show search errors when a query fails and a loading state while it refreshes. Show no matches only after a successful query returns none\n- Keep the selected classifier and download state consistent when a model download cannot be paused, and report the failure without starting another download\n- Keep the iOS Home Screen toolbar sharp without extra padding\n\n### Follow-ups\n\n- The reported installed search problem remains under investigation. Improved failure feedback does not establish its cause or repair\n- Kev decision thresholds remain provisional. Classification previews do not update saved classifications or feed filters\n- Signed installed UI verification remains pending\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
