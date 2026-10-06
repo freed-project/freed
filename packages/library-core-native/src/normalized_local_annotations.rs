@@ -859,7 +859,9 @@ mod tests {
         let mut db = Connection::open(&path).unwrap();
         let mut ready = false;
         for _ in 0..16 {
-            if resume(&mut db).unwrap() {
+            // Recovery completion tests rollback durability, not host scheduling.
+            // Use the same test-only completion budget as the byte-budget fixture.
+            if resume_until(&mut db, Instant::now() + Duration::from_secs(60)).unwrap() {
                 ready = true;
                 break;
             }
