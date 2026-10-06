@@ -39,7 +39,7 @@ fn pin(db: &Connection) -> Result<String, NormalizedSqliteError> {
 }
 
 fn catalog(db: &Connection) -> Result<BTreeMap<String, (String, String)>, NormalizedSqliteError> {
-    let mut statement = db.prepare("SELECT name,type,substr(sql,1,262145) FROM sqlite_schema WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY name LIMIT 1025;")?;
+    let mut statement = db.prepare("SELECT name,type,substr(sql,1,262145) FROM sqlite_schema WHERE sql IS NOT NULL AND substr(name,1,7) <> 'sqlite_' ORDER BY name LIMIT 1025;")?;
     let mut rows = statement.query([])?;
     let mut result = BTreeMap::new();
     let mut bytes = 0;
@@ -143,6 +143,9 @@ pub(crate) fn resume(db: &mut Connection) -> Result<bool, NormalizedSqliteError>
 fn resume_until(db: &mut Connection, deadline: Instant) -> Result<bool, NormalizedSqliteError> {
     let initial = version(db)?;
     verify_catalog(db, initial)?;
+    if Instant::now() >= deadline {
+        return Ok(false);
+    }
     if matches!(initial, 1 | 2) {
         let tx = db.transaction_with_behavior(TransactionBehavior::Immediate)?;
         verify_catalog(&tx, initial)?;
@@ -276,6 +279,191 @@ mod tests {
         db
     }
 
+    fn populate(db: &Connection) {
+        db.execute_batch(include_str!(
+            "../../shared/src/library-core/annotation-backfill-fixture-v1.sql"
+        ))
+        .unwrap();
+        assert!(db
+            .prepare("PRAGMA foreign_key_check;")
+            .unwrap()
+            .query([])
+            .unwrap()
+            .next()
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn annotation_populated_pages_resume_with_pinned_identity_and_work_budget() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("library.sqlite");
+        let mut db = fixture(&path, 1);
+        populate(&db);
+        let before = db.total_changes();
+        assert!(!resume_until(&mut db, Instant::now()).unwrap());
+        assert_eq!(
+            db.total_changes(),
+            before,
+            "expired budget cannot bootstrap"
+        );
+        assert!(
+            !resume(&mut db).unwrap(),
+            "1025 rows cannot finish in four 256-row pages"
+        );
+        let scanned: i64 = db
+            .query_row(
+                "SELECT scanned_members FROM library_local_annotation_migration;",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!((1..=1024).contains(&scanned));
+        db.execute_batch("UPDATE library_meta SET source_revision=1;")
+            .unwrap();
+        let before = db.total_changes();
+        assert!(resume(&mut db)
+            .unwrap_err()
+            .to_string()
+            .contains("source changed"));
+        assert_eq!(db.total_changes(), before);
+        db.execute_batch("UPDATE library_meta SET source_revision=0;")
+            .unwrap();
+        drop(db);
+        let mut db = Connection::open(&path).unwrap();
+        let mut ready = false;
+        for _ in 0..16 {
+            if resume(&mut db).unwrap() {
+                ready = true;
+                break;
+            }
+        }
+        assert!(ready);
+        let counts: (i64,i64) = db.query_row("SELECT (SELECT scanned_members FROM library_local_annotation_migration),(SELECT count(*) FROM library_local_annotation_unresolved);",[],|r|Ok((r.get(0)?,r.get(1)?))).unwrap();
+        assert_eq!(counts, (1025, 768));
+        assert!(!pending(&db, "item:257").unwrap());
+        assert!(pending(&db, "item:258").unwrap());
+    }
+
+    #[test]
+    fn annotation_backfill_charges_result_bytes_before_parsing() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("library.sqlite");
+        let mut db = fixture(&path, 1);
+        populate(&db);
+        // Synthetic unauthenticated result identities cannot retire markers.
+        // These rows exercise aggregate accounting, not signature acceptance.
+        db.execute_batch("UPDATE library_intent_members SET mutation_id='feed_item_annotations_replace';
+          INSERT INTO library_intent_results SELECT transaction_id,actor_id,'epoch','epoch',first_counter,
+          CASE WHEN first_counter=1 THEN NULL ELSE printf('%064d',first_counter-1) END,
+          transaction_digest,'accepted',1,CAST(json_object('padding',printf('%0130000d',0)) AS BLOB),0
+          FROM library_intent_transactions WHERE first_counter<=80;").unwrap();
+        assert!(!resume(&mut db).unwrap());
+        let scanned: i64 = db
+            .query_row(
+                "SELECT scanned_members FROM library_local_annotation_migration;",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!((1..=28).contains(&scanned));
+        drop(db);
+        let mut db = Connection::open(&path).unwrap();
+        let mut ready = false;
+        for _ in 0..16 {
+            if resume(&mut db).unwrap() {
+                ready = true;
+                break;
+            }
+        }
+        assert!(ready);
+        assert_eq!(
+            db.query_row(
+                "SELECT count(*) FROM library_local_annotation_unresolved;",
+                [],
+                |r| r.get::<_, i64>(0)
+            )
+            .unwrap(),
+            1025
+        );
+    }
+
+    #[test]
+    fn annotation_populated_page_failure_rolls_back_cursor_and_markers() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("library.sqlite");
+        let mut db = fixture(&path, 1);
+        populate(&db);
+        // Every row is now an annotation so the injected second insert fails
+        // after one marker and cursor update within the same page transaction.
+        db.execute_batch(
+            "UPDATE library_intent_members SET mutation_id='feed_item_annotations_replace';",
+        )
+        .unwrap();
+        let inserts = Arc::new(AtomicUsize::new(0));
+        let observed = inserts.clone();
+        db.authorizer(Some(move |ctx: rusqlite::hooks::AuthContext<'_>| {
+            if matches!(
+                ctx.action,
+                rusqlite::hooks::AuthAction::Insert {
+                    table_name: "library_local_annotation_unresolved"
+                }
+            ) && observed.fetch_add(1, Ordering::SeqCst) == 1
+            {
+                rusqlite::hooks::Authorization::Deny
+            } else {
+                rusqlite::hooks::Authorization::Allow
+            }
+        }));
+        assert!(resume(&mut db).is_err());
+        db.authorizer(
+            None::<fn(rusqlite::hooks::AuthContext<'_>) -> rusqlite::hooks::Authorization>,
+        );
+        assert_eq!(inserts.load(Ordering::SeqCst), 2);
+        assert_eq!(
+            db.query_row(
+                "SELECT scanned_members FROM library_local_annotation_migration;",
+                [],
+                |r| r.get::<_, i64>(0)
+            )
+            .unwrap(),
+            0
+        );
+        assert_eq!(
+            db.query_row(
+                "SELECT count(*) FROM library_local_annotation_unresolved;",
+                [],
+                |r| r.get::<_, i64>(0)
+            )
+            .unwrap(),
+            0
+        );
+        assert!(reject_building(&db).is_err());
+        drop(db);
+        let mut db = Connection::open(&path).unwrap();
+        let mut ready = false;
+        for _ in 0..16 {
+            if resume(&mut db).unwrap() {
+                ready = true;
+                break;
+            }
+        }
+        assert!(ready);
+        assert_eq!(
+            db.query_row(
+                "SELECT count(*) FROM library_local_annotation_unresolved;",
+                [],
+                |r| r.get::<_, i64>(0)
+            )
+            .unwrap(),
+            1025
+        );
+    }
+
     #[test]
     fn annotation_upgrade_preserves_sources_and_reopens_exact_catalog() {
         for source in [1, 2] {
@@ -339,8 +527,17 @@ mod tests {
             .to_string()
             .contains("catalog mismatch"));
         assert_eq!(db.total_changes(), before);
-        db.execute_batch("DROP TABLE unexpected; PRAGMA user_version=3;")
-            .unwrap();
+        db.execute_batch("DROP TABLE unexpected;").unwrap();
+        for (create, drop_object) in [
+            ("CREATE TABLE sqliteX_unreviewed(x);", "DROP TABLE sqliteX_unreviewed;"),
+            ("CREATE TRIGGER sqliteX_unreviewed_trigger AFTER UPDATE ON library_change_state BEGIN SELECT 1; END;", "DROP TRIGGER sqliteX_unreviewed_trigger;"),
+        ] {
+            db.execute_batch(create).unwrap();
+            assert!(resume(&mut db).unwrap_err().to_string().contains("catalog mismatch"));
+            assert_eq!(db.total_changes(), before);
+            db.execute_batch(drop_object).unwrap();
+        }
+        db.execute_batch("PRAGMA user_version=3;").unwrap();
         assert!(resume(&mut db)
             .unwrap_err()
             .to_string()

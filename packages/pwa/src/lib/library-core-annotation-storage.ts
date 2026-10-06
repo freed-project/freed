@@ -35,7 +35,7 @@ function digest(version: number): string {
   }
 }
 function catalog(db: Database): string {
-  const statement = db.prepare("SELECT name,type,substr(sql,1,262145) FROM sqlite_schema WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY name LIMIT 1025;");
+  const statement = db.prepare("SELECT name,type,substr(sql,1,262145) FROM sqlite_schema WHERE sql IS NOT NULL AND substr(name,1,7) <> 'sqlite_' ORDER BY name LIMIT 1025;");
   const rows: SqlValue[][] = [];
   let bytes = 0;
   try {
@@ -97,6 +97,7 @@ export function resumePwaAnnotationUpgrade(db: Database, capi: CAPI, openReferen
     const reference = openReference();
     let version: number;
     try { version=verifyPwaAnnotationCatalog(db,reference); } finally { reference.close(); }
+    if (performance.now()>=deadline) return false;
     if (version===1 || version===2) {
       db.transaction("IMMEDIATE",()=>{
         const lockedReference = openReference();
