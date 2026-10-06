@@ -295,3 +295,5 @@ pub use normalized_handoff_writer_certificate::{
     activate_normalized_predecessor_checkpoint_v1,
     prepare_normalized_predecessor_checkpoint_read_v1,
 };
+
+mod normalized_local_annotations;

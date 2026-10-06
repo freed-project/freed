@@ -3031,5 +3031,9 @@
     "selection_ancestors_v1": "SELECT fullkey FROM json_tree(?1) WHERE type='object' AND fullkey<>'$' ORDER BY id LIMIT 33;",
     "pending_object_extras_v1": "SELECT path FROM library_local_preference_nodes INDEXED BY library_local_preference_node_lookup WHERE actor_id=?1 AND path >= (?2 || '.') COLLATE BINARY AND path < (?2 || '/') COLLATE BINARY AND actor_counter>=?3 AND path <> (?2 || '.bits') AND NOT (path >= (?2 || '.bits' || '.') COLLATE BINARY AND path < (?2 || '.bits' || '/') COLLATE BINARY) AND NOT (path >= (?2 || '.bits' || '[') COLLATE BINARY AND path < (?2 || '.bits' || '\\') COLLATE BINARY) AND path <> (?2 || '.codec') AND NOT (path >= (?2 || '.codec' || '.') COLLATE BINARY AND path < (?2 || '.codec' || '/') COLLATE BINARY) AND NOT (path >= (?2 || '.codec' || '[') COLLATE BINARY AND path < (?2 || '.codec' || '\\') COLLATE BINARY) LIMIT 1;",
     "canonical_object_extras_v1": "SELECT path FROM library_preferences WHERE path >= (?1 || ?2 || '.') COLLATE BINARY AND path < (?1 || ?2 || '/') COLLATE BINARY AND path <> ((?1 || ?2) || '.bits') AND NOT (path >= ((?1 || ?2) || '.bits' || '.') COLLATE BINARY AND path < ((?1 || ?2) || '.bits' || '/') COLLATE BINARY) AND NOT (path >= ((?1 || ?2) || '.bits' || '[') COLLATE BINARY AND path < ((?1 || ?2) || '.bits' || '\\') COLLATE BINARY) AND path <> ((?1 || ?2) || '.codec') AND NOT (path >= ((?1 || ?2) || '.codec' || '.') COLLATE BINARY AND path < ((?1 || ?2) || '.codec' || '/') COLLATE BINARY) AND NOT (path >= ((?1 || ?2) || '.codec' || '[') COLLATE BINARY AND path < ((?1 || ?2) || '.codec' || '\\') COLLATE BINARY) LIMIT 1;"
-  }
+  },
+  "annotationStorageSchemaVersions": [
+    4,
+    5
+  ]
 }

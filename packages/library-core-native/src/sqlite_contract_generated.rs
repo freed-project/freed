@@ -49,6 +49,12 @@ pub const PENDING_PREFERENCE_SCHEMA_SHA256: &str =
     "5ef10502dc142aa63c3b33a8cd84c96c930a02e7f380d0efcb6e8a0f542a53fa";
 pub const PENDING_PREFERENCE_SCHEMA_EXTENSION_SQL: &str =
     include_str!("normalized_local_preferences_schema_v3.sql");
+pub const ANNOTATION_STORAGE_SCHEMA_VERSION: u32 = 4;
+pub const ANNOTATION_RECOVERY_STORAGE_SCHEMA_VERSION: u32 = 5;
+pub const ANNOTATION_SCHEMA_SHA256: &str = "b6a92e23c6f0652b472fa04294e9c99f1190f18a6545bc6ac2604a41a3458180";
+pub const ANNOTATION_RECOVERY_SCHEMA_SHA256: &str = "1b8c9bb5ab82772a3c2912703a2252085be7b9c15e41a696218c617eb75d82d1";
+pub const ANNOTATION_COVERAGE_SQL: &str = include_str!("normalized_local_annotation_coverage.sql");
+pub const ANNOTATION_SCHEMA_EXTENSION_SQL: &str = include_str!("normalized_local_annotations_schema_v4.sql");
 pub const NORMALIZED_SCHEMA_SHA256: &str =
     "aaa181e3306dece6e7c385f6be6c6c3e6feffdcb8aeb4a9cb7212f599ae99c0f";
 pub const NORMALIZED_SCHEMA_SQL: &str =
