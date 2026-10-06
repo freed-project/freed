@@ -5,16 +5,16 @@
   "dayKey": "26.10.6",
   "approved": true,
   "editorialNotes": [
-    "Reviewed current source and the canonically generated annotation schema activation. Editorial approval is complete; the separate Library activation decision remains review_required. Do not claim installed acceptance, Jev parity, automatic feed classification or a reversible downgrade."
+    "Reviewed release copy and canonically generated unchanged annotation schema activation; owner approved publication and activation in the active task on 2026-10-06. Exact confirmation is recorded separately through the maintained helper. No installed acceptance or model parity claimed."
   ],
-  "generatedAt": "2026-10-06T19:22:39.488Z",
+  "generatedAt": "2026-10-06T20:29:52.545Z",
   "model": "heuristic",
   "source": {
     "channel": "dev",
     "previousPublishedTag": "v26.10.500-dev",
     "previousPublishedDayTag": "v26.10.500-dev",
     "compareRef": "HEAD",
-    "productCommitSha": "df550492fed57385e8c3d5b656684056dc7f9f3d",
+    "productCommitSha": "066a72269649dbd06aaa4b3cecc12ce527af6d84",
     "promotedDevCommitSha": null,
     "libraryCoreActivation": {
       "schemaVersion": 1,
@@ -23,7 +23,7 @@
         "previousPublishedTag": "v26.10.500-dev",
         "startMode": "previous_product_commit",
         "fromExclusiveCommitSha": "8cdc9c673b4fad80b18f5a02008dd44cd774412b",
-        "toInclusiveProductCommitSha": "df550492fed57385e8c3d5b656684056dc7f9f3d"
+        "toInclusiveProductCommitSha": "066a72269649dbd06aaa4b3cecc12ce527af6d84"
       },
       "manifest": {
         "path": "docs/library-core-activation-manifest.json",
@@ -43,12 +43,12 @@
           ]
         }
       ],
-      "inspectionDigest": "sha256:562cb0d7507a80769000df5a0dc3b46424335c2b3feaa9d4e5d998b15a45eb37",
+      "inspectionDigest": "sha256:e9bb16de062ab14df9aec0f66a8c91dbcd5dd2bc8f31bb437761d7e3a5202d68",
       "decision": {
-        "state": "review_required",
-        "ownerApprovalReference": null,
-        "approvedInspectionDigest": null,
-        "approvedReleaseArtifactDigest": null
+        "state": "owner_approved",
+        "ownerApprovalReference": "current-task:release-26-10-601-dev#sha256:544f2b5a3497b329d17c55b27717e6f6a7e3585f20f92766a1a51324e13d695d",
+        "approvedInspectionDigest": "sha256:e9bb16de062ab14df9aec0f66a8c91dbcd5dd2bc8f31bb437761d7e3a5202d68",
+        "approvedReleaseArtifactDigest": "sha256:281b6fd81c16141556f9d3cb78ddb7129f93699ae059eab8843907cdf5b52b27"
       }
     },
     "isLatestOfDay": true,
@@ -62,6 +62,7 @@
       2152
     ],
     "commitSubjects": [
+      "fix: align clipboard and Friends fixtures with library contracts",
       "fix: update sharp and preserve Next PostCSS security override (#2152)",
       "fix: patch security dependencies and bound Darwin filesystem admission cost",
       "fix: make annotation browser fixtures portable",
