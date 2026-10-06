@@ -227,6 +227,7 @@ pub fn import_normalized_operation_page_v2(
     connection: &mut Connection,
     input: &NormalizedOperationImportPageV2,
 ) -> Result<NormalizedOperationImportReceiptV2, NormalizedSqliteError> {
+    crate::normalized_local_annotations::reject_building(connection)?;
     import_operations_with_reconciliation(connection, input, &|_| Ok(()))
 }
 
@@ -235,6 +236,7 @@ pub(crate) fn import_operations_with_reconciliation(
     input: &NormalizedOperationImportPageV2,
     reconcile: &impl Fn(&rusqlite::Transaction<'_>) -> Result<(), NormalizedSqliteError>,
 ) -> Result<NormalizedOperationImportReceiptV2, NormalizedSqliteError> {
+    crate::normalized_local_annotations::reject_building(connection)?;
     validate_page(input)?;
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let revision = consumer_revision(&transaction, &input.snapshot)?;

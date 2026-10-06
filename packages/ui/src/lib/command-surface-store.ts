@@ -1,3 +1,5 @@
+import { retainRenderedAnnotationSnapshot, type LibraryCoreHydratedAnnotations } from "@freed/shared/library-core";
+import { toast } from "../components/Toast.js";
 import { create } from "zustand";
 import type { FeedItem } from "@freed/shared";
 
@@ -10,6 +12,7 @@ interface CommandSurfaceStore {
   savedContentOpen: boolean;
   savedContentInitialUrl: string;
   savedContentEditItem: FeedItem | null;
+  savedContentAnnotations: LibraryCoreHydratedAnnotations | null;
   libraryDialogOpen: boolean;
   libraryDialogTab: LibraryDialogTab;
   requestSearchPalette: () => void;
@@ -17,7 +20,7 @@ interface CommandSurfaceStore {
   openAddFeedDialog: () => void;
   closeAddFeedDialog: () => void;
   openSavedContentDialog: (initialUrl?: string) => void;
-  openSavedContentEditor: (item: FeedItem) => void;
+  openSavedContentEditor: (item: FeedItem, annotations?: LibraryCoreHydratedAnnotations | null) => void;
   closeSavedContentDialog: () => void;
   openLibraryDialog: (tab?: LibraryDialogTab) => void;
   closeLibraryDialog: () => void;
@@ -30,6 +33,7 @@ export const useCommandSurfaceStore = create<CommandSurfaceStore>((set) => ({
   savedContentOpen: false,
   savedContentInitialUrl: "",
   savedContentEditItem: null,
+  savedContentAnnotations: null,
   libraryDialogOpen: false,
   libraryDialogTab: "import",
   requestSearchPalette: () =>
@@ -45,18 +49,28 @@ export const useCommandSurfaceStore = create<CommandSurfaceStore>((set) => ({
       savedContentOpen: true,
       savedContentInitialUrl: initialUrl,
       savedContentEditItem: null,
+      savedContentAnnotations: null,
     }),
-  openSavedContentEditor: (item) =>
-    set({
-      savedContentOpen: true,
-      savedContentInitialUrl: item.sourceUrl ?? item.content.linkPreview?.url ?? "",
-      savedContentEditItem: item,
-    }),
+  openSavedContentEditor: (item, annotations) => {
+    try {
+      const snapshot = retainRenderedAnnotationSnapshot(annotations, item.globalId);
+      if (JSON.stringify(item.userState.highlights ?? []) !== JSON.stringify(snapshot.highlights) ||
+          JSON.stringify(item.userState.tags) !== JSON.stringify(snapshot.originals.tags)) {
+        throw new Error("Annotations changed. Reopen the item before editing.");
+      }
+      set({ savedContentOpen: true,
+        savedContentInitialUrl: item.sourceUrl ?? item.content.linkPreview?.url ?? "",
+        savedContentEditItem: item, savedContentAnnotations: snapshot });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Annotations are unavailable for editing");
+    }
+  },
   closeSavedContentDialog: () =>
     set({
       savedContentOpen: false,
       savedContentInitialUrl: "",
       savedContentEditItem: null,
+      savedContentAnnotations: null,
     }),
   openLibraryDialog: (tab = "import") =>
     set({ libraryDialogOpen: true, libraryDialogTab: tab }),

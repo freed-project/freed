@@ -160,13 +160,11 @@ const NORMALIZED_READER_RUNTIME = Object.freeze({
   randomId: () => crypto.randomUUID(),
 });
 
-export async function readLibraryCoreItemDetail(
-  globalId: string,
-): Promise<FeedItem | null> {
-  return readLibraryCoreNormalizedItemDetailV1(
-    NORMALIZED_READER_RUNTIME,
-    globalId,
-  );
+export function readLibraryCoreItemDetail(globalId: string): Promise<FeedItem | null>;
+export function readLibraryCoreItemDetail(globalId: string, withAnnotations: true): ReturnType<typeof readLibraryCoreNormalizedItemContentV1>;
+export async function readLibraryCoreItemDetail(globalId: string, withAnnotations = false) {
+  if (withAnnotations) return readLibraryCoreNormalizedItemContentV1(NORMALIZED_READER_RUNTIME, globalId, true);
+  return readLibraryCoreNormalizedItemDetailV1(NORMALIZED_READER_RUNTIME, globalId);
 }
 
 export async function pinLibraryCoreItemContent(

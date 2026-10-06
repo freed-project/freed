@@ -220,19 +220,15 @@ test("saving and editing content persists preview details and searchable notes",
       }
     ).getState().selectedItemId;
     const runtime = await import(libraryDetailRuntimePath);
-    return {
-      item: selectedItemId
-        ? await runtime.readLibraryCoreItemDetail(selectedItemId)
-        : null,
-      selectedItemId,
-    };
+    const detail = selectedItemId ? await runtime.readLibraryCoreItemDetail(selectedItemId, true) : null;
+    return { item: detail?.item ?? null, annotations: detail?.annotations ?? null, selectedItemId };
   }, LIBRARY_DETAIL_RUNTIME_PATH);
   expect(savedState.item?.content.linkPreview.title).toBe("Saved Reader Transition");
   expect(savedState.item?.userState.highlights?.[0]?.note).toBe("Updated comet note");
 
-  await page.evaluate((item) => {
-    window.dispatchEvent(new CustomEvent("freed:edit-saved-content", { detail: { item } }));
-  }, savedState.item);
+  await page.evaluate(({ item, annotations }) => {
+    window.dispatchEvent(new CustomEvent("freed:edit-saved-content", { detail: { item, annotations } }));
+  }, savedState);
   await expect(page.getByText("Edit Save", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Article or page URL")).toHaveValue(
     "https://example.com/saved-reader-transition",

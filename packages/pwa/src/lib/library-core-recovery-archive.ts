@@ -14,7 +14,7 @@ const tables = [
   "library_intent_members", "library_intent_results", "library_intent_result_cursors",
   "library_intent_transport_heads", "library_intent_transport_segments",
   "library_result_transport_heads", "library_result_transport_segments",
-  "library_optimistic_fields", "library_local_change_state", "library_local_invalidations",
+  "library_optimistic_fields", "library_local_annotation_unresolved", "library_local_change_state", "library_local_invalidations",
 ] as const;
 const rowLimit = 2_097_152;
 const utf8 = new TextDecoder("utf-8", { fatal: true });
@@ -51,7 +51,7 @@ function requireTransaction(db: Database, capi: CAPI, admitStorage?: () => void)
     throw new Error("consumer archive requires an owned FULL transaction");
   }
   if (admitStorage) admitStorage();
-  else if (readPwaLibraryStorageIdentity(db).schemaVersion !== 2) throw new Error("consumer archive requires local schema 2");
+  else if (![2,5].includes(readPwaLibraryStorageIdentity(db).schemaVersion)) throw new Error("consumer archive requires local schema 2");
 }
 function layout(db: Database, table: typeof tables[number]) {
   const info = db.exec({ sql: `PRAGMA table_info(${table});`, rowMode: "array", returnValue: "resultRows" });
@@ -116,6 +116,7 @@ export function archivePwaFollowerRowsWithStorageAdmission(
   const digest = new LibraryCoreSha256(), counts = [0, 0];
   let total = 0;
   for (const table of tables) {
+    if (table==="library_local_annotation_unresolved" && ![4,5].includes(Number(db.selectValue("PRAGMA user_version;")))) continue;
     const columns = layout(db, table), statement = db.prepare(columns.sql);
     let ordinal = 0;
     try {
@@ -151,6 +152,7 @@ export function verifyPwaRecoveryArchiveWithStorageAdmission(
   const expected = metadata(db, recoveryId), digest = new LibraryCoreSha256(), counts = [0, 0];
   let total = 0;
   for (const table of tables) {
+    if (table==="library_local_annotation_unresolved" && ![4,5].includes(Number(db.selectValue("PRAGMA user_version;")))) continue;
     const columns = layout(db, table), live = compareLive ? db.prepare(columns.sql) : null;
     const stored = db.prepare(`SELECT row_ordinal, columns_json, canonical_row, row_digest, transaction_id
       FROM library_local_recovery_rows WHERE recovery_id = ?1 AND table_key = ?2 ORDER BY row_ordinal;`);

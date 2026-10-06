@@ -108,6 +108,15 @@ export default defineConfig(({ mode }) => ({
   },
   build: {
     target: "esnext",
+    rolldownOptions: {
+      output: {
+        // Keep the already-eager corpus independent of automatic App partitioning.
+        // Both static chunks remain below the unchanged service-worker asset cap.
+        codeSplitting: {
+          groups: [{ name: "sample-corpus-data", test: /sample-corpus\.generated\.json$/ }],
+        },
+      },
+    },
   },
 
   plugins: [

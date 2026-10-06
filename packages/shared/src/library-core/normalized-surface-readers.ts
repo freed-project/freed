@@ -1,3 +1,4 @@
+import { hydrateLibraryCoreAnnotations, LibraryCoreAnnotationHydrationError, type LibraryCoreHydratedAnnotations } from "./annotation-hydration.js";
 import { decodeLibraryCoreFractionalNumbersV1 } from "./fractional-number-codec.js";
 import {
   mergeDefaultPreferences,
@@ -279,6 +280,7 @@ function validWindows(
 }
 
 export interface LibraryCoreNormalizedItemContentV1 {
+  readonly annotations: LibraryCoreHydratedAnnotations | null;
   readonly contentBody: LibraryCoreItemBodyLocatorV1;
   readonly item: FeedItem;
   readonly mediaBlobDigests: readonly (string | null)[];
@@ -319,6 +321,7 @@ export async function readLibraryCoreNormalizedItemContentV1(
   if (response.item.seenSyncedAt !== null) {
     detailItem.userState.seenSyncedAt = response.item.seenSyncedAt;
   }
+  let annotationSnapshot: LibraryCoreHydratedAnnotations | null = null;
   if (includeAnnotations) {
     const annotations = await runtime.query({
       globalId,
@@ -329,20 +332,12 @@ export async function readLibraryCoreNormalizedItemContentV1(
       normalizedSourceToken(annotations.source) !==
       normalizedSourceToken(response.source)
     ) {
-      throw new Error("SQLite item annotations source is stale");
+      throw new LibraryCoreAnnotationHydrationError(Object.freeze({ originals: annotations, state: "stale", editState: "unavailable", highlights: null }));
     }
     detailItem.userState.tags = [...annotations.tags];
-    detailItem.userState.highlights = annotations.highlights.map(
-      (highlight) => {
-        if (highlight.text === null)
-          throw new Error("SQLite annotation text requires blob hydration");
-        return {
-          createdAt: highlight.createdAt,
-          text: highlight.text,
-          ...(highlight.note === null ? {} : { note: highlight.note }),
-        };
-      },
-    );
+    annotationSnapshot = await hydrateLibraryCoreAnnotations(runtime.query, annotations);
+    if (annotationSnapshot.state !== "ready" || !annotationSnapshot.highlights) throw new LibraryCoreAnnotationHydrationError(annotationSnapshot);
+    detailItem.userState.highlights = [...annotationSnapshot.highlights];
   }
   const [item] = await applyLibraryCoreVisibleOptimisticFieldsV1(
     runtime.query,
@@ -350,6 +345,7 @@ export async function readLibraryCoreNormalizedItemContentV1(
     response.source.projectionRevision,
   );
   return Object.freeze({
+    annotations: annotationSnapshot,
     contentBody: response.item.contentBody,
     item: item!,
     mediaBlobDigests: response.item.mediaBlobDigests,

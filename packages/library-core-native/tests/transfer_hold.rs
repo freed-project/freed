@@ -61,29 +61,30 @@ fn direct_lifecycle_calls_refuse_before_schema_or_keys() {
     );
     assert!(db.is_autocommit());
 }
-fn fixture() -> Connection {
-    let db = Connection::open_in_memory().unwrap();
-    db.execute_batch("CREATE TABLE library_meta(singleton_id INTEGER,library_id TEXT,authority_epoch TEXT); CREATE TABLE library_checkpoint_stages(stage_id TEXT,library_id TEXT,authority_epoch TEXT); INSERT INTO library_checkpoint_stages VALUES('stage','library','epoch');").unwrap();
-    db
+fn fixture() -> (tempfile::TempDir, Connection) {
+    // The fixture owns this isolated path throughout the real startup upgrade.
+    let root = tempfile::tempdir().unwrap();
+    let db = initialize_owned_normalized_sqlite_database_v1(
+        &root.path().join("library-core.sqlite"),
+        true,
+    )
+    .unwrap()
+    .unwrap();
+    db.execute_batch("INSERT INTO library_checkpoint_stages(stage_id,library_id,authority_epoch,source_revision,expected_record_count,created_at) VALUES('stage','library','epoch',0,1,0);").unwrap();
+    (root, db)
 }
 #[test]
 fn empty_bootstrap_and_accepted_epoch_refresh_remain_admissible() {
-    let db = fixture();
+    let (_root, db) = fixture();
     assert!(require_checkpoint_transfer_capability(&db, "stage").is_ok());
-    db.execute_batch("INSERT INTO library_meta VALUES(1,'library','epoch');")
+    db.execute_batch("INSERT INTO library_meta VALUES(1,'library',1,'epoch',0,0);")
         .unwrap();
-    assert!(require_checkpoint_transfer_capability(&db, "stage").is_ok());
-    // Old enrollment is deliberately irrelevant: accepted Library authority governs refresh.
-    db.execute_batch(
-        "CREATE TABLE old_enrollment(epoch TEXT);INSERT INTO old_enrollment VALUES('predecessor');",
-    )
-    .unwrap();
     assert!(require_checkpoint_transfer_capability(&db, "stage").is_ok());
 }
 #[test]
 fn direct_checkpoint_activation_refuses_changed_authority_and_rolls_back() {
-    let mut db = fixture();
-    db.execute_batch("INSERT INTO library_meta VALUES(1,'library','old');")
+    let (_root, mut db) = fixture();
+    db.execute_batch("INSERT INTO library_meta VALUES(1,'library',1,'old',0,0);")
         .unwrap();
     let before: i64 = db
         .query_row("PRAGMA schema_version", [], |r| r.get(0))

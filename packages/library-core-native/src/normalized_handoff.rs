@@ -100,13 +100,13 @@ pub fn read_native_handoff_status_v1(
     // Read the schema, local receipt and selected Library in one snapshot.
     let transaction = connection.transaction()?;
     let version: u32 = transaction.pragma_query_value(None, "user_version", |row| row.get(0))?;
-    if ![SQLITE_SCHEMA_VERSION, NATIVE_STORAGE_SCHEMA_VERSION].contains(&version) {
+    if ![SQLITE_SCHEMA_VERSION, NATIVE_STORAGE_SCHEMA_VERSION, 4, 5].contains(&version) {
         return Err(NormalizedSqliteError::InvalidRequest(
             "handoff status requires a recognized Library schema",
         ));
     }
     crate::normalized_sqlite::install_normalized_schema_v1(&transaction)?;
-    if version == SQLITE_SCHEMA_VERSION {
+    if matches!(version, 1 | 4) {
         transaction.commit()?;
         return Ok(None);
     }
@@ -184,10 +184,16 @@ pub(crate) fn require_handoff_admission(
         [],
         |row| row.get(0),
     )?;
-    if physical_version == SQLITE_SCHEMA_VERSION {
+    crate::normalized_local_annotations::reject_building(connection)?;
+    if physical_version == SQLITE_SCHEMA_VERSION
+        || physical_version == crate::sqlite_contract_generated::ANNOTATION_STORAGE_SCHEMA_VERSION
+    {
         return Ok(());
     }
-    if physical_version != NATIVE_STORAGE_SCHEMA_VERSION {
+    if physical_version != NATIVE_STORAGE_SCHEMA_VERSION
+        && physical_version
+            != crate::sqlite_contract_generated::ANNOTATION_RECOVERY_STORAGE_SCHEMA_VERSION
+    {
         return Err(NormalizedSqliteError::InvalidRequest(
             "unsupported handoff storage version",
         ));
@@ -264,10 +270,15 @@ pub(crate) fn require_handoff_follower_edit_admission_v1(
         [],
         |row| row.get(0),
     )?;
-    if version == SQLITE_SCHEMA_VERSION {
+    crate::normalized_local_annotations::reject_building(connection)?;
+    if version == SQLITE_SCHEMA_VERSION
+        || version == crate::sqlite_contract_generated::ANNOTATION_STORAGE_SCHEMA_VERSION
+    {
         return Ok(());
     }
-    if version != NATIVE_STORAGE_SCHEMA_VERSION {
+    if version != NATIVE_STORAGE_SCHEMA_VERSION
+        && version != crate::sqlite_contract_generated::ANNOTATION_RECOVERY_STORAGE_SCHEMA_VERSION
+    {
         return Err(NormalizedSqliteError::InvalidRequest(
             "unsupported handoff storage version",
         ));
@@ -341,7 +352,7 @@ pub fn require_normalized_handoff_reset_v1(
         ));
     }
     crate::normalized_sqlite::install_normalized_schema_v1(connection)?;
-    if version == SQLITE_SCHEMA_VERSION {
+    if matches!(version, 1 | 4) {
         return Ok(());
     }
     let cancelled: bool = connection.query_row(
@@ -370,7 +381,7 @@ pub fn require_handoff_checkpoint_export_v1(
         return Err(invalid("handoff export identity is invalid"));
     }
     let version: u32 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
-    if version != NATIVE_STORAGE_SCHEMA_VERSION {
+    if !matches!(version, 2 | 5) {
         return Err(invalid(
             "handoff export requires a persisted native handoff",
         ));
@@ -422,7 +433,7 @@ pub fn seal_source_handoff_v1(
     let transaction =
         connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
     let version: u32 = transaction.pragma_query_value(None, "user_version", |row| row.get(0))?;
-    if version != NATIVE_STORAGE_SCHEMA_VERSION {
+    if !matches!(version, 2 | 5) {
         return Err(invalid(
             "handoff sealing requires a persisted native handoff",
         ));
@@ -515,7 +526,7 @@ pub(crate) fn cancel_source_handoff_in_transaction_v1(
 ) -> Result<(), NormalizedSqliteError> {
     let invalid = NormalizedSqliteError::InvalidRequest;
     let version: u32 = transaction.pragma_query_value(None, "user_version", |row| row.get(0))?;
-    if version != NATIVE_STORAGE_SCHEMA_VERSION {
+    if !matches!(version, 2 | 5) {
         return Err(invalid(
             "handoff cancellation requires a persisted native handoff",
         ));

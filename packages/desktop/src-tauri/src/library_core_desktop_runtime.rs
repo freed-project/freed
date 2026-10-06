@@ -4,9 +4,8 @@
 mod checkpoint_session;
 
 use freed_library_core::{
-    accept_normalized_operation_transaction_v1, load_normalized_local_actor_id_v2,
-    normalized_primary_mutation_context_v1, NormalizedMutationContextV1,
-    NormalizedMutationReceiptV1,
+    load_normalized_local_actor_id_v2, normalized_primary_mutation_context_v1,
+    NormalizedMutationContextV1, NormalizedMutationReceiptV1,
 };
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
@@ -15,6 +14,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 #[cfg(not(unix))]
 use std::{fs, path::PathBuf};
+use tauri::Emitter;
 #[cfg(not(unix))]
 use tauri::Manager;
 use tokio::sync::Semaphore;
@@ -110,6 +110,55 @@ const NORMALIZED_DATABASE_FILE: &str = "library-core.sqlite";
 
 const CHECKPOINT_EXPORT_SESSION_MAX_AGE: Duration = Duration::from_secs(5 * 60);
 const NORMALIZED_QUERY_CONCURRENCY: usize = 8;
+
+static ANNOTATION_OWNER: OnceLock<Arc<freed_library_core::AnnotationMaintenanceOwner>> =
+    OnceLock::new();
+fn annotation_owner(
+    app: &tauri::AppHandle,
+) -> &'static Arc<freed_library_core::AnnotationMaintenanceOwner> {
+    ANNOTATION_OWNER.get_or_init(|| {
+        let binding_app=app.clone();let notify_app=app.clone();
+        freed_library_core::AnnotationMaintenanceOwner::new(move|pass| {
+            let result=(|| -> Result<_,String> {
+                #[cfg(unix)]
+                { let _=&binding_app;freed_library_core::desktop_binding().map_err(|error|error.to_string())?.reconcile_annotation_slice_v1(pass).map_err(|error|error.to_string()) }
+                #[cfg(not(unix))]
+                {
+                    let _gate=HANDOFF_RESET_GATE.lock().map_err(|_|"Desktop Library reset gate is poisoned".to_string())?;
+                    let mut connection=open_normalized_database(&binding_app)?;
+                    connection.busy_timeout(Duration::from_millis(25)).map_err(|error|error.to_string())?;
+                    let before=connection.total_changes();
+                    let next=freed_library_core::reconcile_normalized_annotation_slice_v1(&mut connection,pass).map_err(|error|error.to_string())?;
+                    Ok((next,connection.total_changes()!=before))
+                }
+            })();
+            result.map_err(|error|if error.contains("database is locked") || error.contains("SQLITE_BUSY") {
+                freed_library_core::AnnotationMaintenanceError::Busy
+            } else {freed_library_core::AnnotationMaintenanceError::Refused})
+        },move|failed| {
+            if failed {log::error!("Annotation maintenance refused; canonical annotations and pending evidence were preserved");}
+            let _=notify_app.emit("library-local-changes-available",());
+        })
+    })
+}
+/// Explicit owner startup hook. Read and generic open helpers never start work.
+pub(super) fn start_annotation_continuation(app: &tauri::AppHandle) {
+    match desktop_library_is_selected(app) {
+        Ok(true) => annotation_owner(app).restart(),
+        Ok(false) => {}
+        Err(_) => {
+            log::error!("Annotation maintenance startup refused; pending evidence was preserved")
+        }
+    }
+}
+fn mark_annotation_work_dirty(app: &tauri::AppHandle) {
+    annotation_owner(app).mark_dirty();
+}
+pub(super) fn stop_annotation_continuation() {
+    if let Some(owner) = ANNOTATION_OWNER.get() {
+        owner.stop();
+    }
+}
 
 struct DesktopCheckpointExportSession {
     export: freed_library_core::NormalizedCheckpointExportSessionV2,
@@ -230,6 +279,11 @@ pub(super) struct SignNormalizedOperationsRequest {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct CommitNormalizedTransactionRequest {
+    #[serde(
+        default,
+        deserialize_with = "freed_library_core::deserialize_local_admission_source"
+    )]
+    expected_source: Option<freed_library_core::NormalizedFeedPageSourceV1>,
     library_id: String,
     canonical_envelope_json: Vec<String>,
     committed_at_ms: i64,
@@ -238,6 +292,11 @@ pub(super) struct CommitNormalizedTransactionRequest {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct EnqueueFollowerIntentRequest {
+    #[serde(
+        default,
+        deserialize_with = "freed_library_core::deserialize_local_admission_source"
+    )]
+    expected_source: Option<freed_library_core::NormalizedFeedPageSourceV1>,
     canonical_envelope_json: Vec<String>,
     enqueued_at_ms: i64,
 }
@@ -372,13 +431,19 @@ fn open_unselected_normalized_database(
     app: &tauri::AppHandle,
     create: bool,
 ) -> Result<Connection, String> {
-    freed_library_core::open_normalized_sqlite_database_v1(
-        &app_root(app)?
-            .join(NORMALIZED_LIBRARY_DIRECTORY)
-            .join(NORMALIZED_DATABASE_FILE),
-        create,
-    )
-    .map_err(|error| error.to_string())
+    let database = app_root(app)?
+        .join(NORMALIZED_LIBRARY_DIRECTORY)
+        .join(NORMALIZED_DATABASE_FILE);
+    if create {
+        // Only authorized setup/cutover callers use create=true. Complete the
+        // owner upgrade before returning a target that can be published.
+        freed_library_core::initialize_owned_normalized_sqlite_database_v1(&database, true)
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| "fresh normalized storage is unavailable".to_string())
+    } else {
+        freed_library_core::open_normalized_sqlite_database_v1(&database, false)
+            .map_err(|error| error.to_string())
+    }
 }
 
 #[cfg(not(unix))]
@@ -956,6 +1021,17 @@ pub(super) fn ensure_fresh_normalized_desktop_library(
     app: tauri::AppHandle,
     historical_data_absent: bool,
 ) -> Result<bool, String> {
+    let result = ensure_fresh_normalized_desktop_library_inner(app.clone(), historical_data_absent);
+    if matches!(result, Ok(true)) {
+        start_annotation_continuation(&app);
+    }
+    result
+}
+
+fn ensure_fresh_normalized_desktop_library_inner(
+    app: tauri::AppHandle,
+    historical_data_absent: bool,
+) -> Result<bool, String> {
     #[cfg(not(unix))]
     {
         if app_root(&app)?.join(AUTHORITY_SELECTION_FILE).exists() {
@@ -1086,12 +1162,28 @@ pub(super) async fn query_normalized_library(
     started: Option<tauri::ipc::JavaScriptChannelId>,
     webview: tauri::Webview,
 ) -> Result<Value, String> {
+    if request.get("queryId").and_then(Value::as_str) == Some("item_annotation_edit_state_v1")
+        && ANNOTATION_OWNER.get().is_some_and(|owner| owner.failed())
+    {
+        return Err(
+            "Annotation maintenance refused; editing is unavailable until the Library is reopened"
+                .into(),
+        );
+    }
     let started = started.map(|channel| channel.channel_on(webview));
     super::library_core_query_control::run(
         Arc::clone(normalized_query_permits()),
         started,
         move |control| {
             control.check()?;
+            #[cfg(unix)]
+            if request.get("queryId").and_then(|value| value.as_str())
+                == Some("item_annotation_text_range_v1")
+            {
+                return freed_library_core::desktop_binding()
+                    .map_err(|error| error.to_string())?
+                    .query_with_content_control_v1(request, control);
+            }
             let connection = open_normalized_database(&app)?;
             freed_library_core::query_normalized_json_with_control_v1(connection, request, control)
         },
@@ -1535,6 +1627,7 @@ pub(super) fn activate_normalized_library_predecessor_checkpoint(
     )?;
     drop(connection);
     publish_consumer_selection(&app, &receipt.library_id)?;
+    mark_annotation_work_dirty(&app);
     Ok(receipt)
 }
 
@@ -1572,6 +1665,7 @@ pub(super) fn activate_normalized_library_checkpoint_import(
     if follower {
         publish_consumer_selection(&app, &receipt.library_id)?;
     }
+    mark_annotation_work_dirty(&app);
     Ok(receipt)
 }
 
@@ -1611,6 +1705,10 @@ pub(super) fn import_normalized_library_operation_page(
     }
     freed_library_core::import_normalized_operation_page_v2(&mut connection, &request)
         .map_err(|error| error.to_string())
+        .map(|receipt| {
+            mark_annotation_work_dirty(&app);
+            receipt
+        })
 }
 
 #[tauri::command]
@@ -2650,12 +2748,17 @@ pub(super) fn enqueue_normalized_library_follower_intent(
         .into_iter()
         .map(String::into_bytes)
         .collect::<Vec<_>>();
-    freed_library_core::enqueue_normalized_follower_intent_v1(
+    freed_library_core::enqueue_normalized_follower_intent_with_source_v1(
         &mut connection,
         &canonical,
         request.enqueued_at_ms,
+        request.expected_source.as_ref(),
     )
     .map_err(|error| error.to_string())
+    .map(|receipt| {
+        mark_annotation_work_dirty(&app);
+        receipt
+    })
 }
 
 #[tauri::command]
@@ -2765,6 +2868,10 @@ pub(super) fn import_normalized_library_follower_result_page(
         received_at,
     )
     .map_err(|error| error.to_string())
+    .map(|receipt| {
+        mark_annotation_work_dirty(&app);
+        receipt
+    })
 }
 
 #[tauri::command]
@@ -2778,6 +2885,10 @@ pub(super) fn import_normalized_library_follower_result_transport_segment(
         &publication,
     )
     .map_err(|error| error.to_string())
+    .map(|receipt| {
+        mark_annotation_work_dirty(&app);
+        receipt
+    })
 }
 
 #[derive(Debug, Deserialize)]
@@ -2869,13 +2980,18 @@ pub(super) fn commit_normalized_library_transaction(
         .into_iter()
         .map(String::into_bytes)
         .collect::<Vec<_>>();
-    accept_normalized_operation_transaction_v1(
+    freed_library_core::accept_normalized_operation_transaction_with_source_v1(
         &mut connection,
         &canonical_envelopes,
         &authority_key_pair,
         request.committed_at_ms,
+        request.expected_source.as_ref(),
     )
-    .map_err(|error| error.to_string())?
+    .map_err(|error| error.to_string())
+    .map(|receipt| {
+        mark_annotation_work_dirty(&app);
+        receipt
+    })?
     .try_into()
 }
 
@@ -3376,6 +3492,14 @@ pub(super) fn clear_normalized_local_snapshots(_app: tauri::AppHandle) -> Result
 
 #[tauri::command]
 pub(super) fn reset_normalized_library(app: tauri::AppHandle) -> Result<(), String> {
+    stop_annotation_continuation();
+    let result = reset_normalized_library_inner(app.clone());
+    if result.is_err() {
+        start_annotation_continuation(&app);
+    }
+    result
+}
+fn reset_normalized_library_inner(app: tauri::AppHandle) -> Result<(), String> {
     #[cfg(unix)]
     {
         let _ = app;

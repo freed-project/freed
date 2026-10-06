@@ -13,6 +13,14 @@ actor row. The original pending request bytes and digest remain preserved even
 when they differ from the recovered certificate. Unknown history, conflicting
 grants, changed authority and invalid signatures fail before any recovery write.
 
+The local follower commit request also accepts the optional source admission
+metadata defined in [the mutation contract](mutations.md). It survives worker
+transport and an exact response-loss retry unchanged. It is checked after
+retry recognition in the same write transaction as intent admission, and is
+not serialized into canonical members or provider transport. Canonical source
+revision currently does not distinguish pending local annotation versions;
+the guard alone does not establish safe repeated offline editing.
+
 A follower edit atomically writes a signed intent transaction and its sparse
 optimistic effect to local SQLite. The intent envelope binds:
 

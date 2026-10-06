@@ -190,7 +190,7 @@ export interface BaseAppState {
 
   // Item actions
   addItems: (items: FeedItem[]) => Promise<void>;
-  updateItem: (id: string, update: Partial<FeedItem>) => Promise<void>;
+  updateItem: (id: string, update: Partial<FeedItem>, annotationSnapshot?: import("@freed/shared/library-core").LibraryCoreHydratedAnnotations) => Promise<void>;
   markAsRead: (id: string) => Promise<void>;
   markItemsAsRead: (ids: string[]) => Promise<void>;
   markAllAsRead: (platform?: string) => Promise<void>;

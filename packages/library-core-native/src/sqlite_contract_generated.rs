@@ -49,6 +49,12 @@ pub const PENDING_PREFERENCE_SCHEMA_SHA256: &str =
     "5ef10502dc142aa63c3b33a8cd84c96c930a02e7f380d0efcb6e8a0f542a53fa";
 pub const PENDING_PREFERENCE_SCHEMA_EXTENSION_SQL: &str =
     include_str!("normalized_local_preferences_schema_v3.sql");
+pub const ANNOTATION_STORAGE_SCHEMA_VERSION: u32 = 4;
+pub const ANNOTATION_RECOVERY_STORAGE_SCHEMA_VERSION: u32 = 5;
+pub const ANNOTATION_SCHEMA_SHA256: &str = "b6a92e23c6f0652b472fa04294e9c99f1190f18a6545bc6ac2604a41a3458180";
+pub const ANNOTATION_RECOVERY_SCHEMA_SHA256: &str = "1b8c9bb5ab82772a3c2912703a2252085be7b9c15e41a696218c617eb75d82d1";
+pub const ANNOTATION_COVERAGE_SQL: &str = include_str!("normalized_local_annotation_coverage.sql");
+pub const ANNOTATION_SCHEMA_EXTENSION_SQL: &str = include_str!("normalized_local_annotations_schema_v4.sql");
 pub const NORMALIZED_SCHEMA_SHA256: &str =
     "aaa181e3306dece6e7c385f6be6c6c3e6feffdcb8aeb4a9cb7212f599ae99c0f";
 pub const NORMALIZED_SCHEMA_SQL: &str =
@@ -759,6 +765,8 @@ pub const QUERY_IDS: &[&str] = &[
     "filter_scope_summary_v1",
     "friend_candidate_review_v1",
     "friends_directory_page_v1",
+    "item_annotation_edit_state_v1",
+    "item_annotation_text_range_v1",
     "item_annotations_v1",
     "item_detail_v1",
     "item_reader_body_v1",
@@ -863,8 +871,8 @@ pub const SQLITE_QUERY_PROGRAMS: &[SqliteQueryProgram] = &[
     SqliteQueryProgram { query_id: "friends_directory_page_v1", maximum_scan_rows: 65, sql: "WITH base AS (SELECT person.id, person.name, substr(person.avatar_url, 1, 2048) AS avatarUrl, substr(person.bio, 1, 2048) AS bio, person.relationship_status AS relationshipStatus, person.care_level AS careLevel, person.reach_out_interval_days AS reachOutIntervalDays, person.created_at AS createdAt, (SELECT max(reach.logged_at) FROM library_person_reach_outs AS reach WHERE reach.person_id = person.id) AS lastContactAt, (SELECT max(link.published_at) FROM library_person_feed_items AS link JOIN library_feed_items AS item ON item.global_id = link.global_id WHERE link.person_id = person.id AND item.hidden = 0) AS latestActivityAt, (SELECT substr(item.author_avatar_url, 1, 2048) FROM library_person_feed_items AS link JOIN library_feed_items AS item ON item.global_id = link.global_id WHERE link.person_id = person.id AND item.hidden = 0 AND item.author_avatar_url IS NOT NULL ORDER BY link.published_at DESC, link.global_id COLLATE BINARY ASC LIMIT 1) AS latestAvatarUrl, EXISTS (SELECT 1 FROM library_person_feed_items AS link JOIN library_feed_items AS item ON item.global_id = link.global_id WHERE link.person_id = person.id AND item.hidden = 0 AND (item.location_name IS NOT NULL OR item.location_lat IS NOT NULL OR item.location_lng IS NOT NULL OR item.location_url IS NOT NULL) LIMIT 1) AS hasLocation FROM library_persons AS person WHERE (person.relationship_status = 'friend' OR ?1 <> '') AND (?1 = '' OR instr(lower(person.name), lower(?1)) > 0 OR EXISTS (SELECT 1 FROM library_accounts AS account WHERE account.person_id = person.id AND (instr(lower(COALESCE(account.handle, '')), lower(?1)) > 0 OR instr(lower(COALESCE(account.display_name, '')), lower(?1)) > 0 OR instr(lower(account.external_id), lower(?1)) > 0)))), directory AS (SELECT *, CASE WHEN COALESCE(reachOutIntervalDays, CASE careLevel WHEN 5 THEN 7 WHEN 4 THEN 14 WHEN 3 THEN 30 WHEN 2 THEN 90 ELSE NULL END) IS NULL THEN 0 WHEN ?7 > COALESCE(lastContactAt, createdAt) + COALESCE(reachOutIntervalDays, CASE careLevel WHEN 5 THEN 7 WHEN 4 THEN 14 WHEN 3 THEN 30 WHEN 2 THEN 90 ELSE NULL END) * 86400000 THEN 1 ELSE 0 END AS needsOutreach, CASE WHEN latestActivityAt IS NOT NULL AND latestActivityAt >= ?8 THEN 1 ELSE 0 END AS isRecentlyActive FROM base), filtered AS (SELECT * FROM directory WHERE (?2 = 0 OR needsOutreach = 1) AND (?3 = 0 OR lastContactAt IS NULL) AND (?4 = 0 OR careLevel = 5) AND (?5 = 0 OR isRecentlyActive = 1) AND (?6 = 0 OR hasLocation = 1)), cursor_row AS (SELECT careLevel, COALESCE(lastContactAt, -1) AS lastContactSort, COALESCE(latestActivityAt, -1) AS latestActivitySort, lower(name) AS lowerName, id FROM filtered WHERE id = ?10 COLLATE BINARY LIMIT 1) SELECT id, name, avatarUrl, bio, relationshipStatus, careLevel, reachOutIntervalDays, lastContactAt, latestActivityAt, latestAvatarUrl, hasLocation, needsOutreach, isRecentlyActive FROM filtered WHERE ?10 = '' OR (EXISTS (SELECT 1 FROM cursor_row) AND ((?9 = 'name' AND (lower(name) COLLATE BINARY > (SELECT lowerName FROM cursor_row) COLLATE BINARY OR (lower(name) COLLATE BINARY = (SELECT lowerName FROM cursor_row) COLLATE BINARY AND id COLLATE BINARY > (SELECT id FROM cursor_row) COLLATE BINARY))) OR (?9 = 'care_level' AND (careLevel < (SELECT careLevel FROM cursor_row) OR (careLevel = (SELECT careLevel FROM cursor_row) AND (COALESCE(latestActivityAt, -1) < (SELECT latestActivitySort FROM cursor_row) OR (COALESCE(latestActivityAt, -1) = (SELECT latestActivitySort FROM cursor_row) AND (lower(name) COLLATE BINARY > (SELECT lowerName FROM cursor_row) COLLATE BINARY OR (lower(name) COLLATE BINARY = (SELECT lowerName FROM cursor_row) COLLATE BINARY AND id COLLATE BINARY > (SELECT id FROM cursor_row) COLLATE BINARY))))))) OR (?9 = 'last_contact' AND (COALESCE(lastContactAt, -1) < (SELECT lastContactSort FROM cursor_row) OR (COALESCE(lastContactAt, -1) = (SELECT lastContactSort FROM cursor_row) AND (COALESCE(latestActivityAt, -1) < (SELECT latestActivitySort FROM cursor_row) OR (COALESCE(latestActivityAt, -1) = (SELECT latestActivitySort FROM cursor_row) AND (lower(name) COLLATE BINARY > (SELECT lowerName FROM cursor_row) COLLATE BINARY OR (lower(name) COLLATE BINARY = (SELECT lowerName FROM cursor_row) COLLATE BINARY AND id COLLATE BINARY > (SELECT id FROM cursor_row) COLLATE BINARY))))))) OR (?9 = 'recent_activity' AND (COALESCE(latestActivityAt, -1) < (SELECT latestActivitySort FROM cursor_row) OR (COALESCE(latestActivityAt, -1) = (SELECT latestActivitySort FROM cursor_row) AND (careLevel < (SELECT careLevel FROM cursor_row) OR (careLevel = (SELECT careLevel FROM cursor_row) AND (lower(name) COLLATE BINARY > (SELECT lowerName FROM cursor_row) COLLATE BINARY OR (lower(name) COLLATE BINARY = (SELECT lowerName FROM cursor_row) COLLATE BINARY AND id COLLATE BINARY > (SELECT id FROM cursor_row) COLLATE BINARY))))))))) ORDER BY CASE WHEN ?9 = 'name' THEN lower(name) END COLLATE BINARY ASC, CASE WHEN ?9 = 'care_level' THEN careLevel END DESC, CASE WHEN ?9 = 'last_contact' THEN COALESCE(lastContactAt, -1) END DESC, CASE WHEN ?9 = 'recent_activity' THEN COALESCE(latestActivityAt, -1) END DESC, CASE WHEN ?9 IN ('care_level', 'last_contact') THEN COALESCE(latestActivityAt, -1) END DESC, CASE WHEN ?9 IN ('care_level', 'recent_activity') THEN careLevel END DESC, lower(name) COLLATE BINARY ASC, id COLLATE BINARY ASC LIMIT ?11;", reverse_sql: None, count_sql: "WITH base AS (SELECT person.id, person.care_level AS careLevel, person.created_at AS createdAt, person.reach_out_interval_days AS reachOutIntervalDays, (SELECT max(reach.logged_at) FROM library_person_reach_outs AS reach WHERE reach.person_id = person.id) AS lastContactAt, (SELECT max(link.published_at) FROM library_person_feed_items AS link JOIN library_feed_items AS item ON item.global_id = link.global_id WHERE link.person_id = person.id AND item.hidden = 0) AS latestActivityAt, EXISTS (SELECT 1 FROM library_person_feed_items AS link JOIN library_feed_items AS item ON item.global_id = link.global_id WHERE link.person_id = person.id AND item.hidden = 0 AND (item.location_name IS NOT NULL OR item.location_lat IS NOT NULL OR item.location_lng IS NOT NULL OR item.location_url IS NOT NULL) LIMIT 1) AS hasLocation FROM library_persons AS person WHERE (person.relationship_status = 'friend' OR ?1 <> '') AND (?1 = '' OR instr(lower(person.name), lower(?1)) > 0 OR EXISTS (SELECT 1 FROM library_accounts AS account WHERE account.person_id = person.id AND (instr(lower(COALESCE(account.handle, '')), lower(?1)) > 0 OR instr(lower(COALESCE(account.display_name, '')), lower(?1)) > 0 OR instr(lower(account.external_id), lower(?1)) > 0)))), directory AS (SELECT *, CASE WHEN COALESCE(reachOutIntervalDays, CASE careLevel WHEN 5 THEN 7 WHEN 4 THEN 14 WHEN 3 THEN 30 WHEN 2 THEN 90 ELSE NULL END) IS NULL THEN 0 WHEN ?7 > COALESCE(lastContactAt, createdAt) + COALESCE(reachOutIntervalDays, CASE careLevel WHEN 5 THEN 7 WHEN 4 THEN 14 WHEN 3 THEN 30 WHEN 2 THEN 90 ELSE NULL END) * 86400000 THEN 1 ELSE 0 END AS needsOutreach, CASE WHEN latestActivityAt IS NOT NULL AND latestActivityAt >= ?8 THEN 1 ELSE 0 END AS isRecentlyActive FROM base) SELECT count(*) FROM directory WHERE (?2 = 0 OR needsOutreach = 1) AND (?3 = 0 OR lastContactAt IS NULL) AND (?4 = 0 OR careLevel = 5) AND (?5 = 0 OR isRecentlyActive = 1) AND (?6 = 0 OR hasLocation = 1);", variants: &[
 
     ] },
-    SqliteQueryProgram { query_id: "item_annotations_v1", maximum_scan_rows: 64, sql: "SELECT created_at AS createdAt, substr(note, 1, 8193) AS note, text_value AS text, text_blob_digest AS textBlobDigest FROM library_feed_item_highlights WHERE global_id = ?1 ORDER BY ordinal LIMIT 65;", reverse_sql: Some("SELECT substr(tag, 1, 1025) AS tag FROM library_feed_item_tags WHERE global_id = ?1 ORDER BY tag COLLATE BINARY LIMIT 65;"), count_sql: "SELECT count(*) FROM library_feed_item_highlights WHERE global_id = ?1;", variants: &[
-        SqliteQueryVariant { variant_id: "tags", sql: "SELECT substr(tag, 1, 1025) AS tag FROM library_feed_item_tags WHERE global_id = ?1 ORDER BY tag COLLATE BINARY LIMIT 65;", reverse_sql: "SELECT substr(tag, 1, 1025) AS tag FROM library_feed_item_tags WHERE global_id = ?1 ORDER BY tag COLLATE BINARY LIMIT 65;" },
+    SqliteQueryProgram { query_id: "item_annotations_v1", maximum_scan_rows: 64, sql: "SELECT created_at AS createdAt, CASE WHEN length(CAST(note AS BLOB)) <= 8192 THEN CAST(note AS BLOB) ELSE substr(CAST(note AS BLOB), 1, 8193) END AS note, CASE WHEN length(CAST(text_value AS BLOB)) <= 65536 THEN CAST(text_value AS BLOB) ELSE substr(CAST(text_value AS BLOB), 1, 65537) END AS text, text_blob_digest AS textBlobDigest FROM library_feed_item_highlights WHERE global_id = ?1 ORDER BY ordinal LIMIT 65;", reverse_sql: Some("SELECT CASE WHEN length(CAST(tag AS BLOB)) <= 512 THEN CAST(tag AS BLOB) ELSE substr(CAST(tag AS BLOB), 1, 513) END AS tag FROM library_feed_item_tags WHERE global_id = ?1 ORDER BY tag COLLATE BINARY LIMIT 65;"), count_sql: "SELECT count(*) FROM library_feed_item_highlights WHERE global_id = ?1;", variants: &[
+        SqliteQueryVariant { variant_id: "tags", sql: "SELECT CASE WHEN length(CAST(tag AS BLOB)) <= 512 THEN CAST(tag AS BLOB) ELSE substr(CAST(tag AS BLOB), 1, 513) END AS tag FROM library_feed_item_tags WHERE global_id = ?1 ORDER BY tag COLLATE BINARY LIMIT 65;", reverse_sql: "SELECT CASE WHEN length(CAST(tag AS BLOB)) <= 512 THEN CAST(tag AS BLOB) ELSE substr(CAST(tag AS BLOB), 1, 513) END AS tag FROM library_feed_item_tags WHERE global_id = ?1 ORDER BY tag COLLATE BINARY LIMIT 65;" },
     ] },
     SqliteQueryProgram { query_id: "item_detail_v1", maximum_scan_rows: 1, sql: "SELECT item.global_id AS globalId, item.platform, item.content_type AS contentType, item.published_at AS publishedAt, item.captured_at AS capturedAt, nullif(substr(item.author_id, 1, 1024), '') AS authorId, nullif(substr(item.author_display_name, 1, 512), '') AS authorDisplayName, nullif(substr(item.author_handle, 1, 256), '') AS authorHandle, substr(item.author_avatar_url, 1, 2048) AS authorAvatarUrl, substr(item.source_url, 1, 2048) AS sourceUrl, item.read_at AS readAt, item.seen_synced_at AS seenSyncedAt, item.saved, item.archived, item.liked, item.liked_at AS likedAt, item.liked_synced_at AS likedSyncedAt, substr(item.content_text, 1, 1500) AS contentText, substr(item.link_title, 1, 512) AS linkPreviewTitle, substr(item.link_url, 1, 2048) AS linkPreviewUrl, substr(item.location_name, 1, 512) AS locationName, item.engagement_likes AS engagementLikes, item.engagement_comments AS engagementComments, item.preserved_reading_time AS readingTimeMinutes, (SELECT json_group_array(source_url) FROM (SELECT media.source_url FROM library_feed_item_media AS media WHERE media.global_id = item.global_id ORDER BY media.ordinal LIMIT 8)) AS mediaUrlsJson, (SELECT json_group_array(media_type) FROM (SELECT media.media_type FROM library_feed_item_media AS media WHERE media.global_id = item.global_id ORDER BY media.ordinal LIMIT 8)) AS mediaTypesJson, (SELECT json_group_array(blob_content_digest) FROM (SELECT media.blob_content_digest FROM library_feed_item_media AS media WHERE media.global_id = item.global_id ORDER BY media.ordinal LIMIT 8)) AS mediaBlobDigestsJson, (SELECT json_group_array(tag) FROM (SELECT item_tag.tag FROM library_feed_item_tags AS item_tag WHERE item_tag.global_id = item.global_id ORDER BY item_tag.tag COLLATE BINARY LIMIT 32)) AS tagsJson, (SELECT json_group_array(signal) FROM (SELECT score.signal FROM library_feed_item_signal_scores AS score WHERE score.global_id = item.global_id AND score.tagged = 1 ORDER BY score.signal COLLATE BINARY LIMIT 32)) AS contentSignalTagsJson, event.starts_at AS eventStartsAt, CAST(round(event.confidence * 10000.0) AS INTEGER) AS eventConfidenceBasisPoints, CASE WHEN item.content_text IS NOT NULL THEN 'inline' WHEN item.content_text_blob_digest IS NOT NULL THEN 'blob' ELSE 'none' END AS contentBodyStorage, item.content_text_blob_digest AS contentBodyBlobDigest, CASE WHEN item.preserved_text IS NOT NULL THEN 'inline' WHEN item.preserved_text_blob_digest IS NOT NULL THEN 'blob' ELSE 'none' END AS preservedBodyStorage, item.preserved_text_blob_digest AS preservedBodyBlobDigest FROM library_feed_items AS item LEFT JOIN library_feed_item_events AS event ON event.global_id = item.global_id WHERE item.global_id = ?1 COLLATE BINARY LIMIT 1;", reverse_sql: None, count_sql: "SELECT count(*) FROM library_feed_items WHERE global_id = ?1 COLLATE BINARY;", variants: &[
 
@@ -955,6 +963,13 @@ pub const SQLITE_QUERY_PROGRAMS: &[SqliteQueryProgram] = &[
 
     ] },
     SqliteQueryProgram { query_id: "priority_time_page_v1", maximum_scan_rows: 65, sql: "SELECT item.global_id AS globalId, item.platform, item.content_type AS contentType, item.published_at AS publishedAt, item.captured_at AS capturedAt, nullif(substr(item.author_id, 1, 1024), '') AS authorId, nullif(substr(item.author_display_name, 1, 512), '') AS authorDisplayName, nullif(substr(item.author_handle, 1, 256), '') AS authorHandle, substr(item.author_avatar_url, 1, 2048) AS authorAvatarUrl, substr(item.source_url, 1, 2048) AS sourceUrl, item.read_at AS readAt, item.seen_synced_at AS seenSyncedAt, item.saved, item.archived, item.liked, item.liked_at AS likedAt, item.liked_synced_at AS likedSyncedAt, substr(item.content_text, 1, 1500) AS contentText, substr(item.link_title, 1, 512) AS linkPreviewTitle, substr(item.link_url, 1, 2048) AS linkPreviewUrl, substr(item.location_name, 1, 512) AS locationName, item.engagement_likes AS engagementLikes, item.engagement_comments AS engagementComments, item.preserved_reading_time AS readingTimeMinutes, (SELECT json_group_array(source_url) FROM (SELECT media.source_url FROM library_feed_item_media AS media WHERE media.global_id = item.global_id ORDER BY media.ordinal LIMIT 8)) AS mediaUrlsJson, (SELECT json_group_array(media_type) FROM (SELECT media.media_type FROM library_feed_item_media AS media WHERE media.global_id = item.global_id ORDER BY media.ordinal LIMIT 8)) AS mediaTypesJson, (SELECT json_group_array(tag) FROM (SELECT item_tag.tag FROM library_feed_item_tags AS item_tag WHERE item_tag.global_id = item.global_id ORDER BY item_tag.tag COLLATE BINARY LIMIT 32)) AS tagsJson, (SELECT json_group_array(signal) FROM (SELECT score.signal FROM library_feed_item_signal_scores AS score WHERE score.global_id = item.global_id AND score.tagged = 1 ORDER BY score.signal COLLATE BINARY LIMIT 32)) AS contentSignalTagsJson, event.starts_at AS eventStartsAt, CAST(round(event.confidence * 10000.0) AS INTEGER) AS eventConfidenceBasisPoints, item.hidden, substr(item.rss_feed_url, 1, 8192) AS rssFeedUrl, COALESCE(substr(item.rss_feed_title, 1, 2048), '') AS rssFeedTitle, COALESCE(substr(item.rss_site_url, 1, 8192), '') AS rssSiteUrl, substr(item.sample_batch_id, 1, 4096) AS sampleBatchId, item.sample_generated_at AS sampleGeneratedAt, item.sample_generator_version AS sampleGeneratorVersion, (SELECT person.care_level FROM library_accounts AS account JOIN library_persons AS person ON person.id = account.person_id WHERE account.kind = 'social' AND account.provider = item.platform AND account.external_id = item.author_id AND person.relationship_status = 'friend' ORDER BY account.id COLLATE BINARY LIMIT 1) AS rankingCareLevel, item.engagement_reposts AS rankingEngagementReposts, item.engagement_views AS rankingEngagementViews, (SELECT json_group_array(topic) FROM (SELECT topic FROM library_feed_item_topics WHERE global_id = item.global_id ORDER BY topic COLLATE BINARY LIMIT 64)) AS rankingTopicsJson FROM library_feed_items AS item INDEXED BY library_feed_items_priority_refresh LEFT JOIN library_feed_item_events AS event ON event.global_id = item.global_id WHERE (item.priority_computed_at IS NULL OR item.priority_computed_at - item.published_at < 604800000) AND (item.priority_computed_at IS NULL OR item.priority_computed_at < ?1) ORDER BY item.priority_computed_at ASC, item.global_id COLLATE BINARY ASC LIMIT ?2;", reverse_sql: None, count_sql: "SELECT total_count FROM library_facet_summary WHERE singleton_id = 1;", variants: &[
+
+    ] },
+    SqliteQueryProgram { query_id: "item_annotation_text_range_v1", maximum_scan_rows: 65, sql: "SELECT h.text_value AS text, h.text_blob_digest AS blobDigest, CASE WHEN h.text_value IS NOT NULL THEN length(CAST(h.text_value AS BLOB)) ELSE b.byte_length END AS byteLength, b.storage_layout AS storageLayout, b.chunk_count AS chunkCount, b.range_count AS rangeCount, b.range_index_root_digest AS rangeRoot, COALESCE(p.policy, 'metadata_only') AS policy FROM library_feed_item_highlights h LEFT JOIN library_blobs b ON b.content_digest = h.text_blob_digest LEFT JOIN library_device_content_policies p ON p.content_digest = h.text_blob_digest WHERE h.global_id = ?1 ORDER BY h.ordinal LIMIT 1 OFFSET ?2;", reverse_sql: Some("SELECT chunk_index AS memberIndex, chunk_digest AS digest, bytes FROM library_blob_chunks WHERE content_digest = ?1 ORDER BY chunk_index LIMIT 2;"), count_sql: "SELECT count(*) FROM (SELECT ordinal FROM library_feed_item_highlights WHERE global_id = ?1 ORDER BY ordinal LIMIT 65);", variants: &[
+        SqliteQueryVariant { variant_id: "chunks", sql: "SELECT chunk_index AS memberIndex, chunk_digest AS digest, bytes FROM library_blob_chunks WHERE content_digest = ?1 ORDER BY chunk_index LIMIT 2;", reverse_sql: "SELECT chunk_index AS memberIndex, chunk_digest AS digest, bytes FROM library_blob_chunks WHERE content_digest = ?1 ORDER BY chunk_index LIMIT 2;" },
+        SqliteQueryVariant { variant_id: "ranges", sql: "SELECT r.range_index AS memberIndex, r.byte_offset AS byteOffset, r.byte_length AS byteLength, r.range_digest AS digest, l.storage_key AS storageKey, l.storage_kind AS storageKind FROM library_content_ranges r LEFT JOIN library_device_content_ranges l ON l.content_digest = r.content_digest AND l.range_index = r.range_index AND l.verified_byte_length = r.byte_length AND l.verified_range_digest = r.range_digest WHERE r.content_digest = ?1 ORDER BY r.range_index LIMIT 65;", reverse_sql: "SELECT r.range_index AS memberIndex, r.byte_offset AS byteOffset, r.byte_length AS byteLength, r.range_digest AS digest, l.storage_key AS storageKey, l.storage_kind AS storageKind FROM library_content_ranges r LEFT JOIN library_device_content_ranges l ON l.content_digest = r.content_digest AND l.range_index = r.range_index AND l.verified_byte_length = r.byte_length AND l.verified_range_digest = r.range_digest WHERE r.content_digest = ?1 ORDER BY r.range_index LIMIT 65;" },
+    ] },
+    SqliteQueryProgram { query_id: "item_annotation_edit_state_v1", maximum_scan_rows: 1, sql: "SELECT EXISTS (SELECT 1 FROM library_local_annotation_unresolved WHERE entity_id = ?1 LIMIT 1) AS pending, sequence AS localSequence FROM library_local_change_state WHERE singleton_id = 1;", reverse_sql: None, count_sql: "SELECT 1;", variants: &[
 
     ] },
 ];
@@ -2074,6 +2089,126 @@ pub const SQLITE_QUERY_ROW_MODELS: &[SqliteQueryRowModel] = &[
             nullable: false,
             minimum_utf8_bytes: Some(1),
             maximum_utf8_bytes: Some(32768),
+            minimum_integer: None,
+            maximum_integer: None,
+            enum_values: &[],
+            integer_values: &[],
+        },
+        ],
+    },
+    SqliteQueryRowModel {
+        query_id: "item_annotation_text_range_v1",
+        fields: &[
+        SqliteQueryRowField {
+            name: "blobDigest",
+            kind: SqliteQueryRowFieldKind::Text,
+            nullable: true,
+            minimum_utf8_bytes: Some(0),
+            maximum_utf8_bytes: Some(64),
+            minimum_integer: None,
+            maximum_integer: None,
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "byteLength",
+            kind: SqliteQueryRowFieldKind::Integer,
+            nullable: true,
+            minimum_utf8_bytes: None,
+            maximum_utf8_bytes: None,
+            minimum_integer: Some(0),
+            maximum_integer: Some(9007199254740991),
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "chunkCount",
+            kind: SqliteQueryRowFieldKind::Integer,
+            nullable: true,
+            minimum_utf8_bytes: None,
+            maximum_utf8_bytes: None,
+            minimum_integer: Some(0),
+            maximum_integer: Some(9007199254740991),
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "policy",
+            kind: SqliteQueryRowFieldKind::Text,
+            nullable: false,
+            minimum_utf8_bytes: Some(0),
+            maximum_utf8_bytes: Some(32),
+            minimum_integer: None,
+            maximum_integer: None,
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "rangeCount",
+            kind: SqliteQueryRowFieldKind::Integer,
+            nullable: true,
+            minimum_utf8_bytes: None,
+            maximum_utf8_bytes: None,
+            minimum_integer: Some(0),
+            maximum_integer: Some(9007199254740991),
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "rangeRoot",
+            kind: SqliteQueryRowFieldKind::Text,
+            nullable: true,
+            minimum_utf8_bytes: Some(0),
+            maximum_utf8_bytes: Some(64),
+            minimum_integer: None,
+            maximum_integer: None,
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "storageLayout",
+            kind: SqliteQueryRowFieldKind::Text,
+            nullable: true,
+            minimum_utf8_bytes: Some(0),
+            maximum_utf8_bytes: Some(32),
+            minimum_integer: None,
+            maximum_integer: None,
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "text",
+            kind: SqliteQueryRowFieldKind::Text,
+            nullable: true,
+            minimum_utf8_bytes: Some(0),
+            maximum_utf8_bytes: Some(65536),
+            minimum_integer: None,
+            maximum_integer: None,
+            enum_values: &[],
+            integer_values: &[],
+        },
+        ],
+    },
+    SqliteQueryRowModel {
+        query_id: "item_annotation_edit_state_v1",
+        fields: &[
+        SqliteQueryRowField {
+            name: "localSequence",
+            kind: SqliteQueryRowFieldKind::Integer,
+            nullable: false,
+            minimum_utf8_bytes: None,
+            maximum_utf8_bytes: None,
+            minimum_integer: Some(0),
+            maximum_integer: Some(9007199254740991),
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "pending",
+            kind: SqliteQueryRowFieldKind::Boolean,
+            nullable: false,
+            minimum_utf8_bytes: None,
+            maximum_utf8_bytes: None,
             minimum_integer: None,
             maximum_integer: None,
             enum_values: &[],

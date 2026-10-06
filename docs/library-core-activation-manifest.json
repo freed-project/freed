@@ -55,6 +55,16 @@
         "recovery_receipt",
         "roll_forward_recovery_receipt"
       ]
+    },
+    {
+      "activationId": "annotation-pending-local-schema-v4-v5",
+      "gate": "F",
+      "kind": "schema_version_activation",
+      "failureResponse": "Refuse unknown catalogs and all ordinary access while the annotation-specific local upgrade is building. Resume bounded pages under the existing exclusive Library ownership with unchanged pinned source identity. Preserve unresolved annotation markers and exact retry evidence. Physical 4 retains the base catalog; physical 5 retains the recovery catalog. Refuse older clients and roll forward through a compatible build without deleting local state or changing the writer epoch.",
+      "receiptExpectations": [
+        "roll_forward_recovery_receipt",
+        "schema_migration_receipt"
+      ]
     }
   ]
 }

@@ -18,6 +18,17 @@ describe("follower intent commit contract", () => {
     expect(Object.isFrozen(parsed.envelopeBytes)).toBe(true);
   });
 
+  it("snapshots the optional local source and rejects malformed extensions", () => {
+    const source = { generationId: "a".repeat(64), projectionRevision: 1, transitionSequence: 1 };
+    const commit = { envelopeBytes: [Uint8Array.of(1)], expectedSource: source };
+    const parsed = parseLibraryCoreFollowerIntentCommitV1(commit);
+    source.projectionRevision = 2;
+    expect(parsed.expectedSource?.projectionRevision).toBe(1);
+    for (const expectedSource of [null, undefined, { ...source, extra: 1 }, { ...source, transitionSequence: -1 }]) {
+      expect(() => parseLibraryCoreFollowerIntentCommitV1({ ...commit, expectedSource })).toThrow();
+    }
+  });
+
   it("rejects aliases, sparse arrays, unknown fields, and oversized members", () => {
     const sparse: Uint8Array[] = [];
     sparse.length = 1;

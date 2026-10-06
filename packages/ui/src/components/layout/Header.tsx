@@ -43,7 +43,7 @@ import { useSearchResults } from "../../hooks/useSearchResults.js";
 import { useFeedSignalCounts } from "../../hooks/useFeedSignalCounts.js";
 import { useLibraryFacetSummaryState } from "../../hooks/useLibraryFacetSummary.js";
 import { useLibraryFilterScopeSummary } from "../../hooks/useLibraryFilterScopeSummary.js";
-import { useLibraryItemDetail } from "../../hooks/useLibraryItemDetail.js";
+import { useLibraryItemDetail, annotationFailureLabel } from "../../hooks/useLibraryItemDetail.js";
 import { useLibraryCommandPaletteReader } from "../../hooks/useLibraryCommandPaletteReader.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
@@ -424,7 +424,9 @@ export function Header({
   );
   const selectedItem = selectedItemDetail.item;
   const readerActive = selectedItemId !== null;
-  const selectedItemStatusLabel = selectedItemDetail.status === "failed"
+  const selectedItemStatusLabel = selectedItemDetail.annotationFailure
+    ? annotationFailureLabel(selectedItemDetail.annotationFailure)
+    : selectedItemDetail.status === "failed"
     ? "Item temporarily unavailable"
     : selectedItemDetail.status === "ready"
       ? "Item unavailable"

@@ -1,3 +1,4 @@
+import { resumePwaAnnotationUpgrade } from "./library-core-annotation-storage";
 import { catchUpLibraryCorePredecessorCheckpointV1 } from "@freed/sync/cloud/library-core";
 import nativeHandoffCatchup from "../../../shared/src/library-core/native-handoff-catchup-vector-v1.json";
 import nativeMissedTransfers from "../../../shared/src/library-core/native-missed-transfer-vector-v1.json";
@@ -2938,7 +2939,26 @@ describe("PWA Library Core SQLite engine", () => {
     expect(database.selectValue("SELECT count(*) FROM library_optimistic_fields;")).toBe(0);
     expect(database.selectValue("SELECT count(*) FROM library_intent_actors;")).toBe(0);
     database.exec("DROP TRIGGER fail_final_intent_tip;");
-    const first = await engine.commitFollowerIntent({ envelopeBytes });
+    const expectedSource = engine.query({ queryId: "item_annotations_v1", schemaVersion: 1, globalId: "item-1" }).source;
+    const beforeStale = database.selectValue("SELECT total_changes()");
+    await expect(engine.commitFollowerIntent({ envelopeBytes, expectedSource: { ...expectedSource, transitionSequence: expectedSource.transitionSequence + 1 } })).rejects.toThrow("LOCAL_ADMISSION_SOURCE_STALE");
+    expect(database.selectValue("SELECT total_changes()")).toBe(beforeStale);
+    const verify = crypto.subtle.verify.bind(crypto.subtle);
+    const race = vi.spyOn(crypto.subtle, "verify").mockImplementationOnce(async (...args) => {
+      const valid = await verify(...args);
+      database.exec("UPDATE library_meta SET source_revision=source_revision+1; UPDATE library_change_state SET revision=revision+1;");
+      return valid;
+    });
+    await expect(engine.commitFollowerIntent({ envelopeBytes, expectedSource })).rejects.toThrow("LOCAL_ADMISSION_SOURCE_STALE");
+    race.mockRestore();
+    expect(database.selectValue("SELECT total_changes()")).toBe(Number(beforeStale) + 2);
+    database.exec("UPDATE library_meta SET source_revision=source_revision-1; UPDATE library_change_state SET revision=revision-1;");
+    const first = await engine.commitFollowerIntent({ envelopeBytes, expectedSource });
+    database.exec("UPDATE library_meta SET source_revision=source_revision+1; UPDATE library_change_state SET revision=revision+1;");
+    const beforeRetry = database.selectValue("SELECT total_changes()");
+    expect(await engine.commitFollowerIntent({ envelopeBytes, expectedSource })).toEqual(first);
+    expect(database.selectValue("SELECT total_changes()")).toBe(beforeRetry);
+    database.exec("UPDATE library_meta SET source_revision=source_revision-1; UPDATE library_change_state SET revision=revision-1;");
     expect(first).toEqual({
       actorId,
       firstCounter: 1,
@@ -3412,7 +3432,7 @@ describe("PWA Library Core SQLite engine", () => {
       }),
     ];
     await expect(
-      engine.commitFollowerIntent({ envelopeBytes: changed }),
+      engine.commitFollowerIntent({ envelopeBytes: changed, expectedSource: { ...expectedSource, projectionRevision: expectedSource.projectionRevision + 1 } }),
     ).rejects.toThrow(/reused with changed bytes/);
 
     database.exec(`CREATE TEMP TRIGGER fail_follower_optimistic_insert
@@ -3993,6 +4013,11 @@ describe("PWA Library Core SQLite engine", () => {
         "sqlite",
       ],
     ]);
+
+    // The shipping owner upgrades before exposing annotation admission. This
+    // older isolated engine fixture must cross the same explicit boundary.
+    expect(resumePwaAnnotationUpgrade(database, sqlite3.capi,
+      () => new sqlite3.oo1.DB(":memory:", "c"))).toBe(true);
 
     type FinalizedTestTransaction = Awaited<
       ReturnType<typeof finalizeLibraryCoreTransactionV1>
@@ -5414,6 +5439,52 @@ describe("PWA Library Core SQLite engine", () => {
         sort: "name",
       }),
     ).toThrow("cursor row is missing");
+  });
+
+  it.each([
+    ["note", 8192], ["tag", 512], ["text_value", 65536],
+  ] as const)("preserves exact annotation %s bytes and refuses oversize or invalid UTF-8", (column, limit) => {
+    const engine = new PwaLibraryCoreSqliteEngine(database, sqlite3.version.libVersion);
+    engine.initialize();
+    database.exec(`
+      INSERT INTO library_meta VALUES (1, '${"a".repeat(64)}', 1, 'epoch', 0, 0);
+      INSERT INTO library_materialization_generation VALUES (1, '${"a".repeat(64)}');
+      INSERT INTO library_feed_items(global_id,platform,content_type,captured_at,published_at,author_id,author_handle,author_display_name,hidden,saved,archived,updated_at)
+      VALUES ('item','saved','article',0,0,'a','a','a',0,1,0,0);
+      INSERT INTO library_feed_item_tags VALUES ('item','tag');
+      INSERT INTO library_feed_item_highlights VALUES ('item',0,'quote',NULL,'note',1);
+    `);
+    const table = column === "tag" ? "library_feed_item_tags" : "library_feed_item_highlights";
+    const request = { queryId: "item_annotations_v1", schemaVersion: 1, globalId: "item" } as const;
+    const write = (bytes: Uint8Array) => database.exec(`UPDATE ${table} SET ${column}=CAST(X'${Buffer.from(bytes).toString("hex")}' AS TEXT)`);
+    const read = () => {
+      const result = engine.query(request);
+      return column === "tag" ? result.tags[0] : result.highlights[0]![column === "note" ? "note" : "text"];
+    };
+    const exact = "\ufeffExact\r\ne\u0301\0🦉";
+    const encoded = new TextEncoder().encode(exact);
+    write(encoded);
+    // A hex blob fixture isolates reads from text binding behavior.
+    expect(database.selectValue(`SELECT hex(${column}) FROM ${table}`)).toBe(Buffer.from(encoded).toString("hex").toUpperCase());
+    expect(read()).toBe(exact);
+    const boundary = exact + "a".repeat(limit - encoded.length);
+    write(new TextEncoder().encode(boundary));
+    expect(read()).toBe(boundary);
+    for (const invalid of [boundary + "a", boundary + "é"]) {
+      // Inject a corrupt row even where the physical table has a CHECK.
+      database.exec("PRAGMA ignore_check_constraints=ON");
+      write(new TextEncoder().encode(invalid));
+      database.exec("PRAGMA ignore_check_constraints=OFF");
+      expect(() => read()).toThrow();
+    }
+    write(new Uint8Array([0x61, 0, 0xff]));
+    expect(() => read()).toThrow();
+    write(new Uint8Array());
+    if (column === "note") {
+      expect(read()).toBe("");
+      database.exec("UPDATE library_feed_item_highlights SET note=NULL");
+      expect(read()).toBeNull();
+    } else expect(() => read()).toThrow();
   });
 
   it("reads bounded annotations and overlapping RSS counts from normalized rows", () => {

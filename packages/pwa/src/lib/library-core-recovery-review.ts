@@ -202,7 +202,7 @@ async function outcome(db: Database, capi: CAPI, request: Pick<LibraryCoreRecove
 export async function inspectPwaRecoveryIntentInTransaction(db: Database, capi: CAPI,
   request: Pick<LibraryCoreRecoveryIntentReviewRequestV1, "recoveryId" | "transactionId">,
   verifySignature: (input: LibraryCoreEd25519VerificationInput) => Promise<boolean>) {
-  if (!db.pointer || capi.sqlite3_get_autocommit(db.pointer) !== 0 || readPwaLibraryStorageIdentity(db).schemaVersion !== 2) {
+  if (!db.pointer || capi.sqlite3_get_autocommit(db.pointer) !== 0 || ![2,5].includes(readPwaLibraryStorageIdentity(db).schemaVersion)) {
     throw new Error("Recovery inspection requires an owned recovery transaction");
   }
   const source = one(db, `SELECT generation.generation_id AS generationId, meta.source_revision AS projectionRevision,
@@ -240,7 +240,7 @@ export async function queryPwaRecoveryIntentReview(db: Database, capi: CAPI, sub
   const parsedRequest = parseLibraryCoreRecoveryIntentReviewRequestV1(input);
   if (!parsedRequest.ok) throw new TypeError(parsedRequest.error);
   const request = parsedRequest.value;
-  if (readPwaLibraryStorageIdentity(db).schemaVersion !== 2) throw new Error("Recovery archives are unavailable in this storage version");
+  if (![2,5].includes(readPwaLibraryStorageIdentity(db).schemaVersion)) throw new Error("Recovery archives are unavailable in this storage version");
   if (!db.pointer || capi.sqlite3_get_autocommit(db.pointer) !== 1) throw new Error("Recovery reader requires its own transaction");
   const deadline = performance.now() + 30_000;
   const check = () => { if (performance.now() >= deadline) throw new Error("Recovery review deadline exceeded"); };
