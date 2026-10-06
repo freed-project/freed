@@ -1,0 +1,80 @@
+{
+  "tag": "v26.10.600-dev",
+  "version": "26.10.600-dev",
+  "channel": "dev",
+  "dayKey": "26.10.6",
+  "approved": true,
+  "editorialNotes": [
+    "Reviewed full product range8cdc9c673b4fad80b18f5a02008dd44cd774412b..2e73441a96c1fa665012ff49f0a0d5e04857c932 including inherited optionalKev/iOS and newly mergedJev/Search. No Primary ranking/history cleanup or new provider behavior claim.",
+    "Spending-limit fixtures strengthen existing coverage; budgets/defaults/enforcement are unchanged. Registered nativeKev fixtures and isolated debug compile passed without app launch/model/service contact.",
+    "Native UI/custody acceptance held; no installed all-term fix, accuracy parity or live-provider/Drive72hour acceptance claim."
+  ],
+  "generatedAt": "2026-10-06T11:21:45.688Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.10.500-dev",
+    "previousPublishedDayTag": "v26.10.500-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "2e73441a96c1fa665012ff49f0a0d5e04857c932",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.10.500-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "8cdc9c673b4fad80b18f5a02008dd44cd774412b",
+        "toInclusiveProductCommitSha": "2e73441a96c1fa665012ff49f0a0d5e04857c932"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:87ced2658785f1d28753666537ab09bef76d45848f728aeb12343f22ee70d6d1",
+        "currentDigest": "sha256:87ced2658785f1d28753666537ab09bef76d45848f728aeb12343f22ee70d6d1"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:b234fde25fd9e5add8d045168e52d7a30a5698f2a2a1a4af3b4563d7b100d3d9",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.10.600-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.10.600-dev"
+    ],
+    "prNumbers": [],
+    "commitSubjects": [
+      "fix: distinguish failed search from empty results",
+      "fix: retain classifier state when download pause fails",
+      "chore: refresh dev501 publication boundary",
+      "chore: prepare v26.10.501-dev",
+      "feat: add optional local Kev classification and evaluation",
+      "fix: keep iOS Home Screen toolbar sharp"
+    ]
+  },
+  "release": {
+    "deck": "Clearer search errors and safer model controls",
+    "features": [
+      "Choose Kev or Jev in AI settings and compare read-only classification scores for Library posts. Kev uses a separately installed local service and abstains on uncertain answers without cloud fallback.",
+      "Compare each classifier on six labeled examples for accuracy, decision coverage and latency. This small evaluation does not establish model parity."
+    ],
+    "fixes": [
+      "Show search errors when a query fails and a loading state while it refreshes. Show no matches only after a successful query returns none.",
+      "Keep the selected classifier and download state consistent when a model download cannot be paused, and report the failure without starting another download.",
+      "Keep the iOS Home Screen toolbar sharp without extra padding."
+    ],
+    "followUps": [
+      "The reported installed search problem remains under investigation. Improved failure feedback does not establish its cause or repair.",
+      "Kev decision thresholds remain provisional. Classification previews do not update saved classifications or feed filters.",
+      "Signed installed UI verification remains pending."
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.10.600-dev\n\nClearer search errors and safer model controls\n\n### Features\n\n- Choose Kev or Jev in AI settings and compare read-only classification scores for Library posts. Kev uses a separately installed local service and abstains on uncertain answers without cloud fallback\n- Compare each classifier on six labeled examples for accuracy, decision coverage and latency. This small evaluation does not establish model parity\n\n### Fixes\n\n- Show search errors when a query fails and a loading state while it refreshes. Show no matches only after a successful query returns none\n- Keep the selected classifier and download state consistent when a model download cannot be paused, and report the failure without starting another download\n- Keep the iOS Home Screen toolbar sharp without extra padding\n\n### Follow-ups\n\n- The reported installed search problem remains under investigation. Improved failure feedback does not establish its cause or repair\n- Kev decision thresholds remain provisional. Classification previews do not update saved classifications or feed filters\n- Signed installed UI verification remains pending\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
