@@ -21,6 +21,8 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
+import fs from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -3778,7 +3780,7 @@ test("Darwin filesystem identity binds path generations and bounded helper recei
   symlinkSync(moved, root);
   assert.throws(
     () => readDarwinFilesystemIdentity(root, { query: receipt }),
-    /canonical regular file or directory/,
+    /ELOOP|too many levels of symbolic links/i,
   );
   rmSync(root);
   renameSync(moved, root);
@@ -3903,7 +3905,7 @@ ns["filesystem_identity"]([str(held.st_dev + (1 if scenario == "device" else 0))
           throw new Error("FIFO must be rejected before the query");
         },
       }),
-    /canonical regular file or directory/,
+    /descriptor is not a regular file or directory/,
   );
   t.after(() => rmSync(`${root}-old`, { recursive: true, force: true }));
   assert.notEqual(probe("swap").status, 0);
@@ -3959,4 +3961,142 @@ test("Darwin cutover filesystem admission queries regular markers as well as dir
   });
   assert.equal(result.ready, true, JSON.stringify(result.problems));
   assert.deepEqual([...kinds].sort(), ["directory", "file"]);
+});
+
+
+test("descriptor-first admission rejects replacement before named validation without reading", (t) => {
+  const root = realpathSync(
+    mkdtempSync(path.join(os.tmpdir(), "freed-open-admission-")),
+  );
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  for (const kind of ["identity", "helper"]) {
+    const candidate = path.join(root, kind);
+    writeFileSync(candidate, helperSource, { mode: 0o600 });
+    const originalLstat = fs.lstatSync;
+    const originalOpen = fs.openSync;
+    let descriptor;
+    let uses = 0;
+    let reads = 0;
+    const originalRead = fs.readSync;
+    const events = [];
+    const openMock = t.mock.method(fs, "openSync", (...args) => {
+      const opened = originalOpen(...args);
+      if (typeof args[1] === "number") {
+        events.push("open");
+        descriptor = opened;
+      }
+      return opened;
+    });
+    const lstatMock = t.mock.method(fs, "lstatSync", (...args) => {
+      events.push("lstat");
+      if (args[0] === candidate) {
+        renameSync(candidate, `${candidate}-old`);
+        writeFileSync(candidate, helperSource, { mode: 0o600 });
+      }
+      return originalLstat(...args);
+    });
+    const readMock = t.mock.method(fs, "readSync", (...args) => {
+      reads++;
+      return originalRead(...args);
+    });
+    syncBuiltinESMExports();
+    try {
+      assert.throws(() =>
+        kind === "identity"
+          ? readDarwinFilesystemIdentity(candidate, {
+              query: () => {
+                uses++;
+              },
+            })
+          : readPinnedLeaseArchiveHelperSource(candidate, {
+              expectedDigest: helperDigest,
+              checkpoint: () => {
+                uses++;
+              },
+            }),
+      );
+      assert.deepEqual(events, ["open", "lstat"]);
+      assert.equal(uses, 0);
+      assert.equal(reads, 0);
+      assert.throws(() => fstatSync(descriptor), { code: "EBADF" });
+    } finally {
+      readMock.mock.restore();
+      openMock.mock.restore();
+      lstatMock.mock.restore();
+      syncBuiltinESMExports();
+    }
+  }
+});
+
+test("descriptor-first helper admission refuses unsafe types and changed named generations", (t) => {
+  const root = realpathSync(
+    mkdtempSync(path.join(os.tmpdir(), "freed-helper-admission-")),
+  );
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const candidate = path.join(root, "helper");
+  writeFileSync(candidate, helperSource, { mode: 0o600 });
+  const link = path.join(root, "symlink");
+  symlinkSync(candidate, link);
+  const fifo = path.join(root, "fifo");
+  assert.equal(spawnSync("mkfifo", [fifo]).status, 0);
+  const socket = path.join(root, "socket");
+  assert.equal(
+    spawnSync(pythonPath, [
+      "-E",
+      "-I",
+      "-S",
+      "-c",
+      "import socket,sys; s=socket.socket(socket.AF_UNIX); s.bind(sys.argv[1]); s.close()",
+      socket,
+    ]).status,
+    0,
+  );
+  for (const unsafe of [link, fifo, socket, root, "/dev/null"]) {
+    let admitted = false;
+    assert.throws(() =>
+      readPinnedLeaseArchiveHelperSource(unsafe, {
+        expectedDigest: helperDigest,
+        checkpoint: () => {
+          admitted = true;
+        },
+      }),
+    );
+    assert.equal(admitted, false);
+  }
+  for (const mode of [0o660, 0o4600]) {
+    chmodSync(candidate, mode);
+    let admitted = false;
+    assert.throws(() =>
+      readPinnedLeaseArchiveHelperSource(candidate, {
+        expectedDigest: helperDigest,
+        checkpoint: () => {
+          admitted = true;
+        },
+      }),
+    );
+    assert.equal(admitted, false);
+  }
+  chmodSync(candidate, 0o600);
+  let queried = false;
+  assert.throws(
+    () =>
+      readDarwinFilesystemIdentity("/dev/null", {
+        query: () => {
+          queried = true;
+        },
+      }),
+    /not a regular file or directory/,
+  );
+  assert.equal(queried, false);
+  assert.throws(
+    () =>
+      readPinnedLeaseArchiveHelperSource(candidate, {
+        expectedDigest: helperDigest,
+        checkpoint: () => {
+          renameSync(candidate, `${candidate}-old`);
+          writeFileSync(candidate, helperSource, { mode: 0o600 });
+        },
+      }),
+    /changed during admission/,
+  );
 });

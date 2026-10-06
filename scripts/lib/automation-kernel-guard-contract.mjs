@@ -309,30 +309,30 @@ export function readDarwinFilesystemIdentity(
     ["dev", "ino", "mode", "uid", "gid"].every((key) => a[key] === b[key]);
   try {
     if (
-      ["O_DIRECTORY", "O_NOFOLLOW", "O_NONBLOCK"].some(
+      ["O_NOFOLLOW", "O_NONBLOCK"].some(
         (name) => typeof constants[name] !== "number",
       )
     ) {
       throw new Error("safe filesystem descriptor admission is unavailable");
     }
-    const before = lstat(canonical, { bigint: true });
-    if (
-      (!before.isDirectory() && !before.isFile()) ||
-      before.isSymbolicLink() ||
-      realpathSync(canonical) !== canonical
-    ) {
-      throw new Error("named path is not a canonical regular file or directory");
-    }
+    // Opening establishes the admitted generation. Inspect it before querying
+    // the filesystem, then require the canonical name to still identify it.
     descriptor = openSync(
       canonical,
-      constants.O_RDONLY |
-        (before.isDirectory() ? constants.O_DIRECTORY : 0) |
-        constants.O_NOFOLLOW |
-        constants.O_NONBLOCK,
+      constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
     );
     const held = fstat(descriptor, { bigint: true });
-    if ((!held.isDirectory() && !held.isFile()) || !same(before, held))
+    if (!held.isDirectory() && !held.isFile()) {
+      throw new Error("descriptor is not a regular file or directory");
+    }
+    const named = lstat(canonical, { bigint: true });
+    if (
+      named.isSymbolicLink() ||
+      realpathSync(canonical) !== canonical ||
+      !same(held, named)
+    ) {
       throw new Error("path/descriptor generation mismatch before query");
+    }
     const bytes = query(
       descriptor,
       held.dev.toString(),
@@ -2175,16 +2175,6 @@ function admitPinnedLeaseArchiveHelperSource(
 ) {
   let descriptor;
   try {
-    const pathBefore = lstatSync(helperPath, { bigint: true });
-    if (
-      !pathBefore.isFile() ||
-      pathBefore.isSymbolicLink() ||
-      realpathSync(helperPath) !== helperPath ||
-      (pathBefore.mode & 0o7000n) !== 0n ||
-      (pathBefore.mode & 0o022n) !== 0n
-    ) {
-      throw new Error("helper source path is not pinned");
-    }
     descriptor = openSync(
       helperPath,
       constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
@@ -2192,8 +2182,16 @@ function admitPinnedLeaseArchiveHelperSource(
     const descriptorBefore = fstatSync(descriptor, { bigint: true });
     if (
       !descriptorBefore.isFile() ||
-      descriptorBefore.isSymbolicLink() ||
-      !leaseArchiveHelperMetadataMatches(pathBefore, descriptorBefore)
+      (descriptorBefore.mode & 0o7000n) !== 0n ||
+      (descriptorBefore.mode & 0o022n) !== 0n
+    ) {
+      throw new Error("helper source descriptor is not pinned");
+    }
+    const pathBefore = lstatSync(helperPath, { bigint: true });
+    if (
+      pathBefore.isSymbolicLink() ||
+      realpathSync(helperPath) !== helperPath ||
+      !leaseArchiveHelperMetadataMatches(descriptorBefore, pathBefore)
     ) {
       throw new Error("helper source changed while it was opened");
     }
