@@ -1497,7 +1497,7 @@ function App() {
   const platform: PlatformConfig = useMemo(
     () => ({
       store: useAppStore,
-      feedMediaPreviews: "reader-only",
+      feedMediaPreviews: "lazy-thumbnails",
       sampleMediaPreviews: IS_FEATURE_PREVIEW ? "inline" : undefined,
       addRssFeed,
       importOPMLFeeds,

@@ -1563,3 +1563,5 @@ existing optional summarization remain governed by their existing settings. This
 exact correction was explicitly approved on 2026-10-04; no cadence, credential or
 AI-setting change is introduced. The original selection complaint remains
 unattributed.
+
+Friends activity uses the shared loading indicator while the directory loads and hides the directory heading until results are available.

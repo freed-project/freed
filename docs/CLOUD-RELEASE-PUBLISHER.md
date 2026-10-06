@@ -20,24 +20,44 @@ For the connected cloud GitHub tools, create a fresh `release-requests/<unique-i
 
 The controller validates clean candidate data, exact protected tip, reviewed source-bound release JSON and activation evidence, live App-only immutable tag rules, and dev integration receipts. The native broker then independently rechecks App installation identity, selected repository scope, receipt bytes, tag absence and branch tip before creating one annotated tag. It verifies the result and revokes the installation token. The App-created tag triggers the existing four-platform `release.yml`, including its independent source, integration, packaging, signing and notarization gates.
 
-## Activation is not complete
+## Verified dev activation
 
-Repository metadata inspected on 2026-10-03 showed Apple and Tauri signing secrets, but no release App secret and no restricted publisher environment. Ordinary dev/main rulesets do not enforce owner review. Therefore an ordinary repository secret would weaken the existing boundary. No key has been copied, no new App created and no security settings changed by this implementation.
+The cloud route has completed DEV publication. Controller runs
+[37247128125](https://github.com/freed-project/freed/actions/runs/37247128125)
+and [37349575394](https://github.com/freed-project/freed/actions/runs/37349575394)
+succeeded using reviewed controller commit
+[`...1efebd6f`](https://github.com/freed-project/freed/commit/4fddf2404f94af1b4495cab6ed273e141efebd6f).
+The latter published `v26.10.403-dev` from candidate
+[`...f852787d`](https://github.com/freed-project/freed/commit/a8791d8681f4cc714f5d0689f45ca556f852787d).
+Its [release build](https://github.com/freed-project/freed/actions/runs/37350297388)
+succeeded, and the public release includes macOS ARM and Intel bundles,
+updater signatures and `latest.json`. Evidence was checked on October 5, 2026.
 
-Before activation, the owner must approve the exact credential provisioning and persistent settings below:
+This establishes the cloud tag-to-release path, not installed native acceptance,
+a completed soak, production publication or retirement of the laptop credential.
+Those claims require their own evidence. No production release is needed merely
+to repeat this DEV proof. The earlier architecture proposal is superseded by this
+implemented route; optional additional enforcement remains in the
+[deferred release-hardening backlog](RELEASE-SECRETS.md#deferred-release-hardening-to-dos).
+
+### Configuration contract
+
+The successful runs replace the earlier October 3 activation-pending status.
+Keep the following configuration requirements when maintaining or reprovisioning
+the controller; they are not a request to provision a second controller:
 
 1. Establish `release-controller` from the reviewed implementation. Protect it with an active branch ruleset that has no bypass, requires at least one approval and CODEOWNER review, dismisses stale reviews, requires last-push approval, and prohibits deletion and non-fast-forward updates. Its CODEOWNERS must retain AubreyF ownership of workflow and publisher code.
-2. Create environment `release-publisher`, with custom deployment policies admitting only branch `release-controller`, no tags or wildcard/product branches. Repository metadata confirms that the default branch is `dev`; merging this PR there makes the workflow definitions discoverable. No main backport or main-guard exception is needed. Keep the controller helpers on the protected controller; do not execute candidate helpers.
+2. Create environment `release-publisher`, with custom deployment policies admitting only branch `release-controller`, no tags or wildcard/product branches. Repository metadata confirms that the default branch is `dev`; the merged workflow definitions there make dispatch discoverable. No main backport or main-guard exception is needed. Keep the controller helpers on the protected controller; do not execute candidate helpers.
 3. Set environment variable `RELEASE_CONTROLLER_SHA` to the exact reviewed controller commit. The workflow refuses another commit, including a later controller change, until this pin is reviewed and updated.
 4. Review the inbox workflow's scoped `actions: write` permission, which only forwards requests to the protected controller. The connected cloud caller keeps its existing branch/file permissions; no new OAuth token or installation grant is requested.
 5. Provision the existing dedicated App's private key as environment secret `RELEASE_APP_PRIVATE_KEY` using an explicitly approved secure channel. Do not place it in a general repository secret, copy it into source/artifacts/logs, or replace the App with a PAT, user tag push or `GITHUB_TOKEN` tag creation.
 6. Exercise a reviewed DEV request and retain request, tag, workflow and signed-artifact identity receipts. Do not describe the cloud route as operational before that proof.
 
-The actual read-only Actions probe `37088793980` omitted `bypass_actors` for all five active rulesets and reported `fullPolicyEvidence=false`, despite a successful diagnostic job. [GitHub documents](https://docs.github.com/en/rest/repos/rules#get-a-repository-ruleset) that these fields require ruleset write authority. The revised protocol therefore uses the existing authenticated owner connection to attest fresh complete policies. It adds no Administration scope to Actions or the publisher App. Activation remains pending independent protocol review, actual connected-owner push provenance proof, the restricted environment and secure existing-key handoff.
+The actual read-only Actions probe `37088793980` omitted `bypass_actors` for all five active rulesets and reported `fullPolicyEvidence=false`, despite a successful diagnostic job. [GitHub documents](https://docs.github.com/en/rest/repos/rules#get-a-repository-ruleset) that these fields require ruleset write authority. The revised protocol therefore uses the existing authenticated owner connection to attest fresh complete policies. It adds no Administration scope to Actions or the publisher App. The successful controller runs above now provide DEV publication evidence for the configured route. Connector-specific provenance tests remain distinct from direct dispatch acceptance.
 
 The job fails closed on missing controller pin or policy. The App key exists only in the final trusted publisher step, is stored at the broker's fixed mode-0600 path on an ephemeral runner, is removed on exit, and is never returned to the caller. Job cancellation does not cancel an earlier request; native immutable-tag checks resolve duplicate attempts. A cloud dispatch is not proof that signing succeeded.
 
-The existing M5 broker remains usable until the cloud route is proven. The M2 factory can submit cloud requests through its already authorized GitHub connection; it does not need Apple credentials or a second local release App key. No account merge or logout is needed.
+The existing M5 broker is a recovery option; these cloud results do not establish that its credential has been retired. The M2 factory can submit cloud requests through its already authorized GitHub connection; it does not need Apple credentials or a second local release App key. No account merge or logout is needed.
 
 
 ## Fresh owner policy challenge
@@ -58,7 +78,7 @@ The controller authenticates the response through GitHub's original push-run act
 
 The challenge expires 180 seconds after issuance. The final trusted step reauthenticates the immutable response, repeats candidate checks and consumes the nonce once before mounting the key on disk. The native broker checks the same deadline before annotation and immediately before immutable ref creation. A stale response or late queue produces a failed request and requires a new challenge. The native deadline check refuses a tag request that is already expired. GitHub does not enforce this private deadline atomically; an HTTP mutation already sent cannot be retracted, and the existing request timeout bounds that additional race. Existing local-broker publication retains its direct owner-authenticated live policy checks.
 
-This is owner-attested live policy evidence, not direct runner visibility into hidden fields. GitHub authenticates the submitter, not the truth or origin of the assertion. The trusted owner or its authorized collector vouches for complete fresh reads. The read-to-attest-to-tag race is bounded by the challenge deadline, not atomic. The collector must remain available while the running publisher waits. Cloud end-to-end proof is still required before calling this route operational.
+This is owner-attested live policy evidence, not direct runner visibility into hidden fields. GitHub authenticates the submitter, not the truth or origin of the assertion. The trusted owner or its authorized collector vouches for complete fresh reads. The read-to-attest-to-tag race is bounded by the challenge deadline, not atomic. The collector must remain available while the running publisher waits. The DEV runs above establish publication through this protocol; they do not prove containment of a compromised owner or authorized collector.
 
 For an isolated connector-provenance test, submit a clearly marked QA-only JSON on a unique nonce branch and inspect its actual push run with `cloud-release-policy.mjs inspect-owner-push <nonce> <run-id>`. That command reports `publicationAuthorized:false`; QA payloads cannot pass production envelope validation. It does not create tags or touch credentials.
 

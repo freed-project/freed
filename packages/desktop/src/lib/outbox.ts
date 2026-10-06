@@ -377,12 +377,15 @@ export function startOutboxProcessor(
         queue: "outbox",
         source: "outbox",
         kind: "drain",
+        // Both wrappers must keep the actual drain owned after a deadline.
+        retainUntilSettledAfterTimeout: true,
         timeoutMs: 120_000,
         slowMs: 1_000,
         run: () =>
           runBackgroundJob({
             kind: "outbox",
             source: "outbox",
+            retainUntilSettledAfterTimeout: true,
             timeoutMs: 120_000,
             run: () => trackResetSensitiveOperation(drainNow()),
           }),

@@ -8,9 +8,11 @@ import type { FeedItem, LibraryMapLocationCandidate } from "@freed/shared";
 import { useResolvedLocationCandidates } from "./useResolvedLocations";
 
 const geocodeMock = vi.hoisted(() => vi.fn());
+const cachedGeocodeMock = vi.hoisted(() => vi.fn(() => undefined as any));
 
 vi.mock("../lib/geocoding.js", () => ({
   geocode: geocodeMock,
+  peekGeocode: cachedGeocodeMock,
 }));
 
 type ResolvedLocationsSnapshot = ReturnType<typeof useResolvedLocationCandidates>;
@@ -91,6 +93,23 @@ describe("useResolvedLocationCandidates", () => {
     root = null;
     container = null;
     geocodeMock.mockReset();
+    cachedGeocodeMock.mockReset().mockReturnValue(undefined);
+  });
+
+  it("rebinds committed cached coordinates to refreshed rows without clearing named markers", async () => {
+    container = document.createElement("div"); document.body.append(container); root = createRoot(container);
+    const geo = { latitude: 48.85, longitude: 2.35, name: "Paris" }; geocodeMock.mockResolvedValue(geo);
+    const item = makeItem("synthetic", "Paris", 1); let snapshots: ResolvedLocationsSnapshot[] = [];
+    function Probe({ candidates }: { candidates: LibraryMapLocationCandidate[] }) { const value = useResolvedLocationCandidates(candidates); snapshots.push(value); return null; }
+    await act(async () => root!.render(<Probe candidates={[{ accountId: "a", friend: null, item }]} />));
+    expect(snapshots.at(-1)?.resolvedItems).toHaveLength(1);
+    cachedGeocodeMock.mockReturnValue(geo); snapshots = [];
+    const fresh = { ...item, content: { ...item.content, text: "Fresh synthetic body" } };
+    await act(async () => root!.render(<Probe candidates={[{ accountId: "a", friend: null, item: fresh }]} />));
+    expect(snapshots.every(value => value.resolvedItems.length === 1)).toBe(true);
+    expect(snapshots.at(-1)?.resolvedItems[0].item).toBe(fresh); expect(geocodeMock).toHaveBeenCalledOnce();
+    snapshots = []; await act(async () => root!.render(<Probe candidates={[]} />));
+    expect(snapshots.every(value => value.resolvedItems.length === 0)).toBe(true);
   });
 
   it("streams resolved named locations without waiting for the slowest geocode", async () => {

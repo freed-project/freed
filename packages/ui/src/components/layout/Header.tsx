@@ -41,7 +41,7 @@ import {
 } from "../icons.js";
 import { useSearchResults } from "../../hooks/useSearchResults.js";
 import { useFeedSignalCounts } from "../../hooks/useFeedSignalCounts.js";
-import { useLibraryFacetSummary } from "../../hooks/useLibraryFacetSummary.js";
+import { useLibraryFacetSummaryState } from "../../hooks/useLibraryFacetSummary.js";
 import { useLibraryFilterScopeSummary } from "../../hooks/useLibraryFilterScopeSummary.js";
 import { useLibraryItemDetail, annotationFailureLabel } from "../../hooks/useLibraryItemDetail.js";
 import { useLibraryCommandPaletteReader } from "../../hooks/useLibraryCommandPaletteReader.js";
@@ -322,6 +322,7 @@ export function Header({
   onFriendsMobileSurfaceChange,
 }: HeaderProps) {
   const {
+    store,
     HeaderSyncIndicator,
     headerDragRegion,
     addRssFeed,
@@ -359,10 +360,12 @@ export function Header({
   const visibleFeedTotalCount = useAppStore(
     (state) => state.visibleFeedTotalCount,
   );
-  const libraryFacets = useLibraryFacetSummary(
+  const { summary: libraryFacets, status: libraryFacetStatus } = useLibraryFacetSummaryState(
     searchCorpusVersion,
     isLibraryInitialized,
   );
+  const latestFacetAdmission = useRef({ status: libraryFacetStatus, version: searchCorpusVersion });
+  latestFacetAdmission.current = { status: libraryFacetStatus, version: searchCorpusVersion };
   const filterScope = useLibraryFilterScopeSummary(activeFilter, searchCorpusVersion);
   const selectedItemId = useAppStore((s) => s.selectedItemId);
   const pendingMatchCount = useAppStore((s) => s.pendingMatchCount);
@@ -386,7 +389,7 @@ export function Header({
   const toolbarGapHalfPx = scaleInterfaceChromePx(PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2, interfaceZoom);
   const toolbarSlotPaddingRightPx = scaleInterfaceChromePx(TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX, interfaceZoom);
 
-  const { filteredItems, isSearching, resultCount, searchUnavailable } = useSearchResults(
+  const { filteredItems, isSearching, resultCount, searchUnavailable, resultsCurrent } = useSearchResults(
     searchQuery,
     activeFilter,
     searchCorpusVersion,
@@ -394,6 +397,7 @@ export function Header({
     libraryItemVersion,
   );
   const {
+    scopeActionsReady,
     archivableScopeCount: archivableCount,
     archiveScopeRead,
     markScopeRead,
@@ -402,6 +406,7 @@ export function Header({
     activeFilter,
     activeView,
     commandScopeItems: filteredItems,
+    commandScopeCurrent: activeSearchQuery.length === 0 || resultsCurrent === true,
     enabled:
       isLibraryInitialized &&
       activeView === "feed" &&
@@ -916,8 +921,11 @@ export function Header({
   }, [deleteAllArchived, deleteConfirmArmed]);
 
   const handleUnarchiveSavedClick = useCallback(() => {
+    const current = store.getState();
+    if (latestFacetAdmission.current.status !== "ready" || latestFacetAdmission.current.version !== searchCorpusVersion
+      || current.searchCorpusVersion !== searchCorpusVersion || current.activeView !== "feed" || !current.activeFilter.archivedOnly) return;
     void unarchiveSavedItems();
-  }, [unarchiveSavedItems]);
+  }, [searchCorpusVersion, store, unarchiveSavedItems]);
 
   const handleMarkFilteredUnreadAsRead = useCallback(() => {
     void markScopeRead();
@@ -969,6 +977,7 @@ export function Header({
       if (showArchivedToolbar && savedArchivedCount > 0) {
         actions.push({
           id: "unarchive-saved",
+          disabled: libraryFacetStatus !== "ready",
           label: `Unarchive saved (${savedArchivedCount.toLocaleString()})`,
           onClick: handleUnarchiveSavedClick,
           icon: <ArchiveIcon className="h-5 w-5" />,
@@ -994,6 +1003,7 @@ export function Header({
     if (!readerActive && showFeedBulkActions && unreadCount > 0) {
       actions.push({
         id: "mark-read",
+        disabled: !scopeActionsReady,
         label: `Mark ${unreadCount.toLocaleString()} unread as read`,
         onClick: handleMarkFilteredUnreadAsRead,
         icon: (
@@ -1007,6 +1017,7 @@ export function Header({
     if (!readerActive && showFeedBulkActions && archivableCount > 0) {
       actions.push({
         id: "archive-read",
+        disabled: !scopeActionsReady,
         label: `Archive ${archivableCount.toLocaleString()} read items`,
         onClick: handleArchiveFilteredRead,
         icon: (
@@ -1020,6 +1031,8 @@ export function Header({
     return actions;
   }, [
     archivableCount,
+    scopeActionsReady,
+    libraryFacetStatus,
     deleteConfirmArmed,
     display.reading.focusMode,
     handleArchiveFilteredRead,
@@ -1826,6 +1839,7 @@ export function Header({
                   {showArchivedToolbar && savedArchivedCount > 0 && !isBelowLargeToolbar ? (
                     <button
                       onClick={handleUnarchiveSavedClick}
+                      disabled={libraryFacetStatus !== "ready"}
                       {...getToolbarControlProps()}
                       className="theme-toolbar-button-ghost inline-flex h-9 items-center rounded-lg px-3 py-0 text-sm"
                     >
@@ -2023,7 +2037,7 @@ export function Header({
                   type="button"
                   role="menuitem"
                   disabled={action.disabled}
-                  title={action.disabled ? "Unavailable in this read-only demo" : undefined}
+                  title={action.disabled ? (readOnly ? "Unavailable in this read-only demo" : "Refreshing counts") : undefined}
                   onClick={() => {
                     action.onClick();
                     if (action.id !== "delete-archived" || action.danger) {

@@ -87,8 +87,12 @@ export function SavedSection() {
 function OverviewPane() {
   const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
   const [selectedRange, setSelectedRange] = useState<HealthChartRange>("daily");
-  const { analytics, loading, request } =
+  const { analytics, loading, status, request } =
     useLibrarySavedAnalytics(searchCorpusVersion);
+
+  if (status === "failed" || status === "unavailable") {
+    return <div role="status" className="py-8 text-center text-sm text-[var(--theme-text-muted)]">Saved overview is temporarily unavailable.</div>;
+  }
 
   if (loading || !analytics) {
     return (

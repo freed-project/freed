@@ -60,6 +60,18 @@ stable, covered interval with no active provider commands or provider windows.
 Missing or inconsistent evidence is inconclusive. Installed consumer-role and
 multi-device acceptance remain separate requirements.
 
+Freed Desktop ordinary feed cards support lazy image thumbnails with async
+decoding and the existing renderer memory-pressure shedding. Video metadata
+loads remain reader-only for ordinary cards. Stories and explicit local sample
+previews keep their existing media behavior. Installed acceptance is pending.
+
+Same-scope Library refreshes retain committed search results, Friends activity,
+Map pins and popups, and bounded overview pages while replacement reads are
+pending. Query, reader and revision changes remain action-admission fences;
+pending search results and stale page callbacks cannot execute bulk actions or
+reuse an obsolete cursor. Failures and settled empty results clear stale data.
+Installed native continuity and graphics acceptance remain pending.
+
 The Jev evaluation MVP includes an optional GLiClass Base v3.0 classifier.
 Selection downloads pinned official Apache-2.0 weights and tokenizer with
 progress, cancel/resume, integrity checks and removal controls. A bundled ONNX
@@ -1830,3 +1842,7 @@ existing optional summarization remain governed by their existing settings. This
 exact correction was explicitly approved on 2026-10-04; no cadence, credential or
 AI-setting change is introduced. The original selection complaint remains
 unattributed.
+
+Captured Friends, graph-picker and recovery actions now require their current selection, reader and revision owners. Ownership changes remain fenced through A to B to A transitions and temporary disabling; native identity reads are checked again before account assignment, and obsolete completions cannot move the new selection. Mutation-facing suggestion rows retain one bounded proved window during same-context revision refresh; current and captured choice actions remain disabled until fresh results settle. Reader, request, rewind, real zero and error clear or replace that window. Native authority admission and installed UI acceptance remain separate checks.
+
+Friends activity uses the shared loading indicator while its directory loads. Outbox wrappers retain their existing coordinator and drain ownership after the 120-second deadline until underlying work settles, then report the original timeout. Hung work can retain ownership indefinitely; cancellation and screen-lock admission remain separate.
