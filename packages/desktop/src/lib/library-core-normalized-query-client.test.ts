@@ -65,7 +65,7 @@ const response = {
 };
 
 describe("Freed Desktop normalized query client", () => {
-  beforeEach(() => mocks.invoke.mockReset());
+  beforeEach(() => { mocks.invoke.mockReset(); });
 
   it("sends only the validated typed request to the native boundary", async () => {
     mocks.invoke.mockResolvedValue(response);
@@ -256,4 +256,33 @@ describe("Freed Desktop normalized query client", () => {
       "device contact status response is invalid",
     );
   });
+  const searchRequest = {
+    cancellationId: "desktop-search-test", cursor: null, filter: request.filter,
+    friendsPredicateSchemaVersion: 1, identityMode: "all_content", limit: 32,
+    query: "needle", queryId: "search_page_v1", readerSessionId: "desktop-search-reader",
+    recommendationOrderSchemaVersion: 1, schemaVersion: 1,
+  } as const;
+
+  it("validates the exact search_page_v1 IPC request and admitted zero response", async () => {
+    const searchResponse = {
+      nextCursor: null, queryId: "search_page_v1", rows: [], scannedRows: 2,
+      schemaVersion: 1, source: response.source,
+    };
+    mocks.invoke.mockResolvedValue(searchResponse);
+    await expect(queryNormalizedLibrary(searchRequest)).resolves.toEqual(searchResponse);
+    expect(mocks.invoke).toHaveBeenCalledWith("query_normalized_library", { request: searchRequest });
+    mocks.invoke.mockResolvedValue({ ...searchResponse, shellJson: "{}" });
+    await expect(queryNormalizedLibrary(searchRequest)).rejects.toThrow();
+  });
+
+  it.each(["QUERY_DEADLINE", "normalized search cursor is stale or mismatched", "normalized SQLite failure: fixture row"])(
+    "preserves search_page_v1 native rejection %s", async (error) => {
+      mocks.invoke.mockRejectedValue(error);
+      const outcome = await queryNormalizedLibrary(searchRequest).then(
+        (value) => ({ value }), (reason: unknown) => ({ reason }),
+      );
+      expect(outcome).toEqual({ reason: error });
+    },
+  );
+
 });
