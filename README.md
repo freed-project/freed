@@ -278,3 +278,5 @@ Read the manifesto at [freed.wtf/manifesto](https://freed.wtf/manifesto).
 ---
 
 _Built for humans, not algorithms._
+<!-- iOS Home Screen installation note -->
+On iOS, Freed uses the default Home Screen status bar and an invisible theme-aware color extension to keep the toolbar sharp without extra padding. If an existing shortcut retains native blur, add a replacement from Safari with Open as Web App enabled. Keep the original until the replacement and your library work; replacement shortcuts can have separate storage. Do not clear Safari data or delete the original library.
