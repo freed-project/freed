@@ -1,12 +1,12 @@
 /** Per-device classifier selection, separate from synced summary preferences. */
-export type JevClassifierProvider = "jev" | "gliclass-base";
+export type JevClassifierProvider = "jev" | "gliclass-base" | "kev";
 const KEY = "freed-jev-classifier-provider-v1";
 const listeners = new Set<() => void>();
 export function getJevClassifierProvider(): JevClassifierProvider {
-  try { return localStorage.getItem(KEY) === "gliclass-base" ? "gliclass-base" : "jev"; } catch { return "jev"; }
+  try { const value = localStorage.getItem(KEY); return value === "gliclass-base" || value === "kev" ? value : "jev"; } catch { return "jev"; }
 }
 export function setJevClassifierProvider(provider: JevClassifierProvider): void {
-  if (provider !== "jev" && provider !== "gliclass-base") throw new Error("Unknown classifier provider.");
+  if (provider !== "jev" && provider !== "gliclass-base" && provider !== "kev") throw new Error("Unknown classifier provider.");
   localStorage.setItem(KEY, provider);
   for (const listener of listeners) listener();
 }
