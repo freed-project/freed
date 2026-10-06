@@ -94,6 +94,7 @@ import {
 import { writeMeasuredOutcomeVerdict } from "./test-helpers/outcome-evidence.mjs";
 import { installAutomationKernelGuardCutoverFixture } from "./test-helpers/automation-kernel-guard.mjs";
 import {
+  inspectAutomationKernelGuardCutover,
   automationKernelGuardCutoverPaths,
   automationKernelGuardMarkerBytes,
 } from "./lib/automation-kernel-guard-contract.mjs";
@@ -3169,6 +3170,8 @@ test("nightly authority snapshots reject hard-linked ledger and event files", ()
   const ledgerStateRoot = temporaryOutcomeStateRoot(
     "freed-nightly-ledger-hard-link-",
   );
+  const ledgerCutover = inspectAutomationKernelGuardCutover(ledgerStateRoot);
+  assert.equal(ledgerCutover.ready, true, JSON.stringify(ledgerCutover.problems));
   const ledgerPaths = automationControlPaths(ledgerStateRoot);
   const ledgerSource = path.join(ledgerStateRoot, "linked-outcomes.jsonl");
   writeFileSync(ledgerSource, "", { mode: 0o600 });
@@ -3184,6 +3187,8 @@ test("nightly authority snapshots reject hard-linked ledger and event files", ()
   const eventStateRoot = temporaryOutcomeStateRoot(
     "freed-nightly-events-hard-link-",
   );
+  const eventCutover = inspectAutomationKernelGuardCutover(eventStateRoot);
+  assert.equal(eventCutover.ready, true, JSON.stringify(eventCutover.problems));
   const eventPaths = automationControlPaths(eventStateRoot);
   const eventSource = path.join(eventStateRoot, "linked-events.jsonl");
   writeFileSync(eventSource, "", { mode: 0o600 });

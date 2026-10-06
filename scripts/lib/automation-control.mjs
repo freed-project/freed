@@ -1,3 +1,10 @@
+export {
+  AutomationControlError,
+  resolveLeaseArchivePythonRuntime,
+  readPinnedLeaseArchiveHelperSource,
+  framePinnedLeaseArchiveHelperInvocation,
+} from "./automation-kernel-guard-contract.mjs";
+
 import { execFileSync, spawnSync } from "node:child_process";
 import {
   chmodSync,
@@ -11,7 +18,6 @@ import {
   mkdirSync,
   openSync,
   readFileSync,
-  readlinkSync,
   readSync,
   realpathSync,
   readdirSync,
@@ -27,10 +33,12 @@ import {
   verify as verifySignature,
 } from "node:crypto";
 import { TextDecoder } from "node:util";
-import { fileURLToPath } from "node:url";
 
 import {
   AUTOMATION_KERNEL_GUARD_NAMES,
+  AutomationControlError,
+  framePinnedLeaseArchiveHelperInvocation,
+  openPinnedLeaseArchiveHelper,
   automationKernelGuardCutoverPaths,
   automationKernelGuardMarkerBytes,
   inspectAutomationKernelGuardCutover,
@@ -193,21 +201,6 @@ const AUTHORITY_STAGE_DIRECTORY_MAX_ENTRIES = 100_000;
 const AUTHORITY_RETIREMENT_DIRECTORY = ".authority-retirements";
 const AUTHORITY_RETIREMENT_MAX_ENTRIES = 100_000;
 const AUTHORITY_RETIREMENT_INVENTORY_MAX_RECEIPT_BYTES = 128 * 1024 * 1024;
-const LEASE_ARCHIVE_MOVE_PYTHON = "/usr/bin/python3";
-const LEASE_ARCHIVE_MOVE_HELPER = fileURLToPath(
-  new URL("./lease-archive-move.py", import.meta.url),
-);
-const LEASE_ARCHIVE_MOVE_HELPER_SHA256 =
-  "a91265dd02399ef3f362e1feed269d4907311cd0a6fb492a956915e67ace666e";
-const LEASE_ARCHIVE_HELPER_MAX_BYTES = 256 * 1024;
-const LEASE_ARCHIVE_MOVE_PYTHON_BOOTSTRAP = [
-  "import hashlib,sys",
-  "_source_size=int(sys.argv.pop(1))",
-  "_source_digest=sys.argv.pop(1)",
-  "_source=sys.stdin.buffer.read(_source_size)",
-  "if len(_source)!=_source_size or hashlib.sha256(_source).hexdigest()!=_source_digest: raise SystemExit('lease archive helper source frame is invalid')",
-  "exec(compile(_source,'<freed-lease-archive-move>','exec'),{'__name__':'__main__'})",
-].join("\n");
 const LEASE_ARCHIVE_LIST_MAX_ENTRY_BYTES =
   64 + 1 + 64 + Buffer.byteLength(".json");
 const LEASE_ARCHIVE_LIST_MAX_BUFFER =
@@ -575,14 +568,6 @@ const MAX_TRUSTED_LAUNCHER_ATTESTATION_BYTES = 16 * 1_024;
 const TRUSTED_LAUNCHER_AUTHORIZATION = Symbol("trusted-launcher-authorization");
 const IDENTIFIER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 
-export class AutomationControlError extends Error {
-  constructor(code, message, details = undefined) {
-    super(message);
-    this.name = "AutomationControlError";
-    this.code = code;
-    this.details = details;
-  }
-}
 
 function nowIso(nowMs) {
   return new Date(nowMs).toISOString();
@@ -14051,6 +14036,16 @@ function readAndValidatePublisherCapability({
     throw new AutomationControlError(
       "publisher_capability_invalid",
       "The publisher capability does not match this lease request or is outside its validity window.",
+      {
+        // These payload times are diagnostic claims, not authenticated authority.
+        capabilityTiming: {
+          phase: "admission",
+          issuedAtMs: Number.isFinite(issuedAtMs) ? issuedAtMs : null,
+          expiresAtMs: Number.isFinite(expiresAtMs) ? expiresAtMs : null,
+          admissionAtMs: nowMs,
+          checkedAtMs: Date.now(),
+        },
+      },
     );
   }
   const expectedPath = capabilityFilePath(
@@ -21201,6 +21196,15 @@ function restoreLeaseCredential(descriptor) {
         "Lease capability source changed during rollback.",
       );
     }
+    const consumedDirectory = path.dirname(descriptor.consumedPath);
+    if (!pathEntryExists(consumedDirectory)) {
+      // Consumption creates this directory lazily. Before that point, persist
+      // the unchanged source and the absent destination's parent, not a
+      // nonexistent directory. All other I/O failures remain fatal.
+      syncDirectory(path.dirname(descriptor.sourcePath));
+      syncDirectory(path.dirname(consumedDirectory));
+      return;
+    }
     syncLeaseCredentialDirectories(descriptor, false);
     return;
   }
@@ -21242,298 +21246,6 @@ function leaseArchiveHelperError(message, result = undefined) {
   );
 }
 
-export function resolveLeaseArchivePythonRuntime(
-  entryPath = LEASE_ARCHIVE_MOVE_PYTHON,
-  {
-    requiredUid = 0,
-    trustedRoot = "/usr",
-    lstat = lstatSync,
-    readlink = readlinkSync,
-    realpath = realpathSync,
-  } = {},
-) {
-  const root = path.resolve(trustedRoot);
-  const entry = path.resolve(entryPath);
-  const isInsideRoot = (candidate) => {
-    const relative = path.relative(root, candidate);
-    return (
-      relative === "" ||
-      (relative !== ".." &&
-        !relative.startsWith(`..${path.sep}`) &&
-        !path.isAbsolute(relative))
-    );
-  };
-  const validateDirectoryChain = (filePath) => {
-    let current = path.dirname(filePath);
-    while (true) {
-      const stats = lstat(current);
-      if (
-        !stats.isDirectory() ||
-        stats.isSymbolicLink() ||
-        stats.uid !== requiredUid ||
-        (stats.mode & 0o7000) !== 0 ||
-        ![0o555, 0o700, 0o755].includes(stats.mode & 0o777)
-      ) {
-        throw new AutomationControlError(
-          "lease_transaction_conflict",
-          `Lease archive Python runtime has an untrusted directory: ${current}.`,
-        );
-      }
-      if (current === root) break;
-      const parent = path.dirname(current);
-      if (parent === current || !isInsideRoot(parent)) {
-        throw new AutomationControlError(
-          "lease_transaction_conflict",
-          "Lease archive Python runtime escapes its trusted root.",
-        );
-      }
-      current = parent;
-    }
-  };
-  if (
-    !path.isAbsolute(entryPath) ||
-    !path.isAbsolute(trustedRoot) ||
-    !isInsideRoot(entry)
-  ) {
-    throw new AutomationControlError(
-      "lease_transaction_conflict",
-      "Lease archive Python runtime must be one absolute path under its trusted root.",
-    );
-  }
-  const visited = new Set();
-  let current = entry;
-  for (let hop = 0; hop < 8; hop += 1) {
-    if (!isInsideRoot(current) || visited.has(current)) {
-      throw new AutomationControlError(
-        "lease_transaction_conflict",
-        "Lease archive Python runtime symlink chain is cyclic or escaped.",
-      );
-    }
-    visited.add(current);
-    validateDirectoryChain(current);
-    const stats = lstat(current);
-    if (stats.uid !== requiredUid) {
-      throw new AutomationControlError(
-        "lease_transaction_conflict",
-        "Lease archive Python runtime chain is not root-owned.",
-      );
-    }
-    if (stats.isSymbolicLink()) {
-      const target = readlink(current);
-      current = path.resolve(path.dirname(current), target);
-      continue;
-    }
-    if (
-      !stats.isFile() ||
-      stats.isSymbolicLink() ||
-      (stats.mode & 0o7000) !== 0 ||
-      ![0o555, 0o755].includes(stats.mode & 0o777) ||
-      realpath(entry) !== current
-    ) {
-      throw new AutomationControlError(
-        "lease_transaction_conflict",
-        "Lease archive Python runtime target is not one immutable executable regular file.",
-      );
-    }
-    return current;
-  }
-  throw new AutomationControlError(
-    "lease_transaction_conflict",
-    "Lease archive Python runtime symlink chain exceeds its hop limit.",
-  );
-}
-
-function leaseArchiveHelperMetadataMatches(left, right) {
-  return (
-    left.dev === right.dev &&
-    left.ino === right.ino &&
-    left.mode === right.mode &&
-    left.nlink === right.nlink &&
-    left.uid === right.uid &&
-    left.gid === right.gid &&
-    left.size === right.size &&
-    left.mtimeNs === right.mtimeNs &&
-    left.ctimeNs === right.ctimeNs
-  );
-}
-
-function readLeaseArchiveHelperDescriptor(descriptor, size) {
-  if (size <= 0 || size > LEASE_ARCHIVE_HELPER_MAX_BYTES) {
-    throw new Error("helper source is outside its size boundary");
-  }
-  const bytes = Buffer.alloc(size + 1);
-  let offset = 0;
-  while (offset < bytes.length) {
-    const count = readSync(
-      descriptor,
-      bytes,
-      offset,
-      bytes.length - offset,
-      offset,
-    );
-    if (count === 0) break;
-    offset += count;
-  }
-  if (offset !== size) {
-    throw new Error("helper source changed size while held");
-  }
-  return bytes.subarray(0, offset);
-}
-
-function admitPinnedLeaseArchiveHelperSource(
-  helperPath,
-  expectedDigest,
-  checkpoint,
-) {
-  let descriptor;
-  try {
-    const pathBefore = lstatSync(helperPath, { bigint: true });
-    if (
-      !pathBefore.isFile() ||
-      pathBefore.isSymbolicLink() ||
-      realpathSync(helperPath) !== helperPath ||
-      (pathBefore.mode & 0o7000n) !== 0n ||
-      (pathBefore.mode & 0o022n) !== 0n
-    ) {
-      throw new Error("helper source path is not pinned");
-    }
-    descriptor = openSync(
-      helperPath,
-      constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
-    );
-    const descriptorBefore = fstatSync(descriptor, { bigint: true });
-    if (
-      !descriptorBefore.isFile() ||
-      descriptorBefore.isSymbolicLink() ||
-      !leaseArchiveHelperMetadataMatches(pathBefore, descriptorBefore)
-    ) {
-      throw new Error("helper source changed while it was opened");
-    }
-    if (checkpoint !== undefined) checkpoint();
-    const bytes = readLeaseArchiveHelperDescriptor(
-      descriptor,
-      Number(descriptorBefore.size),
-    );
-    const descriptorAfter = fstatSync(descriptor, { bigint: true });
-    const pathAfter = lstatSync(helperPath, { bigint: true });
-    if (
-      !leaseArchiveHelperMetadataMatches(descriptorBefore, descriptorAfter) ||
-      !leaseArchiveHelperMetadataMatches(descriptorAfter, pathAfter) ||
-      createHash("sha256").update(bytes).digest("hex") !== expectedDigest
-    ) {
-      throw new Error("helper source changed during descriptor admission");
-    }
-    const source = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-    return { descriptor, source };
-  } catch (error) {
-    if (descriptor !== undefined) closeSync(descriptor);
-    throw error;
-  }
-}
-
-export function readPinnedLeaseArchiveHelperSource(
-  helperPath = LEASE_ARCHIVE_MOVE_HELPER,
-  {
-    expectedDigest = LEASE_ARCHIVE_MOVE_HELPER_SHA256,
-    checkpoint = undefined,
-  } = {},
-) {
-  let admitted;
-  try {
-    admitted = admitPinnedLeaseArchiveHelperSource(
-      path.resolve(helperPath),
-      expectedDigest,
-      checkpoint,
-    );
-    return admitted.source;
-  } catch (error) {
-    throw new AutomationControlError(
-      "lease_transaction_conflict",
-      "Lease archive helper source is unavailable or changed during admission.",
-      { cause: error instanceof Error ? error.message : String(error) },
-    );
-  } finally {
-    if (admitted !== undefined) closeSync(admitted.descriptor);
-  }
-}
-
-export function framePinnedLeaseArchiveHelperInvocation(
-  source,
-  operation,
-  args = [],
-  { expectedDigest = LEASE_ARCHIVE_MOVE_HELPER_SHA256, input = undefined } = {},
-) {
-  const sourceBytes = Buffer.from(source, "utf8");
-  const sourceDigest = createHash("sha256").update(sourceBytes).digest("hex");
-  if (
-    sourceBytes.length <= 0 ||
-    sourceBytes.length > LEASE_ARCHIVE_HELPER_MAX_BYTES ||
-    sourceDigest !== expectedDigest
-  ) {
-    throw new AutomationControlError(
-      "lease_transaction_conflict",
-      "Lease archive helper source frame does not match its pinned digest.",
-    );
-  }
-  const operationInput =
-    input === undefined ? Buffer.alloc(0) : Buffer.from(input);
-  return Object.freeze({
-    argv: Object.freeze([
-      "-E",
-      "-I",
-      "-S",
-      "-c",
-      LEASE_ARCHIVE_MOVE_PYTHON_BOOTSTRAP,
-      String(sourceBytes.length),
-      sourceDigest,
-      String(operation),
-      ...args.map(String),
-    ]),
-    input: Buffer.concat([sourceBytes, operationInput]),
-  });
-}
-
-function openPinnedLeaseArchiveHelper() {
-  try {
-    // Tooling tests exercise the real descriptor and helper protocol, but a
-    // GitHub runner's /usr directory is not part of the host trust contract.
-    // The explicit Node test context may supply one private copied runtime.
-    // Ordinary CLI and actor processes always take the fixed root-owned path.
-    const testRuntime =
-      typeof process.env.NODE_TEST_CONTEXT === "string" &&
-      process.env.NODE_TEST_CONTEXT !== ""
-        ? {
-            entryPath:
-              process.env.FREED_TEST_LEASE_ARCHIVE_PYTHON_RUNTIME ?? "",
-            trustedRoot: process.env.FREED_TEST_LEASE_ARCHIVE_PYTHON_ROOT ?? "",
-            requiredUid: Number(
-              process.env.FREED_TEST_LEASE_ARCHIVE_PYTHON_UID ?? Number.NaN,
-            ),
-          }
-        : null;
-    const hasCompleteTestRuntime =
-      testRuntime !== null &&
-      path.isAbsolute(testRuntime.entryPath) &&
-      path.isAbsolute(testRuntime.trustedRoot) &&
-      Number.isSafeInteger(testRuntime.requiredUid) &&
-      testRuntime.requiredUid >= 0;
-    const pythonRuntime = hasCompleteTestRuntime
-      ? resolveLeaseArchivePythonRuntime(testRuntime.entryPath, {
-          requiredUid: testRuntime.requiredUid,
-          trustedRoot: testRuntime.trustedRoot,
-        })
-      : resolveLeaseArchivePythonRuntime();
-    const source = readPinnedLeaseArchiveHelperSource();
-    return Object.freeze({ source, pythonRuntime });
-  } catch (error) {
-    if (error instanceof AutomationControlError) throw error;
-    throw new AutomationControlError(
-      "lease_transaction_conflict",
-      "Lease archive helper or its absolute Python runtime is unavailable.",
-      { cause: error instanceof Error ? error.message : String(error) },
-    );
-  }
-}
 
 function runLeaseArchiveHelper(
   helper,
@@ -33419,17 +33131,39 @@ function executePreparedLeaseTransaction(
       matched.snapshot.recordCount,
       transaction.event,
     );
+    const abortAfterAuthorityFailure = (primaryError) => {
+      try {
+        abortPreparedLeaseTransaction(
+          paths,
+          files,
+          transaction,
+          checkpoint,
+          activeEventsGuard,
+        );
+      } catch (rollbackError) {
+        // Failed rollback must not erase the authority refusal that triggered it.
+        throw new AutomationControlError(
+          "lease_transaction_abort_failed",
+          "Lease authority was rejected and transaction rollback also failed.",
+          {
+            primaryError: {
+              code: primaryError.code ?? null,
+              message: String(primaryError.message ?? primaryError),
+              details: primaryError.details,
+            },
+            rollbackError: {
+              code: rollbackError.code ?? null,
+              message: String(rollbackError.message ?? rollbackError),
+            },
+          },
+        );
+      }
+      throw primaryError;
+    };
     try {
       beforeCredentialCommit();
     } catch (error) {
-      abortPreparedLeaseTransaction(
-        paths,
-        files,
-        transaction,
-        checkpoint,
-        activeEventsGuard,
-      );
-      throw error;
+      abortAfterAuthorityFailure(error);
     }
     admitControlEventAuthorityStage(paths);
     consumeLeaseCredential(transaction.capability, checkpoint);
@@ -33437,14 +33171,7 @@ function executePreparedLeaseTransaction(
     try {
       beforeStateCommit();
     } catch (error) {
-      abortPreparedLeaseTransaction(
-        paths,
-        files,
-        transaction,
-        checkpoint,
-        activeEventsGuard,
-      );
-      throw error;
+      abortAfterAuthorityFailure(error);
     }
     admitControlEventAuthorityStage(paths);
     replaceLeaseStateFromTransaction(
@@ -34505,7 +34232,20 @@ function acquireLeaseAuthorized({
                 ? "owner_confirmation_invalid"
                 : "publisher_capability_invalid",
             `Lease ${name} authorization expired before acquisition committed.`,
-            { name },
+            {
+              name,
+              ...(publisherCapability === null
+                ? {}
+                : {
+                    capabilityTiming: {
+                      phase: "commit",
+                      issuedAtMs: Date.parse(publisherCapability.payload.issuedAt),
+                      expiresAtMs: credentialExpiresAtMs,
+                      admissionAtMs: operationNowMs,
+                      checkedAtMs: liveNowMs,
+                    },
+                  }),
+            },
           );
         }
       };

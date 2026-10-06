@@ -2033,25 +2033,42 @@ test("kernel guard cutover admits only an explicit local filesystem type", () =>
   );
 });
 
-test("kernel guard filesystem resolver admits supported macOS APFS registrations and explicit Linux types", () => {
+test("kernel guard filesystem resolver admits exact local APFS independently of numeric slots and explicit Linux types", () => {
   const stateRoot = temporaryStateRoot();
-  for (const type of [0x19n, 0x1an]) {
+  for (const type of [0x19n, 0x1an, 0x1bn, 0xffffffffn]) {
     assert.equal(
       resolveAutomationKernelGuardFilesystemType(stateRoot, {
         platform: "darwin",
-        statfs: () => ({ type }),
+        statfs: () => {
+          throw new Error(`numeric slot ${type} must not be queried`);
+        },
+        queryFilesystem: () => ({
+          filesystemType: "apfs",
+          local: true,
+          device: "42",
+        }),
       }),
       "apfs",
     );
   }
-  assert.throws(
-    () =>
-      resolveAutomationKernelGuardFilesystemType(stateRoot, {
-        platform: "darwin",
-        statfs: () => ({ type: 0x1bn }),
-      }),
-    /not in the darwin local allowlist/,
-  );
+  for (const [filesystemType, local] of [
+    ["nfs", true],
+    ["smbfs", true],
+    ["unknown", true],
+    ["APFS", true],
+    ["apfs ", true],
+    ["apfs\0garbage", true],
+    ["apfs", false],
+  ]) {
+    assert.throws(
+      () =>
+        resolveAutomationKernelGuardFilesystemType(stateRoot, {
+          platform: "darwin",
+          queryFilesystem: () => ({ filesystemType, local, device: "42" }),
+        }),
+      /name=.*local=.*device=42.*path=.*requires exact local apfs/,
+    );
+  }
   for (const [type, expected] of [
     [0xef53n, "ext"],
     [0x01021994n, "tmpfs"],
@@ -22922,4 +22939,113 @@ test("completed task WAL retirement recovers without new retirement headroom", (
     ).length,
     1,
   );
+});
+
+test("publisher expiry diagnostics preserve admission, commit, and rollback failures", async (t) => {
+  const issuedAtMs = Date.parse("2026-07-10T22:30:00Z");
+  for (const phase of [
+    "admission",
+    "commit-without-consumed",
+    "commit-with-consumed",
+    "commit-rollback-conflict",
+  ]) {
+    await t.test(phase, () => {
+      const stateRoot = temporaryStateRoot();
+      const paths = automationControlPaths(stateRoot);
+      const scope = {
+        schemaVersion: 2,
+        repo: "freed-project/freed",
+        worktree: realpathSync(stateRoot),
+        branch: "fix/publisher-expiry-diagnostic",
+        base: "dev",
+        baseSha: "f".repeat(40),
+        headSha: null,
+        publishMode: "feature-pr",
+      };
+      const capability = writePublisherCapability(stateRoot, scope, {
+        nowMs: issuedAtMs,
+      });
+      const original = readFileSync(capability.capabilityPath);
+      if (phase === "commit-with-consumed") {
+        mkdirSync(paths.publisherCapabilitiesConsumed, {
+          recursive: true,
+          mode: 0o700,
+        });
+      }
+      let failure;
+      const checkpoints = [];
+      const admissionAtMs = issuedAtMs + (phase === "admission" ? 60_000 : 1_000);
+      withMutableTestDateNow(admissionAtMs, (setNowMs) => {
+        try {
+          acquireLeaseLive({
+            stateRoot,
+            name: "pr-publisher",
+            owner: "freed-pr-publisher",
+            operationId: capability.leaseOperationId,
+            token: capability.token,
+            ttlMs: 30 * 60_000,
+            publisherCapabilityFile: capability.capabilityPath,
+            scope,
+            checkpoint: (checkpoint) => {
+              checkpoints.push(checkpoint);
+              if (checkpoint === "lease-prepared") {
+                setNowMs(issuedAtMs + 60_000);
+                if (phase === "commit-rollback-conflict") {
+                  writeFileSync(
+                    capability.capabilityPath,
+                    "changed pending capability",
+                  );
+                }
+              }
+            },
+          });
+        } catch (error) {
+          failure = error;
+        }
+      });
+      assert.ok(
+        failure instanceof AutomationControlError,
+        `${phase}: ${failure?.stack}`,
+      );
+      const primary =
+        phase === "commit-rollback-conflict"
+          ? failure.details?.primaryError
+          : failure;
+      if (phase === "commit-rollback-conflict") {
+        assert.equal(failure.code, "lease_transaction_abort_failed");
+        assert.equal(
+          failure.details.rollbackError.code,
+          "lease_transaction_conflict",
+        );
+      }
+      assert.equal(primary?.code, "publisher_capability_invalid");
+      assert.deepEqual(primary.details.capabilityTiming, {
+        phase: phase === "admission" ? "admission" : "commit",
+        issuedAtMs,
+        expiresAtMs: issuedAtMs + 60_000,
+        admissionAtMs,
+        checkedAtMs: issuedAtMs + 60_000,
+      });
+      assert.equal(checkpoints.includes("lease-prepared"), phase !== "admission");
+      assert.equal(checkpoints.includes("lease-credential-committed"), false);
+      assert.deepEqual(
+        readFileSync(capability.capabilityPath),
+        phase === "commit-rollback-conflict"
+          ? Buffer.from("changed pending capability")
+          : original,
+      );
+      assert.equal(
+        existsSync(paths.publisherCapabilitiesConsumed),
+        phase === "commit-with-consumed",
+      );
+      assert.equal(
+        existsSync(
+          path.join(paths.publisherCapabilitiesConsumed, `${capability.capabilityId}.json`),
+        ),
+        false,
+      );
+      assert.equal(existsSync(path.join(paths.leases, "pr-publisher.lease")), false);
+      assert.equal(readControlEvents(stateRoot).length, 0);
+    });
+  }
 });
