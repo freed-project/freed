@@ -554,6 +554,31 @@ jobs:
         working-directory: packages/desktop/src-tauri
         run: cargo check --target x86_64-pc-windows-msvc --all-features
 
+
+      - name: Execute Windows annotation startup and ownership regressions
+        shell: pwsh
+        run: |
+          function Test-NativeFilter([string]$Manifest, [string]$Target, [string]$Filter, [int]$Minimum, [switch]$Exact) {
+            $arguments = @('test', '--locked', '--manifest-path', $Manifest)
+            if ($Target -eq 'core') { $arguments += '--lib' }
+            else { $arguments += @('--bin', 'freed-desktop') }
+            $arguments += @($Filter, '--', '--nocapture')
+            if ($Exact) { $arguments += '--exact' }
+            & cargo @arguments 2>&1 | Tee-Object -Variable receipt
+            if ($LASTEXITCODE -ne 0) { throw "Native regression failed: $Filter" }
+            $text = $receipt -join "`n"
+            $results = [regex]::Matches($text, 'test result: ok\. (\d+) passed; 0 failed;')
+            $passed = 0
+            foreach ($result in $results) { $passed += [int]$result.Groups[1].Value }
+            if ($passed -lt $Minimum) { throw "Expected at least $Minimum executed tests for $Filter, got $passed" }
+          }
+          $core = 'packages/library-core-native/Cargo.toml'
+          Test-NativeFilter $core core 'normalized_local_annotations::tests::annotation_path_owner_upgrades_both_sources_and_keeps_absent_storage_absent' 1 -Exact
+          Test-NativeFilter $core core 'normalized_local_annotations::tests::annotation_ordinary_path_open_refuses_building_without_advancing' 1 -Exact
+          Test-NativeFilter $core core 'annotation_maintenance_owner::tests::' 3
+          Test-NativeFilter $core core 'library_core_process_lease::tests::' 1
+          Test-NativeFilter 'packages/desktop/src-tauri/Cargo.toml' desktop 'library_core_process_lease::tests::' 4
+
   dev:
     name: Dev integration
     if: github.event_name == 'push'

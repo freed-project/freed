@@ -75,6 +75,17 @@ pub fn initialize_owned_normalized_sqlite_database_v1(
     database_path: &Path,
     create: bool,
 ) -> Result<Option<Connection>, NormalizedSqliteError> {
+    initialize_owned_normalized_sqlite_database_with_observer_v1(database_path, create, || {})
+}
+
+/// Owned startup observation between bounded slices, outside any transaction.
+/// The callback receives no connection or authority and cannot change the pinned source.
+/// Hosts must retain their process lease until this function returns.
+pub fn initialize_owned_normalized_sqlite_database_with_observer_v1(
+    database_path: &Path,
+    create: bool,
+    mut unfinished: impl FnMut(),
+) -> Result<Option<Connection>, NormalizedSqliteError> {
     if !create {
         match std::fs::symlink_metadata(database_path) {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -87,6 +98,7 @@ pub fn initialize_owned_normalized_sqlite_database_v1(
         match crate::normalized_local_annotations::open_owned(&mut connection) {
             Ok(()) => return Ok(Some(connection)),
             Err(NormalizedSqliteError::InvalidRequest("LOCAL_ANNOTATION_UPGRADE_PENDING")) => {
+                unfinished();
                 std::thread::sleep(std::time::Duration::from_millis(25))
             }
             Err(error) => return Err(error),

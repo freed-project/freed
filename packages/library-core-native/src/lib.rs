@@ -238,6 +238,7 @@ pub use normalized_sqlite::{
     describe_normalized_checkpoint_export_with_observer_v2,
     describe_normalized_cloud_preflight_identity_v1, export_normalized_checkpoint_page_v2,
     export_pinned_normalized_checkpoint_page_v2, initialize_owned_normalized_sqlite_database_v1,
+    initialize_owned_normalized_sqlite_database_with_observer_v1,
     install_normalized_schema_v1, open_normalized_sqlite_database_v1,
     verify_normalized_library_selection_v1, BeginNormalizedCheckpointStageV2,
     NormalizedCheckpointCursorV2, NormalizedCheckpointDescriptionStageV2,

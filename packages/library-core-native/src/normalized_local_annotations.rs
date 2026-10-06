@@ -540,7 +540,9 @@ mod tests {
     #[test]
     fn annotation_path_owner_upgrades_both_sources_and_keeps_absent_storage_absent() {
         use crate::normalized_sqlite::{
-            initialize_owned_normalized_sqlite_database_v1, open_normalized_sqlite_database_v1,
+            initialize_owned_normalized_sqlite_database_v1,
+            initialize_owned_normalized_sqlite_database_with_observer_v1,
+            open_normalized_sqlite_database_v1,
         };
         let dir = tempfile::tempdir().unwrap();
         for source in [1, 2] {
@@ -548,9 +550,17 @@ mod tests {
             let db = fixture(&path, source);
             populate(&db);
             drop(db);
-            let db = initialize_owned_normalized_sqlite_database_v1(&path, false)
-                .unwrap()
-                .unwrap();
+            let mut observed = 0;
+            let db = initialize_owned_normalized_sqlite_database_with_observer_v1(&path, false, || {
+                observed += 1;
+                let reader = Connection::open(&path).unwrap();
+                // An exhausted pre-bootstrap slice has no receipt yet.
+                if matches!(version(&reader).unwrap(), 4 | 5) {
+                    assert!(open_normalized_sqlite_database_v1(&path, false).is_err());
+                }
+                assert_eq!(reader.total_changes(), 0);
+            }).unwrap().unwrap();
+            assert!(observed > 0, "1025 rows require another bounded invocation");
             assert_eq!(version(&db).unwrap(), source + 3);
             assert_eq!(
                 db.query_row(
