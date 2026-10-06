@@ -1,5 +1,509 @@
 [
   {
+    "version": "26.10.500-dev",
+    "tagName": "v26.10.500-dev",
+    "channel": "dev",
+    "date": "2026-10-06T06:50:57Z",
+    "deck": "Clearer Friends loading and safer outbox ownership",
+    "features": [],
+    "fixes": [
+      {
+        "text": "Show the shared loading indicator while Friends activity loads."
+      },
+      {
+        "text": "Retain outbox ownership until timed-out work settles, preventing a replacement drain from overlapping it."
+      },
+      {
+        "text": "Recognize standalone Sponsored disclosures on Facebook posts."
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Hung outbox work can remain pending; cancellation and screen-lock admission are separate follow-ups."
+      },
+      {
+        "text": "Broader Facebook paid-placement and nested organic classification remain outside this change."
+      },
+      {
+        "text": "Signed installed UI acceptance and passive deadline-path observation remain separate verification steps."
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.10.500-dev",
+    "prNumbers": [
+      2135
+    ],
+    "builds": [
+      "26.10.500-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.10.500-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.10.500-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.10.403-dev",
+    "tagName": "v26.10.403-dev",
+    "channel": "dev",
+    "date": "2026-10-05T18:35:19Z",
+    "deck": "Stable views during Library refresh",
+    "features": [],
+    "fixes": [
+      {
+        "text": "Keep toolbar counts, search results, Friends details and Map popups visible while same-scope Library reads refresh"
+      },
+      {
+        "text": "Block pending or obsolete search and identity actions until their current selection and results are ready"
+      },
+      {
+        "text": "Retain one bounded suggestion window during refresh and preserve exact signed recovery retries after an ambiguous result"
+      },
+      {
+        "text": "Feed cards load image thumbnails lazily through existing media URLs and memory-pressure safeguards"
+      },
+      {
+        "text": "Preserve seen confirmations through bounded Desktop and PWA reads"
+      },
+      {
+        "text": "Keep navigation counts tied to one coherent Library state and retain verified counts while refreshing."
+      },
+      {
+        "text": "Show elapsed backup time in the update notification and Settings."
+      },
+      {
+        "text": "Keep discovered accounts out of the tracked relationship graph and open their Map location without creating a connection."
+      },
+      {
+        "text": "Keep mobile Settings navigation within the available screen height."
+      },
+      {
+        "text": "Avoid counting every checkpoint record during routine Library sync checks."
+      },
+      {
+        "text": "Record bounded timing for Library checkpoint preparation"
+      },
+      {
+        "text": "Opening, saving and processing linked articles now uses their stored article link"
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Installed view stability and responsiveness still require verification on the signed build"
+      },
+      {
+        "text": "Existing provider sync schedules, authentication and AI preferences are unchanged"
+      },
+      {
+        "text": "Dormant Library authority and seen-host activation remain disabled"
+      },
+      {
+        "text": "The separate Saved Back repair and durable writer-admission proof remain follow-ups"
+      },
+      {
+        "text": "Full checkpoint preparation retains complete validation and can still take time"
+      },
+      {
+        "text": "Installed startup and manual responsiveness verification remain separate from synthetic benchmarks"
+      },
+      {
+        "text": "Priority and social diagnostics remain off; provider and schema activation boundaries are unchanged"
+      },
+      {
+        "text": "This build adds attribution; no reduction in stalls or CPU use is claimed"
+      },
+      {
+        "text": "The elapsed timer reports time spent; it does not shorten a full Library backup."
+      },
+      {
+        "text": "Installed responsiveness and count stability still require verification on the signed build."
+      },
+      {
+        "text": "Existing AI preferences and provider schedules are unchanged."
+      },
+      {
+        "text": "Writer admission delays remain a separate investigation"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.10.403-dev",
+    "prNumbers": [
+      2098,
+      2099,
+      2100,
+      2101,
+      2102,
+      2103,
+      2117,
+      2129,
+      2131,
+      2132,
+      2133
+    ],
+    "builds": [
+      "26.10.400-dev",
+      "26.10.401-dev",
+      "26.10.402-dev",
+      "26.10.403-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.10.400-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.10.400-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.10.401-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.10.401-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.10.402-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.10.402-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.10.403-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.10.403-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.10.305-dev",
+    "tagName": "v26.10.305-dev",
+    "channel": "dev",
+    "date": "2026-10-04T08:41:40Z",
+    "deck": "Stable map totals and better visibility into startup work",
+    "features": [
+      {
+        "text": "Report bounded native capture admission evidence"
+      },
+      {
+        "text": "Deliver signed and PWA transfer acceptance builds"
+      },
+      {
+        "text": "Isolated multi-desktop acceptance builds"
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Preserve resolved map header counts when unrelated Library events arrive"
+      },
+      {
+        "text": "Reader, feed, and header polish"
+      },
+      {
+        "text": "Show Library backup preparation before downloading an update"
+      },
+      {
+        "text": "Capture and scraper reliability fixes"
+      },
+      {
+        "text": "Report unsupported long-task monitoring as unavailable"
+      },
+      {
+        "text": "Keep signed preview and transfer-acceptance assets out of ordinary updater manifests"
+      },
+      {
+        "text": "Preserve primary and existing preview credential-service identities"
+      },
+      {
+        "text": "Keep large changed-post refresh batches from overwhelming local reads"
+      },
+      {
+        "text": "Optimized repeated work during Library snapshot hashing and archive writing"
+      },
+      {
+        "text": "Retain known feed counts during refreshes and distinguish unavailable counts from an empty Library"
+      },
+      {
+        "text": "Retain identity in first renderer heartbeat"
+      },
+      {
+        "text": "Isolate signed measurement profiles and credential services"
+      },
+      {
+        "text": "Keep ordinary Facebook captions when recommendation words appear outside the post header"
+      },
+      {
+        "text": "Reject split Instagram Sponsored headers while retaining longer organic labels"
+      },
+      {
+        "text": "Preserve manual map navigation while pins load and verify selected Library authority on one configured connection"
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Reader, sidebar, and settings UX work"
+      },
+      {
+        "text": "Release workflow and build-system work"
+      },
+      {
+        "text": "Transfer-acceptance builds remain separate opt-in test artifacts; ordinary Library transfer and schema-v2 operations remain disabled"
+      },
+      {
+        "text": "Sync, cloud, and pairing infrastructure"
+      },
+      {
+        "text": "Capture, login, and scraping platform work"
+      },
+      {
+        "text": "Clearer update status and accurate item totals during refresh"
+      },
+      {
+        "text": "Facebook and Instagram completeness and sponsored-ad exclusion remain under verification"
+      },
+      {
+        "text": "More accurate Facebook and Instagram header filtering while preserving organic captions"
+      },
+      {
+        "text": "Live Facebook and Instagram acceptance remains scoped to observed placements with explicit paid-provenance evidence"
+      },
+      {
+        "text": "High native CPU remains under investigation; this social update does not include pending performance fixes"
+      },
+      {
+        "text": "Isolate parallel Jev budget test ledgers"
+      },
+      {
+        "text": "Priority and social pass diagnostics remain default-off; sampled native startup stages are included without a CPU or latency improvement claim"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.10.305-dev",
+    "prNumbers": [
+      2059,
+      2077,
+      2079,
+      2080,
+      2081,
+      2082,
+      2083,
+      2084,
+      2085,
+      2086,
+      2087,
+      2088,
+      2089,
+      2090,
+      2091,
+      2092,
+      2093,
+      2094,
+      2095,
+      2096
+    ],
+    "builds": [
+      "26.10.300-dev",
+      "26.10.302-dev",
+      "26.10.303-dev",
+      "26.10.304-dev",
+      "26.10.305-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.10.300-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.10.300-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.10.302-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.10.302-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.10.303-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.10.303-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.10.304-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.10.304-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.10.305-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.10.305-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.10.200-dev",
+    "tagName": "v26.10.200-dev",
+    "channel": "dev",
+    "date": "2026-10-03T06:08:53Z",
+    "deck": "Jev spending controls and local GLiClass previews arrive with more reliable social capture and cheaper settled ranking refreshes.",
+    "features": [
+      {
+        "text": "Try Jev with a personal key and conservative USD1 daily and USD10 calendar-month spending limits."
+      },
+      {
+        "text": "Run GLiClass Base locally with verified official model downloads and no hosted fallback."
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Retain richer Facebook captures for existing post links."
+      },
+      {
+        "text": "Reject contradictory social admission and recognize exact Instagram Sponsored headers in feeds and Stories."
+      },
+      {
+        "text": "Scope Instagram recommendation labels to feed headers, preserving ordinary captions."
+      },
+      {
+        "text": "Keep title, image and replies tied to the selected post."
+      },
+      {
+        "text": "Stop FPS diagnostics sampling hidden windows and counting hidden time as dropped frames."
+      },
+      {
+        "text": "Settled ranking refreshes reuse the priority/time index, with full scans when state is uncertain"
+      },
+      {
+        "text": "Refuse Library signing transactions when SQLite durability is weakened."
+      },
+      {
+        "text": "Keep authority-changing Library transfer and consumer recovery unavailable in ordinary builds."
+      }
+    ],
+    "followUps": [
+      {
+        "text": "GLiClass remains a preview with a bounded session cache; durable background classification is not included."
+      },
+      {
+        "text": "Social fallback identities and live capture completeness still need follow-up."
+      },
+      {
+        "text": "Library transfer and schema-v2 lifecycle activation require a separate owner decision before they can be enabled."
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.10.200-dev",
+    "prNumbers": [
+      2060,
+      2061,
+      2062,
+      2064,
+      2065,
+      2068,
+      2070,
+      2071,
+      2072
+    ],
+    "builds": [
+      "26.10.200-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.10.200-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.10.200-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.9.1700-dev",
+    "tagName": "v26.9.1700-dev",
+    "channel": "dev",
+    "date": "2026-09-18T04:36:58Z",
+    "deck": "Clearer Saved filters, incremental device sync, and more reliable Library recovery.",
+    "features": [
+      {
+        "text": "Freed Desktop can join an existing Library as a consumer device."
+      },
+      {
+        "text": "Desktop and PWA devices can catch up through incremental operations."
+      },
+      {
+        "text": "Joined devices report synchronization progress."
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Saved titles now name active filters, such as Saved Inspiring and News, and return to Saved when Everything is selected."
+      },
+      {
+        "text": "Saved bookmarks remain visible after browsing Friends without inheriting the Friends-only view."
+      },
+      {
+        "text": "Desktop and PWA retain pending edits while refreshing Library checkpoints."
+      },
+      {
+        "text": "Desktop retains sync ownership until canceled work has settled."
+      },
+      {
+        "text": "PWA setup and Drive synchronization recover more reliably from interrupted transfers and device enrollment conflicts."
+      },
+      {
+        "text": "Drive credentials refresh during long PWA transfers, and sync status reports active stages and the last successful completion."
+      },
+      {
+        "text": "Google Contacts recovers from expired synchronization tokens."
+      },
+      {
+        "text": "Compact headers, reader controls, and phone landscape layouts keep actions accessible."
+      },
+      {
+        "text": "Demo Libraries restore sample thumbnails, maps, and grouped stories."
+      }
+    ],
+    "followUps": [],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.9.1700-dev",
+    "prNumbers": [
+      1824,
+      1835,
+      1837,
+      1839,
+      1850,
+      1856,
+      1857,
+      1862,
+      1864,
+      1879,
+      1886,
+      1888,
+      1889,
+      1892,
+      1894,
+      1896,
+      1899,
+      1917,
+      1927,
+      1936,
+      1939,
+      1940,
+      1944,
+      1954,
+      1959,
+      1962,
+      1967,
+      1979,
+      1986,
+      1991,
+      1993,
+      1998,
+      2000,
+      2002,
+      2009,
+      2011,
+      2013,
+      2017,
+      2024
+    ],
+    "builds": [
+      "26.9.1700-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.9.1700-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.9.1700-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
     "version": "26.9.1400",
     "tagName": "v26.9.1400",
     "channel": "production",
@@ -487,32 +991,38 @@
     "tagName": "v26.9.601-dev",
     "channel": "dev",
     "date": "2026-09-06T19:25:24Z",
-    "deck": "More reliable social captures, interrupted-sync recovery, and locally cached avatars",
+    "deck": "More reliable social captures, interrupted-sync recovery, and locally cached avatars.",
     "features": [
       {
-        "text": "Freed Desktop caches discovered identity avatars locally, including identities not currently onscreen"
+        "text": "Freed Desktop caches discovered identity avatars locally, including identities not currently onscreen."
       }
     ],
     "fixes": [
       {
-        "text": "X link previews and videos without a playable URL no longer create invalid media records that block capture"
+        "text": "X link previews and videos without a playable URL no longer create invalid media records that block capture."
       },
       {
-        "text": "LinkedIn and Facebook accept posts with a video marker but no extracted media URL, and classify duplicate URLs by position"
+        "text": "LinkedIn and Facebook accept posts with a video marker but no extracted media URL, and classify duplicate URLs by position."
       },
       {
-        "text": "The PWA can resume an accepted sync result after interrupted local processing without rejecting its unchanged contents"
+        "text": "The PWA can resume an accepted sync result after interrupted local processing without rejecting its unchanged contents."
       },
       {
-        "text": "Anonymous demo tabs use separate temporary Libraries instead of competing for the persistent Library lock"
+        "text": "Anonymous demo tabs use separate temporary Libraries instead of competing for the persistent Library lock."
       },
       {
-        "text": "Demo reader descriptions preserve paragraphs and credit lines"
+        "text": "Demo reader descriptions preserve paragraphs and credit lines."
       }
     ],
     "followUps": [],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.9.601-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      1802,
+      1822,
+      1826,
+      1827,
+      1829
+    ],
     "builds": [
       "26.9.601-dev"
     ],
@@ -532,7 +1042,7 @@
     "deck": "Give large Drive publications a bounded progress budget and preserve pending provider syncs",
     "features": [
       {
-        "text": "An interactive sample Library demo"
+        "text": "Add an interactive sample Library demo"
       }
     ],
     "fixes": [
@@ -543,13 +1053,13 @@
         "text": "Scale the publication deadline to the pinned export while stopping attempts that make no useful progress for five minutes"
       },
       {
-        "text": "Optimized checkpoint encoding work without changing canonical bytes"
+        "text": "Reduce checkpoint encoding work without changing canonical bytes"
       },
       {
         "text": "Keep scheduled provider syncs pending while verified writer admission is unavailable"
       },
       {
-        "text": "Persistent diagnostics for the Freed Desktop main window restored"
+        "text": "Restore persistent diagnostics for the Freed Desktop main window"
       },
       {
         "text": "Keep local snapshot exports off the main thread so they do not block the interface or provider WebViews"
@@ -578,14 +1088,19 @@
         "text": "Verify Drive publication, writer admission, and LinkedIn extraction on the signed build"
       },
       {
-        "text": "Scheduled Facebook and Instagram observation on the installed build"
+        "text": "Complete scheduled Facebook and Instagram observation on the installed build"
       },
       {
-        "text": "PWA clients before importing checkpoints above the former receipt-count limit, then verify bidirectional sync"
+        "text": "Update PWA clients before importing checkpoints above the former receipt-count limit, then verify bidirectional sync"
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.9.501-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      1765,
+      1789,
+      1791,
+      1794
+    ],
     "builds": [
       "26.9.500-dev",
       "26.9.501-dev"
@@ -624,7 +1139,10 @@
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.9.300-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      1783,
+      1787
+    ],
     "builds": [
       "26.9.300-dev"
     ],
@@ -667,7 +1185,15 @@
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.9.200-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      1634,
+      1767,
+      1771,
+      1773,
+      1774,
+      1775,
+      1776
+    ],
     "builds": [
       "26.9.200-dev"
     ],
@@ -701,7 +1227,10 @@
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.9.100-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      1762,
+      1766
+    ],
     "builds": [
       "26.9.100-dev"
     ],
@@ -810,7 +1339,55 @@
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.3104-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      1673,
+      1677,
+      1678,
+      1679,
+      1680,
+      1681,
+      1682,
+      1683,
+      1684,
+      1685,
+      1686,
+      1687,
+      1688,
+      1690,
+      1692,
+      1694,
+      1695,
+      1696,
+      1697,
+      1698,
+      1699,
+      1702,
+      1703,
+      1704,
+      1705,
+      1706,
+      1710,
+      1712,
+      1716,
+      1719,
+      1720,
+      1722,
+      1724,
+      1728,
+      1729,
+      1733,
+      1735,
+      1736,
+      1738,
+      1739,
+      1741,
+      1744,
+      1745,
+      1747,
+      1750,
+      1754,
+      1759
+    ],
     "builds": [
       "26.8.3100-dev",
       "26.8.3101-dev",
@@ -928,7 +1505,26 @@
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.3006-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      1652,
+      1653,
+      1655,
+      1657,
+      1658,
+      1659,
+      1660,
+      1661,
+      1662,
+      1663,
+      1664,
+      1665,
+      1666,
+      1667,
+      1668,
+      1669,
+      1670,
+      1671
+    ],
     "builds": [
       "26.8.3000-dev",
       "26.8.3001-dev",
@@ -1079,7 +1675,35 @@
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.2906-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      1187,
+      1189,
+      1356,
+      1357,
+      1362,
+      1366,
+      1439,
+      1512,
+      1514,
+      1616,
+      1617,
+      1619,
+      1629,
+      1631,
+      1635,
+      1638,
+      1640,
+      1641,
+      1642,
+      1643,
+      1644,
+      1645,
+      1646,
+      1647,
+      1648,
+      1649,
+      1650
+    ],
     "builds": [
       "26.8.2901-dev",
       "26.8.2902-dev",
@@ -1185,7 +1809,49 @@
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.2002-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      1542,
+      1543,
+      1547,
+      1548,
+      1551,
+      1553,
+      1555,
+      1560,
+      1561,
+      1563,
+      1566,
+      1567,
+      1569,
+      1570,
+      1571,
+      1572,
+      1573,
+      1574,
+      1579,
+      1580,
+      1581,
+      1582,
+      1590,
+      1591,
+      1592,
+      1593,
+      1594,
+      1595,
+      1596,
+      1597,
+      1598,
+      1599,
+      1601,
+      1602,
+      1604,
+      1605,
+      1606,
+      1610,
+      1612,
+      1613,
+      1614
+    ],
     "builds": [
       "26.8.2001-dev",
       "26.8.2002-dev"
@@ -1362,7 +2028,11 @@
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.1501",
-    "prNumbers": [],
+    "prNumbers": [
+      1544,
+      1545,
+      1549
+    ],
     "builds": [
       "26.8.1500",
       "26.8.1501"
@@ -1855,7 +2525,47 @@
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.1406-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      1463,
+      1464,
+      1466,
+      1468,
+      1471,
+      1473,
+      1474,
+      1475,
+      1478,
+      1480,
+      1482,
+      1484,
+      1489,
+      1491,
+      1492,
+      1493,
+      1494,
+      1495,
+      1496,
+      1498,
+      1500,
+      1502,
+      1503,
+      1504,
+      1505,
+      1506,
+      1509,
+      1513,
+      1516,
+      1520,
+      1521,
+      1524,
+      1525,
+      1527,
+      1531,
+      1532,
+      1533,
+      1534,
+      1536
+    ],
     "builds": [
       "26.8.1406-dev"
     ],
@@ -1919,7 +2629,36 @@
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.1303-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      1408,
+      1423,
+      1424,
+      1425,
+      1426,
+      1427,
+      1428,
+      1429,
+      1430,
+      1431,
+      1432,
+      1433,
+      1434,
+      1435,
+      1436,
+      1437,
+      1438,
+      1440,
+      1441,
+      1442,
+      1443,
+      1444,
+      1445,
+      1454,
+      1457,
+      1458,
+      1459,
+      1461
+    ],
     "builds": [
       "26.8.1300-dev",
       "26.8.1301-dev",
@@ -1991,7 +2730,19 @@
     ],
     "followUps": [],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.1203-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      1409,
+      1410,
+      1411,
+      1412,
+      1413,
+      1414,
+      1415,
+      1416,
+      1418,
+      1419,
+      1420
+    ],
     "builds": [
       "26.8.1203-dev"
     ],
@@ -2052,7 +2803,17 @@
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.1103-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      1395,
+      1396,
+      1397,
+      1398,
+      1400,
+      1401,
+      1402,
+      1403,
+      1405
+    ],
     "builds": [
       "26.8.1100-dev",
       "26.8.1101-dev",
@@ -2155,7 +2916,85 @@
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.8.1004-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      1297,
+      1298,
+      1299,
+      1300,
+      1301,
+      1302,
+      1303,
+      1304,
+      1305,
+      1306,
+      1307,
+      1308,
+      1309,
+      1310,
+      1311,
+      1312,
+      1313,
+      1314,
+      1315,
+      1316,
+      1317,
+      1318,
+      1319,
+      1320,
+      1321,
+      1322,
+      1324,
+      1325,
+      1328,
+      1329,
+      1330,
+      1332,
+      1333,
+      1335,
+      1336,
+      1338,
+      1340,
+      1341,
+      1342,
+      1343,
+      1344,
+      1345,
+      1346,
+      1347,
+      1348,
+      1349,
+      1350,
+      1353,
+      1354,
+      1355,
+      1358,
+      1363,
+      1364,
+      1365,
+      1367,
+      1368,
+      1371,
+      1372,
+      1373,
+      1374,
+      1375,
+      1376,
+      1377,
+      1378,
+      1379,
+      1380,
+      1383,
+      1384,
+      1385,
+      1386,
+      1387,
+      1388,
+      1389,
+      1390,
+      1391,
+      1392,
+      1393
+    ],
     "builds": [
       "26.8.1001-dev",
       "26.8.1002-dev",
@@ -2237,7 +3076,27 @@
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.7.3100-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      1275,
+      1276,
+      1277,
+      1278,
+      1279,
+      1280,
+      1281,
+      1282,
+      1283,
+      1284,
+      1285,
+      1286,
+      1287,
+      1288,
+      1289,
+      1290,
+      1291,
+      1293,
+      1295
+    ],
     "builds": [
       "26.7.3100-dev"
     ],
@@ -2298,7 +3157,38 @@
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.7.3001-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      1237,
+      1242,
+      1243,
+      1245,
+      1246,
+      1247,
+      1248,
+      1249,
+      1250,
+      1251,
+      1252,
+      1253,
+      1254,
+      1255,
+      1256,
+      1257,
+      1258,
+      1259,
+      1260,
+      1261,
+      1262,
+      1263,
+      1264,
+      1265,
+      1266,
+      1267,
+      1268,
+      1269,
+      1272,
+      1273
+    ],
     "builds": [
       "26.7.3000-dev",
       "26.7.3001-dev"
@@ -2353,9 +3243,36 @@
         "text": "Feed pages now use an indexable sort key while the active Automerge writer stays unchanged"
       }
     ],
-    "followUps": [],
+    "followUps": [
+      {
+        "text": "Library Core remains dormant in this build. Automerge stays the active writer, and no migration or storage epoch activates"
+      },
+      {
+        "text": "The new themes do not change provider requests, navigation, cookies, headers, retries, or cadence"
+      }
+    ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.7.2901-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      1212,
+      1216,
+      1218,
+      1219,
+      1220,
+      1221,
+      1222,
+      1223,
+      1224,
+      1225,
+      1227,
+      1228,
+      1229,
+      1231,
+      1232,
+      1233,
+      1236,
+      1238,
+      1239
+    ],
     "builds": [
       "26.7.2901-dev"
     ],
@@ -2401,9 +3318,25 @@
         "text": "Production updater metadata already promoted from main is recognized during backflow validation, while novel or rolled-back content still fails closed"
       }
     ],
-    "followUps": [],
+    "followUps": [
+      {
+        "text": "This build does not move the saved corpus out of renderer memory or change the 4 GB Facebook and Instagram safety limit"
+      },
+      {
+        "text": "The Library Core activation manifest declares no storage transition for this release"
+      }
+    ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.7.2800-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      1197,
+      1198,
+      1205,
+      1207,
+      1209,
+      1210,
+      1211,
+      1214
+    ],
     "builds": [
       "26.7.2800-dev"
     ],
@@ -2461,7 +3394,86 @@
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.7.2703-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      990,
+      991,
+      1017,
+      1018,
+      1030,
+      1031,
+      1032,
+      1033,
+      1036,
+      1037,
+      1039,
+      1041,
+      1043,
+      1044,
+      1045,
+      1046,
+      1047,
+      1050,
+      1051,
+      1052,
+      1054,
+      1058,
+      1059,
+      1065,
+      1101,
+      1102,
+      1103,
+      1106,
+      1111,
+      1113,
+      1115,
+      1121,
+      1122,
+      1125,
+      1126,
+      1127,
+      1128,
+      1129,
+      1132,
+      1134,
+      1136,
+      1137,
+      1138,
+      1140,
+      1141,
+      1142,
+      1143,
+      1149,
+      1153,
+      1154,
+      1155,
+      1160,
+      1161,
+      1162,
+      1163,
+      1164,
+      1165,
+      1166,
+      1167,
+      1173,
+      1174,
+      1175,
+      1177,
+      1178,
+      1179,
+      1180,
+      1182,
+      1183,
+      1184,
+      1185,
+      1186,
+      1192,
+      1194,
+      1195,
+      1199,
+      1200,
+      1201,
+      1203
+    ],
     "builds": [
       "26.7.2701-dev",
       "26.7.2703-dev"
@@ -2614,7 +3626,7 @@
     "tagName": "v26.7.1501-dev",
     "channel": "dev",
     "date": "2026-07-15T10:55:05Z",
-    "deck": "Friends is now a theme-aware personal galaxy with native touch and trackpad navigation, tight identity constellations, and cosmic provider nebulae.",
+    "deck": "Friends is now a theme-aware personal galaxy with native touch and trackpad navigation, tight identity constellations, and cosmic provider nebulae",
     "features": [
       {
         "text": "Explore Friends as a hardware-accelerated 3D galaxy where relationship importance controls depth, identities form tight constellations, and every starfield follows the active Freed theme"
@@ -2645,7 +3657,43 @@
     ],
     "followUps": [],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.7.1501-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      642,
+      949,
+      953,
+      955,
+      957,
+      963,
+      964,
+      965,
+      966,
+      968,
+      969,
+      970,
+      972,
+      973,
+      974,
+      975,
+      976,
+      977,
+      978,
+      979,
+      982,
+      983,
+      984,
+      1010,
+      1012,
+      1013,
+      1015,
+      1016,
+      1021,
+      1022,
+      1023,
+      1025,
+      1026,
+      1027,
+      1028
+    ],
     "builds": [
       "26.7.1501-dev"
     ],
@@ -2662,7 +3710,7 @@
     "tagName": "v26.7.1200-dev",
     "channel": "dev",
     "date": "2026-07-12T22:27:00Z",
-    "deck": "YouTube now gets out of the way as soon as sign-in succeeds while your first subscription sync continues quietly.",
+    "deck": "YouTube now gets out of the way as soon as sign-in succeeds while your first subscription sync continues quietly",
     "features": [],
     "fixes": [
       {
@@ -2674,7 +3722,10 @@
     ],
     "followUps": [],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.7.1200-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      950,
+      954
+    ],
     "builds": [
       "26.7.1200-dev"
     ],
@@ -2691,7 +3742,7 @@
     "tagName": "v26.7.1000-dev",
     "channel": "dev",
     "date": "2026-07-11T02:14:08Z",
-    "deck": "YouTube joins Freed with a focused study feed, exact-video playback, and a private playlist for YouTube Premium downloads. This build also refines display scaling and command search stability.",
+    "deck": "YouTube joins Freed with a focused study feed, exact-video playback, and a private playlist for YouTube Premium downloads",
     "features": [
       {
         "text": "Connect YouTube in Freed Desktop through your signed-in website session to capture followed channels and recent long-form Subscriptions videos"
@@ -2717,7 +3768,13 @@
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.7.1000-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      940,
+      942,
+      944,
+      946,
+      947
+    ],
     "builds": [
       "26.7.1000-dev"
     ],
@@ -2734,16 +3791,16 @@
     "tagName": "v26.7.900-dev",
     "channel": "dev",
     "date": "2026-07-09T17:13:45Z",
-    "deck": "The desktop cloud-sync upload loop is broken for good (stability P1-01): an idle machine with cloud sync connected no longer re-uploads the same unchanged document over and over. This build also lands the Wave-2 stability toolchain and interface zoom controls.",
+    "deck": "The desktop cloud-sync upload loop is broken for good (stability P1-01) — idle machines no longer re-upload the same document forever — plus the Wave-2 stability toolchain (triage loop, canary/replay/bisect ops scripts) and interface zoom controls",
     "features": [
       {
-        "text": "Desktop cloud sync no longer loops on idle: a mutation filter and document-heads guard stop the upload to merge-back to re-upload echo (stability P1-01)"
+        "text": "Desktop cloud sync no longer loops on idle: a mutation filter and document-heads guard stop the upload → merge-back → re-upload echo, so an idle machine with cloud sync connected stops re-uploading an unchanged document (stability P1-01)"
       },
       {
         "text": "Interface zoom controls"
       },
       {
-        "text": "Stability observability toolchain: alarms, soak verdicts, canary regressions, and red CI fold into ranked task files (W2-02), backed by per-release canary summaries, an offline watchdog-decision replay, and a metric-driven release bisector (W2-03)"
+        "text": "Stability observability toolchain: alarms, soak verdicts, canary regressions, and red CI now fold into ranked task files (W2-02), backed by per-release canary summaries, an offline watchdog-decision replay, and a metric-driven release bisector (W2-03)"
       }
     ],
     "fixes": [],
@@ -2753,7 +3810,13 @@
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.7.900-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      934,
+      935,
+      936,
+      937,
+      939
+    ],
     "builds": [
       "26.7.900-dev"
     ],
@@ -2806,10 +3869,10 @@
     "tagName": "v26.7.701-dev",
     "channel": "dev",
     "date": "2026-07-08T02:00:36Z",
-    "deck": "Stability W2-01: a passive invariant-alarm monitor that names verified pathologies loudly in the runtime-health log instead of letting them loop silently.",
+    "deck": "Stability W2-01: a passive invariant-alarm monitor that names verified pathologies loudly in the runtime-health log instead of letting them loop silently",
     "features": [
       {
-        "text": "Invariant-alarm monitor (stability W2-01): watches the runtime-health event stream and raises named invariant_alarm records with a runbook string when a verified pathology signature trips , cloud_loop (idle cloud upload loop), scrape_zero_persist, preflight_kill, watchdog_thrash, and an auth_zombie heuristic"
+        "text": "Invariant-alarm monitor (stability W2-01): watches the runtime-health event stream and raises named invariant_alarm records with a runbook string when a verified pathology signature trips — cloud_loop (idle cloud upload loop), scrape_zero_persist, preflight_kill, watchdog_thrash, and an auth_zombie heuristic"
       }
     ],
     "fixes": [
@@ -2823,7 +3886,12 @@
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.7.701-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      917,
+      920,
+      922,
+      924
+    ],
     "builds": [
       "26.7.701-dev"
     ],
@@ -3098,7 +4166,17 @@
     ],
     "followUps": [],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.7.203-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      746,
+      887,
+      888,
+      889,
+      890,
+      891,
+      892,
+      893,
+      895
+    ],
     "builds": [
       "26.7.201-dev",
       "26.7.203-dev"
@@ -3136,7 +4214,11 @@
     ],
     "followUps": [],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.2901-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      884,
+      885,
+      886
+    ],
     "builds": [
       "26.6.2900-dev",
       "26.6.2901-dev"
@@ -3198,7 +4280,14 @@
     ],
     "followUps": [],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.2804-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      878,
+      879,
+      880,
+      881,
+      882,
+      883
+    ],
     "builds": [
       "26.6.2800-dev",
       "26.6.2801-dev",
@@ -3257,7 +4346,12 @@
     ],
     "followUps": [],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.2703-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      874,
+      875,
+      876,
+      877
+    ],
     "builds": [
       "26.6.2700-dev",
       "26.6.2701-dev",
@@ -3313,7 +4407,22 @@
     ],
     "followUps": [],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.2600-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      858,
+      861,
+      862,
+      863,
+      864,
+      865,
+      866,
+      867,
+      868,
+      869,
+      870,
+      871,
+      872,
+      873
+    ],
     "builds": [
       "26.6.2600-dev"
     ],
@@ -3379,7 +4488,27 @@
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.1810-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      840,
+      841,
+      842,
+      843,
+      844,
+      845,
+      846,
+      847,
+      848,
+      849,
+      850,
+      851,
+      852,
+      854,
+      855,
+      856,
+      857,
+      859,
+      860
+    ],
     "builds": [
       "26.6.1801-dev",
       "26.6.1802-dev",
@@ -3780,26 +4909,19 @@
     "date": "2026-06-06T18:15:20Z",
     "deck": "Facebook and Instagram syncs now avoid unnecessary full-library cleanup work when a run finds only existing posts. The build also adds sharper timing diagnostics for social sync stages, improves renderer freeze evidence, keeps cloud conflict recovery responsive, and speeds up sample library seeding.",
     "features": [],
-    "fixes": [
-      {
-        "text": "Reduced duplicate-only Facebook and Instagram sync work so no-new-content runs do less main-library churn."
-      },
-      {
-        "text": "Added local timing logs for Facebook and Instagram fetch, store write, and media vault stages."
-      },
-      {
-        "text": "Added background runtime state to renderer heartbeats so future freeze reports show what sync work was active."
-      },
-      {
-        "text": "Kept cloud conflict recovery responsive while a user chooses which copy should win."
-      },
-      {
-        "text": "Batched sample library seeding so test data population gives control back to the app sooner."
-      }
-    ],
+    "fixes": [],
     "followUps": [],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.603-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      776,
+      779,
+      782,
+      783,
+      788,
+      789,
+      791,
+      792
+    ],
     "builds": [
       "26.6.603-dev"
     ],
@@ -3887,7 +5009,15 @@
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.502-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      763,
+      764,
+      766,
+      769,
+      772,
+      774,
+      775
+    ],
     "builds": [
       "26.6.502-dev"
     ],
@@ -4107,7 +5237,52 @@
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.402-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      689,
+      690,
+      691,
+      692,
+      693,
+      694,
+      695,
+      696,
+      697,
+      698,
+      699,
+      700,
+      701,
+      702,
+      703,
+      704,
+      705,
+      706,
+      707,
+      716,
+      722,
+      725,
+      726,
+      727,
+      728,
+      729,
+      732,
+      735,
+      736,
+      739,
+      743,
+      745,
+      747,
+      748,
+      750,
+      752,
+      753,
+      754,
+      755,
+      756,
+      757,
+      758,
+      759,
+      760
+    ],
     "builds": [
       "26.6.402-dev"
     ],
@@ -4364,7 +5539,15 @@
     ],
     "followUps": [],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.6.103-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      681,
+      682,
+      683,
+      684,
+      686,
+      687,
+      688
+    ],
     "builds": [
       "26.6.100-dev",
       "26.6.101-dev",
@@ -4451,7 +5634,29 @@
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3117-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      644,
+      654,
+      655,
+      656,
+      657,
+      658,
+      659,
+      660,
+      661,
+      662,
+      663,
+      665,
+      666,
+      668,
+      670,
+      671,
+      674,
+      675,
+      676,
+      678,
+      679
+    ],
     "builds": [
       "26.5.3105-dev",
       "26.5.3106-dev",
@@ -4580,8 +5785,143 @@
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3113",
     "prNumbers": [
       379,
+      395,
+      396,
+      397,
+      398,
+      399,
+      401,
+      402,
+      403,
+      404,
       405,
+      406,
+      407,
+      408,
+      409,
+      410,
+      412,
+      413,
+      414,
+      418,
+      419,
+      420,
+      424,
+      425,
+      426,
+      427,
+      431,
+      432,
+      433,
+      434,
+      435,
+      436,
+      437,
+      439,
+      440,
+      441,
+      442,
+      443,
+      444,
+      445,
+      446,
+      447,
+      448,
+      449,
+      450,
+      451,
+      452,
+      453,
+      454,
+      455,
+      456,
+      457,
+      458,
+      459,
+      460,
+      461,
+      463,
+      464,
+      465,
+      466,
+      467,
+      468,
+      469,
+      471,
+      472,
+      473,
+      475,
+      476,
+      478,
+      480,
+      481,
+      482,
+      483,
+      484,
+      485,
+      486,
+      487,
+      488,
+      489,
+      490,
+      491,
+      492,
+      494,
+      495,
+      496,
+      498,
+      500,
+      502,
+      504,
+      506,
+      507,
+      509,
+      510,
+      511,
+      512,
+      513,
+      515,
+      516,
+      517,
+      518,
+      519,
+      520,
+      521,
+      522,
+      523,
+      524,
+      525,
+      526,
+      527,
+      528,
+      531,
+      532,
+      533,
+      534,
+      535,
+      536,
+      537,
+      538,
+      539,
+      540,
+      541,
+      542,
+      543,
+      544,
+      545,
+      546,
+      548,
+      552,
+      553,
+      554,
+      555,
+      556,
+      557,
+      558,
+      559,
       560,
+      561,
+      562,
       563,
       564,
       565,
@@ -4592,10 +5932,8 @@
       570,
       571,
       573,
-      574,
       575,
       576,
-      577,
       578,
       579,
       580,
@@ -4610,6 +5948,8 @@
       589,
       591,
       592,
+      593,
+      594,
       595,
       596,
       597,
@@ -4667,13 +6007,13 @@
       657,
       658,
       659,
+      660,
       661,
+      662,
+      663,
       665,
       666,
-      668,
-      670,
-      671,
-      672
+      668
     ],
     "builds": [
       "26.5.3113"
@@ -4774,7 +6114,35 @@
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.3011-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      608,
+      609,
+      610,
+      614,
+      618,
+      620,
+      625,
+      626,
+      627,
+      628,
+      629,
+      630,
+      631,
+      632,
+      633,
+      634,
+      635,
+      636,
+      637,
+      638,
+      640,
+      641,
+      645,
+      646,
+      647,
+      648,
+      649
+    ],
     "builds": [
       "26.5.3000-dev",
       "26.5.3001-dev",
@@ -4916,7 +6284,22 @@
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.2903-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      379,
+      606,
+      607,
+      611,
+      612,
+      613,
+      615,
+      616,
+      617,
+      619,
+      621,
+      622,
+      623,
+      624
+    ],
     "builds": [
       "26.5.2900-dev",
       "26.5.2901-dev",
@@ -4954,7 +6337,9 @@
     ],
     "followUps": [],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.2700-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      605
+    ],
     "builds": [
       "26.5.2700-dev"
     ],
@@ -4971,7 +6356,7 @@
     "tagName": "v26.5.2603-dev",
     "channel": "dev",
     "date": "2026-05-26T21:10:47Z",
-    "deck": "Reduces large-library hydration memory, keeps 1,600 connection Friends graph pan and zoom work inside the frame budget, keeps dense Map interactions responsive, trims oversized event evidence from Freed Desktop renderer state, and restores the dev release build after the projection type guard caught a CI-only TypeScript issue.",
+    "deck": "Reduces large-library hydration memory, keeps 1,600 connection Friends graph pan and zoom work inside the frame budget, keeps dense Map interactions responsive, trims oversized event evidence from Freed Desktop renderer state, and restores the dev release build after the projection type guard caught a CI-only TypeScript issue",
     "features": [],
     "fixes": [
       {
@@ -4989,7 +6374,12 @@
     ],
     "followUps": [],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.2603-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      601,
+      602,
+      603,
+      604
+    ],
     "builds": [
       "26.5.2600-dev",
       "26.5.2601-dev",
@@ -5018,8 +6408,18 @@
     "tagName": "v26.5.1201-dev",
     "channel": "dev",
     "date": "2026-05-12T20:18:26Z",
-    "deck": "Dense Friends graph motion and source filtering stay lighter",
-    "features": [],
+    "deck": "Google OAuth now runs natively in Freed Desktop, large relationship graphs stay lighter during motion, source filtering allocates less work, Map stays smoother, and runtime memory monitoring separates Freed WebKit from machine-wide totals",
+    "features": [
+      {
+        "text": "Story wall publishing"
+      },
+      {
+        "text": "AI ranked friend suggestions"
+      },
+      {
+        "text": "Support Friends graph pinch zoom"
+      }
+    ],
     "fixes": [
       {
         "text": "Keep large Friends graphs responsive by holding active pan and zoom to a stable 160-node paint layer, then refreshing viewport detail after motion settles"
@@ -5028,12 +6428,109 @@
         "text": "Add regression coverage for 1,600-person Friends graphs, including mount time, zoom, pan, scene sync, long tasks, dropped frames, and sidebar row virtualization"
       },
       {
-        "text": "Optimized source sidebar feed search allocation churn for large RSS collections"
+        "text": "Reduce dense Map motion paint during pan and zoom"
+      },
+      {
+        "text": "Report app-scoped native and WebKit memory in renderer heartbeats"
+      },
+      {
+        "text": "Gate optional story scraping on resident memory pressure"
+      },
+      {
+        "text": "Tighten social scraper resident memory start budget"
+      },
+      {
+        "text": "Skip hidden Friends provider labels during graph motion"
+      },
+      {
+        "text": "Gate scraper memory before session slots"
+      },
+      {
+        "text": "Gate social scrapes on resident WebKit memory"
+      },
+      {
+        "text": "Complete Google Contacts sync in Freed Desktop"
+      },
+      {
+        "text": "Share native Google OAuth credentials between Drive and Contacts refresh"
+      },
+      {
+        "text": "Surface Google OAuth and People API failure details in Settings instead of generic load errors"
+      },
+      {
+        "text": "Reader, feed, and header polish"
+      },
+      {
+        "text": "Keep friends graph sync errors recoverable"
+      },
+      {
+        "text": "Test coverage and performance hardening"
+      },
+      {
+        "text": "Release build and type-safety cleanup"
+      },
+      {
+        "text": "Route Google Drive through native sync requests"
+      },
+      {
+        "text": "Capture and scraper reliability fixes"
+      },
+      {
+        "text": "Open the full Map from Friends detail with one atomic store update"
+      },
+      {
+        "text": "Keep large relationship graphs on a smaller 96-node paint layer during active motion before refreshing viewport detail"
+      },
+      {
+        "text": "Reduce Source sidebar feed search allocation churn for large RSS collections"
       }
     ],
-    "followUps": [],
+    "followUps": [
+      {
+        "text": "Lighten settings moving chrome"
+      },
+      {
+        "text": "Reduce settings scroll overdraw"
+      },
+      {
+        "text": "Friends relationship tiers"
+      },
+      {
+        "text": "Reader, sidebar, and settings UX work"
+      },
+      {
+        "text": "Trim reader rail work and stabilize friends perf"
+      },
+      {
+        "text": "Isolate social scraper webkit stores"
+      },
+      {
+        "text": "Gate startup social scraper pressure"
+      },
+      {
+        "text": "Recycle blocked scraper windows"
+      },
+      {
+        "text": "Reserve scraper memory headroom"
+      },
+      {
+        "text": "Slim desktop e2e gates"
+      },
+      {
+        "text": "Keep memory-blocked scrapes from holding the shared scraper slot"
+      },
+      {
+        "text": "Continue passive soak metrics until Apple Events authorization is restored for active UI driving"
+      },
+      {
+        "text": "Treat Settings scroll as the next measured performance surface because it remains the largest budget miss"
+      }
+    ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.1201-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      598,
+      599
+    ],
     "builds": [
       "26.5.1201-dev"
     ],
@@ -5050,72 +6547,130 @@
     "tagName": "v26.5.1112-dev",
     "channel": "dev",
     "date": "2026-05-12T00:39:08Z",
-    "deck": "Google sync, Story wall, scraper gates, and dense Map movement improve",
+    "deck": "Google OAuth now runs natively in Freed Desktop, Friends graph motion stays lighter, Settings and Map stay smoother, runtime memory monitoring separates Freed WebKit from machine-wide totals, and dense Map motion now stays inside the frame budget",
     "features": [
       {
         "text": "Story wall publishing"
+      },
+      {
+        "text": "AI ranked friend suggestions"
+      },
+      {
+        "text": "Support Friends graph pinch zoom"
       }
     ],
     "fixes": [
       {
-        "text": "Completes Google Contacts sync in Freed Desktop"
+        "text": "Reduce dense Map motion paint during pan and zoom"
       },
       {
-        "text": "Shares native Google OAuth credentials between Drive and Contacts refresh"
+        "text": "Report app-scoped native and WebKit memory in renderer heartbeats"
       },
       {
-        "text": "Surfaces Google OAuth and People API failure details in Settings instead of generic load errors"
+        "text": "Gate optional story scraping on resident memory pressure"
       },
       {
-        "text": "Keeps dense Map focused markers visible during movement"
+        "text": "Tighten social scraper resident memory start budget"
       },
       {
-        "text": "Keeps Friends graph sync errors recoverable"
+        "text": "Skip hidden Friends provider labels during graph motion"
       },
       {
-        "text": "Reports throttled renderer heartbeats clearly and separates Freed WebKit memory from machine-wide totals"
+        "text": "Gate scraper memory before session slots"
       },
       {
-        "text": "Gates social scrapes, session slots, and optional story checks on resident memory pressure"
+        "text": "Gate social scrapes on resident WebKit memory"
       },
       {
-        "text": "Keeps dense Map motion inside the frame budget"
+        "text": "Complete Google Contacts sync in Freed Desktop"
       },
       {
-        "text": "Skips hidden Friends provider labels during graph motion"
+        "text": "Share native Google OAuth credentials between Drive and Contacts refresh"
       },
       {
-        "text": "Retries the Friends last-seen route commit when the store reaches Map before the full Map surface mounts"
+        "text": "Surface Google OAuth and People API failure details in Settings instead of generic load errors"
       },
       {
-        "text": "Lightens Settings moving chrome while the dialog is in motion"
+        "text": "Reader, feed, and header polish"
       },
       {
-        "text": "Tightens the social scraper resident memory start budget"
+        "text": "Keep friends graph sync errors recoverable"
+      },
+      {
+        "text": "Test coverage and performance hardening"
+      },
+      {
+        "text": "Release build and type-safety cleanup"
+      },
+      {
+        "text": "Route Google Drive through native sync requests"
+      },
+      {
+        "text": "Capture and scraper reliability fixes"
+      },
+      {
+        "text": "Open the full Map from Friends detail with one atomic store update"
       }
     ],
     "followUps": [
       {
-        "text": "Continue monitoring Settings scroll and scraper memory pressure under installed dev builds"
+        "text": "Lighten settings moving chrome"
       },
       {
-        "text": "Friends navigation recovers from late Map mounting"
+        "text": "Reduce settings scroll overdraw"
       },
       {
-        "text": "Friends navigation and dense Map movement get steadier"
+        "text": "Friends relationship tiers"
       },
       {
-        "text": "Continue monitoring Friends to Map handoffs and dense Map movement under installed dev builds"
+        "text": "Reader, sidebar, and settings UX work"
       },
       {
-        "text": "Friends recovery and renderer health reporting improve"
+        "text": "Trim reader rail work and stabilize friends perf"
+      },
+      {
+        "text": "Isolate social scraper webkit stores"
+      },
+      {
+        "text": "Gate startup social scraper pressure"
+      },
+      {
+        "text": "Recycle blocked scraper windows"
+      },
+      {
+        "text": "Reserve scraper memory headroom"
+      },
+      {
+        "text": "Slim desktop e2e gates"
       },
       {
         "text": "Keep memory-blocked scrapes from holding the shared scraper slot"
+      },
+      {
+        "text": "Continue passive soak metrics until Apple Events authorization is restored for active UI driving"
+      },
+      {
+        "text": "Treat Settings scroll as the next measured performance surface because it remains the largest budget miss"
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.1112-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      405,
+      583,
+      584,
+      585,
+      586,
+      587,
+      588,
+      589,
+      591,
+      592,
+      593,
+      594,
+      595,
+      596,
+      597
+    ],
     "builds": [
       "26.5.1100-dev",
       "26.5.1101-dev",
@@ -5192,32 +6747,39 @@
     "tagName": "v26.5.1015-dev",
     "channel": "dev",
     "date": "2026-05-11T04:47:52Z",
-    "deck": "Settings, Friends graph, and Map handoffs stay stable through release validation",
-    "features": [],
+    "deck": "AI ranked friend suggestions, support Friends graph pinch zoom, and Friends relationship tiers",
+    "features": [
+      {
+        "text": "AI ranked friend suggestions"
+      },
+      {
+        "text": "Support Friends graph pinch zoom"
+      },
+      {
+        "text": "Friends relationship tiers"
+      }
+    ],
     "fixes": [
       {
-        "text": "Pauses Settings descendant transitions while the dialog is moving"
+        "text": "Reader, feed, and header polish"
       },
       {
-        "text": "Reduces Settings scroll paint work and interaction invalidation"
+        "text": "Test coverage and performance hardening"
       },
       {
-        "text": "Flushes Friends detail to Map handoffs before selection changes"
+        "text": "Release build and type-safety cleanup"
       },
       {
-        "text": "Flushes mobile Friends toolbar switches between Details and graph modes"
+        "text": "Route Google Drive through native sync requests"
       },
       {
-        "text": "Caches the Friends graph interaction layer during dense interaction"
+        "text": "Optimized social scraper frame drops"
       },
       {
-        "text": "Guards Friends graph Pixi teardown so the last-seen Map handoff cannot show the fatal error screen"
+        "text": "Dedupe Instagram story captures"
       },
       {
-        "text": "Keeps the collapsed Friends detail-card regression focused on selected-person behavior"
-      },
-      {
-        "text": "Guards the Friends Map surface handoff during route changes"
+        "text": "Pause Settings descendant transitions while the dialog is moving"
       },
       {
         "text": "Open the full Map from Friends detail with one atomic store update"
@@ -5226,31 +6788,210 @@
         "text": "Flush the Friends to Map handoff at the click boundary"
       },
       {
-        "text": "Friends graph perf telemetry now reports dense interaction rebuild count, with a release regression guard for the 1,600-person zoom and pan case"
+        "text": "Flush mobile Friends toolbar switches between Details and graph modes"
       },
       {
-        "text": "Stabilizes Friends empty graph, Tauri mock, and collapsed detail-card validation"
-      }
-    ],
-    "followUps": [
-      {
-        "text": "Continue the installed dev build soak while Settings scroll and Friends graph performance settle"
-      },
-      {
-        "text": "Continue passive soak metrics until Apple Events authorization is restored for active UI driving"
+        "text": "The collapsed Friends detail card empty-space regression are now more stable"
       },
       {
         "text": "Settings scrolling is lighter, and Friends view transitions are stable through the release regression gate"
       },
       {
+        "text": "Guarded Friends graph Pixi teardown so the Last seen to Map handoff cannot be replaced by the fatal error screen"
+      },
+      {
+        "text": "Kept the collapsed Friends detail-card regression focused on selected-person behavior instead of a CI-sensitive graph node point lookup"
+      },
+      {
+        "text": "V26.5.1013-dev replaces the failed v26.5.1012-dev validation tag, which produced no installable artifacts"
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Reader, sidebar, and settings UX work"
+      },
+      {
+        "text": "Trim reader rail work and stabilize friends perf"
+      },
+      {
+        "text": "Isolate social scraper webkit stores"
+      },
+      {
+        "text": "Gate startup social scraper pressure"
+      },
+      {
+        "text": "Recycle blocked scraper windows"
+      },
+      {
+        "text": "Reserve scraper memory headroom"
+      },
+      {
+        "text": "Slim desktop e2e gates"
+      },
+      {
+        "text": "Continue passive soak metrics until Apple Events authorization is restored for active UI driving"
+      },
+      {
         "text": "Treat Settings scroll as the next measured performance surface because it remains the largest budget miss"
       },
       {
-        "text": "Settings interaction work, Friends graph crash protection, and the collapsed Friends detail card stay stable"
+        "text": "Settings scroll and Friends graph stability"
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.1015-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      395,
+      396,
+      397,
+      398,
+      399,
+      401,
+      402,
+      403,
+      404,
+      406,
+      407,
+      408,
+      409,
+      410,
+      412,
+      413,
+      414,
+      418,
+      419,
+      420,
+      424,
+      425,
+      426,
+      427,
+      431,
+      432,
+      433,
+      434,
+      435,
+      436,
+      437,
+      439,
+      440,
+      441,
+      442,
+      443,
+      444,
+      445,
+      446,
+      447,
+      448,
+      449,
+      450,
+      451,
+      452,
+      453,
+      454,
+      455,
+      456,
+      457,
+      458,
+      459,
+      460,
+      461,
+      463,
+      464,
+      465,
+      466,
+      467,
+      468,
+      469,
+      471,
+      472,
+      473,
+      475,
+      476,
+      478,
+      480,
+      481,
+      482,
+      483,
+      484,
+      485,
+      486,
+      487,
+      488,
+      489,
+      490,
+      491,
+      492,
+      494,
+      495,
+      496,
+      498,
+      500,
+      502,
+      504,
+      506,
+      507,
+      509,
+      510,
+      511,
+      512,
+      513,
+      515,
+      516,
+      517,
+      518,
+      519,
+      520,
+      521,
+      522,
+      523,
+      524,
+      525,
+      526,
+      527,
+      528,
+      531,
+      532,
+      533,
+      534,
+      535,
+      536,
+      537,
+      538,
+      539,
+      540,
+      541,
+      542,
+      543,
+      544,
+      545,
+      546,
+      548,
+      552,
+      553,
+      554,
+      555,
+      556,
+      557,
+      558,
+      559,
+      560,
+      563,
+      564,
+      565,
+      566,
+      567,
+      568,
+      569,
+      570,
+      571,
+      573,
+      575,
+      576,
+      578,
+      579,
+      580,
+      581,
+      582
+    ],
     "builds": [
       "26.5.1003-dev",
       "26.5.1004-dev",
@@ -5355,7 +7096,27 @@
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.914-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      543,
+      544,
+      545,
+      546,
+      548,
+      552,
+      553,
+      554,
+      555,
+      556,
+      557,
+      558,
+      559,
+      560,
+      561,
+      562,
+      563,
+      564,
+      565
+    ],
     "builds": [
       "26.5.901-dev",
       "26.5.903-dev",
@@ -5472,7 +7233,20 @@
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.807-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      531,
+      532,
+      533,
+      534,
+      535,
+      536,
+      537,
+      538,
+      539,
+      540,
+      541,
+      542
+    ],
     "builds": [
       "26.5.800-dev",
       "26.5.801-dev",
@@ -5598,7 +7372,26 @@
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.705-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      510,
+      511,
+      512,
+      513,
+      515,
+      516,
+      517,
+      518,
+      519,
+      520,
+      521,
+      522,
+      523,
+      524,
+      525,
+      526,
+      527,
+      528
+    ],
     "builds": [
       "26.5.700-dev",
       "26.5.701-dev",
@@ -5717,7 +7510,50 @@
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.702",
     "prNumbers": [
+      458,
+      459,
+      460,
+      461,
+      462,
+      463,
+      464,
+      465,
+      466,
+      467,
+      468,
+      469,
+      471,
+      472,
+      473,
+      475,
+      476,
+      478,
+      480,
+      482,
+      483,
+      484,
+      485,
+      486,
+      487,
+      488,
+      489,
+      490,
+      491,
+      492,
+      494,
+      495,
+      496,
+      498,
+      500,
+      502,
+      504,
+      506,
       508,
+      509,
+      510,
+      511,
+      512,
+      513,
       514
     ],
     "builds": [
@@ -5793,6 +7629,9 @@
         "text": "Freed Desktop keeps WebKit memory maintenance ahead of scrapes"
       },
       {
+        "text": "Freed Desktop keeps Friends graph pinch, compact-card, and promotion checks stable for release validation"
+      },
+      {
         "text": "Freed Desktop improves dense Map rendering and keeps Google sync on native requests"
       },
       {
@@ -5812,7 +7651,47 @@
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.633-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      458,
+      459,
+      460,
+      461,
+      462,
+      463,
+      464,
+      465,
+      466,
+      467,
+      468,
+      469,
+      471,
+      472,
+      473,
+      475,
+      476,
+      478,
+      480,
+      482,
+      483,
+      484,
+      485,
+      486,
+      487,
+      488,
+      489,
+      490,
+      491,
+      492,
+      494,
+      495,
+      496,
+      498,
+      500,
+      502,
+      504,
+      506,
+      509
+    ],
     "builds": [
       "26.5.600-dev",
       "26.5.601-dev",
@@ -6005,7 +7884,31 @@
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.517-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      434,
+      435,
+      436,
+      437,
+      439,
+      440,
+      441,
+      442,
+      443,
+      444,
+      445,
+      446,
+      447,
+      448,
+      449,
+      450,
+      451,
+      452,
+      453,
+      454,
+      455,
+      456,
+      457
+    ],
     "builds": [
       "26.5.500-dev",
       "26.5.501-dev",
@@ -6155,7 +8058,19 @@
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.406-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      408,
+      418,
+      419,
+      420,
+      424,
+      425,
+      426,
+      427,
+      431,
+      432,
+      433
+    ],
     "builds": [
       "26.5.402-dev",
       "26.5.404-dev",
@@ -6301,8 +8216,79 @@
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.309",
     "prNumbers": [
+      320,
+      321,
+      322,
+      330,
+      331,
+      332,
+      333,
+      335,
+      337,
+      339,
+      340,
+      342,
+      343,
+      345,
+      346,
+      349,
+      350,
+      351,
+      352,
+      353,
+      354,
+      355,
+      356,
+      357,
+      358,
+      359,
+      360,
+      361,
+      362,
+      363,
+      364,
+      365,
+      366,
+      367,
+      368,
+      369,
+      370,
+      371,
+      372,
+      373,
+      374,
+      376,
+      377,
+      378,
+      380,
+      381,
+      382,
+      383,
+      384,
+      385,
+      386,
+      387,
+      388,
+      389,
+      391,
+      392,
+      393,
+      395,
+      396,
+      397,
+      398,
+      399,
+      401,
+      402,
+      403,
+      404,
+      406,
+      407,
+      409,
+      410,
       411,
       412,
+      413,
       414,
       416
     ],
@@ -6381,7 +8367,20 @@
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.308-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      399,
+      401,
+      402,
+      403,
+      404,
+      406,
+      407,
+      409,
+      410,
+      412,
+      413,
+      414
+    ],
     "builds": [
       "26.5.300-dev",
       "26.5.301-dev",
@@ -6417,11 +8416,33 @@
     "channel": "dev",
     "date": "2026-05-02T22:17:34Z",
     "deck": "AI ranked friend suggestions and a shared friends lens across core views.",
-    "features": [],
-    "fixes": [],
+    "features": [
+      {
+        "text": "Added ranked friend suggestions built from identity graph data, activity signals, contact overlap, and optional local AI content classifications."
+      },
+      {
+        "text": "Added suggested-friend review surfaces with reasons, sample evidence counts, dismiss controls, and explicit promote or link actions."
+      },
+      {
+        "text": "Added the Friends and All content lens to the feed toolbar so the map, feed, and friends views share the same scope control."
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Preserved paused native local AI downloads more reliably across pause and bookkeeping boundaries."
+      },
+      {
+        "text": "Fixed the local AI pause regression test typing issue that blocked dev release validation."
+      }
+    ],
     "followUps": [],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.201-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      395,
+      396,
+      397,
+      398
+    ],
     "builds": [
       "26.5.201-dev"
     ],
@@ -6493,7 +8514,16 @@
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.5.103-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      385,
+      386,
+      387,
+      388,
+      389,
+      391,
+      392,
+      393
+    ],
     "builds": [
       "26.5.101-dev",
       "26.5.102-dev",
@@ -6599,7 +8629,31 @@
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.3006-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      355,
+      361,
+      362,
+      363,
+      364,
+      365,
+      366,
+      367,
+      368,
+      369,
+      370,
+      371,
+      372,
+      373,
+      374,
+      376,
+      377,
+      378,
+      380,
+      381,
+      382,
+      383,
+      384
+    ],
     "builds": [
       "26.4.3000-dev",
       "26.4.3001-dev",
@@ -6657,7 +8711,7 @@
     ],
     "fixes": [
       {
-        "text": "Recover Freed Desktop after main renderer stalls instead of leaving the app without a main window"
+        "text": "Recover main window after renderer stalls"
       },
       {
         "text": "Polish reader sidebar and toolbar layout"
@@ -6677,7 +8731,14 @@
     ],
     "followUps": [],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2904-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      354,
+      356,
+      357,
+      358,
+      359,
+      360
+    ],
     "builds": [
       "26.4.2900-dev",
       "26.4.2901-dev",
@@ -6718,19 +8779,15 @@
     "tagName": "v26.4.2800-dev",
     "channel": "dev",
     "date": "2026-04-28T22:32:24Z",
-    "deck": "Dev releases now build for every primary supported platform.",
+    "deck": "Dev releases now build for every primary supported platform",
     "features": [],
-    "fixes": [
-      {
-        "text": "Dev tagged releases now use the same primary build matrix as production, covering macOS Apple Silicon, macOS Intel, Windows x64, and Linux x64."
-      },
-      {
-        "text": "Paused local AI model downloads keep their progress after the app reloads or restarts."
-      }
-    ],
+    "fixes": [],
     "followUps": [],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2800-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      352,
+      353
+    ],
     "builds": [
       "26.4.2800-dev"
     ],
@@ -6763,7 +8820,10 @@
     ],
     "followUps": [],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2700-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      350,
+      351
+    ],
     "builds": [
       "26.4.2700-dev"
     ],
@@ -6833,7 +8893,24 @@
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2606-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      320,
+      321,
+      322,
+      330,
+      331,
+      332,
+      333,
+      335,
+      337,
+      339,
+      340,
+      342,
+      343,
+      345,
+      346,
+      349
+    ],
     "builds": [
       "26.4.2604-dev",
       "26.4.2605-dev",
@@ -6867,7 +8944,11 @@
     "fixes": [],
     "followUps": [],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2500-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      317,
+      318,
+      319
+    ],
     "builds": [
       "26.4.2500-dev"
     ],
@@ -6955,7 +9036,44 @@
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2401-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      206,
+      207,
+      211,
+      213,
+      215,
+      216,
+      222,
+      227,
+      252,
+      264,
+      274,
+      275,
+      276,
+      277,
+      279,
+      280,
+      284,
+      285,
+      286,
+      288,
+      289,
+      290,
+      291,
+      294,
+      295,
+      296,
+      297,
+      301,
+      304,
+      305,
+      307,
+      310,
+      312,
+      314,
+      315,
+      316
+    ],
     "builds": [
       "26.4.2401-dev"
     ],
@@ -7081,7 +9199,41 @@
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2100",
     "prNumbers": [
+      225,
+      226,
       227,
+      228,
+      229,
+      230,
+      233,
+      235,
+      238,
+      239,
+      240,
+      241,
+      242,
+      243,
+      244,
+      245,
+      246,
+      247,
+      248,
+      253,
+      254,
+      255,
+      256,
+      258,
+      260,
+      261,
+      262,
+      263,
+      265,
+      266,
+      267,
+      268,
+      269,
+      270,
+      271,
       274
     ],
     "builds": [
@@ -7135,7 +9287,24 @@
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2002-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      253,
+      254,
+      255,
+      256,
+      258,
+      260,
+      261,
+      262,
+      263,
+      265,
+      266,
+      267,
+      268,
+      269,
+      270,
+      271
+    ],
     "builds": [
       "26.4.2001-dev",
       "26.4.2002-dev"
@@ -7193,7 +9362,7 @@
         "text": "Lets dev installs take a newer production update when no newer dev build exists, without switching release channels"
       },
       {
-        "text": "Shows the -dev suffix consistently in desktop update surfaces and settings"
+        "text": "Shows the `-dev` suffix consistently in desktop update surfaces and settings"
       }
     ],
     "followUps": [
@@ -7202,7 +9371,18 @@
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1901-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      239,
+      240,
+      241,
+      242,
+      243,
+      244,
+      245,
+      246,
+      247,
+      248
+    ],
     "builds": [
       "26.4.1900-dev",
       "26.4.1901-dev"
@@ -7238,7 +9418,11 @@
     ],
     "followUps": [],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1802-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      233,
+      235,
+      238
+    ],
     "builds": [
       "26.4.1800-dev",
       "26.4.1802-dev"
@@ -7266,7 +9450,13 @@
     "fixes": [],
     "followUps": [],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1700-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      225,
+      226,
+      228,
+      229,
+      230
+    ],
     "builds": [
       "26.4.1700-dev"
     ],
@@ -7292,7 +9482,12 @@
     ],
     "followUps": [],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1602",
-    "prNumbers": [],
+    "prNumbers": [
+      213,
+      215,
+      216,
+      222
+    ],
     "builds": [
       "26.4.1600",
       "26.4.1602"
@@ -7327,7 +9522,10 @@
     ],
     "followUps": [],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1601-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      223,
+      224
+    ],
     "builds": [
       "26.4.1601-dev"
     ],
@@ -7363,7 +9561,11 @@
     ],
     "followUps": [],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1501-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      214,
+      217,
+      218
+    ],
     "builds": [
       "26.4.1500-dev",
       "26.4.1501-dev"
@@ -7433,7 +9635,179 @@
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1403-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      16,
+      27,
+      31,
+      32,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47,
+      48,
+      49,
+      50,
+      51,
+      52,
+      55,
+      56,
+      57,
+      58,
+      59,
+      71,
+      72,
+      73,
+      74,
+      75,
+      76,
+      77,
+      78,
+      79,
+      80,
+      81,
+      82,
+      83,
+      84,
+      85,
+      86,
+      87,
+      89,
+      90,
+      91,
+      92,
+      93,
+      94,
+      95,
+      96,
+      97,
+      98,
+      100,
+      101,
+      102,
+      103,
+      104,
+      105,
+      106,
+      107,
+      108,
+      109,
+      110,
+      111,
+      112,
+      113,
+      114,
+      115,
+      116,
+      117,
+      118,
+      119,
+      120,
+      121,
+      122,
+      123,
+      124,
+      125,
+      126,
+      127,
+      128,
+      129,
+      130,
+      131,
+      132,
+      133,
+      134,
+      135,
+      136,
+      137,
+      138,
+      139,
+      140,
+      141,
+      142,
+      143,
+      144,
+      145,
+      146,
+      147,
+      148,
+      150,
+      151,
+      152,
+      153,
+      154,
+      155,
+      156,
+      157,
+      158,
+      159,
+      161,
+      162,
+      163,
+      164,
+      165,
+      166,
+      167,
+      168,
+      169,
+      170,
+      171,
+      172,
+      173,
+      174,
+      175,
+      176,
+      177,
+      178,
+      179,
+      180,
+      181,
+      182,
+      184,
+      185,
+      186,
+      187,
+      188,
+      190,
+      191,
+      192,
+      193,
+      194,
+      195,
+      196,
+      197,
+      198,
+      199,
+      200,
+      201,
+      202,
+      203,
+      204,
+      205,
+      208,
+      209,
+      210,
+      212
+    ],
     "builds": [
       "26.4.1403-dev"
     ],

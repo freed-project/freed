@@ -16,7 +16,8 @@
     "test:newsletter": "npx tsx src/app/api/subscribe/newsletter-security.test.ts",
     "test:e2e": "node ../node_modules/playwright/cli.js test -c playwright.config.ts",
     "generate:social-preview": "node scripts/generate-social-preview.mjs",
-    "check:social-preview": "node scripts/generate-social-preview.mjs --check"
+    "check:social-preview": "node scripts/generate-social-preview.mjs --check",
+    "test:changelog": "npx tsx --test src/content/changelog.test.ts scripts/generate-changelog.test.ts"
   },
   "dependencies": {
     "@floating-ui/react": "^0.27.17",
