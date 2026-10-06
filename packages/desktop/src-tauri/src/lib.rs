@@ -14624,6 +14624,9 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building Freed")
         .run(|app, event| {
+            if matches!(&event,tauri::RunEvent::Exit) {
+                library_core_desktop_runtime::stop_annotation_continuation();
+            }
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Reopen {
                 has_visible_windows,

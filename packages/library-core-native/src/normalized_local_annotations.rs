@@ -91,7 +91,7 @@ pub(crate) fn reject_building(db: &Connection) -> Result<(), NormalizedSqliteErr
     match version(db)? {
         // The dormant preference adapter owns its exact v3 admission separately.
         // This phase guard must not activate it or replace the ordinary catalog gate.
-        1 | 2 | 3 => Ok(()),
+        1..=3 => Ok(()),
         4 | 5 => {
             let ready: bool = db.query_row("SELECT phase='ready' FROM library_local_annotation_migration WHERE singleton_id=1;", [], |row| row.get(0))?;
             if ready {
@@ -333,7 +333,7 @@ pub(crate) fn retire_transaction(
     transaction_id: &str,
 ) -> Result<(), NormalizedSqliteError> {
     match version(tx)? {
-        1 | 2 | 3 => return Ok(()),
+        1..=3 => return Ok(()),
         _ => require_ready(tx)?,
     }
     let entities: Vec<String> = {
@@ -477,7 +477,7 @@ pub(crate) fn reconcile_page(
 pub(crate) fn retire_checkpoint(
     tx: &rusqlite::Transaction<'_>,
 ) -> Result<(), NormalizedSqliteError> {
-    if matches!(version(tx)?, 1 | 2 | 3) {
+    if matches!(version(tx)?, 1..=3) {
         return Ok(());
     }
     require_ready(tx)?;

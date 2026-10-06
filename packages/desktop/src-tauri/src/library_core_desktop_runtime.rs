@@ -111,30 +111,40 @@ const NORMALIZED_DATABASE_FILE: &str = "library-core.sqlite";
 const CHECKPOINT_EXPORT_SESSION_MAX_AGE: Duration = Duration::from_secs(5 * 60);
 const NORMALIZED_QUERY_CONCURRENCY: usize = 8;
 
-#[derive(Default)]
-struct AnnotationContinuationState {
-    running: bool,
-    dirty: bool,
-    failed: bool,
+static ANNOTATION_OWNER: OnceLock<Arc<freed_library_core::AnnotationMaintenanceOwner>> =
+    OnceLock::new();
+fn annotation_owner(
+    app: &tauri::AppHandle,
+) -> &'static Arc<freed_library_core::AnnotationMaintenanceOwner> {
+    ANNOTATION_OWNER.get_or_init(|| {
+        let binding_app=app.clone();let notify_app=app.clone();
+        freed_library_core::AnnotationMaintenanceOwner::new(move|pass| {
+            let result=(|| -> Result<_,String> {
+                #[cfg(unix)]
+                { let _=&binding_app;freed_library_core::desktop_binding().map_err(|error|error.to_string())?.reconcile_annotation_slice_v1(pass).map_err(|error|error.to_string()) }
+                #[cfg(not(unix))]
+                {
+                    let _gate=HANDOFF_RESET_GATE.lock().map_err(|_|"Desktop Library reset gate is poisoned".to_string())?;
+                    let mut connection=open_normalized_database(&binding_app)?;
+                    connection.busy_timeout(Duration::from_millis(25)).map_err(|error|error.to_string())?;
+                    let before=connection.total_changes();
+                    let next=freed_library_core::reconcile_normalized_annotation_slice_v1(&mut connection,pass).map_err(|error|error.to_string())?;
+                    Ok((next,connection.total_changes()!=before))
+                }
+            })();
+            result.map_err(|error|if error.contains("database is locked") || error.contains("SQLITE_BUSY") {
+                freed_library_core::AnnotationMaintenanceError::Busy
+            } else {freed_library_core::AnnotationMaintenanceError::Refused})
+        },move|failed| {
+            if failed {log::error!("Annotation maintenance refused; canonical annotations and pending evidence were preserved");}
+            let _=notify_app.emit("library-local-changes-available",());
+        })
+    })
 }
-fn annotation_continuation_state() -> &'static Mutex<AnnotationContinuationState> {
-    static STATE: OnceLock<Mutex<AnnotationContinuationState>> = OnceLock::new();
-    STATE.get_or_init(|| Mutex::new(AnnotationContinuationState::default()))
-}
-
-/// Explicit owner startup hook. Reads and generic connection opens never start maintenance.
+/// Explicit owner startup hook. Read and generic open helpers never start work.
 pub(super) fn start_annotation_continuation(app: &tauri::AppHandle) {
     match desktop_library_is_selected(app) {
-        Ok(true) => {
-            let mut state = annotation_continuation_state()
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            if !state.running {
-                state.failed = false;
-            }
-            drop(state);
-            mark_annotation_work_dirty(app);
-        }
+        Ok(true) => annotation_owner(app).restart(),
         Ok(false) => {}
         Err(_) => {
             log::error!("Annotation maintenance startup refused; pending evidence was preserved")
@@ -142,76 +152,11 @@ pub(super) fn start_annotation_continuation(app: &tauri::AppHandle) {
     }
 }
 fn mark_annotation_work_dirty(app: &tauri::AppHandle) {
-    let mut state = annotation_continuation_state()
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    // Corruption/refusal is latched until an explicit owned startup. Ordinary
-    // arrivals must not convert a permanent refusal into an idle retry loop.
-    if state.failed {
-        return;
-    }
-    state.dirty = true;
-    if state.running {
-        return;
-    }
-    state.running = true;
-    state.failed = false;
-    drop(state);
-    let app = app.clone();
-    let spawned=std::thread::Builder::new().name("freed-annotation-maintenance".into()).spawn(move || {
-        let mut pass=None;
-        loop {
-            {
-                let mut state=annotation_continuation_state().lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-                if pass.is_none() {
-                    if !state.dirty { state.running=false; return; }
-                    state.dirty=false;
-                }
-            }
-            let result=(|| -> Result<_,String> {
-                #[cfg(unix)]
-                { freed_library_core::desktop_binding().map_err(|error|error.to_string())?.reconcile_annotation_slice_v1(pass.clone()).map_err(|error|error.to_string()) }
-                #[cfg(not(unix))]
-                {
-                    let mut connection=open_normalized_database(&app)?;
-                    connection.busy_timeout(Duration::from_millis(25)).map_err(|error|error.to_string())?;
-                    let before=connection.total_changes();
-                    let next=freed_library_core::reconcile_normalized_annotation_slice_v1(&mut connection,pass.clone()).map_err(|error|error.to_string())?;
-                    Ok((next,connection.total_changes()!=before))
-                }
-            })();
-            match result {
-                Ok((next,changed)) => {
-                    pass=next;
-                    if changed { let _=app.emit("library-local-changes-available",()); }
-                },
-                Err(error) if error.contains("database is locked") || error.contains("SQLITE_BUSY") => {
-                    let mut state=annotation_continuation_state().lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-                    state.dirty=true;
-                    drop(state);
-                    std::thread::sleep(Duration::from_millis(25));
-                    continue;
-                },
-                Err(_) => {
-                    let mut state=annotation_continuation_state().lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-                    state.failed=true; state.running=false;
-                    log::error!("Annotation maintenance refused; canonical annotations and pending evidence were preserved");
-                    let _=app.emit("library-local-changes-available",());
-                    return;
-                }
-            }
-            // The binding, connection and IMMEDIATE transaction are released.
-            // Yield before opening the next bounded slice so commands can write.
-            std::thread::sleep(Duration::from_millis(1));
-        }
-    });
-    if spawned.is_err() {
-        let mut state = annotation_continuation_state()
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        state.running = false;
-        state.failed = true;
-        log::error!("Annotation maintenance could not start; editing remains unavailable");
+    annotation_owner(app).mark_dirty();
+}
+pub(super) fn stop_annotation_continuation() {
+    if let Some(owner) = ANNOTATION_OWNER.get() {
+        owner.stop();
     }
 }
 
@@ -1218,10 +1163,7 @@ pub(super) async fn query_normalized_library(
     webview: tauri::Webview,
 ) -> Result<Value, String> {
     if request.get("queryId").and_then(Value::as_str) == Some("item_annotation_edit_state_v1")
-        && annotation_continuation_state()
-            .lock()
-            .map_err(|_| "Annotation maintenance state unavailable")?
-            .failed
+        && ANNOTATION_OWNER.get().is_some_and(|owner| owner.failed())
     {
         return Err(
             "Annotation maintenance refused; editing is unavailable until the Library is reopened"
@@ -3550,6 +3492,14 @@ pub(super) fn clear_normalized_local_snapshots(_app: tauri::AppHandle) -> Result
 
 #[tauri::command]
 pub(super) fn reset_normalized_library(app: tauri::AppHandle) -> Result<(), String> {
+    stop_annotation_continuation();
+    let result = reset_normalized_library_inner(app.clone());
+    if result.is_err() {
+        start_annotation_continuation(&app);
+    }
+    result
+}
+fn reset_normalized_library_inner(app: tauri::AppHandle) -> Result<(), String> {
     #[cfg(unix)]
     {
         let _ = app;

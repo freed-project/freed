@@ -3,6 +3,8 @@ import { createLibraryCoreSqliteReplicaAuditWorkerRequest, createLibraryCoreSqli
 
 const storage = vi.hoisted(() => ({
   query: vi.fn(),
+  scalar: vi.fn(),
+  resumeUpgrade: vi.fn(),
   audit: vi.fn(),
   predecessor: vi.fn(),
   predecessorRead: vi.fn(),
@@ -17,10 +19,10 @@ const storage = vi.hoisted(() => ({
 }));
 vi.mock("@sqlite.org/sqlite-wasm", () => ({ default: async () => ({
   version: { libVersion: "test" },
-  oo1: { DB: class { constructor(...args: unknown[]) { storage.memoryOpen(...args); } selectValue() { return 0; } } },
+  oo1: { DB: class { constructor(...args: unknown[]) { storage.memoryOpen(...args); } selectValue(sql: string) { return storage.scalar(sql); } } },
   installOpfsSAHPoolVfs: storage.installOpfs,
 }) }));
-vi.mock("./library-core-annotation-storage", () => ({ resumePwaAnnotationUpgrade: () => true }));
+vi.mock("./library-core-annotation-storage", () => ({ resumePwaAnnotationUpgrade: storage.resumeUpgrade }));
 vi.mock("./library-core-sqlite-engine", () => ({ PwaLibraryCoreSqliteEngine: class {
   constructor(...args: unknown[]) { storage.engineOpen(...args); }
   queryWithVerification = storage.query;
@@ -44,12 +46,44 @@ describe("demo worker storage isolation", () => {
     vi.resetModules();
     vi.clearAllMocks();
     storage.audit.mockReset();
+    storage.scalar.mockReset().mockReturnValue(0);
+    storage.resumeUpgrade.mockReset().mockReturnValue(true);
     storage.beginAnnotations.mockReset().mockReturnValue(null);
     storage.annotationPage.mockReset();
     vi.stubEnv("VITE_FREED_DEMO", "0");
     vi.stubEnv("VITE_FREED_PWA_SQLITE_MEMORY_E2E", "0");
   });
   afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
+
+  it("yields pre-bootstrap unfinished startup without querying a missing receipt or reporting progress", async () => {
+    vi.useFakeTimers();
+    storage.scalar.mockImplementation((sql:string)=>{
+      if (sql!=="PRAGMA user_version;") throw new Error("no migration receipt exists before bootstrap");
+      return 1;
+    });
+    storage.resumeUpgrade.mockReturnValueOnce(false).mockReturnValue(true);
+    vi.stubGlobal("navigator", {});
+    vi.stubGlobal("location", new URL("https://demo.freed.wtf/"));
+    vi.stubGlobal("name", "freed-library-core-sqlite-demo");
+    vi.stubGlobal("onmessage", null);
+    const replies: unknown[]=[];
+    vi.stubGlobal("postMessage",(reply:unknown)=>replies.push(reply));
+    await import("./library-core-sqlite-worker");
+    const send=(kind:"open"|"status")=>(globalThis.onmessage as unknown as (event:MessageEvent)=>void)({
+      data:createLibraryCoreSqliteWorkerRequest(kind,kind),isTrusted:true,source:null,origin:"https://demo.freed.wtf",
+    } as MessageEvent);
+    send("open");send("status");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(storage.resumeUpgrade).toHaveBeenCalledOnce();
+    expect(replies).toEqual([]);
+    await vi.advanceTimersByTimeAsync(25);
+    expect(storage.resumeUpgrade).toHaveBeenCalledTimes(2);
+    expect(storage.engineOpen).toHaveBeenCalledOnce();
+    expect(replies).toEqual([
+      expect.objectContaining({requestId:"open",ok:true}),
+      expect.objectContaining({requestId:"status",ok:true}),
+    ]);
+  });
 
   it("yields annotation slices behind commands and cancels the old session on close", async () => {
     vi.useFakeTimers();

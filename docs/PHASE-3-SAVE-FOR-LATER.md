@@ -63,6 +63,11 @@ uses the owned upgrader before publication. Native subprocess interruption and
 PWA worker cancellation/reopen fixtures preserve committed progress and the
 original pin. Non-Unix startup is wired before runtime exposure; Linux path-helper
 proof does not establish Windows execution.
+PWA startup also yields safely when its first budget expires before bootstrap
+creates a receipt. Native maintenance uses one annotation-specific thread owner;
+reset and process exit stop and join its bounded current slice. Controlled-callback
+tests cover dirty arrivals, busy deferral, latched refusal and restart. Real binding
+and SQLite proofs remain separate from installed runtime acceptance.
 No new quote editor is included.
 
 ---

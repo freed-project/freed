@@ -149,12 +149,19 @@ async function open(requestId: string): Promise<PwaLibraryCoreSqliteEngine> {
     while (!resumePwaAnnotationUpgrade(database,sqlite3.capi,()=>new sqlite3.oo1.DB(":memory:","c"))) {
       // Keep ownership, SAH and the unpublished engine through startup. Each
       // invocation commits only bounded pages; no transaction crosses the yield.
-      const scanned=Number(database.selectValue("SELECT scanned_members FROM library_local_annotation_migration WHERE singleton_id=1;") ?? 0);
-      if (!Number.isSafeInteger(scanned) || scanned<0 || scanned<scannedMembers) throw new Error("Annotation upgrade progress is invalid");
-      if (scanned>scannedMembers) {
-        scannedMembers=scanned;
-        scope.postMessage({kind:"annotation_upgrade_progress",requestId,scannedMembers:scanned});
+      const physicalVersion=Number(database.selectValue("PRAGMA user_version;"));
+      if (physicalVersion===4 || physicalVersion===5) {
+        const scanned=Number(database.selectValue("SELECT scanned_members FROM library_local_annotation_migration WHERE singleton_id=1;"));
+        if (!Number.isSafeInteger(scanned) || scanned<0 || scanned<scannedMembers) throw new Error("Annotation upgrade progress is invalid");
+        if (scanned>scannedMembers) {
+          scannedMembers=scanned;
+          scope.postMessage({kind:"annotation_upgrade_progress",requestId,scannedMembers:scanned});
+        }
+      } else if (physicalVersion!==1 && physicalVersion!==2) {
+        throw new Error("Annotation upgrade storage version is unsupported");
       }
+      // Catalog verification may exhaust its budget before bootstrap. In source
+      // 1/2 there is no receipt and no committed progress to renew a stall budget.
       await new Promise<void>(resolve=>setTimeout(resolve,25));
     }
     next.initialize();
