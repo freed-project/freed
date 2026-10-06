@@ -18,7 +18,7 @@ export function JevSettingsSection() {
   const [testing, setTesting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const controller = useRef<AbortController | null>(null);
-  useEffect(() => () => { controller.current?.abort(); void gliclassModels.pauseDownload("gliclass-base"); }, []);
+  useEffect(() => () => { controller.current?.abort(); void gliclassModels.pauseDownload("gliclass-base").catch(() => {}); }, []);
   useEffect(() => {
     if (!isJevNative) return;
     let disposed = false;
@@ -43,9 +43,16 @@ export function JevSettingsSection() {
   }
   async function select(provider: JevClassifierProvider) {
     controller.current?.abort(); setTesting(false); setMessage(null);
-    if (downloadBusy) await gliclassModels.pauseDownload("gliclass-base");
-    setJevClassifierProvider(provider); setProvider(provider);
-    if (provider === "gliclass-base" && localStatus !== "available") await download();
+    try {
+      if (downloadBusy) await gliclassModels.pauseDownload("gliclass-base");
+      setJevClassifierProvider(provider); setProvider(provider);
+      if (provider === "gliclass-base" && localStatus !== "available") await download();
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Could not switch classifiers."); }
+  }
+  async function pause() {
+    setMessage(null);
+    try { await gliclassModels.pauseDownload("gliclass-base"); setLocalStatus("paused"); }
+    catch (error) { setMessage(error instanceof Error ? error.message : "Could not pause the GLiClass download."); }
   }
   async function remove() {
     try { await removeLocalGliclass(); setLocalStatus("not_downloaded"); setDownloaded(0); setJevClassifierProvider(getJevClassifierProvider()); }
@@ -92,7 +99,7 @@ uv run --extra serve python -m kev.serve --run jaredpalmer/kev-4b@v1.0 --host 12
       <p>Experimental local post signals, with no API key or cloud fallback. Selecting this model downloads official Apache-2.0 weights and tokenizer from Hugging Face ({GLICLASS_MANIFEST.estimatedDownloadBytes.toLocaleString()} bytes). Classification runs locally after download. Capability matching currently requires an explicit switch to Jev.</p>
       <p>Its accuracy and thresholds have not been established as equivalent to Jev. Long inputs abstain when they exceed the token limit.</p>
       <p role="status">{downloadBusy ? `Downloading ${downloaded.toLocaleString()} / ${GLICLASS_MANIFEST.estimatedDownloadBytes.toLocaleString()} bytes` : localStatus === "available" ? "Local model ready. Works offline." : localStatus === "paused" ? "Download paused. Resume to continue." : "Local model not downloaded."}</p>
-      {downloadBusy ? <button type="button" className="theme-toolbar-button-ghost rounded-lg px-3 py-1.5" onClick={() => void gliclassModels.pauseDownload("gliclass-base").then(() => setLocalStatus("paused"))}>Cancel download</button> : <button type="button" className="theme-toolbar-button-ghost rounded-lg px-3 py-1.5" onClick={() => void download()} disabled={localStatus === "available"}>Download or resume</button>}
+      {downloadBusy ? <button type="button" className="theme-toolbar-button-ghost rounded-lg px-3 py-1.5" onClick={() => void pause()}>Cancel download</button> : <button type="button" className="theme-toolbar-button-ghost rounded-lg px-3 py-1.5" onClick={() => void download()} disabled={localStatus === "available"}>Download or resume</button>}
       <button type="button" disabled={downloadBusy} className="theme-toolbar-button-ghost rounded-lg px-3 py-1.5" onClick={() => void remove()}>Remove model and release memory</button>
     </div>}
     {message && <p role="status" className="text-xs text-[var(--theme-text-secondary)]">{message}</p>}
