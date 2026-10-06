@@ -71,7 +71,9 @@ export function verifyPwaAnnotationCatalog(db: Database, reference: Database): n
 
 export function rejectPwaAnnotationBuilding(db: Database): void {
   const version = Number(scalar(db,"PRAGMA user_version;"));
-  digest(version);
+  // Dormant preference v3 retains its own exact catalog gate, as on native.
+  // This phase guard neither activates v3 nor admits it to ordinary startup.
+  if (version !== 3) digest(version);
   if ((version===4 || version===5) && scalar(db,"SELECT phase='ready' FROM library_local_annotation_migration WHERE singleton_id=1;") !== 1) throw new Error("LOCAL_ANNOTATION_MIGRATION_BUILDING");
 }
 export function requirePwaAnnotationReady(db: Database): void {
@@ -176,7 +178,7 @@ function invalidateAnnotation(db: Database, entity: string, reason: "optimistic_
  */
 export function retirePwaAnnotationTransaction(db: Database, transactionId: string): void {
   const version=Number(scalar(db,"PRAGMA user_version;"));
-  if (version===1 || version===2) return;
+  if (version===1 || version===2 || version===3) return;
   requirePwaAnnotationReady(db);
   const entities=db.exec({sql:"SELECT entity_id FROM library_local_annotation_unresolved WHERE transaction_id=?1 ORDER BY member_index LIMIT 257;",bind:[transactionId],rowMode:0,returnValue:"resultRows"});
   if (!entities.length) return;
@@ -218,7 +220,7 @@ export function reconcilePwaAnnotationPage(db: Database, after: readonly [string
 
 export function retirePwaAnnotationCheckpoint(db: Database): void {
   const version=Number(scalar(db,"PRAGMA user_version;"));
-  if (version===1 || version===2) return;
+  if (version===1 || version===2 || version===3) return;
   requirePwaAnnotationReady(db);
   const predicate=LIBRARY_CORE_ANNOTATION_COVERAGE_SQL.trim().replace(/;$/,"").replaceAll("?1","marker.transaction_id");
   db.exec(`DELETE FROM library_local_annotation_unresolved AS marker WHERE (${predicate});`);

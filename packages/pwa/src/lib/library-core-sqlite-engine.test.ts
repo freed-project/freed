@@ -1,3 +1,4 @@
+import { resumePwaAnnotationUpgrade } from "./library-core-annotation-storage";
 import { catchUpLibraryCorePredecessorCheckpointV1 } from "@freed/sync/cloud/library-core";
 import nativeHandoffCatchup from "../../../shared/src/library-core/native-handoff-catchup-vector-v1.json";
 import nativeMissedTransfers from "../../../shared/src/library-core/native-missed-transfer-vector-v1.json";
@@ -4012,6 +4013,11 @@ describe("PWA Library Core SQLite engine", () => {
         "sqlite",
       ],
     ]);
+
+    // The shipping owner upgrades before exposing annotation admission. This
+    // older isolated engine fixture must cross the same explicit boundary.
+    expect(resumePwaAnnotationUpgrade(database, sqlite3.capi,
+      () => new sqlite3.oo1.DB(":memory:", "c"))).toBe(true);
 
     type FinalizedTestTransaction = Awaited<
       ReturnType<typeof finalizeLibraryCoreTransactionV1>
